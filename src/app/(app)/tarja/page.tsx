@@ -1,5 +1,10 @@
-import { TarjaResumenPage } from "@/modules/tarja/components/TarjaResumenPage";
+import { GuardWrapper } from '@/components/GuardWrapper'
+import { TarjaResumenPage } from '@/modules/tarja/components/TarjaResumenPage'
 
 export default function Page() {
-  return <TarjaResumenPage />
+  return (
+    <GuardWrapper modulo="tarja">
+      <TarjaResumenPage />
+    </GuardWrapper>
+  )
 }

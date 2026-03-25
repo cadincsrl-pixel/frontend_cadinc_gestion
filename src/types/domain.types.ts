@@ -255,3 +255,21 @@ export interface Adelanto {
   descripcion: string | null
   liquidacion_id: number | null
 }
+
+export interface Profile {
+  id:      string
+  nombre:  string
+  rol:     'admin' | 'operador'
+  modulos: string[]
+  activo:  boolean
+}
+
+export interface Modulo {
+  id:          number
+  key:         string
+  nombre:      string
+  descripcion: string | null
+  icono:       string | null
+  activo:      boolean
+  orden:       number
+}

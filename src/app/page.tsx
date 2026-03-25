@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation'
+import { ModuloSelector } from '@/components/ModuloSelector'
 
-export default function HomePage() {
-  redirect('/tarja')
+export default function Home() {
+  return <ModuloSelector />
 }

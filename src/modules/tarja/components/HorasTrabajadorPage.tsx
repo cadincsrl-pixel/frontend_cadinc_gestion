@@ -9,7 +9,6 @@ import { apiGet }        from '@/lib/api/client'
 import { toISO, getViernes, getSemDays, getSemLabel, getViernesCobro, DIAS } from '@/lib/utils/dates'
 import type { Hora, Tarifa } from '@/types/domain.types'
 
-// ── Helpers ──
 function fmtM(n: number) {
   return '$' + Math.round(n).toLocaleString('es-AR')
 }
@@ -22,11 +21,12 @@ function fmtFecha(s: string) {
 export function HorasTrabajadorPage() {
   const hoy = new Date()
 
-  // ── Filtros ──
-  const [legSel,   setLegSel]   = useState('')
-  const [obraFilt, setObraFilt] = useState('')
-  const [desde,    setDesde]    = useState(toISO(new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1)))
-  const [hasta,    setHasta]    = useState(toISO(hoy))
+  const [legSel,       setLegSel]       = useState('')
+  const [obraFilt,     setObraFilt]     = useState('')
+  const [desde,        setDesde]        = useState(toISO(new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1)))
+  const [hasta,        setHasta]        = useState(toISO(hoy))
+  const [busqueda,     setBusqueda]     = useState('')
+  const [dropdownOpen, setDropdownOpen] = useState(false)
 
   const { data: personal   = [] } = usePersonal()
   const { data: categorias = [] } = useCategorias()
@@ -37,7 +37,6 @@ export function HorasTrabajadorPage() {
     queryFn:  () => apiGet<Tarifa[]>('/api/tarifas/all'),
   })
 
-  // Horas del trabajador seleccionado en el rango
   const { data: horasData = [], isLoading } = useQuery({
     queryKey: ['horas', 'trabajador', legSel, desde, hasta],
     queryFn:  () => apiGet<Hora[]>(`/api/horas/trabajador/${legSel}?desde=${desde}&hasta=${hasta}`),
@@ -47,15 +46,11 @@ export function HorasTrabajadorPage() {
   const trabajador = personal.find(p => p.leg === legSel)
   const cat        = categorias.find(c => c.id === trabajador?.cat_id)
 
-  // Filtrar por obra si aplica
   const horasFiltradas = useMemo(() =>
-    obraFilt
-      ? horasData.filter(h => h.obra_cod === obraFilt)
-      : horasData,
+    obraFilt ? horasData.filter(h => h.obra_cod === obraFilt) : horasData,
     [horasData, obraFilt]
   )
 
-  // ── Calcular costo por hora ──
   function getVH(obraCod: string, fecha: string): number {
     if (!trabajador) return 0
     const tarOb = todasTarifas
@@ -64,7 +59,18 @@ export function HorasTrabajadorPage() {
     return tarOb?.vh ?? cat?.vh ?? 0
   }
 
-  // ── Agrupar por semana ──
+  const personalFiltrado = useMemo(() => {
+    const q = busqueda.toLowerCase().trim()
+    if (!q) return [...personal].sort((a, b) => a.nom.localeCompare(b.nom))
+    return personal
+      .filter(p =>
+        p.nom.toLowerCase().includes(q) ||
+        p.leg.toLowerCase().includes(q)  ||
+        (p.dni ?? '').includes(q)
+      )
+      .sort((a, b) => a.nom.localeCompare(b.nom))
+  }, [personal, busqueda])
+
   const semanas = useMemo(() => {
     const map = new Map<string, Hora[]>()
     horasFiltradas.forEach(h => {
@@ -75,41 +81,29 @@ export function HorasTrabajadorPage() {
     return [...map.entries()]
       .sort(([a], [b]) => b.localeCompare(a))
       .map(([sk, hs]) => {
-        const vie   = new Date(sk + 'T12:00:00')
-        const days  = getSemDays(vie)
-        const cobro = getViernesCobro(vie)
+        const vie        = new Date(sk + 'T12:00:00')
+        const days       = getSemDays(vie)
+        const cobro      = getViernesCobro(vie)
         const totalHs    = hs.reduce((s, h) => s + h.horas, 0)
         const totalCosto = hs.reduce((s, h) => s + h.horas * getVH(h.obra_cod, h.fecha), 0)
-
-        // Horas por día
-        const hsPorDia = days.map(d => {
-          const iso = toISO(d)
-          return hs.filter(h => h.fecha === iso).reduce((s, h) => s + h.horas, 0)
-        })
-
-        // Obras trabajadas esa semana
-        const obrasEnSem = [...new Set(hs.map(h => h.obra_cod))]
-          .map(cod => ({
-            obra: obras.find(o => o.cod === cod),
-            hs:   hs.filter(h => h.obra_cod === cod).reduce((s, h) => s + h.horas, 0),
-            costo: hs.filter(h => h.obra_cod === cod).reduce((s, h) => s + h.horas * getVH(h.obra_cod, h.fecha), 0),
-          }))
-
-        return { sk, vie, days, cobro, totalHs, totalCosto, hsPorDia, obrasEnSem, horas: hs }
+        const obrasEnSem = [...new Set(hs.map(h => h.obra_cod))].map(cod => ({
+          obra:  obras.find(o => o.cod === cod),
+          hs:    hs.filter(h => h.obra_cod === cod).reduce((s, h) => s + h.horas, 0),
+          costo: hs.filter(h => h.obra_cod === cod).reduce((s, h) => s + h.horas * getVH(h.obra_cod, h.fecha), 0),
+        }))
+        return { sk, vie, days, cobro, totalHs, totalCosto, obrasEnSem, horas: hs }
       })
   }, [horasFiltradas, obras, todasTarifas, trabajador, cat])
 
-  // ── KPIs globales ──
   const kpis = useMemo(() => {
-    const totalHs    = horasFiltradas.reduce((s, h) => s + h.horas, 0)
-    const totalCosto = horasFiltradas.reduce((s, h) => s + h.horas * getVH(h.obra_cod, h.fecha), 0)
-    const obrasUnicas = new Set(horasFiltradas.map(h => h.obra_cod)).size
-    const semanasConHs = semanas.length
+    const totalHs       = horasFiltradas.reduce((s, h) => s + h.horas, 0)
+    const totalCosto    = horasFiltradas.reduce((s, h) => s + h.horas * getVH(h.obra_cod, h.fecha), 0)
+    const obrasUnicas   = new Set(horasFiltradas.map(h => h.obra_cod)).size
+    const semanasConHs  = semanas.length
     const promedioHsSem = semanasConHs > 0 ? Math.round(totalHs / semanasConHs * 10) / 10 : 0
     return { totalHs, totalCosto, obrasUnicas, semanasConHs, promedioHsSem }
   }, [horasFiltradas, semanas])
 
-  // Obras donde trabajó (para filtro)
   const obrasConHoras = useMemo(() =>
     [...new Set(horasData.map(h => h.obra_cod))]
       .map(cod => obras.find(o => o.cod === cod))
@@ -118,10 +112,10 @@ export function HorasTrabajadorPage() {
   )
 
   const shortcuts = [
-    { label: 'Este mes',   fn: () => { setDesde(toISO(new Date(hoy.getFullYear(), hoy.getMonth(), 1))); setHasta(toISO(hoy)) } },
-    { label: 'Mes ant.',   fn: () => { setDesde(toISO(new Date(hoy.getFullYear(), hoy.getMonth()-1, 1))); setHasta(toISO(new Date(hoy.getFullYear(), hoy.getMonth(), 0))) } },
-    { label: 'Últ. 3m',   fn: () => { setDesde(toISO(new Date(hoy.getFullYear(), hoy.getMonth()-2, 1))); setHasta(toISO(hoy)) } },
-    { label: 'Este año',   fn: () => { setDesde(toISO(new Date(hoy.getFullYear(), 0, 1))); setHasta(toISO(hoy)) } },
+    { label: 'Este mes',  fn: () => { setDesde(toISO(new Date(hoy.getFullYear(), hoy.getMonth(), 1)));    setHasta(toISO(hoy)) } },
+    { label: 'Mes ant.',  fn: () => { setDesde(toISO(new Date(hoy.getFullYear(), hoy.getMonth()-1, 1))); setHasta(toISO(new Date(hoy.getFullYear(), hoy.getMonth(), 0))) } },
+    { label: 'Últ. 3m',  fn: () => { setDesde(toISO(new Date(hoy.getFullYear(), hoy.getMonth()-2, 1))); setHasta(toISO(hoy)) } },
+    { label: 'Este año',  fn: () => { setDesde(toISO(new Date(hoy.getFullYear(), 0, 1)));                setHasta(toISO(hoy)) } },
   ]
 
   return (
@@ -136,26 +130,107 @@ export function HorasTrabajadorPage() {
       {/* ── Filtros ── */}
       <div className="bg-white rounded-card shadow-card p-4 flex flex-col gap-4">
 
-        {/* Trabajador */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Trabajador</label>
-            <select
-              value={legSel}
-              onChange={e => { setLegSel(e.target.value); setObraFilt('') }}
-              className="w-full px-3 py-2 border-[1.5px] border-gris-mid rounded-lg font-sans text-sm outline-none transition-colors focus:border-naranja bg-white"
-            >
-              <option value="">— Seleccioná un trabajador —</option>
-              {[...personal].sort((a, b) => a.nom.localeCompare(b.nom)).map(p => (
-                <option key={p.leg} value={p.leg}>
-                  {p.nom} (Leg. {p.leg})
-                </option>
-              ))}
-            </select>
+
+          {/* ── Searchbar trabajador ── */}
+          <div className="flex flex-col gap-1 relative">
+            <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">
+              Trabajador
+            </label>
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Buscar por nombre, legajo o DNI..."
+                value={trabajador ? trabajador.nom : busqueda}
+                onChange={e => {
+                  setBusqueda(e.target.value)
+                  setDropdownOpen(true)
+                  if (legSel) { setLegSel(''); setObraFilt('') }
+                }}
+                onFocus={() => setDropdownOpen(true)}
+                onBlur={() => setTimeout(() => setDropdownOpen(false), 150)}
+                className="w-full pl-9 pr-10 py-2 border-[1.5px] border-gris-mid rounded-lg font-sans text-sm outline-none transition-colors focus:border-naranja bg-white"
+              />
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gris-dark text-sm pointer-events-none">
+                🔍
+              </span>
+              {(legSel || busqueda) && (
+                <button
+                  onMouseDown={e => e.preventDefault()}
+                  onClick={() => { setLegSel(''); setBusqueda(''); setObraFilt(''); setDropdownOpen(false) }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gris-dark hover:text-carbon text-base w-5 h-5 flex items-center justify-center rounded transition-colors"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {/* Dropdown */}
+            {dropdownOpen && !legSel && (
+              <div className="absolute top-[calc(100%+2px)] left-0 right-0 z-[300] bg-white border-[1.5px] border-gris-mid rounded-xl shadow-card-lg max-h-64 overflow-y-auto">
+                {personalFiltrado.length === 0 ? (
+                  <div className="px-4 py-6 text-center text-sm text-gris-dark">
+                    No se encontraron resultados para "{busqueda}"
+                  </div>
+                ) : (
+                  <>
+                    {busqueda && (
+                      <div className="px-3 py-1.5 text-[10px] font-bold text-gris-dark uppercase tracking-wider bg-gris border-b border-gris-mid sticky top-0">
+                        {personalFiltrado.length} resultado{personalFiltrado.length !== 1 ? 's' : ''}
+                      </div>
+                    )}
+                    {personalFiltrado.map(p => {
+                      const c        = categorias.find(c => c.id === p.cat_id)
+                      const q        = busqueda.toLowerCase()
+                      const matchDNI = !!(p.dni && p.dni.includes(busqueda))
+                      const matchLeg = p.leg.toLowerCase().includes(q)
+                      return (
+                        <button
+                          key={p.leg}
+                          onMouseDown={e => e.preventDefault()}
+                          onClick={() => {
+                            setLegSel(p.leg)
+                            setBusqueda('')
+                            setObraFilt('')
+                            setDropdownOpen(false)
+                          }}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-naranja-light transition-colors border-b border-gris last:border-0"
+                        >
+                          <div className="w-8 h-8 rounded-full bg-naranja-light flex items-center justify-center text-naranja-dark font-bold text-sm flex-shrink-0">
+                            {p.nom.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="font-bold text-sm text-carbon truncate">{p.nom}</div>
+                            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                              <span className={`font-mono text-[10px] px-1.5 py-0.5 rounded font-bold ${matchLeg ? 'bg-naranja text-white' : 'bg-gris text-gris-dark'}`}>
+                                Leg. {p.leg}
+                              </span>
+                              {p.dni && (
+                                <span className={`text-[10px] font-mono ${matchDNI ? 'font-bold text-naranja-dark' : 'text-gris-dark'}`}>
+                                  DNI {p.dni}
+                                </span>
+                              )}
+                              {c && (
+                                <span className="text-[10px] font-bold bg-azul-light text-azul-mid px-1.5 py-0.5 rounded">
+                                  {c.nom}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
+          {/* ── Filtro obra ── */}
           <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Filtrar por obra</label>
+            <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">
+              Filtrar por obra
+            </label>
             <select
               value={obraFilt}
               onChange={e => setObraFilt(e.target.value)}
@@ -170,45 +245,43 @@ export function HorasTrabajadorPage() {
           </div>
         </div>
 
-        {/* Rango de fechas */}
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex items-center gap-2 bg-gris rounded-lg border border-gris-mid px-3 py-2">
-              <span className="text-[10px] font-bold text-gris-dark uppercase tracking-wide whitespace-nowrap">Desde</span>
-              <input
-                type="date"
-                value={desde}
-                onChange={e => setDesde(e.target.value)}
-                className="text-sm font-mono outline-none bg-transparent text-carbon"
-              />
-            </div>
-            <span className="text-gris-dark font-bold">→</span>
-            <div className="flex items-center gap-2 bg-gris rounded-lg border border-gris-mid px-3 py-2">
-              <span className="text-[10px] font-bold text-gris-dark uppercase tracking-wide whitespace-nowrap">Hasta</span>
-              <input
-                type="date"
-                value={hasta}
-                onChange={e => setHasta(e.target.value)}
-                className="text-sm font-mono outline-none bg-transparent text-carbon"
-              />
-            </div>
-            <div className="flex gap-1 flex-wrap">
-              {shortcuts.map(s => (
-                <button
-                  key={s.label}
-                  onClick={s.fn}
-                  className="text-xs font-bold px-3 py-2 rounded-lg bg-white border border-gris-mid text-gris-dark hover:bg-azul hover:text-white hover:border-azul transition-all"
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
+        {/* ── Rango de fechas ── */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 bg-gris rounded-lg border border-gris-mid px-3 py-2">
+            <span className="text-[10px] font-bold text-gris-dark uppercase tracking-wide whitespace-nowrap">Desde</span>
+            <input
+              type="date"
+              value={desde}
+              onChange={e => setDesde(e.target.value)}
+              className="text-sm font-mono outline-none bg-transparent text-carbon"
+            />
+          </div>
+          <span className="text-gris-dark font-bold">→</span>
+          <div className="flex items-center gap-2 bg-gris rounded-lg border border-gris-mid px-3 py-2">
+            <span className="text-[10px] font-bold text-gris-dark uppercase tracking-wide whitespace-nowrap">Hasta</span>
+            <input
+              type="date"
+              value={hasta}
+              onChange={e => setHasta(e.target.value)}
+              className="text-sm font-mono outline-none bg-transparent text-carbon"
+            />
+          </div>
+          <div className="flex gap-1 flex-wrap">
+            {shortcuts.map(s => (
+              <button
+                key={s.label}
+                onClick={s.fn}
+                className="text-xs font-bold px-3 py-2 rounded-lg bg-white border border-gris-mid text-gris-dark hover:bg-azul hover:text-white hover:border-azul transition-all"
+              >
+                {s.label}
+              </button>
+            ))}
           </div>
         </div>
 
       </div>
 
-      {/* ── Info del trabajador ── */}
+      {/* ── Info trabajador seleccionado ── */}
       {trabajador && (
         <div className="bg-white rounded-card shadow-card p-4 border-l-[5px] border-naranja flex items-start justify-between flex-wrap gap-3">
           <div className="flex items-center gap-4">
@@ -218,8 +291,12 @@ export function HorasTrabajadorPage() {
             <div>
               <h2 className="font-bold text-azul text-lg leading-tight">{trabajador.nom}</h2>
               <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                <span className="font-mono text-xs bg-gris px-2 py-0.5 rounded text-gris-dark font-bold">Leg. {trabajador.leg}</span>
-                {trabajador.dni && <span className="text-xs text-gris-dark">DNI {trabajador.dni}</span>}
+                <span className="font-mono text-xs bg-gris px-2 py-0.5 rounded text-gris-dark font-bold">
+                  Leg. {trabajador.leg}
+                </span>
+                {trabajador.dni && (
+                  <span className="text-xs text-gris-dark">DNI {trabajador.dni}</span>
+                )}
                 {cat && (
                   <span className="text-xs font-bold bg-naranja-light text-naranja-dark px-2 py-0.5 rounded">
                     {cat.nom}
@@ -228,25 +305,24 @@ export function HorasTrabajadorPage() {
               </div>
             </div>
           </div>
-          {/* KPIs */}
           {horasFiltradas.length > 0 && (
             <div className="flex gap-2 flex-wrap">
-              <KPIChip value={`${kpis.totalHs}hs`}         label="Total horas"    color="azul"    />
-              <KPIChip value={fmtM(kpis.totalCosto)}        label="Costo total"    color="verde"   />
-              <KPIChip value={String(kpis.obrasUnicas)}     label="Obras"          color="naranja" />
-              <KPIChip value={String(kpis.semanasConHs)}    label="Semanas"        color="azul"    />
-              <KPIChip value={`${kpis.promedioHsSem}hs`}   label="Prom/semana"    color="purple"  />
+              <KPIChip value={`${kpis.totalHs}hs`}       label="Total horas"  color="azul"    />
+              <KPIChip value={fmtM(kpis.totalCosto)}      label="Costo total"  color="verde"   />
+              <KPIChip value={String(kpis.obrasUnicas)}   label="Obras"        color="naranja" />
+              <KPIChip value={String(kpis.semanasConHs)}  label="Semanas"      color="azul"    />
+              <KPIChip value={`${kpis.promedioHsSem}hs`} label="Prom/semana"  color="purple"  />
             </div>
           )}
         </div>
       )}
 
-      {/* ── Estado vacío ── */}
+      {/* ── Estados vacíos ── */}
       {!legSel && (
         <div className="bg-white rounded-card shadow-card p-12 text-center text-gris-dark">
           <div className="text-4xl mb-3">👷</div>
           <p className="font-semibold text-azul text-base">Seleccioná un trabajador</p>
-          <p className="text-sm mt-1">Elegí un trabajador para ver su historial de horas</p>
+          <p className="text-sm mt-1">Buscá por nombre, legajo o DNI</p>
         </div>
       )}
 
@@ -271,7 +347,9 @@ export function HorasTrabajadorPage() {
           <div className="bg-white rounded-card shadow-card overflow-hidden">
             <div className="px-4 py-3 border-b border-gris flex items-center justify-between">
               <h3 className="font-bold text-azul">Resumen por obra</h3>
-              <span className="text-xs text-gris-dark">{kpis.obrasUnicas} obra{kpis.obrasUnicas !== 1 ? 's' : ''}</span>
+              <span className="text-xs text-gris-dark">
+                {kpis.obrasUnicas} obra{kpis.obrasUnicas !== 1 ? 's' : ''}
+              </span>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full border-collapse">
@@ -302,29 +380,18 @@ export function HorasTrabajadorPage() {
                         <td className="px-4 py-3">
                           <span className="font-mono text-xs bg-gris px-2 py-0.5 rounded text-gris-dark font-bold">{row.cod}</span>
                         </td>
-                        <td className="px-4 py-3 font-bold text-sm text-carbon">
-                          {row.obra?.nom ?? row.cod}
-                        </td>
-                        <td className="px-4 py-3 font-mono font-bold text-azul text-sm">
-                          {row.totalHs}hs
-                        </td>
-                        <td className="px-4 py-3 font-mono font-bold text-verde text-sm">
-                          {fmtM(row.totalCost)}
-                        </td>
+                        <td className="px-4 py-3 font-bold text-sm text-carbon">{row.obra?.nom ?? row.cod}</td>
+                        <td className="px-4 py-3 font-mono font-bold text-azul text-sm">{row.totalHs}hs</td>
+                        <td className="px-4 py-3 font-mono font-bold text-verde text-sm">{fmtM(row.totalCost)}</td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
                             <div className="flex-1 bg-gris rounded-full h-2 min-w-[60px]">
-                              <div
-                                className="bg-naranja h-2 rounded-full transition-all"
-                                style={{ width: `${row.pct}%` }}
-                              />
+                              <div className="bg-naranja h-2 rounded-full transition-all" style={{ width: `${row.pct}%` }} />
                             </div>
                             <span className="text-xs font-mono font-bold text-gris-dark w-8 text-right">{row.pct}%</span>
                           </div>
                         </td>
-                        <td className="px-4 py-3 font-mono text-sm text-gris-dark">
-                          {row.promSem}hs
-                        </td>
+                        <td className="px-4 py-3 font-mono text-sm text-gris-dark">{row.promSem}hs</td>
                       </tr>
                     ))
                   }
@@ -333,18 +400,18 @@ export function HorasTrabajadorPage() {
             </div>
           </div>
 
-          {/* ── Detalle por semana ── */}
+          {/* ── Detalle semanal ── */}
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <h3 className="font-display text-xl tracking-wider text-azul">DETALLE SEMANAL</h3>
-              <span className="text-xs text-gris-dark">{semanas.length} semana{semanas.length !== 1 ? 's' : ''} con actividad</span>
+              <span className="text-xs text-gris-dark">
+                {semanas.length} semana{semanas.length !== 1 ? 's' : ''} con actividad
+              </span>
             </div>
-
             {semanas.map(sem => (
               <SemanaCard
                 key={sem.sk}
                 sem={sem}
-                obras={obras}
                 fmtM={fmtM}
                 fmtFecha={fmtFecha}
                 mostrarObra={!obraFilt}
@@ -358,7 +425,7 @@ export function HorasTrabajadorPage() {
   )
 }
 
-// ── Componentes auxiliares ──
+// ── KPIChip ──
 
 function KPIChip({ value, label, color }: { value: string; label: string; color: string }) {
   const colors: Record<string, string> = {
@@ -375,11 +442,12 @@ function KPIChip({ value, label, color }: { value: string; label: string; color:
   )
 }
 
+// ── SemanaCard ──
+
 function SemanaCard({
-  sem, obras, fmtM, fmtFecha, mostrarObra,
+  sem, fmtM, fmtFecha, mostrarObra,
 }: {
   sem: any
-  obras: any[]
   fmtM: (n: number) => string
   fmtFecha: (s: string) => string
   mostrarObra: boolean
@@ -388,7 +456,6 @@ function SemanaCard({
 
   return (
     <div className="bg-white rounded-card shadow-card overflow-hidden">
-      {/* Header semana */}
       <button
         onClick={() => setExpanded(p => !p)}
         className="w-full flex items-center justify-between p-4 text-left hover:bg-gris/30 transition-colors"
@@ -414,103 +481,101 @@ function SemanaCard({
       </button>
 
       {expanded && (
-        <div className="border-t border-gris">
-          {/* Tabla días */}
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse min-w-[560px]">
-              <thead>
-                <tr>
-                  {mostrarObra && (
-                    <th className="bg-azul text-white text-xs font-bold px-3 py-2 text-left uppercase tracking-wide">Obra</th>
-                  )}
-                  {DIAS.map((dia, i) => (
-                    <th
-                      key={i}
-                      className={`text-white text-xs font-bold px-2 py-2 text-center uppercase tracking-wide min-w-[70px] font-mono
-                        ${i === 6 ? 'bg-[#8B3510]' : i === 1 || i === 2 ? 'bg-[#5A2008]' : 'bg-naranja'}
-                      `}
-                    >
-                      {dia}<br />
-                      <span className="text-[10px] opacity-80">
-                        {sem.days[i].getDate()}/{sem.days[i].getMonth() + 1}
-                      </span>
-                    </th>
-                  ))}
-                  <th className="bg-verde text-white text-xs font-bold px-2 py-2 text-center uppercase tracking-wide">Total</th>
-                  <th className="bg-[#0F4A28] text-white text-xs font-bold px-3 py-2 text-right uppercase tracking-wide">Costo</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sem.obrasEnSem.map((ob: any) => (
-                  <tr key={ob.obra?.cod ?? 'unknown'} className="border-b border-gris last:border-0">
-                    {mostrarObra && (
-                      <td className="px-3 py-2">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-mono text-[10px] bg-gris px-1.5 py-0.5 rounded text-gris-dark font-bold flex-shrink-0">
-                            {ob.obra?.cod ?? '—'}
-                          </span>
-                          <span className="text-xs font-semibold text-carbon truncate max-w-[120px]">
-                            {ob.obra?.nom ?? ob.obra?.cod}
-                          </span>
-                        </div>
-                      </td>
-                    )}
-                    {sem.days.map((d: Date, i: number) => {
-                      const iso = toISO(d)
-                      const h   = sem.horas.find((x: Hora) => x.fecha === iso && x.obra_cod === (ob.obra?.cod ?? ''))
-                      const val = h?.horas ?? 0
-                      return (
-                        <td key={i} className="px-2 py-2 text-center">
-                          {val > 0 ? (
-                            <span className={`
-                              inline-block font-mono font-bold text-sm px-2 py-0.5 rounded
-                              ${val >= 8 ? 'bg-verde-light text-verde' : val >= 5 ? 'bg-amarillo-light text-[#7A5500]' : 'bg-gris text-carbon'}
-                            `}>
-                              {val}
-                            </span>
-                          ) : (
-                            <span className="text-gris-mid text-sm">—</span>
-                          )}
-                        </td>
-                      )
-                    })}
-                    <td className="px-2 py-2 text-center bg-verde-light">
-                      <span className="font-mono font-bold text-verde text-sm">{ob.hs}</span>
-                    </td>
-                    <td className="px-3 py-2 text-right bg-azul-light">
-                      <span className="font-mono font-bold text-azul-mid text-sm">{fmtM(ob.costo)}</span>
-                    </td>
-                  </tr>
-                ))}
-
-                {/* Fila total semana */}
-                {sem.obrasEnSem.length > 1 && (
-                  <tr className="border-t-2 border-naranja">
-                    {mostrarObra && (
-                      <td className="bg-azul px-3 py-2">
-                        <span className="font-display text-white text-sm tracking-wide">TOTAL</span>
-                      </td>
-                    )}
-                    {sem.days.map((d: Date, i: number) => {
-                      const iso      = toISO(d)
-                      const totalDia = sem.horas.filter((h: Hora) => h.fecha === iso).reduce((s: number, h: Hora) => s + h.horas, 0)
-                      return (
-                        <td key={i} className="bg-azul text-white font-mono text-sm font-bold text-center px-2 py-2">
-                          {totalDia > 0 ? totalDia : '—'}
-                        </td>
-                      )
-                    })}
-                    <td className="bg-azul text-[#7DD9A2] font-mono text-sm font-bold text-center px-2 py-2">
-                      {sem.totalHs}
-                    </td>
-                    <td className="bg-azul text-naranja font-mono text-sm font-bold text-right px-3 py-2">
-                      {fmtM(sem.totalCosto)}
-                    </td>
-                  </tr>
+        <div className="border-t border-gris overflow-x-auto">
+          <table className="w-full border-collapse min-w-[560px]">
+            <thead>
+              <tr>
+                {mostrarObra && (
+                  <th className="bg-azul text-white text-xs font-bold px-3 py-2 text-left uppercase tracking-wide">Obra</th>
                 )}
-              </tbody>
-            </table>
-          </div>
+                {DIAS.map((dia, i) => (
+                  <th
+                    key={i}
+                    className={`text-white text-xs font-bold px-2 py-2 text-center uppercase tracking-wide min-w-[70px] font-mono
+                      ${i === 6 ? 'bg-[#8B3510]' : i === 1 || i === 2 ? 'bg-[#5A2008]' : 'bg-naranja'}
+                    `}
+                  >
+                    {dia}<br />
+                    <span className="text-[10px] opacity-80">
+                      {sem.days[i].getDate()}/{sem.days[i].getMonth() + 1}
+                    </span>
+                  </th>
+                ))}
+                <th className="bg-verde text-white text-xs font-bold px-2 py-2 text-center uppercase tracking-wide">Total</th>
+                <th className="bg-[#0F4A28] text-white text-xs font-bold px-3 py-2 text-right uppercase tracking-wide">Costo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sem.obrasEnSem.map((ob: any) => (
+                <tr key={ob.obra?.cod ?? 'unknown'} className="border-b border-gris last:border-0">
+                  {mostrarObra && (
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono text-[10px] bg-gris px-1.5 py-0.5 rounded text-gris-dark font-bold flex-shrink-0">
+                          {ob.obra?.cod ?? '—'}
+                        </span>
+                        <span className="text-xs font-semibold text-carbon truncate max-w-[120px]">
+                          {ob.obra?.nom ?? ob.obra?.cod}
+                        </span>
+                      </div>
+                    </td>
+                  )}
+                  {sem.days.map((d: Date, i: number) => {
+                    const iso = toISO(d)
+                    const h   = sem.horas.find((x: Hora) => x.fecha === iso && x.obra_cod === (ob.obra?.cod ?? ''))
+                    const val = h?.horas ?? 0
+                    return (
+                      <td key={i} className="px-2 py-2 text-center">
+                        {val > 0 ? (
+                          <span className={`
+                            inline-block font-mono font-bold text-sm px-2 py-0.5 rounded
+                            ${val >= 8 ? 'bg-verde-light text-verde' : val >= 5 ? 'bg-amarillo-light text-[#7A5500]' : 'bg-gris text-carbon'}
+                          `}>
+                            {val}
+                          </span>
+                        ) : (
+                          <span className="text-gris-mid text-sm">—</span>
+                        )}
+                      </td>
+                    )
+                  })}
+                  <td className="px-2 py-2 text-center bg-verde-light">
+                    <span className="font-mono font-bold text-verde text-sm">{ob.hs}</span>
+                  </td>
+                  <td className="px-3 py-2 text-right bg-azul-light">
+                    <span className="font-mono font-bold text-azul-mid text-sm">{fmtM(ob.costo)}</span>
+                  </td>
+                </tr>
+              ))}
+
+              {sem.obrasEnSem.length > 1 && (
+                <tr className="border-t-2 border-naranja">
+                  {mostrarObra && (
+                    <td className="bg-azul px-3 py-2">
+                      <span className="font-display text-white text-sm tracking-wide">TOTAL</span>
+                    </td>
+                  )}
+                  {sem.days.map((d: Date, i: number) => {
+                    const iso      = toISO(d)
+                    const totalDia = sem.horas
+                      .filter((h: Hora) => h.fecha === iso)
+                      .reduce((s: number, h: Hora) => s + h.horas, 0)
+                    return (
+                      <td key={i} className="bg-azul text-white font-mono text-sm font-bold text-center px-2 py-2">
+                        {totalDia > 0 ? totalDia : '—'}
+                      </td>
+                    )
+                  })}
+                  <td className="bg-azul text-[#7DD9A2] font-mono text-sm font-bold text-center px-2 py-2">
+                    {sem.totalHs}
+                  </td>
+                  <td className="bg-azul text-naranja font-mono text-sm font-bold text-right px-3 py-2">
+                    {fmtM(sem.totalCosto)}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

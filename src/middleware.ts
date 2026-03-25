@@ -1,0 +1,53 @@
+import { createServerClient } from '@supabase/ssr'
+import { NextResponse }       from 'next/server'
+import type { NextRequest }   from 'next/server'
+
+// Mapa de rutas → módulo requerido
+const ROUTE_MODULOS: Record<string, string> = {
+  '/dashboard':        'tarja',
+  '/tarja':            'tarja',
+  '/horas-trabajador': 'tarja',
+  '/personal':         'tarja',
+  '/configuracion':    'tarja',
+  '/herramientas':     'herramientas',
+  '/logistica':        'logistica',
+}
+
+function getModuloRequerido(pathname: string): string | null {
+  for (const [route, modulo] of Object.entries(ROUTE_MODULOS)) {
+    if (pathname.startsWith(route)) return modulo
+  }
+  return null
+}
+
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl
+
+  // Rutas públicas
+  const publicRoutes = ['/', '/login', '/herramientas/login', '/logistica/login']
+  if (publicRoutes.includes(pathname)) return NextResponse.next()
+
+  // Verificar sesión
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => request.cookies.getAll(),
+        setAll: () => {},
+      },
+    }
+  )
+
+  const { data: { session } } = await supabase.auth.getSession()
+
+  if (!session) {
+    return NextResponse.redirect(new URL('/', request.url))
+  }
+
+  return NextResponse.next()
+}
+
+export const config = {
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\..*).*)'],
+}
