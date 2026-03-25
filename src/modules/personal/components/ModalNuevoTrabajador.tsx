@@ -1,0 +1,119 @@
+'use client'
+
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { Modal } from '@/components/ui/Modal'
+import { Input } from '@/components/ui/Input'
+import { Select } from '@/components/ui/Select'
+import { Button } from '@/components/ui/Button'
+import { useCreatePersonal } from '@/modules/tarja/hooks/usePersonal'
+import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
+import { useToast } from '@/components/ui/Toast'
+
+const schema = z.object({
+  leg: z.string().min(1, 'El legajo es requerido'),
+  nom: z.string().min(1, 'El nombre es requerido'),
+  dni: z.string().optional(),
+  cat_id: z.coerce.number({ required_error: 'La categoría es requerida' }).min(1, 'Seleccioná una categoría'),
+  tel: z.string().optional(),
+  dir: z.string().optional(),
+  obs: z.string().optional(),
+})
+
+type FormData = z.infer<typeof schema>
+
+interface Props {
+  open: boolean
+  onClose: () => void
+}
+
+export function ModalNuevoTrabajador({ open, onClose }: Props) {
+  const toast = useToast()
+  const { data: categorias = [] } = useCategorias()
+  const { mutate: createPersonal, isPending } = useCreatePersonal()
+
+  const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
+    resolver: zodResolver(schema),
+  })
+
+  function onSubmit(data: FormData) {
+    createPersonal(data, {
+      onSuccess: () => {
+        toast('✓ Trabajador agregado', 'ok')
+        reset()
+        onClose()
+      },
+      onError: (err) => {
+        toast(err.message ?? 'Error al crear trabajador', 'err')
+      },
+    })
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="👷 NUEVO TRABAJADOR"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={isPending}>
+            Cancelar
+          </Button>
+          <Button
+            variant="primary"
+            loading={isPending}
+            onClick={handleSubmit(onSubmit)}
+          >
+            ✓ Guardar
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <div className="grid grid-cols-2 gap-3">
+          <Input
+            label="Legajo"
+            placeholder="001"
+            error={errors.leg?.message}
+            {...register('leg')}
+          />
+          <Input
+            label="DNI"
+            placeholder="12.345.678"
+            error={errors.dni?.message}
+            {...register('dni')}
+          />
+        </div>
+        <Input
+          label="Apellido y Nombre"
+          placeholder="Apellido, Nombre"
+          error={errors.nom?.message}
+          {...register('nom')}
+        />
+        <Select
+          label="Categoría"
+          placeholder="Elegí una categoría"
+          error={errors.cat_id?.message}
+          options={categorias.map(c => ({ value: c.id, label: `${c.nom} — $${c.vh}/h` }))}
+          {...register('cat_id')}
+        />
+        <Input
+          label="Teléfono"
+          placeholder="351-XXX-XXXX"
+          {...register('tel')}
+        />
+        <Input
+          label="Dirección"
+          placeholder="Calle y número"
+          {...register('dir')}
+        />
+        <Input
+          label="Observaciones"
+          placeholder="Notas adicionales"
+          {...register('obs')}
+        />
+      </div>
+    </Modal>
+  )
+}
