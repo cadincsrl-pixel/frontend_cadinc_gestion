@@ -4,33 +4,34 @@ import { useCallback } from 'react'
 import { useTarjaStore } from '../store/tarja.store'
 import { useHorasSemana, useUpsertHora } from '../hooks/useHoras'
 import { getSemDays, toISO, esFinde, esJueves, esHoy, DIAS } from '@/lib/utils/dates'
+import { costoLeg, getVHenFecha, calcularTotalesSemana, fmtMonto } from '@/lib/utils/costos'
 import { useToast } from '@/components/ui/Toast'
-import type { Personal, Categoria, Hora } from '@/types/domain.types'
+import type { Personal, Categoria, Hora, Tarifa } from '@/types/domain.types'
 
 interface Props {
   obraCod: string
   personal: Personal[]
   categorias: Categoria[]
+  tarifas: Tarifa[]
 }
 
-function getHoraClass(h: number | ''): string {
-  if (h === '' || h === 0) return 'text-gris-mid'
-  if (h >= 8) return 'bg-verde-light border-verde/40 text-verde'
-  if (h >= 5) return 'bg-amarillo-light border-amarillo/40 text-[#7A5500]'
+function getHoraClass(h: number): string {
+  if (h === 0) return 'text-gris-mid'
+  if (h >= 8)  return 'bg-verde-light border-verde/40 text-verde'
+  if (h >= 5)  return 'bg-amarillo-light border-amarillo/40 text-[#7A5500]'
   return ''
 }
 
-export function TarjaTable({ obraCod, personal, categorias }: Props) {
+export function TarjaTable({ obraCod, personal, categorias, tarifas }: Props) {
   const { semActual } = useTarjaStore()
   const toast = useToast()
-  const days = getSemDays(semActual)
+  const days  = getSemDays(semActual)
   const desde = toISO(days[0]!)
   const hasta = toISO(days[6]!)
 
   const { data: horasData = [], isLoading } = useHorasSemana(obraCod, desde, hasta)
   const { mutate: upsertHora } = useUpsertHora()
 
-  // Construir mapa horas: leg → fecha → horas
   const horasMap = horasData.reduce<Record<string, Record<string, number>>>(
     (acc, h: Hora) => {
       if (!acc[h.leg]) acc[h.leg] = {}
@@ -43,11 +44,9 @@ export function TarjaTable({ obraCod, personal, categorias }: Props) {
   const getH = (leg: string, fecha: string): number =>
     horasMap[leg]?.[fecha] ?? 0
 
-  const totalHsLeg = (leg: string): number =>
-    days.reduce((s, d) => s + getH(leg, toISO(d)), 0)
-
-  const totalHsSem = (): number =>
-    personal.reduce((s, p) => s + totalHsLeg(p.leg), 0)
+  const { totalHs, totalCosto } = calcularTotalesSemana(
+    horasData, personal, categorias, tarifas, obraCod, days
+  )
 
   const handleChange = useCallback(
     (leg: string, fecha: string, val: string) => {
@@ -55,9 +54,7 @@ export function TarjaTable({ obraCod, personal, categorias }: Props) {
       if (isNaN(horas) || horas < 0 || horas > 24) return
       upsertHora(
         { obra_cod: obraCod, fecha, leg, horas },
-        {
-          onError: () => toast('Error al guardar la hora', 'err'),
-        }
+        { onError: () => toast('Error al guardar la hora', 'err') }
       )
     },
     [obraCod, upsertHora, toast]
@@ -83,8 +80,8 @@ export function TarjaTable({ obraCod, personal, categorias }: Props) {
 
   return (
     <div className="bg-white rounded-card shadow-card overflow-hidden">
-      <div className="overflow-x-auto cursor-grab active:cursor-grabbing">
-        <table className="border-collapse w-full min-w-[600px]">
+      <div className="overflow-x-auto">
+        <table className="border-collapse w-full min-w-[700px]">
           <thead>
             <tr>
               <th className="bg-azul text-white text-xs font-bold px-3 py-2.5 text-left uppercase tracking-wide whitespace-nowrap">
@@ -100,11 +97,11 @@ export function TarjaTable({ obraCod, personal, categorias }: Props) {
                 <th
                   key={i}
                   className={`
-                    text-white text-xs font-bold px-2 py-2.5 text-center uppercase tracking-wide min-w-[70px]
-                    font-mono
-                    ${esHoy(d) ? 'bg-verde' : ''}
+                    text-white text-xs font-bold px-2 py-2.5 text-center uppercase
+                    tracking-wide min-w-[70px] font-mono
+                    ${esHoy(d)    ? 'bg-verde'     : ''}
                     ${esJueves(d) ? 'bg-[#8B3510]' : ''}
-                    ${esFinde(d) ? 'bg-[#5A2008]' : ''}
+                    ${esFinde(d)  ? 'bg-[#5A2008]' : ''}
                     ${!esHoy(d) && !esJueves(d) && !esFinde(d) ? 'bg-naranja' : ''}
                   `}
                 >
@@ -117,12 +114,18 @@ export function TarjaTable({ obraCod, personal, categorias }: Props) {
               <th className="bg-verde text-white text-xs font-bold px-2 py-2.5 text-center uppercase tracking-wide min-w-[80px]">
                 Total
               </th>
+              <th className="bg-[#0F4A28] text-white text-xs font-bold px-3 py-2.5 text-right uppercase tracking-wide min-w-[130px]">
+                Costo · $/h
+              </th>
             </tr>
           </thead>
           <tbody>
             {personal.map((p) => {
-              const cat = categorias.find(c => c.id === p.cat_id)
-              const totalLeg = totalHsLeg(p.leg)
+              const cat      = categorias.find(c => c.id === p.cat_id)
+              const totalLeg = days.reduce((s, d) => s + getH(p.leg, toISO(d)), 0)
+              const fechaRef = toISO(days[0]!)
+              const vh       = getVHenFecha(personal, categorias, tarifas, obraCod, p.leg, fechaRef)
+              const costo    = costoLeg(horasData, personal, categorias, tarifas, obraCod, p.leg, days)
 
               return (
                 <tr
@@ -142,7 +145,7 @@ export function TarjaTable({ obraCod, personal, categorias }: Props) {
                   </td>
                   {days.map((d, i) => {
                     const fecha = toISO(d)
-                    const h = getH(p.leg, fecha)
+                    const h     = getH(p.leg, fecha)
                     return (
                       <td key={i} className="px-1.5 py-1.5 text-center">
                         <input
@@ -156,7 +159,6 @@ export function TarjaTable({ obraCod, personal, categorias }: Props) {
                           onKeyDown={e => {
                             if (e.key === 'Enter') {
                               handleChange(p.leg, fecha, (e.target as HTMLInputElement).value)
-                              // Mover al siguiente input
                               const inputs = document.querySelectorAll<HTMLInputElement>('input[type="number"]')
                               const idx = Array.from(inputs).indexOf(e.target as HTMLInputElement)
                               inputs[idx + 1]?.focus()
@@ -178,33 +180,36 @@ export function TarjaTable({ obraCod, personal, categorias }: Props) {
                   <td className="text-center bg-verde-light font-mono text-sm font-bold text-verde px-2 py-1.5 whitespace-nowrap">
                     {totalLeg > 0 ? totalLeg : '—'}
                   </td>
+                  <td className="text-right bg-azul-light px-3 py-1.5 whitespace-nowrap">
+                    <div className="font-mono text-sm font-bold text-azul-mid">
+                      {costo > 0 ? fmtMonto(costo) : '—'}
+                    </div>
+                    <div className="text-[10px] text-gris-dark font-mono">
+                      ${vh.toLocaleString('es-AR')}/h
+                    </div>
+                  </td>
                 </tr>
               )
             })}
 
             {/* Fila totales */}
             <tr className="border-t-[3px] border-naranja">
-              <td
-                colSpan={3}
-                className="bg-azul text-white font-display text-lg tracking-wide px-3 py-2.5"
-              >
+              <td colSpan={3} className="bg-azul text-white font-display text-lg tracking-wide px-3 py-2.5">
                 TOTAL SEMANA
               </td>
               {days.map((d, i) => {
-                const totalDia = personal.reduce(
-                  (s, p) => s + getH(p.leg, toISO(d)), 0
-                )
+                const totalDia = personal.reduce((s, p) => s + getH(p.leg, toISO(d)), 0)
                 return (
-                  <td
-                    key={i}
-                    className="bg-azul text-white font-mono text-sm font-bold text-center px-2 py-2.5"
-                  >
+                  <td key={i} className="bg-azul text-white font-mono text-sm font-bold text-center px-2 py-2.5">
                     {totalDia > 0 ? totalDia : '—'}
                   </td>
                 )
               })}
-              <td className="bg-azul text-naranja font-mono text-sm font-bold text-center px-2 py-2.5">
-                {totalHsSem()}
+              <td className="bg-azul text-[#7DD9A2] font-mono text-sm font-bold text-center px-2 py-2.5">
+                {totalHs > 0 ? totalHs : '—'}
+              </td>
+              <td className="bg-azul text-naranja font-mono text-sm font-bold text-right px-3 py-2.5">
+                {totalCosto > 0 ? fmtMonto(totalCosto) : '—'}
               </td>
             </tr>
           </tbody>

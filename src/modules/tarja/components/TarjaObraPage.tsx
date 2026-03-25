@@ -1,20 +1,36 @@
 'use client'
 
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useObra } from '@/modules/tarja/hooks/useObras'
+import { useObras } from '@/modules/tarja/hooks/useObras'
 import { usePersonalObra } from '@/modules/tarja/hooks/useAsignaciones'
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
-import { useUpsertHorasLote, useLimpiarSemana } from '@/modules/tarja/hooks/useHoras'
+import { useHorasSemana, useUpsertHorasLote, useLimpiarSemana } from '@/modules/tarja/hooks/useHoras'
+import { useTarifasObra } from '@/modules/tarja/hooks/useTarifas'
+import { useContratistas } from '@/modules/tarja/hooks/useContratistas'
 import { useTarjaStore } from '@/modules/tarja/store/tarja.store'
 import { getSemDays, toISO } from '@/lib/utils/dates'
+import { calcularTotalesSemana, fmtMonto, fmtHs } from '@/lib/utils/costos'
+import { exportarCSVTarja } from '@/lib/utils/excel'
+import { apiGet } from '@/lib/api/client'
+import { WeekNavigator } from './WeekNavigator'
 import { TarjaTable } from './TarjaTable'
-import { ModalAgregarTrabajador } from './ModalAgregarTrabajador'
-import { Chip } from '@/components/ui/Chip'
-import { useToast } from '@/components/ui/Toast'
-import { CierresSection } from './CierresSection'
 import { ToolbarTarja } from './ToolbarTarja'
+import { ModalAgregarTrabajador } from './ModalAgregarTrabajador'
 import { ModalEditarObra } from './ModalEditarObra'
+import { ModalExcelObras } from './ModalExcelObras'
+import { ModalRecibos } from './ModalRecibos'
+import { CierresSection } from './CierresSection'
+import { TarifasPanel } from './TarifasPanel'
+import { ContratistasPanel } from './ContratistasPanel'
+import { Chip } from '@/components/ui/Chip'
 import { Button } from '@/components/ui/Button'
+import { useToast } from '@/components/ui/Toast'
+import type { Hora, Tarifa, Cierre, Certificacion } from '@/types/domain.types'
+import { useEffect } from 'react'
+import { useUIStore } from '@/store/ui.store'
+
 
 interface Props {
   obraCod: string
@@ -24,18 +40,67 @@ export function TarjaObraPage({ obraCod }: Props) {
   const toast = useToast()
   const [modalTrab, setModalTrab] = useState(false)
   const [modalEditarObra, setModalEditarObra] = useState(false)
+  const [modalExcelObras, setModalExcelObras] = useState(false)
+  const [modalRecibos, setModalRecibos] = useState(false)
 
+  // ── Datos de la obra ──
   const { data: obra, isLoading: loadingObra } = useObra(obraCod)
-  const { data: personal = [], isLoading: loadingPersonal } = usePersonalObra(obraCod)
+  const { data: obras = [] } = useObras()
+  const { data: personal = [] } = usePersonalObra(obraCod)
   const { data: categorias = [] } = useCategorias()
+  const { data: tarifas = [] } = useTarifasObra(obraCod)
+  const { data: contratistas = [] } = useContratistas()
   const { semActual } = useTarjaStore()
-  const { mutate: upsertLote } = useUpsertHorasLote()
-  const { mutate: limpiarSemana } = useLimpiarSemana()
 
   const days = getSemDays(semActual)
   const desde = toISO(days[0]!)
   const hasta = toISO(days[6]!)
 
+  const { data: horasData = [] } = useHorasSemana(obraCod, desde, hasta)
+  const { mutate: upsertLote } = useUpsertHorasLote()
+  const { mutate: limpiarSemana } = useLimpiarSemana()
+
+  // ── Datos globales para modales Excel/Recibos ──
+  const { data: todasHoras = [] } = useQuery({
+    queryKey: ['horas', 'all'],
+    queryFn: () => apiGet<Hora[]>('/api/horas/all'),
+  })
+  const { data: todasTarifas = [] } = useQuery({
+    queryKey: ['tarifas', 'all'],
+    queryFn: () => apiGet<Tarifa[]>('/api/tarifas/all'),
+  })
+  const { data: todosCierres = [] } = useQuery({
+    queryKey: ['cierres', 'all'],
+    queryFn: () => apiGet<Cierre[]>('/api/cierres/all'),
+  })
+  const { data: todasCerts = [] } = useQuery({
+    queryKey: ['certs', 'all'],
+    queryFn: () => apiGet<Certificacion[]>('/api/contratistas/cert/all'),
+  })
+
+  const setObraActiva = useUIStore(s => s.setObraActiva)
+  const setTopbarAccion = useUIStore(s => s.setTopbarAccion)
+
+  useEffect(() => {
+    if (obra) setObraActiva({ obraCod: obra.cod, obraNom: obra.nom })
+    return () => setObraActiva(null)
+  }, [obra, setObraActiva])
+
+  useEffect(() => {
+    setTopbarAccion((accion: string) => {
+      if (accion === 'excel') setModalExcelObras(true)
+      if (accion === 'recibos') setModalRecibos(true)
+      if (accion === 'csv') handleCSV()
+    })
+    return () => setTopbarAccion(null)
+  }, [obra, personal, horasData, tarifas])
+
+  // ── Totales semana ──
+  const { totalHs, totalCosto } = calcularTotalesSemana(
+    horasData, personal, categorias, tarifas, obraCod, days
+  )
+
+  // ── Handlers ──
   function handleAutoFill(hs: number, legs: string[]) {
     const horas = legs.flatMap(leg =>
       days.map(d => ({ fecha: toISO(d), leg, horas: hs }))
@@ -50,7 +115,8 @@ export function TarjaObraPage({ obraCod }: Props) {
     )
   }
 
-  function handleLimpiar(legs: string[]) {
+  function handleLimpiar(_legs: string[]) {
+    if (!confirm('¿Limpiar todas las horas de esta semana?')) return
     limpiarSemana(
       { obraCod, desde, hasta },
       {
@@ -60,6 +126,14 @@ export function TarjaObraPage({ obraCod }: Props) {
     )
   }
 
+  function handleCSV() {
+    if (!obra) return
+    if (!personal.length) { toast('No hay trabajadores asignados', 'warn'); return }
+    exportarCSVTarja(obraCod, obra.nom, semActual, personal, categorias, horasData, tarifas)
+    toast('⬇ CSV exportado', 'ok')
+  }
+
+  // ── Loading / Error ──
   if (loadingObra) {
     return (
       <div className="p-8 flex items-center gap-3 text-gris-dark">
@@ -82,7 +156,7 @@ export function TarjaObraPage({ obraCod }: Props) {
   return (
     <div className="p-4 md:p-6 flex flex-col gap-4">
 
-      {/* Header */}
+      {/* ── Header ── */}
       <div className="bg-white rounded-card shadow-card p-4 flex items-start justify-between flex-wrap gap-3 border-l-[5px] border-naranja">
         <div>
           <h1 className="font-display text-[1.6rem] tracking-wider text-azul leading-none">
@@ -93,54 +167,90 @@ export function TarjaObraPage({ obraCod }: Props) {
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          {/* Chips */}
           <div className="flex gap-2 flex-wrap">
             <Chip value={personal.length} label="Trabajadores" />
-            <Chip value="—" label="Hs semana" />
-            <Chip value="$—" label="Costo" variant="green" />
+            <Chip value={fmtHs(totalHs)} label="Hs semana" />
+            <Chip value={totalCosto > 0 ? fmtMonto(totalCosto) : '$0'} label="Costo semana" variant="green" />
+            <Chip value={desde} label="Período" variant="orange" />
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setModalEditarObra(true)}
-          >
-            ✏️ Editar obra
-          </Button>
+          {/* Acciones */}
+          <div className="flex items-center gap-1 flex-wrap">
+            <Button variant="ghost" size="sm" onClick={() => setModalEditarObra(true)}>
+              ✏️ Editar
+            </Button>
+          </div>
         </div>
       </div>
 
-      {/* Toolbar */}
+      {/* ── Toolbar ── */}
       <ToolbarTarja
         personal={personal}
+        categorias={categorias}
+        horasData={horasData}
+        tarifas={tarifas}
+        obra={obra}
         obraCod={obraCod}
         onAgregarTrabajador={() => setModalTrab(true)}
         onAutoFill={handleAutoFill}
         onLimpiar={handleLimpiar}
-        onExcel={() => { }}
       />
 
-      {/* Tabla */}
+      {/* ── Tabla de tarja ── */}
       <TarjaTable
         obraCod={obraCod}
         personal={personal}
         categorias={categorias}
+        tarifas={tarifas}
       />
 
-      {/* Modal agregar trabajador */}
+      {/* ── Tarifas ── */}
+      <TarifasPanel obraCod={obraCod} />
+
+      {/* ── Contratistas ── */}
+      <ContratistasPanel obraCod={obraCod} />
+
+      {/* ── Cierres ── */}
+      <CierresSection obraCod={obraCod} />
+
+      {/* ── Modales ── */}
       <ModalAgregarTrabajador
         open={modalTrab}
         onClose={() => setModalTrab(false)}
         obraCod={obraCod}
       />
-
-      {/* Cierres */}
-      <CierresSection obraCod={obraCod} />
-
       <ModalEditarObra
         open={modalEditarObra}
         onClose={() => setModalEditarObra(false)}
         obra={obra}
       />
-
+      <ModalExcelObras
+        open={modalExcelObras}
+        onClose={() => setModalExcelObras(false)}
+        obras={obras}
+        personal={personal}
+        categorias={categorias}
+        horas={todasHoras}
+        tarifas={todasTarifas}
+        cierres={todosCierres}
+        certificaciones={todasCerts}
+        contratistas={contratistas}
+        obraActual={obraCod}
+      />
+      <ModalRecibos
+        open={modalRecibos}
+        onClose={() => setModalRecibos(false)}
+        obras={obras}
+        personal={personal}
+        categorias={categorias}
+        horas={todasHoras}
+        tarifas={todasTarifas}
+        cierres={todosCierres}
+        certificaciones={todasCerts}
+        contratistas={contratistas}
+        obraActual={obraCod}
+        semActual={semActual}
+      />
 
     </div>
   )

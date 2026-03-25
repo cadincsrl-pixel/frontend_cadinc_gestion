@@ -9,16 +9,19 @@ interface SidebarProps {
 }
 
 const NAV_ITEMS = [
-  { href: '/tarja',    icon: '📋', label: 'Tarja',    meta: 'Control de horas' },
-  { href: '/personal', icon: '👷', label: 'Personal',  meta: 'Gestión de nómina' },
-  { href: '/logistica',icon: '🚛', label: 'Logística', meta: 'Materiales y recursos' },
-  { href: '/tarja/archivadas',icon: '📦', label: 'Obras archivadas', meta: 'Obras archivadas' },
-
+  { href: '/dashboard', icon: '📊', label: 'Dashboard', meta: 'Resumen y gráficos', exact: false },
+  { href: '/tarja', icon: '📋', label: 'Tarja', meta: 'Control de horas', exact: false },
+  { href: '/horas-trabajador', icon: '👤', label: 'Horas x Trabajador', meta: 'Historial individual', exact: false },
+  { href: '/personal', icon: '👷', label: 'Personal', meta: 'Gestión de nómina', exact: false },
+  { href: '/logistica', icon: '🚛', label: 'Logística', meta: 'Materiales y recursos', exact: false },
+  { href: '/configuracion', icon: '⚙️', label: 'Configuración', meta: 'Categorías y tarifas', exact: false },
+  { href: '/tarja/archivadas', icon: '📦', label: 'Obras archivadas', meta: 'Historial de obras', exact: true },
 ]
 
 export function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
+  const decodedPathname = decodeURIComponent(pathname)
   const { data: obras = [] } = useObras()
 
   function navigate(href: string) {
@@ -26,9 +29,18 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     onClose?.()
   }
 
+  function isActive(item: typeof NAV_ITEMS[0]) {
+    if (item.exact) return decodedPathname === item.href
+    if (item.href === '/tarja') {
+      return decodedPathname.startsWith('/tarja') && decodedPathname !== '/tarja/archivadas'
+    }
+    return decodedPathname.startsWith(item.href)
+  }
+
+  const showObras = decodedPathname.startsWith('/tarja') && decodedPathname !== '/tarja/archivadas'
+
   return (
     <>
-      {/* Overlay mobile */}
       {open !== undefined && open && (
         <div
           className="fixed inset-0 z-[150] bg-azul/40 backdrop-blur-sm md:hidden"
@@ -38,7 +50,6 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
       <aside className={`
         bg-azul flex flex-col overflow-y-auto pb-6
-        scrollbar-thin scrollbar-thumb-white/10
         ${open !== undefined
           ? `fixed top-[54px] left-0 h-[calc(100dvh-54px)] w-[280px] z-[160] transition-transform duration-250
              ${open ? 'translate-x-0' : '-translate-x-full'}`
@@ -46,7 +57,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         }
       `}>
 
-        {/* Módulos */}
+        {/* Nav items */}
         <div className="pt-3">
           <div className="px-4 py-2 text-[10px] font-bold tracking-[2.5px] uppercase text-white/35">
             Módulos
@@ -58,9 +69,9 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               className={`
                 w-full flex items-center gap-2.5 px-3 py-2.5 mx-2 rounded-[9px]
                 text-left transition-all border border-transparent
-                ${pathname.startsWith(item.href)
+                ${isActive(item)
                   ? 'bg-naranja text-white border-naranja-dark shadow-[0_4px_14px_rgba(232,98,26,.4)]'
-                  : 'text-white/68 hover:bg-white/8 hover:text-white'
+                  : 'text-white hover:bg-white hover:text-black'
                 }
               `}
               style={{ width: 'calc(100% - 16px)' }}
@@ -74,8 +85,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           ))}
         </div>
 
-        {/* Obras activas */}
-        {pathname.startsWith('/tarja') && (
+        {/* Obras activas — solo en módulo tarja */}
+        {showObras && (
           <div className="mt-4">
             <div className="px-4 py-2 text-[10px] font-bold tracking-[2.5px] uppercase text-white/35">
               Obras activas
@@ -84,13 +95,13 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             {obras.map(obra => (
               <button
                 key={obra.cod}
-                onClick={() => navigate(`/tarja/${obra.cod}`)}
+                onClick={() => navigate(`/tarja/${encodeURIComponent(obra.cod)}`)}
                 className={`
                   w-full flex items-center gap-2.5 px-3 py-2.5 mx-2 rounded-[9px]
                   text-left transition-all border border-transparent
-                  ${pathname === `/tarja/${obra.cod}`
+                  ${decodedPathname === `/tarja/${obra.cod}`
                     ? 'bg-naranja text-white border-naranja-dark shadow-[0_4px_14px_rgba(232,98,26,.4)]'
-                    : 'text-white/68 hover:bg-white/8 hover:text-white'
+                    : 'text-white hover:bg-white hover:text-black'
                   }
                 `}
                 style={{ width: 'calc(100% - 16px)' }}
@@ -105,19 +116,15 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 </span>
               </button>
             ))}
-            
 
-            {/* Nueva obra */}
             <button
               onClick={() => navigate('/tarja')}
-              className="w-full flex items-center gap-2 px-3 py-2 mx-2 rounded-[9px] border-[1.5px] border-dashed border-white/20 text-white/40 hover:border-naranja hover:text-naranja transition-all text-sm font-semibold"
+              className="w-full flex items-center gap-2 px-3 py-2 mx-2 rounded-[9px] border-[1.5px] border-dashed border-white/20 text-white/40 hover:border-naranja hover:text-naranja transition-all text-sm font-semibold mt-10"
               style={{ width: 'calc(100% - 16px)' }}
             >
               <span>＋</span>
               <span>Nueva obra</span>
             </button>
-
-            
           </div>
         )}
 

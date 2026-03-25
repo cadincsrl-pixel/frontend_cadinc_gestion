@@ -147,3 +147,111 @@ export interface Certificacion {
   desc: string
   estado: CertEstado
 }
+
+export type ChoferEstado = 'activo' | 'descanso' | 'inactivo'
+export type CamionEstado = 'activo' | 'mantenimiento' | 'inactivo'
+export type ViajeEstado  = 'en_curso' | 'completado'
+export type LiqEstado    = 'borrador' | 'cerrada'
+
+export interface Chofer {
+  id: number
+  nombre: string
+  dni: string | null
+  tel: string | null
+  licencia: string | null
+  estado: ChoferEstado
+  obs: string | null
+}
+
+export interface Camion {
+  id: number
+  patente: string
+  modelo: string | null
+  anio: number | null
+  estado: CamionEstado
+  obs: string | null
+}
+
+export interface Cantera {
+  id: number
+  nombre: string
+  localidad: string | null
+  obs: string | null
+}
+
+export interface Deposito {
+  id: number
+  nombre: string
+  localidad: string | null
+  obs: string | null
+}
+
+export interface Ruta {
+  id: number
+  cantera_id: number
+  deposito_id: number
+  km_ida_vuelta: number
+  obs: string | null
+  canteras?: { nombre: string }
+  depositos?: { nombre: string }
+}
+
+export interface Carga {
+  id: number
+  viaje_id: number
+  fecha: string
+  cantera_id: number
+  toneladas: number | null
+  remito_num: string | null
+  remito_url: string | null
+  obs: string | null
+}
+
+export interface Descarga {
+  id: number
+  viaje_id: number
+  fecha: string
+  deposito_id: number
+  toneladas: number | null
+  remito_num: string | null
+  remito_url: string | null
+  obs: string | null
+}
+
+export interface Viaje {
+  id: number
+  chofer_id: number
+  camion_id: number
+  estado: ViajeEstado
+  obs: string | null
+  created_at: string
+  cargas: Carga[]
+  descargas: Descarga[]
+}
+
+export interface Liquidacion {
+  id: number
+  chofer_id: number
+  fecha_desde: string
+  fecha_hasta: string
+  dias_trabajados: number
+  km_totales: number
+  precio_km: number
+  basico_dia: number
+  subtotal_km: number
+  subtotal_basico: number
+  total_adelantos: number
+  total_neto: number
+  estado: LiqEstado
+  obs: string | null
+  created_at: string
+}
+
+export interface Adelanto {
+  id: number
+  chofer_id: number
+  fecha: string
+  monto: number
+  descripcion: string | null
+  liquidacion_id: number | null
+}

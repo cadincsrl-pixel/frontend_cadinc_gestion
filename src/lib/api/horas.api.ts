@@ -1,4 +1,4 @@
-import { apiGet, apiPatch } from './client'
+import { apiDelete, apiGet } from './client'
 import type { Hora, UpsertHoraDto, UpsertHorasLoteDto } from '@/types/domain.types'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
