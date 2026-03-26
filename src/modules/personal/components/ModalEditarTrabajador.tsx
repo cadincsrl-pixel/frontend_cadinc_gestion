@@ -37,7 +37,7 @@ export function ModalEditarTrabajador({ open, onClose, trabajador }: Props) {
   const { mutate: deletePersonal, isPending: deleting } = useDeletePersonal()
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(schema) as any
   })
 
   useEffect(() => {

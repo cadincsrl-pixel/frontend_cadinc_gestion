@@ -31,7 +31,7 @@ export function exportarTarjaExcel(
       const h = horas.find(x => x.obra_cod === obraCod && x.leg === p.leg && x.fecha === toISO(d))
       return h?.horas ?? ''
     })
-    const totHs = hsDia.reduce((s, h) => s + (Number(h) || 0), 0)
+    const totHs = hsDia.reduce<number>((s, h) => s + (Number(h) || 0), 0)
     return [p.leg, p.nom, cat?.nom ?? '—', ...hsDia, totHs || '']
   })
 

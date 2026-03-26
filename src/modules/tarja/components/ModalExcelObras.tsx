@@ -129,8 +129,8 @@ export function ModalExcelObras({
           ]}
           value={semFiltro}
           onChange={e => setSemFiltro(e.target.value)}
-          hint="Dejá vacío para exportar todo el historial"
         />
+        <p className="text-xs text-gris-dark mt-1">Dejá vacío para exportar todo el historial</p>
 
         {/* Selección de obras */}
         <div>

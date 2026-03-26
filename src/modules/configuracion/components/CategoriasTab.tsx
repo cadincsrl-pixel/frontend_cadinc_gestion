@@ -2,9 +2,9 @@
 
 import { useState } from 'react'
 import { useCategorias, useCreateCategoria, useUpdateCategoria, useDeleteCategoria } from '@/modules/tarja/hooks/useCategorias'
-import { Modal }  from '@/components/ui/Modal'
+import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
-import { Input }  from '@/components/ui/Input'
+import { Input } from '@/components/ui/Input'
 import { useToast } from '@/components/ui/Toast'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -13,7 +13,7 @@ import type { Categoria } from '@/types/domain.types'
 
 const schema = z.object({
   nom: z.string().min(1, 'El nombre es requerido'),
-  vh:  z.coerce.number().min(0, 'El valor hora no puede ser negativo'),
+  vh: z.coerce.number().min(0, 'El valor hora no puede ser negativo'),
 })
 
 type FormData = z.infer<typeof schema>
@@ -21,15 +21,15 @@ type FormData = z.infer<typeof schema>
 export function CategoriasTab() {
   const toast = useToast()
   const { data: categorias = [], isLoading } = useCategorias()
-  const { mutate: create,  isPending: creating  } = useCreateCategoria()
-  const { mutate: update,  isPending: updating  } = useUpdateCategoria()
-  const { mutate: remove                         } = useDeleteCategoria()
+  const { mutate: create, isPending: creating } = useCreateCategoria()
+  const { mutate: update, isPending: updating } = useUpdateCategoria()
+  const { mutate: remove } = useDeleteCategoria()
 
   const [modalNuevo, setModalNuevo] = useState(false)
-  const [editando,   setEditando]   = useState<Categoria | null>(null)
+  const [editando, setEditando] = useState<Categoria | null>(null)
 
-  const formNuevo = useForm<FormData>({ resolver: zodResolver(schema) })
-  const formEdit  = useForm<FormData>({ resolver: zodResolver(schema) })
+  const formNuevo = useForm<FormData>({ resolver: zodResolver(schema) as any })
+  const formEdit = useForm<FormData>({ resolver: zodResolver(schema) as any })
 
   function handleCreate(data: FormData) {
     create(data, {
@@ -60,7 +60,7 @@ export function CategoriasTab() {
     if (!confirm(`¿Eliminar la categoría "${cat.nom}"? Esta acción no se puede deshacer.`)) return
     remove(cat.id, {
       onSuccess: () => toast('✓ Categoría eliminada', 'ok'),
-      onError:   () => toast('No se puede eliminar — hay trabajadores con esta categoría', 'err'),
+      onError: () => toast('No se puede eliminar — hay trabajadores con esta categoría', 'err'),
     })
   }
 

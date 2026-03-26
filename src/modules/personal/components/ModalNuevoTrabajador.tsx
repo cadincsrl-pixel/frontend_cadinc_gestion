@@ -15,7 +15,7 @@ const schema = z.object({
   leg: z.string().min(1, 'El legajo es requerido'),
   nom: z.string().min(1, 'El nombre es requerido'),
   dni: z.string().optional(),
-  cat_id: z.coerce.number({ required_error: 'La categoría es requerida' }).min(1, 'Seleccioná una categoría'),
+  cat_id: z.coerce.number({ error: 'La categoría es requerida' }).min(1, 'Seleccioná una categoría'),
   tel: z.string().optional(),
   dir: z.string().optional(),
   obs: z.string().optional(),
@@ -34,7 +34,7 @@ export function ModalNuevoTrabajador({ open, onClose }: Props) {
   const { mutate: createPersonal, isPending } = useCreatePersonal()
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(schema) as any
   })
 
   function onSubmit(data: FormData) {

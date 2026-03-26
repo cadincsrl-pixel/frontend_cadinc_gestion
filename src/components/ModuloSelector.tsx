@@ -62,11 +62,11 @@ export function ModuloSelector() {
         {MODULOS.map(m => (
           <button
             key={m.key}
-            onClick={() => !m.disabled && router.push(m.href)}
-            disabled={m.disabled}
+            onClick={() => !('disabled' in m && m.disabled) && router.push(m.href)}
+            disabled={'disabled' in m && m.disabled}
             className={`
               relative flex flex-col items-center gap-4 p-8 rounded-2xl border-2 transition-all
-              ${m.disabled
+              ${'disabled' in m && m.disabled
                 ? 'border-white/10 bg-white/5 cursor-not-allowed opacity-50'
                 : 'border-white/20 bg-white/10 hover:bg-white/20 hover:border-naranja hover:scale-[1.03] cursor-pointer active:scale-[0.98]'
               }
@@ -93,7 +93,7 @@ export function ModuloSelector() {
             </div>
 
             {/* Flecha */}
-            {!m.disabled && (
+            {!('disabled' in m && m.disabled) && (
               <div className="text-naranja text-xl font-bold">→</div>
             )}
           </button>
