@@ -5,6 +5,18 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter, usePathname } from 'next/navigation'
 import { useUIStore } from '@/store/ui.store'
 
+const MODULO_BRANDING: Record<string, { label: string; accent: string; icono: string }> = {
+  tarja:        { label: 'TARJA',        accent: 'OBRA',         icono: '📋' },
+  herramientas: { label: '',         accent: 'HERRAMIENTAS',     icono: '🔧' },
+  logistica:    { label: 'LOG',          accent: 'ÍSTICA',       icono: '🚛' },
+}
+
+function getModuloActual(pathname: string): string {
+  if (pathname.startsWith('/herramientas')) return 'herramientas'
+  if (pathname.startsWith('/logistica'))    return 'logistica'
+  return 'tarja'
+}
+
 interface TopbarProps {
   onMenuToggle?: () => void
   showMenuBtn?: boolean
@@ -21,12 +33,15 @@ export function Topbar({ onMenuToggle, showMenuBtn }: TopbarProps) {
                         pathname !== '/tarja/archivadas' &&
                         !!obraActiva
 
+  const moduloKey = getModuloActual(pathname)
+  const branding  = MODULO_BRANDING[moduloKey] ?? MODULO_BRANDING.tarja!
+
   async function handleLogout() {
     if (!confirm('¿Cerrar sesión?')) return
     setLoggingOut(true)
     const supabase = createClient()
     await supabase.auth.signOut()
-    router.push('/login')
+    router.push('/')
     router.refresh()
   }
 
@@ -45,7 +60,7 @@ export function Topbar({ onMenuToggle, showMenuBtn }: TopbarProps) {
             </button>
           )}
           <div className="font-display text-[1.65rem] tracking-[3px] text-white flex items-center gap-2">
-            TARJA<em className="text-naranja not-italic">OBRA</em>
+            {branding.label}<em className="text-naranja not-italic">{branding.accent}</em>
           </div>
 
           {/* Nombre obra activa — solo en página de obra */}
@@ -65,14 +80,12 @@ export function Topbar({ onMenuToggle, showMenuBtn }: TopbarProps) {
           {/* Botones de acción — solo en página de obra */}
           {esPaginaObra && (
             <>
-              {/* Desktop — botones visibles */}
               <div className="hidden sm:flex items-center gap-1">
                 <TopbarBtn icon="📊" label="Excel" onClick={() => useUIStore.getState().topbarAccion?.('excel')} />
                 <TopbarBtn icon="🖨" label="Recibos" onClick={() => useUIStore.getState().topbarAccion?.('recibos')} />
                 <TopbarBtn icon="⬇" label="CSV" onClick={() => useUIStore.getState().topbarAccion?.('csv')} />
               </div>
 
-              {/* Mobile — menú desplegable */}
               <div className="relative sm:hidden">
                 <button
                   onClick={() => setShowAcciones(p => !p)}
