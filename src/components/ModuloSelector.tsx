@@ -1,6 +1,9 @@
 'use client'
 
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import { useSessionStore } from '@/store/session.store'
 
 const MODULOS = [
   {
@@ -8,7 +11,8 @@ const MODULOS = [
     nombre: 'Tarja de Obra',
     descripcion: 'Control de horas y personal',
     icono: '📋',
-    href: '/login',
+    loginHref: '/login',
+    appHref: '/dashboard',
     color: 'naranja',
   },
   {
@@ -16,7 +20,8 @@ const MODULOS = [
     nombre: 'Logística',
     descripcion: 'Materiales y recursos',
     icono: '🚛',
-    href: '/logistica/login',
+    loginHref: '/logistica/login',
+    appHref: '/logistica',
     color: 'azul',
     disabled: true,
     badge: 'Próximamente',
@@ -26,13 +31,79 @@ const MODULOS = [
     nombre: 'Herramientas',
     descripcion: 'Control de herramientas y equipos',
     icono: '🔧',
-    href: '/herramientas/login',
+    loginHref: '/herramientas/login',
+    appHref: '/herramientas',
     color: 'purple',
   },
 ] as const
 
 export function ModuloSelector() {
   const router = useRouter()
+  const profile = useSessionStore(s => s.profile)
+  const [checking, setChecking] = useState(false)
+  const [error, setError] = useState('')
+
+  async function handleModulo(m: typeof MODULOS[number]) {
+    if ('disabled' in m && m.disabled) return
+
+    setError('')
+    setChecking(true)
+
+    try {
+      // Verificar si ya hay sesión activa
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+
+      if (!session) {
+        // No hay sesión → ir al login del módulo
+        router.push(m.loginHref)
+        return
+      }
+
+      // Hay sesión → verificar si el profile ya está cargado
+      let currentProfile = profile
+
+      if (!currentProfile) {
+        // Cargar profile desde la API
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'}/api/me/profile`,
+          {
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
+            },
+          }
+        )
+        if (res.ok) {
+          currentProfile = await res.json()
+        }
+      }
+
+      if (!currentProfile) {
+        // No se pudo obtener el perfil → ir al login
+        router.push(m.loginHref)
+        return
+      }
+
+      // Verificar acceso al módulo
+      const tieneAcceso = currentProfile.rol === 'admin' || currentProfile.modulos.includes(m.key)
+
+      if (!tieneAcceso) {
+        setError(`Tu usuario no tiene acceso al módulo "${m.nombre}". Iniciá sesión con una cuenta que tenga permisos, o contactá al administrador.`)
+        setChecking(false)
+        return
+      }
+
+      // Tiene acceso → ir directo al módulo
+      router.push(m.appHref)
+
+    } catch {
+      // Error de red o similar → ir al login como fallback
+      router.push(m.loginHref)
+    } finally {
+      setChecking(false)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-azul flex flex-col items-center justify-center p-6">
@@ -53,22 +124,57 @@ export function ModuloSelector() {
           Seleccioná el módulo al que querés acceder
         </h2>
         <p className="text-white/40 text-sm mt-1">
-          Ingresarás con tus credenciales de acceso
+          {profile
+            ? `Sesión activa como ${profile.nombre}`
+            : 'Ingresarás con tus credenciales de acceso'
+          }
         </p>
       </div>
+
+      {/* Error de acceso */}
+      {error && (
+        <div className="w-full max-w-2xl mb-4 bg-rojo/20 border border-rojo/40 text-white rounded-xl px-5 py-4 flex items-start gap-3">
+          <span className="text-xl flex-shrink-0">🚫</span>
+          <div className="flex-1">
+            <p className="font-bold text-sm">{error}</p>
+            <button
+              onClick={() => {
+                setError('')
+                // Cerrar sesión para poder loguearse con otro usuario
+                const supabase = createClient()
+                supabase.auth.signOut().then(() => {
+                  useSessionStore.getState().setProfile(null)
+                  useSessionStore.getState().setEmail('')
+                })
+              }}
+              className="mt-2 text-xs font-bold text-naranja hover:text-white transition-colors underline"
+            >
+              Cerrar sesión e ingresar con otra cuenta
+            </button>
+          </div>
+          <button
+            onClick={() => setError('')}
+            className="text-white/50 hover:text-white text-lg"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Grid de módulos */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full max-w-2xl">
         {MODULOS.map(m => (
           <button
             key={m.key}
-            onClick={() => !('disabled' in m && m.disabled) && router.push(m.href)}
-            disabled={'disabled' in m && m.disabled}
+            onClick={() => handleModulo(m)}
+            disabled={('disabled' in m && m.disabled) || checking}
             className={`
               relative flex flex-col items-center gap-4 p-8 rounded-2xl border-2 transition-all
               ${'disabled' in m && m.disabled
                 ? 'border-white/10 bg-white/5 cursor-not-allowed opacity-50'
-                : 'border-white/20 bg-white/10 hover:bg-white/20 hover:border-naranja hover:scale-[1.03] cursor-pointer active:scale-[0.98]'
+                : checking
+                  ? 'border-white/20 bg-white/10 opacity-60 cursor-wait'
+                  : 'border-white/20 bg-white/10 hover:bg-white/20 hover:border-naranja hover:scale-[1.03] cursor-pointer active:scale-[0.98]'
               }
             `}
           >
@@ -94,7 +200,9 @@ export function ModuloSelector() {
 
             {/* Flecha */}
             {!('disabled' in m && m.disabled) && (
-              <div className="text-naranja text-xl font-bold">→</div>
+              <div className="text-naranja text-xl font-bold">
+                {checking ? '⏳' : '→'}
+              </div>
             )}
           </button>
         ))}
@@ -104,7 +212,6 @@ export function ModuloSelector() {
       <p className="text-white/20 text-xs mt-12 text-center">
         CADINC SRL · {new Date().getFullYear()}
       </p>
-
     </div>
   )
 }
