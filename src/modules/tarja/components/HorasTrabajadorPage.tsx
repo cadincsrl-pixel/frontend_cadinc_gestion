@@ -1,583 +1,476 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { useQuery }      from '@tanstack/react-query'
-import { usePersonal }   from '@/modules/tarja/hooks/usePersonal'
+import { useRouter } from 'next/navigation'
+import { usePersonal } from '@/modules/tarja/hooks/usePersonal'
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
-import { useObras }      from '@/modules/tarja/hooks/useObras'
-import { TarjaTopbarActions } from './TarjaTopbarActions'
-import { apiGet }        from '@/lib/api/client'
-import { toISO, getViernes, getSemDays, getSemLabel, getViernesCobro, DIAS } from '@/lib/utils/dates'
-import type { Hora, Tarifa } from '@/types/domain.types'
-
-function fmtM(n: number) {
-  return '$' + Math.round(n).toLocaleString('es-AR')
-}
-function fmtFecha(s: string) {
-  const [y, m, d] = s.split('-')
-  const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']
-  return `${d} ${meses[parseInt(m!) - 1]} ${y}`
-}
+import { useObras } from '@/modules/tarja/hooks/useObras'
+import { useQuery } from '@tanstack/react-query'
+import { apiGet } from '@/lib/api/client'
+import {
+  toISO, getViernes, getSemDays, getSemLabel, DIAS,
+  esHoy, esJueves, esFinde,
+} from '@/lib/utils/dates'
+import { totalHsLeg } from '@/lib/utils/costos'
+import { Chip } from '@/components/ui/Chip'
+import type { Hora, Tarifa, Personal, Categoria } from '@/types/domain.types'
 
 export function HorasTrabajadorPage() {
-  const hoy = new Date()
+  const router = useRouter()
 
-  const [legSel,       setLegSel]       = useState('')
-  const [obraFilt,     setObraFilt]     = useState('')
-  const [desde,        setDesde]        = useState(toISO(new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1)))
-  const [hasta,        setHasta]        = useState(toISO(hoy))
-  const [busqueda,     setBusqueda]     = useState('')
-  const [dropdownOpen, setDropdownOpen] = useState(false)
+  // ── Estado ──
+  const [semActual, setSemActual] = useState(() => getViernes(new Date()))
+  const [filtroObra, setFiltroObra] = useState('')
+  const [busqueda, setBusqueda] = useState('')
 
-  const { data: personal   = [] } = usePersonal()
+  // ── Datos ──
+  const { data: personal = [] } = usePersonal()
   const { data: categorias = [] } = useCategorias()
-  const { data: obras       = [] } = useObras()
+  const { data: obras = [] } = useObras()
 
+  const { data: todasHoras = [], isLoading } = useQuery({
+    queryKey: ['horas', 'all'],
+    queryFn: () => apiGet<Hora[]>('/api/horas/all'),
+  })
   const { data: todasTarifas = [] } = useQuery({
     queryKey: ['tarifas', 'all'],
-    queryFn:  () => apiGet<Tarifa[]>('/api/tarifas/all'),
+    queryFn: () => apiGet<Tarifa[]>('/api/tarifas/all'),
+  })
+  const { data: todasAsignaciones = [] } = useQuery({
+    queryKey: ['asignaciones', 'all'],
+    queryFn: () => apiGet<Array<{ obra_cod: string; leg: string; baja_desde: string | null }>>('/api/asignaciones/all'),
+  })
+  const { data: todasCatObra = [] } = useQuery({
+    queryKey: ['cat-obra', 'all'],
+    queryFn: () => apiGet<Array<{ obra_cod: string; leg: string; cat_id: number; desde: string }>>('/api/cat-obra/all'),
   })
 
-  const { data: horasData = [], isLoading } = useQuery({
-    queryKey: ['horas', 'trabajador', legSel, desde, hasta],
-    queryFn:  () => apiGet<Hora[]>(`/api/horas/trabajador/${legSel}?desde=${desde}&hasta=${hasta}`),
-    enabled:  !!legSel,
-  })
+  // ── Semana ──
+  const days = getSemDays(semActual)
+  const semKey = toISO(semActual)
+  const desde = toISO(days[0]!)
+  const hasta = toISO(days[6]!)
 
-  const trabajador = personal.find(p => p.leg === legSel)
-  const cat        = categorias.find(c => c.id === trabajador?.cat_id)
-
-  const horasFiltradas = useMemo(() =>
-    obraFilt ? horasData.filter(h => h.obra_cod === obraFilt) : horasData,
-    [horasData, obraFilt]
-  )
-
-  function getVH(obraCod: string, fecha: string): number {
-    if (!trabajador) return 0
-    const tarOb = todasTarifas
-      .filter(t => t.obra_cod === obraCod && t.cat_id === trabajador.cat_id && t.desde <= fecha)
-      .sort((a, b) => b.desde.localeCompare(a.desde))[0]
-    return tarOb?.vh ?? cat?.vh ?? 0
+  function navSem(dir: number) {
+    const nueva = new Date(semActual)
+    nueva.setDate(nueva.getDate() + dir * 7)
+    setSemActual(nueva)
+  }
+  function irHoy() {
+    setSemActual(getViernes(new Date()))
   }
 
-  const personalFiltrado = useMemo(() => {
-    const q = busqueda.toLowerCase().trim()
-    if (!q) return [...personal].sort((a, b) => a.nom.localeCompare(b.nom))
-    return personal
-      .filter(p =>
-        p.nom.toLowerCase().includes(q) ||
-        p.leg.toLowerCase().includes(q)  ||
-        (p.dni ?? '').includes(q)
-      )
-      .sort((a, b) => a.nom.localeCompare(b.nom))
-  }, [personal, busqueda])
+  // ── Helpers ──
+  function getLegsActivos(obraCod: string): string[] {
+    return todasAsignaciones
+      .filter(a => a.obra_cod === obraCod)
+      .filter(a => !a.baja_desde || semKey < a.baja_desde)
+      .map(a => a.leg)
+  }
 
-  const semanas = useMemo(() => {
-    const map = new Map<string, Hora[]>()
-    horasFiltradas.forEach(h => {
-      const sk = toISO(getViernes(new Date(h.fecha + 'T12:00:00')))
-      if (!map.has(sk)) map.set(sk, [])
-      map.get(sk)!.push(h)
-    })
-    return [...map.entries()]
-      .sort(([a], [b]) => b.localeCompare(a))
-      .map(([sk, hs]) => {
-        const vie        = new Date(sk + 'T12:00:00')
-        const days       = getSemDays(vie)
-        const cobro      = getViernesCobro(vie)
-        const totalHs    = hs.reduce((s, h) => s + h.horas, 0)
-        const totalCosto = hs.reduce((s, h) => s + h.horas * getVH(h.obra_cod, h.fecha), 0)
-        const obrasEnSem = [...new Set(hs.map(h => h.obra_cod))].map(cod => ({
-          obra:  obras.find(o => o.cod === cod),
-          hs:    hs.filter(h => h.obra_cod === cod).reduce((s, h) => s + h.horas, 0),
-          costo: hs.filter(h => h.obra_cod === cod).reduce((s, h) => s + h.horas * getVH(h.obra_cod, h.fecha), 0),
-        }))
-        return { sk, vie, days, cobro, totalHs, totalCosto, obrasEnSem, horas: hs }
+  function getCatIdEfectivo(obraCod: string, leg: string, fechaRef: string): number | null {
+    const catObraAll = todasCatObra
+      .filter(co => co.obra_cod === obraCod && co.leg === leg)
+    if (catObraAll.length > 0) {
+      let best: { cat_id: number; desde: string } | null = null
+      for (const h of catObraAll) {
+        if (h.desde <= fechaRef) {
+          if (!best || h.desde >= best.desde) best = h
+        }
+      }
+      if (best) return best.cat_id
+      return catObraAll.reduce((a, b) => a.desde <= b.desde ? a : b).cat_id
+    }
+    const p = personal.find(x => x.leg === leg)
+    if (!p) return null
+    const hist = [...(p.personal_cat_historial ?? [])]
+      .sort((a, b) => a.desde.localeCompare(b.desde))
+    let catId = p.cat_id
+    for (const h of hist) {
+      if (h.desde <= fechaRef) catId = h.cat_id
+    }
+    return catId
+  }
+
+  function getCostoLeg(obraCod: string, leg: string): number {
+    const semStartStr = toISO(days[0]!)
+    const hoyStr = toISO(new Date())
+    const esSemActualFlag = semStartStr === toISO(getViernes(new Date()))
+    const fechaRef = esSemActualFlag ? hoyStr : semStartStr
+
+    const catId = getCatIdEfectivo(obraCod, leg, fechaRef)
+    if (!catId) return 0
+
+    const tarifaObraAll = todasTarifas
+      .filter(t => t.obra_cod === obraCod && t.cat_id === catId)
+      .sort((a, b) => a.desde.localeCompare(b.desde))
+
+    let vh: number | null = null
+    if (tarifaObraAll.length > 0) {
+      for (const t of tarifaObraAll) {
+        if (t.desde <= fechaRef) vh = t.vh
+        else break
+      }
+      if (vh === null) vh = tarifaObraAll[0]!.vh
+    } else {
+      vh = categorias.find(c => c.id === catId)?.vh ?? 0
+    }
+
+    const hs = totalHsLeg(todasHoras, obraCod, leg, days.map(toISO))
+    return hs * vh
+  }
+
+  function getCatNom(catId: number | null): string {
+    if (!catId) return '—'
+    return categorias.find(c => c.id === catId)?.nom ?? '—'
+  }
+
+  function fmtM(n: number): string {
+    return '$' + (Math.round(n / 1000) * 1000).toLocaleString('es-AR')
+  }
+
+  function getH(obraCod: string, fecha: string, leg: string): number {
+    return todasHoras.find(
+      h => h.obra_cod === obraCod && h.fecha === fecha && h.leg === leg
+    )?.horas ?? 0
+  }
+
+  // ── Filas: una por leg+obra ──
+  const obrasTarget = useMemo(() => {
+    return filtroObra ? obras.filter(o => o.cod === filtroObra) : obras
+  }, [obras, filtroObra])
+
+  const filas = useMemo(() => {
+    const result: Array<{
+      p: Personal
+      obra: typeof obras[0]
+      horasPorDia: Record<string, number>
+      totalHs: number
+      totalCosto: number
+      leg: string
+    }> = []
+
+    obrasTarget.forEach(o => {
+      const legsActivos = getLegsActivos(o.cod)
+      legsActivos.forEach(leg => {
+        const p = personal.find(x => x.leg === leg)
+        if (!p) return
+
+        const horasPorDia: Record<string, number> = {}
+        let tHs = 0
+        days.forEach(d => {
+          const ds = toISO(d)
+          const h = getH(o.cod, ds, leg)
+          horasPorDia[ds] = h
+          tHs += h
+        })
+
+        // Omitir filas vacías salvo filtro específico de obra
+        if (tHs === 0 && !filtroObra) return
+
+        const totalCosto = getCostoLeg(o.cod, leg)
+        result.push({ p, obra: o, horasPorDia, totalHs: tHs, totalCosto, leg })
       })
-  }, [horasFiltradas, obras, todasTarifas, trabajador, cat])
+    })
 
-  const kpis = useMemo(() => {
-    const totalHs       = horasFiltradas.reduce((s, h) => s + h.horas, 0)
-    const totalCosto    = horasFiltradas.reduce((s, h) => s + h.horas * getVH(h.obra_cod, h.fecha), 0)
-    const obrasUnicas   = new Set(horasFiltradas.map(h => h.obra_cod)).size
-    const semanasConHs  = semanas.length
-    const promedioHsSem = semanasConHs > 0 ? Math.round(totalHs / semanasConHs * 10) / 10 : 0
-    return { totalHs, totalCosto, obrasUnicas, semanasConHs, promedioHsSem }
-  }, [horasFiltradas, semanas])
+    // Ordenar por nombre y luego obra
+    result.sort((a, b) => a.p.nom.localeCompare(b.p.nom) || a.obra.cod.localeCompare(b.obra.cod))
 
-  const obrasConHoras = useMemo(() =>
-    [...new Set(horasData.map(h => h.obra_cod))]
-      .map(cod => obras.find(o => o.cod === cod))
-      .filter(Boolean),
-    [horasData, obras]
-  )
+    return result
+  }, [obrasTarget, todasAsignaciones, personal, todasHoras, todasTarifas, todasCatObra, categorias, days, semKey, filtroObra])
 
-  const shortcuts = [
-    { label: 'Este mes',  fn: () => { setDesde(toISO(new Date(hoy.getFullYear(), hoy.getMonth(), 1)));    setHasta(toISO(hoy)) } },
-    { label: 'Mes ant.',  fn: () => { setDesde(toISO(new Date(hoy.getFullYear(), hoy.getMonth()-1, 1))); setHasta(toISO(new Date(hoy.getFullYear(), hoy.getMonth(), 0))) } },
-    { label: 'Últ. 3m',  fn: () => { setDesde(toISO(new Date(hoy.getFullYear(), hoy.getMonth()-2, 1))); setHasta(toISO(hoy)) } },
-    { label: 'Este año',  fn: () => { setDesde(toISO(new Date(hoy.getFullYear(), 0, 1)));                setHasta(toISO(hoy)) } },
-  ]
+  // Filtrar por búsqueda
+  const filasFiltradas = useMemo(() => {
+    const q = busqueda.toLowerCase().trim()
+    if (!q) return filas
+    return filas.filter(f =>
+      f.p.nom.toLowerCase().includes(q) ||
+      f.p.leg.toLowerCase().includes(q) ||
+      (f.p.dni ?? '').includes(q)
+    )
+  }, [filas, busqueda])
+
+  // Detectar legs en múltiples obras
+  const multiObra = useMemo(() => {
+    const legCount = new Map<string, Set<string>>()
+    filasFiltradas.forEach(f => {
+      if (!legCount.has(f.leg)) legCount.set(f.leg, new Set())
+      legCount.get(f.leg)!.add(f.obra.cod)
+    })
+    return new Set(
+      [...legCount.entries()].filter(([, obras]) => obras.size > 1).map(([leg]) => leg)
+    )
+  }, [filasFiltradas])
+
+  // Totales
+  const totHs = filasFiltradas.reduce((s, f) => s + f.totalHs, 0)
+  const totCosto = filasFiltradas.reduce((s, f) => s + f.totalCosto, 0)
+  const uniqueLegs = new Set(filasFiltradas.map(f => f.leg)).size
+
+  const mostrarObra = !filtroObra
+
+  const hoyRef = toISO(new Date())
 
   return (
-    <div className="p-4 md:p-6 flex flex-col gap-5">
-      <TarjaTopbarActions />
+    <div className="p-4 md:p-6 flex flex-col gap-4">
 
-      {/* ── Header ── */}
-      <div>
-        <h1 className="font-display text-[2rem] tracking-wider text-azul">HORAS POR TRABAJADOR</h1>
-        <p className="text-sm text-gris-dark mt-0.5">Historial detallado de horas, obras y costos</p>
+      {/* ── Header con navegación de semana ── */}
+      <div className="bg-white rounded-card shadow-card p-4 border-l-[5px] border-naranja">
+        <div className="flex items-start justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="font-display text-[1.8rem] tracking-wider text-azul leading-none">
+              📋 HORAS POR TRABAJADOR
+            </h1>
+            <div className="flex items-center gap-2 mt-2 flex-wrap">
+              {/* Navegador de semana */}
+              <div className="flex items-center bg-white rounded-lg border-[1.5px] border-gris-mid overflow-hidden">
+                <button
+                  onClick={() => navSem(-1)}
+                  className="px-3 py-1.5 text-azul font-bold text-lg hover:bg-gris transition-colors"
+                >
+                  ‹
+                </button>
+                <span className="px-4 py-1.5 text-sm font-bold text-azul border-l border-r border-gris-mid whitespace-nowrap min-w-[220px] text-center">
+                  {getSemLabel(semActual)}
+                </span>
+                <button
+                  onClick={() => navSem(1)}
+                  className="px-3 py-1.5 text-azul font-bold text-lg hover:bg-gris transition-colors"
+                >
+                  ›
+                </button>
+              </div>
+              <button
+                onClick={irHoy}
+                className="text-xs font-bold px-3 py-2 rounded-lg bg-gris text-gris-dark hover:bg-azul hover:text-white transition-all border border-gris-mid"
+              >
+                Semana actual
+              </button>
+            </div>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <Chip value={uniqueLegs} label="Trabajadores" />
+            <Chip value={totHs > 0 ? `${totHs}` : '0'} label="Horas totales" />
+            <Chip value={fmtM(totCosto)} label="Costo total" variant="green" />
+          </div>
+        </div>
       </div>
 
       {/* ── Filtros ── */}
-      <div className="bg-white rounded-card shadow-card p-4 flex flex-col gap-4">
+      <div className="flex items-center gap-3 flex-wrap">
+        <select
+          value={filtroObra}
+          onChange={e => setFiltroObra(e.target.value)}
+          className="px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white font-semibold focus:border-naranja"
+        >
+          <option value="">Todas las obras</option>
+          {obras.map(o => (
+            <option key={o.cod} value={o.cod}>{o.nom}</option>
+          ))}
+        </select>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-
-          {/* ── Searchbar trabajador ── */}
-          <div className="flex flex-col gap-1 relative">
-            <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">
-              Trabajador
-            </label>
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Buscar por nombre, legajo o DNI..."
-                value={trabajador ? trabajador.nom : busqueda}
-                onChange={e => {
-                  setBusqueda(e.target.value)
-                  setDropdownOpen(true)
-                  if (legSel) { setLegSel(''); setObraFilt('') }
-                }}
-                onFocus={() => setDropdownOpen(true)}
-                onBlur={() => setTimeout(() => setDropdownOpen(false), 150)}
-                className="w-full pl-9 pr-10 py-2 border-[1.5px] border-gris-mid rounded-lg font-sans text-sm outline-none transition-colors focus:border-naranja bg-white"
-              />
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gris-dark text-sm pointer-events-none">
-                🔍
-              </span>
-              {(legSel || busqueda) && (
-                <button
-                  onMouseDown={e => e.preventDefault()}
-                  onClick={() => { setLegSel(''); setBusqueda(''); setObraFilt(''); setDropdownOpen(false) }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gris-dark hover:text-carbon text-base w-5 h-5 flex items-center justify-center rounded transition-colors"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-
-            {/* Dropdown */}
-            {dropdownOpen && !legSel && (
-              <div className="absolute top-[calc(100%+2px)] left-0 right-0 z-[300] bg-white border-[1.5px] border-gris-mid rounded-xl shadow-card-lg max-h-64 overflow-y-auto">
-                {personalFiltrado.length === 0 ? (
-                  <div className="px-4 py-6 text-center text-sm text-gris-dark">
-                    No se encontraron resultados para "{busqueda}"
-                  </div>
-                ) : (
-                  <>
-                    {busqueda && (
-                      <div className="px-3 py-1.5 text-[10px] font-bold text-gris-dark uppercase tracking-wider bg-gris border-b border-gris-mid sticky top-0">
-                        {personalFiltrado.length} resultado{personalFiltrado.length !== 1 ? 's' : ''}
-                      </div>
-                    )}
-                    {personalFiltrado.map(p => {
-                      const c        = categorias.find(c => c.id === p.cat_id)
-                      const q        = busqueda.toLowerCase()
-                      const matchDNI = !!(p.dni && p.dni.includes(busqueda))
-                      const matchLeg = p.leg.toLowerCase().includes(q)
-                      return (
-                        <button
-                          key={p.leg}
-                          onMouseDown={e => e.preventDefault()}
-                          onClick={() => {
-                            setLegSel(p.leg)
-                            setBusqueda('')
-                            setObraFilt('')
-                            setDropdownOpen(false)
-                          }}
-                          className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-naranja-light transition-colors border-b border-gris last:border-0"
-                        >
-                          <div className="w-8 h-8 rounded-full bg-naranja-light flex items-center justify-center text-naranja-dark font-bold text-sm flex-shrink-0">
-                            {p.nom.charAt(0).toUpperCase()}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="font-bold text-sm text-carbon truncate">{p.nom}</div>
-                            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                              <span className={`font-mono text-[10px] px-1.5 py-0.5 rounded font-bold ${matchLeg ? 'bg-naranja text-white' : 'bg-gris text-gris-dark'}`}>
-                                Leg. {p.leg}
-                              </span>
-                              {p.dni && (
-                                <span className={`text-[10px] font-mono ${matchDNI ? 'font-bold text-naranja-dark' : 'text-gris-dark'}`}>
-                                  DNI {p.dni}
-                                </span>
-                              )}
-                              {c && (
-                                <span className="text-[10px] font-bold bg-azul-light text-azul-mid px-1.5 py-0.5 rounded">
-                                  {c.nom}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </button>
-                      )
-                    })}
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* ── Filtro obra ── */}
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">
-              Filtrar por obra
-            </label>
-            <select
-              value={obraFilt}
-              onChange={e => setObraFilt(e.target.value)}
-              disabled={!legSel}
-              className="w-full px-3 py-2 border-[1.5px] border-gris-mid rounded-lg font-sans text-sm outline-none transition-colors focus:border-naranja bg-white disabled:opacity-50"
+        {/* Buscador */}
+        <div className="relative flex-1 min-w-[200px] max-w-[400px]">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gris-dark text-sm">🔍</span>
+          <input
+            type="text"
+            value={busqueda}
+            onChange={e => setBusqueda(e.target.value)}
+            placeholder="Buscar por nombre, legajo o DNI..."
+            className="w-full pl-9 pr-8 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white focus:border-naranja"
+          />
+          {busqueda && (
+            <button
+              onClick={() => setBusqueda('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gris-dark hover:text-carbon text-sm"
             >
-              <option value="">Todas las obras</option>
-              {obrasConHoras.map(o => o && (
-                <option key={o.cod} value={o.cod}>{o.nom} ({o.cod})</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* ── Rango de fechas ── */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-2 bg-gris rounded-lg border border-gris-mid px-3 py-2">
-            <span className="text-[10px] font-bold text-gris-dark uppercase tracking-wide whitespace-nowrap">Desde</span>
-            <input
-              type="date"
-              value={desde}
-              onChange={e => setDesde(e.target.value)}
-              className="text-sm font-mono outline-none bg-transparent text-carbon"
-            />
-          </div>
-          <span className="text-gris-dark font-bold">→</span>
-          <div className="flex items-center gap-2 bg-gris rounded-lg border border-gris-mid px-3 py-2">
-            <span className="text-[10px] font-bold text-gris-dark uppercase tracking-wide whitespace-nowrap">Hasta</span>
-            <input
-              type="date"
-              value={hasta}
-              onChange={e => setHasta(e.target.value)}
-              className="text-sm font-mono outline-none bg-transparent text-carbon"
-            />
-          </div>
-          <div className="flex gap-1 flex-wrap">
-            {shortcuts.map(s => (
-              <button
-                key={s.label}
-                onClick={s.fn}
-                className="text-xs font-bold px-3 py-2 rounded-lg bg-white border border-gris-mid text-gris-dark hover:bg-azul hover:text-white hover:border-azul transition-all"
-              >
-                {s.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-      </div>
-
-      {/* ── Info trabajador seleccionado ── */}
-      {trabajador && (
-        <div className="bg-white rounded-card shadow-card p-4 border-l-[5px] border-naranja flex items-start justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-naranja-light flex items-center justify-center text-naranja-dark font-bold text-xl flex-shrink-0">
-              {trabajador.nom.charAt(0).toUpperCase()}
-            </div>
-            <div>
-              <h2 className="font-bold text-azul text-lg leading-tight">{trabajador.nom}</h2>
-              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                <span className="font-mono text-xs bg-gris px-2 py-0.5 rounded text-gris-dark font-bold">
-                  Leg. {trabajador.leg}
-                </span>
-                {trabajador.dni && (
-                  <span className="text-xs text-gris-dark">DNI {trabajador.dni}</span>
-                )}
-                {cat && (
-                  <span className="text-xs font-bold bg-naranja-light text-naranja-dark px-2 py-0.5 rounded">
-                    {cat.nom}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-          {horasFiltradas.length > 0 && (
-            <div className="flex gap-2 flex-wrap">
-              <KPIChip value={`${kpis.totalHs}hs`}       label="Total horas"  color="azul"    />
-              <KPIChip value={fmtM(kpis.totalCosto)}      label="Costo total"  color="verde"   />
-              <KPIChip value={String(kpis.obrasUnicas)}   label="Obras"        color="naranja" />
-              <KPIChip value={String(kpis.semanasConHs)}  label="Semanas"      color="azul"    />
-              <KPIChip value={`${kpis.promedioHsSem}hs`} label="Prom/semana"  color="purple"  />
-            </div>
+              ✕
+            </button>
           )}
         </div>
-      )}
 
-      {/* ── Estados vacíos ── */}
-      {!legSel && (
-        <div className="bg-white rounded-card shadow-card p-12 text-center text-gris-dark">
-          <div className="text-4xl mb-3">👷</div>
-          <p className="font-semibold text-azul text-base">Seleccioná un trabajador</p>
-          <p className="text-sm mt-1">Buscá por nombre, legajo o DNI</p>
-        </div>
-      )}
+        {busqueda && (
+          <span className="text-xs text-gris-dark">
+            {filasFiltradas.length} resultado{filasFiltradas.length !== 1 ? 's' : ''}
+          </span>
+        )}
+      </div>
 
-      {legSel && isLoading && (
+      {/* ── Tabla ── */}
+      {isLoading ? (
         <div className="bg-white rounded-card shadow-card p-8 flex items-center justify-center gap-3 text-gris-dark">
           <span className="w-5 h-5 border-2 border-naranja border-t-transparent rounded-full animate-spin" />
           Cargando horas...
         </div>
-      )}
-
-      {legSel && !isLoading && horasFiltradas.length === 0 && (
-        <div className="bg-white rounded-card shadow-card p-10 text-center text-gris-dark">
-          <div className="text-3xl mb-2">📋</div>
-          <p className="font-semibold text-azul">Sin horas en este período</p>
-          <p className="text-sm mt-1">Probá cambiar el rango de fechas o la obra seleccionada</p>
-        </div>
-      )}
-
-      {/* ── Resumen por obras ── */}
-      {legSel && !isLoading && horasFiltradas.length > 0 && (
-        <>
-          <div className="bg-white rounded-card shadow-card overflow-hidden">
-            <div className="px-4 py-3 border-b border-gris flex items-center justify-between">
-              <h3 className="font-bold text-azul">Resumen por obra</h3>
-              <span className="text-xs text-gris-dark">
-                {kpis.obrasUnicas} obra{kpis.obrasUnicas !== 1 ? 's' : ''}
-              </span>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr>
-                    {['Código', 'Obra', 'Horas totales', 'Costo total', '% del total', 'Prom. semanal'].map(h => (
-                      <th key={h} className="bg-azul text-white text-xs font-bold px-4 py-2.5 text-left uppercase tracking-wide whitespace-nowrap">
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...new Set(horasFiltradas.map(h => h.obra_cod))]
-                    .map(cod => {
-                      const hsObra    = horasFiltradas.filter(h => h.obra_cod === cod)
-                      const totalHs   = hsObra.reduce((s, h) => s + h.horas, 0)
-                      const totalCost = hsObra.reduce((s, h) => s + h.horas * getVH(h.obra_cod, h.fecha), 0)
-                      const obra      = obras.find(o => o.cod === cod)
-                      const pct       = kpis.totalHs > 0 ? Math.round(totalHs / kpis.totalHs * 100) : 0
-                      const semsObra  = new Set(hsObra.map(h => toISO(getViernes(new Date(h.fecha + 'T12:00:00'))))).size
-                      const promSem   = semsObra > 0 ? Math.round(totalHs / semsObra * 10) / 10 : 0
-                      return { cod, obra, totalHs, totalCost, pct, promSem }
-                    })
-                    .sort((a, b) => b.totalHs - a.totalHs)
-                    .map(row => (
-                      <tr key={row.cod} className="border-b border-gris last:border-0 hover:bg-gris/40 transition-colors">
-                        <td className="px-4 py-3">
-                          <span className="font-mono text-xs bg-gris px-2 py-0.5 rounded text-gris-dark font-bold">{row.cod}</span>
-                        </td>
-                        <td className="px-4 py-3 font-bold text-sm text-carbon">{row.obra?.nom ?? row.cod}</td>
-                        <td className="px-4 py-3 font-mono font-bold text-azul text-sm">{row.totalHs}hs</td>
-                        <td className="px-4 py-3 font-mono font-bold text-verde text-sm">{fmtM(row.totalCost)}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1 bg-gris rounded-full h-2 min-w-[60px]">
-                              <div className="bg-naranja h-2 rounded-full transition-all" style={{ width: `${row.pct}%` }} />
-                            </div>
-                            <span className="text-xs font-mono font-bold text-gris-dark w-8 text-right">{row.pct}%</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 font-mono text-sm text-gris-dark">{row.promSem}hs</td>
-                      </tr>
-                    ))
-                  }
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* ── Detalle semanal ── */}
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <h3 className="font-display text-xl tracking-wider text-azul">DETALLE SEMANAL</h3>
-              <span className="text-xs text-gris-dark">
-                {semanas.length} semana{semanas.length !== 1 ? 's' : ''} con actividad
-              </span>
-            </div>
-            {semanas.map(sem => (
-              <SemanaCard
-                key={sem.sk}
-                sem={sem}
-                fmtM={fmtM}
-                fmtFecha={fmtFecha}
-                mostrarObra={!obraFilt}
-              />
-            ))}
-          </div>
-        </>
-      )}
-
-    </div>
-  )
-}
-
-// ── KPIChip ──
-
-function KPIChip({ value, label, color }: { value: string; label: string; color: string }) {
-  const colors: Record<string, string> = {
-    azul:    'bg-azul-light text-azul-mid',
-    verde:   'bg-verde-light text-verde',
-    naranja: 'bg-naranja-light text-naranja-dark',
-    purple:  'bg-[#EEE8FF] text-[#5A2D82]',
-  }
-  return (
-    <div className={`rounded-lg px-3 py-1.5 text-center ${colors[color]}`}>
-      <div className="font-mono font-bold text-sm leading-none">{value}</div>
-      <div className="text-[10px] font-semibold uppercase tracking-wide opacity-70 mt-0.5">{label}</div>
-    </div>
-  )
-}
-
-// ── SemanaCard ──
-
-function SemanaCard({
-  sem, fmtM, fmtFecha, mostrarObra,
-}: {
-  sem: any
-  fmtM: (n: number) => string
-  fmtFecha: (s: string) => string
-  mostrarObra: boolean
-}) {
-  const [expanded, setExpanded] = useState(false)
-
-  return (
-    <div className="bg-white rounded-card shadow-card overflow-hidden">
-      <button
-        onClick={() => setExpanded(p => !p)}
-        className="w-full flex items-center justify-between p-4 text-left hover:bg-gris/30 transition-colors"
-      >
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className="font-bold text-azul text-sm">{getSemLabel(sem.vie)}</span>
-          <span className="text-[10px] font-bold bg-gris text-gris-dark px-2 py-0.5 rounded-full">
-            💰 cobro {fmtFecha(toISO(sem.cobro))}
-          </span>
-          {mostrarObra && sem.obrasEnSem.length > 1 && (
-            <span className="text-[10px] font-bold bg-amarillo-light text-[#7A5000] px-2 py-0.5 rounded-full">
-              ↔ {sem.obrasEnSem.length} obras
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-3 flex-shrink-0">
-          <div className="text-right">
-            <div className="font-mono font-bold text-azul text-sm">{sem.totalHs}hs</div>
-            <div className="font-mono font-bold text-verde text-xs">{fmtM(sem.totalCosto)}</div>
-          </div>
-          <span className="text-gris-dark text-lg">{expanded ? '▾' : '▸'}</span>
-        </div>
-      </button>
-
-      {expanded && (
-        <div className="border-t border-gris overflow-x-auto">
-          <table className="w-full border-collapse min-w-[560px]">
-            <thead>
-              <tr>
-                {mostrarObra && (
-                  <th className="bg-azul text-white text-xs font-bold px-3 py-2 text-left uppercase tracking-wide">Obra</th>
-                )}
-                {DIAS.map((dia, i) => (
-                  <th
-                    key={i}
-                    className={`text-white text-xs font-bold px-2 py-2 text-center uppercase tracking-wide min-w-[70px] font-mono
-                      ${i === 6 ? 'bg-[#8B3510]' : i === 1 || i === 2 ? 'bg-[#5A2008]' : 'bg-naranja'}
-                    `}
-                  >
-                    {dia}<br />
-                    <span className="text-[10px] opacity-80">
-                      {sem.days[i].getDate()}/{sem.days[i].getMonth() + 1}
-                    </span>
+      ) : (
+        <div className="bg-white rounded-card shadow-card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="border-collapse w-full min-w-[750px]">
+              <thead>
+                <tr>
+                  <th className="bg-azul text-white text-xs font-bold px-3 py-2.5 text-left uppercase tracking-wide whitespace-nowrap min-w-[58px]">
+                    Leg.
                   </th>
-                ))}
-                <th className="bg-verde text-white text-xs font-bold px-2 py-2 text-center uppercase tracking-wide">Total</th>
-                <th className="bg-[#0F4A28] text-white text-xs font-bold px-3 py-2 text-right uppercase tracking-wide">Costo</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sem.obrasEnSem.map((ob: any) => (
-                <tr key={ob.obra?.cod ?? 'unknown'} className="border-b border-gris last:border-0">
+                  <th className="bg-azul text-white text-xs font-bold px-3 py-2.5 text-left uppercase tracking-wide whitespace-nowrap min-w-[165px]">
+                    Nombre
+                  </th>
                   {mostrarObra && (
-                    <td className="px-3 py-2">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-mono text-[10px] bg-gris px-1.5 py-0.5 rounded text-gris-dark font-bold flex-shrink-0">
-                          {ob.obra?.cod ?? '—'}
-                        </span>
-                        <span className="text-xs font-semibold text-carbon truncate max-w-[120px]">
-                          {ob.obra?.nom ?? ob.obra?.cod}
-                        </span>
-                      </div>
-                    </td>
+                    <th className="bg-azul text-white text-xs font-bold px-2 py-2.5 text-left uppercase tracking-wide whitespace-nowrap min-w-[75px]">
+                      Obra
+                    </th>
                   )}
-                  {sem.days.map((d: Date, i: number) => {
-                    const iso = toISO(d)
-                    const h   = sem.horas.find((x: Hora) => x.fecha === iso && x.obra_cod === (ob.obra?.cod ?? ''))
-                    const val = h?.horas ?? 0
-                    return (
-                      <td key={i} className="px-2 py-2 text-center">
-                        {val > 0 ? (
-                          <span className={`
-                            inline-block font-mono font-bold text-sm px-2 py-0.5 rounded
-                            ${val >= 8 ? 'bg-verde-light text-verde' : val >= 5 ? 'bg-amarillo-light text-[#7A5500]' : 'bg-gris text-carbon'}
-                          `}>
-                            {val}
-                          </span>
-                        ) : (
-                          <span className="text-gris-mid text-sm">—</span>
-                        )}
-                      </td>
-                    )
-                  })}
-                  <td className="px-2 py-2 text-center bg-verde-light">
-                    <span className="font-mono font-bold text-verde text-sm">{ob.hs}</span>
-                  </td>
-                  <td className="px-3 py-2 text-right bg-azul-light">
-                    <span className="font-mono font-bold text-azul-mid text-sm">{fmtM(ob.costo)}</span>
-                  </td>
+                  <th className="bg-azul text-white text-xs font-bold px-2 py-2.5 text-left uppercase tracking-wide whitespace-nowrap min-w-[120px]">
+                    Categoría
+                  </th>
+                  {days.map((d, i) => (
+                    <th
+                      key={i}
+                      className={`
+                        text-white text-xs font-bold px-2 py-2.5 text-center uppercase
+                        tracking-wide min-w-[70px] font-mono
+                        ${esHoy(d) ? 'bg-verde' : ''}
+                        ${esJueves(d) ? 'bg-[#8B3510]' : ''}
+                        ${esFinde(d) ? 'bg-[#5A2008]' : ''}
+                        ${!esHoy(d) && !esJueves(d) && !esFinde(d) ? 'bg-naranja' : ''}
+                      `}
+                    >
+                      {DIAS[i]}<br />
+                      <span className="text-[10px] opacity-80">
+                        {d.getDate()}/{d.getMonth() + 1}
+                      </span>
+                      {esJueves(d) && (
+                        <>
+                          <br />
+                          <span className="text-[9px] opacity-70">CIERRE</span>
+                        </>
+                      )}
+                    </th>
+                  ))}
+                  <th className="bg-verde text-white text-xs font-bold px-2 py-2.5 text-center uppercase tracking-wide min-w-[80px]">
+                    Total Hs
+                  </th>
+                  <th className="bg-[#0F4A28] text-white text-xs font-bold px-3 py-2.5 text-right uppercase tracking-wide min-w-[120px]">
+                    Costo ($)
+                  </th>
                 </tr>
-              ))}
+              </thead>
+              <tbody>
+                {filasFiltradas.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={4 + (mostrarObra ? 1 : 0) + days.length + 2}
+                      className="text-center py-8 text-gris-dark text-sm"
+                    >
+                      No hay trabajadores con horas esta semana.
+                    </td>
+                  </tr>
+                ) : (
+                  <>
+                    {filasFiltradas.map((f, idx) => {
+                      const catId = getCatIdEfectivo(f.obra.cod, f.leg, hoyRef)
+                      const catNom = getCatNom(catId)
+                      const esMulti = multiObra.has(f.leg)
 
-              {sem.obrasEnSem.length > 1 && (
-                <tr className="border-t-2 border-naranja">
-                  {mostrarObra && (
-                    <td className="bg-azul px-3 py-2">
-                      <span className="font-display text-white text-sm tracking-wide">TOTAL</span>
-                    </td>
-                  )}
-                  {sem.days.map((d: Date, i: number) => {
-                    const iso      = toISO(d)
-                    const totalDia = sem.horas
-                      .filter((h: Hora) => h.fecha === iso)
-                      .reduce((s: number, h: Hora) => s + h.horas, 0)
-                    return (
-                      <td key={i} className="bg-azul text-white font-mono text-sm font-bold text-center px-2 py-2">
-                        {totalDia > 0 ? totalDia : '—'}
+                      return (
+                        <tr
+                          key={`${f.leg}-${f.obra.cod}`}
+                          className="border-b border-gris last:border-0 hover:bg-gris/40 transition-colors"
+                        >
+                          <td className="font-mono text-xs text-gris-dark px-3 py-1.5 font-semibold whitespace-nowrap">
+                            {f.leg}
+                          </td>
+                          <td className="font-bold text-sm px-3 py-1.5 whitespace-nowrap">
+                            {f.p.nom}
+                            {esMulti && (
+                              <span className="ml-1.5 text-[10px] font-bold bg-[#E0A800] text-white px-1.5 py-0.5 rounded inline-block">
+                                ↔
+                              </span>
+                            )}
+                          </td>
+                          {mostrarObra && (
+                            <td className="px-2 py-1.5">
+                              <span
+                                className="font-mono text-[11px] bg-azul-light text-azul-mid px-1.5 py-0.5 rounded font-bold cursor-pointer hover:bg-azul hover:text-white transition-colors"
+                                title={f.obra.nom}
+                                onClick={() => router.push(`/tarja/${encodeURIComponent(f.obra.cod)}`)}
+                              >
+                                {f.obra.cod}
+                              </span>
+                            </td>
+                          )}
+                          <td className="px-2 py-1.5 whitespace-nowrap">
+                            <span className="inline-block px-2 py-0.5 rounded bg-naranja-light text-naranja-dark text-xs font-bold">
+                              {catNom}
+                            </span>
+                          </td>
+                          {days.map((d, i) => {
+                            const ds = toISO(d)
+                            const val = f.horasPorDia[ds] ?? 0
+                            let cls = 'w-14 h-8 border-[1.5px] rounded-md text-center font-mono text-sm font-bold outline-none'
+
+                            if (val === 0) {
+                              cls += ' border-gris-mid bg-white text-gris-mid'
+                            } else if (esMulti) {
+                              // Amarillo para multi-obra
+                              cls += ' border-[#E0A800] bg-[#FFF3CD] text-[#7A5000]'
+                            } else if (val >= 8) {
+                              cls += ' border-verde/40 bg-verde-light text-verde'
+                            } else {
+                              cls += ' border-amarillo/40 bg-amarillo-light text-[#7A5500]'
+                            }
+
+                            return (
+                              <td key={i} className="px-1.5 py-1.5 text-center">
+                                <input
+                                  type="number"
+                                  readOnly
+                                  value={val || ''}
+                                  className={`${cls} cursor-default [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
+                                />
+                              </td>
+                            )
+                          })}
+                          <td className="text-center bg-verde-light font-mono text-sm font-bold text-verde px-2 py-1.5 whitespace-nowrap">
+                            {f.totalHs > 0 ? f.totalHs : '—'}
+                          </td>
+                          <td className="text-right bg-azul-light px-3 py-1.5 whitespace-nowrap font-mono text-sm font-bold text-azul-mid">
+                            {f.totalCosto > 0 ? fmtM(f.totalCosto) : '—'}
+                          </td>
+                        </tr>
+                      )
+                    })}
+
+                    {/* Fila totales */}
+                    <tr className="border-t-[3px] border-naranja">
+                      <td
+                        colSpan={2 + (mostrarObra ? 1 : 0) + 1}
+                        className="bg-azul text-white font-display text-base tracking-wide px-3 py-2.5"
+                      >
+                        TOTALES DÍA
                       </td>
-                    )
-                  })}
-                  <td className="bg-azul text-[#7DD9A2] font-mono text-sm font-bold text-center px-2 py-2">
-                    {sem.totalHs}
-                  </td>
-                  <td className="bg-azul text-naranja font-mono text-sm font-bold text-right px-3 py-2">
-                    {fmtM(sem.totalCosto)}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                      {days.map((d, i) => {
+                        const ds = toISO(d)
+                        const totalDia = filasFiltradas.reduce(
+                          (s, f) => s + (f.horasPorDia[ds] ?? 0), 0
+                        )
+                        return (
+                          <td key={i} className="bg-azul text-white font-mono text-sm font-bold text-center px-2 py-2.5">
+                            {totalDia > 0 ? totalDia : '—'}
+                          </td>
+                        )
+                      })}
+                      <td className="bg-azul text-[#7DD9A2] font-mono text-sm font-bold text-center px-2 py-2.5">
+                        {totHs > 0 ? totHs : '—'}
+                      </td>
+                      <td className="bg-azul text-naranja font-mono text-sm font-bold text-right px-3 py-2.5">
+                        {totCosto > 0 ? fmtM(totCosto) : '—'}
+                      </td>
+                    </tr>
+                  </>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>
