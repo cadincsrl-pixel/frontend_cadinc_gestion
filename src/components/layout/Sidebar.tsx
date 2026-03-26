@@ -142,47 +142,6 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           </button>
         </div>
 
-        {/* ── Obras activas — solo en tarja ── */}
-        {showObrasSubnav && hasModulo('tarja') && (
-          <div className="mt-4">
-            <div className="px-4 py-2 text-[10px] font-bold tracking-[2.5px] uppercase text-white/35">
-              Obras activas
-            </div>
-            {obras.map(obra => (
-              <button
-                key={obra.cod}
-                onClick={() => navigate(`/tarja/${encodeURIComponent(obra.cod)}`)}
-                className={`
-                  w-full flex items-center gap-2.5 px-3 py-2.5 mx-2 rounded-[9px]
-                  text-left transition-all border border-transparent
-                  ${decodedPathname === `/tarja/${obra.cod}`
-                    ? 'bg-naranja text-white border-naranja-dark shadow-[0_4px_14px_rgba(232,98,26,.4)]'
-                    : 'text-white hover:bg-white hover:text-black'
-                  }
-                `}
-                style={{ width: 'calc(100% - 16px)' }}
-              >
-                <span className="text-base w-5 text-center flex-shrink-0">🏗</span>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-bold truncate">{obra.nom}</div>
-                  <div className="text-[11px] opacity-60 font-mono">{obra.cod}</div>
-                </div>
-                <span className="text-[10px] font-mono bg-white/14 px-1.5 py-0.5 rounded flex-shrink-0">
-                  {obra.cod}
-                </span>
-              </button>
-            ))}
-            <button
-              onClick={() => navigate('/tarja')}
-              className="w-full flex items-center gap-2 px-3 py-2 mx-2 rounded-[9px] border-[1.5px] border-dashed border-white/20 text-white/40 hover:border-naranja hover:text-naranja transition-all text-sm font-semibold mt-2"
-              style={{ width: 'calc(100% - 16px)' }}
-            >
-              <span>＋</span>
-              <span>Nueva obra</span>
-            </button>
-          </div>
-        )}
-
         {/* ── Info usuario ── */}
         <div className="mt-auto px-4 pt-4 border-t border-white/10">
           <UserInfo />
