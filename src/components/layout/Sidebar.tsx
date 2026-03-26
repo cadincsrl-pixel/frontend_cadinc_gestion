@@ -10,7 +10,7 @@ interface SidebarProps {
 }
 
 const NAV_ITEMS_TARJA = [
-  { href: '/dashboard',        icon: '📊', label: 'Dashboard',          meta: 'Resumen y gráficos',   exact: false },
+  { href: '/dashboard', icon: '📊', label: 'Resumen General', meta: 'Resumen general e histórico', exact: false },
   { href: '/tarja',            icon: '📋', label: 'Tarja',              meta: 'Control de horas',     exact: false },
   { href: '/horas-trabajador', icon: '👤', label: 'Horas x Trabajador', meta: 'Historial individual', exact: false },
   { href: '/personal',         icon: '👷', label: 'Personal',           meta: 'Gestión de nómina',    exact: false },

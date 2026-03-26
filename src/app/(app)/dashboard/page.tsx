@@ -1,10 +1,10 @@
 import { GuardWrapper } from '@/components/GuardWrapper'
-import { DashboardPage } from '@/modules/dashboard/components/DashboardPage'
+import { ResumenHistoricoPage } from '@/modules/dashboard/components/ResumenHistoricoPage'
 
 export default function Page() {
   return (
     <GuardWrapper modulo="tarja">
-      <DashboardPage />
+      <ResumenHistoricoPage />
     </GuardWrapper>
   )
 }
