@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react'
 import { useObras }      from '@/modules/tarja/hooks/useObras'
 import { usePersonal }   from '@/modules/tarja/hooks/usePersonal'
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
+import { TarjaTopbarActions } from '@/modules/tarja/components/TarjaTopbarActions'
 import { useQuery }      from '@tanstack/react-query'
 import { apiGet }        from '@/lib/api/client'
 import {
@@ -196,6 +197,7 @@ export function DashboardPage() {
 
   return (
     <div className="p-4 md:p-6 flex flex-col gap-5">
+      <TarjaTopbarActions />
 
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-4">

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { TarjaTopbarActions } from '@/modules/tarja/components/TarjaTopbarActions'
 import { CategoriasTab } from './CategoriasTab'
 import { UsuariosTab }   from './UsuariosTab'
 import { useSessionStore } from '@/store/session.store'
@@ -13,6 +14,8 @@ export function ConfiguracionPage() {
 
   return (
     <div className="p-4 md:p-6 flex flex-col gap-4">
+      <TarjaTopbarActions />
+
       <div>
         <h1 className="font-display text-[2rem] tracking-wider text-azul">
           CONFIGURACIÓN

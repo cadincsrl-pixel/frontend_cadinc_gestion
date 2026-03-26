@@ -29,12 +29,14 @@ export function Topbar({ onMenuToggle, showMenuBtn }: TopbarProps) {
   const [showAcciones, setShowAcciones] = useState(false)
 
   const obraActiva = useUIStore(s => s.obraActiva)
+  const topbarAccion = useUIStore(s => s.topbarAccion)
   const moduloKey  = getModuloActual(pathname)
   const branding   = MODULO_BRANDING[moduloKey] ?? MODULO_BRANDING.tarja!
 
   // Lógica de visualización separada:
   // 1. Mostrar botones si estamos en el módulo Tarja (excepto archivadas)
-  const esModuloTarja = moduloKey === 'tarja' && pathname !== '/tarja/archivadas'
+  const esModuloTarja = moduloKey === 'tarja' 
+  const mostrarAccionesTarja = esModuloTarja && !!topbarAccion
   
   // 2. Mostrar nombre de la obra SOLO si existe la obra activa
   const mostrarNombreObra = esModuloTarja && !!obraActiva
@@ -81,12 +83,12 @@ export function Topbar({ onMenuToggle, showMenuBtn }: TopbarProps) {
         <div className="flex items-center gap-2">
 
           {/* Botones de acción — Se muestran siempre en el módulo Tarja */}
-          {esModuloTarja && (
+          {mostrarAccionesTarja && (
             <>
               <div className="hidden sm:flex items-center gap-1">
-                <TopbarBtn icon="📊" label="Excel" onClick={() => useUIStore.getState().topbarAccion?.('excel')} />
-                <TopbarBtn icon="🖨" label="Recibos" onClick={() => useUIStore.getState().topbarAccion?.('recibos')} />
-                <TopbarBtn icon="⬇" label="CSV" onClick={() => useUIStore.getState().topbarAccion?.('csv')} />
+                <TopbarBtn icon="📊" label="Excel" onClick={() => topbarAccion?.('excel')} />
+                <TopbarBtn icon="🖨" label="Recibos" onClick={() => topbarAccion?.('recibos')} />
+                <TopbarBtn icon="⬇" label="CSV" onClick={() => topbarAccion?.('csv')} />
               </div>
 
               <div className="relative sm:hidden">
@@ -106,7 +108,7 @@ export function Topbar({ onMenuToggle, showMenuBtn }: TopbarProps) {
                       <button
                         key={item.accion}
                         onClick={() => {
-                          useUIStore.getState().topbarAccion?.(item.accion)
+                          topbarAccion?.(item.accion)
                           setShowAcciones(false)
                         }}
                         className="w-full flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-carbon hover:bg-gris transition-colors border-b border-gris last:border-0"

@@ -1,20 +1,29 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useObras } from '@/modules/tarja/hooks/useObras'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { ModalNuevaObra } from './ModalNuevaObra'
+import { ModalExcelObras } from './ModalExcelObras'
+import { ModalRecibos } from './ModalRecibos'
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api/client'
-import type { Hora, Personal } from '@/types/domain.types'
+import { exportarCSVResumenObras } from '@/lib/utils/excel'
+import { useToast } from '@/components/ui/Toast'
+import { useUIStore } from '@/store/ui.store'
+import type { Categoria, Certificacion, Cierre, Contratista, Hora, Personal, Tarifa } from '@/types/domain.types'
 
 export function TarjaResumenPage() {
   const router = useRouter()
+  const toast = useToast()
   const { data: obras = [], isLoading } = useObras()
   const [modalObra, setModalObra] = useState(false)
+  const [modalExcelObras, setModalExcelObras] = useState(false)
+  const [modalRecibos, setModalRecibos] = useState(false)
   const [busqueda, setBusqueda] = useState('')
+  const setTopbarAccion = useUIStore(s => s.setTopbarAccion)
 
   // Datos globales para stats
   const { data: todasHoras = [] } = useQuery({
@@ -24,6 +33,26 @@ export function TarjaResumenPage() {
   const { data: todoPersonal = [] } = useQuery({
     queryKey: ['personal'],
     queryFn: () => apiGet<Personal[]>('/api/personal'),
+  })
+  const { data: categorias = [] } = useQuery({
+    queryKey: ['categorias'],
+    queryFn: () => apiGet<Categoria[]>('/api/categorias'),
+  })
+  const { data: todasTarifas = [] } = useQuery({
+    queryKey: ['tarifas', 'all'],
+    queryFn: () => apiGet<Tarifa[]>('/api/tarifas/all'),
+  })
+  const { data: todosCierres = [] } = useQuery({
+    queryKey: ['cierres', 'all'],
+    queryFn: () => apiGet<Cierre[]>('/api/cierres/all'),
+  })
+  const { data: todasCerts = [] } = useQuery({
+    queryKey: ['certs', 'all'],
+    queryFn: () => apiGet<Certificacion[]>('/api/contratistas/cert/all'),
+  })
+  const { data: contratistas = [] } = useQuery({
+    queryKey: ['contratistas'],
+    queryFn: () => apiGet<Contratista[]>('/api/contratistas'),
   })
 
   // Stats por obra
@@ -52,6 +81,23 @@ export function TarjaResumenPage() {
       (o.cc ?? '').toLowerCase().includes(q)
     )
   }, [obras, busqueda])
+
+  useEffect(() => {
+    setTopbarAccion((accion: string) => {
+      if (accion === 'excel') setModalExcelObras(true)
+      if (accion === 'recibos') setModalRecibos(true)
+      if (accion === 'csv') {
+        if (!obrasFiltradas.length) {
+          toast('No hay obras para exportar', 'warn')
+          return
+        }
+        exportarCSVResumenObras(obrasFiltradas, todasHoras)
+        toast('⬇ CSV exportado', 'ok')
+      }
+    })
+
+    return () => setTopbarAccion(null)
+  }, [obrasFiltradas, setTopbarAccion, toast, todasHoras])
 
   function fmtFecha(fecha: string | null): string {
     if (!fecha) return 'Sin actividad'
@@ -229,6 +275,32 @@ export function TarjaResumenPage() {
       <ModalNuevaObra
         open={modalObra}
         onClose={() => setModalObra(false)}
+      />
+
+      <ModalExcelObras
+        open={modalExcelObras}
+        onClose={() => setModalExcelObras(false)}
+        obras={obras}
+        personal={todoPersonal}
+        categorias={categorias}
+        horas={todasHoras}
+        tarifas={todasTarifas}
+        cierres={todosCierres}
+        certificaciones={todasCerts}
+        contratistas={contratistas}
+      />
+
+      <ModalRecibos
+        open={modalRecibos}
+        onClose={() => setModalRecibos(false)}
+        obras={obras}
+        personal={todoPersonal}
+        categorias={categorias}
+        horas={todasHoras}
+        tarifas={todasTarifas}
+        cierres={todosCierres}
+        certificaciones={todasCerts}
+        contratistas={contratistas}
       />
     </div>
   )

@@ -5,6 +5,7 @@ import { useQuery }      from '@tanstack/react-query'
 import { usePersonal }   from '@/modules/tarja/hooks/usePersonal'
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
 import { useObras }      from '@/modules/tarja/hooks/useObras'
+import { TarjaTopbarActions } from './TarjaTopbarActions'
 import { apiGet }        from '@/lib/api/client'
 import { toISO, getViernes, getSemDays, getSemLabel, getViernesCobro, DIAS } from '@/lib/utils/dates'
 import type { Hora, Tarifa } from '@/types/domain.types'
@@ -120,6 +121,7 @@ export function HorasTrabajadorPage() {
 
   return (
     <div className="p-4 md:p-6 flex flex-col gap-5">
+      <TarjaTopbarActions />
 
       {/* ── Header ── */}
       <div>

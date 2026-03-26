@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { usePersonal } from '@/modules/tarja/hooks/usePersonal'
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
 import { useContratistas, useCreateContratista, useUpdateContratista, useDeleteContratista } from '@/modules/tarja/hooks/useContratistas'
+import { TarjaTopbarActions } from '@/modules/tarja/components/TarjaTopbarActions'
 import { ModalNuevoTrabajador }    from './ModalNuevoTrabajador'
 import { ModalEditarTrabajador }   from './ModalEditarTrabajador'
 import { ModalDetalleTrabajador }  from './ModalDetalleTrabajador'
@@ -133,6 +134,7 @@ export function PersonalPage() {
 
   return (
     <div className="p-4 md:p-6 flex flex-col gap-4">
+      <TarjaTopbarActions />
 
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">

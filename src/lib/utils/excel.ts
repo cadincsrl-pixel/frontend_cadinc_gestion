@@ -157,6 +157,41 @@ export function exportarCSVTarja(
   URL.revokeObjectURL(url)
 }
 
+export function exportarCSVResumenObras(
+  obras: Obra[],
+  horas: Hora[]
+) {
+  let csv = 'Codigo,Obra,Centro de Costo,Direccion,Responsable,Trabajadores,Horas Totales,Ultima Actividad\n'
+
+  obras.forEach((obra) => {
+    const horasObra = horas.filter((hora) => hora.obra_cod === obra.cod)
+    const trabajadores = new Set(horasObra.map((hora) => hora.leg)).size
+    const totalHs = horasObra.reduce((sum, hora) => sum + hora.horas, 0)
+    const ultimaActividad = horasObra.length
+      ? horasObra.reduce((max, hora) => (hora.fecha > max ? hora.fecha : max), horasObra[0]!.fecha)
+      : ''
+
+    csv += [
+      obra.cod,
+      `"${obra.nom}"`,
+      `"${obra.cc ?? ''}"`,
+      `"${obra.dir ?? ''}"`,
+      `"${obra.resp ?? ''}"`,
+      trabajadores,
+      totalHs,
+      ultimaActividad,
+    ].join(',') + '\n'
+  })
+
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'Tarja_Resumen_Obras.csv'
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 // ══════════════════════════════════════════════════
 // EXCEL OBRAS — resumen completo
 // ══════════════════════════════════════════════════
