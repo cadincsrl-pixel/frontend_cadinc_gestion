@@ -1,17 +1,17 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter }           from 'next/navigation'
-import { useSessionStore }     from '@/store/session.store'
+import { useRouter } from 'next/navigation'
+import { useSessionStore } from '@/store/session.store'
 
 interface Props {
-  modulo:   string
+  modulo: string
   children: React.ReactNode
 }
 
 export function GuardWrapper({ modulo, children }: Props) {
-  const router    = useRouter()
-  const profile   = useSessionStore(s => s.profile)
+  const router = useRouter()
+  const profile = useSessionStore(s => s.profile)
   const hasModulo = useSessionStore(s => s.hasModulo)
   const [checked, setChecked] = useState(false)
 

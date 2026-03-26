@@ -1,7 +1,7 @@
 'use client'
 
 import { usePathname, useRouter } from 'next/navigation'
-import { useObras } from '@/modules/tarja/hooks/useObras'
+import { useObras }        from '@/modules/tarja/hooks/useObras'
 import { useSessionStore } from '@/store/session.store'
 
 interface SidebarProps {
@@ -9,41 +9,56 @@ interface SidebarProps {
   onClose?: () => void
 }
 
-// Todos los items con su módulo requerido
-const NAV_ITEMS = [
-  { href: '/dashboard', icon: '📊', label: 'Dashboard', meta: 'Resumen y gráficos', exact: false, modulo: 'tarja' },
-  { href: '/tarja', icon: '📋', label: 'Tarja', meta: 'Control de horas', exact: false, modulo: 'tarja' },
-  { href: '/horas-trabajador', icon: '👤', label: 'Horas x Trabajador', meta: 'Historial individual', exact: false, modulo: 'tarja' },
-  { href: '/personal', icon: '👷', label: 'Personal', meta: 'Gestión de nómina', exact: false, modulo: 'tarja' },
-  { href: '/herramientas', icon: '🔧', label: 'Herramientas', meta: 'Control de equipos', exact: false, modulo: 'herramientas' },
-  { href: '/configuracion', icon: '⚙️', label: 'Configuración', meta: 'Categorías y tarifas', exact: false, modulo: 'tarja' },
-  { href: '/tarja/archivadas', icon: '📦', label: 'Obras archivadas', meta: 'Historial de obras', exact: true, modulo: 'tarja' },
+const NAV_ITEMS_TARJA = [
+  { href: '/dashboard',        icon: '📊', label: 'Dashboard',          meta: 'Resumen y gráficos',   exact: false },
+  { href: '/tarja',            icon: '📋', label: 'Tarja',              meta: 'Control de horas',     exact: false },
+  { href: '/horas-trabajador', icon: '👤', label: 'Horas x Trabajador', meta: 'Historial individual', exact: false },
+  { href: '/personal',         icon: '👷', label: 'Personal',           meta: 'Gestión de nómina',    exact: false },
+  { href: '/configuracion',    icon: '⚙️', label: 'Configuración',      meta: 'Categorías y tarifas', exact: false },
+  { href: '/tarja/archivadas', icon: '📦', label: 'Obras archivadas',   meta: 'Historial de obras',   exact: true  },
 ]
+
+const HERR_SUBNAV = [
+  { href: '/herramientas',              icon: '📊', label: 'Dashboard',    meta: 'Resumen general'           },
+  { href: '/herramientas/inventario',   icon: '🔧', label: 'Inventario',   meta: 'Catálogo de herramientas'  },
+  { href: '/herramientas/movimientos',  icon: '↔',  label: 'Movimientos',  meta: 'Registrar traslados'       },
+  { href: '/herramientas/trazabilidad', icon: '📍', label: 'Trazabilidad', meta: 'Historial por herramienta' },
+  { href: '/herramientas/parametros',   icon: '⚙️', label: 'Parámetros',   meta: 'Tipos y configuración'     },
+]
+
 export function Sidebar({ open, onClose }: SidebarProps) {
-  const pathname = usePathname()
-  const router = useRouter()
+  const pathname        = usePathname()
+  const router          = useRouter()
   const decodedPathname = decodeURIComponent(pathname)
   const { data: obras = [] } = useObras()
   const hasModulo = useSessionStore(s => s.hasModulo)
-  const isAdmin = useSessionStore(s => s.isAdmin)
+  const profile   = useSessionStore(s => s.profile)
 
-  // Filtrar items según módulos del usuario
-  const navItems = NAV_ITEMS.filter(item => hasModulo(item.modulo))
+  const enHerramientas = decodedPathname.startsWith('/herramientas')
 
   function navigate(href: string) {
     router.push(href)
     onClose?.()
   }
 
-  function isActive(item: typeof NAV_ITEMS[0]) {
+  function isActiveTarja(item: typeof NAV_ITEMS_TARJA[0]) {
     if (item.exact) return decodedPathname === item.href
     if (item.href === '/tarja') {
-      return decodedPathname.startsWith('/tarja') && decodedPathname !== '/tarja/archivadas'
+      return decodedPathname.startsWith('/tarja') &&
+             decodedPathname !== '/tarja/archivadas'
     }
     return decodedPathname.startsWith(item.href)
   }
 
-  const showObras = decodedPathname.startsWith('/tarja') && decodedPathname !== '/tarja/archivadas'
+  function isActiveHerr(href: string) {
+    if (href === '/herramientas') return decodedPathname === '/herramientas'
+    return decodedPathname.startsWith(href)
+  }
+
+  const showObrasSubnav =
+    !enHerramientas &&
+    decodedPathname.startsWith('/tarja') &&
+    decodedPathname !== '/tarja/archivadas'
 
   return (
     <>
@@ -63,19 +78,44 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         }
       `}>
 
-        {/* Nav items */}
+        {/* ── Nav principal ── */}
         <div className="pt-3">
           <div className="px-4 py-2 text-[10px] font-bold tracking-[2.5px] uppercase text-white/35">
-            Módulos
+            {enHerramientas ? 'Herramientas' : 'Menú'}
           </div>
-          {navItems.map(item => (
+
+          {/* TARJA nav — solo si NO estamos en herramientas */}
+          {!enHerramientas && NAV_ITEMS_TARJA.map(item => (
             <button
               key={item.href}
               onClick={() => navigate(item.href)}
               className={`
                 w-full flex items-center gap-2.5 px-3 py-2.5 mx-2 rounded-[9px]
                 text-left transition-all border border-transparent
-                ${isActive(item)
+                ${isActiveTarja(item)
+                  ? 'bg-naranja text-white border-naranja-dark shadow-[0_4px_14px_rgba(232,98,26,.4)]'
+                  : 'text-white hover:bg-white hover:text-black'
+                }
+              `}
+              style={{ width: 'calc(100% - 16px)' }}
+            >
+              <span className="text-base w-5 text-center flex-shrink-0">{item.icon}</span>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-bold truncate">{item.label}</div>
+                <div className="text-[11px] opacity-60 font-normal">{item.meta}</div>
+              </div>
+            </button>
+          ))}
+
+          {/* HERRAMIENTAS nav — solo si estamos en herramientas */}
+          {enHerramientas && HERR_SUBNAV.map(item => (
+            <button
+              key={item.href}
+              onClick={() => navigate(item.href)}
+              className={`
+                w-full flex items-center gap-2.5 px-3 py-2.5 mx-2 rounded-[9px]
+                text-left transition-all border border-transparent
+                ${isActiveHerr(item.href)
                   ? 'bg-naranja text-white border-naranja-dark shadow-[0_4px_14px_rgba(232,98,26,.4)]'
                   : 'text-white hover:bg-white hover:text-black'
                 }
@@ -91,13 +131,23 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           ))}
         </div>
 
-        {/* Obras activas — solo en módulo tarja */}
-        {showObras && hasModulo('tarja') && (
+        {/* ── Botón cambiar módulo ── */}
+        <div className="px-3 mt-3">
+          <button
+            onClick={() => navigate('/')}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-[9px] border-[1.5px] border-dashed border-white/20 text-white/40 hover:border-white/50 hover:text-white/70 transition-all text-sm font-semibold"
+          >
+            <span>⇐</span>
+            <span>Cambiar módulo</span>
+          </button>
+        </div>
+
+        {/* ── Obras activas — solo en tarja ── */}
+        {showObrasSubnav && hasModulo('tarja') && (
           <div className="mt-4">
             <div className="px-4 py-2 text-[10px] font-bold tracking-[2.5px] uppercase text-white/35">
               Obras activas
             </div>
-
             {obras.map(obra => (
               <button
                 key={obra.cod}
@@ -122,10 +172,9 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 </span>
               </button>
             ))}
-
             <button
               onClick={() => navigate('/tarja')}
-              className="w-full flex items-center gap-2 px-3 py-2 mx-2 rounded-[9px] border-[1.5px] border-dashed border-white/20 text-white/40 hover:border-naranja hover:text-naranja transition-all text-sm font-semibold mt-10"
+              className="w-full flex items-center gap-2 px-3 py-2 mx-2 rounded-[9px] border-[1.5px] border-dashed border-white/20 text-white/40 hover:border-naranja hover:text-naranja transition-all text-sm font-semibold mt-2"
               style={{ width: 'calc(100% - 16px)' }}
             >
               <span>＋</span>
@@ -134,7 +183,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           </div>
         )}
 
-        {/* Info usuario */}
+        {/* ── Info usuario ── */}
         <div className="mt-auto px-4 pt-4 border-t border-white/10">
           <UserInfo />
         </div>
@@ -146,7 +195,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
 function UserInfo() {
   const profile = useSessionStore(s => s.profile)
-  const email = useSessionStore(s => s.email)
+  const email   = useSessionStore(s => s.email)
   if (!profile) return null
 
   return (

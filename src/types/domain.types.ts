@@ -273,3 +273,83 @@ export interface Modulo {
   activo:      boolean
   orden:       number
 }
+
+export interface HerrTipo {
+  id:     number
+  nom:    string
+  icono:  string | null
+  activo: boolean
+  orden:  number
+}
+
+export interface HerrEstado {
+  key:    string
+  nom:    string
+  color:  string
+  icono:  string | null
+  activo: boolean
+  orden:  number
+}
+
+export interface HerrMovTipo {
+  key:         string
+  nom:         string
+  icono:       string | null
+  color:       string
+  descripcion: string | null
+  activo:      boolean
+  orden:       number
+}
+
+export interface Herramienta {
+  id:            number
+  codigo:        string
+  nom:           string
+  tipo_id:       number | null
+  tipo:          HerrTipo | null
+  marca:         string | null
+  modelo:        string | null
+  serie:         string | null
+  fecha_ingreso: string | null
+  estado_key:    string
+  estado:        HerrEstado | null
+  obra_cod:      string | null
+  obra:          { cod: string; nom: string } | null
+  responsable:   string | null
+  obs:           string | null
+  activo:        boolean
+  created_at:    string
+  updated_at:    string
+}
+
+export interface HerrMovimiento {
+  id:               number
+  herramienta_id:   number
+  herramienta:      { id: number; codigo: string; nom: string } | null
+  tipo_key:         string
+  tipo:             HerrMovTipo | null
+  obra_origen_cod:  string | null
+  obra_origen:      { cod: string; nom: string } | null
+  obra_destino_cod: string | null
+  obra_destino:     { cod: string; nom: string } | null
+  responsable:      string | null
+  obs:              string | null
+  fecha:            string
+  created_at:       string
+}
+
+export interface HerrConfig {
+  tipos:    HerrTipo[]
+  estados:  HerrEstado[]
+  movTipos: HerrMovTipo[]
+}
+
+export interface HerrStats {
+  total:              number
+  disponibles:        number
+  enUso:              number
+  enRep:              number
+  bajas:              number
+  enObras:            number
+  ultimosMovimientos: HerrMovimiento[]
+}
