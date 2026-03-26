@@ -6,9 +6,9 @@ import { useRouter, usePathname } from 'next/navigation'
 import { useUIStore } from '@/store/ui.store'
 
 const MODULO_BRANDING: Record<string, { label: string; accent: string; icono: string }> = {
-  tarja:        { label: 'TARJA',        accent: 'OBRA',         icono: '📋' },
-  herramientas: { label: '',         accent: 'HERRAMIENTAS',     icono: '🔧' },
-  logistica:    { label: 'LOG',          accent: 'ÍSTICA',       icono: '🚛' },
+  tarja:         { label: 'TARJA',         accent: 'OBRA',         icono: '📋' },
+  herramientas: { label: '',          accent: 'HERRAMIENTAS',     icono: '🔧' },
+  logistica:    { label: 'LOG',           accent: 'ÍSTICA',       icono: '🚛' },
 }
 
 function getModuloActual(pathname: string): string {
@@ -28,13 +28,16 @@ export function Topbar({ onMenuToggle, showMenuBtn }: TopbarProps) {
   const [loggingOut, setLoggingOut] = useState(false)
   const [showAcciones, setShowAcciones] = useState(false)
 
-  const obraActiva    = useUIStore(s => s.obraActiva)
-  const esPaginaObra  = pathname.startsWith('/tarja/') &&
-                        pathname !== '/tarja/archivadas' &&
-                        !!obraActiva
+  const obraActiva = useUIStore(s => s.obraActiva)
+  const moduloKey  = getModuloActual(pathname)
+  const branding   = MODULO_BRANDING[moduloKey] ?? MODULO_BRANDING.tarja!
 
-  const moduloKey = getModuloActual(pathname)
-  const branding  = MODULO_BRANDING[moduloKey] ?? MODULO_BRANDING.tarja!
+  // Lógica de visualización separada:
+  // 1. Mostrar botones si estamos en el módulo Tarja (excepto archivadas)
+  const esModuloTarja = moduloKey === 'tarja' && pathname !== '/tarja/archivadas'
+  
+  // 2. Mostrar nombre de la obra SOLO si existe la obra activa
+  const mostrarNombreObra = esModuloTarja && !!obraActiva
 
   async function handleLogout() {
     if (!confirm('¿Cerrar sesión?')) return
@@ -63,12 +66,12 @@ export function Topbar({ onMenuToggle, showMenuBtn }: TopbarProps) {
             {branding.label}<em className="text-naranja not-italic">{branding.accent}</em>
           </div>
 
-          {/* Nombre obra activa — solo en página de obra */}
-          {esPaginaObra && (
+          {/* Nombre obra activa — Se muestra solo si hay una obra en el store */}
+          {mostrarNombreObra && (
             <div className="hidden md:flex items-center gap-2 ml-2">
               <span className="text-white/30">·</span>
               <span className="text-white/70 text-sm font-semibold truncate max-w-[200px]">
-                {obraActiva!.obraNom}
+                {obraActiva?.obraNom}
               </span>
             </div>
           )}
@@ -77,8 +80,8 @@ export function Topbar({ onMenuToggle, showMenuBtn }: TopbarProps) {
         {/* Right */}
         <div className="flex items-center gap-2">
 
-          {/* Botones de acción — solo en página de obra */}
-          {esPaginaObra && (
+          {/* Botones de acción — Se muestran siempre en el módulo Tarja */}
+          {esModuloTarja && (
             <>
               <div className="hidden sm:flex items-center gap-1">
                 <TopbarBtn icon="📊" label="Excel" onClick={() => useUIStore.getState().topbarAccion?.('excel')} />
@@ -96,9 +99,9 @@ export function Topbar({ onMenuToggle, showMenuBtn }: TopbarProps) {
                 {showAcciones && (
                   <div className="absolute right-0 top-[calc(100%+6px)] bg-white rounded-xl shadow-card-lg border border-gris-mid z-[300] min-w-[160px] overflow-hidden">
                     {[
-                      { icon: '📊', label: 'Excel obras',  accion: 'excel'   },
-                      { icon: '🖨', label: 'Recibos PDF',  accion: 'recibos' },
-                      { icon: '⬇', label: 'CSV Tarja',    accion: 'csv'     },
+                      { icon: '📊', label: 'Excel obras',   accion: 'excel'   },
+                      { icon: '🖨', label: 'Recibos PDF',   accion: 'recibos' },
+                      { icon: '⬇', label: 'CSV Tarja',     accion: 'csv'     },
                     ].map(item => (
                       <button
                         key={item.accion}
