@@ -30,6 +30,18 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>
 }
 
+export async function apiPut<T>(path: string, body: unknown): Promise<T> {
+  const headers = await getAuthHeader()
+  const res = await fetch(`${API_URL}${path}`, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(`PUT ${path} → ${res.status}`)
+  return res.json() as Promise<T>
+}
+
+
 export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
   const headers = await getAuthHeader()
   const res = await fetch(`${API_URL}${path}`, {

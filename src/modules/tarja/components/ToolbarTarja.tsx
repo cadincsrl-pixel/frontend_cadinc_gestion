@@ -7,6 +7,7 @@ import { useToast } from '@/components/ui/Toast'
 import { useTarjaStore } from '../store/tarja.store'
 import { exportarTarjaExcel, importarTarjaExcel } from '@/lib/utils/excel'
 import { useUpsertHorasLote } from '../hooks/useHoras'
+import { useCopiarSemanaAnterior } from '../hooks/useAsignaciones'
 import type { Personal, Categoria, Hora, Tarifa, Obra } from '@/types/domain.types'
 
 interface Props {
@@ -28,6 +29,7 @@ export function ToolbarTarja({
   const toast = useToast()
   const { semActual } = useTarjaStore()
   const { mutate: upsertLote, isPending: importing } = useUpsertHorasLote()
+  const { mutate: copiarSemana, isPending: copiando } = useCopiarSemanaAnterior()
   const fileRef = useRef<HTMLInputElement>(null)
 
   const [showAutoFill, setShowAutoFill] = useState(false)
@@ -56,6 +58,16 @@ export function ToolbarTarja({
   function handleLimpiar() {
     if (!personal.length) return
     onLimpiar(personal.map(p => p.leg))
+  }
+
+  function handleCopiarSemana() {
+    copiarSemana(
+      { obraCod, semActual },
+      {
+        onSuccess: () => toast('✓ Trabajadores copiados de la semana anterior', 'ok'),
+        onError: (err) => toast(err.message ?? 'Error al copiar semana', 'err'),
+      }
+    )
   }
 
   function handleExportExcel() {
@@ -96,6 +108,14 @@ export function ToolbarTarja({
         <Button variant="primary" size="sm" onClick={onAgregarTrabajador}>
           ＋ Trabajador
         </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={handleCopiarSemana}
+          disabled={copiando}
+        >
+          {copiando ? '⏳ Copiando...' : '📋 Copiar sem. anterior'}
+        </Button>
         <Button variant="secondary" size="sm" onClick={handleOpenAutoFill} disabled={!personal.length}>
           ⚡ Auto-fill
         </Button>
@@ -119,7 +139,7 @@ export function ToolbarTarja({
         </div>
       </div>
 
-      {/* Panel Auto-fill */}
+      {/* Panel Auto-fill (sin cambios) */}
       {showAutoFill && (
         <div className="bg-white rounded-card shadow-card border border-gris-mid p-4 flex flex-col gap-4 animate-[slideUp_0.15s_ease]">
           <div className="flex items-center justify-between">

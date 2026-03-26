@@ -3,6 +3,8 @@
 import { useCallback } from 'react'
 import { useTarjaStore } from '../store/tarja.store'
 import { useHorasSemana, useUpsertHora } from '../hooks/useHoras'
+import { useQuitarDeSemana } from '../hooks/useAsignaciones'
+import { useCatObraSemana, useSetCatObra } from '../hooks/useCatObra'
 import { getSemDays, toISO, esFinde, esJueves, esHoy, DIAS } from '@/lib/utils/dates'
 import { costoLeg, getVHenFecha, calcularTotalesSemana, fmtMonto } from '@/lib/utils/costos'
 import { useToast } from '@/components/ui/Toast'
@@ -31,6 +33,34 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas }: Props) {
 
   const { data: horasData = [], isLoading } = useHorasSemana(obraCod, desde, hasta)
   const { mutate: upsertHora } = useUpsertHora()
+  const { mutate: quitarDeSemana } = useQuitarDeSemana()
+
+  // ── Categorías por obra+semana ──
+  const { data: catObraData = [] } = useCatObraSemana(obraCod, desde)
+  const { mutate: setCatObra } = useSetCatObra()
+
+  // Mapa: leg → cat_id override para esta semana
+  const catObraMap = catObraData.reduce<Record<string, number>>((acc, co) => {
+    acc[co.leg] = co.cat_id
+    return acc
+  }, {})
+
+  // Categoría efectiva: cat_obra override > personal.cat_id
+  function getCatEfectiva(p: Personal): Categoria | undefined {
+    const overrideCatId = catObraMap[p.leg]
+    if (overrideCatId) return categorias.find(c => c.id === overrideCatId)
+    return categorias.find(c => c.id === p.cat_id)
+  }
+
+  function handleCatChange(leg: string, catId: number) {
+    setCatObra(
+      { obra_cod: obraCod, leg, cat_id: catId, desde },
+      {
+        onSuccess: () => toast('✓ Categoría actualizada', 'ok'),
+        onError: () => toast('Error al cambiar categoría', 'err'),
+      }
+    )
+  }
 
   const horasMap = horasData.reduce<Record<string, Record<string, number>>>(
     (acc, h: Hora) => {
@@ -60,6 +90,17 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas }: Props) {
     [obraCod, upsertHora, toast]
   )
 
+  function handleQuitar(p: Personal) {
+    if (!confirm(`¿Quitar a ${p.nom} de esta semana? Se borrarán sus horas cargadas.`)) return
+    quitarDeSemana(
+      { obraCod, leg: p.leg, desde, hasta },
+      {
+        onSuccess: () => toast(`✓ ${p.nom} quitado de esta semana`, 'ok'),
+        onError: () => toast('Error al quitar trabajador', 'err'),
+      }
+    )
+  }
+
   if (isLoading) {
     return (
       <div className="bg-white rounded-card shadow-card p-8 flex items-center justify-center gap-3 text-gris-dark">
@@ -72,8 +113,8 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas }: Props) {
   if (personal.length === 0) {
     return (
       <div className="bg-white rounded-card shadow-card p-8 text-center text-gris-dark">
-        <p className="font-semibold text-azul mb-1">No hay trabajadores asignados</p>
-        <p className="text-sm">Asigná trabajadores a esta obra para cargar horas.</p>
+        <p className="font-semibold text-azul mb-1">No hay trabajadores en esta semana</p>
+        <p className="text-sm">Agregá trabajadores o copiá la semana anterior.</p>
       </div>
     )
   }
@@ -81,16 +122,17 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas }: Props) {
   return (
     <div className="bg-white rounded-card shadow-card overflow-hidden">
       <div className="overflow-x-auto">
-        <table className="border-collapse w-full min-w-[700px]">
+        <table className="border-collapse w-full min-w-[750px]">
           <thead>
             <tr>
+              <th className="bg-azul text-white text-xs font-bold px-3 py-2.5 text-left uppercase tracking-wide whitespace-nowrap w-8" />
               <th className="bg-azul text-white text-xs font-bold px-3 py-2.5 text-left uppercase tracking-wide whitespace-nowrap">
                 Leg.
               </th>
               <th className="bg-azul text-white text-xs font-bold px-3 py-2.5 text-left uppercase tracking-wide whitespace-nowrap min-w-[170px]">
                 Trabajador
               </th>
-              <th className="bg-azul text-white text-xs font-bold px-3 py-2.5 text-left uppercase tracking-wide whitespace-nowrap min-w-[140px]">
+              <th className="bg-azul text-white text-xs font-bold px-3 py-2.5 text-left uppercase tracking-wide whitespace-nowrap min-w-[160px]">
                 Categoría
               </th>
               {days.map((d, i) => (
@@ -121,17 +163,27 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas }: Props) {
           </thead>
           <tbody>
             {personal.map((p) => {
-              const cat      = categorias.find(c => c.id === p.cat_id)
-              const totalLeg = days.reduce((s, d) => s + getH(p.leg, toISO(d)), 0)
-              const fechaRef = toISO(days[0]!)
-              const vh       = getVHenFecha(personal, categorias, tarifas, obraCod, p.leg, fechaRef)
-              const costo    = costoLeg(horasData, personal, categorias, tarifas, obraCod, p.leg, days)
+              const catEfectiva = getCatEfectiva(p)
+              const catId       = catEfectiva?.id ?? p.cat_id
+              const totalLeg    = days.reduce((s, d) => s + getH(p.leg, toISO(d)), 0)
+              const fechaRef    = toISO(days[0]!)
+              const vh          = getVHenFecha(personal, categorias, tarifas, obraCod, p.leg, fechaRef)
+              const costo       = costoLeg(horasData, personal, categorias, tarifas, obraCod, p.leg, days)
 
               return (
                 <tr
                   key={p.leg}
                   className="border-b border-gris last:border-0 hover:bg-gris/40 transition-colors"
                 >
+                  <td className="px-1 py-1.5 text-center">
+                    <button
+                      onClick={() => handleQuitar(p)}
+                      title={`Quitar ${p.nom} de esta semana`}
+                      className="w-6 h-6 rounded flex items-center justify-center text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors text-xs"
+                    >
+                      ✕
+                    </button>
+                  </td>
                   <td className="font-mono text-xs text-gris-dark px-3 py-1.5 font-semibold whitespace-nowrap">
                     {p.leg}
                   </td>
@@ -139,9 +191,23 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas }: Props) {
                     {p.nom}
                   </td>
                   <td className="px-2 py-1.5 whitespace-nowrap">
-                    <span className="inline-block px-2 py-0.5 rounded bg-naranja-light text-naranja-dark text-xs font-bold">
-                      {cat?.nom ?? '—'}
-                    </span>
+                    <select
+                      value={catId}
+                      onChange={(e) => handleCatChange(p.leg, Number(e.target.value))}
+                      className="
+                        w-full px-2 py-1 rounded border-[1.5px] border-gris-mid
+                        text-xs font-bold bg-white text-carbon outline-none
+                        cursor-pointer transition-colors
+                        hover:border-naranja focus:border-naranja
+                        focus:shadow-[0_0_0_3px_rgba(232,98,26,.15)]
+                      "
+                    >
+                      {categorias.map(cat => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.nom} — ${cat.vh.toLocaleString('es-AR')}/h
+                        </option>
+                      ))}
+                    </select>
                   </td>
                   {days.map((d, i) => {
                     const fecha = toISO(d)
@@ -194,7 +260,7 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas }: Props) {
 
             {/* Fila totales */}
             <tr className="border-t-[3px] border-naranja">
-              <td colSpan={3} className="bg-azul text-white font-display text-lg tracking-wide px-3 py-2.5">
+              <td colSpan={4} className="bg-azul text-white font-display text-lg tracking-wide px-3 py-2.5">
                 TOTAL SEMANA
               </td>
               {days.map((d, i) => {

@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useObra } from '@/modules/tarja/hooks/useObras'
 import { useObras } from '@/modules/tarja/hooks/useObras'
-import { usePersonalObra } from '@/modules/tarja/hooks/useAsignaciones'
+import { usePersonalSemana } from '@/modules/tarja/hooks/useAsignaciones'
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
 import { useHorasSemana, useUpsertHorasLote, useLimpiarSemana } from '@/modules/tarja/hooks/useHoras'
 import { useTarifasObra } from '@/modules/tarja/hooks/useTarifas'
@@ -46,7 +46,6 @@ export function TarjaObraPage({ obraCod }: Props) {
   // ── Datos de la obra ──
   const { data: obra, isLoading: loadingObra } = useObra(obraCod)
   const { data: obras = [] } = useObras()
-  const { data: personal = [] } = usePersonalObra(obraCod)
   const { data: categorias = [] } = useCategorias()
   const { data: tarifas = [] } = useTarifasObra(obraCod)
   const { data: contratistas = [] } = useContratistas()
@@ -55,6 +54,7 @@ export function TarjaObraPage({ obraCod }: Props) {
   const days = getSemDays(semActual)
   const desde = toISO(days[0]!)
   const hasta = toISO(days[6]!)
+  const { data: personal = [] } = usePersonalSemana(obraCod, desde, hasta)
 
   const { data: horasData = [] } = useHorasSemana(obraCod, desde, hasta)
   const { mutate: upsertLote } = useUpsertHorasLote()
@@ -218,6 +218,8 @@ export function TarjaObraPage({ obraCod }: Props) {
         open={modalTrab}
         onClose={() => setModalTrab(false)}
         obraCod={obraCod}
+        semActual={semActual}
+        personalSemana={personal}
       />
       <ModalEditarObra
         open={modalEditarObra}
