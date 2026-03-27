@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePersonal } from '@/modules/tarja/hooks/usePersonal'
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
@@ -22,6 +22,8 @@ export function HorasTrabajadorPage() {
   const [semActual, setSemActual] = useState(() => getViernes(new Date()))
   const [filtroObra, setFiltroObra] = useState('')
   const [busqueda, setBusqueda] = useState('')
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const pickerRef = useRef<HTMLDivElement>(null)
 
   // ── Datos ──
   const { data: personal = [] } = usePersonal()
@@ -59,6 +61,28 @@ export function HorasTrabajadorPage() {
   function irHoy() {
     setSemActual(getViernes(new Date()))
   }
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setPickerOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  const semanasPickerList = useMemo(() => {
+    return Array.from({ length: 32 }, (_, i) => {
+      const vie = getViernes(new Date())
+      vie.setDate(vie.getDate() + (2 - i) * 7)
+      return new Date(vie)
+    }).reverse()
+  }, [])
+
+  const esHoyFlag = toISO(semActual) === toISO(getViernes(new Date()))
+
+
 
   // ── Helpers ──
   function getLegsActivos(obraCod: string): string[] {
@@ -222,30 +246,78 @@ export function HorasTrabajadorPage() {
               📋 HORAS POR TRABAJADOR
             </h1>
             <div className="flex items-center gap-2 mt-2 flex-wrap">
-              {/* Navegador de semana */}
-              <div className="flex items-center bg-white rounded-lg border-[1.5px] border-gris-mid overflow-hidden">
-                <button
-                  onClick={() => navSem(-1)}
-                  className="px-3 py-1.5 text-azul font-bold text-lg hover:bg-gris transition-colors"
-                >
-                  ‹
-                </button>
-                <span className="px-4 py-1.5 text-sm font-bold text-azul border-l border-r border-gris-mid whitespace-nowrap min-w-[220px] text-center">
-                  {getSemLabel(semActual)}
-                </span>
-                <button
-                  onClick={() => navSem(1)}
-                  className="px-3 py-1.5 text-azul font-bold text-lg hover:bg-gris transition-colors"
-                >
-                  ›
-                </button>
+              <div className="relative" ref={pickerRef}>
+                <div className="flex items-center bg-white border-[1.5px] border-gris-mid rounded-[9px] shadow-card overflow-hidden">
+                  <button
+                    onClick={() => navSem(-1)}
+                    className="px-3 py-2 text-azul hover:bg-gris transition-colors font-bold text-lg"
+                  >
+                    ‹
+                  </button>
+                  <button
+                    onClick={() => setPickerOpen(p => !p)}
+                    className="px-4 py-2 text-sm font-bold text-azul border-x border-gris-mid min-w-[230px] text-center whitespace-nowrap hover:bg-gris transition-colors"
+                  >
+                    {getSemLabel(semActual)}
+                    {esHoyFlag && (
+                      <span className="ml-2 bg-naranja text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">
+                        Actual
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => navSem(1)}
+                    className="px-3 py-2 text-azul hover:bg-gris transition-colors font-bold text-lg"
+                  >
+                    ›
+                  </button>
+                </div>
+
+                {pickerOpen && (
+                  <div className="absolute top-[calc(100%+6px)] left-0 z-[500] bg-white border-[1.5px] border-gris-mid rounded-xl shadow-card-lg min-w-[300px] max-h-[360px] overflow-y-auto">
+                    <div className="px-4 py-2 text-[10px] font-bold text-gris-dark uppercase tracking-wider bg-gris border-b border-gris-mid rounded-t-xl sticky top-0">
+                      Elegí una semana
+                    </div>
+                    {semanasPickerList.map(vie => {
+                      const sk = toISO(vie)
+                      const isSelected = sk === toISO(semActual)
+                      const isActual = sk === toISO(getViernes(new Date()))
+
+                      return (
+                        <button
+                          key={sk}
+                          onClick={() => { setSemActual(vie); setPickerOpen(false) }}
+                          className={`
+                w-full flex items-center justify-between px-4 py-2.5 text-left
+                border-b border-gris last:border-0 transition-colors
+                ${isSelected ? 'bg-azul-light font-bold text-azul' : 'hover:bg-gris'}
+              `}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-carbon">
+                              {getSemLabel(vie)}
+                            </span>
+                            {isActual && (
+                              <span className="text-[10px] font-bold bg-naranja text-white px-1.5 py-0.5 rounded-full">
+                                Actual
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
-              <button
-                onClick={irHoy}
-                className="text-xs font-bold px-3 py-2 rounded-lg bg-gris text-gris-dark hover:bg-azul hover:text-white transition-all border border-gris-mid"
-              >
-                Semana actual
-              </button>
+
+              {!esHoyFlag && (
+                <button
+                  onClick={irHoy}
+                  className="text-xs font-bold px-3 py-2 rounded-lg bg-gris text-gris-dark hover:bg-azul hover:text-white transition-all border border-gris-mid"
+                >
+                  Semana actual
+                </button>
+              )}
             </div>
           </div>
           <div className="flex gap-2 flex-wrap">
