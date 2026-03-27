@@ -30,7 +30,7 @@ import { useToast } from '@/components/ui/Toast'
 import type { Hora, Tarifa, Cierre, Certificacion } from '@/types/domain.types'
 import { useEffect } from 'react'
 import { useUIStore } from '@/store/ui.store'
-
+import { useSearchParams } from 'next/navigation'
 
 interface Props {
   obraCod: string
@@ -49,7 +49,16 @@ export function TarjaObraPage({ obraCod }: Props) {
   const { data: categorias = [] } = useCategorias()
   const { data: tarifas = [] } = useTarifasObra(obraCod)
   const { data: contratistas = [] } = useContratistas()
-  const { semActual } = useTarjaStore()
+  const { semActual, setSemActual } = useTarjaStore()
+  const searchParams = useSearchParams()
+
+  useEffect(() => {
+    const semParam = searchParams.get('sem')
+    if (semParam && /^\d{4}-\d{2}-\d{2}$/.test(semParam)) {
+      setSemActual(new Date(semParam + 'T12:00:00'))
+    }
+  }, [searchParams, setSemActual])
+
 
   const days = getSemDays(semActual)
   const desde = toISO(days[0]!)

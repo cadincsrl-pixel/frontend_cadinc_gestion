@@ -16,7 +16,7 @@ interface Props {
 
 export function CierresSection({ obraCod }: Props) {
   const toast = useToast()
-  const { semActual } = useTarjaStore()
+  const { semActual, setSemActual } = useTarjaStore()
   const { data: cierres = [], isLoading } = useCierresObra(obraCod)
   const { mutate: createCierre, isPending: creating } = useCreateCierre()
   const { mutate: updateCierre, isPending: updating } = useUpdateCierre()
@@ -141,10 +141,13 @@ export function CierresSection({ obraCod }: Props) {
                       {/* Acciones */}
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <button
-                          onClick={() => setDetalle(cierre)}
+                          onClick={() => {
+                            setSemActual(vie)
+                            document.getElementById('tarja-table-top')?.scrollIntoView({ behavior: 'smooth' })
+                          }}
                           className="text-xs font-bold px-3 py-1.5 rounded-lg bg-azul-light text-azul hover:bg-azul hover:text-white transition-colors"
                         >
-                          Ver detalle
+                          Ver Detalle
                         </button>
                         <button
                           onClick={() => handleToggleEstado(cierre)}

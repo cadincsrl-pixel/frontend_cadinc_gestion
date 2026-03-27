@@ -1,13 +1,16 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Modal }  from '@/components/ui/Modal'
+import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
 import { exportarExcelObras } from '@/lib/utils/excel'
 import { useToast } from '@/components/ui/Toast'
 import { getSemLabel, getViernes, toISO } from '@/lib/utils/dates'
 import type { Obra, Personal, Categoria, Hora, Tarifa, Cierre, Certificacion, Contratista } from '@/types/domain.types'
+import { useQuery } from '@tanstack/react-query'
+import { apiGet } from '@/lib/api/client'
+
 
 interface Props {
   open: boolean
@@ -23,18 +26,14 @@ interface Props {
   obraActual?: string
 }
 
-function fmtM(n: number) {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000)     return `$${(n / 1_000).toFixed(0)}k`
-  return `$${n}`
-}
+function fmtM(n: number) { return '$' + (Math.round(n / 1000) * 1000).toLocaleString('es-AR') }
 
 export function ModalExcelObras({
   open, onClose, obras, personal, categorias,
   horas, tarifas, cierres, certificaciones, contratistas, obraActual,
 }: Props) {
   const toast = useToast()
-  const [semFiltro,  setSemFiltro]  = useState('')
+  const [semFiltro, setSemFiltro] = useState('')
   const [obrasSelec, setObrasSelec] = useState<string[]>(obras.map(o => o.cod))
 
   const todasSems = [...new Set([
@@ -46,6 +45,55 @@ export function ModalExcelObras({
     setObrasSelec(prev =>
       prev.includes(cod) ? prev.filter(c => c !== cod) : [...prev, cod]
     )
+  }
+
+  const { data: todasCatObra = [] } = useQuery({
+    queryKey: ['cat-obra', 'all'],
+    queryFn: () => apiGet<Array<{ obra_cod: string; leg: string; cat_id: number; desde: string }>>('/api/cat-obra/all'),
+  })
+
+  // Helper: cat_id efectivo con cat_obra
+  function getCatIdEfectivo(obraCod: string, leg: string, fechaRef: string): number | null {
+    const catObraAll = todasCatObra.filter(co => co.obra_cod === obraCod && co.leg === leg)
+    if (catObraAll.length > 0) {
+      let best: { cat_id: number; desde: string } | null = null
+      for (const h of catObraAll) {
+        if (h.desde <= fechaRef) {
+          if (!best || h.desde >= best.desde) best = h
+        }
+      }
+      if (best) return best.cat_id
+      return catObraAll.reduce((a, b) => a.desde <= b.desde ? a : b).cat_id
+    }
+    const p = personal.find(x => x.leg === leg)
+    if (!p) return null
+    const hist = [...(p.personal_cat_historial ?? [])]
+      .sort((a, b) => a.desde.localeCompare(b.desde))
+    let catId = p.cat_id
+    for (const h of hist) {
+      if (h.desde <= fechaRef) catId = h.cat_id
+    }
+    return catId
+  }
+
+  // Helper: valor hora con cat_obra + tarifas retroactivas
+  function getVHConCatObra(obraCod: string, leg: string, fechaRef: string): number {
+    const catId = getCatIdEfectivo(obraCod, leg, fechaRef)
+    if (!catId) return 0
+    const tarifaObraAll = tarifas
+      .filter(t => t.obra_cod === obraCod && t.cat_id === catId)
+      .sort((a, b) => a.desde.localeCompare(b.desde))
+    let vh: number | null = null
+    if (tarifaObraAll.length > 0) {
+      for (const t of tarifaObraAll) {
+        if (t.desde <= fechaRef) vh = t.vh
+        else break
+      }
+      if (vh === null) vh = tarifaObraAll[0]!.vh
+    } else {
+      vh = categorias.find(c => c.id === catId)?.vh ?? 0
+    }
+    return vh
   }
 
   // ── Preview calculado ──
@@ -64,15 +112,15 @@ export function ModalExcelObras({
       return c.sem_key === semFiltro
     })
 
-    const totalHs      = horasFilt.reduce((s, h) => s + h.horas, 0)
-    const totalCertif  = certsFilt.reduce((s, c) => s + c.monto, 0)
-    const operarios    = new Set(horasFilt.map(h => h.leg)).size
-    const contratNum   = new Set(certsFilt.map(c => c.contrat_id)).size
-    const semanas      = new Set([
+    const totalHs = horasFilt.reduce((s, h) => s + h.horas, 0)
+    const totalCertif = certsFilt.reduce((s, c) => s + c.monto, 0)
+    const operarios = new Set(horasFilt.map(h => h.leg)).size
+    const contratNum = new Set(certsFilt.map(c => c.contrat_id)).size
+    const semanas = new Set([
       ...horasFilt.map(h => toISO(getViernes(new Date(h.fecha + 'T12:00:00')))),
       ...certsFilt.map(c => c.sem_key),
     ]).size
-    const cerradas     = cierres.filter(c =>
+    const cerradas = cierres.filter(c =>
       obrasTarget.some(o => o.cod === c.obra_cod) &&
       c.estado === 'cerrado' &&
       (!semFiltro || c.sem_key === semFiltro)
@@ -80,17 +128,13 @@ export function ModalExcelObras({
 
     // Costo operarios aproximado (tarifa global)
     const costoOp = horasFilt.reduce((sum, h) => {
-      const p   = personal.find(x => x.leg === h.leg)
-      if (!p) return sum
-      const tarOb = tarifas
-        .filter(t => t.obra_cod === h.obra_cod && t.cat_id === p.cat_id && t.desde <= h.fecha)
-        .sort((a, b) => b.desde.localeCompare(a.desde))[0]
-      const cat = categorias.find(c => c.id === p.cat_id)
-      return sum + h.horas * (tarOb?.vh ?? cat?.vh ?? 0)
+      const sk = toISO(getViernes(new Date(h.fecha + 'T12:00:00')))
+      const vh = getVHConCatObra(h.obra_cod, h.leg, sk)
+      return sum + h.horas * vh
     }, 0)
 
     return { totalHs, totalCertif, costoOp, operarios, contratNum, semanas, cerradas, obrasCount: obrasTarget.length }
-  }, [obrasSelec, semFiltro, horas, certificaciones, cierres, personal, categorias, tarifas, obras])
+  }, [obrasSelec, semFiltro, horas, certificaciones, cierres, personal, categorias, tarifas, obras , todasCatObra])
 
   function handleExportar() {
     if (!obrasSelec.length) { toast('Seleccioná al menos una obra', 'err'); return }
@@ -176,14 +220,14 @@ export function ModalExcelObras({
             {/* Stats grid */}
             <div className="grid grid-cols-3 divide-x divide-gris-mid bg-white">
               <StatCell icon="⏱" label="Horas totales" value={`${preview.totalHs.toLocaleString('es-AR')}hs`} color="azul" />
-              <StatCell icon="👷" label="Operarios"     value={String(preview.operarios)} color="naranja" />
-              <StatCell icon="📅" label="Semanas"       value={String(preview.semanas)} color="azul" />
+              <StatCell icon="👷" label="Operarios" value={String(preview.operarios)} color="naranja" />
+              <StatCell icon="📅" label="Semanas" value={String(preview.semanas)} color="azul" />
             </div>
 
             <div className="grid grid-cols-3 divide-x divide-gris-mid bg-white border-t border-gris-mid">
-              <StatCell icon="💰" label="Costo op."     value={fmtM(preview.costoOp)} color="verde" />
-              <StatCell icon="🔧" label="Contratistas"  value={String(preview.contratNum)} color="purple" />
-              <StatCell icon="✓"  label="Sem. cerradas" value={String(preview.cerradas)} color="verde" />
+              <StatCell icon="💰" label="Costo op." value={fmtM(preview.costoOp)} color="verde" />
+              <StatCell icon="🔧" label="Contratistas" value={String(preview.contratNum)} color="purple" />
+              <StatCell icon="✓" label="Sem. cerradas" value={String(preview.cerradas)} color="verde" />
             </div>
 
             {/* Hojas que incluye */}
@@ -212,9 +256,9 @@ function StatCell({ icon, label, value, color }: {
   icon: string; label: string; value: string; color: string
 }) {
   const colors: Record<string, string> = {
-    azul:   'text-azul',
+    azul: 'text-azul',
     naranja: 'text-naranja-dark',
-    verde:  'text-verde',
+    verde: 'text-verde',
     purple: 'text-[#5A2D82]',
   }
   return (

@@ -18,16 +18,14 @@ interface Props {
 }
 
 function getHoraClass(h: number): string {
-  if (h === 0) return 'text-gris-mid'
-  if (h >= 8)  return 'bg-verde-light border-verde/40 text-verde'
-  if (h >= 5)  return 'bg-amarillo-light border-amarillo/40 text-[#7A5500]'
-  return ''
+  if (h === 0) return 'border-gris-mid bg-white text-gris-mid'
+  if (h >= 8) return 'border-verde/40 bg-verde-light text-verde'
+  return 'border-[#E0A800] bg-[#FFF3CD] text-[#7A5000]'
 }
-
 export function TarjaTable({ obraCod, personal, categorias, tarifas }: Props) {
   const { semActual } = useTarjaStore()
   const toast = useToast()
-  const days  = getSemDays(semActual)
+  const days = getSemDays(semActual)
   const desde = toISO(days[0]!)
   const hasta = toISO(days[6]!)
 
@@ -120,7 +118,7 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas }: Props) {
   }
 
   return (
-    <div className="bg-white rounded-card shadow-card overflow-hidden">
+    <div id="tarja-table-top" className="bg-white rounded-card shadow-card overflow-hidden">
       <div className="overflow-x-auto">
         <table className="border-collapse w-full min-w-[750px]">
           <thead>
@@ -141,9 +139,9 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas }: Props) {
                   className={`
                     text-white text-xs font-bold px-2 py-2.5 text-center uppercase
                     tracking-wide min-w-[70px] font-mono
-                    ${esHoy(d)    ? 'bg-verde'     : ''}
+                    ${esHoy(d) ? 'bg-verde' : ''}
                     ${esJueves(d) ? 'bg-[#8B3510]' : ''}
-                    ${esFinde(d)  ? 'bg-[#5A2008]' : ''}
+                    ${esFinde(d) ? 'bg-[#5A2008]' : ''}
                     ${!esHoy(d) && !esJueves(d) && !esFinde(d) ? 'bg-naranja' : ''}
                   `}
                 >
@@ -164,11 +162,11 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas }: Props) {
           <tbody>
             {personal.map((p) => {
               const catEfectiva = getCatEfectiva(p)
-              const catId       = catEfectiva?.id ?? p.cat_id
-              const totalLeg    = days.reduce((s, d) => s + getH(p.leg, toISO(d)), 0)
-              const fechaRef    = toISO(days[0]!)
-              const vh          = getVHenFecha(personal, categorias, tarifas, obraCod, p.leg, fechaRef)
-              const costo       = costoLeg(horasData, personal, categorias, tarifas, obraCod, p.leg, days)
+              const catId = catEfectiva?.id ?? p.cat_id
+              const totalLeg = days.reduce((s, d) => s + getH(p.leg, toISO(d)), 0)
+              const fechaRef = toISO(days[0]!)
+              const vh = getVHenFecha(personal, categorias, tarifas, obraCod, p.leg, fechaRef)
+              const costo = costoLeg(horasData, personal, categorias, tarifas, obraCod, p.leg, days)
 
               return (
                 <tr
@@ -211,7 +209,7 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas }: Props) {
                   </td>
                   {days.map((d, i) => {
                     const fecha = toISO(d)
-                    const h     = getH(p.leg, fecha)
+                    const h = getH(p.leg, fecha)
                     return (
                       <td key={i} className="px-1.5 py-1.5 text-center">
                         <input
@@ -231,14 +229,14 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas }: Props) {
                             }
                           }}
                           className={`
-                            w-14 h-8 border-[1.5px] border-gris-mid rounded-md
-                            text-center font-mono text-sm font-bold
-                            bg-white text-carbon outline-none transition-colors
-                            focus:border-naranja focus:shadow-[0_0_0_3px_rgba(232,98,26,.15)]
-                            [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none
-                            [&::-webkit-inner-spin-button]:appearance-none
-                            ${getHoraClass(h)}
-                          `}
+                              w-14 h-8 border-[1.5px] rounded-md
+                              text-center font-mono text-sm font-bold
+                              outline-none transition-colors
+                              focus:border-naranja focus:shadow-[0_0_0_3px_rgba(232,98,26,.15)]
+                              [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none
+                              [&::-webkit-inner-spin-button]:appearance-none
+                              ${getHoraClass(h)}
+                            `}
                         />
                       </td>
                     )

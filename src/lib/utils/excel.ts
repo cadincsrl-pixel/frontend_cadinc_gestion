@@ -15,10 +15,10 @@ export function exportarTarjaExcel(
   horas: Hora[],
   tarifas: Tarifa[]
 ) {
-  const wb   = XLSX.utils.book_new()
+  const wb = XLSX.utils.book_new()
   const days = getSemDays(semActual)
 
-  const fechaRow  = ['', '', '', ...days.map(d => toISO(d)), '']
+  const fechaRow = ['', '', '', ...days.map(d => toISO(d)), '']
   const headerRow = [
     'Legajo', 'Apellido y Nombre', 'Categoría',
     ...days.map((d, i) => `${DIAS[i]} ${d.getDate()}/${d.getMonth() + 1}`),
@@ -26,7 +26,7 @@ export function exportarTarjaExcel(
   ]
 
   const dataRows = personal.map(p => {
-    const cat   = categorias.find(c => c.id === p.cat_id)
+    const cat = categorias.find(c => c.id === p.cat_id)
     const hsDia = days.map(d => {
       const h = horas.find(x => x.obra_cod === obraCod && x.leg === p.leg && x.fecha === toISO(d))
       return h?.horas ?? ''
@@ -77,8 +77,8 @@ export function importarTarjaExcel(
   const reader = new FileReader()
   reader.onload = e => {
     try {
-      const wb   = XLSX.read(e.target!.result, { type: 'array' })
-      const ws   = wb.Sheets[wb.SheetNames[0]!]!
+      const wb = XLSX.read(e.target!.result, { type: 'array' })
+      const ws = wb.Sheets[wb.SheetNames[0]!]!
       const rows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: '' })
 
       if (rows.length < 5) { onError('El archivo no tiene el formato correcto'); return }
@@ -132,15 +132,15 @@ export function exportarCSVTarja(
 
   personal.forEach(p => {
     const cat = categorias.find(c => c.id === p.cat_id)
-    const vh  = tarifas
+    const vh = tarifas
       .filter(t => t.obra_cod === obraCod && t.cat_id === p.cat_id && t.desde <= toISO(semActual))
       .sort((a, b) => b.desde.localeCompare(a.desde))[0]?.vh ?? cat?.vh ?? 0
 
     let totalHs = 0, totalCosto = 0
     const hsDia = days.map(d => {
-      const h   = horas.find(x => x.obra_cod === obraCod && x.leg === p.leg && x.fecha === toISO(d))
+      const h = horas.find(x => x.obra_cod === obraCod && x.leg === p.leg && x.fecha === toISO(d))
       const val = h?.horas ?? 0
-      totalHs   += val
+      totalHs += val
       totalCosto += val * vh
       return val || ''
     })
@@ -149,9 +149,9 @@ export function exportarCSVTarja(
   })
 
   const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
-  const url  = URL.createObjectURL(blob)
-  const a    = document.createElement('a')
-  a.href     = url
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
   a.download = `Tarja_${obraCod}_${toISO(semActual)}.csv`
   a.click()
   URL.revokeObjectURL(url)
@@ -206,7 +206,7 @@ export function exportarExcelObras(
   contratistas: Contratista[],
   semFiltro: string = ''
 ) {
-  const wb  = XLSX.utils.book_new()
+  const wb = XLSX.utils.book_new()
   const hoy = new Date()
 
   function semOk(sk: string) { return !semFiltro || sk === semFiltro }
@@ -236,35 +236,35 @@ export function exportarExcelObras(
     [`Generado: ${fmtDate(hoy)}${semFiltro ? ' · Semana: ' + getSemLabel(new Date(semFiltro + 'T12:00:00')) : ''}`],
     [],
     ['Código', 'Obra', 'Centro de Costo', 'Dirección', 'Responsable',
-     'Operarios asig.', 'Horas totales', 'Costo operarios ($)',
-     'Contratistas', 'Costo contratistas ($)', 'COSTO TOTAL ($)',
-     'Sem. cerradas', 'Sem. pendientes'],
+      'Operarios asig.', 'Horas totales', 'Costo operarios ($)',
+      'Contratistas', 'Costo contratistas ($)', 'COSTO TOTAL ($)',
+      'Sem. cerradas', 'Sem. pendientes'],
   ]
 
   let totHsGlobal = 0, totCostoGlobal = 0, totCertifGlobal = 0
 
   obras.forEach(o => {
-    const legs    = [...new Set(horas.filter(h => h.obra_cod === o.cod).map(h => h.leg))]
+    const legs = [...new Set(horas.filter(h => h.obra_cod === o.cod).map(h => h.leg))]
     const semanas = getSemanasObra(o.cod)
     let totalHs = 0, totalCosto = 0
 
     semanas.forEach(sk => {
       const days = getSemDays(new Date(sk + 'T12:00:00'))
       legs.forEach(leg => {
-        totalHs    += totalHsLeg(horas, o.cod, leg, days.map(toISO))
+        totalHs += totalHsLeg(horas, o.cod, leg, days.map(toISO))
         totalCosto += costoLeg(horas, personal, categorias, tarifas, o.cod, leg, days)
       })
     })
 
-    const certObra    = certificaciones.filter(c => c.obra_cod === o.cod && semOk(c.sem_key))
+    const certObra = certificaciones.filter(c => c.obra_cod === o.cod && semOk(c.sem_key))
     const totalCertif = certObra.reduce((s, c) => s + c.monto, 0)
-    const nContrat    = [...new Set(certObra.map(c => c.contrat_id))].length
+    const nContrat = [...new Set(certObra.map(c => c.contrat_id))].length
     const cierresObra = cierres.filter(c => c.obra_cod === o.cod && semOk(c.sem_key))
-    const cerradas    = cierresObra.filter(c => c.estado === 'cerrado').length
-    const pendientes  = cierresObra.filter(c => c.estado === 'pendiente').length
+    const cerradas = cierresObra.filter(c => c.estado === 'cerrado').length
+    const pendientes = cierresObra.filter(c => c.estado === 'pendiente').length
 
-    totHsGlobal     += totalHs
-    totCostoGlobal  += totalCosto
+    totHsGlobal += totalHs
+    totCostoGlobal += totalCosto
     totCertifGlobal += totalCertif
 
     resumenRows.push([
@@ -296,27 +296,27 @@ export function exportarExcelObras(
     ['DETALLE SEMANAL POR OBRA'],
     [],
     ['Tipo', 'Obra', 'Código', 'Centro de Costo', 'Período (Vie→Jue)',
-     'Cobro (Viernes)', 'Nombre / Contratista', 'Categoría / Especialidad',
-     'Horas', 'Monto ($)', 'Estado'],
+      'Cobro (Viernes)', 'Nombre / Contratista', 'Categoría / Especialidad',
+      'Horas', 'Monto ($)', 'Estado'],
   ]
 
   obras.forEach(o => {
-    const legs    = [...new Set(horas.filter(h => h.obra_cod === o.cod).map(h => h.leg))]
+    const legs = [...new Set(horas.filter(h => h.obra_cod === o.cod).map(h => h.leg))]
     const semanas = getSemanasObra(o.cod)
 
     semanas.sort().forEach(sk => {
-      const s         = new Date(sk + 'T12:00:00')
-      const days      = getSemDays(s)
-      const pago      = getViernesCobro(s)
-      const estado    = cierres.find(c => c.obra_cod === o.cod && c.sem_key === sk)?.estado ?? 'pendiente'
+      const s = new Date(sk + 'T12:00:00')
+      const days = getSemDays(s)
+      const pago = getViernesCobro(s)
+      const estado = cierres.find(c => c.obra_cod === o.cod && c.sem_key === sk)?.estado ?? 'pendiente'
       const estadoTxt = estado === 'cerrado' ? 'Cerrado' : 'Pendiente'
-      const periodo   = getSemLabel(s)
-      const cobro     = fmtDate(pago)
+      const periodo = getSemLabel(s)
+      const cobro = fmtDate(pago)
 
       legs.forEach(leg => {
-        const p     = personal.find(x => x.leg === leg)
+        const p = personal.find(x => x.leg === leg)
         if (!p) return
-        const hs    = totalHsLeg(horas, o.cod, leg, days.map(toISO))
+        const hs = totalHsLeg(horas, o.cod, leg, days.map(toISO))
         const costo = costoLeg(horas, personal, categorias, tarifas, o.cod, leg, days)
         if (hs === 0) return
         const cat = categorias.find(c => c.id === p.cat_id)
@@ -355,7 +355,7 @@ export function exportarExcelObras(
     ['CERTIFICACIONES DE CONTRATISTAS'],
     [],
     ['Obra', 'Código', 'Período (Vie→Jue)', 'Cobro (Viernes)',
-     'Contratista', 'Especialidad', 'Descripción / avance', 'Monto ($)', 'Estado'],
+      'Contratista', 'Especialidad', 'Descripción / avance', 'Monto ($)', 'Estado'],
   ]
 
   obras.forEach(o => {
@@ -363,9 +363,9 @@ export function exportarExcelObras(
       .filter(c => c.obra_cod === o.cod && semOk(c.sem_key) && c.monto > 0)
       .sort((a, b) => a.sem_key.localeCompare(b.sem_key))
       .forEach(cert => {
-        const s       = new Date(cert.sem_key + 'T12:00:00')
-        const pago    = getViernesCobro(s)
-        const estado  = cierres.find(c => c.obra_cod === o.cod && c.sem_key === cert.sem_key)?.estado ?? 'pendiente'
+        const s = new Date(cert.sem_key + 'T12:00:00')
+        const pago = getViernesCobro(s)
+        const estado = cierres.find(c => c.obra_cod === o.cod && c.sem_key === cert.sem_key)?.estado ?? 'pendiente'
         const contrat = contratistas.find(c => c.id === cert.contrat_id)
         certRows.push([
           o.nom, o.cod, getSemLabel(s), fmtDate(pago),
@@ -388,11 +388,11 @@ export function exportarExcelObras(
     ['NÓMINA DE PERSONAL'],
     [],
     ['Legajo', 'Nombre', 'DNI', 'Categoría actual', 'Valor hora ($)',
-     'Teléfono', 'Dirección', 'Observaciones', 'Historial categorías'],
+      'Teléfono', 'Dirección', 'Observaciones', 'Historial categorías'],
   ]
 
   personal.forEach(p => {
-    const cat     = categorias.find(c => c.id === p.cat_id)
+    const cat = categorias.find(c => c.id === p.cat_id)
     const histStr = (p.personal_cat_historial ?? [])
       .sort((a, b) => a.desde.localeCompare(b.desde))
       .map(h => `${categorias.find(c => c.id === h.cat_id)?.nom ?? h.cat_id} desde ${h.desde}`)
@@ -410,7 +410,7 @@ export function exportarExcelObras(
   ]
   XLSX.utils.book_append_sheet(wb, ws4, 'Personal')
 
-  const sufijo      = semFiltro ? `_sem-${semFiltro}` : ''
+  const sufijo = semFiltro ? `_sem-${semFiltro}` : ''
   const prefijoObra = obras.length === 1 ? `_${obras[0]!.cod}` : ''
   XLSX.writeFile(wb, `TarjaObras${prefijoObra}${sufijo}_${toISO(hoy)}.xlsx`)
 }
@@ -427,13 +427,49 @@ export function generarRecibos(
   horas: Hora[],
   tarifas: Tarifa[],
   certificaciones: Certificacion[],
-  contratistas: Contratista[]
+  contratistas: Contratista[],
+  catObra: Array<{ obra_cod: string; leg: string; cat_id: number; desde: string }> = []
 ) {
-  const s       = new Date(semKey + 'T12:00:00')
-  const days    = getSemDays(s)
-  const pago    = getViernesCobro(s)
+  const s = new Date(semKey + 'T12:00:00')
+  const days = getSemDays(s)
+  const pago = getViernesCobro(s)
   const periodo = getSemLabel(s)
   const pagoStr = `${pago.getDate()}/${pago.getMonth() + 1}/${pago.getFullYear()}`
+
+  function getCatIdEfectivo(obraCod: string, leg: string, fechaRef: string): number | null {
+    const catObraAll = catObra.filter(co => co.obra_cod === obraCod && co.leg === leg)
+    if (catObraAll.length > 0) {
+      let best: { cat_id: number; desde: string } | null = null
+      for (const h of catObraAll) {
+        if (h.desde <= fechaRef) { if (!best || h.desde >= best.desde) best = h }
+      }
+      if (best) return best.cat_id
+      return catObraAll.reduce((a, b) => a.desde <= b.desde ? a : b).cat_id
+    }
+    const p = personal.find(x => x.leg === leg)
+    if (!p) return null
+    const hist = [...(p.personal_cat_historial ?? [])].sort((a, b) => a.desde.localeCompare(b.desde))
+    let catId = p.cat_id
+    for (const h of hist) { if (h.desde <= fechaRef) catId = h.cat_id }
+    return catId
+  }
+
+  function getVHLocal(obraCod: string, leg: string): number {
+    const catId = getCatIdEfectivo(obraCod, leg, semKey)
+    if (!catId) return 0
+    const tarifaObraAll = tarifas
+      .filter(t => t.obra_cod === obraCod && t.cat_id === catId)
+      .sort((a, b) => a.desde.localeCompare(b.desde))
+    let vh: number | null = null
+    if (tarifaObraAll.length > 0) {
+      for (const t of tarifaObraAll) { if (t.desde <= semKey) vh = t.vh; else break }
+      if (vh === null) vh = tarifaObraAll[0]!.vh
+    } else {
+      vh = categorias.find(c => c.id === catId)?.vh ?? 0
+    }
+    return vh
+  }
+
 
   function fmtM(n: number) { return '$' + Math.round(n).toLocaleString('es-AR') }
   function fmtH(n: number) { return n + 'hs' }
@@ -453,15 +489,16 @@ export function generarRecibos(
         .map(h => h.leg)
     )]
     legs.forEach(leg => {
-      const p     = personal.find(x => x.leg === leg)
+      const p = personal.find(x => x.leg === leg)
       if (!p) return
-      const hs    = totalHsLeg(horas, o.cod, leg, days.map(toISO))
-      const costo = costoLeg(horas, personal, categorias, tarifas, o.cod, leg, days)
+      const hs = totalHsLeg(horas, o.cod, leg, days.map(toISO))
+      const vh = getVHLocal(o.cod, leg)
+      const costo = hs * vh
       if (hs === 0) return
       const cat = categorias.find(c => c.id === p.cat_id)
       if (!trabMap[leg]) trabMap[leg] = { p, obras: [], totalHs: 0, totalCosto: 0 }
       trabMap[leg]!.obras.push({ obra: o, hs, costo, catNom: cat?.nom ?? '—' })
-      trabMap[leg]!.totalHs    += hs
+      trabMap[leg]!.totalHs += hs
       trabMap[leg]!.totalCosto += costo
     })
   })
@@ -496,7 +533,7 @@ export function generarRecibos(
   // ── HTML operarios ──
   let recibosHTML = ''
   trabajadores.forEach((t, idx) => {
-    const pb        = idx > 0 && idx % 5 === 0 ? 'page-break-before:always;' : ''
+    const pb = idx > 0 && idx % 5 === 0 ? 'page-break-before:always;' : ''
     const obrasRows = t.obras.map(ob => `
       <tr>
         <td style="padding:4px 8px;font-size:10px;border-bottom:1px solid #eee">${ob.obra.cod}</td>
@@ -555,7 +592,7 @@ export function generarRecibos(
   // ── HTML contratistas ──
   let contratHTML = ''
   contratData.forEach((cd, idx) => {
-    const pb    = (trabajadores.length > 0 || idx > 0) && (trabajadores.length + idx) % 5 === 0 ? 'page-break-before:always;' : ''
+    const pb = (trabajadores.length > 0 || idx > 0) && (trabajadores.length + idx) % 5 === 0 ? 'page-break-before:always;' : ''
     const filas = cd.obras.map(ob => `
       <tr>
         <td style="padding:5px 8px;font-size:10px;border-bottom:1px solid #eee">
@@ -610,7 +647,7 @@ export function generarRecibos(
     </div>`
   })
 
-  const totalOp      = trabajadores.reduce((s, t) => s + t.totalCosto, 0)
+  const totalOp = trabajadores.reduce((s, t) => s + t.totalCosto, 0)
   const totalContrat = contratData.reduce((s, c) => s + c.totalCosto, 0)
 
   const win = window.open('', '_blank', 'width=900,height=700')
