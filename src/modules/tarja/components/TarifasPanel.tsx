@@ -1,58 +1,110 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTarifasObra, useUpsertTarifa } from '../hooks/useTarifas'
 import { useCategorias } from '../hooks/useCategorias'
 import { useToast } from '@/components/ui/Toast'
-import { toISO } from '@/lib/utils/dates'
+import { toISO, getViernes, getSemLabel } from '@/lib/utils/dates'
 
 interface Props {
   obraCod: string
 }
 
+interface CatSemState {
+  viernes: string
+  value: string
+}
+
+function buildSemanas() {
+  return Array.from({ length: 24 }, (_, i) => {
+    const vie = getViernes(new Date())
+    vie.setDate(vie.getDate() + (2 - i) * 7)
+    return new Date(vie)
+  }).reverse()
+}
+
 export function TarifasPanel({ obraCod }: Props) {
   const toast = useToast()
   const { data: categorias = [] } = useCategorias()
-  const { data: tarifas    = [], refetch } = useTarifasObra(obraCod)
+  const { data: tarifas = [], refetch } = useTarifasObra(obraCod)
   const { mutate: upsert } = useUpsertTarifa()
-  const [expanded,         setExpanded]         = useState(false)
-  const [historialAbierto, setHistorialAbierto] = useState<number | null>(null)
 
-  function getTarifaRegistro(catId: number) {
+  const [expanded, setExpanded] = useState(false)
+  const [historialAbierto, setHistorialAbierto] = useState<number | null>(null)
+  const [semState, setSemState] = useState<Record<number, CatSemState>>({})
+
+  const semanas = useMemo(() => buildSemanas(), [])
+  const viernesActual = useMemo(() => toISO(getViernes(new Date())), [])
+
+  function getSemForCat(catId: number): CatSemState {
+    return semState[catId] ?? { viernes: viernesActual, value: '' }
+  }
+
+  function updateSemState(catId: number, field: keyof CatSemState, val: string) {
+    setSemState(prev => ({
+      ...prev,
+      [catId]: { ...getSemForCat(catId), [field]: val },
+    }))
+  }
+
+  // Tarifa vigente hoy para mostrar en la card
+  function getTarifaVigente(catId: number) {
+    const hoy = toISO(new Date())
     const hist = tarifas
       .filter(t => t.cat_id === catId)
       .sort((a, b) => a.desde.localeCompare(b.desde))
-    if (!hist.length) return null
-    const hoy = toISO(new Date())
-    let vigente = null
+    let vigente = hist[0] ?? null
     for (const t of hist) {
       if (t.desde <= hoy) vigente = t
     }
-    return vigente ?? hist[0]!
+    return vigente
   }
 
+  // Historial completo de una categoría, más reciente primero
   function getTarifaHist(catId: number) {
     return tarifas
       .filter(t => t.cat_id === catId)
       .sort((a, b) => b.desde.localeCompare(a.desde))
   }
 
-  function handleChange(catId: number, valor: string, esResetGlobal = false) {
-    const vh = parseFloat(valor)
-    if (isNaN(vh) || vh < 0) return
+  // Precio guardado exactamente para esa semana (si existe)
+  function getTarifaEnSem(catId: number, viernesKey: string) {
+    return tarifas.find(t => t.cat_id === catId && t.desde === viernesKey)
+  }
+
+  function handleSave(catId: number) {
+    const state = getSemForCat(catId)
+    const vh = parseFloat(state.value)
+    if (isNaN(vh) || vh <= 0) {
+      toast('Ingresá un precio válido', 'err')
+      return
+    }
     upsert(
-      { obra_cod: obraCod, cat_id: catId, vh },
+      { obra_cod: obraCod, cat_id: catId, vh, desde: state.viernes },
       {
         onSuccess: () => {
-          toast(
-            esResetGlobal
-              ? '↺ Vuelto al precio global'
-              : '✓ Tarifa actualizada',
-            'ok'
-          )
+          toast(`✓ Tarifa guardada para ${state.viernes}`, 'ok')
+          setSemState(prev => ({
+            ...prev,
+            [catId]: { viernes: state.viernes, value: '' },
+          }))
+          setHistorialAbierto(catId)
           refetch()
         },
         onError: () => toast('Error al guardar tarifa', 'err'),
+      }
+    )
+  }
+
+  function handleResetGlobal(catId: number, globalVH: number) {
+    upsert(
+      { obra_cod: obraCod, cat_id: catId, vh: globalVH, desde: viernesActual },
+      {
+        onSuccess: () => {
+          toast('↺ Vuelto al precio global desde esta semana', 'ok')
+          refetch()
+        },
+        onError: () => toast('Error al restablecer tarifa', 'err'),
       }
     )
   }
@@ -68,7 +120,7 @@ export function TarifasPanel({ obraCod }: Props) {
             TARIFAS DE OBRA
           </h3>
           <p className="text-xs text-gris-dark mt-0.5">
-            Precios por hora personalizados. Si no se define, usa el precio global.
+            Precios por hora por semana. Cada cambio aplica desde el viernes de la semana elegida.
           </p>
         </div>
         <span className="text-azul text-lg">{expanded ? '▾' : '▸'}</span>
@@ -78,13 +130,17 @@ export function TarifasPanel({ obraCod }: Props) {
         <div className="px-4 pb-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {categorias.map(cat => {
-              const registro     = getTarifaRegistro(cat.id)
-              const hist         = getTarifaHist(cat.id)
-              const tarifaObra   = registro?.vh ?? null
-              // Es custom solo si hay registro Y el valor es distinto al global
-              const esCustom     = tarifaObra !== null && tarifaObra !== cat.vh
-              const valorMostrar = tarifaObra ?? cat.vh
-              const showHist     = historialAbierto === cat.id
+              const vigente  = getTarifaVigente(cat.id)
+              const hist     = getTarifaHist(cat.id)
+              const esCustom = vigente !== null && vigente.vh !== cat.vh
+              const showHist = historialAbierto === cat.id
+              const state    = getSemForCat(cat.id)
+              const tarifaEnSemSel = getTarifaEnSem(cat.id, state.viernes)
+
+              // Placeholder del input: precio ya guardado para esa semana, o global
+              const inputPlaceholder = tarifaEnSemSel
+                ? String(tarifaEnSemSel.vh)
+                : String(cat.vh)
 
               return (
                 <div
@@ -103,6 +159,11 @@ export function TarifasPanel({ obraCod }: Props) {
                       <div className="font-bold text-sm text-azul">{cat.nom}</div>
                       <div className="text-xs text-gris-dark">
                         Global: ${cat.vh.toLocaleString('es-AR')}/h
+                        {esCustom && (
+                          <span className="ml-1 font-bold text-naranja-dark">
+                            · Vigente: ${vigente!.vh.toLocaleString('es-AR')}/h
+                          </span>
+                        )}
                       </div>
                     </div>
                     {esCustom && (
@@ -112,22 +173,66 @@ export function TarifasPanel({ obraCod }: Props) {
                     )}
                   </div>
 
-                  {/* Input — key fuerza re-mount cuando cambia valorMostrar */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-gris-dark font-bold">$</span>
-                    <input
-                      key={`${cat.id}-${valorMostrar}`}
-                      type="number"
-                      defaultValue={valorMostrar}
-                      onBlur={e => handleChange(cat.id, e.target.value)}
-                      className="flex-1 border-b-2 border-gris-mid focus:border-naranja outline-none bg-transparent font-mono font-bold text-verde text-sm py-1 transition-colors"
-                    />
-                    <span className="text-xs text-gris-dark">/h</span>
+                  {/* Editor de precio por semana */}
+                  <div className="mt-2">
+                    <div className="text-[10px] font-bold text-gris-dark uppercase tracking-wider mb-1.5">
+                      Precio para semana
+                    </div>
+
+                    {/* Selector de semana */}
+                    <select
+                      value={state.viernes}
+                      onChange={e => updateSemState(cat.id, 'viernes', e.target.value)}
+                      className="w-full text-xs px-2 py-1.5 border-[1.5px] border-gris-mid rounded-lg outline-none focus:border-naranja bg-white mb-2 font-semibold cursor-pointer"
+                    >
+                      {semanas.map(vie => {
+                        const key = toISO(vie)
+                        const esActual = key === viernesActual
+                        const tarifaGuardada = getTarifaEnSem(cat.id, key)
+                        return (
+                          <option key={key} value={key}>
+                            {getSemLabel(vie)}
+                            {esActual ? ' ← Actual' : ''}
+                            {tarifaGuardada ? ` · $${tarifaGuardada.vh.toLocaleString('es-AR')}` : ''}
+                          </option>
+                        )
+                      })}
+                    </select>
+
+                    {/* Input de precio + botón guardar */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-gris-dark font-bold flex-shrink-0">$</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step={50}
+                        value={state.value}
+                        onChange={e => updateSemState(cat.id, 'value', e.target.value)}
+                        placeholder={inputPlaceholder}
+                        onKeyDown={e => { if (e.key === 'Enter') handleSave(cat.id) }}
+                        className="flex-1 min-w-0 border-b-2 border-gris-mid focus:border-naranja outline-none bg-transparent font-mono font-bold text-verde text-sm py-1 transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      />
+                      <span className="text-xs text-gris-dark flex-shrink-0">/h</span>
+                      <button
+                        onClick={() => handleSave(cat.id)}
+                        disabled={!state.value}
+                        className="px-3 py-1 bg-naranja text-white text-xs font-bold rounded-lg hover:bg-naranja-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                      >
+                        ✓ Guardar
+                      </button>
+                    </div>
+
+                    {/* Aviso si hay precio guardado para la semana seleccionada */}
+                    {tarifaEnSemSel && (
+                      <p className="text-[10px] text-naranja-dark font-semibold mt-1">
+                        Ya existe precio para esta semana: ${tarifaEnSemSel.vh.toLocaleString('es-AR')}/h — se sobreescribirá.
+                      </p>
+                    )}
                   </div>
 
                   {/* Historial */}
                   {hist.length > 0 && (
-                    <div className="mt-2">
+                    <div className="mt-3 pt-2 border-t border-gris-mid">
                       <button
                         onClick={() => setHistorialAbierto(p => p === cat.id ? null : cat.id)}
                         className="text-[10px] text-gris-dark hover:text-azul transition-colors"
@@ -135,10 +240,17 @@ export function TarifasPanel({ obraCod }: Props) {
                         {showHist ? '▾' : '▸'} Historial ({hist.length})
                       </button>
                       {showHist && (
-                        <div className="mt-1 max-h-20 overflow-y-auto">
+                        <div className="mt-1 max-h-40 overflow-y-auto">
                           {hist.map((t, i) => (
-                            <div key={i} className="flex justify-between text-[10px] py-0.5 border-b border-gris last:border-0">
-                              <span className="text-gris-dark">desde {t.desde}</span>
+                            <div
+                              key={i}
+                              className="flex justify-between text-[10px] py-1 border-b border-gris last:border-0 cursor-pointer hover:bg-gris rounded px-1"
+                              title="Click para editar esta semana"
+                              onClick={() => updateSemState(cat.id, 'viernes', t.desde)}
+                            >
+                              <span className="text-gris-dark">
+                                {i === 0 ? <strong className="text-carbon">Vigente</strong> : 'Anterior'} · desde {t.desde}
+                              </span>
                               <span className="font-mono font-bold text-carbon">
                                 ${t.vh.toLocaleString('es-AR')}
                               </span>
@@ -149,13 +261,13 @@ export function TarifasPanel({ obraCod }: Props) {
                     </div>
                   )}
 
-                  {/* Botón volver al global — solo si es custom */}
+                  {/* Reset al global */}
                   {esCustom && (
                     <button
-                      onClick={() => handleChange(cat.id, String(cat.vh), true)}
+                      onClick={() => handleResetGlobal(cat.id, cat.vh)}
                       className="mt-2 w-full text-[10px] font-bold text-gris-dark hover:text-naranja-dark transition-colors text-left py-1 border-t border-naranja/20"
                     >
-                      ↺ Volver al global (${cat.vh.toLocaleString('es-AR')}/h)
+                      ↺ Volver al global desde hoy (${cat.vh.toLocaleString('es-AR')}/h)
                     </button>
                   )}
                 </div>

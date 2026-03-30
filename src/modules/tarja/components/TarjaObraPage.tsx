@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useObra } from '@/modules/tarja/hooks/useObras'
 import { useObras } from '@/modules/tarja/hooks/useObras'
@@ -109,6 +109,12 @@ export function TarjaObraPage({ obraCod }: Props) {
     horasData, personal, categorias, tarifas, obraCod, days
   )
 
+  const [undoState, setUndoState] = useState<{ count: number; fn: (() => void) | null }>({ count: 0, fn: null })
+
+  const handleUndoStateChange = useCallback((count: number, fn: () => void) => {
+    setUndoState({ count, fn })
+  }, [])
+
   // ── Handlers ──
   function handleAutoFill(hs: number, legs: string[]) {
     const horas = legs.flatMap(leg =>
@@ -203,6 +209,8 @@ export function TarjaObraPage({ obraCod }: Props) {
         onAgregarTrabajador={() => setModalTrab(true)}
         onAutoFill={handleAutoFill}
         onLimpiar={handleLimpiar}
+        undoCount={undoState.count}
+        onUndo={undoState.fn ?? undefined}
       />
 
       {/* ── Tabla de tarja ── */}
@@ -211,6 +219,7 @@ export function TarjaObraPage({ obraCod }: Props) {
         personal={personal}
         categorias={categorias}
         tarifas={tarifas}
+        onUndoStateChange={handleUndoStateChange}
       />
 
       {/* ── Tarifas ── */}

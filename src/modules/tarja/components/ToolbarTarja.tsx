@@ -20,11 +20,13 @@ interface Props {
   onAgregarTrabajador: () => void
   onAutoFill: (hs: number, legs: string[]) => void
   onLimpiar: (legs: string[]) => void
+  undoCount?: number
+  onUndo?: () => void
 }
 
 export function ToolbarTarja({
   personal, categorias, horasData, tarifas, obra, obraCod,
-  onAgregarTrabajador, onAutoFill, onLimpiar,
+  onAgregarTrabajador, onAutoFill, onLimpiar, undoCount, onUndo,
 }: Props) {
   const toast = useToast()
   const { semActual } = useTarjaStore()
@@ -121,6 +123,15 @@ export function ToolbarTarja({
         </Button>
         <Button variant="ghost" size="sm" onClick={handleLimpiar} disabled={!personal.length}>
           🗑 Limpiar
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onUndo}
+          disabled={!undoCount}
+          title="Deshacer último cambio (Ctrl+Z)"
+        >
+          ↩ Deshacer{undoCount ? ` (${undoCount})` : ''}
         </Button>
         <div className="flex gap-1 ml-auto">
           <Button variant="ghost" size="sm" onClick={handleExportExcel} disabled={!personal.length}>

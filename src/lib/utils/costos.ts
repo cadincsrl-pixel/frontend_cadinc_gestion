@@ -25,24 +25,32 @@ export function getTarifaEnFecha(
 }
 
 // Valor hora de un trabajador en una obra en una fecha
+// catIdOverride: si se pasa, usa esa categoría en lugar de buscarla en personal (para respetar overrides de cat_obra)
 export function getVHenFecha(
   personal: Personal[],
   categorias: Categoria[],
   tarifas: Tarifa[],
   obraCod: string,
   leg: string,
-  dateStr: string
+  dateStr: string,
+  catIdOverride?: number
 ): number {
-  const p = personal.find(x => x.leg === leg)
-  if (!p) return 0
+  let catId: number
 
-  // Categoría vigente en esa fecha
-  const hist = [...(p.personal_cat_historial ?? [])]
-    .sort((a, b) => a.desde.localeCompare(b.desde))
+  if (catIdOverride !== undefined) {
+    catId = catIdOverride
+  } else {
+    const p = personal.find(x => x.leg === leg)
+    if (!p) return 0
 
-  let catId = p.cat_id
-  for (const h of hist) {
-    if (h.desde <= dateStr) catId = h.cat_id
+    // Categoría vigente en esa fecha según historial global
+    const hist = [...(p.personal_cat_historial ?? [])]
+      .sort((a, b) => a.desde.localeCompare(b.desde))
+
+    catId = p.cat_id
+    for (const h of hist) {
+      if (h.desde <= dateStr) catId = h.cat_id
+    }
   }
 
   // Tarifa de obra primero, fallback a global
@@ -67,6 +75,7 @@ export function totalHsLeg(
 }
 
 // Costo total de un trabajador en una semana
+// catIdOverride: categoría efectiva (ej: override de cat_obra para esta semana/obra)
 export function costoLeg(
   horas: Hora[],
   personal: Personal[],
@@ -74,14 +83,15 @@ export function costoLeg(
   tarifas: Tarifa[],
   obraCod: string,
   leg: string,
-  dias: Date[]
+  dias: Date[],
+  catIdOverride?: number
 ): number {
   const semStartStr = toISO(dias[0]!)
   const hoyStr = toISO(new Date())
   const esSemActual = semStartStr === toISO(getViernes(new Date()))
   const fechaRef = esSemActual ? hoyStr : semStartStr
 
-  const vh = getVHenFecha(personal, categorias, tarifas, obraCod, leg, fechaRef)
+  const vh = getVHenFecha(personal, categorias, tarifas, obraCod, leg, fechaRef, catIdOverride)
   const hs = totalHsLeg(horas, obraCod, leg, dias.map(toISO))
   return hs * vh
 }

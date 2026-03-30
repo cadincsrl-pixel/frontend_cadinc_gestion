@@ -1,12 +1,12 @@
 'use client'
 
-import { useCallback } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTarjaStore } from '../store/tarja.store'
 import { useHorasSemana, useUpsertHora } from '../hooks/useHoras'
 import { useQuitarDeSemana } from '../hooks/useAsignaciones'
 import { useCatObraSemana, useSetCatObra } from '../hooks/useCatObra'
 import { getSemDays, toISO, esFinde, esJueves, esHoy, DIAS } from '@/lib/utils/dates'
-import { costoLeg, getVHenFecha, calcularTotalesSemana, fmtMonto } from '@/lib/utils/costos'
+import { costoLeg, getVHenFecha, fmtMonto } from '@/lib/utils/costos'
 import { useToast } from '@/components/ui/Toast'
 import type { Personal, Categoria, Hora, Tarifa } from '@/types/domain.types'
 
@@ -15,6 +15,13 @@ interface Props {
   personal: Personal[]
   categorias: Categoria[]
   tarifas: Tarifa[]
+  onUndoStateChange?: (count: number, fn: () => void) => void
+}
+
+interface UndoEntry {
+  leg: string
+  fecha: string
+  antes: number
 }
 
 function getHoraClass(h: number): string {
@@ -22,7 +29,7 @@ function getHoraClass(h: number): string {
   if (h >= 8) return 'border-verde/40 bg-verde-light text-verde'
   return 'border-[#E0A800] bg-[#FFF3CD] text-[#7A5000]'
 }
-export function TarjaTable({ obraCod, personal, categorias, tarifas }: Props) {
+export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoStateChange }: Props) {
   const { semActual } = useTarjaStore()
   const toast = useToast()
   const days = getSemDays(semActual)
@@ -32,6 +39,10 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas }: Props) {
   const { data: horasData = [], isLoading } = useHorasSemana(obraCod, desde, hasta)
   const { mutate: upsertHora } = useUpsertHora()
   const { mutate: quitarDeSemana } = useQuitarDeSemana()
+
+  // ── Undo ──
+  const undoStack = useRef<UndoEntry[]>([])
+  const [undoCount, setUndoCount] = useState(0)
 
   // ── Categorías por obra+semana ──
   const { data: catObraData = [] } = useCatObraSemana(obraCod, desde)
@@ -72,14 +83,26 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas }: Props) {
   const getH = (leg: string, fecha: string): number =>
     horasMap[leg]?.[fecha] ?? 0
 
-  const { totalHs, totalCosto } = calcularTotalesSemana(
-    horasData, personal, categorias, tarifas, obraCod, days
-  )
+  // Totales usando la categoría efectiva (catObra override) de cada trabajador
+  const { totalHs, totalCosto } = (() => {
+    let hs = 0, costo = 0
+    for (const p of personal) {
+      const catId = catObraMap[p.leg] ?? p.cat_id
+      hs += days.reduce((s, d) => s + (horasMap[p.leg]?.[toISO(d)] ?? 0), 0)
+      costo += Math.round(costoLeg(horasData, personal, categorias, tarifas, obraCod, p.leg, days, catId) / 1000) * 1000
+    }
+    return { totalHs: hs, totalCosto: costo }
+  })()
 
   const handleChange = useCallback(
-    (leg: string, fecha: string, val: string) => {
+    (leg: string, fecha: string, val: string, antes: number) => {
       const horas = val === '' ? 0 : parseFloat(val)
       if (isNaN(horas) || horas < 0 || horas > 24) return
+      if (antes !== horas) {
+        undoStack.current.push({ leg, fecha, antes })
+        if (undoStack.current.length > 50) undoStack.current.shift()
+        setUndoCount(undoStack.current.length)
+      }
       upsertHora(
         { obra_cod: obraCod, fecha, leg, horas },
         { onError: () => toast('Error al guardar la hora', 'err') }
@@ -87,6 +110,37 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas }: Props) {
     },
     [obraCod, upsertHora, toast]
   )
+
+  const handleUndo = useCallback(() => {
+    const entry = undoStack.current.pop()
+    if (!entry) return
+    setUndoCount(undoStack.current.length)
+    upsertHora(
+      { obra_cod: obraCod, fecha: entry.fecha, leg: entry.leg, horas: entry.antes },
+      {
+        onSuccess: () => toast('↩ Deshecho', 'ok'),
+        onError: () => toast('Error al deshacer', 'err'),
+      }
+    )
+  }, [obraCod, upsertHora, toast])
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        if (undoStack.current.length > 0) {
+          e.preventDefault()
+          handleUndo()
+        }
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [handleUndo])
+
+  useEffect(() => {
+    onUndoStateChange?.(undoCount, handleUndo)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [undoCount])
 
   function handleQuitar(p: Personal) {
     if (!confirm(`¿Quitar a ${p.nom} de esta semana? Se borrarán sus horas cargadas.`)) return
@@ -119,6 +173,7 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas }: Props) {
 
   return (
     <div id="tarja-table-top" className="bg-white rounded-card shadow-card overflow-hidden">
+
       <div className="overflow-x-auto">
         <table className="border-collapse w-full min-w-[750px]">
           <thead>
@@ -165,8 +220,8 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas }: Props) {
               const catId = catEfectiva?.id ?? p.cat_id
               const totalLeg = days.reduce((s, d) => s + getH(p.leg, toISO(d)), 0)
               const fechaRef = toISO(days[0]!)
-              const vh = getVHenFecha(personal, categorias, tarifas, obraCod, p.leg, fechaRef)
-              const costo = costoLeg(horasData, personal, categorias, tarifas, obraCod, p.leg, days)
+              const vh = getVHenFecha(personal, categorias, tarifas, obraCod, p.leg, fechaRef, catId)
+              const costo = costoLeg(horasData, personal, categorias, tarifas, obraCod, p.leg, days, catId)
 
               return (
                 <tr
@@ -219,10 +274,11 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas }: Props) {
                           step={0.5}
                           key={`${p.leg}-${fecha}-${h}`}
                           defaultValue={h || ''}
-                          onBlur={e => handleChange(p.leg, fecha, e.target.value)}
+                          onBlur={e => handleChange(p.leg, fecha, e.target.value, h)}
                           onKeyDown={e => {
                             if (e.key === 'Enter') {
-                              handleChange(p.leg, fecha, (e.target as HTMLInputElement).value)
+                              const antes = h
+                              handleChange(p.leg, fecha, (e.target as HTMLInputElement).value, antes)
                               const inputs = document.querySelectorAll<HTMLInputElement>('input[type="number"]')
                               const idx = Array.from(inputs).indexOf(e.target as HTMLInputElement)
                               inputs[idx + 1]?.focus()
