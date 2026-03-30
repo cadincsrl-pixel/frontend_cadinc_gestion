@@ -119,7 +119,7 @@ export function ResumenHistoricoPage() {
         trabajadoresUnicos.add(leg)
         const hs = totalHsLeg(todasHoras, o.cod, leg, semActualDays.map(toISO))
         oHs += hs
-        oCosto += costoLegConCatObra(o.cod, leg, semActualDays)
+        oCosto += Math.round(costoLegConCatObra(o.cod, leg, semActualDays) / 1000) * 1000
       })
 
       // Certificaciones de esta semana
@@ -179,7 +179,7 @@ export function ResumenHistoricoPage() {
           const hs = totalHsLeg(todasHoras, o.cod, leg, days.map(toISO))
           if (hs > 0) legsUnicos.add(leg)
           oHs += hs
-          oCosto += costoLegConCatObra(o.cod, leg, days)
+          oCosto += Math.round(costoLegConCatObra(o.cod, leg, days) / 1000) * 1000
         })
       })
 
