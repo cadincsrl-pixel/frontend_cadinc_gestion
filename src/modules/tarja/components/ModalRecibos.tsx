@@ -136,11 +136,17 @@ export function ModalRecibos({
     const contratNum = new Set(certsFilt.map(c => c.contrat_id)).size
     const paginas = Math.ceil((operarios + contratNum) / 5) || 0
 
-    // Costo operarios
-    const costoOp = horasFilt.reduce((sum, h) => {
+    // Costo operarios — redondeado por leg igual que ResumenHistoricoPage
+    const legMap = new Map<string, { obraCod: string; leg: string; totalHs: number; sk: string }>()
+    horasFilt.forEach(h => {
+      const key = `${h.obra_cod}|${h.leg}`
       const sk = toISO(getViernes(new Date(h.fecha + 'T12:00:00')))
-      const vh = getVHConCatObra(h.obra_cod, h.leg, sk)
-      return sum + h.horas * vh
+      if (!legMap.has(key)) legMap.set(key, { obraCod: h.obra_cod, leg: h.leg, totalHs: 0, sk })
+      legMap.get(key)!.totalHs += h.horas
+    })
+    const costoOp = [...legMap.values()].reduce((sum, entry) => {
+      const vh = getVHConCatObra(entry.obraCod, entry.leg, entry.sk)
+      return sum + Math.round(entry.totalHs * vh / 1000) * 1000
     }, 0)
 
     const costoContrat = certsFilt.reduce((s, c) => s + c.monto, 0)
