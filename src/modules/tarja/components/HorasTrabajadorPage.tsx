@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePersonal } from '@/modules/tarja/hooks/usePersonal'
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
 import { useObras } from '@/modules/tarja/hooks/useObras'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api/client'
 import {
   toISO, getViernes, getSemDays, getSemLabel, DIAS,
@@ -13,10 +13,15 @@ import {
 } from '@/lib/utils/dates'
 import { totalHsLeg } from '@/lib/utils/costos'
 import { Chip } from '@/components/ui/Chip'
+import { useToast } from '@/components/ui/Toast'
+import { useUpsertHora } from '@/modules/tarja/hooks/useHoras'
 import type { Hora, Tarifa, Personal, Categoria } from '@/types/domain.types'
 
 export function HorasTrabajadorPage() {
   const router = useRouter()
+  const toast = useToast()
+  const qc = useQueryClient()
+  const { mutate: upsertHora } = useUpsertHora()
 
   // ── Estado ──
   const [semActual, setSemActual] = useState(() => getViernes(new Date()))
@@ -192,7 +197,7 @@ export function HorasTrabajadorPage() {
         // Omitir filas vacías salvo filtro específico de obra
         if (tHs === 0 && !filtroObra) return
 
-        const totalCosto = getCostoLeg(o.cod, leg)
+        const totalCosto = Math.round(getCostoLeg(o.cod, leg) / 1000) * 1000
         result.push({ p, obra: o, horasPorDia, totalHs: tHs, totalCosto, leg })
       })
     })
@@ -230,6 +235,34 @@ export function HorasTrabajadorPage() {
   const totHs = filasFiltradas.reduce((s, f) => s + f.totalHs, 0)
   const totCosto = filasFiltradas.reduce((s, f) => s + f.totalCosto, 0)
   const uniqueLegs = new Set(filasFiltradas.map(f => f.leg)).size
+
+  // ── Edición inline ──
+  const [editingCell, setEditingCell] = useState<{ key: string; val: string } | null>(null)
+
+  function cellKey(leg: string, obraCod: string, fecha: string) {
+    return `${leg}-${obraCod}-${fecha}`
+  }
+
+  function handleCellChange(leg: string, obraCod: string, fecha: string, val: string) {
+    setEditingCell({ key: cellKey(leg, obraCod, fecha), val })
+  }
+
+  function handleCellBlur(leg: string, obraCod: string, fecha: string, antes: number, val: string) {
+    setEditingCell(null)
+    const horas = val === '' ? 0 : parseFloat(val)
+    if (isNaN(horas) || horas < 0 || horas > 24) return
+    if (horas === antes) return
+    upsertHora(
+      { obra_cod: obraCod, fecha, leg, horas },
+      {
+        onSuccess: () => {
+          qc.invalidateQueries({ queryKey: ['horas', 'all'] })
+          toast('✓ Hora guardada', 'ok')
+        },
+        onError: () => toast('Error al guardar', 'err'),
+      }
+    )
+  }
 
   const mostrarObra = !filtroObra
 
@@ -478,12 +511,14 @@ export function HorasTrabajadorPage() {
                           {days.map((d, i) => {
                             const ds = toISO(d)
                             const val = f.horasPorDia[ds] ?? 0
-                            let cls = 'w-14 h-8 border-[1.5px] rounded-md text-center font-mono text-sm font-bold outline-none'
+                            const ck = cellKey(f.leg, f.obra.cod, ds)
+                            const isEditing = editingCell?.key === ck
+                            const displayVal = isEditing ? editingCell!.val : (val || '')
+                            let cls = 'w-14 h-8 border-[1.5px] rounded-md text-center font-mono text-sm font-bold outline-none focus:border-naranja focus:ring-1 focus:ring-naranja/30'
 
-                            if (val === 0) {
+                            if (val === 0 && !isEditing) {
                               cls += ' border-gris-mid bg-white text-gris-mid'
                             } else if (esMulti) {
-                              // Amarillo para multi-obra
                               cls += ' border-[#E0A800] bg-[#FFF3CD] text-[#7A5000]'
                             } else if (val >= 8) {
                               cls += ' border-verde/40 bg-verde-light text-verde'
@@ -495,9 +530,14 @@ export function HorasTrabajadorPage() {
                               <td key={i} className="px-1.5 py-1.5 text-center">
                                 <input
                                   type="number"
-                                  readOnly
-                                  value={val || ''}
-                                  className={`${cls} cursor-default [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
+                                  min={0}
+                                  max={24}
+                                  step={0.5}
+                                  value={displayVal}
+                                  onChange={e => handleCellChange(f.leg, f.obra.cod, ds, e.target.value)}
+                                  onBlur={e => handleCellBlur(f.leg, f.obra.cod, ds, val, e.target.value)}
+                                  onFocus={e => { setEditingCell({ key: ck, val: e.target.value }); e.target.select() }}
+                                  className={`${cls} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
                                 />
                               </td>
                             )
