@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/Button'
 import { useUpdatePersonal, useDeletePersonal } from '@/modules/tarja/hooks/usePersonal'
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
 import { useToast } from '@/components/ui/Toast'
+import { AuditInfo } from '@/components/ui/AuditInfo'
 import type { Personal } from '@/types/domain.types'
 
 const schema = z.object({
@@ -146,6 +147,13 @@ export function ModalEditarTrabajador({ open, onClose, trabajador }: Props) {
           label="Observaciones"
           placeholder="Notas adicionales"
           {...register('obs')}
+        />
+
+        <AuditInfo
+          createdBy={trabajador?.created_by}
+          updatedBy={trabajador?.updated_by}
+          createdAt={trabajador?.created_at}
+          updatedAt={trabajador?.updated_at}
         />
       </div>
     </Modal>

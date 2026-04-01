@@ -9,7 +9,7 @@ export const TARIFAS_KEY = ['tarifas'] as const
 export function useTarifasObra(obraCod: string) {
   return useQuery({
     queryKey: [...TARIFAS_KEY, obraCod],
-    queryFn:  () => apiGet<Tarifa[]>(`/api/tarifas/${obraCod}`),
+    queryFn:  () => apiGet<Tarifa[]>(`/api/tarifas/${encodeURIComponent(obraCod)}`),
     enabled:  !!obraCod,
   })
 }

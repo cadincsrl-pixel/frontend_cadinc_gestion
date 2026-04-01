@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
+import { AuditInfo } from '@/components/ui/AuditInfo'
 import { useToast } from '@/components/ui/Toast'
 import { useForm } from 'react-hook-form'
 import type { Contratista } from '@/types/domain.types'
@@ -311,50 +312,63 @@ export function ContratistasPanel({ obraCod }: Props) {
       </Modal>
 
       {/* Modal certificación */}
-      <Modal
-        open={modalCert !== null}
-        onClose={() => setModalCert(null)}
-        title="💰 CERTIFICACIÓN DE SEMANA"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setModalCert(null)}>Cancelar</Button>
-            <Button
-              variant="primary"
-              loading={guardandoCert}
-              onClick={formCert.handleSubmit(handleSaveCert)}
-            >
-              ✓ Guardar
-            </Button>
-          </>
-        }
-      >
-        <div className="flex flex-col gap-4">
-          <div className="bg-gris rounded-lg px-3 py-2 text-sm">
-            <span className="text-gris-dark font-semibold">Semana: </span>
-            <span className="font-mono font-bold text-azul">{semKey}</span>
-          </div>
-          <Input
-            label="Monto ($)"
-            type="number"
-            step="100"
-            placeholder="0"
-            {...formCert.register('monto')}
-          />
-          <Input
-            label="Descripción"
-            placeholder="Ej: Instalación eléctrica piso 2"
-            {...formCert.register('desc')}
-          />
-          <Select
-            label="Estado"
-            options={[
-              { value: 'pendiente', label: 'Pendiente' },
-              { value: 'cerrado', label: 'Cerrado' },
-            ]}
-            {...formCert.register('estado')}
-          />
-        </div>
-      </Modal>
+      {(() => {
+        const certActual = modalCert !== null ? getCert(modalCert) : null
+        return (
+          <Modal
+            open={modalCert !== null}
+            onClose={() => setModalCert(null)}
+            title="💰 CERTIFICACIÓN DE SEMANA"
+            footer={
+              <>
+                <Button variant="secondary" onClick={() => setModalCert(null)}>Cancelar</Button>
+                <Button
+                  variant="primary"
+                  loading={guardandoCert}
+                  onClick={formCert.handleSubmit(handleSaveCert)}
+                >
+                  ✓ Guardar
+                </Button>
+              </>
+            }
+          >
+            <div className="flex flex-col gap-4">
+              <div className="bg-gris rounded-lg px-3 py-2 text-sm">
+                <span className="text-gris-dark font-semibold">Semana: </span>
+                <span className="font-mono font-bold text-azul">{semKey}</span>
+              </div>
+              <Input
+                label="Monto ($)"
+                type="number"
+                step="100"
+                placeholder="0"
+                {...formCert.register('monto')}
+              />
+              <Input
+                label="Descripción"
+                placeholder="Ej: Instalación eléctrica piso 2"
+                {...formCert.register('desc')}
+              />
+              <Select
+                label="Estado"
+                options={[
+                  { value: 'pendiente', label: 'Pendiente' },
+                  { value: 'cerrado', label: 'Cerrado' },
+                ]}
+                {...formCert.register('estado')}
+              />
+              {certActual && (
+                <AuditInfo
+                  createdBy={certActual.created_by}
+                  updatedBy={certActual.updated_by}
+                  createdAt={certActual.created_at}
+                  updatedAt={certActual.updated_at}
+                />
+              )}
+            </div>
+          </Modal>
+        )
+      })()}
     </>
   )
 }

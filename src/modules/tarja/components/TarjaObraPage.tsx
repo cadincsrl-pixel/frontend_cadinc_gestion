@@ -16,6 +16,7 @@ import { exportarCSVTarja } from '@/lib/utils/excel'
 import { apiGet } from '@/lib/api/client'
 import { WeekNavigator } from './WeekNavigator'
 import { TarjaTable } from './TarjaTable'
+import { AuditInfo } from '@/components/ui/AuditInfo'
 import { ToolbarTarja } from './ToolbarTarja'
 import { ModalAgregarTrabajador } from './ModalAgregarTrabajador'
 import { ModalEditarObra } from './ModalEditarObra'
@@ -180,6 +181,12 @@ export function TarjaObraPage({ obraCod }: Props) {
           <p className="text-sm text-gris-dark mt-1">
             {[obra.cod, obra.dir, obra.resp].filter(Boolean).join(' · ')}
           </p>
+          <AuditInfo
+            createdBy={obra.created_by}
+            updatedBy={obra.updated_by}
+            createdAt={obra.created_at}
+            updatedAt={obra.updated_at}
+          />
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           {/* Chips */}

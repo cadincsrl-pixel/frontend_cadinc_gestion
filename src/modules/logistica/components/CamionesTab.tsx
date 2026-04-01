@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { Input }  from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Badge }  from '@/components/ui/Badge'
+import { AuditInfo } from '@/components/ui/AuditInfo'
 import { useToast } from '@/components/ui/Toast'
 import { useForm } from 'react-hook-form'
 import type { Camion } from '@/types/domain.types'
@@ -110,6 +111,12 @@ export function CamionesTab() {
         footer={<><Button variant="secondary" onClick={() => setEditando(null)}>Cancelar</Button><Button variant="primary" loading={updating} onClick={formEdit.handleSubmit(handleUpdate)}>✓ Guardar</Button></>}
       >
         <CamionForm form={formEdit} />
+        <AuditInfo
+          createdBy={editando?.created_by}
+          updatedBy={editando?.updated_by}
+          createdAt={editando?.created_at}
+          updatedAt={editando?.updated_at}
+        />
       </Modal>
     </>
   )

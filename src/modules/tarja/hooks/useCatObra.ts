@@ -15,7 +15,7 @@ interface CatObraRecord {
 export function useCatObraSemana(obraCod: string, semKey: string) {
   return useQuery({
     queryKey: [...CAT_OBRA_KEY, obraCod, semKey],
-    queryFn: () => apiGet<CatObraRecord[]>(`/api/cat-obra/${obraCod}?sem_key=${semKey}`),
+    queryFn: () => apiGet<CatObraRecord[]>(`/api/cat-obra/${encodeURIComponent(obraCod)}?sem_key=${semKey}`),
     enabled: !!obraCod && !!semKey,
   })
 }

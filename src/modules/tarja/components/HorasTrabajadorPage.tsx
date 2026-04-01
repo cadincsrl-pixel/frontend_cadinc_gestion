@@ -7,6 +7,7 @@ import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
 import { useObras } from '@/modules/tarja/hooks/useObras'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api/client'
+import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import {
   toISO, getViernes, getSemDays, getSemLabel, DIAS,
   esHoy, esJueves, esFinde,
@@ -22,6 +23,7 @@ export function HorasTrabajadorPage() {
   const toast = useToast()
   const qc = useQueryClient()
   const { mutate: upsertHora } = useUpsertHora()
+  const perfiles = usePerfilesMap()
 
   // ── Estado ──
   const [semActual, setSemActual] = useState(() => getViernes(new Date()))
@@ -42,10 +44,6 @@ export function HorasTrabajadorPage() {
   const { data: todasTarifas = [] } = useQuery({
     queryKey: ['tarifas', 'all'],
     queryFn: () => apiGet<Tarifa[]>('/api/tarifas/all'),
-  })
-  const { data: todasAsignaciones = [] } = useQuery({
-    queryKey: ['asignaciones', 'all'],
-    queryFn: () => apiGet<Array<{ obra_cod: string; leg: string; baja_desde: string | null }>>('/api/asignaciones/all'),
   })
   const { data: todasCatObra = [] } = useQuery({
     queryKey: ['cat-obra', 'all'],
@@ -91,10 +89,11 @@ export function HorasTrabajadorPage() {
 
   // ── Helpers ──
   function getLegsActivos(obraCod: string): string[] {
-    return todasAsignaciones
-      .filter(a => a.obra_cod === obraCod)
-      .filter(a => !a.baja_desde || semKey < a.baja_desde)
-      .map(a => a.leg)
+    return [...new Set(
+      todasHoras
+        .filter(h => h.obra_cod === obraCod && h.fecha >= desde && h.fecha <= hasta)
+        .map(h => h.leg)
+    )]
   }
 
   function getCatIdEfectivo(obraCod: string, leg: string, fechaRef: string): number | null {
@@ -206,7 +205,7 @@ export function HorasTrabajadorPage() {
     result.sort((a, b) => a.p.nom.localeCompare(b.p.nom) || a.obra.cod.localeCompare(b.obra.cod))
 
     return result
-  }, [obrasTarget, todasAsignaciones, personal, todasHoras, todasTarifas, todasCatObra, categorias, days, semKey, filtroObra])
+  }, [obrasTarget, personal, todasHoras, todasTarifas, todasCatObra, categorias, days, semKey, desde, hasta, filtroObra])
 
   // Filtrar por búsqueda
   const filasFiltradas = useMemo(() => {
@@ -476,6 +475,12 @@ export function HorasTrabajadorPage() {
                       const catNom = getCatNom(catId)
                       const esMulti = multiObra.has(f.leg)
 
+                      // Última hora editada de este trabajador en esta obra
+                      const lastHora = todasHoras
+                        .filter(h => h.obra_cod === f.obra.cod && h.leg === f.leg && h.updated_by)
+                        .sort((a, b) => (b.updated_at ?? '').localeCompare(a.updated_at ?? ''))
+                        [0] as Hora | undefined
+
                       return (
                         <tr
                           key={`${f.leg}-${f.obra.cod}`}
@@ -484,12 +489,19 @@ export function HorasTrabajadorPage() {
                           <td className="font-mono text-xs text-gris-dark px-3 py-1.5 font-semibold whitespace-nowrap">
                             {f.leg}
                           </td>
-                          <td className="font-bold text-sm px-3 py-1.5 whitespace-nowrap">
-                            {f.p.nom}
-                            {esMulti && (
-                              <span className="ml-1.5 text-[10px] font-bold bg-[#E0A800] text-white px-1.5 py-0.5 rounded inline-block">
-                                ↔
-                              </span>
+                          <td className="px-3 py-1.5 whitespace-nowrap">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-sm">{f.p.nom}</span>
+                              {esMulti && (
+                                <span className="text-[10px] font-bold bg-[#E0A800] text-white px-1.5 py-0.5 rounded">
+                                  ↔
+                                </span>
+                              )}
+                            </div>
+                            {lastHora?.updated_by && (
+                              <div className="text-[9px] text-gris-dark leading-tight mt-0.5">
+                                ✎ {perfiles.get(lastHora.updated_by) ?? '…'}
+                              </div>
                             )}
                           </td>
                           {mostrarObra && (

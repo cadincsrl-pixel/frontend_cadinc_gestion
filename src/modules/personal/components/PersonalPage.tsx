@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/Button'
 import { Modal }  from '@/components/ui/Modal'
 import { Input }  from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
+import { AuditInfo } from '@/components/ui/AuditInfo'
 import { useToast } from '@/components/ui/Toast'
 import { useForm } from 'react-hook-form'
 import type { Personal, Contratista } from '@/types/domain.types'
@@ -439,6 +440,12 @@ export function PersonalPage() {
         }
       >
         <ContratistaForm form={formEditC} />
+        <AuditInfo
+          createdBy={editandoC?.created_by}
+          updatedBy={editandoC?.updated_by}
+          createdAt={editandoC?.created_at}
+          updatedAt={editandoC?.updated_at}
+        />
       </Modal>
 
     </div>

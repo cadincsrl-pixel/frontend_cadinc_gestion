@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useObras } from '@/modules/tarja/hooks/useObras'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
+import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import { ModalNuevaObra } from './ModalNuevaObra'
 import { ModalExcelObras } from './ModalExcelObras'
 import { ModalRecibos } from './ModalRecibos'
@@ -19,6 +20,7 @@ export function TarjaResumenPage() {
   const router = useRouter()
   const toast = useToast()
   const { data: obras = [], isLoading } = useObras()
+  const perfiles = usePerfilesMap()
   const [modalObra, setModalObra] = useState(false)
   const [modalExcelObras, setModalExcelObras] = useState(false)
   const [modalRecibos, setModalRecibos] = useState(false)
@@ -264,6 +266,20 @@ export function TarjaResumenPage() {
                     <div className="text-[10px] text-gris-dark font-mono">
                       Última actividad: {fmtFecha(stats?.ultimaActividad ?? null)}
                     </div>
+                    {(obra.created_by || obra.updated_by) && (
+                      <div className="flex items-center gap-2 flex-wrap justify-end">
+                        {obra.created_by && (
+                          <span className="text-[9px] text-gris-dark">
+                            ✦ <span className="font-bold text-azul">{perfiles.get(obra.created_by) ?? '…'}</span>
+                          </span>
+                        )}
+                        {obra.updated_by && obra.updated_by !== obra.created_by && (
+                          <span className="text-[9px] text-gris-dark">
+                            ✎ <span className="font-bold text-naranja">{perfiles.get(obra.updated_by) ?? '…'}</span>
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </button>

@@ -11,7 +11,7 @@ export function usePersonalSemana(obraCod: string, desde: string, hasta: string)
     queryKey: [...PERSONAL_SEMANA_KEY, obraCod, desde, hasta],
     queryFn: async () => {
       const horas = await apiGet<Hora[]>(
-        `/api/horas/${obraCod}?desde=${desde}&hasta=${hasta}`
+        `/api/horas/${encodeURIComponent(obraCod)}?desde=${desde}&hasta=${hasta}`
       )
       const legs = [...new Set(horas.map(h => h.leg))]
       if (!legs.length) return []
@@ -34,6 +34,7 @@ export function useAgregarASemana() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: PERSONAL_SEMANA_KEY })
       qc.invalidateQueries({ queryKey: ['horas'] })
+      qc.invalidateQueries({ queryKey: ['asignaciones'] })
     },
   })
 }
@@ -45,11 +46,12 @@ export function useQuitarDeSemana() {
     mutationFn: async ({ obraCod, leg, desde, hasta }: {
       obraCod: string; leg: string; desde: string; hasta: string
     }) => {
-      return apiDelete(`/api/horas/${obraCod}/${leg}/semana?desde=${desde}&hasta=${hasta}`)
+      return apiDelete(`/api/horas/${encodeURIComponent(obraCod)}/${leg}/semana?desde=${desde}&hasta=${hasta}`)
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: PERSONAL_SEMANA_KEY })
       qc.invalidateQueries({ queryKey: ['horas'] })
+      qc.invalidateQueries({ queryKey: ['asignaciones'] })
     },
   })
 }
@@ -68,7 +70,7 @@ export function useCopiarSemanaAnterior() {
 
       // Traer horas de la semana anterior para saber quién estaba
       const horasAnt = await apiGet<Hora[]>(
-        `/api/horas/${obraCod}?desde=${desdeAnt}&hasta=${hastaAnt}`
+        `/api/horas/${encodeURIComponent(obraCod)}?desde=${desdeAnt}&hasta=${hastaAnt}`
       )
       const legsAnteriores = [...new Set(horasAnt.map(h => h.leg))]
       if (!legsAnteriores.length) throw new Error('No hay trabajadores en la semana anterior')
@@ -78,7 +80,7 @@ export function useCopiarSemanaAnterior() {
       const desdeAct = toISO(daysActual[0]!)
       const hastaAct = toISO(daysActual[6]!)
       const horasAct = await apiGet<Hora[]>(
-        `/api/horas/${obraCod}?desde=${desdeAct}&hasta=${hastaAct}`
+        `/api/horas/${encodeURIComponent(obraCod)}?desde=${desdeAct}&hasta=${hastaAct}`
       )
       const legsActuales = new Set(horasAct.map(h => h.leg))
 
@@ -95,6 +97,7 @@ export function useCopiarSemanaAnterior() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: PERSONAL_SEMANA_KEY })
       qc.invalidateQueries({ queryKey: ['horas'] })
+      qc.invalidateQueries({ queryKey: ['asignaciones'] })
     },
   })
 }

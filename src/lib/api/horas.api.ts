@@ -16,10 +16,10 @@ async function getAuthHeader(): Promise<HeadersInit> {
 
 export const horasApi = {
   getBySemana: (obraCod: string, desde: string, hasta: string) =>
-    apiGet<Hora[]>(`/api/horas/${obraCod}?desde=${desde}&hasta=${hasta}`),
+    apiGet<Hora[]>(`/api/horas/${encodeURIComponent(obraCod)}?desde=${desde}&hasta=${hasta}`),
 
   getByObra: (obraCod: string) =>
-    apiGet<Hora[]>(`/api/horas/${obraCod}`),
+    apiGet<Hora[]>(`/api/horas/${encodeURIComponent(obraCod)}`),
 
   upsert: async (dto: UpsertHoraDto) => {
     const headers = await getAuthHeader()
@@ -44,5 +44,5 @@ export const horasApi = {
   },
 
   limpiarSemana: (obraCod: string, desde: string, hasta: string) =>
-    apiDelete(`/api/horas/${obraCod}/semana?desde=${desde}&hasta=${hasta}`),
+    apiDelete(`/api/horas/${encodeURIComponent(obraCod)}/semana?desde=${desde}&hasta=${hasta}`),
 }

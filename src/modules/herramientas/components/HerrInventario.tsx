@@ -9,6 +9,7 @@ import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
 import { Input }    from '@/components/ui/Input'
 import { Select }   from '@/components/ui/Select'
+import { AuditInfo } from '@/components/ui/AuditInfo'
 import { useToast } from '@/components/ui/Toast'
 import { useForm }  from 'react-hook-form'
 import type { Herramienta } from '@/types/domain.types'
@@ -362,6 +363,12 @@ export function HerrInventario() {
         }
       >
         <HerrForm form={formEdit} errors={formEdit.formState.errors} />
+        <AuditInfo
+          createdBy={editando?.created_by}
+          updatedBy={editando?.updated_by}
+          createdAt={editando?.created_at}
+          updatedAt={editando?.updated_at}
+        />
       </Modal>
 
       {/* Modal detalle */}
@@ -397,6 +404,12 @@ export function HerrInventario() {
                 <p className="text-sm text-carbon">{detalle.obs}</p>
               </div>
             )}
+            <AuditInfo
+              createdBy={detalle.created_by}
+              updatedBy={detalle.updated_by}
+              createdAt={detalle.created_at}
+              updatedAt={detalle.updated_at}
+            />
           </div>
         </Modal>
       )}

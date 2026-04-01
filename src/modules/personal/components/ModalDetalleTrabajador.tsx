@@ -3,6 +3,7 @@
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
+import { AuditInfo } from '@/components/ui/AuditInfo'
 import type { Personal } from '@/types/domain.types'
 
 interface Props {
@@ -131,6 +132,13 @@ export function ModalDetalleTrabajador({ open, onClose, trabajador, onEditar }: 
             </div>
           )}
         </div>
+
+        <AuditInfo
+          createdBy={trabajador.created_by}
+          updatedBy={trabajador.updated_by}
+          createdAt={trabajador.created_at}
+          updatedAt={trabajador.updated_at}
+        />
 
       </div>
     </Modal>

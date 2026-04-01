@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { useTarifasObra, useUpsertTarifa } from '../hooks/useTarifas'
 import { useCategorias } from '../hooks/useCategorias'
 import { useToast } from '@/components/ui/Toast'
+import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import { toISO, getViernes, getSemLabel } from '@/lib/utils/dates'
 
 interface Props {
@@ -29,6 +30,7 @@ export function TarifasPanel({ obraCod }: Props) {
   const { data: tarifas = [], refetch } = useTarifasObra(obraCod)
   const { mutate: upsert } = useUpsertTarifa()
 
+  const perfiles = usePerfilesMap()
   const [expanded, setExpanded] = useState(false)
   const [historialAbierto, setHistorialAbierto] = useState<number | null>(null)
   const [semState, setSemState] = useState<Record<number, CatSemState>>({})
@@ -244,16 +246,26 @@ export function TarifasPanel({ obraCod }: Props) {
                           {hist.map((t, i) => (
                             <div
                               key={i}
-                              className="flex justify-between text-[10px] py-1 border-b border-gris last:border-0 cursor-pointer hover:bg-gris rounded px-1"
+                              className="flex flex-col py-1 border-b border-gris last:border-0 cursor-pointer hover:bg-gris rounded px-1"
                               title="Click para editar esta semana"
                               onClick={() => updateSemState(cat.id, 'viernes', t.desde)}
                             >
-                              <span className="text-gris-dark">
-                                {i === 0 ? <strong className="text-carbon">Vigente</strong> : 'Anterior'} · desde {t.desde}
-                              </span>
-                              <span className="font-mono font-bold text-carbon">
-                                ${t.vh.toLocaleString('es-AR')}
-                              </span>
+                              <div className="flex justify-between text-[10px]">
+                                <span className="text-gris-dark">
+                                  {i === 0 ? <strong className="text-carbon">Vigente</strong> : 'Anterior'} · desde {t.desde}
+                                </span>
+                                <span className="font-mono font-bold text-carbon">
+                                  ${t.vh.toLocaleString('es-AR')}
+                                </span>
+                              </div>
+                              {t.updated_by && (
+                                <span className="text-[9px] text-gris-dark mt-0.5">
+                                  ✎ {perfiles.get(t.updated_by) ?? '…'}
+                                  {t.updated_at && (
+                                    <> · {new Date(t.updated_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })}</>
+                                  )}
+                                </span>
+                              )}
                             </div>
                           ))}
                         </div>

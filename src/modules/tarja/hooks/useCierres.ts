@@ -7,7 +7,7 @@ export const CIERRES_KEY = ['cierres'] as const
 export function useCierresObra(obraCod: string) {
   return useQuery({
     queryKey: [...CIERRES_KEY, obraCod],
-    queryFn: () => apiGet<Cierre[]>(`/api/cierres/${obraCod}`),
+    queryFn: () => apiGet<Cierre[]>(`/api/cierres/${encodeURIComponent(obraCod)}`),
     enabled: !!obraCod,
   })
 }
@@ -32,7 +32,7 @@ export function useUpdateCierre() {
       obraCod: string
       semKey: string
       estado: 'pendiente' | 'cerrado'
-    }) => apiPatch<Cierre>(`/api/cierres/${obraCod}/${semKey}`, { estado }),
+    }) => apiPatch<Cierre>(`/api/cierres/${encodeURIComponent(obraCod)}/${semKey}`, { estado }),
     onSuccess: () => qc.invalidateQueries({ queryKey: CIERRES_KEY }),
   })
 }

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { Input }  from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Badge }  from '@/components/ui/Badge'
+import { AuditInfo } from '@/components/ui/AuditInfo'
 import { useToast } from '@/components/ui/Toast'
 import { useForm } from 'react-hook-form'
 import type { Chofer } from '@/types/domain.types'
@@ -141,6 +142,12 @@ export function ChoferesTab() {
         }
       >
         <ChoferForm form={formEdit} />
+        <AuditInfo
+          createdBy={editando?.created_by}
+          updatedBy={editando?.updated_by}
+          createdAt={editando?.created_at}
+          updatedAt={editando?.updated_at}
+        />
       </Modal>
     </>
   )

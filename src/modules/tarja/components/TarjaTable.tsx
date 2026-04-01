@@ -5,6 +5,7 @@ import { useTarjaStore } from '../store/tarja.store'
 import { useHorasSemana, useUpsertHora } from '../hooks/useHoras'
 import { useQuitarDeSemana } from '../hooks/useAsignaciones'
 import { useCatObraSemana, useSetCatObra } from '../hooks/useCatObra'
+import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import { getSemDays, toISO, esFinde, esJueves, esHoy, DIAS } from '@/lib/utils/dates'
 import { costoLeg, getVHenFecha, fmtMonto } from '@/lib/utils/costos'
 import { useToast } from '@/components/ui/Toast'
@@ -39,6 +40,7 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
   const { data: horasData = [], isLoading } = useHorasSemana(obraCod, desde, hasta)
   const { mutate: upsertHora } = useUpsertHora()
   const { mutate: quitarDeSemana } = useQuitarDeSemana()
+  const perfiles = usePerfilesMap()
 
   // ── Undo ──
   const undoStack = useRef<UndoEntry[]>([])
@@ -223,6 +225,12 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
               const vh = getVHenFecha(personal, categorias, tarifas, obraCod, p.leg, fechaRef, catId)
               const costo = costoLeg(horasData, personal, categorias, tarifas, obraCod, p.leg, days, catId)
 
+              // Última hora editada de este trabajador en la semana
+              const lastHora = horasData
+                .filter((h: Hora) => h.leg === p.leg && h.updated_by)
+                .sort((a: Hora, b: Hora) => (b.updated_at ?? '').localeCompare(a.updated_at ?? ''))
+                [0] as Hora | undefined
+
               return (
                 <tr
                   key={p.leg}
@@ -240,8 +248,13 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                   <td className="font-mono text-xs text-gris-dark px-3 py-1.5 font-semibold whitespace-nowrap">
                     {p.leg}
                   </td>
-                  <td className="font-bold text-sm px-3 py-1.5 whitespace-nowrap">
-                    {p.nom}
+                  <td className="px-3 py-1.5 whitespace-nowrap">
+                    <div className="font-bold text-sm">{p.nom}</div>
+                    {lastHora?.updated_by && (
+                      <div className="text-[9px] text-gris-dark leading-tight mt-0.5">
+                        ✎ {perfiles.get(lastHora.updated_by) ?? '…'}
+                      </div>
+                    )}
                   </td>
                   <td className="px-2 py-1.5 whitespace-nowrap">
                     <select

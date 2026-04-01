@@ -1,5 +1,13 @@
+// ── Auditoría ──
+export interface AuditFields {
+  created_at?: string | null
+  updated_at?: string | null
+  created_by?: string | null
+  updated_by?: string | null
+}
+
 // ── Obras ──
-export interface Obra {
+export interface Obra extends AuditFields {
   cod: string
   nom: string
   cc: string | null
@@ -8,7 +16,6 @@ export interface Obra {
   obs: string | null
   archivada: boolean
   fecha_archivo: string | null
-  created_at?: string
 }
 
 export interface CreateObraDto {
@@ -34,7 +41,7 @@ export interface CatHistorial {
   desde: string
 }
 
-export interface Personal {
+export interface Personal extends AuditFields {
   leg: string
   nom: string
   dni: string | null
@@ -82,7 +89,7 @@ export interface UpdateCategoriaDto {
 }
 
 // ── Horas ──
-export interface Hora {
+export interface Hora extends AuditFields {
   id: number
   obra_cod: string
   fecha: string
@@ -107,7 +114,7 @@ export interface UpsertHorasLoteDto {
 }
 
 // ── Tarifas ──
-export interface Tarifa {
+export interface Tarifa extends AuditFields {
   id: number
   obra_cod: string
   cat_id: number
@@ -118,7 +125,7 @@ export interface Tarifa {
 // ── Cierres ──
 export type CierreEstado = 'pendiente' | 'cerrado'
 
-export interface Cierre {
+export interface Cierre extends AuditFields {
   id: number
   obra_cod: string
   sem_key: string
@@ -127,7 +134,7 @@ export interface Cierre {
 }
 
 // ── Contratistas ──
-export interface Contratista {
+export interface Contratista extends AuditFields {
   id: number
   nom: string
   especialidad: string | null
@@ -138,7 +145,7 @@ export interface Contratista {
 // ── Certificaciones ──
 export type CertEstado = 'pendiente' | 'cerrado'
 
-export interface Certificacion {
+export interface Certificacion extends AuditFields {
   id: number
   obra_cod: string
   contrat_id: number
@@ -153,7 +160,7 @@ export type CamionEstado = 'activo' | 'mantenimiento' | 'inactivo'
 export type ViajeEstado  = 'en_curso' | 'completado'
 export type LiqEstado    = 'borrador' | 'cerrada'
 
-export interface Chofer {
+export interface Chofer extends AuditFields {
   id: number
   nombre: string
   dni: string | null
@@ -163,7 +170,7 @@ export interface Chofer {
   obs: string | null
 }
 
-export interface Camion {
+export interface Camion extends AuditFields {
   id: number
   patente: string
   modelo: string | null
@@ -320,6 +327,8 @@ export interface Herramienta {
   activo:        boolean
   created_at:    string
   updated_at:    string
+  created_by?:   string | null
+  updated_by?:   string | null
 }
 
 export interface HerrMovimiento {

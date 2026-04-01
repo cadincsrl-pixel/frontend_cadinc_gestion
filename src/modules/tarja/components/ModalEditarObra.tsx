@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button'
 import { useUpdateObra, useArchivarObra, useDeleteObra } from '@/modules/tarja/hooks/useObras'
 import { useToast } from '@/components/ui/Toast'
 import { useRouter } from 'next/navigation'
+import { AuditInfo } from '@/components/ui/AuditInfo'
 import type { Obra } from '@/types/domain.types'
 
 const schema = z.object({
@@ -150,6 +151,13 @@ export function ModalEditarObra({ open, onClose, obra }: Props) {
           label="Observaciones"
           placeholder="Notas adicionales"
           {...register('obs')}
+        />
+
+        <AuditInfo
+          createdBy={obra?.created_by}
+          updatedBy={obra?.updated_by}
+          createdAt={obra?.created_at}
+          updatedAt={obra?.updated_at}
         />
 
         {/* Zona de peligro */}

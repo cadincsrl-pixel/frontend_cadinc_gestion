@@ -3,6 +3,7 @@
 import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
+import { AuditInfo } from '@/components/ui/AuditInfo'
 import { getSemDays, getSemLabel, getViernesCobro, toISO } from '@/lib/utils/dates'
 import type { Cierre } from '@/types/domain.types'
 
@@ -117,6 +118,13 @@ export function ModalDetalleCierre({ open, onClose, cierre, onToggleEstado, isPe
             El jueves es el último día del período. El cobro es el viernes siguiente.
           </p>
         </div>
+
+        <AuditInfo
+          createdBy={cierre.created_by}
+          updatedBy={cierre.updated_by}
+          createdAt={cierre.created_at}
+          updatedAt={cierre.updated_at}
+        />
 
       </div>
     </Modal>

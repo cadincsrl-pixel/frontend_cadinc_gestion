@@ -8,6 +8,7 @@ import { ModalDetalleCierre } from './ModalDetalleCierre'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
+import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import type { Cierre } from '@/types/domain.types'
 
 interface Props {
@@ -25,6 +26,7 @@ export function CierresSection({ obraCod }: Props) {
 
   const semKey = toISO(semActual)
   const cierreActual = cierres.find(c => c.sem_key === semKey)
+  const perfiles = usePerfilesMap()
 
   function handleCrearCierre() {
     createCierre(
@@ -134,6 +136,20 @@ export function CierresSection({ obraCod }: Props) {
                         {cierre.cerrado_en && (
                           <div className="text-xs text-verde mt-1 font-semibold">
                             ✓ Cerrado el {formatFecha(cierre.cerrado_en.slice(0, 10))}
+                          </div>
+                        )}
+                        {(cierre.created_by || cierre.updated_by) && (
+                          <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                            {cierre.created_by && (
+                              <span className="text-[10px] text-gris-dark">
+                                ✦ Creado por <span className="font-bold text-azul">{perfiles.get(cierre.created_by) ?? '…'}</span>
+                              </span>
+                            )}
+                            {cierre.updated_by && cierre.updated_by !== cierre.created_by && (
+                              <span className="text-[10px] text-gris-dark">
+                                ✎ Editado por <span className="font-bold text-naranja">{perfiles.get(cierre.updated_by) ?? '…'}</span>
+                              </span>
+                            )}
                           </div>
                         )}
                       </div>

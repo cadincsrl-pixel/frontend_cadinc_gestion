@@ -14,7 +14,7 @@ export function useContratistas() {
 export function useContratistasObra(obraCod: string) {
   return useQuery({
     queryKey: [...CONTRAT_KEY, 'asig', obraCod],
-    queryFn:  () => apiGet<Array<{ contrat_id: number; contratistas: Contratista }>>(`/api/contratistas/asig/${obraCod}`),
+    queryFn:  () => apiGet<Array<{ contrat_id: number; contratistas: Contratista }>>(`/api/contratistas/asig/${encodeURIComponent(obraCod)}`),
     enabled:  !!obraCod,
   })
 }
@@ -22,7 +22,7 @@ export function useContratistasObra(obraCod: string) {
 export function useCertificacionesObra(obraCod: string) {
   return useQuery({
     queryKey: [...CONTRAT_KEY, 'cert', obraCod],
-    queryFn:  () => apiGet<Certificacion[]>(`/api/contratistas/cert/${obraCod}`),
+    queryFn:  () => apiGet<Certificacion[]>(`/api/contratistas/cert/${encodeURIComponent(obraCod)}`),
     enabled:  !!obraCod,
   })
 }
@@ -58,7 +58,7 @@ export function useDesasignarContratista() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ obraCod, contratId }: { obraCod: string; contratId: number }) =>
-      apiDelete(`/api/contratistas/asig/${obraCod}/${contratId}`),
+      apiDelete(`/api/contratistas/asig/${encodeURIComponent(obraCod)}/${contratId}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: CONTRAT_KEY }),
   })
 }
