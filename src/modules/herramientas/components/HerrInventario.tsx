@@ -12,6 +12,7 @@ import { Select }   from '@/components/ui/Select'
 import { AuditInfo } from '@/components/ui/AuditInfo'
 import { useToast } from '@/components/ui/Toast'
 import { useForm }  from 'react-hook-form'
+import { usePermisos } from '@/hooks/usePermisos'
 import type { Herramienta } from '@/types/domain.types'
 
 const ESTADO_COLORS: Record<string, string> = {
@@ -29,6 +30,7 @@ function fmtFecha(s: string | null) {
 
 export function HerrInventario() {
   const toast = useToast()
+  const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('herramientas')
   const { data: herramientas = [], isLoading } = useHerramientas()
   const { data: config }                        = useHerrConfig()
   const { mutate: create,  isPending: creating  } = useCreateHerramienta()
@@ -183,9 +185,11 @@ export function HerrInventario() {
             {herramientas.length} herramienta{herramientas.length !== 1 ? 's' : ''} registrada{herramientas.length !== 1 ? 's' : ''}
           </p>
         </div>
-        <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)}>
-          ＋ Nueva herramienta
-        </Button>
+        {puedeCrear && (
+          <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)}>
+            ＋ Nueva herramienta
+          </Button>
+        )}
       </div>
 
       {/* Filtros */}
@@ -306,18 +310,22 @@ export function HerrInventario() {
                     </td>
                     <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                       <div className="flex gap-1 justify-end">
-                        <button
-                          onClick={() => openEdit(h)}
-                          className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors"
-                        >
-                          ✏️
-                        </button>
-                        <button
-                          onClick={() => handleDelete(h)}
-                          className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors"
-                        >
-                          ✕
-                        </button>
+                        {puedeEditar && (
+                          <button
+                            onClick={() => openEdit(h)}
+                            className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors"
+                          >
+                            ✏️
+                          </button>
+                        )}
+                        {puedeEliminar && (
+                          <button
+                            onClick={() => handleDelete(h)}
+                            className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors"
+                          >
+                            ✕
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

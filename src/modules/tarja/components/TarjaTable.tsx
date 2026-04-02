@@ -6,6 +6,7 @@ import { useHorasSemana, useUpsertHora } from '../hooks/useHoras'
 import { useQuitarDeSemana } from '../hooks/useAsignaciones'
 import { useCatObraSemana, useSetCatObra } from '../hooks/useCatObra'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
+import { usePermisos } from '@/hooks/usePermisos'
 import { getSemDays, toISO, esFinde, esJueves, esHoy, DIAS } from '@/lib/utils/dates'
 import { costoLeg, getVHenFecha, fmtMonto } from '@/lib/utils/costos'
 import { useToast } from '@/components/ui/Toast'
@@ -33,6 +34,7 @@ function getHoraClass(h: number): string {
 export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoStateChange }: Props) {
   const { semActual } = useTarjaStore()
   const toast = useToast()
+  const { puedeEditar, puedeEliminar } = usePermisos('tarja')
   const days = getSemDays(semActual)
   const desde = toISO(days[0]!)
   const hasta = toISO(days[6]!)
@@ -99,7 +101,7 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
   const handleChange = useCallback(
     (leg: string, fecha: string, val: string, antes: number) => {
       const horas = val === '' ? 0 : parseFloat(val)
-      if (isNaN(horas) || horas < 0 || horas > 24) return
+      if (isNaN(horas) || horas < 0) return
       if (antes !== horas) {
         undoStack.current.push({ leg, fecha, antes })
         if (undoStack.current.length > 50) undoStack.current.shift()
@@ -237,13 +239,15 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                   className="border-b border-gris last:border-0 hover:bg-gris/40 transition-colors"
                 >
                   <td className="px-1 py-1.5 text-center">
-                    <button
-                      onClick={() => handleQuitar(p)}
-                      title={`Quitar ${p.nom} de esta semana`}
-                      className="w-6 h-6 rounded flex items-center justify-center text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors text-xs"
-                    >
-                      ✕
-                    </button>
+                    {puedeEliminar && (
+                      <button
+                        onClick={() => handleQuitar(p)}
+                        title={`Quitar ${p.nom} de esta semana`}
+                        className="w-6 h-6 rounded flex items-center justify-center text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors text-xs"
+                      >
+                        ✕
+                      </button>
+                    )}
                   </td>
                   <td className="font-mono text-xs text-gris-dark px-3 py-1.5 font-semibold whitespace-nowrap">
                     {p.leg}
@@ -259,14 +263,17 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                   <td className="px-2 py-1.5 whitespace-nowrap">
                     <select
                       value={catId}
-                      onChange={(e) => handleCatChange(p.leg, Number(e.target.value))}
-                      className="
+                      disabled={!puedeEditar}
+                      onChange={puedeEditar ? (e) => handleCatChange(p.leg, Number(e.target.value)) : undefined}
+                      className={`
                         w-full px-2 py-1 rounded border-[1.5px] border-gris-mid
                         text-xs font-bold bg-white text-carbon outline-none
-                        cursor-pointer transition-colors
-                        hover:border-naranja focus:border-naranja
-                        focus:shadow-[0_0_0_3px_rgba(232,98,26,.15)]
-                      "
+                        transition-colors
+                        ${puedeEditar
+                          ? 'cursor-pointer hover:border-naranja focus:border-naranja focus:shadow-[0_0_0_3px_rgba(232,98,26,.15)]'
+                          : 'cursor-not-allowed opacity-60'
+                        }
+                      `}
                     >
                       {categorias.map(cat => (
                         <option key={cat.id} value={cat.id}>
@@ -283,12 +290,12 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                         <input
                           type="number"
                           min={0}
-                          max={24}
                           step={0.5}
                           key={`${p.leg}-${fecha}-${h}`}
                           defaultValue={h || ''}
-                          onBlur={e => handleChange(p.leg, fecha, e.target.value, h)}
-                          onKeyDown={e => {
+                          readOnly={!puedeEditar}
+                          onBlur={puedeEditar ? e => handleChange(p.leg, fecha, e.target.value, h) : undefined}
+                          onKeyDown={puedeEditar ? e => {
                             if (e.key === 'Enter') {
                               const antes = h
                               handleChange(p.leg, fecha, (e.target as HTMLInputElement).value, antes)
@@ -296,12 +303,15 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                               const idx = Array.from(inputs).indexOf(e.target as HTMLInputElement)
                               inputs[idx + 1]?.focus()
                             }
-                          }}
+                          } : undefined}
                           className={`
                               w-14 h-8 border-[1.5px] rounded-md
                               text-center font-mono text-sm font-bold
                               outline-none transition-colors
-                              focus:border-naranja focus:shadow-[0_0_0_3px_rgba(232,98,26,.15)]
+                              ${puedeEditar
+                                ? 'focus:border-naranja focus:shadow-[0_0_0_3px_rgba(232,98,26,.15)]'
+                                : 'cursor-not-allowed opacity-60'
+                              }
                               [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none
                               [&::-webkit-inner-spin-button]:appearance-none
                               ${getHoraClass(h)}

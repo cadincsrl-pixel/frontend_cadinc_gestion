@@ -14,11 +14,13 @@ import { apiGet } from '@/lib/api/client'
 import { exportarCSVResumenObras } from '@/lib/utils/excel'
 import { useToast } from '@/components/ui/Toast'
 import { useUIStore } from '@/store/ui.store'
+import { usePermisos } from '@/hooks/usePermisos'
 import type { Categoria, Certificacion, Cierre, Contratista, Hora, Personal, Tarifa } from '@/types/domain.types'
 
 export function TarjaResumenPage() {
   const router = useRouter()
   const toast = useToast()
+  const { puedeCrear } = usePermisos('tarja')
   const { data: obras = [], isLoading } = useObras()
   const perfiles = usePerfilesMap()
   const [modalObra, setModalObra] = useState(false)
@@ -130,9 +132,11 @@ export function TarjaResumenPage() {
               {obras.length} obra{obras.length !== 1 ? 's' : ''} en curso
             </p>
           </div>
-          <Button variant="primary" size="sm" onClick={() => setModalObra(true)}>
-            ＋ Nueva obra
-          </Button>
+          {puedeCrear && (
+            <Button variant="primary" size="sm" onClick={() => setModalObra(true)}>
+              ＋ Nueva obra
+            </Button>
+          )}
         </div>
 
         {/* Barra de búsqueda */}

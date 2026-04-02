@@ -8,7 +8,14 @@ import { Button }   from '@/components/ui/Button'
 import { Input }    from '@/components/ui/Input'
 import { useToast } from '@/components/ui/Toast'
 import { useSessionStore } from '@/store/session.store'
-import type { Profile, Modulo } from '@/types/domain.types'
+import type { Accion, Permisos, Profile, Modulo } from '@/types/domain.types'
+
+const ACCIONES: { key: Accion; label: string }[] = [
+  { key: 'lectura',       label: 'Ver'      },
+  { key: 'creacion',      label: 'Crear'    },
+  { key: 'actualizacion', label: 'Editar'   },
+  { key: 'eliminacion',   label: 'Eliminar' },
+]
 
 interface NuevoUsuario {
   email:    string
@@ -16,6 +23,7 @@ interface NuevoUsuario {
   nombre:   string
   rol:      'admin' | 'operador'
   modulos:  string[]
+  permisos: Permisos
 }
 
 const EMPTY_NUEVO: NuevoUsuario = {
@@ -24,6 +32,7 @@ const EMPTY_NUEVO: NuevoUsuario = {
   nombre:   '',
   rol:      'operador',
   modulos:  [],
+  permisos: {},
 }
 
 export function UsuariosTab() {
@@ -242,10 +251,11 @@ export function UsuariosTab() {
                 variant="primary"
                 loading={updating}
                 onClick={() => update({ id: editando.id, dto: {
-                  nombre:  editando.nombre,
-                  rol:     editando.rol,
-                  modulos: editando.modulos,
-                  activo:  editando.activo,
+                  nombre:   editando.nombre,
+                  rol:      editando.rol,
+                  modulos:  editando.modulos,
+                  activo:   editando.activo,
+                  permisos: editando.permisos,
                 }})}
               >
                 ✓ Guardar
@@ -344,38 +354,80 @@ function UsuarioForm({
         )}
       </div>
 
-      {/* Módulos — solo si operador */}
+      {/* Módulos + Permisos — solo si operador */}
       {data.rol === 'operador' && (
         <div className="flex flex-col gap-2">
           <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">
-            Módulos permitidos
+            Módulos y permisos
           </label>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-3">
             {modulos.map(m => {
               const tiene = data.modulos.includes(m.key)
+              const permisos: Permisos = (data as any).permisos ?? {}
+              const modPerm = permisos[m.key] ?? {}
+
+              function togglePermiso(accion: Accion) {
+                const newPermisos: Permisos = {
+                  ...permisos,
+                  [m.key]: { ...modPerm, [accion]: !modPerm[accion] },
+                }
+                onChange({ ...data, permisos: newPermisos })
+              }
+
               return (
-                <label
+                <div
                   key={m.key}
                   className={`
-                    flex items-center gap-3 p-3 rounded-xl border-[1.5px] cursor-pointer transition-all
-                    ${tiene
-                      ? 'border-naranja bg-naranja-light'
-                      : 'border-gris-mid bg-white hover:border-gris-dark'
-                    }
+                    rounded-xl border-[1.5px] overflow-hidden transition-all
+                    ${tiene ? 'border-naranja' : 'border-gris-mid'}
                   `}
                 >
-                  <input
-                    type="checkbox"
-                    checked={tiene}
-                    onChange={() => toggleModulo(m.key)}
-                    className="accent-naranja w-4 h-4"
-                  />
-                  <span className="text-2xl">{m.icono}</span>
-                  <div>
-                    <div className="font-bold text-sm text-carbon">{m.nombre}</div>
-                    <div className="text-xs text-gris-dark">{m.descripcion}</div>
-                  </div>
-                </label>
+                  {/* Header del módulo */}
+                  <label className={`
+                    flex items-center gap-3 p-3 cursor-pointer
+                    ${tiene ? 'bg-naranja-light' : 'bg-white hover:bg-gris/40'}
+                  `}>
+                    <input
+                      type="checkbox"
+                      checked={tiene}
+                      onChange={() => toggleModulo(m.key)}
+                      className="accent-naranja w-4 h-4"
+                    />
+                    <span className="text-2xl">{m.icono}</span>
+                    <div className="flex-1">
+                      <div className="font-bold text-sm text-carbon">{m.nombre}</div>
+                      <div className="text-xs text-gris-dark">{m.descripcion}</div>
+                    </div>
+                  </label>
+
+                  {/* Matriz de permisos — solo si módulo habilitado */}
+                  {tiene && (
+                    <div className="px-3 pb-3 pt-1 bg-white border-t border-naranja/20">
+                      <div className="flex gap-2 flex-wrap">
+                        {ACCIONES.map(({ key, label }) => {
+                          const activo = modPerm[key] === true
+                          return (
+                            <button
+                              key={key}
+                              type="button"
+                              onClick={() => togglePermiso(key)}
+                              className={`
+                                flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg border-[1.5px] transition-all
+                                ${activo
+                                  ? 'bg-azul text-white border-azul'
+                                  : 'bg-white text-gris-dark border-gris-mid hover:border-azul hover:text-azul'
+                                }
+                              `}
+                            >
+                              <span>{activo ? '✓' : '○'}</span>
+                              {label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
               )
             })}
           </div>

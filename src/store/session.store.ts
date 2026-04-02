@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Profile } from '@/types/domain.types'
+import type { Accion, Profile } from '@/types/domain.types'
 
 interface SessionStore {
   profile:    Profile | null
@@ -8,6 +8,7 @@ interface SessionStore {
   setEmail:   (e: string) => void
   hasModulo:  (key: string) => boolean
   isAdmin:    () => boolean
+  canDo:      (modulo: string, accion: Accion) => boolean
 }
 
 export const useSessionStore = create<SessionStore>((set, get) => ({
@@ -22,4 +23,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     return p.modulos.includes(key)
   },
   isAdmin: () => get().profile?.rol === 'admin',
+  canDo: (modulo, accion) => {
+    const p = get().profile
+    if (!p) return false
+    if (p.rol === 'admin') return true
+    return p.permisos?.[modulo]?.[accion] === true
+  },
 }))

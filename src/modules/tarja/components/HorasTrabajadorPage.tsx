@@ -16,12 +16,14 @@ import { totalHsLeg } from '@/lib/utils/costos'
 import { Chip } from '@/components/ui/Chip'
 import { useToast } from '@/components/ui/Toast'
 import { useUpsertHora } from '@/modules/tarja/hooks/useHoras'
+import { usePermisos } from '@/hooks/usePermisos'
 import type { Hora, Tarifa, Personal, Categoria } from '@/types/domain.types'
 
 export function HorasTrabajadorPage() {
   const router = useRouter()
   const toast = useToast()
   const qc = useQueryClient()
+  const { puedeEditar } = usePermisos('tarja')
   const { mutate: upsertHora } = useUpsertHora()
   const perfiles = usePerfilesMap()
 
@@ -32,14 +34,20 @@ export function HorasTrabajadorPage() {
   const [pickerOpen, setPickerOpen] = useState(false)
   const pickerRef = useRef<HTMLDivElement>(null)
 
+  // ── Semana ──
+  const days = getSemDays(semActual)
+  const semKey = toISO(semActual)
+  const desde = toISO(days[0]!)
+  const hasta = toISO(days[6]!)
+
   // ── Datos ──
   const { data: personal = [] } = usePersonal()
   const { data: categorias = [] } = useCategorias()
   const { data: obras = [] } = useObras()
 
   const { data: todasHoras = [], isLoading } = useQuery({
-    queryKey: ['horas', 'all'],
-    queryFn: () => apiGet<Hora[]>('/api/horas/all'),
+    queryKey: ['horas', 'semana', desde, hasta],
+    queryFn: () => apiGet<Hora[]>(`/api/horas/all?desde=${desde}&hasta=${hasta}`),
   })
   const { data: todasTarifas = [] } = useQuery({
     queryKey: ['tarifas', 'all'],
@@ -49,12 +57,6 @@ export function HorasTrabajadorPage() {
     queryKey: ['cat-obra', 'all'],
     queryFn: () => apiGet<Array<{ obra_cod: string; leg: string; cat_id: number; desde: string }>>('/api/cat-obra/all'),
   })
-
-  // ── Semana ──
-  const days = getSemDays(semActual)
-  const semKey = toISO(semActual)
-  const desde = toISO(days[0]!)
-  const hasta = toISO(days[6]!)
 
   function navSem(dir: number) {
     const nueva = new Date(semActual)
@@ -249,13 +251,13 @@ export function HorasTrabajadorPage() {
   function handleCellBlur(leg: string, obraCod: string, fecha: string, antes: number, val: string) {
     setEditingCell(null)
     const horas = val === '' ? 0 : parseFloat(val)
-    if (isNaN(horas) || horas < 0 || horas > 24) return
+    if (isNaN(horas) || horas < 0) return
     if (horas === antes) return
     upsertHora(
       { obra_cod: obraCod, fecha, leg, horas },
       {
         onSuccess: () => {
-          qc.invalidateQueries({ queryKey: ['horas', 'all'] })
+          qc.invalidateQueries({ queryKey: ['horas', 'semana'] })
           toast('✓ Hora guardada', 'ok')
         },
         onError: () => toast('Error al guardar', 'err'),
@@ -543,13 +545,13 @@ export function HorasTrabajadorPage() {
                                 <input
                                   type="number"
                                   min={0}
-                                  max={24}
                                   step={0.5}
                                   value={displayVal}
-                                  onChange={e => handleCellChange(f.leg, f.obra.cod, ds, e.target.value)}
-                                  onBlur={e => handleCellBlur(f.leg, f.obra.cod, ds, val, e.target.value)}
-                                  onFocus={e => { setEditingCell({ key: ck, val: e.target.value }); e.target.select() }}
-                                  className={`${cls} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
+                                  readOnly={!puedeEditar}
+                                  onChange={puedeEditar ? e => handleCellChange(f.leg, f.obra.cod, ds, e.target.value) : undefined}
+                                  onBlur={puedeEditar ? e => handleCellBlur(f.leg, f.obra.cod, ds, val, e.target.value) : undefined}
+                                  onFocus={puedeEditar ? e => { setEditingCell({ key: ck, val: e.target.value }); e.target.select() } : undefined}
+                                  className={`${cls} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none${!puedeEditar ? ' cursor-not-allowed opacity-60' : ''}`}
                                 />
                               </td>
                             )

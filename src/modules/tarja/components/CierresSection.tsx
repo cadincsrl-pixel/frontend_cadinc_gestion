@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
+import { usePermisos } from '@/hooks/usePermisos'
 import type { Cierre } from '@/types/domain.types'
 
 interface Props {
@@ -17,6 +18,7 @@ interface Props {
 
 export function CierresSection({ obraCod }: Props) {
   const toast = useToast()
+  const { puedeCrear, puedeEditar } = usePermisos('tarja')
   const { semActual, setSemActual } = useTarjaStore()
   const { data: cierres = [], isLoading } = useCierresObra(obraCod)
   const { mutate: createCierre, isPending: creating } = useCreateCierre()
@@ -72,7 +74,7 @@ export function CierresSection({ obraCod }: Props) {
           </button>
 
           {/* Botón solo si la semana actual no tiene cierre */}
-          {!cierreActual && (
+          {!cierreActual && puedeCrear && (
             <Button
               variant="primary"
               size="sm"
@@ -165,19 +167,21 @@ export function CierresSection({ obraCod }: Props) {
                         >
                           Ver Detalle
                         </button>
-                        <button
-                          onClick={() => handleToggleEstado(cierre)}
-                          disabled={updating}
-                          className={`
-                            text-xs font-bold px-3 py-1.5 rounded-lg transition-colors
-                            ${cierre.estado === 'cerrado'
-                              ? 'bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo'
-                              : 'bg-verde-light text-verde hover:bg-verde hover:text-white'
-                            }
-                          `}
-                        >
-                          {cierre.estado === 'cerrado' ? '↩ Reabrir' : '✓ Cerrar'}
-                        </button>
+                        {puedeEditar && (
+                          <button
+                            onClick={() => handleToggleEstado(cierre)}
+                            disabled={updating}
+                            className={`
+                              text-xs font-bold px-3 py-1.5 rounded-lg transition-colors
+                              ${cierre.estado === 'cerrado'
+                                ? 'bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo'
+                                : 'bg-verde-light text-verde hover:bg-verde hover:text-white'
+                              }
+                            `}
+                          >
+                            {cierre.estado === 'cerrado' ? '↩ Reabrir' : '✓ Cerrar'}
+                          </button>
+                        )}
                       </div>
 
                     </div>

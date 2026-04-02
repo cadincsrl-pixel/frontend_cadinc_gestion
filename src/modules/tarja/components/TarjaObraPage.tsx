@@ -31,6 +31,7 @@ import { useToast } from '@/components/ui/Toast'
 import type { Hora, Tarifa, Cierre, Certificacion } from '@/types/domain.types'
 import { useEffect } from 'react'
 import { useUIStore } from '@/store/ui.store'
+import { usePermisos } from '@/hooks/usePermisos'
 import { useSearchParams } from 'next/navigation'
 
 interface Props {
@@ -39,6 +40,7 @@ interface Props {
 
 export function TarjaObraPage({ obraCod }: Props) {
   const toast = useToast()
+  const { puedeEditar } = usePermisos('tarja')
   const [modalTrab, setModalTrab] = useState(false)
   const [modalEditarObra, setModalEditarObra] = useState(false)
   const [modalExcelObras, setModalExcelObras] = useState(false)
@@ -197,11 +199,13 @@ export function TarjaObraPage({ obraCod }: Props) {
             <Chip value={desde} label="Período" variant="orange" />
           </div>
           {/* Acciones */}
-          <div className="flex items-center gap-1 flex-wrap">
-            <Button variant="ghost" size="sm" onClick={() => setModalEditarObra(true)}>
-              ✏️ Editar
-            </Button>
-          </div>
+          {puedeEditar && (
+            <div className="flex items-center gap-1 flex-wrap">
+              <Button variant="ghost" size="sm" onClick={() => setModalEditarObra(true)}>
+                ✏️ Editar
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 

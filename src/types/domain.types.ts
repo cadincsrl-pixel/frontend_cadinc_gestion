@@ -263,12 +263,17 @@ export interface Adelanto {
   liquidacion_id: number | null
 }
 
+export type Accion = 'lectura' | 'creacion' | 'actualizacion' | 'eliminacion'
+export type ModuloPermisos = { [K in Accion]?: boolean }
+export type Permisos = Record<string, ModuloPermisos>
+
 export interface Profile {
-  id:      string
-  nombre:  string
-  rol:     'admin' | 'operador'
-  modulos: string[]
-  activo:  boolean
+  id:       string
+  nombre:   string
+  rol:      'admin' | 'operador'
+  modulos:  string[]
+  activo:   boolean
+  permisos: Permisos
 }
 
 export interface Modulo {

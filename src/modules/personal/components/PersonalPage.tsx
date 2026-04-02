@@ -15,6 +15,7 @@ import { Select } from '@/components/ui/Select'
 import { AuditInfo } from '@/components/ui/AuditInfo'
 import { useToast } from '@/components/ui/Toast'
 import { useForm } from 'react-hook-form'
+import { usePermisos } from '@/hooks/usePermisos'
 import type { Personal, Contratista } from '@/types/domain.types'
 
 type Tab = 'personal' | 'contratistas'
@@ -32,6 +33,7 @@ const ESP_OPTIONS = [
 
 export function PersonalPage() {
   const toast = useToast()
+  const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('personal')
   const [tab, setTab] = useState<Tab>('personal')
 
   // ── Personal ──
@@ -147,12 +149,12 @@ export function PersonalPage() {
             {personal.length} trabajadores · {contratistas.length} contratistas
           </p>
         </div>
-        {tab === 'personal' && (
+        {tab === 'personal' && puedeCrear && (
           <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)}>
             ＋ Nuevo trabajador
           </Button>
         )}
-        {tab === 'contratistas' && (
+        {tab === 'contratistas' && puedeCrear && (
           <Button variant="primary" size="sm" onClick={() => setModalNuevoC(true)}>
             ＋ Nuevo contratista
           </Button>
@@ -266,12 +268,14 @@ export function PersonalPage() {
                             className="px-4 py-3 text-center"
                             onClick={e => e.stopPropagation()}
                           >
-                            <button
-                              onClick={() => setEditando(p)}
-                              className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors"
-                            >
-                              ✏️
-                            </button>
+                            {puedeEditar && (
+                              <button
+                                onClick={() => setEditando(p)}
+                                className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors"
+                              >
+                                ✏️
+                              </button>
+                            )}
                           </td>
                         </tr>
                       )
@@ -361,18 +365,22 @@ export function PersonalPage() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex gap-1 justify-end">
-                            <button
-                              onClick={() => openEditContrat(c)}
-                              className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors"
-                            >
-                              ✏️
-                            </button>
-                            <button
-                              onClick={() => handleDeleteContrat(c)}
-                              className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors"
-                            >
-                              ✕
-                            </button>
+                            {puedeEditar && (
+                              <button
+                                onClick={() => openEditContrat(c)}
+                                className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors"
+                              >
+                                ✏️
+                              </button>
+                            )}
+                            {puedeEliminar && (
+                              <button
+                                onClick={() => handleDeleteContrat(c)}
+                                className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors"
+                              >
+                                ✕
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>

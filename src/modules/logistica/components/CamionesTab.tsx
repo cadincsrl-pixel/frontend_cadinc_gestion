@@ -10,6 +10,7 @@ import { Badge }  from '@/components/ui/Badge'
 import { AuditInfo } from '@/components/ui/AuditInfo'
 import { useToast } from '@/components/ui/Toast'
 import { useForm } from 'react-hook-form'
+import { usePermisos } from '@/hooks/usePermisos'
 import type { Camion } from '@/types/domain.types'
 
 const ESTADO_OPTIONS = [
@@ -20,6 +21,7 @@ const ESTADO_OPTIONS = [
 
 export function CamionesTab() {
   const toast = useToast()
+  const { puedeCrear, puedeEditar } = usePermisos('logistica')
   const { data: camiones = [] } = useCamiones()
   const { mutate: create, isPending: creating } = useCreateCamion()
   const { mutate: update, isPending: updating } = useUpdateCamion()
@@ -66,7 +68,9 @@ export function CamionesTab() {
   return (
     <>
       <div className="flex justify-end">
-        <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)}>＋ Nuevo camión</Button>
+        {puedeCrear && (
+          <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)}>＋ Nuevo camión</Button>
+        )}
       </div>
 
       <div className="bg-white rounded-card shadow-card overflow-hidden">
@@ -93,7 +97,7 @@ export function CamionesTab() {
                   />
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <button onClick={() => openEdit(c)} className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors">✏️</button>
+                  {puedeEditar && <button onClick={() => openEdit(c)} className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors">✏️</button>}
                 </td>
               </tr>
             ))}

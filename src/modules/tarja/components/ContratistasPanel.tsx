@@ -20,6 +20,7 @@ import { Badge } from '@/components/ui/Badge'
 import { AuditInfo } from '@/components/ui/AuditInfo'
 import { useToast } from '@/components/ui/Toast'
 import { useForm } from 'react-hook-form'
+import { usePermisos } from '@/hooks/usePermisos'
 import type { Contratista } from '@/types/domain.types'
 
 const ESP_OPTIONS = [
@@ -39,6 +40,7 @@ interface Props {
 
 export function ContratistasPanel({ obraCod }: Props) {
   const toast = useToast()
+  const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('tarja')
   const { semActual } = useTarjaStore()
   const semKey = toISO(semActual)
 
@@ -151,13 +153,15 @@ export function ContratistasPanel({ obraCod }: Props) {
               </p>
             </div>
           </button>
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => setModalAsig(true)}
-          >
-            ＋ Asignar
-          </Button>
+          {puedeCrear && (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => setModalAsig(true)}
+            >
+              ＋ Asignar
+            </Button>
+          )}
         </div>
 
         {expanded && (
@@ -201,27 +205,31 @@ export function ContratistasPanel({ obraCod }: Props) {
                         <span className="font-mono text-sm font-bold text-verde">
                           ${c.cert.monto.toLocaleString('es-AR')}
                         </span>
-                        <button
-                          onClick={() => handleOpenCert(c.id)}
-                          className="text-xs font-bold px-2 py-1 rounded bg-gris text-gris-dark hover:bg-azul-light hover:text-azul transition-colors"
-                        >
-                          ✏️
-                        </button>
+                        {puedeEditar && (
+                          <button
+                            onClick={() => handleOpenCert(c.id)}
+                            className="text-xs font-bold px-2 py-1 rounded bg-gris text-gris-dark hover:bg-azul-light hover:text-azul transition-colors"
+                          >
+                            ✏️
+                          </button>
+                        )}
                       </div>
-                    ) : (
+                    ) : puedeCrear ? (
                       <button
                         onClick={() => handleOpenCert(c.id)}
                         className="text-xs font-bold px-3 py-1.5 rounded-lg bg-verde-light text-verde hover:bg-verde hover:text-white transition-colors"
                       >
                         ＋ Certificar semana
                       </button>
+                    ) : null}
+                    {puedeEliminar && (
+                      <button
+                        onClick={() => handleDesasignar(c.id, c.nom)}
+                        className="text-xs font-bold px-2 py-1.5 rounded-lg text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors"
+                      >
+                        ✕
+                      </button>
                     )}
-                    <button
-                      onClick={() => handleDesasignar(c.id, c.nom)}
-                      className="text-xs font-bold px-2 py-1.5 rounded-lg text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors"
-                    >
-                      ✕
-                    </button>
                   </div>
                 </div>
               ))

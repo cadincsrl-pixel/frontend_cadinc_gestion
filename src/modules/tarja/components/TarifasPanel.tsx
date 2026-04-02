@@ -5,6 +5,7 @@ import { useTarifasObra, useUpsertTarifa } from '../hooks/useTarifas'
 import { useCategorias } from '../hooks/useCategorias'
 import { useToast } from '@/components/ui/Toast'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
+import { usePermisos } from '@/hooks/usePermisos'
 import { toISO, getViernes, getSemLabel } from '@/lib/utils/dates'
 
 interface Props {
@@ -26,6 +27,7 @@ function buildSemanas() {
 
 export function TarifasPanel({ obraCod }: Props) {
   const toast = useToast()
+  const { puedeEditar } = usePermisos('tarja')
   const { data: categorias = [] } = useCategorias()
   const { data: tarifas = [], refetch } = useTarifasObra(obraCod)
   const { mutate: upsert } = useUpsertTarifa()
@@ -215,13 +217,15 @@ export function TarifasPanel({ obraCod }: Props) {
                         className="flex-1 min-w-0 border-b-2 border-gris-mid focus:border-naranja outline-none bg-transparent font-mono font-bold text-verde text-sm py-1 transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
                       <span className="text-xs text-gris-dark flex-shrink-0">/h</span>
-                      <button
-                        onClick={() => handleSave(cat.id)}
-                        disabled={!state.value}
-                        className="px-3 py-1 bg-naranja text-white text-xs font-bold rounded-lg hover:bg-naranja-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
-                      >
-                        ✓ Guardar
-                      </button>
+                      {puedeEditar && (
+                        <button
+                          onClick={() => handleSave(cat.id)}
+                          disabled={!state.value}
+                          className="px-3 py-1 bg-naranja text-white text-xs font-bold rounded-lg hover:bg-naranja-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                        >
+                          ✓ Guardar
+                        </button>
+                      )}
                     </div>
 
                     {/* Aviso si hay precio guardado para la semana seleccionada */}
@@ -274,7 +278,7 @@ export function TarifasPanel({ obraCod }: Props) {
                   )}
 
                   {/* Reset al global */}
-                  {esCustom && (
+                  {esCustom && puedeEditar && (
                     <button
                       onClick={() => handleResetGlobal(cat.id, cat.vh)}
                       className="mt-2 w-full text-[10px] font-bold text-gris-dark hover:text-naranja-dark transition-colors text-left py-1 border-t border-naranja/20"

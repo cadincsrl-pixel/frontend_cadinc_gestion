@@ -8,6 +8,7 @@ import { useTarjaStore } from '../store/tarja.store'
 import { exportarTarjaExcel, importarTarjaExcel } from '@/lib/utils/excel'
 import { useUpsertHorasLote } from '../hooks/useHoras'
 import { useCopiarSemanaAnterior } from '../hooks/useAsignaciones'
+import { usePermisos } from '@/hooks/usePermisos'
 import type { Personal, Categoria, Hora, Tarifa, Obra } from '@/types/domain.types'
 
 interface Props {
@@ -29,6 +30,7 @@ export function ToolbarTarja({
   onAgregarTrabajador, onAutoFill, onLimpiar, undoCount, onUndo,
 }: Props) {
   const toast = useToast()
+  const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('tarja')
   const { semActual } = useTarjaStore()
   const { mutate: upsertLote, isPending: importing } = useUpsertHorasLote()
   const { mutate: copiarSemana, isPending: copiando } = useCopiarSemanaAnterior()
@@ -107,39 +109,51 @@ export function ToolbarTarja({
       {/* Fila principal */}
       <div className="flex items-center gap-2 flex-wrap">
         <WeekNavigator obraCod={obraCod} />
-        <Button variant="primary" size="sm" onClick={onAgregarTrabajador}>
-          ＋ Trabajador
-        </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={handleCopiarSemana}
-          disabled={copiando}
-        >
-          {copiando ? '⏳ Copiando...' : '📋 Copiar sem. anterior'}
-        </Button>
-        <Button variant="secondary" size="sm" onClick={handleOpenAutoFill} disabled={!personal.length}>
-          ⚡ Auto-fill
-        </Button>
-        <Button variant="ghost" size="sm" onClick={handleLimpiar} disabled={!personal.length}>
-          🗑 Limpiar
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onUndo}
-          disabled={!undoCount}
-          title="Deshacer último cambio (Ctrl+Z)"
-        >
-          ↩ Deshacer{undoCount ? ` (${undoCount})` : ''}
-        </Button>
+        {puedeCrear && (
+          <Button variant="primary" size="sm" onClick={onAgregarTrabajador}>
+            ＋ Trabajador
+          </Button>
+        )}
+        {puedeCrear && (
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleCopiarSemana}
+            disabled={copiando}
+          >
+            {copiando ? '⏳ Copiando...' : '📋 Copiar sem. anterior'}
+          </Button>
+        )}
+        {puedeEditar && (
+          <Button variant="secondary" size="sm" onClick={handleOpenAutoFill} disabled={!personal.length}>
+            ⚡ Auto-fill
+          </Button>
+        )}
+        {puedeEliminar && (
+          <Button variant="ghost" size="sm" onClick={handleLimpiar} disabled={!personal.length}>
+            🗑 Limpiar
+          </Button>
+        )}
+        {puedeEditar && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onUndo}
+            disabled={!undoCount}
+            title="Deshacer último cambio (Ctrl+Z)"
+          >
+            ↩ Deshacer{undoCount ? ` (${undoCount})` : ''}
+          </Button>
+        )}
         <div className="flex gap-1 ml-auto">
           <Button variant="ghost" size="sm" onClick={handleExportExcel} disabled={!personal.length}>
             ⬇ Excel
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => fileRef.current?.click()} disabled={importing}>
-            {importing ? 'Importando...' : '📥 Importar'}
-          </Button>
+          {puedeEditar && (
+            <Button variant="ghost" size="sm" onClick={() => fileRef.current?.click()} disabled={importing}>
+              {importing ? 'Importando...' : '📥 Importar'}
+            </Button>
+          )}
           <input
             ref={fileRef}
             type="file"

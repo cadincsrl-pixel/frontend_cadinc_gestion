@@ -10,6 +10,7 @@ import { Badge }  from '@/components/ui/Badge'
 import { AuditInfo } from '@/components/ui/AuditInfo'
 import { useToast } from '@/components/ui/Toast'
 import { useForm } from 'react-hook-form'
+import { usePermisos } from '@/hooks/usePermisos'
 import type { Chofer } from '@/types/domain.types'
 
 const ESTADO_OPTIONS = [
@@ -20,6 +21,7 @@ const ESTADO_OPTIONS = [
 
 export function ChoferesTab() {
   const toast = useToast()
+  const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('logistica')
   const { data: choferes = [] } = useChoferes()
   const { mutate: create, isPending: creating } = useCreateChofer()
   const { mutate: update, isPending: updating } = useUpdateChofer()
@@ -83,7 +85,9 @@ export function ChoferesTab() {
   return (
     <>
       <div className="flex justify-end">
-        <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)}>＋ Nuevo chofer</Button>
+        {puedeCrear && (
+          <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)}>＋ Nuevo chofer</Button>
+        )}
       </div>
 
       <div className="bg-white rounded-card shadow-card overflow-hidden">
@@ -113,8 +117,8 @@ export function ChoferesTab() {
                   />
                 </td>
                 <td className="px-4 py-3 flex gap-1 justify-end">
-                  <button onClick={() => openEdit(c)} className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors">✏️</button>
-                  <button onClick={() => handleDelete(c)} className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors">✕</button>
+                  {puedeEditar && <button onClick={() => openEdit(c)} className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors">✏️</button>}
+                  {puedeEliminar && <button onClick={() => handleDelete(c)} className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors">✕</button>}
                 </td>
               </tr>
             ))}
