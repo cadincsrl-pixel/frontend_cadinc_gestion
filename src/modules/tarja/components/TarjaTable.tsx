@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTarjaStore } from '../store/tarja.store'
 import { useHorasSemana, useUpsertHora } from '../hooks/useHoras'
 import { useQuitarDeSemana } from '../hooks/useAsignaciones'
@@ -10,6 +10,8 @@ import { usePermisos } from '@/hooks/usePermisos'
 import { getSemDays, toISO, esFinde, esJueves, esHoy, DIAS } from '@/lib/utils/dates'
 import { costoLeg, getVHenFecha, fmtMonto } from '@/lib/utils/costos'
 import { useToast } from '@/components/ui/Toast'
+import { useQuery } from '@tanstack/react-query'
+import { apiGet } from '@/lib/api/client'
 import type { Personal, Categoria, Hora, Tarifa } from '@/types/domain.types'
 
 interface Props {
@@ -86,6 +88,25 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
 
   const getH = (leg: string, fecha: string): number =>
     horasMap[leg]?.[fecha] ?? 0
+
+  // Detectar trabajadores en múltiples obras esta semana
+  const { data: horasSemana = [] } = useQuery({
+    queryKey: ['horas', 'semana', desde, hasta],
+    queryFn: () => apiGet<Hora[]>(`/api/horas/all?desde=${desde}&hasta=${hasta}`),
+  })
+
+  const multiObra = useMemo(() => {
+    const legObras = new Map<string, Set<string>>()
+    horasSemana.forEach(h => {
+      if (!legObras.has(h.leg)) legObras.set(h.leg, new Set())
+      legObras.get(h.leg)!.add(h.obra_cod)
+    })
+    return new Set(
+      [...legObras.entries()]
+        .filter(([, obras]) => obras.size > 1)
+        .map(([leg]) => leg)
+    )
+  }, [horasSemana])
 
   // Totales usando la categoría efectiva (catObra override) de cada trabajador
   const { totalHs, totalCosto } = (() => {
@@ -253,7 +274,17 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                     {p.leg}
                   </td>
                   <td className="px-3 py-1.5 whitespace-nowrap">
-                    <div className="font-bold text-sm">{p.nom}</div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-sm">{p.nom}</span>
+                      {multiObra.has(p.leg) && (
+                        <span
+                          className="text-[10px] font-bold bg-[#E0A800] text-white px-1.5 py-0.5 rounded"
+                          title="Este trabajador tiene horas en otra obra esta semana"
+                        >
+                          ↔
+                        </span>
+                      )}
+                    </div>
                     {lastHora?.updated_by && (
                       <div className="text-[9px] text-gris-dark leading-tight mt-0.5">
                         ✎ {perfiles.get(lastHora.updated_by) ?? '…'}
