@@ -46,7 +46,7 @@ export function useQuitarDeSemana() {
     mutationFn: async ({ obraCod, leg, desde, hasta }: {
       obraCod: string; leg: string; desde: string; hasta: string
     }) => {
-      return apiDelete(`/api/horas/${encodeURIComponent(obraCod)}/${leg}/semana?desde=${desde}&hasta=${hasta}`)
+      return apiDelete(`/api/horas/${encodeURIComponent(obraCod)}/semana?desde=${desde}&hasta=${hasta}&leg=${encodeURIComponent(leg)}`)
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: PERSONAL_SEMANA_KEY })
