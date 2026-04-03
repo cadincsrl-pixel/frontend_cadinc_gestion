@@ -29,7 +29,7 @@ export function TarjaResumenPage() {
   const [busqueda, setBusqueda] = useState('')
   const setTopbarAccion = useUIStore(s => s.setTopbarAccion)
 
-  // Datos globales para stats
+  // Datos globales para stats — todas las horas históricas
   const { data: todasHoras = [] } = useQuery({
     queryKey: ['horas', 'all'],
     queryFn: () => apiGet<Hora[]>('/api/horas/all'),

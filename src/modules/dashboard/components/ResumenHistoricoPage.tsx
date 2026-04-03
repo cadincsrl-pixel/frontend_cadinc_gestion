@@ -111,11 +111,11 @@ export function ResumenHistoricoPage() {
           h.fecha >= toISO(semActualDays[0]!) &&
           h.fecha <= toISO(semActualDays[6]!)
       )
-      const legsAsignados = getLegsActivos(o.cod, semActualKey)
+      const legsConHoras = [...new Set(horasObra.map(h => h.leg))]
 
       let oHs = 0
       let oCosto = 0
-      legsAsignados.forEach(leg => {
+      legsConHoras.forEach(leg => {
         trabajadoresUnicos.add(leg)
         const hs = totalHsLeg(todasHoras, o.cod, leg, semActualDays.map(toISO))
         oHs += hs
@@ -131,7 +131,7 @@ export function ResumenHistoricoPage() {
       totalCosto += oCosto
       totalContrat += oContrat
 
-      return { obra: o, hs: oHs, costo: oCosto, contrat: oContrat, legs: legsAsignados.length }
+      return { obra: o, hs: oHs, costo: oCosto, contrat: oContrat, legs: legsConHoras.length }
     }).filter(c => c.hs > 0 || c.contrat > 0)
 
     return { cards, totalHs, totalCosto, totalContrat, trabajadores: trabajadoresUnicos.size }
@@ -167,15 +167,16 @@ export function ResumenHistoricoPage() {
 
       seenKeys.forEach(sk => {
         const days = getSemDays(new Date(sk + 'T12:00:00'))
-        // Obtener legs que tienen horas esa semana en esta obra
+        // Obtener legs desde las horas reales (no desde asignaciones)
+        // para no perder workers con horas pero sin asignación formal
         const horasSem = todasHoras.filter(
           h => h.obra_cod === o.cod &&
             h.fecha >= toISO(days[0]!) &&
             h.fecha <= toISO(days[6]!)
         )
-        const legsActivos = getLegsActivos(o.cod, sk)
+        const legsConHoras = [...new Set(horasSem.map(h => h.leg))]
 
-        legsActivos.forEach(leg => {
+        legsConHoras.forEach(leg => {
           const hs = totalHsLeg(todasHoras, o.cod, leg, days.map(toISO))
           if (hs > 0) legsUnicos.add(leg)
           oHs += hs
