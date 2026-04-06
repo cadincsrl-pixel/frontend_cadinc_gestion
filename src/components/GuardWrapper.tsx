@@ -14,7 +14,7 @@ export function GuardWrapper({ modulo, children }: Props) {
   const profile = useSessionStore(s => s.profile)
   const hasModulo = useSessionStore(s => s.hasModulo)
   const [checked, setChecked] = useState(false)
-
+  console.log('test')
   useEffect(() => {
     if (profile === null) return
     if (!hasModulo(modulo)) {
