@@ -483,14 +483,6 @@ export function ResumenHistoricoPage() {
 
           {/* Chips totales históricos */}
           <div className="flex gap-2 flex-wrap">
-            <Chip value={fmtHs(resumenHistorico.htHs)} label="Hs totales" />
-            <Chip value={fmtMonto(resumenHistorico.htCosto)} label="Operarios" variant="green" />
-            <Chip value={fmtMonto(resumenHistorico.htContrat)} label="Contratistas" />
-            <Chip
-              value={fmtMonto(resumenHistorico.htCosto + resumenHistorico.htContrat)}
-              label="Total histórico"
-              variant="orange"
-            />
             <Chip value={resumenHistorico.htSemsCerradas} label="Sem. cerradas" />
           </div>
         </div>
