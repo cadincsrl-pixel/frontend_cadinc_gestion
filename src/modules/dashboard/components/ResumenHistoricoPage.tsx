@@ -483,6 +483,14 @@ export function ResumenHistoricoPage() {
 
           {/* Chips totales históricos */}
           <div className="flex gap-2 flex-wrap">
+            <Chip value={fmtHs(resumenHistorico.htHs)} label="Hs totales" />
+            <Chip value={fmtMonto(resumenHistorico.htCosto)} label="Operarios" variant="green" />
+            <Chip value={fmtMonto(resumenHistorico.htContrat)} label="Contratistas" />
+            <Chip
+              value={fmtMonto(resumenHistorico.htCosto + resumenHistorico.htContrat)}
+              label="Total histórico"
+              variant="orange"
+            />
             <Chip value={resumenHistorico.htSemsCerradas} label="Sem. cerradas" />
           </div>
         </div>
@@ -503,14 +511,26 @@ export function ResumenHistoricoPage() {
                     Trabajadores
                   </th>
                   <th className="bg-azul text-white text-[11px] font-bold px-3 py-2.5 text-center uppercase tracking-wide">
+                    Horas totales
+                  </th>
+                  <th className="bg-azul text-white text-[11px] font-bold px-3 py-2.5 text-center uppercase tracking-wide">
                     Sem. cerradas
+                  </th>
+                  <th className="bg-azul text-white text-[11px] font-bold px-3 py-2.5 text-right uppercase tracking-wide">
+                    Operarios
+                  </th>
+                  <th className="bg-azul text-[#7DD9A2] text-[11px] font-bold px-3 py-2.5 text-right uppercase tracking-wide">
+                    Contratistas
+                  </th>
+                  <th className="bg-azul text-naranja text-[11px] font-bold px-3 py-2.5 text-right uppercase tracking-wide">
+                    Total
                   </th>
                 </tr>
               </thead>
               <tbody>
                 {resumenHistorico.filas.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="text-center py-8 text-gris-dark text-sm">
+                    <td colSpan={8} className="text-center py-8 text-gris-dark text-sm">
                       No hay datos para el período seleccionado.
                     </td>
                   </tr>
@@ -537,14 +557,47 @@ export function ResumenHistoricoPage() {
                             </span>
                           )}
                         </td>
+                        <td className="px-3 py-2.5 border-b border-gris text-center font-mono font-bold text-sm">
+                          {fmtHs(f.hs)}
+                        </td>
                         <td className="px-3 py-2.5 border-b border-gris text-center">
                           <span className="bg-verde-light text-verde text-xs font-bold px-2 py-0.5 rounded">
                             {f.cerradas}
                           </span>
                         </td>
+                        <td className="px-3 py-2.5 border-b border-gris text-right font-mono font-bold text-sm text-verde">
+                          {fmtMonto(f.costo)}
+                        </td>
+                        <td className="px-3 py-2.5 border-b border-gris text-right font-mono font-bold text-sm text-[#5A2D82]">
+                          {f.contrat > 0 ? fmtMonto(f.contrat) : '—'}
+                        </td>
+                        <td className="px-3 py-2.5 border-b border-gris text-right font-mono font-bold text-sm text-naranja">
+                          {fmtMonto(f.costo + f.contrat)}
+                        </td>
                       </tr>
                     ))}
 
+                    {/* Fila TOTAL */}
+                    <tr>
+                      <td colSpan={3} className="bg-azul text-white font-display text-base tracking-wide px-3 py-2.5">
+                        TOTAL EMPRESA
+                      </td>
+                      <td className="bg-azul text-[#7DD9A2] font-mono font-bold text-sm text-center px-3 py-2.5">
+                        {fmtHs(resumenHistorico.htHs)}
+                      </td>
+                      <td className="bg-azul text-[#7DD9A2] font-mono font-bold text-sm text-center px-3 py-2.5">
+                        {resumenHistorico.htSemsCerradas}
+                      </td>
+                      <td className="bg-azul text-[#7DD9A2] font-mono font-bold text-sm text-right px-3 py-2.5">
+                        {fmtMonto(resumenHistorico.htCosto)}
+                      </td>
+                      <td className="bg-azul text-[#C39BD3] font-mono font-bold text-sm text-right px-3 py-2.5">
+                        {fmtMonto(resumenHistorico.htContrat)}
+                      </td>
+                      <td className="bg-azul text-naranja font-mono font-bold text-base text-right px-3 py-2.5">
+                        {fmtMonto(resumenHistorico.htCosto + resumenHistorico.htContrat)}
+                      </td>
+                    </tr>
                   </>
                 )}
               </tbody>
