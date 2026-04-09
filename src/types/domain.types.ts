@@ -367,3 +367,23 @@ export interface HerrStats {
   enObras:            number
   ultimosMovimientos: HerrMovimiento[]
 }
+
+// ── Remitos generales ──
+export interface RemitoItem {
+  id?:          number
+  descripcion:  string
+  cantidad:     number
+  unidad:       string
+  obs?:         string | null
+}
+
+export interface Remito extends AuditFields {
+  id:       number
+  numero:   string
+  fecha:    string
+  origen:   string
+  destino:  string
+  estado:   'borrador' | 'emitido'
+  obs?:     string | null
+  items:    RemitoItem[]
+}

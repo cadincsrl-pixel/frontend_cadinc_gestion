@@ -304,8 +304,8 @@ export function HerrInventario() {
                     </td>
                     <td className="px-4 py-3">
                       {h.obra ? (
-                        <span className="font-mono text-xs bg-naranja-light text-naranja-dark px-2 py-0.5 rounded font-bold">
-                          {h.obra.cod}
+                        <span className="text-xs bg-naranja-light text-naranja-dark px-2 py-0.5 rounded font-bold">
+                          {h.obra.nom}
                         </span>
                       ) : (
                         <span className="text-xs text-gris-dark">Depósito</span>
