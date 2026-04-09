@@ -8,8 +8,10 @@ import {
   useRegistrarMovimiento,
 } from '../hooks/useHerramientas'
 import { useObras } from '@/modules/tarja/hooks/useObras'
-import { useToast } from '@/components/ui/Toast'
-import { Button } from '@/components/ui/Button'
+import { useToast }   from '@/components/ui/Toast'
+import { Button }    from '@/components/ui/Button'
+import { Combobox }  from '@/components/ui/Combobox'
+import type { Herramienta, HerrMovTipo, Obra } from '@/types/domain.types'
 
 function fmtFecha(s: string) {
   const d = new Date(s)
@@ -286,46 +288,34 @@ export function HerrMovimientos() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
 
           {/* Herramienta */}
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">
-              Herramienta *
-            </label>
-            <select
-              value={herrSel}
-              onChange={e => onHerrChange(e.target.value)}
-              className="w-full px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja transition-colors bg-white"
-            >
-              <option value="">— Seleccioná —</option>
-              {herramientas
-                .filter(h => h.estado_key !== 'baja')
-                .map(h => (
-                  <option key={h.id} value={String(h.id)}>
-                    [{h.codigo}] {h.nom} — {h.estado?.nom ?? h.estado_key}
-                    {h.obra ? ` (${h.obra.nom})` : ''}
-                  </option>
-                ))
-              }
-            </select>
-          </div>
+          <Combobox
+            label="Herramienta *"
+            placeholder="Buscar por código, nombre o marca..."
+            options={herramientas
+              .filter((h: Herramienta) => h.estado_key !== 'baja')
+              .map((h: Herramienta) => ({
+                value: String(h.id),
+                label: `[${h.codigo}] ${h.nom}`,
+                sub:   `${h.estado?.nom ?? h.estado_key}${h.obra ? ` · ${h.obra.nom}` : ''}${h.marca ? ` · ${h.marca}` : ''}`,
+              }))
+            }
+            value={herrSel}
+            onChange={onHerrChange}
+          />
 
           {/* Tipo de movimiento */}
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">
-              Tipo de movimiento *
-            </label>
-            <select
-              value={tipoMov}
-              onChange={e => { setTipoMov(e.target.value); setObraDestino('') }}
-              className="w-full px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja transition-colors bg-white"
-              disabled={!herrSel}
-            >
-              {tiposDisponibles.map(t => (
-                <option key={t.key} value={t.key}>
-                  {t.icono} {t.nom}
-                </option>
-              ))}
-            </select>
-          </div>
+          <Combobox
+            label="Tipo de movimiento *"
+            placeholder="Buscar tipo..."
+            options={tiposDisponibles.map((t: HerrMovTipo) => ({
+              value: t.key,
+              label: `${t.icono} ${t.nom}`,
+              sub:   t.descripcion ?? '',
+            }))}
+            value={tipoMov}
+            onChange={v => { setTipoMov(v); setObraDestino('') }}
+            disabled={!herrSel}
+          />
 
         </div>
 
@@ -378,24 +368,16 @@ export function HerrMovimientos() {
               </div>
             )}
             {campos.destino && (
-              <div className="flex flex-col gap-1">
-                <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">
-                  Obra destino *
-                </label>
-                <select
-                  value={obraDestino}
-                  onChange={e => setObraDestino(e.target.value)}
-                  className="w-full px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja transition-colors bg-white"
-                >
-                  <option value="">— Seleccioná obra —</option>
-                  {obras
-                    .filter(o => o.cod !== obraOrigen)
-                    .map(o => (
-                      <option key={o.cod} value={o.cod}>{o.nom} ({o.cod})</option>
-                    ))
-                  }
-                </select>
-              </div>
+              <Combobox
+                label="Obra destino *"
+                placeholder="Buscar obra por nombre o código..."
+                options={obras
+                  .filter((o: Obra) => o.cod !== obraOrigen)
+                  .map((o: Obra) => ({ value: o.cod, label: o.nom, sub: o.cod }))
+                }
+                value={obraDestino}
+                onChange={setObraDestino}
+              />
             )}
           </div>
         )}
