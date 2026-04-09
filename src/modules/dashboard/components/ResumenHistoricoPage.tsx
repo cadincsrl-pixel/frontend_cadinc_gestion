@@ -349,19 +349,24 @@ export function ResumenHistoricoPage() {
               const totalPrestamos = todosPrestamos
                 .filter(p => p.sem_key === semActualKey)
                 .reduce((s, p) => p.tipo === 'otorgado' ? s + p.monto : s - p.monto, 0)
-              return totalPrestamos !== 0 ? (
-                <Chip
-                  value={fmtMonto(Math.abs(totalPrestamos))}
-                  label={totalPrestamos > 0 ? 'Préstamos' : 'Descuentos'}
-                  variant="orange"
-                />
-              ) : null
+              const totalSemana = resumenSemActual.totalCosto + resumenSemActual.totalContrat + totalPrestamos
+              return (
+                <>
+                  {totalPrestamos !== 0 && (
+                    <Chip
+                      value={fmtMonto(Math.abs(totalPrestamos))}
+                      label={totalPrestamos > 0 ? 'Préstamos' : 'Descuentos'}
+                      variant="orange"
+                    />
+                  )}
+                  <Chip
+                    value={fmtMonto(totalSemana)}
+                    label="Total semana"
+                    variant="orange"
+                  />
+                </>
+              )
             })()}
-            <Chip
-              value={fmtMonto(resumenSemActual.totalCosto + resumenSemActual.totalContrat)}
-              label="Total semana"
-              variant="orange"
-            />
           </div>
         </div>
 
