@@ -12,13 +12,16 @@ import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
 import { useToast } from '@/components/ui/Toast'
 
 const schema = z.object({
-  leg: z.string().min(1, 'El legajo es requerido'),
-  nom: z.string().min(1, 'El nombre es requerido'),
-  dni: z.string().optional(),
-  cat_id: z.coerce.number({ error: 'La categoría es requerida' }).min(1, 'Seleccioná una categoría'),
-  tel: z.string().optional(),
-  dir: z.string().optional(),
-  obs: z.string().optional(),
+  leg:            z.string().min(1, 'El legajo es requerido'),
+  nom:            z.string().min(1, 'El nombre es requerido'),
+  dni:            z.string().optional(),
+  cat_id:         z.coerce.number({ error: 'La categoría es requerida' }).min(1, 'Seleccioná una categoría'),
+  tel:            z.string().optional(),
+  dir:            z.string().optional(),
+  obs:            z.string().optional(),
+  talle_pantalon: z.string().optional(),
+  talle_botines:  z.string().optional(),
+  talle_camisa:   z.string().optional(),
 })
 
 type FormData = z.infer<typeof schema>
@@ -113,6 +116,30 @@ export function ModalNuevoTrabajador({ open, onClose }: Props) {
           placeholder="Notas adicionales"
           {...register('obs')}
         />
+
+        {/* Ropa de trabajo */}
+        <div>
+          <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-2">
+            👕 Ropa de trabajo
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <Input
+              label="Pantalón"
+              placeholder="Ej: 44"
+              {...register('talle_pantalon')}
+            />
+            <Input
+              label="Botines"
+              placeholder="Ej: 42"
+              {...register('talle_botines')}
+            />
+            <Input
+              label="Camisa"
+              placeholder="Ej: L"
+              {...register('talle_camisa')}
+            />
+          </div>
+        </div>
       </div>
     </Modal>
   )

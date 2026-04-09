@@ -15,12 +15,15 @@ import { AuditInfo } from '@/components/ui/AuditInfo'
 import type { Personal } from '@/types/domain.types'
 
 const schema = z.object({
-  nom: z.string().min(1, 'El nombre es requerido'),
-  dni: z.string().optional(),
-  cat_id: z.coerce.number().min(1, 'Seleccioná una categoría'),
-  tel: z.string().optional(),
-  dir: z.string().optional(),
-  obs: z.string().optional(),
+  nom:            z.string().min(1, 'El nombre es requerido'),
+  dni:            z.string().optional(),
+  cat_id:         z.coerce.number().min(1, 'Seleccioná una categoría'),
+  tel:            z.string().optional(),
+  dir:            z.string().optional(),
+  obs:            z.string().optional(),
+  talle_pantalon: z.string().optional(),
+  talle_botines:  z.string().optional(),
+  talle_camisa:   z.string().optional(),
 })
 
 type FormData = z.infer<typeof schema>
@@ -44,12 +47,15 @@ export function ModalEditarTrabajador({ open, onClose, trabajador }: Props) {
   useEffect(() => {
     if (trabajador) {
       reset({
-        nom: trabajador.nom,
-        dni: trabajador.dni ?? '',
-        cat_id: trabajador.cat_id,
-        tel: trabajador.tel ?? '',
-        dir: trabajador.dir ?? '',
-        obs: trabajador.obs ?? '',
+        nom:            trabajador.nom,
+        dni:            trabajador.dni ?? '',
+        cat_id:         trabajador.cat_id,
+        tel:            trabajador.tel ?? '',
+        dir:            trabajador.dir ?? '',
+        obs:            trabajador.obs ?? '',
+        talle_pantalon: trabajador.talle_pantalon ?? '',
+        talle_botines:  trabajador.talle_botines  ?? '',
+        talle_camisa:   trabajador.talle_camisa   ?? '',
       })
     }
   }, [trabajador, reset])
@@ -148,6 +154,30 @@ export function ModalEditarTrabajador({ open, onClose, trabajador }: Props) {
           placeholder="Notas adicionales"
           {...register('obs')}
         />
+
+        {/* Ropa de trabajo */}
+        <div>
+          <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-2">
+            👕 Ropa de trabajo
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <Input
+              label="Pantalón"
+              placeholder="Ej: 44"
+              {...register('talle_pantalon')}
+            />
+            <Input
+              label="Botines"
+              placeholder="Ej: 42"
+              {...register('talle_botines')}
+            />
+            <Input
+              label="Camisa"
+              placeholder="Ej: L"
+              {...register('talle_camisa')}
+            />
+          </div>
+        </div>
 
         <AuditInfo
           createdBy={trabajador?.created_by}

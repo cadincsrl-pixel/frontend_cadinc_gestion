@@ -79,6 +79,20 @@ export function ModalDetalleTrabajador({ open, onClose, trabajador, onEditar }: 
           )}
         </div>
 
+        {/* Ropa de trabajo */}
+        {(trabajador.talle_pantalon || trabajador.talle_botines || trabajador.talle_camisa) && (
+          <div>
+            <h3 className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-3">
+              👕 Ropa de trabajo
+            </h3>
+            <div className="grid grid-cols-3 gap-3">
+              <InfoField label="Pantalón" value={trabajador.talle_pantalon} />
+              <InfoField label="Botines"  value={trabajador.talle_botines}  />
+              <InfoField label="Camisa"   value={trabajador.talle_camisa}   />
+            </div>
+          </div>
+        )}
+
         {/* Historial de categorías */}
         <div>
           <h3 className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-3">

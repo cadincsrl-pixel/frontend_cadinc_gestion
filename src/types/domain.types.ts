@@ -49,6 +49,9 @@ export interface Personal extends AuditFields {
   tel: string | null
   dir: string | null
   obs: string | null
+  talle_pantalon: string | null
+  talle_botines:  string | null
+  talle_camisa:   string | null
   personal_cat_historial: CatHistorial[]
 }
 
@@ -60,6 +63,9 @@ export interface CreatePersonalDto {
   tel?: string
   dir?: string
   obs?: string
+  talle_pantalon?: string
+  talle_botines?:  string
+  talle_camisa?:   string
 }
 
 export interface UpdatePersonalDto {
@@ -69,6 +75,9 @@ export interface UpdatePersonalDto {
   tel?: string
   dir?: string
   obs?: string
+  talle_pantalon?: string
+  talle_botines?:  string
+  talle_camisa?:   string
 }
 
 // ── Categorías ──
