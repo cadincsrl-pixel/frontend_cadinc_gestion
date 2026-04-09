@@ -12,7 +12,8 @@ interface SidebarProps {
 const NAV_ITEMS_TARJA = [
   { href: '/tarja',            icon: '📋', label: 'Tarja',              meta: 'Control de horas',     exact: false },
   { href: '/dashboard', icon: '📊', label: 'Resumen General', meta: 'Resumen general e histórico', exact: false },
-  { href: '/horas-trabajador', icon: '👤', label: 'Horas x Trabajador', meta: 'Historial individual', exact: false },
+  { href: '/horas-trabajador',  icon: '👤', label: 'Horas x Trabajador', meta: 'Historial individual', exact: false },
+  { href: '/tarja/prestamos',  icon: '💵', label: 'Préstamos',          meta: 'Préstamos y descuentos', exact: false },
   { href: '/personal',         icon: '👷', label: 'Personal',           meta: 'Gestión de nómina',    exact: false },
   { href: '/configuracion',    icon: '⚙️', label: 'Configuración',      meta: 'Categorías y tarifas', exact: false },
   { href: '/tarja/archivadas', icon: '📦', label: 'Obras archivadas',   meta: 'Historial de obras',   exact: true  },
@@ -45,7 +46,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     if (item.exact) return decodedPathname === item.href
     if (item.href === '/tarja') {
       return decodedPathname.startsWith('/tarja') &&
-             decodedPathname !== '/tarja/archivadas'
+             decodedPathname !== '/tarja/archivadas' &&
+             !decodedPathname.startsWith('/tarja/prestamos')
     }
     return decodedPathname.startsWith(item.href)
   }

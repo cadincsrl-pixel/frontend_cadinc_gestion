@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx'
-import type { Obra, Cierre, Certificacion, Contratista, Categoria, Personal, Hora, Tarifa } from '@/types/domain.types'
+import type { Obra, Cierre, Certificacion, Contratista, Categoria, Personal, Hora, Tarifa, Prestamo } from '@/types/domain.types'
 import { getSemDays, toISO, getSemLabel, getViernesCobro, getViernes, DIAS } from './dates'
 import { totalHsLeg, costoLeg } from './costos'
 
@@ -428,7 +428,8 @@ export function generarRecibos(
   tarifas: Tarifa[],
   certificaciones: Certificacion[],
   contratistas: Contratista[],
-  catObra: Array<{ obra_cod: string; leg: string; cat_id: number; desde: string }> = []
+  catObra: Array<{ obra_cod: string; leg: string; cat_id: number; desde: string }> = [],
+  prestamos: Prestamo[] = []
 ) {
   const s = new Date(semKey + 'T12:00:00')
   const days = getSemDays(s)
@@ -543,6 +544,26 @@ export function generarRecibos(
         <td style="padding:4px 8px;font-size:10px;text-align:right;border-bottom:1px solid #eee;font-family:monospace">${fmtM(ob.costo)}</td>
       </tr>`).join('')
 
+    // Préstamo/descuento de esta semana para este trabajador
+    const prestamo = prestamos.find(p => p.leg === t.p.leg && p.sem_key === semKey)
+    const totalNeto = prestamo
+      ? prestamo.tipo === 'otorgado'
+        ? t.totalCosto + prestamo.monto
+        : t.totalCosto - prestamo.monto
+      : t.totalCosto
+
+    const prestamoRow = prestamo ? `
+      <div style="padding:5px 14px;border-top:1px dashed #d0d0d0;display:flex;justify-content:space-between;align-items:center;background:#FAFAFA">
+        <div style="font-size:9px;color:#8A8980">
+          Jornales: <span style="font-family:monospace;color:#1C1C1E;font-weight:700">${fmtM(t.totalCosto)}</span>
+        </div>
+        <div style="font-size:9px;font-weight:700;${prestamo.tipo === 'otorgado' ? 'color:#E8621A' : 'color:#C0392B'}">
+          ${prestamo.tipo === 'otorgado' ? '+ Préstamo: ' : '− Descuento: '}
+          <span style="font-family:monospace">${fmtM(prestamo.monto)}</span>
+          ${prestamo.concepto ? `<span style="font-weight:400;color:#8A8980"> (${prestamo.concepto})</span>` : ''}
+        </div>
+      </div>` : ''
+
     recibosHTML += `
     <div style="${pb}margin-bottom:6px;border:1.5px solid #1D3F6E;border-radius:8px;overflow:hidden;font-family:Arial,sans-serif">
       <div style="background:#0F2744;color:white;padding:8px 14px;display:flex;justify-content:space-between;align-items:center">
@@ -575,6 +596,7 @@ export function generarRecibos(
         </tr></thead>
         <tbody>${obrasRows}</tbody>
       </table>
+      ${prestamoRow}
       <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 14px;background:#F0EFEB;border-top:2px solid #0F2744">
         <div style="font-size:9px;color:#8A8980">Total horas: <b style="color:#1C1C1E;font-family:monospace">${fmtH(t.totalHs)}</b></div>
         <div style="text-align:center;flex:1">
@@ -583,7 +605,7 @@ export function generarRecibos(
         </div>
         <div style="text-align:right">
           <div style="font-size:9px;color:#8A8980;text-transform:uppercase;letter-spacing:.5px">TOTAL A COBRAR</div>
-          <div style="font-size:15px;font-weight:700;color:#1A6B3C;font-family:monospace">${fmtM(t.totalCosto)}</div>
+          <div style="font-size:15px;font-weight:700;color:#1A6B3C;font-family:monospace">${fmtM(totalNeto)}</div>
         </div>
       </div>
     </div>`

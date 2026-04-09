@@ -368,6 +368,18 @@ export interface HerrStats {
   ultimosMovimientos: HerrMovimiento[]
 }
 
+// ── Préstamos ──
+export interface Prestamo {
+  id:         number
+  leg:        string
+  sem_key:    string
+  tipo:       'otorgado' | 'descontado'
+  monto:      number
+  concepto:   string | null
+  created_by: string | null
+  created_at: string
+}
+
 // ── Remitos generales ──
 export interface RemitoItem {
   id?:          number

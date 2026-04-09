@@ -11,6 +11,7 @@ import { getSemLabel, getViernes, getViernesCobro, toISO } from '@/lib/utils/dat
 import type { Obra, Personal, Categoria, Hora, Tarifa, Cierre, Certificacion, Contratista } from '@/types/domain.types'
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api/client'
+import { usePrestamos } from '../hooks/usePrestamos'
 
 
 interface Props {
@@ -40,6 +41,7 @@ export function ModalRecibos({
   obraActual, semActual,
 }: Props) {
   const toast = useToast()
+  const { data: prestamos = [] } = usePrestamos()
   const [semKey, setSemKey] = useState(semActual ? toISO(semActual) : '')
   const [empresa, setEmpresa] = useState('CADINC SRL')
   const [obrasSelec, setObrasSelec] = useState<string[]>(obras.map(o => o.cod))
@@ -191,7 +193,7 @@ export function ModalRecibos({
       semKey, empresa, obrasTarget,
       personal, categorias, horasParaRecibo, tarifas,
       certsParaRecibo, contratParaRecibo,
-      todasCatObra
+      todasCatObra, prestamos
     )
 
     if (!result) { toast('No hay datos para esta selección', 'err'); return }
