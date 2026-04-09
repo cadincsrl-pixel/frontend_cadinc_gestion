@@ -13,6 +13,7 @@ import { TarjaTopbarActions } from '@/modules/tarja/components/TarjaTopbarAction
 import { ModalNuevoTrabajador }    from './ModalNuevoTrabajador'
 import { ModalEditarTrabajador }   from './ModalEditarTrabajador'
 import { ModalDetalleTrabajador }  from './ModalDetalleTrabajador'
+import { ModalImportarPersonal }   from './ModalImportarPersonal'
 import { Button } from '@/components/ui/Button'
 import { Modal }  from '@/components/ui/Modal'
 import { Input }  from '@/components/ui/Input'
@@ -67,10 +68,11 @@ export function PersonalPage() {
   // ── Personal ──
   const { data: personal    = [], isLoading: loadingPersonal } = usePersonal()
   const { data: categorias  = [] } = useCategorias()
-  const [modalNuevo,  setModalNuevo]  = useState(false)
-  const [editando,    setEditando]    = useState<Personal | null>(null)
-  const [detalle,     setDetalle]     = useState<Personal | null>(null)
-  const [busqueda,    setBusqueda]    = useState('')
+  const [modalNuevo,    setModalNuevo]    = useState(false)
+  const [modalImportar, setModalImportar] = useState(false)
+  const [editando,      setEditando]      = useState<Personal | null>(null)
+  const [detalle,       setDetalle]       = useState<Personal | null>(null)
+  const [busqueda,      setBusqueda]      = useState('')
 
   // ── Contratistas ──
   const { data: contratistas = [], isLoading: loadingContrat } = useContratistas()
@@ -208,10 +210,15 @@ export function PersonalPage() {
           </p>
         </div>
         {tab === 'personal' && (
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <Button variant="secondary" size="sm" onClick={exportarExcel}>
               📥 Exportar Excel
             </Button>
+            {puedeCrear && (
+              <Button variant="secondary" size="sm" onClick={() => setModalImportar(true)}>
+                📤 Importar Excel
+              </Button>
+            )}
             {puedeCrear && (
               <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)}>
                 ＋ Nuevo trabajador
@@ -466,6 +473,12 @@ export function PersonalPage() {
       <ModalNuevoTrabajador
         open={modalNuevo}
         onClose={() => setModalNuevo(false)}
+      />
+      <ModalImportarPersonal
+        open={modalImportar}
+        onClose={() => setModalImportar(false)}
+        personal={personal}
+        categorias={categorias}
       />
       <ModalEditarTrabajador
         open={!!editando}
