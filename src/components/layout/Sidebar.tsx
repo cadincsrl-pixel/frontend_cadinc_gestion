@@ -13,8 +13,9 @@ const NAV_ITEMS_TARJA = [
   { href: '/tarja',            icon: '📋', label: 'Tarja',              meta: 'Control de horas',     exact: false },
   { href: '/dashboard', icon: '📊', label: 'Resumen General', meta: 'Resumen general e histórico', exact: false },
   { href: '/horas-trabajador',  icon: '👤', label: 'Horas x Trabajador', meta: 'Historial individual', exact: false },
-  { href: '/tarja/prestamos',  icon: '💵', label: 'Préstamos',          meta: 'Préstamos y descuentos', exact: false },
-  { href: '/personal',         icon: '👷', label: 'Personal',           meta: 'Gestión de nómina',    exact: false },
+  { href: '/tarja/prestamos',  icon: '💵', label: 'Préstamos',          meta: 'Préstamos y descuentos',  exact: false },
+  { href: '/tarja/ropa',       icon: '👕', label: 'Ropa de trabajo',    meta: 'Control de entregas',     exact: false },
+  { href: '/personal',         icon: '👷', label: 'Personal',           meta: 'Gestión de nómina',       exact: false },
   { href: '/configuracion',    icon: '⚙️', label: 'Configuración',      meta: 'Categorías y tarifas', exact: false },
   { href: '/tarja/archivadas', icon: '📦', label: 'Obras archivadas',   meta: 'Historial de obras',   exact: true  },
 ]
@@ -47,7 +48,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     if (item.href === '/tarja') {
       return decodedPathname.startsWith('/tarja') &&
              decodedPathname !== '/tarja/archivadas' &&
-             !decodedPathname.startsWith('/tarja/prestamos')
+             !decodedPathname.startsWith('/tarja/prestamos') &&
+             !decodedPathname.startsWith('/tarja/ropa')
     }
     return decodedPathname.startsWith(item.href)
   }

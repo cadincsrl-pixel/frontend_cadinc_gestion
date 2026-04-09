@@ -49,9 +49,10 @@ export interface Personal extends AuditFields {
   tel: string | null
   dir: string | null
   obs: string | null
-  talle_pantalon: string | null
-  talle_botines:  string | null
-  talle_camisa:   string | null
+  talle_pantalon:  string | null
+  talle_botines:   string | null
+  talle_camisa:    string | null
+  activo_override: boolean | null
   personal_cat_historial: CatHistorial[]
 }
 
@@ -75,9 +76,10 @@ export interface UpdatePersonalDto {
   tel?: string
   dir?: string
   obs?: string
-  talle_pantalon?: string
-  talle_botines?:  string
-  talle_camisa?:   string
+  talle_pantalon?:  string
+  talle_botines?:   string
+  talle_camisa?:    string
+  activo_override?: boolean | null
 }
 
 // ── Categorías ──
@@ -375,6 +377,24 @@ export interface HerrStats {
   bajas:              number
   enObras:            number
   ultimosMovimientos: HerrMovimiento[]
+}
+
+// ── Ropa de trabajo ──
+export interface RopaCategoria {
+  id:     number
+  nombre: string
+  icono:  string | null
+  activo: boolean
+}
+
+export interface RopaEntrega {
+  id:            number
+  leg:           string
+  categoria_id:  number
+  fecha_entrega: string
+  obs:           string | null
+  created_by:    string | null
+  created_at:    string
 }
 
 // ── Préstamos ──

@@ -1,8 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { apiGet } from '@/lib/api/client'
 import { usePersonal } from '@/modules/tarja/hooks/usePersonal'
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
+import { toISO, getViernes } from '@/lib/utils/dates'
+import type { Hora } from '@/types/domain.types'
 import { useContratistas, useCreateContratista, useUpdateContratista, useDeleteContratista } from '@/modules/tarja/hooks/useContratistas'
 import { TarjaTopbarActions } from '@/modules/tarja/components/TarjaTopbarActions'
 import { ModalNuevoTrabajador }    from './ModalNuevoTrabajador'
@@ -35,6 +39,29 @@ export function PersonalPage() {
   const toast = useToast()
   const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('personal')
   const [tab, setTab] = useState<Tab>('personal')
+
+  // ── Horas para calcular activos ──
+  const { data: todasHoras = [] } = useQuery({
+    queryKey: ['horas', 'all'],
+    queryFn: () => apiGet<Hora[]>('/api/horas/all'),
+  })
+
+  const semCorte3 = useMemo(() => {
+    const d = new Date(); d.setDate(d.getDate() - 3 * 7)
+    return toISO(getViernes(d))
+  }, [])
+
+  const legsActivos3sem = useMemo(() => new Set(
+    todasHoras
+      .filter(h => toISO(getViernes(new Date(h.fecha + 'T12:00:00'))) >= semCorte3)
+      .map(h => h.leg)
+  ), [todasHoras, semCorte3])
+
+  function esActivo(p: (typeof personal)[0]): boolean {
+    if (p.activo_override === true)  return true
+    if (p.activo_override === false) return false
+    return legsActivos3sem.has(p.leg)
+  }
 
   // ── Personal ──
   const { data: personal    = [], isLoading: loadingPersonal } = usePersonal()
@@ -237,7 +264,8 @@ export function PersonalPage() {
                     </tr>
                   ) : (
                     filtrados.map(p => {
-                      const cat = categorias.find(c => c.id === p.cat_id)
+                      const cat    = categorias.find(c => c.id === p.cat_id)
+                      const activo = esActivo(p)
                       return (
                         <tr
                           key={p.leg}
@@ -247,8 +275,11 @@ export function PersonalPage() {
                           <td className="font-mono text-xs text-gris-dark px-4 py-3 font-bold">
                             {p.leg}
                           </td>
-                          <td className="font-bold text-sm px-4 py-3 text-carbon">
-                            {p.nom}
+                          <td className="px-4 py-3">
+                            <div className="font-bold text-sm text-carbon">{p.nom}</div>
+                            <span className={`inline-block text-[10px] font-bold px-1.5 py-0.5 rounded-full mt-0.5 ${activo ? 'bg-verde-light text-verde' : 'bg-gris text-gris-dark'}`}>
+                              {activo ? '● Activo' : '○ Inactivo'}
+                            </span>
                           </td>
                           <td className="font-mono text-xs text-gris-dark px-4 py-3 hidden md:table-cell">
                             {p.dni || '—'}

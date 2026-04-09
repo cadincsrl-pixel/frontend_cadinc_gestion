@@ -15,15 +15,16 @@ import { AuditInfo } from '@/components/ui/AuditInfo'
 import type { Personal } from '@/types/domain.types'
 
 const schema = z.object({
-  nom:            z.string().min(1, 'El nombre es requerido'),
-  dni:            z.string().optional(),
-  cat_id:         z.coerce.number().min(1, 'Seleccioná una categoría'),
-  tel:            z.string().optional(),
-  dir:            z.string().optional(),
-  obs:            z.string().optional(),
-  talle_pantalon: z.string().optional(),
-  talle_botines:  z.string().optional(),
-  talle_camisa:   z.string().optional(),
+  nom:             z.string().min(1, 'El nombre es requerido'),
+  dni:             z.string().optional(),
+  cat_id:          z.coerce.number().min(1, 'Seleccioná una categoría'),
+  tel:             z.string().optional(),
+  dir:             z.string().optional(),
+  obs:             z.string().optional(),
+  talle_pantalon:  z.string().optional(),
+  talle_botines:   z.string().optional(),
+  talle_camisa:    z.string().optional(),
+  activo_override: z.enum(['auto', 'activo', 'inactivo']).optional(),
 })
 
 type FormData = z.infer<typeof schema>
@@ -40,30 +41,38 @@ export function ModalEditarTrabajador({ open, onClose, trabajador }: Props) {
   const { mutate: updatePersonal, isPending: updating } = useUpdatePersonal()
   const { mutate: deletePersonal, isPending: deleting } = useDeletePersonal()
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
+  const { register, handleSubmit, reset, watch, setValue, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema) as any
   })
 
   useEffect(() => {
     if (trabajador) {
       reset({
-        nom:            trabajador.nom,
-        dni:            trabajador.dni ?? '',
-        cat_id:         trabajador.cat_id,
-        tel:            trabajador.tel ?? '',
-        dir:            trabajador.dir ?? '',
-        obs:            trabajador.obs ?? '',
-        talle_pantalon: trabajador.talle_pantalon ?? '',
-        talle_botines:  trabajador.talle_botines  ?? '',
-        talle_camisa:   trabajador.talle_camisa   ?? '',
+        nom:             trabajador.nom,
+        dni:             trabajador.dni ?? '',
+        cat_id:          trabajador.cat_id,
+        tel:             trabajador.tel ?? '',
+        dir:             trabajador.dir ?? '',
+        obs:             trabajador.obs ?? '',
+        talle_pantalon:  trabajador.talle_pantalon ?? '',
+        talle_botines:   trabajador.talle_botines  ?? '',
+        talle_camisa:    trabajador.talle_camisa   ?? '',
+        activo_override: trabajador.activo_override === true  ? 'activo'
+                       : trabajador.activo_override === false ? 'inactivo'
+                       : 'auto',
       })
     }
   }, [trabajador, reset])
 
   function onSubmit(data: FormData) {
     if (!trabajador) return
+    const { activo_override: ao, ...rest } = data as any
+    const dto = {
+      ...rest,
+      activo_override: ao === 'activo' ? true : ao === 'inactivo' ? false : null,
+    }
     updatePersonal(
-      { leg: trabajador.leg, dto: data },
+      { leg: trabajador.leg, dto },
       {
         onSuccess: () => {
           toast('✓ Trabajador actualizado', 'ok')
@@ -154,6 +163,40 @@ export function ModalEditarTrabajador({ open, onClose, trabajador }: Props) {
           placeholder="Notas adicionales"
           {...register('obs')}
         />
+
+        {/* Estado activo */}
+        <div>
+          <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-2">
+            Estado en el sistema
+          </div>
+          <div className="flex gap-2">
+            {(['auto', 'activo', 'inactivo'] as const).map(op => {
+              const labels = { auto: '⚙ Auto', activo: '🟢 Forzar activo', inactivo: '⚫ Forzar inactivo' }
+              const current = watch('activo_override') ?? 'auto'
+              return (
+                <button
+                  key={op}
+                  type="button"
+                  onClick={() => setValue('activo_override', op)}
+                  className={`
+                    flex-1 text-xs font-bold px-2 py-2 rounded-lg border-[1.5px] transition-all
+                    ${current === op
+                      ? op === 'activo'   ? 'bg-verde-light border-verde text-verde'
+                      : op === 'inactivo' ? 'bg-gris border-carbon text-carbon'
+                      : 'bg-azul-light border-azul text-azul'
+                      : 'bg-white border-gris-mid text-gris-dark hover:border-gris-dark'
+                    }
+                  `}
+                >
+                  {labels[op]}
+                </button>
+              )
+            })}
+          </div>
+          <p className="text-[10px] text-gris-dark mt-1">
+            Auto = activo si tuvo horas las últimas 3 semanas.
+          </p>
+        </div>
 
         {/* Ropa de trabajo */}
         <div>
