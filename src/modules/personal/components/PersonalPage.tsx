@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import * as XLSX from 'xlsx'
 import { apiGet } from '@/lib/api/client'
@@ -10,6 +10,7 @@ import { toISO, getViernes } from '@/lib/utils/dates'
 import type { Hora } from '@/types/domain.types'
 import { useContratistas, useCreateContratista, useUpdateContratista, useDeleteContratista } from '@/modules/tarja/hooks/useContratistas'
 import { TarjaTopbarActions } from '@/modules/tarja/components/TarjaTopbarActions'
+import { Pagination } from '@/components/ui/Pagination'
 import { ModalNuevoTrabajador }    from './ModalNuevoTrabajador'
 import { ModalEditarTrabajador }   from './ModalEditarTrabajador'
 import { ModalDetalleTrabajador }  from './ModalDetalleTrabajador'
@@ -73,6 +74,8 @@ export function PersonalPage() {
   const [editando,      setEditando]      = useState<Personal | null>(null)
   const [detalle,       setDetalle]       = useState<Personal | null>(null)
   const [busqueda,      setBusqueda]      = useState('')
+  const [pageP,         setPageP]         = useState(1)
+  const PAGE_SIZE_P = 15
 
   // ── Contratistas ──
   const { data: contratistas = [], isLoading: loadingContrat } = useContratistas()
@@ -91,6 +94,8 @@ export function PersonalPage() {
     p.leg.includes(busqueda) ||
     (p.dni ?? '').includes(busqueda)
   )
+  useEffect(() => { setPageP(1) }, [busqueda])
+  const filtradosPag = filtrados.slice((pageP - 1) * PAGE_SIZE_P, pageP * PAGE_SIZE_P)
 
   const filtradosC = contratistas.filter(c =>
     c.nom.toLowerCase().includes(busquedaC.toLowerCase()) ||
@@ -308,7 +313,7 @@ export function PersonalPage() {
                       </td>
                     </tr>
                   ) : (
-                    filtrados.map(p => {
+                    filtradosPag.map(p => {
                       const cat    = categorias.find(c => c.id === p.cat_id)
                       const activo = esActivo(p)
                       return (
@@ -361,6 +366,14 @@ export function PersonalPage() {
               </table>
             </div>
           </div>
+          {filtrados.length > PAGE_SIZE_P && (
+            <Pagination
+              page={pageP}
+              total={filtrados.length}
+              pageSize={PAGE_SIZE_P}
+              onChange={setPageP}
+            />
+          )}
         </>
       )}
 

@@ -6,11 +6,12 @@ import { useRopaCategorias, useRopaEntregas, useCreateRopaEntrega, useDeleteRopa
 import { usePersonal } from '../hooks/usePersonal'
 import { toISO, getViernes } from '@/lib/utils/dates'
 import { apiGet } from '@/lib/api/client'
-import { Button } from '@/components/ui/Button'
-import { Modal }  from '@/components/ui/Modal'
-import { Input }  from '@/components/ui/Input'
-import { Combobox } from '@/components/ui/Combobox'
-import { useToast } from '@/components/ui/Toast'
+import { Button }     from '@/components/ui/Button'
+import { Modal }      from '@/components/ui/Modal'
+import { Input }      from '@/components/ui/Input'
+import { Combobox }   from '@/components/ui/Combobox'
+import { Pagination } from '@/components/ui/Pagination'
+import { useToast }   from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import type { Hora, Personal, RopaEntrega } from '@/types/domain.types'
 
@@ -282,6 +283,8 @@ export function RopaPage() {
   const [modalCats,       setModalCats]       = useState(false)
   const [soloVencidos,    setSoloVencidos]    = useState(false)
   const [busqueda,        setBusqueda]        = useState('')
+  const [page,            setPage]            = useState(1)
+  const PAGE_SIZE = 10
 
   // Trabajadores activos: tuvieron horas en las últimas 3 semanas o tienen activo_override=true
   const semCorte3 = semKey(3)
@@ -362,6 +365,15 @@ export function RopaPage() {
     return lista.sort((a, b) => Number(b.tieneAlgunVencido) - Number(a.tieneAlgunVencido))
   }, [personal, legsActivos2sem, categorias, ultimaEntrega, busqueda, soloVencidos])
 
+  // Reset page when filters change
+  const trabajadoresPag = useMemo(() => {
+    setPage(1)
+    return trabajadores
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busqueda, soloVencidos])
+
+  const pagina = trabajadores.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+
   const vencidosCount = trabajadores.filter(t => t.tieneAlgunVencido).length
 
   function handleDeleteEntrega(id: number) {
@@ -428,7 +440,7 @@ export function RopaPage() {
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          {trabajadores.map(({ p, items, tieneAlgunVencido }) => (
+          {pagina.map(({ p, items, tieneAlgunVencido }) => (
             <div
               key={p.leg}
               className={`bg-white rounded-card shadow-card border-l-4 ${tieneAlgunVencido ? 'border-rojo' : 'border-verde'}`}
@@ -495,6 +507,15 @@ export function RopaPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {trabajadores.length > PAGE_SIZE && (
+        <Pagination
+          page={page}
+          total={trabajadores.length}
+          pageSize={PAGE_SIZE}
+          onChange={p => { setPage(p); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+        />
       )}
 
       {/* Modales */}
