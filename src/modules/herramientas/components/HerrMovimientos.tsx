@@ -107,7 +107,7 @@ export function HerrMovimientos() {
       {
         herramienta_id: Number(herrSel),
         tipo_key: tipoMov,
-        obra_origen_cod: campos.origen ? obraOrigen : null,
+        obra_origen_cod: campos.origen && obraOrigen ? obraOrigen : null,
         obra_destino_cod: campos.destino ? obraDestino : null,
         responsable: responsable || undefined,
         obs: obs || undefined,
