@@ -127,8 +127,8 @@ export function HerrMovimientos() {
             herramienta: {
               codigo: herr?.codigo ?? '',
               nom:    herr?.nom    ?? '',
-              marca:  herr?.marca,
-              modelo: herr?.modelo,
+              marca:  herr?.marca  ?? undefined,
+              modelo: herr?.modelo ?? undefined,
               tipo:   herr?.tipo ? `${herr.tipo.icono ?? ''} ${herr.tipo.nom}` : undefined,
             },
             obraOrigen:  origenNom,
