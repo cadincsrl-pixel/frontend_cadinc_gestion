@@ -17,6 +17,7 @@ import {
 } from '@/lib/utils/costos'
 import { Chip } from '@/components/ui/Chip'
 import type { Hora, Tarifa, Cierre, Certificacion, Contratista } from '@/types/domain.types'
+import { usePrestamos } from '@/modules/tarja/hooks/usePrestamos'
 
 export function ResumenHistoricoPage() {
   const router = useRouter()
@@ -56,6 +57,8 @@ export function ResumenHistoricoPage() {
     queryKey: ['asignaciones', 'all'],
     queryFn: () => apiGet<Array<{ obra_cod: string; leg: string; baja_desde: string | null }>>('/api/asignaciones/all'),
   })
+
+  const { data: todosPrestamos = [] } = usePrestamos()
 
   function getLegsActivos(obraCod: string, semKey: string): string[] {
     return todasAsignaciones
@@ -342,6 +345,18 @@ export function ResumenHistoricoPage() {
             <Chip value={fmtHs(resumenSemActual.totalHs)} label="Horas" />
             <Chip value={fmtMonto(resumenSemActual.totalCosto)} label="Operarios" variant="green" />
             <Chip value={fmtMonto(resumenSemActual.totalContrat)} label="Contratistas" />
+            {(() => {
+              const totalPrestamos = todosPrestamos
+                .filter(p => p.sem_key === semActualKey)
+                .reduce((s, p) => p.tipo === 'otorgado' ? s + p.monto : s - p.monto, 0)
+              return totalPrestamos !== 0 ? (
+                <Chip
+                  value={fmtMonto(Math.abs(totalPrestamos))}
+                  label={totalPrestamos > 0 ? 'Préstamos' : 'Descuentos'}
+                  variant="orange"
+                />
+              ) : null
+            })()}
             <Chip
               value={fmtMonto(resumenSemActual.totalCosto + resumenSemActual.totalContrat)}
               label="Total semana"

@@ -121,5 +121,6 @@ export function fmtMonto(n: number): string {
 }
 
 export function fmtHs(n: number): string {
-  return n > 0 ? `${n}hs` : '0hs'
+  const rounded = Math.round(n * 100) / 100
+  return rounded > 0 ? `${rounded}hs` : '0hs'
 }
