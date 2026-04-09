@@ -115,13 +115,24 @@ export function HerrInventario() {
 
   const tipoOptions = (config?.tipos ?? []).map(t => ({ value: String(t.id), label: `${t.icono ?? ''} ${t.nom}` }))
 
-  const HerrForm = ({ form, errors }: { form: any; errors: any }) => (
+  function nextCodigo() {
+    const nums = herramientas
+      .map(h => h.codigo.match(/^HER-(\d+)$/))
+      .filter(Boolean)
+      .map(m => parseInt(m![1]))
+    const max = nums.length ? Math.max(...nums) : 0
+    return `HER-${String(max + 1).padStart(3, '0')}`
+  }
+
+  const HerrForm = ({ form, errors, codigoReadOnly }: { form: any; errors: any; codigoReadOnly?: boolean }) => (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Input
           label="Código *"
           placeholder="HER-001"
           error={errors.codigo?.message}
+          readOnly={codigoReadOnly}
+          className={codigoReadOnly ? 'bg-gris cursor-not-allowed' : ''}
           {...form.register('codigo', { required: 'Requerido' })}
         />
         <Input
@@ -186,7 +197,7 @@ export function HerrInventario() {
           </p>
         </div>
         {puedeCrear && (
-          <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)}>
+          <Button variant="primary" size="sm" onClick={() => { formNuevo.setValue('codigo', nextCodigo()); setModalNuevo(true) }}>
             ＋ Nueva herramienta
           </Button>
         )}
@@ -350,7 +361,7 @@ export function HerrInventario() {
           </>
         }
       >
-        <HerrForm form={formNuevo} errors={formNuevo.formState.errors} />
+        <HerrForm form={formNuevo} errors={formNuevo.formState.errors} codigoReadOnly />
       </Modal>
 
       {/* Modal editar */}
