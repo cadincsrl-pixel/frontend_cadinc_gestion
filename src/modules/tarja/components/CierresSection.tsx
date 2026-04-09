@@ -1,16 +1,23 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
+import { useQuery }          from '@tanstack/react-query'
 import { useCierresObra, useCreateCierre, useUpdateCierre } from '../hooks/useCierres'
-import { useTarjaStore } from '../store/tarja.store'
+import { useTarjaStore }     from '../store/tarja.store'
+import { useTarifasObra }    from '../hooks/useTarifas'
+import { useCategorias }     from '../hooks/useCategorias'
+import { usePersonal }       from '../hooks/usePersonal'
 import { getSemDays, toISO, getSemLabel, getViernesCobro } from '@/lib/utils/dates'
+import { calcularTotalesSemana, fmtMonto, fmtHs } from '@/lib/utils/costos'
+import { apiGet }            from '@/lib/api/client'
 import { ModalDetalleCierre } from './ModalDetalleCierre'
-import { Badge } from '@/components/ui/Badge'
+import { Badge }  from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
-import { useToast } from '@/components/ui/Toast'
+import { Chip }   from '@/components/ui/Chip'
+import { useToast }       from '@/components/ui/Toast'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
-import { usePermisos } from '@/hooks/usePermisos'
-import type { Cierre } from '@/types/domain.types'
+import { usePermisos }    from '@/hooks/usePermisos'
+import type { Cierre, Hora, Certificacion, Personal } from '@/types/domain.types'
 
 interface Props {
   obraCod: string
@@ -29,6 +36,28 @@ export function CierresSection({ obraCod }: Props) {
   const semKey = toISO(semActual)
   const cierreActual = cierres.find(c => c.sem_key === semKey)
   const perfiles = usePerfilesMap()
+
+  // Datos para calcular totales por cierre
+  const { data: todasHoras  = [] } = useQuery({ queryKey: ['horas', 'all'],   queryFn: () => apiGet<Hora[]>('/api/horas/all') })
+  const { data: todasCerts  = [] } = useQuery({ queryKey: ['certs', 'all'],   queryFn: () => apiGet<Certificacion[]>('/api/contratistas/cert/all') })
+  const { data: tarifas     = [] } = useTarifasObra(obraCod)
+  const { data: categorias  = [] } = useCategorias()
+  const { data: personal    = [] } = usePersonal()
+
+  const personalObra = useMemo(() => {
+    const legs = new Set(todasHoras.filter(h => h.obra_cod === obraCod).map(h => h.leg))
+    return personal.filter((p: Personal) => legs.has(p.leg))
+  }, [todasHoras, personal, obraCod])
+
+  function totalesCierre(semKey: string) {
+    const vie  = new Date(semKey + 'T12:00:00')
+    const days = getSemDays(vie)
+    const { totalHs, totalCosto } = calcularTotalesSemana(todasHoras, personalObra, categorias, tarifas, obraCod, days)
+    const totalContrat = todasCerts
+      .filter(c => c.obra_cod === obraCod && c.sem_key === semKey)
+      .reduce((s, c) => s + c.monto, 0)
+    return { totalHs, totalCosto, totalContrat }
+  }
 
   function handleCrearCierre() {
     createCierre(
@@ -99,6 +128,7 @@ export function CierresSection({ obraCod }: Props) {
                 const days = getSemDays(vie)
                 const cobro = getViernesCobro(vie)
                 const esActual = cierre.sem_key === semKey
+                const { totalHs, totalCosto, totalContrat } = totalesCierre(cierre.sem_key)
 
                 return (
                   <div
@@ -135,6 +165,21 @@ export function CierresSection({ obraCod }: Props) {
                             💰 Cobro: {formatFecha(toISO(cobro))}
                           </span>
                         </div>
+                        {/* Chips totales */}
+                        {(totalHs > 0 || totalContrat > 0) && (
+                          <div className="flex gap-2 flex-wrap mt-2">
+                            {totalHs > 0 && (
+                              <Chip value={fmtHs(totalHs)} label="Horas" />
+                            )}
+                            {totalCosto > 0 && (
+                              <Chip value={fmtMonto(totalCosto)} label="Operarios" variant="green" />
+                            )}
+                            {totalContrat > 0 && (
+                              <Chip value={fmtMonto(totalContrat)} label="Contratistas" />
+                            )}
+                          </div>
+                        )}
+
                         {cierre.cerrado_en && (
                           <div className="text-xs text-verde mt-1 font-semibold">
                             ✓ Cerrado el {formatFecha(cierre.cerrado_en.slice(0, 10))}
