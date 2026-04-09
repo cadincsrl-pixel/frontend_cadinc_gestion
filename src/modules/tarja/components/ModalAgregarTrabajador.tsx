@@ -1,9 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { Modal } from '@/components/ui/Modal'
-import { Select } from '@/components/ui/Select'
-import { Button } from '@/components/ui/Button'
+import { Modal }    from '@/components/ui/Modal'
+import { Combobox } from '@/components/ui/Combobox'
+import { Button }   from '@/components/ui/Button'
 import { usePersonal } from '@/modules/tarja/hooks/usePersonal'
 import { useAgregarASemana } from '@/modules/tarja/hooks/useAsignaciones'
 import { useToast } from '@/components/ui/Toast'
@@ -70,14 +70,15 @@ export function ModalAgregarTrabajador({ open, onClose, obraCod, semActual, pers
         <div className="bg-azul-light text-azul text-xs font-bold px-3 py-2 rounded-lg">
           Semana: {getSemLabel(semActual)}
         </div>
-        <Select
+        <Combobox
           label="Seleccioná trabajador"
-          placeholder="Elegí"
+          placeholder="Buscar por nombre o legajo..."
           value={legSel}
-          onChange={e => setLegSel(e.target.value)}
+          onChange={setLegSel}
           options={disponibles.map(p => ({
             value: p.leg,
-            label: `${p.leg} — ${p.nom}`,
+            label: p.nom,
+            sub: `Leg. ${p.leg}`,
           }))}
         />
         {disponibles.length === 0 && (

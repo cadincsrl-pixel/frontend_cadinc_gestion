@@ -51,30 +51,39 @@ function ModalEntrega({ open, legInicial, onClose }: ModalEntregaProps) {
   const { data: personal   = [] } = usePersonal()
   const { mutate: create, isPending } = useCreateRopaEntrega()
 
-  const [leg,         setLeg]         = useState(legInicial)
-  const [catId,       setCatId]       = useState('')
-  const [fecha,       setFecha]       = useState(hoy)
-  const [obs,         setObs]         = useState('')
+  const [leg,      setLeg]      = useState(legInicial)
+  const [catIds,   setCatIds]   = useState<number[]>([])
+  const [fecha,    setFecha]    = useState(hoy)
+  const [obs,      setObs]      = useState('')
+  const [saving,   setSaving]   = useState(false)
 
   const opPersonal = useMemo(() =>
     personal.map((p: Personal) => ({ value: p.leg, label: p.nom, sub: `Leg. ${p.leg}` })),
     [personal]
   )
 
-  function handleSubmit() {
-    if (!leg)   { toast('Seleccioná un trabajador', 'err'); return }
-    if (!catId) { toast('Seleccioná un elemento', 'err'); return }
-    create(
-      { leg, categoria_id: Number(catId), fecha_entrega: fecha, obs: obs || null },
-      {
-        onSuccess: () => {
-          toast('✓ Entrega registrada', 'ok')
-          setCatId(''); setObs('')
-          onClose()
-        },
-        onError: (e) => toast(e.message ?? 'Error', 'err'),
-      }
-    )
+  function toggleCat(id: number) {
+    setCatIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
+  async function handleSubmit() {
+    if (!leg)           { toast('Seleccioná un trabajador', 'err'); return }
+    if (!catIds.length) { toast('Seleccioná al menos un elemento', 'err'); return }
+    setSaving(true)
+    let errored = false
+    for (const catId of catIds) {
+      await new Promise<void>(resolve => {
+        create(
+          { leg, categoria_id: catId, fecha_entrega: fecha, obs: obs || null },
+          { onSuccess: () => resolve(), onError: () => { errored = true; resolve() } }
+        )
+      })
+    }
+    setSaving(false)
+    if (errored) { toast('Error al guardar algún elemento', 'err'); return }
+    toast(`✓ ${catIds.length} entrega${catIds.length > 1 ? 's' : ''} registrada${catIds.length > 1 ? 's' : ''}`, 'ok')
+    setCatIds([]); setObs('')
+    onClose()
   }
 
   return (
@@ -85,7 +94,9 @@ function ModalEntrega({ open, legInicial, onClose }: ModalEntregaProps) {
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" loading={isPending} onClick={handleSubmit}>✓ Guardar</Button>
+          <Button variant="primary" loading={isPending || saving} onClick={handleSubmit}>
+            ✓ Guardar{catIds.length > 1 ? ` (${catIds.length})` : ''}
+          </Button>
         </>
       }
     >
@@ -97,19 +108,40 @@ function ModalEntrega({ open, legInicial, onClose }: ModalEntregaProps) {
           value={leg}
           onChange={setLeg}
         />
+
+        {/* Multi-select elementos */}
         <div>
-          <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider block mb-1">Elemento</label>
-          <select
-            value={catId}
-            onChange={e => setCatId(e.target.value)}
-            className="w-full px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white text-carbon"
-          >
-            <option value="">— Seleccioná —</option>
-            {categorias.map(c => (
-              <option key={c.id} value={c.id}>{c.icono} {c.nombre}</option>
-            ))}
-          </select>
+          <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider block mb-2">
+            Elementos entregados
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {categorias.map(c => {
+              const sel = catIds.includes(c.id)
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => toggleCat(c.id)}
+                  className={`
+                    flex items-center gap-1.5 px-3 py-2 rounded-lg border-[1.5px] text-sm font-bold transition-all
+                    ${sel
+                      ? 'bg-naranja border-naranja text-white'
+                      : 'bg-white border-gris-mid text-carbon hover:border-naranja hover:text-naranja'
+                    }
+                  `}
+                >
+                  <span>{c.icono ?? '📦'}</span>
+                  {c.nombre}
+                  {sel && <span className="text-xs">✓</span>}
+                </button>
+              )
+            })}
+          </div>
+          {catIds.length === 0 && (
+            <p className="text-[11px] text-gris-dark mt-1">Tocá los elementos que se entregaron.</p>
+          )}
         </div>
+
         <Input label="Fecha de entrega" type="date" value={fecha} onChange={e => setFecha(e.target.value)} />
         <Input label="Observaciones (opcional)" placeholder="Talle, marca, etc." value={obs} onChange={e => setObs(e.target.value)} />
       </div>
