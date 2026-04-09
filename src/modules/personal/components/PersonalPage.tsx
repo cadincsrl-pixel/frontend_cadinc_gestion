@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import * as XLSX from 'xlsx'
 import { apiGet } from '@/lib/api/client'
 import { usePersonal } from '@/modules/tarja/hooks/usePersonal'
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
@@ -162,6 +163,36 @@ export function PersonalPage() {
     </div>
   )
 
+  function exportarExcel() {
+    const rows = personal.map(p => {
+      const cat    = categorias.find(c => c.id === p.cat_id)
+      const activo = esActivo(p)
+      return {
+        'Legajo':          p.leg,
+        'Apellido y Nombre': p.nom,
+        'Estado':          activo ? 'Activo' : 'Inactivo',
+        'DNI':             p.dni ?? '',
+        'Categoría':       cat?.nom ?? '',
+        'Valor hora ($)':  cat?.vh ?? '',
+        'Teléfono':        p.tel ?? '',
+        'Dirección':       p.dir ?? '',
+        'Pantalón':        p.talle_pantalon ?? '',
+        'Botines':         p.talle_botines  ?? '',
+        'Camisa':          p.talle_camisa   ?? '',
+        'Observaciones':   p.obs ?? '',
+      }
+    })
+
+    const ws = XLSX.utils.json_to_sheet(rows)
+    ws['!cols'] = [
+      { wch: 8 }, { wch: 28 }, { wch: 10 }, { wch: 14 }, { wch: 22 }, { wch: 14 },
+      { wch: 16 }, { wch: 28 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 30 },
+    ]
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Personal')
+    XLSX.writeFile(wb, `Personal_${new Date().toISOString().slice(0, 10)}.xlsx`)
+  }
+
   return (
     <div className="p-4 md:p-6 flex flex-col gap-4">
       <TarjaTopbarActions />
@@ -176,10 +207,17 @@ export function PersonalPage() {
             {personal.length} trabajadores · {contratistas.length} contratistas
           </p>
         </div>
-        {tab === 'personal' && puedeCrear && (
-          <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)}>
-            ＋ Nuevo trabajador
-          </Button>
+        {tab === 'personal' && (
+          <div className="flex gap-2">
+            <Button variant="secondary" size="sm" onClick={exportarExcel}>
+              📥 Exportar Excel
+            </Button>
+            {puedeCrear && (
+              <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)}>
+                ＋ Nuevo trabajador
+              </Button>
+            )}
+          </div>
         )}
         {tab === 'contratistas' && puedeCrear && (
           <Button variant="primary" size="sm" onClick={() => setModalNuevoC(true)}>
