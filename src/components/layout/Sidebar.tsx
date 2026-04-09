@@ -19,7 +19,6 @@ const NAV_ITEMS_TARJA = [
 ]
 
 const HERR_SUBNAV = [
-  { href: '/herramientas',              icon: '📊', label: 'Dashboard',    meta: 'Resumen general'           },
   { href: '/herramientas/inventario',   icon: '🔧', label: 'Inventario',   meta: 'Catálogo de herramientas'  },
   { href: '/herramientas/movimientos',  icon: '↔',  label: 'Movimientos',  meta: 'Registrar traslados'       },
   { href: '/herramientas/trazabilidad', icon: '📍', label: 'Trazabilidad', meta: 'Historial por herramienta' },

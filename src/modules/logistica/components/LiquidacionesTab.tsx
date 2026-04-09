@@ -9,7 +9,8 @@ import {
 import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input }  from '@/components/ui/Input'
-import { Select } from '@/components/ui/Select'
+import { Select }   from '@/components/ui/Select'
+import { Combobox } from '@/components/ui/Combobox'
 import { Badge }  from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
 import { useForm } from 'react-hook-form'
@@ -189,11 +190,12 @@ export function LiquidacionesTab() {
       >
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-3">
-            <Select
+            <Combobox
               label="Chofer"
-              placeholder="Elegí"
-              options={choferes.map(c => ({ value: c.id, label: c.nombre }))}
-              onChange={e => setChoferId(Number(e.target.value))}
+              placeholder="Buscar chofer..."
+              options={choferes.map(c => ({ value: String(c.id), label: c.nombre }))}
+              value={String(choferId ?? '')}
+              onChange={v => setChoferId(v ? Number(v) : null)}
             />
             <Input label="Precio por km ($)" type="number" placeholder="0" {...formLiq.register('precio_km')} />
           </div>

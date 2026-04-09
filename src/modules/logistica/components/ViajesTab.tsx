@@ -8,7 +8,8 @@ import {
 } from '../hooks/useLogistica'
 import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
-import { Select } from '@/components/ui/Select'
+import { Select }   from '@/components/ui/Select'
+import { Combobox } from '@/components/ui/Combobox'
 import { Input }  from '@/components/ui/Input'
 import { Badge }  from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
@@ -251,17 +252,19 @@ export function ViajesTab() {
         }
       >
         <div className="flex flex-col gap-4">
-          <Select
+          <Combobox
             label="Chofer"
-            placeholder="Elegí un chofer"
-            options={choferes.filter(c => c.estado === 'activo').map(c => ({ value: c.id, label: c.nombre }))}
-            {...formViaje.register('chofer_id')}
+            placeholder="Buscar chofer..."
+            options={choferes.filter(c => c.estado === 'activo').map(c => ({ value: String(c.id), label: c.nombre }))}
+            value={String(formViaje.watch('chofer_id') ?? '')}
+            onChange={v => formViaje.setValue('chofer_id', v ? Number(v) : undefined)}
           />
-          <Select
+          <Combobox
             label="Camión"
-            placeholder="Elegí un camión"
-            options={camiones.filter(c => c.estado === 'activo').map(c => ({ value: c.id, label: `${c.patente}${c.modelo ? ' — ' + c.modelo : ''}` }))}
-            {...formViaje.register('camion_id')}
+            placeholder="Buscar camión..."
+            options={camiones.filter(c => c.estado === 'activo').map(c => ({ value: String(c.id), label: c.patente, sub: c.modelo ?? undefined }))}
+            value={String(formViaje.watch('camion_id') ?? '')}
+            onChange={v => formViaje.setValue('camion_id', v ? Number(v) : undefined)}
           />
           <Input label="Observaciones" placeholder="Opcional" {...formViaje.register('obs')} />
         </div>
@@ -282,11 +285,12 @@ export function ViajesTab() {
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-3">
             <Input label="Fecha" type="date" {...formCarga.register('fecha')} />
-            <Select
+            <Combobox
               label="Cantera"
-              placeholder="Elegí"
-              options={canteras.map(c => ({ value: c.id, label: c.nombre + (c.localidad ? ` (${c.localidad})` : '') }))}
-              {...formCarga.register('cantera_id')}
+              placeholder="Buscar cantera..."
+              options={canteras.map(c => ({ value: String(c.id), label: c.nombre, sub: c.localidad ?? undefined }))}
+              value={String(formCarga.watch('cantera_id') ?? '')}
+              onChange={v => formCarga.setValue('cantera_id', v ? Number(v) : undefined)}
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -312,11 +316,12 @@ export function ViajesTab() {
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-3">
             <Input label="Fecha" type="date" {...formDescarga.register('fecha')} />
-            <Select
+            <Combobox
               label="Depósito"
-              placeholder="Elegí"
-              options={depositos.map(d => ({ value: d.id, label: d.nombre + (d.localidad ? ` (${d.localidad})` : '') }))}
-              {...formDescarga.register('deposito_id')}
+              placeholder="Buscar depósito..."
+              options={depositos.map(d => ({ value: String(d.id), label: d.nombre, sub: d.localidad ?? undefined }))}
+              value={String(formDescarga.watch('deposito_id') ?? '')}
+              onChange={v => formDescarga.setValue('deposito_id', v ? Number(v) : undefined)}
             />
           </div>
           <div className="grid grid-cols-2 gap-3">

@@ -210,7 +210,7 @@ export function CierresSection({ obraCod }: Props) {
                           }}
                           className="text-xs font-bold px-3 py-1.5 rounded-lg bg-azul-light text-azul hover:bg-azul hover:text-white transition-colors"
                         >
-                          Ver Detalle
+                          📋 Ver tarja de esta semana
                         </button>
                         {puedeEditar && (
                           <button

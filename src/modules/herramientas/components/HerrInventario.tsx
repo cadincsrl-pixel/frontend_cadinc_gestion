@@ -93,6 +93,10 @@ export function HerrInventario() {
   }
 
   function handleDelete(h: Herramienta) {
+    if (h.estado_key === 'uso') {
+      toast(`"${h.nom}" está actualmente en uso. Retirala de la obra antes de darla de baja.`, 'err')
+      return
+    }
     if (!confirm(`¿Dar de baja "${h.nom}"? No se podrá revertir.`)) return
     remove(h.id, {
       onSuccess: () => toast('✓ Herramienta dada de baja', 'ok'),
