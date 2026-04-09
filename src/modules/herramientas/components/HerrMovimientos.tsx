@@ -32,6 +32,18 @@ const MOV_COLORS: Record<string, string> = {
   gris: 'bg-gris text-gris-dark',
 }
 
+interface RemitoData {
+  numero:      string
+  fecha:       string
+  tipoNom:     string
+  tipoIcono:   string
+  herramienta: { codigo: string; nom: string; marca?: string; modelo?: string; tipo?: string }
+  obraOrigen:  string
+  obraDestino: string
+  responsable: string
+  obs:         string
+}
+
 // Qué campos muestra cada tipo de movimiento
 const MOV_CAMPOS: Record<string, { origen: boolean; destino: boolean }> = {
   alta: { origen: false, destino: false },
@@ -60,6 +72,7 @@ export function HerrMovimientos() {
   const [responsable, setResponsable] = useState('')
   const [obs, setObs] = useState('')
   const [fechaManual, setFechaManual] = useState('')
+  const [ultimoRemito, setUltimoRemito] = useState<RemitoData | null>(null)
 
   // Filtros historial
   const [filtroHerr, setFiltroHerr] = useState('')
@@ -101,7 +114,28 @@ export function HerrMovimientos() {
         fecha: fechaManual ? new Date(fechaManual).toISOString() : undefined,
       },
       {
-        onSuccess: () => {
+        onSuccess: (data: any) => {
+          const herr      = herramientas.find(x => String(x.id) === herrSel)
+          const tipoInfo  = config?.movTipos.find(t => t.key === tipoMov)
+          const origenNom = obras.find(o => o.cod === obraOrigen)?.nom ?? (obraOrigen || 'Depósito')
+          const destinoNom = obras.find(o => o.cod === obraDestino)?.nom ?? (obraDestino || 'Depósito')
+          setUltimoRemito({
+            numero:    String(data?.id ?? Date.now()).padStart(6, '0'),
+            fecha:     fechaManual ? new Date(fechaManual).toISOString() : new Date().toISOString(),
+            tipoNom:   tipoInfo?.nom   ?? tipoMov,
+            tipoIcono: tipoInfo?.icono ?? '→',
+            herramienta: {
+              codigo: herr?.codigo ?? '',
+              nom:    herr?.nom    ?? '',
+              marca:  herr?.marca,
+              modelo: herr?.modelo,
+              tipo:   herr?.tipo ? `${herr.tipo.icono ?? ''} ${herr.tipo.nom}` : undefined,
+            },
+            obraOrigen:  origenNom,
+            obraDestino: destinoNom,
+            responsable,
+            obs,
+          })
           toast('✓ Movimiento registrado', 'ok')
           setHerrSel(''); setObraOrigen(''); setObraDestino('')
           setResponsable(''); setObs(''); setFechaManual('')
@@ -110,6 +144,98 @@ export function HerrMovimientos() {
         onError: (e: any) => toast(e.message ?? 'Error al registrar', 'err'),
       }
     )
+  }
+
+  function imprimirRemito(r: RemitoData) {
+    const fmtDate = (iso: string) => {
+      const d = new Date(iso)
+      return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+        + ' ' + d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+    }
+    const copias = [
+      { label: 'ORIGINAL',    dest: 'OFICINA'          },
+      { label: 'DUPLICADO',   dest: 'OBRA DESTINO'     },
+      { label: 'TRIPLICADO',  dest: 'OBRA REMITENTE'   },
+    ]
+    const copiasHTML = copias.map(c => `
+      <div class="copia">
+        <div class="cabecera">
+          <div class="empresa">CADINC</div>
+          <div class="titulo">REMITO DE MOVIMIENTO DE HERRAMIENTAS</div>
+          <div class="numero-bloque">
+            <div class="numero">Nº ${r.numero}</div>
+            <div class="badge">${c.label} — ${c.dest}</div>
+          </div>
+        </div>
+        <div class="seccion-grid">
+          <div class="campo"><span class="lbl">Fecha</span><span class="val">${fmtDate(r.fecha)}</span></div>
+          <div class="campo"><span class="lbl">Tipo de movimiento</span><span class="val">${r.tipoIcono} ${r.tipoNom}</span></div>
+        </div>
+        <table class="tabla-herr">
+          <thead><tr><th>Código</th><th>Herramienta</th><th>Marca / Modelo</th><th>Tipo</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="mono">${r.herramienta.codigo}</td>
+              <td><strong>${r.herramienta.nom}</strong></td>
+              <td>${[r.herramienta.marca, r.herramienta.modelo].filter(Boolean).join(' / ') || '—'}</td>
+              <td>${r.herramienta.tipo ?? '—'}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="seccion-grid">
+          <div class="campo origen"><span class="lbl">Obra remitente (origen)</span><span class="val bold">${r.obraOrigen}</span></div>
+          <div class="flecha">→</div>
+          <div class="campo destino"><span class="lbl">Obra destinataria (destino)</span><span class="val bold azul">${r.obraDestino}</span></div>
+        </div>
+        <div class="seccion-grid">
+          <div class="campo"><span class="lbl">Responsable</span><span class="val">${r.responsable || '—'}</span></div>
+          <div class="campo"><span class="lbl">Observaciones</span><span class="val">${r.obs || '—'}</span></div>
+        </div>
+        <div class="firmas">
+          <div class="firma"><div class="linea-firma"></div><div class="lbl-firma">Entrega</div></div>
+          <div class="firma"><div class="linea-firma"></div><div class="lbl-firma">Recibe</div></div>
+          <div class="firma"><div class="linea-firma"></div><div class="lbl-firma">Conformidad</div></div>
+        </div>
+      </div>
+    `).join('<div class="corte">✂ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>')
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Remito Nº ${r.numero}</title>
+    <style>
+      @page { size: A4 portrait; margin: 8mm; }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: Arial, sans-serif; font-size: 9pt; color: #1a1a2e; }
+      .copia { height: 89mm; padding: 3mm 4mm; border: 1.5px solid #d1d5db; border-radius: 3mm; display: flex; flex-direction: column; gap: 2mm; page-break-inside: avoid; }
+      .corte { text-align: left; font-size: 7pt; color: #aaa; border-bottom: 1px dashed #bbb; margin: 1.5mm 0; padding-left: 2mm; }
+      .cabecera { display: flex; align-items: flex-start; justify-content: space-between; border-bottom: 2px solid #1a1a2e; padding-bottom: 2mm; }
+      .empresa { font-size: 16pt; font-weight: 900; letter-spacing: 2px; color: #1a1a2e; }
+      .titulo { font-size: 7pt; font-weight: bold; color: #555; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+      .numero-bloque { text-align: right; }
+      .numero { font-size: 12pt; font-weight: 900; font-family: monospace; color: #e85d04; }
+      .badge { font-size: 6.5pt; font-weight: bold; background: #fff3e0; color: #e85d04; border: 1px solid #e85d04; border-radius: 2mm; padding: 1px 4px; margin-top: 1mm; display: inline-block; }
+      .seccion-grid { display: flex; gap: 3mm; align-items: center; }
+      .campo { flex: 1; display: flex; flex-direction: column; gap: 0.5mm; }
+      .campo.origen, .campo.destino { flex: 2; }
+      .flecha { font-size: 14pt; font-weight: bold; color: #e85d04; flex-shrink: 0; }
+      .lbl { font-size: 6.5pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.4px; color: #888; }
+      .val { font-size: 9pt; font-weight: 500; }
+      .val.bold { font-weight: 700; }
+      .val.azul { color: #1a1a2e; }
+      .tabla-herr { width: 100%; border-collapse: collapse; }
+      .tabla-herr th { background: #1a1a2e; color: #fff; font-size: 6.5pt; text-transform: uppercase; letter-spacing: 0.4px; padding: 1.5mm 2mm; text-align: left; }
+      .tabla-herr td { border-bottom: 1px solid #e5e7eb; padding: 1.5mm 2mm; font-size: 8.5pt; }
+      .tabla-herr .mono { font-family: monospace; font-weight: bold; font-size: 8pt; color: #555; }
+      .firmas { display: flex; gap: 4mm; margin-top: auto; }
+      .firma { flex: 1; }
+      .linea-firma { border-bottom: 1px solid #333; height: 8mm; }
+      .lbl-firma { font-size: 6.5pt; color: #888; text-align: center; margin-top: 1mm; text-transform: uppercase; letter-spacing: 0.4px; }
+    </style>
+    </head><body>${copiasHTML}</body></html>`
+
+    const win = window.open('', '_blank', 'width=794,height=1123')
+    if (!win) return
+    win.document.write(html)
+    win.document.close()
+    setTimeout(() => { win.focus(); win.print() }, 400)
   }
 
   // Tipos disponibles según estado de la herramienta
@@ -318,6 +444,32 @@ export function HerrMovimientos() {
           </Button>
         </div>
       </div>
+
+      {/* Banner remito */}
+      {ultimoRemito && (
+        <div className="bg-verde-light border border-verde/30 rounded-card p-4 flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">✓</span>
+            <div>
+              <div className="font-bold text-verde">Movimiento registrado</div>
+              <div className="text-xs text-verde/80">
+                {ultimoRemito.tipoIcono} {ultimoRemito.tipoNom} · {ultimoRemito.herramienta.nom} · Remito Nº {ultimoRemito.numero}
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="primary" size="sm" onClick={() => imprimirRemito(ultimoRemito)}>
+              🖨 Imprimir remito
+            </Button>
+            <button
+              onClick={() => setUltimoRemito(null)}
+              className="text-xs text-verde/60 hover:text-verde px-2"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Historial */}
       <div className="bg-white rounded-card shadow-card overflow-hidden">
