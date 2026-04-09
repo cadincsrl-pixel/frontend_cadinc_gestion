@@ -1,6 +1,6 @@
-import { HerrDashboard } from '@/modules/herramientas/components/HerrDashboard'
-import { GuardWrapper }  from '@/components/GuardWrapper'
+import { HerrMovimientos } from '@/modules/herramientas/components/HerrMovimientos'
+import { GuardWrapper }    from '@/components/GuardWrapper'
 
 export default function Page() {
-  return <GuardWrapper modulo="herramientas"><HerrDashboard /></GuardWrapper>
+  return <GuardWrapper modulo="herramientas"><HerrMovimientos /></GuardWrapper>
 }
