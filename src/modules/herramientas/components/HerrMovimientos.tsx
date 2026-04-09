@@ -100,7 +100,7 @@ export function HerrMovimientos() {
   function handleRegistrar() {
     if (!herrSel) { toast('Seleccioná una herramienta', 'err'); return }
     if (!tipoMov) { toast('Seleccioná el tipo de movimiento', 'err'); return }
-    if (campos.origen && !obraOrigen) { toast('Seleccioná la obra origen', 'err'); return }
+    if (campos.origen && !obraOrigen && tipoMov !== 'retorno_rep') { toast('Seleccioná la obra origen', 'err'); return }
     if (campos.destino && !obraDestino) { toast('Seleccioná la obra destino', 'err'); return }
 
     registrar(
@@ -372,7 +372,7 @@ export function HerrMovimientos() {
                 <div className="px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm bg-gris text-carbon font-semibold">
                   {obras.find(o => o.cod === obraOrigen)?.nom
                     ? `${obras.find(o => o.cod === obraOrigen)!.nom} (${obraOrigen})`
-                    : obraOrigen || '—'
+                    : obraOrigen || (tipoMov === 'retorno_rep' ? 'Taller / Depósito' : '—')
                   }
                 </div>
               </div>
