@@ -11,7 +11,7 @@ import { Input }    from '@/components/ui/Input'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
-import type { Personal } from '@/types/domain.types'
+import type { Personal, Prestamo } from '@/types/domain.types'
 
 function fmtM(n: number) {
   return '$' + Math.round(n).toLocaleString('es-AR')
@@ -27,11 +27,9 @@ function semKeyHoy(): string {
   return toISO(getViernes(new Date()))
 }
 
-// Genera lista de semanas: las últimas 52
 function semanas(): { value: string; label: string }[] {
   const result = []
-  const hoy = new Date()
-  const vie = getViernes(hoy)
+  const vie = getViernes(new Date())
   for (let i = 0; i < 52; i++) {
     const d = new Date(vie)
     d.setDate(d.getDate() - i * 7)
@@ -40,29 +38,28 @@ function semanas(): { value: string; label: string }[] {
   return result
 }
 
+// ── Modal crear préstamo / descuento ────────────────────────────────────────
 interface ModalFormProps {
-  open:    boolean
-  tipo:    'otorgado' | 'descontado'
-  onClose: () => void
+  open:     boolean
+  tipo:     'otorgado' | 'descontado'
+  legInicial?: string
+  onClose:  () => void
 }
 
-function ModalForm({ open, tipo, onClose }: ModalFormProps) {
+function ModalForm({ open, tipo, legInicial = '', onClose }: ModalFormProps) {
   const toast = useToast()
   const { data: personal = [] } = usePersonal()
   const { mutate: create, isPending } = useCreatePrestamo()
 
-  const [leg,      setLeg]      = useState('')
+  const [leg,      setLeg]      = useState(legInicial)
   const [semKey,   setSemKey]   = useState(semKeyHoy)
   const [monto,    setMonto]    = useState('')
   const [concepto, setConcepto] = useState('')
 
   const opcionesPersonal = useMemo(() =>
-    personal
-      .map((p: Personal) => ({ value: p.leg, label: p.nom, sub: `Leg. ${p.leg}` })),
+    personal.map((p: Personal) => ({ value: p.leg, label: p.nom, sub: `Leg. ${p.leg}` })),
     [personal]
   )
-
-  const opcionesSem = semanas()
 
   function handleSubmit() {
     if (!leg)   { toast('Seleccioná un albañil', 'err'); return }
@@ -74,7 +71,7 @@ function ModalForm({ open, tipo, onClose }: ModalFormProps) {
       {
         onSuccess: () => {
           toast(tipo === 'otorgado' ? '✓ Préstamo registrado' : '✓ Descuento registrado', 'ok')
-          setLeg(''); setMonto(''); setConcepto('')
+          setLeg(legInicial); setMonto(''); setConcepto('')
           onClose()
         },
         onError: (e) => toast(e.message ?? 'Error al guardar', 'err'),
@@ -82,23 +79,15 @@ function ModalForm({ open, tipo, onClose }: ModalFormProps) {
     )
   }
 
-  const titulo = tipo === 'otorgado' ? '💵 OTORGAR PRÉSTAMO' : '↩ REGISTRAR DESCUENTO'
-
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title={titulo}
+      title={tipo === 'otorgado' ? '💵 OTORGAR PRÉSTAMO' : '↩ REGISTRAR DESCUENTO'}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button
-            variant="primary"
-            loading={isPending}
-            onClick={handleSubmit}
-          >
-            ✓ Guardar
-          </Button>
+          <Button variant="primary" loading={isPending} onClick={handleSubmit}>✓ Guardar</Button>
         </>
       }
     >
@@ -119,7 +108,7 @@ function ModalForm({ open, tipo, onClose }: ModalFormProps) {
             onChange={e => setSemKey(e.target.value)}
             className="w-full px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white text-carbon"
           >
-            {opcionesSem.map(s => (
+            {semanas().map(s => (
               <option key={s.value} value={s.value}>{s.label}</option>
             ))}
           </select>
@@ -142,6 +131,153 @@ function ModalForm({ open, tipo, onClose }: ModalFormProps) {
   )
 }
 
+// ── Card por operario ────────────────────────────────────────────────────────
+interface CardOperarioProps {
+  leg:        string
+  nombre:     string
+  movs:       Prestamo[]
+  saldo:      number
+  puedeCrear: boolean
+  perfiles:   Map<string, string>
+  onNuevo:    (tipo: 'otorgado' | 'descontado', leg: string) => void
+  onDelete:   (id: number) => void
+}
+
+function CardOperario({ leg, nombre, movs, saldo, puedeCrear, perfiles, onNuevo, onDelete }: CardOperarioProps) {
+  const [expandido, setExpandido] = useState(false)
+
+  // Movimientos ordenados cronológicamente
+  const movsOrdenados = [...movs].sort((a, b) => a.created_at.localeCompare(b.created_at))
+
+  const saldado = saldo <= 0
+
+  // Construir detalle con saldo acumulado en cada paso
+  let acum = 0
+  const detalle = movsOrdenados.map(m => {
+    acum = m.tipo === 'otorgado' ? acum + m.monto : acum - m.monto
+    return { ...m, acumulado: acum }
+  })
+
+  return (
+    <div className={`bg-white rounded-card shadow-card border-l-4 ${saldado ? 'border-verde' : 'border-naranja'}`}>
+      {/* Cabecera */}
+      <div className="flex items-center justify-between gap-3 p-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-bold text-sm text-azul">{nombre}</span>
+            <span className="text-[10px] text-gris-dark font-mono bg-gris px-1.5 py-0.5 rounded">
+              Leg. {leg}
+            </span>
+          </div>
+          <div className={`font-mono font-bold text-lg mt-0.5 ${saldado ? 'text-verde' : 'text-naranja-dark'}`}>
+            {saldado ? '✓ Saldado' : `Debe ${fmtM(saldo)}`}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {puedeCrear && (
+            <>
+              <button
+                onClick={() => onNuevo('otorgado', leg)}
+                className="text-xs font-bold px-2.5 py-1.5 rounded-lg bg-naranja-light text-naranja-dark hover:bg-naranja hover:text-white transition-colors"
+              >
+                💵 Prestar
+              </button>
+              <button
+                onClick={() => onNuevo('descontado', leg)}
+                className="text-xs font-bold px-2.5 py-1.5 rounded-lg bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors"
+              >
+                ↩ Descontar
+              </button>
+            </>
+          )}
+          <button
+            onClick={() => setExpandido(p => !p)}
+            className="text-xs font-bold px-2.5 py-1.5 rounded-lg bg-azul-light text-azul hover:bg-azul hover:text-white transition-colors"
+          >
+            {expandido ? '▴ Ocultar' : '▾ Detalle'}
+          </button>
+        </div>
+      </div>
+
+      {/* Detalle expandible */}
+      {expandido && (
+        <div className="border-t border-gris-mid mx-4 mb-4">
+          <div className="flex flex-col gap-0 mt-3">
+            {detalle.map((m, idx) => {
+              const esOtorgado = m.tipo === 'otorgado'
+              return (
+                <div
+                  key={m.id}
+                  className={`
+                    flex items-center justify-between gap-2 py-2 text-sm
+                    ${idx < detalle.length - 1 ? 'border-b border-gris' : ''}
+                  `}
+                >
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <span className={`
+                      text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0
+                      ${esOtorgado ? 'bg-naranja text-white' : 'bg-rojo-light text-rojo'}
+                    `}>
+                      {esOtorgado ? '💵' : '↩'}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="text-xs text-gris-dark">
+                        {fmtFecha(m.sem_key)} · {getSemLabel(new Date(m.sem_key + 'T12:00:00'))}
+                      </div>
+                      {m.concepto && (
+                        <div className="text-[11px] text-carbon italic truncate">"{m.concepto}"</div>
+                      )}
+                      {m.created_by && (
+                        <div className="text-[10px] text-gris-mid">
+                          {perfiles.get(m.created_by) ?? '…'}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 flex-shrink-0">
+                    <div className="text-right">
+                      <div className={`font-mono font-bold text-sm ${esOtorgado ? 'text-naranja-dark' : 'text-rojo'}`}>
+                        {esOtorgado ? '+' : '−'}{fmtM(m.monto)}
+                      </div>
+                      <div className={`font-mono text-[11px] ${m.acumulado > 0 ? 'text-gris-dark' : 'text-verde'}`}>
+                        saldo: {m.acumulado > 0 ? fmtM(m.acumulado) : '✓ $0'}
+                      </div>
+                    </div>
+                    {puedeCrear && (
+                      <button
+                        onClick={() => onDelete(m.id)}
+                        className="text-gris-mid hover:text-rojo transition-colors text-xs"
+                        title="Eliminar"
+                      >
+                        🗑
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Resumen al pie */}
+          <div className={`
+            mt-3 rounded-lg px-3 py-2 flex items-center justify-between
+            ${saldado ? 'bg-verde-light' : 'bg-naranja-light'}
+          `}>
+            <span className={`text-xs font-bold uppercase tracking-wide ${saldado ? 'text-verde' : 'text-naranja-dark'}`}>
+              Saldo total
+            </span>
+            <span className={`font-mono font-bold text-base ${saldado ? 'text-verde' : 'text-naranja-dark'}`}>
+              {saldado ? '✓ Saldado' : fmtM(saldo)}
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Página principal ─────────────────────────────────────────────────────────
 export function PrestamosPage() {
   const toast = useToast()
   const { puedeCrear } = usePermisos('tarja')
@@ -150,12 +286,11 @@ export function PrestamosPage() {
   const { mutate: remove }                  = useDeletePrestamo()
   const perfiles = usePerfilesMap()
 
-  const [modalTipo, setModalTipo] = useState<'otorgado' | 'descontado' | null>(null)
-  const [filtLeg,   setFiltLeg]   = useState('')
+  const [modalConfig, setModalConfig] = useState<{ tipo: 'otorgado' | 'descontado'; leg: string } | null>(null)
+  const [filtLeg, setFiltLeg] = useState('')
 
   const opcionesPersonal = useMemo(() =>
-    personal
-      .map((p: Personal) => ({ value: p.leg, label: p.nom, sub: `Leg. ${p.leg}` })),
+    personal.map((p: Personal) => ({ value: p.leg, label: p.nom, sub: `Leg. ${p.leg}` })),
     [personal]
   )
 
@@ -165,16 +300,31 @@ export function PrestamosPage() {
     return m
   }, [personal])
 
+  // Agrupar por operario, ordenar por saldo desc (más deuda primero), saldados al final
+  const operarios = useMemo(() => {
+    const map = new Map<string, Prestamo[]>()
+    prestamos.forEach(p => {
+      if (!map.has(p.leg)) map.set(p.leg, [])
+      map.get(p.leg)!.push(p)
+    })
+    return [...map.entries()]
+      .map(([leg, movs]) => {
+        const saldo = movs.reduce((s, m) => m.tipo === 'otorgado' ? s + m.monto : s - m.monto, 0)
+        return { leg, movs, saldo }
+      })
+      .sort((a, b) => b.saldo - a.saldo) // más deuda primero; saldados al final
+  }, [prestamos])
+
   const filtrados = useMemo(() =>
-    filtLeg ? prestamos.filter(p => p.leg === filtLeg) : prestamos,
-    [prestamos, filtLeg]
+    filtLeg ? operarios.filter(o => o.leg === filtLeg) : operarios,
+    [operarios, filtLeg]
   )
 
-  const totalOtorgado   = filtrados.filter(p => p.tipo === 'otorgado').reduce((s, p) => s + p.monto, 0)
-  const totalDescontado = filtrados.filter(p => p.tipo === 'descontado').reduce((s, p) => s + p.monto, 0)
+  const totalDeuda = operarios.filter(o => o.saldo > 0).reduce((s, o) => s + o.saldo, 0)
+  const conDeuda   = operarios.filter(o => o.saldo > 0).length
 
   function handleDelete(id: number) {
-    if (!confirm('¿Eliminar este registro?')) return
+    if (!confirm('¿Eliminar este movimiento?')) return
     remove(id, {
       onSuccess: () => toast('✓ Eliminado', 'ok'),
       onError:   () => toast('Error al eliminar', 'err'),
@@ -188,41 +338,33 @@ export function PrestamosPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="font-display text-2xl tracking-wider text-azul">PRÉSTAMOS</h1>
-          <p className="text-sm text-gris-dark mt-0.5">Préstamos y descuentos a albañiles</p>
+          <p className="text-sm text-gris-dark mt-0.5">
+            {conDeuda > 0
+              ? `${conDeuda} operario${conDeuda !== 1 ? 's' : ''} con deuda · Total: ${fmtM(totalDeuda)}`
+              : 'Sin deudas pendientes'}
+          </p>
         </div>
         {puedeCrear && (
           <div className="flex gap-2">
-            <Button variant="primary"   size="sm" onClick={() => setModalTipo('otorgado')}>
+            <Button variant="primary"   size="sm" onClick={() => setModalConfig({ tipo: 'otorgado',   leg: '' })}>
               💵 Otorgar préstamo
             </Button>
-            <Button variant="secondary" size="sm" onClick={() => setModalTipo('descontado')}>
+            <Button variant="secondary" size="sm" onClick={() => setModalConfig({ tipo: 'descontado', leg: '' })}>
               ↩ Registrar descuento
             </Button>
           </div>
         )}
       </div>
 
-      {/* Filtro + resumen */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex-1">
-          <Combobox
-            placeholder="Filtrar por albañil..."
-            options={opcionesPersonal}
-            value={filtLeg}
-            onChange={setFiltLeg}
-          />
-        </div>
-        <div className="flex gap-2 items-center flex-shrink-0">
-          <div className="bg-naranja-light text-naranja-dark text-xs font-bold px-3 py-2 rounded-lg">
-            💵 Otorgado: {fmtM(totalOtorgado)}
-          </div>
-          <div className="bg-rojo-light text-rojo text-xs font-bold px-3 py-2 rounded-lg">
-            ↩ Descontado: {fmtM(totalDescontado)}
-          </div>
-        </div>
-      </div>
+      {/* Filtro */}
+      <Combobox
+        placeholder="Filtrar por albañil..."
+        options={opcionesPersonal}
+        value={filtLeg}
+        onChange={setFiltLeg}
+      />
 
-      {/* Lista */}
+      {/* Lista por operario */}
       {isLoading ? (
         <div className="text-center py-10 text-gris-dark text-sm">Cargando…</div>
       ) : filtrados.length === 0 ? (
@@ -230,70 +372,30 @@ export function PrestamosPage() {
           No hay préstamos registrados.
         </div>
       ) : (
-        <div className="flex flex-col gap-2">
-          {filtrados.map(p => {
-            const esOtorgado = p.tipo === 'otorgado'
-            return (
-              <div
-                key={p.id}
-                className={`
-                  bg-white rounded-card shadow-card p-4
-                  border-l-4
-                  ${esOtorgado ? 'border-naranja' : 'border-rojo'}
-                `}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <span className={`
-                        text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide
-                        ${esOtorgado ? 'bg-naranja text-white' : 'bg-rojo-light text-rojo'}
-                      `}>
-                        {esOtorgado ? '💵 Préstamo' : '↩ Descuento'}
-                      </span>
-                      <span className="font-mono font-bold text-base text-carbon">
-                        {fmtM(p.monto)}
-                      </span>
-                    </div>
-                    <div className="font-bold text-sm text-azul">
-                      {nombreMap.get(p.leg) ?? p.leg}
-                      <span className="font-normal text-gris-dark ml-1 text-xs">Leg. {p.leg}</span>
-                    </div>
-                    <div className="text-xs text-gris-dark mt-0.5">
-                      📅 Semana: {getSemLabel(new Date(p.sem_key + 'T12:00:00'))}
-                    </div>
-                    {p.concepto && (
-                      <div className="text-xs text-carbon mt-0.5 italic">"{p.concepto}"</div>
-                    )}
-                    {p.created_by && (
-                      <div className="text-[10px] text-gris-dark mt-1">
-                        ✦ Registrado por <span className="font-bold text-azul">{perfiles.get(p.created_by) ?? '…'}</span>
-                        {' · '}{fmtFecha(p.created_at.slice(0, 10))}
-                      </div>
-                    )}
-                  </div>
-                  {puedeCrear && (
-                    <button
-                      onClick={() => handleDelete(p.id)}
-                      className="text-gris-mid hover:text-rojo transition-colors text-sm flex-shrink-0"
-                      title="Eliminar"
-                    >
-                      🗑
-                    </button>
-                  )}
-                </div>
-              </div>
-            )
-          })}
+        <div className="flex flex-col gap-3">
+          {filtrados.map(({ leg, movs, saldo }) => (
+            <CardOperario
+              key={leg}
+              leg={leg}
+              nombre={nombreMap.get(leg) ?? leg}
+              movs={movs}
+              saldo={saldo}
+              puedeCrear={!!puedeCrear}
+              perfiles={perfiles}
+              onNuevo={(tipo, l) => setModalConfig({ tipo, leg: l })}
+              onDelete={handleDelete}
+            />
+          ))}
         </div>
       )}
 
-      {/* Modales */}
-      {modalTipo && (
+      {/* Modal */}
+      {modalConfig && (
         <ModalForm
           open
-          tipo={modalTipo}
-          onClose={() => setModalTipo(null)}
+          tipo={modalConfig.tipo}
+          legInicial={modalConfig.leg}
+          onClose={() => setModalConfig(null)}
         />
       )}
     </div>
