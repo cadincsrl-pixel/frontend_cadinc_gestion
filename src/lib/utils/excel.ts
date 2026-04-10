@@ -204,12 +204,56 @@ export function exportarExcelObras(
   cierres: Cierre[],
   certificaciones: Certificacion[],
   contratistas: Contratista[],
-  semFiltro: string = ''
+  semFiltro: string = '',
+  catObra: Array<{ obra_cod: string; leg: string; cat_id: number; desde: string }> = []
 ) {
   const wb = XLSX.utils.book_new()
   const hoy = new Date()
 
   function semOk(sk: string) { return !semFiltro || sk === semFiltro }
+
+  function getCatIdEfectivo(obraCod: string, leg: string, fechaRef: string): number | null {
+    const catObraAll = catObra.filter(co => co.obra_cod === obraCod && co.leg === leg)
+    if (catObraAll.length > 0) {
+      let best: { cat_id: number; desde: string } | null = null
+      for (const h of catObraAll) {
+        if (h.desde <= fechaRef) { if (!best || h.desde >= best.desde) best = h }
+      }
+      if (best) return best.cat_id
+      return catObraAll.reduce((a, b) => a.desde <= b.desde ? a : b).cat_id
+    }
+    const p = personal.find(x => x.leg === leg)
+    if (!p) return null
+    const hist = [...(p.personal_cat_historial ?? [])].sort((a, b) => a.desde.localeCompare(b.desde))
+    let catId = p.cat_id
+    for (const h of hist) { if (h.desde <= fechaRef) catId = h.cat_id }
+    return catId
+  }
+
+  function getVHConCatObra(obraCod: string, leg: string, fechaRef: string): number {
+    const catId = getCatIdEfectivo(obraCod, leg, fechaRef)
+    if (!catId) return 0
+    const tarifaObraAll = tarifas
+      .filter(t => t.obra_cod === obraCod && t.cat_id === catId)
+      .sort((a, b) => a.desde.localeCompare(b.desde))
+    let vh: number | null = null
+    if (tarifaObraAll.length > 0) {
+      for (const t of tarifaObraAll) { if (t.desde <= fechaRef) vh = t.vh; else break }
+      if (vh === null) vh = tarifaObraAll[0]!.vh
+    } else {
+      vh = categorias.find(c => c.id === catId)?.vh ?? 0
+    }
+    return vh
+  }
+
+  function costoLegConCatObra(obraCod: string, leg: string, dias: Date[]): number {
+    const semStartStr = toISO(dias[0]!)
+    const hoyStr = toISO(new Date())
+    const esSemActual = semStartStr === toISO(getViernes(new Date()))
+    const fechaRef = esSemActual ? hoyStr : semStartStr
+    const vh = getVHConCatObra(obraCod, leg, fechaRef)
+    return totalHsLeg(horas, obraCod, leg, dias.map(toISO)) * vh
+  }
 
   function getSemanasObra(obraCod: string): string[] {
     const seen = new Set<string>()
@@ -252,7 +296,7 @@ export function exportarExcelObras(
       const days = getSemDays(new Date(sk + 'T12:00:00'))
       legs.forEach(leg => {
         totalHs += totalHsLeg(horas, o.cod, leg, days.map(toISO))
-        totalCosto += costoLeg(horas, personal, categorias, tarifas, o.cod, leg, days)
+        totalCosto += costoLegConCatObra(o.cod, leg, days)
       })
     })
 
@@ -317,7 +361,7 @@ export function exportarExcelObras(
         const p = personal.find(x => x.leg === leg)
         if (!p) return
         const hs = totalHsLeg(horas, o.cod, leg, days.map(toISO))
-        const costo = costoLeg(horas, personal, categorias, tarifas, o.cod, leg, days)
+        const costo = costoLegConCatObra(o.cod, leg, days)
         if (hs === 0) return
         const cat = categorias.find(c => c.id === p.cat_id)
         detRows.push([

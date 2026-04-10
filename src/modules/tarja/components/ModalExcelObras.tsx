@@ -139,7 +139,7 @@ export function ModalExcelObras({
   function handleExportar() {
     if (!obrasSelec.length) { toast('Seleccioná al menos una obra', 'err'); return }
     const obrasTarget = obras.filter(o => obrasSelec.includes(o.cod))
-    exportarExcelObras(obrasTarget, personal, categorias, horas, tarifas, cierres, certificaciones, contratistas, semFiltro)
+    exportarExcelObras(obrasTarget, personal, categorias, horas, tarifas, cierres, certificaciones, contratistas, semFiltro, todasCatObra)
     toast('📊 Excel exportado', 'ok')
     onClose()
   }
