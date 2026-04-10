@@ -145,7 +145,7 @@ export function exportarCSVTarja(
       return val || ''
     })
 
-    csv += `${p.leg},"${p.nom}","${cat?.nom ?? '—'}",${vh},${hsDia.join(',')},${totalHs || ''},${Math.round(totalCosto)}\n`
+    csv += `${p.leg},"${p.nom}","${cat?.nom ?? '—'}",${vh},${hsDia.join(',')},${totalHs || ''},${Math.round(totalCosto / 1000) * 1000}\n`
   })
 
   const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
@@ -227,7 +227,7 @@ export function exportarExcelObras(
   }
 
   function fmtM(n: number): string {
-    return '$' + Math.round(n).toLocaleString('es-AR')
+    return '$' + (Math.round(n / 1000) * 1000).toLocaleString('es-AR')
   }
 
   // ── HOJA 1: Resumen ──
@@ -269,8 +269,8 @@ export function exportarExcelObras(
 
     resumenRows.push([
       o.cod, o.nom, o.cc ?? '', o.dir ?? '', o.resp ?? '',
-      legs.length, totalHs, Math.round(totalCosto),
-      nContrat, Math.round(totalCertif), Math.round(totalCosto + totalCertif),
+      legs.length, totalHs, Math.round(totalCosto / 1000) * 1000,
+      nContrat, Math.round(totalCertif / 1000) * 1000, Math.round((totalCosto + totalCertif) / 1000) * 1000,
       cerradas, pendientes,
     ])
   })
@@ -278,8 +278,8 @@ export function exportarExcelObras(
   resumenRows.push([])
   resumenRows.push([
     '', 'TOTAL GENERAL', '', '', '',
-    '', totHsGlobal, Math.round(totCostoGlobal),
-    '', Math.round(totCertifGlobal), Math.round(totCostoGlobal + totCertifGlobal),
+    '', totHsGlobal, Math.round(totCostoGlobal / 1000) * 1000,
+    '', Math.round(totCertifGlobal / 1000) * 1000, Math.round((totCostoGlobal + totCertifGlobal) / 1000) * 1000,
     '', '',
   ])
 
@@ -323,7 +323,7 @@ export function exportarExcelObras(
         detRows.push([
           '👷 Operario', o.nom, o.cod, o.cc ?? '',
           periodo, cobro, p.nom, cat?.nom ?? '—',
-          hs, Math.round(costo), estadoTxt,
+          hs, Math.round(costo / 1000) * 1000, estadoTxt,
         ])
       })
 
@@ -335,7 +335,7 @@ export function exportarExcelObras(
             '🔧 Contratista', o.nom, o.cod, o.cc ?? '',
             periodo, cobro,
             contrat?.nom ?? '—', contrat?.especialidad ?? '—',
-            '—', Math.round(cert.monto), estadoTxt,
+            '—', Math.round(cert.monto / 1000) * 1000, estadoTxt,
           ])
         })
     })
@@ -370,7 +370,7 @@ export function exportarExcelObras(
         certRows.push([
           o.nom, o.cod, getSemLabel(s), fmtDate(pago),
           contrat?.nom ?? '—', contrat?.especialidad ?? '—',
-          cert.desc ?? '', Math.round(cert.monto),
+          cert.desc ?? '', Math.round(cert.monto / 1000) * 1000,
           estado === 'cerrado' ? 'Cerrado' : 'Pendiente',
         ])
       })
