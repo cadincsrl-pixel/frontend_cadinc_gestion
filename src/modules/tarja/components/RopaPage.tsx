@@ -9,6 +9,7 @@ import {
   useCreateRopaEntrega,
   useDeleteRopaEntrega,
   useCreateRopaCategoria,
+  useUpdateRopaCategoria,
   useDeleteRopaCategoria,
 } from '../hooks/useRopa'
 import { usePersonal } from '../hooks/usePersonal'
@@ -24,7 +25,6 @@ import { usePermisos } from '@/hooks/usePermisos'
 import type { Hora, Personal, RopaEntrega } from '@/types/domain.types'
 
 const DEFAULT_PAGE_SIZE = 12
-const MESES_VENCIMIENTO = 6
 
 function hoy() { return toISO(new Date()) }
 
@@ -48,10 +48,10 @@ function fmtFecha(s: string) {
   return `${d} ${meses[parseInt(m!) - 1]} ${y}`
 }
 
-function estaVencido(leg: string, catId: number, ultimaMap: Map<string, RopaEntrega>): boolean {
+function estaVencido(leg: string, catId: number, ultimaMap: Map<string, RopaEntrega>, mesesVencimiento: number): boolean {
   const ult = ultimaMap.get(`${leg}|${catId}`)
   if (!ult) return true
-  return diffMeses(ult.fecha_entrega) >= MESES_VENCIMIENTO
+  return diffMeses(ult.fecha_entrega) >= mesesVencimiento
 }
 
 // ── Modal nueva entrega ──────────────────────────────────────────────────────
@@ -169,20 +169,32 @@ function ModalCategorias({ open, onClose }: { open: boolean; onClose: () => void
   const toast = useToast()
   const { data: categorias = [] } = useRopaCategorias()
   const { mutate: crear,    isPending: creando  } = useCreateRopaCategoria()
+  const { mutate: actualizar }                     = useUpdateRopaCategoria()
   const { mutate: eliminar }                       = useDeleteRopaCategoria()
 
-  const [nombre, setNombre] = useState('')
-  const [icono,  setIcono]  = useState('')
+  const [nombre,  setNombre]  = useState('')
+  const [icono,   setIcono]   = useState('')
+  const [meses,   setMeses]   = useState('6')
+  const [editandoVenc, setEditandoVenc] = useState<{ id: number; valor: string } | null>(null)
 
   function handleCreate() {
     if (!nombre.trim()) { toast('Ingresá un nombre', 'err'); return }
     crear(
-      { nombre: nombre.trim(), icono: icono.trim() || undefined },
+      { nombre: nombre.trim(), icono: icono.trim() || undefined, meses_vencimiento: Number(meses) || 6 },
       {
-        onSuccess: () => { toast('✓ Categoría creada', 'ok'); setNombre(''); setIcono('') },
+        onSuccess: () => { toast('✓ Categoría creada', 'ok'); setNombre(''); setIcono(''); setMeses('6') },
         onError:   () => toast('Error al crear', 'err'),
       }
     )
+  }
+
+  function handleSaveVenc(id: number) {
+    const v = Number(editandoVenc?.valor)
+    if (!v || v < 1) { toast('Ingresá un número válido', 'err'); return }
+    actualizar({ id, meses_vencimiento: v }, {
+      onSuccess: () => { toast('✓ Vencimiento actualizado', 'ok'); setEditandoVenc(null) },
+      onError:   () => toast('Error al actualizar', 'err'),
+    })
   }
 
   function handleDelete(id: number, nombre: string) {
@@ -194,14 +206,36 @@ function ModalCategorias({ open, onClose }: { open: boolean; onClose: () => void
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="⚙️ CATEGORÍAS DE ROPA" width="max-w-sm"
+    <Modal open={open} onClose={onClose} title="⚙️ CATEGORÍAS DE ROPA" width="max-w-md"
       footer={<Button variant="secondary" onClick={onClose}>Cerrar</Button>}
     >
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
           {categorias.map(c => (
-            <div key={c.id} className="flex items-center justify-between px-3 py-2 bg-gris rounded-lg">
-              <span className="text-sm font-semibold text-carbon">{c.icono} {c.nombre}</span>
+            <div key={c.id} className="flex items-center justify-between px-3 py-2 bg-gris rounded-lg gap-2">
+              <span className="text-sm font-semibold text-carbon flex-1">{c.icono} {c.nombre}</span>
+              {editandoVenc?.id === c.id ? (
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    min={1}
+                    value={editandoVenc.valor}
+                    onChange={e => setEditandoVenc({ id: c.id, valor: e.target.value })}
+                    className="w-14 px-1.5 py-0.5 border-[1.5px] border-naranja rounded text-xs font-mono text-center outline-none"
+                    autoFocus
+                  />
+                  <span className="text-[10px] text-gris-dark">meses</span>
+                  <button onClick={() => handleSaveVenc(c.id)} className="text-xs font-bold text-verde hover:text-verde px-1">✓</button>
+                  <button onClick={() => setEditandoVenc(null)} className="text-xs text-gris-mid hover:text-rojo px-1">✕</button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setEditandoVenc({ id: c.id, valor: String(c.meses_vencimiento ?? 6) })}
+                  className="text-[11px] font-bold text-azul-mid bg-azul-light px-2 py-0.5 rounded hover:bg-azul hover:text-white transition-colors"
+                >
+                  ⏱ {c.meses_vencimiento ?? 6}m
+                </button>
+              )}
               <button onClick={() => handleDelete(c.id, c.nombre)} className="text-gris-mid hover:text-rojo text-xs transition-colors">🗑</button>
             </div>
           ))}
@@ -211,6 +245,16 @@ function ModalCategorias({ open, onClose }: { open: boolean; onClose: () => void
           <div className="flex gap-2">
             <Input placeholder="Emoji (ej: 🧤)" value={icono} onChange={e => setIcono(e.target.value)} className="w-20 flex-shrink-0" />
             <Input placeholder="Nombre (ej: Guantes)" value={nombre} onChange={e => setNombre(e.target.value)} className="flex-1" />
+          </div>
+          <div className="flex items-center gap-2">
+            <Input
+              label="Vencimiento (meses)"
+              type="number"
+              placeholder="6"
+              value={meses}
+              onChange={e => setMeses(e.target.value)}
+              className="w-32"
+            />
           </div>
           <Button variant="primary" size="sm" loading={creando} onClick={handleCreate}>＋ Agregar</Button>
         </div>
@@ -354,7 +398,7 @@ export function RopaPage() {
   const trabajadoresFinal = useMemo(() => {
     if (!soloVencidos) return trabajadoresBusqueda
     return trabajadoresBusqueda.filter(p =>
-      categorias.some(cat => estaVencido(p.leg, cat.id, ultimaEntregaFiltro))
+      categorias.some(cat => estaVencido(p.leg, cat.id, ultimaEntregaFiltro, cat.meses_vencimiento ?? 6))
     )
   }, [soloVencidos, trabajadoresBusqueda, categorias, ultimaEntregaFiltro])
 
@@ -452,7 +496,7 @@ export function RopaPage() {
               const items = categorias.map(cat => {
                 const ult     = ultimaEntregaPagina.get(`${p.leg}|${cat.id}`)
                 const meses   = ult ? diffMeses(ult.fecha_entrega) : null
-                const vencido = meses === null || meses >= MESES_VENCIMIENTO
+                const vencido = meses === null || meses >= (cat.meses_vencimiento ?? 6)
                 return { cat, ult, meses, vencido }
               })
               const tieneAlgunVencido = items.some(i => i.vencido)

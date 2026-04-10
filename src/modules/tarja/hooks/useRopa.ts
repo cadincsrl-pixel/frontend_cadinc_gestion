@@ -27,7 +27,7 @@ export function useRopaCategorias() {
 export function useCreateRopaCategoria() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (dto: { nombre: string; icono?: string }) => {
+    mutationFn: async (dto: { nombre: string; icono?: string; meses_vencimiento?: number }) => {
       const { data, error } = await sb()
         .from('ropa_categorias')
         .insert(dto)
@@ -35,6 +35,20 @@ export function useCreateRopaCategoria() {
         .single()
       if (error) throw new Error(error.message)
       return data as RopaCategoria
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY_CAT }),
+  })
+}
+
+export function useUpdateRopaCategoria() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, meses_vencimiento }: { id: number; meses_vencimiento: number }) => {
+      const { error } = await sb()
+        .from('ropa_categorias')
+        .update({ meses_vencimiento })
+        .eq('id', id)
+      if (error) throw new Error(error.message)
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY_CAT }),
   })

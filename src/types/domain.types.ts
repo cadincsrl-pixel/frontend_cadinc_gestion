@@ -381,10 +381,11 @@ export interface HerrStats {
 
 // ── Ropa de trabajo ──
 export interface RopaCategoria {
-  id:     number
-  nombre: string
-  icono:  string | null
-  activo: boolean
+  id:                 number
+  nombre:             string
+  icono:              string | null
+  activo:             boolean
+  meses_vencimiento:  number
 }
 
 export interface RopaEntrega {
