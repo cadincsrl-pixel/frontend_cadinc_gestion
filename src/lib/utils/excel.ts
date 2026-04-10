@@ -472,7 +472,7 @@ export function generarRecibos(
   }
 
 
-  function fmtM(n: number) { return '$' + Math.round(n).toLocaleString('es-AR') }
+  function fmtM(n: number) { return '$' + (Math.round(n / 1000) * 1000).toLocaleString('es-AR') }
   function fmtH(n: number) { return n + 'hs' }
 
   // ── Trabajadores ──
@@ -494,7 +494,7 @@ export function generarRecibos(
       if (!p) return
       const hs = totalHsLeg(horas, o.cod, leg, days.map(toISO))
       const vh = getVHLocal(o.cod, leg)
-      const costo = hs * vh
+      const costo = Math.round(hs * vh / 1000) * 1000
       if (hs === 0) return
       const cat = categorias.find(c => c.id === p.cat_id)
       if (!trabMap[leg]) trabMap[leg] = { p, obras: [], totalHs: 0, totalCosto: 0 }
@@ -682,7 +682,7 @@ export function generarRecibos(
       *{box-sizing:border-box;margin:0;padding:0}
       body{background:#f5f5f3;font-family:Arial,sans-serif;padding-top:68px}
       @page{size:A4;margin:10mm}
-      @media print{body{background:#fff;padding-top:0}.no-print{display:none}}
+      @media print{body{background:#fff;padding-top:0!important}.no-print{display:none!important}}
       .topbar{position:fixed;top:0;left:0;right:0;z-index:999;background:#0F2744;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:10px 20px;gap:12px;box-shadow:0 2px 8px rgba(0,0,0,.25)}
       .topbar-info{font-size:11px;opacity:.8;line-height:1.5}
       .topbar-info b{color:#fff;font-size:12px;opacity:1}
