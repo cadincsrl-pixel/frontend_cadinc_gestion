@@ -18,13 +18,11 @@ const MODULOS = [
   {
     key: 'logistica',
     nombre: 'Logística',
-    descripcion: 'Materiales y recursos',
+    descripcion: 'Transporte de camiones',
     icono: '🚛',
-    loginHref: '/logistica/login',
+    loginHref: '/login',
     appHref: '/logistica',
     color: 'azul',
-    disabled: true,
-    badge: 'Próximamente',
   },
   {
     key: 'herramientas',
