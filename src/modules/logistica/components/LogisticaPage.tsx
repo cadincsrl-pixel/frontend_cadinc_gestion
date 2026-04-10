@@ -1,27 +1,27 @@
 'use client'
 
-import { useState } from 'react'
-import { useViajes, useChoferes, useCamiones, useDeleteViaje } from '../hooks/useLogistica'
-import { ViajesTab } from './ViajesTab'
+import { useSearchParams } from 'next/navigation'
+import { useViajes, useChoferes, useCamiones } from '../hooks/useLogistica'
+import { ViajesTab }        from './ViajesTab'
 import { LiquidacionesTab } from './LiquidacionesTab'
-import { ChoferesTab } from './ChoferesTab'
-import { CamionesTab } from './CamionesTab'
-import { LugaresTab } from './LugaresTab'
+import { ChoferesTab }      from './ChoferesTab'
+import { CamionesTab }      from './CamionesTab'
+import { LugaresTab }       from './LugaresTab'
 
-
-type Tab = 'viajes' | 'liquidaciones' | 'choferes' | 'camiones' | 'lugares'
-
-const TABS: Array<{ id: Tab; icon: string; label: string }> = [
-  { id: 'viajes',        icon: '🚛', label: 'Tramos'        },
-  { id: 'liquidaciones', icon: '💰', label: 'Liquidaciones'  },
-  { id: 'choferes',      icon: '👷', label: 'Choferes'       },
-  { id: 'camiones',      icon: '🚚', label: 'Camiones'       },
-  { id: 'lugares',       icon: '📍', label: 'Lugares'        },
-]
+const TAB_TITLES: Record<string, { icon: string; label: string; sub: string }> = {
+  viajes:        { icon: '🚛', label: 'Tramos',        sub: 'Viajes cargados y vacíos'       },
+  liquidaciones: { icon: '💰', label: 'Liquidaciones', sub: 'Pago por días trabajados + km'  },
+  choferes:      { icon: '👷', label: 'Choferes',      sub: 'Personal de conducción'         },
+  camiones:      { icon: '🚚', label: 'Camiones',      sub: 'Flota de vehículos'             },
+  lugares:       { icon: '📍', label: 'Lugares',       sub: 'Canteras · Descargas · Relevos' },
+}
 
 export function LogisticaPage() {
-  const [tab, setTab] = useState<Tab>('viajes')
-  const { data: viajes = [] } = useViajes()
+  const searchParams = useSearchParams()
+  const tab = (searchParams.get('tab') ?? 'viajes') as keyof typeof TAB_TITLES
+  const info = TAB_TITLES[tab] ?? TAB_TITLES['viajes']
+
+  const { data: viajes   = [] } = useViajes()
   const { data: choferes = [] } = useChoferes()
   const { data: camiones = [] } = useCamiones()
 
@@ -34,41 +34,20 @@ export function LogisticaPage() {
       {/* Header */}
       <div className="bg-white rounded-card shadow-card p-4 border-l-[5px] border-naranja">
         <h1 className="font-display text-[2rem] tracking-wider text-azul leading-none">
-          LOGÍSTICA
+          {info.icon} {info.label.toUpperCase()}
         </h1>
-        <p className="text-sm text-gris-dark mt-1">
-          Control de viajes, choferes y liquidaciones
-        </p>
-        <div className="flex gap-3 mt-3 flex-wrap">
-          <Stat value={enCurso}     label="En curso"    color="orange" />
-          <Stat value={completados} label="Completados" color="green"  />
-          <Stat value={choferes.filter(c => c.estado === 'activo').length} label="Choferes activos" color="blue" />
-          <Stat value={camiones.filter(c => c.estado === 'activo').length} label="Camiones activos" color="blue" />
-        </div>
+        <p className="text-sm text-gris-dark mt-1">{info.sub}</p>
+        {tab === 'viajes' && (
+          <div className="flex gap-3 mt-3 flex-wrap">
+            <Stat value={enCurso}     label="En curso"         color="orange" />
+            <Stat value={completados} label="Completados"      color="green"  />
+            <Stat value={choferes.filter(c => c.estado === 'activo').length} label="Choferes activos" color="blue" />
+            <Stat value={camiones.filter(c => c.estado === 'activo').length} label="Camiones activos" color="blue" />
+          </div>
+        )}
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 bg-white rounded-card shadow-card p-1.5 overflow-x-auto">
-        {TABS.map(t => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`
-              flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm
-              transition-all whitespace-nowrap flex-shrink-0
-              ${tab === t.id
-                ? 'bg-azul text-white shadow-sm'
-                : 'text-gris-dark hover:bg-gris hover:text-carbon'
-              }
-            `}
-          >
-            <span>{t.icon}</span>
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Contenido */}
+      {/* Contenido según tab */}
       {tab === 'viajes'        && <ViajesTab />}
       {tab === 'liquidaciones' && <LiquidacionesTab />}
       {tab === 'choferes'      && <ChoferesTab />}
