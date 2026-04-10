@@ -296,7 +296,7 @@ export function exportarExcelObras(
       const days = getSemDays(new Date(sk + 'T12:00:00'))
       legs.forEach(leg => {
         totalHs += totalHsLeg(horas, o.cod, leg, days.map(toISO))
-        totalCosto += costoLegConCatObra(o.cod, leg, days)
+        totalCosto += Math.round(costoLegConCatObra(o.cod, leg, days) / 1000) * 1000
       })
     })
 
@@ -361,7 +361,7 @@ export function exportarExcelObras(
         const p = personal.find(x => x.leg === leg)
         if (!p) return
         const hs = totalHsLeg(horas, o.cod, leg, days.map(toISO))
-        const costo = costoLegConCatObra(o.cod, leg, days)
+        const costo = Math.round(costoLegConCatObra(o.cod, leg, days) / 1000) * 1000
         if (hs === 0) return
         const cat = categorias.find(c => c.id === p.cat_id)
         detRows.push([
