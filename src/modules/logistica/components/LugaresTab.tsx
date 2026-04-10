@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import {
   useCanteras, useDepositos, useRutas,
-  useCreateChofer, useDeleteViaje,
 } from '../hooks/useLogistica'
 import { apiPost, apiDelete } from '@/lib/api/client'
 import { useQueryClient } from '@tanstack/react-query'
