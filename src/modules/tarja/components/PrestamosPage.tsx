@@ -1,17 +1,20 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { usePrestamos, useCreatePrestamo, useDeletePrestamo } from '../hooks/usePrestamos'
+import { usePrestamosLigero, usePrestamosForLegs, useCreatePrestamo, useDeletePrestamo } from '../hooks/usePrestamos'
 import { usePersonal } from '../hooks/usePersonal'
 import { toISO, getViernes, getSemLabel } from '@/lib/utils/dates'
-import { Combobox } from '@/components/ui/Combobox'
-import { Button }   from '@/components/ui/Button'
-import { Modal }    from '@/components/ui/Modal'
-import { Input }    from '@/components/ui/Input'
-import { useToast } from '@/components/ui/Toast'
-import { usePermisos } from '@/hooks/usePermisos'
+import { Combobox }   from '@/components/ui/Combobox'
+import { Button }     from '@/components/ui/Button'
+import { Modal }      from '@/components/ui/Modal'
+import { Input }      from '@/components/ui/Input'
+import { Pagination } from '@/components/ui/Pagination'
+import { useToast }   from '@/components/ui/Toast'
+import { usePermisos }    from '@/hooks/usePermisos'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import type { Personal, Prestamo } from '@/types/domain.types'
+
+const DEFAULT_PAGE_SIZE = 12
 
 function fmtM(n: number) {
   return '$' + Math.round(n).toLocaleString('es-AR')
@@ -146,12 +149,10 @@ interface CardOperarioProps {
 function CardOperario({ leg, nombre, movs, saldo, puedeCrear, perfiles, onNuevo, onDelete }: CardOperarioProps) {
   const [expandido, setExpandido] = useState(false)
 
-  // Movimientos ordenados cronológicamente
   const movsOrdenados = [...movs].sort((a, b) => a.created_at.localeCompare(b.created_at))
 
   const saldado = saldo <= 0
 
-  // Construir detalle con saldo acumulado en cada paso
   let acum = 0
   const detalle = movsOrdenados.map(m => {
     acum = m.tipo === 'otorgado' ? acum + m.monto : acum - m.monto
@@ -160,7 +161,6 @@ function CardOperario({ leg, nombre, movs, saldo, puedeCrear, perfiles, onNuevo,
 
   return (
     <div className={`bg-white rounded-card shadow-card border-l-4 ${saldado ? 'border-verde' : 'border-naranja'}`}>
-      {/* Cabecera */}
       <div className="flex items-center justify-between gap-3 p-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
@@ -200,7 +200,6 @@ function CardOperario({ leg, nombre, movs, saldo, puedeCrear, perfiles, onNuevo,
         </div>
       </div>
 
-      {/* Detalle expandible */}
       {expandido && (
         <div className="border-t border-gris-mid mx-4 mb-4">
           <div className="flex flex-col gap-0 mt-3">
@@ -259,7 +258,6 @@ function CardOperario({ leg, nombre, movs, saldo, puedeCrear, perfiles, onNuevo,
             })}
           </div>
 
-          {/* Resumen al pie */}
           <div className={`
             mt-3 rounded-lg px-3 py-2 flex items-center justify-between
             ${saldado ? 'bg-verde-light' : 'bg-naranja-light'}
@@ -281,13 +279,17 @@ function CardOperario({ leg, nombre, movs, saldo, puedeCrear, perfiles, onNuevo,
 export function PrestamosPage() {
   const toast = useToast()
   const { puedeCrear } = usePermisos('tarja')
-  const { data: prestamos = [], isLoading } = usePrestamos()
-  const { data: personal  = [] }            = usePersonal()
-  const { mutate: remove }                  = useDeletePrestamo()
+
+  // Datos ligeros (leg + tipo + monto) para calcular saldos de todos los operarios
+  const { data: ligero = [], isLoading: loadingLigero } = usePrestamosLigero()
+  const { data: personal = [] } = usePersonal()
+  const { mutate: remove }      = useDeletePrestamo()
   const perfiles = usePerfilesMap()
 
   const [modalConfig, setModalConfig] = useState<{ tipo: 'otorgado' | 'descontado'; leg: string } | null>(null)
-  const [filtLeg, setFiltLeg] = useState('')
+  const [filtLeg,     setFiltLeg]     = useState('')
+  const [page,        setPage]        = useState(1)
+  const [pageSize,    setPageSize]    = useState(DEFAULT_PAGE_SIZE)
 
   const opcionesPersonal = useMemo(() =>
     personal.map((p: Personal) => ({ value: p.leg, label: p.nom, sub: `Leg. ${p.leg}` })),
@@ -300,28 +302,53 @@ export function PrestamosPage() {
     return m
   }, [personal])
 
-  // Agrupar por operario, ordenar por saldo desc (más deuda primero), saldados al final
-  const operarios = useMemo(() => {
-    const map = new Map<string, Prestamo[]>()
-    prestamos.forEach(p => {
-      if (!map.has(p.leg)) map.set(p.leg, [])
-      map.get(p.leg)!.push(p)
+  // Agrupar saldos por operario usando datos ligeros
+  const operariosSaldos = useMemo(() => {
+    const map = new Map<string, { otorgado: number; descontado: number }>()
+    ligero.forEach(r => {
+      if (!map.has(r.leg)) map.set(r.leg, { otorgado: 0, descontado: 0 })
+      const entry = map.get(r.leg)!
+      if (r.tipo === 'otorgado') entry.otorgado += r.monto
+      else entry.descontado += r.monto
     })
     return [...map.entries()]
-      .map(([leg, movs]) => {
-        const saldo = movs.reduce((s, m) => m.tipo === 'otorgado' ? s + m.monto : s - m.monto, 0)
-        return { leg, movs, saldo }
-      })
-      .sort((a, b) => b.saldo - a.saldo) // más deuda primero; saldados al final
-  }, [prestamos])
+      .map(([leg, { otorgado, descontado }]) => ({ leg, saldo: otorgado - descontado }))
+      .sort((a, b) => b.saldo - a.saldo)
+  }, [ligero])
 
   const filtrados = useMemo(() =>
-    filtLeg ? operarios.filter(o => o.leg === filtLeg) : operarios,
-    [operarios, filtLeg]
+    filtLeg ? operariosSaldos.filter(o => o.leg === filtLeg) : operariosSaldos,
+    [operariosSaldos, filtLeg]
   )
 
-  const totalDeuda = operarios.filter(o => o.saldo > 0).reduce((s, o) => s + o.saldo, 0)
-  const conDeuda   = operarios.filter(o => o.saldo > 0).length
+  const totalDeuda = operariosSaldos.filter(o => o.saldo > 0).reduce((s, o) => s + o.saldo, 0)
+  const conDeuda   = operariosSaldos.filter(o => o.saldo > 0).length
+
+  // Operarios de la página actual
+  const pageItems = useMemo(() => {
+    const from = (page - 1) * pageSize
+    return filtrados.slice(from, from + pageSize)
+  }, [filtrados, page, pageSize])
+
+  const pageLegs = useMemo(() => pageItems.map(o => o.leg), [pageItems])
+
+  // Cargar movimientos completos solo para los operarios de esta página
+  const { data: movsPagina = [], isFetching: loadingMovs } = usePrestamosForLegs(pageLegs)
+
+  // Mapear movimientos por leg para las cards
+  const movsMap = useMemo(() => {
+    const m = new Map<string, Prestamo[]>()
+    movsPagina.forEach(p => {
+      if (!m.has(p.leg)) m.set(p.leg, [])
+      m.get(p.leg)!.push(p)
+    })
+    return m
+  }, [movsPagina])
+
+  function handlePageSizeChange(size: number) {
+    setPageSize(size)
+    setPage(1)
+  }
 
   function handleDelete(id: number) {
     if (!confirm('¿Eliminar este movimiento?')) return
@@ -361,32 +388,42 @@ export function PrestamosPage() {
         placeholder="Filtrar por albañil..."
         options={opcionesPersonal}
         value={filtLeg}
-        onChange={setFiltLeg}
+        onChange={v => { setFiltLeg(v); setPage(1) }}
       />
 
       {/* Lista por operario */}
-      {isLoading ? (
+      {loadingLigero ? (
         <div className="text-center py-10 text-gris-dark text-sm">Cargando…</div>
       ) : filtrados.length === 0 ? (
         <div className="bg-white rounded-card shadow-card p-8 text-center text-gris-dark text-sm">
           No hay préstamos registrados.
         </div>
       ) : (
-        <div className="flex flex-col gap-3">
-          {filtrados.map(({ leg, movs, saldo }) => (
-            <CardOperario
-              key={leg}
-              leg={leg}
-              nombre={nombreMap.get(leg) ?? leg}
-              movs={movs}
-              saldo={saldo}
-              puedeCrear={!!puedeCrear}
-              perfiles={perfiles}
-              onNuevo={(tipo, l) => setModalConfig({ tipo, leg: l })}
-              onDelete={handleDelete}
-            />
-          ))}
-        </div>
+        <>
+          <div className={`flex flex-col gap-3 transition-opacity ${loadingMovs ? 'opacity-60' : ''}`}>
+            {pageItems.map(({ leg, saldo }) => (
+              <CardOperario
+                key={leg}
+                leg={leg}
+                nombre={nombreMap.get(leg) ?? leg}
+                movs={movsMap.get(leg) ?? []}
+                saldo={saldo}
+                puedeCrear={!!puedeCrear}
+                perfiles={perfiles}
+                onNuevo={(tipo, l) => setModalConfig({ tipo, leg: l })}
+                onDelete={handleDelete}
+              />
+            ))}
+          </div>
+
+          <Pagination
+            page={page}
+            total={filtrados.length}
+            pageSize={pageSize}
+            onChange={p => { setPage(p); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+            onPageSizeChange={handlePageSizeChange}
+          />
+        </>
       )}
 
       {/* Modal */}

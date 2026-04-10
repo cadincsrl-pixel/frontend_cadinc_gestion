@@ -75,7 +75,7 @@ export function PersonalPage() {
   const [detalle,       setDetalle]       = useState<Personal | null>(null)
   const [busqueda,      setBusqueda]      = useState('')
   const [pageP,         setPageP]         = useState(1)
-  const PAGE_SIZE_P = 15
+  const [pageSizeP,     setPageSizeP]     = useState(12)
 
   // ── Contratistas ──
   const { data: contratistas = [], isLoading: loadingContrat } = useContratistas()
@@ -95,7 +95,7 @@ export function PersonalPage() {
     (p.dni ?? '').includes(busqueda)
   )
   useEffect(() => { setPageP(1) }, [busqueda])
-  const filtradosPag = filtrados.slice((pageP - 1) * PAGE_SIZE_P, pageP * PAGE_SIZE_P)
+  const filtradosPag = filtrados.slice((pageP - 1) * pageSizeP, pageP * pageSizeP)
 
   const filtradosC = contratistas.filter(c =>
     c.nom.toLowerCase().includes(busquedaC.toLowerCase()) ||
@@ -366,14 +366,13 @@ export function PersonalPage() {
               </table>
             </div>
           </div>
-          {filtrados.length > PAGE_SIZE_P && (
-            <Pagination
-              page={pageP}
-              total={filtrados.length}
-              pageSize={PAGE_SIZE_P}
-              onChange={setPageP}
-            />
-          )}
+          <Pagination
+            page={pageP}
+            total={filtrados.length}
+            pageSize={pageSizeP}
+            onChange={setPageP}
+            onPageSizeChange={size => { setPageSizeP(size); setPageP(1) }}
+          />
         </>
       )}
 

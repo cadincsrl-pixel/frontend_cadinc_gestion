@@ -237,6 +237,36 @@ export function HorasTrabajadorPage() {
   const totCosto = filasFiltradas.reduce((s, f) => s + f.totalCosto, 0)
   const uniqueLegs = new Set(filasFiltradas.map(f => f.leg)).size
 
+  // ── Lista de render: inserta fila de subtotal después de cada worker multi-obra ──
+  type FilaData = typeof filasFiltradas[0]
+  type FilaRender =
+    | { type: 'fila'; data: FilaData }
+    | { type: 'subtotal'; leg: string; p: Personal; obraCount: number; totalHs: number; totalCosto: number; horasPorDia: Record<string, number> }
+
+  const filasRender = useMemo((): FilaRender[] => {
+    const result: FilaRender[] = []
+    let i = 0
+    while (i < filasFiltradas.length) {
+      const leg = filasFiltradas[i]!.leg
+      let j = i
+      while (j < filasFiltradas.length && filasFiltradas[j]!.leg === leg) j++
+      const legRows = filasFiltradas.slice(i, j)
+      legRows.forEach(r => result.push({ type: 'fila', data: r }))
+      if (legRows.length > 1) {
+        const totalHs   = legRows.reduce((s, r) => s + r.totalHs,   0)
+        const totalCosto = legRows.reduce((s, r) => s + r.totalCosto, 0)
+        const horasPorDia: Record<string, number> = {}
+        days.forEach(d => {
+          const ds = toISO(d)
+          horasPorDia[ds] = legRows.reduce((s, r) => s + (r.horasPorDia[ds] ?? 0), 0)
+        })
+        result.push({ type: 'subtotal', leg, p: legRows[0]!.p, obraCount: legRows.length, totalHs, totalCosto, horasPorDia })
+      }
+      i = j
+    }
+    return result
+  }, [filasFiltradas, days])
+
   // ── Edición inline ──
   const [editingCell, setEditingCell] = useState<{ key: string; val: string } | null>(null)
 
@@ -472,7 +502,51 @@ export function HorasTrabajadorPage() {
                   </tr>
                 ) : (
                   <>
-                    {filasFiltradas.map((f, idx) => {
+                    {filasRender.map((item, idx) => {
+                      // ── Fila subtotal ──
+                      if (item.type === 'subtotal') {
+                        const { leg, p, obraCount, totalHs: subHs, totalCosto: subCosto, horasPorDia } = item
+                        return (
+                          <tr key={`${leg}-subtotal`} className="border-b-2 border-[#C89500]">
+                            <td className="font-mono text-xs px-3 py-2 font-bold text-[#7A5000] bg-[#FFF3CD] whitespace-nowrap">
+                              {leg}
+                            </td>
+                            <td className="px-3 py-2 bg-[#FFF3CD] whitespace-nowrap">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-bold text-sm text-[#7A5000]">{p.nom}</span>
+                                <span className="text-[10px] font-bold bg-[#E0A800] text-white px-1.5 py-0.5 rounded">
+                                  ↔ {obraCount} obras
+                                </span>
+                              </div>
+                            </td>
+                            {mostrarObra && (
+                              <td className="px-2 py-2 bg-[#FFF3CD] text-gris-mid text-xs">—</td>
+                            )}
+                            <td className="px-2 py-2 bg-[#FFF3CD]" />
+                            {days.map((d, i) => {
+                              const ds = toISO(d)
+                              const val = horasPorDia[ds] ?? 0
+                              return (
+                                <td key={i} className="px-1.5 py-2 text-center bg-[#FFF3CD]">
+                                  {val > 0
+                                    ? <span className="font-mono text-sm font-bold text-[#7A5000]">{val}</span>
+                                    : <span className="text-gris-mid text-xs">—</span>
+                                  }
+                                </td>
+                              )
+                            })}
+                            <td className="text-center bg-[#E0A800] font-mono text-sm font-bold text-white px-2 py-2 whitespace-nowrap">
+                              {subHs > 0 ? subHs : '—'}
+                            </td>
+                            <td className="text-right bg-[#E0A800] px-3 py-2 whitespace-nowrap font-mono text-sm font-bold text-white">
+                              {subCosto > 0 ? fmtM(subCosto) : '—'}
+                            </td>
+                          </tr>
+                        )
+                      }
+
+                      // ── Fila normal ──
+                      const f = item.data
                       const catId = getCatIdEfectivo(f.obra.cod, f.leg, hoyRef)
                       const catNom = getCatNom(catId)
                       const esMulti = multiObra.has(f.leg)

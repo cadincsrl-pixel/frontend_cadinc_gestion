@@ -4,14 +4,14 @@
 -- ═══════════════════════════════════════════════════════════
 
 -- EMPRESAS (clientes que pagan por tonelada)
-CREATE TABLE empresas (
+CREATE TABLE IF NOT EXISTS empresas (
   id serial PRIMARY KEY,
   nombre text NOT NULL,
   cuit text, contacto text, telefono text, email text, obs text
 );
 
 -- LUGARES (canteras, descargas, relevos)
-CREATE TABLE lugares (
+CREATE TABLE IF NOT EXISTS lugares (
   id serial PRIMARY KEY,
   nombre text NOT NULL,
   tipo text NOT NULL CHECK (tipo IN ('cantera','descarga','relevo')),
@@ -20,7 +20,7 @@ CREATE TABLE lugares (
   obs text
 );
 -- Historial de tarifa $/ton por cantera
-CREATE TABLE lugares_tarifa_hist (
+CREATE TABLE IF NOT EXISTS lugares_tarifa_hist (
   id serial PRIMARY KEY,
   lugar_id integer REFERENCES lugares(id) ON DELETE CASCADE,
   valor_ton numeric NOT NULL,
@@ -28,7 +28,7 @@ CREATE TABLE lugares_tarifa_hist (
 );
 
 -- CHOFERES
-CREATE TABLE choferes (
+CREATE TABLE IF NOT EXISTS choferes (
   id serial PRIMARY KEY,
   nombre text NOT NULL,
   dni text, telefono text,
@@ -37,14 +37,14 @@ CREATE TABLE choferes (
   obs text
 );
 -- Historial básico diario
-CREATE TABLE choferes_basico_hist (
+CREATE TABLE IF NOT EXISTS choferes_basico_hist (
   id serial PRIMARY KEY,
   chofer_id integer REFERENCES choferes(id) ON DELETE CASCADE,
   valor_dia numeric NOT NULL,
   desde date NOT NULL
 );
 -- Historial precio por km
-CREATE TABLE choferes_km_hist (
+CREATE TABLE IF NOT EXISTS choferes_km_hist (
   id serial PRIMARY KEY,
   chofer_id integer REFERENCES choferes(id) ON DELETE CASCADE,
   valor_km numeric NOT NULL,
@@ -52,7 +52,7 @@ CREATE TABLE choferes_km_hist (
 );
 
 -- CAMIONES
-CREATE TABLE camiones (
+CREATE TABLE IF NOT EXISTS camiones (
   id serial PRIMARY KEY,
   patente text NOT NULL,
   marca text, modelo text, anio integer,
@@ -60,7 +60,7 @@ CREATE TABLE camiones (
   obs text
 );
 -- Gastos de mantenimiento
-CREATE TABLE camiones_gastos (
+CREATE TABLE IF NOT EXISTS camiones_gastos (
   id serial PRIMARY KEY,
   camion_id integer REFERENCES camiones(id) ON DELETE CASCADE,
   fecha date NOT NULL,
@@ -71,7 +71,7 @@ CREATE TABLE camiones_gastos (
 );
 
 -- RUTAS (distancias entre puntos — autofill en viajes)
-CREATE TABLE rutas (
+CREATE TABLE IF NOT EXISTS rutas (
   id serial PRIMARY KEY,
   origen_id integer REFERENCES lugares(id),
   destino_id integer REFERENCES lugares(id),
@@ -80,7 +80,7 @@ CREATE TABLE rutas (
 );
 
 -- VIAJES (cada tramo es un viaje separado)
-CREATE TABLE viajes (
+CREATE TABLE IF NOT EXISTS viajes (
   id serial PRIMARY KEY,
   chofer_id integer REFERENCES choferes(id),
   camion_id integer REFERENCES camiones(id),
@@ -97,21 +97,21 @@ CREATE TABLE viajes (
 );
 
 -- Remitos de carga (solo viajes tipo "cargado")
-CREATE TABLE remitos_carga (
+CREATE TABLE IF NOT EXISTS remitos_carga (
   id serial PRIMARY KEY,
   viaje_id integer REFERENCES viajes(id) ON DELETE CASCADE,
   numero text, fecha date, toneladas numeric, remito_url text
 );
 
 -- Remitos de descarga (marcan el viaje como completado)
-CREATE TABLE remitos_descarga (
+CREATE TABLE IF NOT EXISTS remitos_descarga (
   id serial PRIMARY KEY,
   viaje_id integer REFERENCES viajes(id) ON DELETE CASCADE,
   numero text, fecha date, toneladas numeric, remito_url text
 );
 
 -- RELEVOS (cambio de chofer en punto de relevo)
-CREATE TABLE relevos (
+CREATE TABLE IF NOT EXISTS relevos (
   id serial PRIMARY KEY,
   viaje_id integer REFERENCES viajes(id),
   chofer_sale_id integer REFERENCES choferes(id),
@@ -121,7 +121,7 @@ CREATE TABLE relevos (
 );
 
 -- LIQUIDACIONES
-CREATE TABLE liquidaciones (
+CREATE TABLE IF NOT EXISTS liquidaciones (
   id serial PRIMARY KEY,
   chofer_id integer REFERENCES choferes(id),
   fecha_desde date,
@@ -138,7 +138,7 @@ CREATE TABLE liquidaciones (
 );
 
 -- Viajes incluidos en cada liquidación
-CREATE TABLE liquidacion_viajes (
+CREATE TABLE IF NOT EXISTS liquidacion_viajes (
   id serial PRIMARY KEY,
   liquidacion_id integer REFERENCES liquidaciones(id) ON DELETE CASCADE,
   viaje_id integer REFERENCES viajes(id),
@@ -147,7 +147,7 @@ CREATE TABLE liquidacion_viajes (
 );
 
 -- ADELANTOS
-CREATE TABLE adelantos (
+CREATE TABLE IF NOT EXISTS adelantos (
   id serial PRIMARY KEY,
   chofer_id integer REFERENCES choferes(id),
   fecha date NOT NULL,

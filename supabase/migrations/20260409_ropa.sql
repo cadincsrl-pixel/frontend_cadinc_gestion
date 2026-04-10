@@ -40,3 +40,4 @@ create policy "auth delete ropa_entregas"   on ropa_entregas   for delete    to 
 -- Override activo manual en personal
 alter table personal
   add column if not exists activo_override boolean;
+2

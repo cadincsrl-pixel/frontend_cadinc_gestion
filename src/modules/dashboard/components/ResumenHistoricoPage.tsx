@@ -23,7 +23,7 @@ export function ResumenHistoricoPage() {
   const router = useRouter()
 
   // ── Filtros ──
-  const [filtroCC, setFiltroCC] = useState('')
+  const [filtroNombre, setFiltroNombre] = useState('')
   const [filtroDesde, setFiltroDesde] = useState('')
   const [filtroHasta, setFiltroHasta] = useState('')
 
@@ -74,16 +74,11 @@ export function ResumenHistoricoPage() {
 
 
 
-  // ── Centros de costo únicos ──
-  const centrosCosto = useMemo(() => {
-    return [...new Set(obras.map(o => o.cc ?? '').filter(Boolean))].sort()
-  }, [obras])
-
-  // ── Obras filtradas por CC ──
+  // ── Obras filtradas por nombre ──
   const obrasFiltradas = useMemo(() => {
-    if (!filtroCC) return obras
-    return obras.filter(o => (o.cc ?? '') === filtroCC)
-  }, [obras, filtroCC])
+    if (!filtroNombre) return obras
+    return obras.filter(o => o.nom.toLowerCase().includes(filtroNombre.toLowerCase()))
+  }, [obras, filtroNombre])
 
   // ── Semanas disponibles (de todas las horas + certificaciones) ──
   const semanasDisponibles = useMemo(() => {
@@ -97,9 +92,22 @@ export function ResumenHistoricoPage() {
     return [...sems].sort()
   }, [todasHoras, todasCerts])
 
-  // ── Semana actual ──
-  const semActualKey = toISO(getViernes(new Date()))
-  const semActualDays = getSemDays(getViernes(new Date()))
+  // ── Semana actual (con gracia de 2 días post-cierre) ──
+  // Si hoy es viernes o sábado, seguimos mostrando la semana que cerró el jueves anterior
+  const semConGracia = useMemo(() => {
+    const hoy = new Date()
+    const dw  = hoy.getDay() // 0=Dom … 5=Vie, 6=Sab
+    const vie = getViernes(hoy)
+    if (dw === 5 || dw === 6) {
+      const ant = new Date(vie)
+      ant.setDate(ant.getDate() - 7)
+      return ant
+    }
+    return vie
+  }, [])
+  const semActualKey  = toISO(semConGracia)
+  const semActualDays = getSemDays(semConGracia)
+  const enGracia      = semActualKey !== toISO(getViernes(new Date()))
 
   // ── RESUMEN SEMANA ACTUAL ──
   const resumenSemActual = useMemo(() => {
@@ -138,7 +146,7 @@ export function ResumenHistoricoPage() {
     }).filter(c => c.hs > 0 || c.contrat > 0)
 
     return { cards, totalHs, totalCosto, totalContrat, trabajadores: trabajadoresUnicos.size }
-  }, [obrasFiltradas, todasHoras, personal, categorias, todasTarifas, todasCerts, todosCierres, todasAsignaciones, todasCatObra, filtroDesde, filtroHasta])
+  }, [obrasFiltradas, todasHoras, personal, categorias, todasTarifas, todasCerts, todosCierres, todasAsignaciones, todasCatObra, filtroNombre, filtroDesde, filtroHasta])
 
   // ── RESUMEN HISTÓRICO ──
   const resumenHistorico = useMemo(() => {
@@ -245,10 +253,10 @@ export function ResumenHistoricoPage() {
     }>
 
     return { filas, htHs, htCosto, htContrat, htSemsCerradas }
-  }, [obrasFiltradas, todasHoras, personal, categorias, todasTarifas, todasCerts, todosCierres, todasAsignaciones, filtroDesde, filtroHasta])
+  }, [obrasFiltradas, todasHoras, personal, categorias, todasTarifas, todasCerts, todosCierres, todasAsignaciones, filtroNombre, filtroDesde, filtroHasta])
 
   function limpiarFiltros() {
-    setFiltroCC('')
+    setFiltroNombre('')
     setFiltroDesde('')
     setFiltroHasta('')
   }
@@ -336,7 +344,13 @@ export function ResumenHistoricoPage() {
               📊 RESUMEN GENERAL
             </h1>
             <p className="text-sm text-gris-dark mt-1">
-              Vista semana actual · {getSemLabel(getViernes(new Date()))}
+              {enGracia ? 'Semana cerrada · ' : 'Vista semana actual · '}
+              {getSemLabel(semConGracia)}
+              {enGracia && (
+                <span className="ml-2 text-[11px] font-bold text-naranja bg-naranja-light px-2 py-0.5 rounded-full">
+                  cierre reciente
+                </span>
+              )}
             </p>
           </div>
           <div className="flex gap-2 flex-wrap">
@@ -446,19 +460,16 @@ export function ResumenHistoricoPage() {
 
             {/* Filtros */}
             <div className="flex items-center gap-2 flex-wrap mt-3">
-              <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">
-                Centro de costo
-              </label>
-              <select
-                value={filtroCC}
-                onChange={e => setFiltroCC(e.target.value)}
-                className="px-2 py-1 border-[1.5px] border-gris-mid rounded-md text-xs outline-none bg-white font-semibold focus:border-naranja max-w-[200px]"
-              >
-                <option value="">Todos</option>
-                {centrosCosto.map(cc => (
-                  <option key={cc} value={cc}>{cc}</option>
-                ))}
-              </select>
+              <div className="relative">
+                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gris-mid text-xs pointer-events-none">🔍</span>
+                <input
+                  type="text"
+                  value={filtroNombre}
+                  onChange={e => setFiltroNombre(e.target.value)}
+                  placeholder="Buscar obra..."
+                  className="pl-7 pr-2 py-1 border-[1.5px] border-gris-mid rounded-md text-xs outline-none bg-white font-semibold focus:border-naranja w-[180px]"
+                />
+              </div>
 
               <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider ml-2">
                 Desde
