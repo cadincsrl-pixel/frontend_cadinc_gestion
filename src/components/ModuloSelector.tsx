@@ -42,7 +42,6 @@ export function ModuloSelector() {
   const [error, setError] = useState('')
 
   async function handleModulo(m: typeof MODULOS[number]) {
-    if ('disabled' in m && m.disabled) return
 
     setError('')
     setChecking(true)
@@ -165,24 +164,15 @@ export function ModuloSelector() {
           <button
             key={m.key}
             onClick={() => handleModulo(m)}
-            disabled={('disabled' in m && m.disabled) || checking}
+            disabled={checking}
             className={`
               relative flex flex-col items-center gap-4 p-8 rounded-2xl border-2 transition-all
-              ${'disabled' in m && m.disabled
-                ? 'border-white/10 bg-white/5 cursor-not-allowed opacity-50'
-                : checking
-                  ? 'border-white/20 bg-white/10 opacity-60 cursor-wait'
-                  : 'border-white/20 bg-white/10 hover:bg-white/20 hover:border-naranja hover:scale-[1.03] cursor-pointer active:scale-[0.98]'
+              ${checking
+                ? 'border-white/20 bg-white/10 opacity-60 cursor-wait'
+                : 'border-white/20 bg-white/10 hover:bg-white/20 hover:border-naranja hover:scale-[1.03] cursor-pointer active:scale-[0.98]'
               }
             `}
           >
-            {/* Badge */}
-            {'badge' in m && m.badge && (
-              <span className="absolute top-3 right-3 text-[10px] font-bold bg-white/20 text-white/70 px-2 py-0.5 rounded-full uppercase tracking-wide">
-                {m.badge}
-              </span>
-            )}
-
             {/* Ícono */}
             <div className="text-5xl">{m.icono}</div>
 
@@ -197,11 +187,9 @@ export function ModuloSelector() {
             </div>
 
             {/* Flecha */}
-            {!('disabled' in m && m.disabled) && (
-              <div className="text-naranja text-xl font-bold">
-                {checking ? '⏳' : '→'}
-              </div>
-            )}
+            <div className="text-naranja text-xl font-bold">
+              {checking ? '⏳' : '→'}
+            </div>
           </button>
         ))}
       </div>
