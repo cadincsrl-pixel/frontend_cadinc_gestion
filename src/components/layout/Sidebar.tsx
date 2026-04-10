@@ -20,6 +20,17 @@ const NAV_ITEMS_TARJA = [
   { href: '/tarja/archivadas', icon: '📦', label: 'Obras archivadas',   meta: 'Historial de obras',   exact: true  },
 ]
 
+const NAV_ITEMS_LOGISTICA = [
+  { href: '/logistica',              icon: '🚛', label: 'Viajes',         meta: 'Tramos cargados y vacíos'   },
+  { href: '/logistica/liquidaciones',icon: '💰', label: 'Liquidaciones',  meta: 'Pago a choferes'            },
+  { href: '/logistica/facturacion',  icon: '🧾', label: 'Facturación',    meta: 'Cobro por tonelada'         },
+  { href: '/logistica/choferes',     icon: '👷', label: 'Choferes',       meta: 'Personal de conducción'     },
+  { href: '/logistica/camiones',     icon: '🚚', label: 'Camiones',       meta: 'Flota de vehículos'         },
+  { href: '/logistica/empresas',     icon: '🏢', label: 'Empresas',       meta: 'Clientes / canteras'        },
+  { href: '/logistica/lugares',      icon: '📍', label: 'Lugares',        meta: 'Canteras · Descargas · Relevos' },
+  { href: '/logistica/rutas',        icon: '🗺️', label: 'Rutas & Km',     meta: 'Distancias entre puntos'    },
+]
+
 const HERR_SUBNAV = [
   { href: '/herramientas/inventario',   icon: '🔧', label: 'Inventario',   meta: 'Catálogo de herramientas'  },
   { href: '/herramientas/movimientos',  icon: '↔',  label: 'Movimientos',  meta: 'Registrar traslados'       },
@@ -37,6 +48,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const profile   = useSessionStore(s => s.profile)
 
   const enHerramientas = decodedPathname.startsWith('/herramientas')
+  const enLogistica    = decodedPathname.startsWith('/logistica')
 
   function navigate(href: string) {
     router.push(href)
@@ -61,6 +73,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
   const showObrasSubnav =
     !enHerramientas &&
+    !enLogistica &&
     decodedPathname.startsWith('/tarja') &&
     decodedPathname !== '/tarja/archivadas'
 
@@ -85,11 +98,34 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         {/* ── Nav principal ── */}
         <div className="pt-3">
           <div className="px-4 py-2 text-[10px] font-bold tracking-[2.5px] uppercase text-white/35">
-            {enHerramientas ? 'Herramientas' : 'Menú'}
+            {enHerramientas ? 'Herramientas' : enLogistica ? 'Logística' : 'Menú'}
           </div>
 
-          {/* TARJA nav — solo si NO estamos en herramientas */}
-          {!enHerramientas && NAV_ITEMS_TARJA.map(item => (
+          {/* LOGÍSTICA nav */}
+          {enLogistica && NAV_ITEMS_LOGISTICA.map(item => (
+            <button
+              key={item.href}
+              onClick={() => navigate(item.href)}
+              className={`
+                w-full flex items-center gap-2.5 px-3 py-2.5 mx-2 rounded-[9px]
+                text-left transition-all border border-transparent
+                ${decodedPathname === item.href || (item.href !== '/logistica' && decodedPathname.startsWith(item.href))
+                  ? 'bg-naranja text-white border-naranja-dark shadow-[0_4px_14px_rgba(232,98,26,.4)]'
+                  : 'text-white hover:bg-white hover:text-black'
+                }
+              `}
+              style={{ width: 'calc(100% - 16px)' }}
+            >
+              <span className="text-base w-5 text-center flex-shrink-0">{item.icon}</span>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-bold truncate">{item.label}</div>
+                <div className="text-[11px] opacity-60 font-normal">{item.meta}</div>
+              </div>
+            </button>
+          ))}
+
+          {/* TARJA nav — solo si NO estamos en herramientas ni logística */}
+          {!enHerramientas && !enLogistica && NAV_ITEMS_TARJA.map(item => (
             <button
               key={item.href}
               onClick={() => navigate(item.href)}
