@@ -416,6 +416,67 @@ export function exportarExcelObras(
 }
 
 // ══════════════════════════════════════════════════
+// EXPORT HORAS POR TRABAJADOR
+// ══════════════════════════════════════════════════
+export function exportarHorasTrabajador(
+  semActual: Date,
+  filas: Array<{
+    leg: string
+    nom: string
+    dni: string | null
+    catNom: string
+    obraCod: string
+    obraNom: string
+    horasPorDia: Record<string, number>
+    totalHs: number
+    totalCosto: number
+  }>
+) {
+  const days = getSemDays(semActual)
+  const semLabel = getSemLabel(semActual)
+
+  const header = [
+    'Legajo', 'Apellido y Nombre', 'DNI', 'Categoría', 'Obra',
+    ...days.map((d, i) => `${DIAS[i]} ${d.getDate()}/${d.getMonth() + 1}`),
+    'Total Horas', 'Costo ($)',
+  ]
+
+  const rows = filas.map(f => [
+    f.leg,
+    f.nom,
+    f.dni ?? '',
+    f.catNom,
+    `${f.obraCod} — ${f.obraNom}`,
+    ...days.map(d => f.horasPorDia[toISO(d)] ?? 0),
+    f.totalHs,
+    Math.round(f.totalCosto / 1000) * 1000,
+  ])
+
+  // Fila totales
+  const totHs = filas.reduce((s, f) => s + f.totalHs, 0)
+  const totCosto = filas.reduce((s, f) => s + f.totalCosto, 0)
+  const totalsRow = [
+    'TOTAL', '', '', '', '',
+    ...days.map(d => filas.reduce((s, f) => s + (f.horasPorDia[toISO(d)] ?? 0), 0)),
+    totHs,
+    Math.round(totCosto / 1000) * 1000,
+  ]
+
+  const ws = XLSX.utils.aoa_to_sheet([header, ...rows, totalsRow])
+
+  // Anchos de columna
+  ws['!cols'] = [
+    { wch: 8 }, { wch: 30 }, { wch: 12 }, { wch: 18 }, { wch: 35 },
+    ...days.map(() => ({ wch: 8 })),
+    { wch: 12 }, { wch: 14 },
+  ]
+
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Horas x Trabajador')
+  XLSX.writeFile(wb, `HorasTrabajador_${toISO(semActual)}.xlsx`)
+}
+
+// ══════════════════════════════════════════════════
 // RECIBOS PDF — via ventana de impresión
 // ══════════════════════════════════════════════════
 export function generarRecibos(

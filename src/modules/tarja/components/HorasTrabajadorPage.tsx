@@ -13,6 +13,7 @@ import {
   esHoy, esJueves, esFinde,
 } from '@/lib/utils/dates'
 import { totalHsLeg } from '@/lib/utils/costos'
+import { exportarHorasTrabajador } from '@/lib/utils/excel'
 import { Chip } from '@/components/ui/Chip'
 import { useToast } from '@/components/ui/Toast'
 import { useUpsertHora } from '@/modules/tarja/hooks/useHoras'
@@ -384,10 +385,30 @@ export function HorasTrabajadorPage() {
               )}
             </div>
           </div>
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 flex-wrap items-center">
             <Chip value={uniqueLegs} label="Trabajadores" />
             <Chip value={totHs > 0 ? `${totHs}` : '0'} label="Horas totales" />
             <Chip value={fmtM(totCosto)} label="Costo total" variant="green" />
+            <button
+              onClick={() => exportarHorasTrabajador(
+                semActual,
+                filasFiltradas.map(f => ({
+                  leg:         f.leg,
+                  nom:         f.p.nom,
+                  dni:         f.p.dni,
+                  catNom:      getCatNom(getCatIdEfectivo(f.obra.cod, f.leg, hoyRef)),
+                  obraCod:     f.obra.cod,
+                  obraNom:     f.obra.nom,
+                  horasPorDia: f.horasPorDia,
+                  totalHs:     f.totalHs,
+                  totalCosto:  f.totalCosto,
+                }))
+              )}
+              disabled={filasFiltradas.length === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-verde-light text-verde border border-verde/30 text-xs font-bold hover:bg-verde hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              📊 Exportar Excel
+            </button>
           </div>
         </div>
       </div>
