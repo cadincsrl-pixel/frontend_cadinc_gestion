@@ -275,14 +275,12 @@ export function exportarExcelObras(
   }
 
   // ── HOJA 1: Resumen ──
+  // Columnas: Código, Obra, Operarios, Horas, Costo op, Contratistas, Costo cont, TOTAL
   const resumenRows: any[][] = [
     ['RESUMEN DE OBRAS — TarjaObra'],
     [`Generado: ${fmtDate(hoy)}${semFiltro ? ' · Semana: ' + getSemLabel(new Date(semFiltro + 'T12:00:00')) : ''}`],
     [],
-    ['Código', 'Obra', 'Centro de Costo', 'Dirección', 'Responsable',
-      'Operarios asig.', 'Horas totales', 'Costo operarios ($)',
-      'Contratistas', 'Costo contratistas ($)', 'COSTO TOTAL ($)',
-      'Sem. cerradas', 'Sem. pendientes'],
+    ['Código', 'Obra', 'Operarios', 'Horas totales', 'Costo operarios', 'Contratistas', 'Costo contratistas', 'COSTO TOTAL'],
   ]
 
   let totHsGlobal = 0, totCostoGlobal = 0, totCertifGlobal = 0
@@ -303,35 +301,45 @@ export function exportarExcelObras(
     const certObra = certificaciones.filter(c => c.obra_cod === o.cod && semOk(c.sem_key))
     const totalCertif = certObra.reduce((s, c) => s + c.monto, 0)
     const nContrat = [...new Set(certObra.map(c => c.contrat_id))].length
-    const cierresObra = cierres.filter(c => c.obra_cod === o.cod && semOk(c.sem_key))
-    const cerradas = cierresObra.filter(c => c.estado === 'cerrado').length
-    const pendientes = cierresObra.filter(c => c.estado === 'pendiente').length
 
     totHsGlobal += totalHs
     totCostoGlobal += totalCosto
     totCertifGlobal += totalCertif
 
-    resumenRows.push([
-      o.cod, o.nom, o.cc ?? '', o.dir ?? '', o.resp ?? '',
-      legs.length, totalHs, Math.round(totalCosto / 1000) * 1000,
-      nContrat, Math.round(totalCertif / 1000) * 1000, Math.round((totalCosto + totalCertif) / 1000) * 1000,
-      cerradas, pendientes,
-    ])
+    const costoOp     = Math.round(totalCosto / 1000) * 1000
+    const costoCont   = Math.round(totalCertif / 1000) * 1000
+    const costoTotal  = Math.round((totalCosto + totalCertif) / 1000) * 1000
+
+    resumenRows.push([o.cod, o.nom, legs.length, totalHs, costoOp, nContrat, costoCont, costoTotal])
   })
 
   resumenRows.push([])
   resumenRows.push([
-    '', 'TOTAL GENERAL', '', '', '',
-    '', totHsGlobal, Math.round(totCostoGlobal / 1000) * 1000,
-    '', Math.round(totCertifGlobal / 1000) * 1000, Math.round((totCostoGlobal + totCertifGlobal) / 1000) * 1000,
-    '', '',
+    '', 'TOTAL GENERAL', '',
+    totHsGlobal,
+    Math.round(totCostoGlobal / 1000) * 1000,
+    '',
+    Math.round(totCertifGlobal / 1000) * 1000,
+    Math.round((totCostoGlobal + totCertifGlobal) / 1000) * 1000,
   ])
 
   const ws1 = XLSX.utils.aoa_to_sheet(resumenRows)
+
+  // Formato moneda para columnas Costo op (E), Costo cont (G), TOTAL (H)
+  // Las filas de datos empiezan en la 5 (índice 4, fila Excel 5)
+  const moneyFmt = '"$"#,##0'
+  const dataStartRow = 5 // fila Excel (1-based), header en fila 4
+  const totalDataRows = obras.length + 2 // filas de datos + fila vacía + total
+  for (let r = dataStartRow; r <= dataStartRow + totalDataRows; r++) {
+    for (const col of ['E', 'G', 'H']) {
+      const cellRef = `${col}${r}`
+      if (ws1[cellRef]) ws1[cellRef].z = moneyFmt
+    }
+  }
+
   ws1['!cols'] = [
-    { wch: 10 }, { wch: 26 }, { wch: 20 }, { wch: 14 }, { wch: 12 },
-    { wch: 10 }, { wch: 12 }, { wch: 18 }, { wch: 12 }, { wch: 20 },
-    { wch: 14 }, { wch: 13 }, { wch: 14 },
+    { wch: 10 }, { wch: 30 }, { wch: 10 }, { wch: 13 },
+    { wch: 18 }, { wch: 12 }, { wch: 20 }, { wch: 18 },
   ]
   XLSX.utils.book_append_sheet(wb, ws1, 'Resumen Obras')
 
