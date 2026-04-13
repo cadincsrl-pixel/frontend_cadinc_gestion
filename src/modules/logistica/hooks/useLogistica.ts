@@ -280,7 +280,10 @@ export function useReabrirLiquidacion() {
   return useMutation({
     mutationFn: (id: number) =>
       apiPatch<Liquidacion>(`/api/logistica/liquidaciones/${id}/reabrir`, {}),
-    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.liquidaciones }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: LOG_KEYS.liquidaciones })
+      qc.invalidateQueries({ queryKey: LOG_KEYS.tramos })
+    },
   })
 }
 
