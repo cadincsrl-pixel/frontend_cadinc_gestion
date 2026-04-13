@@ -337,7 +337,7 @@ function FacturacionSection() {
     const fechas = mis_tramos.map(t => t.fecha_descarga ?? t.fecha_carga).filter(Boolean) as string[]
     const desde  = fechas.length ? fechas.reduce((a, b) => a < b ? a : b) : ''
     const hasta  = fechas.length ? fechas.reduce((a, b) => a > b ? a : b) : ''
-    form.reset({ desde, hasta, obs: '' })
+    form.reset({ fecha: new Date().toISOString().slice(0, 10), obs: '' })
     setModalCobro(true)
   }
 
@@ -359,8 +359,8 @@ function FacturacionSection() {
     const total       = desglose.reduce((s, d) => s + d.subtotal, 0)
     createCobro({
       empresa_id:        empresaCobro.id,
-      fecha_desde:       data.desde,
-      fecha_hasta:       data.hasta,
+      fecha_desde:       data.fecha,
+      fecha_hasta:       data.fecha,
       toneladas_totales: ton_totales,
       total,
       obs:               data.obs,
@@ -559,10 +559,9 @@ function FacturacionSection() {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <Input label="Período desde" type="date" {...form.register('desde')} />
-              <Input label="Período hasta"  type="date" {...form.register('hasta')} />
+              <Input label="Fecha de cobro" type="date" {...form.register('fecha')} />
+              <Input label="Observaciones" placeholder="Nº factura, referencia..." {...form.register('obs')} />
             </div>
-            <Input label="Observaciones" placeholder="Nº factura, referencia..." {...form.register('obs')} />
           </div>
         )}
       </Modal>
