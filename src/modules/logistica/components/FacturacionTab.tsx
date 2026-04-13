@@ -286,19 +286,20 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
 
 function FacturacionSection() {
   const toast = useToast()
-  const { data: empresas        = [] } = useEmpresas()
-  const { data: tramos          = [] } = useTramos()
-  const { data: todasTarifas    = [] } = useTarifasEmpresa()
-  const { data: cobros          = [] } = useCobros()
+  const { data: empresas     = [] } = useEmpresas()
+  const { data: tramos       = [] } = useTramos()
+  const { data: todasTarifas = [] } = useTarifasEmpresa()
+  const { data: canteras     = [] } = useCanteras()
+  const { data: cobros       = [] } = useCobros()
   const { mutate: createCobro, isPending: creando } = useCreateCobro()
   const { mutate: marcarCobrado } = useMarcarCobrado()
   const { mutate: deleteCobro   } = useDeleteCobro()
 
-  const [modalCobro,  setModalCobro]  = useState(false)
+  const [modalCobro,   setModalCobro]   = useState(false)
   const [empresaCobro, setEmpresaCobro] = useState<EmpresaTransportista | null>(null)
+  const [selectedIds,  setSelectedIds]  = useState<Set<number>>(new Set())
   const form = useForm<any>()
 
-  // Tramos cargados completados sin cobrar
   const tramosPendientes = (tramos as Tramo[]).filter(
     t => t.tipo === 'cargado' && t.estado === 'completado' && !t.cobro_id
   )
@@ -311,14 +312,19 @@ function FacturacionSection() {
     return candidates[0]?.valor_ton ?? 0
   }
 
-  function resumenEmpresa(empresa: EmpresaTransportista) {
-    const mis_tramos = tramosPendientes.filter(t => t.empresa_id === empresa.id)
-    const desglose = mis_tramos.map(t => {
-      const ton    = t.toneladas_descarga ?? t.toneladas_carga ?? 0
-      const fecha  = t.fecha_descarga ?? t.fecha_carga
-      const tarifa = tarifaParaFecha(empresa.id, t.cantera_id, fecha)
-      return { t, ton, tarifa, subtotal: ton * tarifa }
+  function calcDesglose(tramosArr: Tramo[], empresaId: number) {
+    return tramosArr.map(t => {
+      const ton     = t.toneladas_descarga ?? t.toneladas_carga ?? 0
+      const fecha   = t.fecha_descarga ?? t.fecha_carga
+      const tarifa  = tarifaParaFecha(empresaId, t.cantera_id, fecha)
+      const cantera = canteras.find(c => c.id === t.cantera_id)
+      return { t, ton, tarifa, subtotal: ton * tarifa, fecha, cantera }
     })
+  }
+
+  function resumenEmpresa(empresa: EmpresaTransportista) {
+    const mis_tramos  = tramosPendientes.filter(t => t.empresa_id === empresa.id)
+    const desglose    = calcDesglose(mis_tramos, empresa.id)
     const ton_totales = desglose.reduce((s, d) => s + d.ton, 0)
     const total       = desglose.reduce((s, d) => s + d.subtotal, 0)
     return { mis_tramos, desglose, ton_totales, total }
@@ -326,13 +332,31 @@ function FacturacionSection() {
 
   function abrirCobrar(empresa: EmpresaTransportista) {
     setEmpresaCobro(empresa)
-    form.reset({ desde: '', hasta: '', obs: '' })
+    const mis_tramos = tramosPendientes.filter(t => t.empresa_id === empresa.id)
+    setSelectedIds(new Set(mis_tramos.map(t => t.id)))
+    const fechas = mis_tramos.map(t => t.fecha_descarga ?? t.fecha_carga).filter(Boolean) as string[]
+    const desde  = fechas.length ? fechas.reduce((a, b) => a < b ? a : b) : ''
+    const hasta  = fechas.length ? fechas.reduce((a, b) => a > b ? a : b) : ''
+    form.reset({ desde, hasta, obs: '' })
     setModalCobro(true)
+  }
+
+  function toggleTramo(id: number) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   }
 
   function handleCobrar(data: any) {
     if (!empresaCobro) return
-    const { mis_tramos, ton_totales, total } = resumenEmpresa(empresaCobro)
+    const modalTramos = tramosPendientes.filter(t => t.empresa_id === empresaCobro.id && selectedIds.has(t.id))
+    if (modalTramos.length === 0) { toast('Seleccioná al menos un remito', 'err'); return }
+    const desglose    = calcDesglose(modalTramos, empresaCobro.id)
+    const ton_totales = desglose.reduce((s, d) => s + d.ton, 0)
+    const total       = desglose.reduce((s, d) => s + d.subtotal, 0)
     createCobro({
       empresa_id:        empresaCobro.id,
       fecha_desde:       data.desde,
@@ -340,16 +364,23 @@ function FacturacionSection() {
       toneladas_totales: ton_totales,
       total,
       obs:               data.obs,
-      tramo_ids:         mis_tramos.map(t => t.id),
+      tramo_ids:         modalTramos.map(t => t.id),
     }, {
       onSuccess: () => { toast('✓ Cobro registrado', 'ok'); setModalCobro(false); setEmpresaCobro(null) },
       onError:   () => toast('Error al registrar', 'err'),
     })
   }
 
-  const preview = empresaCobro ? resumenEmpresa(empresaCobro) : null
-
   const empresasActivas = (empresas as EmpresaTransportista[]).filter(e => e.estado === 'activa')
+
+  // Datos para el modal
+  const modalTodosTramos = empresaCobro
+    ? tramosPendientes.filter(t => t.empresa_id === empresaCobro.id)
+    : []
+  const modalDesglose = empresaCobro ? calcDesglose(modalTodosTramos, empresaCobro.id) : []
+  const selDesglose   = modalDesglose.filter(d => selectedIds.has(d.t.id))
+  const selTon        = selDesglose.reduce((s, d) => s + d.ton, 0)
+  const selTotal      = selDesglose.reduce((s, d) => s + d.subtotal, 0)
 
   return (
     <>
@@ -360,27 +391,26 @@ function FacturacionSection() {
           {empresasActivas.map(empresa => {
             const { mis_tramos, desglose, ton_totales, total } = resumenEmpresa(empresa)
             const sinMovimientos = mis_tramos.length === 0
-
             return (
               <div key={empresa.id} className="bg-white rounded-card shadow-card p-4">
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div className="flex-1 min-w-0">
                     <div className="font-bold text-azul">{empresa.nombre}</div>
                     {sinMovimientos ? (
-                      <p className="text-xs text-gris-mid mt-1 italic">Sin tramos pendientes de cobrar</p>
+                      <p className="text-xs text-gris-mid mt-1 italic">Sin remitos pendientes de cobrar</p>
                     ) : (
                       <div className="text-xs text-gris-dark mt-1 space-y-0.5">
                         <div>
-                          {mis_tramos.length} tramo{mis_tramos.length !== 1 ? 's' : ''} ·{' '}
+                          {mis_tramos.length} remito{mis_tramos.length !== 1 ? 's' : ''} ·{' '}
                           <span className="font-semibold text-carbon">{fmtTon(ton_totales)} entregadas</span>
                         </div>
-                        {/* Desglose por cantera */}
                         {Object.entries(
                           desglose.reduce<Record<string, { ton: number; tarifa: number; subtotal: number }>>((acc, d) => {
-                            const nombre = (d.t as any).cantera_nombre ?? `Cantera ${d.t.cantera_id ?? '?'}`
+                            const nombre = d.cantera?.nombre ?? `Cantera ${d.t.cantera_id ?? '?'}`
                             if (!acc[nombre]) acc[nombre] = { ton: 0, tarifa: d.tarifa, subtotal: 0 }
                             acc[nombre].ton      += d.ton
                             acc[nombre].subtotal += d.subtotal
+                            acc[nombre].tarifa    = d.tarifa
                             return acc
                           }, {})
                         ).map(([nombre, v]) => (
@@ -410,7 +440,7 @@ function FacturacionSection() {
           })}
           {empresasActivas.length === 0 && (
             <div className="bg-white rounded-card shadow-card p-6 text-center text-sm text-gris-dark">
-              No hay empresas activas. Agregalas en la pestaña de arriba.
+              No hay empresas activas. Agregalas en la sección de arriba.
             </div>
           )}
         </div>
@@ -457,39 +487,229 @@ function FacturacionSection() {
 
       {/* Modal cobrar */}
       <Modal open={modalCobro} onClose={() => setModalCobro(false)} title="💰 REGISTRAR COBRO" width="max-w-lg"
-        footer={<><Button variant="secondary" onClick={() => setModalCobro(false)}>Cancelar</Button><Button variant="primary" loading={creando} onClick={form.handleSubmit(handleCobrar)}>✓ Guardar cobro</Button></>}>
-        {empresaCobro && preview && (
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setModalCobro(false)}>Cancelar</Button>
+            <Button variant="primary" loading={creando} onClick={form.handleSubmit(handleCobrar)}>
+              ✓ Guardar cobro
+            </Button>
+          </>
+        }>
+        {empresaCobro && (
           <div className="flex flex-col gap-4">
             <div className="bg-azul-light rounded-xl px-4 py-3">
               <div className="font-bold text-azul">{empresaCobro.nombre}</div>
-              <div className="text-xs text-azul-mid mt-0.5">
-                {preview.mis_tramos.length} tramos · {fmtTon(preview.ton_totales)} · {fmtM(preview.total)}
+              <div className="text-xs text-azul-mid mt-0.5">Seleccioná los remitos a incluir en este cobro</div>
+            </div>
+
+            {/* Lista de remitos con checkboxes */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold text-gris-dark uppercase tracking-wider">
+                  Remitos pendientes
+                </span>
+                <div className="flex gap-3 text-xs">
+                  <button className="text-azul hover:underline"
+                    onClick={() => setSelectedIds(new Set(modalTodosTramos.map(t => t.id)))}>
+                    Todos
+                  </button>
+                  <button className="text-azul hover:underline"
+                    onClick={() => setSelectedIds(new Set())}>
+                    Ninguno
+                  </button>
+                </div>
+              </div>
+              <div className="bg-gris rounded-xl divide-y divide-gris-mid max-h-60 overflow-y-auto">
+                {modalDesglose.length === 0 && (
+                  <p className="text-center py-4 text-sm text-gris-dark">Sin remitos pendientes</p>
+                )}
+                {modalDesglose.map(d => {
+                  const checked  = selectedIds.has(d.t.id)
+                  const remito   = d.t.remito_descarga ?? d.t.remito_carga ?? `Tramo #${d.t.id}`
+                  const fechaStr = d.fecha ? fmtFecha(d.fecha) : '—'
+                  return (
+                    <label key={d.t.id}
+                      className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors ${checked ? 'bg-azul-light/60' : 'hover:bg-gris-mid/30'}`}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleTramo(d.t.id)}
+                        className="accent-azul shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-semibold text-carbon">{remito}</div>
+                        <div className="text-[11px] text-gris-dark">
+                          {fechaStr} · {d.cantera?.nombre ?? '—'} · {fmtTon(d.ton)}
+                          {d.tarifa > 0 && <> · ${d.tarifa}/tn</>}
+                        </div>
+                      </div>
+                      <div className={`text-xs font-mono font-bold shrink-0 ${checked ? 'text-verde' : 'text-gris-dark line-through'}`}>
+                        {fmtM(d.subtotal)}
+                      </div>
+                    </label>
+                  )
+                })}
+              </div>
+              <div className="flex justify-between items-center mt-2 px-1">
+                <span className="text-xs text-gris-dark">
+                  {selectedIds.size} seleccionado{selectedIds.size !== 1 ? 's' : ''} · {fmtTon(selTon)}
+                </span>
+                <span className="font-mono font-bold text-verde">{fmtM(selTotal)}</span>
               </div>
             </div>
+
             <div className="grid grid-cols-2 gap-3">
               <Input label="Período desde" type="date" {...form.register('desde')} />
               <Input label="Período hasta"  type="date" {...form.register('hasta')} />
             </div>
-            {/* Desglose */}
-            <div className="bg-gris rounded-xl p-3 text-sm space-y-1">
-              {preview.desglose.map((d, i) => (
-                <div key={i} className="flex justify-between text-xs">
-                  <span className="text-gris-dark">
-                    Tramo #{d.t.id} · {fmtTon(d.ton)} × ${d.tarifa}/tn
-                  </span>
-                  <span className="font-mono font-bold">{fmtM(d.subtotal)}</span>
-                </div>
-              ))}
-              <div className="flex justify-between font-bold border-t border-gris-mid pt-1 mt-1">
-                <span>TOTAL</span>
-                <span className="font-mono text-verde">{fmtM(preview.total)}</span>
-              </div>
-            </div>
-            <Input label="Observaciones" placeholder="Nº remito, referencia..." {...form.register('obs')} />
+            <Input label="Observaciones" placeholder="Nº factura, referencia..." {...form.register('obs')} />
           </div>
         )}
       </Modal>
     </>
+  )
+}
+
+// ─── Estado de remitos por empresa y período ──────────────────────────────────
+
+function RemitosSection() {
+  const { data: empresas     = [] } = useEmpresas()
+  const { data: tramos       = [] } = useTramos()
+  const { data: todasTarifas = [] } = useTarifasEmpresa()
+  const { data: canteras     = [] } = useCanteras()
+
+  const [empresaId,  setEmpresaId]  = useState('')
+  const [fechaDesde, setFechaDesde] = useState('')
+  const [fechaHasta, setFechaHasta] = useState('')
+
+  function tarifaParaFecha(empresaId: number, canteraId: number | null, fecha: string | null): number {
+    if (!canteraId || !fecha) return 0
+    const candidates = (todasTarifas as TarifaEmpresaCantera[])
+      .filter(t => t.empresa_id === empresaId && t.cantera_id === canteraId && t.vigente_desde <= fecha)
+      .sort((a, b) => b.vigente_desde.localeCompare(a.vigente_desde))
+    return candidates[0]?.valor_ton ?? 0
+  }
+
+  function enrichTramo(t: Tramo) {
+    const empId   = t.empresa_id ?? 0
+    const ton     = t.toneladas_descarga ?? t.toneladas_carga ?? 0
+    const fecha   = t.fecha_descarga ?? t.fecha_carga
+    const tarifa  = tarifaParaFecha(empId, t.cantera_id, fecha ?? null)
+    const cantera = canteras.find(c => c.id === t.cantera_id)
+    const empresa = (empresas as EmpresaTransportista[]).find(e => e.id === empId)
+    const remito  = t.remito_descarga ?? t.remito_carga
+    return { t, ton, tarifa, subtotal: ton * tarifa, fecha, cantera, empresa, remito }
+  }
+
+  const tramosBase = (tramos as Tramo[]).filter(t =>
+    t.tipo === 'cargado' && t.estado === 'completado' &&
+    (!empresaId || t.empresa_id === Number(empresaId)) &&
+    (!fechaDesde || (t.fecha_descarga ?? t.fecha_carga ?? '') >= fechaDesde) &&
+    (!fechaHasta || (t.fecha_descarga ?? t.fecha_carga ?? '') <= fechaHasta)
+  )
+
+  const adeudados = tramosBase.filter(t => !t.cobro_id).map(enrichTramo)
+  const cobrados  = tramosBase.filter(t => !!t.cobro_id).map(enrichTramo)
+
+  const totalAdeudado = adeudados.reduce((s, d) => s + d.subtotal, 0)
+  const totalCobrado  = cobrados.reduce((s, d) => s + d.subtotal, 0)
+
+  const empresaOptions = [
+    { value: '', label: 'Todas las empresas' },
+    ...(empresas as EmpresaTransportista[]).map(e => ({ value: String(e.id), label: e.nombre })),
+  ]
+
+  function FilaRemito({ d }: { d: ReturnType<typeof enrichTramo> }) {
+    return (
+      <div className="flex items-center gap-2 px-3 py-2 text-xs border-b border-gris last:border-0">
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-carbon">{d.remito ?? `Tramo #${d.t.id}`}</div>
+          <div className="text-gris-dark">
+            {d.fecha ? fmtFecha(d.fecha) : '—'}
+            {!empresaId && d.empresa && <> · {d.empresa.nombre}</>}
+            {d.cantera && <> · {d.cantera.nombre}</>}
+            {' · '}{fmtTon(d.ton)}
+            {d.tarifa > 0 && <> · ${d.tarifa}/tn</>}
+          </div>
+        </div>
+        <div className="font-mono font-bold shrink-0">{fmtM(d.subtotal)}</div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-white rounded-card shadow-card">
+      <div className="px-5 py-4 border-b border-gris">
+        <h2 className="font-bold text-azul text-base">Estado de remitos</h2>
+        <p className="text-xs text-gris-dark mt-0.5">Adeudados y cobrados por empresa y período</p>
+      </div>
+
+      {/* Filtros */}
+      <div className="px-5 py-3 flex flex-wrap gap-3 border-b border-gris items-end">
+        <div className="flex-1 min-w-44">
+          <label className="block text-xs font-semibold text-gris-dark mb-1">Empresa</label>
+          <select
+            value={empresaId}
+            onChange={e => setEmpresaId(e.target.value)}
+            className="w-full border border-gris rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-azul"
+          >
+            {empresaOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gris-dark mb-1">Desde</label>
+          <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)}
+            className="border border-gris rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-azul" />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gris-dark mb-1">Hasta</label>
+          <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)}
+            className="border border-gris rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-azul" />
+        </div>
+        {(empresaId || fechaDesde || fechaHasta) && (
+          <button
+            onClick={() => { setEmpresaId(''); setFechaDesde(''); setFechaHasta('') }}
+            className="text-xs text-gris-dark hover:text-rojo self-end pb-2">
+            ✕ Limpiar
+          </button>
+        )}
+      </div>
+
+      {/* Columnas adeudado / cobrado */}
+      <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-gris">
+        {/* Adeudados */}
+        <div className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-xs font-bold text-naranja uppercase tracking-wider">
+              Adeudados ({adeudados.length})
+            </div>
+            <div className="font-mono font-bold text-naranja">{fmtM(totalAdeudado)}</div>
+          </div>
+          <div className="bg-gris rounded-xl overflow-hidden">
+            {adeudados.length === 0
+              ? <p className="text-xs text-gris-dark text-center py-4 italic">Sin remitos adeudados</p>
+              : adeudados.map(d => <FilaRemito key={d.t.id} d={d} />)
+            }
+          </div>
+        </div>
+
+        {/* Cobrados */}
+        <div className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-xs font-bold text-verde uppercase tracking-wider">
+              Cobrados ({cobrados.length})
+            </div>
+            <div className="font-mono font-bold text-verde">{fmtM(totalCobrado)}</div>
+          </div>
+          <div className="bg-gris rounded-xl overflow-hidden">
+            {cobrados.length === 0
+              ? <p className="text-xs text-gris-dark text-center py-4 italic">Sin remitos cobrados</p>
+              : cobrados.map(d => <FilaRemito key={d.t.id} d={d} />)
+            }
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -508,6 +728,7 @@ export function FacturacionTab() {
         <TarifasEmpresaSection empresa={empresaSeleccionada} />
       )}
       <FacturacionSection />
+      <RemitosSection />
     </div>
   )
 }
