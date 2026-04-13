@@ -1,5 +1,6 @@
 'use client'
 
+import { Suspense } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useObras }        from '@/modules/tarja/hooks/useObras'
 import { useSessionStore } from '@/store/session.store'
@@ -37,6 +38,43 @@ const HERR_SUBNAV = [
   { href: '/herramientas/parametros',   icon: '⚙️', label: 'Parámetros',   meta: 'Tipos y configuración'     },
 ]
 
+function LogisticaNav({ navigate, activeTab }: { navigate: (href: string) => void; activeTab: string }) {
+  return (
+    <>
+      {NAV_ITEMS_LOGISTICA.map(item => {
+        const isActive = activeTab === item.tab
+        return (
+          <button
+            key={item.tab}
+            onClick={() => navigate(`/logistica?tab=${item.tab}`)}
+            className={`
+              w-full flex items-center gap-2.5 px-3 py-2.5 mx-2 rounded-[9px]
+              text-left transition-all border border-transparent
+              ${isActive
+                ? 'bg-naranja text-white border-naranja-dark shadow-[0_4px_14px_rgba(232,98,26,.4)]'
+                : 'text-white hover:bg-white hover:text-black'
+              }
+            `}
+            style={{ width: 'calc(100% - 16px)' }}
+          >
+            <span className="text-base w-5 text-center flex-shrink-0">{item.icon}</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-bold truncate">{item.label}</div>
+              <div className="text-[11px] opacity-60 font-normal">{item.meta}</div>
+            </div>
+          </button>
+        )
+      })}
+    </>
+  )
+}
+
+function LogisticaNavWithParams({ navigate }: { navigate: (href: string) => void }) {
+  const searchParams = useSearchParams()
+  const activeTab    = searchParams.get('tab') ?? 'viajes'
+  return <LogisticaNav navigate={navigate} activeTab={activeTab} />
+}
+
 export function Sidebar({ open, onClose }: SidebarProps) {
   const pathname        = usePathname()
   const router          = useRouter()
@@ -45,8 +83,6 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const hasModulo = useSessionStore(s => s.hasModulo)
   const profile   = useSessionStore(s => s.profile)
 
-  const searchParams   = useSearchParams()
-  const activeTab      = searchParams.get('tab') ?? 'viajes'
   const enHerramientas = decodedPathname.startsWith('/herramientas')
   const enLogistica    = decodedPathname.startsWith('/logistica')
 
@@ -102,30 +138,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           </div>
 
           {/* LOGÍSTICA nav */}
-          {enLogistica && NAV_ITEMS_LOGISTICA.map(item => {
-            const isActive = activeTab === item.tab
-            return (
-              <button
-                key={item.tab}
-                onClick={() => navigate(`/logistica?tab=${item.tab}`)}
-                className={`
-                  w-full flex items-center gap-2.5 px-3 py-2.5 mx-2 rounded-[9px]
-                  text-left transition-all border border-transparent
-                  ${isActive
-                    ? 'bg-naranja text-white border-naranja-dark shadow-[0_4px_14px_rgba(232,98,26,.4)]'
-                    : 'text-white hover:bg-white hover:text-black'
-                  }
-                `}
-                style={{ width: 'calc(100% - 16px)' }}
-              >
-                <span className="text-base w-5 text-center flex-shrink-0">{item.icon}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-bold truncate">{item.label}</div>
-                  <div className="text-[11px] opacity-60 font-normal">{item.meta}</div>
-                </div>
-              </button>
-            )
-          })}
+          {enLogistica && (
+            <Suspense fallback={<LogisticaNav navigate={navigate} activeTab="viajes" />}>
+              <LogisticaNavWithParams navigate={navigate} />
+            </Suspense>
+          )}
 
           {/* TARJA nav — solo si NO estamos en herramientas ni logística */}
           {!enHerramientas && !enLogistica && NAV_ITEMS_TARJA.map(item => (
