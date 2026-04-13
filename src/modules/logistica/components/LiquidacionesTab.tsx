@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import {
   useLiquidaciones, useAdelantos, useChoferes, useTramos, useRutas,
-  useCreateLiquidacion, useCerrarLiquidacion, useDeleteLiquidacion,
+  useCreateLiquidacion, useUpdateLiquidacion, useCerrarLiquidacion, useDeleteLiquidacion,
   useCreateAdelanto,
 } from '../hooks/useLogistica'
 import { Modal }    from '@/components/ui/Modal'
@@ -49,17 +49,20 @@ export function LiquidacionesTab() {
   const { data: rutas         = [] } = useRutas()
 
   const { mutate: createLiq,  isPending: creating     } = useCreateLiquidacion()
+  const { mutate: updateLiq,  isPending: updating     } = useUpdateLiquidacion()
   const { mutate: cerrarLiq  } = useCerrarLiquidacion()
   const { mutate: deleteLiq  } = useDeleteLiquidacion()
   const { mutate: createAdel, isPending: creatingAdel } = useCreateAdelanto()
 
-  const [modalLiq,   setModalLiq]   = useState(false)
-  const [choferLiq,  setChoferLiq]  = useState<Chofer | null>(null)
-  const [selAdelant, setSelAdelant] = useState<number[]>([])
-  const [modalAdel,  setModalAdel]  = useState(false)
+  const [modalLiq,    setModalLiq]    = useState(false)
+  const [choferLiq,   setChoferLiq]   = useState<Chofer | null>(null)
+  const [selAdelant,  setSelAdelant]  = useState<number[]>([])
+  const [modalAdel,   setModalAdel]   = useState(false)
+  const [detalleLiq,  setDetalleLiq]  = useState<any | null>(null)
 
-  const formAdel = useForm<any>()
-  const formLiq  = useForm<any>()
+  const formAdel    = useForm<any>()
+  const formLiq     = useForm<any>()
+  const formDetalle = useForm<any>()
 
   // Tramos completados aún no liquidados
   const tramosPendientes    = (tramos as Tramo[]).filter(t => t.estado === 'completado' && !t.liquidacion_id)
@@ -284,6 +287,17 @@ export function LiquidacionesTab() {
                     </div>
                   </div>
                   <div className="flex gap-2 mt-3 flex-wrap">
+                    <Button variant="secondary" size="sm" onClick={() => {
+                      setDetalleLiq(liq)
+                      formDetalle.reset({
+                        basico_dia:  liq.basico_dia,
+                        fecha_desde: liq.fecha_desde,
+                        fecha_hasta: liq.fecha_hasta,
+                        obs:         liq.obs ?? '',
+                      })
+                    }}>
+                      🔍 Ver detalle
+                    </Button>
                     {liq.estado === 'borrador' && (
                       <Button variant="primary" size="sm" onClick={() => cerrarLiq(liq.id, { onSuccess: () => toast('✓ Cerrada', 'ok') })}>
                         ✓ Cerrar
@@ -385,6 +399,148 @@ export function LiquidacionesTab() {
           </div>
         )}
       </Modal>
+
+      {/* ── Modal detalle / edición ── */}
+      {detalleLiq && (() => {
+        const chofer     = (choferes as Chofer[]).find(c => c.id === detalleLiq.chofer_id)
+        const liqTramos  = (tramos as Tramo[]).filter(t => t.liquidacion_id === detalleLiq.id)
+        const liqAdel    = (adelantos as Adelanto[]).filter(a => a.liquidacion_id === detalleLiq.id)
+        const esBorrador = detalleLiq.estado === 'borrador'
+
+        function handleGuardar(data: any) {
+          const basicoDia = parseFloat(data.basico_dia) || 0
+          const dias      = detalleLiq.dias_trabajados
+          const subtotal  = dias * basicoDia
+          const desc      = liqAdel.reduce((s: number, a: Adelanto) => s + a.monto, 0)
+          updateLiq({
+            id: detalleLiq.id,
+            dto: {
+              basico_dia:      basicoDia,
+              fecha_desde:     data.fecha_desde,
+              fecha_hasta:     data.fecha_hasta,
+              subtotal_basico: subtotal,
+              total_neto:      subtotal - desc,
+              obs:             data.obs,
+            },
+          }, {
+            onSuccess: () => { toast('✓ Liquidación actualizada', 'ok'); setDetalleLiq(null) },
+            onError:   () => toast('Error al actualizar', 'err'),
+          })
+        }
+
+        return (
+          <Modal
+            open={!!detalleLiq}
+            onClose={() => setDetalleLiq(null)}
+            title={`${esBorrador ? '✏️ EDITAR' : '🔍 DETALLE'} LIQUIDACIÓN #${detalleLiq.id}`}
+            width="max-w-xl"
+            footer={
+              <>
+                <Button variant="secondary" onClick={() => setDetalleLiq(null)}>Cerrar</Button>
+                {esBorrador && (
+                  <Button variant="primary" loading={updating} onClick={formDetalle.handleSubmit(handleGuardar)}>
+                    ✓ Guardar cambios
+                  </Button>
+                )}
+              </>
+            }
+          >
+            <div className="flex flex-col gap-4">
+              {/* Info chofer */}
+              <div className="bg-azul-light rounded-xl px-4 py-3">
+                <div className="font-bold text-azul">{chofer?.nombre ?? '—'}</div>
+                <div className="text-xs text-azul-mid mt-0.5">
+                  {detalleLiq.dias_trabajados} días · {fmtM(detalleLiq.basico_dia)}/día
+                </div>
+              </div>
+
+              {/* Fechas y básico — editables si borrador */}
+              {esBorrador ? (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input label="Básico/día ($)" type="number" step="100" {...formDetalle.register('basico_dia')} />
+                    <div />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input label="Período desde" type="date" {...formDetalle.register('fecha_desde')} />
+                    <Input label="Período hasta"  type="date" {...formDetalle.register('fecha_hasta')} />
+                  </div>
+                </>
+              ) : (
+                <div className="text-sm text-gris-dark">
+                  {fmtFecha(detalleLiq.fecha_desde)} → {fmtFecha(detalleLiq.fecha_hasta)}
+                </div>
+              )}
+
+              {/* Tramos vinculados */}
+              {liqTramos.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-2">
+                    Tramos incluidos ({liqTramos.length})
+                  </div>
+                  <div className="bg-gris rounded-xl p-3 max-h-40 overflow-y-auto flex flex-col gap-1">
+                    {liqTramos.map(t => (
+                      <div key={t.id} className="flex justify-between text-xs py-1 border-b border-gris-mid last:border-0">
+                        <span className="text-gris-dark">
+                          #{t.id} · {t.tipo === 'cargado' ? '🚛' : '🔲'} ·{' '}
+                          {t.fecha_carga ? fmtFecha(t.fecha_carga) : t.fecha_vacio ? fmtFecha(t.fecha_vacio) : '—'}
+                        </span>
+                        <span className="font-mono font-semibold">
+                          {t.toneladas_descarga ?? t.toneladas_carga ?? '—'} tn
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Adelantos vinculados */}
+              {liqAdel.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-2">
+                    Adelantos descontados ({liqAdel.length})
+                  </div>
+                  <div className="bg-gris rounded-xl p-3 max-h-32 overflow-y-auto flex flex-col gap-1">
+                    {liqAdel.map((a: Adelanto) => (
+                      <div key={a.id} className="flex justify-between text-xs py-1 border-b border-gris-mid last:border-0">
+                        <span className="text-gris-dark">{fmtFecha(a.fecha)} · {a.descripcion || 'Adelanto'}</span>
+                        <span className="font-mono font-semibold text-rojo">− {fmtM(a.monto)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Resumen */}
+              <div className="bg-azul-light rounded-xl p-4">
+                <div className="grid grid-cols-2 gap-y-1.5 text-sm">
+                  <span className="text-gris-dark">Días trabajados:</span>
+                  <span className="font-mono font-bold">{detalleLiq.dias_trabajados} días</span>
+                  <span className="text-gris-dark">Subtotal haberes:</span>
+                  <span className="font-mono font-bold text-azul-mid">{fmtM(detalleLiq.subtotal_basico)}</span>
+                  {detalleLiq.total_adelantos > 0 && (
+                    <>
+                      <span className="text-gris-dark">Adelantos:</span>
+                      <span className="font-mono font-bold text-rojo">− {fmtM(detalleLiq.total_adelantos)}</span>
+                    </>
+                  )}
+                  <span className="font-bold text-azul border-t border-azul/20 pt-1.5">TOTAL NETO:</span>
+                  <span className="font-mono font-bold text-lg text-verde border-t border-azul/20 pt-1.5">
+                    {fmtM(detalleLiq.total_neto)}
+                  </span>
+                </div>
+              </div>
+
+              {esBorrador && (
+                <Input label="Observaciones" {...formDetalle.register('obs')} />
+              )}
+              {!esBorrador && detalleLiq.obs && (
+                <p className="text-xs text-gris-dark italic">{detalleLiq.obs}</p>
+              )}
+            </div>
+          </Modal>
+        )
+      })()}
 
       {/* ── Modal adelanto ── */}
       <Modal open={modalAdel} onClose={() => setModalAdel(false)} title="💵 REGISTRAR ADELANTO"
