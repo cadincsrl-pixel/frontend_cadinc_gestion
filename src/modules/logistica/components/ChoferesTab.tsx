@@ -58,13 +58,14 @@ export function ChoferesTab() {
 
   function openEdit(chofer: Chofer) {
     formEdit.reset({
-      nombre:    chofer.nombre,
-      dni:       chofer.dni ?? '',
-      tel:       chofer.tel ?? '',
-      licencia:  chofer.licencia ?? '',
-      estado:    chofer.estado,
-      camion_id: chofer.camion_id ?? '',
-      obs:       chofer.obs ?? '',
+      nombre:     chofer.nombre,
+      dni:        chofer.dni ?? '',
+      tel:        chofer.tel ?? '',
+      licencia:   chofer.licencia ?? '',
+      estado:     chofer.estado,
+      camion_id:  chofer.camion_id ?? '',
+      basico_dia: chofer.basico_dia ?? 0,
+      obs:        chofer.obs ?? '',
     })
     setEditando(chofer)
   }
@@ -89,6 +90,7 @@ export function ChoferesTab() {
         <Select label="Estado" options={ESTADO_OPTIONS} {...form.register('estado')} />
       </div>
       <Select label="Camión asignado" options={camionOptions} {...form.register('camion_id')} />
+      <Input label="Básico por día ($)" type="number" step="100" placeholder="0" {...form.register('basico_dia')} />
       <Input label="Observaciones" placeholder="Notas..." {...form.register('obs')} />
     </div>
   )
@@ -105,7 +107,7 @@ export function ChoferesTab() {
         <table className="w-full border-collapse">
           <thead>
             <tr>
-              {['Nombre', 'DNI', 'Teléfono', 'Licencia', 'Camión', 'Estado', ''].map(h => (
+              {['Nombre', 'DNI', 'Teléfono', 'Licencia', 'Camión', 'Básico/día', 'Estado', ''].map(h => (
                 <th key={h} className="bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide">
                   {h}
                 </th>
@@ -114,7 +116,7 @@ export function ChoferesTab() {
           </thead>
           <tbody>
             {choferes.length === 0 ? (
-              <tr><td colSpan={6} className="text-center py-8 text-gris-dark text-sm">No hay choferes registrados.</td></tr>
+              <tr><td colSpan={8} className="text-center py-8 text-gris-dark text-sm">No hay choferes registrados.</td></tr>
             ) : choferes.map(c => {
               const camionAsig = camiones.find(cam => cam.id === c.camion_id)
               return (
@@ -128,6 +130,9 @@ export function ChoferesTab() {
                     ? <span className="font-mono text-xs font-bold bg-azul-light text-azul-mid px-2 py-0.5 rounded">{camionAsig.patente}</span>
                     : <span className="text-gris-mid text-xs">—</span>
                   }
+                </td>
+                <td className="px-4 py-3 font-mono text-sm text-carbon">
+                  {c.basico_dia ? `$${Number(c.basico_dia).toLocaleString('es-AR')}` : '—'}
                 </td>
                 <td className="px-4 py-3">
                   <Badge

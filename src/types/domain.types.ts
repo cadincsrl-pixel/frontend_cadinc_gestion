@@ -179,6 +179,7 @@ export interface Chofer extends AuditFields {
   licencia: string | null
   estado: ChoferEstado
   camion_id: number | null
+  basico_dia: number
   obs: string | null
 }
 
@@ -273,7 +274,8 @@ export interface Tramo {
   // Vacío
   fecha_vacio: string | null
 
-  obs:         string | null
+  liquidacion_id: number | null
+  obs:            string | null
   created_at:  string
   updated_at:  string
   created_by:  string | null
@@ -286,10 +288,7 @@ export interface Liquidacion {
   fecha_desde: string
   fecha_hasta: string
   dias_trabajados: number
-  km_totales: number
-  precio_km: number
   basico_dia: number
-  subtotal_km: number
   subtotal_basico: number
   total_adelantos: number
   total_neto: number
