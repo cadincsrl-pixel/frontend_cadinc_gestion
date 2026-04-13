@@ -336,6 +336,7 @@ export interface TarifaEmpresaCantera {
   empresa_id: number
   cantera_id: number
   valor_ton: number
+  vigente_desde: string
   obs: string | null
   updated_at: string | null
   updated_by: string | null

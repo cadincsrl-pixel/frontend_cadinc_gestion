@@ -142,45 +142,51 @@ function EmpresasSection({
 
 // ─── Tarifas de una empresa ───────────────────────────────────────────────────
 
+function fmtDate(s: string) {
+  const [y, m, d] = s.split('-')
+  return `${d}/${m}/${y}`
+}
+
 function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
   const toast = useToast()
   const { puedeCrear, puedeEliminar } = usePermisos('logistica')
   const { data: todasTarifas = [] } = useTarifasEmpresa()
   const { data: canteras     = [] } = useCanteras()
-  const { mutate: upsert, isPending: saving } = useUpsertTarifaEmpresa()
+  const { mutate: crear, isPending: saving } = useUpsertTarifaEmpresa()
   const { mutate: remove } = useDeleteTarifaEmpresa()
 
   const tarifas = todasTarifas.filter(t => t.empresa_id === empresa.id)
-  const canterasConTarifa = new Set(tarifas.map(t => t.cantera_id))
-  const canterasDisponibles = canteras.filter(c => !canterasConTarifa.has(c.id))
 
-  const [modal,    setModal]    = useState(false)
-  const [editando, setEditando] = useState<TarifaEmpresaCantera | null>(null)
-  const form = useForm<any>()
+  // Agrupar por cantera_id, ordenadas por vigente_desde desc (la primera es la vigente)
+  const porCantera = canteras
+    .map(c => ({
+      cantera: c,
+      historial: tarifas
+        .filter(t => t.cantera_id === c.id)
+        .sort((a, b) => b.vigente_desde.localeCompare(a.vigente_desde)),
+    }))
+    .filter(g => g.historial.length > 0)
 
-  function openNueva() {
-    setEditando(null)
-    form.reset({ cantera_id: '', valor_ton: '', obs: '' })
-    setModal(true)
-  }
-  function openEdit(t: TarifaEmpresaCantera) {
-    setEditando(t)
-    form.reset({ cantera_id: String(t.cantera_id), valor_ton: String(t.valor_ton), obs: t.obs ?? '' })
-    setModal(true)
-  }
+  const [modal, setModal] = useState(false)
+  const [expandida, setExpandida] = useState<number | null>(null)
+  const form = useForm<any>({ defaultValues: { vigente_desde: new Date().toISOString().slice(0, 10) } })
+
   function handleSubmit(data: any) {
-    upsert({ empresa_id: empresa.id, cantera_id: Number(data.cantera_id), valor_ton: Number(data.valor_ton), obs: data.obs }, {
-      onSuccess: () => { toast('✓ Tarifa guardada', 'ok'); setModal(false) },
+    crear({
+      empresa_id:    empresa.id,
+      cantera_id:    Number(data.cantera_id),
+      valor_ton:     Number(data.valor_ton),
+      vigente_desde: data.vigente_desde,
+      obs:           data.obs ?? '',
+    }, {
+      onSuccess: () => { toast('✓ Tarifa guardada', 'ok'); setModal(false); form.reset({ vigente_desde: new Date().toISOString().slice(0, 10) }) },
       onError:   () => toast('Error al guardar', 'err'),
     })
   }
 
   const canteraOptions = [
     { value: '', label: 'Seleccionar cantera…' },
-    ...(editando
-      ? canteras.filter(c => c.id === editando.cantera_id)
-      : canterasDisponibles
-    ).map(c => ({ value: c.id, label: c.nombre + (c.localidad ? ` — ${c.localidad}` : '') })),
+    ...canteras.map(c => ({ value: c.id, label: c.nombre + (c.localidad ? ` — ${c.localidad}` : '') })),
   ]
 
   return (
@@ -189,49 +195,86 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
         <div className="flex items-center justify-between px-5 py-4 border-b border-gris">
           <div>
             <h2 className="font-bold text-azul text-base">Tarifas — {empresa.nombre}</h2>
-            <p className="text-xs text-gris-dark mt-0.5">$/ton por cantera de carga</p>
+            <p className="text-xs text-gris-dark mt-0.5">Historial de $/ton por cantera · cada entrega usa la tarifa vigente en su fecha de descarga</p>
           </div>
           {puedeCrear && (
-            <Button variant="primary" size="sm" onClick={openNueva}>＋ Agregar cantera</Button>
+            <Button variant="primary" size="sm" onClick={() => setModal(true)}>＋ Nueva tarifa</Button>
           )}
         </div>
-        <table className="w-full border-collapse">
-          <thead>
-            <tr>
-              {['Cantera', 'Localidad', '$/ton', 'Obs', ''].map(h => (
-                <th key={h} className="bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {tarifas.length === 0 ? (
-              <tr><td colSpan={5} className="text-center py-6 text-sm text-gris-dark">Sin tarifas. Agregá una cantera.</td></tr>
-            ) : tarifas.map(t => (
-              <tr key={t.id} className="border-b border-gris last:border-0 hover:bg-gris/40 transition-colors">
-                <td className="px-4 py-3 font-bold text-sm text-carbon">{t.canteras?.nombre ?? '—'}</td>
-                <td className="px-4 py-3 text-sm text-gris-dark">{t.canteras?.localidad ?? '—'}</td>
-                <td className="px-4 py-3 font-mono font-bold text-verde text-sm">
-                  ${Number(t.valor_ton).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                </td>
-                <td className="px-4 py-3 text-xs text-gris-dark">{t.obs || '—'}</td>
-                <td className="px-4 py-3 flex gap-1 justify-end">
-                  <button onClick={() => openEdit(t)} className="text-xs px-2 py-1 rounded hover:bg-gris transition-colors">✏️</button>
-                  {puedeEliminar && (
-                    <button onClick={() => { if (confirm('¿Eliminar tarifa?')) remove(t.id, { onSuccess: () => toast('✓ Eliminada', 'ok') }) }}
-                      className="text-xs px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors">✕</button>
+
+        {porCantera.length === 0 ? (
+          <p className="text-center py-6 text-sm text-gris-dark">Sin tarifas. Agregá una con el botón de arriba.</p>
+        ) : (
+          <div className="divide-y divide-gris">
+            {porCantera.map(({ cantera, historial }) => {
+              const vigente  = historial[0]
+              const pasadas  = historial.slice(1)
+              const expanded = expandida === cantera.id
+
+              return (
+                <div key={cantera.id} className="px-5 py-3">
+                  {/* Fila vigente */}
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div>
+                      <span className="font-bold text-sm text-carbon">{cantera.nombre}</span>
+                      {cantera.localidad && <span className="text-xs text-gris-dark ml-2">{cantera.localidad}</span>}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <div className="font-mono font-bold text-verde">
+                          ${Number(vigente.valor_ton).toLocaleString('es-AR', { minimumFractionDigits: 2 })}/ton
+                        </div>
+                        <div className="text-[11px] text-gris-dark">desde {fmtDate(vigente.vigente_desde)}</div>
+                      </div>
+                      {pasadas.length > 0 && (
+                        <button
+                          onClick={() => setExpandida(expanded ? null : cantera.id)}
+                          className="text-xs text-azul-mid hover:underline"
+                        >
+                          {expanded ? '▲ ocultar' : `▼ ${pasadas.length} anterior${pasadas.length > 1 ? 'es' : ''}`}
+                        </button>
+                      )}
+                      {puedeEliminar && (
+                        <button
+                          onClick={() => { if (confirm(`¿Eliminar tarifa de ${cantera.nombre}?`)) remove(vigente.id, { onSuccess: () => toast('✓ Eliminada', 'ok') }) }}
+                          className="text-xs px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors"
+                        >✕</button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Historial expandido */}
+                  {expanded && pasadas.length > 0 && (
+                    <div className="mt-2 pl-3 border-l-2 border-gris flex flex-col gap-1">
+                      {pasadas.map(t => (
+                        <div key={t.id} className="flex items-center justify-between text-xs text-gris-dark py-0.5">
+                          <span>desde {fmtDate(t.vigente_desde)}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono">${Number(t.valor_ton).toLocaleString('es-AR', { minimumFractionDigits: 2 })}/ton</span>
+                            {puedeEliminar && (
+                              <button onClick={() => { if (confirm('¿Eliminar?')) remove(t.id, { onSuccess: () => toast('✓ Eliminada', 'ok') }) }}
+                                className="hover:text-rojo">✕</button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
 
-      <Modal open={modal} onClose={() => setModal(false)} title={editando ? '✏️ EDITAR TARIFA' : '💲 NUEVA TARIFA'}
+      <Modal open={modal} onClose={() => setModal(false)} title="💲 NUEVA TARIFA"
         footer={<><Button variant="secondary" onClick={() => setModal(false)}>Cancelar</Button><Button variant="primary" loading={saving} onClick={form.handleSubmit(handleSubmit)}>✓ Guardar</Button></>}>
         <div className="flex flex-col gap-4">
-          <Select label="Cantera" options={canteraOptions} disabled={!!editando} {...form.register('cantera_id')} />
-          <Input label="$/ton" type="number" step="0.01" placeholder="0.00" {...form.register('valor_ton')} />
+          <Select label="Cantera" options={canteraOptions} {...form.register('cantera_id')} />
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="$/ton" type="number" step="0.01" placeholder="0.00" {...form.register('valor_ton')} />
+            <Input label="Vigente desde" type="date" {...form.register('vigente_desde')} />
+          </div>
           <Input label="Observaciones" placeholder="Notas..." {...form.register('obs')} />
         </div>
       </Modal>
@@ -260,16 +303,20 @@ function FacturacionSection() {
     t => t.tipo === 'cargado' && t.estado === 'completado' && !t.cobro_id
   )
 
-  function tarifaDeEmpresa(empresaId: number, canteraId: number | null): number {
-    if (!canteraId) return 0
-    return todasTarifas.find(t => t.empresa_id === empresaId && t.cantera_id === canteraId)?.valor_ton ?? 0
+  function tarifaParaFecha(empresaId: number, canteraId: number | null, fecha: string | null): number {
+    if (!canteraId || !fecha) return 0
+    const candidates = (todasTarifas as TarifaEmpresaCantera[])
+      .filter(t => t.empresa_id === empresaId && t.cantera_id === canteraId && t.vigente_desde <= fecha)
+      .sort((a, b) => b.vigente_desde.localeCompare(a.vigente_desde))
+    return candidates[0]?.valor_ton ?? 0
   }
 
   function resumenEmpresa(empresa: EmpresaTransportista) {
     const mis_tramos = tramosPendientes.filter(t => t.empresa_id === empresa.id)
     const desglose = mis_tramos.map(t => {
       const ton    = t.toneladas_descarga ?? t.toneladas_carga ?? 0
-      const tarifa = tarifaDeEmpresa(empresa.id, t.cantera_id)
+      const fecha  = t.fecha_descarga ?? t.fecha_carga
+      const tarifa = tarifaParaFecha(empresa.id, t.cantera_id, fecha)
       return { t, ton, tarifa, subtotal: ton * tarifa }
     })
     const ton_totales = desglose.reduce((s, d) => s + d.ton, 0)
