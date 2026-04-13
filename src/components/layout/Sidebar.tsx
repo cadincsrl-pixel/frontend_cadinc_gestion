@@ -1,6 +1,6 @@
 'use client'
 
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useObras }        from '@/modules/tarja/hooks/useObras'
 import { useSessionStore } from '@/store/session.store'
 
@@ -21,11 +21,12 @@ const NAV_ITEMS_TARJA = [
 ]
 
 const NAV_ITEMS_LOGISTICA = [
-  { tab: 'viajes',        icon: '🚛', label: 'Tramos',        meta: 'Cargados y vacíos'          },
-  { tab: 'liquidaciones', icon: '💰', label: 'Liquidaciones', meta: 'Pago a choferes'            },
-  { tab: 'choferes',      icon: '👷', label: 'Choferes',      meta: 'Personal de conducción'     },
-  { tab: 'camiones',      icon: '🚚', label: 'Camiones',      meta: 'Flota de vehículos'         },
-  { tab: 'lugares',       icon: '📍', label: 'Lugares',       meta: 'Canteras · Depósitos'       },
+  { tab: 'viajes',        icon: '🚛', label: 'Tramos',        meta: 'Cargados y vacíos'             },
+  { tab: 'liquidaciones', icon: '💰', label: 'Liquidaciones', meta: 'Saldo y pago a choferes'       },
+  { tab: 'tarifas',       icon: '💲', label: 'Tarifas',       meta: '$/ton por cantera · $/km chofer'},
+  { tab: 'choferes',      icon: '👷', label: 'Choferes',      meta: 'Personal de conducción'        },
+  { tab: 'camiones',      icon: '🚚', label: 'Camiones',      meta: 'Flota de vehículos'            },
+  { tab: 'lugares',       icon: '📍', label: 'Lugares',       meta: 'Canteras · Depósitos'          },
 ]
 
 const HERR_SUBNAV = [
@@ -44,6 +45,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const hasModulo = useSessionStore(s => s.hasModulo)
   const profile   = useSessionStore(s => s.profile)
 
+  const searchParams   = useSearchParams()
+  const activeTab      = searchParams.get('tab') ?? 'viajes'
   const enHerramientas = decodedPathname.startsWith('/herramientas')
   const enLogistica    = decodedPathname.startsWith('/logistica')
 
@@ -100,8 +103,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
           {/* LOGÍSTICA nav */}
           {enLogistica && NAV_ITEMS_LOGISTICA.map(item => {
-            const activeTab = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '').get('tab') ?? 'viajes'
-            const isActive  = activeTab === item.tab
+            const isActive = activeTab === item.tab
             return (
               <button
                 key={item.tab}

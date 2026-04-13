@@ -180,6 +180,7 @@ export interface Chofer extends AuditFields {
   estado: ChoferEstado
   camion_id: number | null
   basico_dia: number
+  precio_km: number
   obs: string | null
 }
 
@@ -304,6 +305,16 @@ export interface Adelanto {
   monto: number
   descripcion: string | null
   liquidacion_id: number | null
+}
+
+export interface TarifaCantera {
+  id: number
+  cantera_id: number
+  valor_ton: number
+  obs: string | null
+  updated_at: string | null
+  updated_by: string | null
+  canteras?: { nombre: string; localidad: string | null }
 }
 
 export type Accion = 'lectura' | 'creacion' | 'actualizacion' | 'eliminacion'

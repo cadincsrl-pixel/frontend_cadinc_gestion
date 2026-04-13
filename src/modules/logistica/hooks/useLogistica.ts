@@ -2,20 +2,21 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiDelete, apiPatch } from '@/lib/api/client'
 import type {
   Chofer, Camion, Cantera, Deposito, Ruta,
-  Tramo, Viaje, Liquidacion, Adelanto,
+  Tramo, Viaje, Liquidacion, Adelanto, TarifaCantera,
 } from '@/types/domain.types'
 
 // ── Keys ──
 export const LOG_KEYS = {
-  choferes:      ['logistica', 'choferes']      as const,
-  camiones:      ['logistica', 'camiones']      as const,
-  canteras:      ['logistica', 'canteras']      as const,
-  depositos:     ['logistica', 'depositos']     as const,
-  rutas:         ['logistica', 'rutas']         as const,
-  tramos:        ['logistica', 'tramos']        as const,
-  viajes:        ['logistica', 'viajes']        as const,
-  liquidaciones: ['logistica', 'liquidaciones'] as const,
-  adelantos:     ['logistica', 'adelantos']     as const,
+  choferes:        ['logistica', 'choferes']        as const,
+  camiones:        ['logistica', 'camiones']        as const,
+  canteras:        ['logistica', 'canteras']        as const,
+  depositos:       ['logistica', 'depositos']       as const,
+  rutas:           ['logistica', 'rutas']           as const,
+  tramos:          ['logistica', 'tramos']          as const,
+  viajes:          ['logistica', 'viajes']          as const,
+  liquidaciones:   ['logistica', 'liquidaciones']   as const,
+  adelantos:       ['logistica', 'adelantos']       as const,
+  tarifasCantera:  ['logistica', 'tarifas_cantera'] as const,
 }
 
 // ── Choferes ──
@@ -275,5 +276,30 @@ export function useCreateAdelanto() {
     mutationFn: (dto: { chofer_id: number; fecha: string; monto: number; descripcion?: string }) =>
       apiPost<Adelanto>('/api/logistica/liquidaciones/adelantos', dto),
     onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.adelantos }),
+  })
+}
+
+// ── Tarifas cantera ──
+export function useTarifasCantera() {
+  return useQuery({
+    queryKey: LOG_KEYS.tarifasCantera,
+    queryFn:  () => apiGet<TarifaCantera[]>('/api/logistica/tarifas/canteras'),
+  })
+}
+
+export function useUpsertTarifaCantera() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: { cantera_id: number; valor_ton: number; obs?: string }) =>
+      apiPost<TarifaCantera>('/api/logistica/tarifas/canteras', dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.tarifasCantera }),
+  })
+}
+
+export function useDeleteTarifaCantera() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiDelete(`/api/logistica/tarifas/canteras/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.tarifasCantera }),
   })
 }

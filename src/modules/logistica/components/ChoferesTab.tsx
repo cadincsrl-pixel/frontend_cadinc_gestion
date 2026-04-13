@@ -65,6 +65,7 @@ export function ChoferesTab() {
       estado:     chofer.estado,
       camion_id:  chofer.camion_id ?? '',
       basico_dia: chofer.basico_dia ?? 0,
+      precio_km:  chofer.precio_km ?? 0,
       obs:        chofer.obs ?? '',
     })
     setEditando(chofer)
@@ -90,7 +91,10 @@ export function ChoferesTab() {
         <Select label="Estado" options={ESTADO_OPTIONS} {...form.register('estado')} />
       </div>
       <Select label="Camión asignado" options={camionOptions} {...form.register('camion_id')} />
-      <Input label="Básico por día ($)" type="number" step="100" placeholder="0" {...form.register('basico_dia')} />
+      <div className="grid grid-cols-2 gap-3">
+        <Input label="Básico por día ($)" type="number" step="100" placeholder="0" {...form.register('basico_dia')} />
+        <Input label="$/km adicional" type="number" step="1" placeholder="0" {...form.register('precio_km')} />
+      </div>
       <Input label="Observaciones" placeholder="Notas..." {...form.register('obs')} />
     </div>
   )
