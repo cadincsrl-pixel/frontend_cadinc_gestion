@@ -1,5 +1,6 @@
 'use client'
 
+import { Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useTramos, useChoferes, useCamiones } from '../hooks/useLogistica'
 import { ViajesTab }        from './ViajesTab'
@@ -20,7 +21,7 @@ const TAB_TITLES: Record<string, { icon: string; label: string; sub: string }> =
   facturacion:   { icon: '🧾', label: 'Facturación',   sub: 'Cobros a empresas transportistas'         },
 }
 
-export function LogisticaPage() {
+function LogisticaContent() {
   const searchParams = useSearchParams()
   const tab = (searchParams.get('tab') ?? 'viajes') as keyof typeof TAB_TITLES
   const info = TAB_TITLES[tab] ?? TAB_TITLES['viajes']
@@ -61,6 +62,14 @@ export function LogisticaPage() {
       {tab === 'facturacion'   && <FacturacionTab />}
 
     </div>
+  )
+}
+
+export function LogisticaPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-gris-dark">Cargando…</div>}>
+      <LogisticaContent />
+    </Suspense>
   )
 }
 
