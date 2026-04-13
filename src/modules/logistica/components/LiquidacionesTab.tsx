@@ -48,9 +48,10 @@ export function LiquidacionesTab() {
   const formLiq  = useForm<any>()
   const formAdel = useForm<any>()
 
-  // Tramos del chofer sin liquidar
+  // Tramos completados del chofer sin liquidar
   const tramosChofer = tramos.filter((t: any) => {
     if (!choferId || t.chofer_id !== choferId) return false
+    if (t.estado !== 'completado') return false
     const liqIds = new Set(liquidaciones.flatMap((l: any) => l._tramo_ids ?? []))
     return !liqIds.has(t.id)
   })
@@ -226,7 +227,7 @@ export function LiquidacionesTab() {
                         onChange={e => setSelTramos((prev: number[]) => e.target.checked ? [...prev, t.id] : prev.filter((x: number) => x !== t.id))}
                         className="accent-azul"
                       />
-                      <span>#{t.id} · {fmtFecha(t.fecha)} · {t.tipo === 'carga' ? '⛏' : '🏭'} {t.toneladas ? `${t.toneladas} tn` : '—'}</span>
+                      <span>#{t.id} · {t.tipo === 'cargado' ? '🚛' : '🔲'} · {t.fecha_carga ? fmtFecha(t.fecha_carga) : t.fecha_vacio ? fmtFecha(t.fecha_vacio) : '—'} {t.toneladas_carga ? `· ${t.toneladas_carga} tn` : ''}</span>
                     </label>
                   ))
                 }

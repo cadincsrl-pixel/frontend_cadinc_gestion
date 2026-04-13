@@ -126,6 +126,15 @@ export function useUpdateTramo() {
   })
 }
 
+export function useRegistrarDescargaTramo() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: number; dto: { fecha_descarga: string; toneladas_descarga?: number; remito_descarga?: string } }) =>
+      apiPost(`/api/logistica/tramos/${id}/descarga`, dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.tramos }),
+  })
+}
+
 export function useDeleteTramo() {
   const qc = useQueryClient()
   return useMutation({

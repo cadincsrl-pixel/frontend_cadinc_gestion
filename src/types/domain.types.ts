@@ -248,18 +248,31 @@ export interface Viaje {
   descargas: Descarga[]
 }
 
-export type TramoTipo = 'carga' | 'descarga'
+export type TramoTipo   = 'cargado' | 'vacio'
+export type TramoEstado = 'en_curso' | 'completado'
 
 export interface Tramo {
   id:          number
   chofer_id:   number
   camion_id:   number
-  fecha:       string
   tipo:        TramoTipo
-  cantera_id:  number | null
-  deposito_id: number | null
-  toneladas:   number | null
-  remito_num:  string | null
+  estado:      TramoEstado
+  cantera_id:  number | null   // origen en cargado, destino en vacio
+  deposito_id: number | null   // destino en cargado, origen en vacio
+
+  // Carga
+  fecha_carga:        string | null
+  toneladas_carga:    number | null
+  remito_carga:       string | null
+
+  // Descarga
+  fecha_descarga:     string | null
+  toneladas_descarga: number | null
+  remito_descarga:    string | null
+
+  // Vacío
+  fecha_vacio: string | null
+
   obs:         string | null
   created_at:  string
   updated_at:  string
