@@ -257,7 +257,14 @@ export function ViajesTab() {
             placeholder="Buscar chofer..."
             options={choferes.filter(c => c.estado === 'activo').map(c => ({ value: String(c.id), label: c.nombre }))}
             value={String(formViaje.watch('chofer_id') ?? '')}
-            onChange={v => formViaje.setValue('chofer_id', v ? Number(v) : undefined)}
+            onChange={v => {
+              formViaje.setValue('chofer_id', v ? Number(v) : undefined)
+              // Precargar camión asignado al chofer
+              const chofer = choferes.find(c => c.id === Number(v))
+              if (chofer?.camion_id) {
+                formViaje.setValue('camion_id', chofer.camion_id)
+              }
+            }}
           />
           <Combobox
             label="Camión"

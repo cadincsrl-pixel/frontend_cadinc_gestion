@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useChoferes, useCreateChofer, useUpdateChofer, useDeleteChofer } from '../hooks/useLogistica'
+import { useChoferes, useCreateChofer, useUpdateChofer, useDeleteChofer, useCamiones } from '../hooks/useLogistica'
 import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input }  from '@/components/ui/Input'
@@ -23,6 +23,7 @@ export function ChoferesTab() {
   const toast = useToast()
   const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('logistica')
   const { data: choferes = [] } = useChoferes()
+  const { data: camiones = [] } = useCamiones()
   const { mutate: create, isPending: creating } = useCreateChofer()
   const { mutate: update, isPending: updating } = useUpdateChofer()
   const { mutate: remove } = useDeleteChofer()
@@ -33,7 +34,7 @@ export function ChoferesTab() {
   const formEdit  = useForm<any>()
 
   function handleCreate(data: any) {
-    create(data, {
+    create({ ...data, camion_id: data.camion_id ? Number(data.camion_id) : null }, {
       onSuccess: () => { toast('✓ Chofer agregado', 'ok'); setModalNuevo(false); formNuevo.reset() },
       onError:   () => toast('Error al agregar', 'err'),
     })
@@ -41,7 +42,7 @@ export function ChoferesTab() {
 
   function handleUpdate(data: any) {
     if (!editando) return
-    update({ id: editando.id, dto: data }, {
+    update({ id: editando.id, dto: { ...data, camion_id: data.camion_id ? Number(data.camion_id) : null } }, {
       onSuccess: () => { toast('✓ Chofer actualizado', 'ok'); setEditando(null) },
       onError:   () => toast('Error al actualizar', 'err'),
     })
@@ -57,15 +58,24 @@ export function ChoferesTab() {
 
   function openEdit(chofer: Chofer) {
     formEdit.reset({
-      nombre:   chofer.nombre,
-      dni:      chofer.dni ?? '',
-      tel:      chofer.tel ?? '',
-      licencia: chofer.licencia ?? '',
-      estado:   chofer.estado,
-      obs:      chofer.obs ?? '',
+      nombre:    chofer.nombre,
+      dni:       chofer.dni ?? '',
+      tel:       chofer.tel ?? '',
+      licencia:  chofer.licencia ?? '',
+      estado:    chofer.estado,
+      camion_id: chofer.camion_id ?? '',
+      obs:       chofer.obs ?? '',
     })
     setEditando(chofer)
   }
+
+  const camionOptions = [
+    { value: '', label: 'Sin asignar' },
+    ...camiones.filter(c => c.estado === 'activo').map(c => ({
+      value: c.id,
+      label: `${c.patente}${c.modelo ? ` — ${c.modelo}` : ''}`,
+    })),
+  ]
 
   const ChoferForm = ({ form }: { form: any }) => (
     <div className="flex flex-col gap-4">
@@ -78,6 +88,7 @@ export function ChoferesTab() {
         <Input label="Licencia" placeholder="Nº licencia" {...form.register('licencia')} />
         <Select label="Estado" options={ESTADO_OPTIONS} {...form.register('estado')} />
       </div>
+      <Select label="Camión asignado" options={camionOptions} {...form.register('camion_id')} />
       <Input label="Observaciones" placeholder="Notas..." {...form.register('obs')} />
     </div>
   )
@@ -94,7 +105,7 @@ export function ChoferesTab() {
         <table className="w-full border-collapse">
           <thead>
             <tr>
-              {['Nombre', 'DNI', 'Teléfono', 'Licencia', 'Estado', ''].map(h => (
+              {['Nombre', 'DNI', 'Teléfono', 'Licencia', 'Camión', 'Estado', ''].map(h => (
                 <th key={h} className="bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide">
                   {h}
                 </th>
@@ -104,12 +115,20 @@ export function ChoferesTab() {
           <tbody>
             {choferes.length === 0 ? (
               <tr><td colSpan={6} className="text-center py-8 text-gris-dark text-sm">No hay choferes registrados.</td></tr>
-            ) : choferes.map(c => (
+            ) : choferes.map(c => {
+              const camionAsig = camiones.find(cam => cam.id === c.camion_id)
+              return (
               <tr key={c.id} className="border-b border-gris last:border-0 hover:bg-gris/40 transition-colors">
                 <td className="px-4 py-3 font-bold text-sm text-carbon">{c.nombre}</td>
                 <td className="px-4 py-3 font-mono text-xs text-gris-dark">{c.dni || '—'}</td>
                 <td className="px-4 py-3 text-sm text-gris-dark">{c.tel || '—'}</td>
                 <td className="px-4 py-3 font-mono text-xs text-gris-dark">{c.licencia || '—'}</td>
+                <td className="px-4 py-3">
+                  {camionAsig
+                    ? <span className="font-mono text-xs font-bold bg-azul-light text-azul-mid px-2 py-0.5 rounded">{camionAsig.patente}</span>
+                    : <span className="text-gris-mid text-xs">—</span>
+                  }
+                </td>
                 <td className="px-4 py-3">
                   <Badge
                     variant={c.estado === 'activo' ? 'activo' : c.estado === 'inactivo' ? 'inactivo' : 'pendiente'}
@@ -121,7 +140,8 @@ export function ChoferesTab() {
                   {puedeEliminar && <button onClick={() => handleDelete(c)} className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors">✕</button>}
                 </td>
               </tr>
-            ))}
+              )
+            })}
           </tbody>
         </table>
       </div>
