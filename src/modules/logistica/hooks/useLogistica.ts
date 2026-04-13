@@ -146,6 +146,33 @@ export function useRegistrarDescarga() {
   })
 }
 
+export function useUpdateViaje() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: number; dto: { chofer_id?: number; camion_id?: number; obs?: string } }) =>
+      apiPatch(`/api/logistica/viajes/${id}`, dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.viajes }),
+  })
+}
+
+export function useUpdateCarga() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: number; dto: { fecha?: string; cantera_id?: number; toneladas?: number; remito_num?: string; obs?: string } }) =>
+      apiPatch(`/api/logistica/viajes/carga/${id}`, dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.viajes }),
+  })
+}
+
+export function useUpdateDescarga() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: number; dto: { fecha?: string; deposito_id?: number; toneladas?: number; remito_num?: string; obs?: string } }) =>
+      apiPatch(`/api/logistica/viajes/descarga/${id}`, dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.viajes }),
+  })
+}
+
 export function useDeleteViaje() {
   const qc = useQueryClient()
   return useMutation({
