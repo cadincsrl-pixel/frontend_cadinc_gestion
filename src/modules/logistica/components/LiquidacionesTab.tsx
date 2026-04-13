@@ -406,7 +406,7 @@ export function LiquidacionesTab() {
         const chofer     = (choferes as Chofer[]).find(c => c.id === detalleLiq.chofer_id)
         const liqTramos  = (tramos as Tramo[]).filter(t => t.liquidacion_id === detalleLiq.id)
         const liqAdel    = (adelantos as Adelanto[]).filter(a => a.liquidacion_id === detalleLiq.id)
-        const esBorrador = true // siempre editable
+        const esBorrador = detalleLiq.estado === 'borrador'
 
         function handleGuardar(data: any) {
           const basicoDia = parseFloat(data.basico_dia) || 0
