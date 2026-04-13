@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import {
   useLiquidaciones, useAdelantos, useChoferes, useTramos, useRutas,
-  useCreateLiquidacion, useUpdateLiquidacion, useCerrarLiquidacion, useDeleteLiquidacion,
+  useCreateLiquidacion, useUpdateLiquidacion, useCerrarLiquidacion, useReabrirLiquidacion, useDeleteLiquidacion,
   useCreateAdelanto,
 } from '../hooks/useLogistica'
 import { Modal }    from '@/components/ui/Modal'
@@ -51,6 +51,7 @@ export function LiquidacionesTab() {
   const { mutate: createLiq,  isPending: creating     } = useCreateLiquidacion()
   const { mutate: updateLiq,  isPending: updating     } = useUpdateLiquidacion()
   const { mutate: cerrarLiq  } = useCerrarLiquidacion()
+  const { mutate: reabrirLiq } = useReabrirLiquidacion()
   const { mutate: deleteLiq  } = useDeleteLiquidacion()
   const { mutate: createAdel, isPending: creatingAdel } = useCreateAdelanto()
 
@@ -437,6 +438,14 @@ export function LiquidacionesTab() {
             footer={
               <>
                 <Button variant="secondary" onClick={() => setDetalleLiq(null)}>Cerrar</Button>
+                {!esBorrador && (
+                  <Button variant="ghost" onClick={() => {
+                    if (confirm('¿Reabrir esta liquidación? Volverá a estado borrador.'))
+                      reabrirLiq(detalleLiq.id, { onSuccess: () => { toast('✓ Liquidación reabierta', 'ok'); setDetalleLiq(null) } })
+                  }}>
+                    🔓 Reabrir
+                  </Button>
+                )}
                 {esBorrador && (
                   <Button variant="primary" loading={updating} onClick={formDetalle.handleSubmit(handleGuardar)}>
                     ✓ Guardar cambios

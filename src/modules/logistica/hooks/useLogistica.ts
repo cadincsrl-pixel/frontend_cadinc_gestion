@@ -275,6 +275,15 @@ export function useCerrarLiquidacion() {
   })
 }
 
+export function useReabrirLiquidacion() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) =>
+      apiPatch<Liquidacion>(`/api/logistica/liquidaciones/${id}/reabrir`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.liquidaciones }),
+  })
+}
+
 export function useDeleteLiquidacion() {
   const qc = useQueryClient()
   return useMutation({
