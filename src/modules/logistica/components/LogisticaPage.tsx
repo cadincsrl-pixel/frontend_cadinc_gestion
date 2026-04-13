@@ -8,6 +8,7 @@ import { ChoferesTab }      from './ChoferesTab'
 import { CamionesTab }      from './CamionesTab'
 import { LugaresTab }       from './LugaresTab'
 import { TarifasTab }       from './TarifasTab'
+import { FacturacionTab }   from './FacturacionTab'
 
 const TAB_TITLES: Record<string, { icon: string; label: string; sub: string }> = {
   viajes:        { icon: '🚛', label: 'Tramos',        sub: 'Viajes cargados y vacíos'              },
@@ -15,7 +16,8 @@ const TAB_TITLES: Record<string, { icon: string; label: string; sub: string }> =
   choferes:      { icon: '👷', label: 'Choferes',      sub: 'Personal de conducción'                },
   camiones:      { icon: '🚚', label: 'Camiones',      sub: 'Flota de vehículos'                    },
   lugares:       { icon: '📍', label: 'Lugares',       sub: 'Canteras · Descargas · Relevos'        },
-  tarifas:       { icon: '💲', label: 'Tarifas',       sub: '$/ton por cantera · $/día y $/km chofer' },
+  tarifas:       { icon: '💲', label: 'Tarifas',       sub: '$/día y $/km por chofer'                  },
+  facturacion:   { icon: '🧾', label: 'Facturación',   sub: 'Cobros a empresas transportistas'         },
 }
 
 export function LogisticaPage() {
@@ -56,6 +58,7 @@ export function LogisticaPage() {
       {tab === 'camiones'      && <CamionesTab />}
       {tab === 'lugares'       && <LugaresTab />}
       {tab === 'tarifas'       && <TarifasTab />}
+      {tab === 'facturacion'   && <FacturacionTab />}
 
     </div>
   )

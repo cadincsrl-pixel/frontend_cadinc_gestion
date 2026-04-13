@@ -259,6 +259,7 @@ export interface Tramo {
   camion_id:   number
   tipo:        TramoTipo
   estado:      TramoEstado
+  empresa_id:  number | null
   cantera_id:  number | null   // origen en cargado, destino en vacio
   deposito_id: number | null   // destino en cargado, origen en vacio
 
@@ -276,6 +277,7 @@ export interface Tramo {
   fecha_vacio: string | null
 
   liquidacion_id: number | null
+  cobro_id:       number | null
   obs:            string | null
   created_at:  string
   updated_at:  string
@@ -315,6 +317,45 @@ export interface TarifaCantera {
   updated_at: string | null
   updated_by: string | null
   canteras?: { nombre: string; localidad: string | null }
+}
+
+export type EmpresaEstado = 'activa' | 'inactiva'
+
+export interface EmpresaTransportista extends AuditFields {
+  id: number
+  nombre: string
+  cuit: string | null
+  tel: string | null
+  email: string | null
+  obs: string | null
+  estado: EmpresaEstado
+}
+
+export interface TarifaEmpresaCantera {
+  id: number
+  empresa_id: number
+  cantera_id: number
+  valor_ton: number
+  obs: string | null
+  updated_at: string | null
+  updated_by: string | null
+  empresas_transportistas?: { nombre: string }
+  canteras?: { nombre: string; localidad: string | null }
+}
+
+export type CobroEstado = 'pendiente' | 'cobrado'
+
+export interface Cobro {
+  id: number
+  empresa_id: number
+  fecha_desde: string
+  fecha_hasta: string
+  toneladas_totales: number
+  total: number
+  estado: CobroEstado
+  obs: string | null
+  created_at: string
+  empresas_transportistas?: { nombre: string }
 }
 
 export type Accion = 'lectura' | 'creacion' | 'actualizacion' | 'eliminacion'

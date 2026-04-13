@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import {
-  useTramos, useChoferes, useCamiones, useCanteras, useDepositos, useRutas,
+  useTramos, useChoferes, useCamiones, useCanteras, useDepositos, useRutas, useEmpresas,
   useCreateTramo, useUpdateTramo, useDeleteTramo, useRegistrarDescargaTramo,
 } from '../hooks/useLogistica'
 import { Modal }    from '@/components/ui/Modal'
@@ -23,6 +23,7 @@ export function ViajesTab() {
   const { data: canteras  = [] } = useCanteras()
   const { data: depositos = [] } = useDepositos()
   const { data: rutas     = [] } = useRutas()
+  const { data: empresas  = [] } = useEmpresas()
 
   const { mutate: createTramo,  isPending: creating    } = useCreateTramo()
   const { mutate: updateTramo,  isPending: updating    } = useUpdateTramo()
@@ -60,6 +61,7 @@ export function ViajesTab() {
       chofer_id:   Number(data.chofer_id),
       camion_id:   Number(data.camion_id),
       tipo:        data.tipo,
+      empresa_id:  data.empresa_id ? Number(data.empresa_id) : null,
       cantera_id:  data.cantera_id  ? Number(data.cantera_id)  : null,
       deposito_id: data.deposito_id ? Number(data.deposito_id) : null,
       obs:         data.obs ?? '',
@@ -104,6 +106,7 @@ export function ViajesTab() {
       chofer_id:         String(tramo.chofer_id),
       camion_id:         String(tramo.camion_id),
       tipo:              tramo.tipo,
+      empresa_id:        tramo.empresa_id  ? String(tramo.empresa_id)  : '',
       cantera_id:        tramo.cantera_id  ? String(tramo.cantera_id)  : '',
       deposito_id:       tramo.deposito_id ? String(tramo.deposito_id) : '',
       fecha_carga:       tramo.fecha_carga    ?? '',
@@ -126,6 +129,7 @@ export function ViajesTab() {
         dto: {
           chofer_id:          Number(data.chofer_id),
           camion_id:          Number(data.camion_id),
+          empresa_id:         data.empresa_id  ? Number(data.empresa_id)  : null,
           cantera_id:         data.cantera_id  ? Number(data.cantera_id)  : null,
           deposito_id:        data.deposito_id ? Number(data.deposito_id) : null,
           fecha_carga:        data.fecha_carga     || undefined,
@@ -196,10 +200,11 @@ export function ViajesTab() {
       ) : (
         <div className="flex flex-col gap-3">
           {filtered.map(tramo => {
-            const chofer  = choferes.find(c => c.id === tramo.chofer_id)
-            const camion  = camiones.find(c => c.id === tramo.camion_id)
+            const chofer   = choferes.find(c => c.id === tramo.chofer_id)
+            const camion   = camiones.find(c => c.id === tramo.camion_id)
             const cantera  = tramo.cantera_id  ? canteras.find(c => c.id === tramo.cantera_id)   : null
             const deposito = tramo.deposito_id ? depositos.find(d => d.id === tramo.deposito_id) : null
+            const empresa  = tramo.empresa_id  ? (empresas as any[]).find(e => e.id === tramo.empresa_id) : null
             const km = getKm(tramo)
             const esCargado = tramo.tipo === 'cargado'
 
@@ -227,6 +232,9 @@ export function ViajesTab() {
                     <div className="font-bold text-azul">
                       {chofer?.nombre ?? '—'} &nbsp;·&nbsp; {camion?.patente ?? '—'}
                     </div>
+                    {empresa && (
+                      <div className="text-xs font-semibold text-naranja-dark mt-0.5">🏢 {empresa.nombre}</div>
+                    )}
                     {cantera && deposito && (
                       <div className="text-xs text-gris-dark mt-0.5">
                         {esCargado
@@ -332,6 +340,19 @@ export function ViajesTab() {
             onChange={(v: string) => formNuevo.setValue('camion_id', v)}
           />
 
+          {tipoNuevo === 'cargado' && (
+            <Combobox
+              label="Empresa transportista"
+              placeholder="¿Para quién es este viaje?"
+              options={[
+                { value: '', label: 'Sin empresa' },
+                ...(empresas as any[]).filter((e: any) => e.estado === 'activa').map((e: any) => ({ value: String(e.id), label: e.nombre })),
+              ]}
+              value={String(formNuevo.watch('empresa_id') ?? '')}
+              onChange={(v: string) => formNuevo.setValue('empresa_id', v)}
+            />
+          )}
+
           {tipoNuevo === 'cargado' ? (
             <>
               <div className="grid grid-cols-2 gap-3">
@@ -435,6 +456,18 @@ export function ViajesTab() {
               onChange={(v: string) => formEdit.setValue('camion_id', v)}
             />
           </div>
+          {editando?.tipo === 'cargado' && (
+            <Combobox
+              label="Empresa transportista"
+              placeholder="¿Para quién es este viaje?"
+              options={[
+                { value: '', label: 'Sin empresa' },
+                ...(empresas as any[]).map((e: any) => ({ value: String(e.id), label: e.nombre })),
+              ]}
+              value={String(formEdit.watch('empresa_id') ?? '')}
+              onChange={(v: string) => formEdit.setValue('empresa_id', v)}
+            />
+          )}
           <div className="grid grid-cols-2 gap-3">
             <Combobox
               label={editando?.tipo === 'cargado' ? 'Cantera (origen)' : 'Cantera (destino)'}

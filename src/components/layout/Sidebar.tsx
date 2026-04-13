@@ -24,7 +24,8 @@ const NAV_ITEMS_TARJA = [
 const NAV_ITEMS_LOGISTICA = [
   { tab: 'viajes',        icon: '🚛', label: 'Tramos',        meta: 'Cargados y vacíos'             },
   { tab: 'liquidaciones', icon: '💰', label: 'Liquidaciones', meta: 'Saldo y pago a choferes'       },
-  { tab: 'tarifas',       icon: '💲', label: 'Tarifas',       meta: '$/ton por cantera · $/km chofer'},
+  { tab: 'facturacion',   icon: '🧾', label: 'Facturación',   meta: 'Cobros a empresas'              },
+  { tab: 'tarifas',       icon: '💲', label: 'Tarifas',       meta: '$/día y $/km por chofer'        },
   { tab: 'choferes',      icon: '👷', label: 'Choferes',      meta: 'Personal de conducción'        },
   { tab: 'camiones',      icon: '🚚', label: 'Camiones',      meta: 'Flota de vehículos'            },
   { tab: 'lugares',       icon: '📍', label: 'Lugares',       meta: 'Canteras · Depósitos'          },

@@ -3,6 +3,7 @@ import { apiGet, apiPost, apiDelete, apiPatch } from '@/lib/api/client'
 import type {
   Chofer, Camion, Cantera, Deposito, Ruta,
   Tramo, Viaje, Liquidacion, Adelanto, TarifaCantera,
+  EmpresaTransportista, TarifaEmpresaCantera, Cobro,
 } from '@/types/domain.types'
 
 // ── Keys ──
@@ -17,6 +18,9 @@ export const LOG_KEYS = {
   liquidaciones:   ['logistica', 'liquidaciones']   as const,
   adelantos:       ['logistica', 'adelantos']       as const,
   tarifasCantera:  ['logistica', 'tarifas_cantera'] as const,
+  empresas:        ['logistica', 'empresas']        as const,
+  tarifasEmpresa:  ['logistica', 'tarifas_empresa'] as const,
+  cobros:          ['logistica', 'cobros']          as const,
 }
 
 // ── Choferes ──
@@ -301,5 +305,102 @@ export function useDeleteTarifaCantera() {
   return useMutation({
     mutationFn: (id: number) => apiDelete(`/api/logistica/tarifas/canteras/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.tarifasCantera }),
+  })
+}
+
+// ── Empresas transportistas ──
+export function useEmpresas() {
+  return useQuery({
+    queryKey: LOG_KEYS.empresas,
+    queryFn:  () => apiGet<EmpresaTransportista[]>('/api/logistica/empresas'),
+  })
+}
+
+export function useCreateEmpresa() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: Omit<EmpresaTransportista, 'id'>) =>
+      apiPost<EmpresaTransportista>('/api/logistica/empresas', dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.empresas }),
+  })
+}
+
+export function useUpdateEmpresa() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: number; dto: Partial<EmpresaTransportista> }) =>
+      apiPatch<EmpresaTransportista>(`/api/logistica/empresas/${id}`, dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.empresas }),
+  })
+}
+
+export function useDeleteEmpresa() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiDelete(`/api/logistica/empresas/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.empresas }),
+  })
+}
+
+// ── Tarifas empresa × cantera ──
+export function useTarifasEmpresa() {
+  return useQuery({
+    queryKey: LOG_KEYS.tarifasEmpresa,
+    queryFn:  () => apiGet<TarifaEmpresaCantera[]>('/api/logistica/empresas/tarifas'),
+  })
+}
+
+export function useUpsertTarifaEmpresa() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: { empresa_id: number; cantera_id: number; valor_ton: number; obs?: string }) =>
+      apiPost<TarifaEmpresaCantera>('/api/logistica/empresas/tarifas', dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.tarifasEmpresa }),
+  })
+}
+
+export function useDeleteTarifaEmpresa() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiDelete(`/api/logistica/empresas/tarifas/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.tarifasEmpresa }),
+  })
+}
+
+// ── Cobros ──
+export function useCobros() {
+  return useQuery({
+    queryKey: LOG_KEYS.cobros,
+    queryFn:  () => apiGet<Cobro[]>('/api/logistica/cobros'),
+  })
+}
+
+export function useCreateCobro() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: any) => apiPost<Cobro>('/api/logistica/cobros', dto),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: LOG_KEYS.cobros })
+      qc.invalidateQueries({ queryKey: LOG_KEYS.tramos })
+    },
+  })
+}
+
+export function useMarcarCobrado() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiPatch<Cobro>(`/api/logistica/cobros/${id}/cobrar`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.cobros }),
+  })
+}
+
+export function useDeleteCobro() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiDelete(`/api/logistica/cobros/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: LOG_KEYS.cobros })
+      qc.invalidateQueries({ queryKey: LOG_KEYS.tramos })
+    },
   })
 }
