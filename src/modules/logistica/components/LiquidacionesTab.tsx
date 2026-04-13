@@ -262,11 +262,11 @@ export function LiquidacionesTab() {
       </div>
 
       {/* ── Historial ── */}
-      {liquidaciones.length > 0 && (
+      {(liquidaciones as any[]).filter(l => l.estado === 'cerrada').length > 0 && (
         <div>
           <h2 className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-2">Historial de liquidaciones</h2>
           <div className="flex flex-col gap-3">
-            {(liquidaciones as any[]).map(liq => {
+            {(liquidaciones as any[]).filter(l => l.estado === 'cerrada').map(liq => {
               const chofer = (choferes as Chofer[]).find(c => c.id === liq.chofer_id)
               return (
                 <div key={liq.id} className={`bg-white rounded-card shadow-card p-4 border-l-4 ${liq.estado === 'cerrada' ? 'border-verde' : 'border-amarillo'}`}>
