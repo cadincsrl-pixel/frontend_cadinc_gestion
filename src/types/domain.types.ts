@@ -248,6 +248,25 @@ export interface Viaje {
   descargas: Descarga[]
 }
 
+export type TramoTipo = 'carga' | 'descarga'
+
+export interface Tramo {
+  id:          number
+  chofer_id:   number
+  camion_id:   number
+  fecha:       string
+  tipo:        TramoTipo
+  cantera_id:  number | null
+  deposito_id: number | null
+  toneladas:   number | null
+  remito_num:  string | null
+  obs:         string | null
+  created_at:  string
+  updated_at:  string
+  created_by:  string | null
+  updated_by:  string | null
+}
+
 export interface Liquidacion {
   id: number
   chofer_id: number

@@ -1,7 +1,7 @@
 'use client'
 
 import { useSearchParams } from 'next/navigation'
-import { useViajes, useChoferes, useCamiones } from '../hooks/useLogistica'
+import { useTramos, useChoferes, useCamiones } from '../hooks/useLogistica'
 import { ViajesTab }        from './ViajesTab'
 import { LiquidacionesTab } from './LiquidacionesTab'
 import { ChoferesTab }      from './ChoferesTab'
@@ -21,12 +21,12 @@ export function LogisticaPage() {
   const tab = (searchParams.get('tab') ?? 'viajes') as keyof typeof TAB_TITLES
   const info = TAB_TITLES[tab] ?? TAB_TITLES['viajes']
 
-  const { data: viajes   = [] } = useViajes()
+  const { data: tramos   = [] } = useTramos()
   const { data: choferes = [] } = useChoferes()
   const { data: camiones = [] } = useCamiones()
 
-  const enCurso    = viajes.filter(v => v.estado === 'en_curso').length
-  const completados = viajes.filter(v => v.estado === 'completado').length
+  const cargas    = tramos.filter((t: any) => t.tipo === 'carga').length
+  const descargas = tramos.filter((t: any) => t.tipo === 'descarga').length
 
   return (
     <div className="p-4 md:p-6 flex flex-col gap-4">
@@ -39,8 +39,8 @@ export function LogisticaPage() {
         <p className="text-sm text-gris-dark mt-1">{info.sub}</p>
         {tab === 'viajes' && (
           <div className="flex gap-3 mt-3 flex-wrap">
-            <Stat value={enCurso}     label="En curso"         color="orange" />
-            <Stat value={completados} label="Completados"      color="green"  />
+            <Stat value={cargas}    label="Cargas"    color="orange" />
+            <Stat value={descargas} label="Descargas" color="green"  />
             <Stat value={choferes.filter(c => c.estado === 'activo').length} label="Choferes activos" color="blue" />
             <Stat value={camiones.filter(c => c.estado === 'activo').length} label="Camiones activos" color="blue" />
           </div>

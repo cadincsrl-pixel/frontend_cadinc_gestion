@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiDelete, apiPatch } from '@/lib/api/client'
 import type {
   Chofer, Camion, Cantera, Deposito, Ruta,
-  Viaje, Liquidacion, Adelanto,
+  Tramo, Viaje, Liquidacion, Adelanto,
 } from '@/types/domain.types'
 
 // ── Keys ──
@@ -12,6 +12,7 @@ export const LOG_KEYS = {
   canteras:      ['logistica', 'canteras']      as const,
   depositos:     ['logistica', 'depositos']     as const,
   rutas:         ['logistica', 'rutas']         as const,
+  tramos:        ['logistica', 'tramos']        as const,
   viajes:        ['logistica', 'viajes']        as const,
   liquidaciones: ['logistica', 'liquidaciones'] as const,
   adelantos:     ['logistica', 'adelantos']     as const,
@@ -99,7 +100,41 @@ export function useRutas() {
   })
 }
 
-// ── Viajes ──
+// ── Tramos ──
+export function useTramos() {
+  return useQuery({
+    queryKey: LOG_KEYS.tramos,
+    queryFn:  () => apiGet<Tramo[]>('/api/logistica/tramos'),
+  })
+}
+
+export function useCreateTramo() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: Omit<Tramo, 'id' | 'created_at' | 'updated_at' | 'created_by' | 'updated_by'>) =>
+      apiPost<Tramo>('/api/logistica/tramos', dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.tramos }),
+  })
+}
+
+export function useUpdateTramo() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: number; dto: Partial<Tramo> }) =>
+      apiPatch<Tramo>(`/api/logistica/tramos/${id}`, dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.tramos }),
+  })
+}
+
+export function useDeleteTramo() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiDelete(`/api/logistica/tramos/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.tramos }),
+  })
+}
+
+// ── Viajes (legacy) ──
 export function useViajes() {
   return useQuery({
     queryKey: LOG_KEYS.viajes,
@@ -203,7 +238,7 @@ export function useCreateLiquidacion() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: LOG_KEYS.liquidaciones })
       qc.invalidateQueries({ queryKey: LOG_KEYS.adelantos })
-      qc.invalidateQueries({ queryKey: LOG_KEYS.viajes })
+      qc.invalidateQueries({ queryKey: LOG_KEYS.tramos })
     },
   })
 }

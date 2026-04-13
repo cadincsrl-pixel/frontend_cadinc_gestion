@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import {
-  useLiquidaciones, useAdelantos, useChoferes, useViajes, useRutas,
+  useLiquidaciones, useAdelantos, useChoferes, useTramos, useRutas,
   useCreateLiquidacion, useCerrarLiquidacion, useDeleteLiquidacion,
   useCreateAdelanto,
 } from '../hooks/useLogistica'
@@ -30,7 +30,7 @@ export function LiquidacionesTab() {
   const { data: liquidaciones = [] } = useLiquidaciones()
   const { data: adelantos     = [] } = useAdelantos()
   const { data: choferes      = [] } = useChoferes()
-  const { data: viajes        = [] } = useViajes()
+  const { data: tramos        = [] } = useTramos()
   const { data: rutas         = [] } = useRutas()
 
   const { mutate: createLiq,  isPending: creating } = useCreateLiquidacion()
@@ -41,18 +41,18 @@ export function LiquidacionesTab() {
   const [modalLiq,   setModalLiq]   = useState(false)
   const [modalAdel,  setModalAdel]  = useState(false)
   const [choferId,   setChoferId]   = useState<number | null>(null)
-  const [selViajes,  setSelViajes]  = useState<number[]>([])
+  const [selTramos,  setSelTramos]  = useState<number[]>([])
   const [selAdelant, setSelAdelant] = useState<number[]>([])
   const [resumen,    setResumen]    = useState<any>(null)
 
   const formLiq  = useForm<any>()
   const formAdel = useForm<any>()
 
-  // Viajes completados del chofer sin liquidar
-  const viajesChofer = viajes.filter(v => {
-    if (!choferId || v.chofer_id !== choferId || v.estado !== 'completado') return false
-    const liqIds = new Set(liquidaciones.flatMap((l: any) => l._viajes_ids ?? []))
-    return !liqIds.has(v.id)
+  // Tramos del chofer sin liquidar
+  const tramosChofer = tramos.filter((t: any) => {
+    if (!choferId || t.chofer_id !== choferId) return false
+    const liqIds = new Set(liquidaciones.flatMap((l: any) => l._tramo_ids ?? []))
+    return !liqIds.has(t.id)
   })
 
   const adelantosChofer = adelantos.filter(
@@ -63,10 +63,11 @@ export function LiquidacionesTab() {
     const precioKm  = parseFloat(data.precio_km)  || 0
     const basicoDia = parseFloat(data.basico_dia)  || 0
     const dias      = parseInt(data.dias)          || 0
-    const km = selViajes.reduce((sum, vid) => {
-      const v = viajes.find(x => x.id === vid)
-      const cg = v?.cargas[0]; const dc = v?.descargas[0]
-      const r = cg && dc ? rutas.find(r => r.cantera_id === cg.cantera_id && r.deposito_id === dc.deposito_id) : null
+    const km = selTramos.reduce((sum: number, tid: number) => {
+      const t = tramos.find((x: any) => x.id === tid)
+      const r = t?.cantera_id && t?.deposito_id
+        ? rutas.find(r => r.cantera_id === t.cantera_id && r.deposito_id === t.deposito_id)
+        : null
       return sum + (r?.km_ida_vuelta ?? 0)
     }, 0)
     const adelTotal = selAdelant.reduce((sum, aid) => {
@@ -95,7 +96,7 @@ export function LiquidacionesTab() {
       total_adelantos: adelTotal,
       total_neto:      total,
       obs:             data.obs,
-      viaje_ids:       selViajes,
+      tramo_ids:       selTramos,
       adelanto_ids:    selAdelant,
     }, {
       onSuccess: () => {
@@ -103,7 +104,7 @@ export function LiquidacionesTab() {
         setModalLiq(false)
         formLiq.reset()
         setChoferId(null)
-        setSelViajes([])
+        setSelTramos([])
         setSelAdelant([])
         setResumen(null)
       },
@@ -212,25 +213,22 @@ export function LiquidacionesTab() {
           {choferId && (
             <div>
               <div className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-2">
-                Tramos a incluir ({selViajes.length} seleccionados)
+                Tramos a incluir ({selTramos.length} seleccionados)
               </div>
               <div className="bg-gris rounded-xl p-3 max-h-40 overflow-y-auto flex flex-col gap-1">
-                {viajesChofer.length === 0
+                {tramosChofer.length === 0
                   ? <p className="text-xs text-gris-dark">No hay tramos disponibles para este chofer.</p>
-                  : viajesChofer.map(v => {
-                    const cg = v.cargas[0]; const dc = v.descargas[0]
-                    return (
-                      <label key={v.id} className="flex items-center gap-2 cursor-pointer text-sm py-1 border-b border-gris-mid last:border-0">
-                        <input
-                          type="checkbox"
-                          checked={selViajes.includes(v.id)}
-                          onChange={e => setSelViajes(prev => e.target.checked ? [...prev, v.id] : prev.filter(x => x !== v.id))}
-                          className="accent-azul"
-                        />
-                        <span>#{v.id} · {cg ? fmtFecha(cg.fecha) : '—'} → {dc ? fmtFecha(dc.fecha) : '—'}</span>
-                      </label>
-                    )
-                  })
+                  : tramosChofer.map((t: any) => (
+                    <label key={t.id} className="flex items-center gap-2 cursor-pointer text-sm py-1 border-b border-gris-mid last:border-0">
+                      <input
+                        type="checkbox"
+                        checked={selTramos.includes(t.id)}
+                        onChange={e => setSelTramos((prev: number[]) => e.target.checked ? [...prev, t.id] : prev.filter((x: number) => x !== t.id))}
+                        className="accent-azul"
+                      />
+                      <span>#{t.id} · {fmtFecha(t.fecha)} · {t.tipo === 'carga' ? '⛏' : '🏭'} {t.toneladas ? `${t.toneladas} tn` : '—'}</span>
+                    </label>
+                  ))
                 }
               </div>
             </div>
