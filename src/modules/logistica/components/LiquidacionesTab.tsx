@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import {
-  useLiquidaciones, useAdelantos, useChoferes, useTramos,
+  useLiquidaciones, useAdelantos, useChoferes, useTramos, useRutas,
   useCreateLiquidacion, useCerrarLiquidacion, useDeleteLiquidacion,
   useCreateAdelanto,
 } from '../hooks/useLogistica'
@@ -13,7 +13,7 @@ import { Combobox } from '@/components/ui/Combobox'
 import { Badge }    from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
 import { useForm }  from 'react-hook-form'
-import type { Chofer, Tramo, Adelanto } from '@/types/domain.types'
+import type { Chofer, Tramo, Adelanto, Ruta } from '@/types/domain.types'
 
 function fmtM(n: number) {
   return '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 0 })
@@ -30,12 +30,23 @@ function diasUnicos(tramos: Tramo[]): number {
   return fechas.size
 }
 
+/** Km de un tramo según la tabla de rutas (busca por cantera+deposito en cualquier orden) */
+function kmTramo(t: Tramo, rutas: Ruta[]): number {
+  if (!t.cantera_id || !t.deposito_id) return 0
+  const ruta = rutas.find(r =>
+    (r.cantera_id === t.cantera_id && r.deposito_id === t.deposito_id) ||
+    (r.cantera_id === t.deposito_id && r.deposito_id === t.cantera_id)
+  )
+  return ruta?.km_ida_vuelta ?? 0
+}
+
 export function LiquidacionesTab() {
   const toast = useToast()
   const { data: liquidaciones = [] } = useLiquidaciones()
   const { data: adelantos     = [] } = useAdelantos()
   const { data: choferes      = [] } = useChoferes()
   const { data: tramos        = [] } = useTramos()
+  const { data: rutas         = [] } = useRutas()
 
   const { mutate: createLiq,  isPending: creating     } = useCreateLiquidacion()
   const { mutate: cerrarLiq  } = useCerrarLiquidacion()
@@ -62,19 +73,22 @@ export function LiquidacionesTab() {
     const mis_adelantos = adelantosPendientes.filter(a => a.chofer_id === chofer.id)
     const dias          = diasUnicos(mis_tramos)
     const sinBasico     = !chofer.basico_dia
-    const subtotal      = dias * (chofer.basico_dia ?? 0)
+    const subtotal_bas  = dias * (chofer.basico_dia ?? 0)
+    const km_totales    = mis_tramos.reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
+    const subtotal_km   = km_totales * (chofer.precio_km ?? 0)
+    const subtotal      = subtotal_bas + subtotal_km
     const descuentos    = mis_adelantos.reduce((s, a) => s + a.monto, 0)
     const saldo         = subtotal - descuentos
-    return { mis_tramos, mis_adelantos, dias, sinBasico, subtotal, descuentos, saldo }
+    return { mis_tramos, mis_adelantos, dias, sinBasico, subtotal_bas, km_totales, subtotal_km, subtotal, descuentos, saldo }
   }
 
   function abrirLiquidar(chofer: Chofer) {
     setChoferLiq(chofer)
-    // Pre-seleccionar todos los adelantos pendientes del chofer
     const as_ = adelantosPendientes.filter(a => a.chofer_id === chofer.id).map(a => a.id)
     setSelAdelant(as_)
     formLiq.reset({
       basico_dia: chofer.basico_dia ?? 0,
+      precio_km:  chofer.precio_km  ?? 0,
       desde:      '',
       hasta:      '',
       obs:        '',
@@ -83,18 +97,21 @@ export function LiquidacionesTab() {
   }
 
   function calcularPreview() {
-    if (!choferLiq) return { dias: 0, subtotal: 0, descuentos: 0, neto: 0 }
+    if (!choferLiq) return { dias: 0, subtotal_bas: 0, km_totales: 0, subtotal_km: 0, descuentos: 0, neto: 0 }
     const basicoDia  = parseFloat(formLiq.getValues('basico_dia')) || 0
+    const precioKm   = parseFloat(formLiq.getValues('precio_km'))  || 0
     const mis_tramos = tramosPendientes.filter(t => t.chofer_id === choferLiq.id)
-    const dias       = diasUnicos(mis_tramos)
-    const subtotal   = dias * basicoDia
-    const descuentos = adelantosPendientes.filter(a => selAdelant.includes(a.id)).reduce((s, a) => s + a.monto, 0)
-    return { dias, subtotal, descuentos, neto: subtotal - descuentos }
+    const dias        = diasUnicos(mis_tramos)
+    const subtotal_bas = dias * basicoDia
+    const km_totales   = mis_tramos.reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
+    const subtotal_km  = km_totales * precioKm
+    const descuentos   = adelantosPendientes.filter(a => selAdelant.includes(a.id)).reduce((s, a) => s + a.monto, 0)
+    return { dias, subtotal_bas, km_totales, subtotal_km, descuentos, neto: subtotal_bas + subtotal_km - descuentos }
   }
 
   function handleCreateLiq(data: any) {
     if (!choferLiq) return
-    const { dias, subtotal, descuentos, neto } = calcularPreview()
+    const { dias, subtotal_bas, subtotal_km, descuentos, neto } = calcularPreview()
     const tramo_ids = tramosPendientes.filter(t => t.chofer_id === choferLiq.id).map(t => t.id)
     createLiq({
       chofer_id:       choferLiq.id,
@@ -102,7 +119,7 @@ export function LiquidacionesTab() {
       fecha_hasta:     data.hasta,
       dias_trabajados: dias,
       basico_dia:      parseFloat(data.basico_dia) || 0,
-      subtotal_basico: subtotal,
+      subtotal_basico: subtotal_bas + subtotal_km,   // guardamos el total de haberes
       total_adelantos: descuentos,
       total_neto:      neto,
       obs:             data.obs,
@@ -151,7 +168,7 @@ export function LiquidacionesTab() {
         </h2>
         <div className="flex flex-col gap-3">
           {choferesPendientes.map(chofer => {
-            const { mis_tramos, mis_adelantos, dias, sinBasico, subtotal, descuentos, saldo } = resumenChofer(chofer)
+            const { mis_tramos, mis_adelantos, dias, sinBasico, subtotal_bas, km_totales, subtotal_km, subtotal, descuentos, saldo } = resumenChofer(chofer)
             const sinMovimientos = mis_tramos.length === 0 && mis_adelantos.length === 0
 
             return (
@@ -175,11 +192,21 @@ export function LiquidacionesTab() {
                       <div className="text-xs text-gris-dark mt-1 space-y-0.5">
                         {mis_tramos.length > 0 && (
                           <div>
-                            {mis_tramos.length} tramo{mis_tramos.length !== 1 ? 's' : ''} completado{mis_tramos.length !== 1 ? 's' : ''} ·{' '}
-                            <span className="font-semibold text-carbon">{dias} día{dias !== 1 ? 's' : ''} trabajado{dias !== 1 ? 's' : ''}</span>
+                            {mis_tramos.length} tramo{mis_tramos.length !== 1 ? 's' : ''} ·{' '}
+                            <span className="font-semibold text-carbon">{dias} día{dias !== 1 ? 's' : ''}</span>
+                            {km_totales > 0 && (
+                              <> · <span className="font-semibold text-carbon">{km_totales.toLocaleString('es-AR')} km</span></>
+                            )}
                           </div>
                         )}
-                        {mis_adelantos.length > 0 && (
+                        {mis_tramos.length > 0 && !sinBasico && (
+                          <div className="text-gris-mid">
+                            {fmtM(subtotal_bas)} básico
+                            {subtotal_km > 0 && ` + ${fmtM(subtotal_km)} km`}
+                            {descuentos > 0 && ` − ${fmtM(descuentos)} adelantos`}
+                          </div>
+                        )}
+                        {mis_adelantos.length > 0 && sinBasico && (
                           <div>{mis_adelantos.length} adelanto{mis_adelantos.length !== 1 ? 's' : ''} · {fmtM(descuentos)}</div>
                         )}
                       </div>
@@ -193,6 +220,7 @@ export function LiquidacionesTab() {
                         <div>
                           <span className="text-xs font-bold bg-amarillo/20 text-amber-700 px-2 py-1 rounded-lg">
                             Básico pendiente — {dias} día{dias !== 1 ? 's' : ''}
+                            {km_totales > 0 && ` · ${km_totales.toLocaleString('es-AR')} km`}
                           </span>
                         </div>
                       ) : (
@@ -201,9 +229,8 @@ export function LiquidacionesTab() {
                             {fmtM(saldo)}
                           </div>
                           <div className="text-[11px] text-gris-dark">
-                            {fmtM(subtotal)}
+                            {fmtM(subtotal)} haberes
                             {descuentos > 0 ? ` − ${fmtM(descuentos)}` : ''}
-                            {chofer.basico_dia ? ` · ${fmtM(chofer.basico_dia)}/día` : ''}
                           </div>
                         </>
                       )}
@@ -294,8 +321,11 @@ export function LiquidacionesTab() {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <Input label="Básico/día ($)" type="number" step="100" {...formLiq.register('basico_dia')} />
+              <Input label="$/km adicional" type="number" step="1" {...formLiq.register('precio_km')} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <Input label="Período desde" type="date" {...formLiq.register('desde')} />
               <Input label="Período hasta"  type="date" {...formLiq.register('hasta')} />
             </div>
@@ -328,8 +358,16 @@ export function LiquidacionesTab() {
               <div className="grid grid-cols-2 gap-y-1.5 text-sm">
                 <span className="text-gris-dark">Días trabajados:</span>
                 <span className="font-mono font-bold">{preview.dias} días</span>
-                <span className="text-gris-dark">Básico total:</span>
-                <span className="font-mono font-bold text-azul-mid">{fmtM(preview.subtotal)}</span>
+                <span className="text-gris-dark">Básico ({preview.dias} días):</span>
+                <span className="font-mono font-bold text-azul-mid">{fmtM(preview.subtotal_bas)}</span>
+                {preview.km_totales > 0 && (
+                  <>
+                    <span className="text-gris-dark">Km recorridos:</span>
+                    <span className="font-mono font-bold">{preview.km_totales.toLocaleString('es-AR')} km</span>
+                    <span className="text-gris-dark">Adicional km:</span>
+                    <span className="font-mono font-bold text-azul-mid">{fmtM(preview.subtotal_km)}</span>
+                  </>
+                )}
                 {preview.descuentos > 0 && (
                   <>
                     <span className="text-gris-dark">Adelantos:</span>
