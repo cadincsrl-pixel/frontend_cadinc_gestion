@@ -26,8 +26,12 @@ function fmtFecha(s: string) {
 
 /** Fechas únicas de tramos completados */
 function diasUnicos(tramos: Tramo[]): number {
-  const fechas = new Set(tramos.map(t => t.fecha_carga ?? t.fecha_vacio ?? '').filter(Boolean))
-  return fechas.size
+  const inicios = tramos.map(t => t.fecha_carga ?? t.fecha_vacio ?? '').filter(Boolean)
+  const fines   = tramos.map(t => t.fecha_descarga ?? t.fecha_carga ?? t.fecha_vacio ?? '').filter(Boolean)
+  if (!inicios.length) return 0
+  const desde = inicios.reduce((a, b) => a < b ? a : b)
+  const hasta = fines.length ? fines.reduce((a, b) => a > b ? a : b) : desde
+  return Math.round((new Date(hasta).getTime() - new Date(desde).getTime()) / 86_400_000) + 1
 }
 
 function rangoTramos(tramos: Tramo[]): { desde: string; hasta: string } {
