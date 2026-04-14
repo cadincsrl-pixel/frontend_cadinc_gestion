@@ -34,6 +34,12 @@ function diasUnicos(tramos: Tramo[]): number {
   return Math.round((new Date(hasta).getTime() - new Date(desde).getTime()) / 86_400_000) + 1
 }
 
+function diasDelMes(fechaStr: string): number {
+  if (!fechaStr) return 30
+  const [y, m] = fechaStr.split('-').map(Number)
+  return new Date(y, m, 0).getDate()
+}
+
 function rangoTramos(tramos: Tramo[]): { desde: string; hasta: string } {
   const inicios = tramos.map(t => t.fecha_carga ?? t.fecha_vacio ?? '').filter(Boolean)
   const fines   = tramos.map(t => t.fecha_descarga ?? t.fecha_carga ?? t.fecha_vacio ?? '').filter(Boolean)
@@ -104,39 +110,43 @@ export function LiquidacionesTab() {
     setSelAdelant(as_)
     const mis_tramos = tramosPendientes.filter(t => t.chofer_id === chofer.id)
     const { desde, hasta } = rangoTramos(mis_tramos)
+    const dm = diasDelMes(desde)
     formLiq.reset({
-      basico_dia: chofer.basico_dia ?? 0,
-      precio_km:  chofer.precio_km  ?? 0,
+      basico_mensual: Math.round((chofer.basico_dia ?? 0) * dm) || 0,
+      precio_km:      chofer.precio_km ?? 0,
       desde,
       hasta,
-      obs:        '',
+      obs:            '',
     })
     setModalLiq(true)
   }
 
   function calcularPreview() {
-    if (!choferLiq) return { dias: 0, subtotal_bas: 0, km_totales: 0, subtotal_km: 0, descuentos: 0, neto: 0 }
-    const basicoDia  = parseFloat(formLiq.getValues('basico_dia')) || 0
-    const precioKm   = parseFloat(formLiq.getValues('precio_km'))  || 0
-    const mis_tramos = tramosPendientes.filter(t => t.chofer_id === choferLiq.id)
-    const dias        = diasUnicos(mis_tramos)
-    const subtotal_bas = dias * basicoDia
-    const km_totales   = mis_tramos.reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
-    const subtotal_km  = km_totales * precioKm
-    const descuentos   = adelantosPendientes.filter(a => selAdelant.includes(a.id)).reduce((s, a) => s + a.monto, 0)
-    return { dias, subtotal_bas, km_totales, subtotal_km, descuentos, neto: subtotal_bas + subtotal_km - descuentos }
+    if (!choferLiq) return { dias: 0, basico_dia: 0, dias_mes: 30, subtotal_bas: 0, km_totales: 0, subtotal_km: 0, descuentos: 0, neto: 0 }
+    const basicoMensual = parseFloat(formLiq.getValues('basico_mensual')) || 0
+    const precioKm      = parseFloat(formLiq.getValues('precio_km'))      || 0
+    const desde         = formLiq.getValues('desde')
+    const dias_mes      = diasDelMes(desde)
+    const basico_dia    = basicoMensual / dias_mes
+    const mis_tramos    = tramosPendientes.filter(t => t.chofer_id === choferLiq.id)
+    const dias          = diasUnicos(mis_tramos)
+    const subtotal_bas  = dias * basico_dia
+    const km_totales    = mis_tramos.reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
+    const subtotal_km   = km_totales * precioKm
+    const descuentos    = adelantosPendientes.filter(a => selAdelant.includes(a.id)).reduce((s, a) => s + a.monto, 0)
+    return { dias, basico_dia, dias_mes, subtotal_bas, km_totales, subtotal_km, descuentos, neto: subtotal_bas + subtotal_km - descuentos }
   }
 
   function handleCreateLiq(data: any) {
     if (!choferLiq) return
-    const { dias, subtotal_bas, subtotal_km, descuentos, neto } = calcularPreview()
+    const { dias, basico_dia, subtotal_bas, subtotal_km, descuentos, neto } = calcularPreview()
     const tramo_ids = tramosPendientes.filter(t => t.chofer_id === choferLiq.id).map(t => t.id)
     createLiq({
       chofer_id:       choferLiq.id,
       fecha_desde:     data.desde,
       fecha_hasta:     data.hasta,
       dias_trabajados: dias,
-      basico_dia:      parseFloat(data.basico_dia) || 0,
+      basico_dia,
       subtotal_basico: subtotal_bas + subtotal_km,   // guardamos el total de haberes
       total_adelantos: descuentos,
       total_neto:      neto,
@@ -351,7 +361,14 @@ export function LiquidacionesTab() {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <Input label="Básico/día ($)" type="number" step="100" {...formLiq.register('basico_dia')} />
+              <div>
+                <Input label="Básico mensual ($)" type="number" step="1000" {...formLiq.register('basico_mensual')} />
+                {preview.dias_mes > 0 && (
+                  <p className="text-[11px] text-gris-dark mt-1 px-1">
+                    = {fmtM(preview.basico_dia)}/día · mes de {preview.dias_mes} días
+                  </p>
+                )}
+              </div>
               <Input label="$/km adicional" type="number" step="1" {...formLiq.register('precio_km')} />
             </div>
             <div className="grid grid-cols-2 gap-3">
