@@ -13,7 +13,8 @@ import { Combobox } from '@/components/ui/Combobox'
 import { Badge }    from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
 import { useForm }  from 'react-hook-form'
-import type { Chofer, Tramo, Adelanto, Ruta, Cantera, Deposito } from '@/types/domain.types'
+import type { Chofer, Tramo, Adelanto, Ruta } from '@/types/domain.types'
+import { exportLiquidacionExcel, exportLiquidacionPDF } from '@/lib/utils/liquidacion-export'
 
 function fmtM(n: number) {
   return '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 0 })
@@ -325,12 +326,34 @@ export function LiquidacionesTab() {
                   </div>
                 )}
 
-                {/* Botón liquidar */}
+                {/* Botones liquidar + exportar */}
                 {!sinMovimientos && !borrador && (
-                  <div className="mt-3 pt-3 border-t border-gris flex gap-2">
+                  <div className="mt-3 pt-3 border-t border-gris flex gap-2 flex-wrap">
                     <Button variant="primary" size="sm" onClick={() => abrirLiquidar(chofer)}>
                       💰 Liquidar
                     </Button>
+                    {mis_tramos.length > 0 && (() => {
+                      const { desde, hasta } = rangoTramos(mis_tramos)
+                      const exportData = {
+                        nombreChofer: chofer.nombre,
+                        desde, hasta, dias,
+                        basico_dia:   chofer.basico_dia ?? 0,
+                        subtotal_bas, km_totales, subtotal_km, descuentos,
+                        neto:         saldo,
+                        tramos:       mis_tramos,
+                        adelantos:    mis_adelantos,
+                        canteras:     canteras as any[],
+                        depositos:    depositos as any[],
+                        rutas:        rutas as Ruta[],
+                        estado:       'En curso',
+                      }
+                      return (
+                        <>
+                          <Button variant="ghost" size="sm" onClick={() => exportLiquidacionExcel(exportData)}>📊 Excel</Button>
+                          <Button variant="ghost" size="sm" onClick={() => exportLiquidacionPDF(exportData)}>🖨 PDF</Button>
+                        </>
+                      )
+                    })()}
                   </div>
                 )}
               </div>
@@ -382,6 +405,34 @@ export function LiquidacionesTab() {
                         ✓ Cerrar
                       </Button>
                     )}
+                    {(() => {
+                      const liqTramos  = (tramos   as Tramo[]).filter(t => t.liquidacion_id === liq.id)
+                      const liqAdel    = (adelantos as Adelanto[]).filter(a => a.liquidacion_id === liq.id)
+                      const exportData = {
+                        nombreChofer: chofer?.nombre ?? '—',
+                        desde:        liq.fecha_desde,
+                        hasta:        liq.fecha_hasta,
+                        dias:         liq.dias_trabajados,
+                        basico_dia:   liq.basico_dia,
+                        subtotal_bas: liq.subtotal_basico - (liq.subtotal_km ?? 0),
+                        km_totales:   liqTramos.reduce((s: number, t: Tramo) => s + kmTramo(t, rutas as Ruta[]), 0),
+                        subtotal_km:  liq.subtotal_km ?? 0,
+                        descuentos:   liq.total_adelantos,
+                        neto:         liq.total_neto,
+                        tramos:       liqTramos,
+                        adelantos:    liqAdel,
+                        canteras:     canteras as any[],
+                        depositos:    depositos as any[],
+                        rutas:        rutas as Ruta[],
+                        estado:       liq.estado === 'cerrada' ? 'Cerrada' : 'Borrador',
+                      }
+                      return (
+                        <>
+                          <Button variant="ghost" size="sm" onClick={() => exportLiquidacionExcel(exportData)}>📊 Excel</Button>
+                          <Button variant="ghost" size="sm" onClick={() => exportLiquidacionPDF(exportData)}>🖨 PDF</Button>
+                        </>
+                      )
+                    })()}
                     <Button variant="ghost" size="sm" onClick={() => {
                       if (confirm('¿Eliminar?')) deleteLiq(liq.id, { onSuccess: () => toast('✓ Eliminada', 'ok') })
                     }}>
