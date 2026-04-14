@@ -271,7 +271,10 @@ export function useCerrarLiquidacion() {
   return useMutation({
     mutationFn: (id: number) =>
       apiPatch<Liquidacion>(`/api/logistica/liquidaciones/${id}/cerrar`, {}),
-    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.liquidaciones }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: LOG_KEYS.liquidaciones })
+      qc.invalidateQueries({ queryKey: LOG_KEYS.tramos })
+    },
   })
 }
 

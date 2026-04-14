@@ -286,10 +286,18 @@ export function LiquidacionesTab() {
                       <span className="font-bold text-carbon">{fmtM(borrador.total_neto)}</span>
                     </div>
                     <div className="flex gap-2">
-                      <Button variant="primary" size="sm" onClick={() => cerrarLiq(borrador.id, { onSuccess: () => toast('✓ Liquidación cerrada', 'ok') })}>
+                      <Button variant="primary" size="sm" onClick={() => cerrarLiq(borrador.id, {
+                        onSuccess: () => toast('✓ Liquidación cerrada', 'ok'),
+                        onError:   (e: any) => toast(`Error al cerrar: ${e?.message ?? 'desconocido'}`, 'err'),
+                      })}>
                         💰 Liquidar
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => { if (confirm('¿Eliminar borrador?')) deleteLiq(borrador.id, { onSuccess: () => toast('✓ Eliminado', 'ok') }) }}>
+                      <Button variant="ghost" size="sm" onClick={() => {
+                        if (confirm('¿Eliminar borrador?')) deleteLiq(borrador.id, {
+                          onSuccess: () => toast('✓ Eliminado', 'ok'),
+                          onError:   (e: any) => toast(`Error al eliminar: ${e?.message ?? 'desconocido'}`, 'err'),
+                        })
+                      }}>
                         🗑
                       </Button>
                     </div>
