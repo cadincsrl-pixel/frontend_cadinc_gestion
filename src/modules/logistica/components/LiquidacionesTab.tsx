@@ -208,6 +208,7 @@ export function LiquidacionesTab() {
           {choferesPendientes.map(chofer => {
             const { mis_tramos, mis_adelantos, dias, sinBasico, subtotal_bas, km_totales, subtotal_km, subtotal, descuentos, saldo } = resumenChofer(chofer)
             const sinMovimientos = mis_tramos.length === 0 && mis_adelantos.length === 0
+            const borrador = (liquidaciones as any[]).find(l => l.chofer_id === chofer.id && l.estado === 'borrador')
 
             return (
               <div key={chofer.id} className="bg-white rounded-card shadow-card p-4">
@@ -276,8 +277,27 @@ export function LiquidacionesTab() {
                   )}
                 </div>
 
+                {/* Borrador pendiente */}
+                {borrador && (
+                  <div className="mt-3 pt-3 border-t border-gris flex items-center justify-between gap-3 flex-wrap">
+                    <div className="text-xs text-gris-dark">
+                      <span className="font-bold text-amber-700">Borrador</span> ·{' '}
+                      {fmtFecha(borrador.fecha_desde)} → {fmtFecha(borrador.fecha_hasta)} ·{' '}
+                      <span className="font-bold text-carbon">{fmtM(borrador.total_neto)}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="primary" size="sm" onClick={() => cerrarLiq(borrador.id, { onSuccess: () => toast('✓ Liquidación cerrada', 'ok') })}>
+                        💰 Liquidar
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => { if (confirm('¿Eliminar borrador?')) deleteLiq(borrador.id, { onSuccess: () => toast('✓ Eliminado', 'ok') }) }}>
+                        🗑
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Botón liquidar */}
-                {!sinMovimientos && (
+                {!sinMovimientos && !borrador && (
                   <div className="mt-3 pt-3 border-t border-gris flex gap-2">
                     <Button variant="primary" size="sm" onClick={() => abrirLiquidar(chofer)}>
                       💰 Liquidar

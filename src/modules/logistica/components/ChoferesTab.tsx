@@ -107,7 +107,7 @@ export function ChoferesTab() {
         <table className="w-full border-collapse">
           <thead>
             <tr>
-              {['Nombre', 'DNI', 'Teléfono', 'Licencia', 'Camión', 'Básico/día', 'Estado', ''].map(h => (
+              {['Nombre', 'DNI', 'Teléfono', 'Licencia', 'Camión', 'Estado', ''].map(h => (
                 <th key={h} className="bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide">
                   {h}
                 </th>
@@ -130,9 +130,6 @@ export function ChoferesTab() {
                     ? <span className="font-mono text-xs font-bold bg-azul-light text-azul-mid px-2 py-0.5 rounded">{camionAsig.patente}</span>
                     : <span className="text-gris-mid text-xs">—</span>
                   }
-                </td>
-                <td className="px-4 py-3 font-mono text-sm text-carbon">
-                  {c.basico_dia ? `$${Number(c.basico_dia).toLocaleString('es-AR')}` : '—'}
                 </td>
                 <td className="px-4 py-3">
                   <Badge
