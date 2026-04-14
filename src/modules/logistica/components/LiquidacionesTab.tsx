@@ -4,7 +4,7 @@ import { useState } from 'react'
 import {
   useLiquidaciones, useAdelantos, useChoferes, useTramos, useRutas,
   useCreateLiquidacion, useUpdateLiquidacion, useCerrarLiquidacion, useReabrirLiquidacion, useDeleteLiquidacion,
-  useCreateAdelanto,
+  useCreateAdelanto, useUpdateChofer,
 } from '../hooks/useLogistica'
 import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
@@ -66,17 +66,17 @@ export function LiquidacionesTab() {
   const { data: tramos        = [] } = useTramos()
   const { data: rutas         = [] } = useRutas()
 
-  const { mutate: createLiq,  isPending: creating     } = useCreateLiquidacion()
-  const { mutate: updateLiq,  isPending: updating     } = useUpdateLiquidacion()
-  const { mutate: cerrarLiq  } = useCerrarLiquidacion()
-  const { mutate: reabrirLiq } = useReabrirLiquidacion()
-  const { mutate: deleteLiq  } = useDeleteLiquidacion()
-  const { mutate: createAdel, isPending: creatingAdel } = useCreateAdelanto()
+  const { mutate: createLiq,   isPending: creating     } = useCreateLiquidacion()
+  const { mutate: updateLiq,   isPending: updating     } = useUpdateLiquidacion()
+  const { mutate: cerrarLiq   } = useCerrarLiquidacion()
+  const { mutate: reabrirLiq  } = useReabrirLiquidacion()
+  const { mutate: deleteLiq   } = useDeleteLiquidacion()
+  const { mutate: createAdel,  isPending: creatingAdel } = useCreateAdelanto()
+  const { mutate: updateChofer, isPending: savingTarifas } = useUpdateChofer()
 
-  const [modalLiq,       setModalLiq]       = useState(false)
-  const [choferLiq,      setChoferLiq]      = useState<Chofer | null>(null)
-  const [selAdelant,     setSelAdelant]     = useState<number[]>([])
-  const [liquidarDirecto, setLiquidarDirecto] = useState(false)
+  const [modalLiq,   setModalLiq]   = useState(false)
+  const [choferLiq,  setChoferLiq]  = useState<Chofer | null>(null)
+  const [selAdelant, setSelAdelant] = useState<number[]>([])
   const [modalAdel,      setModalAdel]      = useState(false)
   const [detalleLiq,     setDetalleLiq]     = useState<any | null>(null)
 
@@ -138,11 +138,19 @@ export function LiquidacionesTab() {
     return { dias, basico_dia, dias_mes, subtotal_bas, km_totales, subtotal_km, descuentos, neto: subtotal_bas + subtotal_km - descuentos }
   }
 
-  function handleCreateLiq(data: any) {
+  function handleGuardarTarifas(data: any) {
+    if (!choferLiq) return
+    const { basico_dia } = calcularPreview()
+    updateChofer({ id: choferLiq.id, dto: { basico_dia, precio_km: parseFloat(data.precio_km) || 0 } }, {
+      onSuccess: () => { toast('✓ Tarifas guardadas', 'ok'); setModalLiq(false); setChoferLiq(null) },
+      onError:   () => toast('Error al guardar', 'err'),
+    })
+  }
+
+  function handleLiquidar(data: any) {
     if (!choferLiq) return
     const { dias, basico_dia, subtotal_bas, subtotal_km, descuentos, neto } = calcularPreview()
     const tramo_ids = tramosPendientes.filter(t => t.chofer_id === choferLiq.id).map(t => t.id)
-    const cerrar = liquidarDirecto
     createLiq({
       chofer_id:       choferLiq.id,
       fecha_desde:     data.desde,
@@ -157,19 +165,12 @@ export function LiquidacionesTab() {
       adelanto_ids:    selAdelant,
     }, {
       onSuccess: (nueva: any) => {
-        if (cerrar) {
-          cerrarLiq(nueva.id, {
-            onSuccess: () => toast('✓ Liquidación cerrada', 'ok'),
-          })
-        } else {
-          toast('✓ Liquidación guardada como borrador', 'ok')
-        }
+        cerrarLiq(nueva.id, { onSuccess: () => toast('✓ Liquidación cerrada', 'ok') })
         setModalLiq(false)
         setChoferLiq(null)
         setSelAdelant([])
-        setLiquidarDirecto(false)
       },
-      onError: () => toast('Error al guardar', 'err'),
+      onError: () => toast('Error al liquidar', 'err'),
     })
   }
 
@@ -207,7 +208,6 @@ export function LiquidacionesTab() {
           {choferesPendientes.map(chofer => {
             const { mis_tramos, mis_adelantos, dias, sinBasico, subtotal_bas, km_totales, subtotal_km, subtotal, descuentos, saldo } = resumenChofer(chofer)
             const sinMovimientos = mis_tramos.length === 0 && mis_adelantos.length === 0
-            const borrador = (liquidaciones as any[]).find(l => l.chofer_id === chofer.id && l.estado === 'borrador')
 
             return (
               <div key={chofer.id} className="bg-white rounded-card shadow-card p-4">
@@ -276,37 +276,8 @@ export function LiquidacionesTab() {
                   )}
                 </div>
 
-                {/* Liquidación en borrador */}
-                {borrador && (
-                  <div className="mt-3 pt-3 border-t border-gris">
-                    <div className="flex items-center justify-between gap-3 flex-wrap">
-                      <div>
-                        <span className="text-[10px] font-bold uppercase tracking-wide bg-amarillo/20 text-amber-700 px-2 py-0.5 rounded-full">
-                          Borrador
-                        </span>
-                        <div className="text-xs text-gris-dark mt-1">
-                          {fmtFecha(borrador.fecha_desde)} → {fmtFecha(borrador.fecha_hasta)} &nbsp;·&nbsp;
-                          {borrador.dias_trabajados} días &nbsp;·&nbsp;
-                          <span className="font-bold text-carbon">{fmtM(borrador.total_neto)}</span>
-                        </div>
-                      </div>
-                      <Button variant="secondary" size="sm" onClick={() => {
-                        setDetalleLiq(borrador)
-                        formDetalle.reset({
-                          basico_dia:  borrador.basico_dia,
-                          fecha_desde: borrador.fecha_desde,
-                          fecha_hasta: borrador.fecha_hasta,
-                          obs:         borrador.obs ?? '',
-                        })
-                      }}>
-                        ✏️ Ver / Editar
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Botón liquidar — solo si hay tramos o adelantos y no hay borrador */}
-                {!sinMovimientos && !borrador && (
+                {/* Botón liquidar */}
+                {!sinMovimientos && (
                   <div className="mt-3 pt-3 border-t border-gris flex gap-2">
                     <Button variant="primary" size="sm" onClick={() => abrirLiquidar(chofer)}>
                       💰 Liquidar
@@ -380,10 +351,10 @@ export function LiquidacionesTab() {
         footer={
           <>
             <Button variant="secondary" onClick={() => setModalLiq(false)}>Cancelar</Button>
-            <Button variant="ghost" loading={creating} onClick={() => { setLiquidarDirecto(false); formLiq.handleSubmit(handleCreateLiq)() }}>
+            <Button variant="ghost" loading={savingTarifas} onClick={formLiq.handleSubmit(handleGuardarTarifas)}>
               Guardar
             </Button>
-            <Button variant="primary" loading={creating} onClick={() => { setLiquidarDirecto(true); formLiq.handleSubmit(handleCreateLiq)() }}>
+            <Button variant="primary" loading={creating} onClick={formLiq.handleSubmit(handleLiquidar)}>
               💰 Liquidar
             </Button>
           </>
