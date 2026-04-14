@@ -30,6 +30,14 @@ function diasUnicos(tramos: Tramo[]): number {
   return fechas.size
 }
 
+function rangoTramos(tramos: Tramo[]): { desde: string; hasta: string } {
+  const inicios = tramos.map(t => t.fecha_carga ?? t.fecha_vacio ?? '').filter(Boolean)
+  const fines   = tramos.map(t => t.fecha_descarga ?? t.fecha_carga ?? t.fecha_vacio ?? '').filter(Boolean)
+  const desde   = inicios.length ? inicios.reduce((a, b) => a < b ? a : b) : ''
+  const hasta   = fines.length   ? fines.reduce((a, b) => a > b ? a : b)   : ''
+  return { desde, hasta }
+}
+
 /** Km de un tramo según la tabla de rutas (busca por cantera+deposito en cualquier orden) */
 function kmTramo(t: Tramo, rutas: Ruta[]): number {
   if (!t.cantera_id || !t.deposito_id) return 0
@@ -90,11 +98,13 @@ export function LiquidacionesTab() {
     setChoferLiq(chofer)
     const as_ = adelantosPendientes.filter(a => a.chofer_id === chofer.id).map(a => a.id)
     setSelAdelant(as_)
+    const mis_tramos = tramosPendientes.filter(t => t.chofer_id === chofer.id)
+    const { desde, hasta } = rangoTramos(mis_tramos)
     formLiq.reset({
       basico_dia: chofer.basico_dia ?? 0,
       precio_km:  chofer.precio_km  ?? 0,
-      desde:      '',
-      hasta:      '',
+      desde,
+      hasta,
       obs:        '',
     })
     setModalLiq(true)
