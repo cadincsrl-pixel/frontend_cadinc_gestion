@@ -2,8 +2,8 @@
 
 import { useState } from 'react'
 import {
-  useLiquidaciones, useAdelantos, useChoferes, useTramos, useRutas,
-  useCreateLiquidacion, useUpdateLiquidacion, useCerrarLiquidacion, useReabrirLiquidacion, useDeleteLiquidacion,
+  useLiquidaciones, useAdelantos, useChoferes, useTramos, useRutas, useCanteras, useDepositos,
+  useCreateLiquidacion, useUpdateLiquidacion, useCerrarLiquidacion, useDeleteLiquidacion,
   useCreateAdelanto, useUpdateChofer,
 } from '../hooks/useLogistica'
 import { Modal }    from '@/components/ui/Modal'
@@ -13,7 +13,7 @@ import { Combobox } from '@/components/ui/Combobox'
 import { Badge }    from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
 import { useForm }  from 'react-hook-form'
-import type { Chofer, Tramo, Adelanto, Ruta } from '@/types/domain.types'
+import type { Chofer, Tramo, Adelanto, Ruta, Cantera, Deposito } from '@/types/domain.types'
 
 function fmtM(n: number) {
   return '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 0 })
@@ -48,6 +48,12 @@ function rangoTramos(tramos: Tramo[]): { desde: string; hasta: string } {
   return { desde, hasta }
 }
 
+/** Días calendario entre dos fechas (inclusive) */
+function diasEntreFechas(desde: string, hasta: string): number {
+  if (!desde || !hasta) return 0
+  return Math.round((new Date(hasta).getTime() - new Date(desde).getTime()) / 86_400_000) + 1
+}
+
 /** Km de un tramo según la tabla de rutas (busca por cantera+deposito en cualquier orden) */
 function kmTramo(t: Tramo, rutas: Ruta[]): number {
   if (!t.cantera_id || !t.deposito_id) return 0
@@ -65,11 +71,13 @@ export function LiquidacionesTab() {
   const { data: choferes      = [] } = useChoferes()
   const { data: tramos        = [] } = useTramos()
   const { data: rutas         = [] } = useRutas()
+  const { data: canteras      = [] } = useCanteras()
+  const { data: depositos     = [] } = useDepositos()
 
   const { mutate: createLiq,   isPending: creating     } = useCreateLiquidacion()
   const { mutate: updateLiq,   isPending: updating     } = useUpdateLiquidacion()
   const { mutate: cerrarLiq   } = useCerrarLiquidacion()
-  const { mutate: reabrirLiq  } = useReabrirLiquidacion()
+
   const { mutate: deleteLiq   } = useDeleteLiquidacion()
   const { mutate: createAdel,  isPending: creatingAdel } = useCreateAdelanto()
   const { mutate: updateChofer, isPending: savingTarifas } = useUpdateChofer()
@@ -77,12 +85,19 @@ export function LiquidacionesTab() {
   const [modalLiq,   setModalLiq]   = useState(false)
   const [choferLiq,  setChoferLiq]  = useState<Chofer | null>(null)
   const [selAdelant, setSelAdelant] = useState<number[]>([])
+  const [selTramos,  setSelTramos]  = useState<number[]>([])
   const [modalAdel,      setModalAdel]      = useState(false)
   const [detalleLiq,     setDetalleLiq]     = useState<any | null>(null)
 
   const formAdel    = useForm<any>()
   const formLiq     = useForm<any>()
   const formDetalle = useForm<any>()
+
+  // Reactive watch para que el preview se actualice al cambiar fechas/tarifas
+  const watchDesde  = formLiq.watch('desde')
+  const watchHasta  = formLiq.watch('hasta')
+  const watchBasico = formLiq.watch('basico_mensual')
+  const watchKm     = formLiq.watch('precio_km')
 
   // Tramos completados aún no liquidados
   const tramosPendientes    = (tramos as Tramo[]).filter(t => t.estado === 'completado' && !t.liquidacion_id)
@@ -107,9 +122,9 @@ export function LiquidacionesTab() {
 
   function abrirLiquidar(chofer: Chofer) {
     setChoferLiq(chofer)
-    const as_ = adelantosPendientes.filter(a => a.chofer_id === chofer.id).map(a => a.id)
-    setSelAdelant(as_)
     const mis_tramos = tramosPendientes.filter(t => t.chofer_id === chofer.id)
+    setSelTramos(mis_tramos.map(t => t.id))
+    setSelAdelant(adelantosPendientes.filter(a => a.chofer_id === chofer.id).map(a => a.id))
     const { desde, hasta } = rangoTramos(mis_tramos)
     const dm = diasDelMes(desde)
     formLiq.reset({
@@ -124,15 +139,16 @@ export function LiquidacionesTab() {
 
   function calcularPreview() {
     if (!choferLiq) return { dias: 0, basico_dia: 0, dias_mes: 30, subtotal_bas: 0, km_totales: 0, subtotal_km: 0, descuentos: 0, neto: 0 }
-    const basicoMensual = parseFloat(formLiq.getValues('basico_mensual')) || 0
-    const precioKm      = parseFloat(formLiq.getValues('precio_km'))      || 0
-    const desde         = formLiq.getValues('desde')
+    const basicoMensual = parseFloat(watchBasico) || 0
+    const precioKm      = parseFloat(watchKm)     || 0
+    const desde         = watchDesde ?? ''
+    const hasta         = watchHasta ?? ''
     const dias_mes      = diasDelMes(desde)
     const basico_dia    = basicoMensual / dias_mes
-    const mis_tramos    = tramosPendientes.filter(t => t.chofer_id === choferLiq.id)
-    const dias          = diasUnicos(mis_tramos)
+    const dias          = diasEntreFechas(desde, hasta)
+    const tramosSelec   = tramosPendientes.filter(t => selTramos.includes(t.id))
     const subtotal_bas  = dias * basico_dia
-    const km_totales    = mis_tramos.reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
+    const km_totales    = tramosSelec.reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
     const subtotal_km   = km_totales * precioKm
     const descuentos    = adelantosPendientes.filter(a => selAdelant.includes(a.id)).reduce((s, a) => s + a.monto, 0)
     return { dias, basico_dia, dias_mes, subtotal_bas, km_totales, subtotal_km, descuentos, neto: subtotal_bas + subtotal_km - descuentos }
@@ -150,7 +166,7 @@ export function LiquidacionesTab() {
   function handleLiquidar(data: any) {
     if (!choferLiq) return
     const { dias, basico_dia, subtotal_bas, subtotal_km, descuentos, neto } = calcularPreview()
-    const tramo_ids = tramosPendientes.filter(t => t.chofer_id === choferLiq.id).map(t => t.id)
+    const tramo_ids = selTramos
     createLiq({
       chofer_id:       choferLiq.id,
       fecha_desde:     data.desde,
@@ -169,6 +185,7 @@ export function LiquidacionesTab() {
         setModalLiq(false)
         setChoferLiq(null)
         setSelAdelant([])
+        setSelTramos([])
       },
       onError: () => toast('Error al liquidar', 'err'),
     })
@@ -414,6 +431,40 @@ export function LiquidacionesTab() {
               <Input label="Período hasta"  type="date" {...formLiq.register('hasta')} />
             </div>
 
+            {/* Tramos */}
+            {tramosPendientes.filter(t => t.chofer_id === choferLiq.id).length > 0 && (
+              <div>
+                <div className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-2">
+                  Tramos a liquidar
+                </div>
+                <div className="bg-gris rounded-xl p-3 max-h-40 overflow-y-auto flex flex-col gap-1">
+                  {tramosPendientes.filter(t => t.chofer_id === choferLiq.id).map(t => {
+                    const cantera  = (canteras as any[]).find(c => c.id === t.cantera_id)
+                    const deposito = (depositos as any[]).find(d => d.id === t.deposito_id)
+                    const fecha    = t.fecha_carga ?? t.fecha_vacio ?? ''
+                    const km       = kmTramo(t, rutas as Ruta[])
+                    return (
+                      <label key={t.id} className="flex items-center gap-2 cursor-pointer text-sm py-1 border-b border-gris-mid last:border-0">
+                        <input
+                          type="checkbox"
+                          checked={selTramos.includes(t.id)}
+                          onChange={e => setSelTramos(prev => e.target.checked ? [...prev, t.id] : prev.filter(x => x !== t.id))}
+                          className="accent-azul"
+                        />
+                        <span className="flex-1 min-w-0">
+                          {fecha ? fmtFecha(fecha) : '—'} ·{' '}
+                          <b>{cantera?.nombre ?? `#${t.cantera_id}`}</b>
+                          {deposito && <> → {deposito.nombre}</>}
+                          {km > 0 && <> · {km} km</>}
+                          {t.toneladas_carga && <> · {t.toneladas_carga} t</>}
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Adelantos */}
             {adelantosPendientes.filter(a => a.chofer_id === choferLiq.id).length > 0 && (
               <div>
@@ -516,8 +567,8 @@ export function LiquidacionesTab() {
                 <Button variant="secondary" onClick={() => setDetalleLiq(null)}>Cerrar</Button>
                 {!esBorrador && (
                   <Button variant="ghost" onClick={() => {
-                    if (confirm('¿Reabrir esta liquidación? Volverá a estado borrador.'))
-                      reabrirLiq(detalleLiq.id, { onSuccess: () => { toast('✓ Liquidación reabierta', 'ok'); setDetalleLiq(null) } })
+                    if (confirm('¿Reabrir esta liquidación? Se eliminará y los tramos/adelantos volverán al saldo corriente.'))
+                      deleteLiq(detalleLiq.id, { onSuccess: () => { toast('✓ Liquidación eliminada — tramos liberados', 'ok'); setDetalleLiq(null) } })
                   }}>
                     🔓 Reabrir
                   </Button>
