@@ -449,13 +449,7 @@ export function LiquidacionesTab() {
         const liqAdel    = (adelantos as Adelanto[]).filter(a => a.liquidacion_id === detalleLiq.id)
         const esBorrador = detalleLiq.estado === 'borrador'
 
-        const handleLiquidarDetalle = formDetalle.handleSubmit((data: any) =>
-          handleGuardar(data, () => cerrarLiq(detalleLiq.id, {
-            onSuccess: () => { toast('✓ Liquidación cerrada', 'ok'); setDetalleLiq(null) },
-          }))
-        )
-
-        function handleGuardar(data: any, onAfter?: () => void) {
+        function guardarLiqDto(data: any, onSuccess: () => void) {
           const basicoDia = parseFloat(data.basico_dia) || 0
           const dias      = detalleLiq.dias_trabajados
           const subtotal  = dias * basicoDia
@@ -470,14 +464,18 @@ export function LiquidacionesTab() {
               total_neto:      subtotal - desc,
               obs:             data.obs,
             },
-          }, {
-            onSuccess: () => {
-              if (onAfter) { onAfter() }
-              else { toast('✓ Liquidación actualizada', 'ok'); setDetalleLiq(null) }
-            },
-            onError: () => toast('Error al actualizar', 'err'),
-          })
+          }, { onSuccess, onError: () => toast('Error al actualizar', 'err') })
         }
+
+        function handleGuardar(data: any) {
+          guardarLiqDto(data, () => { toast('✓ Liquidación actualizada', 'ok'); setDetalleLiq(null) })
+        }
+
+        const handleLiquidarDetalle = formDetalle.handleSubmit((data: any) =>
+          guardarLiqDto(data, () => cerrarLiq(detalleLiq.id, {
+            onSuccess: () => { toast('✓ Liquidación cerrada', 'ok'); setDetalleLiq(null) },
+          }))
+        )
 
         return (
           <Modal
