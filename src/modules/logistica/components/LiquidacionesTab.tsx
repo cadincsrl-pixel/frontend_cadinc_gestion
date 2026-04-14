@@ -4,7 +4,7 @@ import { useState } from 'react'
 import {
   useLiquidaciones, useAdelantos, useChoferes, useTramos, useRutas, useCanteras, useDepositos,
   useCreateLiquidacion, useUpdateLiquidacion, useCerrarLiquidacion, useDeleteLiquidacion,
-  useCreateAdelanto, useUpdateChofer,
+  useCreateAdelanto, useUpdateAdelanto, useDeleteAdelanto, useUpdateChofer,
 } from '../hooks/useLogistica'
 import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
@@ -80,16 +80,20 @@ export function LiquidacionesTab() {
 
   const { mutate: deleteLiq   } = useDeleteLiquidacion()
   const { mutate: createAdel,  isPending: creatingAdel } = useCreateAdelanto()
+  const { mutate: updateAdel,  isPending: updatingAdel } = useUpdateAdelanto()
+  const { mutate: deleteAdel  } = useDeleteAdelanto()
   const { mutate: updateChofer, isPending: savingTarifas } = useUpdateChofer()
 
-  const [modalLiq,   setModalLiq]   = useState(false)
-  const [choferLiq,  setChoferLiq]  = useState<Chofer | null>(null)
-  const [selAdelant, setSelAdelant] = useState<number[]>([])
-  const [selTramos,  setSelTramos]  = useState<number[]>([])
-  const [modalAdel,      setModalAdel]      = useState(false)
-  const [detalleLiq,     setDetalleLiq]     = useState<any | null>(null)
+  const [modalLiq,    setModalLiq]    = useState(false)
+  const [choferLiq,   setChoferLiq]   = useState<Chofer | null>(null)
+  const [selAdelant,  setSelAdelant]  = useState<number[]>([])
+  const [selTramos,   setSelTramos]   = useState<number[]>([])
+  const [modalAdel,   setModalAdel]   = useState(false)
+  const [editandoAdel, setEditandoAdel] = useState<Adelanto | null>(null)
+  const [detalleLiq,  setDetalleLiq]  = useState<any | null>(null)
 
   const formAdel    = useForm<any>()
+  const formEditAdel = useForm<any>()
   const formLiq     = useForm<any>()
   const formDetalle = useForm<any>()
 
@@ -391,6 +395,47 @@ export function LiquidacionesTab() {
         </div>
       )}
 
+      {/* ── Adelantos pendientes ── */}
+      {(adelantos as Adelanto[]).filter(a => !a.liquidacion_id).length > 0 && (
+        <div>
+          <h2 className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-2">Adelantos pendientes</h2>
+          <div className="bg-white rounded-card shadow-card overflow-hidden">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr>
+                  {['Chofer', 'Fecha', 'Descripción', 'Monto', ''].map(h => (
+                    <th key={h} className="bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {(adelantos as Adelanto[]).filter(a => !a.liquidacion_id).map(a => {
+                  const chofer = (choferes as Chofer[]).find(c => c.id === a.chofer_id)
+                  return (
+                    <tr key={a.id} className="border-b border-gris last:border-0 hover:bg-gris/40 transition-colors">
+                      <td className="px-4 py-3 font-bold text-sm text-carbon">{chofer?.nombre ?? '—'}</td>
+                      <td className="px-4 py-3 text-sm text-gris-dark font-mono">{fmtFecha(a.fecha)}</td>
+                      <td className="px-4 py-3 text-sm text-gris-dark">{a.descripcion || '—'}</td>
+                      <td className="px-4 py-3 font-mono font-bold text-rojo">{fmtM(a.monto)}</td>
+                      <td className="px-4 py-3 flex gap-1 justify-end">
+                        <button
+                          onClick={() => { setEditandoAdel(a); formEditAdel.reset({ fecha: a.fecha, monto: a.monto, descripcion: a.descripcion ?? '' }) }}
+                          className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors"
+                        >✏️</button>
+                        <button
+                          onClick={() => { if (confirm('¿Eliminar adelanto?')) deleteAdel(a.id, { onSuccess: () => toast('✓ Adelanto eliminado', 'ok'), onError: () => toast('Error al eliminar', 'err') }) }}
+                          className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors"
+                        >✕</button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* ── Modal liquidar ── */}
       <Modal open={modalLiq} onClose={() => setModalLiq(false)} title="💰 LIQUIDAR CHOFER" width="max-w-xl"
         footer={
@@ -682,6 +727,28 @@ export function LiquidacionesTab() {
           </Modal>
         )
       })()}
+
+      {/* ── Modal editar adelanto ── */}
+      <Modal open={!!editandoAdel} onClose={() => setEditandoAdel(null)} title="✏️ EDITAR ADELANTO"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setEditandoAdel(null)}>Cancelar</Button>
+            <Button variant="primary" loading={updatingAdel} onClick={formEditAdel.handleSubmit((data: any) => {
+              if (!editandoAdel) return
+              updateAdel({ id: editandoAdel.id, dto: { fecha: data.fecha, monto: Number(data.monto), descripcion: data.descripcion } }, {
+                onSuccess: () => { toast('✓ Adelanto actualizado', 'ok'); setEditandoAdel(null) },
+                onError:   () => toast('Error al actualizar', 'err'),
+              })
+            })}>✓ Guardar</Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          <Input label="Fecha" type="date" {...formEditAdel.register('fecha')} />
+          <Input label="Monto ($)" type="number" step="100" {...formEditAdel.register('monto')} />
+          <Input label="Descripción" placeholder="Ej: Adelanto semana del 10/3" {...formEditAdel.register('descripcion')} />
+        </div>
+      </Modal>
 
       {/* ── Modal adelanto ── */}
       <Modal open={modalAdel} onClose={() => setModalAdel(false)} title="💵 REGISTRAR ADELANTO"

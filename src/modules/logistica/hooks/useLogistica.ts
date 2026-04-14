@@ -310,6 +310,23 @@ export function useCreateAdelanto() {
   })
 }
 
+export function useUpdateAdelanto() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: number; dto: { fecha?: string; monto?: number; descripcion?: string } }) =>
+      apiPatch<Adelanto>(`/api/logistica/liquidaciones/adelantos/${id}`, dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.adelantos }),
+  })
+}
+
+export function useDeleteAdelanto() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiDelete(`/api/logistica/liquidaciones/adelantos/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.adelantos }),
+  })
+}
+
 // ── Tarifas cantera ──
 export function useTarifasCantera() {
   return useQuery({
