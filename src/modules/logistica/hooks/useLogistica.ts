@@ -291,7 +291,10 @@ export function useDeleteLiquidacion() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: number) => apiDelete(`/api/logistica/liquidaciones/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.liquidaciones }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: LOG_KEYS.liquidaciones })
+      qc.invalidateQueries({ queryKey: LOG_KEYS.tramos })
+    },
   })
 }
 
