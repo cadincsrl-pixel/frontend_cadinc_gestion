@@ -37,7 +37,7 @@ const MODULOS = [
     key: 'certificaciones',
     nombre: 'Certificaciones',
     descripcion: 'Materiales, costos y adicionales',
-    icono: '📋',
+    icono: '💰',
     loginHref: '/login',
     appHref: '/certificaciones',
     color: 'naranja',
