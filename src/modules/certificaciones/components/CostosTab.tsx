@@ -1,16 +1,18 @@
 'use client'
 
 import { useState } from 'react'
+import { useQueries } from '@tanstack/react-query'
 import { useObras }      from '@/modules/tarja/hooks/useObras'
 import { usePersonal }   from '@/modules/tarja/hooks/usePersonal'
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
 import { useHorasSemana } from '@/modules/tarja/hooks/useHoras'
 import { useTarifasObra } from '@/modules/tarja/hooks/useTarifas'
-import { useCertificacionesObra, useContratistas } from '@/modules/tarja/hooks/useContratistas'
+import { useCertificacionesObra } from '@/modules/tarja/hooks/useContratistas'
 import { Combobox } from '@/components/ui/Combobox'
 import { calcularTotalesSemana } from '@/lib/utils/costos'
 import { getSemDays, getSemLabel, getViernes, toISO } from '@/lib/utils/dates'
-import type { Obra, Certificacion, Contratista } from '@/types/domain.types'
+import { horasApi } from '@/lib/api/horas.api'
+import type { Obra, Certificacion } from '@/types/domain.types'
 
 function fmtM(n: number) { return '$' + Math.round(n).toLocaleString('es-AR', { maximumFractionDigits: 0 }) }
 
@@ -71,6 +73,54 @@ function FilaSemana({
   )
 }
 
+function TotalesObra({ obraCod }: { obraCod: string }) {
+  const { data: personal   = [] } = usePersonal()
+  const { data: categorias = [] } = useCategorias()
+  const { data: tarifas    = [] } = useTarifasObra(obraCod)
+  const { data: certs      = [] } = useCertificacionesObra(obraCod)
+
+  const horasQueries = useQueries({
+    queries: SEMANAS.map(vie => {
+      const dias  = getSemDays(vie)
+      const desde = toISO(dias[0]!)
+      const hasta = toISO(dias[dias.length - 1]!)
+      return {
+        queryKey: ['horas', obraCod, desde, hasta],
+        queryFn: () => horasApi.getBySemana(obraCod, desde, hasta),
+        enabled: !!obraCod,
+      }
+    }),
+  })
+
+  let totalOperarios    = 0
+  let totalContratistas = 0
+
+  SEMANAS.forEach((vie, i) => {
+    const horas  = (horasQueries[i]?.data ?? []) as any[]
+    const dias   = getSemDays(vie)
+    const semKey = toISO(vie)
+    const personalObra = (personal as any[]).filter(p => horas.some((h: any) => h.leg === p.leg))
+    const { totalCosto } = calcularTotalesSemana(horas, personalObra, categorias as any[], tarifas as any[], obraCod, dias)
+    const costoCont = (certs as Certificacion[]).filter(c => c.sem_key === semKey).reduce((s, c) => s + c.monto, 0)
+    totalOperarios    += totalCosto
+    totalContratistas += costoCont
+  })
+
+  const total = totalOperarios + totalContratistas
+  if (total === 0) return null
+
+  return (
+    <tfoot>
+      <tr className="border-t-2 border-azul bg-azul-light">
+        <td className="px-4 py-3 text-xs font-bold uppercase tracking-wide text-gris-dark">Total acumulado (16 semanas)</td>
+        <td className="px-4 py-3 font-mono font-bold text-right text-azul-mid">{fmtM(totalOperarios)}</td>
+        <td className="px-4 py-3 font-mono font-bold text-right text-naranja">{fmtM(totalContratistas)}</td>
+        <td className="px-4 py-3 font-mono font-bold text-right text-lg text-carbon">{fmtM(total)}</td>
+      </tr>
+    </tfoot>
+  )
+}
+
 export function CostosTab() {
   const { data: obras = [] } = useObras()
   const [obraSel, setObraSel] = useState('')
@@ -114,6 +164,7 @@ export function CostosTab() {
                   <FilaSemana key={toISO(vie)} vie={vie} obraCod={obraSel} />
                 ))}
               </tbody>
+              <TotalesObra obraCod={obraSel} />
             </table>
           </div>
         </div>
