@@ -514,3 +514,28 @@ export interface Remito extends AuditFields {
   obs?:     string | null
   items:    RemitoItem[]
 }
+
+// ── Certificaciones ──
+export interface CertMaterial extends AuditFields {
+  id:          number
+  obra_cod:    string
+  fecha:       string
+  descripcion: string
+  proveedor:   string | null
+  cantidad:    number
+  unidad:      string
+  precio_unit: number
+  total:       number
+  obs:         string | null
+}
+
+export interface CertAdicional extends AuditFields {
+  id:             number
+  obra_cod:       string
+  fecha:          string
+  descripcion:    string
+  monto:          number
+  adjunto_url:    string | null
+  adjunto_nombre: string | null
+  obs:            string | null
+}

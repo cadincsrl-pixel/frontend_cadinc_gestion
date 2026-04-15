@@ -1,0 +1,38 @@
+'use client'
+
+import { useSearchParams } from 'next/navigation'
+import { MaterialesTab } from './MaterialesTab'
+import { CostosTab }     from './CostosTab'
+import { AdicionalesTab } from './AdicionalesTab'
+
+const TABS = [
+  { key: 'materiales',  icon: '📦', label: 'Materiales',  sub: 'Materiales a cuenta del cliente' },
+  { key: 'costos',      icon: '📊', label: 'Costos',      sub: 'Operarios y contratistas por semana' },
+  { key: 'adicionales', icon: '🧾', label: 'Adicionales', sub: 'Trabajos extra con comprobante' },
+]
+
+export function CertificacionesPage() {
+  const searchParams = useSearchParams()
+  const tab = searchParams.get('tab') ?? 'materiales'
+  const info = TABS.find(t => t.key === tab) ?? TABS[0]!
+
+  return (
+    <div className="p-4 md:p-6 flex flex-col gap-4">
+
+      {/* Header */}
+      <div className="bg-white rounded-card shadow-card p-4 border-l-[5px] border-naranja">
+        <h1 className="font-display text-[2rem] tracking-wider text-azul leading-none">
+          {info.icon} {info.label.toUpperCase()}
+        </h1>
+        <p className="text-sm text-gris-dark mt-1">{info.sub}</p>
+      </div>
+
+      {/* Contenido */}
+      <div className="flex flex-col gap-4">
+        {tab === 'materiales'  && <MaterialesTab />}
+        {tab === 'costos'      && <CostosTab />}
+        {tab === 'adicionales' && <AdicionalesTab />}
+      </div>
+    </div>
+  )
+}

@@ -33,6 +33,15 @@ const MODULOS = [
     appHref: '/herramientas',
     color: 'purple',
   },
+  {
+    key: 'certificaciones',
+    nombre: 'Certificaciones',
+    descripcion: 'Materiales, costos y adicionales',
+    icono: '📋',
+    loginHref: '/login',
+    appHref: '/certificaciones',
+    color: 'naranja',
+  },
 ] as const
 
 export function ModuloSelector() {

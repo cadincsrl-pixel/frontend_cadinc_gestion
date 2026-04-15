@@ -10,6 +10,12 @@ interface SidebarProps {
   onClose?: () => void
 }
 
+const NAV_ITEMS_CERT = [
+  { tab: 'materiales',  icon: '📦', label: 'Materiales',  meta: 'A cuenta del cliente'           },
+  { tab: 'costos',      icon: '📊', label: 'Costos',      meta: 'Operarios y contratistas'       },
+  { tab: 'adicionales', icon: '🧾', label: 'Adicionales', meta: 'Trabajos extra con comprobante' },
+]
+
 const NAV_ITEMS_TARJA = [
   { href: '/tarja',            icon: '📋', label: 'Tarja',              meta: 'Control de horas',     exact: false },
   { href: '/dashboard', icon: '📊', label: 'Resumen General', meta: 'Resumen general e histórico', exact: false },
@@ -83,8 +89,9 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const hasModulo = useSessionStore(s => s.hasModulo)
   const profile   = useSessionStore(s => s.profile)
 
-  const enHerramientas = decodedPathname.startsWith('/herramientas')
-  const enLogistica    = decodedPathname.startsWith('/logistica')
+  const enHerramientas     = decodedPathname.startsWith('/herramientas')
+  const enLogistica        = decodedPathname.startsWith('/logistica')
+  const enCertificaciones  = decodedPathname.startsWith('/certificaciones')
 
   function navigate(href: string) {
     router.push(href)
@@ -110,6 +117,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const showObrasSubnav =
     !enHerramientas &&
     !enLogistica &&
+    !enCertificaciones &&
     decodedPathname.startsWith('/tarja') &&
     decodedPathname !== '/tarja/archivadas'
 
@@ -134,7 +142,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         {/* ── Nav principal ── */}
         <div className="pt-3">
           <div className="px-4 py-2 text-[10px] font-bold tracking-[2.5px] uppercase text-white/35">
-            {enHerramientas ? 'Herramientas' : enLogistica ? 'Logística' : 'Menú'}
+            {enHerramientas ? 'Herramientas' : enLogistica ? 'Logística' : enCertificaciones ? 'Certificaciones' : 'Menú'}
           </div>
 
           {/* LOGÍSTICA nav */}
@@ -144,8 +152,39 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             </Suspense>
           )}
 
-          {/* TARJA nav — solo si NO estamos en herramientas ni logística */}
-          {!enHerramientas && !enLogistica && NAV_ITEMS_TARJA.map(item => (
+          {/* CERTIFICACIONES nav */}
+          {enCertificaciones && (() => {
+            const activeTab = typeof window !== 'undefined'
+              ? new URLSearchParams(window.location.search).get('tab') ?? 'materiales'
+              : 'materiales'
+            return NAV_ITEMS_CERT.map(item => {
+              const isActive = activeTab === item.tab
+              return (
+                <button
+                  key={item.tab}
+                  onClick={() => navigate(`/certificaciones?tab=${item.tab}`)}
+                  className={`
+                    w-full flex items-center gap-2.5 px-3 py-2.5 mx-2 rounded-[9px]
+                    text-left transition-all border border-transparent
+                    ${isActive
+                      ? 'bg-naranja text-white border-naranja-dark shadow-[0_4px_14px_rgba(232,98,26,.4)]'
+                      : 'text-white hover:bg-white hover:text-black'
+                    }
+                  `}
+                  style={{ width: 'calc(100% - 16px)' }}
+                >
+                  <span className="text-base w-5 text-center flex-shrink-0">{item.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-bold truncate">{item.label}</div>
+                    <div className="text-[11px] opacity-60 font-normal">{item.meta}</div>
+                  </div>
+                </button>
+              )
+            })
+          })()}
+
+          {/* TARJA nav — solo si NO estamos en herramientas, logística ni certificaciones */}
+          {!enHerramientas && !enLogistica && !enCertificaciones && NAV_ITEMS_TARJA.map(item => (
             <button
               key={item.href}
               onClick={() => navigate(item.href)}
@@ -167,7 +206,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             </button>
           ))}
 
-          {/* HERRAMIENTAS nav — solo si estamos en herramientas */}
+          {/* HERRAMIENTAS nav */}
           {enHerramientas && HERR_SUBNAV.map(item => (
             <button
               key={item.href}
