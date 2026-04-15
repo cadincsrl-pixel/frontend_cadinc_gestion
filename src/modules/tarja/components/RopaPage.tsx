@@ -484,88 +484,88 @@ export function RopaPage() {
         </button>
       </div>
 
-      {/* Cards por trabajador */}
+      {/* Tabla compacta por trabajador */}
       {trabajadoresFinal.length === 0 ? (
         <div className="bg-white rounded-card shadow-card p-8 text-center text-gris-dark text-sm">
           {busqueda || soloVencidos ? 'No se encontraron trabajadores.' : 'No hay trabajadores activos con registros.'}
         </div>
       ) : (
         <>
-          <div className={`flex flex-col gap-3 transition-opacity ${loadingEntregas ? 'opacity-60' : ''}`}>
-            {paginaPersonal.map(p => {
-              const items = categorias.map(cat => {
-                const ult     = ultimaEntregaPagina.get(`${p.leg}|${cat.id}`)
-                const meses   = ult ? diffMeses(ult.fecha_entrega) : null
-                const vencido = meses === null || meses >= (cat.meses_vencimiento ?? 6)
-                return { cat, ult, meses, vencido }
-              })
-              const tieneAlgunVencido = items.some(i => i.vencido)
+          <div className={`bg-white rounded-card shadow-card overflow-x-auto transition-opacity ${loadingEntregas ? 'opacity-60' : ''}`}>
+            <table className="w-full border-collapse">
+              <thead>
+                <tr>
+                  <th className="bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide">Trabajador</th>
+                  <th className="bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide">Ropa de trabajo</th>
+                  <th className="bg-azul text-white text-xs font-bold px-4 py-3 text-right uppercase tracking-wide w-28"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginaPersonal.map(p => {
+                  const items = categorias.map(cat => {
+                    const ult     = ultimaEntregaPagina.get(`${p.leg}|${cat.id}`)
+                    const meses   = ult ? diffMeses(ult.fecha_entrega) : null
+                    const vencido = meses === null || meses >= (cat.meses_vencimiento ?? 6)
+                    return { cat, ult, meses, vencido }
+                  })
+                  const tieneAlgunVencido = items.some(i => i.vencido)
 
-              return (
-                <div
-                  key={p.leg}
-                  className={`bg-white rounded-card shadow-card border-l-4 ${tieneAlgunVencido ? 'border-rojo' : 'border-verde'}`}
-                >
-                  <div className="p-4">
-                    <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-sm text-azul">{p.nom}</span>
-                        <span className="text-[10px] font-mono bg-gris px-1.5 py-0.5 rounded text-gris-dark">Leg. {p.leg}</span>
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${tieneAlgunVencido ? 'bg-rojo-light text-rojo' : 'bg-verde-light text-verde'}`}>
-                          {tieneAlgunVencido ? '🔴 Vencido' : '🟢 Al día'}
-                        </span>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setModalHistorial(p.leg)}
-                          className="text-xs font-bold px-2.5 py-1.5 rounded-lg bg-azul-light text-azul hover:bg-azul hover:text-white transition-colors"
-                        >
-                          📋 Historial
-                        </button>
-                        {puedeCrear && (
-                          <button
-                            onClick={() => setModalEntrega(p.leg)}
-                            className="text-xs font-bold px-2.5 py-1.5 rounded-lg bg-naranja-light text-naranja-dark hover:bg-naranja hover:text-white transition-colors"
-                          >
-                            ＋ Entrega
-                          </button>
-                        )}
-                      </div>
-                    </div>
+                  return (
+                    <tr key={p.leg} className={`border-b border-gris last:border-0 hover:bg-gris/30 transition-colors border-l-4 ${tieneAlgunVencido ? 'border-l-rojo' : 'border-l-verde'}`}>
+                      {/* Nombre */}
+                      <td className="px-4 py-3 align-middle">
+                        <div className="font-bold text-sm text-carbon leading-tight">{p.nom}</div>
+                        <div className="text-[11px] text-gris-dark font-mono">Leg. {p.leg}</div>
+                      </td>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                      {items.map(({ cat, ult, meses, vencido }) => (
-                        <div
-                          key={cat.id}
-                          className={`
-                            flex items-center gap-2 px-3 py-2 rounded-lg border
-                            ${vencido
-                              ? ult ? 'bg-rojo-light border-rojo/30' : 'bg-gris border-gris-mid'
-                              : 'bg-verde-light border-verde/30'
-                            }
-                          `}
-                        >
-                          <span className="text-base flex-shrink-0">{cat.icono ?? '📦'}</span>
-                          <div className="min-w-0 flex-1">
-                            <div className="text-xs font-bold text-carbon truncate">{cat.nombre}</div>
-                            {ult ? (
-                              <>
-                                <div className="text-[11px] text-gris-dark">{fmtFecha(ult.fecha_entrega)}</div>
-                                <div className={`text-[10px] font-bold ${vencido ? 'text-rojo' : 'text-verde'}`}>
-                                  {vencido ? `⚠ ${meses}m — vencido` : `✓ ${meses}m`}
-                                </div>
-                              </>
-                            ) : (
-                              <div className="text-[11px] text-gris-mid italic">Sin entregas</div>
-                            )}
-                          </div>
+                      {/* Categorías en línea */}
+                      <td className="px-4 py-3 align-middle">
+                        <div className="flex flex-wrap gap-1.5">
+                          {items.map(({ cat, ult, meses, vencido }) => (
+                            <span
+                              key={cat.id}
+                              title={ult ? `${cat.nombre}: ${fmtFecha(ult.fecha_entrega)} (${meses}m)` : `${cat.nombre}: sin entregas`}
+                              className={`
+                                inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold border
+                                ${vencido
+                                  ? ult ? 'bg-rojo-light border-rojo/30 text-rojo' : 'bg-gris border-gris-mid text-gris-dark'
+                                  : 'bg-verde-light border-verde/30 text-verde'
+                                }
+                              `}
+                            >
+                              <span>{cat.icono ?? '📦'}</span>
+                              {ult ? (meses === 0 ? 'este mes' : `${meses}m`) : '—'}
+                            </span>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
+                      </td>
+
+                      {/* Acciones */}
+                      <td className="px-4 py-3 align-middle">
+                        <div className="flex gap-1.5 justify-end">
+                          <button
+                            onClick={() => setModalHistorial(p.leg)}
+                            className="text-xs font-bold px-2 py-1 rounded-lg bg-azul-light text-azul hover:bg-azul hover:text-white transition-colors"
+                            title="Ver historial"
+                          >
+                            📋
+                          </button>
+                          {puedeCrear && (
+                            <button
+                              onClick={() => setModalEntrega(p.leg)}
+                              className="text-xs font-bold px-2 py-1 rounded-lg bg-naranja-light text-naranja-dark hover:bg-naranja hover:text-white transition-colors"
+                              title="Registrar entrega"
+                            >
+                              ＋
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
 
           <Pagination
