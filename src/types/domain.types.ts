@@ -197,6 +197,7 @@ export interface Cantera {
   id: number
   nombre: string
   localidad: string | null
+  maps_url: string | null
   obs: string | null
 }
 
@@ -204,6 +205,7 @@ export interface Deposito {
   id: number
   nombre: string
   localidad: string | null
+  maps_url: string | null
   obs: string | null
 }
 
