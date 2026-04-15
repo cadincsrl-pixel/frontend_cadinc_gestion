@@ -8,7 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input }  from '@/components/ui/Input'
-import { Select } from '@/components/ui/Select'
+import { Combobox } from '@/components/ui/Combobox'
 import { useToast } from '@/components/ui/Toast'
 import type { CertAdicional, Obra } from '@/types/domain.types'
 
@@ -60,7 +60,7 @@ export function AdicionalesTab() {
   const formEdit  = useForm<any>()
 
   const obrasActivas = (obras as Obra[]).filter(o => !o.archivada)
-  const obraOptions  = [{ value: '', label: 'Todas las obras' }, ...obrasActivas.map(o => ({ value: o.cod, label: `${o.cod} — ${o.nom}` }))]
+  const obraOptions  = obrasActivas.map(o => ({ value: o.cod, label: `${o.cod} — ${o.nom}`, sub: o.resp ?? undefined }))
 
   async function handleFile(file: File | undefined, onDone: (r: { url: string; nombre: string }) => void) {
     if (!file) return
@@ -132,12 +132,14 @@ export function AdicionalesTab() {
   return (
     <>
       <div className="flex items-center gap-3 flex-wrap justify-between">
-        <Select
-          label=""
-          options={obraOptions}
-          value={obraFiltro}
-          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setObraFiltro(e.target.value)}
-        />
+        <div className="flex-1 min-w-[220px] max-w-xs">
+          <Combobox
+            placeholder="Buscar obra..."
+            options={obraOptions}
+            value={obraFiltro}
+            onChange={setObraFiltro}
+          />
+        </div>
         <Button variant="primary" size="sm" onClick={() => {
           formNuevo.setValue('fecha', new Date().toISOString().slice(0, 10))
           setAdjuntoNuevo(null)
@@ -209,7 +211,13 @@ export function AdicionalesTab() {
         }
       >
         <div className="flex flex-col gap-3">
-          <Select label="Obra" options={obrasActivas.map(o => ({ value: o.cod, label: `${o.cod} — ${o.nom}` }))} {...formNuevo.register('obra_cod')} />
+          <Combobox
+            label="Obra"
+            placeholder="Buscar obra..."
+            options={obrasActivas.map(o => ({ value: o.cod, label: `${o.cod} — ${o.nom}`, sub: o.resp ?? undefined }))}
+            value={formNuevo.watch('obra_cod') ?? ''}
+            onChange={(v: string) => formNuevo.setValue('obra_cod', v)}
+          />
           <div className="grid grid-cols-2 gap-3">
             <Input label="Fecha" type="date" {...formNuevo.register('fecha')} />
             <Input label="Monto ($)" type="number" step="1" {...formNuevo.register('monto')} />

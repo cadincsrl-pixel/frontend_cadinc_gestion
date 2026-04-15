@@ -7,8 +7,7 @@ import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
 import { useHorasSemana } from '@/modules/tarja/hooks/useHoras'
 import { useTarifasObra } from '@/modules/tarja/hooks/useTarifas'
 import { useCertificacionesObra, useContratistas } from '@/modules/tarja/hooks/useContratistas'
-import { Select } from '@/components/ui/Select'
-import { Button } from '@/components/ui/Button'
+import { Combobox } from '@/components/ui/Combobox'
 import { calcularTotalesSemana } from '@/lib/utils/costos'
 import { getSemDays, getSemLabel, getViernes, toISO } from '@/lib/utils/dates'
 import type { Obra, Certificacion, Contratista } from '@/types/domain.types'
@@ -80,15 +79,12 @@ export function CostosTab() {
 
   return (
     <>
-      <div className="flex items-center gap-3">
-        <Select
-          label=""
-          options={[
-            { value: '', label: 'Seleccioná una obra...' },
-            ...obrasActivas.map(o => ({ value: o.cod, label: `${o.cod} — ${o.nom}` })),
-          ]}
+      <div className="max-w-xs">
+        <Combobox
+          placeholder="Buscar obra..."
+          options={obrasActivas.map(o => ({ value: o.cod, label: `${o.cod} — ${o.nom}`, sub: o.resp ?? undefined }))}
           value={obraSel}
-          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setObraSel(e.target.value)}
+          onChange={setObraSel}
         />
       </div>
 

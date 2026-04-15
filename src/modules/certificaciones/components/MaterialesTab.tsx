@@ -4,10 +4,11 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useMateriales, useCreateMaterial, useUpdateMaterial, useDeleteMaterial } from '../hooks/useCertificaciones'
 import { useObras } from '@/modules/tarja/hooks/useObras'
-import { Modal }  from '@/components/ui/Modal'
-import { Button } from '@/components/ui/Button'
-import { Input }  from '@/components/ui/Input'
-import { Select } from '@/components/ui/Select'
+import { Modal }    from '@/components/ui/Modal'
+import { Button }   from '@/components/ui/Button'
+import { Input }    from '@/components/ui/Input'
+import { Select }   from '@/components/ui/Select'
+import { Combobox } from '@/components/ui/Combobox'
 import { useToast } from '@/components/ui/Toast'
 import type { CertMaterial, Obra } from '@/types/domain.types'
 
@@ -40,7 +41,7 @@ export function MaterialesTab() {
   const formEdit  = useForm<any>()
 
   const obrasActivas = (obras as Obra[]).filter(o => !o.archivada)
-  const obraOptions  = [{ value: '', label: 'Todas las obras' }, ...obrasActivas.map(o => ({ value: o.cod, label: `${o.cod} — ${o.nom}` }))]
+  const obraOptions  = obrasActivas.map(o => ({ value: o.cod, label: `${o.cod} — ${o.nom}`, sub: o.resp ?? undefined }))
 
   function handleCreate(data: any) {
     if (!data.obra_cod) { toast('Seleccioná una obra', 'err'); return }
@@ -88,7 +89,13 @@ export function MaterialesTab() {
   const MaterialForm = ({ form, showObra }: { form: any; showObra?: boolean }) => (
     <div className="flex flex-col gap-3">
       {showObra && (
-        <Select label="Obra" options={obrasActivas.map(o => ({ value: o.cod, label: `${o.cod} — ${o.nom}` }))} {...form.register('obra_cod')} />
+        <Combobox
+          label="Obra"
+          placeholder="Buscar obra..."
+          options={obrasActivas.map(o => ({ value: o.cod, label: `${o.cod} — ${o.nom}`, sub: o.resp ?? undefined }))}
+          value={form.watch('obra_cod') ?? ''}
+          onChange={(v: string) => form.setValue('obra_cod', v)}
+        />
       )}
       <div className="grid grid-cols-2 gap-3">
         <Input label="Fecha" type="date" {...form.register('fecha')} />
@@ -107,12 +114,14 @@ export function MaterialesTab() {
   return (
     <>
       <div className="flex items-center gap-3 flex-wrap justify-between">
-        <Select
-          label=""
-          options={obraOptions}
-          value={obraFiltro}
-          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setObraFiltro(e.target.value)}
-        />
+        <div className="flex-1 min-w-[220px] max-w-xs">
+          <Combobox
+            placeholder="Buscar obra..."
+            options={obraOptions}
+            value={obraFiltro}
+            onChange={setObraFiltro}
+          />
+        </div>
         <Button variant="primary" size="sm" onClick={() => {
           formNuevo.setValue('fecha', new Date().toISOString().slice(0, 10))
           setModalNuevo(true)
