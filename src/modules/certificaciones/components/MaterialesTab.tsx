@@ -39,6 +39,43 @@ async function uploadAdjunto(file: File): Promise<{ url: string; nombre: string 
   return { url: data.publicUrl, nombre: file.name }
 }
 
+// ── Agrupación por compra ────────────────────────────────────────────────────
+interface Compra {
+  key:           string
+  obra_cod:      string
+  fecha:         string
+  proveedor:     string | null
+  obs:           string | null
+  adjunto_url:   string | null
+  adjunto_nombre: string | null
+  items:         CertMaterial[]
+  total:         number
+}
+
+function groupMateriales(mats: CertMaterial[]): Compra[] {
+  const map = new Map<string, Compra>()
+  for (const m of mats) {
+    const key = m.compra_id || `single_${m.id}`
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        obra_cod:      m.obra_cod,
+        fecha:         m.fecha,
+        proveedor:     m.proveedor,
+        obs:           m.obs,
+        adjunto_url:   m.adjunto_url,
+        adjunto_nombre: m.adjunto_nombre,
+        items:         [],
+        total:         0,
+      })
+    }
+    const c = map.get(key)!
+    c.items.push(m)
+    c.total += m.total
+  }
+  return Array.from(map.values())
+}
+
 // ── Fila de línea dentro del modal ──────────────────────────────────────────
 interface Linea {
   id:          number
@@ -114,6 +151,93 @@ function newLinea(): Linea {
   return { id: nextId++, descripcion: '', cantidad: 1, unidad: 'unid', precio_unit: 0 }
 }
 
+// ── Fila de compra expandible ─────────────────────────────────────────────────
+function CompraRow({
+  compra, expanded, onToggle, onEditItem, onDeleteItem, onAbrirAdjunto,
+}: {
+  compra:        Compra
+  expanded:      boolean
+  onToggle:      () => void
+  onEditItem:    (m: CertMaterial) => void
+  onDeleteItem:  (id: number) => void
+  onAbrirAdjunto: (url: string) => void
+}) {
+  const tieneMultiple = compra.items.length > 1
+  return (
+    <>
+      {/* Fila resumen de la compra */}
+      <tr
+        className="border-b border-gris hover:bg-gris/30 transition-colors cursor-pointer"
+        onClick={onToggle}
+      >
+        <td className="px-4 py-3 font-mono text-xs font-bold text-azul w-8">
+          <span className="inline-block w-5 text-center text-gris-dark select-none">
+            {tieneMultiple ? (expanded ? '▼' : '▶') : ' '}
+          </span>
+        </td>
+        <td className="px-4 py-3 font-mono text-xs font-bold text-azul">{compra.obra_cod}</td>
+        <td className="px-4 py-3 text-sm text-gris-dark font-mono">{fmtF(compra.fecha)}</td>
+        <td className="px-4 py-3 text-sm text-carbon font-medium">
+          {tieneMultiple ? (
+            <span className="text-azul font-semibold">{compra.items.length} materiales</span>
+          ) : (
+            <span>{compra.items[0]?.descripcion ?? ''}</span>
+          )}
+          {compra.proveedor && (
+            <div className="text-xs text-gris-dark mt-0.5">{compra.proveedor}</div>
+          )}
+        </td>
+        <td className="px-4 py-3 font-mono font-bold text-right text-carbon">{fmtM(compra.total)}</td>
+        <td className="px-4 py-3">
+          {compra.adjunto_url ? (
+            <button
+              onClick={e => { e.stopPropagation(); onAbrirAdjunto(compra.adjunto_url!) }}
+              className="text-xs font-bold text-azul hover:underline flex items-center gap-1"
+            >
+              📎 {compra.adjunto_nombre ?? 'Ver'}
+            </button>
+          ) : (
+            <span className="text-gris-mid text-xs">—</span>
+          )}
+        </td>
+        {/* Si es 1 solo ítem, mostramos los botones en la fila resumen */}
+        <td className="px-4 py-3">
+          {!tieneMultiple && compra.items[0] && (
+            <div className="flex gap-1 justify-end" onClick={e => e.stopPropagation()}>
+              <button onClick={() => onEditItem(compra.items[0]!)} className="text-xs px-2 py-1 rounded hover:bg-gris transition-colors">✏️</button>
+              <button onClick={() => onDeleteItem(compra.items[0]!.id)} className="text-xs px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors">✕</button>
+            </div>
+          )}
+          {tieneMultiple && (
+            <div className="text-xs text-gris-mid text-right pr-1 select-none">{expanded ? 'ocultar' : 'ver detalle'}</div>
+          )}
+        </td>
+      </tr>
+
+      {/* Filas de detalle expandibles */}
+      {expanded && compra.items.map((m, i) => (
+        <tr key={m.id} className="border-b border-gris bg-azul-light/40 hover:bg-azul-light/70 transition-colors">
+          <td className="pl-8 pr-2 py-2 text-xs text-gris-mid text-center">{i + 1}</td>
+          <td className="px-2 py-2" />
+          <td className="px-2 py-2 text-xs text-gris-dark font-mono">{fmtF(m.fecha)}</td>
+          <td className="px-4 py-2 text-sm text-carbon">
+            {m.descripcion}
+            <span className="text-xs text-gris-dark ml-2 font-mono">{m.cantidad} {m.unidad} × {fmtM(m.precio_unit)}</span>
+          </td>
+          <td className="px-4 py-2 font-mono text-right text-carbon text-sm">{fmtM(m.total)}</td>
+          <td className="px-4 py-2" />
+          <td className="px-4 py-2">
+            <div className="flex gap-1 justify-end">
+              <button onClick={() => onEditItem(m)} className="text-xs px-2 py-1 rounded hover:bg-white transition-colors">✏️</button>
+              <button onClick={() => onDeleteItem(m.id)} className="text-xs px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors">✕</button>
+            </div>
+          </td>
+        </tr>
+      ))}
+    </>
+  )
+}
+
 // ── Componente principal ─────────────────────────────────────────────────────
 export function MaterialesTab() {
   const toast = useToast()
@@ -124,12 +248,13 @@ export function MaterialesTab() {
   const { mutate: update, isPending: updating } = useUpdateMaterial()
   const { mutate: remove } = useDeleteMaterial()
 
-  const [modalNuevo, setModalNuevo] = useState(false)
-  const [editando,   setEditando]   = useState<CertMaterial | null>(null)
-  const [lineas,     setLineas]     = useState<Linea[]>([newLinea()])
-  const [adjunto,    setAdjunto]    = useState<{ url: string; nombre: string } | null>(null)
-  const [uploading,  setUploading]  = useState(false)
-  const [obraNueva,  setObraNueva]  = useState('')
+  const [modalNuevo, setModalNuevo]   = useState(false)
+  const [editando,   setEditando]     = useState<CertMaterial | null>(null)
+  const [lineas,     setLineas]       = useState<Linea[]>([newLinea()])
+  const [adjunto,    setAdjunto]      = useState<{ url: string; nombre: string } | null>(null)
+  const [uploading,  setUploading]    = useState(false)
+  const [obraNueva,  setObraNueva]    = useState('')
+  const [expanded,   setExpanded]     = useState<Set<string>>(new Set())
   const fileRef = useRef<HTMLInputElement>(null)
 
   const formCab  = useForm<any>({ defaultValues: { fecha: '', proveedor: '', obs: '' } })
@@ -139,6 +264,16 @@ export function MaterialesTab() {
   const obraOptions  = obrasActivas.map(o => ({ value: o.cod, label: `${o.cod} — ${o.nom}`, sub: o.resp ?? undefined }))
 
   const totalCompra = lineas.reduce((s, l) => s + l.cantidad * l.precio_unit, 0)
+  const compras     = groupMateriales(materiales as CertMaterial[])
+  const totalGeneral = compras.reduce((s, c) => s + c.total, 0)
+
+  function toggleExpand(key: string) {
+    setExpanded(prev => {
+      const next = new Set(prev)
+      next.has(key) ? next.delete(key) : next.add(key)
+      return next
+    })
+  }
 
   function abrirNuevo() {
     setLineas([newLinea()])
@@ -175,6 +310,9 @@ export function MaterialesTab() {
     const lineasValidas = lineas.filter(l => l.descripcion.trim())
     if (!lineasValidas.length) { toast('Agregá al menos una línea con descripción', 'err'); return }
 
+    // ID de compra compartido entre todas las líneas
+    const compra_id = crypto.randomUUID()
+
     let pendientes = lineasValidas.length
     let errores = 0
 
@@ -190,6 +328,7 @@ export function MaterialesTab() {
         obs:            cab.obs || '',
         adjunto_url:    adjunto?.url    ?? '',
         adjunto_nombre: adjunto?.nombre ?? '',
+        compra_id,
       }, {
         onSuccess: () => {
           pendientes--
@@ -227,11 +366,10 @@ export function MaterialesTab() {
     setEditando(m)
   }
 
-  async function abrirAdjunto(url: string) {
-    window.open(url, '_blank')
+  function handleDelete(id: number) {
+    if (!confirm('¿Eliminar este material?')) return
+    remove(id, { onSuccess: () => toast('✓ Eliminado', 'ok'), onError: () => toast('Error', 'err') })
   }
-
-  const totalGeneral = (materiales as CertMaterial[]).reduce((s, m) => s + m.total, 0)
 
   return (
     <>
@@ -244,45 +382,36 @@ export function MaterialesTab() {
         </Button>
       </div>
 
-      {/* Tabla listado */}
+      {/* Tabla agrupada por compra */}
       <div className="bg-white rounded-card shadow-card overflow-x-auto">
-        <table className="w-full border-collapse min-w-[700px]">
+        <table className="w-full border-collapse min-w-[680px]">
           <thead>
             <tr>
-              {['Obra', 'Fecha', 'Descripción', 'Proveedor', 'Cant.', 'Precio unit.', 'Total', 'Adjunto', ''].map(h => (
-                <th key={h} className="bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide">{h}</th>
+              {['', 'Obra', 'Fecha', 'Descripción / Proveedor', 'Total', 'Adjunto', ''].map((h, i) => (
+                <th key={i} className="bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide last:text-right [&:nth-child(5)]:text-right">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {(materiales as CertMaterial[]).length === 0 ? (
-              <tr><td colSpan={9} className="text-center py-8 text-gris-dark text-sm italic">Sin materiales registrados.</td></tr>
-            ) : (materiales as CertMaterial[]).map(m => (
-              <tr key={m.id} className="border-b border-gris last:border-0 hover:bg-gris/40 transition-colors">
-                <td className="px-4 py-3 font-mono text-xs font-bold text-azul">{m.obra_cod}</td>
-                <td className="px-4 py-3 text-sm text-gris-dark font-mono">{fmtF(m.fecha)}</td>
-                <td className="px-4 py-3 text-sm text-carbon font-medium">{m.descripcion}</td>
-                <td className="px-4 py-3 text-sm text-gris-dark">{m.proveedor || '—'}</td>
-                <td className="px-4 py-3 text-sm font-mono text-right">{m.cantidad} {m.unidad}</td>
-                <td className="px-4 py-3 text-sm font-mono text-right">{fmtM(m.precio_unit)}</td>
-                <td className="px-4 py-3 font-mono font-bold text-right text-carbon">{fmtM(m.total)}</td>
-                <td className="px-4 py-3">
-                  {m.adjunto_url ? (
-                    <button onClick={() => abrirAdjunto(m.adjunto_url!)} className="text-xs font-bold text-azul hover:underline">📎 Ver</button>
-                  ) : <span className="text-gris-mid text-xs">—</span>}
-                </td>
-                <td className="px-4 py-3 flex gap-1 justify-end">
-                  <button onClick={() => openEdit(m)} className="text-xs px-2 py-1 rounded hover:bg-gris transition-colors">✏️</button>
-                  <button onClick={() => { if (confirm('¿Eliminar?')) remove(m.id, { onSuccess: () => toast('✓ Eliminado', 'ok'), onError: () => toast('Error', 'err') }) }} className="text-xs px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors">✕</button>
-                </td>
-              </tr>
+            {compras.length === 0 ? (
+              <tr><td colSpan={7} className="text-center py-8 text-gris-dark text-sm italic">Sin materiales registrados.</td></tr>
+            ) : compras.map(c => (
+              <CompraRow
+                key={c.key}
+                compra={c}
+                expanded={expanded.has(c.key)}
+                onToggle={() => toggleExpand(c.key)}
+                onEditItem={openEdit}
+                onDeleteItem={handleDelete}
+                onAbrirAdjunto={url => window.open(url, '_blank')}
+              />
             ))}
           </tbody>
-          {(materiales as CertMaterial[]).length > 0 && (
+          {compras.length > 0 && (
             <tfoot>
               <tr>
-                <td colSpan={6} className="px-4 py-3 text-xs font-bold text-right text-gris-dark uppercase tracking-wide">Total general</td>
-                <td className="px-4 py-3 font-mono font-bold text-lg text-naranja">{fmtM(totalGeneral)}</td>
+                <td colSpan={4} className="px-4 py-3 text-xs font-bold text-right text-gris-dark uppercase tracking-wide">Total general</td>
+                <td className="px-4 py-3 font-mono font-bold text-lg text-naranja text-right">{fmtM(totalGeneral)}</td>
                 <td colSpan={2} />
               </tr>
             </tfoot>
@@ -302,7 +431,6 @@ export function MaterialesTab() {
         }
       >
         <div className="flex flex-col gap-4">
-          {/* Cabecera de la compra */}
           <div className="grid grid-cols-2 gap-3">
             <Combobox
               label="Obra"
@@ -363,8 +491,6 @@ export function MaterialesTab() {
                 </tbody>
               </table>
             </div>
-
-            {/* Botón agregar línea */}
             <button
               onClick={() => setLineas(prev => [...prev, newLinea()])}
               className="mt-2 text-xs font-bold text-azul hover:text-naranja transition-colors flex items-center gap-1"
@@ -373,7 +499,6 @@ export function MaterialesTab() {
             </button>
           </div>
 
-          {/* Subtotal */}
           {totalCompra > 0 && (
             <div className="flex justify-end">
               <div className="bg-azul-light rounded-xl px-4 py-2 flex items-center gap-3">

@@ -529,6 +529,7 @@ export interface CertMaterial extends AuditFields {
   obs:            string | null
   adjunto_url:    string | null
   adjunto_nombre: string | null
+  compra_id:      string | null
 }
 
 export interface CertAdicional extends AuditFields {
