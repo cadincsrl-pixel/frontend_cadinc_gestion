@@ -534,7 +534,7 @@ export function RopaPage() {
                               `}
                             >
                               <span>{cat.icono ?? '📦'}</span>
-                              {ult ? (meses === 0 ? 'este mes' : `${meses}m`) : '—'}
+                              {ult ? ult.fecha_entrega.split('-').reverse().join('/') : '—'}
                             </span>
                           ))}
                         </div>
