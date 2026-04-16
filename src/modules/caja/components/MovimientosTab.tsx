@@ -8,8 +8,9 @@ import {
   type Movimiento, type CreateMovimientoDto,
 } from '../hooks/useCaja'
 import { useObras } from '@/modules/tarja/hooks/useObras'
-import { Modal }  from '@/components/ui/Modal'
-import { Button } from '@/components/ui/Button'
+import { Modal }    from '@/components/ui/Modal'
+import { Button }   from '@/components/ui/Button'
+import { Combobox } from '@/components/ui/Combobox'
 import { useToast } from '@/components/ui/Toast'
 
 const PAGE_SIZE = 20
@@ -33,13 +34,17 @@ export function MovimientosTab() {
   const updateMov  = useUpdateMovimiento()
   const deleteMov  = useDeleteMovimiento()
 
-  const [modalOpen,  setModalOpen]  = useState(false)
-  const [editItem,   setEditItem]   = useState<Movimiento | null>(null)
-  const [tipo,       setTipo]       = useState<'ingreso' | 'egreso'>('ingreso')
-  const [search,     setSearch]     = useState('')
-  const [filterCC,   setFilterCC]   = useState('')
-  const [page,       setPage]       = useState(1)
-  const [savedCount, setSavedCount] = useState(0)
+  const [modalOpen,   setModalOpen]   = useState(false)
+  const [editItem,    setEditItem]    = useState<Movimiento | null>(null)
+  const [tipo,        setTipo]        = useState<'ingreso' | 'egreso'>('ingreso')
+  const [search,      setSearch]      = useState('')
+  const [filterCC,    setFilterCC]    = useState('')
+  const [page,        setPage]        = useState(1)
+  const [savedCount,  setSavedCount]  = useState(0)
+  // Campos controlados del modal (Combobox no usa register)
+  const [fCC,        setFCC]        = useState('')
+  const [fProveedor, setFProveedor] = useState('')
+  const [fConcepto,  setFConcepto]  = useState('')
   const montoRef = useRef<HTMLInputElement>(null)
 
   const form = useForm<any>()
@@ -77,25 +82,27 @@ export function MovimientosTab() {
     setEditItem(null)
     setTipo('ingreso')
     setSavedCount(0)
+    setFCC(''); setFProveedor(''); setFConcepto('')
     form.reset({ fecha: new Date().toISOString().split('T')[0] })
     setModalOpen(true)
   }
 
   function resetForNext() {
-    form.reset({ fecha: form.getValues('fecha') }) // conservar fecha
+    setFCC(''); setFProveedor(''); setFConcepto('')
+    form.reset({ fecha: form.getValues('fecha') })
     setTimeout(() => montoRef.current?.focus(), 50)
   }
 
   function openEdit(m: Movimiento) {
     setEditItem(m)
     setTipo(m.tipo)
+    setFCC(m.centro_costo ?? '')
+    setFProveedor(m.proveedor ?? '')
+    setFConcepto(m.concepto)
     form.reset({
-      fecha:        m.fecha,
-      centro_costo: m.centro_costo ?? '',
-      proveedor:    m.proveedor ?? '',
-      concepto:     m.concepto,
-      detalle:      m.detalle ?? '',
-      monto:        m.monto,
+      fecha:   m.fecha,
+      detalle: m.detalle ?? '',
+      monto:   m.monto,
     })
     setModalOpen(true)
   }
@@ -103,9 +110,9 @@ export function MovimientosTab() {
   async function handleSubmit(data: any, keepOpen = false) {
     const dto: CreateMovimientoDto = {
       fecha:        data.fecha,
-      centro_costo: data.centro_costo || undefined,
-      proveedor:    data.proveedor || undefined,
-      concepto:     data.concepto,
+      centro_costo: fCC       || undefined,
+      proveedor:    fProveedor || undefined,
+      concepto:     fConcepto,
       detalle:      data.detalle || undefined,
       tipo,
       monto:        Number(data.monto),
@@ -144,9 +151,19 @@ export function MovimientosTab() {
   const centrosActivos = centros.filter(c => c.activo)
   const obrasActivas   = obras.filter((o: any) => !o.archivada)
 
+  const ccOpciones = [
+    ...centrosActivos.map(c => ({ value: c.nombre, label: c.nombre, sub: 'Centro de costo' })),
+    ...obrasActivas.map((o: any) => ({ value: o.cod, label: `${o.cod} — ${o.nom}`, sub: 'Obra Tarja' })),
+  ]
+
+  const proveedoresUnicos = Array.from(
+    new Set(movimientos.map(m => m.proveedor).filter(Boolean) as string[])
+  ).map(p => ({ value: p, label: p }))
+
   const conceptosFiltrados = conceptos
     .filter(c => c.activo)
     .filter(c => c.tipo === 'ambos' || c.tipo === tipo)
+    .map(c => ({ value: c.nombre, label: c.nombre }))
 
   return (
     <div className="flex flex-col gap-4">
@@ -169,23 +186,14 @@ export function MovimientosTab() {
           onChange={e => { setSearch(e.target.value); setPage(1) }}
           className="border border-gris rounded-lg px-3 py-1.5 text-sm w-40 focus:outline-none focus:border-azul"
         />
-        <select
-          value={filterCC}
-          onChange={e => { setFilterCC(e.target.value); setPage(1) }}
-          className="border border-gris rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-azul"
-        >
-          <option value="">Todos los centros</option>
-          {centrosActivos.length > 0 && (
-            <optgroup label="Centros de costo">
-              {centrosActivos.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
-            </optgroup>
-          )}
-          {obrasActivas.length > 0 && (
-            <optgroup label="Obras (Tarja)">
-              {obrasActivas.map((o: any) => <option key={o.cod} value={o.cod}>{o.cod} — {o.nom}</option>)}
-            </optgroup>
-          )}
-        </select>
+        <div className="w-52">
+          <Combobox
+            placeholder="Centro de costo..."
+            options={ccOpciones}
+            value={filterCC}
+            onChange={v => { setFilterCC(v); setPage(1) }}
+          />
+        </div>
 
         <Button variant="primary" size="sm" onClick={openCreate}>＋ Movimiento</Button>
       </div>
@@ -312,50 +320,37 @@ export function MovimientosTab() {
             </div>
 
             {/* Centro de costo */}
-            {(centrosActivos.length > 0 || obrasActivas.length > 0) && (
-              <div className="flex flex-col gap-1 w-52">
-                <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Centro de costo</label>
-                <select {...form.register('centro_costo')}
-                  className="border border-gris rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-azul bg-white">
-                  <option value="">Sin centro</option>
-                  {centrosActivos.length > 0 && (
-                    <optgroup label="Centros de costo">
-                      {centrosActivos.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
-                    </optgroup>
-                  )}
-                  {obrasActivas.length > 0 && (
-                    <optgroup label="Obras (Tarja)">
-                      {obrasActivas.map((o: any) => <option key={o.cod} value={o.cod}>{o.cod} — {o.nom}</option>)}
-                    </optgroup>
-                  )}
-                </select>
-              </div>
-            )}
+            <Combobox
+              label="Centro de costo"
+              placeholder="Sin centro..."
+              options={ccOpciones}
+              value={fCC}
+              onChange={setFCC}
+              className="w-52"
+            />
 
             {/* Proveedor */}
-            <div className="flex flex-col gap-1 flex-1 min-w-[120px]">
-              <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Proveedor</label>
-              <input type="text" placeholder="Opcional" {...form.register('proveedor')}
-                className="border border-gris rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-azul" />
-            </div>
+            <Combobox
+              label="Proveedor"
+              placeholder="Escribí o buscá..."
+              options={proveedoresUnicos}
+              value={fProveedor}
+              onChange={setFProveedor}
+              className="flex-1 min-w-[120px]"
+            />
           </div>
 
           {/* Fila 2: concepto + detalle + monto */}
           <div className="flex flex-wrap gap-2 items-end">
             {/* Concepto */}
-            <div className="flex flex-col gap-1 flex-1 min-w-[140px]">
-              <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Concepto</label>
-              {conceptosFiltrados.length > 0 ? (
-                <select {...form.register('concepto', { required: true })}
-                  className="border border-gris rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-azul bg-white">
-                  <option value="">Seleccioná...</option>
-                  {conceptosFiltrados.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
-                </select>
-              ) : (
-                <input type="text" placeholder="Ej: Combustible" {...form.register('concepto', { required: true })}
-                  className="border border-gris rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-azul" />
-              )}
-            </div>
+            <Combobox
+              label="Concepto"
+              placeholder="Seleccioná o escribí..."
+              options={conceptosFiltrados}
+              value={fConcepto}
+              onChange={setFConcepto}
+              className="flex-1 min-w-[140px]"
+            />
 
             {/* Detalle */}
             <div className="flex flex-col gap-1 flex-1 min-w-[140px]">
