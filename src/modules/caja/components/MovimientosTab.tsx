@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import {
   useMovimientos, useConceptos, useCentrosCosto,
@@ -9,8 +9,6 @@ import {
 } from '../hooks/useCaja'
 import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
-import { Input }  from '@/components/ui/Input'
-import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 
 const PAGE_SIZE = 20
@@ -39,6 +37,8 @@ export function MovimientosTab() {
   const [search,     setSearch]     = useState('')
   const [filterCC,   setFilterCC]   = useState('')
   const [page,       setPage]       = useState(1)
+  const [savedCount, setSavedCount] = useState(0)
+  const montoRef = useRef<HTMLInputElement>(null)
 
   const form = useForm<any>()
 
@@ -74,8 +74,14 @@ export function MovimientosTab() {
   function openCreate() {
     setEditItem(null)
     setTipo('ingreso')
+    setSavedCount(0)
     form.reset({ fecha: new Date().toISOString().split('T')[0] })
     setModalOpen(true)
+  }
+
+  function resetForNext() {
+    form.reset({ fecha: form.getValues('fecha') }) // conservar fecha
+    setTimeout(() => montoRef.current?.focus(), 50)
   }
 
   function openEdit(m: Movimiento) {
@@ -92,7 +98,7 @@ export function MovimientosTab() {
     setModalOpen(true)
   }
 
-  async function handleSubmit(data: any) {
+  async function handleSubmit(data: any, keepOpen = false) {
     const dto: CreateMovimientoDto = {
       fecha:        data.fecha,
       centro_costo: data.centro_costo || undefined,
@@ -105,12 +111,17 @@ export function MovimientosTab() {
     try {
       if (editItem) {
         await updateMov.mutateAsync({ id: editItem.id, dto })
-        toast('✓ Movimiento actualizado', 'ok')
+        toast('✓ Actualizado', 'ok')
+        setModalOpen(false)
       } else {
         await createMov.mutateAsync(dto)
-        toast('✓ Movimiento registrado', 'ok')
+        setSavedCount(c => c + 1)
+        if (keepOpen) {
+          resetForNext()
+        } else {
+          setModalOpen(false)
+        }
       }
-      setModalOpen(false)
     } catch {
       toast('Error al guardar', 'err')
     }
@@ -239,58 +250,140 @@ export function MovimientosTab() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         title={editItem ? '✏️ EDITAR MOVIMIENTO' : '＋ NUEVO MOVIMIENTO'}
+        width="max-w-3xl"
         footer={
-          <>
-            <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button>
-            <Button variant="primary" loading={loading} onClick={form.handleSubmit(handleSubmit)}>✓ Guardar</Button>
-          </>
+          editItem ? (
+            <>
+              <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button>
+              <Button variant="primary" loading={loading} onClick={form.handleSubmit(d => handleSubmit(d, false))}>✓ Guardar</Button>
+            </>
+          ) : (
+            <>
+              <Button variant="secondary" onClick={() => setModalOpen(false)}>
+                {savedCount > 0 ? `Cerrar (${savedCount} guardados)` : 'Cancelar'}
+              </Button>
+              <Button variant="secondary" loading={loading} onClick={form.handleSubmit(d => handleSubmit(d, true))}>
+                ✓ Guardar y agregar otro
+              </Button>
+              <Button variant="primary" loading={loading} onClick={form.handleSubmit(d => handleSubmit(d, false))}>
+                ✓ Guardar y cerrar
+              </Button>
+            </>
+          )
         }
       >
-        <div className="flex flex-col gap-4">
-          {/* Tipo toggle */}
-          <div className="flex rounded-xl overflow-hidden border border-gris">
-            <button
-              type="button"
-              onClick={() => setTipo('ingreso')}
-              className={`flex-1 py-2.5 text-sm font-bold transition-colors ${tipo === 'ingreso' ? 'bg-verde text-white' : 'bg-white text-gris-dark hover:bg-gris'}`}
-            >
-              ▲ INGRESO
-            </button>
-            <button
-              type="button"
-              onClick={() => setTipo('egreso')}
-              className={`flex-1 py-2.5 text-sm font-bold transition-colors ${tipo === 'egreso' ? 'bg-rojo text-white' : 'bg-white text-gris-dark hover:bg-gris'}`}
-            >
-              ▼ EGRESO
-            </button>
+        <div className="flex flex-col gap-3">
+
+          {savedCount > 0 && (
+            <div className="bg-verde/10 text-verde text-xs font-bold px-3 py-2 rounded-lg">
+              ✓ {savedCount} movimiento{savedCount > 1 ? 's' : ''} guardado{savedCount > 1 ? 's' : ''}
+            </div>
+          )}
+
+          {/* Fila 1: tipo + fecha + concepto + monto */}
+          <div className="flex flex-wrap gap-2 items-end">
+            {/* Tipo toggle compacto */}
+            <div className="flex rounded-lg overflow-hidden border border-gris flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setTipo('ingreso')}
+                className={`px-3 py-2 text-xs font-bold transition-colors ${tipo === 'ingreso' ? 'bg-verde text-white' : 'bg-white text-gris-dark hover:bg-gris'}`}
+              >
+                ▲ ING
+              </button>
+              <button
+                type="button"
+                onClick={() => setTipo('egreso')}
+                className={`px-3 py-2 text-xs font-bold transition-colors ${tipo === 'egreso' ? 'bg-rojo text-white' : 'bg-white text-gris-dark hover:bg-gris'}`}
+              >
+                ▼ EGR
+              </button>
+            </div>
+
+            {/* Fecha */}
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Fecha</label>
+              <input
+                type="date"
+                {...form.register('fecha', { required: true })}
+                className="border border-gris rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-azul"
+              />
+            </div>
+
+            {/* Concepto */}
+            <div className="flex flex-col gap-1 flex-1 min-w-[140px]">
+              <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Concepto</label>
+              {conceptosFiltrados.length > 0 ? (
+                <select
+                  {...form.register('concepto', { required: true })}
+                  className="border border-gris rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-azul bg-white"
+                >
+                  <option value="">Seleccioná...</option>
+                  {conceptosFiltrados.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  placeholder="Ej: Combustible"
+                  {...form.register('concepto', { required: true })}
+                  className="border border-gris rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-azul"
+                />
+              )}
+            </div>
+
+            {/* Monto */}
+            <div className="flex flex-col gap-1 w-32">
+              <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Monto $</label>
+              <input
+                type="number"
+                step="0.01"
+                placeholder="0.00"
+                {...form.register('monto', { required: true })}
+                ref={(el) => {
+                  form.register('monto').ref(el)
+                  ;(montoRef as any).current = el
+                }}
+                className="border border-gris rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-azul font-mono"
+              />
+            </div>
           </div>
 
-          <Input label="Fecha" type="date" {...form.register('fecha', { required: true })} />
+          {/* Fila 2: CC + proveedor + detalle */}
+          <div className="flex flex-wrap gap-2 items-end">
+            {centros.filter(c => c.activo).length > 0 && (
+              <div className="flex flex-col gap-1 w-44">
+                <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Centro de costo</label>
+                <select
+                  {...form.register('centro_costo')}
+                  className="border border-gris rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-azul bg-white"
+                >
+                  <option value="">Sin centro</option>
+                  {centros.filter(c => c.activo).map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+                </select>
+              </div>
+            )}
 
-          {conceptosFiltrados.length > 0 ? (
-            <Select
-              label="Concepto"
-              placeholder="Seleccioná..."
-              options={conceptosFiltrados.map(c => ({ value: c.nombre, label: c.nombre }))}
-              {...form.register('concepto', { required: true })}
-            />
-          ) : (
-            <Input label="Concepto" placeholder="Ej: Combustible" {...form.register('concepto', { required: true })} />
-          )}
+            <div className="flex flex-col gap-1 flex-1 min-w-[120px]">
+              <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Proveedor</label>
+              <input
+                type="text"
+                placeholder="Opcional"
+                {...form.register('proveedor')}
+                className="border border-gris rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-azul"
+              />
+            </div>
 
-          <Input label="Monto ($)" type="number" step="0.01" placeholder="0.00" {...form.register('monto', { required: true })} />
+            <div className="flex flex-col gap-1 flex-1 min-w-[160px]">
+              <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Detalle</label>
+              <input
+                type="text"
+                placeholder="Opcional"
+                {...form.register('detalle')}
+                className="border border-gris rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-azul"
+              />
+            </div>
+          </div>
 
-          {centros.filter(c => c.activo).length > 0 && (
-            <Select
-              label="Centro de costo"
-              placeholder="Opcional"
-              options={[{ value: '', label: '— Sin centro de costo —' }, ...centros.filter(c => c.activo).map(c => ({ value: c.nombre, label: c.nombre }))]}
-              {...form.register('centro_costo')}
-            />
-          )}
-
-          <Input label="Proveedor" placeholder="Opcional" {...form.register('proveedor')} />
-          <Input label="Detalle / Observaciones" placeholder="Opcional" {...form.register('detalle')} />
         </div>
       </Modal>
     </div>
