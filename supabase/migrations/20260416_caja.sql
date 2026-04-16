@@ -34,3 +34,13 @@ alter table movimientos_caja    enable row level security;
 create policy "auth_all" on caja_conceptos      for all to authenticated using (true) with check (true);
 create policy "auth_all" on caja_centros_costo  for all to authenticated using (true) with check (true);
 create policy "auth_all" on movimientos_caja    for all to authenticated using (true) with check (true);
+
+-- Conceptos precargados
+insert into caja_conceptos (nombre, tipo) values
+  ('Sueldos',                  'egreso'),
+  ('Materiales y repuestos',   'egreso'),
+  ('Combustibles',             'egreso'),
+  ('Varios',                   'ambos'),
+  ('Cobro de cliente',         'ingreso'),
+  ('Anticipo',                 'ambos')
+on conflict (nombre) do nothing;

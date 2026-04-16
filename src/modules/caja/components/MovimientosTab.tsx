@@ -280,22 +280,16 @@ export function MovimientosTab() {
             </div>
           )}
 
-          {/* Fila 1: tipo + fecha + concepto + monto */}
+          {/* Fila 1: tipo + fecha + CC + proveedor */}
           <div className="flex flex-wrap gap-2 items-end">
             {/* Tipo toggle compacto */}
             <div className="flex rounded-lg overflow-hidden border border-gris flex-shrink-0">
-              <button
-                type="button"
-                onClick={() => setTipo('ingreso')}
-                className={`px-3 py-2 text-xs font-bold transition-colors ${tipo === 'ingreso' ? 'bg-verde text-white' : 'bg-white text-gris-dark hover:bg-gris'}`}
-              >
+              <button type="button" onClick={() => setTipo('ingreso')}
+                className={`px-3 py-2 text-xs font-bold transition-colors ${tipo === 'ingreso' ? 'bg-verde text-white' : 'bg-white text-gris-dark hover:bg-gris'}`}>
                 ▲ ING
               </button>
-              <button
-                type="button"
-                onClick={() => setTipo('egreso')}
-                className={`px-3 py-2 text-xs font-bold transition-colors ${tipo === 'egreso' ? 'bg-rojo text-white' : 'bg-white text-gris-dark hover:bg-gris'}`}
-              >
+              <button type="button" onClick={() => setTipo('egreso')}
+                className={`px-3 py-2 text-xs font-bold transition-colors ${tipo === 'egreso' ? 'bg-rojo text-white' : 'bg-white text-gris-dark hover:bg-gris'}`}>
                 ▼ EGR
               </button>
             </div>
@@ -303,83 +297,62 @@ export function MovimientosTab() {
             {/* Fecha */}
             <div className="flex flex-col gap-1">
               <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Fecha</label>
-              <input
-                type="date"
-                {...form.register('fecha', { required: true })}
-                className="border border-gris rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-azul"
-              />
+              <input type="date" {...form.register('fecha', { required: true })}
+                className="border border-gris rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-azul" />
             </div>
 
-            {/* Concepto */}
-            <div className="flex flex-col gap-1 flex-1 min-w-[140px]">
-              <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Concepto</label>
-              {conceptosFiltrados.length > 0 ? (
-                <select
-                  {...form.register('concepto', { required: true })}
-                  className="border border-gris rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-azul bg-white"
-                >
-                  <option value="">Seleccioná...</option>
-                  {conceptosFiltrados.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
-                </select>
-              ) : (
-                <input
-                  type="text"
-                  placeholder="Ej: Combustible"
-                  {...form.register('concepto', { required: true })}
-                  className="border border-gris rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-azul"
-                />
-              )}
-            </div>
-
-            {/* Monto */}
-            <div className="flex flex-col gap-1 w-32">
-              <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Monto $</label>
-              <input
-                type="number"
-                step="0.01"
-                placeholder="0.00"
-                {...form.register('monto', { required: true })}
-                ref={(el) => {
-                  form.register('monto').ref(el)
-                  ;(montoRef as any).current = el
-                }}
-                className="border border-gris rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-azul font-mono"
-              />
-            </div>
-          </div>
-
-          {/* Fila 2: CC + proveedor + detalle */}
-          <div className="flex flex-wrap gap-2 items-end">
+            {/* Centro de costo */}
             {centros.filter(c => c.activo).length > 0 && (
               <div className="flex flex-col gap-1 w-44">
                 <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Centro de costo</label>
-                <select
-                  {...form.register('centro_costo')}
-                  className="border border-gris rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-azul bg-white"
-                >
+                <select {...form.register('centro_costo')}
+                  className="border border-gris rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-azul bg-white">
                   <option value="">Sin centro</option>
                   {centros.filter(c => c.activo).map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
                 </select>
               </div>
             )}
 
+            {/* Proveedor */}
             <div className="flex flex-col gap-1 flex-1 min-w-[120px]">
               <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Proveedor</label>
-              <input
-                type="text"
-                placeholder="Opcional"
-                {...form.register('proveedor')}
-                className="border border-gris rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-azul"
-              />
+              <input type="text" placeholder="Opcional" {...form.register('proveedor')}
+                className="border border-gris rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-azul" />
+            </div>
+          </div>
+
+          {/* Fila 2: concepto + detalle + monto */}
+          <div className="flex flex-wrap gap-2 items-end">
+            {/* Concepto */}
+            <div className="flex flex-col gap-1 flex-1 min-w-[140px]">
+              <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Concepto</label>
+              {conceptosFiltrados.length > 0 ? (
+                <select {...form.register('concepto', { required: true })}
+                  className="border border-gris rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-azul bg-white">
+                  <option value="">Seleccioná...</option>
+                  {conceptosFiltrados.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+                </select>
+              ) : (
+                <input type="text" placeholder="Ej: Combustible" {...form.register('concepto', { required: true })}
+                  className="border border-gris rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-azul" />
+              )}
             </div>
 
-            <div className="flex flex-col gap-1 flex-1 min-w-[160px]">
+            {/* Detalle */}
+            <div className="flex flex-col gap-1 flex-1 min-w-[140px]">
               <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Detalle</label>
+              <input type="text" placeholder="Opcional" {...form.register('detalle')}
+                className="border border-gris rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-azul" />
+            </div>
+
+            {/* Monto */}
+            <div className="flex flex-col gap-1 w-32">
+              <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Monto $</label>
               <input
-                type="text"
-                placeholder="Opcional"
-                {...form.register('detalle')}
-                className="border border-gris rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-azul"
+                type="number" step="0.01" placeholder="0.00"
+                {...form.register('monto', { required: true })}
+                ref={(el) => { form.register('monto').ref(el); (montoRef as any).current = el }}
+                className="border border-gris rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-azul font-mono"
               />
             </div>
           </div>
