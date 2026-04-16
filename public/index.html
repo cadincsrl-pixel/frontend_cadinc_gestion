@@ -531,6 +531,22 @@ html,body{height:100%;font-family:'Syne',sans-serif;background:#E8E7E3;color:var
       <div style="font-family:'Bebas Neue',sans-serif;font-size:1.8rem;letter-spacing:4px;color:#fff">LOGÍSTICA</div>
       <div style="font-size:.72rem;color:rgba(255,255,255,.45);letter-spacing:.5px;text-align:center;padding:0 1rem">Próximamente</div>
     </div>
+    <!-- HERRAMIENTAS -->
+    <div onclick="entrarModulo('herramientas')" style="width:200px;aspect-ratio:1;background:rgba(255,255,255,.07);border:2px solid rgba(255,255,255,.15);border-radius:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.75rem;cursor:pointer;transition:all .2s;user-select:none"
+      onmouseover="this.style.background='rgba(139,92,246,.25)';this.style.borderColor='rgba(167,139,250,.5)';this.style.transform='translateY(-4px)'"
+      onmouseout="this.style.background='rgba(255,255,255,.07)';this.style.borderColor='rgba(255,255,255,.15)';this.style.transform='translateY(0)'">
+      <div style="font-size:3rem;line-height:1">🔧</div>
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:1.8rem;letter-spacing:4px;color:#fff">HERRAMIENTAS</div>
+      <div style="font-size:.72rem;color:rgba(255,255,255,.45);letter-spacing:.5px;text-align:center;padding:0 1rem">Inventario y<br>remitos</div>
+    </div>
+    <!-- CERTIFICACIONES -->
+    <div onclick="entrarModulo('certificaciones')" style="width:200px;aspect-ratio:1;background:rgba(255,255,255,.07);border:2px solid rgba(255,255,255,.15);border-radius:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.75rem;cursor:pointer;transition:all .2s;user-select:none"
+      onmouseover="this.style.background='rgba(234,179,8,.2)';this.style.borderColor='rgba(250,204,21,.5)';this.style.transform='translateY(-4px)'"
+      onmouseout="this.style.background='rgba(255,255,255,.07)';this.style.borderColor='rgba(255,255,255,.15)';this.style.transform='translateY(0)'">
+      <div style="font-size:3rem;line-height:1">📋</div>
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:1.5rem;letter-spacing:3px;color:#fff">CERTIFICACIONES</div>
+      <div style="font-size:.72rem;color:rgba(255,255,255,.45);letter-spacing:.5px;text-align:center;padding:0 1rem">Costos y<br>materiales de obra</div>
+    </div>
     <!-- CAJA -->
     <div onclick="entrarModulo('caja')" style="width:200px;aspect-ratio:1;background:rgba(255,255,255,.07);border:2px solid rgba(255,255,255,.15);border-radius:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.75rem;cursor:pointer;transition:all .2s;user-select:none"
       onmouseover="this.style.background='rgba(22,163,74,.25)';this.style.borderColor='rgba(100,220,130,.5)';this.style.transform='translateY(-4px)'"
@@ -4046,6 +4062,14 @@ function ocultarSelector(){
 async function entrarModulo(modulo){
   if(modulo==='logistica'){
     window.location.href = '/logistica.html';
+    return;
+  }
+  if(modulo==='herramientas'){
+    window.location.href = '/herramientas';
+    return;
+  }
+  if(modulo==='certificaciones'){
+    window.location.href = '/certificaciones';
     return;
   }
   if(modulo==='caja'){
