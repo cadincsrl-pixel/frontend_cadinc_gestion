@@ -8,7 +8,7 @@ import { useCatObraSemana, useSetCatObra } from '../hooks/useCatObra'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import { usePermisos } from '@/hooks/usePermisos'
 import { getSemDays, toISO, esFinde, esJueves, esHoy, DIAS } from '@/lib/utils/dates'
-import { costoLeg, getVHenFecha, fmtMonto } from '@/lib/utils/costos'
+import { costoLeg, getVHenFecha, getTarifaEnFecha, fmtMonto } from '@/lib/utils/costos'
 import { useToast } from '@/components/ui/Toast'
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api/client'
@@ -297,9 +297,13 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                       disabled={!puedeEditar}
                       onChange={puedeEditar ? (e) => handleCatChange(p.leg, Number(e.target.value)) : undefined}
                       className={`
-                        w-full px-2 py-1 rounded border-[1.5px] border-gris-mid
+                        w-full px-2 py-1 rounded border-[1.5px]
                         text-xs font-bold bg-white text-carbon outline-none
                         transition-colors
+                        ${getTarifaEnFecha(tarifas, obraCod, catId, fechaRef) !== null
+                          ? 'border-naranja text-naranja'
+                          : 'border-gris-mid'
+                        }
                         ${puedeEditar
                           ? 'cursor-pointer hover:border-naranja focus:border-naranja focus:shadow-[0_0_0_3px_rgba(232,98,26,.15)]'
                           : 'cursor-not-allowed opacity-60'
@@ -312,6 +316,12 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                         </option>
                       ))}
                     </select>
+                    {getTarifaEnFecha(tarifas, obraCod, catId, fechaRef) !== null && (
+                      <div className="text-[10px] font-bold text-naranja mt-0.5 flex items-center gap-0.5">
+                        <span>★</span>
+                        <span>${vh.toLocaleString('es-AR')}/h</span>
+                      </div>
+                    )}
                   </td>
                   {days.map((d, i) => {
                     const fecha = toISO(d)
