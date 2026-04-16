@@ -1,0 +1,1157 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Caja">
+<meta name="theme-color" content="#0F2744">
+<title>Caja — CADINC SRL</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{
+  --naranja:#E8621A;--naranja-d:#C04E10;--naranja-l:#FDF0E8;
+  --azul:#0F2744;--azul-m:#1D3F6E;--azul-l:#E8EEF7;
+  --verde:#1A6B3C;--verde-l:#E4F2EB;
+  --rojo:#C0392B;--rojo-l:#FDECEA;
+  --amarillo:#E8A01A;--amarillo-l:#FFF8E1;
+  --gris:#F0EFEB;--gris-m:#D4D3CF;--gris-d:#8A8980;
+  --blanco:#FAFAF8;--carbon:#1C1C1E;
+  --sh:0 2px 12px rgba(15,39,68,.10);--sh-lg:0 8px 40px rgba(15,39,68,.18);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;font-family:'Syne',sans-serif;background:var(--gris);color:var(--carbon)}
+
+/* ── LOGIN ── */
+#login-screen{position:fixed;inset:0;background:var(--azul);display:flex;align-items:center;justify-content:center;z-index:9999;flex-direction:column}
+#login-screen.hidden{display:none}
+.login-box{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:20px;padding:2.5rem 2rem;width:340px;max-width:95vw}
+.login-logo{font-family:'Bebas Neue',sans-serif;font-size:2rem;letter-spacing:3px;color:#fff;text-align:center;margin-bottom:.2rem}
+.login-logo em{color:var(--naranja);font-style:normal}
+.login-sub{font-size:.75rem;color:rgba(255,255,255,.4);text-align:center;margin-bottom:1.5rem;letter-spacing:.5px;text-transform:uppercase}
+.fg{margin-bottom:.85rem}
+.fg label{display:block;font-size:.7rem;font-weight:700;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px}
+.fg input,.fg select,.fg textarea{width:100%;padding:9px 12px;border:1.5px solid rgba(255,255,255,.15);border-radius:9px;background:rgba(255,255,255,.08);color:#fff;font-family:'Syne',sans-serif;font-size:.88rem;outline:none;transition:.2s}
+.fg input::placeholder{color:rgba(255,255,255,.3)}
+.fg input:focus{border-color:var(--naranja);background:rgba(255,255,255,.12)}
+.login-btn{width:100%;padding:11px;background:var(--naranja);color:#fff;border:none;border-radius:9px;font-family:'Bebas Neue',sans-serif;font-size:1.15rem;letter-spacing:2px;cursor:pointer;transition:.18s}
+.login-btn:hover{background:var(--naranja-d)}
+.login-err{color:#FF6B6B;font-size:.78rem;text-align:center;margin-top:.5rem;display:none}
+.login-err.show{display:block}
+.login-loading{color:rgba(255,255,255,.5);font-size:.78rem;text-align:center;margin-top:.5rem;display:none}
+.login-loading.show{display:block}
+
+/* ── TOPBAR ── */
+.topbar{background:var(--azul);display:flex;align-items:center;justify-content:space-between;padding:env(safe-area-inset-top,0px) 1rem 0;position:sticky;top:0;z-index:200;border-bottom:2px solid rgba(232,98,26,.5)}
+.topbar-inner{display:flex;align-items:center;justify-content:space-between;width:100%;min-height:54px}
+.brand{font-family:'Bebas Neue',sans-serif;font-size:1.65rem;letter-spacing:3px;color:#fff;display:flex;align-items:center;gap:8px}
+.brand em{color:var(--naranja);font-style:normal}
+.topbar-actions{display:flex;align-items:center;gap:.6rem}
+.tbtn{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);color:#fff;padding:5px 13px;border-radius:7px;font-family:'Syne',sans-serif;font-size:.78rem;font-weight:700;cursor:pointer;transition:.18s;letter-spacing:.5px}
+.tbtn:hover{background:rgba(255,255,255,.2)}
+.user-chip{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);color:#fff;padding:5px 10px;border-radius:7px;font-size:.78rem;cursor:pointer;display:flex;align-items:center;gap:5px}
+.user-chip:hover{background:rgba(255,255,255,.2)}
+
+/* ── SHELL ── */
+.shell{display:grid;grid-template-columns:240px 1fr;height:calc(100dvh - 54px - env(safe-area-inset-top,0px))}
+.sidebar{background:var(--azul);display:flex;flex-direction:column;overflow-y:auto;padding-bottom:calc(1.5rem + env(safe-area-inset-bottom,0px))}
+.sidebar::-webkit-scrollbar{width:4px}
+.sidebar::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:4px}
+.sb-section{padding:.9rem 1rem .25rem;font-size:.62rem;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;color:rgba(255,255,255,.35)}
+.sb-item{display:flex;align-items:center;gap:10px;padding:9px 12px;margin:1px 8px;border-radius:9px;cursor:pointer;color:rgba(255,255,255,.68);font-size:.86rem;font-weight:600;transition:.15s;border:1.5px solid transparent}
+.sb-item:hover{background:rgba(255,255,255,.08);color:#fff}
+.sb-item.active{background:var(--naranja);color:#fff;border-color:var(--naranja-d);box-shadow:0 4px 14px rgba(232,98,26,.4)}
+.sb-icon{font-size:1rem;width:20px;text-align:center;flex-shrink:0}
+.sb-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:.86rem}
+.sb-meta{font-size:.7rem;opacity:.6;margin-top:1px;font-weight:400}
+.content{overflow-y:auto;padding:1.5rem;padding-bottom:calc(1.5rem + env(safe-area-inset-bottom,0px))}
+.content::-webkit-scrollbar{width:5px}
+.content::-webkit-scrollbar-thumb{background:var(--gris-m);border-radius:4px}
+.page{display:none}.page.active{display:block}
+
+/* ── PAGE HEADER ── */
+.page-header{background:#fff;border-radius:14px;padding:1rem 1.2rem;display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1rem;box-shadow:var(--sh);flex-wrap:wrap;gap:.6rem;border-left:5px solid var(--naranja)}
+.ph-title{font-family:'Bebas Neue',sans-serif;font-size:1.5rem;letter-spacing:1.5px;color:var(--azul)}
+.ph-sub{font-size:.75rem;color:var(--gris-d);margin-top:2px}
+
+/* ── SALDO CHIP ── */
+.saldo-chip{background:var(--naranja);color:#fff;border-radius:14px;padding:.9rem 1.4rem;display:inline-flex;align-items:center;gap:.75rem;box-shadow:0 4px 20px rgba(232,98,26,.35);margin-bottom:1rem}
+.saldo-chip .sv{font-family:'JetBrains Mono',monospace;font-size:2rem;font-weight:700;letter-spacing:-1px}
+.saldo-chip .sl{font-size:.72rem;font-weight:700;letter-spacing:.5px;text-transform:uppercase;opacity:.8}
+.saldo-chip.negativo{background:var(--rojo)}
+
+/* ── FILTROS ── */
+.filters{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem;align-items:center}
+.filters input,.filters select{padding:7px 11px;border:1.5px solid var(--gris-m);border-radius:8px;font-family:'Syne',sans-serif;font-size:.82rem;outline:none;background:#fff;transition:.15s;color:var(--carbon)}
+.filters input:focus,.filters select:focus{border-color:var(--naranja)}
+.filters input{flex:1;min-width:160px}
+
+/* ── TABLA MOVIMIENTOS ── */
+.tbl-wrap{background:#fff;border-radius:14px;overflow:hidden;box-shadow:var(--sh)}
+.tbl-scroll{overflow-x:auto}
+.tbl-scroll::-webkit-scrollbar{height:6px}
+.tbl-scroll::-webkit-scrollbar-thumb{background:var(--naranja);border-radius:4px;opacity:.6}
+.tbl-wrap table{width:100%;border-collapse:collapse;min-width:700px}
+.tbl-wrap thead th{background:var(--azul);color:#fff;font-size:.72rem;font-weight:700;padding:9px 12px;text-align:left;letter-spacing:.5px;text-transform:uppercase;white-space:nowrap}
+.tbl-wrap thead th.r{text-align:right}
+.tbl-wrap tbody tr{border-bottom:1px solid var(--gris);transition:background .1s}
+.tbl-wrap tbody tr:last-child{border-bottom:none}
+.tbl-wrap tbody tr:hover{background:#FAFAF9}
+.tbl-wrap tbody tr.ajuste{background:#FFF8E1}
+.tbl-wrap tbody tr.ajuste:hover{background:#FFF0C0}
+.tbl-wrap tbody td{padding:8px 12px;font-size:.83rem;vertical-align:middle}
+.tbl-wrap tbody td.r{text-align:right}
+.tbl-empty{text-align:center;padding:3rem;color:var(--gris-d);font-size:.88rem}
+.mono{font-family:'JetBrains Mono',monospace;font-weight:700}
+.ingreso-val{color:var(--verde);font-family:'JetBrains Mono',monospace;font-weight:700}
+.egreso-val{color:var(--rojo);font-family:'JetBrains Mono',monospace;font-weight:700}
+.saldo-val{color:var(--naranja);font-family:'JetBrains Mono',monospace;font-weight:700}
+.saldo-val.neg{color:var(--rojo)}
+.row-actions{display:flex;gap:4px;justify-content:flex-end}
+.row-btn{background:none;border:1.5px solid var(--gris-m);color:var(--gris-d);border-radius:6px;padding:3px 8px;font-size:.75rem;cursor:pointer;transition:.15s;font-family:'Syne',sans-serif;font-weight:700}
+.row-btn:hover{border-color:var(--azul);color:var(--azul)}
+.row-btn.del:hover{border-color:var(--rojo);color:var(--rojo);background:var(--rojo-l)}
+.ajuste-badge{display:inline-block;background:var(--amarillo-l);color:#7A5000;border:1px solid var(--amarillo);font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:4px;letter-spacing:.3px;text-transform:uppercase}
+.tag-cc{display:inline-block;background:var(--azul-l);color:var(--azul-m);font-size:.7rem;font-weight:700;padding:1px 6px;border-radius:4px;font-family:'JetBrains Mono',monospace}
+
+/* ── RESUMEN CARDS ── */
+.res-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.75rem;margin-bottom:1rem}
+.res-card{background:#fff;border-radius:12px;padding:.9rem 1.1rem;box-shadow:var(--sh);border-left:4px solid var(--gris-m)}
+.res-card.ing{border-left-color:var(--verde)}
+.res-card.egr{border-left-color:var(--rojo)}
+.res-card.net{border-left-color:var(--naranja)}
+.res-card.tot{border-left-color:var(--azul-m)}
+.res-v{font-family:'JetBrains Mono',monospace;font-size:1.3rem;font-weight:700;color:var(--carbon);margin-bottom:2px}
+.res-v.verde{color:var(--verde)}
+.res-v.rojo{color:var(--rojo)}
+.res-v.naranja{color:var(--naranja)}
+.res-v.azul{color:var(--azul-m)}
+.res-l{font-size:.65rem;font-weight:700;color:var(--gris-d);text-transform:uppercase;letter-spacing:.5px}
+
+.res-group-wrap{background:#fff;border-radius:14px;overflow:hidden;box-shadow:var(--sh);margin-bottom:.75rem}
+.res-group-title{padding:.65rem 1rem;font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:1px;color:var(--azul);background:var(--azul-l);border-bottom:1px solid var(--gris-m)}
+.res-group-table{width:100%;border-collapse:collapse}
+.res-group-table td{padding:7px 12px;font-size:.82rem;border-bottom:1px solid var(--gris)}
+.res-group-table tr:last-child td{border-bottom:none}
+.res-group-table .rv{font-family:'JetBrains Mono',monospace;font-weight:700;text-align:right}
+.res-group-table .rv.verde{color:var(--verde)}
+.res-group-table .rv.rojo{color:var(--rojo)}
+
+/* ── CONFIG ── */
+.cfg-section{background:#fff;border-radius:14px;padding:1.25rem 1.4rem;box-shadow:var(--sh);margin-bottom:.75rem}
+.cfg-section h3{font-family:'Bebas Neue',sans-serif;font-size:1.1rem;letter-spacing:1px;color:var(--azul);margin-bottom:.9rem}
+.cfg-item{display:flex;align-items:center;justify-content:space-between;padding:.5rem .75rem;border-radius:8px;border:1.5px solid var(--gris-m);margin-bottom:.4rem;gap:.5rem}
+.cfg-item:hover{border-color:var(--gris-d)}
+.cfg-item .ci-name{font-size:.88rem;font-weight:700;flex:1}
+.cfg-item .ci-tipo{font-size:.68rem;color:var(--gris-d);font-weight:700;text-transform:uppercase;letter-spacing:.3px}
+.cfg-item .ci-inactivo{opacity:.45;text-decoration:line-through}
+.cfg-add{display:flex;gap:.5rem;margin-top:.6rem}
+.cfg-add input,.cfg-add select{flex:1;padding:7px 10px;border:1.5px solid var(--gris-m);border-radius:8px;font-family:'Syne',sans-serif;font-size:.84rem;outline:none;transition:.15s}
+.cfg-add input:focus,.cfg-add select:focus{border-color:var(--naranja)}
+
+/* ── MODALES ── */
+.overlay{position:fixed;inset:0;background:rgba(10,20,40,.5);backdrop-filter:blur(4px);z-index:500;display:none;align-items:center;justify-content:center;padding:1rem}
+.overlay.open{display:flex}
+.modal{background:#fff;border-radius:18px;padding:1.75rem;width:100%;max-width:500px;max-height:90vh;overflow-y:auto;box-shadow:var(--sh-lg);animation:slideUp .2s ease}
+@keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+.modal h3{font-family:'Bebas Neue',sans-serif;font-size:1.35rem;color:var(--azul);margin-bottom:1.1rem;letter-spacing:1px}
+.modal .fg{margin-bottom:.75rem}
+.modal .fg label{display:block;font-size:.7rem;font-weight:700;color:var(--gris-d);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.modal .fg input,.modal .fg select,.modal .fg textarea{width:100%;padding:9px 12px;border:1.5px solid var(--gris-m);border-radius:9px;font-family:'Syne',sans-serif;font-size:.88rem;outline:none;transition:.15s;background:var(--blanco);color:var(--carbon)}
+.modal .fg input:focus,.modal .fg select:focus,.modal .fg textarea:focus{border-color:var(--naranja);box-shadow:0 0 0 3px rgba(232,98,26,.1)}
+.modal .fg textarea{resize:vertical;min-height:64px}
+.modal-btns{display:flex;gap:.6rem;margin-top:1.1rem}
+.modal-btns .btn{flex:1;justify-content:center}
+
+/* ── TIPO TOGGLE ── */
+.tipo-toggle{display:grid;grid-template-columns:1fr 1fr;gap:0;border:2px solid var(--gris-m);border-radius:10px;overflow:hidden;margin-bottom:.75rem}
+.tipo-toggle label{display:flex;align-items:center;justify-content:center;gap:.4rem;padding:10px;font-size:.88rem;font-weight:700;cursor:pointer;transition:.18s;text-align:center}
+.tipo-toggle input{display:none}
+.tipo-toggle label.ing{color:var(--verde);border-right:1px solid var(--gris-m)}
+.tipo-toggle label.egr{color:var(--rojo)}
+.tipo-toggle input:checked+span{opacity:1}
+.tipo-toggle label.ing:has(input:checked){background:var(--verde-l);color:var(--verde)}
+.tipo-toggle label.egr:has(input:checked){background:var(--rojo-l);color:var(--rojo)}
+
+/* ── SALDO PREVIEW ── */
+.saldo-preview{background:var(--azul-l);border-radius:10px;padding:.75rem 1rem;font-size:.83rem;margin-top:.5rem;display:none}
+.saldo-preview.show{display:block}
+.sp-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:2px}
+.sp-v{font-family:'JetBrains Mono',monospace;font-weight:700}
+.sp-nuevo{font-size:1rem;color:var(--naranja)}
+.sp-nuevo.neg{color:var(--rojo)}
+
+/* ── BUTTONS ── */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;font-family:'Syne',sans-serif;font-size:.82rem;font-weight:700;cursor:pointer;border:none;transition:.16s;letter-spacing:.3px}
+.btn-pri{background:var(--naranja);color:#fff}.btn-pri:hover{background:var(--naranja-d)}
+.btn-sec{background:var(--gris);color:var(--carbon);border:1.5px solid var(--gris-m)}.btn-sec:hover{background:var(--gris-m)}
+.btn-ghost{background:none;border:1.5px solid var(--gris-m);color:var(--gris-d)}.btn-ghost:hover{border-color:var(--azul);color:var(--azul)}
+.btn-sml{padding:5px 10px;font-size:.76rem}
+.btn-amarillo{background:var(--amarillo-l);color:#7A4500;border:1.5px solid var(--amarillo)}.btn-amarillo:hover{background:var(--amarillo);color:#fff}
+
+/* ── TOAST ── */
+.toast{position:fixed;bottom:1.5rem;right:1.5rem;background:var(--azul);color:#fff;padding:10px 18px;border-radius:11px;font-size:.86rem;font-weight:700;box-shadow:var(--sh-lg);z-index:9999;transform:translateY(70px);opacity:0;transition:.28s cubic-bezier(.34,1.56,.64,1);display:flex;align-items:center;gap:8px;pointer-events:none}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.ok{background:var(--verde)}.toast.err{background:var(--rojo)}.toast.warn{background:#7A5000;color:#fff}
+
+/* ── PERÍODO TABS ── */
+.periodo-tabs{display:flex;gap:.3rem;margin-bottom:1rem;flex-wrap:wrap}
+.periodo-tab{padding:5px 13px;border-radius:7px;border:1.5px solid var(--gris-m);background:#fff;font-family:'Syne',sans-serif;font-size:.78rem;font-weight:700;cursor:pointer;transition:.15s;color:var(--gris-d)}
+.periodo-tab:hover{border-color:var(--naranja);color:var(--naranja)}
+.periodo-tab.active{background:var(--naranja);border-color:var(--naranja-d);color:#fff}
+
+/* ── RESPONSIVE ── */
+@media(max-width:860px){
+  .shell{grid-template-columns:1fr}
+  .sidebar{position:fixed;top:54px;left:0;width:260px;height:calc(100dvh - 54px);z-index:160;transform:translateX(-100%);transition:transform .25s ease}
+  .sidebar.open{transform:translateX(0)}
+  #sb-toggle{display:flex!important}
+  .content{padding:1rem}
+}
+@media(max-width:580px){
+  .page-header{flex-direction:column}
+  .modal{padding:1.25rem}
+  .saldo-chip .sv{font-size:1.5rem}
+  .tbtn:not(#sb-toggle){display:none}
+  .res-cards{grid-template-columns:1fr 1fr}
+}
+</style>
+</head>
+<body>
+
+<!-- ═══ LOGIN ═══ -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">CADINC <em>SRL</em></div>
+    <div class="login-sub">Caja de efectivo</div>
+    <div class="fg"><label>Email</label><input id="l-email" type="email" placeholder="usuario@cadinc.com" autocomplete="username"/></div>
+    <div class="fg"><label>Contraseña</label><input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"/></div>
+    <button class="login-btn" id="l-btn" onclick="doLogin()">Ingresar</button>
+    <div class="login-loading" id="l-load">Verificando...</div>
+    <div class="login-err" id="l-err">Email o contraseña incorrectos</div>
+  </div>
+</div>
+
+<!-- ═══ APP ═══ -->
+<div id="app-wrapper" style="display:none;flex-direction:column;height:100%">
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div style="display:flex;align-items:center;gap:10px">
+      <button id="sb-toggle" class="tbtn" onclick="toggleSidebar()" style="display:none">☰</button>
+      <div class="brand">💵 <em>Caja</em></div>
+    </div>
+    <div class="topbar-actions">
+      <button class="tbtn" onclick="window.location.href='/index.html'" title="Menú principal">⌂ Menú</button>
+      <div class="user-chip" onclick="doLogout()" title="Cerrar sesión">👤 <span id="user-chip">—</span></div>
+    </div>
+  </div>
+</div>
+
+<div id="sb-overlay" onclick="closeSidebar()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:150"></div>
+<div class="shell">
+<div class="sidebar">
+  <div class="sb-section">Principal</div>
+  <div class="sb-item active" id="sb-mov" onclick="goPage('movimientos',this)">
+    <span class="sb-icon">📋</span>
+    <div><div class="sb-name">Movimientos</div><div class="sb-meta" id="sb-mov-meta">Cargando...</div></div>
+  </div>
+  <div class="sb-item" id="sb-res" onclick="goPage('resumen',this)">
+    <span class="sb-icon">📊</span>
+    <div><div class="sb-name">Resumen</div><div class="sb-meta">Totales por período</div></div>
+  </div>
+  <div class="sb-section">Configuración</div>
+  <div class="sb-item" id="sb-cfg" onclick="goPage('config',this)">
+    <span class="sb-icon">⚙️</span>
+    <div><div class="sb-name">Configuración</div><div class="sb-meta">Conceptos y centros</div></div>
+  </div>
+</div>
+
+<div class="content">
+
+<!-- ══ MOVIMIENTOS ══ -->
+<div class="page active" id="page-movimientos">
+  <div class="page-header">
+    <div>
+      <div class="ph-title">💵 CAJA DE EFECTIVO</div>
+      <div class="ph-sub" id="ph-fecha">Saldo actualizado</div>
+    </div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+      <button class="btn btn-amarillo btn-sml" onclick="openModalAjuste()">⚖ Ajuste de caja</button>
+      <button class="btn btn-pri" onclick="openModalMov()">＋ Movimiento</button>
+    </div>
+  </div>
+
+  <!-- Saldo actual -->
+  <div id="saldo-chip-wrap">
+    <div class="saldo-chip" id="saldo-chip">
+      <div>
+        <div class="sl">Saldo actual</div>
+        <div class="sv" id="saldo-actual-val">$0</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filtros -->
+  <div class="filters">
+    <input type="text" id="f-busq" placeholder="Buscar proveedor, detalle..." oninput="renderMovimientos()"/>
+    <input type="date" id="f-desde" onchange="renderMovimientos()"/>
+    <input type="date" id="f-hasta" onchange="renderMovimientos()"/>
+    <select id="f-cc" onchange="renderMovimientos()">
+      <option value="">Todos los centros de costo</option>
+    </select>
+    <select id="f-tipo" onchange="renderMovimientos()">
+      <option value="">Todos</option>
+      <option value="ingreso">Solo ingresos</option>
+      <option value="egreso">Solo egresos</option>
+      <option value="ajuste">Solo ajustes</option>
+    </select>
+    <button class="btn btn-ghost btn-sml" onclick="limpiarFiltros()">✕ Limpiar</button>
+  </div>
+
+  <div class="tbl-wrap">
+    <div class="tbl-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Centro de costo</th>
+            <th>Proveedor / Persona</th>
+            <th>Concepto</th>
+            <th>Detalle</th>
+            <th class="r">Ingreso</th>
+            <th class="r">Egreso</th>
+            <th class="r">Saldo</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="mov-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+  <div style="margin-top:.75rem;display:flex;justify-content:center">
+    <button id="btn-cargar-mas" class="btn btn-ghost btn-sml" onclick="cargarMas()" style="display:none">Cargar más ▼</button>
+  </div>
+</div>
+
+<!-- ══ RESUMEN ══ -->
+<div class="page" id="page-resumen">
+  <div class="page-header">
+    <div><div class="ph-title">📊 RESUMEN</div><div class="ph-sub">Totales por período</div></div>
+  </div>
+
+  <div class="periodo-tabs">
+    <button class="periodo-tab active" onclick="setPeriodo('sem',this)">Esta semana</button>
+    <button class="periodo-tab" onclick="setPeriodo('mes',this)">Este mes</button>
+    <button class="periodo-tab" onclick="setPeriodo('mesant',this)">Mes anterior</button>
+    <button class="periodo-tab" onclick="setPeriodo('custom',this)">Rango...</button>
+  </div>
+  <div id="periodo-custom" style="display:none;gap:.5rem;margin-bottom:.75rem;flex-wrap:wrap;align-items:center">
+    <input type="date" id="res-desde" onchange="renderResumen()" style="padding:6px 10px;border:1.5px solid var(--gris-m);border-radius:8px;font-size:.82rem;outline:none"/>
+    <span style="color:var(--gris-d);font-size:.82rem">→</span>
+    <input type="date" id="res-hasta" onchange="renderResumen()" style="padding:6px 10px;border:1.5px solid var(--gris-m);border-radius:8px;font-size:.82rem;outline:none"/>
+  </div>
+
+  <div class="res-cards" id="res-cards"></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem" id="res-grupos">
+    <div class="res-group-wrap">
+      <div class="res-group-title">Por centro de costo</div>
+      <table class="res-group-table"><tbody id="res-cc-body"></tbody></table>
+    </div>
+    <div class="res-group-wrap">
+      <div class="res-group-title">Por concepto</div>
+      <table class="res-group-table"><tbody id="res-conc-body"></tbody></table>
+    </div>
+  </div>
+</div>
+
+<!-- ══ CONFIG ══ -->
+<div class="page" id="page-config">
+  <div class="page-header">
+    <div><div class="ph-title">⚙️ CONFIGURACIÓN</div><div class="ph-sub">Conceptos y centros de costo</div></div>
+  </div>
+
+  <div class="cfg-section">
+    <h3>💡 Conceptos</h3>
+    <div id="cfg-conceptos-list"></div>
+    <div class="cfg-add">
+      <input type="text" id="cfg-conc-nombre" placeholder="Nombre del concepto..."/>
+      <select id="cfg-conc-tipo">
+        <option value="ambos">Ingreso / Egreso</option>
+        <option value="ingreso">Solo ingreso</option>
+        <option value="egreso">Solo egreso</option>
+      </select>
+      <button class="btn btn-pri btn-sml" onclick="agregarConcepto()">＋</button>
+    </div>
+  </div>
+
+  <div class="cfg-section">
+    <h3>🏗 Centros de costo</h3>
+    <div id="cfg-cc-list"></div>
+    <div class="cfg-add">
+      <input type="text" id="cfg-cc-nombre" placeholder="Nombre del centro de costo..."/>
+      <button class="btn btn-pri btn-sml" onclick="agregarCentroCosto()">＋</button>
+    </div>
+  </div>
+</div>
+
+</div><!-- content -->
+</div><!-- shell -->
+</div><!-- app-wrapper -->
+
+<!-- ═══════════ MODALES ═══════════ -->
+
+<!-- NUEVO / EDITAR MOVIMIENTO -->
+<div class="overlay" id="m-mov"><div class="modal">
+  <h3 id="m-mov-title">💵 NUEVO MOVIMIENTO</h3>
+  <input type="hidden" id="mv-id"/>
+
+  <div class="tipo-toggle">
+    <label class="ing">
+      <input type="radio" name="mv-tipo" value="ingreso" id="mv-ing" onchange="actualizarPreview()">
+      <span>▲ INGRESO</span>
+    </label>
+    <label class="egr">
+      <input type="radio" name="mv-tipo" value="egreso" id="mv-egr" onchange="actualizarPreview()">
+      <span>▼ EGRESO</span>
+    </label>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
+    <div class="fg"><label>Fecha</label><input type="date" id="mv-fecha" onchange="actualizarPreview()"/></div>
+    <div class="fg"><label>Monto ($)</label><input type="number" id="mv-monto" min="0" step="100" placeholder="0" oninput="actualizarPreview()" inputmode="numeric"/></div>
+  </div>
+  <div class="fg">
+    <label>Centro de costo</label>
+    <select id="mv-cc" onchange="checkCCOtro()">
+      <option value="">— Sin centro de costo —</option>
+    </select>
+  </div>
+  <div class="fg" id="mv-cc-otro-wrap" style="display:none">
+    <label>Centro de costo (libre)</label>
+    <input type="text" id="mv-cc-otro" placeholder="Ingresá el nombre..."/>
+  </div>
+  <div class="fg"><label>Proveedor / Persona</label><input type="text" id="mv-proveedor" list="prov-list" placeholder="Nombre del proveedor o persona..."/><datalist id="prov-list"></datalist></div>
+  <div class="fg"><label>Concepto</label><select id="mv-concepto"><option value="">— Elegí un concepto —</option></select></div>
+  <div class="fg"><label>Detalle (opcional)</label><textarea id="mv-detalle" placeholder="Descripción libre..."></textarea></div>
+
+  <div class="saldo-preview" id="saldo-preview">
+    <div class="sp-row"><span style="color:var(--gris-d);font-size:.78rem">Saldo actual</span><span class="sp-v" id="sp-actual">$0</span></div>
+    <div class="sp-row"><span style="font-weight:700">→ Nuevo saldo</span><span class="sp-v sp-nuevo" id="sp-nuevo">$0</span></div>
+  </div>
+
+  <div class="modal-btns">
+    <button class="btn btn-sec" onclick="closeModal('m-mov')">Cancelar</button>
+    <button class="btn btn-pri" onclick="guardarMovimiento()">✓ Guardar</button>
+  </div>
+</div></div>
+
+<!-- AJUSTE DE CAJA -->
+<div class="overlay" id="m-ajuste"><div class="modal">
+  <h3>⚖ AJUSTE DE CAJA</h3>
+  <div style="background:var(--azul-l);border-radius:10px;padding:.85rem 1rem;margin-bottom:.9rem">
+    <div style="font-size:.72rem;font-weight:700;color:var(--gris-d);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Saldo registrado en el sistema</div>
+    <div style="font-family:'JetBrains Mono',monospace;font-size:1.5rem;font-weight:700;color:var(--azul)" id="ajuste-saldo-sistema">$0</div>
+  </div>
+  <div class="fg"><label>Efectivo en mano ahora ($)</label><input type="number" id="aj-efectivo" min="0" step="100" placeholder="0" oninput="calcularAjuste()" inputmode="numeric"/></div>
+  <div id="ajuste-preview" style="display:none;border-radius:10px;padding:.75rem 1rem;margin-bottom:.75rem;font-size:.84rem">
+    <div style="font-weight:700;margin-bottom:4px" id="ajuste-tipo-text"></div>
+    <div style="font-family:'JetBrains Mono',monospace;font-size:1.2rem;font-weight:700" id="ajuste-diff-val"></div>
+  </div>
+  <div class="fg"><label>Detalle (obligatorio — explicar la diferencia)</label><textarea id="aj-detalle" placeholder="Ej: Falta billete de $5000, cobro no registrado..."></textarea></div>
+  <div class="modal-btns">
+    <button class="btn btn-sec" onclick="closeModal('m-ajuste')">Cancelar</button>
+    <button class="btn btn-amarillo" onclick="guardarAjuste()">⚖ Confirmar ajuste</button>
+  </div>
+</div></div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════════
+function iso(d){ return d.toISOString().slice(0,10) }
+function fmtM(n){
+  if(n===null||n===undefined||isNaN(n)) return '—'
+  return '$'+Number(n).toLocaleString('es-AR',{minimumFractionDigits:0,maximumFractionDigits:0})
+}
+function fmtDate(s){
+  if(!s) return '—'
+  const d=new Date(s+'T12:00:00')
+  return d.getDate()+'/'+(d.getMonth()+1)+'/'+d.getFullYear()
+}
+
+let _toastTimer
+function toast(msg,tipo='ok'){
+  const el=document.getElementById('toast')
+  el.textContent=msg; el.className='toast '+tipo+' show'
+  clearTimeout(_toastTimer)
+  _toastTimer=setTimeout(()=>el.classList.remove('show'),3200)
+}
+
+// ══════════════════════════════════════════════════
+// NAVEGACIÓN
+// ══════════════════════════════════════════════════
+function goPage(id,el){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'))
+  document.getElementById('page-'+id)?.classList.add('active')
+  document.querySelectorAll('.sb-item').forEach(i=>i.classList.remove('active'))
+  el.classList.add('active')
+  closeSidebar()
+  if(id==='resumen') renderResumen()
+  if(id==='config'){ renderCfgConceptos(); renderCfgCC() }
+}
+
+function toggleSidebar(){
+  document.querySelector('.sidebar').classList.toggle('open')
+  document.getElementById('sb-overlay').style.display=
+    document.querySelector('.sidebar').classList.contains('open')?'block':'none'
+}
+function closeSidebar(){
+  document.querySelector('.sidebar').classList.remove('open')
+  document.getElementById('sb-overlay').style.display='none'
+}
+
+function openModal(id){ document.getElementById(id).classList.add('open') }
+function closeModal(id){ document.getElementById(id).classList.remove('open') }
+
+// Cerrar con ESC o click fuera
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') document.querySelectorAll('.overlay.open').forEach(o=>o.classList.remove('open')) })
+document.querySelectorAll('.overlay').forEach(o=>o.addEventListener('click',e=>{ if(e.target===o) o.classList.remove('open') }))
+
+// ══════════════════════════════════════════════════
+// ESTADO EN MEMORIA
+// ══════════════════════════════════════════════════
+let movimientos  = []   // ordenados ASC por fecha (para saldo acum)
+let conceptos    = []
+let centrosCosto = []
+let currentUser  = null
+let limitMov     = 100
+let editandoId   = null
+let periodoCurrent = 'sem'
+
+function saldoActual(){
+  if(!movimientos.length) return 0
+  return movimientos[movimientos.length-1].saldo_acum || 0
+}
+
+// ══════════════════════════════════════════════════
+// RENDER MOVIMIENTOS
+// ══════════════════════════════════════════════════
+function renderMovimientos(){
+  const busq  = document.getElementById('f-busq').value.toLowerCase()
+  const desde = document.getElementById('f-desde').value
+  const hasta = document.getElementById('f-hasta').value
+  const cc    = document.getElementById('f-cc').value
+  const tipo  = document.getElementById('f-tipo').value
+
+  // Filtrar (mostrar DESC = invertir)
+  let filtrados = [...movimientos].reverse().filter(m=>{
+    if(desde && m.fecha < desde) return false
+    if(hasta && m.fecha > hasta) return false
+    if(cc && m.centro_costo !== cc) return false
+    if(tipo === 'ajuste' && !m.es_ajuste) return false
+    if(tipo === 'ingreso' && (m.tipo !== 'ingreso' || m.es_ajuste)) return false
+    if(tipo === 'egreso'  && (m.tipo !== 'egreso'  || m.es_ajuste)) return false
+    if(busq && !( (m.proveedor||'').toLowerCase().includes(busq) || (m.detalle||'').toLowerCase().includes(busq) || (m.concepto||'').toLowerCase().includes(busq) )) return false
+    return true
+  })
+
+  const mostrar = filtrados.slice(0, limitMov)
+  const hay_mas = filtrados.length > limitMov
+  document.getElementById('btn-cargar-mas').style.display = hay_mas ? 'inline-flex' : 'none'
+
+  const tbody = document.getElementById('mov-tbody')
+  if(!mostrar.length){
+    tbody.innerHTML=`<tr><td colspan="9" class="tbl-empty">Sin movimientos registrados.</td></tr>`
+    return
+  }
+
+  tbody.innerHTML = mostrar.map(m=>{
+    const ingreso = m.tipo==='ingreso' ? fmtM(m.monto) : ''
+    const egreso  = m.tipo==='egreso'  ? fmtM(m.monto) : ''
+    const saldo   = m.saldo_acum !== null ? m.saldo_acum : null
+    const saldoCls= saldo < 0 ? 'saldo-val neg' : 'saldo-val'
+    const rowCls  = m.es_ajuste ? 'ajuste' : ''
+    const ajBadge = m.es_ajuste ? '<span class="ajuste-badge">ajuste</span> ' : ''
+    const ccTag   = m.centro_costo ? `<span class="tag-cc">${m.centro_costo}</span>` : ''
+    return `<tr class="${rowCls}">
+      <td class="mono">${fmtDate(m.fecha)}</td>
+      <td>${ccTag}</td>
+      <td style="max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${m.proveedor||'—'}</td>
+      <td>${ajBadge}${m.concepto||'—'}</td>
+      <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--gris-d);font-size:.78rem">${m.detalle||''}</td>
+      <td class="r">${ingreso ? `<span class="ingreso-val">${ingreso}</span>` : ''}</td>
+      <td class="r">${egreso  ? `<span class="egreso-val">${egreso}</span>`  : ''}</td>
+      <td class="r"><span class="${saldoCls}">${saldo!==null?fmtM(saldo):'—'}</span></td>
+      <td>
+        <div class="row-actions">
+          ${!m.es_ajuste?`<button class="row-btn" onclick="editarMovimiento(${m.id})">✏️</button>`:''}
+          <button class="row-btn del" onclick="eliminarMovimiento(${m.id})">✕</button>
+        </div>
+      </td>
+    </tr>`
+  }).join('')
+
+  // Saldo actual
+  const s = saldoActual()
+  const chip = document.getElementById('saldo-chip')
+  document.getElementById('saldo-actual-val').textContent = fmtM(s)
+  chip.classList.toggle('negativo', s < 0)
+  document.getElementById('ph-fecha').textContent = `Último movimiento: ${movimientos.length ? fmtDate(movimientos[movimientos.length-1].fecha) : '—'}`
+  document.getElementById('sb-mov-meta').textContent = movimientos.length + ' movimientos'
+}
+
+function limpiarFiltros(){
+  document.getElementById('f-busq').value=''
+  document.getElementById('f-desde').value=''
+  document.getElementById('f-hasta').value=''
+  document.getElementById('f-cc').value=''
+  document.getElementById('f-tipo').value=''
+  limitMov=100
+  renderMovimientos()
+}
+
+function cargarMas(){ limitMov+=100; renderMovimientos() }
+
+// ══════════════════════════════════════════════════
+// MODAL MOVIMIENTO
+// ══════════════════════════════════════════════════
+function openModalMov(id){
+  editandoId = id || null
+  document.getElementById('m-mov-title').textContent = id ? '✏️ EDITAR MOVIMIENTO' : '💵 NUEVO MOVIMIENTO'
+  document.getElementById('mv-id').value = id || ''
+
+  if(id){
+    const m = movimientos.find(x=>x.id===id)
+    if(!m) return
+    document.getElementById(m.tipo==='ingreso'?'mv-ing':'mv-egr').checked=true
+    document.getElementById('mv-fecha').value  = m.fecha
+    document.getElementById('mv-monto').value  = m.monto
+    document.getElementById('mv-proveedor').value = m.proveedor||''
+    document.getElementById('mv-detalle').value   = m.detalle||''
+    // CC
+    const ccOpt = [...document.getElementById('mv-cc').options].find(o=>o.value===m.centro_costo)
+    document.getElementById('mv-cc').value = ccOpt ? m.centro_costo : 'otro'
+    if(!ccOpt && m.centro_costo){ document.getElementById('mv-cc-otro').value=m.centro_costo; document.getElementById('mv-cc-otro-wrap').style.display='' }
+    else { document.getElementById('mv-cc-otro-wrap').style.display='none' }
+    // Concepto
+    poblarConceptosSelect(m.tipo)
+    document.getElementById('mv-concepto').value = m.concepto||''
+  } else {
+    document.getElementById('mv-ing').checked=true
+    document.getElementById('mv-fecha').value = iso(new Date())
+    document.getElementById('mv-monto').value = ''
+    document.getElementById('mv-proveedor').value = ''
+    document.getElementById('mv-detalle').value = ''
+    document.getElementById('mv-cc').value = ''
+    document.getElementById('mv-cc-otro').value = ''
+    document.getElementById('mv-cc-otro-wrap').style.display='none'
+    poblarConceptosSelect('ingreso')
+    document.getElementById('mv-concepto').value=''
+  }
+  actualizarPreview()
+  openModal('m-mov')
+}
+
+function checkCCOtro(){
+  const v = document.getElementById('mv-cc').value
+  document.getElementById('mv-cc-otro-wrap').style.display = v==='otro' ? '' : 'none'
+}
+
+function poblarConceptosSelect(tipo){
+  const sel = document.getElementById('mv-concepto')
+  const filtrados = conceptos.filter(c=>c.activo && (c.tipo==='ambos'||c.tipo===tipo))
+  sel.innerHTML='<option value="">— Elegí un concepto —</option>'+
+    filtrados.map(c=>`<option value="${c.nombre}">${c.nombre}</option>`).join('')
+}
+
+document.querySelectorAll('input[name="mv-tipo"]').forEach(r=>{
+  r.addEventListener('change',()=>{
+    poblarConceptosSelect(r.value)
+    document.getElementById('mv-concepto').value=''
+    actualizarPreview()
+  })
+})
+
+function actualizarPreview(){
+  const monto = parseFloat(document.getElementById('mv-monto').value)||0
+  const tipo  = document.querySelector('input[name="mv-tipo"]:checked')?.value
+  if(!monto||!tipo){ document.getElementById('saldo-preview').classList.remove('show'); return }
+
+  const sActual = saldoActual()
+  let sNuevo = tipo==='ingreso' ? sActual+monto : sActual-monto
+  // Si es edición, compensar el valor anterior
+  if(editandoId){
+    const m=movimientos.find(x=>x.id===editandoId)
+    if(m){ sNuevo = tipo==='ingreso' ? sActual+monto : sActual-monto }
+  }
+  document.getElementById('sp-actual').textContent = fmtM(sActual)
+  const spNuevo = document.getElementById('sp-nuevo')
+  spNuevo.textContent = fmtM(sNuevo)
+  spNuevo.classList.toggle('neg', sNuevo<0)
+  document.getElementById('saldo-preview').classList.add('show')
+}
+
+async function guardarMovimiento(){
+  const tipo  = document.querySelector('input[name="mv-tipo"]:checked')?.value
+  const fecha = document.getElementById('mv-fecha').value
+  const monto = parseFloat(document.getElementById('mv-monto').value)
+  const ccVal = document.getElementById('mv-cc').value
+  const cc    = ccVal==='otro' ? document.getElementById('mv-cc-otro').value.trim() : ccVal
+  const conc  = document.getElementById('mv-concepto').value
+  const prov  = document.getElementById('mv-proveedor').value.trim()
+  const det   = document.getElementById('mv-detalle').value.trim()
+
+  if(!tipo||!fecha||!monto||monto<=0){ toast('Completá tipo, fecha y monto','err'); return }
+  if(!conc){ toast('Seleccioná un concepto','err'); return }
+
+  const id = document.getElementById('mv-id').value
+  if(id){
+    await window._editarMov(parseInt(id),{tipo,fecha,monto,centro_costo:cc||null,concepto:conc,proveedor:prov||null,detalle:det||null})
+  } else {
+    await window._insertarMov({tipo,fecha,monto,centro_costo:cc||null,concepto:conc,proveedor:prov||null,detalle:det||null,es_ajuste:false})
+  }
+  closeModal('m-mov')
+}
+
+// ══════════════════════════════════════════════════
+// AJUSTE DE CAJA
+// ══════════════════════════════════════════════════
+function openModalAjuste(){
+  document.getElementById('aj-efectivo').value=''
+  document.getElementById('aj-detalle').value=''
+  document.getElementById('ajuste-saldo-sistema').textContent=fmtM(saldoActual())
+  document.getElementById('ajuste-preview').style.display='none'
+  openModal('m-ajuste')
+}
+
+function calcularAjuste(){
+  const ef = parseFloat(document.getElementById('aj-efectivo').value)
+  if(isNaN(ef)){ document.getElementById('ajuste-preview').style.display='none'; return }
+  const sist = saldoActual()
+  const diff = ef - sist
+  const prev = document.getElementById('ajuste-preview')
+  prev.style.display='block'
+  if(diff>0){
+    prev.style.background='var(--verde-l)'; prev.style.border='1px solid var(--verde)'
+    document.getElementById('ajuste-tipo-text').textContent='▲ Se registrará un INGRESO (sobrante)'
+    document.getElementById('ajuste-diff-val').style.color='var(--verde)'
+  } else if(diff<0){
+    prev.style.background='var(--rojo-l)'; prev.style.border='1px solid var(--rojo)'
+    document.getElementById('ajuste-tipo-text').textContent='▼ Se registrará un EGRESO (faltante)'
+    document.getElementById('ajuste-diff-val').style.color='var(--rojo)'
+  } else {
+    prev.style.background='var(--gris)'; prev.style.border='1px solid var(--gris-m)'
+    document.getElementById('ajuste-tipo-text').textContent='✓ Sin diferencia'
+    document.getElementById('ajuste-diff-val').style.color='var(--gris-d)'
+  }
+  document.getElementById('ajuste-diff-val').textContent = fmtM(Math.abs(diff))
+}
+
+async function guardarAjuste(){
+  const ef  = parseFloat(document.getElementById('aj-efectivo').value)
+  const det = document.getElementById('aj-detalle').value.trim()
+  if(isNaN(ef)||ef<0){ toast('Ingresá el efectivo en mano','err'); return }
+  if(!det){ toast('El detalle es obligatorio en un ajuste','err'); return }
+  const diff = ef - saldoActual()
+  if(diff===0){ toast('No hay diferencia — no se registra ajuste','warn'); return }
+  const tipo = diff>0 ? 'ingreso' : 'egreso'
+  await window._insertarMov({
+    tipo, fecha:iso(new Date()), monto:Math.abs(diff),
+    concepto:'Ajuste de caja', detalle:det,
+    centro_costo:null, proveedor:null, es_ajuste:true
+  })
+  closeModal('m-ajuste')
+}
+
+// ══════════════════════════════════════════════════
+// RESUMEN
+// ══════════════════════════════════════════════════
+let periodoDesde='', periodoHasta=''
+
+function setPeriodo(tipo,btn){
+  periodoCurrent=tipo
+  document.querySelectorAll('.periodo-tab').forEach(b=>b.classList.remove('active'))
+  btn.classList.add('active')
+  const hoy=new Date()
+  if(tipo==='sem'){
+    const lun=new Date(hoy); lun.setDate(hoy.getDate()-((hoy.getDay()+6)%7))
+    periodoDesde=iso(lun); periodoHasta=iso(hoy)
+    document.getElementById('periodo-custom').style.display='none'
+  } else if(tipo==='mes'){
+    periodoDesde=iso(new Date(hoy.getFullYear(),hoy.getMonth(),1))
+    periodoHasta=iso(hoy)
+    document.getElementById('periodo-custom').style.display='none'
+  } else if(tipo==='mesant'){
+    const p=new Date(hoy.getFullYear(),hoy.getMonth()-1,1)
+    periodoDesde=iso(p)
+    periodoHasta=iso(new Date(hoy.getFullYear(),hoy.getMonth(),0))
+    document.getElementById('periodo-custom').style.display='none'
+  } else {
+    document.getElementById('periodo-custom').style.display='flex'
+    periodoDesde=document.getElementById('res-desde').value
+    periodoHasta=document.getElementById('res-hasta').value
+  }
+  renderResumen()
+}
+
+function renderResumen(){
+  if(periodoCurrent==='custom'){
+    periodoDesde=document.getElementById('res-desde').value
+    periodoHasta=document.getElementById('res-hasta').value
+  }
+  const filt = movimientos.filter(m=>{
+    if(periodoDesde && m.fecha<periodoDesde) return false
+    if(periodoHasta && m.fecha>periodoHasta) return false
+    return true
+  })
+
+  let totalIng=0,totalEgr=0
+  filt.forEach(m=>{ if(m.tipo==='ingreso') totalIng+=m.monto; else totalEgr+=m.monto })
+  const neto=totalIng-totalEgr
+  const saldoTot=saldoActual()
+
+  document.getElementById('res-cards').innerHTML=`
+    <div class="res-card ing"><div class="res-v verde">${fmtM(totalIng)}</div><div class="res-l">Ingresos del período</div></div>
+    <div class="res-card egr"><div class="res-v rojo">${fmtM(totalEgr)}</div><div class="res-l">Egresos del período</div></div>
+    <div class="res-card net"><div class="res-v ${neto>=0?'naranja':'rojo'}">${fmtM(neto)}</div><div class="res-l">Saldo neto del período</div></div>
+    <div class="res-card tot"><div class="res-v azul">${fmtM(saldoTot)}</div><div class="res-l">Saldo total acumulado</div></div>
+  `
+
+  // Agrupar por CC
+  const byCC={}
+  filt.forEach(m=>{
+    const k=m.centro_costo||'(sin centro)'
+    if(!byCC[k]) byCC[k]={ing:0,egr:0}
+    m.tipo==='ingreso'?byCC[k].ing+=m.monto:byCC[k].egr+=m.monto
+  })
+  document.getElementById('res-cc-body').innerHTML=Object.entries(byCC)
+    .sort((a,b)=>(b[1].ing-b[1].egr)-(a[1].ing-a[1].egr))
+    .map(([k,v])=>{
+      const n=v.ing-v.egr
+      return `<tr><td>${k}</td><td class="rv verde">${fmtM(v.ing)}</td><td class="rv rojo">${fmtM(v.egr)}</td><td class="rv ${n>=0?'verde':'rojo'}">${fmtM(n)}</td></tr>`
+    }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--gris-d);padding:1rem">Sin datos</td></tr>'
+
+  // Agrupar por concepto
+  const byConc={}
+  filt.forEach(m=>{
+    const k=m.concepto||'(sin concepto)'
+    if(!byConc[k]) byConc[k]={ing:0,egr:0}
+    m.tipo==='ingreso'?byConc[k].ing+=m.monto:byConc[k].egr+=m.monto
+  })
+  document.getElementById('res-conc-body').innerHTML=Object.entries(byConc)
+    .sort((a,b)=>(b[1].ing+b[1].egr)-(a[1].ing+a[1].egr))
+    .map(([k,v])=>{
+      const n=v.ing-v.egr
+      return `<tr><td>${k}</td><td class="rv verde">${fmtM(v.ing)}</td><td class="rv rojo">${fmtM(v.egr)}</td><td class="rv ${n>=0?'verde':'rojo'}">${fmtM(n)}</td></tr>`
+    }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--gris-d);padding:1rem">Sin datos</td></tr>'
+}
+
+// ══════════════════════════════════════════════════
+// CONFIG
+// ══════════════════════════════════════════════════
+function renderCfgConceptos(){
+  document.getElementById('cfg-conceptos-list').innerHTML=conceptos.map(c=>`
+    <div class="cfg-item">
+      <div class="${c.activo?'ci-name':'ci-name ci-inactivo'}">${c.nombre}</div>
+      <div class="ci-tipo">${c.tipo==='ambos'?'✦':c.tipo==='ingreso'?'▲ ingreso':'▼ egreso'}</div>
+      <button class="row-btn btn-sml" onclick="toggleConcepto(${c.id})" title="${c.activo?'Desactivar':'Activar'}">${c.activo?'✓':'○'}</button>
+      <button class="row-btn del btn-sml" onclick="eliminarConcepto(${c.id})">✕</button>
+    </div>
+  `).join('') || '<p style="font-size:.82rem;color:var(--gris-d)">No hay conceptos definidos.</p>'
+}
+
+function renderCfgCC(){
+  document.getElementById('cfg-cc-list').innerHTML=centrosCosto.map(c=>`
+    <div class="cfg-item">
+      <div class="${c.activo?'ci-name':'ci-name ci-inactivo'}">${c.nombre}</div>
+      <button class="row-btn btn-sml" onclick="toggleCC(${c.id})" title="${c.activo?'Desactivar':'Activar'}">${c.activo?'✓':'○'}</button>
+      <button class="row-btn del btn-sml" onclick="eliminarCC(${c.id})">✕</button>
+    </div>
+  `).join('') || '<p style="font-size:.82rem;color:var(--gris-d)">No hay centros de costo definidos.</p>'
+}
+
+async function agregarConcepto(){
+  const nom=document.getElementById('cfg-conc-nombre').value.trim()
+  const tipo=document.getElementById('cfg-conc-tipo').value
+  if(!nom){ toast('Ingresá un nombre','err'); return }
+  await window._insertarConcepto({nombre:nom,tipo,activo:true})
+  document.getElementById('cfg-conc-nombre').value=''
+}
+
+async function agregarCentroCosto(){
+  const nom=document.getElementById('cfg-cc-nombre').value.trim()
+  if(!nom){ toast('Ingresá un nombre','err'); return }
+  await window._insertarCC({nombre:nom,activo:true})
+  document.getElementById('cfg-cc-nombre').value=''
+}
+
+async function toggleConcepto(id){
+  const c=conceptos.find(x=>x.id===id); if(!c) return
+  await window._updateConcepto(id,{activo:!c.activo})
+}
+async function eliminarConcepto(id){
+  if(!confirm('¿Eliminar este concepto?')) return
+  await window._deleteConcepto(id)
+}
+async function toggleCC(id){
+  const c=centrosCosto.find(x=>x.id===id); if(!c) return
+  await window._updateCC(id,{activo:!c.activo})
+}
+async function eliminarCC(id){
+  if(!confirm('¿Eliminar este centro de costo?')) return
+  await window._deleteCC(id)
+}
+
+// ══════════════════════════════════════════════════
+// EDITAR / ELIMINAR MOVIMIENTOS
+// ══════════════════════════════════════════════════
+function editarMovimiento(id){ openModalMov(id) }
+
+async function eliminarMovimiento(id){
+  if(!confirm('¿Eliminar este movimiento? Se recalcularán los saldos.')) return
+  await window._eliminarMov(id)
+}
+
+// ══════════════════════════════════════════════════
+// POBLAR SELECTS
+// ══════════════════════════════════════════════════
+function poblarSelects(){
+  // CC en filtro
+  const fCC = document.getElementById('f-cc')
+  fCC.innerHTML='<option value="">Todos los centros de costo</option>'+
+    centrosCosto.filter(c=>c.activo).map(c=>`<option value="${c.nombre}">${c.nombre}</option>`).join('')
+  // CC en modal
+  const mCC = document.getElementById('mv-cc')
+  mCC.innerHTML='<option value="">— Sin centro de costo —</option>'+
+    centrosCosto.filter(c=>c.activo).map(c=>`<option value="${c.nombre}">${c.nombre}</option>`).join('')+
+    '<option value="otro">Otro (libre)...</option>'
+  // Autocompletado proveedores
+  const provs = [...new Set(movimientos.map(m=>m.proveedor).filter(Boolean))]
+  document.getElementById('prov-list').innerHTML=provs.map(p=>`<option value="${p}">`).join('')
+}
+
+// ══════════════════════════════════════════════════
+// RECALCULAR SALDOS (en memoria y en BD)
+// ══════════════════════════════════════════════════
+async function recalcularSaldos(desdeId){
+  // Encontrar posición en array ASC
+  const idx = desdeId ? movimientos.findIndex(m=>m.id===desdeId) : 0
+  const start = Math.max(0,idx)
+  let saldoAnterior = start>0 ? (movimientos[start-1].saldo_acum||0) : 0
+  for(let i=start;i<movimientos.length;i++){
+    const m=movimientos[i]
+    saldoAnterior = m.tipo==='ingreso' ? saldoAnterior+m.monto : saldoAnterior-m.monto
+    m.saldo_acum=saldoAnterior
+    await window._updateSaldo(m.id,saldoAnterior)
+  }
+}
+
+// ══════════════════════════════════════════════════
+// IMPLEMENTACIONES BASE (sin Supabase)
+// ══════════════════════════════════════════════════
+window._insertarMov = async function(dto){
+  const s=saldoActual()
+  const saldo=dto.tipo==='ingreso'?s+dto.monto:s-dto.monto
+  const id=Date.now()
+  const m={id,...dto,saldo_acum:saldo,creado_por:currentUser?.email,created_at:new Date().toISOString()}
+  movimientos.push(m)
+  movimientos.sort((a,b)=>a.fecha.localeCompare(b.fecha)||(a.id-b.id))
+  await recalcularSaldos(id)
+  poblarSelects(); renderMovimientos()
+  toast('✓ Movimiento guardado','ok')
+}
+window._editarMov = async function(id,dto){
+  const m=movimientos.find(x=>x.id===id); if(!m) return
+  Object.assign(m,dto)
+  movimientos.sort((a,b)=>a.fecha.localeCompare(b.fecha)||(a.id-b.id))
+  await recalcularSaldos()
+  poblarSelects(); renderMovimientos()
+  toast('✓ Movimiento actualizado','ok')
+}
+window._eliminarMov = async function(id){
+  const idx=movimientos.findIndex(m=>m.id===id); if(idx<0) return
+  movimientos.splice(idx,1)
+  await recalcularSaldos(idx<movimientos.length?movimientos[idx].id:null)
+  poblarSelects(); renderMovimientos()
+  toast('✓ Movimiento eliminado','warn')
+}
+window._updateSaldo = async function(){}
+window._insertarConcepto = async function(dto){
+  const id=Date.now(); conceptos.push({id,...dto}); renderCfgConceptos()
+}
+window._updateConcepto = async function(id,dto){
+  const c=conceptos.find(x=>x.id===id); if(c) Object.assign(c,dto); renderCfgConceptos()
+}
+window._deleteConcepto = async function(id){
+  conceptos=conceptos.filter(x=>x.id!==id); renderCfgConceptos()
+}
+window._insertarCC = async function(dto){
+  const id=Date.now(); centrosCosto.push({id,...dto}); poblarSelects(); renderCfgCC()
+}
+window._updateCC = async function(id,dto){
+  const c=centrosCosto.find(x=>x.id===id); if(c) Object.assign(c,dto); poblarSelects(); renderCfgCC()
+}
+window._deleteCC = async function(id){
+  centrosCosto=centrosCosto.filter(x=>x.id!==id); poblarSelects(); renderCfgCC()
+}
+
+// ══════════════════════════════════════════════════
+// SUPABASE
+// ══════════════════════════════════════════════════
+const SUPA_URL = 'https://xclobkgmaxioifpkukul.supabase.co'
+const SUPA_KEY = 'sb_publishable_khr5VAkZBjKWvWgVuOTwFA_S-MgErzZ'
+const supa = supabase.createClient(SUPA_URL,SUPA_KEY)
+
+async function doLogin(){
+  const email=document.getElementById('l-email').value.trim()
+  const pass =document.getElementById('l-pass').value
+  const btn  =document.getElementById('l-btn')
+  const err  =document.getElementById('l-err')
+  const load =document.getElementById('l-load')
+  if(!email||!pass){ err.textContent='Completá email y contraseña'; err.classList.add('show'); return }
+  btn.disabled=true; err.classList.remove('show'); load.classList.add('show')
+  const {data,error}=await supa.auth.signInWithPassword({email,password:pass})
+  load.classList.remove('show'); btn.disabled=false
+  if(error){ err.textContent='Email o contraseña incorrectos'; err.classList.add('show'); return }
+  currentUser=data.user
+  await iniciarApp()
+  toast('✓ Bienvenido/a '+email.split('@')[0],'ok')
+}
+
+async function doLogout(){
+  if(!confirm('¿Cerrar sesión?')) return
+  await supa.auth.signOut()
+  currentUser=null; location.reload()
+}
+
+async function iniciarApp(){
+  document.getElementById('login-screen').classList.add('hidden')
+  document.getElementById('app-wrapper').style.display='flex'
+  document.getElementById('user-chip').textContent=(currentUser?.email||'').split('@')[0]
+  await cargarTodo()
+}
+
+async function cargarTodo(){
+  const [rMov,rConc,rCC]=await Promise.all([
+    supa.from('movimientos_caja').select('*').order('fecha',{ascending:true}).order('id',{ascending:true}),
+    supa.from('caja_conceptos').select('*').order('nombre'),
+    supa.from('caja_centros_costo').select('*').order('nombre'),
+  ])
+  if(rMov.error)  console.error('mov',rMov.error)
+  if(rConc.error) console.error('conc',rConc.error)
+  if(rCC.error)   console.error('cc',rCC.error)
+  movimientos  = rMov.data  || []
+  conceptos    = rConc.data || []
+  centrosCosto = rCC.data   || []
+  poblarSelects()
+  renderMovimientos()
+}
+
+// ── Supabase overrides ──
+window._insertarMov = async function(dto){
+  const s=saldoActual()
+  const saldo=dto.tipo==='ingreso'?s+dto.monto:s-dto.monto
+  const {data,error}=await supa.from('movimientos_caja').insert({
+    ...dto,saldo_acum:saldo,creado_por:currentUser?.email
+  }).select().single()
+  if(error){ toast('Error al guardar: '+error.message,'err'); return }
+  movimientos.push(data)
+  movimientos.sort((a,b)=>a.fecha.localeCompare(b.fecha)||(a.id-b.id))
+  await recalcularSaldos(data.id)
+  poblarSelects(); renderMovimientos()
+  toast('✓ Movimiento guardado','ok')
+}
+
+window._editarMov = async function(id,dto){
+  // Buscar posición original
+  const oldIdx=movimientos.findIndex(m=>m.id===id)
+  const {data,error}=await supa.from('movimientos_caja').update(dto).eq('id',id).select().single()
+  if(error){ toast('Error al actualizar: '+error.message,'err'); return }
+  movimientos[oldIdx]=data
+  movimientos.sort((a,b)=>a.fecha.localeCompare(b.fecha)||(a.id-b.id))
+  await recalcularSaldos()
+  poblarSelects(); renderMovimientos()
+  toast('✓ Actualizado','ok')
+}
+
+window._eliminarMov = async function(id){
+  const {error}=await supa.from('movimientos_caja').delete().eq('id',id)
+  if(error){ toast('Error al eliminar: '+error.message,'err'); return }
+  const idx=movimientos.findIndex(m=>m.id===id)
+  movimientos.splice(idx,1)
+  await recalcularSaldos(idx<movimientos.length?movimientos[idx].id:null)
+  poblarSelects(); renderMovimientos()
+  toast('✓ Eliminado','warn')
+}
+
+window._updateSaldo = async function(id,saldo){
+  await supa.from('movimientos_caja').update({saldo_acum:saldo}).eq('id',id)
+}
+
+window._insertarConcepto = async function(dto){
+  const {data,error}=await supa.from('caja_conceptos').insert(dto).select().single()
+  if(error){ toast('Error: '+error.message,'err'); return }
+  conceptos.push(data); conceptos.sort((a,b)=>a.nombre.localeCompare(b.nombre))
+  renderCfgConceptos(); poblarSelects()
+  toast('✓ Concepto agregado','ok')
+}
+window._updateConcepto = async function(id,dto){
+  const {data,error}=await supa.from('caja_conceptos').update(dto).eq('id',id).select().single()
+  if(error){ toast('Error: '+error.message,'err'); return }
+  const i=conceptos.findIndex(x=>x.id===id); if(i>=0) conceptos[i]=data
+  renderCfgConceptos(); poblarSelects()
+}
+window._deleteConcepto = async function(id){
+  const {error}=await supa.from('caja_conceptos').delete().eq('id',id)
+  if(error){ toast('Error: '+error.message,'err'); return }
+  conceptos=conceptos.filter(x=>x.id!==id); renderCfgConceptos()
+  toast('✓ Concepto eliminado','warn')
+}
+window._insertarCC = async function(dto){
+  const {data,error}=await supa.from('caja_centros_costo').insert(dto).select().single()
+  if(error){ toast('Error: '+error.message,'err'); return }
+  centrosCosto.push(data); centrosCosto.sort((a,b)=>a.nombre.localeCompare(b.nombre))
+  renderCfgCC(); poblarSelects()
+  toast('✓ Centro de costo agregado','ok')
+}
+window._updateCC = async function(id,dto){
+  const {data,error}=await supa.from('caja_centros_costo').update(dto).eq('id',id).select().single()
+  if(error){ toast('Error: '+error.message,'err'); return }
+  const i=centrosCosto.findIndex(x=>x.id===id); if(i>=0) centrosCosto[i]=data
+  renderCfgCC(); poblarSelects()
+}
+window._deleteCC = async function(id){
+  const {error}=await supa.from('caja_centros_costo').delete().eq('id',id)
+  if(error){ toast('Error: '+error.message,'err'); return }
+  centrosCosto=centrosCosto.filter(x=>x.id!==id); renderCfgCC(); poblarSelects()
+  toast('✓ Eliminado','warn')
+}
+
+// ══════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded',()=>{
+  document.getElementById('l-pass').addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin() })
+  document.getElementById('l-email').addEventListener('keydown',e=>{ if(e.key==='Enter') document.getElementById('l-pass').focus() })
+  // Check sesión activa
+  supa.auth.getSession().then(async({data})=>{
+    if(data.session){
+      currentUser=data.session.user
+      await iniciarApp()
+    }
+  })
+  // Inicializar período resumen
+  const hoy=new Date()
+  const lun=new Date(hoy); lun.setDate(hoy.getDate()-((hoy.getDay()+6)%7))
+  periodoDesde=iso(lun); periodoHasta=iso(hoy)
+})
+</script>
+</body>
+</html>

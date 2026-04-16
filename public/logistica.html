@@ -1,0 +1,1255 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0D1B2A">
+<title>Logística — CADINC SRL</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{
+  --azul:#0D1B2A;--azul-m:#1A3A5C;--azul-l:#E8F2FF;
+  --verde:#1A7A45;--verde-l:#E4F5ED;
+  --naranja:#E8621A;--naranja-l:#FDF0E8;
+  --rojo:#C0392B;--rojo-l:#FDECEA;
+  --amarillo:#E8A01A;--amarillo-l:#FFF8E1;
+  --gris:#F2F1EE;--gris-m:#C8C4BC;--gris-d:#8A8980;
+  --blanco:#FAFAF8;--carbon:#1C1C1E;
+  --sh:0 2px 12px rgba(13,27,42,.09);--sh-lg:0 8px 32px rgba(13,27,42,.18);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Syne',sans-serif;background:var(--gris);color:var(--carbon);min-height:100vh}
+
+/* ── LOGIN ── */
+#login-screen{position:fixed;inset:0;background:var(--azul);display:flex;align-items:center;justify-content:center;z-index:9999;flex-direction:column}
+#login-screen.hidden{display:none}
+.login-box{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:20px;padding:2.5rem 2rem;width:340px;max-width:95vw}
+.login-logo{font-family:'Bebas Neue',sans-serif;font-size:2rem;letter-spacing:3px;color:#fff;text-align:center;margin-bottom:.2rem}
+.login-logo em{color:var(--naranja);font-style:normal}
+.login-sub{font-size:.75rem;color:rgba(255,255,255,.4);text-align:center;margin-bottom:1.5rem;letter-spacing:.5px;text-transform:uppercase}
+.fg{margin-bottom:.85rem}
+.fg label{display:block;font-size:.7rem;font-weight:700;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px}
+.fg input,.fg select,.fg textarea{width:100%;padding:9px 12px;border:1.5px solid rgba(255,255,255,.15);border-radius:9px;background:rgba(255,255,255,.08);color:#fff;font-family:'Syne',sans-serif;font-size:.88rem;outline:none;transition:.2s}
+.fg input::placeholder{color:rgba(255,255,255,.3)}
+.fg input:focus{border-color:var(--naranja);background:rgba(255,255,255,.12)}
+.login-btn{width:100%;padding:11px;background:var(--naranja);color:#fff;border:none;border-radius:9px;font-family:'Bebas Neue',sans-serif;font-size:1.15rem;letter-spacing:2px;cursor:pointer;transition:.18s}
+.login-btn:hover{background:#C04E10}
+.login-err{color:#FF6B6B;font-size:.78rem;text-align:center;margin-top:.5rem;display:none}
+.login-err.show{display:block}
+.login-loading{color:rgba(255,255,255,.5);font-size:.78rem;text-align:center;margin-top:.5rem;display:none}
+.login-loading.show{display:block}
+
+/* ── TOPBAR ── */
+.topbar{background:var(--azul);display:flex;align-items:center;justify-content:space-between;padding:env(safe-area-inset-top,0) 1rem 0;position:sticky;top:0;z-index:200;border-bottom:2px solid rgba(232,98,26,.4)}
+.topbar-inner{display:flex;align-items:center;justify-content:space-between;width:100%;min-height:52px}
+.brand{font-family:'Bebas Neue',sans-serif;font-size:1.5rem;letter-spacing:3px;color:#fff;display:flex;align-items:center;gap:8px}
+.brand em{color:var(--naranja);font-style:normal}
+.tbtn{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);color:#fff;padding:5px 12px;border-radius:7px;font-family:'Syne',sans-serif;font-size:.78rem;font-weight:700;cursor:pointer;transition:.18s}
+.tbtn:hover{background:rgba(255,255,255,.2)}
+.user-chip{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);color:#fff;padding:5px 10px;border-radius:7px;font-size:.78rem;cursor:pointer;display:flex;align-items:center;gap:5px}
+.user-chip:hover{background:rgba(255,255,255,.2)}
+.topbar-actions{display:flex;align-items:center;gap:.5rem}
+
+/* ── SHELL ── */
+.shell{display:grid;grid-template-columns:260px 1fr;height:calc(100dvh - 52px - env(safe-area-inset-top,0))}
+.sidebar{background:var(--azul);display:flex;flex-direction:column;overflow-y:auto;padding-bottom:1.5rem}
+.sidebar::-webkit-scrollbar{width:4px}
+.sidebar::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:4px}
+.sb-section{padding:.9rem 1rem .25rem;font-size:.6rem;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;color:rgba(255,255,255,.3)}
+.sb-item{display:flex;align-items:center;gap:.7rem;padding:.65rem 1rem;cursor:pointer;transition:.15s;border-radius:8px;margin:1px 6px}
+.sb-item:hover{background:rgba(255,255,255,.07)}
+.sb-item.active{background:rgba(255,255,255,.12)}
+.sb-icon{font-size:1.1rem;width:22px;text-align:center}
+.sb-name{font-size:.82rem;font-weight:700;color:#fff}
+.sb-meta{font-size:.68rem;color:rgba(255,255,255,.4)}
+.content{overflow-y:auto;padding:1.5rem;padding-bottom:2rem}
+.content::-webkit-scrollbar{width:5px}
+.content::-webkit-scrollbar-thumb{background:var(--gris-m);border-radius:4px}
+.page{display:none}.page.active{display:block}
+
+/* ── PAGE HEADER ── */
+.page-header{background:#fff;border-radius:14px;padding:1rem 1.2rem;display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1rem;box-shadow:var(--sh);flex-wrap:wrap;gap:.6rem;border-left:5px solid var(--naranja)}
+.ph-title{font-family:'Bebas Neue',sans-serif;font-size:1.5rem;letter-spacing:1.5px;color:var(--azul)}
+.ph-sub{font-size:.75rem;color:var(--gris-d);margin-top:2px}
+.chips{display:flex;gap:.5rem;flex-wrap:wrap}
+.chip{background:var(--gris);border-radius:9px;padding:6px 12px;text-align:center}
+.chip .cv{font-family:'JetBrains Mono',monospace;font-size:1rem;font-weight:700;color:var(--carbon)}
+.chip .cl{font-size:.6rem;color:var(--gris-d);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-top:1px}
+.chip.green .cv{color:var(--verde)}
+.chip.orange .cv{color:var(--naranja)}
+.chip.blue .cv{color:var(--azul-m)}
+
+/* ── CARDS ── */
+.card{background:#fff;border-radius:14px;padding:1.1rem 1.2rem;box-shadow:var(--sh);margin-bottom:.75rem}
+.card-grid{display:grid;gap:.75rem}
+.card-grid.col2{grid-template-columns:1fr 1fr}
+.card-grid.col3{grid-template-columns:repeat(3,1fr)}
+
+/* ── TABLES ── */
+.tbl-wrap{background:#fff;border-radius:14px;overflow:hidden;box-shadow:var(--sh)}
+.tbl-wrap table{width:100%;border-collapse:collapse}
+.tbl-wrap thead th{background:var(--azul);color:#fff;font-size:.72rem;font-weight:700;padding:9px 14px;text-align:left;letter-spacing:.5px;text-transform:uppercase;white-space:nowrap}
+.tbl-wrap tbody tr{border-bottom:1px solid var(--gris);transition:background .1s}
+.tbl-wrap tbody tr:last-child{border-bottom:none}
+.tbl-wrap tbody tr:hover{background:var(--gris)}
+.tbl-wrap tbody td{padding:9px 14px;font-size:.84rem}
+.tbl-empty{text-align:center;padding:2.5rem;color:var(--gris-d);font-size:.88rem}
+
+/* ── VIAJE CARD ── */
+.viaje-card{background:#fff;border-radius:14px;box-shadow:var(--sh);border-left:5px solid var(--gris-m);transition:.18s;cursor:pointer;overflow:hidden}
+.viaje-card:hover{box-shadow:var(--sh-lg);transform:translateY(-2px)}
+.viaje-card.en_curso{border-left-color:var(--naranja)}
+.viaje-card.completado{border-left-color:var(--verde)}
+.vc-head{display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.1rem .5rem;flex-wrap:wrap;gap:.4rem}
+.vc-title{font-size:.95rem;font-weight:800;color:var(--azul)}
+.vc-badge{font-size:.65rem;font-weight:700;padding:2px 9px;border-radius:20px;text-transform:uppercase;letter-spacing:.5px}
+.vc-badge.en_curso{background:var(--naranja-l);color:var(--naranja)}
+.vc-badge.completado{background:var(--verde-l);color:var(--verde)}
+.vc-body{padding:.5rem 1.1rem 1rem;display:flex;gap:1.5rem;flex-wrap:wrap}
+.vc-item{font-size:.82rem;color:var(--gris-d)}
+.vc-item b{color:var(--carbon);font-weight:700}
+.vc-actions{padding:.5rem 1.1rem;border-top:1px solid var(--gris);display:flex;gap:.5rem;background:#FAFAF8}
+
+/* ── STATUS PILLS ── */
+.pill{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:20px;font-size:.7rem;font-weight:700;letter-spacing:.3px}
+.pill.activo{background:var(--verde-l);color:var(--verde)}
+.pill.descanso{background:var(--amarillo-l);color:#7A5000}
+.pill.inactivo{background:var(--gris);color:var(--gris-d)}
+.pill.en_curso{background:var(--naranja-l);color:var(--naranja)}
+.pill.completado{background:var(--verde-l);color:var(--verde)}
+.pill.borrador{background:var(--gris);color:var(--gris-d)}
+.pill.cerrada{background:var(--azul-l);color:var(--azul-m)}
+
+/* ── LIQUIDACIÓN CARD ── */
+.liq-card{background:#fff;border-radius:14px;box-shadow:var(--sh);border-left:5px solid var(--azul-m);margin-bottom:.75rem;overflow:hidden}
+.liq-card.cerrada{border-left-color:var(--verde)}
+.liq-head{display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.1rem;flex-wrap:wrap;gap:.5rem;background:#FAFAF8;border-bottom:1px solid var(--gris)}
+.liq-chofer{font-size:1rem;font-weight:800;color:var(--azul)}
+.liq-periodo{font-size:.78rem;color:var(--gris-d);margin-top:2px}
+.liq-nums{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:.6rem;padding:1rem 1.1rem}
+.liq-num{text-align:center;background:var(--gris);border-radius:9px;padding:8px 10px}
+.liq-num .v{font-family:'JetBrains Mono',monospace;font-size:1rem;font-weight:700;color:var(--carbon)}
+.liq-num .l{font-size:.62rem;color:var(--gris-d);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-top:2px}
+.liq-num.green .v{color:var(--verde)}
+.liq-num.orange .v{color:var(--naranja)}
+.liq-num.red .v{color:var(--rojo)}
+.liq-actions{padding:.6rem 1.1rem;border-top:1px solid var(--gris);display:flex;gap:.5rem;flex-wrap:wrap}
+
+/* ── RUTAS ── */
+.ruta-item{display:flex;align-items:center;justify-content:space-between;padding:.7rem 1rem;border-bottom:1px solid var(--gris);gap:.5rem;flex-wrap:wrap}
+.ruta-item:last-child{border-bottom:none}
+.ruta-arrow{display:flex;align-items:center;gap:.5rem;font-size:.85rem;font-weight:700}
+.ruta-km{font-family:'JetBrains Mono',monospace;font-size:.9rem;font-weight:700;color:var(--naranja);background:var(--naranja-l);padding:2px 10px;border-radius:20px}
+
+/* ── REMITO UPLOAD ── */
+.remito-upload{border:2px dashed var(--gris-m);border-radius:10px;padding:1.2rem;text-align:center;cursor:pointer;transition:.18s;background:var(--gris)}
+.remito-upload:hover{border-color:var(--naranja);background:var(--naranja-l)}
+.remito-upload input{display:none}
+.remito-thumb{width:60px;height:60px;object-fit:cover;border-radius:6px;border:1.5px solid var(--gris-m)}
+.remito-link{font-size:.78rem;color:var(--azul-m);text-decoration:underline;cursor:pointer}
+
+/* ── FORMS ── */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:.7rem}
+.form-grid.col3{grid-template-columns:1fr 1fr 1fr}
+.form-grid.col1{grid-template-columns:1fr}
+.fg label{display:block;font-size:.7rem;font-weight:700;color:var(--gris-d);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px}
+.fg input,.fg select,.fg textarea{width:100%;padding:9px 12px;border:1.5px solid var(--gris-m);border-radius:9px;font-family:'Syne',sans-serif;font-size:.88rem;outline:none;background:#fff;transition:.15s;color:var(--carbon)}
+.fg input:focus,.fg select:focus{border-color:var(--naranja);box-shadow:0 0 0 3px rgba(232,98,26,.1)}
+.fg textarea{resize:vertical;min-height:70px}
+.fg{margin-bottom:0}
+
+/* ── BUTTONS ── */
+.btn{display:inline-flex;align-items:center;gap:4px;padding:8px 16px;border-radius:8px;font-family:'Syne',sans-serif;font-size:.82rem;font-weight:700;cursor:pointer;border:none;transition:.15s;letter-spacing:.3px}
+.btn-pri{background:var(--azul);color:#fff}.btn-pri:hover{background:var(--azul-m)}
+.btn-sec{background:var(--gris);color:var(--azul);border:1.5px solid var(--gris-m)}.btn-sec:hover{background:var(--gris-m)}
+.btn-ghost{background:transparent;color:var(--azul);border:1.5px solid var(--gris-m)}.btn-ghost:hover{background:var(--gris)}
+.btn-danger{background:var(--rojo-l);color:var(--rojo);border:1.5px solid var(--rojo)}.btn-danger:hover{background:var(--rojo);color:#fff}
+.btn-success{background:var(--verde-l);color:var(--verde);border:1.5px solid var(--verde)}.btn-success:hover{background:var(--verde);color:#fff}
+.btn-sml{padding:5px 10px;font-size:.76rem}
+
+/* ── MODALES ── */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:400;backdrop-filter:blur(3px);padding:1rem}
+.overlay.open{display:flex}
+.modal{background:#fff;border-radius:18px;padding:1.75rem;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;box-shadow:var(--sh-lg)}
+.modal h3{font-family:'Bebas Neue',sans-serif;font-size:1.3rem;color:var(--azul);margin-bottom:1.1rem;letter-spacing:1px}
+.modal-btns{display:flex;gap:.6rem;margin-top:1.3rem}
+.modal-btns .btn{flex:1;justify-content:center}
+
+/* ── TOAST ── */
+.toast{position:fixed;bottom:1.5rem;right:1.5rem;background:var(--azul);color:#fff;padding:10px 18px;border-radius:11px;font-size:.82rem;font-weight:700;z-index:9999;opacity:0;transform:translateY(8px);transition:.3s;pointer-events:none}
+.toast.show{opacity:1;transform:translateY(0)}
+.toast.ok{background:var(--verde)}
+.toast.err{background:var(--rojo)}
+.toast.warn{background:#7A5000}
+
+/* ── EMPTY STATE ── */
+.empty{text-align:center;padding:3rem;color:var(--gris-d)}
+.empty .ei{font-size:2.5rem;margin-bottom:.75rem}
+
+/* ── RESPONSIVE ── */
+@media(max-width:900px){
+  .shell{grid-template-columns:1fr}
+  .sidebar{position:fixed;top:52px;left:0;width:280px;height:calc(100dvh - 52px);z-index:160;transform:translateX(-100%);transition:transform .25s ease}
+  .sidebar.open{transform:translateX(0)}
+  #sb-toggle{display:flex!important}
+  .content{padding:1rem}
+  .card-grid.col2,.card-grid.col3,.form-grid,.form-grid.col3{grid-template-columns:1fr}
+}
+@media(max-width:600px){
+  .page-header{flex-direction:column}
+  .liq-nums{grid-template-columns:1fr 1fr}
+  .modal{padding:1.25rem}
+  .tbtn:not(#sb-toggle){display:none}
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">CADINC <em>SRL</em></div>
+    <div class="login-sub">Módulo Logística</div>
+    <div class="fg"><label>Email</label><input id="l-email" type="email" placeholder="usuario@cadinc.com" autocomplete="username"/></div>
+    <div class="fg"><label>Contraseña</label><input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"/></div>
+    <button class="login-btn" id="l-btn" onclick="doLogin()">Ingresar</button>
+    <div class="login-loading" id="l-load">Verificando...</div>
+    <div class="login-err" id="l-err">Email o contraseña incorrectos</div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app-wrapper" style="display:none;flex-direction:column;height:100%">
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div style="display:flex;align-items:center;gap:10px">
+      <button id="sb-toggle" class="tbtn" onclick="toggleSidebar()" style="display:none">☰</button>
+      <div class="brand">🚛 <em>Logística</em></div>
+    </div>
+    <div class="topbar-actions">
+      <button class="tbtn" onclick="window.location.href='/index.html'" style="background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.3)" title="Volver al menú principal">⌂ Menú</button>
+      <div class="user-chip" onclick="doLogout()" title="Cerrar sesión">
+        <span>👤</span><span id="user-chip">—</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="sb-overlay" onclick="closeSidebar()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:150"></div>
+<div class="shell">
+<div class="sidebar">
+  <div class="sb-section">Principal</div>
+  <div class="sb-item active" id="sb-viajes" onclick="goPage('viajes',this)"><span class="sb-icon">🚛</span><div><div class="sb-name">Tramos</div><div class="sb-meta" id="sb-viajes-meta">0 en curso</div></div></div>
+  <div class="sb-item" id="sb-liquidaciones" onclick="goPage('liquidaciones',this)"><span class="sb-icon">💰</span><div><div class="sb-name">Liquidaciones</div><div class="sb-meta" id="sb-liq-meta">0 pendientes</div></div></div>
+  <div class="sb-section">Gestión</div>
+  <div class="sb-item" id="sb-choferes" onclick="goPage('choferes',this)"><span class="sb-icon">👷</span><div><div class="sb-name">Choferes</div><div class="sb-meta" id="sb-chof-meta">0 choferes</div></div></div>
+  <div class="sb-item" id="sb-camiones" onclick="goPage('camiones',this)"><span class="sb-icon">🚚</span><div><div class="sb-name">Camiones</div><div class="sb-meta" id="sb-cam-meta">0 camiones</div></div></div>
+  <div class="sb-section">Configuración</div>
+  <div class="sb-item" id="sb-rutas" onclick="goPage('rutas',this)"><span class="sb-icon">🗺️</span><div><div class="sb-name">Rutas & Km</div><div class="sb-meta" id="sb-rutas-meta">0 rutas</div></div></div>
+  <div class="sb-item" id="sb-lugares" onclick="goPage('lugares',this)"><span class="sb-icon">📍</span><div><div class="sb-name">Canteras y Depósitos</div><div class="sb-meta">Puntos de carga/descarga</div></div></div>
+</div>
+<div class="content">
+
+<!-- ══ VIAJES ══ -->
+<div class="page active" id="page-viajes">
+  <div class="page-header">
+    <div><div class="ph-title">🚛 TRAMOS</div><div class="ph-sub">Cada tramo es un recorrido cantera → depósito</div></div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+      <div class="chips">
+        <div class="chip orange"><div class="cv" id="v-encurso">0</div><div class="cl">En curso</div></div>
+        <div class="chip green"><div class="cv" id="v-completados">0</div><div class="cl">Completados</div></div>
+      </div>
+      <button class="btn btn-pri" onclick="openModal('m-viaje')">＋ Nuevo tramo</button>
+    </div>
+  </div>
+  <!-- Filtros -->
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem">
+    <select id="f-chofer" onchange="renderViajes()" style="padding:6px 10px;border:1.5px solid var(--gris-m);border-radius:8px;font-size:.82rem;outline:none;background:#fff;font-family:'Syne',sans-serif">
+      <option value="">Todos los choferes</option>
+    </select>
+    <select id="f-estado" onchange="renderViajes()" style="padding:6px 10px;border:1.5px solid var(--gris-m);border-radius:8px;font-size:.82rem;outline:none;background:#fff;font-family:'Syne',sans-serif">
+      <option value="">Todos los estados</option>
+      <option value="en_curso">En curso</option>
+      <option value="completado">Completados</option>
+    </select>
+  </div>
+  <div id="viajes-lista" class="card-grid"></div>
+</div>
+
+<!-- ══ LIQUIDACIONES ══ -->
+<div class="page" id="page-liquidaciones">
+  <div class="page-header">
+    <div><div class="ph-title">💰 LIQUIDACIONES</div><div class="ph-sub">Pago por días trabajados + km recorridos</div></div>
+    <button class="btn btn-pri" onclick="openModal('m-liq')">＋ Nueva liquidación</button>
+  </div>
+  <div id="liq-lista"></div>
+</div>
+
+<!-- ══ CHOFERES ══ -->
+<div class="page" id="page-choferes">
+  <div class="page-header">
+    <div><div class="ph-title">👷 CHOFERES</div><div class="ph-sub">Personal de conducción</div></div>
+    <button class="btn btn-pri" onclick="openModal('m-chofer')">＋ Nuevo chofer</button>
+  </div>
+  <div class="tbl-wrap">
+    <table><thead><tr>
+      <th>Nombre</th><th>DNI</th><th>Teléfono</th><th>Licencia</th><th>Estado</th><th></th>
+    </tr></thead>
+    <tbody id="choferes-tbody"></tbody></table>
+  </div>
+</div>
+
+<!-- ══ CAMIONES ══ -->
+<div class="page" id="page-camiones">
+  <div class="page-header">
+    <div><div class="ph-title">🚚 CAMIONES</div><div class="ph-sub">Flota de vehículos</div></div>
+    <button class="btn btn-pri" onclick="openModal('m-camion')">＋ Nuevo camión</button>
+  </div>
+  <div class="tbl-wrap">
+    <table><thead><tr>
+      <th>Patente</th><th>Modelo</th><th>Año</th><th>Estado</th><th></th>
+    </tr></thead>
+    <tbody id="camiones-tbody"></tbody></table>
+  </div>
+</div>
+
+<!-- ══ RUTAS ══ -->
+<div class="page" id="page-rutas">
+  <div class="page-header">
+    <div><div class="ph-title">🗺️ RUTAS & KM</div><div class="ph-sub">Distancias predefinidas cantera → depósito (ida y vuelta)</div></div>
+    <button class="btn btn-pri" onclick="openModal('m-ruta')">＋ Nueva ruta</button>
+  </div>
+  <div class="card">
+    <div id="rutas-lista"></div>
+  </div>
+</div>
+
+<!-- ══ LUGARES ══ -->
+<div class="page" id="page-lugares">
+  <div class="page-header">
+    <div><div class="ph-title">📍 CANTERAS Y DEPÓSITOS</div><div class="ph-sub">Puntos de carga y descarga</div></div>
+    <div style="display:flex;gap:.5rem">
+      <button class="btn btn-pri" onclick="openModal('m-cantera')">＋ Cantera</button>
+      <button class="btn btn-sec" onclick="openModal('m-deposito')">＋ Depósito</button>
+    </div>
+  </div>
+  <div class="card-grid col2">
+    <div class="card">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:1.05rem;letter-spacing:1px;color:var(--azul);margin-bottom:.75rem">⛏ CANTERAS</div>
+      <div id="canteras-lista"></div>
+    </div>
+    <div class="card">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:1.05rem;letter-spacing:1px;color:var(--azul);margin-bottom:.75rem">🏭 DEPÓSITOS</div>
+      <div id="depositos-lista"></div>
+    </div>
+  </div>
+</div>
+
+</div><!-- content -->
+</div><!-- shell -->
+</div><!-- app-wrapper -->
+
+<!-- ═══════════════════ MODALES ═══════════════════ -->
+
+<!-- NUEVO VIAJE -->
+<div class="overlay" id="m-viaje"><div class="modal">
+  <h3>🚛 NUEVO TRAMO</h3>
+  <div class="form-grid" style="margin-bottom:.7rem">
+    <div class="fg"><label>Chofer</label><select id="vj-chofer"><option value="">— Elegí —</option></select></div>
+    <div class="fg"><label>Camión</label><select id="vj-camion"><option value="">— Elegí —</option></select></div>
+  </div>
+  <div class="fg" style="margin-bottom:.7rem"><label>Observaciones</label><textarea id="vj-obs" placeholder="Notas opcionales..."></textarea></div>
+  <div class="modal-btns">
+    <button class="btn btn-sec" onclick="closeModal('m-viaje')">Cancelar</button>
+    <button class="btn btn-pri" onclick="guardarViaje()">✓ Crear tramo</button>
+  </div>
+</div></div>
+
+<!-- REGISTRAR CARGA -->
+<div class="overlay" id="m-carga"><div class="modal">
+  <h3>⛏ REGISTRAR CARGA</h3>
+  <input type="hidden" id="cg-viaje-id">
+  <div class="form-grid" style="margin-bottom:.7rem">
+    <div class="fg"><label>Fecha de carga</label><input type="date" id="cg-fecha"/></div>
+    <div class="fg"><label>Cantera</label><select id="cg-cantera"><option value="">— Elegí —</option></select></div>
+  </div>
+  <div class="form-grid" style="margin-bottom:.7rem">
+    <div class="fg"><label>Toneladas cargadas</label><input type="number" id="cg-toneladas" min="0" step="0.01" placeholder="0.00"/></div>
+    <div class="fg"><label>Nº Remito de carga</label><input type="text" id="cg-remito-num" placeholder="Ej: R-00123"/></div>
+  </div>
+  <div class="fg" style="margin-bottom:.7rem">
+    <label>Archivo del remito (foto o PDF)</label>
+    <div class="remito-upload" onclick="document.getElementById('cg-file').click()">
+      <input type="file" id="cg-file" accept="image/*,.pdf" onchange="previewRemito(this,'cg-preview')">
+      <div id="cg-preview" style="font-size:.82rem;color:var(--gris-d)">📎 Tocá para adjuntar foto o PDF</div>
+    </div>
+  </div>
+  <div class="fg" style="margin-bottom:.7rem"><label>Observaciones</label><textarea id="cg-obs" placeholder="Notas opcionales..."></textarea></div>
+  <div class="modal-btns">
+    <button class="btn btn-sec" onclick="closeModal('m-carga')">Cancelar</button>
+    <button class="btn btn-pri" onclick="guardarCarga()">✓ Guardar carga</button>
+  </div>
+</div></div>
+
+<!-- REGISTRAR DESCARGA -->
+<div class="overlay" id="m-descarga"><div class="modal">
+  <h3>🏭 REGISTRAR DESCARGA</h3>
+  <input type="hidden" id="dc-viaje-id">
+  <div class="form-grid" style="margin-bottom:.7rem">
+    <div class="fg"><label>Fecha de descarga</label><input type="date" id="dc-fecha"/></div>
+    <div class="fg"><label>Depósito</label><select id="dc-deposito"><option value="">— Elegí —</option></select></div>
+  </div>
+  <div class="form-grid" style="margin-bottom:.7rem">
+    <div class="fg"><label>Toneladas descargadas</label><input type="number" id="dc-toneladas" min="0" step="0.01" placeholder="0.00"/></div>
+    <div class="fg"><label>Nº Remito de descarga</label><input type="text" id="dc-remito-num" placeholder="Ej: R-00456"/></div>
+  </div>
+  <div class="fg" style="margin-bottom:.7rem">
+    <label>Archivo del remito (foto o PDF)</label>
+    <div class="remito-upload" onclick="document.getElementById('dc-file').click()">
+      <input type="file" id="dc-file" accept="image/*,.pdf" onchange="previewRemito(this,'dc-preview')">
+      <div id="dc-preview" style="font-size:.82rem;color:var(--gris-d)">📎 Tocá para adjuntar foto o PDF</div>
+    </div>
+  </div>
+  <div class="fg" style="margin-bottom:.7rem"><label>Observaciones</label><textarea id="dc-obs" placeholder="Notas opcionales..."></textarea></div>
+  <div class="modal-btns">
+    <button class="btn btn-sec" onclick="closeModal('m-descarga')">Cancelar</button>
+    <button class="btn btn-pri" onclick="guardarDescarga()">✓ Guardar descarga</button>
+  </div>
+</div></div>
+
+<!-- NUEVA LIQUIDACIÓN -->
+<div class="overlay" id="m-liq"><div class="modal" style="max-width:600px">
+  <h3>💰 NUEVA LIQUIDACIÓN</h3>
+  <div class="form-grid" style="margin-bottom:.7rem">
+    <div class="fg"><label>Chofer</label><select id="lq-chofer" onchange="cargarViajesLiq()"><option value="">— Elegí —</option></select></div>
+    <div class="fg"><label>Precio por km ($)</label><input type="number" id="lq-precio-km" min="0" step="1" placeholder="0"/></div>
+  </div>
+  <div class="form-grid" style="margin-bottom:.7rem">
+    <div class="fg"><label>Básico por día ($)</label><input type="number" id="lq-basico-dia" min="0" step="1" placeholder="0"/></div>
+    <div class="fg"><label>Días trabajados</label><input type="number" id="lq-dias" min="0" step="1" placeholder="0"/></div>
+  </div>
+  <div class="form-grid" style="margin-bottom:.7rem">
+    <div class="fg"><label>Período desde</label><input type="date" id="lq-desde"/></div>
+    <div class="fg"><label>Período hasta</label><input type="date" id="lq-hasta"/></div>
+  </div>
+  <!-- Tramos a incluir -->
+  <div style="margin-bottom:.7rem">
+    <div style="font-size:.7rem;font-weight:700;color:var(--gris-d);text-transform:uppercase;letter-spacing:.5px;margin-bottom:.4rem">Tramos a incluir en esta liquidación</div>
+    <div id="lq-viajes-check" style="background:var(--gris);border-radius:9px;padding:.6rem .8rem;max-height:160px;overflow-y:auto">
+      <span style="font-size:.82rem;color:var(--gris-d)">Seleccioná un chofer para ver sus viajes</span>
+    </div>
+    <div id="lq-km-preview" style="font-size:.8rem;color:var(--azul-m);margin-top:.4rem;font-weight:700"></div>
+  </div>
+  <!-- Adelantos -->
+  <div style="margin-bottom:.7rem">
+    <div style="font-size:.7rem;font-weight:700;color:var(--gris-d);text-transform:uppercase;letter-spacing:.5px;margin-bottom:.4rem">Adelantos pendientes</div>
+    <div id="lq-adelantos-check" style="background:var(--gris);border-radius:9px;padding:.6rem .8rem;max-height:120px;overflow-y:auto">
+      <span style="font-size:.82rem;color:var(--gris-d)">Seleccioná un chofer para ver los adelantos pendientes</span>
+    </div>
+  </div>
+  <!-- Resumen -->
+  <div id="lq-resumen" style="background:var(--azul-l);border-radius:10px;padding:.85rem 1rem;font-size:.84rem;display:none">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:1px;color:var(--azul);margin-bottom:.5rem">RESUMEN</div>
+    <div id="lq-resumen-body" style="display:grid;grid-template-columns:1fr 1fr;gap:.3rem"></div>
+  </div>
+  <div class="fg" style="margin-top:.7rem"><label>Observaciones</label><textarea id="lq-obs" placeholder="Notas opcionales..."></textarea></div>
+  <div class="modal-btns">
+    <button class="btn btn-sec" onclick="closeModal('m-liq')">Cancelar</button>
+    <button class="btn btn-ghost btn-sml" onclick="calcularLiq()">🔄 Calcular</button>
+    <button class="btn btn-pri" onclick="guardarLiq()">✓ Guardar</button>
+  </div>
+</div></div>
+
+<!-- NUEVO ADELANTO -->
+<div class="overlay" id="m-adelanto"><div class="modal">
+  <h3>💵 REGISTRAR ADELANTO</h3>
+  <div class="form-grid" style="margin-bottom:.7rem">
+    <div class="fg"><label>Chofer</label><select id="ad-chofer"><option value="">— Elegí —</option></select></div>
+    <div class="fg"><label>Fecha</label><input type="date" id="ad-fecha"/></div>
+  </div>
+  <div class="fg" style="margin-bottom:.7rem"><label>Monto ($)</label><input type="number" id="ad-monto" min="0" step="100" placeholder="0"/></div>
+  <div class="fg" style="margin-bottom:.7rem"><label>Descripción</label><input type="text" id="ad-desc" placeholder="Ej: Adelanto semana del 10/3"/></div>
+  <div class="modal-btns">
+    <button class="btn btn-sec" onclick="closeModal('m-adelanto')">Cancelar</button>
+    <button class="btn btn-pri" onclick="guardarAdelanto()">✓ Guardar</button>
+  </div>
+</div></div>
+
+<!-- NUEVO CHOFER -->
+<div class="overlay" id="m-chofer"><div class="modal">
+  <h3>👷 CHOFER</h3>
+  <input type="hidden" id="ch-id">
+  <div class="fg" style="margin-bottom:.7rem"><label>Nombre completo</label><input type="text" id="ch-nombre" placeholder="Apellido, Nombre"/></div>
+  <div class="form-grid" style="margin-bottom:.7rem">
+    <div class="fg"><label>DNI</label><input type="text" id="ch-dni" placeholder="12.345.678"/></div>
+    <div class="fg"><label>Teléfono</label><input type="text" id="ch-tel" placeholder="299-XXX-XXXX"/></div>
+  </div>
+  <div class="form-grid" style="margin-bottom:.7rem">
+    <div class="fg"><label>Licencia</label><input type="text" id="ch-lic" placeholder="Nº de licencia"/></div>
+    <div class="fg"><label>Estado</label>
+      <select id="ch-estado">
+        <option value="activo">Activo</option>
+        <option value="descanso">De descanso</option>
+        <option value="inactivo">Inactivo</option>
+      </select>
+    </div>
+  </div>
+  <div class="fg" style="margin-bottom:.7rem"><label>Observaciones</label><textarea id="ch-obs" placeholder="Notas..."></textarea></div>
+  <div class="modal-btns">
+    <button class="btn btn-sec" onclick="closeModal('m-chofer')">Cancelar</button>
+    <button class="btn btn-pri" onclick="guardarChofer()">✓ Guardar</button>
+  </div>
+</div></div>
+
+<!-- NUEVO CAMIÓN -->
+<div class="overlay" id="m-camion"><div class="modal">
+  <h3>🚚 CAMIÓN</h3>
+  <input type="hidden" id="ca-id">
+  <div class="form-grid" style="margin-bottom:.7rem">
+    <div class="fg"><label>Patente</label><input type="text" id="ca-patente" placeholder="AA 123 BB"/></div>
+    <div class="fg"><label>Modelo</label><input type="text" id="ca-modelo" placeholder="Volvo FH 460"/></div>
+  </div>
+  <div class="form-grid" style="margin-bottom:.7rem">
+    <div class="fg"><label>Año</label><input type="number" id="ca-año" min="1990" max="2030" placeholder="2020"/></div>
+    <div class="fg"><label>Estado</label>
+      <select id="ca-estado">
+        <option value="activo">Activo</option>
+        <option value="mantenimiento">En mantenimiento</option>
+        <option value="inactivo">Inactivo</option>
+      </select>
+    </div>
+  </div>
+  <div class="fg" style="margin-bottom:.7rem"><label>Observaciones</label><textarea id="ca-obs" placeholder="Notas..."></textarea></div>
+  <div class="modal-btns">
+    <button class="btn btn-sec" onclick="closeModal('m-camion')">Cancelar</button>
+    <button class="btn btn-pri" onclick="guardarCamion()">✓ Guardar</button>
+  </div>
+</div></div>
+
+<!-- NUEVA CANTERA -->
+<div class="overlay" id="m-cantera"><div class="modal">
+  <h3>⛏ CANTERA</h3>
+  <input type="hidden" id="ct-id">
+  <div class="fg" style="margin-bottom:.7rem"><label>Nombre</label><input type="text" id="ct-nombre" placeholder="Cantera San Miguel"/></div>
+  <div class="form-grid" style="margin-bottom:.7rem">
+    <div class="fg"><label>Localidad</label><input type="text" id="ct-loc" placeholder="Paraná"/></div>
+    <div class="fg"><label>Provincia</label><input type="text" id="ct-prov" value="Entre Ríos"/></div>
+  </div>
+  <div class="fg" style="margin-bottom:.7rem"><label>Observaciones</label><textarea id="ct-obs" placeholder="Notas..."></textarea></div>
+  <div class="modal-btns">
+    <button class="btn btn-sec" onclick="closeModal('m-cantera')">Cancelar</button>
+    <button class="btn btn-pri" onclick="guardarCantera()">✓ Guardar</button>
+  </div>
+</div></div>
+
+<!-- NUEVO DEPÓSITO -->
+<div class="overlay" id="m-deposito"><div class="modal">
+  <h3>🏭 DEPÓSITO</h3>
+  <input type="hidden" id="dp-id">
+  <div class="fg" style="margin-bottom:.7rem"><label>Nombre</label><input type="text" id="dp-nombre" placeholder="Depósito Neuquén Centro"/></div>
+  <div class="form-grid" style="margin-bottom:.7rem">
+    <div class="fg"><label>Localidad</label><input type="text" id="dp-loc" placeholder="Neuquén Capital"/></div>
+    <div class="fg"><label>Provincia</label><input type="text" id="dp-prov" value="Neuquén"/></div>
+  </div>
+  <div class="fg" style="margin-bottom:.7rem"><label>Observaciones</label><textarea id="dp-obs" placeholder="Notas..."></textarea></div>
+  <div class="modal-btns">
+    <button class="btn btn-sec" onclick="closeModal('m-deposito')">Cancelar</button>
+    <button class="btn btn-pri" onclick="guardarDeposito()">✓ Guardar</button>
+  </div>
+</div></div>
+
+<!-- NUEVA RUTA -->
+<div class="overlay" id="m-ruta"><div class="modal">
+  <h3>🗺️ RUTA</h3>
+  <input type="hidden" id="rt-id">
+  <div class="fg" style="margin-bottom:.7rem"><label>Cantera (origen)</label><select id="rt-cantera"><option value="">— Elegí —</option></select></div>
+  <div class="fg" style="margin-bottom:.7rem"><label>Depósito (destino)</label><select id="rt-deposito"><option value="">— Elegí —</option></select></div>
+  <div class="fg" style="margin-bottom:.7rem">
+    <label>Km ida y vuelta (total)</label>
+    <input type="number" id="rt-km" min="1" step="1" placeholder="Ej: 1840 (desde Google Maps)"/>
+    <p style="font-size:.72rem;color:var(--gris-d);margin-top:4px">💡 Buscá la ruta en Google Maps y sumá ida + vuelta</p>
+  </div>
+  <div class="fg" style="margin-bottom:.7rem"><label>Observaciones</label><input type="text" id="rt-obs" placeholder="Opcional"/></div>
+  <div class="modal-btns">
+    <button class="btn btn-sec" onclick="closeModal('m-ruta')">Cancelar</button>
+    <button class="btn btn-pri" onclick="guardarRuta()">✓ Guardar</button>
+  </div>
+</div></div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ══ SUPABASE ══
+const {createClient} = supabase;
+const SUPA_URL = 'https://xclobkgmaxioifpkukul.supabase.co';
+const SUPA_KEY = 'sb_publishable_khr5VAkZBjKWvWgVuOTwFA_S-MgErzZ';
+const supa = createClient(SUPA_URL, SUPA_KEY);
+let currentUser = null;
+
+// ══ ESTADO ══
+let choferes=[], camiones=[], canteras=[], depositos=[], rutas=[];
+let viajes=[], cargas=[], descargas=[], liquidaciones=[], adelantos=[];
+
+// ══ HELPERS ══
+function iso(d){const z=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate());}
+function fmtDate(s){if(!s)return '—';const d=new Date(s+'T12:00:00');return `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()}`;}
+function fmtM(n){return '$'+(Math.round(n/1000)*1000).toLocaleString('es-AR');}
+function fmtN(n){return n!=null?Number(n).toLocaleString('es-AR'):'—';}
+function getChofer(id){return choferes.find(c=>c.id===parseInt(id));}
+function getCamion(id){return camiones.find(c=>c.id===parseInt(id));}
+function getCantera(id){return canteras.find(c=>c.id===parseInt(id));}
+function getDeposito(id){return depositos.find(c=>c.id===parseInt(id));}
+function getRuta(cantId,depId){return rutas.find(r=>r.cantera_id===parseInt(cantId)&&r.deposito_id===parseInt(depId));}
+
+let _toastT;
+function toast(msg,tipo=''){const t=document.getElementById('toast');t.textContent=msg;t.className='toast show '+(tipo||'');clearTimeout(_toastT);_toastT=setTimeout(()=>t.classList.remove('show'),2600);}
+
+// ══ NAVEGACIÓN ══
+function goPage(id,btn){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-'+id).classList.add('active');
+  document.querySelectorAll('.sb-item').forEach(b=>b.classList.remove('active'));
+  if(btn)btn.classList.add('active');
+  if(id==='viajes')renderViajes();
+  else if(id==='liquidaciones')renderLiquidaciones();
+  else if(id==='choferes')renderChoferes();
+  else if(id==='camiones')renderCamiones();
+  else if(id==='rutas')renderRutas();
+  else if(id==='lugares')renderLugares();
+  if(window.innerWidth<=900)closeSidebar();
+}
+function toggleSidebar(){const sb=document.querySelector('.sidebar'),ov=document.getElementById('sb-overlay');sb.classList.contains('open')?(sb.classList.remove('open'),ov.style.display='none'):(sb.classList.add('open'),ov.style.display='block');}
+function closeSidebar(){document.querySelector('.sidebar').classList.remove('open');document.getElementById('sb-overlay').style.display='none';}
+
+// ══ MODALES ══
+function openModal(id){
+  if(id==='m-viaje')_prepViajeModal();
+  else if(id==='m-carga')_prepCargaModal();
+  else if(id==='m-descarga')_prepDescargaModal();
+  else if(id==='m-liq')_prepLiqModal();
+  else if(id==='m-adelanto')_prepAdelantoModal();
+  else if(id==='m-ruta')_prepRutaModal();
+  document.getElementById(id).classList.add('open');
+}
+function closeModal(id){document.getElementById(id).classList.remove('open');}
+document.addEventListener('click',e=>{if(e.target.classList.contains('overlay'))e.target.classList.remove('open');});
+
+function _prepViajeModal(){
+  const s=document.getElementById('vj-chofer');s.innerHTML='<option value="">— Elegí —</option>';
+  choferes.filter(c=>c.estado==='activo').forEach(c=>s.innerHTML+=`<option value="${c.id}">${c.nombre}</option>`);
+  const sc=document.getElementById('vj-camion');sc.innerHTML='<option value="">— Elegí —</option>';
+  camiones.filter(c=>c.estado==='activo').forEach(c=>sc.innerHTML+=`<option value="${c.id}">${c.patente}${c.modelo?' — '+c.modelo:''}</option>`);
+  document.getElementById('vj-obs').value='';
+}
+function _prepCargaModal(){
+  document.getElementById('cg-fecha').value=iso(new Date());
+  const s=document.getElementById('cg-cantera');s.innerHTML='<option value="">— Elegí —</option>';
+  canteras.forEach(c=>s.innerHTML+=`<option value="${c.id}">${c.nombre}${c.localidad?' ('+c.localidad+')':''}</option>`);
+  ['cg-toneladas','cg-remito-num','cg-obs'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('cg-preview').innerHTML='📎 Tocá para adjuntar foto o PDF';
+  document.getElementById('cg-file').value='';
+}
+function _prepDescargaModal(){
+  document.getElementById('dc-fecha').value=iso(new Date());
+  const s=document.getElementById('dc-deposito');s.innerHTML='<option value="">— Elegí —</option>';
+  depositos.forEach(d=>s.innerHTML+=`<option value="${d.id}">${d.nombre}${d.localidad?' ('+d.localidad+')':''}</option>`);
+  ['dc-toneladas','dc-remito-num','dc-obs'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('dc-preview').innerHTML='📎 Tocá para adjuntar foto o PDF';
+  document.getElementById('dc-file').value='';
+}
+function _prepLiqModal(){
+  const s=document.getElementById('lq-chofer');s.innerHTML='<option value="">— Elegí —</option>';
+  choferes.forEach(c=>s.innerHTML+=`<option value="${c.id}">${c.nombre}</option>`);
+  ['lq-precio-km','lq-basico-dia','lq-dias','lq-obs'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('lq-desde').value='';document.getElementById('lq-hasta').value=iso(new Date());
+  document.getElementById('lq-viajes-check').innerHTML='<span style="font-size:.82rem;color:var(--gris-d)">Seleccioná un chofer para ver sus viajes</span>';
+  document.getElementById('lq-adelantos-check').innerHTML='<span style="font-size:.82rem;color:var(--gris-d)">Seleccioná un chofer para ver los adelantos pendientes</span>';
+  document.getElementById('lq-resumen').style.display='none';
+  document.getElementById('lq-km-preview').textContent='';
+}
+function _prepAdelantoModal(){
+  const s=document.getElementById('ad-chofer');s.innerHTML='<option value="">— Elegí —</option>';
+  choferes.forEach(c=>s.innerHTML+=`<option value="${c.id}">${c.nombre}</option>`);
+  document.getElementById('ad-fecha').value=iso(new Date());
+  document.getElementById('ad-monto').value='';
+  document.getElementById('ad-desc').value='';
+}
+function _prepRutaModal(){
+  document.getElementById('rt-id').value='';
+  const sc=document.getElementById('rt-cantera');sc.innerHTML='<option value="">— Elegí —</option>';
+  canteras.forEach(c=>sc.innerHTML+=`<option value="${c.id}">${c.nombre}</option>`);
+  const sd=document.getElementById('rt-deposito');sd.innerHTML='<option value="">— Elegí —</option>';
+  depositos.forEach(d=>sd.innerHTML+=`<option value="${d.id}">${d.nombre}</option>`);
+  ['rt-km','rt-obs'].forEach(id=>document.getElementById(id).value='');
+}
+
+// ══ REMITO UPLOAD PREVIEW ══
+function previewRemito(input, previewId){
+  const prev=document.getElementById(previewId);
+  const file=input.files[0];if(!file)return;
+  if(file.type.startsWith('image/')){
+    const url=URL.createObjectURL(file);
+    prev.innerHTML=`<img src="${url}" class="remito-thumb"> <span style="font-size:.78rem;color:var(--verde);margin-left:6px">✓ ${file.name}</span>`;
+  } else {
+    prev.innerHTML=`<span style="font-size:.82rem;color:var(--verde)">📄 ${file.name}</span>`;
+  }
+}
+
+async function uploadRemito(file, viaje_id, tipo){
+  if(!file) return null;
+  try{
+    const ext = file.name.split('.').pop();
+    const path = `viaje-${viaje_id}/${tipo}-${Date.now()}.${ext}`;
+    const {data,error} = await supa.storage.from('remitos').upload(path, file, {upsert:true});
+    if(error) throw error;
+    const {data:{publicUrl}} = supa.storage.from('remitos').getPublicUrl(path);
+    return publicUrl;
+  }catch(e){console.error('Upload error:',e);return null;}
+}
+
+// ══ VIAJES ══
+async function guardarViaje(){
+  const chofer_id=document.getElementById('vj-chofer').value;
+  const camion_id=document.getElementById('vj-camion').value;
+  if(!chofer_id||!camion_id){toast('Completá chofer y camión','err');return;}
+  const obs=document.getElementById('vj-obs').value.trim();
+  const{data,error}=await supa.from('viajes').insert({chofer_id:parseInt(chofer_id),camion_id:parseInt(camion_id),estado:'en_curso',obs}).select().single();
+  if(error){toast('Error: '+error.message,'err');return;}
+  viajes.unshift({...data,carga:null,descarga:null});
+  closeModal('m-viaje');renderViajes();renderSidebar();
+  toast('✓ Tramo creado','ok');
+}
+
+function abrirCarga(viajeId){
+  document.getElementById('cg-viaje-id').value=viajeId;
+  _prepCargaModal();
+  document.getElementById('m-carga').classList.add('open');
+}
+function abrirDescarga(viajeId){
+  document.getElementById('dc-viaje-id').value=viajeId;
+  _prepDescargaModal();
+  document.getElementById('m-descarga').classList.add('open');
+}
+
+async function guardarCarga(){
+  const viaje_id=parseInt(document.getElementById('cg-viaje-id').value);
+  const fecha=document.getElementById('cg-fecha').value;
+  const cantera_id=document.getElementById('cg-cantera').value;
+  const toneladas=parseFloat(document.getElementById('cg-toneladas').value)||null;
+  const remito_num=document.getElementById('cg-remito-num').value.trim();
+  const obs=document.getElementById('cg-obs').value.trim();
+  const file=document.getElementById('cg-file').files[0];
+  if(!fecha||!cantera_id){toast('Completá fecha y cantera','err');return;}
+  const btn=document.querySelector('#m-carga .btn-pri');btn.textContent='Guardando...';btn.disabled=true;
+  const remito_url = await uploadRemito(file, viaje_id, 'carga');
+  const{data,error}=await supa.from('cargas').insert({viaje_id,fecha,cantera_id:parseInt(cantera_id),toneladas,remito_num,remito_url,obs}).select().single();
+  btn.textContent='✓ Guardar carga';btn.disabled=false;
+  if(error){toast('Error: '+error.message,'err');return;}
+  const v=viajes.find(x=>x.id===viaje_id);if(v)v.carga=data;
+  closeModal('m-carga');renderViajes();
+  toast('✓ Carga registrada','ok');
+}
+
+async function guardarDescarga(){
+  const viaje_id=parseInt(document.getElementById('dc-viaje-id').value);
+  const fecha=document.getElementById('dc-fecha').value;
+  const deposito_id=document.getElementById('dc-deposito').value;
+  const toneladas=parseFloat(document.getElementById('dc-toneladas').value)||null;
+  const remito_num=document.getElementById('dc-remito-num').value.trim();
+  const obs=document.getElementById('dc-obs').value.trim();
+  const file=document.getElementById('dc-file').files[0];
+  if(!fecha||!deposito_id){toast('Completá fecha y depósito','err');return;}
+  const btn=document.querySelector('#m-descarga .btn-pri');btn.textContent='Guardando...';btn.disabled=true;
+  const remito_url = await uploadRemito(file, viaje_id, 'descarga');
+  const{data,error}=await supa.from('descargas').insert({viaje_id,fecha,deposito_id:parseInt(deposito_id),toneladas,remito_num,remito_url,obs}).select().single();
+  if(error){btn.textContent='✓ Guardar descarga';btn.disabled=false;toast('Error: '+error.message,'err');return;}
+  // Marcar viaje como completado
+  await supa.from('viajes').update({estado:'completado'}).eq('id',viaje_id);
+  const v=viajes.find(x=>x.id===viaje_id);
+  if(v){v.descarga=data;v.estado='completado';}
+  btn.textContent='✓ Guardar descarga';btn.disabled=false;
+  closeModal('m-descarga');renderViajes();renderSidebar();
+  toast('✓ Descarga registrada — tramo completado','ok');
+}
+
+function renderViajes(){
+  const lista=document.getElementById('viajes-lista');lista.innerHTML='';
+  const filtChofer=document.getElementById('f-chofer').value;
+  const filtEstado=document.getElementById('f-estado').value;
+  let filtered=viajes.filter(v=>{
+    if(filtChofer&&String(v.chofer_id)!==filtChofer)return false;
+    if(filtEstado&&v.estado!==filtEstado)return false;
+    return true;
+  });
+  const enCurso=viajes.filter(v=>v.estado==='en_curso').length;
+  const completados=viajes.filter(v=>v.estado==='completado').length;
+  document.getElementById('v-encurso').textContent=enCurso;
+  document.getElementById('v-completados').textContent=completados;
+  if(!filtered.length){lista.innerHTML='<div class="empty"><div class="ei">🚛</div><p>No hay tramos registrados.</p></div>';return;}
+  filtered.forEach(v=>{
+    const chofer=getChofer(v.chofer_id);
+    const camion=getCamion(v.camion_id);
+    const cg=v.carga;
+    const dc=v.descarga;
+    // Calcular km si hay carga y descarga
+    let km='—';
+    if(cg&&dc){
+      const ruta=getRuta(cg.cantera_id,dc.deposito_id);
+      if(ruta)km=fmtN(ruta.km_ida_vuelta)+' km';
+    }
+    const div=document.createElement('div');
+    div.className=`viaje-card ${v.estado}`;
+    div.innerHTML=`
+      <div class="vc-head">
+        <div>
+          <div class="vc-title">🚛 ${chofer?.nombre||'Sin chofer'} &nbsp;·&nbsp; ${camion?.patente||'Sin camión'}</div>
+          <div style="font-size:.75rem;color:var(--gris-d);margin-top:2px">#${v.id} · creado ${fmtDate(v.created_at?.slice(0,10))}</div>
+        </div>
+        <span class="vc-badge ${v.estado}">${v.estado==='en_curso'?'⏳ En curso':'✓ Completado'}</span>
+      </div>
+      <div class="vc-body">
+        <div class="vc-item">⛏ <b>Carga:</b> ${cg?`${fmtDate(cg.fecha)} · ${getCantera(cg.cantera_id)?.nombre||'—'} · ${cg.toneladas||'—'} tn · Rem. ${cg.remito_num||'—'}`:'Sin registrar'}</div>
+        <div class="vc-item">🏭 <b>Descarga:</b> ${dc?`${fmtDate(dc.fecha)} · ${getDeposito(dc.deposito_id)?.nombre||'—'} · ${dc.toneladas||'—'} tn · Rem. ${dc.remito_num||'—'}`:'Sin registrar'}</div>
+        ${km!=='—'?`<div class="vc-item">📍 <b>Km totales:</b> ${km}</div>`:''}
+        ${v.obs?`<div class="vc-item">📝 ${v.obs}</div>`:''}
+      </div>
+      <div class="vc-actions">
+        ${!cg?`<button class="btn btn-pri btn-sml" onclick="abrirCarga(${v.id})">⛏ Registrar carga</button>`:''}
+        ${cg&&!dc?`<button class="btn btn-success btn-sml" onclick="abrirDescarga(${v.id})">🏭 Registrar descarga</button>`:''}
+        ${cg&&cg.remito_url?`<a href="${cg.remito_url}" target="_blank" class="btn btn-ghost btn-sml">📄 Remito carga</a>`:''}
+        ${dc&&dc.remito_url?`<a href="${dc.remito_url}" target="_blank" class="btn btn-ghost btn-sml">📄 Remito descarga</a>`:''}
+        <button class="btn btn-danger btn-sml" onclick="eliminarViaje(${v.id})" style="margin-left:auto">✕</button>
+      </div>`;
+    lista.appendChild(div);
+  });
+}
+
+async function eliminarViaje(id){
+  if(!confirm('¿Eliminar este tramo y sus remitos?'))return;
+  await supa.from('cargas').delete().eq('viaje_id',id);
+  await supa.from('descargas').delete().eq('viaje_id',id);
+  await supa.from('viajes').delete().eq('id',id);
+  viajes=viajes.filter(v=>v.id!==id);
+  renderViajes();renderSidebar();toast('✓ Tramo eliminado','ok');
+}
+
+// ══ LIQUIDACIONES ══
+async function cargarViajesLiq(){
+  const choferId=parseInt(document.getElementById('lq-chofer').value);
+  if(!choferId){return;}
+  const viajesChofer=viajes.filter(v=>v.chofer_id===choferId&&v.estado==='completado');
+  const liqViajesIds=new Set(liquidaciones.flatMap(l=>l._viajes_ids||[]));
+  const disponibles=viajesChofer.filter(v=>!liqViajesIds.has(v.id));
+  const cont=document.getElementById('lq-viajes-check');
+  if(!disponibles.length){cont.innerHTML='<span style="font-size:.82rem;color:var(--gris-d)">No hay tramos completados sin liquidar para este chofer.</span>';document.getElementById('lq-km-preview').textContent='';return;}
+  cont.innerHTML='';
+  disponibles.forEach(v=>{
+    const cg=v.carga;const dc=v.descarga;
+    const ruta=cg&&dc?getRuta(cg.cantera_id,dc.deposito_id):null;
+    const km=ruta?ruta.km_ida_vuelta:0;
+    const label=`${fmtDate(cg?.fecha)} → ${fmtDate(dc?.fecha)} · ${getCantera(cg?.cantera_id)?.nombre||'?'} → ${getDeposito(dc?.deposito_id)?.nombre||'?'} · ${km} km`;
+    const lbl=document.createElement('label');
+    lbl.style.cssText='display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;font-size:.82rem;border-bottom:1px solid var(--gris);flex-wrap:wrap';
+    lbl.innerHTML=`<input type="checkbox" value="${v.id}" data-km="${km}" checked style="accent-color:var(--azul)" onchange="actualizarKmLiq()"> #${v.id} · ${label}`;
+    cont.appendChild(lbl);
+  });
+  actualizarKmLiq();
+  // Adelantos pendientes
+  const adelChofer=adelantos.filter(a=>a.chofer_id===choferId&&!a.liquidacion_id);
+  const contA=document.getElementById('lq-adelantos-check');
+  if(!adelChofer.length){contA.innerHTML='<span style="font-size:.82rem;color:var(--gris-d)">Sin adelantos pendientes.</span>';return;}
+  contA.innerHTML='';
+  adelChofer.forEach(a=>{
+    const lbl=document.createElement('label');
+    lbl.style.cssText='display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;font-size:.82rem;border-bottom:1px solid var(--gris)';
+    lbl.innerHTML=`<input type="checkbox" value="${a.id}" data-monto="${a.monto}" checked style="accent-color:var(--azul)" onchange="calcularLiq()"> ${fmtDate(a.fecha)} · ${a.descripcion||'Adelanto'} · <b>${fmtM(a.monto)}</b>`;
+    contA.appendChild(lbl);
+  });
+  calcularLiq();
+}
+
+function actualizarKmLiq(){
+  const checks=document.querySelectorAll('#lq-viajes-check input[type=checkbox]:checked');
+  let km=0;checks.forEach(c=>km+=parseFloat(c.dataset.km)||0);
+  document.getElementById('lq-km-preview').textContent=checks.length?`${checks.length} viajes seleccionados · ${fmtN(km)} km totales`:'';
+  calcularLiq();
+}
+
+function calcularLiq(){
+  const precioKm=parseFloat(document.getElementById('lq-precio-km').value)||0;
+  const basicoDia=parseFloat(document.getElementById('lq-basico-dia').value)||0;
+  const dias=parseInt(document.getElementById('lq-dias').value)||0;
+  const vChecks=document.querySelectorAll('#lq-viajes-check input[type=checkbox]:checked');
+  let km=0;vChecks.forEach(c=>km+=parseFloat(c.dataset.km)||0);
+  const aChecks=document.querySelectorAll('#lq-adelantos-check input[type=checkbox]:checked');
+  let adelTotal=0;aChecks.forEach(c=>adelTotal+=parseFloat(c.dataset.monto)||0);
+  const subtKm=km*precioKm;
+  const subtBasico=dias*basicoDia;
+  const total=subtKm+subtBasico-adelTotal;
+  const res=document.getElementById('lq-resumen');
+  res.style.display='block';
+  document.getElementById('lq-resumen-body').innerHTML=`
+    <span style="color:var(--gris-d)">Km totales:</span><span style="font-weight:700;font-family:'JetBrains Mono',monospace">${fmtN(km)} km</span>
+    <span style="color:var(--gris-d)">Subtotal km:</span><span style="font-weight:700;color:var(--azul-m);font-family:'JetBrains Mono',monospace">${fmtM(subtKm)}</span>
+    <span style="color:var(--gris-d)">Días trabajados:</span><span style="font-weight:700;font-family:'JetBrains Mono',monospace">${dias}</span>
+    <span style="color:var(--gris-d)">Subtotal básico:</span><span style="font-weight:700;color:var(--azul-m);font-family:'JetBrains Mono',monospace">${fmtM(subtBasico)}</span>
+    <span style="color:var(--gris-d)">Total adelantos:</span><span style="font-weight:700;color:var(--rojo);font-family:'JetBrains Mono',monospace">- ${fmtM(adelTotal)}</span>
+    <span style="color:var(--gris-d);font-weight:800">TOTAL NETO:</span><span style="font-weight:800;font-size:1.1rem;color:var(--verde);font-family:'JetBrains Mono',monospace">${fmtM(total)}</span>`;
+}
+
+async function guardarLiq(){
+  const choferId=parseInt(document.getElementById('lq-chofer').value);
+  if(!choferId){toast('Seleccioná un chofer','err');return;}
+  const precioKm=parseFloat(document.getElementById('lq-precio-km').value)||0;
+  const basicoDia=parseFloat(document.getElementById('lq-basico-dia').value)||0;
+  const dias=parseInt(document.getElementById('lq-dias').value)||0;
+  const desde=document.getElementById('lq-desde').value;
+  const hasta=document.getElementById('lq-hasta').value;
+  if(!desde||!hasta){toast('Completá el período','err');return;}
+  const vChecks=document.querySelectorAll('#lq-viajes-check input[type=checkbox]:checked');
+  let km=0,vIds=[];vChecks.forEach(c=>{km+=parseFloat(c.dataset.km)||0;vIds.push(parseInt(c.value));});
+  const aChecks=document.querySelectorAll('#lq-adelantos-check input[type=checkbox]:checked');
+  let adelTotal=0,aIds=[];aChecks.forEach(c=>{adelTotal+=parseFloat(c.dataset.monto)||0;aIds.push(parseInt(c.value));});
+  const subtKm=km*precioKm;const subtBasico=dias*basicoDia;const total=subtKm+subtBasico-adelTotal;
+  const obs=document.getElementById('lq-obs').value.trim();
+  const{data,error}=await supa.from('liquidaciones').insert({
+    chofer_id:choferId,fecha_desde:desde,fecha_hasta:hasta,
+    dias_trabajados:dias,km_totales:km,precio_km:precioKm,basico_dia:basicoDia,
+    subtotal_km:subtKm,subtotal_basico:subtBasico,
+    total_adelantos:adelTotal,total_neto:total,
+    estado:'borrador',obs
+  }).select().single();
+  if(error){toast('Error: '+error.message,'err');return;}
+  // Vincular viajes
+  if(vIds.length)await supa.from('liquidacion_viajes').insert(vIds.map(vid=>({liquidacion_id:data.id,viaje_id:vid})));
+  // Vincular adelantos
+  if(aIds.length)await supa.from('adelantos').update({liquidacion_id:data.id}).in('id',aIds);
+  liquidaciones.unshift({...data,_viajes_ids:vIds});
+  adelantos.forEach(a=>{if(aIds.includes(a.id))a.liquidacion_id=data.id;});
+  closeModal('m-liq');renderLiquidaciones();renderSidebar();
+  toast('✓ Liquidación guardada','ok');
+}
+
+async function cerrarLiq(id){
+  if(!confirm('¿Cerrar esta liquidación? No podrás modificarla.'))return;
+  await supa.from('liquidaciones').update({estado:'cerrada'}).eq('id',id);
+  const l=liquidaciones.find(x=>x.id===id);if(l)l.estado='cerrada';
+  renderLiquidaciones();toast('✓ Liquidación cerrada','ok');
+}
+
+async function eliminarLiq(id){
+  if(!confirm('¿Eliminar esta liquidación?'))return;
+  await supa.from('liquidacion_viajes').delete().eq('liquidacion_id',id);
+  await supa.from('liquidaciones').delete().eq('id',id);
+  liquidaciones=liquidaciones.filter(l=>l.id!==id);
+  renderLiquidaciones();toast('✓ Eliminada','ok');
+}
+
+function renderLiquidaciones(){
+  const cont=document.getElementById('liq-lista');cont.innerHTML='';
+  if(!liquidaciones.length){cont.innerHTML='<div class="empty"><div class="ei">💰</div><p>No hay liquidaciones registradas.</p></div>';return;}
+  liquidaciones.forEach(l=>{
+    const chofer=getChofer(l.chofer_id);
+    const div=document.createElement('div');
+    div.className=`liq-card ${l.estado}`;
+    div.innerHTML=`
+      <div class="liq-head">
+        <div>
+          <div class="liq-chofer">${chofer?.nombre||'—'}</div>
+          <div class="liq-periodo">📅 ${fmtDate(l.fecha_desde)} → ${fmtDate(l.fecha_hasta)}</div>
+        </div>
+        <span class="pill ${l.estado}">${l.estado==='cerrada'?'✓ Cerrada':'📝 Borrador'}</span>
+      </div>
+      <div class="liq-nums">
+        <div class="liq-num"><div class="v">${fmtN(l.km_totales)}</div><div class="l">Km totales</div></div>
+        <div class="liq-num"><div class="v">${l.dias_trabajados}</div><div class="l">Días trab.</div></div>
+        <div class="liq-num green"><div class="v">${fmtM(l.subtotal_km)}</div><div class="l">Subtot. km</div></div>
+        <div class="liq-num green"><div class="v">${fmtM(l.subtotal_basico)}</div><div class="l">Subtot. básico</div></div>
+        <div class="liq-num red"><div class="v">- ${fmtM(l.total_adelantos)}</div><div class="l">Adelantos</div></div>
+        <div class="liq-num orange"><div class="v">${fmtM(l.total_neto)}</div><div class="l">TOTAL NETO</div></div>
+      </div>
+      ${l.obs?`<div style="padding:.5rem 1.1rem;font-size:.8rem;color:var(--gris-d)">📝 ${l.obs}</div>`:''}
+      <div class="liq-actions">
+        ${l.estado==='borrador'?`<button class="btn btn-success btn-sml" onclick="cerrarLiq(${l.id})">✓ Cerrar liquidación</button>`:''}
+        <button class="btn btn-danger btn-sml" onclick="eliminarLiq(${l.id})">✕ Eliminar</button>
+      </div>`;
+    cont.appendChild(div);
+  });
+}
+
+// ══ CHOFERES ══
+async function guardarChofer(){
+  const id=document.getElementById('ch-id').value;
+  const nombre=document.getElementById('ch-nombre').value.trim();
+  if(!nombre){toast('Ingresá el nombre','err');return;}
+  const payload={nombre,dni:document.getElementById('ch-dni').value.trim(),telefono:document.getElementById('ch-tel').value.trim(),licencia:document.getElementById('ch-lic').value.trim(),estado:document.getElementById('ch-estado').value,obs:document.getElementById('ch-obs').value.trim()};
+  if(id){
+    await supa.from('choferes').update(payload).eq('id',id);
+    const c=choferes.find(x=>x.id===parseInt(id));if(c)Object.assign(c,payload);
+  }else{
+    const{data,error}=await supa.from('choferes').insert(payload).select().single();
+    if(error){toast('Error: '+error.message,'err');return;}
+    choferes.push(data);
+  }
+  closeModal('m-chofer');renderChoferes();renderSidebar();toast('✓ Chofer guardado','ok');
+}
+
+function editarChofer(id){
+  const c=choferes.find(x=>x.id===id);if(!c)return;
+  document.getElementById('ch-id').value=id;
+  document.getElementById('ch-nombre').value=c.nombre||'';document.getElementById('ch-dni').value=c.dni||'';
+  document.getElementById('ch-tel').value=c.telefono||'';document.getElementById('ch-lic').value=c.licencia||'';
+  document.getElementById('ch-estado').value=c.estado||'activo';document.getElementById('ch-obs').value=c.obs||'';
+  document.getElementById('m-chofer').classList.add('open');
+}
+
+async function eliminarChofer(id){
+  if(!confirm('¿Eliminar este chofer?'))return;
+  await supa.from('choferes').delete().eq('id',id);
+  choferes=choferes.filter(c=>c.id!==id);renderChoferes();renderSidebar();toast('✓ Eliminado','ok');
+}
+
+function renderChoferes(){
+  const tbody=document.getElementById('choferes-tbody');tbody.innerHTML='';
+  if(!choferes.length){tbody.innerHTML=`<tr><td colspan="6" class="tbl-empty">Sin choferes registrados.</td></tr>`;return;}
+  choferes.forEach(c=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td style="font-weight:700">${c.nombre}</td><td>${c.dni||'—'}</td><td>${c.telefono||'—'}</td><td>${c.licencia||'—'}</td><td><span class="pill ${c.estado}">${c.estado==='activo'?'● Activo':c.estado==='descanso'?'⏸ Descanso':'○ Inactivo'}</span></td>
+    <td style="display:flex;gap:4px"><button class="btn btn-sec btn-sml" onclick="editarChofer(${c.id})">✏️</button><button class="btn btn-danger btn-sml" onclick="eliminarChofer(${c.id})">✕</button></td>`;
+    tbody.appendChild(tr);
+  });
+  document.getElementById('sb-chof-meta').textContent=choferes.length+' chofer'+(choferes.length!==1?'es':'');
+}
+
+// ══ CAMIONES ══
+async function guardarCamion(){
+  const id=document.getElementById('ca-id').value;
+  const patente=document.getElementById('ca-patente').value.trim().toUpperCase();
+  if(!patente){toast('Ingresá la patente','err');return;}
+  const payload={patente,modelo:document.getElementById('ca-modelo').value.trim(),año:parseInt(document.getElementById('ca-año').value)||null,estado:document.getElementById('ca-estado').value,obs:document.getElementById('ca-obs').value.trim()};
+  if(id){
+    await supa.from('camiones').update(payload).eq('id',id);
+    const c=camiones.find(x=>x.id===parseInt(id));if(c)Object.assign(c,payload);
+  }else{
+    const{data,error}=await supa.from('camiones').insert(payload).select().single();
+    if(error){toast('Error: '+error.message,'err');return;}
+    camiones.push(data);
+  }
+  closeModal('m-camion');renderCamiones();renderSidebar();toast('✓ Camión guardado','ok');
+}
+
+function editarCamion(id){
+  const c=camiones.find(x=>x.id===id);if(!c)return;
+  document.getElementById('ca-id').value=id;
+  document.getElementById('ca-patente').value=c.patente||'';document.getElementById('ca-modelo').value=c.modelo||'';
+  document.getElementById('ca-año').value=c.año||'';document.getElementById('ca-estado').value=c.estado||'activo';
+  document.getElementById('ca-obs').value=c.obs||'';document.getElementById('m-camion').classList.add('open');
+}
+
+async function eliminarCamion(id){
+  if(!confirm('¿Eliminar este camión?'))return;
+  await supa.from('camiones').delete().eq('id',id);
+  camiones=camiones.filter(c=>c.id!==id);renderCamiones();renderSidebar();toast('✓ Eliminado','ok');
+}
+
+function renderCamiones(){
+  const tbody=document.getElementById('camiones-tbody');tbody.innerHTML='';
+  if(!camiones.length){tbody.innerHTML=`<tr><td colspan="5" class="tbl-empty">Sin camiones registrados.</td></tr>`;return;}
+  camiones.forEach(c=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td style="font-weight:700;font-family:'JetBrains Mono',monospace">${c.patente}</td><td>${c.modelo||'—'}</td><td>${c.año||'—'}</td><td><span class="pill ${c.estado==='mantenimiento'?'descanso':c.estado}">${c.estado==='activo'?'● Activo':c.estado==='mantenimiento'?'🔧 Mantenimiento':'○ Inactivo'}</span></td>
+    <td style="display:flex;gap:4px"><button class="btn btn-sec btn-sml" onclick="editarCamion(${c.id})">✏️</button><button class="btn btn-danger btn-sml" onclick="eliminarCamion(${c.id})">✕</button></td>`;
+    tbody.appendChild(tr);
+  });
+  document.getElementById('sb-cam-meta').textContent=camiones.length+' camión'+(camiones.length!==1?'es':'');
+}
+
+// ══ CANTERAS & DEPÓSITOS ══
+async function guardarCantera(){
+  const id=document.getElementById('ct-id').value;
+  const nombre=document.getElementById('ct-nombre').value.trim();
+  if(!nombre){toast('Ingresá el nombre','err');return;}
+  const payload={nombre,localidad:document.getElementById('ct-loc').value.trim(),provincia:document.getElementById('ct-prov').value.trim(),obs:document.getElementById('ct-obs').value.trim()};
+  if(id){await supa.from('canteras').update(payload).eq('id',id);const c=canteras.find(x=>x.id===parseInt(id));if(c)Object.assign(c,payload);}
+  else{const{data,error}=await supa.from('canteras').insert(payload).select().single();if(error){toast('Error: '+error.message,'err');return;}canteras.push(data);}
+  closeModal('m-cantera');renderLugares();toast('✓ Cantera guardada','ok');
+}
+async function guardarDeposito(){
+  const id=document.getElementById('dp-id').value;
+  const nombre=document.getElementById('dp-nombre').value.trim();
+  if(!nombre){toast('Ingresá el nombre','err');return;}
+  const payload={nombre,localidad:document.getElementById('dp-loc').value.trim(),provincia:document.getElementById('dp-prov').value.trim(),obs:document.getElementById('dp-obs').value.trim()};
+  if(id){await supa.from('depositos').update(payload).eq('id',id);const d=depositos.find(x=>x.id===parseInt(id));if(d)Object.assign(d,payload);}
+  else{const{data,error}=await supa.from('depositos').insert(payload).select().single();if(error){toast('Error: '+error.message,'err');return;}depositos.push(data);}
+  closeModal('m-deposito');renderLugares();toast('✓ Depósito guardado','ok');
+}
+
+function renderLugares(){
+  const cl=document.getElementById('canteras-lista');cl.innerHTML='';
+  if(!canteras.length)cl.innerHTML='<div style="color:var(--gris-d);font-size:.84rem;padding:.5rem 0">Sin canteras. Agregá una.</div>';
+  canteras.forEach(c=>{
+    cl.innerHTML+=`<div style="display:flex;align-items:center;justify-content:space-between;padding:.5rem 0;border-bottom:1px solid var(--gris)">
+      <div><div style="font-weight:700;font-size:.88rem">${c.nombre}</div><div style="font-size:.75rem;color:var(--gris-d)">${c.localidad||''}${c.localidad&&c.provincia?', ':''}${c.provincia||''}</div></div>
+      <div style="display:flex;gap:4px">
+        <button class="btn btn-ghost btn-sml" onclick="editCantera(${c.id})">✏️</button>
+        <button class="btn btn-danger btn-sml" onclick="delCantera(${c.id})">✕</button>
+      </div></div>`;
+  });
+  const dl=document.getElementById('depositos-lista');dl.innerHTML='';
+  if(!depositos.length)dl.innerHTML='<div style="color:var(--gris-d);font-size:.84rem;padding:.5rem 0">Sin depósitos. Agregá uno.</div>';
+  depositos.forEach(d=>{
+    dl.innerHTML+=`<div style="display:flex;align-items:center;justify-content:space-between;padding:.5rem 0;border-bottom:1px solid var(--gris)">
+      <div><div style="font-weight:700;font-size:.88rem">${d.nombre}</div><div style="font-size:.75rem;color:var(--gris-d)">${d.localidad||''}${d.localidad&&d.provincia?', ':''}${d.provincia||''}</div></div>
+      <div style="display:flex;gap:4px">
+        <button class="btn btn-ghost btn-sml" onclick="editDeposito(${d.id})">✏️</button>
+        <button class="btn btn-danger btn-sml" onclick="delDeposito(${d.id})">✕</button>
+      </div></div>`;
+  });
+}
+function editCantera(id){const c=canteras.find(x=>x.id===id);if(!c)return;document.getElementById('ct-id').value=id;document.getElementById('ct-nombre').value=c.nombre||'';document.getElementById('ct-loc').value=c.localidad||'';document.getElementById('ct-prov').value=c.provincia||'';document.getElementById('ct-obs').value=c.obs||'';document.getElementById('m-cantera').classList.add('open');}
+async function delCantera(id){if(!confirm('¿Eliminar esta cantera?'))return;await supa.from('canteras').delete().eq('id',id);canteras=canteras.filter(c=>c.id!==id);renderLugares();toast('✓ Eliminada','ok');}
+function editDeposito(id){const d=depositos.find(x=>x.id===id);if(!d)return;document.getElementById('dp-id').value=id;document.getElementById('dp-nombre').value=d.nombre||'';document.getElementById('dp-loc').value=d.localidad||'';document.getElementById('dp-prov').value=d.provincia||'';document.getElementById('dp-obs').value=d.obs||'';document.getElementById('m-deposito').classList.add('open');}
+async function delDeposito(id){if(!confirm('¿Eliminar este depósito?'))return;await supa.from('depositos').delete().eq('id',id);depositos=depositos.filter(d=>d.id!==id);renderLugares();toast('✓ Eliminado','ok');}
+
+// ══ RUTAS ══
+async function guardarRuta(){
+  const id=document.getElementById('rt-id').value;
+  const cantera_id=parseInt(document.getElementById('rt-cantera').value);
+  const deposito_id=parseInt(document.getElementById('rt-deposito').value);
+  const km=parseFloat(document.getElementById('rt-km').value);
+  if(!cantera_id||!deposito_id||!km){toast('Completá todos los campos','err');return;}
+  const obs=document.getElementById('rt-obs').value.trim();
+  if(id){
+    await supa.from('rutas').update({km_ida_vuelta:km,obs}).eq('id',id);
+    const r=rutas.find(x=>x.id===parseInt(id));if(r){r.km_ida_vuelta=km;r.obs=obs;}
+  }else{
+    const{data,error}=await supa.from('rutas').upsert({cantera_id,deposito_id,km_ida_vuelta:km,obs},{onConflict:'cantera_id,deposito_id'}).select().single();
+    if(error){toast('Error: '+error.message,'err');return;}
+    rutas=rutas.filter(r=>!(r.cantera_id===cantera_id&&r.deposito_id===deposito_id));
+    rutas.push(data);
+  }
+  closeModal('m-ruta');renderRutas();document.getElementById('sb-rutas-meta').textContent=rutas.length+' ruta'+(rutas.length!==1?'s':'');
+  toast('✓ Ruta guardada','ok');
+}
+function editarRuta(id){
+  const r=rutas.find(x=>x.id===id);if(!r)return;
+  _prepRutaModal();
+  document.getElementById('rt-id').value=id;
+  document.getElementById('rt-cantera').value=r.cantera_id;
+  document.getElementById('rt-deposito').value=r.deposito_id;
+  document.getElementById('rt-km').value=r.km_ida_vuelta;
+  document.getElementById('rt-obs').value=r.obs||'';
+  document.getElementById('m-ruta').classList.add('open');
+}
+async function eliminarRuta(id){
+  if(!confirm('¿Eliminar esta ruta?'))return;
+  await supa.from('rutas').delete().eq('id',id);
+  rutas=rutas.filter(r=>r.id!==id);renderRutas();toast('✓ Eliminada','ok');
+}
+function renderRutas(){
+  const cont=document.getElementById('rutas-lista');cont.innerHTML='';
+  if(!rutas.length){cont.innerHTML='<div style="color:var(--gris-d);font-size:.84rem;padding:1rem 0;text-align:center">Sin rutas configuradas. Agregá canteras y depósitos primero.</div>';return;}
+  rutas.forEach(r=>{
+    const c=getCantera(r.cantera_id);const d=getDeposito(r.deposito_id);
+    cont.innerHTML+=`<div class="ruta-item">
+      <div class="ruta-arrow">
+        <span style="color:var(--azul)">${c?.nombre||'?'}</span>
+        <span style="color:var(--gris-d)">→</span>
+        <span style="color:var(--azul)">${d?.nombre||'?'}</span>
+        <span class="ruta-km">${fmtN(r.km_ida_vuelta)} km</span>
+      </div>
+      <div style="display:flex;gap:4px">
+        <button class="btn btn-ghost btn-sml" onclick="editarRuta(${r.id})">✏️ Editar</button>
+        <button class="btn btn-danger btn-sml" onclick="eliminarRuta(${r.id})">✕</button>
+      </div></div>`;
+  });
+  document.getElementById('sb-rutas-meta').textContent=rutas.length+' ruta'+(rutas.length!==1?'s':'');
+}
+
+// ══ SIDEBAR METAS ══
+function renderSidebar(){
+  document.getElementById('sb-viajes-meta').textContent=viajes.filter(v=>v.estado==='en_curso').length+' en curso';
+  document.getElementById('sb-liq-meta').textContent=liquidaciones.filter(l=>l.estado==='borrador').length+' pendientes';
+  document.getElementById('sb-chof-meta').textContent=choferes.length+' chofer'+(choferes.length!==1?'es':'');
+  document.getElementById('sb-cam-meta').textContent=camiones.length+' camión'+(camiones.length!==1?'es':'');
+  // Actualizar filtro choferes
+  const fc=document.getElementById('f-chofer');
+  const prevVal=fc.value;
+  fc.innerHTML='<option value="">Todos los choferes</option>';
+  choferes.forEach(c=>fc.innerHTML+=`<option value="${c.id}" ${String(c.id)===prevVal?'selected':''}>${c.nombre}</option>`);
+}
+
+// ══ CARGA INICIAL ══
+async function cargarTodo(){
+  const [rChof,rCam,rCant,rDep,rRutas,rViajes,rCargas,rDescargas,rLiqs,rLiqVj,rAdel]=await Promise.all([
+    supa.from('choferes').select('*').order('nombre'),
+    supa.from('camiones').select('*').order('patente'),
+    supa.from('canteras').select('*').order('nombre'),
+    supa.from('depositos').select('*').order('nombre'),
+    supa.from('rutas').select('*'),
+    supa.from('viajes').select('*').order('id',{ascending:false}),
+    supa.from('cargas').select('*'),
+    supa.from('descargas').select('*'),
+    supa.from('liquidaciones').select('*').order('id',{ascending:false}),
+    supa.from('liquidacion_viajes').select('*'),
+    supa.from('adelantos').select('*').order('fecha',{ascending:false}),
+  ]);
+  if(rChof.data)choferes=rChof.data;
+  if(rCam.data)camiones=rCam.data;
+  if(rCant.data)canteras=rCant.data;
+  if(rDep.data)depositos=rDep.data;
+  if(rRutas.data)rutas=rRutas.data;
+  if(rAdel.data)adelantos=rAdel.data;
+  // Vincular cargas y descargas a viajes
+  const cargasMap={};(rCargas.data||[]).forEach(c=>cargasMap[c.viaje_id]=c);
+  const descMap={};(rDescargas.data||[]).forEach(d=>descMap[d.viaje_id]=d);
+  if(rViajes.data)viajes=rViajes.data.map(v=>({...v,carga:cargasMap[v.id]||null,descarga:descMap[v.id]||null}));
+  // Vincular viajes a liquidaciones
+  const liqVjMap={};(rLiqVj.data||[]).forEach(lv=>{if(!liqVjMap[lv.liquidacion_id])liqVjMap[lv.liquidacion_id]=[];liqVjMap[lv.liquidacion_id].push(lv.viaje_id);});
+  if(rLiqs.data)liquidaciones=rLiqs.data.map(l=>({...l,_viajes_ids:liqVjMap[l.id]||[]}));
+}
+
+// ══ LOGIN ══
+async function doLogin(){
+  const email=document.getElementById('l-email').value.trim();
+  const pass=document.getElementById('l-pass').value;
+  const btn=document.getElementById('l-btn');const err=document.getElementById('l-err');const load=document.getElementById('l-load');
+  if(!email||!pass){err.textContent='Completá email y contraseña';err.classList.add('show');return;}
+  btn.disabled=true;err.classList.remove('show');load.classList.add('show');
+  const{data,error}=await supa.auth.signInWithPassword({email,password:pass});
+  load.classList.remove('show');btn.disabled=false;
+  if(error){err.textContent='Email o contraseña incorrectos';err.classList.add('show');return;}
+  currentUser=data.user;
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('user-chip').textContent=email.split('@')[0];
+  load.textContent='Cargando datos...';load.classList.add('show');
+  await cargarTodo();
+  load.classList.remove('show');
+  document.getElementById('app-wrapper').style.display='flex';
+  renderSidebar();renderViajes();
+  toast('✓ Bienvenido/a','ok');
+}
+async function doLogout(){
+  if(!confirm('¿Cerrar sesión?'))return;
+  await supa.auth.signOut();currentUser=null;location.reload();
+}
+document.addEventListener('DOMContentLoaded',()=>{
+  document.getElementById('l-pass')?.addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+  document.getElementById('l-email')?.addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('l-pass').focus();});
+  supa.auth.getSession().then(async({data})=>{
+    if(data.session){
+      currentUser=data.session.user;
+      document.getElementById('login-screen').classList.add('hidden');
+      document.getElementById('user-chip').textContent=data.session.user.email.split('@')[0];
+      await cargarTodo();
+      document.getElementById('app-wrapper').style.display='flex';
+      renderSidebar();renderViajes();
+    }
+  });
+});
+</script>
+</body>
+</html>
