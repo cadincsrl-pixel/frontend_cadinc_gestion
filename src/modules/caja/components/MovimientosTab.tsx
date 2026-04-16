@@ -7,6 +7,7 @@ import {
   useCreateMovimiento, useUpdateMovimiento, useDeleteMovimiento,
   type Movimiento, type CreateMovimientoDto,
 } from '../hooks/useCaja'
+import { useObras } from '@/modules/tarja/hooks/useObras'
 import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
@@ -26,6 +27,7 @@ export function MovimientosTab() {
   const { data: movimientos = [], isLoading } = useMovimientos()
   const { data: conceptos   = [] }            = useConceptos()
   const { data: centros     = [] }            = useCentrosCosto()
+  const { data: obras       = [] }            = useObras()
 
   const createMov  = useCreateMovimiento()
   const updateMov  = useUpdateMovimiento()
@@ -139,10 +141,8 @@ export function MovimientosTab() {
 
   const loading = createMov.isPending || updateMov.isPending
 
-  const ccOptions = [
-    { value: '', label: 'Todos los centros' },
-    ...centros.filter(c => c.activo).map(c => ({ value: c.nombre, label: c.nombre })),
-  ]
+  const centrosActivos = centros.filter(c => c.activo)
+  const obrasActivas   = obras.filter((o: any) => !o.archivada)
 
   const conceptosFiltrados = conceptos
     .filter(c => c.activo)
@@ -174,7 +174,17 @@ export function MovimientosTab() {
           onChange={e => { setFilterCC(e.target.value); setPage(1) }}
           className="border border-gris rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-azul"
         >
-          {ccOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          <option value="">Todos los centros</option>
+          {centrosActivos.length > 0 && (
+            <optgroup label="Centros de costo">
+              {centrosActivos.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+            </optgroup>
+          )}
+          {obrasActivas.length > 0 && (
+            <optgroup label="Obras (Tarja)">
+              {obrasActivas.map((o: any) => <option key={o.cod} value={o.cod}>{o.cod} — {o.nom}</option>)}
+            </optgroup>
+          )}
         </select>
 
         <Button variant="primary" size="sm" onClick={openCreate}>＋ Movimiento</Button>
@@ -302,13 +312,22 @@ export function MovimientosTab() {
             </div>
 
             {/* Centro de costo */}
-            {centros.filter(c => c.activo).length > 0 && (
-              <div className="flex flex-col gap-1 w-44">
+            {(centrosActivos.length > 0 || obrasActivas.length > 0) && (
+              <div className="flex flex-col gap-1 w-52">
                 <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Centro de costo</label>
                 <select {...form.register('centro_costo')}
                   className="border border-gris rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-azul bg-white">
                   <option value="">Sin centro</option>
-                  {centros.filter(c => c.activo).map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+                  {centrosActivos.length > 0 && (
+                    <optgroup label="Centros de costo">
+                      {centrosActivos.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+                    </optgroup>
+                  )}
+                  {obrasActivas.length > 0 && (
+                    <optgroup label="Obras (Tarja)">
+                      {obrasActivas.map((o: any) => <option key={o.cod} value={o.cod}>{o.cod} — {o.nom}</option>)}
+                    </optgroup>
+                  )}
                 </select>
               </div>
             )}
