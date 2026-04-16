@@ -154,8 +154,8 @@ export function MovimientosTab() {
   const ccOpciones = [
     ...centrosActivos.map(c => ({ value: c.nombre, label: c.nombre, sub: 'Centro de costo' })),
     ...obrasActivas.map((o: any) => ({
-      value: o.cc ?? o.nom,
-      label: o.cc ?? o.nom,
+      value: o.nom,
+      label: o.nom,
       sub:   `Obra ${o.cod}`,
     })),
   ]
