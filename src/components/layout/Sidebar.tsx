@@ -53,6 +53,49 @@ function CertNavWithParams({ navigate }: { navigate: (href: string) => void }) {
   return <CertNav navigate={navigate} activeTab={activeTab} />
 }
 
+const NAV_ITEMS_CAJA = [
+  { tab: 'movimientos',   icon: '💵', label: 'Movimientos',   meta: 'Ingresos y egresos'       },
+  { tab: 'resumen',       icon: '📊', label: 'Resumen',       meta: 'Totales por período'      },
+  { tab: 'configuracion', icon: '⚙️', label: 'Configuración', meta: 'Conceptos y centros'      },
+]
+
+function CajaNav({ navigate, activeTab }: { navigate: (href: string) => void; activeTab: string }) {
+  return (
+    <>
+      {NAV_ITEMS_CAJA.map(item => {
+        const isActive = activeTab === item.tab
+        return (
+          <button
+            key={item.tab}
+            onClick={() => navigate(`/caja?tab=${item.tab}`)}
+            className={`
+              w-full flex items-center gap-2.5 px-3 py-2.5 mx-2 rounded-[9px]
+              text-left transition-all border border-transparent
+              ${isActive
+                ? 'bg-naranja text-white border-naranja-dark shadow-[0_4px_14px_rgba(232,98,26,.4)]'
+                : 'text-white hover:bg-white hover:text-black'
+              }
+            `}
+            style={{ width: 'calc(100% - 16px)' }}
+          >
+            <span className="text-base w-5 text-center flex-shrink-0">{item.icon}</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-bold truncate">{item.label}</div>
+              <div className="text-[11px] opacity-60 font-normal">{item.meta}</div>
+            </div>
+          </button>
+        )
+      })}
+    </>
+  )
+}
+
+function CajaNavWithParams({ navigate }: { navigate: (href: string) => void }) {
+  const searchParams = useSearchParams()
+  const activeTab    = searchParams.get('tab') ?? 'movimientos'
+  return <CajaNav navigate={navigate} activeTab={activeTab} />
+}
+
 const NAV_ITEMS_TARJA = [
   { href: '/tarja',            icon: '📋', label: 'Tarja',              meta: 'Control de horas',     exact: false },
   { href: '/dashboard', icon: '📊', label: 'Resumen General', meta: 'Resumen general e histórico', exact: false },
@@ -129,6 +172,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const enHerramientas     = decodedPathname.startsWith('/herramientas')
   const enLogistica        = decodedPathname.startsWith('/logistica')
   const enCertificaciones  = decodedPathname.startsWith('/certificaciones')
+  const enCaja             = decodedPathname.startsWith('/caja')
 
   function navigate(href: string) {
     router.push(href)
@@ -155,6 +199,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     !enHerramientas &&
     !enLogistica &&
     !enCertificaciones &&
+    !enCaja &&
     decodedPathname.startsWith('/tarja') &&
     decodedPathname !== '/tarja/archivadas'
 
@@ -179,7 +224,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         {/* ── Nav principal ── */}
         <div className="pt-3">
           <div className="px-4 py-2 text-[10px] font-bold tracking-[2.5px] uppercase text-white/35">
-            {enHerramientas ? 'Herramientas' : enLogistica ? 'Logística' : enCertificaciones ? 'Certificaciones' : 'Menú'}
+            {enHerramientas ? 'Herramientas' : enLogistica ? 'Logística' : enCertificaciones ? 'Certificaciones' : enCaja ? 'Caja' : 'Menú'}
           </div>
 
           {/* LOGÍSTICA nav */}
@@ -196,8 +241,15 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             </Suspense>
           )}
 
-          {/* TARJA nav — solo si NO estamos en herramientas, logística ni certificaciones */}
-          {!enHerramientas && !enLogistica && !enCertificaciones && NAV_ITEMS_TARJA.map(item => (
+          {/* CAJA nav */}
+          {enCaja && (
+            <Suspense fallback={<CajaNav navigate={navigate} activeTab="movimientos" />}>
+              <CajaNavWithParams navigate={navigate} />
+            </Suspense>
+          )}
+
+          {/* TARJA nav — solo si NO estamos en herramientas, logística, certificaciones ni caja */}
+          {!enHerramientas && !enLogistica && !enCertificaciones && !enCaja && NAV_ITEMS_TARJA.map(item => (
             <button
               key={item.href}
               onClick={() => navigate(item.href)}

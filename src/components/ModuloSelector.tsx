@@ -42,6 +42,15 @@ const MODULOS = [
     appHref: '/certificaciones',
     color: 'naranja',
   },
+  {
+    key: 'caja',
+    nombre: 'Caja',
+    descripcion: 'Efectivo y movimientos',
+    icono: '💵',
+    loginHref: '/login',
+    appHref: '/caja',
+    color: 'verde',
+  },
 ] as const
 
 export function ModuloSelector() {
