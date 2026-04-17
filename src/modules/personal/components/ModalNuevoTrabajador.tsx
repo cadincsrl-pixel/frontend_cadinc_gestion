@@ -15,6 +15,7 @@ const schema = z.object({
   leg:            z.string().min(1, 'El legajo es requerido'),
   nom:            z.string().min(1, 'El nombre es requerido'),
   dni:            z.string().optional(),
+  condicion:      z.enum(['blanco', 'asegurado']).optional(),
   cat_id:         z.coerce.number({ error: 'La categoría es requerida' }).min(1, 'Seleccioná una categoría'),
   tel:            z.string().optional(),
   dir:            z.string().optional(),
@@ -88,6 +89,15 @@ export function ModalNuevoTrabajador({ open, onClose }: Props) {
             {...register('dni')}
           />
         </div>
+        <Select
+          label="Condición"
+          placeholder="Sin especificar"
+          options={[
+            { value: 'blanco', label: 'Blanco' },
+            { value: 'asegurado', label: 'Asegurado' },
+          ]}
+          {...register('condicion')}
+        />
         <Input
           label="Apellido y Nombre"
           placeholder="Apellido, Nombre"

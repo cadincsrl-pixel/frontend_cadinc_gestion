@@ -74,6 +74,7 @@ export function PersonalPage() {
   const [editando,      setEditando]      = useState<Personal | null>(null)
   const [detalle,       setDetalle]       = useState<Personal | null>(null)
   const [busqueda,      setBusqueda]      = useState('')
+  const [filterCondicion, setFilterCondicion] = useState<'' | 'blanco' | 'asegurado'>('')
   const [pageP,         setPageP]         = useState(1)
   const [pageSizeP,     setPageSizeP]     = useState(12)
 
@@ -89,12 +90,14 @@ export function PersonalPage() {
   const formEditC  = useForm<any>()
 
   // Filtros
-  const filtrados = personal.filter(p =>
-    p.nom.toLowerCase().includes(busqueda.toLowerCase()) ||
-    p.leg.includes(busqueda) ||
-    (p.dni ?? '').includes(busqueda)
-  )
-  useEffect(() => { setPageP(1) }, [busqueda])
+  const filtrados = personal.filter(p => {
+    const matchText = p.nom.toLowerCase().includes(busqueda.toLowerCase()) ||
+      p.leg.includes(busqueda) ||
+      (p.dni ?? '').includes(busqueda)
+    const matchCondicion = !filterCondicion || p.condicion === filterCondicion
+    return matchText && matchCondicion
+  })
+  useEffect(() => { setPageP(1) }, [busqueda, filterCondicion])
   const filtradosPag = filtrados.slice((pageP - 1) * pageSizeP, pageP * pageSizeP)
 
   const filtradosC = contratistas.filter(c =>
@@ -269,25 +272,36 @@ export function PersonalPage() {
       {/* ── TAB PERSONAL ── */}
       {tab === 'personal' && (
         <>
-          <input
-            type="text"
-            placeholder="Buscar por nombre, legajo o DNI..."
-            value={busqueda}
-            onChange={e => setBusqueda(e.target.value)}
-            className="w-full max-w-sm px-3 py-2 border-[1.5px] border-gris-mid rounded-lg font-sans text-sm outline-none transition-colors focus:border-naranja bg-white"
-          />
+          <div className="flex flex-wrap gap-2 items-center">
+            <input
+              type="text"
+              placeholder="Buscar por nombre, legajo o DNI..."
+              value={busqueda}
+              onChange={e => setBusqueda(e.target.value)}
+              className="w-full max-w-sm px-3 py-2 border-[1.5px] border-gris-mid rounded-lg font-sans text-sm outline-none transition-colors focus:border-naranja bg-white"
+            />
+            <select
+              value={filterCondicion}
+              onChange={e => setFilterCondicion(e.target.value as any)}
+              className="px-3 py-2 border-[1.5px] border-gris-mid rounded-lg font-sans text-sm outline-none transition-colors focus:border-naranja bg-white"
+            >
+              <option value="">Todas las condiciones</option>
+              <option value="blanco">Blanco</option>
+              <option value="asegurado">Asegurado</option>
+            </select>
+          </div>
 
           <div className="bg-white rounded-card shadow-card overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full border-collapse">
                 <thead>
                   <tr>
-                    {['Leg.', 'Apellido y Nombre', 'DNI', 'Categoría', 'Teléfono', 'Dirección', ''].map(h => (
+                    {['Leg.', 'Apellido y Nombre', 'DNI', 'Condición', 'Categoría', 'Teléfono', 'Dirección', ''].map(h => (
                       <th
                         key={h}
                         className={`
                           bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide
-                          ${h === 'DNI' || h === 'Teléfono' ? 'hidden md:table-cell' : ''}
+                          ${h === 'DNI' || h === 'Condición' || h === 'Teléfono' ? 'hidden md:table-cell' : ''}
                           ${h === 'Dirección' ? 'hidden lg:table-cell' : ''}
                         `}
                       >
@@ -299,7 +313,7 @@ export function PersonalPage() {
                 <tbody>
                   {loadingPersonal ? (
                     <tr>
-                      <td colSpan={7} className="text-center py-8">
+                      <td colSpan={8} className="text-center py-8">
                         <span className="inline-flex items-center gap-2 text-gris-dark text-sm">
                           <span className="w-4 h-4 border-2 border-naranja border-t-transparent rounded-full animate-spin" />
                           Cargando...
@@ -308,7 +322,7 @@ export function PersonalPage() {
                     </tr>
                   ) : filtrados.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="text-center py-8 text-gris-dark text-sm">
+                      <td colSpan={8} className="text-center py-8 text-gris-dark text-sm">
                         {busqueda ? 'No se encontraron resultados' : 'No hay trabajadores registrados'}
                       </td>
                     </tr>
@@ -333,6 +347,19 @@ export function PersonalPage() {
                           </td>
                           <td className="font-mono text-xs text-gris-dark px-4 py-3 hidden md:table-cell">
                             {p.dni || '—'}
+                          </td>
+                          <td className="px-4 py-3 hidden md:table-cell">
+                            {p.condicion ? (
+                              <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold ${
+                                p.condicion === 'asegurado'
+                                  ? 'bg-verde-light text-verde'
+                                  : 'bg-gris text-gris-dark'
+                              }`}>
+                                {p.condicion === 'asegurado' ? 'Asegurado' : 'Blanco'}
+                              </span>
+                            ) : (
+                              <span className="text-gris-dark text-xs">—</span>
+                            )}
                           </td>
                           <td className="px-4 py-3">
                             <span className="inline-block px-2 py-0.5 rounded bg-naranja-light text-naranja-dark text-xs font-bold">

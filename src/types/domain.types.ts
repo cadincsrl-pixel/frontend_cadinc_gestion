@@ -45,6 +45,7 @@ export interface Personal extends AuditFields {
   leg: string
   nom: string
   dni: string | null
+  condicion: 'blanco' | 'asegurado' | null
   cat_id: number
   tel: string | null
   dir: string | null
@@ -60,6 +61,7 @@ export interface CreatePersonalDto {
   leg: string
   nom: string
   dni?: string
+  condicion?: 'blanco' | 'asegurado'
   cat_id: number
   tel?: string
   dir?: string
@@ -72,6 +74,7 @@ export interface CreatePersonalDto {
 export interface UpdatePersonalDto {
   nom?: string
   dni?: string
+  condicion?: 'blanco' | 'asegurado' | null
   cat_id?: number
   tel?: string
   dir?: string

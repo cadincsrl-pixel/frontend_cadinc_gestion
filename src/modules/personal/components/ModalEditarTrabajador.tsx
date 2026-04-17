@@ -17,6 +17,7 @@ import type { Personal } from '@/types/domain.types'
 const schema = z.object({
   nom:             z.string().min(1, 'El nombre es requerido'),
   dni:             z.string().optional(),
+  condicion:       z.enum(['blanco', 'asegurado', '']).optional(),
   cat_id:          z.coerce.number().min(1, 'Seleccioná una categoría'),
   tel:             z.string().optional(),
   dir:             z.string().optional(),
@@ -50,6 +51,7 @@ export function ModalEditarTrabajador({ open, onClose, trabajador }: Props) {
       reset({
         nom:             trabajador.nom,
         dni:             trabajador.dni ?? '',
+        condicion:       trabajador.condicion ?? '',
         cat_id:          trabajador.cat_id,
         tel:             trabajador.tel ?? '',
         dir:             trabajador.dir ?? '',
@@ -66,9 +68,10 @@ export function ModalEditarTrabajador({ open, onClose, trabajador }: Props) {
 
   function onSubmit(data: FormData) {
     if (!trabajador) return
-    const { activo_override: ao, ...rest } = data as any
+    const { activo_override: ao, condicion, ...rest } = data as any
     const dto = {
       ...rest,
+      condicion: condicion || null,
       activo_override: ao === 'activo' ? true : ao === 'inactivo' ? false : null,
     }
     updatePersonal(
@@ -136,12 +139,21 @@ export function ModalEditarTrabajador({ open, onClose, trabajador }: Props) {
             {...register('dni')}
           />
           <Select
-            label="Categoría"
-            error={errors.cat_id?.message}
-            options={categorias.map(c => ({ value: c.id, label: c.nom }))}
-            {...register('cat_id')}
+            label="Condición"
+            placeholder="Sin especificar"
+            options={[
+              { value: 'blanco', label: 'Blanco' },
+              { value: 'asegurado', label: 'Asegurado' },
+            ]}
+            {...register('condicion')}
           />
         </div>
+        <Select
+          label="Categoría"
+          error={errors.cat_id?.message}
+          options={categorias.map(c => ({ value: c.id, label: c.nom }))}
+          {...register('cat_id')}
+        />
         <Input
           label="Apellido y Nombre"
           placeholder="Apellido, Nombre"
