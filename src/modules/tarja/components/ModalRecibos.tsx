@@ -48,6 +48,8 @@ export function ModalRecibos({
   const [incluirOp, setIncluirOp] = useState(true)
   const [incluirCont, setIncluirCont] = useState(true)
   const [busquedaObra, setBusquedaObra] = useState('')
+  const [legsSelec, setLegsSelec] = useState<string[] | null>(null) // null = todos
+  const [busquedaOp, setBusquedaOp] = useState('')
 
   const todasSems = [...new Set([
     ...horas.map(h => toISO(getViernes(new Date(h.fecha + 'T12:00:00')))),
@@ -117,6 +119,31 @@ export function ModalRecibos({
   }
 
 
+  // Operarios con horas en semana+obras seleccionadas
+  const operariosDisponibles = useMemo(() => {
+    if (!semKey) return []
+    return [...new Set(
+      horas
+        .filter(h => {
+          const sk = toISO(getViernes(new Date(h.fecha + 'T12:00:00')))
+          return sk === semKey && obrasSelec.includes(h.obra_cod)
+        })
+        .map(h => h.leg)
+    )]
+      .map(leg => personal.find(p => p.leg === leg))
+      .filter(Boolean)
+      .sort((a, b) => a!.nom.localeCompare(b!.nom)) as typeof personal
+  }, [semKey, obrasSelec, horas, personal])
+
+  // Si la semana/obras cambian, resetear selección de operarios
+  const legsEfectivos = legsSelec ?? operariosDisponibles.map(p => p.leg)
+
+  const operariosFiltrados = useMemo(() => {
+    const q = busquedaOp.toLowerCase().trim()
+    if (!q) return operariosDisponibles
+    return operariosDisponibles.filter(p => p.nom.toLowerCase().includes(q) || p.leg.toLowerCase().includes(q))
+  }, [operariosDisponibles, busquedaOp])
+
   // ── Preview calculado ──
   const preview = useMemo(() => {
     if (!semKey) return null
@@ -125,7 +152,8 @@ export function ModalRecibos({
     const horasFilt = horas.filter(h => {
       if (!obrasTarget.some(o => o.cod === h.obra_cod)) return false
       const sk = toISO(getViernes(new Date(h.fecha + 'T12:00:00')))
-      return sk === semKey
+      if (sk !== semKey) return false
+      return legsSelec === null || legsSelec.includes(h.leg)
     })
 
     const certsFilt = certificaciones.filter(c =>
@@ -175,7 +203,7 @@ export function ModalRecibos({
       tieneData: operariosFinal > 0 || contratNumFinal > 0,
       obrasCount: obrasSelec.length,
     }
-  }, [semKey, obrasSelec, horas, certificaciones, personal, categorias, tarifas, obras, todasCatObra, incluirOp, incluirCont])
+  }, [semKey, obrasSelec, legsSelec, horas, certificaciones, personal, categorias, tarifas, obras, todasCatObra, incluirOp, incluirCont])
 
   function handleGenerar() {
     if (!semKey) { toast('Seleccioná una semana', 'err'); return }
@@ -193,7 +221,8 @@ export function ModalRecibos({
       semKey, empresa, obrasTarget,
       personal, categorias, horasParaRecibo, tarifas,
       certsParaRecibo, contratParaRecibo,
-      todasCatObra, prestamos
+      todasCatObra, prestamos,
+      incluirOp ? legsSelec : null
     )
 
     if (!result) { toast('No hay datos para esta selección', 'err'); return }
@@ -325,6 +354,67 @@ export function ModalRecibos({
             )}
           </div>
         </div>
+
+        {/* Operarios */}
+        {incluirOp && operariosDisponibles.length > 0 && (
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">
+                Operarios ({legsEfectivos.length}/{operariosDisponibles.length})
+              </div>
+              <div className="flex gap-1">
+                <button
+                  onClick={() => setLegsSelec(null)}
+                  className="text-xs font-bold text-azul hover:text-naranja transition-colors px-2 py-1 rounded hover:bg-gris"
+                >
+                  ✓ Todos
+                </button>
+                <button
+                  onClick={() => setLegsSelec([])}
+                  className="text-xs font-bold text-gris-dark hover:text-carbon transition-colors px-2 py-1 rounded hover:bg-gris"
+                >
+                  ✕ Ninguno
+                </button>
+              </div>
+            </div>
+            <div className="relative mb-2">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gris-dark text-sm">🔍</span>
+              <input
+                type="text"
+                value={busquedaOp}
+                onChange={e => setBusquedaOp(e.target.value)}
+                placeholder="Buscar operario..."
+                className="w-full pl-9 pr-8 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white focus:border-naranja"
+              />
+              {busquedaOp && (
+                <button onClick={() => setBusquedaOp('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gris-dark hover:text-carbon text-sm">✕</button>
+              )}
+            </div>
+            <div className="bg-gris rounded-xl p-3 max-h-36 overflow-y-auto flex flex-col gap-0.5">
+              {operariosFiltrados.map(p => (
+                <label key={p.leg} className="flex items-center gap-2 cursor-pointer py-1.5 border-b border-gris-mid/50 last:border-0">
+                  <input
+                    type="checkbox"
+                    checked={legsEfectivos.includes(p.leg)}
+                    onChange={() => {
+                      const actual = legsEfectivos
+                      const nuevo = actual.includes(p.leg)
+                        ? actual.filter(l => l !== p.leg)
+                        : [...actual, p.leg]
+                      setLegsSelec(nuevo.length === operariosDisponibles.length ? null : nuevo)
+                    }}
+                    className="accent-azul w-4 h-4 flex-shrink-0"
+                  />
+                  <span className="font-mono text-[10px] bg-white border border-gris-mid px-1.5 py-0.5 rounded text-azul-mid flex-shrink-0">{p.leg}</span>
+                  <span className="font-semibold text-sm text-carbon truncate">{p.nom}</span>
+                </label>
+              ))}
+              {operariosFiltrados.length === 0 && (
+                <p className="text-sm text-gris-dark text-center py-2">No se encontraron operarios</p>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* ── Preview mejorado ── */}
         {semKey && preview && (

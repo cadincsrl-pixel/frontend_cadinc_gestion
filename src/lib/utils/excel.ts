@@ -542,7 +542,8 @@ export function generarRecibos(
   certificaciones: Certificacion[],
   contratistas: Contratista[],
   catObra: Array<{ obra_cod: string; leg: string; cat_id: number; desde: string }> = [],
-  prestamos: Prestamo[] = []
+  prestamos: Prestamo[] = [],
+  legsSelec: string[] | null = null   // null = todos
 ) {
   const s = new Date(semKey + 'T12:00:00')
   const days = getSemDays(s)
@@ -601,7 +602,7 @@ export function generarRecibos(
       horas
         .filter(h => h.obra_cod === o.cod && h.fecha >= toISO(days[0]!) && h.fecha <= toISO(days[6]!))
         .map(h => h.leg)
-    )]
+    )].filter(leg => legsSelec === null || legsSelec.includes(leg))
     legs.forEach(leg => {
       const p = personal.find(x => x.leg === leg)
       if (!p) return
