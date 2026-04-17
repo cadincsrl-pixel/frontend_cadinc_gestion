@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import * as XLSX from 'xlsx'
 import { apiGet } from '@/lib/api/client'
-import { usePersonal } from '@/modules/tarja/hooks/usePersonal'
+import { usePersonal, useUpdatePersonal } from '@/modules/tarja/hooks/usePersonal'
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
 import { toISO, getViernes } from '@/lib/utils/dates'
 import type { Hora } from '@/types/domain.types'
@@ -69,6 +69,7 @@ export function PersonalPage() {
   // ── Personal ──
   const { data: personal    = [], isLoading: loadingPersonal } = usePersonal()
   const { data: categorias  = [] } = useCategorias()
+  const { mutate: updatePersonal } = useUpdatePersonal()
   const [modalNuevo,    setModalNuevo]    = useState(false)
   const [modalImportar, setModalImportar] = useState(false)
   const [editando,      setEditando]      = useState<Personal | null>(null)
@@ -348,23 +349,33 @@ export function PersonalPage() {
                           <td className="font-mono text-xs text-gris-dark px-4 py-3 hidden md:table-cell">
                             {p.dni || '—'}
                           </td>
-                          <td className="px-4 py-3 hidden md:table-cell">
-                            {p.condicion ? (
-                              <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold ${
+                          <td className="px-4 py-3 hidden md:table-cell" onClick={e => e.stopPropagation()}>
+                            <select
+                              value={p.condicion ?? ''}
+                              onChange={e => updatePersonal({ leg: p.leg, dto: { condicion: (e.target.value as any) || null } })}
+                              className={`text-xs font-bold px-2 py-0.5 rounded border-0 outline-none cursor-pointer ${
                                 p.condicion === 'asegurado'
                                   ? 'bg-verde-light text-verde'
-                                  : 'bg-gris text-gris-dark'
-                              }`}>
-                                {p.condicion === 'asegurado' ? 'Asegurado' : 'Blanco'}
-                              </span>
-                            ) : (
-                              <span className="text-gris-dark text-xs">—</span>
-                            )}
+                                  : p.condicion === 'blanco'
+                                  ? 'bg-gris text-gris-dark'
+                                  : 'bg-transparent text-gris-dark'
+                              }`}
+                            >
+                              <option value="">—</option>
+                              <option value="blanco">Blanco</option>
+                              <option value="asegurado">Asegurado</option>
+                            </select>
                           </td>
-                          <td className="px-4 py-3">
-                            <span className="inline-block px-2 py-0.5 rounded bg-naranja-light text-naranja-dark text-xs font-bold">
-                              {cat?.nom ?? '—'}
-                            </span>
+                          <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                            <select
+                              value={p.cat_id}
+                              onChange={e => updatePersonal({ leg: p.leg, dto: { cat_id: Number(e.target.value) } })}
+                              className="text-xs font-bold px-2 py-0.5 rounded border-0 outline-none cursor-pointer bg-naranja-light text-naranja-dark"
+                            >
+                              {categorias.map(c => (
+                                <option key={c.id} value={c.id}>{c.nom}</option>
+                              ))}
+                            </select>
                           </td>
                           <td className="text-sm text-gris-dark px-4 py-3 hidden md:table-cell">
                             {p.tel || '—'}
