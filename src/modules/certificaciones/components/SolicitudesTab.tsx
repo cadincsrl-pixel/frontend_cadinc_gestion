@@ -188,8 +188,8 @@ export function SolicitudesTab() {
   }
 
   function abrirDespachar(item: SolicitudCompraItem) {
-    const precioRef = item.stock_materiales?.precio_ref ?? 0
-    formDespachar.reset({ precio_unit: precioRef })
+    const mat = item.material_id ? stockMap.get(item.material_id) : null
+    formDespachar.reset({ precio_unit: mat?.precio_ref ?? 0 })
     setModalDespachar(item)
   }
   function handleDespachar(data: any) {
@@ -361,7 +361,7 @@ export function SolicitudesTab() {
                           {/* Detalle de ítems */}
                           {isExp && items.map((item, i) => {
                             const cfg = ITEM_ESTADO_CFG[item.estado]
-                            const stk = item.stock_materiales
+                            const stk = item.material_id ? stockMap.get(item.material_id) : null
                             return (
                               <tr key={item.id ?? i} className="border-b border-gris bg-gris/20">
                                 <td className="pl-8 pr-2 py-2.5 text-xs text-gris-mid text-center">{i + 1}</td>
@@ -375,8 +375,8 @@ export function SolicitudesTab() {
                                 <td className="px-4 py-2.5 text-center">
                                   {stk ? (
                                     <div>
-                                      <span className={`font-mono font-bold text-sm ${stk.stock_actual <= 0 ? 'text-rojo' : stk.stock_actual < item.cantidad ? 'text-[#7A5500]' : 'text-verde'}`}>
-                                        {stk.stock_actual}
+                                      <span className={`font-mono font-bold text-sm ${(stk as StockMaterial).stock_actual <= 0 ? 'text-rojo' : (stk as StockMaterial).stock_actual < item.cantidad ? 'text-[#7A5500]' : 'text-verde'}`}>
+                                        {(stk as StockMaterial).stock_actual}
                                       </span>
                                       <div className="text-[9px] text-gris-dark">en depósito</div>
                                     </div>
@@ -567,18 +567,24 @@ export function SolicitudesTab() {
               <div className="font-bold text-sm text-naranja">{modalDespachar.descripcion}</div>
               <div className="text-xs text-gris-dark font-mono">{modalDespachar.cantidad} {UNIDADES.find(u => u.value === modalDespachar.unidad)?.label ?? modalDespachar.unidad}</div>
             </div>
-            {modalDespachar.stock_materiales && (
-              <div className={`rounded-xl px-4 py-3 flex items-center justify-between ${modalDespachar.stock_materiales.stock_actual >= modalDespachar.cantidad ? 'bg-verde-light' : 'bg-amarillo-light'}`}>
-                <span className="text-xs font-bold">Stock en depósito</span>
-                <span className={`font-mono font-bold text-lg ${modalDespachar.stock_materiales.stock_actual >= modalDespachar.cantidad ? 'text-verde' : 'text-[#7A5500]'}`}>
-                  {modalDespachar.stock_materiales.stock_actual} {UNIDADES.find(u => u.value === modalDespachar.stock_materiales!.unidad)?.label ?? modalDespachar.stock_materiales.unidad}
-                </span>
-              </div>
-            )}
+            {(() => {
+              const mat = modalDespachar.material_id ? stockMap.get(modalDespachar.material_id) : null
+              if (!mat) return null
+              return (
+                <>
+                  <div className={`rounded-xl px-4 py-3 flex items-center justify-between ${mat.stock_actual >= modalDespachar.cantidad ? 'bg-verde-light' : 'bg-amarillo-light'}`}>
+                    <span className="text-xs font-bold">Stock en depósito</span>
+                    <span className={`font-mono font-bold text-lg ${mat.stock_actual >= modalDespachar.cantidad ? 'text-verde' : 'text-[#7A5500]'}`}>
+                      {mat.stock_actual} {UNIDADES.find(u => u.value === mat.unidad)?.label ?? mat.unidad}
+                    </span>
+                  </div>
+                  {mat.precio_ref > 0 && (
+                    <div className="text-xs text-gris-dark">Precio de referencia del catálogo: <strong className="font-mono">{fmtM(mat.precio_ref)}</strong></div>
+                  )}
+                </>
+              )
+            })()}
             <Input label="Precio unitario interno ($)" type="number" step="1" {...formDespachar.register('precio_unit')} />
-            {modalDespachar.stock_materiales?.precio_ref ? (
-              <div className="text-xs text-gris-dark">Precio de referencia del catálogo: <strong className="font-mono">{fmtM(modalDespachar.stock_materiales.precio_ref)}</strong></div>
-            ) : null}
           </div>
         )}
       </Modal>
