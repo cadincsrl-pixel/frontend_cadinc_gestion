@@ -1,11 +1,13 @@
 'use client'
 
 import { useSearchParams } from 'next/navigation'
-import { MaterialesTab } from './MaterialesTab'
-import { CostosTab }     from './CostosTab'
+import { SolicitudesTab } from './SolicitudesTab'
+import { MaterialesTab }  from './MaterialesTab'
+import { CostosTab }      from './CostosTab'
 import { AdicionalesTab } from './AdicionalesTab'
 
 const TABS = [
+  { key: 'solicitudes', icon: '🛒', label: 'Solicitudes', sub: 'Pedidos de compra y envío de materiales' },
   { key: 'materiales',  icon: '📦', label: 'Materiales',  sub: 'Materiales a cuenta del cliente' },
   { key: 'costos',      icon: '📊', label: 'Costos',      sub: 'Operarios y contratistas por semana' },
   { key: 'adicionales', icon: '🧾', label: 'Adicionales', sub: 'Trabajos extra con comprobante' },
@@ -13,7 +15,7 @@ const TABS = [
 
 export function CertificacionesPage() {
   const searchParams = useSearchParams()
-  const tab = searchParams.get('tab') ?? 'materiales'
+  const tab = searchParams.get('tab') ?? 'solicitudes'
   const info = TABS.find(t => t.key === tab) ?? TABS[0]!
 
   return (
@@ -29,6 +31,7 @@ export function CertificacionesPage() {
 
       {/* Contenido */}
       <div className="flex flex-col gap-4">
+        {tab === 'solicitudes' && <SolicitudesTab />}
         {tab === 'materiales'  && <MaterialesTab />}
         {tab === 'costos'      && <CostosTab />}
         {tab === 'adicionales' && <AdicionalesTab />}

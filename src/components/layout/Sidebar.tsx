@@ -11,6 +11,7 @@ interface SidebarProps {
 }
 
 const NAV_ITEMS_CERT = [
+  { tab: 'solicitudes', icon: '🛒', label: 'Solicitudes', meta: 'Pedidos de compra y envío'      },
   { tab: 'materiales',  icon: '📦', label: 'Materiales',  meta: 'A cuenta del cliente'           },
   { tab: 'costos',      icon: '📊', label: 'Costos',      meta: 'Operarios y contratistas'       },
   { tab: 'adicionales', icon: '🧾', label: 'Adicionales', meta: 'Trabajos extra con comprobante' },
@@ -49,7 +50,7 @@ function CertNav({ navigate, activeTab }: { navigate: (href: string) => void; ac
 
 function CertNavWithParams({ navigate }: { navigate: (href: string) => void }) {
   const searchParams = useSearchParams()
-  const activeTab    = searchParams.get('tab') ?? 'materiales'
+  const activeTab    = searchParams.get('tab') ?? 'solicitudes'
   return <CertNav navigate={navigate} activeTab={activeTab} />
 }
 
@@ -224,7 +225,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         {/* ── Nav principal ── */}
         <div className="pt-3">
           <div className="px-4 py-2 text-[10px] font-bold tracking-[2.5px] uppercase text-white/35">
-            {enHerramientas ? 'Herramientas' : enLogistica ? 'Logística' : enCertificaciones ? 'Certificaciones' : enCaja ? 'Caja' : 'Menú'}
+            {enHerramientas ? 'Herramientas' : enLogistica ? 'Logística' : enCertificaciones ? 'Adicionales y compras' : enCaja ? 'Caja' : 'Menú'}
           </div>
 
           {/* LOGÍSTICA nav */}
@@ -236,7 +237,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
           {/* CERTIFICACIONES nav */}
           {enCertificaciones && (
-            <Suspense fallback={<CertNav navigate={navigate} activeTab="materiales" />}>
+            <Suspense fallback={<CertNav navigate={navigate} activeTab="solicitudes" />}>
               <CertNavWithParams navigate={navigate} />
             </Suspense>
           )}

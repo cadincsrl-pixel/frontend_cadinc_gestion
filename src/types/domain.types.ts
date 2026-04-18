@@ -520,6 +520,31 @@ export interface Remito extends AuditFields {
   items:    RemitoItem[]
 }
 
+// ── Solicitudes de compra ──
+export type SolicitudEstado = 'pendiente' | 'aprobada' | 'rechazada' | 'enviada' | 'recibida'
+
+export interface SolicitudCompraItem {
+  id?:          number
+  solicitud_id?: number
+  descripcion:  string
+  cantidad:     number
+  unidad:       string
+  obs?:         string | null
+}
+
+export interface SolicitudCompra extends AuditFields {
+  id:           number
+  obra_cod:     string
+  solicitante:  string | null
+  fecha:        string
+  estado:       SolicitudEstado
+  prioridad:    'normal' | 'urgente'
+  obs:          string | null
+  aprobado_por: string | null
+  fecha_envio:  string | null
+  items:        SolicitudCompraItem[]
+}
+
 // ── Certificaciones ──
 export interface CertMaterial extends AuditFields {
   id:             number

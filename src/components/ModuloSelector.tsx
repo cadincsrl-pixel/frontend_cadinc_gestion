@@ -35,9 +35,9 @@ const MODULOS = [
   },
   {
     key: 'certificaciones',
-    nombre: 'Certificaciones',
-    descripcion: 'Materiales, costos y adicionales',
-    icono: '💰',
+    nombre: 'Adicionales y compras',
+    descripcion: 'Solicitudes, materiales y costos',
+    icono: '🛒',
     loginHref: '/login',
     appHref: '/certificaciones',
     color: 'naranja',
