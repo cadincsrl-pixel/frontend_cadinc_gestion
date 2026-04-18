@@ -125,11 +125,13 @@ export function ModuloSelector() {
 
       {/* Logo */}
       <div className="mb-10 text-center">
-        <div className="font-display text-[2.8rem] tracking-[4px] text-white flex items-center gap-3 justify-center">
-          TARJA<em className="text-naranja not-italic">OBRA</em>
-        </div>
+        <img
+          src="/logo-cadinc.png"
+          alt="CADINC"
+          className="h-32 mx-auto mb-3"
+        />
         <p className="text-white/50 text-sm mt-2 tracking-wider uppercase font-semibold">
-          CADINC SRL — Sistema de gestión
+          Sistema de gestión
         </p>
       </div>
 
@@ -214,7 +216,7 @@ export function ModuloSelector() {
 
       {/* Footer */}
       <p className="text-white/20 text-xs mt-12 text-center">
-        CADINC SRL · {new Date().getFullYear()}
+        Powered by Ing. Franco Leiro · {new Date().getFullYear()}
       </p>
     </div>
   )
