@@ -8,6 +8,7 @@ import {
 } from '../hooks/useSolicitudes'
 import { useProveedores, useCreateProveedor } from '../hooks/useProveedores'
 import { useFacturasCompra, useCreateFactura } from '../hooks/useFacturasCompra'
+import { useStockMateriales } from '../hooks/useStock'
 import { useObras } from '@/modules/tarja/hooks/useObras'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import { createClient } from '@/lib/supabase/client'
@@ -16,7 +17,7 @@ import { Button }   from '@/components/ui/Button'
 import { Input }    from '@/components/ui/Input'
 import { Combobox } from '@/components/ui/Combobox'
 import { useToast } from '@/components/ui/Toast'
-import type { SolicitudCompra, SolicitudCompraItem, SolicitudEstado, SolicitudProgreso, ItemEstado, Obra, Proveedor } from '@/types/domain.types'
+import type { SolicitudCompra, SolicitudCompraItem, SolicitudEstado, SolicitudProgreso, ItemEstado, Obra, Proveedor, StockMaterial } from '@/types/domain.types'
 
 const UNIDADES = [
   { value: 'unid', label: 'Unid.' },
@@ -64,9 +65,9 @@ async function uploadAdjunto(file: File): Promise<{ url: string; nombre: string 
 }
 
 // ── Línea de ítem en formulario de nueva solicitud ──
-interface LineaForm { _id: number; descripcion: string; cantidad: number; unidad: string; obs: string }
+interface LineaForm { _id: number; descripcion: string; cantidad: number; unidad: string; obs: string; material_id: number | null }
 let nextId = 1
-function newLinea(): LineaForm { return { _id: nextId++, descripcion: '', cantidad: 1, unidad: 'unid', obs: '' } }
+function newLinea(): LineaForm { return { _id: nextId++, descripcion: '', cantidad: 1, unidad: 'unid', obs: '', material_id: null } }
 
 // ── Componente principal ──
 export function SolicitudesTab() {
@@ -75,8 +76,10 @@ export function SolicitudesTab() {
   const { data: obras = [] } = useObras()
   const { data: proveedores = [] } = useProveedores()
   const { data: facturas = [] } = useFacturasCompra()
+  const { data: stockMateriales = [] } = useStockMateriales()
   const { mutate: createProveedor } = useCreateProveedor()
   const { mutate: createFactura } = useCreateFactura()
+  const stockMap = new Map((stockMateriales as StockMaterial[]).map(m => [m.id, m]))
 
   const [obraFiltro, setObraFiltro] = useState('')
   const [estadoFiltro, setEstadoFiltro] = useState<string>('')
@@ -145,7 +148,7 @@ export function SolicitudesTab() {
 
   function handleCreate(cab: any) {
     if (!obraNueva) { toast('Seleccioná una obra', 'err'); return }
-    const items = lineas.filter(l => l.descripcion.trim()).map(l => ({ descripcion: l.descripcion, cantidad: l.cantidad, unidad: l.unidad, obs: l.obs || null }))
+    const items = lineas.filter(l => l.descripcion.trim()).map(l => ({ descripcion: l.descripcion, cantidad: l.cantidad, unidad: l.unidad, obs: l.obs || null, material_id: l.material_id }))
     if (!items.length) { toast('Agregá al menos un material', 'err'); return }
     create({ obra_cod: obraNueva, prioridad: cab.prioridad, obs: cab.obs || null, items }, {
       onSuccess: () => { toast('Solicitud creada', 'ok'); setModalNuevo(false) },
@@ -185,7 +188,8 @@ export function SolicitudesTab() {
   }
 
   function abrirDespachar(item: SolicitudCompraItem) {
-    formDespachar.reset({ precio_unit: 0 })
+    const precioRef = item.stock_materiales?.precio_ref ?? 0
+    formDespachar.reset({ precio_unit: precioRef })
     setModalDespachar(item)
   }
   function handleDespachar(data: any) {
@@ -357,15 +361,28 @@ export function SolicitudesTab() {
                           {/* Detalle de ítems */}
                           {isExp && items.map((item, i) => {
                             const cfg = ITEM_ESTADO_CFG[item.estado]
+                            const stk = item.stock_materiales
                             return (
                               <tr key={item.id ?? i} className="border-b border-gris bg-gris/20">
                                 <td className="pl-8 pr-2 py-2.5 text-xs text-gris-mid text-center">{i + 1}</td>
-                                <td colSpan={2} className="px-4 py-2.5">
+                                <td className="px-4 py-2.5">
                                   <div className="text-sm font-medium text-carbon">{item.descripcion}</div>
                                   <div className="text-xs text-gris-dark font-mono mt-0.5">
                                     {item.cantidad} {UNIDADES.find(u => u.value === item.unidad)?.label ?? item.unidad}
                                     {item.precio_unit != null && <span className="ml-2">× {fmtM(item.precio_unit)} = <strong>{fmtM(item.cantidad * item.precio_unit)}</strong></span>}
                                   </div>
+                                </td>
+                                <td className="px-4 py-2.5 text-center">
+                                  {stk ? (
+                                    <div>
+                                      <span className={`font-mono font-bold text-sm ${stk.stock_actual <= 0 ? 'text-rojo' : stk.stock_actual < item.cantidad ? 'text-[#7A5500]' : 'text-verde'}`}>
+                                        {stk.stock_actual}
+                                      </span>
+                                      <div className="text-[9px] text-gris-dark">en depósito</div>
+                                    </div>
+                                  ) : (
+                                    <span className="text-gris-mid text-xs">—</span>
+                                  )}
                                 </td>
                                 <td className="px-4 py-2.5">
                                   <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${cfg.bg} ${cfg.text}`}>{cfg.label}</span>
@@ -380,7 +397,6 @@ export function SolicitudesTab() {
                                   )}
                                   {item.fecha_envio && <div className="text-verde font-semibold mt-0.5">Enviado {fmtF(item.fecha_envio)}</div>}
                                 </td>
-                                <td />
                                 <td className="px-4 py-2.5">
                                   {s.estado === 'aprobada' && (
                                     <div className="flex gap-1 justify-end flex-wrap">
@@ -445,45 +461,58 @@ export function SolicitudesTab() {
           <Input label="Observaciones" placeholder="Notas adicionales..." {...formCab.register('obs')} />
           <div>
             <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-2">Materiales solicitados</div>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[500px]">
-                <thead>
-                  <tr className="border-b-2 border-gris">
-                    <th className="text-left text-[10px] font-bold text-gris-dark uppercase tracking-wide pb-2 pr-2">Descripción</th>
-                    <th className="text-right text-[10px] font-bold text-gris-dark uppercase tracking-wide pb-2 pr-2 w-20">Cant.</th>
-                    <th className="text-left text-[10px] font-bold text-gris-dark uppercase tracking-wide pb-2 pr-2 w-20">Unidad</th>
-                    <th className="text-left text-[10px] font-bold text-gris-dark uppercase tracking-wide pb-2 pr-2">Obs</th>
-                    <th className="w-8" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {lineas.map(l => (
-                    <tr key={l._id} className="border-b border-gris last:border-0">
-                      <td className="py-1.5 pr-2">
-                        <input type="text" placeholder="Material..." value={l.descripcion} onChange={e => setLineas(p => p.map(x => x._id === l._id ? { ...x, descripcion: e.target.value } : x))}
-                          className="w-full px-2 py-1.5 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja" />
-                      </td>
-                      <td className="py-1.5 pr-2 w-20">
-                        <input type="number" min="0" step="0.001" value={l.cantidad} onChange={e => setLineas(p => p.map(x => x._id === l._id ? { ...x, cantidad: parseFloat(e.target.value) || 0 } : x))}
-                          className="w-full px-2 py-1.5 border border-gris-mid rounded-lg text-sm text-right outline-none focus:border-naranja" />
-                      </td>
-                      <td className="py-1.5 pr-2 w-20">
-                        <select value={l.unidad} onChange={e => setLineas(p => p.map(x => x._id === l._id ? { ...x, unidad: e.target.value } : x))}
-                          className="w-full px-1 py-1.5 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white">
-                          {UNIDADES.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
-                        </select>
-                      </td>
-                      <td className="py-1.5 pr-2">
-                        <input type="text" placeholder="Obs..." value={l.obs} onChange={e => setLineas(p => p.map(x => x._id === l._id ? { ...x, obs: e.target.value } : x))}
-                          className="w-full px-2 py-1.5 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja" />
-                      </td>
-                      <td className="py-1.5 w-8 text-center">
-                        {lineas.length > 1 && <button onClick={() => setLineas(p => p.filter(x => x._id !== l._id))} className="text-gris-mid hover:text-rojo text-sm font-bold">✕</button>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="flex flex-col gap-2">
+              {lineas.map(l => {
+                const matVinculado = l.material_id ? stockMap.get(l.material_id) : null
+                const stockOptions = (stockMateriales as StockMaterial[]).map(m => ({
+                  value: String(m.id),
+                  label: m.nombre,
+                  sub: `Stock: ${m.stock_actual} ${m.unidad}`,
+                }))
+                return (
+                  <div key={l._id} className="border border-gris-mid rounded-lg p-3 bg-gris/20">
+                    <div className="flex gap-2 items-start">
+                      <div className="flex-1">
+                        <Combobox
+                          placeholder="Buscar material del catálogo..."
+                          options={stockOptions}
+                          value={l.material_id ? String(l.material_id) : ''}
+                          onChange={val => {
+                            const mat = val ? (stockMateriales as StockMaterial[]).find(m => m.id === Number(val)) : null
+                            setLineas(p => p.map(x => x._id === l._id ? {
+                              ...x,
+                              material_id: mat ? mat.id : null,
+                              descripcion: mat ? mat.nombre : '',
+                              unidad: mat ? mat.unidad : x.unidad,
+                            } : x))
+                          }}
+                        />
+                      </div>
+                      {matVinculado && (
+                        <div className={`flex-shrink-0 px-2 py-1.5 rounded-lg text-xs font-bold ${matVinculado.stock_actual > 0 ? 'bg-verde-light text-verde' : 'bg-rojo-light text-rojo'}`}>
+                          Stock: {matVinculado.stock_actual}
+                        </div>
+                      )}
+                      {lineas.length > 1 && <button onClick={() => setLineas(p => p.filter(x => x._id !== l._id))} className="text-gris-mid hover:text-rojo text-lg font-bold mt-1">✕</button>}
+                    </div>
+                    {!l.material_id && (
+                      <input type="text" placeholder="O escribir descripción libre..." value={l.descripcion}
+                        onChange={e => setLineas(p => p.map(x => x._id === l._id ? { ...x, descripcion: e.target.value } : x))}
+                        className="w-full mt-2 px-2 py-1.5 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja" />
+                    )}
+                    <div className="flex gap-2 mt-2">
+                      <input type="number" min="0" step="0.001" value={l.cantidad} onChange={e => setLineas(p => p.map(x => x._id === l._id ? { ...x, cantidad: parseFloat(e.target.value) || 0 } : x))}
+                        placeholder="Cant." className="w-20 px-2 py-1.5 border border-gris-mid rounded-lg text-sm text-right outline-none focus:border-naranja" />
+                      <select value={l.unidad} onChange={e => setLineas(p => p.map(x => x._id === l._id ? { ...x, unidad: e.target.value } : x))}
+                        className="w-20 px-1 py-1.5 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white">
+                        {UNIDADES.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
+                      </select>
+                      <input type="text" placeholder="Obs..." value={l.obs} onChange={e => setLineas(p => p.map(x => x._id === l._id ? { ...x, obs: e.target.value } : x))}
+                        className="flex-1 px-2 py-1.5 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja" />
+                    </div>
+                  </div>
+                )
+              })}
             </div>
             <button onClick={() => setLineas(p => [...p, newLinea()])} className="mt-2 text-xs font-bold text-azul hover:text-naranja transition-colors">+ Agregar material</button>
           </div>
@@ -538,7 +567,18 @@ export function SolicitudesTab() {
               <div className="font-bold text-sm text-naranja">{modalDespachar.descripcion}</div>
               <div className="text-xs text-gris-dark font-mono">{modalDespachar.cantidad} {UNIDADES.find(u => u.value === modalDespachar.unidad)?.label ?? modalDespachar.unidad}</div>
             </div>
+            {modalDespachar.stock_materiales && (
+              <div className={`rounded-xl px-4 py-3 flex items-center justify-between ${modalDespachar.stock_materiales.stock_actual >= modalDespachar.cantidad ? 'bg-verde-light' : 'bg-amarillo-light'}`}>
+                <span className="text-xs font-bold">Stock en depósito</span>
+                <span className={`font-mono font-bold text-lg ${modalDespachar.stock_materiales.stock_actual >= modalDespachar.cantidad ? 'text-verde' : 'text-[#7A5500]'}`}>
+                  {modalDespachar.stock_materiales.stock_actual} {UNIDADES.find(u => u.value === modalDespachar.stock_materiales!.unidad)?.label ?? modalDespachar.stock_materiales.unidad}
+                </span>
+              </div>
+            )}
             <Input label="Precio unitario interno ($)" type="number" step="1" {...formDespachar.register('precio_unit')} />
+            {modalDespachar.stock_materiales?.precio_ref ? (
+              <div className="text-xs text-gris-dark">Precio de referencia del catálogo: <strong className="font-mono">{fmtM(modalDespachar.stock_materiales.precio_ref)}</strong></div>
+            ) : null}
           </div>
         )}
       </Modal>

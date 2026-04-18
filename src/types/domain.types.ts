@@ -557,6 +557,7 @@ export interface SolicitudCompraItem {
   unidad:           string
   obs?:             string | null
   estado:           ItemEstado
+  material_id?:     number | null
   proveedor_id?:    number | null
   precio_unit?:     number | null
   factura_id?:      number | null
@@ -564,6 +565,7 @@ export interface SolicitudCompraItem {
   fecha_envio?:     string | null
   proveedores?:     { nombre: string } | null
   facturas_compra?: { numero: string | null; adjunto_url: string | null } | null
+  stock_materiales?: { nombre: string; stock_actual: number; precio_ref: number; unidad: string } | null
 }
 
 export interface SolicitudCompra extends AuditFields {
