@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useObra } from '@/modules/tarja/hooks/useObras'
 import { useObras } from '@/modules/tarja/hooks/useObras'
@@ -10,7 +10,7 @@ import { useHorasSemana, useUpsertHorasLote, useLimpiarSemana } from '@/modules/
 import { useTarifasObra } from '@/modules/tarja/hooks/useTarifas'
 import { useContratistas } from '@/modules/tarja/hooks/useContratistas'
 import { useTarjaStore } from '@/modules/tarja/store/tarja.store'
-import { getSemDays, toISO } from '@/lib/utils/dates'
+import { getSemDays, toISO, getViernes, getSemLabel } from '@/lib/utils/dates'
 import { calcularTotalesSemana, fmtMonto, fmtHs } from '@/lib/utils/costos'
 import { exportarCSVTarja } from '@/lib/utils/excel'
 import { apiGet } from '@/lib/api/client'
@@ -71,6 +71,22 @@ export function TarjaObraPage({ obraCod }: Props) {
   const { data: horasData = [] } = useHorasSemana(obraCod, desde, hasta)
   const { mutate: upsertLote } = useUpsertHorasLote()
   const { mutate: limpiarSemana } = useLimpiarSemana()
+
+  // ── Todas las horas de esta obra (para panel de semanas archivadas) ──
+  const { data: horasObra = [] } = useQuery({
+    queryKey: ['horas', obraCod, 'all'],
+    queryFn: () => apiGet<Hora[]>(`/api/horas/${encodeURIComponent(obraCod)}`),
+    enabled: !!obra?.archivada,
+  })
+
+  // Semanas con horas para obras archivadas
+  const semanasConHoras = useMemo(() => {
+    const sems = new Set<string>()
+    horasObra.forEach(h => {
+      sems.add(toISO(getViernes(new Date(h.fecha + 'T12:00:00'))))
+    })
+    return [...sems].sort().reverse()
+  }, [horasObra])
 
   // ── Datos globales para modales Excel/Recibos ──
   const { data: todasHoras = [] } = useQuery({
@@ -185,6 +201,51 @@ export function TarjaObraPage({ obraCod }: Props) {
             {obra.fecha_archivo && ` · ${obra.fecha_archivo}`}
             {' — '}solo lectura
           </span>
+        </div>
+      )}
+
+      {/* ── Panel de semanas — solo archivadas ── */}
+      {archivada && (
+        <div className="bg-white rounded-card shadow-card overflow-hidden">
+          <div className="px-4 py-2.5 bg-gris border-b border-gris-mid flex items-center justify-between">
+            <span className="text-xs font-bold text-gris-dark uppercase tracking-wider">
+              Semanas con horas ({semanasConHoras.length})
+            </span>
+            {semanasConHoras.length > 0 && (
+              <span className="text-xs text-gris-dark">
+                Semana seleccionada: <strong className="text-azul">{getSemLabel(semActual)}</strong>
+              </span>
+            )}
+          </div>
+          {semanasConHoras.length === 0 ? (
+            <p className="text-sm text-gris-dark text-center py-6">Sin registros de horas</p>
+          ) : (
+            <div className="flex flex-wrap gap-2 p-3">
+              {semanasConHoras.map(semKey => {
+                const semDate = new Date(semKey + 'T12:00:00')
+                const isSelected = toISO(semActual) === semKey
+                const hsSem = horasObra
+                  .filter(h => toISO(getViernes(new Date(h.fecha + 'T12:00:00'))) === semKey)
+                  .reduce((s, h) => s + h.horas, 0)
+                return (
+                  <button
+                    key={semKey}
+                    onClick={() => setSemActual(semDate)}
+                    className={`flex flex-col items-center px-3 py-2 rounded-lg border transition-colors text-left ${
+                      isSelected
+                        ? 'bg-azul text-white border-azul shadow-sm'
+                        : 'bg-gris border-gris-mid text-carbon hover:bg-naranja-light hover:border-naranja'
+                    }`}
+                  >
+                    <span className="text-xs font-bold whitespace-nowrap">{getSemLabel(semDate)}</span>
+                    <span className={`text-[10px] font-mono mt-0.5 ${isSelected ? 'text-white/80' : 'text-gris-dark'}`}>
+                      {hsSem}h total
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
 
