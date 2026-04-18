@@ -604,11 +604,11 @@ export function HorasTrabajadorPage() {
                           {mostrarObra && (
                             <td className="px-2 py-1.5">
                               <span
-                                className="font-mono text-[11px] bg-azul-light text-azul-mid px-1.5 py-0.5 rounded font-bold cursor-pointer hover:bg-azul hover:text-white transition-colors"
+                                className="text-[11px] bg-azul-light text-azul-mid px-1.5 py-0.5 rounded font-bold cursor-pointer hover:bg-azul hover:text-white transition-colors truncate max-w-[160px] inline-block"
                                 title={f.obra.nom}
                                 onClick={() => router.push(`/tarja/${encodeURIComponent(f.obra.cod)}`)}
                               >
-                                {f.obra.cod}
+                                {f.obra.nom}
                               </span>
                             </td>
                           )}
