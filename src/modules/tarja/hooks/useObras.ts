@@ -1,14 +1,28 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useEffect } from 'react'
 import { obrasApi } from '@/lib/api/obras.api'
 import type { CreateObraDto, UpdateObraDto } from '@/types/domain.types'
 
 export const OBRAS_KEY = ['obras'] as const
 
 export function useObras() {
-  return useQuery({
+  const qc = useQueryClient()
+  const query = useQuery({
     queryKey: OBRAS_KEY,
     queryFn: obrasApi.getAll,
   })
+
+  // Auto-archivar obras sin horas en 3 semanas al montar
+  useEffect(() => {
+    obrasApi.autoArchivar().then(({ archivadas }) => {
+      if (archivadas.length > 0) {
+        qc.invalidateQueries({ queryKey: OBRAS_KEY })
+      }
+    }).catch(() => {})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  return query
 }
 
 export function useObrasArchivadas() {
