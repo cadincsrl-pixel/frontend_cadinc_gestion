@@ -12,6 +12,7 @@ interface SidebarProps {
 
 const NAV_ITEMS_CERT = [
   { tab: 'solicitudes', icon: '🛒', label: 'Solicitudes', meta: 'Pedidos de compra y envío'      },
+  { tab: 'stock',       icon: '🏗️', label: 'Stock',       meta: 'Stock en depósito'              },
   { tab: 'materiales',  icon: '📦', label: 'Materiales',  meta: 'A cuenta del cliente'           },
   { tab: 'costos',      icon: '📊', label: 'Costos',      meta: 'Operarios y contratistas'       },
   { tab: 'adicionales', icon: '🧾', label: 'Adicionales', meta: 'Trabajos extra con comprobante' },

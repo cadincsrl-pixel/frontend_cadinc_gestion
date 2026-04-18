@@ -597,6 +597,43 @@ export interface MaterialACuentaCliente extends AuditFields {
   fecha_resolucion: string
 }
 
+// ── Stock en Depósito ──
+export interface StockRubro {
+  id:     number
+  nombre: string
+  icono:  string | null
+  orden:  number
+  activo: boolean
+}
+
+export interface StockMaterial extends AuditFields {
+  id:            number
+  rubro_id:      number
+  nombre:        string
+  unidad:        string
+  stock_actual:  number
+  stock_minimo:  number
+  precio_ref:    number
+  obs:           string | null
+  activo:        boolean
+  stock_rubros?: { nombre: string; icono: string | null }
+}
+
+export interface StockMovimiento {
+  id:                number
+  material_id:       number
+  tipo:              'entrada' | 'salida' | 'ajuste'
+  cantidad:          number
+  motivo:            'compra' | 'despacho_obra' | 'devolucion' | 'ajuste_inventario'
+  obra_cod:          string | null
+  solicitud_item_id: number | null
+  obs:               string | null
+  fecha:             string
+  created_at:        string
+  created_by:        string | null
+  stock_materiales?: { nombre: string; unidad: string }
+}
+
 // ── Certificaciones ──
 export interface CertMaterial extends AuditFields {
   id:             number
