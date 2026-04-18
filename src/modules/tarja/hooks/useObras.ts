@@ -65,6 +65,14 @@ export function useArchivarObra() {
   })
 }
 
+export function useDesarchivarObra() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (cod: string) => obrasApi.desarchivar(cod),
+    onSuccess: () => qc.invalidateQueries({ queryKey: OBRAS_KEY }),
+  })
+}
+
 export function useDeleteObra() {
   const qc = useQueryClient()
   return useMutation({

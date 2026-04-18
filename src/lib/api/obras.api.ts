@@ -25,4 +25,7 @@ export const obrasApi = {
 
   autoArchivar: () =>
     apiPost<{ archivadas: string[] }>('/api/obras/auto-archivar', {}),
+
+  desarchivar: (cod: string) =>
+    apiPatch<Obra>(`/api/obras/${encodeURIComponent(cod)}/desarchivar`, {}),
 }
