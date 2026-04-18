@@ -47,6 +47,7 @@ export function StockTab() {
   const { mutate: createRubro } = useCreateRubro()
 
   const [rubroFiltro, setRubroFiltro] = useState<number | ''>('')
+  const [stockFiltro, setStockFiltro] = useState<'' | 'con_stock' | 'sin_stock' | 'stock_bajo'>('')
   const [busqueda, setBusqueda] = useState('')
   const [modalNuevo, setModalNuevo] = useState(false)
   const [modalEntrada, setModalEntrada] = useState<StockMaterial | null>(null)
@@ -63,12 +64,15 @@ export function StockTab() {
   const filtered = useMemo(() => {
     let list = materiales as StockMaterial[]
     if (rubroFiltro) list = list.filter(m => m.rubro_id === rubroFiltro)
+    if (stockFiltro === 'con_stock') list = list.filter(m => m.stock_actual > 0)
+    if (stockFiltro === 'sin_stock') list = list.filter(m => m.stock_actual <= 0)
+    if (stockFiltro === 'stock_bajo') list = list.filter(m => m.stock_minimo > 0 && m.stock_actual > 0 && m.stock_actual <= m.stock_minimo)
     if (busqueda.trim()) {
       const q = busqueda.toLowerCase()
       list = list.filter(m => m.nombre.toLowerCase().includes(q))
     }
     return list
-  }, [materiales, rubroFiltro, busqueda])
+  }, [materiales, rubroFiltro, stockFiltro, busqueda])
 
   const grouped = useMemo(() => {
     const map = new Map<number, { rubro: StockRubro; items: StockMaterial[] }>()
@@ -155,6 +159,13 @@ export function StockTab() {
             {(rubros as StockRubro[]).map(r => (
               <option key={r.id} value={r.id}>{r.icono} {r.nombre}</option>
             ))}
+          </select>
+          <select value={stockFiltro} onChange={e => setStockFiltro(e.target.value as any)}
+            className="px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white font-semibold focus:border-naranja">
+            <option value="">Todo el stock</option>
+            <option value="con_stock">Con stock</option>
+            <option value="sin_stock">Sin stock</option>
+            <option value="stock_bajo">Stock bajo</option>
           </select>
           <div className="relative flex-1 min-w-[200px] max-w-[350px]">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gris-dark text-sm">🔍</span>
