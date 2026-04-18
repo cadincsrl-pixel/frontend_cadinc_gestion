@@ -520,16 +520,50 @@ export interface Remito extends AuditFields {
   items:    RemitoItem[]
 }
 
+// ── Proveedores ──
+export interface Proveedor extends AuditFields {
+  id:     number
+  nombre: string
+  cuit:   string | null
+  tel:    string | null
+  email:  string | null
+  obs:    string | null
+  activo: boolean
+}
+
+// ── Facturas de compra ──
+export interface FacturaCompra extends AuditFields {
+  id:             number
+  proveedor_id:   number
+  numero:         string | null
+  fecha:          string
+  adjunto_url:    string | null
+  adjunto_nombre: string | null
+  total:          number | null
+  obs:            string | null
+  proveedores?:   { nombre: string }
+}
+
 // ── Solicitudes de compra ──
-export type SolicitudEstado = 'pendiente' | 'aprobada' | 'rechazada' | 'enviada' | 'recibida'
+export type SolicitudEstado = 'pendiente' | 'aprobada' | 'rechazada'
+export type ItemEstado = 'pendiente' | 'comprado' | 'de_deposito' | 'enviado' | 'rechazado'
+export type SolicitudProgreso = 'pendiente' | 'en_gestion' | 'enviada'
 
 export interface SolicitudCompraItem {
-  id?:          number
-  solicitud_id?: number
-  descripcion:  string
-  cantidad:     number
-  unidad:       string
-  obs?:         string | null
+  id?:              number
+  solicitud_id?:    number
+  descripcion:      string
+  cantidad:         number
+  unidad:           string
+  obs?:             string | null
+  estado:           ItemEstado
+  proveedor_id?:    number | null
+  precio_unit?:     number | null
+  factura_id?:      number | null
+  fecha_resolucion?: string | null
+  fecha_envio?:     string | null
+  proveedores?:     { nombre: string } | null
+  facturas_compra?: { numero: string | null; adjunto_url: string | null } | null
 }
 
 export interface SolicitudCompra extends AuditFields {
@@ -541,8 +575,26 @@ export interface SolicitudCompra extends AuditFields {
   prioridad:    'normal' | 'urgente'
   obs:          string | null
   aprobado_por: string | null
-  fecha_envio:  string | null
   items:        SolicitudCompraItem[]
+  progreso:     SolicitudProgreso | null
+  resumen:      { total: number; resueltos: number; enviados: number } | null
+}
+
+// ── Materiales a cuenta de cliente ──
+export interface MaterialACuentaCliente extends AuditFields {
+  id:               number
+  obra_cod:         string
+  solicitud_id:     number
+  item_id:          number
+  descripcion:      string
+  cantidad:         number
+  unidad:           string
+  precio_unit:      number
+  precio_total:     number
+  origen:           'proveedor' | 'deposito'
+  proveedor_id:     number | null
+  factura_id:       number | null
+  fecha_resolucion: string
 }
 
 // ── Certificaciones ──

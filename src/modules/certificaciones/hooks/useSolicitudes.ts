@@ -41,3 +41,59 @@ export function useDeleteSolicitud() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['solicitudes'] }),
   })
 }
+
+// ── Acciones sobre ítems ──
+
+export function useComprarItem() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ itemId, dto }: { itemId: number; dto: any }) =>
+      apiPost(`/api/solicitudes/items/${itemId}/comprar`, dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['solicitudes'] }),
+  })
+}
+
+export function useDespacharItem() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ itemId, dto }: { itemId: number; dto: any }) =>
+      apiPost(`/api/solicitudes/items/${itemId}/despachar`, dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['solicitudes'] }),
+  })
+}
+
+export function useEnviarItem() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ itemId, fecha_envio }: { itemId: number; fecha_envio?: string }) =>
+      apiPost(`/api/solicitudes/items/${itemId}/enviar`, { fecha_envio }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['solicitudes'] }),
+  })
+}
+
+export function useRechazarItem() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (itemId: number) =>
+      apiPost(`/api/solicitudes/items/${itemId}/rechazar`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['solicitudes'] }),
+  })
+}
+
+export function useRevertirItem() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (itemId: number) =>
+      apiPost(`/api/solicitudes/items/${itemId}/revertir`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['solicitudes'] }),
+  })
+}
+
+export function useEditarItem() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ itemId, dto }: { itemId: number; dto: any }) =>
+      apiPatch(`/api/solicitudes/items/${itemId}`, dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['solicitudes'] }),
+  })
+}
