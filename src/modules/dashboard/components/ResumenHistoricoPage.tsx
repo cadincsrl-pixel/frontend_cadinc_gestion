@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { useObras } from '@/modules/tarja/hooks/useObras'
+import { useObras, useObrasArchivadas } from '@/modules/tarja/hooks/useObras'
 import { usePersonal } from '@/modules/tarja/hooks/usePersonal'
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
 import { useQuery } from '@tanstack/react-query'
@@ -22,6 +22,10 @@ import { usePrestamos } from '@/modules/tarja/hooks/usePrestamos'
 export function ResumenHistoricoPage() {
   const router = useRouter()
 
+  // ── Tabs ──
+  const [tab, setTab] = useState<'semana' | 'historico'>('semana')
+  const [vistaObras, setVistaObras] = useState<'activas' | 'archivadas' | 'todas'>('activas')
+
   // ── Filtros ──
   const [filtroNombre, setFiltroNombre] = useState('')
   const [filtroDesde, setFiltroDesde] = useState('')
@@ -29,6 +33,13 @@ export function ResumenHistoricoPage() {
 
   // ── Datos ──
   const { data: obras = [], isLoading: loadingObras } = useObras()
+  const { data: obrasArchivadas = [], isLoading: loadingArchivadas } = useObrasArchivadas()
+
+  const obrasCombinadas = useMemo(() => {
+    if (vistaObras === 'activas')    return obras
+    if (vistaObras === 'archivadas') return obrasArchivadas
+    return [...obras, ...obrasArchivadas]
+  }, [obras, obrasArchivadas, vistaObras])
   const { data: personal = [] } = usePersonal()
   const { data: categorias = [] } = useCategorias()
 
@@ -75,10 +86,18 @@ export function ResumenHistoricoPage() {
 
 
   // ── Obras filtradas por nombre ──
+  // Para semana actual: siempre obras activas
   const obrasFiltradas = useMemo(() => {
     if (!filtroNombre) return obras
     return obras.filter(o => o.nom.toLowerCase().includes(filtroNombre.toLowerCase()))
   }, [obras, filtroNombre])
+
+  // Para histórico: según selector activas/archivadas/todas
+  const obrasFiltradasHist = useMemo(() => {
+    return obrasCombinadas.filter(o =>
+      !filtroNombre || o.nom.toLowerCase().includes(filtroNombre.toLowerCase())
+    )
+  }, [obrasCombinadas, filtroNombre])
 
   // ── Semanas disponibles (de todas las horas + certificaciones) ──
   const semanasDisponibles = useMemo(() => {
@@ -155,7 +174,7 @@ export function ResumenHistoricoPage() {
     let htContrat = 0
     let htSemsCerradas = 0
 
-    const filas = obrasFiltradas.map(o => {
+    const filas = obrasFiltradasHist.map(o => {
       // Agrupar fechas de horas por semana
       const seenKeys = new Set<string>()
       todasHoras.filter(h => h.obra_cod === o.cod).forEach(h => {
@@ -253,7 +272,7 @@ export function ResumenHistoricoPage() {
     }>
 
     return { filas, htHs, htCosto, htContrat, htSemsCerradas }
-  }, [obrasFiltradas, todasHoras, personal, categorias, todasTarifas, todasCerts, todosCierres, todasAsignaciones, filtroNombre, filtroDesde, filtroHasta])
+  }, [obrasFiltradasHist, todasHoras, personal, categorias, todasTarifas, todasCerts, todosCierres, todasAsignaciones, filtroNombre, filtroDesde, filtroHasta])
 
   function limpiarFiltros() {
     setFiltroNombre('')
@@ -324,7 +343,7 @@ export function ResumenHistoricoPage() {
   }
 
 
-  if (loadingObras || loadingHoras) {
+  if (loadingObras || loadingHoras || loadingArchivadas) {
     return (
       <div className="p-8 flex items-center gap-3 text-gris-dark">
         <span className="w-5 h-5 border-2 border-naranja border-t-transparent rounded-full animate-spin" />
@@ -336,8 +355,25 @@ export function ResumenHistoricoPage() {
   return (
     <div className="p-4 md:p-6 flex flex-col gap-5">
 
+      {/* ══ TABS ══ */}
+      <div className="flex gap-1 border-b border-gris pb-0">
+        {([['semana', '📅 Semana actual'], ['historico', '📊 Histórico']] as const).map(([t, label]) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`px-4 py-2 text-sm font-bold rounded-t-lg transition-colors border border-b-0 ${
+              tab === t
+                ? 'bg-white border-gris text-azul shadow-sm -mb-px'
+                : 'bg-gris border-transparent text-gris-dark hover:text-carbon'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {/* ══ RESUMEN GENERAL — SEMANA ACTUAL ══ */}
-      <div className="bg-white rounded-card shadow-card p-4 border-l-[5px] border-naranja">
+      {tab === 'semana' && <div className="bg-white rounded-card shadow-card p-4 border-l-[5px] border-naranja">
         <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
           <div>
             <h1 className="font-display text-[1.8rem] tracking-wider text-azul leading-none">
@@ -445,18 +481,35 @@ export function ResumenHistoricoPage() {
             ))}
           </div>
         )}
-      </div>
+      </div>}
 
       {/* ══ RESUMEN HISTÓRICO ══ */}
-      <div className="flex flex-col gap-3">
+      {tab === 'historico' && <div className="flex flex-col gap-3">
         <div className="flex items-start justify-between flex-wrap gap-3">
           <div>
             <h2 className="font-display text-[1.4rem] tracking-wider text-azul">
-              📊 RESUMEN HISTÓRICO — OBRAS ACTIVAS
+              📊 RESUMEN HISTÓRICO
             </h2>
             <p className="text-xs text-gris-dark mt-1">
               Acumulado total desde el inicio de cada obra
             </p>
+            {/* Selector activas/archivadas/todas */}
+            <div className="flex gap-1 mt-2">
+              {([['activas', 'Activas'], ['archivadas', 'Archivadas'], ['todas', 'Todas']] as const).map(([v, label]) => (
+                <button
+                  key={v}
+                  onClick={() => setVistaObras(v)}
+                  className={`text-xs font-bold px-3 py-1 rounded-full transition-colors ${
+                    vistaObras === v ? 'bg-azul text-white' : 'bg-gris text-gris-dark hover:bg-gris-mid'
+                  }`}
+                >
+                  {label}
+                  {v === 'activas' && ` (${obras.length})`}
+                  {v === 'archivadas' && ` (${obrasArchivadas.length})`}
+                  {v === 'todas' && ` (${obras.length + obrasArchivadas.length})`}
+                </button>
+              ))}
+            </div>
 
             {/* Filtros */}
             <div className="flex items-center gap-2 flex-wrap mt-3">
@@ -562,12 +615,17 @@ export function ResumenHistoricoPage() {
                     {resumenHistorico.filas.map(f => (
                       <tr
                         key={f.obra.cod}
-                        onClick={() => router.push(`/tarja/${encodeURIComponent(f.obra.cod)}`)}
-                        className="border-b border-gris last:border-0 hover:bg-gris/40 cursor-pointer transition-colors"
+                        onClick={() => !f.obra.archivada && router.push(`/tarja/${encodeURIComponent(f.obra.cod)}`)}
+                        className={`border-b border-gris last:border-0 transition-colors ${f.obra.archivada ? 'opacity-70' : 'hover:bg-gris/40 cursor-pointer'}`}
                       >
                         <td className="px-3 py-2.5 border-b border-gris">
-                          <span className="font-bold text-sm">{f.obra.nom}</span>
-                          <span className="font-mono text-[11px] text-gris-dark ml-2">{f.obra.cod}</span>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-sm">{f.obra.nom}</span>
+                            <span className="font-mono text-[11px] text-gris-dark">{f.obra.cod}</span>
+                            {f.obra.archivada && (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-gris text-gris-dark">Archivada</span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-3 py-2.5 border-b border-gris text-sm text-gris-dark">
                           {f.obra.resp || '—'}
@@ -627,7 +685,7 @@ export function ResumenHistoricoPage() {
             </table>
           </div>
         </div>
-      </div>
+      </div>}
     </div>
   )
 }
