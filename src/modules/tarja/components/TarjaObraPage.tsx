@@ -171,11 +171,25 @@ export function TarjaObraPage({ obraCod }: Props) {
     )
   }
 
+  const archivada = !!obra.archivada
+
   return (
     <div className="p-4 md:p-6 flex flex-col gap-4">
 
+      {/* ── Banner obra archivada ── */}
+      {archivada && (
+        <div className="bg-gris border border-gris-mid rounded-card px-4 py-2 flex items-center gap-3 text-sm text-gris-dark">
+          <span className="text-base">📦</span>
+          <span>
+            <strong>Obra archivada</strong>
+            {obra.fecha_archivo && ` · ${obra.fecha_archivo}`}
+            {' — '}solo lectura
+          </span>
+        </div>
+      )}
+
       {/* ── Header ── */}
-      <div className="bg-white rounded-card shadow-card p-4 flex items-start justify-between flex-wrap gap-3 border-l-[5px] border-naranja">
+      <div className={`bg-white rounded-card shadow-card p-4 flex items-start justify-between flex-wrap gap-3 border-l-[5px] ${archivada ? 'border-gris-mid' : 'border-naranja'}`}>
         <div>
           <h1 className="font-display text-[1.6rem] tracking-wider text-azul leading-none">
             {obra.nom}
@@ -198,8 +212,8 @@ export function TarjaObraPage({ obraCod }: Props) {
             <Chip value={totalCosto > 0 ? fmtMonto(totalCosto) : '$0'} label="Costo semana" variant="green" />
             <Chip value={desde} label="Período" variant="orange" />
           </div>
-          {/* Acciones */}
-          {puedeEditar && (
+          {/* Acciones — solo en obras activas */}
+          {puedeEditar && !archivada && (
             <div className="flex items-center gap-1 flex-wrap">
               <Button variant="ghost" size="sm" onClick={() => setModalEditarObra(true)}>
                 ✏️ Editar
@@ -209,20 +223,22 @@ export function TarjaObraPage({ obraCod }: Props) {
         </div>
       </div>
 
-      {/* ── Toolbar ── */}
-      <ToolbarTarja
-        personal={personal}
-        categorias={categorias}
-        horasData={horasData}
-        tarifas={tarifas}
-        obra={obra}
-        obraCod={obraCod}
-        onAgregarTrabajador={() => setModalTrab(true)}
-        onAutoFill={handleAutoFill}
-        onLimpiar={handleLimpiar}
-        undoCount={undoState.count}
-        onUndo={undoState.fn ?? undefined}
-      />
+      {/* ── Toolbar — solo en obras activas ── */}
+      {!archivada && (
+        <ToolbarTarja
+          personal={personal}
+          categorias={categorias}
+          horasData={horasData}
+          tarifas={tarifas}
+          obra={obra}
+          obraCod={obraCod}
+          onAgregarTrabajador={() => setModalTrab(true)}
+          onAutoFill={handleAutoFill}
+          onLimpiar={handleLimpiar}
+          undoCount={undoState.count}
+          onUndo={undoState.fn ?? undefined}
+        />
+      )}
 
       {/* ── Tabla de tarja ── */}
       <TarjaTable
@@ -231,16 +247,17 @@ export function TarjaObraPage({ obraCod }: Props) {
         categorias={categorias}
         tarifas={tarifas}
         onUndoStateChange={handleUndoStateChange}
+        readonly={archivada}
       />
 
       {/* ── Tarifas ── */}
-      <TarifasPanel obraCod={obraCod} />
+      <TarifasPanel obraCod={obraCod} readonly={archivada} />
 
       {/* ── Contratistas ── */}
-      <ContratistasPanel obraCod={obraCod} />
+      <ContratistasPanel obraCod={obraCod} readonly={archivada} />
 
-      {/* ── Cierres ── */}
-      <CierresSection obraCod={obraCod} />
+      {/* ── Cierres — solo en obras activas ── */}
+      {!archivada && <CierresSection obraCod={obraCod} />}
 
       {/* ── Modales ── */}
       <ModalAgregarTrabajador

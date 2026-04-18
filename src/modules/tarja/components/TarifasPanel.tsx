@@ -10,6 +10,7 @@ import { toISO, getViernes, getSemLabel } from '@/lib/utils/dates'
 
 interface Props {
   obraCod: string
+  readonly?: boolean
 }
 
 interface CatSemState {
@@ -25,9 +26,10 @@ function buildSemanas() {
   }).reverse()
 }
 
-export function TarifasPanel({ obraCod }: Props) {
+export function TarifasPanel({ obraCod, readonly = false }: Props) {
   const toast = useToast()
-  const { puedeEditar } = usePermisos('tarja')
+  const { puedeEditar: puedeEditarPerm } = usePermisos('tarja')
+  const puedeEditar = puedeEditarPerm && !readonly
   const { data: categorias = [] } = useCategorias()
   const { data: tarifas = [], refetch } = useTarifasObra(obraCod)
   const { mutate: upsert } = useUpsertTarifa()

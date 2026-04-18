@@ -615,8 +615,8 @@ export function ResumenHistoricoPage() {
                     {resumenHistorico.filas.map(f => (
                       <tr
                         key={f.obra.cod}
-                        onClick={() => !f.obra.archivada && router.push(`/tarja/${encodeURIComponent(f.obra.cod)}`)}
-                        className={`border-b border-gris last:border-0 transition-colors ${f.obra.archivada ? 'opacity-70' : 'hover:bg-gris/40 cursor-pointer'}`}
+                        onClick={() => router.push(`/tarja/${encodeURIComponent(f.obra.cod)}`)}
+                        className="border-b border-gris last:border-0 hover:bg-gris/40 cursor-pointer transition-colors"
                       >
                         <td className="px-3 py-2.5 border-b border-gris">
                           <div className="flex items-center gap-2 flex-wrap">

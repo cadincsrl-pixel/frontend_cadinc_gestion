@@ -36,11 +36,15 @@ const ESP_OPTIONS = [
 
 interface Props {
   obraCod: string
+  readonly?: boolean
 }
 
-export function ContratistasPanel({ obraCod }: Props) {
+export function ContratistasPanel({ obraCod, readonly = false }: Props) {
   const toast = useToast()
-  const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('tarja')
+  const { puedeCrear: puedeCrearPerm, puedeEditar: puedeEditarPerm, puedeEliminar: puedeEliminarPerm } = usePermisos('tarja')
+  const puedeCrear   = puedeCrearPerm   && !readonly
+  const puedeEditar  = puedeEditarPerm  && !readonly
+  const puedeEliminar = puedeEliminarPerm && !readonly
   const { semActual } = useTarjaStore()
   const semKey = toISO(semActual)
 

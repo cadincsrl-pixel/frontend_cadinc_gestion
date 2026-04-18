@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import { useObrasArchivadas, useDesarchivarObra } from '@/modules/tarja/hooks/useObras'
 import { usePersonal } from '@/modules/tarja/hooks/usePersonal'
 import { useContratistasObra, useCertificacionesObra } from '@/modules/tarja/hooks/useContratistas'
@@ -129,6 +130,7 @@ function ObraArchivadasDetalle({ obra }: { obra: Obra }) {
 function ObraArchivadasRow({ obra }: { obra: Obra }) {
   const [expandida, setExpandida] = useState(false)
   const toast = useToast()
+  const router = useRouter()
   const { mutate: desarchivar, isPending } = useDesarchivarObra()
 
   function handleDesarchivar(e: React.MouseEvent) {
@@ -164,6 +166,12 @@ function ObraArchivadasRow({ obra }: { obra: Obra }) {
               {obra.fecha_archivo}
             </span>
           )}
+          <button
+            onClick={e => { e.stopPropagation(); router.push(`/tarja/${encodeURIComponent(obra.cod)}`) }}
+            className="text-xs font-bold px-3 py-1 rounded bg-gris text-gris-dark hover:bg-gris-mid transition-colors"
+          >
+            Ver horas
+          </button>
           <button
             onClick={handleDesarchivar}
             disabled={isPending}

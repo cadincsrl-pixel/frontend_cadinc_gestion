@@ -20,6 +20,7 @@ interface Props {
   categorias: Categoria[]
   tarifas: Tarifa[]
   onUndoStateChange?: (count: number, fn: () => void) => void
+  readonly?: boolean
 }
 
 interface UndoEntry {
@@ -33,7 +34,7 @@ function getHoraClass(h: number): string {
   if (h >= 8) return 'border-verde/40 bg-verde-light text-verde'
   return 'border-[#E0A800] bg-[#FFF3CD] text-[#7A5000]'
 }
-export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoStateChange }: Props) {
+export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoStateChange, readonly = false }: Props) {
   const { semActual } = useTarjaStore()
   const toast = useToast()
   const { puedeEditar, puedeEliminar } = usePermisos('tarja')
@@ -334,9 +335,9 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                           step={0.5}
                           key={`${p.leg}-${fecha}-${h}`}
                           defaultValue={h || ''}
-                          readOnly={!puedeEditar}
-                          onBlur={puedeEditar ? e => handleChange(p.leg, fecha, e.target.value, h) : undefined}
-                          onKeyDown={puedeEditar ? e => {
+                          readOnly={!puedeEditar || readonly}
+                          onBlur={puedeEditar && !readonly ? e => handleChange(p.leg, fecha, e.target.value, h) : undefined}
+                          onKeyDown={puedeEditar && !readonly ? e => {
                             if (e.key === 'Enter') {
                               const antes = h
                               handleChange(p.leg, fecha, (e.target as HTMLInputElement).value, antes)
