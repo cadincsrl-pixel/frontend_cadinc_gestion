@@ -95,8 +95,12 @@ export function SolicitudesTab() {
 
   // Estado UI
   const [modalNuevo, setModalNuevo] = useState(false)
+  const [modalEditar, setModalEditar] = useState<SolicitudCompra | null>(null)
   const [lineas, setLineas] = useState<LineaForm[]>([newLinea()])
+  const [lineasEdit, setLineasEdit] = useState<(LineaForm & { itemId?: number; estado?: string })[]>([])
+  const [itemsAEliminar, setItemsAEliminar] = useState<number[]>([])
   const [obraNueva, setObraNueva] = useState('')
+  const [obraEdit, setObraEdit] = useState('')
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
 
   // Modales de acciones sobre ítems
@@ -107,6 +111,7 @@ export function SolicitudesTab() {
 
   // Forms
   const formCab = useForm<any>({ defaultValues: { prioridad: 'normal', obs: '' } })
+  const formEdit = useForm<any>({ defaultValues: { prioridad: 'normal', obs: '' } })
   const formComprar = useForm<any>({ defaultValues: { proveedor_id: '', precio_unit: 0, factura_id: '' } })
   const formDespachar = useForm<any>({ defaultValues: { precio_unit: 0 } })
   const formProv = useForm<any>({ defaultValues: { nombre: '', cuit: '', tel: '' } })
@@ -153,6 +158,56 @@ export function SolicitudesTab() {
     create({ obra_cod: obraNueva, prioridad: cab.prioridad, obs: cab.obs || null, items }, {
       onSuccess: () => { toast('Solicitud creada', 'ok'); setModalNuevo(false) },
       onError: () => toast('Error al crear solicitud', 'err'),
+    })
+  }
+
+  // ── Editar solicitud ──
+  function abrirEditar(s: SolicitudCompra) {
+    formEdit.reset({ prioridad: s.prioridad, obs: s.obs ?? '' })
+    setObraEdit(s.obra_cod)
+    setItemsAEliminar([])
+    const editLines = (s.items ?? []).map((it, i) => ({
+      _id: nextId++,
+      itemId: it.id,
+      descripcion: it.descripcion,
+      cantidad: it.cantidad,
+      unidad: it.unidad,
+      obs: it.obs ?? '',
+      material_id: it.material_id ?? null,
+      estado: it.estado,
+    }))
+    setLineasEdit(editLines)
+    setModalEditar(s)
+  }
+
+  function handleEditar(cab: any) {
+    if (!modalEditar) return
+    if (!obraEdit) { toast('Seleccioná una obra', 'err'); return }
+
+    // Items nuevos o editados (solo pendientes)
+    const itemsToSend = lineasEdit
+      .filter(l => l.descripcion.trim() && (!l.estado || l.estado === 'pendiente'))
+      .map(l => ({
+        id: l.itemId,
+        descripcion: l.descripcion,
+        cantidad: l.cantidad,
+        unidad: l.unidad,
+        obs: l.obs || null,
+        material_id: l.material_id,
+      }))
+
+    updateSol({
+      id: modalEditar.id,
+      dto: {
+        obra_cod: obraEdit,
+        prioridad: cab.prioridad,
+        obs: cab.obs || null,
+        items: itemsToSend,
+        remove_items: itemsAEliminar.length > 0 ? itemsAEliminar : undefined,
+      },
+    }, {
+      onSuccess: () => { toast('Solicitud actualizada', 'ok'); setModalEditar(null) },
+      onError: () => toast('Error al actualizar', 'err'),
     })
   }
 
@@ -355,6 +410,7 @@ export function SolicitudesTab() {
                                     <button onClick={() => rechazar(s.id)} className="text-[11px] font-bold px-2 py-1 rounded bg-rojo-light text-rojo hover:opacity-80 transition-colors">Rechazar</button>
                                   </>
                                 )}
+                                <button onClick={() => abrirEditar(s)} className="text-[11px] font-bold px-2 py-1 rounded bg-gris text-gris-dark hover:bg-azul-light hover:text-azul transition-colors">✏️ Editar</button>
                                 <button onClick={() => eliminar(s.id)} className="text-xs px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors">✕</button>
                               </div>
                             </td>
@@ -634,6 +690,108 @@ export function SolicitudesTab() {
             )}
           </div>
         </div>
+      </Modal>
+
+      {/* ── Modal editar solicitud ── */}
+      <Modal open={!!modalEditar} onClose={() => setModalEditar(null)} title="✏️ EDITAR SOLICITUD" width="max-w-3xl"
+        footer={<>
+          <Button variant="secondary" onClick={() => setModalEditar(null)}>Cancelar</Button>
+          <Button variant="primary" onClick={formEdit.handleSubmit(handleEditar)}>Guardar cambios</Button>
+        </>}>
+        {modalEditar && (
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-2 gap-3">
+              <Combobox label="Obra destino" placeholder="Buscar obra..." options={obraOptions} value={obraEdit} onChange={setObraEdit} />
+              <div>
+                <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1 block">Prioridad</label>
+                <select {...formEdit.register('prioridad')} className="w-full px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white font-semibold focus:border-naranja">
+                  <option value="normal">Normal</option>
+                  <option value="urgente">Urgente</option>
+                </select>
+              </div>
+            </div>
+            <Input label="Observaciones" placeholder="Notas adicionales..." {...formEdit.register('obs')} />
+
+            <div>
+              <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-2">Materiales</div>
+              <div className="flex flex-col gap-2">
+                {lineasEdit.map(l => {
+                  const esPendiente = !l.estado || l.estado === 'pendiente'
+                  const matVinculado = l.material_id ? stockMap.get(l.material_id) : null
+                  const stockOptions = (stockMateriales as StockMaterial[]).map(m => ({
+                    value: String(m.id),
+                    label: m.nombre,
+                    sub: `Stock: ${m.stock_actual} ${m.unidad}`,
+                  }))
+
+                  if (!esPendiente) {
+                    // Ítems ya resueltos: solo mostrar, no editar
+                    const cfg = ITEM_ESTADO_CFG[l.estado as ItemEstado]
+                    return (
+                      <div key={l._id} className="border border-gris-mid rounded-lg p-3 bg-gris/30 opacity-70">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className="text-sm font-medium">{l.descripcion}</span>
+                            <span className="text-xs text-gris-dark ml-2 font-mono">{l.cantidad} {l.unidad}</span>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${cfg?.bg} ${cfg?.text}`}>{cfg?.label}</span>
+                        </div>
+                      </div>
+                    )
+                  }
+
+                  return (
+                    <div key={l._id} className="border border-gris-mid rounded-lg p-3 bg-gris/20">
+                      <div className="flex gap-2 items-start">
+                        <div className="flex-1">
+                          <Combobox
+                            placeholder="Buscar material del catálogo..."
+                            options={stockOptions}
+                            value={l.material_id ? String(l.material_id) : ''}
+                            onChange={val => {
+                              const mat = val ? (stockMateriales as StockMaterial[]).find(m => m.id === Number(val)) : null
+                              setLineasEdit(p => p.map(x => x._id === l._id ? {
+                                ...x,
+                                material_id: mat ? mat.id : null,
+                                descripcion: mat ? mat.nombre : '',
+                                unidad: mat ? mat.unidad : x.unidad,
+                              } : x))
+                            }}
+                          />
+                        </div>
+                        {matVinculado && (
+                          <div className={`flex-shrink-0 px-2 py-1.5 rounded-lg text-xs font-bold ${(matVinculado as StockMaterial).stock_actual > 0 ? 'bg-verde-light text-verde' : 'bg-rojo-light text-rojo'}`}>
+                            Stock: {(matVinculado as StockMaterial).stock_actual}
+                          </div>
+                        )}
+                        <button onClick={() => {
+                          if (l.itemId) setItemsAEliminar(p => [...p, l.itemId!])
+                          setLineasEdit(p => p.filter(x => x._id !== l._id))
+                        }} className="text-gris-mid hover:text-rojo text-lg font-bold mt-1">✕</button>
+                      </div>
+                      {!l.material_id && (
+                        <input type="text" placeholder="O escribir descripción libre..." value={l.descripcion}
+                          onChange={e => setLineasEdit(p => p.map(x => x._id === l._id ? { ...x, descripcion: e.target.value } : x))}
+                          className="w-full mt-2 px-2 py-1.5 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja" />
+                      )}
+                      <div className="flex gap-2 mt-2">
+                        <input type="number" min="0" step="0.001" value={l.cantidad} onChange={e => setLineasEdit(p => p.map(x => x._id === l._id ? { ...x, cantidad: parseFloat(e.target.value) || 0 } : x))}
+                          placeholder="Cant." className="w-20 px-2 py-1.5 border border-gris-mid rounded-lg text-sm text-right outline-none focus:border-naranja" />
+                        <select value={l.unidad} onChange={e => setLineasEdit(p => p.map(x => x._id === l._id ? { ...x, unidad: e.target.value } : x))}
+                          className="w-20 px-1 py-1.5 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white">
+                          {UNIDADES.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
+                        </select>
+                        <input type="text" placeholder="Obs..." value={l.obs} onChange={e => setLineasEdit(p => p.map(x => x._id === l._id ? { ...x, obs: e.target.value } : x))}
+                          className="flex-1 px-2 py-1.5 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja" />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              <button onClick={() => setLineasEdit(p => [...p, { ...newLinea(), estado: 'pendiente' }])} className="mt-2 text-xs font-bold text-azul hover:text-naranja transition-colors">+ Agregar material</button>
+            </div>
+          </div>
+        )}
       </Modal>
     </>
   )
