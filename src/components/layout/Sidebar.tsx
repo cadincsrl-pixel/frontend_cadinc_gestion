@@ -4,6 +4,7 @@ import { Suspense } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useObras }        from '@/modules/tarja/hooks/useObras'
 import { useSessionStore } from '@/store/session.store'
+import { useTabsPermitidos } from '@/hooks/useTabsPermitidos'
 
 interface SidebarProps {
   open?: boolean
@@ -18,10 +19,10 @@ const NAV_ITEMS_CERT = [
   { tab: 'adicionales', icon: '🧾', label: 'Adicionales', meta: 'Trabajos extra con comprobante' },
 ]
 
-function CertNav({ navigate, activeTab }: { navigate: (href: string) => void; activeTab: string }) {
+function CertNav({ navigate, activeTab, allowedTabs }: { navigate: (href: string) => void; activeTab: string; allowedTabs?: string[] }) {
   return (
     <>
-      {NAV_ITEMS_CERT.map(item => {
+      {NAV_ITEMS_CERT.filter(item => !allowedTabs || allowedTabs.includes(item.tab)).map(item => {
         const isActive = activeTab === item.tab
         return (
           <button
@@ -52,7 +53,8 @@ function CertNav({ navigate, activeTab }: { navigate: (href: string) => void; ac
 function CertNavWithParams({ navigate }: { navigate: (href: string) => void }) {
   const searchParams = useSearchParams()
   const activeTab    = searchParams.get('tab') ?? 'solicitudes'
-  return <CertNav navigate={navigate} activeTab={activeTab} />
+  const allowedTabs  = useTabsPermitidos('certificaciones')
+  return <CertNav navigate={navigate} activeTab={activeTab} allowedTabs={allowedTabs} />
 }
 
 const NAV_ITEMS_CAJA = [
@@ -61,10 +63,10 @@ const NAV_ITEMS_CAJA = [
   { tab: 'configuracion', icon: '⚙️', label: 'Configuración', meta: 'Conceptos y centros'      },
 ]
 
-function CajaNav({ navigate, activeTab }: { navigate: (href: string) => void; activeTab: string }) {
+function CajaNav({ navigate, activeTab, allowedTabs }: { navigate: (href: string) => void; activeTab: string; allowedTabs?: string[] }) {
   return (
     <>
-      {NAV_ITEMS_CAJA.map(item => {
+      {NAV_ITEMS_CAJA.filter(item => !allowedTabs || allowedTabs.includes(item.tab)).map(item => {
         const isActive = activeTab === item.tab
         return (
           <button
@@ -95,18 +97,19 @@ function CajaNav({ navigate, activeTab }: { navigate: (href: string) => void; ac
 function CajaNavWithParams({ navigate }: { navigate: (href: string) => void }) {
   const searchParams = useSearchParams()
   const activeTab    = searchParams.get('tab') ?? 'movimientos'
-  return <CajaNav navigate={navigate} activeTab={activeTab} />
+  const allowedTabs  = useTabsPermitidos('caja')
+  return <CajaNav navigate={navigate} activeTab={activeTab} allowedTabs={allowedTabs} />
 }
 
 const NAV_ITEMS_TARJA = [
-  { href: '/tarja',            icon: '📋', label: 'Tarja',              meta: 'Control de horas',     exact: false },
-  { href: '/dashboard', icon: '📊', label: 'Resumen General', meta: 'Resumen general e histórico', exact: false },
-  { href: '/horas-trabajador',  icon: '👤', label: 'Horas x Trabajador', meta: 'Historial individual', exact: false },
-  { href: '/tarja/prestamos',  icon: '💵', label: 'Préstamos',          meta: 'Préstamos y descuentos',  exact: false },
-  { href: '/tarja/ropa',       icon: '👕', label: 'Ropa de trabajo',    meta: 'Control de entregas',     exact: false },
-  { href: '/personal',         icon: '👷', label: 'Personal',           meta: 'Gestión de nómina',       exact: false },
-  { href: '/configuracion',    icon: '⚙️', label: 'Configuración',      meta: 'Categorías y tarifas', exact: false },
-  { href: '/tarja/archivadas', icon: '📦', label: 'Obras archivadas',   meta: 'Historial de obras',   exact: true  },
+  { href: '/tarja',            icon: '📋', label: 'Tarja',              meta: 'Control de horas',            exact: false, tabKey: 'tarja'            },
+  { href: '/dashboard',        icon: '📊', label: 'Resumen General',    meta: 'Resumen general e histórico', exact: false, tabKey: 'dashboard'        },
+  { href: '/horas-trabajador', icon: '👤', label: 'Horas x Trabajador', meta: 'Historial individual',        exact: false, tabKey: 'horas-trabajador' },
+  { href: '/tarja/prestamos',  icon: '💵', label: 'Préstamos',          meta: 'Préstamos y descuentos',      exact: false, tabKey: 'prestamos'        },
+  { href: '/tarja/ropa',       icon: '👕', label: 'Ropa de trabajo',    meta: 'Control de entregas',         exact: false, tabKey: 'ropa'             },
+  { href: '/personal',         icon: '👷', label: 'Personal',           meta: 'Gestión de nómina',           exact: false, tabKey: 'personal'         },
+  { href: '/configuracion',    icon: '⚙️', label: 'Configuración',      meta: 'Categorías y tarifas',        exact: false, tabKey: 'configuracion'    },
+  { href: '/tarja/archivadas', icon: '📦', label: 'Obras archivadas',   meta: 'Historial de obras',          exact: true,  tabKey: 'archivadas'       },
 ]
 
 const NAV_ITEMS_LOGISTICA = [
@@ -124,17 +127,17 @@ const NAV_ITEMS_ADMIN = [
 ]
 
 const HERR_SUBNAV = [
-  { href: '/herramientas/inventario',   icon: '🔧', label: 'Inventario',   meta: 'Catálogo de herramientas'  },
-  { href: '/herramientas/movimientos',  icon: '↔',  label: 'Movimientos',  meta: 'Registrar traslados'       },
-  { href: '/herramientas/trazabilidad', icon: '📍', label: 'Trazabilidad', meta: 'Historial por herramienta' },
-  { href: '/herramientas/remitos',      icon: '📄', label: 'Remitos',      meta: 'Emisión de remitos'        },
-  { href: '/herramientas/parametros',   icon: '⚙️', label: 'Parámetros',   meta: 'Tipos y configuración'     },
+  { href: '/herramientas/inventario',   icon: '🔧', label: 'Inventario',   meta: 'Catálogo de herramientas',  tabKey: 'inventario'   },
+  { href: '/herramientas/movimientos',  icon: '↔',  label: 'Movimientos',  meta: 'Registrar traslados',       tabKey: 'movimientos'  },
+  { href: '/herramientas/trazabilidad', icon: '📍', label: 'Trazabilidad', meta: 'Historial por herramienta', tabKey: 'trazabilidad' },
+  { href: '/herramientas/remitos',      icon: '📄', label: 'Remitos',      meta: 'Emisión de remitos',        tabKey: 'remitos'      },
+  { href: '/herramientas/parametros',   icon: '⚙️', label: 'Parámetros',   meta: 'Tipos y configuración',     tabKey: 'parametros'   },
 ]
 
-function LogisticaNav({ navigate, activeTab }: { navigate: (href: string) => void; activeTab: string }) {
+function LogisticaNav({ navigate, activeTab, allowedTabs }: { navigate: (href: string) => void; activeTab: string; allowedTabs?: string[] }) {
   return (
     <>
-      {NAV_ITEMS_LOGISTICA.map(item => {
+      {NAV_ITEMS_LOGISTICA.filter(item => !allowedTabs || allowedTabs.includes(item.tab)).map(item => {
         const isActive = activeTab === item.tab
         return (
           <button
@@ -165,13 +168,14 @@ function LogisticaNav({ navigate, activeTab }: { navigate: (href: string) => voi
 function LogisticaNavWithParams({ navigate }: { navigate: (href: string) => void }) {
   const searchParams = useSearchParams()
   const activeTab    = searchParams.get('tab') ?? 'viajes'
-  return <LogisticaNav navigate={navigate} activeTab={activeTab} />
+  const allowedTabs  = useTabsPermitidos('logistica')
+  return <LogisticaNav navigate={navigate} activeTab={activeTab} allowedTabs={allowedTabs} />
 }
 
-function AdminNav({ navigate, activeTab }: { navigate: (href: string) => void; activeTab: string }) {
+function AdminNav({ navigate, activeTab, allowedTabs }: { navigate: (href: string) => void; activeTab: string; allowedTabs?: string[] }) {
   return (
     <>
-      {NAV_ITEMS_ADMIN.map(item => {
+      {NAV_ITEMS_ADMIN.filter(item => !allowedTabs || allowedTabs.includes(item.tab)).map(item => {
         const isActive = activeTab === item.tab
         return (
           <button
@@ -202,7 +206,8 @@ function AdminNav({ navigate, activeTab }: { navigate: (href: string) => void; a
 function AdminNavWithParams({ navigate }: { navigate: (href: string) => void }) {
   const searchParams = useSearchParams()
   const activeTab    = searchParams.get('tab') ?? 'usuarios'
-  return <AdminNav navigate={navigate} activeTab={activeTab} />
+  const allowedTabs  = useTabsPermitidos('admin')
+  return <AdminNav navigate={navigate} activeTab={activeTab} allowedTabs={allowedTabs} />
 }
 
 export function Sidebar({ open, onClose }: SidebarProps) {
@@ -213,6 +218,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const hasModulo = useSessionStore(s => s.hasModulo)
   const profile   = useSessionStore(s => s.profile)
 
+  const tarjaTabs = useTabsPermitidos('tarja')
+  const herrTabs  = useTabsPermitidos('herramientas')
   const enHerramientas     = decodedPathname.startsWith('/herramientas')
   const enLogistica        = decodedPathname.startsWith('/logistica')
   const enCertificaciones  = decodedPathname.startsWith('/certificaciones')
@@ -301,7 +308,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           )}
 
           {/* TARJA nav — solo si NO estamos en otros módulos */}
-          {!enHerramientas && !enLogistica && !enCertificaciones && !enCaja && !enAdmin && NAV_ITEMS_TARJA.map(item => (
+          {!enHerramientas && !enLogistica && !enCertificaciones && !enCaja && !enAdmin && NAV_ITEMS_TARJA.filter(item => tarjaTabs.includes(item.tabKey)).map(item => (
             <button
               key={item.href}
               onClick={() => navigate(item.href)}
@@ -324,7 +331,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           ))}
 
           {/* HERRAMIENTAS nav */}
-          {enHerramientas && HERR_SUBNAV.map(item => (
+          {enHerramientas && HERR_SUBNAV.filter(item => herrTabs.includes(item.tabKey)).map(item => (
             <button
               key={item.href}
               onClick={() => navigate(item.href)}

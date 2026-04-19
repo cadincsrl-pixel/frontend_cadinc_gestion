@@ -366,7 +366,7 @@ export interface Cobro {
 }
 
 export type Accion = 'lectura' | 'creacion' | 'actualizacion' | 'eliminacion'
-export type ModuloPermisos = { [K in Accion]?: boolean }
+export type ModuloPermisos = { [K in Accion]?: boolean } & { tabs?: string[] }
 export type Permisos = Record<string, ModuloPermisos>
 
 export interface Profile {

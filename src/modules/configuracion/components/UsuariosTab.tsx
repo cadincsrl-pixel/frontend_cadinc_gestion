@@ -8,6 +8,7 @@ import { Button }   from '@/components/ui/Button'
 import { Input }    from '@/components/ui/Input'
 import { useToast } from '@/components/ui/Toast'
 import { useSessionStore } from '@/store/session.store'
+import { TABS_POR_MODULO } from '@/lib/config/modulo-tabs'
 import type { Accion, Permisos, Profile, Modulo } from '@/types/domain.types'
 
 const ACCIONES: { key: Accion; label: string }[] = [
@@ -501,6 +502,54 @@ function UsuarioForm({
                           )
                         })}
                       </div>
+
+                      {/* Tabs visibles */}
+                      {TABS_POR_MODULO[m.key] && (
+                        <div className="mt-3 pt-2 border-t border-gris">
+                          <div className="text-[10px] font-bold text-gris-dark uppercase tracking-wider mb-1.5">Secciones visibles</div>
+                          <div className="flex gap-1.5 flex-wrap">
+                            {TABS_POR_MODULO[m.key]!.map(tab => {
+                              const tabsActuales = modPerm.tabs ?? []
+                              const tabActivo = tabsActuales.length === 0 || tabsActuales.includes(tab.key)
+                              return (
+                                <button
+                                  key={tab.key}
+                                  type="button"
+                                  onClick={() => {
+                                    const allTabs = TABS_POR_MODULO[m.key]!.map(t => t.key)
+                                    let newTabs: string[]
+                                    if (tabsActuales.length === 0) {
+                                      // Primera vez: quitar este tab de todos
+                                      newTabs = allTabs.filter(t => t !== tab.key)
+                                    } else if (tabActivo) {
+                                      newTabs = tabsActuales.filter(t => t !== tab.key)
+                                    } else {
+                                      newTabs = [...tabsActuales, tab.key]
+                                    }
+                                    // Si quedan todos, limpiar (significa "todos")
+                                    if (newTabs.length === allTabs.length) newTabs = []
+                                    const newPermisos: Permisos = {
+                                      ...permisos,
+                                      [m.key]: { ...modPerm, tabs: newTabs },
+                                    }
+                                    onChange({ ...data, permisos: newPermisos })
+                                  }}
+                                  className={`
+                                    flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg border transition-all
+                                    ${tabActivo
+                                      ? 'bg-naranja text-white border-naranja'
+                                      : 'bg-white text-gris-dark border-gris-mid hover:border-naranja hover:text-naranja'
+                                    }
+                                  `}
+                                >
+                                  <span>{tab.icon}</span>
+                                  {tab.label}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
