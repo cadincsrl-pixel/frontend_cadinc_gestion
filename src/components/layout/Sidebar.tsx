@@ -118,6 +118,13 @@ const NAV_ITEMS_LOGISTICA = [
   { tab: 'lugares',       icon: '📍', label: 'Lugares',       meta: 'Canteras · Depósitos'          },
 ]
 
+const NAV_ITEMS_ADMIN = [
+  { tab: 'usuarios',      icon: '👥', label: 'Usuarios',      meta: 'Gestión de cuentas'       },
+  { tab: 'permisos',      icon: '🔐', label: 'Permisos',      meta: 'Roles y accesos'          },
+  { tab: 'configuracion', icon: '💼', label: 'Configuración', meta: 'Categorías y tarifas'     },
+  { tab: 'auditoria',     icon: '📋', label: 'Auditoría',     meta: 'Registro de actividad'    },
+]
+
 const HERR_SUBNAV = [
   { href: '/herramientas/inventario',   icon: '🔧', label: 'Inventario',   meta: 'Catálogo de herramientas'  },
   { href: '/herramientas/movimientos',  icon: '↔',  label: 'Movimientos',  meta: 'Registrar traslados'       },
@@ -163,6 +170,43 @@ function LogisticaNavWithParams({ navigate }: { navigate: (href: string) => void
   return <LogisticaNav navigate={navigate} activeTab={activeTab} />
 }
 
+function AdminNav({ navigate, activeTab }: { navigate: (href: string) => void; activeTab: string }) {
+  return (
+    <>
+      {NAV_ITEMS_ADMIN.map(item => {
+        const isActive = activeTab === item.tab
+        return (
+          <button
+            key={item.tab}
+            onClick={() => navigate(`/admin?tab=${item.tab}`)}
+            className={`
+              w-full flex items-center gap-2.5 px-3 py-2.5 mx-2 rounded-[9px]
+              text-left transition-all border border-transparent
+              ${isActive
+                ? 'bg-naranja text-white border-naranja-dark shadow-[0_4px_14px_rgba(232,98,26,.4)]'
+                : 'text-white hover:bg-white hover:text-black'
+              }
+            `}
+            style={{ width: 'calc(100% - 16px)' }}
+          >
+            <span className="text-base w-5 text-center flex-shrink-0">{item.icon}</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-bold truncate">{item.label}</div>
+              <div className="text-[11px] opacity-60 font-normal">{item.meta}</div>
+            </div>
+          </button>
+        )
+      })}
+    </>
+  )
+}
+
+function AdminNavWithParams({ navigate }: { navigate: (href: string) => void }) {
+  const searchParams = useSearchParams()
+  const activeTab    = searchParams.get('tab') ?? 'usuarios'
+  return <AdminNav navigate={navigate} activeTab={activeTab} />
+}
+
 export function Sidebar({ open, onClose }: SidebarProps) {
   const pathname        = usePathname()
   const router          = useRouter()
@@ -175,6 +219,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const enLogistica        = decodedPathname.startsWith('/logistica')
   const enCertificaciones  = decodedPathname.startsWith('/certificaciones')
   const enCaja             = decodedPathname.startsWith('/caja')
+  const enAdmin            = decodedPathname.startsWith('/admin')
 
   function navigate(href: string) {
     router.push(href)
@@ -226,7 +271,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         {/* ── Nav principal ── */}
         <div className="pt-3">
           <div className="px-4 py-2 text-[10px] font-bold tracking-[2.5px] uppercase text-white/35">
-            {enHerramientas ? 'Herramientas' : enLogistica ? 'Logística' : enCertificaciones ? 'Compras y Stock' : enCaja ? 'Caja' : 'Menú'}
+            {enAdmin ? 'Administración' : enHerramientas ? 'Herramientas' : enLogistica ? 'Logística' : enCertificaciones ? 'Compras y Stock' : enCaja ? 'Caja' : 'Menú'}
           </div>
 
           {/* LOGÍSTICA nav */}
@@ -250,8 +295,15 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             </Suspense>
           )}
 
-          {/* TARJA nav — solo si NO estamos en herramientas, logística, certificaciones ni caja */}
-          {!enHerramientas && !enLogistica && !enCertificaciones && !enCaja && NAV_ITEMS_TARJA.map(item => (
+          {/* ADMIN nav */}
+          {enAdmin && (
+            <Suspense fallback={null}>
+              <AdminNavWithParams navigate={navigate} />
+            </Suspense>
+          )}
+
+          {/* TARJA nav — solo si NO estamos en otros módulos */}
+          {!enHerramientas && !enLogistica && !enCertificaciones && !enCaja && !enAdmin && NAV_ITEMS_TARJA.map(item => (
             <button
               key={item.href}
               onClick={() => navigate(item.href)}

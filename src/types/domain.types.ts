@@ -638,6 +638,20 @@ export interface StockMovimiento {
   stock_materiales?: { nombre: string; unidad: string }
 }
 
+// ── Audit Log ──
+export interface AuditLogEntry {
+  id:           number
+  user_id:      string | null
+  user_nombre:  string | null
+  modulo:       string
+  accion:       string
+  entidad:      string
+  entidad_id:   string | null
+  detalle:      string | null
+  ip:           string | null
+  created_at:   string
+}
+
 // ── Certificaciones ──
 export interface CertMaterial extends AuditFields {
   id:             number

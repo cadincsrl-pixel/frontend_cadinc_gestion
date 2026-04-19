@@ -11,6 +11,7 @@ const MODULO_BRANDING: Record<string, { label: string; accent: string; icono: st
   logistica:      { label: 'CADINC',  accent: 'SRL',  icono: '🚛' },
   certificaciones:{ label: 'CADINC',  accent: 'SRL',  icono: '🛒' },
   caja:           { label: 'CADINC',  accent: 'SRL',  icono: '💵' },
+  admin:          { label: 'CADINC',  accent: 'SRL',  icono: '⚙️' },
 }
 
 function getModuloActual(pathname: string): string {
@@ -18,6 +19,7 @@ function getModuloActual(pathname: string): string {
   if (pathname.startsWith('/logistica'))      return 'logistica'
   if (pathname.startsWith('/certificaciones')) return 'certificaciones'
   if (pathname.startsWith('/caja'))           return 'caja'
+  if (pathname.startsWith('/admin'))          return 'admin'
   return 'tarja'
 }
 

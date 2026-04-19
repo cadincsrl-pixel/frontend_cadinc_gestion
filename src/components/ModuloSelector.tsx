@@ -51,6 +51,15 @@ const MODULOS = [
     appHref: '/caja',
     color: 'verde',
   },
+  {
+    key: 'admin',
+    nombre: 'Administración',
+    descripcion: 'Usuarios, permisos y auditoría',
+    icono: '⚙️',
+    loginHref: '/login',
+    appHref: '/admin',
+    color: 'azul',
+  },
 ] as const
 
 export function ModuloSelector() {
