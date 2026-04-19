@@ -3,8 +3,8 @@ import { Providers } from './providers'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'TarjaObra — CADINC SRL',
-  description: 'Control de horas y obras',
+  title: 'CADINC SRL — Sistema de gestión',
+  description: 'Sistema de gestión CADINC SRL',
 }
 
 export default function RootLayout({

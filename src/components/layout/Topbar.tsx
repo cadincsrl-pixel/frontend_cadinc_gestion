@@ -6,14 +6,18 @@ import { useRouter, usePathname } from 'next/navigation'
 import { useUIStore } from '@/store/ui.store'
 
 const MODULO_BRANDING: Record<string, { label: string; accent: string; icono: string }> = {
-  tarja:         { label: 'TARJA',         accent: 'OBRA',         icono: '📋' },
-  herramientas: { label: '',          accent: 'HERRAMIENTAS',     icono: '🔧' },
-  logistica:    { label: 'LOG',           accent: 'ÍSTICA',       icono: '🚛' },
+  tarja:          { label: 'CADINC',  accent: 'SRL',  icono: '📋' },
+  herramientas:   { label: 'CADINC',  accent: 'SRL',  icono: '🔧' },
+  logistica:      { label: 'CADINC',  accent: 'SRL',  icono: '🚛' },
+  certificaciones:{ label: 'CADINC',  accent: 'SRL',  icono: '🛒' },
+  caja:           { label: 'CADINC',  accent: 'SRL',  icono: '💵' },
 }
 
 function getModuloActual(pathname: string): string {
-  if (pathname.startsWith('/herramientas')) return 'herramientas'
-  if (pathname.startsWith('/logistica'))    return 'logistica'
+  if (pathname.startsWith('/herramientas'))   return 'herramientas'
+  if (pathname.startsWith('/logistica'))      return 'logistica'
+  if (pathname.startsWith('/certificaciones')) return 'certificaciones'
+  if (pathname.startsWith('/caja'))           return 'caja'
   return 'tarja'
 }
 
