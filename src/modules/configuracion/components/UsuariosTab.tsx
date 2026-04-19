@@ -43,6 +43,15 @@ export function UsuariosTab() {
   const [editando,    setEditando]    = useState<Profile | null>(null)
   const [modalNuevo,  setModalNuevo]  = useState(false)
   const [nuevoForm,   setNuevoForm]   = useState<NuevoUsuario>(EMPTY_NUEVO)
+  const [resetId,     setResetId]     = useState<string | null>(null)
+  const [newPass,     setNewPass]     = useState('')
+
+  const { mutate: resetPassword, isPending: resetting } = useMutation({
+    mutationFn: ({ id, password }: { id: string; password: string }) =>
+      apiPost(`/api/usuarios/${id}/reset-password`, { password }),
+    onSuccess: () => { toast('Contraseña actualizada', 'ok'); setResetId(null); setNewPass('') },
+    onError: (e: any) => toast(e.message || 'Error', 'err'),
+  })
 
   const { data: usuarios = [], isLoading } = useQuery({
     queryKey: ['usuarios'],
@@ -129,7 +138,7 @@ export function UsuariosTab() {
         <table className="w-full border-collapse">
           <thead>
             <tr>
-              {['Usuario', 'Rol', 'Módulos', 'Estado', ''].map(h => (
+              {['Usuario', 'Email', 'Rol', 'Módulos', 'Estado', ''].map(h => (
                 <th key={h} className="bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide">
                   {h}
                 </th>
@@ -139,7 +148,7 @@ export function UsuariosTab() {
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={5} className="text-center py-8">
+                <td colSpan={6} className="text-center py-8">
                   <span className="inline-flex items-center gap-2 text-gris-dark text-sm">
                     <span className="w-4 h-4 border-2 border-naranja border-t-transparent rounded-full animate-spin" />
                     Cargando...
@@ -161,6 +170,7 @@ export function UsuariosTab() {
                     </div>
                   </div>
                 </td>
+                <td className="px-4 py-3 text-xs text-gris-dark">{(u as any).email ?? '—'}</td>
                 <td className="px-4 py-3">
                   <span className={`
                     text-xs font-bold px-2 py-0.5 rounded
@@ -203,8 +213,16 @@ export function UsuariosTab() {
                     <button
                       onClick={() => setEditando({ ...u })}
                       className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors"
+                      title="Editar"
                     >
                       ✏️
+                    </button>
+                    <button
+                      onClick={() => { setResetId(u.id); setNewPass('') }}
+                      className="text-xs font-bold px-2 py-1 rounded hover:bg-amarillo-light transition-colors"
+                      title="Cambiar contraseña"
+                    >
+                      🔑
                     </button>
                     {u.id !== profileActual?.id && (
                       <button
@@ -283,6 +301,39 @@ export function UsuariosTab() {
           />
         </Modal>
       )}
+
+      {/* Modal cambiar contraseña */}
+      <Modal
+        open={!!resetId}
+        onClose={() => { setResetId(null); setNewPass('') }}
+        title="🔑 CAMBIAR CONTRASEÑA"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => { setResetId(null); setNewPass('') }}>Cancelar</Button>
+            <Button
+              variant="primary"
+              loading={resetting}
+              disabled={newPass.length < 6}
+              onClick={() => resetId && resetPassword({ id: resetId, password: newPass })}
+            >
+              Cambiar
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-gris-dark">
+            Usuario: <strong>{(usuarios as Profile[]).find(u => u.id === resetId)?.nombre ?? ''}</strong>
+          </p>
+          <Input
+            label="Nueva contraseña"
+            type="password"
+            placeholder="Mínimo 6 caracteres"
+            value={newPass}
+            onChange={e => setNewPass(e.target.value)}
+          />
+        </div>
+      </Modal>
     </>
   )
 }
