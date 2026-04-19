@@ -119,10 +119,9 @@ const NAV_ITEMS_LOGISTICA = [
 ]
 
 const NAV_ITEMS_ADMIN = [
-  { tab: 'usuarios',      icon: '👥', label: 'Usuarios',      meta: 'Gestión de cuentas'       },
-  { tab: 'permisos',      icon: '🔐', label: 'Permisos',      meta: 'Roles y accesos'          },
-  { tab: 'configuracion', icon: '💼', label: 'Configuración', meta: 'Categorías y tarifas'     },
-  { tab: 'auditoria',     icon: '📋', label: 'Auditoría',     meta: 'Registro de actividad'    },
+  { tab: 'usuarios',  icon: '👥', label: 'Usuarios',  meta: 'Gestión de cuentas'    },
+  { tab: 'permisos',  icon: '🔐', label: 'Permisos',  meta: 'Roles y accesos'       },
+  { tab: 'auditoria', icon: '📋', label: 'Auditoría', meta: 'Registro de actividad' },
 ]
 
 const HERR_SUBNAV = [

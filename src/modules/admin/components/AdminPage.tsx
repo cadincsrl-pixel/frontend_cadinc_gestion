@@ -2,14 +2,12 @@
 
 import { useSearchParams } from 'next/navigation'
 import { UsuariosTab } from '@/modules/configuracion/components/UsuariosTab'
-import { CategoriasTab } from '@/modules/configuracion/components/CategoriasTab'
 import { AuditoriaTab } from './AuditoriaTab'
 
 const TABS = [
-  { key: 'usuarios',       icon: '👥', label: 'Usuarios',       sub: 'Gestión de cuentas y roles' },
-  { key: 'permisos',       icon: '🔐', label: 'Permisos',       sub: 'Matriz de permisos por usuario' },
-  { key: 'configuracion',  icon: '💼', label: 'Configuración',  sub: 'Categorías y tarifas' },
-  { key: 'auditoria',      icon: '📋', label: 'Auditoría',      sub: 'Registro de actividad de usuarios' },
+  { key: 'usuarios',  icon: '👥', label: 'Usuarios',  sub: 'Gestión de cuentas y roles' },
+  { key: 'permisos',  icon: '🔐', label: 'Permisos',  sub: 'Matriz de permisos por usuario' },
+  { key: 'auditoria', icon: '📋', label: 'Auditoría', sub: 'Registro de actividad de usuarios' },
 ]
 
 export function AdminPage() {
@@ -29,10 +27,9 @@ export function AdminPage() {
 
       {/* Contenido */}
       <div className="flex flex-col gap-4">
-        {tab === 'usuarios'      && <UsuariosTab />}
-        {tab === 'permisos'      && <UsuariosTab />}
-        {tab === 'configuracion' && <CategoriasTab />}
-        {tab === 'auditoria'     && <AuditoriaTab />}
+        {tab === 'usuarios'  && <UsuariosTab />}
+        {tab === 'permisos'  && <UsuariosTab />}
+        {tab === 'auditoria' && <AuditoriaTab />}
       </div>
     </div>
   )
