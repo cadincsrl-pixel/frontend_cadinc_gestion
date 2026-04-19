@@ -88,7 +88,7 @@ export function UsuariosTab() {
   })
 
   const { mutate: update, isPending: updating } = useMutation({
-    mutationFn: ({ id, dto }: { id: string; dto: Partial<Profile> }) =>
+    mutationFn: ({ id, dto }: { id: string; dto: Partial<Profile> & { email?: string } }) =>
       apiPatch(`/api/usuarios/${id}`, dto),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['usuarios'] })
@@ -283,6 +283,7 @@ export function UsuariosTab() {
                 loading={updating}
                 onClick={() => update({ id: editando.id, dto: {
                   nombre:   editando.nombre,
+                  email:    (editando as any).email || undefined,
                   rol:      editando.rol,
                   modulos:  editando.modulos,
                   activo:   editando.activo,
@@ -368,7 +369,7 @@ function UsuarioForm({
         onChange={e => onChange({ ...data, nombre: e.target.value })}
       />
 
-      {/* Email — solo en creación */}
+      {/* Email + Contraseña — en creación */}
       {showPassword && (
         <>
           <Input
@@ -387,6 +388,17 @@ function UsuarioForm({
             hint="El usuario podrá cambiarla después"
           />
         </>
+      )}
+
+      {/* Email — en edición */}
+      {!showPassword && (
+        <Input
+          label="Email"
+          type="email"
+          placeholder="juan@empresa.com"
+          value={(data as any).email ?? ''}
+          onChange={e => onChange({ ...data, email: e.target.value })}
+        />
       )}
 
       {/* Rol */}
