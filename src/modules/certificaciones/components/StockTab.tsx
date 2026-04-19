@@ -7,12 +7,14 @@ import {
   useCreateStockMaterial, useUpdateStockMaterial, useDeleteStockMaterial,
   useCreateMovimiento, useCreateRubro,
 } from '../hooks/useStock'
+import { useProveedores } from '../hooks/useProveedores'
 import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input }  from '@/components/ui/Input'
+import { Combobox } from '@/components/ui/Combobox'
 import { useToast } from '@/components/ui/Toast'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
-import type { StockMaterial, StockRubro, StockMovimiento } from '@/types/domain.types'
+import type { StockMaterial, StockRubro, StockMovimiento, Proveedor } from '@/types/domain.types'
 
 const UNIDADES = [
   { value: 'unid', label: 'Unid.' }, { value: 'kg', label: 'kg' },
@@ -40,6 +42,8 @@ export function StockTab() {
   const perfiles = usePerfilesMap()
   const { data: rubros = [] } = useStockRubros()
   const { data: materiales = [], isLoading } = useStockMateriales()
+  const { data: proveedores = [] } = useProveedores()
+  const provOptions = (proveedores as Proveedor[]).map(p => ({ value: String(p.id), label: p.nombre, sub: p.cuit ?? undefined }))
   const { mutate: createMat } = useCreateStockMaterial()
   const { mutate: updateMat } = useUpdateStockMaterial()
   const { mutate: deleteMat } = useDeleteStockMaterial()
@@ -55,7 +59,7 @@ export function StockTab() {
   const [modalEditar, setModalEditar] = useState<StockMaterial | null>(null)
   const [modalNuevoRubro, setModalNuevoRubro] = useState(false)
 
-  const formNuevo = useForm<any>({ defaultValues: { rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0 } })
+  const formNuevo = useForm<any>({ defaultValues: { rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0, proveedor_id: '' } })
   const formEntrada = useForm<any>({ defaultValues: { cantidad: 0, tipo: 'entrada', motivo: 'compra', obs: '' } })
   const formEditar = useForm<any>()
   const formRubro = useForm<any>({ defaultValues: { nombre: '', icono: '' } })
@@ -94,7 +98,7 @@ export function StockTab() {
   // Crear material
   function handleCreateMat(data: any) {
     if (!data.rubro_id) { toast('Seleccioná un rubro', 'err'); return }
-    createMat({ ...data, rubro_id: Number(data.rubro_id), stock_minimo: Number(data.stock_minimo), precio_ref: Number(data.precio_ref) }, {
+    createMat({ ...data, rubro_id: Number(data.rubro_id), stock_minimo: Number(data.stock_minimo), precio_ref: Number(data.precio_ref), proveedor_id: data.proveedor_id ? Number(data.proveedor_id) : null }, {
       onSuccess: () => { toast('Material creado', 'ok'); setModalNuevo(false) },
       onError: () => toast('Error', 'err'),
     })
@@ -124,13 +128,13 @@ export function StockTab() {
 
   // Editar material
   function abrirEditar(m: StockMaterial) {
-    formEditar.reset({ nombre: m.nombre, unidad: m.unidad, stock_minimo: m.stock_minimo, precio_ref: m.precio_ref, rubro_id: m.rubro_id })
+    formEditar.reset({ nombre: m.nombre, unidad: m.unidad, stock_minimo: m.stock_minimo, precio_ref: m.precio_ref, rubro_id: m.rubro_id, proveedor_id: m.proveedor_id ? String(m.proveedor_id) : '' })
     setModalEditar(m)
   }
 
   function handleUpdate(data: any) {
     if (!modalEditar) return
-    updateMat({ id: modalEditar.id, dto: { ...data, rubro_id: Number(data.rubro_id), stock_minimo: Number(data.stock_minimo), precio_ref: Number(data.precio_ref) } }, {
+    updateMat({ id: modalEditar.id, dto: { ...data, rubro_id: Number(data.rubro_id), stock_minimo: Number(data.stock_minimo), precio_ref: Number(data.precio_ref), proveedor_id: data.proveedor_id ? Number(data.proveedor_id) : null } }, {
       onSuccess: () => { toast('Actualizado', 'ok'); setModalEditar(null) },
       onError: () => toast('Error', 'err'),
     })
@@ -182,7 +186,7 @@ export function StockTab() {
         </div>
         <div className="flex gap-2">
           <Button variant="secondary" size="sm" onClick={() => { formRubro.reset({ nombre: '', icono: '' }); setModalNuevoRubro(true) }}>+ Rubro</Button>
-          <Button variant="primary" size="sm" onClick={() => { formNuevo.reset({ rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0 }); setModalNuevo(true) }}>+ Material</Button>
+          <Button variant="primary" size="sm" onClick={() => { formNuevo.reset({ rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0, proveedor_id: '' }); setModalNuevo(true) }}>+ Material</Button>
         </div>
       </div>
 
@@ -208,8 +212,8 @@ export function StockTab() {
             <table className="w-full border-collapse min-w-[700px]">
               <thead>
                 <tr>
-                  {['Material', 'Unidad', 'Stock', 'Mínimo', 'Precio ref.', ''].map((h, i) => (
-                    <th key={i} className={`bg-gris text-gris-dark text-[10px] font-bold px-4 py-2 uppercase tracking-wide ${i >= 2 && i <= 4 ? 'text-right' : 'text-left'} last:text-right`}>{h}</th>
+                  {['Material', 'Proveedor', 'Unidad', 'Stock', 'Mínimo', 'Precio ref.', ''].map((h, i) => (
+                    <th key={i} className={`bg-gris text-gris-dark text-[10px] font-bold px-4 py-2 uppercase tracking-wide ${i >= 3 && i <= 5 ? 'text-right' : 'text-left'} last:text-right`}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -220,6 +224,7 @@ export function StockTab() {
                   return (
                     <tr key={m.id} className="border-b border-gris last:border-0 hover:bg-gris/30 transition-colors">
                       <td className="px-4 py-2.5 text-sm font-medium text-carbon">{m.nombre}</td>
+                      <td className="px-4 py-2.5 text-xs text-gris-dark">{m.proveedores?.nombre ?? '—'}</td>
                       <td className="px-4 py-2.5 text-xs text-gris-dark font-mono">{UNIDADES.find(u => u.value === m.unidad)?.label ?? m.unidad}</td>
                       <td className="px-4 py-2.5 text-right">
                         <span className={`font-mono font-bold text-sm ${cero ? 'text-rojo' : bajo ? 'text-[#7A5500]' : 'text-verde'}`}>
@@ -259,6 +264,7 @@ export function StockTab() {
             </select>
           </div>
           <Input label="Nombre del material" {...formNuevo.register('nombre')} />
+          <Combobox label="Proveedor de referencia" placeholder="Buscar proveedor..." options={provOptions} value={formNuevo.watch('proveedor_id')} onChange={v => formNuevo.setValue('proveedor_id', v)} />
           <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1 block">Unidad</label>
@@ -320,6 +326,7 @@ export function StockTab() {
             </select>
           </div>
           <Input label="Nombre" {...formEditar.register('nombre')} />
+          <Combobox label="Proveedor de referencia" placeholder="Buscar proveedor..." options={provOptions} value={formEditar.watch('proveedor_id')} onChange={v => formEditar.setValue('proveedor_id', v)} />
           <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1 block">Unidad</label>

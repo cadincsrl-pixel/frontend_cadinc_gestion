@@ -16,6 +16,7 @@ export interface Obra extends AuditFields {
   obs: string | null
   archivada: boolean
   fecha_archivo: string | null
+  es_deposito: boolean
 }
 
 export interface CreateObraDto {
@@ -615,9 +616,11 @@ export interface StockMaterial extends AuditFields {
   stock_actual:  number
   stock_minimo:  number
   precio_ref:    number
+  proveedor_id:  number | null
   obs:           string | null
   activo:        boolean
   stock_rubros?: { nombre: string; icono: string | null }
+  proveedores?:  { id: number; nombre: string } | null
 }
 
 export interface StockMovimiento {
