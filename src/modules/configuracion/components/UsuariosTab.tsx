@@ -49,10 +49,23 @@ export function UsuariosTab() {
     queryFn:  () => apiGet<Profile[]>('/api/usuarios'),
   })
 
-  const { data: modulos = [] } = useQuery({
+  const { data: modulosDB = [] } = useQuery({
     queryKey: ['modulos'],
     queryFn:  () => apiGet<Modulo[]>('/api/usuarios/modulos'),
   })
+
+  // Módulos hardcodeados para que siempre aparezcan todos
+  const MODULOS_COMPLETOS: Modulo[] = [
+    { id: 1, key: 'tarja',          nombre: 'Tarja de Obra',    descripcion: 'Control de horas y personal',          icono: '📋', activo: true, orden: 1 },
+    { id: 2, key: 'logistica',      nombre: 'Logística',        descripcion: 'Transporte de camiones',               icono: '🚛', activo: true, orden: 2 },
+    { id: 3, key: 'herramientas',   nombre: 'Herramientas',     descripcion: 'Control de herramientas y equipos',     icono: '🔧', activo: true, orden: 3 },
+    { id: 4, key: 'certificaciones',nombre: 'Compras y Stock',  descripcion: 'Solicitudes, materiales y stock',       icono: '🛒', activo: true, orden: 4 },
+    { id: 5, key: 'caja',           nombre: 'Caja',             descripcion: 'Efectivo y movimientos',                icono: '💵', activo: true, orden: 5 },
+    { id: 6, key: 'admin',          nombre: 'Administración',   descripcion: 'Usuarios, permisos y auditoría',        icono: '⚙️', activo: true, orden: 0 },
+  ]
+
+  // Usar los de la DB si hay, sino los hardcodeados
+  const modulos = (modulosDB as Modulo[]).length >= MODULOS_COMPLETOS.length ? modulosDB as Modulo[] : MODULOS_COMPLETOS
 
   const { mutate: create, isPending: creating } = useMutation({
     mutationFn: (dto: NuevoUsuario) => apiPost('/api/usuarios', dto),
