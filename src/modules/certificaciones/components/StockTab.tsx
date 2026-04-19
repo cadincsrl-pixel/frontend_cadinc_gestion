@@ -8,6 +8,7 @@ import {
   useCreateMovimiento, useCreateRubro,
 } from '../hooks/useStock'
 import { useProveedores } from '../hooks/useProveedores'
+import { usePermisos } from '@/hooks/usePermisos'
 import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input }  from '@/components/ui/Input'
@@ -40,6 +41,7 @@ const TIPO_CFG: Record<string, { label: string; color: string }> = {
 export function StockTab() {
   const toast = useToast()
   const perfiles = usePerfilesMap()
+  const { puedeEliminar: puedeAjustar } = usePermisos('certificaciones')
   const { data: rubros = [] } = useStockRubros()
   const { data: materiales = [], isLoading } = useStockMateriales()
   const { data: proveedores = [] } = useProveedores()
@@ -293,7 +295,7 @@ export function StockTab() {
                 <select {...formEntrada.register('tipo')} className="w-full px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white font-semibold focus:border-naranja">
                   <option value="entrada">+ Entrada</option>
                   <option value="salida">- Salida</option>
-                  <option value="ajuste">↔ Ajuste (setear stock)</option>
+                  {puedeAjustar && <option value="ajuste">↔ Ajuste (setear stock)</option>}
                 </select>
               </div>
               <div>
