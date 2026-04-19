@@ -288,7 +288,7 @@ export function SolicitudesTab() {
             <table className="w-full border-collapse min-w-[750px]">
               <thead>
                 <tr>
-                  {['', 'Obra', 'Fecha', 'Items', 'Estado', 'Progreso', 'Prioridad', ''].map((h, i) => (
+                  {['', 'Obra', 'Fecha', 'Items', 'Estado', 'Solicitante', 'Prioridad', ''].map((h, i) => (
                     <th key={i} className="bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide last:text-right">{h}</th>
                   ))}
                 </tr>
@@ -329,16 +329,18 @@ export function SolicitudesTab() {
                               )}
                             </td>
                             <td className="px-4 py-3">
-                              <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold ${ESTADO_SOL[s.estado].bg} ${ESTADO_SOL[s.estado].text}`}>
-                                {ESTADO_SOL[s.estado].label}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3">
-                              {s.progreso && (
+                              {s.progreso ? (
                                 <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold ${PROGRESO_CFG[s.progreso].bg} ${PROGRESO_CFG[s.progreso].text}`}>
                                   {PROGRESO_CFG[s.progreso].label}
                                 </span>
+                              ) : (
+                                <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold ${ESTADO_SOL[s.estado].bg} ${ESTADO_SOL[s.estado].text}`}>
+                                  {ESTADO_SOL[s.estado].label}
+                                </span>
                               )}
+                            </td>
+                            <td className="px-4 py-3 text-xs text-gris-dark">
+                              {s.solicitante ? (perfiles.get(s.solicitante) ?? '…') : '—'}
                             </td>
                             <td className="px-4 py-3">
                               {s.prioridad === 'urgente' && (
