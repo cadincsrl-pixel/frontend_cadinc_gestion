@@ -35,7 +35,7 @@ const MODULOS = [
   },
   {
     key: 'certificaciones',
-    nombre: 'Adicionales y compras',
+    nombre: 'Compras y Stock',
     descripcion: 'Solicitudes, materiales y costos',
     icono: '🛒',
     loginHref: '/login',
