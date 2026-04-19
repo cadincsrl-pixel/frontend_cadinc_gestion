@@ -12,10 +12,19 @@ async function getAuthHeader(): Promise<HeadersInit> {
   }
 }
 
+async function parseError(res: Response, method: string, path: string): Promise<Error> {
+  try {
+    const body = await res.json()
+    return new Error(body.error || `${method} ${path} → ${res.status}`)
+  } catch {
+    return new Error(`${method} ${path} → ${res.status}`)
+  }
+}
+
 export async function apiGet<T>(path: string): Promise<T> {
   const headers = await getAuthHeader()
   const res = await fetch(`${API_URL}${path}`, { headers })
-  if (!res.ok) throw new Error(`GET ${path} → ${res.status}`)
+  if (!res.ok) throw await parseError(res, 'GET', path)
   return res.json() as Promise<T>
 }
 
@@ -26,7 +35,7 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
     headers,
     body: JSON.stringify(body),
   })
-  if (!res.ok) throw new Error(`POST ${path} → ${res.status}`)
+  if (!res.ok) throw await parseError(res, 'POST', path)
   return res.json() as Promise<T>
 }
 
@@ -37,7 +46,7 @@ export async function apiPut<T>(path: string, body: unknown): Promise<T> {
     headers,
     body: JSON.stringify(body),
   })
-  if (!res.ok) throw new Error(`PUT ${path} → ${res.status}`)
+  if (!res.ok) throw await parseError(res, 'PUT', path)
   return res.json() as Promise<T>
 }
 
@@ -49,7 +58,7 @@ export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
     headers,
     body: JSON.stringify(body),
   })
-  if (!res.ok) throw new Error(`PATCH ${path} → ${res.status}`)
+  if (!res.ok) throw await parseError(res, 'PATCH', path)
   return res.json() as Promise<T>
 }
 
@@ -59,6 +68,6 @@ export async function apiDelete<T>(path: string): Promise<T> {
     method: 'DELETE',
     headers,
   })
-  if (!res.ok) throw new Error(`DELETE ${path} → ${res.status}`)
+  if (!res.ok) throw await parseError(res, 'DELETE', path)
   return res.json() as Promise<T>
 }

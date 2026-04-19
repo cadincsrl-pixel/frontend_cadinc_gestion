@@ -215,18 +215,18 @@ export function SolicitudesTab() {
   function aprobar(id: number) {
     updateSol({ id, dto: { estado: 'aprobada' } }, {
       onSuccess: () => toast('Solicitud aprobada', 'ok'),
-      onError: () => toast('Error', 'err'),
+      onError: (e: any) => toast(e.message || 'Error', 'err'),
     })
   }
   function rechazar(id: number) {
     updateSol({ id, dto: { estado: 'rechazada' } }, {
       onSuccess: () => toast('Solicitud rechazada', 'ok'),
-      onError: () => toast('Error', 'err'),
+      onError: (e: any) => toast(e.message || 'Error', 'err'),
     })
   }
   function eliminar(id: number) {
     if (!confirm('¿Eliminar esta solicitud?')) return
-    removeSol(id, { onSuccess: () => toast('Eliminada', 'ok'), onError: () => toast('Error', 'err') })
+    removeSol(id, { onSuccess: () => toast('Eliminada', 'ok'), onError: (e: any) => toast(e.message || 'Error', 'err') })
   }
 
   // ── Acciones sobre ítems ──
@@ -238,7 +238,7 @@ export function SolicitudesTab() {
     if (!modalComprar?.id) return
     comprarItem({ itemId: modalComprar.id, dto: { proveedor_id: Number(data.proveedor_id), precio_unit: Number(data.precio_unit), factura_id: data.factura_id ? Number(data.factura_id) : null } }, {
       onSuccess: () => { toast('Compra registrada', 'ok'); setModalComprar(null) },
-      onError: () => toast('Error', 'err'),
+      onError: (e: any) => toast(e.message || 'Error', 'err'),
     })
   }
 
@@ -251,21 +251,21 @@ export function SolicitudesTab() {
     if (!modalDespachar?.id) return
     despacharItem({ itemId: modalDespachar.id, dto: { precio_unit: Number(data.precio_unit) } }, {
       onSuccess: () => { toast('Despacho registrado', 'ok'); setModalDespachar(null) },
-      onError: () => toast('Error', 'err'),
+      onError: (e: any) => toast(e.message || 'Error', 'err'),
     })
   }
 
   function handleEnviar(itemId: number) {
     enviarItem({ itemId }, {
       onSuccess: () => toast('Marcado como enviado', 'ok'),
-      onError: () => toast('Error', 'err'),
+      onError: (e: any) => toast(e.message || 'Error', 'err'),
     })
   }
 
   function handleRechazarItem(itemId: number) {
     rechazarItem(itemId, {
       onSuccess: () => toast('Ítem rechazado', 'ok'),
-      onError: () => toast('Error', 'err'),
+      onError: (e: any) => toast(e.message || 'Error', 'err'),
     })
   }
 
@@ -273,7 +273,7 @@ export function SolicitudesTab() {
     if (!confirm('¿Revertir este ítem a pendiente?')) return
     revertirItem(itemId, {
       onSuccess: () => toast('Revertido a pendiente', 'ok'),
-      onError: () => toast('Error', 'err'),
+      onError: (e: any) => toast(e.message || 'Error', 'err'),
     })
   }
 
@@ -285,7 +285,7 @@ export function SolicitudesTab() {
         setModalNuevoProveedor(false)
         formComprar.setValue('proveedor_id', String(p.id))
       },
-      onError: () => toast('Error', 'err'),
+      onError: (e: any) => toast(e.message || 'Error', 'err'),
     })
   }
 
@@ -306,7 +306,7 @@ export function SolicitudesTab() {
         setAdjunto(null)
         formComprar.setValue('factura_id', String(f.id))
       },
-      onError: () => toast('Error', 'err'),
+      onError: (e: any) => toast(e.message || 'Error', 'err'),
     })
   }
 
