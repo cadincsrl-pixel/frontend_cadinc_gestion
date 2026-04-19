@@ -53,7 +53,7 @@ export function StockTab() {
   const { mutate: createRubro } = useCreateRubro()
 
   const [rubroFiltro, setRubroFiltro] = useState<number | ''>('')
-  const [stockFiltro, setStockFiltro] = useState<'' | 'con_stock' | 'sin_stock' | 'stock_bajo'>('')
+  const [stockFiltro, setStockFiltro] = useState<'' | 'con_stock' | 'sin_stock' | 'stock_bajo'>('con_stock')
   const [busqueda, setBusqueda] = useState('')
   const [modalNuevo, setModalNuevo] = useState(false)
   const [modalEntrada, setModalEntrada] = useState<StockMaterial | null>(null)
