@@ -99,7 +99,7 @@ export function RemitoEnvioPrint({ remito, obraNom }: Props) {
   )
 }
 
-/** Abre ventana de impresión con el remito */
+/** Abre ventana de impresión con el remito — triplicado en 1 página */
 export function imprimirRemito(remito: RemitoEnvio, obraNom?: string) {
   const total = remito.items.reduce((s, it) => s + (it.precio_unit ?? 0) * it.cantidad, 0)
   const fmtF = (s: string) => { const [y,m,d] = s.split('-'); return `${d}/${m}/${y}` }
@@ -107,53 +107,56 @@ export function imprimirRemito(remito: RemitoEnvio, obraNom?: string) {
 
   const itemsHtml = remito.items.map((it, i) => `
     <tr style="border-bottom:1px solid #ddd">
-      <td style="padding:5px 8px;font-size:10px;color:#666">${i + 1}</td>
-      <td style="padding:5px 8px;font-size:11px;font-weight:500">${it.descripcion}</td>
-      <td style="padding:5px 8px;text-align:center;font-weight:bold">${it.cantidad}</td>
-      <td style="padding:5px 8px;text-align:center;font-size:10px">${it.unidad}</td>
-      <td style="padding:5px 8px;font-size:10px">${it.proveedor || (it.origen === 'deposito' ? 'Depósito' : it.origen)}</td>
-      <td style="padding:5px 8px;text-align:right;font-size:10px">${it.precio_unit ? fmtM(it.precio_unit) : '—'}</td>
-      <td style="padding:5px 8px;text-align:right;font-weight:bold;font-size:11px">${it.precio_unit ? fmtM(it.precio_unit * it.cantidad) : '—'}</td>
+      <td style="padding:2px 4px;font-size:8px;color:#666">${i + 1}</td>
+      <td style="padding:2px 4px;font-size:8px">${it.descripcion}</td>
+      <td style="padding:2px 4px;text-align:center;font-weight:bold;font-size:8px">${it.cantidad}</td>
+      <td style="padding:2px 4px;text-align:center;font-size:7px">${it.unidad}</td>
+      <td style="padding:2px 4px;font-size:7px">${it.proveedor || (it.origen === 'deposito' ? 'Depósito' : it.origen)}</td>
+      <td style="padding:2px 4px;text-align:right;font-size:8px;font-weight:bold">${it.precio_unit ? fmtM(it.precio_unit * it.cantidad) : '—'}</td>
     </tr>
   `).join('')
 
   const copiaHtml = (tipo: string) => `
-    <div style="margin-bottom:20px;${tipo === 'ORIGINAL' ? 'page-break-after:always' : ''}">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #E8621A;padding-bottom:10px;margin-bottom:15px">
+    <div style="border:1px solid #ccc;padding:8px;height:calc(33.33vh - 14px);box-sizing:border-box;overflow:hidden;position:relative">
+      <!-- Header -->
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid #E8621A;padding-bottom:4px;margin-bottom:6px">
         <div>
-          <div style="font-size:18px;font-weight:bold;color:#1A365D">CADINC SRL</div>
-          <div style="font-size:10px;color:#666">Remito de envío de materiales</div>
+          <span style="font-size:12px;font-weight:bold;color:#1A365D">CADINC SRL</span>
+          <span style="font-size:7px;color:#666;margin-left:6px">Remito de envío</span>
         </div>
         <div style="text-align:right">
-          <div style="font-size:20px;font-weight:bold;color:#E8621A">${remito.numero}</div>
-          <div style="font-size:11px;color:#666">Fecha: ${fmtF(remito.fecha)}</div>
-          <div style="font-size:10px;color:#999;margin-top:4px">${tipo}</div>
+          <span style="font-size:13px;font-weight:bold;color:#E8621A">${remito.numero}</span>
+          <span style="font-size:8px;color:#666;margin-left:8px">${fmtF(remito.fecha)}</span>
+          <span style="font-size:7px;color:#999;margin-left:6px;border:1px solid #ccc;padding:1px 4px;border-radius:2px">${tipo}</span>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:15px;font-size:11px">
-        <div><strong>Obra destino:</strong> ${remito.obra_cod}${obraNom ? ` — ${obraNom}` : ''}</div>
+      <!-- Datos -->
+      <div style="display:flex;gap:15px;margin-bottom:5px;font-size:8px">
+        <div><strong>Obra:</strong> ${remito.obra_cod}${obraNom ? ` — ${obraNom}` : ''}</div>
         <div><strong>Origen:</strong> ${remito.origen === 'deposito' ? 'Depósito CADINC' : remito.origen}</div>
-        ${remito.obs ? `<div style="grid-column:1/-1"><strong>Obs:</strong> ${remito.obs}</div>` : ''}
+        ${remito.obs ? `<div><strong>Obs:</strong> ${remito.obs}</div>` : ''}
       </div>
-      <table style="width:100%;border-collapse:collapse;margin-bottom:15px">
+      <!-- Tabla -->
+      <table style="width:100%;border-collapse:collapse;margin-bottom:4px">
         <thead><tr style="background:#1A365D;color:#fff">
-          <th style="padding:6px 8px;text-align:left;font-size:10px">#</th>
-          <th style="padding:6px 8px;text-align:left;font-size:10px">MATERIAL</th>
-          <th style="padding:6px 8px;text-align:center;font-size:10px">CANT.</th>
-          <th style="padding:6px 8px;text-align:center;font-size:10px">UNIDAD</th>
-          <th style="padding:6px 8px;text-align:left;font-size:10px">ORIGEN</th>
-          <th style="padding:6px 8px;text-align:right;font-size:10px">P. UNIT.</th>
-          <th style="padding:6px 8px;text-align:right;font-size:10px">TOTAL</th>
+          <th style="padding:2px 4px;text-align:left;font-size:7px">#</th>
+          <th style="padding:2px 4px;text-align:left;font-size:7px">MATERIAL</th>
+          <th style="padding:2px 4px;text-align:center;font-size:7px">CANT.</th>
+          <th style="padding:2px 4px;text-align:center;font-size:7px">UNID.</th>
+          <th style="padding:2px 4px;text-align:left;font-size:7px">ORIGEN</th>
+          <th style="padding:2px 4px;text-align:right;font-size:7px">TOTAL</th>
         </tr></thead>
         <tbody>${itemsHtml}</tbody>
-        ${total > 0 ? `<tfoot><tr style="border-top:2px solid #1A365D">
-          <td colspan="6" style="padding:6px 8px;text-align:right;font-weight:bold;font-size:11px">TOTAL</td>
-          <td style="padding:6px 8px;text-align:right;font-weight:bold;font-size:13px;color:#E8621A">${fmtM(total)}</td>
+        ${total > 0 ? `<tfoot><tr style="border-top:1.5px solid #1A365D">
+          <td colspan="5" style="padding:2px 4px;text-align:right;font-weight:bold;font-size:8px">TOTAL</td>
+          <td style="padding:2px 4px;text-align:right;font-weight:bold;font-size:9px;color:#E8621A">${fmtM(total)}</td>
         </tr></tfoot>` : ''}
       </table>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:60px">
-        <div style="text-align:center;border-top:1px solid #000;padding-top:5px;font-size:10px">ENTREGÓ — Firma y aclaración</div>
-        <div style="text-align:center;border-top:1px solid #000;padding-top:5px;font-size:10px">RECIBIÓ — Firma y aclaración</div>
+      <!-- Firmas -->
+      <div style="display:flex;gap:20px;position:absolute;bottom:8px;left:8px;right:8px">
+        <div style="flex:1;text-align:center;border-top:1px solid #000;padding-top:2px;font-size:7px">ENTREGÓ</div>
+        <div style="flex:1;text-align:center;border-top:1px solid #000;padding-top:2px;font-size:7px">RECIBIÓ</div>
+        <div style="flex:1;text-align:center;border-top:1px solid #000;padding-top:2px;font-size:7px">TRANSPORTE</div>
       </div>
     </div>
   `
@@ -162,10 +165,14 @@ export function imprimirRemito(remito: RemitoEnvio, obraNom?: string) {
   if (!win) return
   win.document.write(`
     <html><head><title>Remito ${remito.numero}</title>
-    <style>@page{margin:15mm}body{font-family:Arial,sans-serif;font-size:12px;color:#000;margin:0;padding:20px}</style>
-    </head><body>
+    <style>
+      @page { margin: 8mm; size: A4; }
+      body { font-family: Arial, sans-serif; color: #000; margin: 0; padding: 0; }
+    </style>
+    </head><body style="display:flex;flex-direction:column;height:100vh;gap:4px">
     ${copiaHtml('ORIGINAL')}
     ${copiaHtml('DUPLICADO')}
+    ${copiaHtml('TRIPLICADO')}
     </body></html>
   `)
   win.document.close()
