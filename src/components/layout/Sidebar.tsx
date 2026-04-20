@@ -15,8 +15,6 @@ const NAV_ITEMS_CERT = [
   { tab: 'solicitudes', icon: '🛒', label: 'Solicitudes', meta: 'Pedidos de compra y envío'      },
   { tab: 'stock',       icon: '🏗️', label: 'Stock',       meta: 'Stock en depósito'              },
   { tab: 'materiales',  icon: '📦', label: 'Materiales',  meta: 'A cuenta del cliente'           },
-  { tab: 'costos',      icon: '📊', label: 'Costos',      meta: 'Operarios y contratistas'       },
-  { tab: 'adicionales', icon: '🧾', label: 'Adicionales', meta: 'Trabajos extra con comprobante' },
 ]
 
 function CertNav({ navigate, activeTab, allowedTabs }: { navigate: (href: string) => void; activeTab: string; allowedTabs?: string[] }) {
@@ -108,6 +106,7 @@ const NAV_ITEMS_TARJA = [
   { href: '/tarja/prestamos',  icon: '💵', label: 'Préstamos',          meta: 'Préstamos y descuentos',      exact: false, tabKey: 'prestamos'        },
   { href: '/tarja/ropa',       icon: '👕', label: 'Ropa de trabajo',    meta: 'Control de entregas',         exact: false, tabKey: 'ropa'             },
   { href: '/personal',         icon: '👷', label: 'Personal',           meta: 'Gestión de nómina',           exact: false, tabKey: 'personal'         },
+  { href: '/tarja/costos',     icon: '📊', label: 'Costos',              meta: 'Operarios y contratistas',    exact: false, tabKey: 'costos'           },
   { href: '/configuracion',    icon: '⚙️', label: 'Configuración',      meta: 'Categorías y tarifas',        exact: false, tabKey: 'configuracion'    },
   { href: '/tarja/archivadas', icon: '📦', label: 'Obras archivadas',   meta: 'Historial de obras',          exact: true,  tabKey: 'archivadas'       },
 ]
@@ -237,7 +236,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       return decodedPathname.startsWith('/tarja') &&
              decodedPathname !== '/tarja/archivadas' &&
              !decodedPathname.startsWith('/tarja/prestamos') &&
-             !decodedPathname.startsWith('/tarja/ropa')
+             !decodedPathname.startsWith('/tarja/ropa') &&
+             !decodedPathname.startsWith('/tarja/costos')
     }
     return decodedPathname.startsWith(item.href)
   }

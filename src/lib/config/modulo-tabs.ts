@@ -15,6 +15,7 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
     { key: 'prestamos',        label: 'Préstamos',          icon: '💵' },
     { key: 'ropa',             label: 'Ropa de trabajo',    icon: '👕' },
     { key: 'personal',         label: 'Personal',           icon: '👷' },
+    { key: 'costos',           label: 'Costos',             icon: '📊' },
     { key: 'configuracion',    label: 'Configuración',      icon: '⚙️' },
     { key: 'archivadas',       label: 'Obras archivadas',   icon: '📦' },
   ],
@@ -37,8 +38,6 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
     { key: 'solicitudes', label: 'Solicitudes', icon: '🛒' },
     { key: 'stock',       label: 'Stock',       icon: '🏗️' },
     { key: 'materiales',  label: 'Materiales',  icon: '📦' },
-    { key: 'costos',      label: 'Costos',      icon: '📊' },
-    { key: 'adicionales', label: 'Adicionales', icon: '🧾' },
   ],
   caja: [
     { key: 'movimientos',   label: 'Movimientos',   icon: '💵' },

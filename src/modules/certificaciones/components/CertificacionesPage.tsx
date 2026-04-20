@@ -4,15 +4,11 @@ import { useSearchParams } from 'next/navigation'
 import { SolicitudesTab } from './SolicitudesTab'
 import { StockTab }       from './StockTab'
 import { MaterialesTab }  from './MaterialesTab'
-import { CostosTab }      from './CostosTab'
-import { AdicionalesTab } from './AdicionalesTab'
 
 const TABS = [
   { key: 'solicitudes', icon: '🛒', label: 'Solicitudes', sub: 'Pedidos de compra y envío de materiales' },
   { key: 'stock',       icon: '🏗️', label: 'Stock',       sub: 'Stock en depósito por rubro' },
   { key: 'materiales',  icon: '📦', label: 'Materiales',  sub: 'Materiales a cuenta del cliente' },
-  { key: 'costos',      icon: '📊', label: 'Costos',      sub: 'Operarios y contratistas por semana' },
-  { key: 'adicionales', icon: '🧾', label: 'Adicionales', sub: 'Trabajos extra con comprobante' },
 ]
 
 export function CertificacionesPage() {
@@ -36,8 +32,6 @@ export function CertificacionesPage() {
         {tab === 'solicitudes' && <SolicitudesTab />}
         {tab === 'stock'       && <StockTab />}
         {tab === 'materiales'  && <MaterialesTab />}
-        {tab === 'costos'      && <CostosTab />}
-        {tab === 'adicionales' && <AdicionalesTab />}
       </div>
     </div>
   )
