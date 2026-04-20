@@ -94,6 +94,11 @@ export function PersonalPage() {
   const formNuevoC = useForm<any>()
   const formEditC  = useForm<any>()
 
+  // Conteos por condición (sobre el total, sin filtrar)
+  const countBlanco = personal.filter(p => p.condicion === 'blanco').length
+  const countAsegurado = personal.filter(p => p.condicion === 'asegurado').length
+  const countSinCondicion = personal.length - countBlanco - countAsegurado
+
   // Filtros
   const filtrados = personal.filter(p => {
     const matchText = p.nom.toLowerCase().includes(busqueda.toLowerCase()) ||
@@ -294,6 +299,29 @@ export function PersonalPage() {
               <option value="blanco">Blanco</option>
               <option value="asegurado">Asegurado</option>
             </select>
+            <div className="flex gap-2 text-xs">
+              <button
+                type="button"
+                onClick={() => setFilterCondicion(filterCondicion === 'blanco' ? '' : 'blanco')}
+                className={`px-2 py-1 rounded font-bold transition-colors ${filterCondicion === 'blanco' ? 'bg-gris-dark text-white' : 'bg-gris text-gris-dark hover:bg-gris-mid'}`}
+                title="Filtrar por Blanco"
+              >
+                Blanco: {countBlanco}
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterCondicion(filterCondicion === 'asegurado' ? '' : 'asegurado')}
+                className={`px-2 py-1 rounded font-bold transition-colors ${filterCondicion === 'asegurado' ? 'bg-verde text-white' : 'bg-verde-light text-verde hover:opacity-80'}`}
+                title="Filtrar por Asegurado"
+              >
+                Asegurado: {countAsegurado}
+              </button>
+              {countSinCondicion > 0 && (
+                <span className="px-2 py-1 rounded font-bold bg-amarillo-light text-[#7A5500]" title="Sin condición definida">
+                  Sin definir: {countSinCondicion}
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="bg-white rounded-card shadow-card overflow-hidden">
