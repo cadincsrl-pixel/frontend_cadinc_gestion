@@ -40,7 +40,7 @@ const ESP_OPTIONS = [
 
 export function PersonalPage() {
   const toast = useToast()
-  const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('personal')
+  const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('tarja')
   const [tab, setTab] = useState<Tab>('personal')
 
   // ── Horas para calcular activos ──
@@ -69,7 +69,11 @@ export function PersonalPage() {
   // ── Personal ──
   const { data: personal    = [], isLoading: loadingPersonal } = usePersonal()
   const { data: categorias  = [] } = useCategorias()
-  const { mutate: updatePersonal } = useUpdatePersonal()
+  const { mutate: updatePersonalRaw } = useUpdatePersonal()
+  const updatePersonal = (args: Parameters<typeof updatePersonalRaw>[0]) =>
+    updatePersonalRaw(args, {
+      onError: (e) => toast(e instanceof Error ? e.message : 'Error al actualizar', 'err'),
+    })
   const [modalNuevo,    setModalNuevo]    = useState(false)
   const [modalImportar, setModalImportar] = useState(false)
   const [editando,      setEditando]      = useState<Personal | null>(null)
@@ -352,8 +356,9 @@ export function PersonalPage() {
                           <td className="px-4 py-3 hidden md:table-cell" onClick={e => e.stopPropagation()}>
                             <select
                               value={p.condicion ?? ''}
-                              onChange={e => updatePersonal({ leg: p.leg, dto: { condicion: (e.target.value as any) || null } })}
-                              className={`text-xs font-bold px-2 py-0.5 rounded border-0 outline-none cursor-pointer ${
+                              disabled={!puedeEditar}
+                              onChange={e => updatePersonal({ leg: p.leg, dto: { condicion: (e.target.value as 'blanco' | 'asegurado' | '') || null } })}
+                              className={`text-xs font-bold px-2 py-0.5 rounded border-0 outline-none ${puedeEditar ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'} ${
                                 p.condicion === 'asegurado'
                                   ? 'bg-verde-light text-verde'
                                   : p.condicion === 'blanco'
@@ -369,8 +374,9 @@ export function PersonalPage() {
                           <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                             <select
                               value={p.cat_id}
+                              disabled={!puedeEditar}
                               onChange={e => updatePersonal({ leg: p.leg, dto: { cat_id: Number(e.target.value) } })}
-                              className="text-xs font-bold px-2 py-0.5 rounded border-0 outline-none cursor-pointer bg-naranja-light text-naranja-dark"
+                              className={`text-xs font-bold px-2 py-0.5 rounded border-0 outline-none bg-naranja-light text-naranja-dark ${puedeEditar ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}
                             >
                               {categorias.map(c => (
                                 <option key={c.id} value={c.id}>{c.nom}</option>
