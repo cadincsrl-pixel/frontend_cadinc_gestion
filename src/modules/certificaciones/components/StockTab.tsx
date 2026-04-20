@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
+import * as XLSX from 'xlsx'
 import { useForm } from 'react-hook-form'
 import {
   useStockRubros, useStockMateriales, useStockMovimientos,
@@ -154,6 +155,81 @@ export function StockTab() {
     })
   }
 
+  // ── Exportar Excel ──
+  const importRef = useRef<HTMLInputElement>(null)
+
+  function exportarExcel() {
+    const rows: any[][] = [
+      ['Rubro', 'Material', 'Unidad', 'Stock Actual', 'Stock Mínimo', 'Precio Ref.', 'Proveedor'],
+    ]
+    for (const { rubro, items } of grouped) {
+      for (const m of items) {
+        rows.push([
+          rubro.nombre,
+          m.nombre,
+          m.unidad,
+          m.stock_actual,
+          m.stock_minimo,
+          m.precio_ref,
+          m.proveedores?.nombre ?? '',
+        ])
+      }
+    }
+    const ws = XLSX.utils.aoa_to_sheet(rows)
+    ws['!cols'] = [{ wch: 22 }, { wch: 35 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 20 }]
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Stock')
+    XLSX.writeFile(wb, `Stock_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    toast('Excel exportado', 'ok')
+  }
+
+  // ── Importar Excel (ajuste masivo de stock) ──
+  function importarExcel(file: File) {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer)
+        const wb = XLSX.read(data, { type: 'array' })
+        const ws = wb.Sheets[wb.SheetNames[0]!]!
+        const rows = XLSX.utils.sheet_to_json<any>(ws)
+
+        let actualizados = 0
+        let errores = 0
+
+        for (const row of rows) {
+          const nombre = row['Material'] ?? row['material'] ?? row['nombre']
+          const stockNuevo = Number(row['Stock Actual'] ?? row['stock_actual'] ?? row['stock'])
+          if (!nombre || isNaN(stockNuevo)) continue
+
+          // Buscar material por nombre
+          const mat = (materiales as StockMaterial[]).find(m =>
+            m.nombre.toLowerCase() === String(nombre).toLowerCase()
+          )
+          if (!mat) { errores++; continue }
+
+          // Crear movimiento de ajuste
+          createMov({
+            material_id: mat.id,
+            tipo: 'ajuste',
+            cantidad: stockNuevo,
+            motivo: 'ajuste_inventario',
+            obs: 'Importación masiva desde Excel',
+          }, {
+            onSuccess: () => actualizados++,
+            onError: () => errores++,
+          })
+        }
+
+        setTimeout(() => {
+          toast(`Importación: ${actualizados} actualizados, ${errores} errores`, actualizados > 0 ? 'ok' : 'err')
+        }, 1500)
+      } catch {
+        toast('Error al leer el archivo', 'err')
+      }
+    }
+    reader.readAsArrayBuffer(file)
+  }
+
   return (
     <>
       {/* Filtros + stats */}
@@ -187,6 +263,25 @@ export function StockTab() {
           </div>
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={exportarExcel}
+            disabled={filtered.length === 0}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-verde-light text-verde border border-verde/30 text-xs font-bold hover:bg-verde hover:text-white transition-colors disabled:opacity-40"
+          >
+            📊 Exportar Excel
+          </button>
+          {puedeAjustar && (
+            <>
+              <input ref={importRef} type="file" accept=".xlsx,.xls" className="hidden"
+                onChange={e => { if (e.target.files?.[0]) importarExcel(e.target.files[0]); e.target.value = '' }} />
+              <button
+                onClick={() => importRef.current?.click()}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amarillo-light text-[#7A5500] border border-[#E0A800]/30 text-xs font-bold hover:bg-[#E0A800] hover:text-white transition-colors"
+              >
+                📥 Importar Excel
+              </button>
+            </>
+          )}
           <Button variant="secondary" size="sm" onClick={() => { formRubro.reset({ nombre: '', icono: '' }); setModalNuevoRubro(true) }}>+ Rubro</Button>
           <Button variant="primary" size="sm" onClick={() => { formNuevo.reset({ rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0, proveedor_id: '' }); setModalNuevo(true) }}>+ Material</Button>
         </div>
