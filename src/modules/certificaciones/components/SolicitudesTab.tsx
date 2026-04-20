@@ -9,6 +9,8 @@ import {
 import { useProveedores, useCreateProveedor } from '../hooks/useProveedores'
 import { useFacturasCompra, useCreateFactura } from '../hooks/useFacturasCompra'
 import { useStockMateriales } from '../hooks/useStock'
+import { useCreateRemitoEnvio } from '../hooks/useRemitosEnvio'
+import { imprimirRemito } from './RemitoEnvioPrint'
 import { useObras } from '@/modules/tarja/hooks/useObras'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import { createClient } from '@/lib/supabase/client'
@@ -92,6 +94,8 @@ export function SolicitudesTab() {
   const { mutate: enviarItem } = useEnviarItem()
   const { mutate: rechazarItem } = useRechazarItem()
   const { mutate: revertirItem } = useRevertirItem()
+  const { mutate: createRemito } = useCreateRemitoEnvio()
+  const [selected, setSelected] = useState<Set<number>>(new Set())
 
   // Estado UI
   const [modalNuevo, setModalNuevo] = useState(false)
@@ -275,6 +279,46 @@ export function SolicitudesTab() {
       onSuccess: () => toast('Revertido a pendiente', 'ok'),
       onError: (e: any) => toast(e.message || 'Error', 'err'),
     })
+  }
+
+  // ── Selección y envío grupal con remito ──
+  function toggleSelect(itemId: number) {
+    setSelected(prev => { const n = new Set(prev); n.has(itemId) ? n.delete(itemId) : n.add(itemId); return n })
+  }
+
+  function enviarConRemito(solicitud: SolicitudCompra, itemIds: number[]) {
+    const items = (solicitud.items ?? []).filter(it => itemIds.includes(it.id!))
+    if (!items.length) return
+
+    const obra = obrasMap.get(solicitud.obra_cod)
+    const remitoItems = items.map(it => ({
+      item_id: it.id,
+      descripcion: it.descripcion,
+      cantidad: it.cantidad,
+      unidad: it.unidad,
+      precio_unit: it.precio_unit ?? null,
+      origen: it.estado === 'comprado' ? 'proveedor' : 'deposito',
+      proveedor: it.proveedores?.nombre ?? null,
+    }))
+
+    createRemito({
+      obra_cod: solicitud.obra_cod,
+      solicitud_id: solicitud.id,
+      origen: remitoItems.some(r => r.origen === 'proveedor') ? 'mixto' : 'deposito',
+      items: remitoItems,
+      enviar_items: itemIds,
+    }, {
+      onSuccess: (remito: any) => {
+        toast('Remito generado e ítems enviados', 'ok')
+        setSelected(new Set())
+        imprimirRemito(remito, obra?.nom)
+      },
+      onError: (e: any) => toast(e.message || 'Error', 'err'),
+    })
+  }
+
+  function enviarUnoConRemito(solicitud: SolicitudCompra, itemId: number) {
+    enviarConRemito(solicitud, [itemId])
   }
 
   // ── Crear proveedor inline ──
@@ -467,7 +511,9 @@ export function SolicitudesTab() {
                                       )}
                                       {(item.estado === 'comprado' || item.estado === 'de_deposito') && (
                                         <>
-                                          <button onClick={() => handleEnviar(item.id!)} className="text-[10px] font-bold px-2 py-1 rounded bg-verde-light text-verde hover:opacity-80">Enviar</button>
+                                          <input type="checkbox" checked={selected.has(item.id!)} onChange={() => toggleSelect(item.id!)}
+                                            className="accent-verde w-3.5 h-3.5" title="Seleccionar para envío grupal" />
+                                          <button onClick={() => enviarUnoConRemito(s, item.id!)} className="text-[10px] font-bold px-2 py-1 rounded bg-verde-light text-verde hover:opacity-80">Enviar + Remito</button>
                                           <button onClick={() => handleRevertir(item.id!)} className="text-[10px] px-1.5 py-1 rounded text-gris-dark hover:text-rojo hover:bg-rojo-light">↩</button>
                                         </>
                                       )}
@@ -488,6 +534,29 @@ export function SolicitudesTab() {
                               <td colSpan={7} className="px-4 py-2 text-sm text-[#7A5500] italic">{s.obs}</td>
                             </tr>
                           )}
+
+                          {/* Envío grupal */}
+                          {isExp && (() => {
+                            const itemsSeleccionados = items.filter(it => selected.has(it.id!) && (it.estado === 'comprado' || it.estado === 'de_deposito'))
+                            if (itemsSeleccionados.length === 0) return null
+                            return (
+                              <tr className="border-b border-gris bg-verde-light/30">
+                                <td colSpan={8} className="px-4 py-2.5">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-sm font-bold text-verde">
+                                      {itemsSeleccionados.length} ítem{itemsSeleccionados.length > 1 ? 's' : ''} seleccionado{itemsSeleccionados.length > 1 ? 's' : ''}
+                                    </span>
+                                    <button
+                                      onClick={() => enviarConRemito(s, itemsSeleccionados.map(it => it.id!))}
+                                      className="text-xs font-bold px-3 py-1.5 rounded-lg bg-verde text-white hover:opacity-90 transition-colors"
+                                    >
+                                      📄 Enviar seleccionados + Generar remito
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          })()}
                         </tbody></table>
                       </td>
                     </tr>

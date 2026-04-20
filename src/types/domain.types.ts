@@ -652,6 +652,32 @@ export interface AuditLogEntry {
   created_at:   string
 }
 
+// ── Remitos de envío ──
+export interface RemitoEnvioItem {
+  id:          number
+  remito_id:   number
+  item_id:     number | null
+  descripcion: string
+  cantidad:    number
+  unidad:      string
+  precio_unit: number | null
+  origen:      string
+  proveedor:   string | null
+}
+
+export interface RemitoEnvio {
+  id:           number
+  numero:       string
+  fecha:        string
+  obra_cod:     string
+  solicitud_id: number | null
+  origen:       string
+  obs:          string | null
+  created_at:   string
+  created_by:   string | null
+  items:        RemitoEnvioItem[]
+}
+
 // ── Certificaciones ──
 export interface CertMaterial extends AuditFields {
   id:             number
