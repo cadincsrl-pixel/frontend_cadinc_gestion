@@ -26,6 +26,21 @@ export function LoginPage({ modulo }: Props) {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [resetSent, setResetSent] = useState(false)
+  const [resetLoading, setResetLoading] = useState(false)
+
+  async function handleResetPassword() {
+    if (!email) { setError('Ingresá tu email primero'); return }
+    setResetLoading(true)
+    setError('')
+    const supabase = createClient()
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    })
+    setResetLoading(false)
+    if (error) { setError(error.message); return }
+    setResetSent(true)
+  }
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
@@ -105,7 +120,7 @@ export function LoginPage({ modulo }: Props) {
         <div className="text-center">
           <div className="text-5xl mb-4">{meta.icono}</div>
           <div className="font-display text-[2rem] tracking-[3px] text-white">
-            TARJA<em className="text-naranja not-italic">OBRA</em>
+            CADINC<em className="text-naranja not-italic">SRL</em>
           </div>
           <div className="mt-2 inline-flex items-center gap-2 bg-white/10 rounded-full px-4 py-1.5">
             <span className="text-white/60 text-xs font-bold uppercase tracking-wider">
@@ -175,6 +190,21 @@ export function LoginPage({ modulo }: Props) {
               )}
             </button>
           </form>
+
+          {resetSent ? (
+            <div className="bg-verde-light border border-verde/20 text-verde text-sm font-semibold px-3 py-2.5 rounded-lg text-center">
+              Te enviamos un email para restablecer tu contraseña. Revisá tu bandeja de entrada.
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handleResetPassword}
+              disabled={resetLoading}
+              className="text-xs text-azul hover:text-naranja font-semibold transition-colors text-center disabled:opacity-50"
+            >
+              {resetLoading ? 'Enviando...' : '¿Olvidaste tu contraseña?'}
+            </button>
+          )}
         </div>
 
         <p className="text-white/20 text-xs text-center">

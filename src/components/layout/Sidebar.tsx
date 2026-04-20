@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense } from 'react'
+import { Suspense, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useObras }        from '@/modules/tarja/hooks/useObras'
 import { useSessionStore } from '@/store/session.store'
@@ -378,20 +378,66 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 function UserInfo() {
   const profile = useSessionStore(s => s.profile)
   const email   = useSessionStore(s => s.email)
+  const [showChangePass, setShowChangePass] = useState(false)
+  const [newPass, setNewPass] = useState('')
+  const [changing, setChanging] = useState(false)
+  const [msg, setMsg] = useState('')
+
   if (!profile) return null
 
+  async function handleChangePassword() {
+    if (newPass.length < 6) { setMsg('Mínimo 6 caracteres'); return }
+    setChanging(true)
+    setMsg('')
+    const { createClient } = await import('@/lib/supabase/client')
+    const supabase = createClient()
+    const { error } = await supabase.auth.updateUser({ password: newPass })
+    setChanging(false)
+    if (error) { setMsg(error.message); return }
+    setMsg('Contraseña actualizada')
+    setNewPass('')
+    setTimeout(() => { setShowChangePass(false); setMsg('') }, 2000)
+  }
+
   return (
-    <div className="flex items-center gap-2.5">
-      <div className="w-8 h-8 rounded-full bg-naranja flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-        {profile.nombre.charAt(0).toUpperCase()}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="text-white text-xs font-bold truncate">{profile.nombre}</div>
-        <div className="text-white/40 text-[10px] truncate">{email}</div>
-        <div className="text-white/30 text-[10px] font-semibold uppercase tracking-wide">
-          {profile.rol === 'admin' ? '⭐ Admin' : 'Operador'}
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2.5">
+        <div className="w-8 h-8 rounded-full bg-naranja flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+          {profile.nombre.charAt(0).toUpperCase()}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-white text-xs font-bold truncate">{profile.nombre}</div>
+          <div className="text-white/40 text-[10px] truncate">{email}</div>
+          <div className="text-white/30 text-[10px] font-semibold uppercase tracking-wide">
+            {profile.rol === 'admin' ? '⭐ Admin' : 'Operador'}
+          </div>
         </div>
       </div>
+      <button
+        onClick={() => setShowChangePass(p => !p)}
+        className="text-[10px] text-white/30 hover:text-white/60 transition-colors text-left font-semibold"
+      >
+        🔑 Cambiar contraseña
+      </button>
+      {showChangePass && (
+        <div className="flex flex-col gap-1.5">
+          <input
+            type="password"
+            value={newPass}
+            onChange={e => setNewPass(e.target.value)}
+            placeholder="Nueva contraseña..."
+            className="px-2 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white text-xs outline-none focus:border-naranja placeholder:text-white/30"
+          />
+          <button
+            onClick={handleChangePassword}
+            disabled={changing}
+            className="text-[10px] font-bold bg-naranja text-white px-3 py-1.5 rounded-lg hover:bg-naranja-dark transition-colors disabled:opacity-50"
+          >
+            {changing ? 'Guardando...' : 'Cambiar'}
+          </button>
+          {msg && <span className={`text-[10px] font-bold ${msg.includes('actualizada') ? 'text-verde' : 'text-rojo'}`}>{msg}</span>}
+        </div>
+      )}
     </div>
   )
 }
