@@ -12,13 +12,19 @@ export function useObras() {
     queryFn: obrasApi.getAll,
   })
 
-  // Auto-archivar obras sin horas en 3 semanas al montar
+  // Auto-archivar obras sin horas en 3 semanas. Corre como mucho una vez
+  // cada 6 h por navegador para no spamear logs de auditoría.
   useEffect(() => {
+    const KEY = 'obras:autoArchivar:lastRun'
+    const SEIS_HORAS_MS = 6 * 60 * 60 * 1000
+    const last = Number(localStorage.getItem(KEY) ?? 0)
+    if (Date.now() - last < SEIS_HORAS_MS) return
+    localStorage.setItem(KEY, String(Date.now()))
     obrasApi.autoArchivar().then(({ archivadas }) => {
       if (archivadas.length > 0) {
         qc.invalidateQueries({ queryKey: OBRAS_KEY })
       }
-    }).catch(() => {})
+    }).catch(() => { localStorage.removeItem(KEY) })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
