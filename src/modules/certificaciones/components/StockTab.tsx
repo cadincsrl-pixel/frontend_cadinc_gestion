@@ -28,7 +28,32 @@ const UNIDADES = [
 ]
 
 function fmtM(n: number) { return '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 0 }) }
-function fmtF(s: string) { const [y,m,d] = s.split('-'); return `${d}/${m}/${y}` }
+function fmtF(s: string) {
+  const iso = s.slice(0, 10)
+  const [y, m, d] = iso.split('-')
+  if (!y || !m || !d) return s
+  return `${d}/${m}/${y}`
+}
+
+// ── Tipos de formulario ──
+interface MaterialForm {
+  rubro_id: number | ''
+  nombre: string
+  unidad: string
+  stock_minimo: number | string
+  precio_ref: number | string
+  proveedor_id: string
+}
+interface MovimientoForm {
+  cantidad: number | string
+  tipo: 'entrada' | 'salida' | 'ajuste'
+  motivo: 'compra' | 'despacho_obra' | 'devolucion' | 'ajuste_inventario'
+  obs: string
+}
+interface RubroForm {
+  nombre: string
+  icono: string
+}
 
 const MOTIVO_LABEL: Record<string, string> = {
   compra: 'Compra', despacho_obra: 'Despacho a obra', devolucion: 'Devolución', ajuste_inventario: 'Ajuste inventario',
@@ -50,7 +75,7 @@ export function StockTab() {
   const { mutate: createMat } = useCreateStockMaterial()
   const { mutate: updateMat } = useUpdateStockMaterial()
   const { mutate: deleteMat } = useDeleteStockMaterial()
-  const { mutate: createMov } = useCreateMovimiento()
+  const { mutate: createMov, mutateAsync: createMovAsync } = useCreateMovimiento()
   const { mutate: createRubro } = useCreateRubro()
 
   const [rubroFiltro, setRubroFiltro] = useState<number | ''>('')
@@ -61,11 +86,12 @@ export function StockTab() {
   const [modalHistorial, setModalHistorial] = useState<StockMaterial | null>(null)
   const [modalEditar, setModalEditar] = useState<StockMaterial | null>(null)
   const [modalNuevoRubro, setModalNuevoRubro] = useState(false)
+  const [modalEliminar, setModalEliminar] = useState<StockMaterial | null>(null)
 
-  const formNuevo = useForm<any>({ defaultValues: { rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0, proveedor_id: '' } })
-  const formEntrada = useForm<any>({ defaultValues: { cantidad: 0, tipo: 'entrada', motivo: 'compra', obs: '' } })
-  const formEditar = useForm<any>()
-  const formRubro = useForm<any>({ defaultValues: { nombre: '', icono: '' } })
+  const formNuevo = useForm<MaterialForm>({ defaultValues: { rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0, proveedor_id: '' } })
+  const formEntrada = useForm<MovimientoForm>({ defaultValues: { cantidad: 0, tipo: 'entrada', motivo: 'compra', obs: '' } })
+  const formEditar = useForm<MaterialForm>({ defaultValues: { rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0, proveedor_id: '' } })
+  const formRubro = useForm<RubroForm>({ defaultValues: { nombre: '', icono: '' } })
 
   // Filtrar y agrupar
   const filtered = useMemo(() => {
@@ -76,7 +102,10 @@ export function StockTab() {
     if (stockFiltro === 'stock_bajo') list = list.filter(m => m.stock_minimo > 0 && m.stock_actual > 0 && m.stock_actual <= m.stock_minimo)
     if (busqueda.trim()) {
       const q = busqueda.toLowerCase()
-      list = list.filter(m => m.nombre.toLowerCase().includes(q))
+      list = list.filter(m =>
+        m.nombre.toLowerCase().includes(q)
+        || (m.proveedores?.nombre?.toLowerCase().includes(q) ?? false)
+      )
     }
     return list
   }, [materiales, rubroFiltro, stockFiltro, busqueda])
@@ -99,11 +128,17 @@ export function StockTab() {
   const sinStock = filtered.filter(m => m.stock_actual <= 0).length
 
   // Crear material
-  function handleCreateMat(data: any) {
+  function handleCreateMat(data: MaterialForm) {
     if (!data.rubro_id) { toast('Seleccioná un rubro', 'err'); return }
-    createMat({ ...data, rubro_id: Number(data.rubro_id), stock_minimo: Number(data.stock_minimo), precio_ref: Number(data.precio_ref), proveedor_id: data.proveedor_id ? Number(data.proveedor_id) : null }, {
+    const nombre = data.nombre.trim()
+    if (!nombre) { toast('Ingresá un nombre', 'err'); return }
+    const stockMinimo = Number(data.stock_minimo)
+    const precioRef = Number(data.precio_ref)
+    if (!Number.isFinite(stockMinimo) || stockMinimo < 0) { toast('Stock mínimo inválido', 'err'); return }
+    if (!Number.isFinite(precioRef) || precioRef < 0) { toast('Precio inválido', 'err'); return }
+    createMat({ ...data, nombre, rubro_id: Number(data.rubro_id), stock_minimo: stockMinimo, precio_ref: precioRef, proveedor_id: data.proveedor_id ? Number(data.proveedor_id) : null }, {
       onSuccess: () => { toast('Material creado', 'ok'); setModalNuevo(false) },
-      onError: () => toast('Error', 'err'),
+      onError: (e: unknown) => toast(e instanceof Error ? e.message : 'Error', 'err'),
     })
   }
 
@@ -113,10 +148,14 @@ export function StockTab() {
     setModalEntrada(m)
   }
 
-  function handleMovimiento(data: any) {
+  function handleMovimiento(data: MovimientoForm) {
     if (!modalEntrada) return
     const cantidad = Number(data.cantidad)
-    if (cantidad <= 0) { toast('Cantidad debe ser mayor a 0', 'err'); return }
+    if (!Number.isFinite(cantidad) || cantidad <= 0) { toast('Cantidad debe ser mayor a 0', 'err'); return }
+    if (data.tipo === 'salida' && cantidad > modalEntrada.stock_actual) {
+      toast(`No hay stock suficiente (disponible: ${modalEntrada.stock_actual})`, 'err')
+      return
+    }
     createMov({
       material_id: modalEntrada.id,
       tipo: data.tipo,
@@ -125,7 +164,7 @@ export function StockTab() {
       obs: data.obs || '',
     }, {
       onSuccess: () => { toast('Movimiento registrado', 'ok'); setModalEntrada(null) },
-      onError: () => toast('Error', 'err'),
+      onError: (e: unknown) => toast(e instanceof Error ? e.message : 'Error', 'err'),
     })
   }
 
@@ -135,23 +174,43 @@ export function StockTab() {
     setModalEditar(m)
   }
 
-  function handleUpdate(data: any) {
+  function handleUpdate(data: MaterialForm) {
     if (!modalEditar) return
-    updateMat({ id: modalEditar.id, dto: { ...data, rubro_id: Number(data.rubro_id), stock_minimo: Number(data.stock_minimo), precio_ref: Number(data.precio_ref), proveedor_id: data.proveedor_id ? Number(data.proveedor_id) : null } }, {
+    if (!data.rubro_id) { toast('Seleccioná un rubro', 'err'); return }
+    const nombre = data.nombre.trim()
+    if (!nombre) { toast('Ingresá un nombre', 'err'); return }
+    const stockMinimo = Number(data.stock_minimo)
+    const precioRef = Number(data.precio_ref)
+    if (!Number.isFinite(stockMinimo) || stockMinimo < 0) { toast('Stock mínimo inválido', 'err'); return }
+    if (!Number.isFinite(precioRef) || precioRef < 0) { toast('Precio inválido', 'err'); return }
+    updateMat({ id: modalEditar.id, dto: { ...data, nombre, rubro_id: Number(data.rubro_id), stock_minimo: stockMinimo, precio_ref: precioRef, proveedor_id: data.proveedor_id ? Number(data.proveedor_id) : null } }, {
       onSuccess: () => { toast('Actualizado', 'ok'); setModalEditar(null) },
-      onError: () => toast('Error', 'err'),
+      onError: (e: unknown) => toast(e instanceof Error ? e.message : 'Error', 'err'),
     })
   }
 
-  function handleDelete(id: number) {
-    if (!confirm('¿Eliminar este material del catálogo?')) return
-    deleteMat(id, { onSuccess: () => toast('Eliminado', 'ok'), onError: () => toast('Error', 'err') })
+  function handleDelete() {
+    if (!modalEliminar) return
+    const id = modalEliminar.id
+    deleteMat(id, {
+      onSuccess: () => { toast('Eliminado', 'ok'); setModalEliminar(null) },
+      onError: (e: unknown) => {
+        const msg = e instanceof Error ? e.message : ''
+        if (/foreign key|referenc|violates/i.test(msg)) {
+          toast('No se puede eliminar: el material tiene movimientos registrados', 'err')
+        } else {
+          toast(msg || 'Error', 'err')
+        }
+      },
+    })
   }
 
-  function handleCreateRubro(data: any) {
-    createRubro(data, {
+  function handleCreateRubro(data: RubroForm) {
+    const nombre = data.nombre.trim()
+    if (!nombre) { toast('Ingresá un nombre', 'err'); return }
+    createRubro({ nombre, icono: data.icono.trim() }, {
       onSuccess: () => { toast('Rubro creado', 'ok'); setModalNuevoRubro(false) },
-      onError: () => toast('Error', 'err'),
+      onError: (e: unknown) => toast(e instanceof Error ? e.message : 'Error', 'err'),
     })
   }
 
@@ -159,7 +218,7 @@ export function StockTab() {
   const importRef = useRef<HTMLInputElement>(null)
 
   function exportarExcel() {
-    const rows: any[][] = [
+    const rows: (string | number)[][] = [
       ['Rubro', 'Material', 'Unidad', 'Stock Actual', 'Stock Mínimo', 'Precio Ref.', 'Proveedor'],
     ]
     for (const { rubro, items } of grouped) {
@@ -184,50 +243,82 @@ export function StockTab() {
   }
 
   // ── Importar Excel (ajuste masivo de stock) ──
-  function importarExcel(file: File) {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      try {
-        const data = new Uint8Array(e.target?.result as ArrayBuffer)
-        const wb = XLSX.read(data, { type: 'array' })
-        const ws = wb.Sheets[wb.SheetNames[0]!]!
-        const rows = XLSX.utils.sheet_to_json<any>(ws)
+  const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ')
 
-        let actualizados = 0
-        let errores = 0
-
-        for (const row of rows) {
-          const nombre = row['Material'] ?? row['material'] ?? row['nombre']
-          const stockNuevo = Number(row['Stock Actual'] ?? row['stock_actual'] ?? row['stock'])
-          if (!nombre || isNaN(stockNuevo)) continue
-
-          // Buscar material por nombre
-          const mat = (materiales as StockMaterial[]).find(m =>
-            m.nombre.toLowerCase() === String(nombre).toLowerCase()
-          )
-          if (!mat) { errores++; continue }
-
-          // Crear movimiento de ajuste
-          createMov({
-            material_id: mat.id,
-            tipo: 'ajuste',
-            cantidad: stockNuevo,
-            motivo: 'ajuste_inventario',
-            obs: 'Importación masiva desde Excel',
-          }, {
-            onSuccess: () => actualizados++,
-            onError: () => errores++,
-          })
-        }
-
-        setTimeout(() => {
-          toast(`Importación: ${actualizados} actualizados, ${errores} errores`, actualizados > 0 ? 'ok' : 'err')
-        }, 1500)
-      } catch {
-        toast('Error al leer el archivo', 'err')
-      }
+  async function importarExcel(file: File) {
+    let rows: Record<string, unknown>[]
+    try {
+      const buf = await file.arrayBuffer()
+      const wb = XLSX.read(new Uint8Array(buf), { type: 'array' })
+      const ws = wb.Sheets[wb.SheetNames[0]!]!
+      rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws)
+    } catch {
+      toast('Error al leer el archivo', 'err')
+      return
     }
-    reader.readAsArrayBuffer(file)
+
+    // Índice por (rubro, nombre) normalizado → lookup O(1) y desambiguación de duplicados entre rubros
+    const rubroById = new Map((rubros as StockRubro[]).map(r => [r.id, r.nombre]))
+    const idx = new Map<string, StockMaterial>()
+    const nombresAmbiguos = new Set<string>()
+    for (const m of materiales as StockMaterial[]) {
+      const rubroNom = rubroById.get(m.rubro_id) ?? ''
+      idx.set(`${norm(rubroNom)}::${norm(m.nombre)}`, m)
+      // Registrar si el nombre solo aparece en más de un rubro
+      const soloNombreKey = `__sn__${norm(m.nombre)}`
+      if (idx.has(soloNombreKey)) nombresAmbiguos.add(norm(m.nombre))
+      else idx.set(soloNombreKey, m)
+    }
+
+    const tareas: Promise<void>[] = []
+    let omitidos = 0
+    let ambiguos = 0
+    let noEncontrados = 0
+
+    for (const row of rows) {
+      const nombreRaw = row['Material'] ?? row['material'] ?? row['nombre']
+      const rubroRaw = row['Rubro'] ?? row['rubro']
+      const stockNuevo = Number(row['Stock Actual'] ?? row['stock_actual'] ?? row['stock'])
+      if (!nombreRaw || !Number.isFinite(stockNuevo)) { omitidos++; continue }
+
+      const nombreN = norm(String(nombreRaw))
+      let mat: StockMaterial | undefined
+
+      if (rubroRaw) {
+        mat = idx.get(`${norm(String(rubroRaw))}::${nombreN}`)
+      } else if (nombresAmbiguos.has(nombreN)) {
+        // Sin rubro en la fila y el nombre es ambiguo entre varios rubros
+        ambiguos++
+        continue
+      } else {
+        mat = idx.get(`__sn__${nombreN}`)
+      }
+
+      if (!mat) { noEncontrados++; continue }
+
+      tareas.push(
+        createMovAsync({
+          material_id: mat.id,
+          tipo: 'ajuste',
+          cantidad: stockNuevo,
+          motivo: 'ajuste_inventario',
+          obs: 'Importación masiva desde Excel',
+        }).then(() => undefined)
+      )
+    }
+
+    const resultados = await Promise.allSettled(tareas)
+    const actualizados = resultados.filter(r => r.status === 'fulfilled').length
+    const fallidos = resultados.length - actualizados
+    const errores = fallidos + ambiguos + noEncontrados
+
+    const partes: string[] = [`${actualizados} actualizados`]
+    if (fallidos) partes.push(`${fallidos} con error`)
+    if (noEncontrados) partes.push(`${noEncontrados} no encontrados`)
+    if (ambiguos) partes.push(`${ambiguos} ambiguos (agregá columna "Rubro")`)
+    if (omitidos) partes.push(`${omitidos} omitidos`)
+
+    toast(`Importación: ${partes.join(', ')}`, actualizados > 0 && errores === 0 ? 'ok' : actualizados > 0 ? 'warn' : 'err')
   }
 
   return (
@@ -242,7 +333,7 @@ export function StockTab() {
               <option key={r.id} value={r.id}>{r.icono} {r.nombre}</option>
             ))}
           </select>
-          <select value={stockFiltro} onChange={e => setStockFiltro(e.target.value as any)}
+          <select value={stockFiltro} onChange={e => setStockFiltro(e.target.value as typeof stockFiltro)}
             className="px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white font-semibold focus:border-naranja">
             <option value="">Todo el stock</option>
             <option value="con_stock">Con stock</option>
@@ -252,7 +343,7 @@ export function StockTab() {
           <div className="relative flex-1 min-w-[200px] max-w-[350px]">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gris-dark text-sm">🔍</span>
             <input type="text" value={busqueda} onChange={e => setBusqueda(e.target.value)}
-              placeholder="Buscar material..."
+              placeholder="Buscar material o proveedor..."
               className="w-full pl-9 pr-8 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white focus:border-naranja" />
             {busqueda && <button onClick={() => setBusqueda('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gris-dark hover:text-carbon text-sm">✕</button>}
           </div>
@@ -336,8 +427,8 @@ export function StockTab() {
                         <div className="flex gap-1 justify-end">
                           <button onClick={() => abrirEntrada(m)} className="text-[10px] font-bold px-2 py-1 rounded bg-verde-light text-verde hover:opacity-80">+ Entrada</button>
                           <button onClick={() => setModalHistorial(m)} className="text-[10px] font-bold px-2 py-1 rounded bg-azul-light text-azul hover:opacity-80">Historial</button>
-                          <button onClick={() => abrirEditar(m)} className="text-xs px-1.5 py-1 rounded hover:bg-gris transition-colors">✏️</button>
-                          <button onClick={() => handleDelete(m.id)} className="text-xs px-1.5 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors">✕</button>
+                          <button onClick={() => abrirEditar(m)} aria-label={`Editar ${m.nombre}`} title="Editar" className="text-xs px-1.5 py-1 rounded hover:bg-gris transition-colors">✏️</button>
+                          <button onClick={() => setModalEliminar(m)} aria-label={`Eliminar ${m.nombre}`} title="Eliminar" className="text-xs px-1.5 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors">✕</button>
                         </div>
                       </td>
                     </tr>
@@ -435,6 +526,16 @@ export function StockTab() {
             <Input label="Precio ref. ($)" type="number" step="1" {...formEditar.register('precio_ref')} />
           </div>
         </div>
+      </Modal>
+
+      {/* ── Modal confirmar eliminación ── */}
+      <Modal open={!!modalEliminar} onClose={() => setModalEliminar(null)} title="🗑️ ELIMINAR MATERIAL"
+        footer={<><Button variant="secondary" onClick={() => setModalEliminar(null)}>Cancelar</Button><Button variant="danger" onClick={handleDelete}>Eliminar</Button></>}>
+        {modalEliminar && (
+          <p className="text-sm text-carbon">
+            ¿Eliminar <strong>{modalEliminar.nombre}</strong> del catálogo? Esta acción no se puede deshacer.
+          </p>
+        )}
       </Modal>
 
       {/* ── Modal nuevo rubro ── */}
