@@ -270,14 +270,16 @@ export interface Tramo {
   deposito_id: number | null   // destino en cargado, origen en vacio
 
   // Carga
-  fecha_carga:        string | null
-  toneladas_carga:    number | null
-  remito_carga:       string | null
+  fecha_carga:          string | null
+  toneladas_carga:      number | null
+  remito_carga:         string | null
+  remito_carga_img_url: string | null
 
   // Descarga
-  fecha_descarga:     string | null
-  toneladas_descarga: number | null
-  remito_descarga:    string | null
+  fecha_descarga:          string | null
+  toneladas_descarga:      number | null
+  remito_descarga:         string | null
+  remito_descarga_img_url: string | null
 
   // Vacío
   fecha_vacio: string | null

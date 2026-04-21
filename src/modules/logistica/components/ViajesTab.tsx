@@ -13,6 +13,7 @@ import { Input }    from '@/components/ui/Input'
 import { Badge }    from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
 import { useForm }  from 'react-hook-form'
+import { uploadRemitoImg } from '@/lib/utils/upload'
 import type { Tramo } from '@/types/domain.types'
 
 export function ViajesTab() {
@@ -39,9 +40,26 @@ export function ViajesTab() {
   const [filtDesde,     setFiltDesde]     = useState('')
   const [filtHasta,     setFiltHasta]     = useState('')
 
-  const formNuevo    = useForm<any>({ defaultValues: { tipo: 'cargado', fecha_carga: hoy(), fecha_vacio: hoy() } })
+  const formNuevo    = useForm<any>({ defaultValues: { tipo: 'cargado', fecha_carga: hoy(), fecha_vacio: hoy(), remito_carga_img_url: '', remito_descarga_img_url: '' } })
   const formEdit     = useForm<any>()
-  const formDescarga = useForm<any>({ defaultValues: { fecha_descarga: hoy() } })
+  const formDescarga = useForm<any>({ defaultValues: { fecha_descarga: hoy(), remito_descarga_img_url: '' } })
+  const [uploading, setUploading] = useState<string | null>(null)
+
+  async function handleUpload(form: { setValue: (k: any, v: any) => void }, field: string, file: File | undefined) {
+    if (!file) return
+    if (!file.type.startsWith('image/')) { toast('El archivo debe ser una imagen', 'err'); return }
+    if (file.size > 8 * 1024 * 1024) { toast('Imagen demasiado grande (máx 8 MB)', 'err'); return }
+    setUploading(field)
+    try {
+      const url = await uploadRemitoImg(file)
+      form.setValue(field, url)
+      toast('✓ Remito subido', 'ok')
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Error al subir', 'err')
+    } finally {
+      setUploading(null)
+    }
+  }
 
   const tipoNuevo = formNuevo.watch('tipo')
 
@@ -82,9 +100,10 @@ export function ViajesTab() {
       obs:         data.obs ?? '',
     }
     if (data.tipo === 'cargado') {
-      dto.fecha_carga     = data.fecha_carga
-      dto.toneladas_carga = data.toneladas_carga ? Number(data.toneladas_carga) : undefined
-      dto.remito_carga    = data.remito_carga ?? ''
+      dto.fecha_carga          = data.fecha_carga
+      dto.toneladas_carga      = data.toneladas_carga ? Number(data.toneladas_carga) : undefined
+      dto.remito_carga         = data.remito_carga ?? ''
+      dto.remito_carga_img_url = data.remito_carga_img_url || null
     } else {
       dto.fecha_vacio = data.fecha_vacio
     }
@@ -104,13 +123,14 @@ export function ViajesTab() {
       {
         id: descargaTramo.id,
         dto: {
-          fecha_descarga:     data.fecha_descarga,
-          toneladas_descarga: data.toneladas_descarga ? Number(data.toneladas_descarga) : undefined,
-          remito_descarga:    data.remito_descarga ?? '',
+          fecha_descarga:          data.fecha_descarga,
+          toneladas_descarga:      data.toneladas_descarga ? Number(data.toneladas_descarga) : undefined,
+          remito_descarga:         data.remito_descarga ?? '',
+          remito_descarga_img_url: data.remito_descarga_img_url || null,
         },
       },
       {
-        onSuccess: () => { toast('✓ Descarga registrada — tramo completado', 'ok'); setDescargaTramo(null); formDescarga.reset({ fecha_descarga: hoy() }) },
+        onSuccess: () => { toast('✓ Descarga registrada — tramo completado', 'ok'); setDescargaTramo(null); formDescarga.reset({ fecha_descarga: hoy(), remito_descarga_img_url: '' }) },
         onError:   () => toast('Error al registrar descarga', 'err'),
       }
     )
@@ -124,12 +144,14 @@ export function ViajesTab() {
       empresa_id:        tramo.empresa_id  ? String(tramo.empresa_id)  : '',
       cantera_id:        tramo.cantera_id  ? String(tramo.cantera_id)  : '',
       deposito_id:       tramo.deposito_id ? String(tramo.deposito_id) : '',
-      fecha_carga:       tramo.fecha_carga    ?? '',
-      toneladas_carga:   tramo.toneladas_carga ?? '',
-      remito_carga:      tramo.remito_carga    ?? '',
-      fecha_descarga:    tramo.fecha_descarga     ?? '',
-      toneladas_descarga: tramo.toneladas_descarga ?? '',
-      remito_descarga:   tramo.remito_descarga    ?? '',
+      fecha_carga:             tramo.fecha_carga    ?? '',
+      toneladas_carga:         tramo.toneladas_carga ?? '',
+      remito_carga:            tramo.remito_carga    ?? '',
+      remito_carga_img_url:    tramo.remito_carga_img_url ?? '',
+      fecha_descarga:          tramo.fecha_descarga     ?? '',
+      toneladas_descarga:      tramo.toneladas_descarga ?? '',
+      remito_descarga:         tramo.remito_descarga    ?? '',
+      remito_descarga_img_url: tramo.remito_descarga_img_url ?? '',
       fecha_vacio:       tramo.fecha_vacio ?? '',
       obs:               tramo.obs ?? '',
     })
@@ -147,12 +169,14 @@ export function ViajesTab() {
           empresa_id:         data.empresa_id  ? Number(data.empresa_id)  : null,
           cantera_id:         data.cantera_id  ? Number(data.cantera_id)  : null,
           deposito_id:        data.deposito_id ? Number(data.deposito_id) : null,
-          fecha_carga:        data.fecha_carga     || undefined,
-          toneladas_carga:    data.toneladas_carga    ? Number(data.toneladas_carga)    : undefined,
-          remito_carga:       data.remito_carga       ?? '',
-          fecha_descarga:     data.fecha_descarga     || undefined,
-          toneladas_descarga: data.toneladas_descarga ? Number(data.toneladas_descarga) : undefined,
-          remito_descarga:    data.remito_descarga     ?? '',
+          fecha_carga:             data.fecha_carga     || undefined,
+          toneladas_carga:         data.toneladas_carga    ? Number(data.toneladas_carga)    : undefined,
+          remito_carga:            data.remito_carga       ?? '',
+          remito_carga_img_url:    data.remito_carga_img_url || null,
+          fecha_descarga:          data.fecha_descarga     || undefined,
+          toneladas_descarga:      data.toneladas_descarga ? Number(data.toneladas_descarga) : undefined,
+          remito_descarga:         data.remito_descarga     ?? '',
+          remito_descarga_img_url: data.remito_descarga_img_url || null,
           fecha_vacio:        data.fecha_vacio         || undefined,
           obs:                data.obs ?? '',
         },
@@ -305,6 +329,7 @@ export function ViajesTab() {
                       fecha={tramo.fecha_carga}
                       toneladas={tramo.toneladas_carga}
                       remito={tramo.remito_carga}
+                      imgUrl={tramo.remito_carga_img_url}
                     />
                     <InfoBlock
                       titulo="Descarga"
@@ -312,6 +337,7 @@ export function ViajesTab() {
                       fecha={tramo.fecha_descarga}
                       toneladas={tramo.toneladas_descarga}
                       remito={tramo.remito_descarga}
+                      imgUrl={tramo.remito_descarga_img_url}
                       vacio={!tramo.fecha_descarga}
                     />
                   </div>
@@ -423,6 +449,13 @@ export function ViajesTab() {
                   <Input label="Toneladas" type="number" step="0.01" placeholder="0.00" {...formNuevo.register('toneladas_carga')} />
                   <Input label="Nº Remito" placeholder="R-00456" {...formNuevo.register('remito_carga')} />
                 </div>
+                <RemitoImgField
+                  label="Foto del remito de carga"
+                  url={formNuevo.watch('remito_carga_img_url') ?? ''}
+                  uploading={uploading === 'remito_carga_img_url'}
+                  onPick={f => handleUpload(formNuevo, 'remito_carga_img_url', f)}
+                  onClear={() => formNuevo.setValue('remito_carga_img_url', '')}
+                />
               </div>
             </>
           ) : (
@@ -469,6 +502,13 @@ export function ViajesTab() {
             <Input label="Toneladas" type="number" step="0.01" placeholder="0.00" {...formDescarga.register('toneladas_descarga')} />
             <Input label="Nº Remito" placeholder="R-00456" {...formDescarga.register('remito_descarga')} />
           </div>
+          <RemitoImgField
+            label="Foto del remito de descarga"
+            url={formDescarga.watch('remito_descarga_img_url') ?? ''}
+            uploading={uploading === 'remito_descarga_img_url'}
+            onPick={f => handleUpload(formDescarga, 'remito_descarga_img_url', f)}
+            onClear={() => formDescarga.setValue('remito_descarga_img_url', '')}
+          />
         </div>
       </Modal>
 
@@ -539,6 +579,13 @@ export function ViajesTab() {
                   <Input label="Toneladas" type="number" step="0.01" {...formEdit.register('toneladas_carga')} />
                   <Input label="Nº Remito" {...formEdit.register('remito_carga')} />
                 </div>
+                <RemitoImgField
+                  label="Foto del remito de carga"
+                  url={formEdit.watch('remito_carga_img_url') ?? ''}
+                  uploading={uploading === 'edit_remito_carga_img_url'}
+                  onPick={f => handleUpload(formEdit, 'remito_carga_img_url', f)}
+                  onClear={() => formEdit.setValue('remito_carga_img_url', '')}
+                />
               </div>
               <div className="bg-gris rounded-xl p-3 flex flex-col gap-3">
                 <div className="text-xs font-bold text-gris-dark uppercase tracking-wider">🏭 Descarga</div>
@@ -547,6 +594,13 @@ export function ViajesTab() {
                   <Input label="Toneladas" type="number" step="0.01" {...formEdit.register('toneladas_descarga')} />
                   <Input label="Nº Remito" {...formEdit.register('remito_descarga')} />
                 </div>
+                <RemitoImgField
+                  label="Foto del remito de descarga"
+                  url={formEdit.watch('remito_descarga_img_url') ?? ''}
+                  uploading={uploading === 'edit_remito_descarga_img_url'}
+                  onPick={f => handleUpload(formEdit, 'remito_descarga_img_url', f)}
+                  onClear={() => formEdit.setValue('remito_descarga_img_url', '')}
+                />
               </div>
             </>
           ) : (
@@ -560,8 +614,8 @@ export function ViajesTab() {
   )
 }
 
-function InfoBlock({ titulo, icono, fecha, toneladas, remito, vacio }: {
-  titulo: string; icono: string; fecha?: string | null; toneladas?: number | null; remito?: string | null; vacio?: boolean
+function InfoBlock({ titulo, icono, fecha, toneladas, remito, imgUrl, vacio }: {
+  titulo: string; icono: string; fecha?: string | null; toneladas?: number | null; remito?: string | null; imgUrl?: string | null; vacio?: boolean
 }) {
   return (
     <div className={`rounded-xl p-3 ${vacio ? 'bg-gris/50 border border-dashed border-gris-mid' : 'bg-gris'}`}>
@@ -573,7 +627,39 @@ function InfoBlock({ titulo, icono, fecha, toneladas, remito, vacio }: {
           {fecha     && <span>📅 {fmtFecha(fecha)}</span>}
           {toneladas != null && <span>⚖️ {toneladas} tn</span>}
           {remito    && <span>📄 {remito}</span>}
+          {imgUrl    && (
+            <a href={imgUrl} target="_blank" rel="noreferrer" className="text-xs text-azul hover:underline inline-flex items-center gap-1 mt-1">
+              🖼 Ver remito
+            </a>
+          )}
         </div>
+      )}
+    </div>
+  )
+}
+
+// Input de archivo para el remito (sube a Supabase Storage y guarda la URL en el form)
+function RemitoImgField({ label, url, uploading, onPick, onClear }: {
+  label: string; url: string; uploading: boolean; onPick: (file: File) => void; onClear: () => void
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">{label}</label>
+      {url ? (
+        <div className="flex items-center gap-2 bg-white border-[1.5px] border-verde/40 rounded-lg px-2 py-1.5">
+          <a href={url} target="_blank" rel="noreferrer" className="text-xs text-azul hover:underline flex-1 truncate">
+            🖼 Ver remito subido
+          </a>
+          <button type="button" onClick={onClear} className="text-xs text-gris-dark hover:text-rojo px-1" title="Quitar">✕</button>
+        </div>
+      ) : (
+        <input
+          type="file"
+          accept="image/*"
+          disabled={uploading}
+          onChange={e => { const f = e.target.files?.[0]; if (f) onPick(f); e.target.value = '' }}
+          className="text-xs text-gris-dark file:mr-2 file:px-2 file:py-1 file:rounded file:border-0 file:bg-azul file:text-white file:font-bold file:text-xs hover:file:bg-azul/90 disabled:opacity-50"
+        />
       )}
     </div>
   )
