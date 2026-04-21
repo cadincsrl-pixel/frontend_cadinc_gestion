@@ -47,8 +47,10 @@ export function ViajesTab() {
 
   async function handleUpload(form: { setValue: (k: any, v: any) => void }, field: string, file: File | undefined) {
     if (!file) return
-    if (!file.type.startsWith('image/')) { toast('El archivo debe ser una imagen', 'err'); return }
-    if (file.size > 8 * 1024 * 1024) { toast('Imagen demasiado grande (máx 8 MB)', 'err'); return }
+    const esImagen = file.type.startsWith('image/')
+    const esPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+    if (!esImagen && !esPdf) { toast('Solo se aceptan imágenes o PDF', 'err'); return }
+    if (file.size > 8 * 1024 * 1024) { toast('Archivo demasiado grande (máx 8 MB)', 'err'); return }
     setUploading(field)
     try {
       const url = await uploadRemitoImg(file)
@@ -450,7 +452,7 @@ export function ViajesTab() {
                   <Input label="Nº Remito" placeholder="R-00456" {...formNuevo.register('remito_carga')} />
                 </div>
                 <RemitoImgField
-                  label="Foto del remito de carga"
+                  label="Remito de carga (imagen o PDF)"
                   url={formNuevo.watch('remito_carga_img_url') ?? ''}
                   uploading={uploading === 'remito_carga_img_url'}
                   onPick={f => handleUpload(formNuevo, 'remito_carga_img_url', f)}
@@ -503,7 +505,7 @@ export function ViajesTab() {
             <Input label="Nº Remito" placeholder="R-00456" {...formDescarga.register('remito_descarga')} />
           </div>
           <RemitoImgField
-            label="Foto del remito de descarga"
+            label="Remito de descarga (imagen o PDF)"
             url={formDescarga.watch('remito_descarga_img_url') ?? ''}
             uploading={uploading === 'remito_descarga_img_url'}
             onPick={f => handleUpload(formDescarga, 'remito_descarga_img_url', f)}
@@ -580,7 +582,7 @@ export function ViajesTab() {
                   <Input label="Nº Remito" {...formEdit.register('remito_carga')} />
                 </div>
                 <RemitoImgField
-                  label="Foto del remito de carga"
+                  label="Remito de carga (imagen o PDF)"
                   url={formEdit.watch('remito_carga_img_url') ?? ''}
                   uploading={uploading === 'edit_remito_carga_img_url'}
                   onPick={f => handleUpload(formEdit, 'remito_carga_img_url', f)}
@@ -595,7 +597,7 @@ export function ViajesTab() {
                   <Input label="Nº Remito" {...formEdit.register('remito_descarga')} />
                 </div>
                 <RemitoImgField
-                  label="Foto del remito de descarga"
+                  label="Remito de descarga (imagen o PDF)"
                   url={formEdit.watch('remito_descarga_img_url') ?? ''}
                   uploading={uploading === 'edit_remito_descarga_img_url'}
                   onPick={f => handleUpload(formEdit, 'remito_descarga_img_url', f)}
@@ -655,7 +657,7 @@ function RemitoImgField({ label, url, uploading, onPick, onClear }: {
       ) : (
         <input
           type="file"
-          accept="image/*"
+          accept="image/*,application/pdf,.pdf"
           disabled={uploading}
           onChange={e => { const f = e.target.files?.[0]; if (f) onPick(f); e.target.value = '' }}
           className="text-xs text-gris-dark file:mr-2 file:px-2 file:py-1 file:rounded file:border-0 file:bg-azul file:text-white file:font-bold file:text-xs hover:file:bg-azul/90 disabled:opacity-50"
