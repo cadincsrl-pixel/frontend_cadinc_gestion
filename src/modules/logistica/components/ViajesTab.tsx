@@ -36,6 +36,8 @@ export function ViajesTab() {
   const [filtChofer,    setFiltChofer]    = useState('')
   const [filtTipo,      setFiltTipo]      = useState('')
   const [filtEstado,    setFiltEstado]    = useState('')
+  const [filtDesde,     setFiltDesde]     = useState('')
+  const [filtHasta,     setFiltHasta]     = useState('')
 
   const formNuevo    = useForm<any>({ defaultValues: { tipo: 'cargado', fecha_carga: hoy(), fecha_vacio: hoy() } })
   const formEdit     = useForm<any>()
@@ -43,10 +45,23 @@ export function ViajesTab() {
 
   const tipoNuevo = formNuevo.watch('tipo')
 
+  // Fecha representativa del tramo para el filtro de rango
+  function fechaRef(t: Tramo): string | null {
+    return t.tipo === 'cargado'
+      ? (t.fecha_carga ?? t.fecha_descarga ?? null)
+      : (t.fecha_vacio ?? null)
+  }
+
   const filtered = tramos.filter((t: Tramo) => {
     if (filtChofer && String(t.chofer_id) !== filtChofer) return false
     if (filtTipo   && t.tipo   !== filtTipo)   return false
     if (filtEstado && t.estado !== filtEstado) return false
+    if (filtDesde || filtHasta) {
+      const f = fechaRef(t)
+      if (!f) return false
+      if (filtDesde && f < filtDesde) return false
+      if (filtHasta && f > filtHasta) return false
+    }
     return true
   })
 
@@ -187,6 +202,36 @@ export function ViajesTab() {
           onChange={e => setFiltEstado(e.target.value)}
           className="w-40"
         />
+        <div className="flex items-center gap-1">
+          <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Desde</label>
+          <input
+            type="date"
+            value={filtDesde}
+            max={filtHasta || undefined}
+            onChange={e => setFiltDesde(e.target.value)}
+            className="px-2 py-1.5 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white focus:border-naranja"
+          />
+        </div>
+        <div className="flex items-center gap-1">
+          <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Hasta</label>
+          <input
+            type="date"
+            value={filtHasta}
+            min={filtDesde || undefined}
+            onChange={e => setFiltHasta(e.target.value)}
+            className="px-2 py-1.5 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white focus:border-naranja"
+          />
+        </div>
+        {(filtDesde || filtHasta) && (
+          <button
+            type="button"
+            onClick={() => { setFiltDesde(''); setFiltHasta('') }}
+            className="text-xs font-bold text-gris-dark hover:text-rojo px-2 py-1 rounded hover:bg-gris transition-colors"
+            title="Limpiar rango de fechas"
+          >
+            ✕ Fechas
+          </button>
+        )}
         <Button variant="primary" size="sm" className="ml-auto" onClick={() => setModalNuevo(true)}>
           ＋ Nuevo tramo
         </Button>
