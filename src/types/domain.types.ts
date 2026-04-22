@@ -287,6 +287,7 @@ export interface Tramo {
   liquidacion_id: number | null
   cobro_id:       number | null
   obs:            string | null
+  orden_dia:      number | null
   created_at:  string
   updated_at:  string
   created_by:  string | null

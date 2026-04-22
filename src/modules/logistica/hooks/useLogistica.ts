@@ -148,6 +148,15 @@ export function useDeleteTramo() {
   })
 }
 
+export function useMoverTramo() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, dir }: { id: number; dir: 'up' | 'down' }) =>
+      apiPost<{ moved: boolean }>(`/api/logistica/tramos/${id}/mover`, { dir }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.tramos }),
+  })
+}
+
 // ── Viajes (legacy) ──
 export function useViajes() {
   return useQuery({

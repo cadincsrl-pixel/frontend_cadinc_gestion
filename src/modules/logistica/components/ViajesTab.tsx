@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import {
   useTramos, useChoferes, useCamiones, useCanteras, useDepositos, useRutas, useEmpresas,
-  useCreateTramo, useUpdateTramo, useDeleteTramo, useRegistrarDescargaTramo,
+  useCreateTramo, useUpdateTramo, useDeleteTramo, useRegistrarDescargaTramo, useMoverTramo,
 } from '../hooks/useLogistica'
 import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
@@ -30,6 +30,7 @@ export function ViajesTab() {
   const { mutate: updateTramo,  isPending: updating    } = useUpdateTramo()
   const { mutate: deleteTramo  } = useDeleteTramo()
   const { mutate: regDescarga,  isPending: descargando } = useRegistrarDescargaTramo()
+  const { mutate: moverTramo   } = useMoverTramo()
 
   const [modalNuevo,    setModalNuevo]    = useState(false)
   const [editando,      setEditando]      = useState<Tramo | null>(null)
@@ -270,7 +271,11 @@ export function ViajesTab() {
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          {filtered.map(tramo => {
+          {filtered.map((tramo, idx) => {
+            const prev = filtered[idx - 1]
+            const next = filtered[idx + 1]
+            const canMoveUp   = !!prev && fechaRef(prev) === fechaRef(tramo)
+            const canMoveDown = !!next && fechaRef(next) === fechaRef(tramo)
             const chofer   = choferes.find(c => c.id === tramo.chofer_id)
             const camion   = camiones.find(c => c.id === tramo.camion_id)
             const cantera  = tramo.cantera_id  ? canteras.find(c => c.id === tramo.cantera_id)   : null
@@ -316,7 +321,25 @@ export function ViajesTab() {
                       </div>
                     )}
                   </div>
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 items-center">
+                    {(canMoveUp || canMoveDown) && (
+                      <div className="flex flex-col">
+                        <button
+                          onClick={() => moverTramo({ id: tramo.id, dir: 'up' })}
+                          disabled={!canMoveUp}
+                          title="Subir dentro del día"
+                          aria-label="Subir"
+                          className="text-[10px] leading-none px-1.5 py-0.5 rounded hover:bg-gris text-gris-dark disabled:opacity-30 disabled:cursor-not-allowed"
+                        >▲</button>
+                        <button
+                          onClick={() => moverTramo({ id: tramo.id, dir: 'down' })}
+                          disabled={!canMoveDown}
+                          title="Bajar dentro del día"
+                          aria-label="Bajar"
+                          className="text-[10px] leading-none px-1.5 py-0.5 rounded hover:bg-gris text-gris-dark disabled:opacity-30 disabled:cursor-not-allowed"
+                        >▼</button>
+                      </div>
+                    )}
                     <button onClick={() => openEdit(tramo)} className="text-xs px-2 py-1 rounded hover:bg-gris transition-colors">✏️</button>
                     <button onClick={() => handleDelete(tramo)} className="text-xs p-1 rounded hover:bg-rojo-light text-gris-mid hover:text-rojo transition-colors">✕</button>
                   </div>
