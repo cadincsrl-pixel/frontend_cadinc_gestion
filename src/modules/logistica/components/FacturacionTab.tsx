@@ -1,12 +1,13 @@
 'use client'
 
 import { useState } from 'react'
+import * as XLSX from 'xlsx'
 import { useForm } from 'react-hook-form'
 import {
   useEmpresas, useCreateEmpresa, useUpdateEmpresa, useDeleteEmpresa,
   useTarifasEmpresa, useUpsertTarifaEmpresa, useDeleteTarifaEmpresa,
   useCobros, useCreateCobro, useMarcarCobrado, useDeleteCobro,
-  useTramos, useCanteras,
+  useTramos, useCanteras, useChoferes, useCamiones,
 } from '../hooks/useLogistica'
 import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -572,10 +573,13 @@ function FacturacionSection() {
 // ─── Estado de remitos por empresa y período ──────────────────────────────────
 
 function RemitosSection() {
+  const toast = useToast()
   const { data: empresas     = [] } = useEmpresas()
   const { data: tramos       = [] } = useTramos()
   const { data: todasTarifas = [] } = useTarifasEmpresa()
   const { data: canteras     = [] } = useCanteras()
+  const { data: choferes     = [] } = useChoferes()
+  const { data: camiones     = [] } = useCamiones()
 
   const [empresaId,  setEmpresaId]  = useState('')
   const [fechaDesde, setFechaDesde] = useState('')
@@ -606,6 +610,65 @@ function RemitosSection() {
     (!fechaDesde || (t.fecha_descarga ?? t.fecha_carga ?? '') >= fechaDesde) &&
     (!fechaHasta || (t.fecha_descarga ?? t.fecha_carga ?? '') <= fechaHasta)
   )
+
+  // Para el Excel: solo tramos que ya tienen fecha_descarga y filtrados por ese rango
+  function exportarExcel() {
+    const filtrados = (tramos as Tramo[])
+      .filter(t => t.tipo === 'cargado' && t.estado === 'completado' && t.fecha_descarga)
+      .filter(t => !empresaId  || t.empresa_id === Number(empresaId))
+      .filter(t => !fechaDesde || (t.fecha_descarga ?? '') >= fechaDesde)
+      .filter(t => !fechaHasta || (t.fecha_descarga ?? '') <= fechaHasta)
+      .sort((a, b) => (a.fecha_descarga ?? '').localeCompare(b.fecha_descarga ?? ''))
+
+    if (filtrados.length === 0) { toast('Sin remitos que exportar con los filtros actuales', 'warn'); return }
+
+    const rows: (string | number)[][] = [[
+      'Fecha descarga', 'Empresa', 'Chofer', 'Patente', 'Cantera',
+      'Tn carga', 'Tn descarga', 'Remito carga', 'Remito descarga',
+      '$/tn', 'Subtotal',
+    ]]
+
+    let totalCarga = 0, totalDescarga = 0, totalSubtotal = 0
+    for (const t of filtrados) {
+      const d       = enrichTramo(t)
+      const chofer  = choferes.find(c => c.id === t.chofer_id)
+      const camion  = camiones.find(c => c.id === t.camion_id)
+      const tonC    = t.toneladas_carga ?? 0
+      const tonD    = t.toneladas_descarga ?? 0
+      totalCarga    += tonC
+      totalDescarga += tonD
+      totalSubtotal += d.subtotal
+      rows.push([
+        fmtFecha(t.fecha_descarga!),
+        d.empresa?.nombre ?? '',
+        chofer?.nombre ?? '',
+        camion?.patente ?? '',
+        d.cantera?.nombre ?? '',
+        tonC,
+        tonD,
+        t.remito_carga ?? '',
+        t.remito_descarga ?? '',
+        d.tarifa,
+        d.subtotal,
+      ])
+    }
+    // Fila total
+    rows.push(['', '', '', '', 'TOTAL', totalCarga, totalDescarga, '', '', '', totalSubtotal])
+
+    const ws = XLSX.utils.aoa_to_sheet(rows)
+    ws['!cols'] = [
+      { wch: 13 }, { wch: 22 }, { wch: 22 }, { wch: 12 }, { wch: 18 },
+      { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 16 },
+      { wch: 10 }, { wch: 14 },
+    ]
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Remitos')
+
+    const empNombre = empresaId ? ((empresas as EmpresaTransportista[]).find(e => e.id === Number(empresaId))?.nombre ?? 'empresa') : 'todas'
+    const rango = [fechaDesde || 'inicio', fechaHasta || 'hoy'].join('_a_')
+    XLSX.writeFile(wb, `Remitos_${empNombre.replace(/\s+/g, '_')}_${rango}.xlsx`)
+    toast('✓ Excel exportado', 'ok')
+  }
 
   const adeudados = tramosBase.filter(t => !t.cobro_id).map(enrichTramo)
   const cobrados  = tramosBase.filter(t => !!t.cobro_id).map(enrichTramo)
@@ -672,6 +735,13 @@ function RemitosSection() {
             ✕ Limpiar
           </button>
         )}
+        <button
+          onClick={exportarExcel}
+          className="ml-auto self-end inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-verde-light text-verde border border-verde/30 text-xs font-bold hover:bg-verde hover:text-white transition-colors"
+          title="Exportar remitos al Excel según los filtros aplicados"
+        >
+          📊 Exportar Excel
+        </button>
       </div>
 
       {/* Columnas adeudado / cobrado */}
