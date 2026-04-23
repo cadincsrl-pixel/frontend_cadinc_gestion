@@ -118,6 +118,7 @@ const NAV_ITEMS_LOGISTICA = [
   { tab: 'choferes',      icon: '👷', label: 'Choferes',      meta: 'Personal de conducción'        },
   { tab: 'camiones',      icon: '🚚', label: 'Camiones',      meta: 'Flota de vehículos'            },
   { tab: 'lugares',       icon: '📍', label: 'Lugares',       meta: 'Canteras · Depósitos'          },
+  { tab: 'gastos',        icon: '💸', label: 'Gastos',        meta: 'Combustible · Gomería · Peajes' },
 ]
 
 const NAV_ITEMS_ADMIN = [

@@ -21,6 +21,8 @@ export const LOG_KEYS = {
   empresas:        ['logistica', 'empresas']        as const,
   tarifasEmpresa:  ['logistica', 'tarifas_empresa'] as const,
   cobros:          ['logistica', 'cobros']          as const,
+  gastos:          ['logistica', 'gastos']          as const,
+  gastosCategorias:['logistica', 'gastos_categorias'] as const,
 }
 
 // ── Choferes ──
@@ -466,5 +468,139 @@ export function useDeleteCobro() {
       qc.invalidateQueries({ queryKey: LOG_KEYS.cobros })
       qc.invalidateQueries({ queryKey: LOG_KEYS.tramos })
     },
+  })
+}
+
+// ── Gastos de logística ───────────────────────────────────────
+export type GastoCategoria = {
+  id: number; codigo: string; nombre: string; aplica_a: 'camion' | 'chofer' | 'ambos'
+  activo: boolean; orden: number
+}
+
+export type Gasto = {
+  id: number
+  camion_id: number | null; chofer_id: number | null; tramo_id: number | null; lugar_id: number | null
+  categoria_id: number
+  categoria?: GastoCategoria
+  fecha: string
+  monto: number
+  descripcion: string
+  proveedor: string | null
+  metodo_pago: 'efectivo' | 'transferencia' | 'tarjeta' | 'cheque' | 'cta_cte' | 'otro'
+  pagado_por: 'empresa' | 'chofer'
+  comprobante_url: string | null
+  comprobante_nro: string
+  estado: 'pendiente' | 'aprobado' | 'rechazado' | 'pagado'
+  aprobado_por: string | null; aprobado_at: string | null; motivo_rechazo: string | null
+  liquidacion_id: number | null; adelanto_id: number | null
+  obs: string
+  created_by: string; created_at: string; updated_at: string
+}
+
+export type GastosFilters = {
+  chofer_id?: number; camion_id?: number; tramo_id?: number; categoria_id?: number
+  estado?: Gasto['estado']; pagado_por?: Gasto['pagado_por']
+  desde?: string; hasta?: string; liquidado?: boolean; q?: string
+  limit?: number; offset?: number
+}
+
+export type GastosListResponse = {
+  items: Gasto[]; total: number; limit: number; offset: number; hasMore: boolean
+}
+
+function qsFromFilters(f: GastosFilters): string {
+  const p = new URLSearchParams()
+  Object.entries(f).forEach(([k, v]) => { if (v != null && v !== '') p.set(k, String(v)) })
+  return p.toString() ? `?${p.toString()}` : ''
+}
+
+export function useGastosCategorias() {
+  return useQuery({
+    queryKey: LOG_KEYS.gastosCategorias,
+    queryFn:  () => apiGet<GastoCategoria[]>('/api/logistica/gastos/categorias'),
+    staleTime: 10 * 60 * 1000,
+  })
+}
+
+export function useGastos(filters: GastosFilters = {}) {
+  return useQuery({
+    queryKey: [...LOG_KEYS.gastos, filters],
+    queryFn:  () => apiGet<GastosListResponse>(`/api/logistica/gastos${qsFromFilters(filters)}`),
+  })
+}
+
+export function useGasto(id: number | null) {
+  return useQuery({
+    queryKey: [...LOG_KEYS.gastos, id],
+    queryFn:  () => apiGet<Gasto>(`/api/logistica/gastos/${id}`),
+    enabled:  id != null,
+  })
+}
+
+export function useCreateGasto() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: Partial<Gasto> & { comprobante_path?: string | null }) =>
+      apiPost<Gasto>('/api/logistica/gastos', dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.gastos }),
+  })
+}
+
+export function useUpdateGasto() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: number; dto: Partial<Gasto> & { comprobante_path?: string | null } }) =>
+      apiPatch<Gasto>(`/api/logistica/gastos/${id}`, dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.gastos }),
+  })
+}
+
+export function useDeleteGasto() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiDelete(`/api/logistica/gastos/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.gastos }),
+  })
+}
+
+export function useAprobarGasto() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiPost<Gasto>(`/api/logistica/gastos/${id}/aprobar`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.gastos }),
+  })
+}
+
+export function useRechazarGasto() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, motivo_rechazo }: { id: number; motivo_rechazo: string }) =>
+      apiPost<Gasto>(`/api/logistica/gastos/${id}/rechazar`, { motivo_rechazo }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.gastos }),
+  })
+}
+
+// Flujo de upload: 1) pedir signed URL al backend, 2) PUT directo al
+// bucket privado. Devuelve el `path` para guardar en el gasto al crear.
+export async function uploadComprobanteGasto(file: File): Promise<{ path: string }> {
+  const { path, signedUrl } = await apiPost<{ path: string; signedUrl: string; token: string }>(
+    '/api/logistica/gastos/upload-comprobante',
+    { filename: file.name, content_type: file.type, size_bytes: file.size },
+  )
+  const res = await fetch(signedUrl, {
+    method:  'PUT',
+    headers: { 'Content-Type': file.type, 'x-upsert': 'false' },
+    body:    file,
+  })
+  if (!res.ok) throw new Error(`Upload falló: ${res.status}`)
+  return { path }
+}
+
+export function useGastoComprobanteUrl(id: number | null) {
+  return useQuery({
+    queryKey: ['logistica', 'gastos', id, 'comprobante-url'] as const,
+    queryFn:  () => apiGet<{ signedUrl: string; expiresIn: number }>(`/api/logistica/gastos/${id}/comprobante-url`),
+    enabled:  id != null,
+    staleTime: 10 * 60 * 1000, // 10 min — la URL firmada dura 15
   })
 }
