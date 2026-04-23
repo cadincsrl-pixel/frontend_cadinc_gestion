@@ -13,7 +13,7 @@ import {
   esHoy, esJueves, esFinde,
 } from '@/lib/utils/dates'
 import { totalHsLeg } from '@/lib/utils/costos'
-import { useHsExtrasAll } from '@/modules/tarja/hooks/useHsExtras'
+import { useHsExtrasAll, useUpsertHsExtra } from '@/modules/tarja/hooks/useHsExtras'
 import { exportarHorasTrabajador } from '@/lib/utils/excel'
 import { Chip } from '@/components/ui/Chip'
 import { useToast } from '@/components/ui/Toast'
@@ -27,6 +27,7 @@ export function HorasTrabajadorPage() {
   const qc = useQueryClient()
   const { puedeEditar } = usePermisos('tarja')
   const { mutate: upsertHora } = useUpsertHora()
+  const { mutateAsync: upsertHsExtra } = useUpsertHsExtra()
   const perfiles = usePerfilesMap()
 
   // ── Estado ──
@@ -316,6 +317,24 @@ export function HorasTrabajadorPage() {
         onError: () => toast('Error al guardar', 'err'),
       }
     )
+  }
+
+  function extraKey(leg: string, obraCod: string) {
+    return `${leg}-${obraCod}-extras`
+  }
+
+  async function handleExtraBlur(leg: string, obraCod: string, antes: number, val: string) {
+    setEditingCell(null)
+    const raw = val.trim()
+    const hs = raw === '' ? 0 : parseFloat(raw)
+    if (isNaN(hs) || hs < 0) return
+    if (hs === antes) return
+    try {
+      await upsertHsExtra({ obra_cod: obraCod, leg, sem_key: semKey, hs })
+      toast('✓ Hs extras guardadas', 'ok')
+    } catch {
+      // toast de error ya lo dispara el hook
+    }
   }
 
   const mostrarObra = !filtroObra
@@ -683,8 +702,29 @@ export function HorasTrabajadorPage() {
                               </td>
                             )
                           })}
-                          <td className="text-center bg-[#FEEADB] font-mono text-sm font-bold text-[#8B3510] px-2 py-1.5 whitespace-nowrap">
-                            {f.hsExtras > 0 ? f.hsExtras : <span className="text-gris-mid text-xs">—</span>}
+                          <td className="px-2 py-1.5 text-center bg-[#FEEADB]">
+                            {(() => {
+                              const ek = extraKey(f.leg, f.obra.cod)
+                              const isEditing = editingCell?.key === ek
+                              const displayVal = isEditing ? editingCell!.val : (f.hsExtras || '')
+                              const cls = f.hsExtras > 0
+                                ? 'w-14 h-8 border-[1.5px] border-[#8B3510]/40 bg-white text-[#8B3510] rounded-md text-center font-mono text-sm font-bold outline-none focus:border-naranja focus:ring-1 focus:ring-naranja/30'
+                                : 'w-14 h-8 border-[1.5px] border-gris-mid bg-white text-gris-mid rounded-md text-center font-mono text-sm font-bold outline-none focus:border-naranja focus:ring-1 focus:ring-naranja/30'
+                              return (
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step={0.5}
+                                  value={displayVal}
+                                  readOnly={!puedeEditar}
+                                  title="Horas extras de la semana"
+                                  onChange={puedeEditar ? e => setEditingCell({ key: ek, val: e.target.value }) : undefined}
+                                  onBlur={puedeEditar ? e => handleExtraBlur(f.leg, f.obra.cod, f.hsExtras, e.target.value) : undefined}
+                                  onFocus={puedeEditar ? e => { setEditingCell({ key: ek, val: e.target.value }); e.target.select() } : undefined}
+                                  className={`${cls} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none${!puedeEditar ? ' cursor-not-allowed opacity-60' : ''}`}
+                                />
+                              )
+                            })()}
                           </td>
                           <td className="text-center bg-verde-light font-mono text-sm font-bold text-verde px-2 py-1.5 whitespace-nowrap">
                             {f.totalHs > 0 ? f.totalHs : '—'}
