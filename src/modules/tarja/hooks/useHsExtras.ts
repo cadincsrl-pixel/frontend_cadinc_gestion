@@ -35,16 +35,20 @@ export function useUpsertHsExtra() {
     mutationFn: (dto: UpsertHsExtraDto) => hsExtrasApi.upsert(dto),
 
     onMutate: async (dto) => {
-      // Cancelar queries en vuelo de esa obra
+      // Cancelar queries en vuelo (de la obra y la global 'all')
       await qc.cancelQueries({ queryKey: [...HS_EXTRAS_KEY, dto.obra_cod] })
+      await qc.cancelQueries({ queryKey: [...HS_EXTRAS_KEY, 'all'] })
 
-      // Snapshot para rollback
-      const snapshots = qc.getQueriesData<TarjaHsExtra[]>({ queryKey: [...HS_EXTRAS_KEY, dto.obra_cod] })
+      // Snapshot para rollback (incluye 'all')
+      const snapshots = [
+        ...qc.getQueriesData<TarjaHsExtra[]>({ queryKey: [...HS_EXTRAS_KEY, dto.obra_cod] }),
+        ...qc.getQueriesData<TarjaHsExtra[]>({ queryKey: [...HS_EXTRAS_KEY, 'all'] }),
+      ]
 
-      // Aplicar optimistic a cada query cacheada
+      // Aplicar optimistic a cada query cacheada (per-obra + 'all')
       snapshots.forEach(([key, old]) => {
         if (!old) return
-        const idx = old.findIndex(x => x.leg === dto.leg && x.sem_key === dto.sem_key)
+        const idx = old.findIndex(x => x.leg === dto.leg && x.sem_key === dto.sem_key && x.obra_cod === dto.obra_cod)
         if (dto.hs === 0) {
           // Backend borra cuando hs === 0
           const next = idx >= 0 ? old.filter((_, i) => i !== idx) : old
