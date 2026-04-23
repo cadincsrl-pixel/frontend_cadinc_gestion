@@ -21,6 +21,9 @@ export const horasApi = {
   getByObra: (obraCod: string) =>
     apiGet<Hora[]>(`/api/horas/${encodeURIComponent(obraCod)}`),
 
+  getByTrabajador: (leg: string) =>
+    apiGet<Hora[]>(`/api/horas/trabajador/${encodeURIComponent(leg)}`),
+
   upsert: async (dto: UpsertHoraDto) => {
     const headers = await getAuthHeader()
     const res = await fetch(`${API_URL}/api/horas`, {

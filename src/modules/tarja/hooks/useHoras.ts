@@ -12,6 +12,14 @@ export function useHorasSemana(obraCod: string, desde: string, hasta: string) {
   })
 }
 
+export function useHorasTrabajador(leg: string | undefined) {
+  return useQuery({
+    queryKey: [...HORAS_KEY, 'trabajador', leg],
+    queryFn: () => horasApi.getByTrabajador(leg!),
+    enabled: !!leg,
+  })
+}
+
 export function useUpsertHora() {
   const qc = useQueryClient()
   return useMutation({
