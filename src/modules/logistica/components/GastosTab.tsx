@@ -4,10 +4,12 @@ import { useState, useMemo, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import {
   useGastos, useGastosCategorias, useCreateGasto, useUpdateGasto, useDeleteGasto,
-  useAprobarGasto, useRechazarGasto, useGastoComprobanteUrl, uploadComprobanteGasto,
+  useAprobarGasto, useRechazarGasto, useMarcarGastoPagado,
+  useGastoComprobanteUrl, uploadComprobanteGasto,
   useChoferes, useCamiones,
   type Gasto, type GastosFilters,
 } from '../hooks/useLogistica'
+import { GastosReportes } from './GastosReportes'
 import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
 import { Select }   from '@/components/ui/Select'
@@ -76,12 +78,18 @@ export function GastosTab() {
   const { mutate: deleteGasto }                      = useDeleteGasto()
   const { mutate: aprobarGasto, isPending: aprobando } = useAprobarGasto()
   const { mutate: rechazarGasto }                    = useRechazarGasto()
+  const { mutate: marcarPagado, isPending: marcandoPagado } = useMarcarGastoPagado()
 
-  // ── Modales ─────────────────────────────────────────────────
+  // ── Modales + navegación interna ────────────────────────────
+  const [view, setView] = useState<'lista' | 'reportes'>('lista')
   const [modalCreate, setModalCreate] = useState(false)
   const [modalImport, setModalImport] = useState(false)
   const [editando,    setEditando]    = useState<Gasto | null>(null)
   const [verDetalle,  setVerDetalle]  = useState<Gasto | null>(null)
+
+  // El toggle de reportes solo se expone a usuarios con actualizacion —
+  // agregaciones de costos son información gerencial, no operativa.
+  const puedeVerReportes = puedeEditar
 
   // ── Forms ───────────────────────────────────────────────────
   type GastoForm = {
@@ -242,8 +250,44 @@ export function GastosTab() {
     })
   }
 
+  function handleMarcarPagado(g: Gasto) {
+    if (!confirm(`¿Marcar como pagado el gasto #${g.id} de ${fmt$(g.monto)}?`)) return
+    marcarPagado(g.id, {
+      onSuccess: () => { toast('✓ Gasto marcado como pagado', 'ok'); setVerDetalle(null) },
+      onError:   (err: any) => {
+        const code = err?.body?.error || err?.code
+        if (code === 'SOLO_EMPRESA_SE_PAGA')   toast('Los gastos pagados por el chofer se reintegran al cerrar liquidación', 'err')
+        else if (code === 'NO_PUEDE_PAGAR_PROPIO') toast('No podés marcar pagado un gasto que vos creaste', 'err')
+        else if (code === 'GASTO_NO_APROBADO') toast('El gasto debe estar aprobado antes de marcarlo pagado', 'err')
+        else toast(err?.message || 'Error al marcar pagado', 'err')
+      },
+    })
+  }
+
   return (
     <div className="flex flex-col gap-4">
+
+      {/* Sub-navegación: Lista | Reportes */}
+      {puedeVerReportes && (
+        <div className="bg-white rounded-card shadow-card p-1 inline-flex self-start gap-0.5">
+          <button
+            onClick={() => setView('lista')}
+            className={`px-4 py-1.5 text-sm font-semibold rounded-md transition ${view === 'lista' ? 'bg-azul text-white shadow' : 'text-gris-dark hover:bg-gris-light'}`}
+          >
+            📋 Lista
+          </button>
+          <button
+            onClick={() => setView('reportes')}
+            className={`px-4 py-1.5 text-sm font-semibold rounded-md transition ${view === 'reportes' ? 'bg-azul text-white shadow' : 'text-gris-dark hover:bg-gris-light'}`}
+          >
+            📊 Reportes
+          </button>
+        </div>
+      )}
+
+      {view === 'reportes' && puedeVerReportes && <GastosReportes />}
+
+      {view === 'lista' && <>
 
       {/* Toolbar filtros */}
       <div className="bg-white rounded-card shadow-card p-3 flex flex-wrap items-end gap-2">
@@ -352,6 +396,8 @@ export function GastosTab() {
         )}
       </div>
 
+      </>}
+
       {/* Modal crear */}
       <Modal
         open={modalCreate}
@@ -423,11 +469,18 @@ export function GastosTab() {
             canEdit={puedeEditar}
             canDelete={puedeEliminar}
             canApprove={verDetalle.estado === 'pendiente' && verDetalle.created_by !== userId}
+            canMarkPaid={
+              verDetalle.estado === 'aprobado'
+              && verDetalle.pagado_por === 'empresa'
+              && verDetalle.created_by !== userId
+            }
             aprobando={aprobando}
+            marcandoPagado={marcandoPagado}
             onEdit={() => openEdit(verDetalle)}
             onDelete={() => handleDelete(verDetalle)}
             onAprobar={() => handleAprobar(verDetalle)}
             onRechazar={() => handleRechazar(verDetalle)}
+            onMarcarPagado={() => handleMarcarPagado(verDetalle)}
           />
         )}
       </Modal>
@@ -520,11 +573,12 @@ function GastoFormFields({
   )
 }
 
-function DetalleGasto({ gasto, canEdit, canDelete, canApprove, aprobando, onEdit, onDelete, onAprobar, onRechazar }: {
+function DetalleGasto({ gasto, canEdit, canDelete, canApprove, canMarkPaid, aprobando, marcandoPagado, onEdit, onDelete, onAprobar, onRechazar, onMarcarPagado }: {
   gasto: Gasto
-  canEdit: boolean; canDelete: boolean; canApprove: boolean
-  aprobando: boolean
-  onEdit: () => void; onDelete: () => void; onAprobar: () => void; onRechazar: () => void
+  canEdit: boolean; canDelete: boolean; canApprove: boolean; canMarkPaid: boolean
+  aprobando: boolean; marcandoPagado: boolean
+  onEdit: () => void; onDelete: () => void
+  onAprobar: () => void; onRechazar: () => void; onMarcarPagado: () => void
 }) {
   const { data: urlResp } = useGastoComprobanteUrl(gasto.comprobante_url ? gasto.id : null)
   return (
@@ -561,6 +615,9 @@ function DetalleGasto({ gasto, canEdit, canDelete, canApprove, aprobando, onEdit
             <Button variant="primary" size="sm" loading={aprobando} onClick={onAprobar}>✓ Aprobar</Button>
             <Button variant="secondary" size="sm" onClick={onRechazar}>✕ Rechazar</Button>
           </>
+        )}
+        {canMarkPaid && (
+          <Button variant="primary" size="sm" loading={marcandoPagado} onClick={onMarcarPagado}>💰 Marcar pagado</Button>
         )}
         {canEdit && !gasto.liquidacion_id && (
           <Button variant="secondary" size="sm" onClick={onEdit}>✏ Editar</Button>

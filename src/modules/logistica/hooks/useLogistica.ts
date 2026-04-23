@@ -580,6 +580,65 @@ export function useRechazarGasto() {
   })
 }
 
+export function useMarcarGastoPagado() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiPost<Gasto>(`/api/logistica/gastos/${id}/marcar-pagado`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.gastos }),
+  })
+}
+
+// ── Reportes ──────────────────────────────────────────────────
+export type ResumenReporte = {
+  total: number
+  count: number
+  promedio: number
+  reintegros_pendientes: number
+  pendientes_aprobacion: number
+  por_estado:      Record<string, { total: number; count: number }>
+  por_pagado_por:  Record<string, { total: number; count: number }>
+  por_metodo_pago: Record<string, { total: number; count: number }>
+}
+export type ReportePorCamion    = { camion_id: number; patente: string; total: number; count: number; por_categoria: Record<string, number> }
+export type ReportePorChofer    = { chofer_id: number; nombre: string; total: number; count: number; reintegros_pendientes: number; por_categoria: Record<string, number> }
+export type ReportePorCategoria = { categoria_id: number; codigo: string; nombre: string; orden: number; total: number; count: number; pct: number }
+
+function reporteQs(desde: string, hasta: string) {
+  return `?desde=${desde}&hasta=${hasta}`
+}
+
+export function useGastosResumen(desde: string, hasta: string, enabled = true) {
+  return useQuery({
+    queryKey: ['logistica','gastos','reporte','resumen', desde, hasta] as const,
+    queryFn:  () => apiGet<ResumenReporte>(`/api/logistica/gastos/reportes/resumen${reporteQs(desde, hasta)}`),
+    enabled,
+  })
+}
+
+export function useGastosPorCamion(desde: string, hasta: string, enabled = true) {
+  return useQuery({
+    queryKey: ['logistica','gastos','reporte','por-camion', desde, hasta] as const,
+    queryFn:  () => apiGet<ReportePorCamion[]>(`/api/logistica/gastos/reportes/por-camion${reporteQs(desde, hasta)}`),
+    enabled,
+  })
+}
+
+export function useGastosPorChofer(desde: string, hasta: string, enabled = true) {
+  return useQuery({
+    queryKey: ['logistica','gastos','reporte','por-chofer', desde, hasta] as const,
+    queryFn:  () => apiGet<ReportePorChofer[]>(`/api/logistica/gastos/reportes/por-chofer${reporteQs(desde, hasta)}`),
+    enabled,
+  })
+}
+
+export function useGastosPorCategoria(desde: string, hasta: string, enabled = true) {
+  return useQuery({
+    queryKey: ['logistica','gastos','reporte','por-categoria', desde, hasta] as const,
+    queryFn:  () => apiGet<ReportePorCategoria[]>(`/api/logistica/gastos/reportes/por-categoria${reporteQs(desde, hasta)}`),
+    enabled,
+  })
+}
+
 // Flujo de upload: 1) pedir signed URL al backend, 2) PUT directo al
 // bucket privado. Devuelve el `path` para guardar en el gasto al crear.
 export async function uploadComprobanteGasto(file: File): Promise<{ path: string }> {
