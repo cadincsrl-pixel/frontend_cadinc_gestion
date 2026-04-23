@@ -183,6 +183,7 @@ export function HorasTrabajadorPage() {
       p: Personal
       obra: typeof obras[0]
       horasPorDia: Record<string, number>
+      hsExtras: number
       totalHs: number
       totalCosto: number
       leg: string
@@ -209,7 +210,7 @@ export function HorasTrabajadorPage() {
           tHs += h
         })
 
-        // Sumar hs extras al total de horas mostrado al user.
+        // Hs extras: se muestran en columna propia y se suman al total.
         const hsExtras = todasHsExtras.find(
           e => e.obra_cod === o.cod && e.leg === leg && e.sem_key === semKey,
         )?.hs ?? 0
@@ -219,7 +220,7 @@ export function HorasTrabajadorPage() {
         if (tHsConExtras === 0 && !filtroObra) return
 
         const totalCosto = Math.round(getCostoLeg(o.cod, leg) / 1000) * 1000
-        result.push({ p, obra: o, horasPorDia, totalHs: tHsConExtras, totalCosto, leg })
+        result.push({ p, obra: o, horasPorDia, hsExtras, totalHs: tHsConExtras, totalCosto, leg })
       })
     })
 
@@ -254,6 +255,7 @@ export function HorasTrabajadorPage() {
 
   // Totales
   const totHs = filasFiltradas.reduce((s, f) => s + f.totalHs, 0)
+  const totHsExtras = filasFiltradas.reduce((s, f) => s + f.hsExtras, 0)
   const totCosto = filasFiltradas.reduce((s, f) => s + f.totalCosto, 0)
   const uniqueLegs = new Set(filasFiltradas.map(f => f.leg)).size
 
@@ -261,7 +263,7 @@ export function HorasTrabajadorPage() {
   type FilaData = typeof filasFiltradas[0]
   type FilaRender =
     | { type: 'fila'; data: FilaData }
-    | { type: 'subtotal'; leg: string; p: Personal; obraCount: number; totalHs: number; totalCosto: number; horasPorDia: Record<string, number> }
+    | { type: 'subtotal'; leg: string; p: Personal; obraCount: number; hsExtras: number; totalHs: number; totalCosto: number; horasPorDia: Record<string, number> }
 
   const filasRender = useMemo((): FilaRender[] => {
     const result: FilaRender[] = []
@@ -273,6 +275,7 @@ export function HorasTrabajadorPage() {
       const legRows = filasFiltradas.slice(i, j)
       legRows.forEach(r => result.push({ type: 'fila', data: r }))
       if (legRows.length > 1) {
+        const hsExtras  = legRows.reduce((s, r) => s + r.hsExtras,  0)
         const totalHs   = legRows.reduce((s, r) => s + r.totalHs,   0)
         const totalCosto = legRows.reduce((s, r) => s + r.totalCosto, 0)
         const horasPorDia: Record<string, number> = {}
@@ -280,7 +283,7 @@ export function HorasTrabajadorPage() {
           const ds = toISO(d)
           horasPorDia[ds] = legRows.reduce((s, r) => s + (r.horasPorDia[ds] ?? 0), 0)
         })
-        result.push({ type: 'subtotal', leg, p: legRows[0]!.p, obraCount: legRows.length, totalHs, totalCosto, horasPorDia })
+        result.push({ type: 'subtotal', leg, p: legRows[0]!.p, obraCount: legRows.length, hsExtras, totalHs, totalCosto, horasPorDia })
       }
       i = j
     }
@@ -407,6 +410,9 @@ export function HorasTrabajadorPage() {
           <div className="flex gap-2 flex-wrap items-center">
             <Chip value={uniqueLegs} label="Trabajadores" />
             <Chip value={totHs > 0 ? `${totHs}` : '0'} label="Horas totales" />
+            {totHsExtras > 0 && (
+              <Chip value={`${totHsExtras}`} label="Hs extras" />
+            )}
             <Chip value={fmtM(totCosto)} label="Costo total" variant="green" />
             <button
               onClick={() => exportarHorasTrabajador(
@@ -419,6 +425,7 @@ export function HorasTrabajadorPage() {
                   obraCod:     f.obra.cod,
                   obraNom:     f.obra.nom,
                   horasPorDia: f.horasPorDia,
+                  hsExtras:    f.hsExtras,
                   totalHs:     f.totalHs,
                   totalCosto:  f.totalCosto,
                 }))
@@ -522,6 +529,9 @@ export function HorasTrabajadorPage() {
                       )}
                     </th>
                   ))}
+                  <th className="bg-[#8B3510] text-white text-xs font-bold px-2 py-2.5 text-center uppercase tracking-wide min-w-[75px]">
+                    Hs Extras
+                  </th>
                   <th className="bg-verde text-white text-xs font-bold px-2 py-2.5 text-center uppercase tracking-wide min-w-[80px]">
                     Total Hs
                   </th>
@@ -534,7 +544,7 @@ export function HorasTrabajadorPage() {
                 {filasFiltradas.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={4 + (mostrarObra ? 1 : 0) + days.length + 2}
+                      colSpan={4 + (mostrarObra ? 1 : 0) + days.length + 3}
                       className="text-center py-8 text-gris-dark text-sm"
                     >
                       No hay trabajadores con horas esta semana.
@@ -545,7 +555,7 @@ export function HorasTrabajadorPage() {
                     {filasRender.map((item, idx) => {
                       // ── Fila subtotal ──
                       if (item.type === 'subtotal') {
-                        const { leg, p, obraCount, totalHs: subHs, totalCosto: subCosto, horasPorDia } = item
+                        const { leg, p, obraCount, hsExtras: subExtras, totalHs: subHs, totalCosto: subCosto, horasPorDia } = item
                         return (
                           <tr key={`${leg}-subtotal`} className="border-b-2 border-[#C89500]">
                             <td className="font-mono text-xs px-3 py-2 font-bold text-[#7A5000] bg-[#FFF3CD] whitespace-nowrap">
@@ -575,6 +585,9 @@ export function HorasTrabajadorPage() {
                                 </td>
                               )
                             })}
+                            <td className="text-center bg-[#C96A2A] font-mono text-sm font-bold text-white px-2 py-2 whitespace-nowrap">
+                              {subExtras > 0 ? subExtras : '—'}
+                            </td>
                             <td className="text-center bg-[#E0A800] font-mono text-sm font-bold text-white px-2 py-2 whitespace-nowrap">
                               {subHs > 0 ? subHs : '—'}
                             </td>
@@ -670,6 +683,9 @@ export function HorasTrabajadorPage() {
                               </td>
                             )
                           })}
+                          <td className="text-center bg-[#FEEADB] font-mono text-sm font-bold text-[#8B3510] px-2 py-1.5 whitespace-nowrap">
+                            {f.hsExtras > 0 ? f.hsExtras : <span className="text-gris-mid text-xs">—</span>}
+                          </td>
                           <td className="text-center bg-verde-light font-mono text-sm font-bold text-verde px-2 py-1.5 whitespace-nowrap">
                             {f.totalHs > 0 ? f.totalHs : '—'}
                           </td>
@@ -699,6 +715,9 @@ export function HorasTrabajadorPage() {
                           </td>
                         )
                       })}
+                      <td className="bg-azul text-[#FFB88A] font-mono text-sm font-bold text-center px-2 py-2.5">
+                        {totHsExtras > 0 ? totHsExtras : '—'}
+                      </td>
                       <td className="bg-azul text-[#7DD9A2] font-mono text-sm font-bold text-center px-2 py-2.5">
                         {totHs > 0 ? totHs : '—'}
                       </td>

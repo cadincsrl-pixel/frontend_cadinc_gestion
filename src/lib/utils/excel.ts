@@ -623,6 +623,7 @@ export function exportarHorasTrabajador(
     obraCod: string
     obraNom: string
     horasPorDia: Record<string, number>
+    hsExtras?: number
     totalHs: number
     totalCosto: number
   }>
@@ -633,7 +634,7 @@ export function exportarHorasTrabajador(
   const header = [
     'Legajo', 'Apellido y Nombre', 'DNI', 'Categoría', 'Obra',
     ...days.map((d, i) => `${DIAS[i]} ${d.getDate()}/${d.getMonth() + 1}`),
-    'Total Horas', 'Costo ($)',
+    'Hs Extras', 'Total Horas', 'Costo ($)',
   ]
 
   const rows = filas.map(f => [
@@ -643,16 +644,19 @@ export function exportarHorasTrabajador(
     f.catNom,
     `${f.obraCod} — ${f.obraNom}`,
     ...days.map(d => f.horasPorDia[toISO(d)] ?? 0),
+    f.hsExtras ?? 0,
     f.totalHs,
     Math.round(f.totalCosto / 1000) * 1000,
   ])
 
   // Fila totales
+  const totExtras = filas.reduce((s, f) => s + (f.hsExtras ?? 0), 0)
   const totHs = filas.reduce((s, f) => s + f.totalHs, 0)
   const totCosto = filas.reduce((s, f) => s + f.totalCosto, 0)
   const totalsRow = [
     'TOTAL', '', '', '', '',
     ...days.map(d => filas.reduce((s, f) => s + (f.horasPorDia[toISO(d)] ?? 0), 0)),
+    totExtras,
     totHs,
     Math.round(totCosto / 1000) * 1000,
   ]
@@ -663,7 +667,7 @@ export function exportarHorasTrabajador(
   ws['!cols'] = [
     { wch: 8 }, { wch: 30 }, { wch: 12 }, { wch: 18 }, { wch: 35 },
     ...days.map(() => ({ wch: 8 })),
-    { wch: 12 }, { wch: 14 },
+    { wch: 10 }, { wch: 12 }, { wch: 14 },
   ]
 
   const wb = XLSX.utils.book_new()
