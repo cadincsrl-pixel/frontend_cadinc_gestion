@@ -33,13 +33,27 @@ export function ModalExcelObras({
   horas, tarifas, cierres, certificaciones, contratistas, obraActual,
 }: Props) {
   const toast = useToast()
-  const [semFiltro, setSemFiltro] = useState('')
+  const [semModo, setSemModo] = useState<'todas' | 'una' | 'rango'>('todas')
+  const [semUna, setSemUna] = useState('')
+  const [semDesde, setSemDesde] = useState('')
+  const [semHasta, setSemHasta] = useState('')
   const [obrasSelec, setObrasSelec] = useState<string[]>(obras.map(o => o.cod))
 
   const todasSems = [...new Set([
     ...horas.map(h => toISO(getViernes(new Date(h.fecha + 'T12:00:00')))),
     ...certificaciones.map(c => c.sem_key),
   ])].sort((a, b) => b.localeCompare(a))
+
+  // Filtro efectivo (desde/hasta) según modo seleccionado.
+  const filtroSem = semModo === 'todas'
+    ? { desde: '', hasta: '' }
+    : semModo === 'una'
+      ? { desde: semUna, hasta: semUna }
+      : { desde: semDesde, hasta: semHasta }
+
+  const rangoInvalido = semModo === 'rango' && !!semDesde && !!semHasta && semDesde > semHasta
+  const rangoIncompleto = semModo === 'rango' && (!semDesde || !semHasta)
+  const unaSinSem = semModo === 'una' && !semUna
 
   function toggleObra(cod: string) {
     setObrasSelec(prev =>
@@ -99,17 +113,17 @@ export function ModalExcelObras({
   // ── Preview calculado ──
   const preview = useMemo(() => {
     const obrasTarget = obras.filter(o => obrasSelec.includes(o.cod))
+    const { desde, hasta } = filtroSem
+    const semOk = (sk: string) => !desde || (sk >= desde && sk <= hasta)
 
     const horasFilt = horas.filter(h => {
       if (!obrasTarget.some(o => o.cod === h.obra_cod)) return false
-      if (!semFiltro) return true
-      return toISO(getViernes(new Date(h.fecha + 'T12:00:00'))) === semFiltro
+      return semOk(toISO(getViernes(new Date(h.fecha + 'T12:00:00'))))
     })
 
     const certsFilt = certificaciones.filter(c => {
       if (!obrasTarget.some(o => o.cod === c.obra_cod)) return false
-      if (!semFiltro) return true
-      return c.sem_key === semFiltro
+      return semOk(c.sem_key)
     })
 
     const totalHs = horasFilt.reduce((s, h) => s + h.horas, 0)
@@ -123,7 +137,7 @@ export function ModalExcelObras({
     const cerradas = cierres.filter(c =>
       obrasTarget.some(o => o.cod === c.obra_cod) &&
       c.estado === 'cerrado' &&
-      (!semFiltro || c.sem_key === semFiltro)
+      semOk(c.sem_key)
     ).length
 
     // Costo operarios aproximado (tarifa global)
@@ -134,12 +148,18 @@ export function ModalExcelObras({
     }, 0)
 
     return { totalHs, totalCertif, costoOp, operarios, contratNum, semanas, cerradas, obrasCount: obrasTarget.length }
-  }, [obrasSelec, semFiltro, horas, certificaciones, cierres, personal, categorias, tarifas, obras , todasCatObra])
+  }, [obrasSelec, filtroSem.desde, filtroSem.hasta, horas, certificaciones, cierres, personal, categorias, tarifas, obras, todasCatObra])
 
   function handleExportar() {
     if (!obrasSelec.length) { toast('Seleccioná al menos una obra', 'err'); return }
+    if (rangoInvalido) { toast('La semana "desde" debe ser anterior o igual a "hasta"', 'err'); return }
+    if (rangoIncompleto) { toast('Completá ambas semanas del rango', 'err'); return }
+    if (unaSinSem) { toast('Seleccioná una semana', 'err'); return }
     const obrasTarget = obras.filter(o => obrasSelec.includes(o.cod))
-    exportarExcelObras(obrasTarget, personal, categorias, horas, tarifas, cierres, certificaciones, contratistas, semFiltro, todasCatObra)
+    exportarExcelObras(
+      obrasTarget, personal, categorias, horas, tarifas, cierres,
+      certificaciones, contratistas, filtroSem.desde, todasCatObra, filtroSem.hasta,
+    )
     toast('📊 Excel exportado', 'ok')
     onClose()
   }
@@ -153,7 +173,11 @@ export function ModalExcelObras({
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" onClick={handleExportar} disabled={!obrasSelec.length}>
+          <Button
+            variant="primary"
+            onClick={handleExportar}
+            disabled={!obrasSelec.length || rangoInvalido || rangoIncompleto || unaSinSem}
+          >
             📊 Exportar Excel
           </Button>
         </>
@@ -162,19 +186,84 @@ export function ModalExcelObras({
       <div className="flex flex-col gap-4">
 
         {/* Filtro semana */}
-        <Select
-          label="Filtrar por semana (opcional)"
-          options={[
-            { value: '', label: 'Todas las semanas' },
-            ...todasSems.map(sk => ({
-              value: sk,
-              label: getSemLabel(new Date(sk + 'T12:00:00')),
-            })),
-          ]}
-          value={semFiltro}
-          onChange={e => setSemFiltro(e.target.value)}
-        />
-        <p className="text-xs text-gris-dark mt-1">Dejá vacío para exportar todo el historial</p>
+        <div>
+          <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-2">
+            Filtrar por semana
+          </div>
+          <div className="flex gap-1 mb-3 bg-gris rounded-xl p-1">
+            {([
+              ['todas', 'Todas'],
+              ['una', 'Una semana'],
+              ['rango', 'Rango'],
+            ] as const).map(([val, label]) => (
+              <button
+                key={val}
+                type="button"
+                onClick={() => setSemModo(val)}
+                className={`flex-1 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${
+                  semModo === val
+                    ? 'bg-azul text-white shadow-sm'
+                    : 'text-gris-dark hover:text-carbon hover:bg-white'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {semModo === 'una' && (
+            <Select
+              label="Semana"
+              options={[
+                { value: '', label: '— Elegir semana —' },
+                ...todasSems.map(sk => ({
+                  value: sk,
+                  label: getSemLabel(new Date(sk + 'T12:00:00')),
+                })),
+              ]}
+              value={semUna}
+              onChange={e => setSemUna(e.target.value)}
+            />
+          )}
+
+          {semModo === 'rango' && (
+            <div className="grid grid-cols-2 gap-2">
+              <Select
+                label="Desde"
+                options={[
+                  { value: '', label: '— Desde —' },
+                  ...todasSems.map(sk => ({
+                    value: sk,
+                    label: getSemLabel(new Date(sk + 'T12:00:00')),
+                  })),
+                ]}
+                value={semDesde}
+                onChange={e => setSemDesde(e.target.value)}
+              />
+              <Select
+                label="Hasta"
+                options={[
+                  { value: '', label: '— Hasta —' },
+                  ...todasSems.map(sk => ({
+                    value: sk,
+                    label: getSemLabel(new Date(sk + 'T12:00:00')),
+                  })),
+                ]}
+                value={semHasta}
+                onChange={e => setSemHasta(e.target.value)}
+              />
+            </div>
+          )}
+
+          {rangoInvalido && (
+            <p className="text-xs text-rojo font-semibold mt-2">
+              La semana "Desde" debe ser anterior o igual a "Hasta".
+            </p>
+          )}
+          {semModo === 'todas' && (
+            <p className="text-xs text-gris-dark mt-1">Exporta todo el historial disponible.</p>
+          )}
+        </div>
 
         {/* Selección de obras */}
         <div>
@@ -213,7 +302,14 @@ export function ModalExcelObras({
                 Vista previa
               </span>
               <span className="text-white/60 text-xs">
-                {preview.obrasCount} obra{preview.obrasCount !== 1 ? 's' : ''} · {semFiltro ? getSemLabel(new Date(semFiltro + 'T12:00:00')) : 'Todo el historial'}
+                {preview.obrasCount} obra{preview.obrasCount !== 1 ? 's' : ''} · {
+                  semModo === 'todas' ? 'Todo el historial'
+                  : semModo === 'una'
+                    ? (semUna ? getSemLabel(new Date(semUna + 'T12:00:00')) : 'Sin semana')
+                    : (semDesde && semHasta
+                        ? `${getSemLabel(new Date(semDesde + 'T12:00:00'))} → ${getSemLabel(new Date(semHasta + 'T12:00:00'))}`
+                        : 'Rango incompleto')
+                }
               </span>
             </div>
 

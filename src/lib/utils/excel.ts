@@ -205,12 +205,30 @@ export function exportarExcelObras(
   certificaciones: Certificacion[],
   contratistas: Contratista[],
   semFiltro: string = '',
-  catObra: Array<{ obra_cod: string; leg: string; cat_id: number; desde: string }> = []
+  catObra: Array<{ obra_cod: string; leg: string; cat_id: number; desde: string }> = [],
+  semHasta: string = '',
 ) {
   const wb = XLSX.utils.book_new()
   const hoy = new Date()
 
-  function semOk(sk: string) { return !semFiltro || sk === semFiltro }
+  // semFiltro = límite inferior (o semana única). semHasta = límite superior (opcional).
+  // Si semHasta viene vacío, el filtro aplica como semana única (retrocompat).
+  const skDesde = semFiltro
+  const skHasta = semHasta || semFiltro
+  const esRango = !!semFiltro && !!semHasta && semFiltro !== semHasta
+
+  function semOk(sk: string) {
+    if (!skDesde) return true
+    return sk >= skDesde && sk <= skHasta
+  }
+
+  function labelRango(): string {
+    if (!skDesde) return ''
+    const lDesde = getSemLabel(new Date(skDesde + 'T12:00:00'))
+    if (!esRango) return ' · Semana: ' + lDesde
+    const lHasta = getSemLabel(new Date(skHasta + 'T12:00:00'))
+    return ' · Semanas: ' + lDesde + ' → ' + lHasta
+  }
 
   function getCatIdEfectivo(obraCod: string, leg: string, fechaRef: string): number | null {
     const catObraAll = catObra.filter(co => co.obra_cod === obraCod && co.leg === leg)
@@ -278,7 +296,7 @@ export function exportarExcelObras(
   // Columnas: Código, Obra, Operarios, Horas, Costo op, Contratistas, Costo cont, TOTAL
   const resumenRows: any[][] = [
     ['RESUMEN DE OBRAS — TarjaObra'],
-    [`Generado: ${fmtDate(hoy)}${semFiltro ? ' · Semana: ' + getSemLabel(new Date(semFiltro + 'T12:00:00')) : ''}`],
+    [`Generado: ${fmtDate(hoy)}${labelRango()}`],
     [],
     ['Código', 'Obra', 'Operarios', 'Horas totales', 'Costo operarios', 'Contratistas', 'Costo contratistas', 'COSTO TOTAL'],
   ]
@@ -462,7 +480,11 @@ export function exportarExcelObras(
   ]
   XLSX.utils.book_append_sheet(wb, ws4, 'Personal')
 
-  const sufijo = semFiltro ? `_sem-${semFiltro}` : ''
+  const sufijo = !skDesde
+    ? ''
+    : esRango
+      ? `_sem-${skDesde}_a_${skHasta}`
+      : `_sem-${skDesde}`
   const prefijoObra = obras.length === 1 ? `_${obras[0]!.cod}` : ''
   XLSX.writeFile(wb, `TarjaObras${prefijoObra}${sufijo}_${toISO(hoy)}.xlsx`)
 }
