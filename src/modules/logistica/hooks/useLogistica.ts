@@ -140,6 +140,17 @@ export function useRegistrarDescargaTramo() {
   })
 }
 
+// Revierte el registro de descarga de un tramo (fecha, toneladas, remito,
+// imagen) y lo deja en estado 'en_curso'. El backend rechaza si el tramo
+// está liquidado (409 TRAMO_LIQUIDADO) o cobrado (409 TRAMO_COBRADO).
+export function useRevertirDescargaTramo() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiPost<Tramo>(`/api/logistica/tramos/${id}/revertir-descarga`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.tramos }),
+  })
+}
+
 export function useDeleteTramo() {
   const qc = useQueryClient()
   return useMutation({

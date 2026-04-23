@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import {
   useTramos, useChoferes, useCamiones, useCanteras, useDepositos, useRutas, useEmpresas,
-  useCreateTramo, useUpdateTramo, useDeleteTramo, useRegistrarDescargaTramo, useMoverTramo,
+  useCreateTramo, useUpdateTramo, useDeleteTramo, useRegistrarDescargaTramo, useRevertirDescargaTramo, useMoverTramo,
 } from '../hooks/useLogistica'
 import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
@@ -30,11 +30,13 @@ export function ViajesTab() {
   const { mutate: updateTramo,  isPending: updating    } = useUpdateTramo()
   const { mutate: deleteTramo  } = useDeleteTramo()
   const { mutate: regDescarga,  isPending: descargando } = useRegistrarDescargaTramo()
+  const { mutate: revDescarga,  isPending: revirtiendo } = useRevertirDescargaTramo()
   const { mutate: moverTramo   } = useMoverTramo()
 
   const [modalNuevo,    setModalNuevo]    = useState(false)
   const [editando,      setEditando]      = useState<Tramo | null>(null)
   const [descargaTramo, setDescargaTramo] = useState<Tramo | null>(null)
+  const [revertirTramo, setRevertirTramo] = useState<Tramo | null>(null)
   const [filtChofer,    setFiltChofer]    = useState('')
   const [filtTipo,      setFiltTipo]      = useState('')
   const [filtEstado,    setFiltEstado]    = useState('')
@@ -137,6 +139,23 @@ export function ViajesTab() {
         onError:   () => toast('Error al registrar descarga', 'err'),
       }
     )
+  }
+
+  function handleRevertirDescarga() {
+    if (!revertirTramo) return
+    revDescarga(revertirTramo.id, {
+      onSuccess: () => { toast('✓ Descarga revertida — tramo en curso', 'ok'); setRevertirTramo(null) },
+      onError:   (err: any) => {
+        // Mapeo de errores del backend (tramos.routes.ts).
+        const code = err?.body?.error || err?.code
+        if (code === 'TRAMO_LIQUIDADO')    toast('No se puede revertir: el tramo está liquidado', 'err')
+        else if (code === 'TRAMO_COBRADO') toast('No se puede revertir: el tramo está cobrado', 'err')
+        else if (code === 'TRAMO_SIN_DESCARGA') toast('El tramo no tiene descarga registrada', 'err')
+        else if (code === 'TRAMO_NO_EXISTE')    toast('Tramo no encontrado', 'err')
+        else toast('Error al revertir la descarga', 'err')
+        setRevertirTramo(null)
+      },
+    })
   }
 
   function openEdit(tramo: Tramo) {
@@ -380,15 +399,29 @@ export function ViajesTab() {
                 )}
 
                 {/* Acciones */}
-                {esCargado && tramo.estado === 'en_curso' && (
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => { formDescarga.reset({ fecha_descarga: hoy() }); setDescargaTramo(tramo) }}
-                  >
-                    🏭 Registrar descarga
-                  </Button>
-                )}
+                <div className="flex gap-2">
+                  {esCargado && tramo.estado === 'en_curso' && (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => { formDescarga.reset({ fecha_descarga: hoy() }); setDescargaTramo(tramo) }}
+                    >
+                      🏭 Registrar descarga
+                    </Button>
+                  )}
+                  {/* Revertir descarga: visible solo si el tramo tiene descarga
+                      registrada y NO está liquidado ni cobrado (el backend también
+                      lo bloquea, pero ocultarlo evita la frustración del click). */}
+                  {esCargado && tramo.fecha_descarga && !tramo.liquidacion_id && !tramo.cobro_id && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setRevertirTramo(tramo)}
+                    >
+                      ↩ Revertir descarga
+                    </Button>
+                  )}
+                </div>
               </div>
             )
           })}
@@ -633,6 +666,34 @@ export function ViajesTab() {
           )}
 
           <Input label="Observaciones" placeholder="Opcional" {...formEdit.register('obs')} />
+        </div>
+      </Modal>
+
+      {/* Modal de confirmación: revertir descarga */}
+      <Modal
+        open={!!revertirTramo}
+        onClose={() => setRevertirTramo(null)}
+        title="↩ REVERTIR DESCARGA"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setRevertirTramo(null)}>Cancelar</Button>
+            <Button variant="primary" loading={revirtiendo} onClick={handleRevertirDescarga}>
+              ↩ Revertir
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3 text-sm">
+          <p>
+            ¿Revertir la descarga del tramo <b>#{revertirTramo?.id}</b>?
+          </p>
+          <p className="text-gris-dark">
+            Se perderán: fecha, toneladas, nº de remito e imagen (si hubiera).
+            El tramo volverá a estado <b>en curso</b>.
+          </p>
+          <p className="text-rojo text-xs">
+            Esta acción no se puede deshacer.
+          </p>
         </div>
       </Modal>
     </>
