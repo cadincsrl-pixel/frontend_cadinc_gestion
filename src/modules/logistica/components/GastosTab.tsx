@@ -10,6 +10,7 @@ import {
   type Gasto, type GastosFilters,
 } from '../hooks/useLogistica'
 import { GastosReportes } from './GastosReportes'
+import { GastosConsumo }  from './GastosConsumo'
 import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
 import { Select }   from '@/components/ui/Select'
@@ -82,7 +83,7 @@ export function GastosTab() {
   const { mutate: marcarPagado, isPending: marcandoPagado } = useMarcarGastoPagado()
 
   // ── Modales + navegación interna ────────────────────────────
-  const [view, setView] = useState<'lista' | 'reportes'>('lista')
+  const [view, setView] = useState<'lista' | 'consumo' | 'reportes'>('lista')
   const [modalCreate, setModalCreate] = useState(false)
   const [modalImport, setModalImport] = useState(false)
   const [editando,    setEditando]    = useState<Gasto | null>(null)
@@ -105,12 +106,26 @@ export function GastosTab() {
     comprobante_nro: string
     descripcion: string
     obs: string
+    // Sub-objeto de combustible, siempre presente con defaults; los
+    // campos se ignoran si la categoría no es combustible.
+    carga_combustible: {
+      litros: string
+      odometro_km: string
+      tipo_combustible: 'gasoil' | 'nafta' | 'nafta_super' | 'adblue'
+      tanque_lleno: boolean
+      obs: string
+    }
+  }
+  const DEFAULT_CARGA: GastoForm['carga_combustible'] = {
+    litros: '', odometro_km: '', tipo_combustible: 'gasoil',
+    tanque_lleno: true, obs: '',
   }
   const formNuevo = useForm<GastoForm>({
     defaultValues: {
       categoria_id: '', fecha: hoy(), monto: '', camion_id: '', chofer_id: '',
       proveedor: '', metodo_pago: 'efectivo', pagado_por: 'empresa',
       comprobante_nro: '', descripcion: '', obs: '',
+      carga_combustible: DEFAULT_CARGA,
     },
   })
   const formEdit = useForm<GastoForm>({ defaultValues: formNuevo.getValues() })
@@ -136,6 +151,16 @@ export function GastosTab() {
   function resetUpload() { setUploadPath(null); setUploadFile(null) }
 
   async function handleCreate(data: GastoForm) {
+    const cat = categorias.find(c => c.id === Number(data.categoria_id))
+    const esCombustibleFila = (cat as any)?.codigo === 'combustible'
+    const carga_combustible = esCombustibleFila ? {
+      litros:           Number(data.carga_combustible.litros),
+      odometro_km:      data.carga_combustible.odometro_km ? Number(data.carga_combustible.odometro_km) : null,
+      tipo_combustible: data.carga_combustible.tipo_combustible,
+      tanque_lleno:     data.carga_combustible.tanque_lleno,
+      obs:              data.carga_combustible.obs || '',
+    } : undefined
+
     createGasto({
       categoria_id: Number(data.categoria_id),
       fecha:        data.fecha,
@@ -149,17 +174,37 @@ export function GastosTab() {
       descripcion:  data.descripcion,
       obs:          data.obs,
       comprobante_path: uploadPath,
+      carga_combustible,
     } as any, {
-      onSuccess: () => {
+      onSuccess: (created: any) => {
         toast(esAdmin ? '✓ Gasto registrado y aprobado' : '✓ Gasto registrado (pendiente de aprobación)', 'ok')
+        // Warnings no-bloqueantes (odómetro sospechoso, etc.)
+        if (Array.isArray(created?.warnings) && created.warnings.length > 0) {
+          for (const w of created.warnings) {
+            if (w.code === 'ODOMETRO_RETROCEDE')          toast('⚠ Odómetro menor al último registrado — revisá el valor', 'err')
+            else if (w.code === 'ODOMETRO_ESTANCADO')     toast('⚠ Odómetro igual al último — revisá el valor', 'err')
+            else if (w.code === 'ODOMETRO_VS_TRAMOS_DISCREPANCIA') toast('⚠ El km del odómetro difiere de los tramos registrados', 'err')
+          }
+        }
         setModalCreate(false)
-        formNuevo.reset({ ...formNuevo.getValues(), categoria_id: '', monto: '', descripcion: '', obs: '', comprobante_nro: '' })
+        formNuevo.reset({
+          ...formNuevo.getValues(),
+          categoria_id: '', monto: '', descripcion: '', obs: '', comprobante_nro: '',
+          carga_combustible: DEFAULT_CARGA,
+        })
         resetUpload()
       },
       onError: (err: any) => {
         const code = err?.body?.error || err?.code
         if (code === 'COMPROBANTE_DUPLICADO') {
           toast(`Este comprobante ya fue cargado en el gasto #${err?.body?.detail?.gasto_id_existente}`, 'err')
+        } else if (code === 'CARGA_REQUERIDA') {
+          toast('Los gastos de combustible requieren litros', 'err')
+        } else if (code === 'CARGA_NO_PERMITIDA') {
+          toast('Solo los gastos de categoría combustible admiten datos de carga', 'err')
+        } else if (code === 'LITROS_EXCEDE_TANQUE') {
+          const d = err?.body?.detail
+          toast(`Litros (${d?.litros}) superan la capacidad del tanque (${d?.capacidad_tanque}L)`, 'err')
         } else {
           toast(err?.message || 'Error al registrar gasto', 'err')
         }
@@ -180,6 +225,13 @@ export function GastosTab() {
       comprobante_nro: g.comprobante_nro,
       descripcion:  g.descripcion,
       obs:          g.obs,
+      carga_combustible: g.carga_combustible ? {
+        litros:           String(g.carga_combustible.litros),
+        odometro_km:      g.carga_combustible.odometro_km != null ? String(g.carga_combustible.odometro_km) : '',
+        tipo_combustible: g.carga_combustible.tipo_combustible,
+        tanque_lleno:     g.carga_combustible.tanque_lleno,
+        obs:              g.carga_combustible.obs ?? '',
+      } : DEFAULT_CARGA,
     })
     setUploadPath(g.comprobante_url) // mantener el existente si no se reemplaza
     setUploadFile(null)
@@ -268,7 +320,7 @@ export function GastosTab() {
   return (
     <div className="flex flex-col gap-4">
 
-      {/* Sub-navegación: Lista | Reportes */}
+      {/* Sub-navegación: Lista | Consumo | Reportes */}
       {puedeVerReportes && (
         <div className="bg-white rounded-card shadow-card p-1 inline-flex self-start gap-0.5">
           <button
@@ -276,6 +328,12 @@ export function GastosTab() {
             className={`px-4 py-1.5 text-sm font-semibold rounded-md transition ${view === 'lista' ? 'bg-azul text-white shadow' : 'text-gris-dark hover:bg-gris-light'}`}
           >
             📋 Lista
+          </button>
+          <button
+            onClick={() => setView('consumo')}
+            className={`px-4 py-1.5 text-sm font-semibold rounded-md transition ${view === 'consumo' ? 'bg-azul text-white shadow' : 'text-gris-dark hover:bg-gris-light'}`}
+          >
+            ⛽ Consumo
           </button>
           <button
             onClick={() => setView('reportes')}
@@ -286,6 +344,7 @@ export function GastosTab() {
         </div>
       )}
 
+      {view === 'consumo'  && puedeVerReportes && <GastosConsumo />}
       {view === 'reportes' && puedeVerReportes && <GastosReportes />}
 
       {view === 'lista' && <>
@@ -370,6 +429,12 @@ export function GastosTab() {
                       <Pill className="bg-amber-100 text-amber-800 border-amber-200">🔁 reintegro</Pill>
                     )}
                     {g.liquidacion_id && <Pill className="bg-sky-100 text-sky-800 border-sky-200">liquidado</Pill>}
+                    {g.carga_combustible && (
+                      <Pill className="bg-orange-100 text-orange-800 border-orange-200">
+                        ⛽ {Number(g.carga_combustible.litros).toFixed(1)}L
+                        {!g.carga_combustible.tanque_lleno && '*'}
+                      </Pill>
+                    )}
                   </div>
                   <div className="text-xs text-gris-dark truncate">
                     {fmtFecha(g.fecha)} · {g.proveedor || 'sin proveedor'}
@@ -496,7 +561,7 @@ function GastoFormFields({
   form, categorias, choferes, camiones, uploadFile, uploadPath, uploading, onPickFile, onClearFile,
 }: {
   form: any
-  categorias: { id: number; nombre: string; aplica_a: string }[]
+  categorias: { id: number; codigo?: string; nombre: string; aplica_a: string }[]
   choferes:   { id: number; nombre: string; camion_id?: number | null }[]
   camiones:   { id: number; patente: string }[]
   uploadFile: File | null
@@ -517,6 +582,26 @@ function GastoFormFields({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [choferIdWatched, choferes])
+
+  // Detectar si la categoría seleccionada es combustible. Se compara por
+  // código (estable) y no por nombre (volátil). Afecta qué campos extra
+  // se muestran y cómo se arma el payload al submit.
+  const categoriaIdWatched = form.watch('categoria_id')
+  const categoriaSel   = categorias.find(c => c.id === Number(categoriaIdWatched))
+  const esCombustible  = categoriaSel?.codigo === 'combustible'
+
+  // Al salir de combustible, resetear campos del sub-objeto para no
+  // enviar metadata fantasma al backend (que la rechazaría con 400).
+  useEffect(() => {
+    if (!esCombustible) {
+      form.setValue('carga_combustible.litros', '')
+      form.setValue('carga_combustible.odometro_km', '')
+      form.setValue('carga_combustible.tipo_combustible', 'gasoil')
+      form.setValue('carga_combustible.tanque_lleno', true)
+      form.setValue('carga_combustible.obs', '')
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [esCombustible])
 
   return (
     <div className="flex flex-col gap-3">
@@ -568,6 +653,39 @@ function GastoFormFields({
           />
         )}
       </div>
+
+      {/* Carga de combustible — solo si categoría = combustible */}
+      {esCombustible && (
+        <div className="rounded-xl border border-orange-200 bg-orange-50/40 p-3 flex flex-col gap-3">
+          <div className="text-[11px] font-bold text-orange-800 uppercase tracking-wider">⛽ Carga de combustible</div>
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Litros" type="number" step="0.001" placeholder="150.500" inputMode="decimal"
+              {...form.register('carga_combustible.litros', { required: esCombustible })} />
+            <Input label="Odómetro km (opcional)" type="number" step="1" placeholder="452300" inputMode="numeric"
+              {...form.register('carga_combustible.odometro_km')} />
+          </div>
+          <div className="grid grid-cols-2 gap-3 items-end">
+            <Select label="Tipo" {...form.register('carga_combustible.tipo_combustible')}
+              options={[
+                { value: 'gasoil',      label: 'Gasoil' },
+                { value: 'nafta',       label: 'Nafta' },
+                { value: 'nafta_super', label: 'Nafta Super' },
+                { value: 'adblue',      label: 'AdBlue' },
+              ]} />
+            <label className="flex items-center gap-2 text-sm cursor-pointer min-h-[44px]">
+              <input
+                type="checkbox"
+                {...form.register('carga_combustible.tanque_lleno')}
+                className="accent-orange-500 w-4 h-4"
+              />
+              <span>Llené el tanque</span>
+            </label>
+          </div>
+          <p className="text-[11px] text-gris-dark">
+            Dejá el odómetro vacío si no lo anotaste. Destildá "Llené el tanque" si cargaste solo parcial.
+          </p>
+        </div>
+      )}
 
       <Input label="Observaciones" placeholder="Opcional" {...form.register('obs')} />
     </div>

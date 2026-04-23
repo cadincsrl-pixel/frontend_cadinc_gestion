@@ -477,6 +477,17 @@ export type GastoCategoria = {
   activo: boolean; orden: number
 }
 
+export type TipoCombustible = 'gasoil' | 'nafta' | 'nafta_super' | 'adblue'
+
+export type CargaCombustibleMeta = {
+  litros: number
+  odometro_km: number | null
+  tipo_combustible: TipoCombustible
+  tanque_lleno: boolean
+  warnings: Array<{ code: string; detail?: unknown }>
+  obs: string
+}
+
 export type Gasto = {
   id: number
   camion_id: number | null; chofer_id: number | null; tramo_id: number | null; lugar_id: number | null
@@ -494,6 +505,8 @@ export type Gasto = {
   aprobado_por: string | null; aprobado_at: string | null; motivo_rechazo: string | null
   liquidacion_id: number | null; adelanto_id: number | null
   obs: string
+  carga_combustible: CargaCombustibleMeta | null
+  warnings?: Array<{ code: string; detail?: unknown }>  // solo en response de create
   created_by: string; created_at: string; updated_at: string
 }
 
@@ -613,6 +626,78 @@ export function useGastosReintegrosPendientes(choferId: number | null, hasta?: s
       )
     },
     enabled: !!choferId,
+  })
+}
+
+// ── Reportes de consumo de combustible ────────────────────────
+export type ConsumoCamion = {
+  camion: { id: number; patente: string } | null
+  filas: Array<{
+    camion_id: number
+    fecha: string
+    odometro_km: number
+    km_recorridos: number
+    litros_intervalo: number
+    km_por_litro: number | null
+  }>
+  total_km: number
+  total_litros: number
+  km_por_litro_promedio: number | null
+}
+export type ConsumoChoferMes = {
+  chofer_id: number
+  mes: string
+  km_recorridos: number | null
+  litros: number | null
+  gasto_combustible: number | null
+  cargas_count: number | null
+  km_por_litro: number | null
+  chofer?: { id: number; nombre: string }
+}
+export type RankingChofer = {
+  chofer_id: number
+  nombre: string
+  total_km: number
+  total_litros: number
+  total_gasto: number
+  cargas_count: number
+  km_por_litro: number
+}
+
+export function useReporteConsumoCamion(camionId: number | null, desde: string, hasta: string) {
+  return useQuery({
+    queryKey: ['logistica','consumo','por-camion', camionId, desde, hasta] as const,
+    queryFn:  () => apiGet<ConsumoCamion>(
+      `/api/logistica/gastos/reportes/consumo-camion?camion_id=${camionId}&desde=${desde}&hasta=${hasta}`,
+    ),
+    enabled: !!camionId && !!desde && !!hasta,
+    staleTime: 60_000,
+  })
+}
+
+export function useReporteConsumoChoferMes(desde: string, hasta: string, choferId?: number, enabled = true) {
+  return useQuery({
+    queryKey: ['logistica','consumo','chofer-mes', desde, hasta, choferId] as const,
+    queryFn:  () => {
+      const q = new URLSearchParams({ desde, hasta })
+      if (choferId) q.set('chofer_id', String(choferId))
+      return apiGet<{ items: ConsumoChoferMes[] }>(
+        `/api/logistica/gastos/reportes/consumo-chofer-mes?${q.toString()}`,
+      )
+    },
+    enabled: !!desde && !!hasta && enabled,
+    staleTime: 60_000,
+  })
+}
+
+export function useRankingChoferesCombustible(desde: string, hasta: string, limit = 20, enabled = true) {
+  return useQuery({
+    queryKey: ['logistica','consumo','ranking', desde, hasta, limit] as const,
+    queryFn:  () => apiGet<{ items: RankingChofer[]; umbral_min_cargas: number }>(
+      `/api/logistica/gastos/reportes/ranking-choferes?desde=${desde}&hasta=${hasta}&limit=${limit}`,
+    ),
+    enabled: !!desde && !!hasta && enabled,
+    staleTime: 60_000,
   })
 }
 
