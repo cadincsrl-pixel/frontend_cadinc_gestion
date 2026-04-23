@@ -361,7 +361,99 @@ export function exportarExcelObras(
   ]
   XLSX.utils.book_append_sheet(wb, ws1, 'Resumen Obras')
 
-  // ── HOJA 2: Detalle Semanal ──
+  // ── HOJA 2: Planillas Tarja (grid visual por obra × semana) ──
+  // Replica el formato de carga: Legajo | Apellido y Nombre | Categoría | 7 días | TOTAL HORAS
+  // Una mini-planilla por cada (obra × semana) con al menos un operario con horas > 0.
+  const tarjaRows: any[][] = [
+    ['PLANILLAS DE TARJA — formato de carga semanal'],
+    [`Generado: ${fmtDate(hoy)}${labelRango()}`],
+    [],
+  ]
+
+  // Estructura fija: 3 cols cabecera + 7 días + 1 total = 11 columnas
+  const tarjaCols = [
+    { wch: 8 }, { wch: 28 }, { wch: 22 },
+    { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 9 },
+    { wch: 13 },
+  ]
+
+  let seccionesEmitidas = 0
+  obras.forEach(o => {
+    const semanas = getSemanasObra(o.cod)
+    if (!semanas.length) return
+
+    semanas.forEach(sk => {
+      const s = new Date(sk + 'T12:00:00')
+      const days = getSemDays(s)
+      const fechaRefSem = sk
+
+      // Legajos con horas > 0 en esta obra × semana
+      const legs = [...new Set(
+        horas
+          .filter(h => h.obra_cod === o.cod && h.fecha >= toISO(days[0]!) && h.fecha <= toISO(days[6]!) && h.horas > 0)
+          .map(h => h.leg)
+      )]
+      if (!legs.length) return
+
+      // Ordenar por nombre
+      const legsOrdenados = legs
+        .map(leg => personal.find(p => p.leg === leg))
+        .filter((p): p is Personal => !!p)
+        .sort((a, b) => a.nom.localeCompare(b.nom))
+
+      // Fila título
+      tarjaRows.push([`TARJA — ${o.nom} (${o.cod}) — ${getSemLabel(s)}`])
+      // Fila fechas ISO (referencia, como en exportarTarjaExcel)
+      tarjaRows.push(['', '', '', ...days.map(d => toISO(d)), ''])
+      // Header
+      tarjaRows.push([
+        'Legajo', 'Apellido y Nombre', 'Categoría',
+        ...days.map((d, i) => `${DIAS[i]} ${d.getDate()}/${d.getMonth() + 1}`),
+        'TOTAL HORAS',
+      ])
+
+      // Totales por día para fila final
+      const totDia = [0, 0, 0, 0, 0, 0, 0]
+      let totGeneral = 0
+
+      legsOrdenados.forEach(p => {
+        const catId = getCatIdEfectivo(o.cod, p.leg, fechaRefSem)
+        const catNom = catId ? (categorias.find(c => c.id === catId)?.nom ?? '—') : '—'
+        const hsDia = days.map((d, i) => {
+          const h = horas.find(x => x.obra_cod === o.cod && x.leg === p.leg && x.fecha === toISO(d))
+          const val = h?.horas ?? 0
+          totDia[i]! += val
+          return val || ''
+        })
+        const totLeg = hsDia.reduce<number>((s, h) => s + (Number(h) || 0), 0)
+        totGeneral += totLeg
+        tarjaRows.push([p.leg, p.nom, catNom, ...hsDia, totLeg || ''])
+      })
+
+      // Fila total al pie
+      tarjaRows.push([
+        '', 'TOTAL', '',
+        ...totDia.map(n => n || ''),
+        totGeneral || '',
+      ])
+
+      // Separación
+      tarjaRows.push([])
+      tarjaRows.push([])
+
+      seccionesEmitidas++
+    })
+  })
+
+  if (seccionesEmitidas === 0) {
+    tarjaRows.push(['Sin datos de horas cargadas en el rango seleccionado.'])
+  }
+
+  const wsTarja = XLSX.utils.aoa_to_sheet(tarjaRows)
+  wsTarja['!cols'] = tarjaCols
+  XLSX.utils.book_append_sheet(wb, wsTarja, 'Planillas Tarja')
+
+  // ── HOJA 3: Detalle Semanal ──
   const detRows: any[][] = [
     ['DETALLE SEMANAL POR OBRA'],
     [],
