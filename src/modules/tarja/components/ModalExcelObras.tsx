@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
+import { Input } from '@/components/ui/Input'
 import { exportarExcelObras } from '@/lib/utils/excel'
 import { useToast } from '@/components/ui/Toast'
 import { getSemLabel, getViernes, toISO } from '@/lib/utils/dates'
@@ -38,6 +39,16 @@ export function ModalExcelObras({
   const [semDesde, setSemDesde] = useState('')
   const [semHasta, setSemHasta] = useState('')
   const [obrasSelec, setObrasSelec] = useState<string[]>(obras.map(o => o.cod))
+  const [busqueda, setBusqueda] = useState('')
+
+  const busquedaNorm = busqueda.trim().toLowerCase()
+  const obrasVisibles = useMemo(() => {
+    if (!busquedaNorm) return obras
+    return obras.filter(o =>
+      o.cod.toLowerCase().includes(busquedaNorm) ||
+      o.nom.toLowerCase().includes(busquedaNorm)
+    )
+  }, [obras, busquedaNorm])
 
   const todasSems = [...new Set([
     ...horas.map(h => toISO(getViernes(new Date(h.fecha + 'T12:00:00')))),
@@ -269,27 +280,92 @@ export function ModalExcelObras({
         <div>
           <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-2">
             Obras a incluir ({obrasSelec.length}/{obras.length})
-          </div>
-          <div className="flex gap-1 mb-2">
-            <button onClick={() => setObrasSelec(obras.map(o => o.cod))} className="text-xs font-bold text-azul hover:text-naranja transition-colors px-2 py-1 rounded hover:bg-gris">✓ Todas</button>
-            <button onClick={() => setObrasSelec([])} className="text-xs font-bold text-gris-dark hover:text-carbon transition-colors px-2 py-1 rounded hover:bg-gris">✕ Ninguna</button>
-            {obraActual && (
-              <button onClick={() => setObrasSelec([obraActual])} className="text-xs font-bold text-naranja hover:text-naranja-dark transition-colors px-2 py-1 rounded hover:bg-naranja-light">⊙ Obra actual</button>
+            {busquedaNorm && (
+              <span className="ml-1 text-gris-mid font-semibold normal-case tracking-normal">
+                · {obrasVisibles.length} visible{obrasVisibles.length !== 1 ? 's' : ''}
+              </span>
             )}
           </div>
+          <div className="flex gap-1 mb-2">
+            <button
+              onClick={() => {
+                if (busquedaNorm) {
+                  const visibleCods = obrasVisibles.map(o => o.cod)
+                  setObrasSelec(prev => Array.from(new Set([...prev, ...visibleCods])))
+                } else {
+                  setObrasSelec(obras.map(o => o.cod))
+                }
+              }}
+              title={busquedaNorm
+                ? 'Agrega a la selección solo las obras visibles (preserva las ya seleccionadas fuera del filtro)'
+                : 'Seleccionar todas las obras'}
+              className="text-xs font-bold text-azul hover:text-naranja transition-colors px-2 py-1 rounded hover:bg-gris"
+            >
+              ✓ Todas
+            </button>
+            <button
+              onClick={() => {
+                if (busquedaNorm) {
+                  const visibleCods = new Set(obrasVisibles.map(o => o.cod))
+                  setObrasSelec(prev => prev.filter(c => !visibleCods.has(c)))
+                } else {
+                  setObrasSelec([])
+                }
+              }}
+              title={busquedaNorm
+                ? 'Quita de la selección solo las obras visibles'
+                : 'Vaciar selección'}
+              className="text-xs font-bold text-gris-dark hover:text-carbon transition-colors px-2 py-1 rounded hover:bg-gris"
+            >
+              ✕ Ninguna
+            </button>
+            {obraActual && (
+              <button
+                onClick={() => setObrasSelec([obraActual])}
+                title="Seleccionar solo la obra actual"
+                className="text-xs font-bold text-naranja hover:text-naranja-dark transition-colors px-2 py-1 rounded hover:bg-naranja-light"
+              >
+                ⊙ Obra actual
+              </button>
+            )}
+          </div>
+          <div className="mb-2">
+            <Input
+              type="text"
+              value={busqueda}
+              onChange={e => setBusqueda(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Escape' && busqueda) {
+                  // Primera Escape limpia la búsqueda; frenamos la propagación
+                  // para que el listener global del Modal no cierre el modal.
+                  e.nativeEvent.stopImmediatePropagation()
+                  e.stopPropagation()
+                  setBusqueda('')
+                }
+              }}
+              placeholder="Buscar obra por código o nombre…"
+              className="text-sm"
+            />
+          </div>
           <div className="bg-gris rounded-xl p-3 max-h-44 overflow-y-auto flex flex-col gap-0.5">
-            {obras.map(o => (
-              <label key={o.cod} className="flex items-center gap-2 cursor-pointer py-1.5 border-b border-gris-mid/50 last:border-0">
-                <input
-                  type="checkbox"
-                  checked={obrasSelec.includes(o.cod)}
-                  onChange={() => toggleObra(o.cod)}
-                  className="accent-azul w-4 h-4 flex-shrink-0"
-                />
-                <span className="font-mono text-[10px] bg-white border border-gris-mid px-1.5 py-0.5 rounded text-azul-mid flex-shrink-0">{o.cod}</span>
-                <span className="font-semibold text-sm text-carbon truncate">{o.nom}</span>
-              </label>
-            ))}
+            {obrasVisibles.length === 0 ? (
+              <div className="text-center text-xs text-gris-dark italic py-4">
+                Sin obras que coincidan con “{busqueda}”
+              </div>
+            ) : (
+              obrasVisibles.map(o => (
+                <label key={o.cod} className="flex items-center gap-2 cursor-pointer py-1.5 border-b border-gris-mid/50 last:border-0">
+                  <input
+                    type="checkbox"
+                    checked={obrasSelec.includes(o.cod)}
+                    onChange={() => toggleObra(o.cod)}
+                    className="accent-azul w-4 h-4 flex-shrink-0"
+                  />
+                  <span className="font-mono text-[10px] bg-white border border-gris-mid px-1.5 py-0.5 rounded text-azul-mid flex-shrink-0">{o.cod}</span>
+                  <span className="font-semibold text-sm text-carbon truncate">{o.nom}</span>
+                </label>
+              ))
+            )}
           </div>
         </div>
 
