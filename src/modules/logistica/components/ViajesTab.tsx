@@ -146,13 +146,19 @@ export function ViajesTab() {
     revDescarga(revertirTramo.id, {
       onSuccess: () => { toast('✓ Descarga revertida — tramo en curso', 'ok'); setRevertirTramo(null) },
       onError:   (err: any) => {
-        // Mapeo de errores del backend (tramos.routes.ts).
+        // Log completo para que en DevTools se pueda diagnosticar el error real
+        // (status, body, etc.) en lugar de depender solo del toast.
+        console.error('[revertir-descarga] error:', err, { status: err?.status, body: err?.body })
+
         const code = err?.body?.error || err?.code
         if (code === 'TRAMO_LIQUIDADO')    toast('No se puede revertir: el tramo está liquidado', 'err')
         else if (code === 'TRAMO_COBRADO') toast('No se puede revertir: el tramo está cobrado', 'err')
         else if (code === 'TRAMO_SIN_DESCARGA') toast('El tramo no tiene descarga registrada', 'err')
         else if (code === 'TRAMO_NO_EXISTE')    toast('Tramo no encontrado', 'err')
-        else toast('Error al revertir la descarga', 'err')
+        // Fallback: mostrar el mensaje real del backend/cliente. apiPost lanza
+        // HttpError con message amigable (ej: "Sesión expirada...") o el body.error
+        // del backend. Si no hay mensaje, caemos a un texto genérico.
+        else toast(err?.message || 'Error al revertir la descarga', 'err')
         setRevertirTramo(null)
       },
     })
