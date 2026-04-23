@@ -6,6 +6,7 @@ import { useObras }      from '@/modules/tarja/hooks/useObras'
 import { usePersonal }   from '@/modules/tarja/hooks/usePersonal'
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
 import { useHorasSemana } from '@/modules/tarja/hooks/useHoras'
+import { useHsExtras, useHsExtrasAll } from '@/modules/tarja/hooks/useHsExtras'
 import { useTarifasObra } from '@/modules/tarja/hooks/useTarifas'
 import { useCertificacionesObra } from '@/modules/tarja/hooks/useContratistas'
 import { Combobox } from '@/components/ui/Combobox'
@@ -45,14 +46,16 @@ function FilaSemana({
   const hasta  = toISO(dias[dias.length - 1]!)
   const semKey = toISO(vie)
 
-  const { data: horas = [] } = useHorasSemana(obraCod, desde, hasta)
+  const { data: horas    = [] } = useHorasSemana(obraCod, desde, hasta)
+  const { data: hsExtras = [] } = useHsExtras(obraCod, desde, hasta)
 
   const personalObra = personal.filter(p =>
     (horas as any[]).some((h: any) => h.leg === p.leg)
+    || (hsExtras as any[]).some((e: any) => e.leg === p.leg)
   )
 
   const { totalCosto } = calcularTotalesSemana(
-    horas as any[], personalObra as any[], categorias as any[], tarifas as any[], obraCod, dias
+    horas as any[], personalObra as any[], categorias as any[], tarifas as any[], obraCod, dias, hsExtras as any[]
   )
   const costoCont = (certs as Certificacion[])
     .filter(c => c.sem_key === semKey)
@@ -78,6 +81,9 @@ function TotalesObra({ obraCod }: { obraCod: string }) {
   const { data: categorias = [] } = useCategorias()
   const { data: tarifas    = [] } = useTarifasObra(obraCod)
   const { data: certs      = [] } = useCertificacionesObra(obraCod)
+  // Todas las hs extras (una sola query). Filtramos por obra abajo.
+  const { data: hsExtrasAll = [] } = useHsExtrasAll()
+  const hsExtrasObra = (hsExtrasAll as any[]).filter(e => e.obra_cod === obraCod)
 
   const horasQueries = useQueries({
     queries: SEMANAS.map(vie => {
@@ -99,8 +105,14 @@ function TotalesObra({ obraCod }: { obraCod: string }) {
     const horas  = (horasQueries[i]?.data ?? []) as any[]
     const dias   = getSemDays(vie)
     const semKey = toISO(vie)
-    const personalObra = (personal as any[]).filter(p => horas.some((h: any) => h.leg === p.leg))
-    const { totalCosto } = calcularTotalesSemana(horas, personalObra, categorias as any[], tarifas as any[], obraCod, dias)
+    // Personal de la obra en la semana: los que tienen horas O hs extras.
+    const personalObra = (personal as any[]).filter(p =>
+      horas.some((h: any) => h.leg === p.leg)
+      || hsExtrasObra.some(e => e.leg === p.leg && e.sem_key === semKey)
+    )
+    const { totalCosto } = calcularTotalesSemana(
+      horas, personalObra, categorias as any[], tarifas as any[], obraCod, dias, hsExtrasObra,
+    )
     const costoCont = (certs as Certificacion[]).filter(c => c.sem_key === semKey).reduce((s, c) => s + c.monto, 0)
     totalOperarios    += totalCosto
     totalContratistas += costoCont

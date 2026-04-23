@@ -72,21 +72,29 @@ export function getVHenFecha(
   return cat?.vh ?? 0
 }
 
-// Total de horas de un trabajador en una lista de días
+// Total de horas de un trabajador en una lista de días.
+// Si se pasa hsExtras, incluye las hs extras de la semana correspondiente.
+// sem_key = viernes de la semana (convención del proyecto, §5.2 CLAUDE.md).
 export function totalHsLeg(
   horas: Hora[],
   obraCod: string,
   leg: string,
-  fechas: string[]
+  fechas: string[],
+  hsExtras?: TarjaHsExtra[]
 ): number {
-  return fechas.reduce((sum, fecha) => {
+  const normales = fechas.reduce((sum, fecha) => {
     const h = horas.find(x => x.obra_cod === obraCod && x.leg === leg && x.fecha === fecha)
     return sum + (h?.horas ?? 0)
   }, 0)
+  if (!hsExtras || hsExtras.length === 0 || fechas.length === 0) return normales
+  // Calcular sem_key desde el primer día (viernes de la semana).
+  const semKey = toISO(getViernes(new Date(fechas[0]! + 'T00:00:00')))
+  return normales + getHsExtrasLeg(hsExtras, obraCod, leg, semKey)
 }
 
-// Costo total de un trabajador en una semana
-// catIdOverride: categoría efectiva (ej: override de cat_obra para esta semana/obra)
+// Costo total de un trabajador en una semana.
+// catIdOverride: categoría efectiva (ej: override de cat_obra para esta semana/obra).
+// hsExtras (opcional): si viene, suma `hs * VH_efectivo` al costo.
 export function costoLeg(
   horas: Hora[],
   personal: Personal[],
@@ -95,7 +103,8 @@ export function costoLeg(
   obraCod: string,
   leg: string,
   dias: Date[],
-  catIdOverride?: number
+  catIdOverride?: number,
+  hsExtras?: TarjaHsExtra[]
 ): number {
   const semStartStr = toISO(dias[0]!)
   const hoyStr = toISO(new Date())
@@ -103,25 +112,40 @@ export function costoLeg(
   const fechaRef = esSemActual ? hoyStr : semStartStr
 
   const vh = getVHenFecha(personal, categorias, tarifas, obraCod, leg, fechaRef, catIdOverride)
-  const hs = totalHsLeg(horas, obraCod, leg, dias.map(toISO))
-  return hs * vh
+  const hs = fechas_reduce(horas, obraCod, leg, dias.map(toISO))
+  const costoBase = hs * vh
+
+  if (!hsExtras || hsExtras.length === 0) return costoBase
+  const semKey = toISO(getViernes(dias[0]!))
+  const extras = getHsExtrasLeg(hsExtras, obraCod, leg, semKey)
+  return costoBase + extras * vh
 }
 
-// Totales de una semana completa para una obra
+// Helper local para sumar horas normales sin acoplarse a la firma extendida de totalHsLeg.
+function fechas_reduce(horas: Hora[], obraCod: string, leg: string, fechas: string[]): number {
+  return fechas.reduce((sum, fecha) => {
+    const h = horas.find(x => x.obra_cod === obraCod && x.leg === leg && x.fecha === fecha)
+    return sum + (h?.horas ?? 0)
+  }, 0)
+}
+
+// Totales de una semana completa para una obra.
+// hsExtras (opcional): si viene, suma al total (hs) y al costo total.
 export function calcularTotalesSemana(
   horas: Hora[],
   personal: Personal[],
   categorias: Categoria[],
   tarifas: Tarifa[],
   obraCod: string,
-  dias: Date[]
+  dias: Date[],
+  hsExtras?: TarjaHsExtra[]
 ): { totalHs: number; totalCosto: number } {
   let totalHs = 0
   let totalCosto = 0
 
   for (const p of personal) {
-    totalHs    += totalHsLeg(horas, obraCod, p.leg, dias.map(toISO))
-    totalCosto += costoLeg(horas, personal, categorias, tarifas, obraCod, p.leg, dias)
+    totalHs    += totalHsLeg(horas, obraCod, p.leg, dias.map(toISO), hsExtras)
+    totalCosto += costoLeg(horas, personal, categorias, tarifas, obraCod, p.leg, dias, undefined, hsExtras)
   }
 
   return { totalHs, totalCosto }

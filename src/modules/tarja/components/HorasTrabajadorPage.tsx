@@ -13,12 +13,13 @@ import {
   esHoy, esJueves, esFinde,
 } from '@/lib/utils/dates'
 import { totalHsLeg } from '@/lib/utils/costos'
+import { useHsExtrasAll } from '@/modules/tarja/hooks/useHsExtras'
 import { exportarHorasTrabajador } from '@/lib/utils/excel'
 import { Chip } from '@/components/ui/Chip'
 import { useToast } from '@/components/ui/Toast'
 import { useUpsertHora } from '@/modules/tarja/hooks/useHoras'
 import { usePermisos } from '@/hooks/usePermisos'
-import type { Hora, Tarifa, Personal, Categoria } from '@/types/domain.types'
+import type { Hora, Tarifa, Personal, Categoria, TarjaHsExtra } from '@/types/domain.types'
 
 export function HorasTrabajadorPage() {
   const router = useRouter()
@@ -58,6 +59,8 @@ export function HorasTrabajadorPage() {
     queryKey: ['cat-obra', 'all'],
     queryFn: () => apiGet<Array<{ obra_cod: string; leg: string; cat_id: number; desde: string }>>('/api/cat-obra/all'),
   })
+  // Todas las hs extras. Se cruzan por obra+leg+sem_key en getCostoLeg y en filas.
+  const { data: todasHsExtras = [] } = useHsExtrasAll() as { data: TarjaHsExtra[] }
 
   function navSem(dir: number) {
     const nueva = new Date(semActual)
@@ -148,7 +151,11 @@ export function HorasTrabajadorPage() {
     }
 
     const hs = totalHsLeg(todasHoras, obraCod, leg, days.map(toISO))
-    return hs * vh
+    // Sumar hs extras al VH efectivo (mismo precio/hora que normales).
+    const hsExtras = todasHsExtras.find(
+      e => e.obra_cod === obraCod && e.leg === leg && e.sem_key === semKey,
+    )?.hs ?? 0
+    return (hs + hsExtras) * (vh ?? 0)
   }
 
   function getCatNom(catId: number | null): string {
@@ -183,7 +190,13 @@ export function HorasTrabajadorPage() {
 
     obrasTarget.forEach(o => {
       const legsActivos = getLegsActivos(o.cod)
-      legsActivos.forEach(leg => {
+      // También incluir legs que SOLO tienen hs extras esa semana en esta obra.
+      const legsExtras = todasHsExtras
+        .filter(e => e.obra_cod === o.cod && e.sem_key === semKey && e.hs > 0)
+        .map(e => e.leg)
+      const legsTodos = [...new Set([...legsActivos, ...legsExtras])]
+
+      legsTodos.forEach(leg => {
         const p = personal.find(x => x.leg === leg)
         if (!p) return
 
@@ -196,11 +209,17 @@ export function HorasTrabajadorPage() {
           tHs += h
         })
 
+        // Sumar hs extras al total de horas mostrado al user.
+        const hsExtras = todasHsExtras.find(
+          e => e.obra_cod === o.cod && e.leg === leg && e.sem_key === semKey,
+        )?.hs ?? 0
+        const tHsConExtras = tHs + hsExtras
+
         // Omitir filas vacías salvo filtro específico de obra
-        if (tHs === 0 && !filtroObra) return
+        if (tHsConExtras === 0 && !filtroObra) return
 
         const totalCosto = Math.round(getCostoLeg(o.cod, leg) / 1000) * 1000
-        result.push({ p, obra: o, horasPorDia, totalHs: tHs, totalCosto, leg })
+        result.push({ p, obra: o, horasPorDia, totalHs: tHsConExtras, totalCosto, leg })
       })
     })
 
@@ -208,7 +227,7 @@ export function HorasTrabajadorPage() {
     result.sort((a, b) => a.p.nom.localeCompare(b.p.nom) || a.obra.cod.localeCompare(b.obra.cod))
 
     return result
-  }, [obrasTarget, personal, todasHoras, todasTarifas, todasCatObra, categorias, days, semKey, desde, hasta, filtroObra])
+  }, [obrasTarget, personal, todasHoras, todasHsExtras, todasTarifas, todasCatObra, categorias, days, semKey, desde, hasta, filtroObra])
 
   // Filtrar por búsqueda
   const filasFiltradas = useMemo(() => {

@@ -814,28 +814,19 @@ export function generarRecibos(
   let recibosHTML = ''
   trabajadores.forEach((t, idx) => {
     const pb = idx > 0 && idx % 5 === 0 ? 'page-break-before:always;' : ''
+    // Las hs extras se suman al total de horas y costo de la obra (NO se listan
+    // como línea separada). Para el operario es "trabajo en la obra X", sin
+    // distinción de regulares vs extras — coincide con el criterio contable.
     const obrasRows = t.obras.map(ob => `
       <tr>
         <td style="padding:4px 8px;font-size:10px;border-bottom:1px solid #eee">${ob.obra.cod}</td>
         <td style="padding:4px 8px;font-size:10px;border-bottom:1px solid #eee">${ob.obra.nom}</td>
         <td style="padding:4px 8px;font-size:10px;border-bottom:1px solid #eee;color:#555">${ob.catNom}</td>
-        <td style="padding:4px 8px;font-size:10px;text-align:center;border-bottom:1px solid #eee;font-family:monospace">${fmtH(ob.hs)}</td>
-        <td style="padding:4px 8px;font-size:10px;text-align:right;border-bottom:1px solid #eee;font-family:monospace">${fmtM(ob.costo)}</td>
+        <td style="padding:4px 8px;font-size:10px;text-align:center;border-bottom:1px solid #eee;font-family:monospace">${fmtH(ob.hs + ob.hsExtra)}</td>
+        <td style="padding:4px 8px;font-size:10px;text-align:right;border-bottom:1px solid #eee;font-family:monospace">${fmtM(ob.costo + ob.costoExtra)}</td>
       </tr>`).join('')
 
-    // Desglose de hs extras por obra (si hubiera)
-    const obrasConExtra = t.obras.filter(ob => ob.hsExtra > 0)
-    const hsExtrasRows = obrasConExtra.length ? obrasConExtra.map(ob => `
-      <div style="padding:4px 14px;border-top:1px dashed #D9E8D9;display:flex;justify-content:space-between;align-items:center;background:#F3FAF3">
-        <div style="font-size:9px;color:#5A7A5A">
-          <span style="font-family:monospace;font-size:8px;background:#DCEDDC;padding:1px 5px;border-radius:3px;margin-right:4px">${ob.obra.cod}</span>
-          + Hs extras: <b style="font-family:monospace;color:#1A6B3C">${fmtH(ob.hsExtra)}</b>
-          × <span style="font-family:monospace">$${ob.vh.toLocaleString('es-AR')}/h</span>
-        </div>
-        <div style="font-size:10px;font-weight:700;color:#1A6B3C;font-family:monospace">
-          + ${fmtM(ob.costoExtra)}
-        </div>
-      </div>`).join('') : ''
+    const hsExtrasRows = ''  // se removió el desglose; hs extras ya van sumadas arriba
 
     // Préstamo/descuento de esta semana para este trabajador
     const prestamo = prestamos.find(p => p.leg === t.p.leg && p.sem_key === semKey)
