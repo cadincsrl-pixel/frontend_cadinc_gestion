@@ -1,5 +1,16 @@
-import type { Hora, Personal, Categoria, Tarifa } from '@/types/domain.types'
+import type { Hora, Personal, Categoria, Tarifa, TarjaHsExtra } from '@/types/domain.types'
 import { toISO, getViernes } from './dates'
+
+// Horas extras de un trabajador para una obra × semana (0 si no hay registro)
+export function getHsExtrasLeg(
+  hsExtras: TarjaHsExtra[],
+  obraCod: string,
+  leg: string,
+  semKey: string
+): number {
+  const row = hsExtras.find(x => x.obra_cod === obraCod && x.leg === leg && x.sem_key === semKey)
+  return row?.hs ?? 0
+}
 
 // Tarifa vigente para una categoría en una obra en una fecha dada
 export function getTarifaEnFecha(

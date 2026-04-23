@@ -492,6 +492,27 @@ export interface RopaEntrega {
   created_at:    string
 }
 
+// ── Horas extras (por semana) ──
+export interface TarjaHsExtra extends AuditFields {
+  id:        number
+  obra_cod:  string
+  leg:       string
+  sem_key:   string   // YYYY-MM-DD (viernes)
+  hs:        number
+}
+
+export interface UpsertHsExtraDto {
+  obra_cod: string
+  leg:      string
+  sem_key:  string
+  hs:       number
+}
+
+export interface UpsertHsExtrasLoteDto {
+  obra_cod: string
+  items:    Array<{ leg: string; sem_key: string; hs: number }>
+}
+
 // ── Préstamos ──
 export interface Prestamo {
   id:         number

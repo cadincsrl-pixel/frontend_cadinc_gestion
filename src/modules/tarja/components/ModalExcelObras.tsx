@@ -11,6 +11,7 @@ import { getSemLabel, getViernes, toISO } from '@/lib/utils/dates'
 import type { Obra, Personal, Categoria, Hora, Tarifa, Cierre, Certificacion, Contratista } from '@/types/domain.types'
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api/client'
+import { useHsExtrasAll } from '../hooks/useHsExtras'
 
 
 interface Props {
@@ -77,6 +78,8 @@ export function ModalExcelObras({
     queryFn: () => apiGet<Array<{ obra_cod: string; leg: string; cat_id: number; desde: string }>>('/api/cat-obra/all'),
   })
 
+  const { data: todasHsExtras = [] } = useHsExtrasAll()
+
   // Helper: cat_id efectivo con cat_obra
   function getCatIdEfectivo(obraCod: string, leg: string, fechaRef: string): number | null {
     const catObraAll = todasCatObra.filter(co => co.obra_cod === obraCod && co.leg === leg)
@@ -137,13 +140,24 @@ export function ModalExcelObras({
       return semOk(c.sem_key)
     })
 
+    const hsExtrasFilt = todasHsExtras.filter(x => {
+      if (!obrasTarget.some(o => o.cod === x.obra_cod)) return false
+      if (!semOk(x.sem_key)) return false
+      return x.hs > 0
+    })
+
     const totalHs = horasFilt.reduce((s, h) => s + h.horas, 0)
+      + hsExtrasFilt.reduce((s, x) => s + x.hs, 0)
     const totalCertif = certsFilt.reduce((s, c) => s + c.monto, 0)
-    const operarios = new Set(horasFilt.map(h => h.leg)).size
+    const operarios = new Set([
+      ...horasFilt.map(h => h.leg),
+      ...hsExtrasFilt.map(x => x.leg),
+    ]).size
     const contratNum = new Set(certsFilt.map(c => c.contrat_id)).size
     const semanas = new Set([
       ...horasFilt.map(h => toISO(getViernes(new Date(h.fecha + 'T12:00:00')))),
       ...certsFilt.map(c => c.sem_key),
+      ...hsExtrasFilt.map(x => x.sem_key),
     ]).size
     const cerradas = cierres.filter(c =>
       obrasTarget.some(o => o.cod === c.obra_cod) &&
@@ -151,15 +165,20 @@ export function ModalExcelObras({
       semOk(c.sem_key)
     ).length
 
-    // Costo operarios aproximado (tarifa global)
-    const costoOp = horasFilt.reduce((sum, h) => {
+    // Costo operarios aproximado (tarifa global) — incluye hs extras
+    const costoHoras = horasFilt.reduce((sum, h) => {
       const sk = toISO(getViernes(new Date(h.fecha + 'T12:00:00')))
       const vh = getVHConCatObra(h.obra_cod, h.leg, sk)
       return sum + h.horas * vh
     }, 0)
+    const costoExtras = hsExtrasFilt.reduce((sum, x) => {
+      const vh = getVHConCatObra(x.obra_cod, x.leg, x.sem_key)
+      return sum + x.hs * vh
+    }, 0)
+    const costoOp = costoHoras + costoExtras
 
     return { totalHs, totalCertif, costoOp, operarios, contratNum, semanas, cerradas, obrasCount: obrasTarget.length }
-  }, [obrasSelec, filtroSem.desde, filtroSem.hasta, horas, certificaciones, cierres, personal, categorias, tarifas, obras, todasCatObra])
+  }, [obrasSelec, filtroSem.desde, filtroSem.hasta, horas, certificaciones, cierres, personal, categorias, tarifas, obras, todasCatObra, todasHsExtras])
 
   function handleExportar() {
     if (!obrasSelec.length) { toast('Seleccioná al menos una obra', 'err'); return }
@@ -170,6 +189,7 @@ export function ModalExcelObras({
     exportarExcelObras(
       obrasTarget, personal, categorias, horas, tarifas, cierres,
       certificaciones, contratistas, filtroSem.desde, todasCatObra, filtroSem.hasta,
+      todasHsExtras,
     )
     toast('📊 Excel exportado', 'ok')
     onClose()

@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTarjaStore } from '../store/tarja.store'
 import { useHorasSemana, useUpsertHora } from '../hooks/useHoras'
+import { useHsExtras, useUpsertHsExtra } from '../hooks/useHsExtras'
 import { useQuitarDeSemana } from '../hooks/useAsignaciones'
 import { useCatObraSemana, useSetCatObra } from '../hooks/useCatObra'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import { usePermisos } from '@/hooks/usePermisos'
 import { getSemDays, toISO, esFinde, esJueves, esHoy, DIAS } from '@/lib/utils/dates'
-import { costoLeg, getVHenFecha, getTarifaEnFecha, fmtMonto } from '@/lib/utils/costos'
+import { costoLeg, getVHenFecha, getTarifaEnFecha, fmtMonto, getHsExtrasLeg } from '@/lib/utils/costos'
 import { useToast } from '@/components/ui/Toast'
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api/client'
@@ -43,9 +44,14 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
   const hasta = toISO(days[6]!)
 
   const { data: horasData = [], isLoading } = useHorasSemana(obraCod, desde, hasta)
+  const { data: hsExtrasData = [] } = useHsExtras(obraCod, desde, hasta)
   const { mutate: upsertHora } = useUpsertHora()
+  const { mutateAsync: upsertHsExtra } = useUpsertHsExtra()
   const { mutate: quitarDeSemana } = useQuitarDeSemana()
   const perfiles = usePerfilesMap()
+
+  // sem_key para esta semana = viernes (días[0] es viernes por getSemDays(semActual))
+  const semKey = desde
 
   // ── Undo ──
   const undoStack = useRef<UndoEntry[]>([])
@@ -114,8 +120,13 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
     let hs = 0, costo = 0
     for (const p of personal) {
       const catId = catObraMap[p.leg] ?? p.cat_id
-      hs += days.reduce((s, d) => s + (horasMap[p.leg]?.[toISO(d)] ?? 0), 0)
-      costo += Math.round(costoLeg(horasData, personal, categorias, tarifas, obraCod, p.leg, days, catId) / 1000) * 1000
+      const hsDias = days.reduce((s, d) => s + (horasMap[p.leg]?.[toISO(d)] ?? 0), 0)
+      const hsExtra = getHsExtrasLeg(hsExtrasData, obraCod, p.leg, semKey)
+      hs += hsDias + hsExtra
+      const vh = getVHenFecha(personal, categorias, tarifas, obraCod, p.leg, desde, catId)
+      const costoBase = costoLeg(horasData, personal, categorias, tarifas, obraCod, p.leg, days, catId)
+      const costoExtra = hsExtra * vh
+      costo += Math.round((costoBase + costoExtra) / 1000) * 1000
     }
     return { totalHs: hs, totalCosto: costo }
   })()
@@ -135,6 +146,19 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
       )
     },
     [obraCod, upsertHora, toast]
+  )
+
+  const handleExtraChange = useCallback(
+    (leg: string, val: string) => {
+      const raw = val.trim()
+      const hs = raw === '' ? 0 : parseFloat(raw)
+      if (isNaN(hs) || hs < 0) return
+      // Optimistic update + toast de error via el hook
+      upsertHsExtra({ obra_cod: obraCod, leg, sem_key: semKey, hs }).catch(() => {
+        // el toast ya se dispara desde el hook
+      })
+    },
+    [obraCod, semKey, upsertHsExtra],
   )
 
   const handleUndo = useCallback(() => {
@@ -232,6 +256,9 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                   </span>
                 </th>
               ))}
+              <th className="bg-[#8B3510] text-white text-xs font-bold px-2 py-2.5 text-center uppercase tracking-wide min-w-[72px]">
+                Extras
+              </th>
               <th className="bg-verde text-white text-xs font-bold px-2 py-2.5 text-center uppercase tracking-wide min-w-[80px]">
                 Total
               </th>
@@ -244,10 +271,13 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
             {personal.map((p) => {
               const catEfectiva = getCatEfectiva(p)
               const catId = catEfectiva?.id ?? p.cat_id
-              const totalLeg = days.reduce((s, d) => s + getH(p.leg, toISO(d)), 0)
+              const hsDiasLeg = days.reduce((s, d) => s + getH(p.leg, toISO(d)), 0)
+              const hsExtraLeg = getHsExtrasLeg(hsExtrasData, obraCod, p.leg, semKey)
+              const totalLeg = hsDiasLeg + hsExtraLeg
               const fechaRef = toISO(days[0]!)
               const vh = getVHenFecha(personal, categorias, tarifas, obraCod, p.leg, fechaRef, catId)
-              const costo = costoLeg(horasData, personal, categorias, tarifas, obraCod, p.leg, days, catId)
+              const costoBase = costoLeg(horasData, personal, categorias, tarifas, obraCod, p.leg, days, catId)
+              const costo = costoBase + hsExtraLeg * vh
 
               // Última hora editada de este trabajador en la semana
               const lastHora = horasData
@@ -362,6 +392,41 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                       </td>
                     )
                   })}
+                  <td className="px-1.5 py-1.5 text-center">
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.5}
+                      max={200}
+                      key={`extra-${p.leg}-${semKey}-${hsExtraLeg}`}
+                      defaultValue={hsExtraLeg || ''}
+                      readOnly={!puedeEditar || readonly}
+                      title="Horas extras de la semana"
+                      onBlur={puedeEditar && !readonly
+                        ? e => handleExtraChange(p.leg, e.target.value)
+                        : undefined}
+                      onKeyDown={puedeEditar && !readonly ? e => {
+                        if (e.key === 'Enter') {
+                          handleExtraChange(p.leg, (e.target as HTMLInputElement).value)
+                          ;(e.target as HTMLInputElement).blur()
+                        }
+                      } : undefined}
+                      className={`
+                          w-14 h-8 border-[1.5px] rounded-md
+                          text-center font-mono text-sm font-bold
+                          outline-none transition-colors
+                          ${puedeEditar && !readonly
+                            ? 'focus:border-[#8B3510] focus:shadow-[0_0_0_3px_rgba(139,53,16,.15)]'
+                            : 'cursor-not-allowed opacity-60'
+                          }
+                          [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none
+                          [&::-webkit-inner-spin-button]:appearance-none
+                          ${hsExtraLeg > 0
+                            ? 'border-[#8B3510] bg-[#FFF3CD] text-[#7A3510]'
+                            : 'border-gris-mid bg-white text-gris-mid'}
+                        `}
+                    />
+                  </td>
                   <td className="text-center bg-verde-light font-mono text-sm font-bold text-verde px-2 py-1.5 whitespace-nowrap">
                     {totalLeg > 0 ? totalLeg : '—'}
                   </td>
@@ -390,6 +455,12 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                   </td>
                 )
               })}
+              <td className="bg-azul text-[#E8B478] font-mono text-sm font-bold text-center px-2 py-2.5">
+                {(() => {
+                  const totExtras = personal.reduce((s, p) => s + getHsExtrasLeg(hsExtrasData, obraCod, p.leg, semKey), 0)
+                  return totExtras > 0 ? totExtras : '—'
+                })()}
+              </td>
               <td className="bg-azul text-[#7DD9A2] font-mono text-sm font-bold text-center px-2 py-2.5">
                 {totalHs > 0 ? totalHs : '—'}
               </td>

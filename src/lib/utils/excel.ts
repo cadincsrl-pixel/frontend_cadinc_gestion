@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx'
-import type { Obra, Cierre, Certificacion, Contratista, Categoria, Personal, Hora, Tarifa, Prestamo } from '@/types/domain.types'
+import type { Obra, Cierre, Certificacion, Contratista, Categoria, Personal, Hora, Tarifa, Prestamo, TarjaHsExtra } from '@/types/domain.types'
 import { getSemDays, toISO, getSemLabel, getViernesCobro, getViernes, DIAS } from './dates'
-import { totalHsLeg, costoLeg } from './costos'
+import { totalHsLeg, costoLeg, getHsExtrasLeg } from './costos'
 
 // ══════════════════════════════════════════════════
 // EXPORT TARJA — planilla por obra y semana
@@ -207,6 +207,7 @@ export function exportarExcelObras(
   semFiltro: string = '',
   catObra: Array<{ obra_cod: string; leg: string; cat_id: number; desde: string }> = [],
   semHasta: string = '',
+  hsExtras: TarjaHsExtra[] = [],
 ) {
   const wb = XLSX.utils.book_new()
   const hoy = new Date()
@@ -281,6 +282,9 @@ export function exportarExcelObras(
     certificaciones
       .filter(c => c.obra_cod === obraCod)
       .forEach(c => seen.add(c.sem_key))
+    hsExtras
+      .filter(x => x.obra_cod === obraCod && x.hs > 0)
+      .forEach(x => seen.add(x.sem_key))
     return [...seen].filter(semOk).sort()
   }
 
@@ -304,15 +308,24 @@ export function exportarExcelObras(
   let totHsGlobal = 0, totCostoGlobal = 0, totCertifGlobal = 0
 
   obras.forEach(o => {
-    const legs = [...new Set(horas.filter(h => h.obra_cod === o.cod).map(h => h.leg))]
+    // legs con horas + legs con hs extras (puede haber alguien con solo extras en teoría)
+    const legs = [...new Set([
+      ...horas.filter(h => h.obra_cod === o.cod).map(h => h.leg),
+      ...hsExtras.filter(x => x.obra_cod === o.cod && x.hs > 0).map(x => x.leg),
+    ])]
     const semanas = getSemanasObra(o.cod)
     let totalHs = 0, totalCosto = 0
 
     semanas.forEach(sk => {
       const days = getSemDays(new Date(sk + 'T12:00:00'))
       legs.forEach(leg => {
-        totalHs += totalHsLeg(horas, o.cod, leg, days.map(toISO))
-        totalCosto += Math.round(costoLegConCatObra(o.cod, leg, days) / 1000) * 1000
+        const hsDias = totalHsLeg(horas, o.cod, leg, days.map(toISO))
+        const hsExtra = getHsExtrasLeg(hsExtras, o.cod, leg, sk)
+        totalHs += hsDias + hsExtra
+        const vh = getVHConCatObra(o.cod, leg, sk)
+        const costoBase = costoLegConCatObra(o.cod, leg, days)
+        const costoExtra = hsExtra * vh
+        totalCosto += Math.round((costoBase + costoExtra) / 1000) * 1000
       })
     })
 
@@ -370,11 +383,11 @@ export function exportarExcelObras(
     [],
   ]
 
-  // Estructura fija: 3 cols cabecera + 7 días + 1 total = 11 columnas
+  // Estructura fija: 3 cols cabecera + 7 días + 1 extras + 1 total = 12 columnas
   const tarjaCols = [
     { wch: 8 }, { wch: 28 }, { wch: 22 },
     { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 9 },
-    { wch: 13 },
+    { wch: 9 }, { wch: 13 },
   ]
 
   let seccionesEmitidas = 0
@@ -387,12 +400,15 @@ export function exportarExcelObras(
       const days = getSemDays(s)
       const fechaRefSem = sk
 
-      // Legajos con horas > 0 en esta obra × semana
-      const legs = [...new Set(
-        horas
-          .filter(h => h.obra_cod === o.cod && h.fecha >= toISO(days[0]!) && h.fecha <= toISO(days[6]!) && h.horas > 0)
-          .map(h => h.leg)
-      )]
+      // Legajos con horas > 0 o hs extras > 0 en esta obra × semana
+      const legsSet = new Set<string>()
+      horas
+        .filter(h => h.obra_cod === o.cod && h.fecha >= toISO(days[0]!) && h.fecha <= toISO(days[6]!) && h.horas > 0)
+        .forEach(h => legsSet.add(h.leg))
+      hsExtras
+        .filter(x => x.obra_cod === o.cod && x.sem_key === sk && x.hs > 0)
+        .forEach(x => legsSet.add(x.leg))
+      const legs = [...legsSet]
       if (!legs.length) return
 
       // Ordenar por nombre
@@ -404,16 +420,18 @@ export function exportarExcelObras(
       // Fila título
       tarjaRows.push([`TARJA — ${o.nom} (${o.cod}) — ${getSemLabel(s)}`])
       // Fila fechas ISO (referencia, como en exportarTarjaExcel)
-      tarjaRows.push(['', '', '', ...days.map(d => toISO(d)), ''])
+      tarjaRows.push(['', '', '', ...days.map(d => toISO(d)), '', ''])
       // Header
       tarjaRows.push([
         'Legajo', 'Apellido y Nombre', 'Categoría',
         ...days.map((d, i) => `${DIAS[i]} ${d.getDate()}/${d.getMonth() + 1}`),
+        'Hs Extras',
         'TOTAL HORAS',
       ])
 
       // Totales por día para fila final
       const totDia = [0, 0, 0, 0, 0, 0, 0]
+      let totExtras = 0
       let totGeneral = 0
 
       legsOrdenados.forEach(p => {
@@ -425,15 +443,18 @@ export function exportarExcelObras(
           totDia[i]! += val
           return val || ''
         })
-        const totLeg = hsDia.reduce<number>((s, h) => s + (Number(h) || 0), 0)
+        const hsExtraLeg = getHsExtrasLeg(hsExtras, o.cod, p.leg, sk)
+        totExtras += hsExtraLeg
+        const totLeg = hsDia.reduce<number>((s, h) => s + (Number(h) || 0), 0) + hsExtraLeg
         totGeneral += totLeg
-        tarjaRows.push([p.leg, p.nom, catNom, ...hsDia, totLeg || ''])
+        tarjaRows.push([p.leg, p.nom, catNom, ...hsDia, hsExtraLeg || '', totLeg || ''])
       })
 
       // Fila total al pie
       tarjaRows.push([
         '', 'TOTAL', '',
         ...totDia.map(n => n || ''),
+        totExtras || '',
         totGeneral || '',
       ])
 
@@ -463,7 +484,10 @@ export function exportarExcelObras(
   ]
 
   obras.forEach(o => {
-    const legs = [...new Set(horas.filter(h => h.obra_cod === o.cod).map(h => h.leg))]
+    const legs = [...new Set([
+      ...horas.filter(h => h.obra_cod === o.cod).map(h => h.leg),
+      ...hsExtras.filter(x => x.obra_cod === o.cod && x.hs > 0).map(x => x.leg),
+    ])]
     const semanas = getSemanasObra(o.cod)
 
     semanas.sort().forEach(sk => {
@@ -478,9 +502,14 @@ export function exportarExcelObras(
       legs.forEach(leg => {
         const p = personal.find(x => x.leg === leg)
         if (!p) return
-        const hs = totalHsLeg(horas, o.cod, leg, days.map(toISO))
-        const costo = Math.round(costoLegConCatObra(o.cod, leg, days) / 1000) * 1000
+        const hsDias = totalHsLeg(horas, o.cod, leg, days.map(toISO))
+        const hsExtra = getHsExtrasLeg(hsExtras, o.cod, leg, sk)
+        const hs = hsDias + hsExtra
         if (hs === 0) return
+        const vh = getVHConCatObra(o.cod, leg, sk)
+        const costoBase = costoLegConCatObra(o.cod, leg, days)
+        const costoExtra = hsExtra * vh
+        const costo = Math.round((costoBase + costoExtra) / 1000) * 1000
         const cat = categorias.find(c => c.id === p.cat_id)
         detRows.push([
           '👷 Operario', o.nom, o.cod, o.cc ?? '',
@@ -657,7 +686,8 @@ export function generarRecibos(
   contratistas: Contratista[],
   catObra: Array<{ obra_cod: string; leg: string; cat_id: number; desde: string }> = [],
   prestamos: Prestamo[] = [],
-  legsSelec: string[] | null = null   // null = todos
+  legsSelec: string[] | null = null,   // null = todos
+  hsExtras: TarjaHsExtra[] = [],
 ) {
   const s = new Date(semKey + 'T12:00:00')
   const days = getSemDays(s)
@@ -706,29 +736,50 @@ export function generarRecibos(
   // ── Trabajadores ──
   const trabMap: Record<string, {
     p: Personal
-    obras: Array<{ obra: Obra; hs: number; costo: number; catNom: string }>
+    obras: Array<{ obra: Obra; hs: number; costo: number; catNom: string; hsExtra: number; vh: number; costoExtra: number }>
     totalHs: number
     totalCosto: number
+    totalHsExtra: number
+    totalCostoExtra: number
   }> = {}
 
   obrasSelec.forEach(o => {
-    const legs = [...new Set(
+    // Legs con horas o con hs extras en esta obra × semana
+    const legsHoras = new Set(
       horas
         .filter(h => h.obra_cod === o.cod && h.fecha >= toISO(days[0]!) && h.fecha <= toISO(days[6]!))
         .map(h => h.leg)
-    )].filter(leg => legsSelec === null || legsSelec.includes(leg))
+    )
+    hsExtras
+      .filter(x => x.obra_cod === o.cod && x.sem_key === semKey && x.hs > 0)
+      .forEach(x => legsHoras.add(x.leg))
+    const legs = [...legsHoras].filter(leg => legsSelec === null || legsSelec.includes(leg))
     legs.forEach(leg => {
       const p = personal.find(x => x.leg === leg)
       if (!p) return
-      const hs = totalHsLeg(horas, o.cod, leg, days.map(toISO))
+      const hsDias = totalHsLeg(horas, o.cod, leg, days.map(toISO))
+      const hsExtra = getHsExtrasLeg(hsExtras, o.cod, leg, semKey)
       const vh = getVHLocal(o.cod, leg)
-      const costo = Math.round(hs * vh / 1000) * 1000
-      if (hs === 0) return
+      // Redondeo consistente: costo base y extra redondeados por separado a miles
+      // para mantener el patrón del proyecto (fmtM siempre redondea a miles)
+      const costoBase = Math.round(hsDias * vh / 1000) * 1000
+      const costoExtra = Math.round(hsExtra * vh / 1000) * 1000
+      if (hsDias === 0 && hsExtra === 0) return
       const cat = categorias.find(c => c.id === p.cat_id)
-      if (!trabMap[leg]) trabMap[leg] = { p, obras: [], totalHs: 0, totalCosto: 0 }
-      trabMap[leg]!.obras.push({ obra: o, hs, costo, catNom: cat?.nom ?? '—' })
-      trabMap[leg]!.totalHs += hs
-      trabMap[leg]!.totalCosto += costo
+      if (!trabMap[leg]) trabMap[leg] = { p, obras: [], totalHs: 0, totalCosto: 0, totalHsExtra: 0, totalCostoExtra: 0 }
+      trabMap[leg]!.obras.push({
+        obra: o,
+        hs: hsDias,
+        costo: costoBase,
+        catNom: cat?.nom ?? '—',
+        hsExtra,
+        vh,
+        costoExtra,
+      })
+      trabMap[leg]!.totalHs += hsDias + hsExtra
+      trabMap[leg]!.totalCosto += costoBase + costoExtra
+      trabMap[leg]!.totalHsExtra += hsExtra
+      trabMap[leg]!.totalCostoExtra += costoExtra
     })
   })
 
@@ -771,6 +822,20 @@ export function generarRecibos(
         <td style="padding:4px 8px;font-size:10px;text-align:center;border-bottom:1px solid #eee;font-family:monospace">${fmtH(ob.hs)}</td>
         <td style="padding:4px 8px;font-size:10px;text-align:right;border-bottom:1px solid #eee;font-family:monospace">${fmtM(ob.costo)}</td>
       </tr>`).join('')
+
+    // Desglose de hs extras por obra (si hubiera)
+    const obrasConExtra = t.obras.filter(ob => ob.hsExtra > 0)
+    const hsExtrasRows = obrasConExtra.length ? obrasConExtra.map(ob => `
+      <div style="padding:4px 14px;border-top:1px dashed #D9E8D9;display:flex;justify-content:space-between;align-items:center;background:#F3FAF3">
+        <div style="font-size:9px;color:#5A7A5A">
+          <span style="font-family:monospace;font-size:8px;background:#DCEDDC;padding:1px 5px;border-radius:3px;margin-right:4px">${ob.obra.cod}</span>
+          + Hs extras: <b style="font-family:monospace;color:#1A6B3C">${fmtH(ob.hsExtra)}</b>
+          × <span style="font-family:monospace">$${ob.vh.toLocaleString('es-AR')}/h</span>
+        </div>
+        <div style="font-size:10px;font-weight:700;color:#1A6B3C;font-family:monospace">
+          + ${fmtM(ob.costoExtra)}
+        </div>
+      </div>`).join('') : ''
 
     // Préstamo/descuento de esta semana para este trabajador
     const prestamo = prestamos.find(p => p.leg === t.p.leg && p.sem_key === semKey)
@@ -824,6 +889,7 @@ export function generarRecibos(
         </tr></thead>
         <tbody>${obrasRows}</tbody>
       </table>
+      ${hsExtrasRows}
       ${prestamoRow}
       <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 14px;background:#F0EFEB;border-top:2px solid #0F2744">
         <div style="font-size:9px;color:#8A8980">Total horas: <b style="color:#1C1C1E;font-family:monospace">${fmtH(t.totalHs)}</b></div>

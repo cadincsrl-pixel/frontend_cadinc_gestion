@@ -12,6 +12,7 @@ import type { Obra, Personal, Categoria, Hora, Tarifa, Cierre, Certificacion, Co
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api/client'
 import { usePrestamos } from '../hooks/usePrestamos'
+import { useHsExtrasAll } from '../hooks/useHsExtras'
 
 
 interface Props {
@@ -42,6 +43,7 @@ export function ModalRecibos({
 }: Props) {
   const toast = useToast()
   const { data: prestamos = [] } = usePrestamos()
+  const { data: todasHsExtras = [] } = useHsExtrasAll()
   const [semKey, setSemKey] = useState(semActual ? toISO(semActual) : '')
   const [empresa, setEmpresa] = useState('CADINC SRL')
   const [obrasSelec, setObrasSelec] = useState<string[]>(obras.map(o => o.cod))
@@ -119,21 +121,22 @@ export function ModalRecibos({
   }
 
 
-  // Operarios con horas en semana+obras seleccionadas
+  // Operarios con horas o hs extras en semana+obras seleccionadas
   const operariosDisponibles = useMemo(() => {
     if (!semKey) return []
-    return [...new Set(
-      horas
-        .filter(h => {
-          const sk = toISO(getViernes(new Date(h.fecha + 'T12:00:00')))
-          return sk === semKey && obrasSelec.includes(h.obra_cod)
-        })
-        .map(h => h.leg)
-    )]
+    const legsSet = new Set<string>()
+    horas.forEach(h => {
+      const sk = toISO(getViernes(new Date(h.fecha + 'T12:00:00')))
+      if (sk === semKey && obrasSelec.includes(h.obra_cod)) legsSet.add(h.leg)
+    })
+    todasHsExtras.forEach(x => {
+      if (x.sem_key === semKey && obrasSelec.includes(x.obra_cod) && x.hs > 0) legsSet.add(x.leg)
+    })
+    return [...legsSet]
       .map(leg => personal.find(p => p.leg === leg))
       .filter(Boolean)
       .sort((a, b) => a!.nom.localeCompare(b!.nom)) as typeof personal
-  }, [semKey, obrasSelec, horas, personal])
+  }, [semKey, obrasSelec, horas, personal, todasHsExtras])
 
   // Si la semana/obras cambian, resetear selección de operarios
   const legsEfectivos = legsSelec ?? operariosDisponibles.map(p => p.leg)
@@ -166,6 +169,14 @@ export function ModalRecibos({
     const contratNum = new Set(certsFilt.map(c => c.contrat_id)).size
     const paginas = Math.ceil((operarios + contratNum) / 5) || 0
 
+    // Hs extras de esta semana × obras seleccionadas (y legs seleccionados si aplica)
+    const hsExtrasFilt = todasHsExtras.filter(x => {
+      if (x.sem_key !== semKey) return false
+      if (!obrasTarget.some(o => o.cod === x.obra_cod)) return false
+      if (legsSelec !== null && !legsSelec.includes(x.leg)) return false
+      return x.hs > 0
+    })
+
     // Costo operarios — redondeado por leg igual que ResumenHistoricoPage
     const legMap = new Map<string, { obraCod: string; leg: string; totalHs: number; sk: string }>()
     horasFilt.forEach(h => {
@@ -174,13 +185,19 @@ export function ModalRecibos({
       if (!legMap.has(key)) legMap.set(key, { obraCod: h.obra_cod, leg: h.leg, totalHs: 0, sk })
       legMap.get(key)!.totalHs += h.horas
     })
-    const costoOp = [...legMap.values()].reduce((sum, entry) => {
+    const costoOpBase = [...legMap.values()].reduce((sum, entry) => {
       const vh = getVHConCatObra(entry.obraCod, entry.leg, entry.sk)
       return sum + Math.round(entry.totalHs * vh / 1000) * 1000
     }, 0)
+    const costoOpExtras = hsExtrasFilt.reduce((sum, x) => {
+      const vh = getVHConCatObra(x.obra_cod, x.leg, x.sem_key)
+      return sum + Math.round(x.hs * vh / 1000) * 1000
+    }, 0)
+    const costoOp = costoOpBase + costoOpExtras
 
     const costoContrat = certsFilt.reduce((s, c) => s + c.monto, 0)
     const totalHs = horasFilt.reduce((s, h) => s + h.horas, 0)
+      + hsExtrasFilt.reduce((s, x) => s + x.hs, 0)
 
     const costoOpFinal = incluirOp ? costoOp : 0
     const costoContratFinal = incluirCont ? costoContrat : 0
@@ -203,7 +220,7 @@ export function ModalRecibos({
       tieneData: operariosFinal > 0 || contratNumFinal > 0,
       obrasCount: obrasSelec.length,
     }
-  }, [semKey, obrasSelec, legsSelec, horas, certificaciones, personal, categorias, tarifas, obras, todasCatObra, incluirOp, incluirCont])
+  }, [semKey, obrasSelec, legsSelec, horas, certificaciones, personal, categorias, tarifas, obras, todasCatObra, incluirOp, incluirCont, todasHsExtras])
 
   function handleGenerar() {
     if (!semKey) { toast('Seleccioná una semana', 'err'); return }
@@ -217,12 +234,15 @@ export function ModalRecibos({
     const certsParaRecibo = incluirCont ? certificaciones : []
     const contratParaRecibo = incluirCont ? contratistas : []
 
+    const hsExtrasParaRecibo = incluirOp ? todasHsExtras : []
+
     const result = generarRecibos(
       semKey, empresa, obrasTarget,
       personal, categorias, horasParaRecibo, tarifas,
       certsParaRecibo, contratParaRecibo,
       todasCatObra, prestamos,
-      incluirOp ? legsSelec : null
+      incluirOp ? legsSelec : null,
+      hsExtrasParaRecibo,
     )
 
     if (!result) { toast('No hay datos para esta selección', 'err'); return }
