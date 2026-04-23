@@ -26,6 +26,7 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
     { key: 'choferes',      label: 'Choferes',      icon: '👷' },
     { key: 'camiones',      label: 'Camiones',      icon: '🚚' },
     { key: 'lugares',       label: 'Lugares',       icon: '📍' },
+    { key: 'gastos',        label: 'Gastos',        icon: '💸' },
   ],
   herramientas: [
     { key: 'inventario',   label: 'Inventario',   icon: '🔧' },
