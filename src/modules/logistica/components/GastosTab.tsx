@@ -51,7 +51,8 @@ const METODO_EMOJI: Record<Gasto['metodo_pago'], string> = {
 export function GastosTab() {
   const toast = useToast()
   const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('logistica')
-  const userId = useSessionStore(s => s.profile?.id)
+  const userId  = useSessionStore(s => s.profile?.id)
+  const esAdmin = useSessionStore(s => s.profile?.rol === 'admin')
 
   // ── Filtros ─────────────────────────────────────────────────
   const [filters, setFilters] = useState<GastosFilters>({ limit: 100, offset: 0 })
@@ -150,7 +151,7 @@ export function GastosTab() {
       comprobante_path: uploadPath,
     } as any, {
       onSuccess: () => {
-        toast('✓ Gasto registrado (pendiente de aprobación)', 'ok')
+        toast(esAdmin ? '✓ Gasto registrado y aprobado' : '✓ Gasto registrado (pendiente de aprobación)', 'ok')
         setModalCreate(false)
         formNuevo.reset({ ...formNuevo.getValues(), categoria_id: '', monto: '', descripcion: '', obs: '', comprobante_nro: '' })
         resetUpload()

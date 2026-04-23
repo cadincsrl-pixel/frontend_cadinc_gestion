@@ -257,7 +257,10 @@ export function ModalImportarGastos({ open, onClose, categorias, choferes, camio
               {resultado.creados} gasto{resultado.creados !== 1 ? 's' : ''} creado{resultado.creados !== 1 ? 's' : ''}
               {resultado.errores > 0 && <> · <span className="text-rojo font-bold">{resultado.errores} fallidos</span></>}
             </div>
-            <p className="text-xs text-gris-dark mt-2">Los gastos quedan en estado <b>pendiente</b> hasta que alguien los apruebe.</p>
+            <p className="text-xs text-gris-dark mt-2">
+              Si sos admin, los gastos quedan aprobados automáticamente. Si no,
+              entran en estado <b>pendiente</b> y otro usuario debe aprobarlos.
+            </p>
           </div>
         )}
 
