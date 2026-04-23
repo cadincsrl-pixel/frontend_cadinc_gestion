@@ -16,8 +16,9 @@ import {
   calcularTotalesSemana,
 } from '@/lib/utils/costos'
 import { Chip } from '@/components/ui/Chip'
-import type { Hora, Tarifa, Cierre, Certificacion, Contratista } from '@/types/domain.types'
+import type { Hora, Tarifa, Cierre, Certificacion, Contratista, TarjaHsExtra } from '@/types/domain.types'
 import { usePrestamos } from '@/modules/tarja/hooks/usePrestamos'
+import { useHsExtrasAll } from '@/modules/tarja/hooks/useHsExtras'
 
 export function ResumenHistoricoPage() {
   const router = useRouter()
@@ -70,6 +71,8 @@ export function ResumenHistoricoPage() {
   })
 
   const { data: todosPrestamos = [] } = usePrestamos()
+  // Todas las hs extras (1 sola query). Se cruzan por obra+leg+sem_key abajo.
+  const { data: todasHsExtras = [] } = useHsExtrasAll() as { data: TarjaHsExtra[] }
 
   function getLegsActivos(obraCod: string, semKey: string): string[] {
     return todasAsignaciones
@@ -141,13 +144,20 @@ export function ResumenHistoricoPage() {
           h.fecha >= toISO(semActualDays[0]!) &&
           h.fecha <= toISO(semActualDays[6]!)
       )
-      const legsConHoras = [...new Set(horasObra.map(h => h.leg))]
+      // Incluir también legs que SOLO tienen hs extras (sin horas regulares).
+      const extrasObraSem = todasHsExtras.filter(
+        e => e.obra_cod === o.cod && e.sem_key === semActualKey,
+      )
+      const legsConActividad = [...new Set([
+        ...horasObra.map(h => h.leg),
+        ...extrasObraSem.map(e => e.leg),
+      ])]
 
       let oHs = 0
       let oCosto = 0
-      legsConHoras.forEach(leg => {
+      legsConActividad.forEach(leg => {
         trabajadoresUnicos.add(leg)
-        const hs = totalHsLeg(todasHoras, o.cod, leg, semActualDays.map(toISO))
+        const hs = totalHsLeg(todasHoras, o.cod, leg, semActualDays.map(toISO), todasHsExtras)
         oHs += hs
         oCosto += Math.round(costoLegConCatObra(o.cod, leg, semActualDays) / 1000) * 1000
       })
@@ -161,11 +171,11 @@ export function ResumenHistoricoPage() {
       totalCosto += oCosto
       totalContrat += oContrat
 
-      return { obra: o, hs: oHs, costo: oCosto, contrat: oContrat, legs: legsConHoras.length }
+      return { obra: o, hs: oHs, costo: oCosto, contrat: oContrat, legs: legsConActividad.length }
     }).filter(c => c.hs > 0 || c.contrat > 0)
 
     return { cards, totalHs, totalCosto, totalContrat, trabajadores: trabajadoresUnicos.size }
-  }, [obrasFiltradas, todasHoras, personal, categorias, todasTarifas, todasCerts, todosCierres, todasAsignaciones, todasCatObra, filtroNombre, filtroDesde, filtroHasta])
+  }, [obrasFiltradas, todasHoras, todasHsExtras, personal, categorias, todasTarifas, todasCerts, todosCierres, todasAsignaciones, todasCatObra, filtroNombre, filtroDesde, filtroHasta])
 
   // ── RESUMEN HISTÓRICO ──
   const resumenHistorico = useMemo(() => {
@@ -191,23 +201,32 @@ export function ResumenHistoricoPage() {
         seenKeys.add(c.sem_key)
       })
 
+      // También semanas con hs extras (por si la obra cobró extras sin horas normales)
+      todasHsExtras.filter(e => e.obra_cod === o.cod).forEach(e => {
+        if (filtroDesde && e.sem_key < filtroDesde) return
+        if (filtroHasta && e.sem_key > filtroHasta) return
+        seenKeys.add(e.sem_key)
+      })
+
       let oHs = 0
       let oCosto = 0
       const legsUnicos = new Set<string>()
 
       seenKeys.forEach(sk => {
         const days = getSemDays(new Date(sk + 'T12:00:00'))
-        // Obtener legs desde las horas reales (no desde asignaciones)
-        // para no perder workers con horas pero sin asignación formal
         const horasSem = todasHoras.filter(
           h => h.obra_cod === o.cod &&
             h.fecha >= toISO(days[0]!) &&
             h.fecha <= toISO(days[6]!)
         )
-        const legsConHoras = [...new Set(horasSem.map(h => h.leg))]
+        const extrasSem = todasHsExtras.filter(e => e.obra_cod === o.cod && e.sem_key === sk)
+        const legsConActividad = [...new Set([
+          ...horasSem.map(h => h.leg),
+          ...extrasSem.map(e => e.leg),
+        ])]
 
-        legsConHoras.forEach(leg => {
-          const hs = totalHsLeg(todasHoras, o.cod, leg, days.map(toISO))
+        legsConActividad.forEach(leg => {
+          const hs = totalHsLeg(todasHoras, o.cod, leg, days.map(toISO), todasHsExtras)
           if (hs > 0) legsUnicos.add(leg)
           oHs += hs
           oCosto += Math.round(costoLegConCatObra(o.cod, leg, days) / 1000) * 1000
@@ -272,7 +291,7 @@ export function ResumenHistoricoPage() {
     }>
 
     return { filas, htHs, htCosto, htContrat, htSemsCerradas }
-  }, [obrasFiltradasHist, todasHoras, personal, categorias, todasTarifas, todasCerts, todosCierres, todasAsignaciones, filtroNombre, filtroDesde, filtroHasta])
+  }, [obrasFiltradasHist, todasHoras, todasHsExtras, personal, categorias, todasTarifas, todasCerts, todosCierres, todasAsignaciones, filtroNombre, filtroDesde, filtroHasta])
 
   function limpiarFiltros() {
     setFiltroNombre('')
@@ -339,7 +358,12 @@ export function ResumenHistoricoPage() {
     }
 
     const hs = totalHsLeg(todasHoras, obraCod, leg, days.map(toISO))
-    return hs * vh
+    // Sumar hs extras: cantidad pura * VH efectivo (mismo precio/hora que normales).
+    const semKey = toISO(getViernes(days[0]!))
+    const hsExtras = todasHsExtras.find(
+      e => e.obra_cod === obraCod && e.leg === leg && e.sem_key === semKey,
+    )?.hs ?? 0
+    return (hs + hsExtras) * (vh ?? 0)
   }
 
 

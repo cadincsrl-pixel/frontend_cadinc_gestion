@@ -7,6 +7,7 @@ import { useObras } from '@/modules/tarja/hooks/useObras'
 import { usePersonalSemana } from '@/modules/tarja/hooks/useAsignaciones'
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
 import { useHorasSemana, useUpsertHorasLote, useLimpiarSemana } from '@/modules/tarja/hooks/useHoras'
+import { useHsExtras } from '@/modules/tarja/hooks/useHsExtras'
 import { useTarifasObra } from '@/modules/tarja/hooks/useTarifas'
 import { useContratistas } from '@/modules/tarja/hooks/useContratistas'
 import { useTarjaStore } from '@/modules/tarja/store/tarja.store'
@@ -69,6 +70,7 @@ export function TarjaObraPage({ obraCod }: Props) {
   const { data: personal = [] } = usePersonalSemana(obraCod, desde, hasta)
 
   const { data: horasData = [] } = useHorasSemana(obraCod, desde, hasta)
+  const { data: hsExtrasData = [] } = useHsExtras(obraCod, desde, hasta)
   const { mutate: upsertLote } = useUpsertHorasLote()
   const { mutate: limpiarSemana } = useLimpiarSemana()
 
@@ -123,9 +125,9 @@ export function TarjaObraPage({ obraCod }: Props) {
     return () => setTopbarAccion(null)
   }, [obra, personal, horasData, tarifas])
 
-  // ── Totales semana ──
+  // ── Totales semana (incluye hs extras) ──
   const { totalHs, totalCosto } = calcularTotalesSemana(
-    horasData, personal, categorias, tarifas, obraCod, days
+    horasData, personal, categorias, tarifas, obraCod, days, hsExtrasData
   )
 
   const [undoState, setUndoState] = useState<{ count: number; fn: (() => void) | null }>({ count: 0, fn: null })
