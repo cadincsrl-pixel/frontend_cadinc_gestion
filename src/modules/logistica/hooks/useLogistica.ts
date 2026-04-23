@@ -588,6 +588,34 @@ export function useMarcarGastoPagado() {
   })
 }
 
+// Reintegros pendientes de un chofer — gastos pagados por él, aprobados,
+// todavía no vinculados a liquidación. Usado por el form de liquidación.
+export type GastoReintegro = {
+  id: number
+  fecha: string
+  categoria_id: number
+  monto: number
+  descripcion: string
+  proveedor: string | null
+  comprobante_url: string | null
+  comprobante_nro: string
+  categoria?: { codigo: string; nombre: string }
+}
+
+export function useGastosReintegrosPendientes(choferId: number | null, hasta?: string) {
+  return useQuery({
+    queryKey: ['logistica','gastos','reintegros-pendientes', choferId, hasta] as const,
+    queryFn:  () => {
+      const q = new URLSearchParams({ chofer_id: String(choferId) })
+      if (hasta) q.set('hasta', hasta)
+      return apiGet<{ items: GastoReintegro[]; total: number; count: number }>(
+        `/api/logistica/gastos/reintegros-pendientes?${q.toString()}`,
+      )
+    },
+    enabled: !!choferId,
+  })
+}
+
 // ── Reportes ──────────────────────────────────────────────────
 export type ResumenReporte = {
   total: number

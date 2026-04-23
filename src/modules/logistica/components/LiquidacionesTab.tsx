@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   useLiquidaciones, useAdelantos, useChoferes, useTramos, useRutas, useCanteras, useDepositos,
   useCreateLiquidacion, useUpdateLiquidacion, useCerrarLiquidacion, useDeleteLiquidacion,
   useCreateAdelanto, useUpdateAdelanto, useDeleteAdelanto, useUpdateChofer,
+  useGastosReintegrosPendientes,
 } from '../hooks/useLogistica'
 import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
@@ -89,6 +90,7 @@ export function LiquidacionesTab() {
   const [choferLiq,   setChoferLiq]   = useState<Chofer | null>(null)
   const [selAdelant,  setSelAdelant]  = useState<number[]>([])
   const [selTramos,   setSelTramos]   = useState<number[]>([])
+  const [selGastos,   setSelGastos]   = useState<number[]>([])
   const [modalAdel,   setModalAdel]   = useState(false)
   const [editandoAdel, setEditandoAdel] = useState<Adelanto | null>(null)
   const [detalleLiq,  setDetalleLiq]  = useState<any | null>(null)
@@ -103,6 +105,24 @@ export function LiquidacionesTab() {
   const watchHasta  = formLiq.watch('hasta')
   const watchBasico = formLiq.watch('basico_mensual')
   const watchKm     = formLiq.watch('precio_km')
+
+  // Reintegros pendientes del chofer activo (Fase 3). Se consulta al backend
+  // cuando se abre el modal de liquidar; el usuario elige cuáles incluir.
+  const { data: reintegrosResp } = useGastosReintegrosPendientes(
+    choferLiq?.id ?? null,
+    watchHasta || undefined,
+  )
+  const gastosReintegro = reintegrosResp?.items ?? []
+
+  // Pre-tildar todos los reintegros cuando el listado cambia (chofer nuevo
+  // o refetch por cambio de fecha). Si el user destildó alguno manualmente,
+  // este efecto lo vuelve a tildar — trade-off a favor del flujo típico
+  // "todos los reintegros van en esta liquidación".
+  const reintegroIdsKey = gastosReintegro.map(g => g.id).join(',')
+  useEffect(() => {
+    if (choferLiq) setSelGastos(gastosReintegro.map(g => g.id))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reintegroIdsKey, choferLiq?.id])
 
   // Tramos completados aún no liquidados
   const tramosPendientes    = (tramos as Tramo[]).filter(t => t.estado === 'completado' && !t.liquidacion_id)
@@ -130,6 +150,7 @@ export function LiquidacionesTab() {
     const mis_tramos = tramosPendientes.filter(t => t.chofer_id === chofer.id)
     setSelTramos(mis_tramos.map(t => t.id))
     setSelAdelant(adelantosPendientes.filter(a => a.chofer_id === chofer.id).map(a => a.id))
+    setSelGastos([]) // se llena cuando el hook devuelve reintegros (useEffect abajo)
     const { desde, hasta } = rangoTramos(mis_tramos)
     const dm = diasDelMes(desde)
     formLiq.reset({
@@ -143,7 +164,7 @@ export function LiquidacionesTab() {
   }
 
   function calcularPreview() {
-    if (!choferLiq) return { dias: 0, basico_dia: 0, dias_mes: 30, subtotal_bas: 0, km_totales: 0, subtotal_km: 0, descuentos: 0, neto: 0 }
+    if (!choferLiq) return { dias: 0, basico_dia: 0, dias_mes: 30, subtotal_bas: 0, km_totales: 0, subtotal_km: 0, descuentos: 0, reintegros: 0, precio_km: 0, neto: 0 }
     const basicoMensual = parseFloat(watchBasico) || 0
     const precioKm      = parseFloat(watchKm)     || 0
     const desde         = watchDesde ?? ''
@@ -156,7 +177,12 @@ export function LiquidacionesTab() {
     const km_totales    = tramosSelec.reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
     const subtotal_km   = km_totales * precioKm
     const descuentos    = adelantosPendientes.filter(a => selAdelant.includes(a.id)).reduce((s, a) => s + a.monto, 0)
-    return { dias, basico_dia, dias_mes, subtotal_bas, km_totales, subtotal_km, descuentos, neto: subtotal_bas + subtotal_km - descuentos }
+    const reintegros    = gastosReintegro.filter(g => selGastos.includes(g.id)).reduce((s, g) => s + Number(g.monto), 0)
+    return {
+      dias, basico_dia, dias_mes, subtotal_bas, km_totales, subtotal_km, descuentos, reintegros,
+      precio_km:    precioKm,
+      neto:         subtotal_bas + subtotal_km - descuentos + reintegros,
+    }
   }
 
   function handleGuardarTarifas(data: any) {
@@ -170,29 +196,40 @@ export function LiquidacionesTab() {
 
   function handleLiquidar(data: any) {
     if (!choferLiq) return
-    const { dias, basico_dia, subtotal_bas, subtotal_km, descuentos, neto } = calcularPreview()
-    const tramo_ids = selTramos
+    const { dias, basico_dia, subtotal_bas, km_totales, subtotal_km, descuentos, reintegros, precio_km, neto } = calcularPreview()
     createLiq({
-      chofer_id:       choferLiq.id,
-      fecha_desde:     data.desde,
-      fecha_hasta:     data.hasta,
-      dias_trabajados: dias,
+      chofer_id:         choferLiq.id,
+      fecha_desde:       data.desde,
+      fecha_hasta:       data.hasta,
+      dias_trabajados:   dias,
       basico_dia,
-      subtotal_basico: subtotal_bas + subtotal_km,
-      total_adelantos: descuentos,
-      total_neto:      neto,
-      obs:             data.obs,
-      tramo_ids,
-      adelanto_ids:    selAdelant,
-    }, {
+      km_totales,
+      precio_km,
+      subtotal_basico:   subtotal_bas,
+      subtotal_km,
+      total_adelantos:   descuentos,
+      total_reintegros:  reintegros,
+      total_neto:        neto,
+      obs:               data.obs,
+      tramo_ids:         selTramos,
+      adelanto_ids:      selAdelant,
+      gasto_ids:         selGastos,
+    } as any, {
       onSuccess: (nueva: any) => {
         cerrarLiq(nueva.id, { onSuccess: () => toast('✓ Liquidación cerrada', 'ok') })
         setModalLiq(false)
         setChoferLiq(null)
         setSelAdelant([])
         setSelTramos([])
+        setSelGastos([])
       },
-      onError: () => toast('Error al liquidar', 'err'),
+      onError: (err: any) => {
+        const code = err?.body?.error || err?.code
+        if (code === 'TRAMO_INVALIDO')    toast('Alguno de los tramos no es válido (ya liquidado o no pertenece al chofer)', 'err')
+        else if (code === 'ADELANTO_INVALIDO') toast('Alguno de los adelantos no es válido', 'err')
+        else if (code === 'GASTO_INVALIDO') toast('Alguno de los gastos a reintegrar no es válido (cambió de estado)', 'err')
+        else toast(err?.message || 'Error al liquidar', 'err')
+      },
     })
   }
 
@@ -583,6 +620,33 @@ export function LiquidacionesTab() {
               </div>
             )}
 
+            {/* Reintegros (gastos pagados por el chofer) — Fase 3 */}
+            {gastosReintegro.length > 0 && (
+              <div>
+                <div className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-2">
+                  🔁 Reintegros pendientes (gastos pagados por el chofer)
+                </div>
+                <div className="bg-naranja-light/40 border border-naranja/20 rounded-xl p-3 max-h-40 overflow-y-auto flex flex-col gap-1">
+                  {gastosReintegro.map(g => (
+                    <label key={g.id} className="flex items-center gap-2 cursor-pointer text-sm py-1 border-b border-naranja/10 last:border-0">
+                      <input
+                        type="checkbox"
+                        checked={selGastos.includes(g.id)}
+                        onChange={e => setSelGastos(prev => e.target.checked ? [...prev, g.id] : prev.filter(x => x !== g.id))}
+                        className="accent-naranja"
+                      />
+                      <span className="flex-1 min-w-0 truncate">
+                        {fmtFecha(g.fecha)} · <b>{g.categoria?.nombre ?? `cat#${g.categoria_id}`}</b>
+                        {g.proveedor && <> · {g.proveedor}</>}
+                        {g.comprobante_url && <> 📎</>}
+                      </span>
+                      <b className="font-mono text-naranja-dark">{fmtM(Number(g.monto))}</b>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Resumen */}
             <div className="bg-azul-light rounded-xl p-4">
               <div className="font-display text-lg tracking-wider text-azul mb-3">RESUMEN</div>
@@ -603,6 +667,12 @@ export function LiquidacionesTab() {
                   <>
                     <span className="text-gris-dark">Adelantos:</span>
                     <span className="font-mono font-bold text-rojo">− {fmtM(preview.descuentos)}</span>
+                  </>
+                )}
+                {preview.reintegros > 0 && (
+                  <>
+                    <span className="text-gris-dark">🔁 Reintegros gastos:</span>
+                    <span className="font-mono font-bold text-naranja-dark">+ {fmtM(preview.reintegros)}</span>
                   </>
                 )}
                 <span className="font-bold text-azul border-t border-azul/20 pt-1.5">TOTAL NETO:</span>
