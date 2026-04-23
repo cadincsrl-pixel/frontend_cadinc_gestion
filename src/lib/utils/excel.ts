@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx'
 import type { Obra, Cierre, Certificacion, Contratista, Categoria, Personal, Hora, Tarifa, Prestamo, TarjaHsExtra } from '@/types/domain.types'
 import { getSemDays, toISO, getSemLabel, getViernesCobro, getViernes, DIAS } from './dates'
 import { totalHsLeg, costoLeg, getHsExtrasLeg } from './costos'
+import { calcularResumenSemana } from './resumen-semana'
 
 // ══════════════════════════════════════════════════
 // EXPORT TARJA — planilla por obra y semana
@@ -692,6 +693,7 @@ export function generarRecibos(
   prestamos: Prestamo[] = [],
   legsSelec: string[] | null = null,   // null = todos
   hsExtras: TarjaHsExtra[] = [],
+  incluirPortada: boolean = true,
 ) {
   const s = new Date(semKey + 'T12:00:00')
   const days = getSemDays(s)
@@ -961,6 +963,117 @@ export function generarRecibos(
   const totalOp = trabajadores.reduce((s, t) => s + t.totalCosto, 0)
   const totalContrat = contratData.reduce((s, c) => s + c.totalCosto, 0)
 
+  // ── Portada resumen (primera página) ──
+  let portadaHTML = ''
+  if (incluirPortada && (trabajadores.length > 0 || contratData.length > 0)) {
+    const resumen = calcularResumenSemana({
+      obras: obrasSelec,
+      semana: s,
+      horas,
+      hsExtras,
+      personal,
+      categorias,
+      tarifas,
+      certificaciones,
+      catObra,
+      prestamos,
+    })
+
+    const cardHTML = resumen.cards.map(c => {
+      const esDep = c.obra.es_deposito
+      const bg = esDep ? '#FDEEDA' : '#F8F6F2'
+      const border = esDep ? '#E8C5A0' : '#D9D6CF'
+      const ccChip = c.obra.cc
+        ? `<span style="font-family:monospace;font-size:9px;background:#E8EDF5;color:#1D3F6E;padding:1px 6px;border-radius:3px;font-weight:700;letter-spacing:.3px">CC ${c.obra.cc}</span>`
+        : ''
+      const respLine = (c.obra.dir || c.obra.resp)
+        ? `<div style="font-size:10px;color:#8A8980;margin-top:6px">${c.obra.resp ? '👷 ' + c.obra.resp : ''}${c.obra.dir && c.obra.resp ? ' · ' : ''}${c.obra.dir ? '📍 ' + c.obra.dir : ''}</div>`
+        : ''
+      return `
+        <div style="background:${bg};border:1px solid ${border};border-radius:8px;padding:8px 10px;break-inside:avoid">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">
+            ${ccChip}
+            <span style="font-weight:700;font-size:11px;color:#1D3F6E;letter-spacing:.3px">${c.obra.nom}</span>
+          </div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+            <div style="text-align:left">
+              <div style="font-family:monospace;font-size:11px;font-weight:700;color:#1C1C1E">${c.legs}</div>
+              <div style="font-size:8px;color:#8A8980;text-transform:uppercase;letter-spacing:.3px">Operarios</div>
+            </div>
+            <div style="text-align:left">
+              <div style="font-family:monospace;font-size:11px;font-weight:700;color:#1C1C1E">${fmtH(c.hs)}</div>
+              <div style="font-size:8px;color:#8A8980;text-transform:uppercase;letter-spacing:.3px">Horas sem.</div>
+            </div>
+            ${c.costo > 0 ? `<div style="text-align:left">
+              <div style="font-family:monospace;font-size:11px;font-weight:700;color:#1A6B3C">${fmtM(c.costo)}</div>
+              <div style="font-size:8px;color:#8A8980;text-transform:uppercase;letter-spacing:.3px">Costo op.</div>
+            </div>` : ''}
+            ${c.contrat > 0 ? `<div style="text-align:left">
+              <div style="font-family:monospace;font-size:11px;font-weight:700;color:#5A2D82">${fmtM(c.contrat)}</div>
+              <div style="font-size:8px;color:#8A8980;text-transform:uppercase;letter-spacing:.3px">Contrat.</div>
+            </div>` : ''}
+            <div style="margin-left:auto;text-align:right">
+              <div style="font-family:monospace;font-size:13px;font-weight:700;color:#E8621A">${fmtM(c.costo + c.contrat)}</div>
+              <div style="font-size:8px;color:#8A8980;text-transform:uppercase;letter-spacing:.3px">total semana</div>
+            </div>
+          </div>
+          ${respLine}
+        </div>`
+    }).join('')
+
+    const chip = (label: string, value: string, variant?: 'green' | 'orange' | 'red') => {
+      const colors = variant === 'green'
+        ? { bg: '#DEEDE6', fg: '#1A6B3C' }
+        : variant === 'orange'
+        ? { bg: '#FDE6D6', fg: '#E8621A' }
+        : variant === 'red'
+        ? { bg: '#FCE4E4', fg: '#C0392B' }
+        : { bg: '#F0EFEB', fg: '#1C1C1E' }
+      return `
+        <div style="background:${colors.bg};border-radius:8px;padding:6px 12px;text-align:center;min-width:70px">
+          <div style="font-family:monospace;font-size:14px;font-weight:700;color:${colors.fg};letter-spacing:-.3px">${value}</div>
+          <div style="font-size:8px;color:#8A8980;text-transform:uppercase;letter-spacing:.5px;margin-top:1px">${label}</div>
+        </div>`
+    }
+
+    const chipsPrestamos = [
+      resumen.totalPrestamosOtorgados > 0
+        ? chip('Préstamos (+)', fmtM(resumen.totalPrestamosOtorgados), 'orange')
+        : '',
+      resumen.totalPrestamosDescuentos > 0
+        ? chip('Descuentos (−)', fmtM(resumen.totalPrestamosDescuentos), 'red')
+        : '',
+    ].join('')
+
+    portadaHTML = `
+      <div style="page-break-after:always;font-family:Arial,sans-serif;background:#fff;border:1.5px solid #D9D6CF;border-left:4px solid #E8621A;border-radius:10px;padding:14px 16px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+          <div>
+            <div style="font-size:18px;font-weight:800;color:#1D3F6E;letter-spacing:1.5px">📊 RESUMEN GENERAL</div>
+            <div style="font-size:11px;color:#8A8980;margin-top:3px">
+              ${empresa} · ${periodo} · Pago: <b style="color:#E8621A">${pagoStr}</b>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            ${chip('Obras', String(resumen.cards.length))}
+            ${chip('Personal', String(resumen.totalPersonal))}
+            ${chip('Horas', fmtH(resumen.totalHs))}
+            ${chip('Operarios', fmtM(resumen.totalCostoOp), 'green')}
+            ${resumen.totalCostoContrat > 0 ? chip('Contratistas', fmtM(resumen.totalCostoContrat)) : ''}
+            ${chipsPrestamos}
+            ${chip('Total semana', fmtM(resumen.totalSemana), 'orange')}
+          </div>
+        </div>
+        ${resumen.cards.length === 0
+          ? '<div style="color:#8A8980;text-align:center;padding:20px;font-size:11px">Sin actividad esta semana.</div>'
+          : `<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">${cardHTML}</div>`
+        }
+        <div style="margin-top:10px;padding-top:8px;border-top:1px dashed #D9D6CF;font-size:9px;color:#8A8980;text-align:right">
+          ${trabajadores.length} recibo${trabajadores.length !== 1 ? 's' : ''} de operario${trabajadores.length !== 1 ? 's' : ''}${contratData.length ? ' · ' + contratData.length + ' certificación' + (contratData.length !== 1 ? 'es' : '') + ' de contratista' : ''}
+        </div>
+      </div>`
+  }
+
   const win = window.open('', '_blank', 'width=900,height=700')
   if (!win) return null
 
@@ -998,7 +1111,7 @@ export function generarRecibos(
         <button class="btn-close" onclick="window.close()">✕ Cerrar</button>
       </div>
     </div>
-    <div class="page-grid">${recibosHTML}${contratHTML}</div>
+    <div class="page-grid">${portadaHTML}${recibosHTML}${contratHTML}</div>
   </body></html>`)
   win.document.close()
 

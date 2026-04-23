@@ -49,6 +49,7 @@ export function ModalRecibos({
   const [obrasSelec, setObrasSelec] = useState<string[]>(obras.map(o => o.cod))
   const [incluirOp, setIncluirOp] = useState(true)
   const [incluirCont, setIncluirCont] = useState(true)
+  const [incluirPortada, setIncluirPortada] = useState(true)
   const [busquedaObra, setBusquedaObra] = useState('')
   const [legsSelec, setLegsSelec] = useState<string[] | null>(null) // null = todos
   const [busquedaOp, setBusquedaOp] = useState('')
@@ -243,6 +244,7 @@ export function ModalRecibos({
       todasCatObra, prestamos,
       incluirOp ? legsSelec : null,
       hsExtrasParaRecibo,
+      incluirPortada,
     )
 
     if (!result) { toast('No hay datos para esta selección', 'err'); return }
@@ -321,6 +323,17 @@ export function ModalRecibos({
               🔧 Contratistas
             </button>
           </div>
+          <label className="flex items-center gap-2 mt-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={incluirPortada}
+              onChange={e => setIncluirPortada(e.target.checked)}
+              className="accent-naranja w-4 h-4"
+            />
+            <span className="text-xs font-semibold text-gris-dark">
+              📋 Incluir portada resumen (primera página)
+            </span>
+          </label>
         </div>
 
         {/* Obras */}

@@ -15,6 +15,7 @@ import {
   totalHsLeg, costoLeg, fmtMonto, fmtHs,
   calcularTotalesSemana,
 } from '@/lib/utils/costos'
+import { calcularResumenSemana } from '@/lib/utils/resumen-semana'
 import { Chip } from '@/components/ui/Chip'
 import type { Hora, Tarifa, Cierre, Certificacion, Contratista, TarjaHsExtra } from '@/types/domain.types'
 import { usePrestamos } from '@/modules/tarja/hooks/usePrestamos'
@@ -133,49 +134,26 @@ export function ResumenHistoricoPage() {
 
   // ── RESUMEN SEMANA ACTUAL ──
   const resumenSemActual = useMemo(() => {
-    let totalHs = 0
-    let totalCosto = 0
-    let totalContrat = 0
-    const trabajadoresUnicos = new Set<string>()
-
-    const cards = obrasFiltradas.map(o => {
-      const horasObra = todasHoras.filter(
-        h => h.obra_cod === o.cod &&
-          h.fecha >= toISO(semActualDays[0]!) &&
-          h.fecha <= toISO(semActualDays[6]!)
-      )
-      // Incluir también legs que SOLO tienen hs extras (sin horas regulares).
-      const extrasObraSem = todasHsExtras.filter(
-        e => e.obra_cod === o.cod && e.sem_key === semActualKey,
-      )
-      const legsConActividad = [...new Set([
-        ...horasObra.map(h => h.leg),
-        ...extrasObraSem.map(e => e.leg),
-      ])]
-
-      let oHs = 0
-      let oCosto = 0
-      legsConActividad.forEach(leg => {
-        trabajadoresUnicos.add(leg)
-        const hs = totalHsLeg(todasHoras, o.cod, leg, semActualDays.map(toISO), todasHsExtras)
-        oHs += hs
-        oCosto += Math.round(costoLegConCatObra(o.cod, leg, semActualDays) / 1000) * 1000
-      })
-
-      // Certificaciones de esta semana
-      const oContrat = todasCerts
-        .filter(c => c.obra_cod === o.cod && c.sem_key === semActualKey)
-        .reduce((s, c) => s + c.monto, 0)
-
-      totalHs += oHs
-      totalCosto += oCosto
-      totalContrat += oContrat
-
-      return { obra: o, hs: oHs, costo: oCosto, contrat: oContrat, legs: legsConActividad.length }
-    }).filter(c => c.hs > 0 || c.contrat > 0)
-
-    return { cards, totalHs, totalCosto, totalContrat, trabajadores: trabajadoresUnicos.size }
-  }, [obrasFiltradas, todasHoras, todasHsExtras, personal, categorias, todasTarifas, todasCerts, todosCierres, todasAsignaciones, todasCatObra, filtroNombre, filtroDesde, filtroHasta])
+    const r = calcularResumenSemana({
+      obras: obrasFiltradas,
+      semana: semConGracia,
+      horas: todasHoras,
+      hsExtras: todasHsExtras,
+      personal,
+      categorias,
+      tarifas: todasTarifas,
+      certificaciones: todasCerts,
+      catObra: todasCatObra,
+      prestamos: todosPrestamos,
+    })
+    return {
+      cards: r.cards,
+      totalHs: r.totalHs,
+      totalCosto: r.totalCostoOp,
+      totalContrat: r.totalCostoContrat,
+      trabajadores: r.totalPersonal,
+    }
+  }, [obrasFiltradas, todasHoras, todasHsExtras, personal, categorias, todasTarifas, todasCerts, todasCatObra, todosPrestamos, semConGracia])
 
   // ── RESUMEN HISTÓRICO ──
   const resumenHistorico = useMemo(() => {
