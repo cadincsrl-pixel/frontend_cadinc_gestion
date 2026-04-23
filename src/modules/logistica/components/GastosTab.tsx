@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import {
   useGastos, useGastosCategorias, useCreateGasto, useUpdateGasto, useDeleteGasto,
@@ -16,6 +16,7 @@ import { Input }    from '@/components/ui/Input'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useSessionStore } from '@/store/session.store'
+import { ModalImportarGastos } from './ModalImportarGastos'
 
 const hoy = () => new Date().toISOString().slice(0, 10)
 const fmt$ = (n: number | string) => `$ ${Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -78,6 +79,7 @@ export function GastosTab() {
 
   // ── Modales ─────────────────────────────────────────────────
   const [modalCreate, setModalCreate] = useState(false)
+  const [modalImport, setModalImport] = useState(false)
   const [editando,    setEditando]    = useState<Gasto | null>(null)
   const [verDetalle,  setVerDetalle]  = useState<Gasto | null>(null)
 
@@ -278,11 +280,14 @@ export function GastosTab() {
         <Input label="Desde" type="date" value={filters.desde ?? ''} onChange={e => setFilter('desde', e.target.value || undefined)} />
         <Input label="Hasta" type="date" value={filters.hasta ?? ''} onChange={e => setFilter('hasta', e.target.value || undefined)} />
         <Input label="Buscar" placeholder="Descripción, proveedor..." value={filters.q ?? ''} onChange={e => setFilter('q', e.target.value || undefined)} />
-        <div className="ml-auto">
+        <div className="ml-auto flex gap-2">
           {puedeCrear && (
-            <Button variant="primary" onClick={() => { formNuevo.reset({ ...formNuevo.getValues(), fecha: hoy(), categoria_id: '', monto: '' }); resetUpload(); setModalCreate(true) }}>
-              + Registrar gasto
-            </Button>
+            <>
+              <Button variant="secondary" onClick={() => setModalImport(true)}>📥 Importar Excel</Button>
+              <Button variant="primary" onClick={() => { formNuevo.reset({ ...formNuevo.getValues(), fecha: hoy(), categoria_id: '', monto: '' }); resetUpload(); setModalCreate(true) }}>
+                + Registrar gasto
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -397,6 +402,15 @@ export function GastosTab() {
         />
       </Modal>
 
+      {/* Modal import Excel */}
+      <ModalImportarGastos
+        open={modalImport}
+        onClose={() => setModalImport(false)}
+        categorias={categorias}
+        choferes={choferes}
+        camiones={camiones}
+      />
+
       {/* Modal detalle */}
       <Modal
         open={!!verDetalle}
@@ -429,7 +443,7 @@ function GastoFormFields({
 }: {
   form: any
   categorias: { id: number; nombre: string; aplica_a: string }[]
-  choferes:   { id: number; nombre: string }[]
+  choferes:   { id: number; nombre: string; camion_id?: number | null }[]
   camiones:   { id: number; patente: string }[]
   uploadFile: File | null
   uploadPath: string | null
@@ -437,6 +451,19 @@ function GastoFormFields({
   onPickFile: (f: File) => void
   onClearFile: () => void
 }) {
+  // Autocarga del camión al elegir chofer: si el chofer tiene un camión
+  // precargado en su ficha (choferes.camion_id), lo seteamos. El usuario
+  // puede sobrescribirlo cambiando el select manualmente.
+  const choferIdWatched = form.watch('chofer_id')
+  useEffect(() => {
+    if (!choferIdWatched) return
+    const chofer = choferes.find(c => c.id === Number(choferIdWatched))
+    if (chofer?.camion_id) {
+      form.setValue('camion_id', String(chofer.camion_id))
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [choferIdWatched, choferes])
+
   return (
     <div className="flex flex-col gap-3">
       <div className="grid grid-cols-2 gap-3">
