@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useObras, useObrasArchivadas } from '@/modules/tarja/hooks/useObras'
 import { usePersonal } from '@/modules/tarja/hooks/usePersonal'
@@ -117,6 +117,21 @@ export function ResumenHistoricoPage() {
     })
     return [...sems].sort()
   }, [todasHoras, todasCerts])
+
+  // ── Default del tab Histórico: última semana con horas ──
+  // Cuando llegan los datos, si el usuario no tocó los filtros todavía,
+  // seteamos desde/hasta en la semana más reciente con actividad para que
+  // al abrir el tab se vea esa semana y no todo el histórico junto.
+  // Si después mueve los filtros manualmente, los respetamos.
+  const [defaultApplied, setDefaultApplied] = useState(false)
+  useEffect(() => {
+    if (defaultApplied) return
+    if (semanasDisponibles.length === 0) return
+    const ultima = semanasDisponibles[semanasDisponibles.length - 1]!
+    setFiltroDesde(ultima)
+    setFiltroHasta(ultima)
+    setDefaultApplied(true)
+  }, [semanasDisponibles, defaultApplied])
 
   // ── Semana actual (con gracia de 2 días post-cierre) ──
   // Si hoy es viernes o sábado, seguimos mostrando la semana que cerró el jueves anterior
