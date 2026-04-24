@@ -1,16 +1,13 @@
 import { getSemDays, toISO, getViernes } from './dates'
-import { totalHsLeg } from './costos'
+import { totalHsLeg, costoLegConCatObra } from './costos'
+import type { CatObraEntry } from './costos'
 import type {
   Obra, Personal, Categoria, Tarifa, Hora, Certificacion,
   TarjaHsExtra, Prestamo,
 } from '@/types/domain.types'
 
-export type CatObraEntry = {
-  obra_cod: string
-  leg: string
-  cat_id: number
-  desde: string
-}
+// Re-export para callers que importan desde resumen-semana.
+export type { CatObraEntry } from './costos'
 
 export type ResumenSemanaCard = {
   obra: Obra
@@ -49,77 +46,6 @@ export type CalcularResumenSemanaParams = {
   certificaciones: Certificacion[]
   catObra: CatObraEntry[]
   prestamos: Prestamo[]
-}
-
-function getCatIdEfectivo(
-  catObra: CatObraEntry[],
-  personal: Personal[],
-  obraCod: string,
-  leg: string,
-  fechaRef: string,
-): number | null {
-  const catObraHist = catObra.filter(co => co.obra_cod === obraCod && co.leg === leg)
-  if (catObraHist.length > 0) {
-    let best: { cat_id: number; desde: string } | null = null
-    for (const h of catObraHist) {
-      if (h.desde <= fechaRef) {
-        if (!best || h.desde >= best.desde) best = h
-      }
-    }
-    if (best) return best.cat_id
-    return catObraHist.reduce((a, b) => a.desde <= b.desde ? a : b).cat_id
-  }
-  const p = personal.find(x => x.leg === leg)
-  if (!p) return null
-  const hist = [...(p.personal_cat_historial ?? [])]
-    .sort((a, b) => a.desde.localeCompare(b.desde))
-  let catId = p.cat_id
-  for (const h of hist) {
-    if (h.desde <= fechaRef) catId = h.cat_id
-  }
-  return catId
-}
-
-function costoLegConCatObra(
-  horas: Hora[],
-  hsExtras: TarjaHsExtra[],
-  personal: Personal[],
-  categorias: Categoria[],
-  tarifas: Tarifa[],
-  catObra: CatObraEntry[],
-  obraCod: string,
-  leg: string,
-  days: Date[],
-): number {
-  const semStartStr = toISO(days[0]!)
-  const hoyStr = toISO(new Date())
-  const esSemActual = semStartStr === toISO(getViernes(new Date()))
-  const fechaRef = esSemActual ? hoyStr : semStartStr
-
-  const catId = getCatIdEfectivo(catObra, personal, obraCod, leg, fechaRef)
-  if (!catId) return 0
-
-  const tarifaObraAll = tarifas
-    .filter(t => t.obra_cod === obraCod && t.cat_id === catId)
-    .sort((a, b) => a.desde.localeCompare(b.desde))
-
-  let vh: number | null = null
-  if (tarifaObraAll.length > 0) {
-    for (const t of tarifaObraAll) {
-      if (t.desde <= fechaRef) vh = t.vh
-      else break
-    }
-    if (vh === null) vh = tarifaObraAll[0]!.vh
-  } else {
-    vh = categorias.find(c => c.id === catId)?.vh ?? 0
-  }
-
-  const hs = totalHsLeg(horas, obraCod, leg, days.map(toISO))
-  const semKey = toISO(getViernes(days[0]!))
-  const extras = hsExtras.find(
-    e => e.obra_cod === obraCod && e.leg === leg && e.sem_key === semKey,
-  )?.hs ?? 0
-  return (hs + extras) * (vh ?? 0)
 }
 
 export function calcularResumenSemana(params: CalcularResumenSemanaParams): ResumenSemana {

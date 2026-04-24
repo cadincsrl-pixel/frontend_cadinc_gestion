@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
 import { Input } from '@/components/ui/Input'
 import { exportarExcelObras } from '@/lib/utils/excel'
+import { getVHConCatObra } from '@/lib/utils/costos'
 import { useToast } from '@/components/ui/Toast'
 import { getSemLabel, getViernes, toISO } from '@/lib/utils/dates'
 import type { Obra, Personal, Categoria, Hora, Tarifa, Cierre, Certificacion, Contratista } from '@/types/domain.types'
@@ -80,49 +81,10 @@ export function ModalExcelObras({
 
   const { data: todasHsExtras = [] } = useHsExtrasAll()
 
-  // Helper: cat_id efectivo con cat_obra
-  function getCatIdEfectivo(obraCod: string, leg: string, fechaRef: string): number | null {
-    const catObraAll = todasCatObra.filter(co => co.obra_cod === obraCod && co.leg === leg)
-    if (catObraAll.length > 0) {
-      let best: { cat_id: number; desde: string } | null = null
-      for (const h of catObraAll) {
-        if (h.desde <= fechaRef) {
-          if (!best || h.desde >= best.desde) best = h
-        }
-      }
-      if (best) return best.cat_id
-      return catObraAll.reduce((a, b) => a.desde <= b.desde ? a : b).cat_id
-    }
-    const p = personal.find(x => x.leg === leg)
-    if (!p) return null
-    const hist = [...(p.personal_cat_historial ?? [])]
-      .sort((a, b) => a.desde.localeCompare(b.desde))
-    let catId = p.cat_id
-    for (const h of hist) {
-      if (h.desde <= fechaRef) catId = h.cat_id
-    }
-    return catId
-  }
+  // Wrapper que cierra sobre la data del componente.
+  const getVHConCatObraLocal = (obraCod: string, leg: string, fechaRef: string) =>
+    getVHConCatObra(todasCatObra, personal, categorias, tarifas, obraCod, leg, fechaRef)
 
-  // Helper: valor hora con cat_obra + tarifas retroactivas
-  function getVHConCatObra(obraCod: string, leg: string, fechaRef: string): number {
-    const catId = getCatIdEfectivo(obraCod, leg, fechaRef)
-    if (!catId) return 0
-    const tarifaObraAll = tarifas
-      .filter(t => t.obra_cod === obraCod && t.cat_id === catId)
-      .sort((a, b) => a.desde.localeCompare(b.desde))
-    let vh: number | null = null
-    if (tarifaObraAll.length > 0) {
-      for (const t of tarifaObraAll) {
-        if (t.desde <= fechaRef) vh = t.vh
-        else break
-      }
-      if (vh === null) vh = tarifaObraAll[0]!.vh
-    } else {
-      vh = categorias.find(c => c.id === catId)?.vh ?? 0
-    }
-    return vh
-  }
 
   // ── Preview calculado ──
   const preview = useMemo(() => {
@@ -168,11 +130,11 @@ export function ModalExcelObras({
     // Costo operarios aproximado (tarifa global) — incluye hs extras
     const costoHoras = horasFilt.reduce((sum, h) => {
       const sk = toISO(getViernes(new Date(h.fecha + 'T12:00:00')))
-      const vh = getVHConCatObra(h.obra_cod, h.leg, sk)
+      const vh = getVHConCatObraLocal(h.obra_cod, h.leg, sk)
       return sum + h.horas * vh
     }, 0)
     const costoExtras = hsExtrasFilt.reduce((sum, x) => {
-      const vh = getVHConCatObra(x.obra_cod, x.leg, x.sem_key)
+      const vh = getVHConCatObraLocal(x.obra_cod, x.leg, x.sem_key)
       return sum + x.hs * vh
     }, 0)
     const costoOp = costoHoras + costoExtras
