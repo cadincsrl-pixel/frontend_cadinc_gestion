@@ -49,15 +49,15 @@ export function ResumenHistoricoPage() {
     queryKey: ['horas', 'all'],
     queryFn: () => apiGet<Hora[]>('/api/horas/all'),
   })
-  const { data: todasTarifas = [] } = useQuery({
+  const { data: todasTarifas = [], isLoading: loadingTarifas } = useQuery({
     queryKey: ['tarifas', 'all'],
     queryFn: () => apiGet<Tarifa[]>('/api/tarifas/all'),
   })
-  const { data: todosCierres = [] } = useQuery({
+  const { data: todosCierres = [], isLoading: loadingCierres } = useQuery({
     queryKey: ['cierres', 'all'],
     queryFn: () => apiGet<Cierre[]>('/api/cierres/all'),
   })
-  const { data: todasCerts = [] } = useQuery({
+  const { data: todasCerts = [], isLoading: loadingCerts } = useQuery({
     queryKey: ['certs', 'all'],
     queryFn: () => apiGet<Certificacion[]>('/api/contratistas/cert/all'),
   })
@@ -66,14 +66,17 @@ export function ResumenHistoricoPage() {
     queryFn: () => apiGet<Contratista[]>('/api/contratistas'),
   })
 
-  const { data: todasAsignaciones = [] } = useQuery({
+  const { data: todasAsignaciones = [], isLoading: loadingAsig } = useQuery({
     queryKey: ['asignaciones', 'all'],
     queryFn: () => apiGet<Array<{ obra_cod: string; leg: string; baja_desde: string | null }>>('/api/asignaciones/all'),
   })
 
   const { data: todosPrestamos = [] } = usePrestamos()
   // Todas las hs extras (1 sola query). Se cruzan por obra+leg+sem_key abajo.
-  const { data: todasHsExtras = [] } = useHsExtrasAll() as { data: TarjaHsExtra[] }
+  const { data: todasHsExtras = [], isLoading: loadingHsExtras } = useHsExtrasAll() as {
+    data: TarjaHsExtra[]
+    isLoading: boolean
+  }
 
   function getLegsActivos(obraCod: string, semKey: string): string[] {
     return todasAsignaciones
@@ -282,7 +285,13 @@ export function ResumenHistoricoPage() {
     setFiltroHasta('')
   }
 
-  if (loadingObras || loadingHoras || loadingArchivadas) {
+  // Esperamos a que todas las queries que alimentan los agregados estén
+  // resueltas antes de renderizar. Sin esto los totales y cards se calculan
+  // con arrays vacíos y producen "salto" visual cuando cada query resuelve.
+  const loadingAny = loadingObras || loadingHoras || loadingArchivadas
+    || loadingTarifas || loadingCierres || loadingCerts
+    || loadingAsig || loadingHsExtras
+  if (loadingAny) {
     return (
       <div className="p-8 flex items-center gap-3 text-gris-dark">
         <span className="w-5 h-5 border-2 border-naranja border-t-transparent rounded-full animate-spin" />

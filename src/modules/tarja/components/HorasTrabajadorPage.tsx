@@ -48,20 +48,28 @@ export function HorasTrabajadorPage() {
   const { data: categorias = [] } = useCategorias()
   const { data: obras = [] } = useObras()
 
-  const { data: todasHoras = [], isLoading } = useQuery({
+  const { data: todasHoras = [], isLoading: loadingHoras } = useQuery({
     queryKey: ['horas', 'semana', desde, hasta],
     queryFn: () => apiGet<Hora[]>(`/api/horas/all?desde=${desde}&hasta=${hasta}`),
   })
-  const { data: todasTarifas = [] } = useQuery({
+  const { data: todasTarifas = [], isLoading: loadingTarifas } = useQuery({
     queryKey: ['tarifas', 'all'],
     queryFn: () => apiGet<Tarifa[]>('/api/tarifas/all'),
   })
-  const { data: todasCatObra = [] } = useQuery({
+  const { data: todasCatObra = [], isLoading: loadingCatObra } = useQuery({
     queryKey: ['cat-obra', 'all'],
     queryFn: () => apiGet<Array<{ obra_cod: string; leg: string; cat_id: number; desde: string }>>('/api/cat-obra/all'),
   })
   // Todas las hs extras. Se cruzan por obra+leg+sem_key en getCostoLeg y en filas.
-  const { data: todasHsExtras = [] } = useHsExtrasAll() as { data: TarjaHsExtra[] }
+  const { data: todasHsExtras = [], isLoading: loadingHsExtras } = useHsExtrasAll() as {
+    data: TarjaHsExtra[]
+    isLoading: boolean
+  }
+
+  // El render debe esperar a que todas las queries que alimentan "filas" estén
+  // resueltas. Sin esto, legs que solo tienen hs extras hacen pop-in tardío
+  // después de que la tabla ya se mostró con datos parciales.
+  const isLoading = loadingHoras || loadingTarifas || loadingCatObra || loadingHsExtras
 
   function navSem(dir: number) {
     const nueva = new Date(semActual)
