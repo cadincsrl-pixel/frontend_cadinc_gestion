@@ -13,7 +13,7 @@ import {
 } from '@/lib/utils/dates'
 import {
   totalHsLeg, costoLeg, fmtMonto, fmtHs,
-  calcularTotalesSemana,
+  calcularTotalesSemana, costoLegConCatObra,
 } from '@/lib/utils/costos'
 import { calcularResumenSemana } from '@/lib/utils/resumen-semana'
 import { Chip } from '@/components/ui/Chip'
@@ -207,7 +207,9 @@ export function ResumenHistoricoPage() {
           const hs = totalHsLeg(todasHoras, o.cod, leg, days.map(toISO), todasHsExtras)
           if (hs > 0) legsUnicos.add(leg)
           oHs += hs
-          oCosto += Math.round(costoLegConCatObra(o.cod, leg, days) / 1000) * 1000
+          oCosto += Math.round(
+            costoLegConCatObra(todasHoras, todasHsExtras, personal, categorias, todasTarifas, todasCatObra, o.cod, leg, days) / 1000
+          ) * 1000
         })
       })
 
@@ -279,74 +281,6 @@ export function ResumenHistoricoPage() {
     setFiltroDesde('')
     setFiltroHasta('')
   }
-
-  function getCatIdEfectivo(obraCod: string, leg: string, fechaRef: string): number | null {
-    // 1. Buscar en cat_obra
-    const catObraHist = todasCatObra
-      .filter(co => co.obra_cod === obraCod && co.leg === leg)
-
-    if (catObraHist.length > 0) {
-      // Buscar el más reciente donde desde <= fechaRef
-      let best: { cat_id: number; desde: string } | null = null
-      for (const h of catObraHist) {
-        if (h.desde <= fechaRef) {
-          if (!best || h.desde >= best.desde) best = h
-        }
-      }
-      if (best) return best.cat_id
-      // Todas las entradas son posteriores → usar la más antigua (retroactivo)
-      return catObraHist.reduce((a, b) => a.desde <= b.desde ? a : b).cat_id
-    }
-
-    // 2. Buscar en personal_cat_historial
-    const p = personal.find(x => x.leg === leg)
-    if (!p) return null
-    const hist = [...(p.personal_cat_historial ?? [])]
-      .sort((a, b) => a.desde.localeCompare(b.desde))
-    let catId = p.cat_id
-    for (const h of hist) {
-      if (h.desde <= fechaRef) catId = h.cat_id
-    }
-    return catId
-  }
-  // Helper: costo de un trabajador usando cat_obra overrides
-  function costoLegConCatObra(obraCod: string, leg: string, days: Date[]): number {
-    const semStartStr = toISO(days[0]!)
-    const hoyStr = toISO(new Date())
-    const esSemActual = semStartStr === toISO(getViernes(new Date()))
-    const fechaRef = esSemActual ? hoyStr : semStartStr
-
-    const catId = getCatIdEfectivo(obraCod, leg, fechaRef)
-    if (!catId) return 0
-
-    // Buscar tarifa con lógica retroactiva (igual al base)
-    const tarifaObraAll = todasTarifas
-      .filter(t => t.obra_cod === obraCod && t.cat_id === catId)
-      .sort((a, b) => a.desde.localeCompare(b.desde))
-
-    let vh: number | null = null
-    if (tarifaObraAll.length > 0) {
-      // Buscar la más reciente donde desde <= fechaRef
-      for (const t of tarifaObraAll) {
-        if (t.desde <= fechaRef) vh = t.vh
-        else break
-      }
-      // Si ninguna cubre esa fecha (todas futuras) → usar la más antigua (retroactivo)
-      if (vh === null) vh = tarifaObraAll[0]!.vh
-    } else {
-      // Sin tarifa de obra → precio global de la categoría
-      vh = categorias.find(c => c.id === catId)?.vh ?? 0
-    }
-
-    const hs = totalHsLeg(todasHoras, obraCod, leg, days.map(toISO))
-    // Sumar hs extras: cantidad pura * VH efectivo (mismo precio/hora que normales).
-    const semKey = toISO(getViernes(days[0]!))
-    const hsExtras = todasHsExtras.find(
-      e => e.obra_cod === obraCod && e.leg === leg && e.sem_key === semKey,
-    )?.hs ?? 0
-    return (hs + hsExtras) * (vh ?? 0)
-  }
-
 
   if (loadingObras || loadingHoras || loadingArchivadas) {
     return (

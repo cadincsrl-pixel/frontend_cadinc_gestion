@@ -1,7 +1,10 @@
 import * as XLSX from 'xlsx'
 import type { Obra, Cierre, Certificacion, Contratista, Categoria, Personal, Hora, Tarifa, Prestamo, TarjaHsExtra } from '@/types/domain.types'
 import { getSemDays, toISO, getSemLabel, getViernesCobro, getViernes, DIAS } from './dates'
-import { totalHsLeg, costoLeg, getHsExtrasLeg } from './costos'
+import {
+  totalHsLeg, costoLeg, getHsExtrasLeg,
+  getCatIdEfectivo, getVHConCatObra, costoLegConCatObra,
+} from './costos'
 import { calcularResumenSemana } from './resumen-semana'
 
 // ══════════════════════════════════════════════════
@@ -232,48 +235,17 @@ export function exportarExcelObras(
     return ' · Semanas: ' + lDesde + ' → ' + lHasta
   }
 
-  function getCatIdEfectivo(obraCod: string, leg: string, fechaRef: string): number | null {
-    const catObraAll = catObra.filter(co => co.obra_cod === obraCod && co.leg === leg)
-    if (catObraAll.length > 0) {
-      let best: { cat_id: number; desde: string } | null = null
-      for (const h of catObraAll) {
-        if (h.desde <= fechaRef) { if (!best || h.desde >= best.desde) best = h }
-      }
-      if (best) return best.cat_id
-      return catObraAll.reduce((a, b) => a.desde <= b.desde ? a : b).cat_id
-    }
-    const p = personal.find(x => x.leg === leg)
-    if (!p) return null
-    const hist = [...(p.personal_cat_historial ?? [])].sort((a, b) => a.desde.localeCompare(b.desde))
-    let catId = p.cat_id
-    for (const h of hist) { if (h.desde <= fechaRef) catId = h.cat_id }
-    return catId
-  }
-
-  function getVHConCatObra(obraCod: string, leg: string, fechaRef: string): number {
-    const catId = getCatIdEfectivo(obraCod, leg, fechaRef)
-    if (!catId) return 0
-    const tarifaObraAll = tarifas
-      .filter(t => t.obra_cod === obraCod && t.cat_id === catId)
-      .sort((a, b) => a.desde.localeCompare(b.desde))
-    let vh: number | null = null
-    if (tarifaObraAll.length > 0) {
-      for (const t of tarifaObraAll) { if (t.desde <= fechaRef) vh = t.vh; else break }
-      if (vh === null) vh = tarifaObraAll[0]!.vh
-    } else {
-      vh = categorias.find(c => c.id === catId)?.vh ?? 0
-    }
-    return vh
-  }
-
-  function costoLegConCatObra(obraCod: string, leg: string, dias: Date[]): number {
-    const semStartStr = toISO(dias[0]!)
-    const hoyStr = toISO(new Date())
-    const esSemActual = semStartStr === toISO(getViernes(new Date()))
-    const fechaRef = esSemActual ? hoyStr : semStartStr
-    const vh = getVHConCatObra(obraCod, leg, fechaRef)
-    return totalHsLeg(horas, obraCod, leg, dias.map(toISO)) * vh
-  }
+  // Wrappers que cierran sobre la data de la función.
+  // catIdFor — precedencia cat_obra → personal_cat_historial → personal.cat_id.
+  // vhFor    — valor hora con cat_obra + tarifas retroactivas.
+  // costoLegFor — costo completo (horas + hs extras × VH efectivo) para una semana.
+  //   Nota: incluye extras — el caller NO debe sumarlas a parte.
+  const catIdFor = (obraCod: string, leg: string, fechaRef: string) =>
+    getCatIdEfectivo(catObra, personal, obraCod, leg, fechaRef)
+  const vhFor = (obraCod: string, leg: string, fechaRef: string) =>
+    getVHConCatObra(catObra, personal, categorias, tarifas, obraCod, leg, fechaRef)
+  const costoLegFor = (obraCod: string, leg: string, dias: Date[]) =>
+    costoLegConCatObra(horas, hsExtras, personal, categorias, tarifas, catObra, obraCod, leg, dias)
 
   function getSemanasObra(obraCod: string): string[] {
     const seen = new Set<string>()
@@ -323,10 +295,8 @@ export function exportarExcelObras(
         const hsDias = totalHsLeg(horas, o.cod, leg, days.map(toISO))
         const hsExtra = getHsExtrasLeg(hsExtras, o.cod, leg, sk)
         totalHs += hsDias + hsExtra
-        const vh = getVHConCatObra(o.cod, leg, sk)
-        const costoBase = costoLegConCatObra(o.cod, leg, days)
-        const costoExtra = hsExtra * vh
-        totalCosto += Math.round((costoBase + costoExtra) / 1000) * 1000
+        // costoLegFor ya incluye extras × VH efectivo adentro.
+        totalCosto += Math.round(costoLegFor(o.cod, leg, days) / 1000) * 1000
       })
     })
 
@@ -436,7 +406,7 @@ export function exportarExcelObras(
       let totGeneral = 0
 
       legsOrdenados.forEach(p => {
-        const catId = getCatIdEfectivo(o.cod, p.leg, fechaRefSem)
+        const catId = catIdFor(o.cod, p.leg, fechaRefSem)
         const catNom = catId ? (categorias.find(c => c.id === catId)?.nom ?? '—') : '—'
         const hsDia = days.map((d, i) => {
           const h = horas.find(x => x.obra_cod === o.cod && x.leg === p.leg && x.fecha === toISO(d))
@@ -507,10 +477,8 @@ export function exportarExcelObras(
         const hsExtra = getHsExtrasLeg(hsExtras, o.cod, leg, sk)
         const hs = hsDias + hsExtra
         if (hs === 0) return
-        const vh = getVHConCatObra(o.cod, leg, sk)
-        const costoBase = costoLegConCatObra(o.cod, leg, days)
-        const costoExtra = hsExtra * vh
-        const costo = Math.round((costoBase + costoExtra) / 1000) * 1000
+        // costoLegFor ya incluye extras × VH efectivo adentro.
+        const costo = Math.round(costoLegFor(o.cod, leg, days) / 1000) * 1000
         const cat = categorias.find(c => c.id === p.cat_id)
         detRows.push([
           '👷 Operario', o.nom, o.cod, o.cc ?? '',
@@ -701,39 +669,9 @@ export function generarRecibos(
   const periodo = getSemLabel(s)
   const pagoStr = `${pago.getDate()}/${pago.getMonth() + 1}/${pago.getFullYear()}`
 
-  function getCatIdEfectivo(obraCod: string, leg: string, fechaRef: string): number | null {
-    const catObraAll = catObra.filter(co => co.obra_cod === obraCod && co.leg === leg)
-    if (catObraAll.length > 0) {
-      let best: { cat_id: number; desde: string } | null = null
-      for (const h of catObraAll) {
-        if (h.desde <= fechaRef) { if (!best || h.desde >= best.desde) best = h }
-      }
-      if (best) return best.cat_id
-      return catObraAll.reduce((a, b) => a.desde <= b.desde ? a : b).cat_id
-    }
-    const p = personal.find(x => x.leg === leg)
-    if (!p) return null
-    const hist = [...(p.personal_cat_historial ?? [])].sort((a, b) => a.desde.localeCompare(b.desde))
-    let catId = p.cat_id
-    for (const h of hist) { if (h.desde <= fechaRef) catId = h.cat_id }
-    return catId
-  }
-
-  function getVHLocal(obraCod: string, leg: string): number {
-    const catId = getCatIdEfectivo(obraCod, leg, semKey)
-    if (!catId) return 0
-    const tarifaObraAll = tarifas
-      .filter(t => t.obra_cod === obraCod && t.cat_id === catId)
-      .sort((a, b) => a.desde.localeCompare(b.desde))
-    let vh: number | null = null
-    if (tarifaObraAll.length > 0) {
-      for (const t of tarifaObraAll) { if (t.desde <= semKey) vh = t.vh; else break }
-      if (vh === null) vh = tarifaObraAll[0]!.vh
-    } else {
-      vh = categorias.find(c => c.id === catId)?.vh ?? 0
-    }
-    return vh
-  }
+  // Wrapper que cierra sobre la data + semKey (fecha de referencia).
+  const getVHLocal = (obraCod: string, leg: string) =>
+    getVHConCatObra(catObra, personal, categorias, tarifas, obraCod, leg, semKey)
 
 
   function fmtM(n: number) { return '$' + (Math.round(n / 1000) * 1000).toLocaleString('es-AR') }
