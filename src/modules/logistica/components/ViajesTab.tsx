@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import {
   useTramos, useChoferes, useCamiones, useCanteras, useDepositos, useRutas, useEmpresas,
   useCreateTramo, useUpdateTramo, useDeleteTramo, useRegistrarDescargaTramo, useRevertirDescargaTramo, useMoverTramo,
@@ -97,6 +97,70 @@ export function ViajesTab() {
       : (t.fecha_vacio ?? null)
   }
 
+  // ── Detección de tramos consecutivos del mismo tipo ──────────────
+  // Ciclo normal: vacío → cargado → vacío → cargado. Si el último tramo
+  // del chofer o del camión tiene el mismo tipo que el nuevo, es probable
+  // que sea una duplicación.
+  function getUltimoTramoDe(filtro: (t: Tramo) => boolean): Tramo | null {
+    const list = tramos
+      .filter(filtro)
+      .sort((a, b) => {
+        const fa = fechaRef(a) ?? ''
+        const fb = fechaRef(b) ?? ''
+        if (fa !== fb) return fb.localeCompare(fa)  // más reciente primero
+        const oa = a.orden_dia ?? a.id
+        const ob = b.orden_dia ?? b.id
+        return ob - oa
+      })
+    return list[0] ?? null
+  }
+
+  /**
+   * Detecta repetición de tipo vs último tramo del chofer/camión.
+   * Devuelve null si no hay repetición, o `{ label, ultimo }` con detalle
+   * para el warning.
+   */
+  function detectarRepeticion(
+    nuevoTipo: 'cargado' | 'vacio',
+    choferId: number | null,
+    camionId: number | null,
+  ): { fuente: 'chofer' | 'camion' | 'ambos'; ultimoChofer: Tramo | null; ultimoCamion: Tramo | null } | null {
+    const ultimoChofer = choferId ? getUltimoTramoDe(t => t.chofer_id === choferId) : null
+    const ultimoCamion = camionId ? getUltimoTramoDe(t => t.camion_id === camionId) : null
+    const choferRepite = ultimoChofer?.tipo === nuevoTipo
+    const camionRepite = ultimoCamion?.tipo === nuevoTipo
+    if (!choferRepite && !camionRepite) return null
+    const fuente: 'chofer' | 'camion' | 'ambos' =
+      choferRepite && camionRepite ? 'ambos' : choferRepite ? 'chofer' : 'camion'
+    return { fuente, ultimoChofer: choferRepite ? ultimoChofer : null, ultimoCamion: camionRepite ? ultimoCamion : null }
+  }
+
+  // Set de tramo IDs "sospechosos": tienen un tramo previo del mismo chofer o
+  // camión con el mismo tipo (capa 3: marca visual en la lista).
+  const tramosRepetidos = useMemo(() => {
+    const sorted = [...tramos].sort((a, b) => {
+      const fa = fechaRef(a) ?? ''
+      const fb = fechaRef(b) ?? ''
+      if (fa !== fb) return fa.localeCompare(fb)  // más antiguo primero
+      const oa = a.orden_dia ?? a.id
+      const ob = b.orden_dia ?? b.id
+      return oa - ob
+    })
+    const lastByChofer = new Map<number, Tramo>()
+    const lastByCamion = new Map<number, Tramo>()
+    const repetidos = new Set<number>()
+    for (const t of sorted) {
+      const prevChofer = lastByChofer.get(t.chofer_id)
+      const prevCamion = lastByCamion.get(t.camion_id)
+      if ((prevChofer && prevChofer.tipo === t.tipo) || (prevCamion && prevCamion.tipo === t.tipo)) {
+        repetidos.add(t.id)
+      }
+      lastByChofer.set(t.chofer_id, t)
+      lastByCamion.set(t.camion_id, t)
+    }
+    return repetidos
+  }, [tramos])
+
   const filtered = tramos.filter((t: Tramo) => {
     if (filtChofer && String(t.chofer_id) !== filtChofer) return false
     if (filtTipo   && t.tipo   !== filtTipo)   return false
@@ -117,9 +181,31 @@ export function ViajesTab() {
   }
 
   function handleCreate(data: TramoFormValues) {
+    const choferId = data.chofer_id ? Number(data.chofer_id) : null
+    const camionId = data.camion_id ? Number(data.camion_id) : null
+    const nuevoTipo = data.tipo as 'cargado' | 'vacio'
+
+    // Capa 1: warning pre-submit si el último tramo del chofer o camión
+    // tiene el mismo tipo — el ciclo normal es vacío → cargado → vacío.
+    const rep = detectarRepeticion(nuevoTipo, choferId, camionId)
+    if (rep) {
+      const chofNom = rep.ultimoChofer ? choferes.find(c => c.id === rep.ultimoChofer!.chofer_id)?.nombre : null
+      const camPat  = rep.ultimoCamion ? camiones.find(c => c.id === rep.ultimoCamion!.camion_id)?.patente : null
+      const partes: string[] = []
+      if (rep.ultimoChofer) partes.push(`el chofer ${chofNom ?? `#${rep.ultimoChofer.chofer_id}`} (último: ${rep.ultimoChofer.tipo.toUpperCase()} el ${fechaRef(rep.ultimoChofer) ?? '?'})`)
+      if (rep.ultimoCamion) partes.push(`el camión ${camPat ?? `#${rep.ultimoCamion.camion_id}`} (último: ${rep.ultimoCamion.tipo.toUpperCase()} el ${fechaRef(rep.ultimoCamion) ?? '?'})`)
+      const msg =
+        `⚠ Estás por crear un tramo ${nuevoTipo.toUpperCase()}, pero ` +
+        partes.join(' y ') +
+        ' ya tenía ese mismo tipo. ' +
+        'El ciclo normal es vacío → cargado → vacío. ' +
+        '\n\n¿Crear igual?'
+      if (!confirm(msg)) return
+    }
+
     const dto: any = {
-      chofer_id:   Number(data.chofer_id),
-      camion_id:   Number(data.camion_id),
+      chofer_id:   choferId,
+      camion_id:   camionId,
       tipo:        data.tipo,
       empresa_id:  data.empresa_id ? Number(data.empresa_id) : null,
       cantera_id:  data.cantera_id  ? Number(data.cantera_id)  : null,
@@ -331,13 +417,18 @@ export function ViajesTab() {
             const km = getKm(tramo)
             const esCargado = tramo.tipo === 'cargado'
 
+            const esRepetido = tramosRepetidos.has(tramo.id)
+
             return (
               <div
                 key={tramo.id}
-                className={`bg-white rounded-card shadow-card p-4 border-l-4 ${
+                className={`rounded-card shadow-card p-4 border-l-4 ${
+                  esRepetido ? 'bg-[#FEEADB]' : 'bg-white'
+                } ${
                   tramo.estado === 'completado' ? 'border-verde' :
                   esCargado ? 'border-naranja' : 'border-azul-mid'
                 }`}
+                title={esRepetido ? 'Este tramo repite el tipo del tramo anterior del mismo chofer o camión — revisar' : undefined}
               >
                 {/* Cabecera */}
                 <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
@@ -350,6 +441,11 @@ export function ViajesTab() {
                       <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${esCargado ? 'bg-naranja-light text-naranja-dark' : 'bg-azul-light text-azul-mid'}`}>
                         {esCargado ? '🚛 Cargado' : '🔲 Vacío'}
                       </span>
+                      {esRepetido && (
+                        <span className="text-[10px] font-bold bg-[#8B3510] text-white px-2 py-0.5 rounded-full uppercase tracking-wide">
+                          ⚠ Repetido
+                        </span>
+                      )}
                       <span className="font-mono text-xs text-gris-dark">#{tramo.id}</span>
                     </div>
                     <div className="font-bold text-azul">
@@ -478,24 +574,54 @@ export function ViajesTab() {
             {...formNuevo.register('tipo')}
           />
 
-          <Combobox
-            label="Chofer"
-            placeholder="Buscar chofer..."
-            options={choferes.filter((c: any) => c.estado === 'activo').map((c: any) => ({ value: String(c.id), label: c.nombre }))}
-            value={String(formNuevo.watch('chofer_id') ?? '')}
-            onChange={(v: string) => {
-              formNuevo.setValue('chofer_id', v)
-              const chofer = choferes.find((c: any) => c.id === Number(v))
-              if (chofer?.camion_id) formNuevo.setValue('camion_id', String(chofer.camion_id))
-            }}
-          />
-          <Combobox
-            label="Camión"
-            placeholder="Buscar camión..."
-            options={camiones.filter((c: any) => c.estado === 'activo').map((c: any) => ({ value: String(c.id), label: c.patente, sub: c.modelo ?? undefined }))}
-            value={String(formNuevo.watch('camion_id') ?? '')}
-            onChange={(v: string) => formNuevo.setValue('camion_id', v)}
-          />
+          <div>
+            <Combobox
+              label="Chofer"
+              placeholder="Buscar chofer..."
+              options={choferes.filter((c: any) => c.estado === 'activo').map((c: any) => ({ value: String(c.id), label: c.nombre }))}
+              value={String(formNuevo.watch('chofer_id') ?? '')}
+              onChange={(v: string) => {
+                formNuevo.setValue('chofer_id', v)
+                const chofer = choferes.find((c: any) => c.id === Number(v))
+                if (chofer?.camion_id) formNuevo.setValue('camion_id', String(chofer.camion_id))
+              }}
+            />
+            {(() => {
+              const cid = formNuevo.watch('chofer_id')
+              if (!cid) return null
+              const ultimo = getUltimoTramoDe(t => t.chofer_id === Number(cid))
+              if (!ultimo) return <div className="text-[11px] text-gris-dark italic mt-1">Sin tramos previos de este chofer.</div>
+              const f = fechaRef(ultimo)
+              const repite = ultimo.tipo === tipoNuevo
+              return (
+                <div className={`text-[11px] mt-1 ${repite ? 'text-[#8B3510] font-bold' : 'text-gris-dark'}`}>
+                  {repite ? '⚠ ' : ''}Último tramo del chofer: <b>{ultimo.tipo.toUpperCase()}</b>{f ? ` el ${f}` : ''}
+                </div>
+              )
+            })()}
+          </div>
+          <div>
+            <Combobox
+              label="Camión"
+              placeholder="Buscar camión..."
+              options={camiones.filter((c: any) => c.estado === 'activo').map((c: any) => ({ value: String(c.id), label: c.patente, sub: c.modelo ?? undefined }))}
+              value={String(formNuevo.watch('camion_id') ?? '')}
+              onChange={(v: string) => formNuevo.setValue('camion_id', v)}
+            />
+            {(() => {
+              const cid = formNuevo.watch('camion_id')
+              if (!cid) return null
+              const ultimo = getUltimoTramoDe(t => t.camion_id === Number(cid))
+              if (!ultimo) return <div className="text-[11px] text-gris-dark italic mt-1">Sin tramos previos de este camión.</div>
+              const f = fechaRef(ultimo)
+              const repite = ultimo.tipo === tipoNuevo
+              return (
+                <div className={`text-[11px] mt-1 ${repite ? 'text-[#8B3510] font-bold' : 'text-gris-dark'}`}>
+                  {repite ? '⚠ ' : ''}Último tramo del camión: <b>{ultimo.tipo.toUpperCase()}</b>{f ? ` el ${f}` : ''}
+                </div>
+              )
+            })()}
+          </div>
 
           {tipoNuevo === 'cargado' && (
             <Combobox
