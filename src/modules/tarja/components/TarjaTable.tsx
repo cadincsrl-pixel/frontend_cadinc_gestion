@@ -149,10 +149,13 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
   )
 
   const handleExtraChange = useCallback(
-    (leg: string, val: string) => {
+    (leg: string, val: string, antes: number) => {
       const raw = val.trim()
       const hs = raw === '' ? 0 : parseFloat(raw)
       if (isNaN(hs) || hs < 0) return
+      // Evitar mutación si el valor no cambió — un Tab-walk por la grilla
+      // sin tocar nada no debería generar mutations innecesarias al backend.
+      if (hs === antes) return
       // Optimistic update + toast de error via el hook
       upsertHsExtra({ obra_cod: obraCod, leg, sem_key: semKey, hs }).catch(() => {
         // el toast ya se dispara desde el hook
@@ -403,11 +406,11 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                       readOnly={!puedeEditar || readonly}
                       title="Horas extras de la semana"
                       onBlur={puedeEditar && !readonly
-                        ? e => handleExtraChange(p.leg, e.target.value)
+                        ? e => handleExtraChange(p.leg, e.target.value, hsExtraLeg)
                         : undefined}
                       onKeyDown={puedeEditar && !readonly ? e => {
                         if (e.key === 'Enter') {
-                          handleExtraChange(p.leg, (e.target as HTMLInputElement).value)
+                          handleExtraChange(p.leg, (e.target as HTMLInputElement).value, hsExtraLeg)
                           ;(e.target as HTMLInputElement).blur()
                         }
                       } : undefined}
