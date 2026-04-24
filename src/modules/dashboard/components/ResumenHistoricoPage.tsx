@@ -285,6 +285,43 @@ export function ResumenHistoricoPage() {
     setFiltroHasta('')
   }
 
+  // ── Préstamos/descuentos agrupados por semana para auditoría ──
+  // Respeta filtroDesde/filtroHasta. El filtro por nombre de obra NO aplica
+  // — los préstamos son por trabajador, sin obra asociada.
+  const prestamosHistorico = useMemo(() => {
+    const filtrados = todosPrestamos
+      .filter(p => !filtroDesde || p.sem_key >= filtroDesde)
+      .filter(p => !filtroHasta || p.sem_key <= filtroHasta)
+
+    let totalOtorgado   = 0
+    let totalDescontado = 0
+    for (const p of filtrados) {
+      if (p.tipo === 'otorgado') totalOtorgado   += p.monto
+      else                       totalDescontado += p.monto
+    }
+
+    // Agrupar por sem_key, semanas más recientes primero.
+    const porSemana = new Map<string, typeof filtrados>()
+    for (const p of filtrados) {
+      const lista = porSemana.get(p.sem_key) ?? []
+      lista.push(p)
+      porSemana.set(p.sem_key, lista)
+    }
+    const grupos = [...porSemana.entries()]
+      .sort(([a], [b]) => b.localeCompare(a))
+      .map(([sem_key, prestamos]) => ({
+        sem_key,
+        prestamos: [...prestamos].sort((a, b) => a.created_at.localeCompare(b.created_at)),
+      }))
+
+    return {
+      grupos,
+      totalOtorgado,
+      totalDescontado,
+      totalNeto: totalOtorgado - totalDescontado,
+    }
+  }, [todosPrestamos, filtroDesde, filtroHasta])
+
   // Esperamos a que todas las queries que alimentan los agregados estén
   // resueltas antes de renderizar. Sin esto los totales y cards se calculan
   // con arrays vacíos y producen "salto" visual cuando cada query resuelve.
@@ -632,6 +669,129 @@ export function ResumenHistoricoPage() {
               </tbody>
             </table>
           </div>
+        </div>
+
+        {/* ══ PRÉSTAMOS Y DESCUENTOS — auditoría por semana ══ */}
+        <div className="flex flex-col gap-3 mt-6">
+          <div className="flex items-start justify-between flex-wrap gap-3">
+            <div>
+              <h2 className="font-display text-[1.4rem] tracking-wider text-azul">
+                💰 PRÉSTAMOS Y DESCUENTOS
+              </h2>
+              <p className="text-xs text-gris-dark mt-1">
+                Detalle por semana para auditoría. Respeta el rango de fechas del filtro.
+              </p>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              {prestamosHistorico.totalOtorgado > 0 && (
+                <Chip
+                  value={fmtMonto(prestamosHistorico.totalOtorgado)}
+                  label="Otorgados (+)"
+                  variant="orange"
+                />
+              )}
+              {prestamosHistorico.totalDescontado > 0 && (
+                <Chip
+                  value={fmtMonto(prestamosHistorico.totalDescontado)}
+                  label="Descontados (−)"
+                />
+              )}
+              <Chip
+                value={fmtMonto(prestamosHistorico.totalNeto)}
+                label="Neto"
+                variant={prestamosHistorico.totalNeto >= 0 ? 'orange' : 'green'}
+              />
+            </div>
+          </div>
+
+          {prestamosHistorico.grupos.length === 0 ? (
+            <div className="bg-white rounded-card shadow-card p-6 text-center text-gris-dark italic text-sm">
+              No hay préstamos ni descuentos en el período seleccionado.
+            </div>
+          ) : (
+            <div className="bg-white rounded-card shadow-card overflow-x-auto">
+              <table className="w-full min-w-[720px]">
+                <thead className="bg-azul text-white">
+                  <tr>
+                    <th className="text-left px-3 py-2.5 text-xs font-bold uppercase tracking-wider">Trabajador</th>
+                    <th className="text-center px-3 py-2.5 text-xs font-bold uppercase tracking-wider">Tipo</th>
+                    <th className="text-right px-3 py-2.5 text-xs font-bold uppercase tracking-wider">Monto</th>
+                    <th className="text-left px-3 py-2.5 text-xs font-bold uppercase tracking-wider">Concepto</th>
+                    <th className="text-left px-3 py-2.5 text-xs font-bold uppercase tracking-wider">Fecha</th>
+                  </tr>
+                </thead>
+                {prestamosHistorico.grupos.map(grupo => {
+                  const subOtorg = grupo.prestamos
+                    .filter(p => p.tipo === 'otorgado')
+                    .reduce((s, p) => s + p.monto, 0)
+                  const subDesc = grupo.prestamos
+                    .filter(p => p.tipo === 'descontado')
+                    .reduce((s, p) => s + p.monto, 0)
+                  return (
+                    <tbody key={grupo.sem_key}>
+                      {/* Header de semana */}
+                      <tr className="bg-naranja-light border-t-2 border-naranja">
+                        <td colSpan={5} className="px-3 py-1.5">
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <span className="text-xs font-bold text-naranja-dark uppercase tracking-wide">
+                              Semana del {getSemLabel(new Date(grupo.sem_key + 'T12:00:00'))}
+                            </span>
+                            {subOtorg > 0 && (
+                              <span className="text-[11px] font-bold text-naranja-dark">
+                                +{fmtMonto(subOtorg)}
+                              </span>
+                            )}
+                            {subDesc > 0 && (
+                              <span className="text-[11px] font-bold text-rojo">
+                                −{fmtMonto(subDesc)}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                      {/* Filas de préstamos */}
+                      {grupo.prestamos.map(p => {
+                        const pers = personal.find(x => x.leg === p.leg)
+                        const esOtorgado = p.tipo === 'otorgado'
+                        return (
+                          <tr key={p.id} className="border-b border-gris hover:bg-gris/30 transition-colors">
+                            <td className="px-3 py-2 text-sm">
+                              <span className="font-semibold text-carbon">{pers?.nom ?? '—'}</span>
+                              <span className="text-[11px] text-gris-dark ml-1 font-mono">({p.leg})</span>
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              <span
+                                className={`text-[11px] font-bold px-2 py-0.5 rounded uppercase tracking-wide ${
+                                  esOtorgado
+                                    ? 'bg-naranja-light text-naranja-dark'
+                                    : 'bg-rojo-light text-rojo'
+                                }`}
+                              >
+                                {esOtorgado ? '+ Otorgado' : '− Descontado'}
+                              </span>
+                            </td>
+                            <td
+                              className={`px-3 py-2 text-right font-mono font-bold text-sm ${
+                                esOtorgado ? 'text-naranja-dark' : 'text-rojo'
+                              }`}
+                            >
+                              {fmtMonto(p.monto)}
+                            </td>
+                            <td className="px-3 py-2 text-xs text-gris-dark">
+                              {p.concepto ?? '—'}
+                            </td>
+                            <td className="px-3 py-2 text-[11px] text-gris-dark font-mono">
+                              {p.created_at.slice(0, 10)}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  )
+                })}
+              </table>
+            </div>
+          )}
         </div>
       </div>}
     </div>
