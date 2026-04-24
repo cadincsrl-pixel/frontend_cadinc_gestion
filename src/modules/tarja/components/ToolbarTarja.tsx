@@ -83,6 +83,19 @@ export function ToolbarTarja({
     toast('⬇ Excel exportado', 'ok')
   }
 
+  function handleExportPlantilla() {
+    if (!personal.length) {
+      toast('Agregá trabajadores a la semana antes de descargar la plantilla', 'warn')
+      return
+    }
+    exportarTarjaExcel(
+      obraCod, obra.nom, semActual,
+      personal, categorias, horasData, tarifas,
+      { sinHoras: true },
+    )
+    toast('📋 Plantilla descargada — completala y usá "Importar"', 'ok')
+  }
+
   function handleImportExcel(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -150,9 +163,20 @@ export function ToolbarTarja({
             ⬇ Excel
           </Button>
           {puedeEditar && (
-            <Button variant="ghost" size="sm" onClick={() => fileRef.current?.click()} disabled={importing}>
-              {importing ? 'Importando...' : '📥 Importar'}
-            </Button>
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleExportPlantilla}
+                disabled={!personal.length}
+                title="Descargar plantilla vacía para cargar horas en Excel"
+              >
+                📋 Plantilla
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => fileRef.current?.click()} disabled={importing}>
+                {importing ? 'Importando...' : '📥 Importar'}
+              </Button>
+            </>
           )}
           <input
             ref={fileRef}
