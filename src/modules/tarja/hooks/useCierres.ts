@@ -15,7 +15,7 @@ export function useCierresObra(obraCod: string) {
 export function useCreateCierre() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (dto: { obra_cod: string; sem_key: string }) =>
+    mutationFn: (dto: { obra_cod: string; sem_key: string; estado?: 'pendiente' | 'cerrado' }) =>
       apiPost<Cierre>('/api/cierres', dto),
     onSuccess: () => qc.invalidateQueries({ queryKey: CIERRES_KEY }),
   })
