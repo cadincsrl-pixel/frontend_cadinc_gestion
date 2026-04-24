@@ -224,10 +224,13 @@ export function ResumenHistoricoPage() {
         if (c.obra_cod !== o.cod || c.estado !== 'cerrado') return false
         if (filtroDesde && c.sem_key < filtroDesde) return false
         if (filtroHasta && c.sem_key > filtroHasta) return false
-        // Solo contar si tiene datos reales
+        // Solo contar si tiene datos reales (horas regulares, hs extras o certs)
         const dSem = getSemDays(new Date(c.sem_key + 'T12:00:00'))
         const legsAct = getLegsActivos(o.cod, c.sem_key)
-        const hsSem = legsAct.reduce((s, leg) => s + totalHsLeg(todasHoras, o.cod, leg, dSem.map(toISO)), 0)
+        const hsSem = legsAct.reduce(
+          (s, leg) => s + totalHsLeg(todasHoras, o.cod, leg, dSem.map(toISO), todasHsExtras),
+          0,
+        )
         const contratSem = todasCerts
           .filter(ct => ct.obra_cod === o.cod && ct.sem_key === c.sem_key)
           .reduce((s, ct) => s + ct.monto, 0)
