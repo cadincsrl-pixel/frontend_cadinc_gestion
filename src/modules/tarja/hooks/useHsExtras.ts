@@ -3,6 +3,16 @@ import { hsExtrasApi } from '@/lib/api/hs-extras.api'
 import type { TarjaHsExtra, UpsertHsExtraDto, UpsertHsExtrasLoteDto } from '@/types/domain.types'
 import { useToast } from '@/components/ui/Toast'
 
+// Contador para generar ids optimistic únicos sin colisión.
+// Date.now() puede devolver el mismo timestamp para dos upserts en
+// el mismo milisegundo (improbable en UI manual, posible en
+// "aplicar a todos" futuro); el counter garantiza unicidad.
+let optimisticIdSeq = 0
+function nextOptimisticId(): number {
+  optimisticIdSeq += 1
+  return -optimisticIdSeq  // negativo para no chocar con ids reales (bigint serial positivo)
+}
+
 export const HS_EXTRAS_KEY = ['hs-extras'] as const
 
 export function useHsExtras(obraCod: string, desde?: string, hasta?: string) {
@@ -59,7 +69,7 @@ export function useUpsertHsExtra() {
           qc.setQueryData(key, next)
         } else {
           const optimistic: TarjaHsExtra = {
-            id: -Date.now(),
+            id: nextOptimisticId(),
             obra_cod: dto.obra_cod,
             leg: dto.leg,
             sem_key: dto.sem_key,

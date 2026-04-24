@@ -920,7 +920,12 @@ export function generarRecibos(
     const cardHTML = resumen.cards.map(c => {
       const esDep = c.obra.es_deposito
       const bg = esDep ? '#FDEEDA' : '#F8F6F2'
+      // Border-left grueso + chip "DEPÓSITO" textual para distinguir en B&N.
+      const borderLeft = esDep ? '4px solid #C96A2A' : '1px solid #D9D6CF'
       const border = esDep ? '#E8C5A0' : '#D9D6CF'
+      const depChip = esDep
+        ? `<span style="font-family:monospace;font-size:9px;background:#C96A2A;color:#fff;padding:1px 6px;border-radius:3px;font-weight:700;letter-spacing:.3px">DEPÓSITO</span>`
+        : ''
       const ccChip = c.obra.cc
         ? `<span style="font-family:monospace;font-size:9px;background:#E8EDF5;color:#1D3F6E;padding:1px 6px;border-radius:3px;font-weight:700;letter-spacing:.3px">CC ${c.obra.cc}</span>`
         : ''
@@ -928,8 +933,9 @@ export function generarRecibos(
         ? `<div style="font-size:10px;color:#8A8980;margin-top:6px">${c.obra.resp ? '👷 ' + c.obra.resp : ''}${c.obra.dir && c.obra.resp ? ' · ' : ''}${c.obra.dir ? '📍 ' + c.obra.dir : ''}</div>`
         : ''
       return `
-        <div style="background:${bg};border:1px solid ${border};border-radius:8px;padding:8px 10px;break-inside:avoid">
+        <div style="background:${bg};border:1px solid ${border};border-left:${borderLeft};border-radius:8px;padding:8px 10px;break-inside:avoid">
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">
+            ${depChip}
             ${ccChip}
             <span style="font-weight:700;font-size:11px;color:#1D3F6E;letter-spacing:.3px">${c.obra.nom}</span>
           </div>

@@ -227,7 +227,7 @@ export function ModalRecibos({
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" onClick={handleGenerar} disabled={!semKey || !obrasSelec.length}>
+          <Button variant="primary" onClick={handleGenerar} disabled={!semKey || !obrasSelec.length || (!incluirOp && !incluirCont)}>
             🖨 Generar PDF
           </Button>
         </>
@@ -286,11 +286,12 @@ export function ModalRecibos({
               🔧 Contratistas
             </button>
           </div>
-          <label className="flex items-center gap-2 mt-2 cursor-pointer">
+          <label className={`flex items-center gap-2 mt-2 ${!incluirOp && !incluirCont ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
             <input
               type="checkbox"
-              checked={incluirPortada}
+              checked={incluirPortada && (incluirOp || incluirCont)}
               onChange={e => setIncluirPortada(e.target.checked)}
+              disabled={!incluirOp && !incluirCont}
               className="accent-naranja w-4 h-4"
             />
             <span className="text-xs font-semibold text-gris-dark">
