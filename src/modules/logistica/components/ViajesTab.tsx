@@ -50,12 +50,11 @@ export function ViajesTab() {
 
   async function handleUpload(form: { setValue: (k: any, v: any) => void }, field: string, file: File | undefined) {
     if (!file) return
-    const esImagen = file.type.startsWith('image/')
-    const esPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
-    if (!esImagen && !esPdf) { toast('Solo se aceptan imágenes o PDF', 'err'); return }
-    if (file.size > 8 * 1024 * 1024) { toast('Archivo demasiado grande (máx 8 MB)', 'err'); return }
     setUploading(field)
     try {
+      // uploadRemitoImg valida mime (imagen/PDF) y tamaño (≤8 MB) y tira
+      // UploadValidationError con mensaje legible. El bucket también
+      // restringe server-side como defensa en profundidad.
       const url = await uploadRemitoImg(file)
       form.setValue(field, url)
       toast('✓ Remito subido', 'ok')
