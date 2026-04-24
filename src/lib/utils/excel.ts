@@ -10,6 +10,8 @@ import { calcularResumenSemana } from './resumen-semana'
 // ══════════════════════════════════════════════════
 // EXPORT TARJA — planilla por obra y semana
 // ══════════════════════════════════════════════════
+// Si sinHoras=true, deja celdas vacías (plantilla para cargar en Excel y
+// después importar). Si false (default), exporta con las horas actuales.
 export function exportarTarjaExcel(
   obraCod: string,
   obraNom: string,
@@ -17,8 +19,10 @@ export function exportarTarjaExcel(
   personal: Personal[],
   categorias: Categoria[],
   horas: Hora[],
-  tarifas: Tarifa[]
+  tarifas: Tarifa[],
+  opts: { sinHoras?: boolean } = {},
 ) {
+  const { sinHoras = false } = opts
   const wb = XLSX.utils.book_new()
   const days = getSemDays(semActual)
 
@@ -32,6 +36,7 @@ export function exportarTarjaExcel(
   const dataRows = personal.map(p => {
     const cat = categorias.find(c => c.id === p.cat_id)
     const hsDia = days.map(d => {
+      if (sinHoras) return ''
       const h = horas.find(x => x.obra_cod === obraCod && x.leg === p.leg && x.fecha === toISO(d))
       return h?.horas ?? ''
     })
@@ -39,9 +44,16 @@ export function exportarTarjaExcel(
     return [p.leg, p.nom, cat?.nom ?? '—', ...hsDia, totHs || '']
   })
 
+  const titulo = sinHoras
+    ? `TARJA — PLANTILLA — ${obraNom} (${obraCod}) — ${getSemLabel(semActual)}`
+    : `TARJA — ${obraNom} (${obraCod}) — ${getSemLabel(semActual)}`
+  const instruccion = sinHoras
+    ? 'PLANTILLA: completá las horas por día en cada celda. No modificar columnas A, B, C ni la fila 3 (fechas). Guardar y luego usar "Importar" en la aplicación.'
+    : 'Completá las horas por día. No modificar columnas A, B, C ni la fila 3 (fechas).'
+
   const rows = [
-    [`TARJA — ${obraNom} (${obraCod}) — ${getSemLabel(semActual)}`],
-    ['Completá las horas por día. No modificar columnas A, B, C ni la fila 3 (fechas).'],
+    [titulo],
+    [instruccion],
     fechaRow,
     headerRow,
     ...dataRows,
@@ -65,7 +77,8 @@ export function exportarTarjaExcel(
   ws2['!cols'] = [{ wch: 26 }, { wch: 14 }]
   XLSX.utils.book_append_sheet(wb, ws2, 'Referencia')
 
-  XLSX.writeFile(wb, `Tarja_${obraCod}_${toISO(semActual)}.xlsx`)
+  const prefijo = sinHoras ? 'Tarja_Plantilla' : 'Tarja'
+  XLSX.writeFile(wb, `${prefijo}_${obraCod}_${toISO(semActual)}.xlsx`)
 }
 
 // ══════════════════════════════════════════════════
