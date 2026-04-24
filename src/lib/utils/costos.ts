@@ -74,7 +74,7 @@ export function getVHenFecha(
 
 // Total de horas de un trabajador en una lista de días.
 // Si se pasa hsExtras, incluye las hs extras de la semana correspondiente.
-// sem_key = viernes de la semana (convención del proyecto, §5.2 CLAUDE.md).
+// sem_key = viernes de la semana (convención del proyecto, §5.3 CLAUDE.md).
 export function totalHsLeg(
   horas: Hora[],
   obraCod: string,
