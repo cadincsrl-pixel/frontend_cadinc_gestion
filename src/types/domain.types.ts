@@ -86,6 +86,23 @@ export interface UpdatePersonalDto {
   activo_override?: boolean | null
 }
 
+// ── Documentos del legajo ──
+export type PersonalDocTipo = 'dni' | 'alta_temprana' | 'baja' | 'telegrama'
+
+export interface PersonalDocumento {
+  id:             number
+  leg:            string
+  tipo:           PersonalDocTipo
+  nombre_archivo: string
+  mime_type:      string
+  size_bytes:     number
+  obs:            string | null
+  created_at:     string
+  created_by:     string | null
+  updated_at:     string
+  updated_by:     string | null
+}
+
 // ── Categorías ──
 export interface Categoria {
   id: number

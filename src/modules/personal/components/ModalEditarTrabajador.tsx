@@ -12,6 +12,7 @@ import { useUpdatePersonal, useDeletePersonal } from '@/modules/tarja/hooks/useP
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
 import { useToast } from '@/components/ui/Toast'
 import { AuditInfo } from '@/components/ui/AuditInfo'
+import { PersonalDocumentosSection } from './PersonalDocumentosSection'
 import type { Personal } from '@/types/domain.types'
 
 const schema = z.object({
@@ -103,6 +104,7 @@ export function ModalEditarTrabajador({ open, onClose, trabajador }: Props) {
       open={open}
       onClose={onClose}
       title="✏️ EDITAR TRABAJADOR"
+      width="max-w-3xl"
       footer={
         <>
           <Button
@@ -233,6 +235,12 @@ export function ModalEditarTrabajador({ open, onClose, trabajador }: Props) {
             />
           </div>
         </div>
+
+        {trabajador && (
+          <div className="border-t border-gris-mid pt-4">
+            <PersonalDocumentosSection leg={trabajador.leg} />
+          </div>
+        )}
 
         <AuditInfo
           createdBy={trabajador?.created_by}
