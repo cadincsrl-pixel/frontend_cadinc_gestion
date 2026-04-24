@@ -14,7 +14,30 @@ import { Badge }    from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
 import { useForm }  from 'react-hook-form'
 import { uploadRemitoImg } from '@/lib/utils/upload'
-import type { Tramo } from '@/types/domain.types'
+import type { Tramo, TramoTipo } from '@/types/domain.types'
+
+// Shape de los forms de este tab. Todos los campos en string porque los
+// inputs/selects del proyecto devuelven strings; los parseos a number/null
+// se hacen en handleCreate/handleEdit/handleRegistrarDescarga antes de
+// llamar al API.
+type TramoFormValues = {
+  tipo?: TramoTipo
+  chofer_id?: string
+  camion_id?: string
+  empresa_id?: string
+  cantera_id?: string
+  deposito_id?: string
+  fecha_carga?: string
+  toneladas_carga?: string
+  remito_carga?: string
+  remito_carga_img_url?: string
+  fecha_descarga?: string
+  toneladas_descarga?: string
+  remito_descarga?: string
+  remito_descarga_img_url?: string
+  fecha_vacio?: string
+  obs?: string
+}
 
 export function ViajesTab() {
   const toast = useToast()
@@ -43,9 +66,9 @@ export function ViajesTab() {
   const [filtDesde,     setFiltDesde]     = useState('')
   const [filtHasta,     setFiltHasta]     = useState('')
 
-  const formNuevo    = useForm<any>({ defaultValues: { tipo: 'cargado', fecha_carga: hoy(), fecha_vacio: hoy(), remito_carga_img_url: '', remito_descarga_img_url: '' } })
-  const formEdit     = useForm<any>()
-  const formDescarga = useForm<any>({ defaultValues: { fecha_descarga: hoy(), remito_descarga_img_url: '' } })
+  const formNuevo    = useForm<TramoFormValues>({ defaultValues: { tipo: 'cargado', fecha_carga: hoy(), fecha_vacio: hoy(), remito_carga_img_url: '', remito_descarga_img_url: '' } })
+  const formEdit     = useForm<TramoFormValues>()
+  const formDescarga = useForm<TramoFormValues>({ defaultValues: { fecha_descarga: hoy(), remito_descarga_img_url: '' } })
   const [uploading, setUploading] = useState<string | null>(null)
 
   async function handleUpload(form: { setValue: (k: any, v: any) => void }, field: string, file: File | undefined) {
@@ -93,7 +116,7 @@ export function ViajesTab() {
     return ruta?.km_ida_vuelta ?? null
   }
 
-  function handleCreate(data: any) {
+  function handleCreate(data: TramoFormValues) {
     const dto: any = {
       chofer_id:   Number(data.chofer_id),
       camion_id:   Number(data.camion_id),
@@ -121,13 +144,13 @@ export function ViajesTab() {
     })
   }
 
-  function handleRegistrarDescarga(data: any) {
+  function handleRegistrarDescarga(data: TramoFormValues) {
     if (!descargaTramo) return
     regDescarga(
       {
         id: descargaTramo.id,
         dto: {
-          fecha_descarga:          data.fecha_descarga,
+          fecha_descarga:          data.fecha_descarga ?? hoy(),
           toneladas_descarga:      data.toneladas_descarga ? Number(data.toneladas_descarga) : undefined,
           remito_descarga:         data.remito_descarga ?? '',
           remito_descarga_img_url: data.remito_descarga_img_url || null,
@@ -172,11 +195,11 @@ export function ViajesTab() {
       cantera_id:        tramo.cantera_id  ? String(tramo.cantera_id)  : '',
       deposito_id:       tramo.deposito_id ? String(tramo.deposito_id) : '',
       fecha_carga:             tramo.fecha_carga    ?? '',
-      toneladas_carga:         tramo.toneladas_carga ?? '',
+      toneladas_carga:         tramo.toneladas_carga != null ? String(tramo.toneladas_carga) : '',
       remito_carga:            tramo.remito_carga    ?? '',
       remito_carga_img_url:    tramo.remito_carga_img_url ?? '',
       fecha_descarga:          tramo.fecha_descarga     ?? '',
-      toneladas_descarga:      tramo.toneladas_descarga ?? '',
+      toneladas_descarga:      tramo.toneladas_descarga != null ? String(tramo.toneladas_descarga) : '',
       remito_descarga:         tramo.remito_descarga    ?? '',
       remito_descarga_img_url: tramo.remito_descarga_img_url ?? '',
       fecha_vacio:       tramo.fecha_vacio ?? '',
@@ -185,7 +208,7 @@ export function ViajesTab() {
     setEditando(tramo)
   }
 
-  function handleEdit(data: any) {
+  function handleEdit(data: TramoFormValues) {
     if (!editando) return
     updateTramo(
       {
