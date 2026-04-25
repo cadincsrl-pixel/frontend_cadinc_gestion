@@ -49,7 +49,7 @@ export function ViajesTab() {
   const { data: rutas     = [] } = useRutas()
   const { data: empresas  = [] } = useEmpresas()
 
-  const { mutate: createTramo,  isPending: creating    } = useCreateTramo()
+  const { mutate: createTramo,  mutateAsync: createTramoAsync, isPending: creating } = useCreateTramo()
   const { mutate: updateTramo,  isPending: updating    } = useUpdateTramo()
   const { mutate: deleteTramo  } = useDeleteTramo()
   const { mutate: regDescarga,  isPending: descargando } = useRegistrarDescargaTramo()
@@ -180,27 +180,81 @@ export function ViajesTab() {
     return ruta?.km_ida_vuelta ?? null
   }
 
-  function handleCreate(data: TramoFormValues) {
+  async function handleCreate(data: TramoFormValues) {
     const choferId = data.chofer_id ? Number(data.chofer_id) : null
     const camionId = data.camion_id ? Number(data.camion_id) : null
     const nuevoTipo = data.tipo as 'cargado' | 'vacio'
+    const newCanteraId = data.cantera_id  ? Number(data.cantera_id)  : null
+    const newDepositoId = data.deposito_id ? Number(data.deposito_id) : null
 
-    // Capa 1: warning pre-submit si el último tramo del chofer o camión
-    // tiene el mismo tipo — el ciclo normal es vacío → cargado → vacío.
-    const rep = detectarRepeticion(nuevoTipo, choferId, camionId)
-    if (rep) {
-      const chofNom = rep.ultimoChofer ? choferes.find(c => c.id === rep.ultimoChofer!.chofer_id)?.nombre : null
-      const camPat  = rep.ultimoCamion ? camiones.find(c => c.id === rep.ultimoCamion!.camion_id)?.patente : null
-      const partes: string[] = []
-      if (rep.ultimoChofer) partes.push(`el chofer ${chofNom ?? `#${rep.ultimoChofer.chofer_id}`} (último: ${rep.ultimoChofer.tipo.toUpperCase()} el ${fechaRef(rep.ultimoChofer) ?? '?'})`)
-      if (rep.ultimoCamion) partes.push(`el camión ${camPat ?? `#${rep.ultimoCamion.camion_id}`} (último: ${rep.ultimoCamion.tipo.toUpperCase()} el ${fechaRef(rep.ultimoCamion) ?? '?'})`)
-      const msg =
-        `⚠ Estás por crear un tramo ${nuevoTipo.toUpperCase()}, pero ` +
-        partes.join(' y ') +
-        ' ya tenía ese mismo tipo. ' +
-        'El ciclo normal es vacío → cargado → vacío. ' +
-        '\n\n¿Crear igual?'
-      if (!confirm(msg)) return
+    // ── Auto-vacío entre cargados ─────────────────────────────────
+    // Si el nuevo es CARGADO y el último tramo del chofer/camión también
+    // fue CARGADO (con destino conocido), entre ambos hubo un viaje vacío
+    // implícito (depósito anterior → cantera nueva). Lo detectamos y
+    // ofrecemos crearlo automáticamente.
+    let vacioAuto: { cantera_id: number; deposito_id: number; km_ida_vuelta: number | null } | null = null
+    if (nuevoTipo === 'cargado' && newCanteraId != null) {
+      const ultimo =
+        (choferId ? getUltimoTramoDe(t => t.chofer_id === choferId) : null) ??
+        (camionId ? getUltimoTramoDe(t => t.camion_id === camionId) : null)
+
+      if (ultimo
+        && ultimo.tipo === 'cargado'
+        && ultimo.deposito_id != null
+        && ultimo.deposito_id !== newCanteraId   // si son iguales, no hay desplazamiento
+      ) {
+        const ruta = rutas.find(r =>
+          r.cantera_id === newCanteraId && r.deposito_id === ultimo.deposito_id
+        )
+        const cantNom = canteras.find(c => c.id === newCanteraId)?.nombre ?? `#${newCanteraId}`
+        const depNom = depositos.find(d => d.id === ultimo.deposito_id)?.nombre ?? `#${ultimo.deposito_id}`
+
+        if (ruta) {
+          const msg =
+            `Detecté un tramo vacío implícito entre el último cargado y este:\n\n` +
+            `  ${depNom} → ${cantNom}\n` +
+            `  ${ruta.km_ida_vuelta ?? '—'} km ida-vuelta\n\n` +
+            `¿Crear el tramo vacío + el cargado juntos?`
+          if (confirm(msg)) {
+            vacioAuto = {
+              cantera_id: newCanteraId,
+              deposito_id: ultimo.deposito_id,
+              km_ida_vuelta: ruta.km_ida_vuelta ?? null,
+            }
+          }
+          // Si dijo no, dejamos pasar al flujo normal y el warning de
+          // "consecutivo mismo tipo" abajo cubre como fallback.
+        } else {
+          // Sin ruta → bloqueamos el cargado para forzar consistencia.
+          alert(
+            `No se puede crear el tramo cargado: detecté que falta el vacío implícito\n` +
+            `${depNom} → ${cantNom}, pero no hay ruta cargada entre esos puntos.\n\n` +
+            `Cargá la ruta en Logística > Rutas o creá el tramo vacío a mano antes.`
+          )
+          return
+        }
+      }
+    }
+
+    // ── Warning fallback: consecutivo mismo tipo ──
+    // Si no auto-creamos vacío (caso raro: último vacío repetido, o el user
+    // declinó la auto-creación), avisamos.
+    if (!vacioAuto) {
+      const rep = detectarRepeticion(nuevoTipo, choferId, camionId)
+      if (rep) {
+        const chofNom = rep.ultimoChofer ? choferes.find(c => c.id === rep.ultimoChofer!.chofer_id)?.nombre : null
+        const camPat  = rep.ultimoCamion ? camiones.find(c => c.id === rep.ultimoCamion!.camion_id)?.patente : null
+        const partes: string[] = []
+        if (rep.ultimoChofer) partes.push(`el chofer ${chofNom ?? `#${rep.ultimoChofer.chofer_id}`} (último: ${rep.ultimoChofer.tipo.toUpperCase()} el ${fechaRef(rep.ultimoChofer) ?? '?'})`)
+        if (rep.ultimoCamion) partes.push(`el camión ${camPat ?? `#${rep.ultimoCamion.camion_id}`} (último: ${rep.ultimoCamion.tipo.toUpperCase()} el ${fechaRef(rep.ultimoCamion) ?? '?'})`)
+        const msg =
+          `⚠ Estás por crear un tramo ${nuevoTipo.toUpperCase()}, pero ` +
+          partes.join(' y ') +
+          ' ya tenía ese mismo tipo. ' +
+          'El ciclo normal es vacío → cargado → vacío. ' +
+          '\n\n¿Crear igual?'
+        if (!confirm(msg)) return
+      }
     }
 
     const dto: any = {
@@ -208,8 +262,8 @@ export function ViajesTab() {
       camion_id:   camionId,
       tipo:        data.tipo,
       empresa_id:  data.empresa_id ? Number(data.empresa_id) : null,
-      cantera_id:  data.cantera_id  ? Number(data.cantera_id)  : null,
-      deposito_id: data.deposito_id ? Number(data.deposito_id) : null,
+      cantera_id:  newCanteraId,
+      deposito_id: newDepositoId,
       obs:         data.obs ?? '',
     }
     if (data.tipo === 'cargado') {
@@ -220,6 +274,31 @@ export function ViajesTab() {
     } else {
       dto.fecha_vacio = data.fecha_vacio
     }
+
+    // Si hay vacío auto, encadenamos. Sino, flujo normal.
+    if (vacioAuto) {
+      const dtoVacio: any = {
+        chofer_id:   choferId,
+        camion_id:   camionId,
+        tipo:        'vacio',
+        empresa_id:  null,
+        cantera_id:  vacioAuto.cantera_id,
+        deposito_id: vacioAuto.deposito_id,
+        fecha_vacio: data.fecha_carga,
+        obs:         'Auto-generado entre cargados',
+      }
+      try {
+        await createTramoAsync(dtoVacio)
+        await createTramoAsync(dto)
+        toast('✓ Tramo vacío + cargado registrados', 'ok')
+        setModalNuevo(false)
+        formNuevo.reset({ tipo: 'cargado', fecha_carga: hoy(), fecha_vacio: hoy() })
+      } catch (e) {
+        toast(e instanceof Error ? e.message : 'Error al registrar tramos', 'err')
+      }
+      return
+    }
+
     createTramo(dto, {
       onSuccess: () => {
         toast('✓ Tramo registrado', 'ok')
