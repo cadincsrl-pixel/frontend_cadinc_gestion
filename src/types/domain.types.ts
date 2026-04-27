@@ -233,7 +233,7 @@ export type LiqEstado    = 'borrador' | 'cerrada'
 export interface Chofer extends AuditFields {
   id: number
   nombre: string
-  dni: string | null
+  cuil: string | null
   tel: string | null
   licencia: string | null
   estado: ChoferEstado
