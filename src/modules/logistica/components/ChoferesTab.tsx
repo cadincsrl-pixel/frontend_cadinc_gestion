@@ -60,7 +60,7 @@ export function ChoferesTab() {
   function openEdit(chofer: Chofer) {
     formEdit.reset({
       nombre:     chofer.nombre,
-      dni:        chofer.dni ?? '',
+      cuil:       chofer.cuil ?? '',
       tel:        chofer.tel ?? '',
       licencia:   chofer.licencia ?? '',
       estado:     chofer.estado,
@@ -84,7 +84,7 @@ export function ChoferesTab() {
     <div className="flex flex-col gap-4">
       <Input label="Nombre completo" placeholder="Apellido, Nombre" {...form.register('nombre')} />
       <div className="grid grid-cols-2 gap-3">
-        <Input label="DNI" placeholder="12.345.678" {...form.register('dni')} />
+        <Input label="CUIL" placeholder="20-12345678-3" {...form.register('cuil')} />
         <Input label="Teléfono" placeholder="299-XXX-XXXX" {...form.register('tel')} />
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -108,7 +108,7 @@ export function ChoferesTab() {
         <table className="w-full border-collapse">
           <thead>
             <tr>
-              {['Nombre', 'DNI', 'Teléfono', 'Licencia', 'Camión', 'Estado', ''].map(h => (
+              {['Nombre', 'CUIL', 'Teléfono', 'Licencia', 'Camión', 'Estado', ''].map(h => (
                 <th key={h} className="bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide">
                   {h}
                 </th>
@@ -123,7 +123,7 @@ export function ChoferesTab() {
               return (
               <tr key={c.id} className="border-b border-gris last:border-0 hover:bg-gris/40 transition-colors">
                 <td className="px-4 py-3 font-bold text-sm text-carbon">{c.nombre}</td>
-                <td className="px-4 py-3 font-mono text-xs text-gris-dark">{c.dni || '—'}</td>
+                <td className="px-4 py-3 font-mono text-xs text-gris-dark">{c.cuil || '—'}</td>
                 <td className="px-4 py-3 text-sm text-gris-dark">{c.tel || '—'}</td>
                 <td className="px-4 py-3 font-mono text-xs text-gris-dark">{c.licencia || '—'}</td>
                 <td className="px-4 py-3">
