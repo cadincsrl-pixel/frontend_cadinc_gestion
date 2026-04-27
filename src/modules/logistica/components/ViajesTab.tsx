@@ -205,10 +205,23 @@ export function ViajesTab() {
         (choferId ? getUltimoTramoDe(t => t.chofer_id === choferId) : null) ??
         (camionId ? getUltimoTramoDe(t => t.camion_id === camionId) : null)
 
+      // "No hay desplazamiento" solo aplica si el último depósito y la
+      // cantera nueva son el MISMO lugar físico (mismo nombre normalizado).
+      // No se puede comparar deposito_id con cantera_id directamente: son
+      // PKs de tablas distintas y pueden coincidir numéricamente sin ser
+      // el mismo lugar (ej: cantera id=1 "Cristamine" vs depósito id=1
+      // "Manzano").
+      const norm = (s?: string | null) => (s ?? '').trim().toUpperCase()
+      const depPrevNom = ultimo?.deposito_id != null
+        ? norm(depositos.find(d => d.id === ultimo.deposito_id)?.nombre)
+        : ''
+      const canteraNuevaNom = norm(canteras.find(c => c.id === newCanteraId)?.nombre)
+      const mismoLugar = depPrevNom !== '' && depPrevNom === canteraNuevaNom
+
       if (ultimo
         && ultimo.tipo === 'cargado'
         && ultimo.deposito_id != null
-        && ultimo.deposito_id !== newCanteraId   // si son iguales, no hay desplazamiento
+        && !mismoLugar
       ) {
         const ruta = rutas.find(r =>
           r.cantera_id === newCanteraId && r.deposito_id === ultimo.deposito_id
