@@ -103,6 +103,27 @@ export interface PersonalDocumento {
   updated_by:     string | null
 }
 
+// ── Documentos del legajo de chofer ──
+export type ChoferDocTipo =
+  | 'dni' | 'licencia_conducir' | 'alta_temprana' | 'lnh' | 'cnrt'
+  | 'aptitud_psicofisica' | 'art' | 'mopp' | 'cuil_afip' | 'cbu_bancario'
+  | 'telegrama' | 'otro'
+
+export interface ChoferDocumento {
+  id:             number
+  chofer_id:      number
+  tipo:           ChoferDocTipo
+  nombre_archivo: string
+  mime_type:      string
+  size_bytes:     number
+  vence_el:       string | null   // YYYY-MM-DD, solo para tipos con expiración
+  obs:            string | null
+  created_at:     string
+  created_by:     string | null
+  updated_at:     string
+  updated_by:     string | null
+}
+
 // ── Categorías ──
 export interface Categoria {
   id: number
