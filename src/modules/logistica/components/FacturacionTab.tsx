@@ -17,6 +17,7 @@ import { Badge }  from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
 import { useForm as useRHF } from 'react-hook-form'
 import { usePermisos } from '@/hooks/usePermisos'
+import { CobroAdjuntosSection } from './CobroAdjuntosSection'
 import type { EmpresaTransportista, TarifaEmpresaCantera, Tramo, Cobro } from '@/types/domain.types'
 
 function fmtM(n: number) {
@@ -299,7 +300,17 @@ function FacturacionSection() {
   const [modalCobro,   setModalCobro]   = useState(false)
   const [empresaCobro, setEmpresaCobro] = useState<EmpresaTransportista | null>(null)
   const [selectedIds,  setSelectedIds]  = useState<Set<number>>(new Set())
+  // Cobro recién creado: cuando se setea, el modal pasa a "modo adjuntos"
+  // (sigue abierto para que el user pueda subir liquidación + comprobante).
+  const [cobroCreado,  setCobroCreado]  = useState<{ id: number; total: number; ton: number } | null>(null)
   const form = useForm<any>()
+
+  function cerrarModalCobro() {
+    setModalCobro(false)
+    setEmpresaCobro(null)
+    setCobroCreado(null)
+    setSelectedIds(new Set())
+  }
 
   const tramosPendientes = (tramos as Tramo[]).filter(
     t => t.tipo === 'cargado' && t.estado === 'completado' && !t.cobro_id
@@ -367,8 +378,11 @@ function FacturacionSection() {
       obs:               data.obs,
       tramo_ids:         modalTramos.map(t => t.id),
     }, {
-      onSuccess: () => { toast('✓ Cobro registrado', 'ok'); setModalCobro(false); setEmpresaCobro(null) },
-      onError:   () => toast('Error al registrar', 'err'),
+      onSuccess: (creado) => {
+        toast('✓ Cobro registrado — ahora podés adjuntar liquidación y comprobante', 'ok')
+        setCobroCreado({ id: creado.id, total, ton: ton_totales })
+      },
+      onError: () => toast('Error al registrar', 'err'),
     })
   }
 
@@ -487,16 +501,42 @@ function FacturacionSection() {
       )}
 
       {/* Modal cobrar */}
-      <Modal open={modalCobro} onClose={() => setModalCobro(false)} title="💰 REGISTRAR COBRO" width="max-w-lg"
+      <Modal
+        open={modalCobro}
+        onClose={cerrarModalCobro}
+        title={cobroCreado ? '💰 ADJUNTAR DOCUMENTOS DEL COBRO' : '💰 REGISTRAR COBRO'}
+        width={cobroCreado ? 'max-w-2xl' : 'max-w-lg'}
         footer={
-          <>
-            <Button variant="secondary" onClick={() => setModalCobro(false)}>Cancelar</Button>
-            <Button variant="primary" loading={creando} onClick={form.handleSubmit(handleCobrar)}>
-              ✓ Guardar cobro
-            </Button>
-          </>
+          cobroCreado ? (
+            <Button variant="primary" onClick={cerrarModalCobro}>✓ Listo</Button>
+          ) : (
+            <>
+              <Button variant="secondary" onClick={cerrarModalCobro}>Cancelar</Button>
+              <Button variant="primary" loading={creando} onClick={form.handleSubmit(handleCobrar)}>
+                ✓ Guardar cobro
+              </Button>
+            </>
+          )
         }>
-        {empresaCobro && (
+        {/* ── Modo adjuntos: cobro ya creado ── */}
+        {cobroCreado && empresaCobro && (
+          <div className="flex flex-col gap-4">
+            <div className="bg-verde-light border border-verde/30 rounded-xl px-4 py-3">
+              <div className="font-bold text-verde">✓ Cobro registrado — {empresaCobro.nombre}</div>
+              <div className="text-xs text-verde mt-0.5">
+                {fmtTon(cobroCreado.ton)} · <span className="font-mono font-bold">{fmtM(cobroCreado.total)}</span>
+              </div>
+              <div className="text-[11px] text-gris-dark mt-2">
+                Subí ahora la liquidación del líquido producto y el comprobante de cobro. Si no los tenés
+                disponibles, podés cerrar y agregarlos después editando el cobro.
+              </div>
+            </div>
+            <CobroAdjuntosSection cobroId={cobroCreado.id} />
+          </div>
+        )}
+
+        {/* ── Modo registro: cobro nuevo ── */}
+        {!cobroCreado && empresaCobro && (
           <div className="flex flex-col gap-4">
             <div className="bg-azul-light rounded-xl px-4 py-3">
               <div className="font-bold text-azul">{empresaCobro.nombre}</div>

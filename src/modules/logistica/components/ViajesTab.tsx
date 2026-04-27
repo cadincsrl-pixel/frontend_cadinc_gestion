@@ -186,6 +186,13 @@ export function ViajesTab() {
     const nuevoTipo = data.tipo as 'cargado' | 'vacio'
     const newCanteraId = data.cantera_id  ? Number(data.cantera_id)  : null
     const newDepositoId = data.deposito_id ? Number(data.deposito_id) : null
+    const empresaIdNum = data.empresa_id ? Number(data.empresa_id) : null
+
+    // Empresa transportista obligatoria en cargado (necesaria para facturar).
+    if (nuevoTipo === 'cargado' && !empresaIdNum) {
+      toast('Tenés que elegir la empresa transportista para un tramo cargado', 'err')
+      return
+    }
 
     // ── Auto-vacío entre cargados ─────────────────────────────────
     // Si el nuevo es CARGADO y el último tramo del chofer/camión también
@@ -704,10 +711,9 @@ export function ViajesTab() {
 
           {tipoNuevo === 'cargado' && (
             <Combobox
-              label="Empresa transportista"
+              label="Empresa transportista *"
               placeholder="¿Para quién es este viaje?"
               options={[
-                { value: '', label: 'Sin empresa' },
                 ...(empresas as any[]).filter((e: any) => e.estado === 'activa').map((e: any) => ({ value: String(e.id), label: e.nombre })),
               ]}
               value={String(formNuevo.watch('empresa_id') ?? '')}
