@@ -238,6 +238,7 @@ export interface Chofer extends AuditFields {
   licencia: string | null
   estado: ChoferEstado
   camion_id: number | null
+  batea_id: number | null
   basico_dia: number
   precio_km: number
   obs: string | null

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useChoferes, useCreateChofer, useUpdateChofer, useDeleteChofer, useCamiones } from '../hooks/useLogistica'
+import { useChoferes, useCreateChofer, useUpdateChofer, useDeleteChofer, useCamiones, useBateas } from '../hooks/useLogistica'
 import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input }  from '@/components/ui/Input'
@@ -25,6 +25,7 @@ export function ChoferesTab() {
   const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('logistica')
   const { data: choferes = [] } = useChoferes()
   const { data: camiones = [] } = useCamiones()
+  const { data: bateas   = [] } = useBateas()
   const { mutate: create, isPending: creating } = useCreateChofer()
   const { mutate: update, isPending: updating } = useUpdateChofer()
   const { mutate: remove } = useDeleteChofer()
@@ -34,8 +35,16 @@ export function ChoferesTab() {
   const formNuevo = useForm<any>()
   const formEdit  = useForm<any>()
 
+  function normalizar(data: any) {
+    return {
+      ...data,
+      camion_id: data.camion_id ? Number(data.camion_id) : null,
+      batea_id:  data.batea_id  ? Number(data.batea_id)  : null,
+    }
+  }
+
   function handleCreate(data: any) {
-    create({ ...data, camion_id: data.camion_id ? Number(data.camion_id) : null }, {
+    create(normalizar(data), {
       onSuccess: () => { toast('✓ Chofer agregado', 'ok'); setModalNuevo(false); formNuevo.reset() },
       onError:   () => toast('Error al agregar', 'err'),
     })
@@ -43,7 +52,7 @@ export function ChoferesTab() {
 
   function handleUpdate(data: any) {
     if (!editando) return
-    update({ id: editando.id, dto: { ...data, camion_id: data.camion_id ? Number(data.camion_id) : null } }, {
+    update({ id: editando.id, dto: normalizar(data) }, {
       onSuccess: () => { toast('✓ Chofer actualizado', 'ok'); setEditando(null) },
       onError:   () => toast('Error al actualizar', 'err'),
     })
@@ -65,6 +74,7 @@ export function ChoferesTab() {
       licencia:   chofer.licencia ?? '',
       estado:     chofer.estado,
       camion_id:  chofer.camion_id ?? '',
+      batea_id:   chofer.batea_id ?? '',
       basico_dia: chofer.basico_dia ?? 0,
       precio_km:  chofer.precio_km ?? 0,
       obs:        chofer.obs ?? '',
@@ -80,6 +90,14 @@ export function ChoferesTab() {
     })),
   ]
 
+  const bateaOptions = [
+    { value: '', label: 'Sin asignar' },
+    ...bateas.filter(b => b.estado === 'activo').map(b => ({
+      value: b.id,
+      label: `${b.patente}${b.tipo ? ` — ${b.tipo}` : ''}`,
+    })),
+  ]
+
   const ChoferForm = ({ form, disabled }: { form: any; disabled?: boolean }) => (
     <div className="flex flex-col gap-4">
       <Input label="Nombre completo" placeholder="Apellido, Nombre" disabled={disabled} {...form.register('nombre')} />
@@ -91,7 +109,10 @@ export function ChoferesTab() {
         <Input label="Licencia" placeholder="Nº licencia" disabled={disabled} {...form.register('licencia')} />
         <Select label="Estado" options={ESTADO_OPTIONS} disabled={disabled} {...form.register('estado')} />
       </div>
-      <Select label="Camión asignado" options={camionOptions} disabled={disabled} {...form.register('camion_id')} />
+      <div className="grid grid-cols-2 gap-3">
+        <Select label="Camión asignado" options={camionOptions} disabled={disabled} {...form.register('camion_id')} />
+        <Select label="Batea asignada"  options={bateaOptions}  disabled={disabled} {...form.register('batea_id')} />
+      </div>
       <Input label="Observaciones" placeholder="Notas..." disabled={disabled} {...form.register('obs')} />
     </div>
   )
@@ -108,7 +129,7 @@ export function ChoferesTab() {
         <table className="w-full border-collapse">
           <thead>
             <tr>
-              {['Nombre', 'CUIL', 'Teléfono', 'Licencia', 'Camión', 'Estado', ''].map(h => (
+              {['Nombre', 'CUIL', 'Teléfono', 'Licencia', 'Camión', 'Batea', 'Estado', ''].map(h => (
                 <th key={h} className="bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide">
                   {h}
                 </th>
@@ -117,9 +138,10 @@ export function ChoferesTab() {
           </thead>
           <tbody>
             {choferes.length === 0 ? (
-              <tr><td colSpan={8} className="text-center py-8 text-gris-dark text-sm">No hay choferes registrados.</td></tr>
+              <tr><td colSpan={9} className="text-center py-8 text-gris-dark text-sm">No hay choferes registrados.</td></tr>
             ) : choferes.map(c => {
               const camionAsig = camiones.find(cam => cam.id === c.camion_id)
+              const bateaAsig  = bateas.find(b => b.id === c.batea_id)
               return (
               <tr
                 key={c.id}
@@ -133,6 +155,12 @@ export function ChoferesTab() {
                 <td className="px-4 py-3">
                   {camionAsig
                     ? <span className="font-mono text-xs font-bold bg-azul-light text-azul-mid px-2 py-0.5 rounded">{camionAsig.patente}</span>
+                    : <span className="text-gris-mid text-xs">—</span>
+                  }
+                </td>
+                <td className="px-4 py-3">
+                  {bateaAsig
+                    ? <span className="font-mono text-xs font-bold bg-naranja-light text-naranja-dark px-2 py-0.5 rounded">{bateaAsig.patente}</span>
                     : <span className="text-gris-mid text-xs">—</span>
                   }
                 </td>
