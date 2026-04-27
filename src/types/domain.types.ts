@@ -410,6 +410,8 @@ export interface Adelanto {
   monto: number
   descripcion: string | null
   liquidacion_id: number | null
+  comprobante_url:  string | null
+  comprobante_hash: string | null
 }
 
 export interface TarifaCantera {

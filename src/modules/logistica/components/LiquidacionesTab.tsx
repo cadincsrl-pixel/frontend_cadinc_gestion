@@ -6,6 +6,7 @@ import {
   useCreateLiquidacion, useUpdateLiquidacion, useCerrarLiquidacion, useDeleteLiquidacion,
   useCreateAdelanto, useUpdateAdelanto, useDeleteAdelanto, useUpdateChofer,
   useGastosReintegrosPendientes,
+  uploadComprobanteAdelanto, fetchAdelantoComprobanteUrl,
 } from '../hooks/useLogistica'
 import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
@@ -94,6 +95,11 @@ export function LiquidacionesTab() {
   const [modalAdel,   setModalAdel]   = useState(false)
   const [editandoAdel, setEditandoAdel] = useState<Adelanto | null>(null)
   const [detalleLiq,  setDetalleLiq]  = useState<any | null>(null)
+  // Comprobante (foto/PDF) para el adelanto que se está creando/editando.
+  const [archivoAdel, setArchivoAdel] = useState<File | null>(null)
+  const [archivoEditAdel, setArchivoEditAdel] = useState<File | null>(null)
+  const [removerCompEdit, setRemoverCompEdit] = useState(false)
+  const [subiendoComp, setSubiendoComp] = useState(false)
 
   const formAdel    = useForm<any>()
   const formEditAdel = useForm<any>()
@@ -233,16 +239,46 @@ export function LiquidacionesTab() {
     })
   }
 
-  function handleCreateAdel(data: any) {
-    createAdel({
-      chofer_id:   Number(data.chofer_id),
-      fecha:       data.fecha,
-      monto:       Number(data.monto),
-      descripcion: data.descripcion,
-    }, {
-      onSuccess: () => { toast('✓ Adelanto registrado', 'ok'); setModalAdel(false); formAdel.reset() },
-      onError:   () => toast('Error al registrar', 'err'),
-    })
+  async function handleCreateAdel(data: any) {
+    try {
+      let comprobante_path: string | null = null
+      if (archivoAdel) {
+        setSubiendoComp(true)
+        comprobante_path = await uploadComprobanteAdelanto(archivoAdel)
+      }
+      createAdel({
+        chofer_id:   Number(data.chofer_id),
+        fecha:       data.fecha,
+        monto:       Number(data.monto),
+        descripcion: data.descripcion,
+        ...(comprobante_path ? { comprobante_path } : {}),
+      }, {
+        onSuccess: () => {
+          toast('✓ Adelanto registrado', 'ok')
+          setModalAdel(false)
+          formAdel.reset()
+          setArchivoAdel(null)
+        },
+        onError: (err: any) => {
+          const code = err?.body?.error
+          if (code === 'COMPROBANTE_DUPLICADO') toast('Ese comprobante ya está cargado en otro adelanto', 'err')
+          else toast('Error al registrar', 'err')
+        },
+      })
+    } catch (e: any) {
+      toast(e?.message || 'Error al subir el comprobante', 'err')
+    } finally {
+      setSubiendoComp(false)
+    }
+  }
+
+  async function verComprobanteAdel(id: number) {
+    try {
+      const url = await fetchAdelantoComprobanteUrl(id)
+      window.open(url, '_blank')
+    } catch {
+      toast('No se pudo abrir el comprobante', 'err')
+    }
   }
 
   const preview = calcularPreview()
@@ -506,8 +542,15 @@ export function LiquidacionesTab() {
                       <td className="px-4 py-3 text-sm text-gris-dark">{a.descripcion || '—'}</td>
                       <td className="px-4 py-3 font-mono font-bold text-rojo">{fmtM(a.monto)}</td>
                       <td className="px-4 py-3 flex gap-1 justify-end">
+                        {a.comprobante_url && (
+                          <button
+                            onClick={() => verComprobanteAdel(a.id)}
+                            title="Ver comprobante"
+                            className="text-xs font-bold px-2 py-1 rounded hover:bg-azul-light text-gris-dark hover:text-azul transition-colors"
+                          >👁</button>
+                        )}
                         <button
-                          onClick={() => { setEditandoAdel(a); formEditAdel.reset({ fecha: a.fecha, monto: a.monto, descripcion: a.descripcion ?? '' }) }}
+                          onClick={() => { setEditandoAdel(a); formEditAdel.reset({ fecha: a.fecha, monto: a.monto, descripcion: a.descripcion ?? '' }); setArchivoEditAdel(null); setRemoverCompEdit(false) }}
                           className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors"
                         >✏️</button>
                         <button
@@ -850,17 +893,46 @@ export function LiquidacionesTab() {
       })()}
 
       {/* ── Modal editar adelanto ── */}
-      <Modal open={!!editandoAdel} onClose={() => setEditandoAdel(null)} title="✏️ EDITAR ADELANTO"
+      <Modal
+        open={!!editandoAdel}
+        onClose={() => { setEditandoAdel(null); setArchivoEditAdel(null); setRemoverCompEdit(false) }}
+        title="✏️ EDITAR ADELANTO"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setEditandoAdel(null)}>Cancelar</Button>
-            <Button variant="primary" loading={updatingAdel} onClick={formEditAdel.handleSubmit((data: any) => {
+            <Button variant="secondary" onClick={() => { setEditandoAdel(null); setArchivoEditAdel(null); setRemoverCompEdit(false) }}>Cancelar</Button>
+            <Button variant="primary" loading={updatingAdel || subiendoComp} onClick={formEditAdel.handleSubmit(async (data: any) => {
               if (!editandoAdel) return
-              updateAdel({ id: editandoAdel.id, dto: { fecha: data.fecha, monto: Number(data.monto), descripcion: data.descripcion } }, {
-                onSuccess: () => { toast('✓ Adelanto actualizado', 'ok'); setEditandoAdel(null) },
-                onError:   () => toast('Error al actualizar', 'err'),
-              })
-            })}>✓ Guardar</Button>
+              try {
+                let comprobantePatch: { comprobante_path: string | null } | {} = {}
+                if (archivoEditAdel) {
+                  setSubiendoComp(true)
+                  const path = await uploadComprobanteAdelanto(archivoEditAdel)
+                  comprobantePatch = { comprobante_path: path }
+                } else if (removerCompEdit) {
+                  comprobantePatch = { comprobante_path: null }
+                }
+                updateAdel({
+                  id: editandoAdel.id,
+                  dto: { fecha: data.fecha, monto: Number(data.monto), descripcion: data.descripcion, ...comprobantePatch },
+                }, {
+                  onSuccess: () => {
+                    toast('✓ Adelanto actualizado', 'ok')
+                    setEditandoAdel(null)
+                    setArchivoEditAdel(null)
+                    setRemoverCompEdit(false)
+                  },
+                  onError: (err: any) => {
+                    const code = err?.body?.error
+                    if (code === 'COMPROBANTE_DUPLICADO') toast('Ese comprobante ya está cargado en otro adelanto', 'err')
+                    else toast('Error al actualizar', 'err')
+                  },
+                })
+              } catch (e: any) {
+                toast(e?.message || 'Error al subir el comprobante', 'err')
+              } finally {
+                setSubiendoComp(false)
+              }
+            })}>{subiendoComp ? '⬆ Subiendo…' : '✓ Guardar'}</Button>
           </>
         }
       >
@@ -868,15 +940,53 @@ export function LiquidacionesTab() {
           <Input label="Fecha" type="date" {...formEditAdel.register('fecha')} />
           <Input label="Monto ($)" type="number" step="100" {...formEditAdel.register('monto')} />
           <Input label="Descripción" placeholder="Ej: Adelanto semana del 10/3" {...formEditAdel.register('descripcion')} />
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-bold text-gris-dark uppercase tracking-wider">Comprobante</label>
+            {editandoAdel?.comprobante_url && !removerCompEdit && !archivoEditAdel && (
+              <div className="flex items-center gap-2 text-xs text-gris-dark">
+                <button type="button" onClick={() => verComprobanteAdel(editandoAdel.id)} className="font-bold text-azul hover:underline">
+                  👁 Ver comprobante actual
+                </button>
+                <button type="button" onClick={() => setRemoverCompEdit(true)} className="text-rojo hover:underline">
+                  Quitar
+                </button>
+              </div>
+            )}
+            {removerCompEdit && (
+              <div className="flex items-center gap-2 text-xs text-rojo">
+                <span>⚠ Se eliminará el comprobante al guardar.</span>
+                <button type="button" onClick={() => setRemoverCompEdit(false)} className="text-azul hover:underline">Cancelar</button>
+              </div>
+            )}
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp,application/pdf"
+              onChange={(e) => { setArchivoEditAdel(e.target.files?.[0] ?? null); setRemoverCompEdit(false) }}
+              className="text-xs file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:bg-azul-light file:text-azul file:font-bold hover:file:bg-azul hover:file:text-white file:cursor-pointer"
+            />
+            {archivoEditAdel && (
+              <div className="flex items-center gap-2 text-xs text-gris-dark mt-1">
+                <span>📎 Nuevo: {archivoEditAdel.name}</span>
+                <button type="button" onClick={() => setArchivoEditAdel(null)} className="text-rojo hover:underline">Cancelar</button>
+              </div>
+            )}
+            <p className="text-[11px] text-gris-mid italic">Subir uno nuevo lo reemplaza. Máx 10 MB.</p>
+          </div>
         </div>
       </Modal>
 
       {/* ── Modal adelanto ── */}
-      <Modal open={modalAdel} onClose={() => setModalAdel(false)} title="💵 REGISTRAR ADELANTO"
+      <Modal
+        open={modalAdel}
+        onClose={() => { setModalAdel(false); setArchivoAdel(null) }}
+        title="💵 REGISTRAR ADELANTO"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setModalAdel(false)}>Cancelar</Button>
-            <Button variant="primary" loading={creatingAdel} onClick={formAdel.handleSubmit(handleCreateAdel)}>✓ Guardar</Button>
+            <Button variant="secondary" onClick={() => { setModalAdel(false); setArchivoAdel(null) }}>Cancelar</Button>
+            <Button variant="primary" loading={creatingAdel || subiendoComp} onClick={formAdel.handleSubmit(handleCreateAdel)}>
+              {subiendoComp ? '⬆ Subiendo…' : '✓ Guardar'}
+            </Button>
           </>
         }
       >
@@ -893,6 +1003,25 @@ export function LiquidacionesTab() {
           </div>
           <Input label="Monto ($)" type="number" step="100" placeholder="0" {...formAdel.register('monto')} />
           <Input label="Descripción" placeholder="Ej: Adelanto semana del 10/3" {...formAdel.register('descripcion')} />
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-bold text-gris-dark uppercase tracking-wider">
+              Comprobante (opcional)
+            </label>
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp,application/pdf"
+              onChange={(e) => setArchivoAdel(e.target.files?.[0] ?? null)}
+              className="text-xs file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:bg-azul-light file:text-azul file:font-bold hover:file:bg-azul hover:file:text-white file:cursor-pointer"
+            />
+            {archivoAdel && (
+              <div className="flex items-center gap-2 text-xs text-gris-dark mt-1">
+                <span>📎 {archivoAdel.name} · {(archivoAdel.size / 1024).toFixed(0)} KB</span>
+                <button type="button" onClick={() => setArchivoAdel(null)} className="text-rojo hover:underline">Quitar</button>
+              </div>
+            )}
+            <p className="text-[11px] text-gris-mid italic">Foto o PDF del recibo / transferencia. Máx 10 MB.</p>
+          </div>
         </div>
       </Modal>
     </>

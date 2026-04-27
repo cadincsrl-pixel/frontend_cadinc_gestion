@@ -369,7 +369,7 @@ export function useDeleteLiquidacion() {
 export function useCreateAdelanto() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (dto: { chofer_id: number; fecha: string; monto: number; descripcion?: string }) =>
+    mutationFn: (dto: { chofer_id: number; fecha: string; monto: number; descripcion?: string; comprobante_path?: string | null }) =>
       apiPost<Adelanto>('/api/logistica/liquidaciones/adelantos', dto),
     onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.adelantos }),
   })
@@ -378,7 +378,7 @@ export function useCreateAdelanto() {
 export function useUpdateAdelanto() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, dto }: { id: number; dto: { fecha?: string; monto?: number; descripcion?: string } }) =>
+    mutationFn: ({ id, dto }: { id: number; dto: { fecha?: string; monto?: number; descripcion?: string; comprobante_path?: string | null } }) =>
       apiPatch<Adelanto>(`/api/logistica/liquidaciones/adelantos/${id}`, dto),
     onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.adelantos }),
   })
@@ -390,6 +390,34 @@ export function useDeleteAdelanto() {
     mutationFn: (id: number) => apiDelete(`/api/logistica/liquidaciones/adelantos/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.adelantos }),
   })
+}
+
+// Sube un comprobante (foto o PDF) al bucket privado de adelantos:
+// 1) pide al backend una signed URL de upload, 2) PUT del archivo,
+// 3) devuelve el path para guardarlo en el adelanto vía create/update.
+export async function uploadComprobanteAdelanto(file: File): Promise<string> {
+  const TIPOS_OK = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'] as const
+  if (!(TIPOS_OK as readonly string[]).includes(file.type)) {
+    throw new Error('Tipo de archivo no soportado (jpg, png, webp o pdf)')
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    throw new Error('El archivo supera 10 MB')
+  }
+  const { path, signedUrl } = await apiPost<{ path: string; signedUrl: string; token: string; expiresIn: number }>(
+    '/api/logistica/liquidaciones/adelantos/upload-comprobante',
+    { filename: file.name, content_type: file.type, size_bytes: file.size },
+  )
+  const res = await fetch(signedUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file })
+  if (!res.ok) throw new Error(`Falló la subida (${res.status})`)
+  return path
+}
+
+// Pide una signed URL de descarga (15 min) para el comprobante de un adelanto.
+export async function fetchAdelantoComprobanteUrl(id: number): Promise<string> {
+  const { signedUrl } = await apiGet<{ signedUrl: string; expiresIn: number }>(
+    `/api/logistica/liquidaciones/adelantos/${id}/comprobante-url`,
+  )
+  return signedUrl
 }
 
 // ── Tarifas cantera ──
