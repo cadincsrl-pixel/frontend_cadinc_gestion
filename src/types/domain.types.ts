@@ -103,6 +103,23 @@ export interface PersonalDocumento {
   updated_by:     string | null
 }
 
+// ── Adjuntos del cobro (liquidación líquido producto + comprobante) ──
+export type CobroAdjuntoTipo = 'liquidacion' | 'comprobante'
+
+export interface CobroAdjunto {
+  id:             number
+  cobro_id:       number
+  tipo:           CobroAdjuntoTipo
+  nombre_archivo: string
+  mime_type:      string
+  size_bytes:     number
+  obs:            string | null
+  created_at:     string
+  created_by:     string | null
+  updated_at:     string
+  updated_by:     string | null
+}
+
 // ── Documentos del legajo de chofer ──
 export type ChoferDocTipo =
   | 'dni' | 'licencia_conducir' | 'alta_temprana' | 'lnh' | 'cnrt'
