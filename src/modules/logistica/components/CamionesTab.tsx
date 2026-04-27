@@ -11,6 +11,7 @@ import { AuditInfo } from '@/components/ui/AuditInfo'
 import { useToast } from '@/components/ui/Toast'
 import { useForm } from 'react-hook-form'
 import { usePermisos } from '@/hooks/usePermisos'
+import { VehiculoDocumentosSection } from './VehiculoDocumentosSection'
 import type { Camion } from '@/types/domain.types'
 
 const ESTADO_OPTIONS = [
@@ -112,15 +113,25 @@ export function CamionesTab() {
       </Modal>
 
       <Modal open={!!editando} onClose={() => setEditando(null)} title="✏️ EDITAR CAMIÓN"
+        width="max-w-3xl"
         footer={<><Button variant="secondary" onClick={() => setEditando(null)}>Cancelar</Button><Button variant="primary" loading={updating} onClick={formEdit.handleSubmit(handleUpdate)}>✓ Guardar</Button></>}
       >
-        <CamionForm form={formEdit} />
-        <AuditInfo
-          createdBy={editando?.created_by}
-          updatedBy={editando?.updated_by}
-          createdAt={editando?.created_at}
-          updatedAt={editando?.updated_at}
-        />
+        <div className="flex flex-col gap-5">
+          <CamionForm form={formEdit} />
+
+          {editando && (
+            <div className="border-t border-gris-mid pt-4">
+              <VehiculoDocumentosSection entidad="camion" id={editando.id} />
+            </div>
+          )}
+
+          <AuditInfo
+            createdBy={editando?.created_by}
+            updatedBy={editando?.updated_by}
+            createdAt={editando?.created_at}
+            updatedAt={editando?.updated_at}
+          />
+        </div>
       </Modal>
     </>
   )

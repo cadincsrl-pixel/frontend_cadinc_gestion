@@ -252,6 +252,44 @@ export interface Camion extends AuditFields {
   obs: string | null
 }
 
+// ── Bateas (semirremolques) ──
+export type BateaTipo = 'volcadora' | 'plana' | 'tanque' | 'gondola' | 'otro'
+export type BateaEstado = 'activo' | 'mantenimiento' | 'inactivo'
+
+export interface Batea extends AuditFields {
+  id:           number
+  patente:      string
+  tipo:         BateaTipo | null
+  marca:        string | null
+  modelo:       string | null
+  anio:         number | null
+  capacidad_m3: number | null
+  capacidad_tn: number | null
+  titular:      string | null
+  estado:       BateaEstado
+  obs:          string | null
+}
+
+// ── Documentos del vehículo (camión y batea, mismo schema) ──
+export type VehiculoDocTipo = 'titulo' | 'tarjeta_verde' | 'rto' | 'poliza_seguro'
+export type VehiculoEntidad = 'camion' | 'batea'
+
+export interface VehiculoDocumento {
+  id:             number
+  camion_id?:     number   // sólo en camion_documentos
+  batea_id?:      number   // sólo en batea_documentos
+  tipo:           VehiculoDocTipo
+  nombre_archivo: string
+  mime_type:      string
+  size_bytes:     number
+  vence_el:       string | null
+  obs:            string | null
+  created_at:     string
+  created_by:     string | null
+  updated_at:     string
+  updated_by:     string | null
+}
+
 export interface Cantera {
   id: number
   nombre: string

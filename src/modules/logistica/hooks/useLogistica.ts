@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiDelete, apiPatch } from '@/lib/api/client'
 import type {
-  Chofer, Camion, Cantera, Deposito, Ruta,
+  Chofer, Camion, Batea, Cantera, Deposito, Ruta,
   Tramo, Viaje, Liquidacion, Adelanto, TarifaCantera,
   EmpresaTransportista, TarifaEmpresaCantera, Cobro,
 } from '@/types/domain.types'
@@ -10,6 +10,7 @@ import type {
 export const LOG_KEYS = {
   choferes:        ['logistica', 'choferes']        as const,
   camiones:        ['logistica', 'camiones']        as const,
+  bateas:          ['logistica', 'bateas']          as const,
   canteras:        ['logistica', 'canteras']        as const,
   depositos:       ['logistica', 'depositos']       as const,
   rutas:           ['logistica', 'rutas']           as const,
@@ -82,6 +83,48 @@ export function useUpdateCamion() {
     mutationFn: ({ id, dto }: { id: number; dto: Partial<Camion> }) =>
       apiPatch<Camion>(`/api/logistica/camiones/${id}`, dto),
     onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.camiones }),
+  })
+}
+
+export function useDeleteCamion() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiDelete(`/api/logistica/camiones/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.camiones }),
+  })
+}
+
+// ── Bateas ──
+export function useBateas() {
+  return useQuery({
+    queryKey: LOG_KEYS.bateas,
+    queryFn:  () => apiGet<Batea[]>('/api/logistica/bateas'),
+  })
+}
+
+export function useCreateBatea() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: Omit<Batea, 'id' | 'created_at' | 'updated_at' | 'created_by' | 'updated_by'>) =>
+      apiPost<Batea>('/api/logistica/bateas', dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.bateas }),
+  })
+}
+
+export function useUpdateBatea() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: number; dto: Partial<Batea> }) =>
+      apiPatch<Batea>(`/api/logistica/bateas/${id}`, dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.bateas }),
+  })
+}
+
+export function useDeleteBatea() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiDelete(`/api/logistica/bateas/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.bateas }),
   })
 }
 
