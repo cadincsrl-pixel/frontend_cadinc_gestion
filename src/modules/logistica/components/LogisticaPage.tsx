@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense } from 'react'
+import { Suspense, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useTramos, useChoferes, useCamiones } from '../hooks/useLogistica'
 import { ViajesTab }        from './ViajesTab'
@@ -10,6 +10,9 @@ import { CamionesYBateasTab } from './CamionesYBateasTab'
 import { LugaresTab }       from './LugaresTab'
 import { FacturacionTab }   from './FacturacionTab'
 import { GastosTab }        from './GastosTab'
+import { ModalExportOnboarding } from './ModalExportOnboarding'
+import { Button } from '@/components/ui/Button'
+import { usePermisos } from '@/hooks/usePermisos'
 
 const TAB_TITLES: Record<string, { icon: string; label: string; sub: string }> = {
   viajes:        { icon: '🚛', label: 'Tramos',        sub: 'Viajes cargados y vacíos'              },
@@ -25,6 +28,8 @@ function LogisticaContent() {
   const searchParams = useSearchParams()
   const tab = (searchParams.get('tab') ?? 'viajes') as keyof typeof TAB_TITLES
   const info = TAB_TITLES[tab] ?? TAB_TITLES['viajes']
+  const { puedeVer } = usePermisos('logistica')
+  const [modalExport, setModalExport] = useState(false)
 
   const { data: tramos   = [] } = useTramos()
   const { data: choferes = [] } = useChoferes()
@@ -38,10 +43,19 @@ function LogisticaContent() {
 
       {/* Header */}
       <div className="bg-white rounded-card shadow-card p-4 border-l-[5px] border-naranja">
-        <h1 className="font-display text-[2rem] tracking-wider text-azul leading-none">
-          {info.icon} {info.label.toUpperCase()}
-        </h1>
-        <p className="text-sm text-gris-dark mt-1">{info.sub}</p>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <h1 className="font-display text-[2rem] tracking-wider text-azul leading-none">
+              {info.icon} {info.label.toUpperCase()}
+            </h1>
+            <p className="text-sm text-gris-dark mt-1">{info.sub}</p>
+          </div>
+          {puedeVer && (
+            <Button variant="secondary" size="sm" onClick={() => setModalExport(true)}>
+              📦 Exportar paquete
+            </Button>
+          )}
+        </div>
         {tab === 'viajes' && (
           <div className="flex gap-3 mt-3 flex-wrap">
             <Stat value={cargas}    label="Cargas"    color="orange" />
@@ -51,6 +65,8 @@ function LogisticaContent() {
           </div>
         )}
       </div>
+
+      <ModalExportOnboarding open={modalExport} onClose={() => setModalExport(false)} />
 
       {/* Contenido según tab */}
       {tab === 'viajes'        && <ViajesTab />}
