@@ -110,24 +110,24 @@ export function BateasTab() {
     setEditando(b)
   }
 
-  const BateaForm = ({ form }: { form: any }) => (
+  const BateaForm = ({ form, disabled }: { form: any; disabled?: boolean }) => (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-3">
-        <Input label="Patente" placeholder="AA-123-BB" {...form.register('patente')} />
-        <Select label="Tipo" options={TIPO_OPTIONS} {...form.register('tipo')} />
+        <Input label="Patente" placeholder="AA-123-BB" disabled={disabled} {...form.register('patente')} />
+        <Select label="Tipo" options={TIPO_OPTIONS} disabled={disabled} {...form.register('tipo')} />
       </div>
       <div className="grid grid-cols-3 gap-3">
-        <Input label="Marca" placeholder="Helvética" {...form.register('marca')} />
-        <Input label="Modelo" {...form.register('modelo')} />
-        <Input label="Año" type="number" min={1980} max={2100} {...form.register('anio')} />
+        <Input label="Marca" placeholder="Helvética" disabled={disabled} {...form.register('marca')} />
+        <Input label="Modelo" disabled={disabled} {...form.register('modelo')} />
+        <Input label="Año" type="number" min={1980} max={2100} disabled={disabled} {...form.register('anio')} />
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Input label="Capacidad (m³)" type="number" step="0.01" {...form.register('capacidad_m3')} />
-        <Input label="Capacidad (tn)" type="number" step="0.01" {...form.register('capacidad_tn')} />
+        <Input label="Capacidad (m³)" type="number" step="0.01" disabled={disabled} {...form.register('capacidad_m3')} />
+        <Input label="Capacidad (tn)" type="number" step="0.01" disabled={disabled} {...form.register('capacidad_tn')} />
       </div>
-      <Input label="Titular" placeholder="Propietario legal" {...form.register('titular')} />
-      <Select label="Estado" options={ESTADO_OPTIONS} {...form.register('estado')} />
-      <Input label="Observaciones" placeholder="Notas..." {...form.register('obs')} />
+      <Input label="Titular" placeholder="Propietario legal" disabled={disabled} {...form.register('titular')} />
+      <Select label="Estado" options={ESTADO_OPTIONS} disabled={disabled} {...form.register('estado')} />
+      <Input label="Observaciones" placeholder="Notas..." disabled={disabled} {...form.register('obs')} />
     </div>
   )
 
@@ -154,7 +154,11 @@ export function BateasTab() {
             {bateas.length === 0 ? (
               <tr><td colSpan={8} className="text-center py-8 text-gris-dark text-sm">No hay bateas registradas.</td></tr>
             ) : bateas.map(b => (
-              <tr key={b.id} className="border-b border-gris last:border-0 hover:bg-gris/40 transition-colors">
+              <tr
+                key={b.id}
+                className="border-b border-gris last:border-0 hover:bg-gris/40 transition-colors cursor-pointer"
+                onClick={() => openEdit(b)}
+              >
                 <td className="px-4 py-3 font-mono text-sm font-bold text-carbon">{b.patente}</td>
                 <td className="px-4 py-3 text-xs text-gris-dark capitalize">{b.tipo ?? '—'}</td>
                 <td className="px-4 py-3 text-xs text-gris-dark">
@@ -174,8 +178,7 @@ export function BateasTab() {
                     label={b.estado === 'mantenimiento' ? 'En mantenimiento' : undefined}
                   />
                 </td>
-                <td className="px-4 py-3 flex gap-1 justify-end">
-                  {puedeEditar && <button onClick={() => openEdit(b)} className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors">✏️</button>}
+                <td className="px-4 py-3 flex gap-1 justify-end" onClick={(e) => e.stopPropagation()}>
                   {puedeEliminar && <button onClick={() => handleDelete(b)} className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors">✕</button>}
                 </td>
               </tr>
@@ -195,17 +198,24 @@ export function BateasTab() {
         <BateaForm form={formNuevo} />
       </Modal>
 
-      <Modal open={!!editando} onClose={() => setEditando(null)} title="✏️ EDITAR BATEA"
+      <Modal
+        open={!!editando}
+        onClose={() => setEditando(null)}
+        title={puedeEditar ? '✏️ EDITAR BATEA' : '🛻 DETALLE BATEA'}
         width="max-w-3xl"
         footer={
-          <>
-            <Button variant="secondary" onClick={() => setEditando(null)}>Cancelar</Button>
-            <Button variant="primary" loading={updating} onClick={formEdit.handleSubmit(handleUpdate)}>✓ Guardar</Button>
-          </>
+          puedeEditar ? (
+            <>
+              <Button variant="secondary" onClick={() => setEditando(null)}>Cancelar</Button>
+              <Button variant="primary" loading={updating} onClick={formEdit.handleSubmit(handleUpdate)}>✓ Guardar</Button>
+            </>
+          ) : (
+            <Button variant="secondary" onClick={() => setEditando(null)}>Cerrar</Button>
+          )
         }
       >
         <div className="flex flex-col gap-5">
-          <BateaForm form={formEdit} />
+          <BateaForm form={formEdit} disabled={!puedeEditar} />
 
           {editando && (
             <div className="border-t border-gris-mid pt-4">

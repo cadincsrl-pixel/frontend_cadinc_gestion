@@ -80,19 +80,19 @@ export function ChoferesTab() {
     })),
   ]
 
-  const ChoferForm = ({ form }: { form: any }) => (
+  const ChoferForm = ({ form, disabled }: { form: any; disabled?: boolean }) => (
     <div className="flex flex-col gap-4">
-      <Input label="Nombre completo" placeholder="Apellido, Nombre" {...form.register('nombre')} />
+      <Input label="Nombre completo" placeholder="Apellido, Nombre" disabled={disabled} {...form.register('nombre')} />
       <div className="grid grid-cols-2 gap-3">
-        <Input label="CUIL" placeholder="20-12345678-3" {...form.register('cuil')} />
-        <Input label="Teléfono" placeholder="299-XXX-XXXX" {...form.register('tel')} />
+        <Input label="CUIL" placeholder="20-12345678-3" disabled={disabled} {...form.register('cuil')} />
+        <Input label="Teléfono" placeholder="299-XXX-XXXX" disabled={disabled} {...form.register('tel')} />
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Input label="Licencia" placeholder="Nº licencia" {...form.register('licencia')} />
-        <Select label="Estado" options={ESTADO_OPTIONS} {...form.register('estado')} />
+        <Input label="Licencia" placeholder="Nº licencia" disabled={disabled} {...form.register('licencia')} />
+        <Select label="Estado" options={ESTADO_OPTIONS} disabled={disabled} {...form.register('estado')} />
       </div>
-      <Select label="Camión asignado" options={camionOptions} {...form.register('camion_id')} />
-      <Input label="Observaciones" placeholder="Notas..." {...form.register('obs')} />
+      <Select label="Camión asignado" options={camionOptions} disabled={disabled} {...form.register('camion_id')} />
+      <Input label="Observaciones" placeholder="Notas..." disabled={disabled} {...form.register('obs')} />
     </div>
   )
 
@@ -121,7 +121,11 @@ export function ChoferesTab() {
             ) : choferes.map(c => {
               const camionAsig = camiones.find(cam => cam.id === c.camion_id)
               return (
-              <tr key={c.id} className="border-b border-gris last:border-0 hover:bg-gris/40 transition-colors">
+              <tr
+                key={c.id}
+                className="border-b border-gris last:border-0 hover:bg-gris/40 transition-colors cursor-pointer"
+                onClick={() => openEdit(c)}
+              >
                 <td className="px-4 py-3 font-bold text-sm text-carbon">{c.nombre}</td>
                 <td className="px-4 py-3 font-mono text-xs text-gris-dark">{c.cuil || '—'}</td>
                 <td className="px-4 py-3 text-sm text-gris-dark">{c.tel || '—'}</td>
@@ -138,8 +142,7 @@ export function ChoferesTab() {
                     label={c.estado === 'descanso' ? 'Descanso' : undefined}
                   />
                 </td>
-                <td className="px-4 py-3 flex gap-1 justify-end">
-                  {puedeEditar && <button onClick={() => openEdit(c)} className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors">✏️</button>}
+                <td className="px-4 py-3 flex gap-1 justify-end" onClick={(e) => e.stopPropagation()}>
                   {puedeEliminar && <button onClick={() => handleDelete(c)} className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors">✕</button>}
                 </td>
               </tr>
@@ -160,17 +163,24 @@ export function ChoferesTab() {
         <ChoferForm form={formNuevo} />
       </Modal>
 
-      <Modal open={!!editando} onClose={() => setEditando(null)} title="✏️ EDITAR CHOFER"
+      <Modal
+        open={!!editando}
+        onClose={() => setEditando(null)}
+        title={puedeEditar ? '✏️ EDITAR CHOFER' : '👷 DETALLE CHOFER'}
         width="max-w-3xl"
         footer={
-          <>
-            <Button variant="secondary" onClick={() => setEditando(null)}>Cancelar</Button>
-            <Button variant="primary" loading={updating} onClick={formEdit.handleSubmit(handleUpdate)}>✓ Guardar</Button>
-          </>
+          puedeEditar ? (
+            <>
+              <Button variant="secondary" onClick={() => setEditando(null)}>Cancelar</Button>
+              <Button variant="primary" loading={updating} onClick={formEdit.handleSubmit(handleUpdate)}>✓ Guardar</Button>
+            </>
+          ) : (
+            <Button variant="secondary" onClick={() => setEditando(null)}>Cerrar</Button>
+          )
         }
       >
         <div className="flex flex-col gap-5">
-          <ChoferForm form={formEdit} />
+          <ChoferForm form={formEdit} disabled={!puedeEditar} />
 
           {editando && (
             <div className="border-t border-gris-mid pt-4">

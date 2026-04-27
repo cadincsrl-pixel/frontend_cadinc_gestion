@@ -52,17 +52,17 @@ export function CamionesTab() {
     setEditando(c)
   }
 
-  const CamionForm = ({ form }: { form: any }) => (
+  const CamionForm = ({ form, disabled }: { form: any; disabled?: boolean }) => (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-3">
-        <Input label="Patente" placeholder="AA 123 BB" {...form.register('patente')} />
-        <Input label="Modelo"  placeholder="Volvo FH 460" {...form.register('modelo')} />
+        <Input label="Patente" placeholder="AA 123 BB" disabled={disabled} {...form.register('patente')} />
+        <Input label="Modelo"  placeholder="Volvo FH 460" disabled={disabled} {...form.register('modelo')} />
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Input label="Año" type="number" placeholder="2020" {...form.register('anio')} />
-        <Select label="Estado" options={ESTADO_OPTIONS} {...form.register('estado')} />
+        <Input label="Año" type="number" placeholder="2020" disabled={disabled} {...form.register('anio')} />
+        <Select label="Estado" options={ESTADO_OPTIONS} disabled={disabled} {...form.register('estado')} />
       </div>
-      <Input label="Observaciones" placeholder="Notas..." {...form.register('obs')} />
+      <Input label="Observaciones" placeholder="Notas..." disabled={disabled} {...form.register('obs')} />
     </div>
   )
 
@@ -87,7 +87,11 @@ export function CamionesTab() {
             {camiones.length === 0 ? (
               <tr><td colSpan={5} className="text-center py-8 text-gris-dark text-sm">No hay camiones registrados.</td></tr>
             ) : camiones.map(c => (
-              <tr key={c.id} className="border-b border-gris last:border-0 hover:bg-gris/40 transition-colors">
+              <tr
+                key={c.id}
+                className="border-b border-gris last:border-0 hover:bg-gris/40 transition-colors cursor-pointer"
+                onClick={() => openEdit(c)}
+              >
                 <td className="px-4 py-3 font-mono font-bold text-sm">{c.patente}</td>
                 <td className="px-4 py-3 text-sm text-carbon">{c.modelo || '—'}</td>
                 <td className="px-4 py-3 font-mono text-xs text-gris-dark">{c.anio || '—'}</td>
@@ -97,8 +101,8 @@ export function CamionesTab() {
                     label={c.estado === 'mantenimiento' ? 'Mantenimiento' : undefined}
                   />
                 </td>
-                <td className="px-4 py-3 text-right">
-                  {puedeEditar && <button onClick={() => openEdit(c)} className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors">✏️</button>}
+                <td className="px-4 py-3 text-right text-xs text-gris-mid">
+                  {puedeEditar ? '✏️' : '👁'}
                 </td>
               </tr>
             ))}
@@ -112,12 +116,24 @@ export function CamionesTab() {
         <CamionForm form={formNuevo} />
       </Modal>
 
-      <Modal open={!!editando} onClose={() => setEditando(null)} title="✏️ EDITAR CAMIÓN"
+      <Modal
+        open={!!editando}
+        onClose={() => setEditando(null)}
+        title={puedeEditar ? '✏️ EDITAR CAMIÓN' : '🚚 DETALLE CAMIÓN'}
         width="max-w-3xl"
-        footer={<><Button variant="secondary" onClick={() => setEditando(null)}>Cancelar</Button><Button variant="primary" loading={updating} onClick={formEdit.handleSubmit(handleUpdate)}>✓ Guardar</Button></>}
+        footer={
+          puedeEditar ? (
+            <>
+              <Button variant="secondary" onClick={() => setEditando(null)}>Cancelar</Button>
+              <Button variant="primary" loading={updating} onClick={formEdit.handleSubmit(handleUpdate)}>✓ Guardar</Button>
+            </>
+          ) : (
+            <Button variant="secondary" onClick={() => setEditando(null)}>Cerrar</Button>
+          )
+        }
       >
         <div className="flex flex-col gap-5">
-          <CamionForm form={formEdit} />
+          <CamionForm form={formEdit} disabled={!puedeEditar} />
 
           {editando && (
             <div className="border-t border-gris-mid pt-4">
