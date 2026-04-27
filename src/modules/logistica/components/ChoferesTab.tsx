@@ -11,6 +11,7 @@ import { AuditInfo } from '@/components/ui/AuditInfo'
 import { useToast } from '@/components/ui/Toast'
 import { useForm } from 'react-hook-form'
 import { usePermisos } from '@/hooks/usePermisos'
+import { ChoferDocumentosSection } from './ChoferDocumentosSection'
 import type { Chofer } from '@/types/domain.types'
 
 const ESTADO_OPTIONS = [
@@ -160,6 +161,7 @@ export function ChoferesTab() {
       </Modal>
 
       <Modal open={!!editando} onClose={() => setEditando(null)} title="✏️ EDITAR CHOFER"
+        width="max-w-3xl"
         footer={
           <>
             <Button variant="secondary" onClick={() => setEditando(null)}>Cancelar</Button>
@@ -167,13 +169,22 @@ export function ChoferesTab() {
           </>
         }
       >
-        <ChoferForm form={formEdit} />
-        <AuditInfo
-          createdBy={editando?.created_by}
-          updatedBy={editando?.updated_by}
-          createdAt={editando?.created_at}
-          updatedAt={editando?.updated_at}
-        />
+        <div className="flex flex-col gap-5">
+          <ChoferForm form={formEdit} />
+
+          {editando && (
+            <div className="border-t border-gris-mid pt-4">
+              <ChoferDocumentosSection choferId={editando.id} />
+            </div>
+          )}
+
+          <AuditInfo
+            createdBy={editando?.created_by}
+            updatedBy={editando?.updated_by}
+            createdAt={editando?.created_at}
+            updatedAt={editando?.updated_at}
+          />
+        </div>
       </Modal>
     </>
   )
