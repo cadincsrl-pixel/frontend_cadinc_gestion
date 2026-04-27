@@ -6,7 +6,7 @@ import { useTramos, useChoferes, useCamiones } from '../hooks/useLogistica'
 import { ViajesTab }        from './ViajesTab'
 import { LiquidacionesTab } from './LiquidacionesTab'
 import { ChoferesTab }      from './ChoferesTab'
-import { CamionesTab }      from './CamionesTab'
+import { CamionesYBateasTab } from './CamionesYBateasTab'
 import { LugaresTab }       from './LugaresTab'
 import { FacturacionTab }   from './FacturacionTab'
 import { GastosTab }        from './GastosTab'
@@ -15,7 +15,7 @@ const TAB_TITLES: Record<string, { icon: string; label: string; sub: string }> =
   viajes:        { icon: '🚛', label: 'Tramos',        sub: 'Viajes cargados y vacíos'              },
   liquidaciones: { icon: '💰', label: 'Liquidaciones', sub: 'Pago por días trabajados + km'         },
   choferes:      { icon: '👷', label: 'Choferes',      sub: 'Personal de conducción'                },
-  camiones:      { icon: '🚚', label: 'Camiones',      sub: 'Flota de vehículos'                    },
+  camiones:      { icon: '🚚', label: 'Camiones y bateas', sub: 'Flota de camiones y semirremolques'  },
   lugares:       { icon: '📍', label: 'Lugares',       sub: 'Canteras · Descargas · Relevos'        },
   facturacion:   { icon: '🧾', label: 'Facturación',   sub: 'Cobros a empresas transportistas'         },
   gastos:        { icon: '💸', label: 'Gastos',        sub: 'Combustible · Gomería · Peajes · Viáticos' },
@@ -56,7 +56,7 @@ function LogisticaContent() {
       {tab === 'viajes'        && <ViajesTab />}
       {tab === 'liquidaciones' && <LiquidacionesTab />}
       {tab === 'choferes'      && <ChoferesTab />}
-      {tab === 'camiones'      && <CamionesTab />}
+      {tab === 'camiones'      && <CamionesYBateasTab />}
       {tab === 'lugares'       && <LugaresTab />}
       {tab === 'facturacion'   && <FacturacionTab />}
       {tab === 'gastos'        && <GastosTab />}
