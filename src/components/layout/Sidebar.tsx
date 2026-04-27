@@ -116,7 +116,7 @@ const NAV_ITEMS_LOGISTICA = [
   { tab: 'liquidaciones', icon: '💰', label: 'Liquidaciones', meta: 'Saldo y pago a choferes'       },
   { tab: 'facturacion',   icon: '🧾', label: 'Facturación',   meta: 'Cobros a empresas'              },
   { tab: 'choferes',      icon: '👷', label: 'Choferes',      meta: 'Personal de conducción'        },
-  { tab: 'camiones',      icon: '🚚', label: 'Camiones',      meta: 'Flota de vehículos'            },
+  { tab: 'camiones',      icon: '🚚', label: 'Camiones y bateas', meta: 'Flota de camiones y semirremolques' },
   { tab: 'lugares',       icon: '📍', label: 'Lugares',       meta: 'Canteras · Depósitos'          },
   { tab: 'gastos',        icon: '💸', label: 'Gastos',        meta: 'Combustible · Gomería · Peajes' },
 ]
