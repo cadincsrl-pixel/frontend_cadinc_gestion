@@ -12,7 +12,7 @@ import { useTarifasObra } from '@/modules/tarja/hooks/useTarifas'
 import { useContratistas } from '@/modules/tarja/hooks/useContratistas'
 import { useTarjaStore } from '@/modules/tarja/store/tarja.store'
 import { getSemDays, toISO, getViernes, getSemLabel } from '@/lib/utils/dates'
-import { calcularTotalesSemana, fmtMonto, fmtHs } from '@/lib/utils/costos'
+import { costoLegConCatObra, totalHsLeg, fmtMonto, fmtHs, type CatObraEntry } from '@/lib/utils/costos'
 import { exportarCSVTarja } from '@/lib/utils/excel'
 import { apiGet } from '@/lib/api/client'
 import { WeekNavigator } from './WeekNavigator'
@@ -107,6 +107,11 @@ export function TarjaObraPage({ obraCod }: Props) {
     queryKey: ['certs', 'all'],
     queryFn: () => apiGet<Certificacion[]>('/api/contratistas/cert/all'),
   })
+  // cat_obra global para resolver overrides vigentes en el chip "Costo semana".
+  const { data: todasCatObra = [] } = useQuery({
+    queryKey: ['cat-obra', 'all'],
+    queryFn: () => apiGet<CatObraEntry[]>('/api/cat-obra/all'),
+  })
 
   const setObraActiva = useUIStore(s => s.setObraActiva)
   const setTopbarAccion = useUIStore(s => s.setTopbarAccion)
@@ -125,10 +130,19 @@ export function TarjaObraPage({ obraCod }: Props) {
     return () => setTopbarAccion(null)
   }, [obra, personal, horasData, tarifas])
 
-  // ── Totales semana (incluye hs extras) ──
-  const { totalHs, totalCosto } = calcularTotalesSemana(
-    horasData, personal, categorias, tarifas, obraCod, days, hsExtrasData
-  )
+  // ── Totales semana (incluye hs extras + cat_obra) ──
+  // Mismo criterio canónico que footer de TarjaTable y ResumenHistoricoPage.
+  const { totalHs, totalCosto } = (() => {
+    let hs = 0
+    let costo = 0
+    for (const p of personal) {
+      hs += totalHsLeg(horasData, obraCod, p.leg, days.map(toISO), hsExtrasData)
+      costo += Math.round(
+        costoLegConCatObra(horasData, hsExtrasData, personal, categorias, tarifas, todasCatObra, obraCod, p.leg, days) / 1000,
+      ) * 1000
+    }
+    return { totalHs: hs, totalCosto: costo }
+  })()
 
   const [undoState, setUndoState] = useState<{ count: number; fn: (() => void) | null }>({ count: 0, fn: null })
 

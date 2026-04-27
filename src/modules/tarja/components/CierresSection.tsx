@@ -11,7 +11,7 @@ import { useHsExtrasAll }    from '../hooks/useHsExtras'
 import {
   getSemDays, toISO, getSemLabel, getViernesCobro, getViernes,
 } from '@/lib/utils/dates'
-import { calcularTotalesSemana, fmtMonto, fmtHs } from '@/lib/utils/costos'
+import { costoLegConCatObra, totalHsLeg, fmtMonto, fmtHs, type CatObraEntry } from '@/lib/utils/costos'
 import { apiGet }            from '@/lib/api/client'
 import { ModalDetalleCierre } from './ModalDetalleCierre'
 import { Badge }  from '@/components/ui/Badge'
@@ -57,6 +57,12 @@ export function CierresSection({ obraCod }: Props) {
   const { data: categorias    = [] } = useCategorias()
   const { data: personal      = [] } = usePersonal()
   const { data: todasHsExtras = [] } = useHsExtrasAll() as { data: TarjaHsExtra[] }
+  // cat_obra de toda la obra (no solo una semana) para resolver overrides
+  // vigentes en cada cierre — mismo criterio que ResumenHistoricoPage.
+  const { data: todasCatObra = [] } = useQuery({
+    queryKey: ['cat-obra', 'all'],
+    queryFn: () => apiGet<CatObraEntry[]>('/api/cat-obra/all'),
+  })
 
   const personalObra = useMemo(() => {
     const legs = new Set(todasHoras.filter(h => h.obra_cod === obraCod).map(h => h.leg))
@@ -122,9 +128,16 @@ export function CierresSection({ obraCod }: Props) {
   function totalesCierre(semKey: string) {
     const vie  = new Date(semKey + 'T12:00:00')
     const days = getSemDays(vie)
-    const { totalHs, totalCosto } = calcularTotalesSemana(
-      todasHoras, personalObra, categorias, tarifas, obraCod, days, todasHsExtras,
-    )
+    // Mismo criterio de cálculo que ResumenHistoricoPage:
+    // costoLegConCatObra (respeta cat_obra) + redondeo per-leg.
+    let totalHs = 0
+    let totalCosto = 0
+    for (const p of personalObra) {
+      totalHs += totalHsLeg(todasHoras, obraCod, p.leg, days.map(toISO), todasHsExtras)
+      totalCosto += Math.round(
+        costoLegConCatObra(todasHoras, todasHsExtras, personalObra, categorias, tarifas, todasCatObra, obraCod, p.leg, days) / 1000,
+      ) * 1000
+    }
     const totalContrat = todasCerts
       .filter(c => c.obra_cod === obraCod && c.sem_key === semKey)
       .reduce((s, c) => s + c.monto, 0)
