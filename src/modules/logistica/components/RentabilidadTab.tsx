@@ -140,7 +140,7 @@ export function RentabilidadTab() {
           <table className="w-full border-collapse">
             <thead>
               <tr>
-                {['#', 'Viaje', 'Tarifa $/t', 'Viajes/mes', 'Chofer $/mes', 'Margen $/viaje', 'Margen %', 'USD/año', 'Diagnóstico', ''].map(h => (
+                {['#', 'Viaje', 'Tarifa $/t', 'Viajes/mes', 'Chofer $/mes', 'Margen $/viaje', 'Margen %', 'Margen $/mes', 'Diagnóstico', ''].map(h => (
                   <th key={h} className="bg-gris/40 text-xs font-bold px-3 py-2 text-left uppercase tracking-wide text-gris-dark">{h}</th>
                 ))}
               </tr>
@@ -159,7 +159,7 @@ export function RentabilidadTab() {
                   <td className="px-3 py-2 font-mono text-xs">{fmtARS((r.pago_chofer + r.jornal_chofer) * Number(viaje.viajes_por_mes))}</td>
                   <td className="px-3 py-2 font-mono text-xs font-bold">{fmtARS(r.margen)}</td>
                   <td className="px-3 py-2 font-mono text-xs">{fmtPct(r.margen_pct)}</td>
-                  <td className="px-3 py-2 font-mono text-xs font-bold text-verde">{fmtUSD(r.margen_anual_usd)}</td>
+                  <td className="px-3 py-2 font-mono text-xs font-bold text-verde">{fmtARS(r.margen_mensual)}</td>
                   <td className="px-3 py-2">
                     <Badge variant={diagnosticoVariant[r.diagnostico]} label={diagnosticoLabel(r.diagnostico)} />
                   </td>
