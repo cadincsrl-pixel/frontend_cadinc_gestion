@@ -10,6 +10,7 @@ import { CamionesYBateasTab } from './CamionesYBateasTab'
 import { LugaresTab }       from './LugaresTab'
 import { FacturacionTab }   from './FacturacionTab'
 import { GastosTab }        from './GastosTab'
+import { RentabilidadTab }  from './RentabilidadTab'
 import { ModalExportOnboarding } from './ModalExportOnboarding'
 import { Button } from '@/components/ui/Button'
 import { usePermisos } from '@/hooks/usePermisos'
@@ -22,6 +23,7 @@ const TAB_TITLES: Record<string, { icon: string; label: string; sub: string }> =
   lugares:       { icon: '📍', label: 'Lugares',       sub: 'Canteras · Descargas · Relevos'        },
   facturacion:   { icon: '🧾', label: 'Facturación',   sub: 'Cobros a empresas transportistas'         },
   gastos:        { icon: '💸', label: 'Gastos',        sub: 'Combustible · Gomería · Peajes · Viáticos' },
+  rentabilidad:  { icon: '📈', label: 'Rentabilidad',  sub: 'Simulador de margen por viaje'             },
 }
 
 function LogisticaContent() {
@@ -76,6 +78,7 @@ function LogisticaContent() {
       {tab === 'lugares'       && <LugaresTab />}
       {tab === 'facturacion'   && <FacturacionTab />}
       {tab === 'gastos'        && <GastosTab />}
+      {tab === 'rentabilidad'  && <RentabilidadTab />}
 
     </div>
   )

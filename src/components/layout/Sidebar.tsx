@@ -119,6 +119,7 @@ const NAV_ITEMS_LOGISTICA = [
   { tab: 'camiones',      icon: '🚚', label: 'Camiones y bateas', meta: 'Flota de camiones y semirremolques' },
   { tab: 'lugares',       icon: '📍', label: 'Lugares',       meta: 'Canteras · Depósitos'          },
   { tab: 'gastos',        icon: '💸', label: 'Gastos',        meta: 'Combustible · Gomería · Peajes' },
+  { tab: 'rentabilidad',  icon: '📈', label: 'Rentabilidad',  meta: 'Simulador de margen por viaje'  },
 ]
 
 const NAV_ITEMS_ADMIN = [
