@@ -61,8 +61,8 @@ export function ViajesTab() {
   const [descargaTramo, setDescargaTramo] = useState<Tramo | null>(null)
   const [revertirTramo, setRevertirTramo] = useState<Tramo | null>(null)
   const [filtChofer,    setFiltChofer]    = useState('')
-  const [filtTipo,      setFiltTipo]      = useState('')
-  const [filtEstado,    setFiltEstado]    = useState('')
+  const [filtTipo,      setFiltTipo]      = useState('cargado')
+  const [filtEstado,    setFiltEstado]    = useState('en_curso')
   const [filtDesde,     setFiltDesde]     = useState('')
   const [filtHasta,     setFiltHasta]     = useState('')
 
