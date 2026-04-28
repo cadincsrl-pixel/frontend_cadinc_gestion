@@ -105,7 +105,7 @@ export function RentabilidadTab() {
   const mejor = ranking[0]
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="no-spinner flex flex-col gap-4">
 
       {/* ── Banner mejor viaje ── */}
       {mejor && mejor.r.margen_anual_usd > 0 && (
@@ -356,7 +356,7 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
           )
       }
     >
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-5">
+      <div className="no-spinner grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-5">
         {/* ── Formulario ── */}
         <div className="flex flex-col gap-4">
           <Input label="Nombre del viaje" placeholder="Ej: cristamine 35t" disabled={readOnly} {...form.register('nombre')} />

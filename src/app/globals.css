@@ -2,6 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Quitar las flechas spinner de los <input type="number"> dentro de
+   contenedores marcados como .no-spinner. Se usa en RentabilidadTab
+   donde el ajuste +/- de a 1 no aporta nada (los valores son montos
+   o cantidades grandes). */
+.no-spinner input[type='number']::-webkit-outer-spin-button,
+.no-spinner input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.no-spinner input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 @keyframes slideUp {
   from { transform: translateY(20px); opacity: 0; }
   to   { transform: translateY(0);    opacity: 1; }
