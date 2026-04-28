@@ -28,10 +28,16 @@ import { Badge }  from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 
-// Formateadores compactos (nada de Intl.NumberFormat para mantener consistencia con fmtM de otros tabs).
-const fmtARS = (n: number) => '$' + Math.round(n).toLocaleString('es-AR')
-const fmtUSD = (n: number) => 'USD ' + Math.round(n).toLocaleString('es-AR')
-const fmtPct = (n: number) => (n * 100).toFixed(1) + '%'
+// Formato es-AR: miles con punto, decimales con coma. ARS y USD con 2 decimales,
+// porcentaje con 1 decimal.
+const fmtARS = (n: number) =>
+  '$' + n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const fmtUSD = (n: number) =>
+  'USD ' + n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const fmtPct = (n: number) =>
+  (n * 100).toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%'
+const fmtNum = (n: number) =>
+  n.toLocaleString('es-AR')
 
 const MODALIDAD_OPTIONS = [
   { value: 'km_jornal',  label: 'Por km + jornal' },
@@ -109,7 +115,7 @@ export function RentabilidadTab() {
               <div className="text-xs font-bold text-gris-dark uppercase tracking-wider">Mejor viaje</div>
               <div className="font-display text-xl text-azul mt-1">{mejor.viaje.nombre}</div>
               <div className="text-xs text-gris-dark mt-0.5">
-                {mejor.viaje.viajes_por_mes} viajes/mes · margen {fmtPct(mejor.r.margen_pct)}
+                {fmtNum(Number(mejor.viaje.viajes_por_mes))} viajes/mes · margen {fmtPct(mejor.r.margen_pct)}
               </div>
             </div>
             <div className="text-right">
@@ -149,7 +155,7 @@ export function RentabilidadTab() {
                   <td className="px-3 py-2 font-mono font-bold text-sm">{idx + 1}</td>
                   <td className="px-3 py-2 font-bold text-sm text-carbon">{viaje.nombre}</td>
                   <td className="px-3 py-2 font-mono text-xs">{fmtARS(Number(viaje.tarifa_neta_por_ton))}</td>
-                  <td className="px-3 py-2 font-mono text-xs">{Number(viaje.viajes_por_mes)}</td>
+                  <td className="px-3 py-2 font-mono text-xs">{fmtNum(Number(viaje.viajes_por_mes))}</td>
                   <td className="px-3 py-2 font-mono text-xs font-bold">{fmtARS(r.margen)}</td>
                   <td className="px-3 py-2 font-mono text-xs">{fmtPct(r.margen_pct)}</td>
                   <td className="px-3 py-2 font-mono text-xs font-bold text-verde">{fmtUSD(r.margen_anual_usd)}</td>
@@ -460,7 +466,7 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
           {/* Sensibilidad de tarifa */}
           <div className="bg-white rounded-lg p-3">
             <div className="text-[11px] font-bold uppercase tracking-wider text-gris-dark mb-1">
-              Sensibilidad tarifa: {sensibilidad >= 0 ? '+' : ''}{(sensibilidad * 100).toFixed(0)}%
+              Sensibilidad tarifa: {sensibilidad >= 0 ? '+' : ''}{fmtPct(sensibilidad)}
             </div>
             <input
               type="range"
