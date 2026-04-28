@@ -597,7 +597,7 @@ function ParametrosCard({ paramsRow, open, onToggle, readOnly }: ParametrosCardP
             <div className="grid grid-cols-2 gap-3">
               <Input label="Cargas sociales (ARS/mes)"   type="number" disabled={readOnly} {...form.register('cargas_sociales_mensual', { valueAsNumber: true })} />
               <Input label="Seguros (ARS/mes)"           type="number" disabled={readOnly} {...form.register('seguros_mensual',         { valueAsNumber: true })} />
-              <Input label="Patente + tasas (ARS/año)"   type="number" disabled={readOnly} {...form.register('patente_anual',           { valueAsNumber: true })} />
+              <Input label="Patente + tasas + VTV (ARS/año)" type="number" disabled={readOnly} {...form.register('patente_anual',     { valueAsNumber: true })} />
               <Input label="Gomería (ARS/mes)"           type="number" disabled={readOnly} {...form.register('gomeria_mensual',         { valueAsNumber: true })} />
               <Input label="Lavadero (ARS/mes)"          type="number" disabled={readOnly} {...form.register('lavadero_mensual',        { valueAsNumber: true })} />
               <Input label="Overhead (ej 0.01 = 1%)"     type="number" step="0.001" disabled={readOnly} {...form.register('overhead_pct',  { valueAsNumber: true })} />
