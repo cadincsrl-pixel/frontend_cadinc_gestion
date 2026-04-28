@@ -140,7 +140,7 @@ export function RentabilidadTab() {
           <table className="w-full border-collapse">
             <thead>
               <tr>
-                {['#', 'Viaje', 'Tarifa $/t', 'Viajes/mes', 'Margen $/viaje', 'Margen %', 'USD/año', 'Diagnóstico', ''].map(h => (
+                {['#', 'Viaje', 'Tarifa $/t', 'Viajes/mes', 'Chofer $/viaje', 'Margen $/viaje', 'Margen %', 'USD/año', 'Diagnóstico', ''].map(h => (
                   <th key={h} className="bg-gris/40 text-xs font-bold px-3 py-2 text-left uppercase tracking-wide text-gris-dark">{h}</th>
                 ))}
               </tr>
@@ -155,7 +155,8 @@ export function RentabilidadTab() {
                   <td className="px-3 py-2 font-mono font-bold text-sm">{idx + 1}</td>
                   <td className="px-3 py-2 font-bold text-sm text-carbon">{viaje.nombre}</td>
                   <td className="px-3 py-2 font-mono text-xs">{fmtARS(Number(viaje.tarifa_neta_por_ton))}</td>
-                  <td className="px-3 py-2 font-mono text-xs">{fmtNum(Number(viaje.viajes_por_mes))}</td>
+<td className="px-3 py-2 font-mono text-xs">{fmtNum(Number(viaje.viajes_por_mes))}</td>
+                  <td className="px-3 py-2 font-mono text-xs">{fmtARS(r.pago_chofer + r.jornal_chofer)}</td>
                   <td className="px-3 py-2 font-mono text-xs font-bold">{fmtARS(r.margen)}</td>
                   <td className="px-3 py-2 font-mono text-xs">{fmtPct(r.margen_pct)}</td>
                   <td className="px-3 py-2 font-mono text-xs font-bold text-verde">{fmtUSD(r.margen_anual_usd)}</td>
@@ -407,6 +408,10 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
             <div className="flex items-center justify-between">
               <span className="text-xs text-gris-dark">Ingreso</span>
               <span className="font-mono text-sm font-bold">{fmtARS(resultado.ingreso)}</span>
+            </div>
+            <div className="flex items-center justify-between mt-1">
+              <span className="text-xs text-gris-dark">Cobra el chofer</span>
+              <span className="font-mono text-sm font-bold text-azul">{fmtARS(resultado.pago_chofer + resultado.jornal_chofer)}</span>
             </div>
             <div className="flex items-center justify-between mt-1">
               <span className="text-xs text-gris-dark">Costo total</span>
