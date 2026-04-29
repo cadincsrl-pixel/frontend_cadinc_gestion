@@ -2,7 +2,14 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useNotificaciones, fmtDiasFaltan, type CumpleanieroItem } from '@/hooks/useNotificaciones'
+import {
+  useNotificaciones,
+  fmtDiasFaltan,
+  fmtDiasVencimiento,
+  fmtDocTipo,
+  type CumpleanieroItem,
+  type DocVencimientoItem,
+} from '@/hooks/useNotificaciones'
 
 /**
  * Campana del topbar. Muestra:
@@ -18,7 +25,7 @@ import { useNotificaciones, fmtDiasFaltan, type CumpleanieroItem } from '@/hooks
  */
 export function NotificationsBell() {
   const router = useRouter()
-  const { hoy, proximos, totalUrgente } = useNotificaciones()
+  const { hoy, proximos, papelesVencidos, papelesPorVencer, totalUrgente } = useNotificaciones()
   const [abierto, setAbierto] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -32,24 +39,33 @@ export function NotificationsBell() {
     return () => document.removeEventListener('mousedown', onClick)
   }, [abierto])
 
-  const totalProximos = proximos.length
-  const sinNotifs     = totalUrgente === 0 && totalProximos === 0
+  const totalNoUrgentes = proximos.length + papelesPorVencer.length
+  const sinNotifs       = totalUrgente === 0 && totalNoUrgentes === 0
 
   function abrirPersonal(leg: string) {
     setAbierto(false)
     router.push(`/personal?leg=${encodeURIComponent(leg)}`)
   }
 
+  // Llevar al tab "Camiones y bateas" del módulo logística. Los sub-tabs
+  // de camion/batea son state interno del componente, así que no podemos
+  // hacer deep-link directo al modal del vehículo. El user encuentra el
+  // vehículo por la patente que mostramos en la notif.
+  function abrirVehiculo(_entidad: 'camion' | 'batea', _id: number) {
+    setAbierto(false)
+    router.push('/logistica?tab=camiones')
+  }
+
   return (
     <div className="relative" ref={ref}>
       <button
         onClick={() => setAbierto(p => !p)}
-        title={sinNotifs ? 'Sin notificaciones' : `${totalUrgente + totalProximos} notificación${totalUrgente + totalProximos !== 1 ? 'es' : ''}`}
+        title={sinNotifs ? 'Sin notificaciones' : `${totalUrgente + totalNoUrgentes} notificación${totalUrgente + totalNoUrgentes !== 1 ? 'es' : ''}`}
         className={`
           relative w-9 h-9 rounded-lg flex items-center justify-center transition-colors
           ${totalUrgente > 0
             ? 'bg-rojo-light text-rojo hover:bg-rojo hover:text-white'
-            : totalProximos > 0
+            : totalNoUrgentes > 0
               ? 'bg-azul-light text-azul hover:bg-azul hover:text-white'
               : 'text-gris-dark hover:bg-gris'
           }
@@ -61,7 +77,7 @@ export function NotificationsBell() {
             {totalUrgente}
           </span>
         )}
-        {totalUrgente === 0 && totalProximos > 0 && (
+        {totalUrgente === 0 && totalNoUrgentes > 0 && (
           <span className="absolute top-1.5 right-1.5 bg-azul w-2 h-2 rounded-full border border-white" />
         )}
       </button>
@@ -72,14 +88,24 @@ export function NotificationsBell() {
             Notificaciones
           </div>
 
-          <div className="max-h-[420px] overflow-y-auto">
+          <div className="max-h-[480px] overflow-y-auto">
             {sinNotifs && (
               <div className="px-3 py-6 text-center text-xs text-gris-dark">
-                No hay cumpleaños esta semana.
+                Sin notificaciones pendientes.
               </div>
             )}
 
-            {totalUrgente > 0 && (
+            {/* Papeles vencidos: máxima urgencia */}
+            {papelesVencidos.length > 0 && (
+              <Section titulo="🛻 Papeles vencidos" tono="rojo">
+                {papelesVencidos.map(d => (
+                  <DocRow key={`${d.entidad}-${d.doc_id}`} doc={d} onClick={() => abrirVehiculo(d.entidad, d.entidad_id)} />
+                ))}
+              </Section>
+            )}
+
+            {/* Cumpleaños hoy */}
+            {hoy.length > 0 && (
               <Section titulo="🎂 Cumplen hoy" tono="rojo">
                 {hoy.map(item => (
                   <NotifRow key={item.trabajador.leg} item={item} hoy onClick={() => abrirPersonal(item.trabajador.leg)} />
@@ -87,8 +113,18 @@ export function NotificationsBell() {
               </Section>
             )}
 
-            {totalProximos > 0 && (
-              <Section titulo="📅 Próximos 7 días" tono="azul">
+            {/* Papeles por vencer en 30 días */}
+            {papelesPorVencer.length > 0 && (
+              <Section titulo="🛻 Papeles por vencer (30 días)" tono="amarillo">
+                {papelesPorVencer.map(d => (
+                  <DocRow key={`${d.entidad}-${d.doc_id}`} doc={d} onClick={() => abrirVehiculo(d.entidad, d.entidad_id)} />
+                ))}
+              </Section>
+            )}
+
+            {/* Cumpleaños próximos */}
+            {proximos.length > 0 && (
+              <Section titulo="📅 Cumpleaños próximos" tono="azul">
                 {proximos.map(item => (
                   <NotifRow key={item.trabajador.leg} item={item} onClick={() => abrirPersonal(item.trabajador.leg)} />
                 ))}
@@ -101,10 +137,11 @@ export function NotificationsBell() {
   )
 }
 
-function Section({ titulo, tono, children }: { titulo: string; tono: 'rojo' | 'azul'; children: React.ReactNode }) {
-  const cls = tono === 'rojo'
-    ? 'bg-rojo-light text-rojo'
-    : 'bg-gris/40 text-gris-dark'
+function Section({ titulo, tono, children }: { titulo: string; tono: 'rojo' | 'azul' | 'amarillo'; children: React.ReactNode }) {
+  const cls =
+    tono === 'rojo'     ? 'bg-rojo-light text-rojo' :
+    tono === 'amarillo' ? 'bg-amarillo-light text-[#7A5500]' :
+                          'bg-gris/40 text-gris-dark'
   return (
     <>
       <div className={`px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider ${cls}`}>
@@ -112,6 +149,24 @@ function Section({ titulo, tono, children }: { titulo: string; tono: 'rojo' | 'a
       </div>
       <div className="divide-y divide-gris">{children}</div>
     </>
+  )
+}
+
+function DocRow({ doc, onClick }: { doc: DocVencimientoItem; onClick: () => void }) {
+  const vencido = doc.diasParaVencer < 0
+  return (
+    <button
+      onClick={onClick}
+      className="w-full text-left px-3 py-2 hover:bg-gris/40 transition-colors"
+    >
+      <div className="font-bold text-sm text-azul">
+        {doc.entidad === 'batea' ? '🛻' : '🚚'} {doc.entidad_patente}
+        <span className="ml-2 text-xs font-semibold text-gris-dark">{fmtDocTipo(doc.tipo)}</span>
+      </div>
+      <div className={`text-xs mt-0.5 ${vencido ? 'text-rojo font-bold' : 'text-gris-dark'}`}>
+        {fmtDiasVencimiento(doc.diasParaVencer)} · {doc.vence_el.split('-').reverse().join('/')}
+      </div>
+    </button>
   )
 }
 
