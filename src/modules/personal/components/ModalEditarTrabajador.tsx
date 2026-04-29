@@ -27,6 +27,7 @@ const schema = z.object({
   talle_botines:   z.string().optional(),
   talle_camisa:    z.string().optional(),
   activo_override: z.enum(['auto', 'activo', 'inactivo']).optional(),
+  fecha_nacimiento: z.string().optional(),
 })
 
 type FormData = z.infer<typeof schema>
@@ -63,17 +64,19 @@ export function ModalEditarTrabajador({ open, onClose, trabajador }: Props) {
         activo_override: trabajador.activo_override === true  ? 'activo'
                        : trabajador.activo_override === false ? 'inactivo'
                        : 'auto',
+        fecha_nacimiento: trabajador.fecha_nacimiento ?? '',
       })
     }
   }, [trabajador, reset])
 
   function onSubmit(data: FormData) {
     if (!trabajador) return
-    const { activo_override: ao, condicion, ...rest } = data as any
+    const { activo_override: ao, condicion, fecha_nacimiento, ...rest } = data as any
     const dto = {
       ...rest,
       condicion: condicion || null,
       activo_override: ao === 'activo' ? true : ao === 'inactivo' ? false : null,
+      fecha_nacimiento: fecha_nacimiento && fecha_nacimiento.trim() !== '' ? fecha_nacimiento : null,
     }
     updatePersonal(
       { leg: trabajador.leg, dto },
@@ -171,6 +174,11 @@ export function ModalEditarTrabajador({ open, onClose, trabajador }: Props) {
           label="Dirección"
           placeholder="Calle y número"
           {...register('dir')}
+        />
+        <Input
+          label="Fecha de nacimiento"
+          type="date"
+          {...register('fecha_nacimiento')}
         />
         <Input
           label="Observaciones"

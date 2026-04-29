@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import * as XLSX from 'xlsx'
 import { apiGet } from '@/lib/api/client'
@@ -108,6 +109,16 @@ export function PersonalPage() {
     return matchText && matchCondicion
   })
   useEffect(() => { setPageP(1) }, [busqueda, filterCondicion])
+
+  // Si llegamos con ?leg=XXX (ej. desde la campana de notificaciones),
+  // abrir el modal de detalle del trabajador apenas cargue.
+  const searchParams = useSearchParams()
+  useEffect(() => {
+    const legParam = searchParams.get('leg')
+    if (!legParam || !personal.length) return
+    const t = (personal as Personal[]).find(p => p.leg === legParam)
+    if (t) setDetalle(t)
+  }, [searchParams, personal])
   const filtradosPag = filtrados.slice((pageP - 1) * pageSizeP, pageP * pageSizeP)
 
   const filtradosC = contratistas.filter(c =>

@@ -8,7 +8,21 @@ import { useObras, useObrasArchivadas } from '@/modules/tarja/hooks/useObras'
 import { useHorasTrabajador } from '@/modules/tarja/hooks/useHoras'
 import { AuditInfo } from '@/components/ui/AuditInfo'
 import { getViernes, getSemKey, getSemLabel } from '@/lib/utils/dates'
+import { PersonalDocumentosSection } from './PersonalDocumentosSection'
 import type { Personal, Hora } from '@/types/domain.types'
+
+// "12/03/1985 (39 años)" — devuelve null si no hay fecha cargada.
+function fmtCumpleConEdad(iso: string | null | undefined): string | null {
+  if (!iso) return null
+  const [y, m, d] = iso.split('-')
+  if (!y || !m || !d) return null
+  const fecha = new Date(Number(y), Number(m) - 1, Number(d))
+  const hoy = new Date()
+  let edad = hoy.getFullYear() - fecha.getFullYear()
+  const cumpleEsteAnio = new Date(hoy.getFullYear(), fecha.getMonth(), fecha.getDate())
+  if (hoy < cumpleEsteAnio) edad -= 1
+  return `${d}/${m}/${y} (${edad} años)`
+}
 
 interface Props {
   open: boolean
@@ -138,7 +152,11 @@ export function ModalDetalleTrabajador({ open, onClose, trabajador, onEditar }: 
         <div className="grid grid-cols-2 gap-3">
           <InfoField label="DNI" value={trabajador.dni} />
           <InfoField label="Teléfono" value={trabajador.tel} />
-          <InfoField label="Dirección" value={trabajador.dir} className="col-span-2" />
+          <InfoField
+            label="Fecha de nacimiento"
+            value={fmtCumpleConEdad(trabajador.fecha_nacimiento)}
+          />
+          <InfoField label="Dirección" value={trabajador.dir} />
           {trabajador.obs && (
             <InfoField label="Observaciones" value={trabajador.obs} className="col-span-2" />
           )}
@@ -299,6 +317,12 @@ export function ModalDetalleTrabajador({ open, onClose, trabajador, onEditar }: 
               )}
             </>
           )}
+        </div>
+
+        {/* Documentos (siempre visibles; los botones de upload/edit/delete
+            respetan permisos internamente). */}
+        <div className="border-t border-gris-mid pt-4">
+          <PersonalDocumentosSection leg={trabajador.leg} />
         </div>
 
         <AuditInfo

@@ -55,6 +55,7 @@ export interface Personal extends AuditFields {
   talle_botines:   string | null
   talle_camisa:    string | null
   activo_override: boolean | null
+  fecha_nacimiento: string | null   // ISO yyyy-mm-dd
   personal_cat_historial: CatHistorial[]
 }
 
@@ -70,6 +71,7 @@ export interface CreatePersonalDto {
   talle_pantalon?: string
   talle_botines?:  string
   talle_camisa?:   string
+  fecha_nacimiento?: string | null
 }
 
 export interface UpdatePersonalDto {
@@ -84,6 +86,7 @@ export interface UpdatePersonalDto {
   talle_botines?:   string
   talle_camisa?:    string
   activo_override?: boolean | null
+  fecha_nacimiento?: string | null
 }
 
 // ── Documentos del legajo ──

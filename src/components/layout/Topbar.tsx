@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, usePathname } from 'next/navigation'
 import { useUIStore } from '@/store/ui.store'
+import { NotificationsBell } from './NotificationsBell'
 
 const MODULO_BRANDING: Record<string, { label: string; accent: string; icono: string }> = {
   tarja:          { label: 'CADINC',  accent: 'SRL',  icono: '📋' },
@@ -87,6 +88,10 @@ export function Topbar({ onMenuToggle, showMenuBtn }: TopbarProps) {
 
         {/* Right */}
         <div className="flex items-center gap-2">
+
+          {/* Campana de notificaciones (cumpleaños del personal). Visible
+              en todo el ERP — la lógica del hook tolera personal vacío. */}
+          <NotificationsBell />
 
           {/* Botones de acción — Se muestran siempre en el módulo Tarja */}
           {mostrarAccionesTarja && (
