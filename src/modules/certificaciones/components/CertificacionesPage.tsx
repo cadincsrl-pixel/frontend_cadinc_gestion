@@ -1,14 +1,16 @@
 'use client'
 
 import { useSearchParams } from 'next/navigation'
-import { SolicitudesTab } from './SolicitudesTab'
-import { StockTab }       from './StockTab'
-import { MaterialesTab }  from './MaterialesTab'
+import { SolicitudesTab }     from './SolicitudesTab'
+import { StockTab }           from './StockTab'
+import { MaterialesTab }      from './MaterialesTab'
+import { StockProveedorTab }  from './StockProveedorTab'
 
 const TABS = [
-  { key: 'solicitudes', icon: '🛒', label: 'Solicitudes', sub: 'Pedidos de compra y envío de materiales' },
-  { key: 'stock',       icon: '🏗️', label: 'Stock',       sub: 'Stock en depósito por rubro' },
-  { key: 'materiales',  icon: '📦', label: 'Materiales',  sub: 'Materiales a cuenta del cliente' },
+  { key: 'solicitudes',      icon: '🛒', label: 'Solicitudes',         sub: 'Pedidos de compra y envío de materiales' },
+  { key: 'stock',            icon: '🏗️', label: 'Stock',                sub: 'Stock en depósito por rubro' },
+  { key: 'stock-proveedor',  icon: '🏭', label: 'Stock en proveedores', sub: 'Materiales comprados que aún quedan en el galpón del proveedor' },
+  { key: 'materiales',       icon: '📦', label: 'Materiales',           sub: 'Materiales a cuenta del cliente' },
 ]
 
 export function CertificacionesPage() {
@@ -29,9 +31,10 @@ export function CertificacionesPage() {
 
       {/* Contenido */}
       <div className="flex flex-col gap-4">
-        {tab === 'solicitudes' && <SolicitudesTab />}
-        {tab === 'stock'       && <StockTab />}
-        {tab === 'materiales'  && <MaterialesTab />}
+        {tab === 'solicitudes'     && <SolicitudesTab />}
+        {tab === 'stock'           && <StockTab />}
+        {tab === 'stock-proveedor' && <StockProveedorTab />}
+        {tab === 'materiales'      && <MaterialesTab />}
       </div>
     </div>
   )

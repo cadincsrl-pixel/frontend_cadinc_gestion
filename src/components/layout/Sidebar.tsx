@@ -12,9 +12,10 @@ interface SidebarProps {
 }
 
 const NAV_ITEMS_CERT = [
-  { tab: 'solicitudes', icon: '🛒', label: 'Solicitudes', meta: 'Pedidos de compra y envío'      },
-  { tab: 'stock',       icon: '🏗️', label: 'Stock',       meta: 'Stock en depósito'              },
-  { tab: 'materiales',  icon: '📦', label: 'Materiales',  meta: 'A cuenta del cliente'           },
+  { tab: 'solicitudes',     icon: '🛒', label: 'Solicitudes',          meta: 'Pedidos de compra y envío'      },
+  { tab: 'stock',           icon: '🏗️', label: 'Stock',                meta: 'Stock en depósito'              },
+  { tab: 'stock-proveedor', icon: '🏭', label: 'Stock en proveedores', meta: 'Materiales comprados sin retirar' },
+  { tab: 'materiales',      icon: '📦', label: 'Materiales',           meta: 'A cuenta del cliente'           },
 ]
 
 function CertNav({ navigate, activeTab, allowedTabs }: { navigate: (href: string) => void; activeTab: string; allowedTabs?: string[] }) {

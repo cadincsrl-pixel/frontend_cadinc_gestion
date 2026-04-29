@@ -37,9 +37,10 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
     { key: 'parametros',   label: 'Parámetros',   icon: '⚙️' },
   ],
   certificaciones: [
-    { key: 'solicitudes', label: 'Solicitudes', icon: '🛒' },
-    { key: 'stock',       label: 'Stock',       icon: '🏗️' },
-    { key: 'materiales',  label: 'Materiales',  icon: '📦' },
+    { key: 'solicitudes',     label: 'Solicitudes',         icon: '🛒' },
+    { key: 'stock',           label: 'Stock',               icon: '🏗️' },
+    { key: 'stock-proveedor', label: 'Stock en proveedores', icon: '🏭' },
+    { key: 'materiales',      label: 'Materiales',          icon: '📦' },
   ],
   caja: [
     { key: 'movimientos',   label: 'Movimientos',   icon: '💵' },

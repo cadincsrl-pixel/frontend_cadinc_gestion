@@ -667,7 +667,14 @@ export interface FacturaCompra extends AuditFields {
 
 // ── Solicitudes de compra ──
 export type SolicitudEstado = 'pendiente' | 'aprobada' | 'rechazada'
-export type ItemEstado = 'pendiente' | 'comprado' | 'de_deposito' | 'enviado' | 'rechazado'
+export type ItemEstado =
+  | 'pendiente'
+  | 'comprado'
+  | 'de_deposito'
+  | 'en_proveedor'   // comprado pero queda en el galpón del proveedor
+  | 'retirado'       // ya se retiró del proveedor (terminal o paso previo a 'enviado')
+  | 'enviado'
+  | 'rechazado'
 export type SolicitudProgreso = 'pendiente' | 'en_gestion' | 'enviada'
 
 export interface SolicitudCompraItem {

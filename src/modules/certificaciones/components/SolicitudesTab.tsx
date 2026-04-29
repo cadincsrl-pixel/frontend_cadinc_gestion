@@ -45,11 +45,13 @@ const PROGRESO_CFG: Record<SolicitudProgreso, { label: string; bg: string; text:
 }
 
 const ITEM_ESTADO_CFG: Record<ItemEstado, { label: string; bg: string; text: string }> = {
-  pendiente:   { label: 'Pendiente',    bg: 'bg-amarillo-light', text: 'text-[#7A5500]' },
-  comprado:    { label: 'Comprado',     bg: 'bg-azul-light',     text: 'text-azul'      },
-  de_deposito: { label: 'De depósito',  bg: 'bg-naranja-light',  text: 'text-naranja'   },
-  enviado:     { label: 'Enviado',      bg: 'bg-verde-light',    text: 'text-verde'     },
-  rechazado:   { label: 'Rechazado',    bg: 'bg-rojo-light',     text: 'text-rojo'      },
+  pendiente:    { label: 'Pendiente',     bg: 'bg-amarillo-light', text: 'text-[#7A5500]' },
+  comprado:     { label: 'Comprado',      bg: 'bg-azul-light',     text: 'text-azul'      },
+  de_deposito:  { label: 'De depósito',   bg: 'bg-naranja-light',  text: 'text-naranja'   },
+  en_proveedor: { label: 'En proveedor',  bg: 'bg-azul-light',     text: 'text-azul-mid'  },
+  retirado:     { label: 'Retirado',      bg: 'bg-verde-light',    text: 'text-verde'     },
+  enviado:      { label: 'Enviado',       bg: 'bg-verde-light',    text: 'text-verde'     },
+  rechazado:    { label: 'Rechazado',     bg: 'bg-rojo-light',     text: 'text-rojo'      },
 }
 
 function fmtF(s: string) { const [y,m,d] = s.split('-'); return `${d}/${m}/${y}` }
@@ -235,13 +237,24 @@ export function SolicitudesTab() {
 
   // ── Acciones sobre ítems ──
   function abrirComprar(item: SolicitudCompraItem) {
-    formComprar.reset({ proveedor_id: '', precio_unit: 0, factura_id: '' })
+    formComprar.reset({ proveedor_id: '', precio_unit: 0, factura_id: '', queda_en_proveedor: false })
     setModalComprar(item)
   }
   function handleComprar(data: any) {
     if (!modalComprar?.id) return
-    comprarItem({ itemId: modalComprar.id, dto: { proveedor_id: Number(data.proveedor_id), precio_unit: Number(data.precio_unit), factura_id: data.factura_id ? Number(data.factura_id) : null } }, {
-      onSuccess: () => { toast('Compra registrada', 'ok'); setModalComprar(null) },
+    comprarItem({
+      itemId: modalComprar.id,
+      dto: {
+        proveedor_id:        Number(data.proveedor_id),
+        precio_unit:         Number(data.precio_unit),
+        factura_id:          data.factura_id ? Number(data.factura_id) : null,
+        queda_en_proveedor:  !!data.queda_en_proveedor,
+      },
+    }, {
+      onSuccess: () => {
+        toast(data.queda_en_proveedor ? 'Comprado (queda en proveedor)' : 'Compra registrada', 'ok')
+        setModalComprar(null)
+      },
       onError: (e: any) => toast(e.message || 'Error', 'err'),
     })
   }
@@ -297,7 +310,7 @@ export function SolicitudesTab() {
       cantidad: it.cantidad,
       unidad: it.unidad,
       precio_unit: it.precio_unit ?? null,
-      origen: it.estado === 'comprado' ? 'proveedor' : 'deposito',
+      origen: (it.estado === 'comprado' || it.estado === 'retirado') ? 'proveedor' : 'deposito',
       proveedor: it.proveedores?.nombre ?? null,
     }))
 
@@ -509,7 +522,7 @@ export function SolicitudesTab() {
                                           <button onClick={() => handleRechazarItem(item.id!)} className="text-[10px] font-bold px-2 py-1 rounded bg-rojo-light text-rojo hover:opacity-80">✕</button>
                                         </>
                                       )}
-                                      {(item.estado === 'comprado' || item.estado === 'de_deposito') && (
+                                      {(item.estado === 'comprado' || item.estado === 'de_deposito' || item.estado === 'retirado') && (
                                         <>
                                           <input type="checkbox" checked={selected.has(item.id!)} onChange={() => toggleSelect(item.id!)}
                                             className="accent-verde w-3.5 h-3.5" title="Seleccionar para envío grupal" />
@@ -537,7 +550,7 @@ export function SolicitudesTab() {
 
                           {/* Envío grupal */}
                           {isExp && (() => {
-                            const itemsSeleccionados = items.filter(it => selected.has(it.id!) && (it.estado === 'comprado' || it.estado === 'de_deposito'))
+                            const itemsSeleccionados = items.filter(it => selected.has(it.id!) && (it.estado === 'comprado' || it.estado === 'de_deposito' || it.estado === 'retirado'))
                             if (itemsSeleccionados.length === 0) return null
                             return (
                               <tr className="border-b border-gris bg-verde-light/30">
@@ -678,6 +691,19 @@ export function SolicitudesTab() {
                 setAdjunto(null); setModalNuevaFactura(true)
               }}>+ Factura</Button>
             </div>
+            <label className="flex items-start gap-2.5 px-3 py-2.5 border-[1.5px] border-gris-mid rounded-lg hover:border-naranja transition-colors cursor-pointer">
+              <input
+                type="checkbox"
+                {...formComprar.register('queda_en_proveedor')}
+                className="mt-0.5"
+              />
+              <div className="flex-1">
+                <div className="text-sm font-bold text-azul">🏭 Material queda en proveedor</div>
+                <div className="text-[11px] text-gris-dark mt-0.5">
+                  El material no llega a CADINC ni a la obra todavía: queda en el galpón del proveedor. Lo vas a retirar después desde el tab "Stock en proveedores". No se factura al cliente hasta retirarlo.
+                </div>
+              </div>
+            </label>
           </div>
         )}
       </Modal>
