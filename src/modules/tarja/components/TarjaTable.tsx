@@ -369,6 +369,9 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                           key={`${p.leg}-${fecha}-${h}`}
                           defaultValue={h || ''}
                           readOnly={!puedeEditar || readonly}
+                          // Evitar cambios por accidente cuando el usuario
+                          // hace scroll con la rueda del mouse sobre la celda.
+                          onWheel={e => (e.currentTarget as HTMLInputElement).blur()}
                           onBlur={puedeEditar && !readonly ? e => handleChange(p.leg, fecha, e.target.value, h) : undefined}
                           onKeyDown={puedeEditar && !readonly ? e => {
                             if (e.key === 'Enter') {
@@ -405,6 +408,8 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                       defaultValue={hsExtraLeg || ''}
                       readOnly={!puedeEditar || readonly}
                       title="Horas extras de la semana"
+                      // Evitar cambios accidentales con la rueda del mouse.
+                      onWheel={e => (e.currentTarget as HTMLInputElement).blur()}
                       onBlur={puedeEditar && !readonly
                         ? e => handleExtraChange(p.leg, e.target.value, hsExtraLeg)
                         : undefined}
