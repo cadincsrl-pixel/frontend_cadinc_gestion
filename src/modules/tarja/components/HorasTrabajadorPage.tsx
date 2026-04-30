@@ -656,6 +656,7 @@ export function HorasTrabajadorPage() {
                                   step={0.5}
                                   value={displayVal}
                                   readOnly={!puedeEditar}
+                                  onWheel={e => (e.currentTarget as HTMLInputElement).blur()}
                                   onChange={puedeEditar ? e => handleCellChange(f.leg, f.obra.cod, ds, e.target.value) : undefined}
                                   onBlur={puedeEditar ? e => handleCellBlur(f.leg, f.obra.cod, ds, val, e.target.value) : undefined}
                                   onFocus={puedeEditar ? e => { setEditingCell({ key: ck, val: e.target.value }); e.target.select() } : undefined}
@@ -680,6 +681,7 @@ export function HorasTrabajadorPage() {
                                   value={displayVal}
                                   readOnly={!puedeEditar}
                                   title="Horas extras de la semana"
+                                  onWheel={e => (e.currentTarget as HTMLInputElement).blur()}
                                   onChange={puedeEditar ? e => setEditingCell({ key: ek, val: e.target.value }) : undefined}
                                   onBlur={puedeEditar ? e => handleExtraBlur(f.leg, f.obra.cod, f.hsExtras, e.target.value) : undefined}
                                   onFocus={puedeEditar ? e => { setEditingCell({ key: ek, val: e.target.value }); e.target.select() } : undefined}
