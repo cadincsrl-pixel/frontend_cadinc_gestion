@@ -131,7 +131,7 @@ export function ModalRecibos({
 
     const operarios = new Set(horasFilt.map(h => h.leg)).size
     const contratNum = new Set(certsFilt.map(c => c.contrat_id)).size
-    const paginas = Math.ceil((operarios + contratNum) / 5) || 0
+    const paginas = Math.ceil((operarios + contratNum) / 4) || 0
 
     // Hs extras de esta semana × obras seleccionadas (y legs seleccionados si aplica)
     const hsExtrasFilt = todasHsExtras.filter(x => {
@@ -167,7 +167,7 @@ export function ModalRecibos({
     const costoContratFinal = incluirCont ? costoContrat : 0
     const operariosFinal = incluirOp ? operarios : 0
     const contratNumFinal = incluirCont ? contratNum : 0
-    const paginasFinal = Math.ceil((operariosFinal + contratNumFinal) / 5) || 0
+    const paginasFinal = Math.ceil((operariosFinal + contratNumFinal) / 4) || 0
 
     // Fecha de cobro
     const s = new Date(semKey + 'T12:00:00')

@@ -770,7 +770,7 @@ export function generarRecibos(
   // ── HTML operarios ──
   let recibosHTML = ''
   trabajadores.forEach((t, idx) => {
-    const pb = idx > 0 && idx % 5 === 0 ? 'page-break-before:always;' : ''
+    const pb = idx > 0 && idx % 4 === 0 ? 'page-break-before:always;' : ''
     // Las hs extras se suman al total de horas y costo de la obra (NO se listan
     // como línea separada). Para el operario es "trabajo en la obra X", sin
     // distinción de regulares vs extras — coincide con el criterio contable.
@@ -806,7 +806,7 @@ export function generarRecibos(
       </div>` : ''
 
     recibosHTML += `
-    <div style="${pb}margin-bottom:6px;border:1.5px solid #1D3F6E;border-radius:8px;overflow:hidden;font-family:Arial,sans-serif">
+    <div class="recibo" style="${pb}border:1.5px solid #1D3F6E;border-radius:8px;font-family:Arial,sans-serif">
       <div style="background:#0F2744;color:white;padding:8px 14px;display:flex;justify-content:space-between;align-items:center">
         <div>
           <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase">${empresa}</div>
@@ -856,7 +856,7 @@ export function generarRecibos(
   // ── HTML contratistas ──
   let contratHTML = ''
   contratData.forEach((cd, idx) => {
-    const pb = (trabajadores.length > 0 || idx > 0) && (trabajadores.length + idx) % 5 === 0 ? 'page-break-before:always;' : ''
+    const pb = (trabajadores.length > 0 || idx > 0) && (trabajadores.length + idx) % 4 === 0 ? 'page-break-before:always;' : ''
     const filas = cd.obras.map(ob => `
       <tr>
         <td style="padding:5px 8px;font-size:10px;border-bottom:1px solid #eee">
@@ -868,7 +868,7 @@ export function generarRecibos(
       </tr>`).join('')
 
     contratHTML += `
-    <div style="${pb}margin-bottom:6px;border:1.5px solid #2C1654;border-radius:8px;overflow:hidden;font-family:Arial,sans-serif">
+    <div class="recibo" style="${pb}border:1.5px solid #2C1654;border-radius:8px;font-family:Arial,sans-serif">
       <div style="background:#2C1654;color:white;padding:8px 14px;display:flex;justify-content:space-between;align-items:center">
         <div>
           <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase">${empresa}</div>
@@ -1042,6 +1042,13 @@ export function generarRecibos(
       body{background:#f5f5f3;font-family:Arial,sans-serif;padding-top:68px}
       @page{size:A4;margin:10mm}
       @media print{body{background:#fff;padding-top:0!important}.no-print{display:none!important}}
+      /* Cada recibo (operario o contratista) ocupa una altura fija para
+         que al imprimir 4 por página queden todos del mismo tamaño y
+         puedan cortarse parejos con guillotina/tijera. Si el contenido
+         excediera (caso raro: muchísimas obras), se trunca con
+         overflow:hidden — preferimos uniformidad sobre completitud. */
+      .recibo{height:65mm;overflow:hidden;page-break-inside:avoid;break-inside:avoid;margin-bottom:2mm;display:flex;flex-direction:column}
+      .recibo > table{flex:1 1 auto;min-height:0}
       .topbar{position:fixed;top:0;left:0;right:0;z-index:999;background:#0F2744;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:10px 20px;gap:12px;box-shadow:0 2px 8px rgba(0,0,0,.25)}
       .topbar-info{font-size:11px;opacity:.8;line-height:1.5}
       .topbar-info b{color:#fff;font-size:12px;opacity:1}
