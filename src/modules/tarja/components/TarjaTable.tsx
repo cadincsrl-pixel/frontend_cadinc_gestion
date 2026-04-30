@@ -102,18 +102,39 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
     queryFn: () => apiGet<Hora[]>(`/api/horas/all?desde=${desde}&hasta=${hasta}`),
   })
 
-  const multiObra = useMemo(() => {
-    const legObras = new Map<string, Set<string>>()
+  // Conflictos del MISMO día: para cada (leg, fecha) que tiene horas > 0
+  // en más de una obra distinta, guardamos el detalle. Las celdas con
+  // conflicto se marcan visualmente y muestran tooltip con las otras
+  // obras y horas. Trabajar en obra A los lunes y obra B los martes NO
+  // es conflicto — sólo lo es cuando coinciden en el mismo día.
+  const conflictoDia = useMemo(() => {
+    // Map<leg, Map<fecha, Array<{ obra_cod, horas }>>>
+    const map = new Map<string, Map<string, Array<{ obra_cod: string; horas: number }>>>()
     horasSemana.forEach(h => {
-      if (!legObras.has(h.leg)) legObras.set(h.leg, new Set())
-      legObras.get(h.leg)!.add(h.obra_cod)
+      if (!h.horas || h.horas <= 0) return
+      if (!map.has(h.leg)) map.set(h.leg, new Map())
+      const fechaMap = map.get(h.leg)!
+      if (!fechaMap.has(h.fecha)) fechaMap.set(h.fecha, [])
+      fechaMap.get(h.fecha)!.push({ obra_cod: h.obra_cod, horas: h.horas })
     })
-    return new Set(
-      [...legObras.entries()]
-        .filter(([, obras]) => obras.size > 1)
-        .map(([leg]) => leg)
-    )
+    // Filtrar: dejar solo entradas (leg, fecha) con >1 obra distinta.
+    const out = new Map<string, Map<string, Array<{ obra_cod: string; horas: number }>>>()
+    for (const [leg, fechaMap] of map.entries()) {
+      const fechasConflicto = new Map<string, Array<{ obra_cod: string; horas: number }>>()
+      for (const [fecha, items] of fechaMap.entries()) {
+        const obrasUnicas = new Set(items.map(i => i.obra_cod))
+        if (obrasUnicas.size > 1) fechasConflicto.set(fecha, items)
+      }
+      if (fechasConflicto.size > 0) out.set(leg, fechasConflicto)
+    }
+    return out
   }, [horasSemana])
+
+  // Set de legs con AL MENOS un día de conflicto (para el badge ↔ del
+  // nombre). Reemplaza el `multiObra` viejo que detectaba por semana
+  // (ruidoso: marcaba operarios que sí trabajan en varias obras pero
+  // en distintos días, lo cual no es problema).
+  const multiObra = useMemo(() => new Set(conflictoDia.keys()), [conflictoDia])
 
   // Totales usando la categoría efectiva (catObra override) de cada trabajador
   const { totalHs, totalCosto } = (() => {
@@ -313,7 +334,7 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                       {multiObra.has(p.leg) && (
                         <span
                           className="text-[10px] font-bold bg-[#E0A800] text-white px-1.5 py-0.5 rounded"
-                          title="Este trabajador tiene horas en otra obra esta semana"
+                          title="Este trabajador tiene horas en otra obra el mismo día — ver celdas marcadas con ⚠"
                         >
                           ↔
                         </span>
@@ -360,8 +381,26 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                   {days.map((d, i) => {
                     const fecha = toISO(d)
                     const h = getH(p.leg, fecha)
+                    // ¿Este (leg, fecha) tiene horas en otra obra el mismo día?
+                    const itemsDelDia = conflictoDia.get(p.leg)?.get(fecha)
+                    const otrasObrasMismoDia = itemsDelDia
+                      ? itemsDelDia
+                          .filter(it => it.obra_cod !== obraCod)
+                          .map(it => `${it.obra_cod}: ${it.horas}hs`)
+                      : []
+                    const enConflicto = otrasObrasMismoDia.length > 0
                     return (
-                      <td key={i} className="px-1.5 py-1.5 text-center">
+                      <td
+                        key={i}
+                        className={`relative px-1.5 py-1.5 text-center ${enConflicto ? 'bg-amarillo-light/60' : ''}`}
+                        title={enConflicto ? `⚠ También tiene horas este día en — ${otrasObrasMismoDia.join(' · ')}` : undefined}
+                      >
+                        {enConflicto && (
+                          <span
+                            className="absolute top-0 right-0.5 text-[10px] leading-none text-[#7A5500] pointer-events-none"
+                            aria-hidden="true"
+                          >⚠</span>
+                        )}
                         <input
                           type="number"
                           min={0}
@@ -392,7 +431,7 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                               }
                               [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none
                               [&::-webkit-inner-spin-button]:appearance-none
-                              ${getHoraClass(h)}
+                              ${enConflicto ? 'border-[#E0A800]' : getHoraClass(h)}
                             `}
                         />
                       </td>
