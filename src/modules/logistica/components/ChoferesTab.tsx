@@ -32,8 +32,26 @@ export function ChoferesTab() {
 
   const [modalNuevo,  setModalNuevo]  = useState(false)
   const [editando,    setEditando]    = useState<Chofer | null>(null)
+  // El modal arranca en modo detalle (read-only). El usuario apreta "Editar"
+  // para habilitar el form. Cancelar vuelve a detalle y descarta cambios.
+  const [modoEdicion, setModoEdicion] = useState(false)
   const formNuevo = useForm<any>()
   const formEdit  = useForm<any>()
+
+  function defaultsFromChofer(chofer: Chofer) {
+    return {
+      nombre:     chofer.nombre,
+      cuil:       chofer.cuil ?? '',
+      tel:        chofer.tel ?? '',
+      licencia:   chofer.licencia ?? '',
+      estado:     chofer.estado,
+      camion_id:  chofer.camion_id ?? '',
+      batea_id:   chofer.batea_id ?? '',
+      basico_dia: chofer.basico_dia ?? 0,
+      precio_km:  chofer.precio_km ?? 0,
+      obs:        chofer.obs ?? '',
+    }
+  }
 
   function normalizar(data: any) {
     return {
@@ -53,7 +71,12 @@ export function ChoferesTab() {
   function handleUpdate(data: any) {
     if (!editando) return
     update({ id: editando.id, dto: normalizar(data) }, {
-      onSuccess: () => { toast('✓ Chofer actualizado', 'ok'); setEditando(null) },
+      onSuccess: () => {
+        toast('✓ Chofer actualizado', 'ok')
+        // Volver a modo detalle dentro del mismo modal — el usuario sigue
+        // viendo los datos actualizados sin tener que reabrirlo.
+        setModoEdicion(false)
+      },
       onError:   () => toast('Error al actualizar', 'err'),
     })
   }
@@ -67,19 +90,19 @@ export function ChoferesTab() {
   }
 
   function openEdit(chofer: Chofer) {
-    formEdit.reset({
-      nombre:     chofer.nombre,
-      cuil:       chofer.cuil ?? '',
-      tel:        chofer.tel ?? '',
-      licencia:   chofer.licencia ?? '',
-      estado:     chofer.estado,
-      camion_id:  chofer.camion_id ?? '',
-      batea_id:   chofer.batea_id ?? '',
-      basico_dia: chofer.basico_dia ?? 0,
-      precio_km:  chofer.precio_km ?? 0,
-      obs:        chofer.obs ?? '',
-    })
+    formEdit.reset(defaultsFromChofer(chofer))
+    setModoEdicion(false)   // Siempre arranca como detalle.
     setEditando(chofer)
+  }
+
+  function cerrarModal() {
+    setEditando(null)
+    setModoEdicion(false)
+  }
+
+  function cancelarEdicion() {
+    if (editando) formEdit.reset(defaultsFromChofer(editando))   // Descartar cambios.
+    setModoEdicion(false)
   }
 
   const camionOptions = [
@@ -193,22 +216,27 @@ export function ChoferesTab() {
 
       <Modal
         open={!!editando}
-        onClose={() => setEditando(null)}
-        title={puedeEditar ? '✏️ EDITAR CHOFER' : '👷 DETALLE CHOFER'}
+        onClose={cerrarModal}
+        title={modoEdicion ? '✏️ EDITAR CHOFER' : '👷 DETALLE CHOFER'}
         width="max-w-3xl"
         footer={
-          puedeEditar ? (
+          modoEdicion ? (
             <>
-              <Button variant="secondary" onClick={() => setEditando(null)}>Cancelar</Button>
+              <Button variant="secondary" onClick={cancelarEdicion}>Cancelar</Button>
               <Button variant="primary" loading={updating} onClick={formEdit.handleSubmit(handleUpdate)}>✓ Guardar</Button>
             </>
           ) : (
-            <Button variant="secondary" onClick={() => setEditando(null)}>Cerrar</Button>
+            <>
+              <Button variant="secondary" onClick={cerrarModal}>Cerrar</Button>
+              {puedeEditar && (
+                <Button variant="primary" onClick={() => setModoEdicion(true)}>✏️ Editar</Button>
+              )}
+            </>
           )
         }
       >
         <div className="flex flex-col gap-5">
-          <ChoferForm form={formEdit} disabled={!puedeEditar} />
+          <ChoferForm form={formEdit} disabled={!modoEdicion} />
 
           {editando && (
             <div className="border-t border-gris-mid pt-4">
