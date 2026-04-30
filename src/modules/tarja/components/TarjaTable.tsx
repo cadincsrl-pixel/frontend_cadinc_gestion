@@ -392,12 +392,12 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                     return (
                       <td
                         key={i}
-                        className={`relative px-1.5 py-1.5 text-center ${enConflicto ? 'bg-amarillo-light/60' : ''}`}
+                        className={`relative px-1.5 py-1.5 text-center ${enConflicto ? 'bg-rojo-light/60' : ''}`}
                         title={enConflicto ? `⚠ También tiene horas este día en — ${otrasObrasMismoDia.join(' · ')}` : undefined}
                       >
                         {enConflicto && (
                           <span
-                            className="absolute top-0 right-0.5 text-[10px] leading-none text-[#7A5500] pointer-events-none"
+                            className="absolute top-0 right-0.5 text-[10px] leading-none text-rojo font-bold pointer-events-none"
                             aria-hidden="true"
                           >⚠</span>
                         )}
@@ -431,7 +431,7 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                               }
                               [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none
                               [&::-webkit-inner-spin-button]:appearance-none
-                              ${enConflicto ? 'border-[#E0A800]' : getHoraClass(h)}
+                              ${enConflicto ? 'border-rojo' : getHoraClass(h)}
                             `}
                         />
                       </td>
