@@ -524,6 +524,7 @@ export function LiquidacionesTab() {
         <div>
           <h2 className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-2">Adelantos pendientes</h2>
           <div className="bg-white rounded-card shadow-card overflow-hidden">
+            <div className="overflow-x-auto">
             <table className="w-full border-collapse">
               <thead>
                 <tr>
@@ -563,6 +564,7 @@ export function LiquidacionesTab() {
                 })}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
       )}
@@ -591,7 +593,7 @@ export function LiquidacionesTab() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Input label="Básico mensual ($)" type="number" step="1000" {...formLiq.register('basico_mensual')} />
                 {preview.dias_mes > 0 && (
@@ -602,7 +604,7 @@ export function LiquidacionesTab() {
               </div>
               <Input label="$/km adicional" type="number" step="1" {...formLiq.register('precio_km')} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Input label="Período desde" type="date" {...formLiq.register('desde')} />
               <Input label="Período hasta"  type="date" {...formLiq.register('hasta')} />
             </div>
@@ -807,11 +809,11 @@ export function LiquidacionesTab() {
               {/* Fechas y básico — editables si borrador */}
               {esBorrador ? (
                 <>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <Input label="Básico/día ($)" type="number" step="100" {...formDetalle.register('basico_dia')} />
                     <div />
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <Input label="Período desde" type="date" {...formDetalle.register('fecha_desde')} />
                     <Input label="Período hasta"  type="date" {...formDetalle.register('fecha_hasta')} />
                   </div>
@@ -991,7 +993,7 @@ export function LiquidacionesTab() {
         }
       >
         <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Combobox
               label="Chofer"
               placeholder="Buscar chofer..."

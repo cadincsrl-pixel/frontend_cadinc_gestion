@@ -47,6 +47,7 @@ export function TarifasTab() {
         <p className="text-xs text-gris-dark mt-0.5">Básico por día trabajado y adicional por kilómetro recorrido</p>
       </div>
 
+      <div className="overflow-x-auto">
       <table className="w-full border-collapse">
         <thead>
           <tr>
@@ -119,6 +120,7 @@ export function TarifasTab() {
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   )
 }

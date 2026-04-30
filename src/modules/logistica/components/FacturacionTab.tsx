@@ -75,7 +75,7 @@ function EmpresasSection({
   const EmpresaForm = ({ form }: { form: any }) => (
     <div className="flex flex-col gap-3">
       <Input label="Nombre / Razón social" placeholder="Empresa S.A." {...form.register('nombre')} />
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Input label="CUIT" placeholder="20-12345678-9" {...form.register('cuit')} />
         <Input label="Teléfono" placeholder="299-XXX-XXXX" {...form.register('tel')} />
       </div>
@@ -273,7 +273,7 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
         footer={<><Button variant="secondary" onClick={() => setModal(false)}>Cancelar</Button><Button variant="primary" loading={saving} onClick={form.handleSubmit(handleSubmit)}>✓ Guardar</Button></>}>
         <div className="flex flex-col gap-4">
           <Select label="Cantera" options={canteraOptions} {...form.register('cantera_id')} />
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input label="$/ton" type="number" step="0.01" placeholder="0.00" {...form.register('valor_ton')} />
             <Input label="Vigente desde" type="date" {...form.register('vigente_desde')} />
           </div>
@@ -599,7 +599,7 @@ function FacturacionSection() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Input label="Fecha de cobro" type="date" {...form.register('fecha')} />
               <Input label="Observaciones" placeholder="Nº factura, referencia..." {...form.register('obs')} />
             </div>

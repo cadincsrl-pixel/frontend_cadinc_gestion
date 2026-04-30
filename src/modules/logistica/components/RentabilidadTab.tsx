@@ -137,6 +137,7 @@ export function RentabilidadTab() {
         {ranking.length === 0 ? (
           <div className="p-6 text-center text-gris-dark text-sm">No hay viajes cargados.</div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>
               <tr>
@@ -172,6 +173,7 @@ export function RentabilidadTab() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 
@@ -362,11 +364,11 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
         <div className="flex flex-col gap-4">
           <Input label="Nombre del viaje" placeholder="Ej: cristamine 35t" disabled={readOnly} {...form.register('nombre')} />
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input label="Km ida"    type="number" disabled={readOnly} {...form.register('km_ida',    { valueAsNumber: true })} />
             <Input label="Km vuelta" type="number" disabled={readOnly} {...form.register('km_vuelta', { valueAsNumber: true })} />
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Input label="Toneladas"        type="number" step="0.1" disabled={readOnly} {...form.register('toneladas',       { valueAsNumber: true })} />
             <Input label="Días calendario"  type="number" disabled={readOnly} {...form.register('dias_calendario', { valueAsNumber: true })} />
             <Input label="Viajes / mes"     type="number" disabled={readOnly} {...form.register('viajes_por_mes',  { valueAsNumber: true })} />
@@ -375,7 +377,7 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
 
           <div className="bg-gris/30 rounded-lg p-3">
             <div className="text-[11px] font-bold uppercase tracking-wider text-gris-dark mb-2">⛽ Combustible (zona)</div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Input label="Precio gasoil ARS/L (con IVA)" type="number" disabled={readOnly} {...form.register('precio_gasoil',  { valueAsNumber: true })} />
               <Input label="Consumo km/L"                  type="number" step="0.1" disabled={readOnly} {...form.register('consumo_camion', { valueAsNumber: true })} />
             </div>
@@ -386,7 +388,7 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
           <div className="bg-gris/30 rounded-lg p-3">
             <div className="text-[11px] font-bold uppercase tracking-wider text-gris-dark mb-2">👷 Chofer</div>
             <Select label="Modalidad de pago" options={MODALIDAD_OPTIONS} disabled={readOnly} {...form.register('modalidad_pago')} />
-            <div className="grid grid-cols-2 gap-3 mt-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
               <Input label="Pago por km (ARS/km)"   type="number" disabled={readOnly || isPctMode} {...form.register('chofer_por_km',  { valueAsNumber: true })} />
               <Input label="Jornal por día (ARS)"   type="number" disabled={readOnly} {...form.register('chofer_por_dia', { valueAsNumber: true })} />
             </div>
@@ -564,7 +566,7 @@ function ParametrosCard({ paramsRow, open, onToggle, readOnly }: ParametrosCardP
 
           <fieldset className="border border-gris rounded-lg p-3">
             <legend className="text-[11px] font-bold uppercase tracking-wider text-gris-dark px-1">Generales</legend>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Input label="Alícuota IVA (ej 0.21)"     type="number" step="0.01" disabled={readOnly} {...form.register('alicuota_iva',         { valueAsNumber: true })} />
               <Input label="Tipo de cambio USD/ARS"     type="number" disabled={readOnly} {...form.register('tipo_cambio_usd_ars',  { valueAsNumber: true })} />
             </div>
@@ -572,7 +574,7 @@ function ParametrosCard({ paramsRow, open, onToggle, readOnly }: ParametrosCardP
 
           <fieldset className="border border-gris rounded-lg p-3">
             <legend className="text-[11px] font-bold uppercase tracking-wider text-gris-dark px-1">Equipo</legend>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Input label="Valor tractor (USD)"           type="number" disabled={readOnly} {...form.register('valor_tractor_usd',          { valueAsNumber: true })} />
               <Input label="Valor residual tractor (USD)"  type="number" disabled={readOnly} {...form.register('valor_residual_tractor_usd', { valueAsNumber: true })} />
               <Input label="Vida útil tractor (km)"        type="number" disabled={readOnly} {...form.register('vida_util_tractor_km',       { valueAsNumber: true })} />
@@ -583,7 +585,7 @@ function ParametrosCard({ paramsRow, open, onToggle, readOnly }: ParametrosCardP
 
           <fieldset className="border border-gris rounded-lg p-3">
             <legend className="text-[11px] font-bold uppercase tracking-wider text-gris-dark px-1">Mantenimiento + neumáticos</legend>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Input label="Costo service (ARS)"         type="number" disabled={readOnly} {...form.register('costo_service',          { valueAsNumber: true })} />
               <Input label="Frecuencia service (km)"     type="number" disabled={readOnly} {...form.register('frecuencia_service_km',  { valueAsNumber: true })} />
               <Input label="Costo cubierta (ARS)"        type="number" disabled={readOnly} {...form.register('costo_cubierta',         { valueAsNumber: true })} />
@@ -594,7 +596,7 @@ function ParametrosCard({ paramsRow, open, onToggle, readOnly }: ParametrosCardP
 
           <fieldset className="border border-gris rounded-lg p-3">
             <legend className="text-[11px] font-bold uppercase tracking-wider text-gris-dark px-1">Personal y gastos fijos</legend>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Input label="Cargas sociales (ARS/mes)"   type="number" disabled={readOnly} {...form.register('cargas_sociales_mensual', { valueAsNumber: true })} />
               <Input label="Seguros (ARS/mes)"           type="number" disabled={readOnly} {...form.register('seguros_mensual',         { valueAsNumber: true })} />
               <Input label="Patente + tasas + VTV (ARS/año)" type="number" disabled={readOnly} {...form.register('patente_anual',     { valueAsNumber: true })} />

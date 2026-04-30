@@ -54,11 +54,11 @@ export function CamionesTab() {
 
   const CamionForm = ({ form, disabled }: { form: any; disabled?: boolean }) => (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Input label="Patente" placeholder="AA 123 BB" disabled={disabled} {...form.register('patente')} />
         <Input label="Modelo"  placeholder="Volvo FH 460" disabled={disabled} {...form.register('modelo')} />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Input label="Año" type="number" placeholder="2020" disabled={disabled} {...form.register('anio')} />
         <Select label="Estado" options={ESTADO_OPTIONS} disabled={disabled} {...form.register('estado')} />
       </div>
@@ -75,6 +75,7 @@ export function CamionesTab() {
       </div>
 
       <div className="bg-white rounded-card shadow-card overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
             <tr>
@@ -108,6 +109,7 @@ export function CamionesTab() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       <Modal open={modalNuevo} onClose={() => setModalNuevo(false)} title="🚚 NUEVO CAMIÓN"

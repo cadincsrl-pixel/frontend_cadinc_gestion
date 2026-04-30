@@ -439,7 +439,7 @@ export function ViajesTab() {
           options={[{ value: '', label: 'Todos los choferes' }, ...choferes.map(c => ({ value: c.id, label: c.nombre }))]}
           value={filtChofer}
           onChange={e => setFiltChofer(e.target.value)}
-          className="w-48"
+          className="w-full sm:w-48"
         />
         <Select
           options={[
@@ -449,7 +449,7 @@ export function ViajesTab() {
           ]}
           value={filtTipo}
           onChange={e => setFiltTipo(e.target.value)}
-          className="w-40"
+          className="w-full sm:w-40"
         />
         <Select
           options={[
@@ -459,7 +459,7 @@ export function ViajesTab() {
           ]}
           value={filtEstado}
           onChange={e => setFiltEstado(e.target.value)}
-          className="w-40"
+          className="w-full sm:w-40"
         />
         <div className="flex items-center gap-1">
           <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Desde</label>
@@ -736,7 +736,7 @@ export function ViajesTab() {
 
           {tipoNuevo === 'cargado' ? (
             <>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Combobox
                   label="Cantera (origen)"
                   placeholder="Buscar cantera..."
@@ -754,7 +754,7 @@ export function ViajesTab() {
               </div>
               <div className="bg-gris rounded-xl p-3 flex flex-col gap-3">
                 <div className="text-xs font-bold text-gris-dark uppercase tracking-wider">⛏ Carga en cantera</div>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <Input label="Fecha carga" type="date" {...formNuevo.register('fecha_carga')} />
                   <Input label="Toneladas" type="number" step="0.01" placeholder="0.00" {...formNuevo.register('toneladas_carga')} />
                   <Input label="Nº Remito" placeholder="R-00456" {...formNuevo.register('remito_carga')} />
@@ -770,7 +770,7 @@ export function ViajesTab() {
             </>
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Combobox
                   label="Depósito (origen)"
                   placeholder="Desde dónde sale..."
@@ -807,7 +807,7 @@ export function ViajesTab() {
         }
       >
         <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Input label="Fecha descarga" type="date" {...formDescarga.register('fecha_descarga')} />
             <Input label="Toneladas" type="number" step="0.01" placeholder="0.00" {...formDescarga.register('toneladas_descarga')} />
             <Input label="Nº Remito" placeholder="R-00456" {...formDescarga.register('remito_descarga')} />
@@ -835,7 +835,7 @@ export function ViajesTab() {
         }
       >
         <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Combobox
               label="Chofer"
               placeholder="Buscar chofer..."
@@ -863,7 +863,7 @@ export function ViajesTab() {
               onChange={(v: string) => formEdit.setValue('empresa_id', v)}
             />
           )}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Combobox
               label={editando?.tipo === 'cargado' ? 'Cantera (origen)' : 'Cantera (destino)'}
               placeholder="Buscar cantera..."
@@ -884,7 +884,7 @@ export function ViajesTab() {
             <>
               <div className="bg-gris rounded-xl p-3 flex flex-col gap-3">
                 <div className="text-xs font-bold text-gris-dark uppercase tracking-wider">⛏ Carga</div>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <Input label="Fecha" type="date" {...formEdit.register('fecha_carga')} />
                   <Input label="Toneladas" type="number" step="0.01" {...formEdit.register('toneladas_carga')} />
                   <Input label="Nº Remito" {...formEdit.register('remito_carga')} />
@@ -899,7 +899,7 @@ export function ViajesTab() {
               </div>
               <div className="bg-gris rounded-xl p-3 flex flex-col gap-3">
                 <div className="text-xs font-bold text-gris-dark uppercase tracking-wider">🏭 Descarga</div>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <Input label="Fecha" type="date" {...formEdit.register('fecha_descarga')} />
                   <Input label="Toneladas" type="number" step="0.01" {...formEdit.register('toneladas_descarga')} />
                   <Input label="Nº Remito" {...formEdit.register('remito_descarga')} />

@@ -112,16 +112,16 @@ export function BateasTab() {
 
   const BateaForm = ({ form, disabled }: { form: any; disabled?: boolean }) => (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Input label="Patente" placeholder="AA-123-BB" disabled={disabled} {...form.register('patente')} />
         <Select label="Tipo" options={TIPO_OPTIONS} disabled={disabled} {...form.register('tipo')} />
       </div>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Input label="Marca" placeholder="Helvética" disabled={disabled} {...form.register('marca')} />
         <Input label="Modelo" disabled={disabled} {...form.register('modelo')} />
         <Input label="Año" type="number" min={1980} max={2100} disabled={disabled} {...form.register('anio')} />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Input label="Capacidad (m³)" type="number" step="0.01" disabled={disabled} {...form.register('capacidad_m3')} />
         <Input label="Capacidad (tn)" type="number" step="0.01" disabled={disabled} {...form.register('capacidad_tn')} />
       </div>
@@ -140,6 +140,7 @@ export function BateasTab() {
       </div>
 
       <div className="bg-white rounded-card shadow-card overflow-hidden mt-3">
+        <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
             <tr>
@@ -185,6 +186,7 @@ export function BateasTab() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       <Modal open={modalNuevo} onClose={() => setModalNuevo(false)} title="🛻 NUEVA BATEA"

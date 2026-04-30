@@ -124,15 +124,15 @@ export function ChoferesTab() {
   const ChoferForm = ({ form, disabled }: { form: any; disabled?: boolean }) => (
     <div className="flex flex-col gap-4">
       <Input label="Nombre completo" placeholder="Apellido, Nombre" disabled={disabled} {...form.register('nombre')} />
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Input label="CUIL" placeholder="20-12345678-3" disabled={disabled} {...form.register('cuil')} />
         <Input label="Teléfono" placeholder="299-XXX-XXXX" disabled={disabled} {...form.register('tel')} />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Input label="Licencia" placeholder="Nº licencia" disabled={disabled} {...form.register('licencia')} />
         <Select label="Estado" options={ESTADO_OPTIONS} disabled={disabled} {...form.register('estado')} />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Select label="Camión asignado" options={camionOptions} disabled={disabled} {...form.register('camion_id')} />
         <Select label="Batea asignada"  options={bateaOptions}  disabled={disabled} {...form.register('batea_id')} />
       </div>
@@ -149,6 +149,7 @@ export function ChoferesTab() {
       </div>
 
       <div className="bg-white rounded-card shadow-card overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
             <tr>
@@ -201,6 +202,7 @@ export function ChoferesTab() {
             })}
           </tbody>
         </table>
+        </div>
       </div>
 
       <Modal open={modalNuevo} onClose={() => setModalNuevo(false)} title="👷 NUEVO CHOFER"

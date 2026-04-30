@@ -384,7 +384,7 @@ export function GastosTab() {
         <Input label="Desde" type="date" value={filters.desde ?? ''} onChange={e => setFilter('desde', e.target.value || undefined)} />
         <Input label="Hasta" type="date" value={filters.hasta ?? ''} onChange={e => setFilter('hasta', e.target.value || undefined)} />
         <Input label="Buscar" placeholder="Descripción, proveedor..." value={filters.q ?? ''} onChange={e => setFilter('q', e.target.value || undefined)} />
-        <div className="ml-auto flex gap-2">
+        <div className="sm:ml-auto flex flex-wrap gap-2">
           {puedeCrear && (
             <>
               <Button variant="secondary" onClick={() => setModalImport(true)}>📥 Importar Excel</Button>
@@ -605,12 +605,12 @@ function GastoFormFields({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Select label="Categoría" {...form.register('categoria_id', { required: true })}
           options={[{ value: '', label: '— Elegí —' }, ...categorias.map(c => ({ value: String(c.id), label: c.nombre }))]} />
         <Input label="Fecha" type="date" {...form.register('fecha', { required: true })} />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Input label="Monto" type="number" step="0.01" placeholder="0.00" {...form.register('monto', { required: true })} />
         <Select label="Pagó" {...form.register('pagado_por')}
           options={[{ value: 'empresa', label: '🏢 Empresa' }, { value: 'chofer', label: '🧑 Chofer' }]} />
@@ -624,7 +624,7 @@ function GastoFormFields({
           { value: 'cta_cte',       label: '📋 Cta. cte.' },
           { value: 'otro',          label: '⋯ Otro' },
         ]} />
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Select label="Camión" {...form.register('camion_id')}
           options={[{ value: '', label: '— Sin camión —' }, ...camiones.map(c => ({ value: String(c.id), label: c.patente }))]} />
         <Select label="Chofer" {...form.register('chofer_id')}
@@ -658,13 +658,13 @@ function GastoFormFields({
       {esCombustible && (
         <div className="rounded-xl border border-orange-200 bg-orange-50/40 p-3 flex flex-col gap-3">
           <div className="text-[11px] font-bold text-orange-800 uppercase tracking-wider">⛽ Carga de combustible</div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input label="Litros" type="number" step="0.001" placeholder="150.500" inputMode="decimal"
               {...form.register('carga_combustible.litros', { required: esCombustible })} />
             <Input label="Odómetro km (opcional)" type="number" step="1" placeholder="452300" inputMode="numeric"
               {...form.register('carga_combustible.odometro_km')} />
           </div>
-          <div className="grid grid-cols-2 gap-3 items-end">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
             <Select label="Tipo" {...form.register('carga_combustible.tipo_combustible')}
               options={[
                 { value: 'gasoil',      label: 'Gasoil' },
