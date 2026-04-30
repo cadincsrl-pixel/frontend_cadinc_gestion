@@ -148,7 +148,8 @@ export function ChoferesTab() {
         )}
       </div>
 
-      <div className="bg-white rounded-card shadow-card overflow-hidden">
+      {/* Tabla — desktop/tablet */}
+      <div className="hidden md:block bg-white rounded-card shadow-card overflow-hidden">
         <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
@@ -203,6 +204,62 @@ export function ChoferesTab() {
           </tbody>
         </table>
         </div>
+      </div>
+
+      {/* Cards — mobile */}
+      <div className="md:hidden flex flex-col gap-2">
+        {choferes.length === 0 ? (
+          <div className="bg-white rounded-card shadow-card p-6 text-center text-gris-dark text-sm">
+            No hay choferes registrados.
+          </div>
+        ) : choferes.map(c => {
+          const camionAsig = camiones.find(cam => cam.id === c.camion_id)
+          const bateaAsig  = bateas.find(b => b.id === c.batea_id)
+          return (
+            <button
+              key={c.id}
+              onClick={() => openEdit(c)}
+              className="bg-white rounded-card shadow-card p-3 text-left active:bg-gris/40 transition-colors w-full"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="font-bold text-sm text-carbon truncate">{c.nombre}</div>
+                  <div className="text-xs text-gris-dark mt-0.5">
+                    {c.cuil || 'sin CUIL'}{c.tel ? ` · ${c.tel}` : ''}
+                  </div>
+                </div>
+                <Badge
+                  variant={c.estado === 'activo' ? 'activo' : c.estado === 'inactivo' ? 'inactivo' : 'pendiente'}
+                  label={c.estado === 'descanso' ? 'Descanso' : undefined}
+                />
+              </div>
+              {(camionAsig || bateaAsig) && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {camionAsig && (
+                    <span className="font-mono text-[11px] font-bold bg-azul-light text-azul-mid px-2 py-0.5 rounded">
+                      🚚 {camionAsig.patente}
+                    </span>
+                  )}
+                  {bateaAsig && (
+                    <span className="font-mono text-[11px] font-bold bg-naranja-light text-naranja-dark px-2 py-0.5 rounded">
+                      🛻 {bateaAsig.patente}
+                    </span>
+                  )}
+                </div>
+              )}
+              {puedeEliminar && (
+                <div className="flex justify-end mt-2 pt-2 border-t border-gris">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDelete(c) }}
+                    className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors"
+                  >
+                    ✕ Eliminar
+                  </button>
+                </div>
+              )}
+            </button>
+          )
+        })}
       </div>
 
       <Modal open={modalNuevo} onClose={() => setModalNuevo(false)} title="👷 NUEVO CHOFER"

@@ -139,7 +139,8 @@ export function BateasTab() {
         )}
       </div>
 
-      <div className="bg-white rounded-card shadow-card overflow-hidden mt-3">
+      {/* Tabla — desktop/tablet */}
+      <div className="hidden md:block bg-white rounded-card shadow-card overflow-hidden mt-3">
         <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
@@ -187,6 +188,70 @@ export function BateasTab() {
           </tbody>
         </table>
         </div>
+      </div>
+
+      {/* Cards — mobile */}
+      <div className="md:hidden flex flex-col gap-2 mt-3">
+        {bateas.length === 0 ? (
+          <div className="bg-white rounded-card shadow-card p-6 text-center text-gris-dark text-sm">
+            No hay bateas registradas.
+          </div>
+        ) : bateas.map(b => {
+          const marcaModelo = b.marca || b.modelo ? `${b.marca ?? ''} ${b.modelo ?? ''}`.trim() : ''
+          const capacidad = [
+            b.capacidad_m3 != null ? `${b.capacidad_m3}m³` : null,
+            b.capacidad_tn != null ? `${b.capacidad_tn}tn` : null,
+          ].filter(Boolean).join(' · ')
+          const subtitulo = [
+            b.tipo ? <span key="t" className="capitalize">{b.tipo}</span> : null,
+            marcaModelo || null,
+            b.anio ?? null,
+          ].filter(Boolean)
+          return (
+            <button
+              key={b.id}
+              onClick={() => openEdit(b)}
+              className="bg-white rounded-card shadow-card p-3 text-left active:bg-gris/40 transition-colors w-full"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="font-mono font-bold text-sm text-carbon truncate">{b.patente}</div>
+                  {subtitulo.length > 0 && (
+                    <div className="text-xs text-gris-dark mt-0.5">
+                      {subtitulo.map((s, i) => (
+                        <span key={i}>
+                          {i > 0 && ' · '}
+                          {s}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {(capacidad || b.titular) && (
+                    <div className="text-xs text-gris-dark mt-0.5">
+                      {capacidad}
+                      {capacidad && b.titular && ' · '}
+                      {b.titular}
+                    </div>
+                  )}
+                </div>
+                <Badge
+                  variant={b.estado === 'activo' ? 'activo' : b.estado === 'inactivo' ? 'inactivo' : 'pendiente'}
+                  label={b.estado === 'mantenimiento' ? 'En mantenimiento' : undefined}
+                />
+              </div>
+              {puedeEliminar && (
+                <div className="flex justify-end mt-2 pt-2 border-t border-gris">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDelete(b) }}
+                    className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors"
+                  >
+                    ✕ Eliminar
+                  </button>
+                </div>
+              )}
+            </button>
+          )
+        })}
       </div>
 
       <Modal open={modalNuevo} onClose={() => setModalNuevo(false)} title="🛻 NUEVA BATEA"

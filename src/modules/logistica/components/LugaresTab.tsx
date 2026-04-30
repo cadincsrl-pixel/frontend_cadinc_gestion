@@ -128,8 +128,8 @@ export function LugaresTab() {
           items={canteras as Cantera[]}
           emptyMsg="No hay canteras registradas."
           renderItem={c => (
-            <div key={c.id} className="flex items-center justify-between px-4 py-2.5 border-b border-gris last:border-0">
-              <div className="flex items-center gap-2">
+            <div key={c.id} className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-gris last:border-0">
+              <div className="flex items-center gap-2 flex-wrap min-w-0 flex-1">
                 <span className="font-bold text-sm text-carbon">{c.nombre}</span>
                 {c.localidad && <span className="text-xs text-gris-dark">({c.localidad})</span>}
                 {c.maps_url && (
@@ -141,7 +141,7 @@ export function LugaresTab() {
                   </a>
                 )}
               </div>
-              <button onClick={() => openEditCantera(c)} className="text-xs px-2 py-1 rounded hover:bg-gris transition-colors text-gris-dark">✏️</button>
+              <button onClick={() => openEditCantera(c)} className="text-xs px-2 py-1 rounded hover:bg-gris transition-colors text-gris-dark shrink-0">✏️</button>
             </div>
           )}
         />
@@ -153,8 +153,8 @@ export function LugaresTab() {
           items={depositos as Deposito[]}
           emptyMsg="No hay depósitos registrados."
           renderItem={d => (
-            <div key={d.id} className="flex items-center justify-between px-4 py-2.5 border-b border-gris last:border-0">
-              <div className="flex items-center gap-2">
+            <div key={d.id} className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-gris last:border-0">
+              <div className="flex items-center gap-2 flex-wrap min-w-0 flex-1">
                 <span className="font-bold text-sm text-carbon">{d.nombre}</span>
                 {d.localidad && <span className="text-xs text-gris-dark">({d.localidad})</span>}
                 {d.maps_url && (
@@ -166,7 +166,7 @@ export function LugaresTab() {
                   </a>
                 )}
               </div>
-              <button onClick={() => openEditDeposito(d)} className="text-xs px-2 py-1 rounded hover:bg-gris transition-colors text-gris-dark">✏️</button>
+              <button onClick={() => openEditDeposito(d)} className="text-xs px-2 py-1 rounded hover:bg-gris transition-colors text-gris-dark shrink-0">✏️</button>
             </div>
           )}
         />
@@ -178,22 +178,24 @@ export function LugaresTab() {
           items={rutas}
           emptyMsg="No hay rutas registradas."
           renderItem={r => (
-            <div key={r.id} className="flex items-center justify-between px-4 py-2.5 border-b border-gris last:border-0">
-              <div className="text-sm">
-                <span className="font-bold text-carbon">
-                  {r.canteras?.nombre ?? `Cantera #${r.cantera_id}`}
-                </span>
-                <span className="text-gris-dark mx-2">→</span>
-                <span className="font-bold text-carbon">
-                  {r.depositos?.nombre ?? `Depósito #${r.deposito_id}`}
-                </span>
-                <span className="font-mono text-xs text-verde ml-3 font-bold">
-                  {r.km_ida_vuelta.toLocaleString('es-AR')} km
-                </span>
+            <div key={r.id} className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-gris last:border-0">
+              <div className="text-sm flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="font-bold text-carbon">
+                    {r.canteras?.nombre ?? `Cantera #${r.cantera_id}`}
+                  </span>
+                  <span className="text-gris-dark">→</span>
+                  <span className="font-bold text-carbon">
+                    {r.depositos?.nombre ?? `Depósito #${r.deposito_id}`}
+                  </span>
+                  <span className="font-mono text-xs text-verde font-bold">
+                    {r.km_ida_vuelta.toLocaleString('es-AR')} km
+                  </span>
+                </div>
               </div>
               <button
                 onClick={() => handleDeleteRuta(r.id)}
-                className="text-gris-mid hover:text-rojo transition-colors text-sm px-2 py-1"
+                className="text-gris-mid hover:text-rojo transition-colors text-sm px-2 py-1 shrink-0"
               >
                 ✕
               </button>

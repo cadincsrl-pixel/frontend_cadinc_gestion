@@ -74,7 +74,8 @@ export function CamionesTab() {
         )}
       </div>
 
-      <div className="bg-white rounded-card shadow-card overflow-hidden">
+      {/* Tabla — desktop/tablet */}
+      <div className="hidden md:block bg-white rounded-card shadow-card overflow-hidden">
         <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
@@ -110,6 +111,34 @@ export function CamionesTab() {
           </tbody>
         </table>
         </div>
+      </div>
+
+      {/* Cards — mobile */}
+      <div className="md:hidden flex flex-col gap-2">
+        {camiones.length === 0 ? (
+          <div className="bg-white rounded-card shadow-card p-6 text-center text-gris-dark text-sm">
+            No hay camiones registrados.
+          </div>
+        ) : camiones.map(c => (
+          <button
+            key={c.id}
+            onClick={() => openEdit(c)}
+            className="bg-white rounded-card shadow-card p-3 text-left active:bg-gris/40 transition-colors w-full"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <div className="font-mono font-bold text-sm text-carbon truncate">{c.patente}</div>
+                <div className="text-xs text-gris-dark mt-0.5">
+                  {c.modelo || 'sin modelo'}{c.anio ? ` · ${c.anio}` : ''}
+                </div>
+              </div>
+              <Badge
+                variant={c.estado === 'activo' ? 'activo' : c.estado === 'inactivo' ? 'inactivo' : 'pendiente'}
+                label={c.estado === 'mantenimiento' ? 'Mantenimiento' : undefined}
+              />
+            </div>
+          </button>
+        ))}
       </div>
 
       <Modal open={modalNuevo} onClose={() => setModalNuevo(false)} title="🚚 NUEVO CAMIÓN"
