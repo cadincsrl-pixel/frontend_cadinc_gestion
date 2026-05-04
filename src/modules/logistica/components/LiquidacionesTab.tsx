@@ -107,10 +107,11 @@ export function LiquidacionesTab() {
   const formDetalle = useForm<any>()
 
   // Reactive watch para que el preview se actualice al cambiar fechas/tarifas
-  const watchDesde  = formLiq.watch('desde')
-  const watchHasta  = formLiq.watch('hasta')
-  const watchBasico = formLiq.watch('basico_mensual')
-  const watchKm     = formLiq.watch('precio_km')
+  const watchDesde       = formLiq.watch('desde')
+  const watchHasta       = formLiq.watch('hasta')
+  const watchBasico      = formLiq.watch('basico_mensual')
+  const watchKmCargado   = formLiq.watch('precio_km_cargado')
+  const watchKmVacio     = formLiq.watch('precio_km_vacio')
 
   // Reintegros pendientes del chofer activo (Fase 3). Se consulta al backend
   // cuando se abre el modal de liquidar; el usuario elige cuáles incluir.
@@ -143,12 +144,26 @@ export function LiquidacionesTab() {
     const dias          = diasUnicos(mis_tramos)
     const sinBasico     = !chofer.basico_dia
     const subtotal_bas  = dias * (chofer.basico_dia ?? 0)
-    const km_totales    = mis_tramos.reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
-    const subtotal_km   = km_totales * (chofer.precio_km ?? 0)
+    // Separar km por tipo de tramo para aplicar tarifa diferencial.
+    const km_cargados = mis_tramos
+      .filter(t => t.tipo === 'cargado')
+      .reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
+    const km_vacios = mis_tramos
+      .filter(t => t.tipo === 'vacio')
+      .reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
+    const km_totales         = km_cargados + km_vacios
+    const subtotal_km_cargado = km_cargados * (chofer.precio_km_cargado ?? 0)
+    const subtotal_km_vacio   = km_vacios   * (chofer.precio_km_vacio ?? 0)
+    const subtotal_km   = subtotal_km_cargado + subtotal_km_vacio
     const subtotal      = subtotal_bas + subtotal_km
     const descuentos    = mis_adelantos.reduce((s, a) => s + a.monto, 0)
     const saldo         = subtotal - descuentos
-    return { mis_tramos, mis_adelantos, dias, sinBasico, subtotal_bas, km_totales, subtotal_km, subtotal, descuentos, saldo }
+    return {
+      mis_tramos, mis_adelantos, dias, sinBasico, subtotal_bas,
+      km_cargados, km_vacios, km_totales,
+      subtotal_km_cargado, subtotal_km_vacio, subtotal_km,
+      subtotal, descuentos, saldo,
+    }
   }
 
   function abrirLiquidar(chofer: Chofer) {
@@ -160,41 +175,69 @@ export function LiquidacionesTab() {
     const { desde, hasta } = rangoTramos(mis_tramos)
     const dm = diasDelMes(desde)
     formLiq.reset({
-      basico_mensual: Math.round((chofer.basico_dia ?? 0) * dm) || 0,
-      precio_km:      chofer.precio_km ?? 0,
+      basico_mensual:    Math.round((chofer.basico_dia ?? 0) * dm) || 0,
+      precio_km_cargado: chofer.precio_km_cargado ?? 0,
+      precio_km_vacio:   chofer.precio_km_vacio ?? 0,
       desde,
       hasta,
-      obs:            '',
+      obs:               '',
     })
     setModalLiq(true)
   }
 
   function calcularPreview() {
-    if (!choferLiq) return { dias: 0, basico_dia: 0, dias_mes: 30, subtotal_bas: 0, km_totales: 0, subtotal_km: 0, descuentos: 0, reintegros: 0, precio_km: 0, neto: 0 }
-    const basicoMensual = parseFloat(watchBasico) || 0
-    const precioKm      = parseFloat(watchKm)     || 0
-    const desde         = watchDesde ?? ''
-    const hasta         = watchHasta ?? ''
-    const dias_mes      = diasDelMes(desde)
-    const basico_dia    = basicoMensual / dias_mes
-    const dias          = diasEntreFechas(desde, hasta)
-    const tramosSelec   = tramosPendientes.filter(t => selTramos.includes(t.id))
-    const subtotal_bas  = dias * basico_dia
-    const km_totales    = tramosSelec.reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
-    const subtotal_km   = km_totales * precioKm
-    const descuentos    = adelantosPendientes.filter(a => selAdelant.includes(a.id)).reduce((s, a) => s + a.monto, 0)
-    const reintegros    = gastosReintegro.filter(g => selGastos.includes(g.id)).reduce((s, g) => s + Number(g.monto), 0)
+    const empty = {
+      dias: 0, basico_dia: 0, dias_mes: 30, subtotal_bas: 0,
+      km_cargados: 0, km_vacios: 0, km_totales: 0,
+      subtotal_km_cargado: 0, subtotal_km_vacio: 0, subtotal_km: 0,
+      descuentos: 0, reintegros: 0,
+      precio_km_cargado: 0, precio_km_vacio: 0, precio_km: 0,
+      neto: 0,
+    }
+    if (!choferLiq) return empty
+    const basicoMensual    = parseFloat(watchBasico)    || 0
+    const precioKmCargado  = parseFloat(watchKmCargado) || 0
+    const precioKmVacio    = parseFloat(watchKmVacio)   || 0
+    const desde            = watchDesde ?? ''
+    const hasta            = watchHasta ?? ''
+    const dias_mes         = diasDelMes(desde)
+    const basico_dia       = basicoMensual / dias_mes
+    const dias             = diasEntreFechas(desde, hasta)
+    const tramosSelec      = tramosPendientes.filter(t => selTramos.includes(t.id))
+    const subtotal_bas     = dias * basico_dia
+    const km_cargados      = tramosSelec.filter(t => t.tipo === 'cargado').reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
+    const km_vacios        = tramosSelec.filter(t => t.tipo === 'vacio').reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
+    const km_totales       = km_cargados + km_vacios
+    const subtotal_km_cargado = km_cargados * precioKmCargado
+    const subtotal_km_vacio   = km_vacios   * precioKmVacio
+    const subtotal_km      = subtotal_km_cargado + subtotal_km_vacio
+    const descuentos       = adelantosPendientes.filter(a => selAdelant.includes(a.id)).reduce((s, a) => s + a.monto, 0)
+    const reintegros       = gastosReintegro.filter(g => selGastos.includes(g.id)).reduce((s, g) => s + Number(g.monto), 0)
+    // precio_km "promedio" para back-compat con la columna existente.
+    const precio_km        = km_totales > 0 ? subtotal_km / km_totales : precioKmCargado
     return {
-      dias, basico_dia, dias_mes, subtotal_bas, km_totales, subtotal_km, descuentos, reintegros,
-      precio_km:    precioKm,
-      neto:         subtotal_bas + subtotal_km - descuentos + reintegros,
+      dias, basico_dia, dias_mes, subtotal_bas,
+      km_cargados, km_vacios, km_totales,
+      subtotal_km_cargado, subtotal_km_vacio, subtotal_km,
+      descuentos, reintegros,
+      precio_km_cargado: precioKmCargado,
+      precio_km_vacio:   precioKmVacio,
+      precio_km,
+      neto: subtotal_bas + subtotal_km - descuentos + reintegros,
     }
   }
 
   function handleGuardarTarifas(data: any) {
     if (!choferLiq) return
     const { basico_dia } = calcularPreview()
-    updateChofer({ id: choferLiq.id, dto: { basico_dia, precio_km: parseFloat(data.precio_km) || 0 } }, {
+    updateChofer({
+      id: choferLiq.id,
+      dto: {
+        basico_dia,
+        precio_km_cargado: parseFloat(data.precio_km_cargado) || 0,
+        precio_km_vacio:   parseFloat(data.precio_km_vacio)   || 0,
+      },
+    }, {
       onSuccess: () => { toast('✓ Tarifas guardadas', 'ok'); setModalLiq(false); setChoferLiq(null) },
       onError:   () => toast('Error al guardar', 'err'),
     })
@@ -202,24 +245,30 @@ export function LiquidacionesTab() {
 
   function handleLiquidar(data: any) {
     if (!choferLiq) return
-    const { dias, basico_dia, subtotal_bas, km_totales, subtotal_km, descuentos, reintegros, precio_km, neto } = calcularPreview()
+    const {
+      dias, basico_dia, subtotal_bas,
+      km_totales, subtotal_km, subtotal_km_cargado, subtotal_km_vacio,
+      descuentos, reintegros, precio_km, neto,
+    } = calcularPreview()
     createLiq({
-      chofer_id:         choferLiq.id,
-      fecha_desde:       data.desde,
-      fecha_hasta:       data.hasta,
-      dias_trabajados:   dias,
+      chofer_id:           choferLiq.id,
+      fecha_desde:         data.desde,
+      fecha_hasta:         data.hasta,
+      dias_trabajados:     dias,
       basico_dia,
       km_totales,
       precio_km,
-      subtotal_basico:   subtotal_bas,
+      subtotal_basico:     subtotal_bas,
       subtotal_km,
-      total_adelantos:   descuentos,
-      total_reintegros:  reintegros,
-      total_neto:        neto,
-      obs:               data.obs,
-      tramo_ids:         selTramos,
-      adelanto_ids:      selAdelant,
-      gasto_ids:         selGastos,
+      subtotal_km_cargado,
+      subtotal_km_vacio,
+      total_adelantos:     descuentos,
+      total_reintegros:    reintegros,
+      total_neto:          neto,
+      obs:                 data.obs,
+      tramo_ids:           selTramos,
+      adelanto_ids:        selAdelant,
+      gasto_ids:           selGastos,
     } as any, {
       onSuccess: (nueva: any) => {
         cerrarLiq(nueva.id, { onSuccess: () => toast('✓ Liquidación cerrada', 'ok') })
@@ -301,7 +350,7 @@ export function LiquidacionesTab() {
         </h2>
         <div className="flex flex-col gap-3">
           {choferesPendientes.map(chofer => {
-            const { mis_tramos, mis_adelantos, dias, sinBasico, subtotal_bas, km_totales, subtotal_km, subtotal, descuentos, saldo } = resumenChofer(chofer)
+            const { mis_tramos, mis_adelantos, dias, sinBasico, subtotal_bas, km_cargados, km_vacios, km_totales, subtotal_km, subtotal, descuentos, saldo } = resumenChofer(chofer)
             const sinMovimientos = mis_tramos.length === 0 && mis_adelantos.length === 0
             const borrador = (liquidaciones as any[]).find(l => l.chofer_id === chofer.id && l.estado === 'borrador')
 
@@ -330,6 +379,9 @@ export function LiquidacionesTab() {
                             <span className="font-semibold text-carbon">{dias} día{dias !== 1 ? 's' : ''}</span>
                             {km_totales > 0 && (
                               <> · <span className="font-semibold text-carbon">{km_totales.toLocaleString('es-AR')} km</span></>
+                            )}
+                            {(km_cargados > 0 && km_vacios > 0) && (
+                              <span className="text-gris-mid"> ({km_cargados.toLocaleString('es-AR')} cargados · {km_vacios.toLocaleString('es-AR')} vacíos)</span>
                             )}
                           </div>
                         )}
@@ -593,16 +645,17 @@ export function LiquidacionesTab() {
               </div>
             </div>
 
+            <div>
+              <Input label="Básico mensual ($)" type="number" step="1000" {...formLiq.register('basico_mensual')} />
+              {preview.dias_mes > 0 && (
+                <p className="text-[11px] text-gris-dark mt-1 px-1">
+                  = {fmtM(preview.basico_dia)}/día · mes de {preview.dias_mes} días
+                </p>
+              )}
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <Input label="Básico mensual ($)" type="number" step="1000" {...formLiq.register('basico_mensual')} />
-                {preview.dias_mes > 0 && (
-                  <p className="text-[11px] text-gris-dark mt-1 px-1">
-                    = {fmtM(preview.basico_dia)}/día · mes de {preview.dias_mes} días
-                  </p>
-                )}
-              </div>
-              <Input label="$/km adicional" type="number" step="1" {...formLiq.register('precio_km')} />
+              <Input label="🚛 $/km cargado" type="number" step="1" {...formLiq.register('precio_km_cargado')} />
+              <Input label="🔲 $/km vacío"   type="number" step="1" {...formLiq.register('precio_km_vacio')} />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Input label="Período desde" type="date" {...formLiq.register('desde')} />
@@ -700,12 +753,26 @@ export function LiquidacionesTab() {
                 <span className="font-mono font-bold">{preview.dias} días</span>
                 <span className="text-gris-dark">Básico ({preview.dias} días):</span>
                 <span className="font-mono font-bold text-azul-mid">{fmtM(preview.subtotal_bas)}</span>
+                {preview.km_cargados > 0 && (
+                  <>
+                    <span className="text-gris-dark">🚛 Km cargados × {fmtM(preview.precio_km_cargado)}:</span>
+                    <span className="font-mono font-bold text-azul-mid">
+                      {preview.km_cargados.toLocaleString('es-AR')} km · {fmtM(preview.subtotal_km_cargado)}
+                    </span>
+                  </>
+                )}
+                {preview.km_vacios > 0 && (
+                  <>
+                    <span className="text-gris-dark">🔲 Km vacíos × {fmtM(preview.precio_km_vacio)}:</span>
+                    <span className="font-mono font-bold text-azul-mid">
+                      {preview.km_vacios.toLocaleString('es-AR')} km · {fmtM(preview.subtotal_km_vacio)}
+                    </span>
+                  </>
+                )}
                 {preview.km_totales > 0 && (
                   <>
-                    <span className="text-gris-dark">Km recorridos:</span>
-                    <span className="font-mono font-bold">{preview.km_totales.toLocaleString('es-AR')} km</span>
-                    <span className="text-gris-dark">Adicional km:</span>
-                    <span className="font-mono font-bold text-azul-mid">{fmtM(preview.subtotal_km)}</span>
+                    <span className="text-gris-dark border-t border-azul/10 pt-1">Subtotal km:</span>
+                    <span className="font-mono font-bold text-azul-mid border-t border-azul/10 pt-1">{fmtM(preview.subtotal_km)}</span>
                   </>
                 )}
                 {preview.descuentos > 0 && (

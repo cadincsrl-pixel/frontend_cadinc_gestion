@@ -40,16 +40,17 @@ export function ChoferesTab() {
 
   function defaultsFromChofer(chofer: Chofer) {
     return {
-      nombre:     chofer.nombre,
-      cuil:       chofer.cuil ?? '',
-      tel:        chofer.tel ?? '',
-      licencia:   chofer.licencia ?? '',
-      estado:     chofer.estado,
-      camion_id:  chofer.camion_id ?? '',
-      batea_id:   chofer.batea_id ?? '',
-      basico_dia: chofer.basico_dia ?? 0,
-      precio_km:  chofer.precio_km ?? 0,
-      obs:        chofer.obs ?? '',
+      nombre:            chofer.nombre,
+      cuil:              chofer.cuil ?? '',
+      tel:               chofer.tel ?? '',
+      licencia:          chofer.licencia ?? '',
+      estado:            chofer.estado,
+      camion_id:         chofer.camion_id ?? '',
+      batea_id:          chofer.batea_id ?? '',
+      basico_dia:        chofer.basico_dia ?? 0,
+      precio_km_cargado: chofer.precio_km_cargado ?? 0,
+      precio_km_vacio:   chofer.precio_km_vacio ?? 0,
+      obs:               chofer.obs ?? '',
     }
   }
 
@@ -135,6 +136,11 @@ export function ChoferesTab() {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Select label="Camión asignado" options={camionOptions} disabled={disabled} {...form.register('camion_id')} />
         <Select label="Batea asignada"  options={bateaOptions}  disabled={disabled} {...form.register('batea_id')} />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <Input label="Básico por día ($)"   type="number" step="100" disabled={disabled} {...form.register('basico_dia')} />
+        <Input label="🚛 $/km cargado"      type="number" step="1"   disabled={disabled} {...form.register('precio_km_cargado')} />
+        <Input label="🔲 $/km vacío"        type="number" step="1"   disabled={disabled} {...form.register('precio_km_vacio')} />
       </div>
       <Input label="Observaciones" placeholder="Notas..." disabled={disabled} {...form.register('obs')} />
     </div>

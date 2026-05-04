@@ -243,7 +243,8 @@ export interface Chofer extends AuditFields {
   camion_id: number | null
   batea_id: number | null
   basico_dia: number
-  precio_km: number
+  precio_km_cargado: number
+  precio_km_vacio: number
   obs: string | null
 }
 

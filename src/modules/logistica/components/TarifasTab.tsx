@@ -16,23 +16,32 @@ export function TarifasTab() {
   const { data: choferes = [] } = useChoferes()
   const { mutate: update, isPending: updating } = useUpdateChofer()
 
-  const [editando, setEditando]   = useState<number | null>(null)
-  const [basicoDia, setBasicoDia] = useState('')
-  const [precioKm, setPrecioKm]   = useState('')
+  const [editando, setEditando]           = useState<number | null>(null)
+  const [basicoDia, setBasicoDia]         = useState('')
+  const [precioKmCargado, setPrecioKmCargado] = useState('')
+  const [precioKmVacio, setPrecioKmVacio]     = useState('')
 
   const activos = choferes.filter(c => c.estado !== 'inactivo')
 
   function openEdit(id: number) {
     const c = choferes.find(x => x.id === id)!
     setBasicoDia(String(c.basico_dia ?? 0))
-    setPrecioKm(String(c.precio_km ?? 0))
+    setPrecioKmCargado(String(c.precio_km_cargado ?? 0))
+    setPrecioKmVacio(String(c.precio_km_vacio ?? 0))
     setEditando(id)
   }
 
   function handleSave() {
     if (editando === null) return
     update(
-      { id: editando, dto: { basico_dia: Number(basicoDia), precio_km: Number(precioKm) } },
+      {
+        id: editando,
+        dto: {
+          basico_dia:        Number(basicoDia),
+          precio_km_cargado: Number(precioKmCargado),
+          precio_km_vacio:   Number(precioKmVacio),
+        },
+      },
       {
         onSuccess: () => { toast('✓ Tarifas actualizadas', 'ok'); setEditando(null) },
         onError:   () => toast('Error al actualizar', 'err'),
@@ -53,7 +62,7 @@ export function TarifasTab() {
         <table className="w-full border-collapse">
           <thead>
             <tr>
-              {['Chofer', 'Estado', 'Básico/día', '$/km adicional', ''].map(h => (
+              {['Chofer', 'Estado', 'Básico/día', '$/km cargado', '$/km vacío', ''].map(h => (
                 <th key={h} className="bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide">
                   {h}
                 </th>
@@ -91,8 +100,18 @@ export function TarifasTab() {
                     <td className="px-4 py-2">
                       <input
                         type="number"
-                        value={precioKm}
-                        onChange={e => setPrecioKm(e.target.value)}
+                        value={precioKmCargado}
+                        onChange={e => setPrecioKmCargado(e.target.value)}
+                        className="border border-gris rounded px-2 py-1 text-sm font-mono w-24 focus:outline-none focus:border-azul"
+                        step="1"
+                        placeholder="0"
+                      />
+                    </td>
+                    <td className="px-4 py-2">
+                      <input
+                        type="number"
+                        value={precioKmVacio}
+                        onChange={e => setPrecioKmVacio(e.target.value)}
                         className="border border-gris rounded px-2 py-1 text-sm font-mono w-24 focus:outline-none focus:border-azul"
                         step="1"
                         placeholder="0"
@@ -109,7 +128,10 @@ export function TarifasTab() {
                       {c.basico_dia ? `$${Number(c.basico_dia).toLocaleString('es-AR')}` : <span className="text-gris-mid">—</span>}
                     </td>
                     <td className="px-4 py-3 font-mono text-sm text-carbon">
-                      {c.precio_km ? `$${Number(c.precio_km).toLocaleString('es-AR')}` : <span className="text-gris-mid">—</span>}
+                      {c.precio_km_cargado ? `$${Number(c.precio_km_cargado).toLocaleString('es-AR')}` : <span className="text-gris-mid">—</span>}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-sm text-carbon">
+                      {c.precio_km_vacio ? `$${Number(c.precio_km_vacio).toLocaleString('es-AR')}` : <span className="text-gris-mid">—</span>}
                     </td>
                     <td className="px-4 py-3 flex gap-1 justify-end">
                       {puedeEditar && (
@@ -145,8 +167,10 @@ export function TarifasTab() {
                   {!enEdicion && (
                     <div className="text-xs text-gris-dark mt-0.5 font-mono">
                       Básico {c.basico_dia ? `$${Number(c.basico_dia).toLocaleString('es-AR')}` : '—'}
+                      <br />
+                      🚛 {c.precio_km_cargado ? `$${Number(c.precio_km_cargado).toLocaleString('es-AR')}` : '—'}/km cargado
                       {' · '}
-                      $/km {c.precio_km ? `$${Number(c.precio_km).toLocaleString('es-AR')}` : '—'}
+                      🔲 {c.precio_km_vacio ? `$${Number(c.precio_km_vacio).toLocaleString('es-AR')}` : '—'}/km vacío
                     </div>
                   )}
                 </div>
@@ -169,11 +193,20 @@ export function TarifasTab() {
                     placeholder="0"
                   />
                   <Input
-                    label="$/km adicional"
+                    label="🚛 $/km cargado"
                     type="number"
                     inputMode="numeric"
-                    value={precioKm}
-                    onChange={e => setPrecioKm(e.target.value)}
+                    value={precioKmCargado}
+                    onChange={e => setPrecioKmCargado(e.target.value)}
+                    step="1"
+                    placeholder="0"
+                  />
+                  <Input
+                    label="🔲 $/km vacío"
+                    type="number"
+                    inputMode="numeric"
+                    value={precioKmVacio}
+                    onChange={e => setPrecioKmVacio(e.target.value)}
                     step="1"
                     placeholder="0"
                   />
