@@ -32,21 +32,50 @@ interface Fila {
   pagado_por:       string
   comprobante_nro:  string
   descripcion:      string
+  obs:              string
   // Combustible (sólo si categoría = combustible).
   litros:           number | null
   odometro:         number | null
   tipo_combustible: TipoCombustible
   tanque_lleno:     boolean
+  obs_combustible:  string
   error:            string | null
 }
 
 type TipoCombustible = 'gasoil' | 'nafta' | 'nafta_super' | 'adblue'
 
+// Replica el modal de "Nuevo gasto": 11 columnas generales + 5 de combustible.
+// Mantener ESTE orden — el parser usa col('nombre') así que es resistente a
+// reordenamientos del usuario, pero la plantilla generada usa este array.
 const COLS = [
+  // Generales
   'Fecha', 'Categoría', 'Monto', 'Chofer', 'Camión',
-  'Proveedor', 'Método pago', 'Pagó', 'Nº Comprobante', 'Descripción',
-  'Litros', 'Odómetro', 'Tipo combustible', 'Tanque lleno',
+  'Proveedor', 'Método pago', 'Pagó', 'Nº Comprobante', 'Descripción', 'Observaciones',
+  // Combustible
+  'Litros', 'Odómetro', 'Tipo combustible', 'Tanque lleno', 'Obs combustible',
 ]
+// Índice (0-based) de la primera columna del bloque combustible.
+const COMBUSTIBLE_START = 11
+
+// Notas explicativas mostradas como cell comments en la plantilla.
+const HEADER_NOTES: Record<string, string> = {
+  'Fecha':            'Formato: DD/MM/AAAA o AAAA-MM-DD. También acepta números seriales de Excel.',
+  'Categoría':        'Categoría del gasto. Elegí del dropdown (combustible, peaje, mantenimiento, etc.).',
+  'Monto':            'Total del comprobante en pesos. Acepta decimales (1.234,56 o 1234.56).',
+  'Chofer':           'Nombre del chofer. Elegí del dropdown.',
+  'Camión':           'Patente del camión. Elegí del dropdown. Obligatorio si la categoría es combustible.',
+  'Proveedor':        'Ej: YPF Ruta 6, Gomería López.',
+  'Método pago':      'Elegí del dropdown.',
+  'Pagó':             'Quién pagó: empresa o chofer.',
+  'Nº Comprobante':   'Número del comprobante físico. Ej: 000123-04.',
+  'Descripción':      'Descripción breve. Ej: Carga 150L ruta provincial 6.',
+  'Observaciones':    'Notas adicionales del gasto (opcional).',
+  'Litros':           '⛽ OBLIGATORIO si la categoría es combustible. Acepta decimales (150,500).',
+  'Odómetro':         '⛽ OBLIGATORIO si la categoría es combustible. Km totales del camión al momento de cargar.',
+  'Tipo combustible': '⛽ Opcional. Default: gasoil. Valores: gasoil, nafta, nafta_super, adblue.',
+  'Tanque lleno':     '⛽ Opcional. "sí" si llenaste el tanque, "no" si fue carga parcial. Default: sí.',
+  'Obs combustible':  '⛽ Notas específicas de la carga (opcional). Ej: Surtidor 3.',
+}
 
 const METODOS_VALIDOS = ['efectivo', 'transferencia', 'tarjeta', 'cheque', 'cta_cte', 'otro'] as const
 const PAGADORES_VALIDOS = ['empresa', 'chofer'] as const
@@ -71,8 +100,15 @@ function parseNum(v: any): number | null {
 }
 
 // Genera la plantilla con dropdowns nativos de Excel referenciando una hoja
-// "Listas" oculta-friendly. Se usa exceljs (no xlsx) porque la community
-// edition de xlsx no escribe data validations.
+// "Listas". Se usa exceljs (no xlsx) porque la community edition de xlsx
+// no escribe data validations.
+//
+// Estructura final:
+//   1. Hoja "📖 Cómo usar"  — instrucciones legibles
+//   2. Hoja "Gastos"        — la que el user llena (16 cols, headers
+//                              agrupados por color: gris generales, azul
+//                              combustible)
+//   3. Hoja "Listas"        — fuente de los dropdowns
 async function descargarPlantillaConValidacion(args: {
   choferes:   Chofer[]
   camiones:   Camion[]
@@ -82,43 +118,79 @@ async function descargarPlantillaConValidacion(args: {
   const ExcelJS = (await import('exceljs')).default
   const wb = new ExcelJS.Workbook()
 
-  // ── Hoja "Listas" — fuente de los dropdowns ──
-  const wsListas = wb.addWorksheet('Listas')
-  wsListas.addRow(['Choferes', 'Camiones', 'Categorías', 'Métodos pago', 'Pagó', 'Tipo combustible', 'Tanque lleno'])
-  wsListas.getRow(1).font = { bold: true }
-
   const choferesOrd   = args.choferes.slice().sort((a, b) => a.nombre.localeCompare(b.nombre))
   const camionesOrd   = args.camiones.slice().sort((a, b) => a.patente.localeCompare(b.patente))
   const categoriasOrd = args.categorias.filter(c => c.activo).sort((a, b) => a.orden - b.orden)
   const sino = ['sí', 'no']
 
-  const maxRows = Math.max(
-    choferesOrd.length, camionesOrd.length, categoriasOrd.length,
-    METODOS_VALIDOS.length, PAGADORES_VALIDOS.length,
-    TIPOS_COMBUSTIBLE.length, sino.length,
-  )
-  for (let i = 0; i < maxRows; i++) {
-    wsListas.addRow([
-      choferesOrd[i]?.nombre   ?? '',
-      camionesOrd[i]?.patente  ?? '',
-      categoriasOrd[i]?.codigo ?? '',
-      METODOS_VALIDOS[i]       ?? '',
-      PAGADORES_VALIDOS[i]     ?? '',
-      TIPOS_COMBUSTIBLE[i]     ?? '',
-      sino[i]                  ?? '',
-    ])
+  // ── Hoja "📖 Cómo usar" (primera, para que sea lo primero que ve el user) ──
+  const wsHelp = wb.addWorksheet('📖 Cómo usar')
+  wsHelp.getColumn(1).width = 22
+  wsHelp.getColumn(2).width = 80
+  const titulo = wsHelp.addRow(['Plantilla de importación de gastos'])
+  titulo.font = { bold: true, size: 16, color: { argb: 'FF1B4F8C' } }
+  wsHelp.addRow([])
+  wsHelp.addRow(['Cómo llenarla',  '1) Cargá una fila por gasto en la hoja "Gastos".  2) Usá los dropdowns donde estén disponibles.  3) Guardá y subí desde el modal "Importar gastos".'])
+  wsHelp.addRow(['Combustible',    'Si la Categoría es "combustible", son OBLIGATORIOS: Litros, Odómetro y Camión. El resto (Tipo combustible, Tanque lleno, Obs combustible) son opcionales con default.'])
+  wsHelp.addRow(['Otros gastos',   'Para peaje/mantenimiento/etc., dejá vacías las columnas de combustible.'])
+  wsHelp.addRow(['Filas vacías',   'Las filas totalmente vacías se ignoran. No hace falta borrarlas.'])
+  wsHelp.addRow(['Comprobantes',   'La plantilla NO carga la foto/PDF del comprobante. Subilo después desde la UI por gasto.'])
+  wsHelp.addRow([])
+  const tabHdr = wsHelp.addRow(['Columna', 'Descripción'])
+  tabHdr.font = { bold: true }
+  tabHdr.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE5E7EB' } } })
+  for (const c of COLS) {
+    wsHelp.addRow([c, HEADER_NOTES[c] ?? ''])
   }
-  wsListas.columns.forEach(c => { c.width = 22 })
 
   // ── Hoja "Gastos" — la que el user llena ──
   const wsGastos = wb.addWorksheet('Gastos')
   wsGastos.addRow(COLS)
-  wsGastos.getRow(1).font = { bold: true }
 
-  // Filas demo (mismo contenido que antes).
-  wsGastos.addRow(['22/04/2026', 'combustible',   15000, choferesOrd[0]?.nombre  ?? 'López, Juan', camionesOrd[0]?.patente ?? 'AE-123-XY', 'YPF Ruta 6',         'efectivo',      'chofer',  '000123-04', 'Carga 150L',   150, 185420, 'gasoil', 'sí'])
-  wsGastos.addRow(['22/04/2026', 'peaje',           800, choferesOrd[0]?.nombre  ?? 'López, Juan', camionesOrd[0]?.patente ?? 'AE-123-XY', 'Autop. Panamericana','efectivo',      'chofer',  '',          '',             '', '',     '',       ''])
-  wsGastos.addRow(['22/04/2026', 'mantenimiento', 48000, '',                                       camionesOrd[1]?.patente ?? 'AE-456-ZZ', 'Taller Martínez',    'transferencia', 'empresa', 'A-0001-12', 'Cambio aceite','', '',     '',       ''])
+  // Headers: gris para generales (cols 1-11), azul claro para combustible (12-16).
+  // Texto blanco bold en ambos casos.
+  const headerRow = wsGastos.getRow(1)
+  headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+  headerRow.alignment = { vertical: 'middle', horizontal: 'left' }
+  headerRow.height = 22
+  COLS.forEach((nombre, i) => {
+    const cell = headerRow.getCell(i + 1)
+    cell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: i < COMBUSTIBLE_START ? 'FF1B4F8C' : 'FF2E7D32' },
+    }
+    // Comentario explicativo.
+    const note = HEADER_NOTES[nombre]
+    if (note) cell.note = { texts: [{ text: note }] }
+  })
+
+  // Freeze headers + congelar columna fecha para escroll cómodo.
+  wsGastos.views = [{ state: 'frozen', xSplit: 1, ySplit: 1 }]
+
+  // Filas demo (3): combustible completo, peaje, mantenimiento.
+  // El demo de combustible muestra exactamente qué llenar en las 5 cols nuevas.
+  wsGastos.addRow([
+    '22/04/2026', 'combustible',    15000,
+    choferesOrd[0]?.nombre  ?? 'López, Juan',
+    camionesOrd[0]?.patente ?? 'AE-123-XY',
+    'YPF Ruta 6', 'efectivo', 'chofer', '000123-04', 'Carga 150L', 'Salida obra Pilar',
+    150, 185420, 'gasoil', 'sí', 'Surtidor 3',
+  ])
+  wsGastos.addRow([
+    '22/04/2026', 'peaje',            800,
+    choferesOrd[0]?.nombre  ?? 'López, Juan',
+    camionesOrd[0]?.patente ?? 'AE-123-XY',
+    'Autop. Panamericana', 'efectivo', 'chofer', '', '', '',
+    '', '', '', '', '',
+  ])
+  wsGastos.addRow([
+    '22/04/2026', 'mantenimiento',  48000,
+    '',
+    camionesOrd[1]?.patente ?? 'AE-456-ZZ',
+    'Taller Martínez', 'transferencia', 'empresa', 'A-0001-12', 'Cambio aceite', '',
+    '', '', '', '', '',
+  ])
 
   // Setear widths con getColumn (NO asignar `columns = [...]` después de
   // addRow — eso reescribe headers y descarta datos en exceljs).
@@ -133,7 +205,7 @@ async function descargarPlantillaConValidacion(args: {
   // Aplica data validation a las filas 2..LAST_ROW de cada columna.
   // 1000 filas es suficiente para imports masivos; aumentar si hace falta.
   // Cast a any: exceljs expone `dataValidations` en runtime pero los .d.ts
-  // del paquete no lo declaran (líneas 987 del index.d.ts está comentado).
+  // del paquete no lo declaran (línea 987 de index.d.ts está comentada).
   const LAST_ROW = 1000
   const dvBag = (wsGastos as any).dataValidations
   const dv = (col: string, listRange: string, allowBlank = true) => {
@@ -147,14 +219,39 @@ async function descargarPlantillaConValidacion(args: {
       error:     'Elegí un valor de la lista (o escribí uno que matchee).',
     })
   }
-
+  // Las columnas Litros/Odómetro/Obs/Obs combustible NO llevan dropdown
+  // (son texto/número libre).
   dv('B', rangoListas('C', categoriasOrd.length), false)        // Categoría
   dv('D', rangoListas('A', choferesOrd.length))                 // Chofer
   dv('E', rangoListas('B', camionesOrd.length))                 // Camión
   dv('G', rangoListas('D', METODOS_VALIDOS.length))             // Método pago
   dv('H', rangoListas('E', PAGADORES_VALIDOS.length))           // Pagó
-  dv('M', rangoListas('F', TIPOS_COMBUSTIBLE.length))           // Tipo combustible
-  dv('N', rangoListas('G', sino.length))                        // Tanque lleno
+  dv('N', rangoListas('F', TIPOS_COMBUSTIBLE.length))           // Tipo combustible
+  dv('O', rangoListas('G', sino.length))                        // Tanque lleno
+
+  // ── Hoja "Listas" — fuente de dropdowns ──
+  const wsListas = wb.addWorksheet('Listas')
+  const listasHdr = wsListas.addRow(['Choferes', 'Camiones', 'Categorías', 'Métodos pago', 'Pagó', 'Tipo combustible', 'Tanque lleno'])
+  listasHdr.font = { bold: true }
+  listasHdr.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE5E7EB' } } })
+
+  const maxListaRows = Math.max(
+    choferesOrd.length, camionesOrd.length, categoriasOrd.length,
+    METODOS_VALIDOS.length, PAGADORES_VALIDOS.length,
+    TIPOS_COMBUSTIBLE.length, sino.length,
+  )
+  for (let i = 0; i < maxListaRows; i++) {
+    wsListas.addRow([
+      choferesOrd[i]?.nombre   ?? '',
+      camionesOrd[i]?.patente  ?? '',
+      categoriasOrd[i]?.codigo ?? '',
+      METODOS_VALIDOS[i]       ?? '',
+      PAGADORES_VALIDOS[i]     ?? '',
+      TIPOS_COMBUSTIBLE[i]     ?? '',
+      sino[i]                  ?? '',
+    ])
+  }
+  for (let c = 1; c <= 7; c++) wsListas.getColumn(c).width = 22
 
   // Descarga vía Blob (no usamos writeFile que es solo para Node).
   const buffer = await wb.xlsx.writeBuffer()
@@ -233,10 +330,12 @@ export function ModalImportarGastos({ open, onClose, categorias, choferes, camio
         const iPago    = col('pagó') >= 0 ? col('pagó') : col('pago')
         const iNroComp = col('nº comprobante') >= 0 ? col('nº comprobante') : col('n° comprobante') >= 0 ? col('n° comprobante') : col('comprobante')
         const iDesc    = col('descripción') >= 0 ? col('descripción') : col('descripcion')
+        const iObs     = col('observaciones')
         const iLitros  = col('litros')
         const iOdo     = col('odómetro') >= 0 ? col('odómetro') : col('odometro')
         const iTipoComb = col('tipo combustible')
         const iTanque  = col('tanque lleno')
+        const iObsComb = col('obs combustible')
 
         const dataRows = rows.slice(headerIdx + 1).filter(r =>
           // Fila no vacía: algún campo tiene valor
@@ -252,8 +351,8 @@ export function ModalImportarGastos({ open, onClose, categorias, choferes, camio
             norm(c.codigo) === norm(catTexto) || norm(c.nombre) === norm(catTexto),
           )
 
-          const montoRaw = iMonto  >= 0 ? r[iMonto] : ''
-          const monto    = typeof montoRaw === 'number' ? montoRaw : Number(String(montoRaw).replace(/[^\d.-]/g, ''))
+          // Re-uso parseNum: tolera "$ 15.000,50" / "15000.5" / 15000 (number).
+          const monto = parseNum(iMonto >= 0 ? r[iMonto] : '') ?? 0
 
           const choferTexto = iChofer >= 0 ? String(r[iChofer] ?? '').trim() : ''
           const choferObj   = choferTexto
@@ -314,10 +413,12 @@ export function ModalImportarGastos({ open, onClose, categorias, choferes, camio
             pagado_por:       pago   || 'empresa',
             comprobante_nro:  iNroComp >= 0 ? String(r[iNroComp] ?? '').trim() : '',
             descripcion:      iDesc    >= 0 ? String(r[iDesc]    ?? '').trim() : '',
+            obs:              iObs     >= 0 ? String(r[iObs]     ?? '').trim() : '',
             litros:           esCombustible ? litros   : null,
             odometro:         esCombustible ? odometro : null,
             tipo_combustible: tipoCombustible,
             tanque_lleno:     tanqueLleno,
+            obs_combustible:  esCombustible && iObsComb >= 0 ? String(r[iObsComb] ?? '').trim() : '',
             error,
           }
         })
@@ -351,7 +452,7 @@ export function ModalImportarGastos({ open, onClose, categorias, choferes, camio
               odometro_km:      f.odometro,
               tipo_combustible: f.tipo_combustible,
               tanque_lleno:     f.tanque_lleno,
-              obs:              '',
+              obs:              f.obs_combustible,
             }
           : null
 
@@ -366,7 +467,7 @@ export function ModalImportarGastos({ open, onClose, categorias, choferes, camio
           pagado_por:      f.pagado_por as any,
           comprobante_nro: f.comprobante_nro,
           descripcion:     f.descripcion,
-          obs:             '',
+          obs:             f.obs,
           carga_combustible: cargaCombustible,
         } as any)
         creados++
