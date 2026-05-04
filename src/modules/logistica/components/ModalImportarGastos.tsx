@@ -337,10 +337,17 @@ export function ModalImportarGastos({ open, onClose, categorias, choferes, camio
         const iTanque  = col('tanque lleno')
         const iObsComb = col('obs combustible')
 
-        const dataRows = rows.slice(headerIdx + 1).filter(r =>
-          // Fila no vacía: algún campo tiene valor
-          r.some((c: any) => String(c ?? '').trim() !== ''),
-        )
+        // Una fila se considera vacía (y se omite silenciosamente) si los 3
+        // campos críticos están vacíos. No usamos `r.some(...)` porque Excel
+        // y Google Sheets a veces escriben celdas residuales (formato sin
+        // contenido, espacios, ceros implícitos) que harían pasar como
+        // "fila con error" filas que en realidad el user no llenó.
+        const dataRows = rows.slice(headerIdx + 1).filter(r => {
+          const fechaRaw = iFecha >= 0 ? String(r[iFecha] ?? '').trim() : ''
+          const catRaw   = iCat   >= 0 ? String(r[iCat]   ?? '').trim() : ''
+          const montoRaw = iMonto >= 0 ? String(r[iMonto] ?? '').trim() : ''
+          return fechaRaw !== '' || catRaw !== '' || montoRaw !== ''
+        })
 
         const parsed: Fila[] = dataRows.map(r => {
           const fechaRaw = iFecha >= 0 ? r[iFecha] : ''
