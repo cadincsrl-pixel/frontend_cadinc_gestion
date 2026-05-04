@@ -91,7 +91,7 @@ export function CamionServicesSection({ camionId }: Props) {
       toast('Ingresá un número válido', 'err')
       return
     }
-    updateCamion({ id: camionId, dto: { km_actuales: n } as any }, {
+    updateCamion({ id: camionId, dto: { km_actuales: n } }, {
       onSuccess: () => {
         toast('✓ Km actualizados', 'ok')
         // El estado depende de km_actuales — refrescar la vista.
