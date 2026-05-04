@@ -70,18 +70,101 @@ function parseNum(v: any): number | null {
   return Number.isFinite(n) ? n : null
 }
 
-function descargarPlantilla() {
-  const ws = XLSX.utils.aoa_to_sheet([
-    COLS,
-    // combustible: litros + odómetro obligatorios; tipo y tanque lleno opcionales (default gasoil + sí).
-    ['22/04/2026', 'combustible',   15000, 'López, Juan', 'AE-123-XY', 'YPF Ruta 6',        'efectivo',      'chofer',  '000123-04', 'Carga 150L',     150,  185420, 'gasoil',      'sí'],
-    ['22/04/2026', 'peaje',           800, 'López, Juan', 'AE-123-XY', 'Autop. Panamericana','efectivo',     'chofer',  '',          '',                '',     '',     '',           ''],
-    ['22/04/2026', 'mantenimiento', 48000, '',            'AE-456-ZZ', 'Taller Martínez',   'transferencia', 'empresa', 'A-0001-12', 'Cambio aceite',   '',     '',     '',           ''],
-  ])
-  ws['!cols'] = COLS.map((c, i) => ({ wch: i === 5 || i === 9 ? 28 : 16 }))
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, 'Gastos')
-  XLSX.writeFile(wb, 'Plantilla_Gastos.xlsx')
+// Genera la plantilla con dropdowns nativos de Excel referenciando una hoja
+// "Listas" oculta-friendly. Se usa exceljs (no xlsx) porque la community
+// edition de xlsx no escribe data validations.
+async function descargarPlantillaConValidacion(args: {
+  choferes:   Chofer[]
+  camiones:   Camion[]
+  categorias: GastoCategoria[]
+}) {
+  // Code-split: exceljs (~700KB) sólo se baja cuando el user pide la plantilla.
+  const ExcelJS = (await import('exceljs')).default
+  const wb = new ExcelJS.Workbook()
+
+  // ── Hoja "Listas" — fuente de los dropdowns ──
+  const wsListas = wb.addWorksheet('Listas')
+  wsListas.addRow(['Choferes', 'Camiones', 'Categorías', 'Métodos pago', 'Pagó', 'Tipo combustible', 'Tanque lleno'])
+  wsListas.getRow(1).font = { bold: true }
+
+  const choferesOrd   = args.choferes.slice().sort((a, b) => a.nombre.localeCompare(b.nombre))
+  const camionesOrd   = args.camiones.slice().sort((a, b) => a.patente.localeCompare(b.patente))
+  const categoriasOrd = args.categorias.filter(c => c.activo).sort((a, b) => a.orden - b.orden)
+  const sino = ['sí', 'no']
+
+  const maxRows = Math.max(
+    choferesOrd.length, camionesOrd.length, categoriasOrd.length,
+    METODOS_VALIDOS.length, PAGADORES_VALIDOS.length,
+    TIPOS_COMBUSTIBLE.length, sino.length,
+  )
+  for (let i = 0; i < maxRows; i++) {
+    wsListas.addRow([
+      choferesOrd[i]?.nombre   ?? '',
+      camionesOrd[i]?.patente  ?? '',
+      categoriasOrd[i]?.codigo ?? '',
+      METODOS_VALIDOS[i]       ?? '',
+      PAGADORES_VALIDOS[i]     ?? '',
+      TIPOS_COMBUSTIBLE[i]     ?? '',
+      sino[i]                  ?? '',
+    ])
+  }
+  wsListas.columns.forEach(c => { c.width = 22 })
+
+  // ── Hoja "Gastos" — la que el user llena ──
+  const wsGastos = wb.addWorksheet('Gastos')
+  wsGastos.addRow(COLS)
+  wsGastos.getRow(1).font = { bold: true }
+
+  // Filas demo (mismo contenido que antes).
+  wsGastos.addRow(['22/04/2026', 'combustible',   15000, choferesOrd[0]?.nombre  ?? 'López, Juan', camionesOrd[0]?.patente ?? 'AE-123-XY', 'YPF Ruta 6',         'efectivo',      'chofer',  '000123-04', 'Carga 150L',   150, 185420, 'gasoil', 'sí'])
+  wsGastos.addRow(['22/04/2026', 'peaje',           800, choferesOrd[0]?.nombre  ?? 'López, Juan', camionesOrd[0]?.patente ?? 'AE-123-XY', 'Autop. Panamericana','efectivo',      'chofer',  '',          '',             '', '',     '',       ''])
+  wsGastos.addRow(['22/04/2026', 'mantenimiento', 48000, '',                                       camionesOrd[1]?.patente ?? 'AE-456-ZZ', 'Taller Martínez',    'transferencia', 'empresa', 'A-0001-12', 'Cambio aceite','', '',     '',       ''])
+
+  wsGastos.columns = COLS.map((_, i) => ({ width: i === 5 || i === 9 ? 28 : 16 }))
+
+  // Helper para construir el rango de la hoja Listas (filas 2..N).
+  const rangoListas = (col: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G', n: number) =>
+    `Listas!$${col}$2:$${col}$${1 + Math.max(n, 1)}`
+
+  // Aplica data validation a las filas 2..LAST_ROW de cada columna.
+  // 1000 filas es suficiente para imports masivos; aumentar si hace falta.
+  // Cast a any: exceljs expone `dataValidations` en runtime pero los .d.ts
+  // del paquete no lo declaran (líneas 987 del index.d.ts está comentado).
+  const LAST_ROW = 1000
+  const dvBag = (wsGastos as any).dataValidations
+  const dv = (col: string, listRange: string, allowBlank = true) => {
+    dvBag.add(`${col}2:${col}${LAST_ROW}`, {
+      type:      'list',
+      allowBlank,
+      formulae:  [listRange],
+      showErrorMessage: true,
+      errorStyle: 'warning',
+      errorTitle: 'Valor no válido',
+      error:     'Elegí un valor de la lista (o escribí uno que matchee).',
+    })
+  }
+
+  dv('B', rangoListas('C', categoriasOrd.length), false)        // Categoría
+  dv('D', rangoListas('A', choferesOrd.length))                 // Chofer
+  dv('E', rangoListas('B', camionesOrd.length))                 // Camión
+  dv('G', rangoListas('D', METODOS_VALIDOS.length))             // Método pago
+  dv('H', rangoListas('E', PAGADORES_VALIDOS.length))           // Pagó
+  dv('M', rangoListas('F', TIPOS_COMBUSTIBLE.length))           // Tipo combustible
+  dv('N', rangoListas('G', sino.length))                        // Tanque lleno
+
+  // Descarga vía Blob (no usamos writeFile que es solo para Node).
+  const buffer = await wb.xlsx.writeBuffer()
+  const blob = new Blob([buffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'Plantilla_Gastos.xlsx'
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
 }
 
 function parseFecha(v: any): string | null {
@@ -346,7 +429,9 @@ export function ModalImportarGastos({ open, onClose, categorias, choferes, camio
                 📂 Seleccionar archivo Excel
               </button>
               <button
-                onClick={descargarPlantilla}
+                onClick={() => descargarPlantillaConValidacion({ choferes, camiones, categorias })
+                  .catch(err => { console.error('[plantilla] error', err); toast('Error al generar plantilla', 'err') })
+                }
                 className="flex items-center gap-2 px-4 py-2.5 bg-gris text-gris-dark rounded-lg font-bold text-sm hover:bg-gris-mid transition-colors"
               >
                 📋 Descargar plantilla
