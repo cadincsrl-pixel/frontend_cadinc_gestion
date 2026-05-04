@@ -331,6 +331,7 @@ export function ViajesTab() {
 
   function handleRegistrarDescarga(data: TramoFormValues) {
     if (!descargaTramo) return
+    if (!confirmarSiRemitoNoCoincide(descargaTramo.remito_carga, data.remito_descarga)) return
     regDescarga(
       {
         id: descargaTramo.id,
@@ -393,8 +394,26 @@ export function ViajesTab() {
     setEditando(tramo)
   }
 
+  // Compara nº de remito carga vs descarga (trim + uppercase). Si difieren
+  // y ambos están cargados, muestra confirm. Devuelve true si se puede
+  // proceder, false si el usuario canceló.
+  function confirmarSiRemitoNoCoincide(remitoCarga?: string | null, remitoDescarga?: string | null): boolean {
+    const a = (remitoCarga ?? '').trim()
+    const b = (remitoDescarga ?? '').trim()
+    if (!a || !b) return true
+    if (a.toUpperCase() === b.toUpperCase()) return true
+    return confirm(
+      `⚠ ATENCIÓN — los nº de remito no coinciden:\n\n` +
+      `  Carga:    ${a}\n` +
+      `  Descarga: ${b}\n\n` +
+      `Esto suele indicar que estás cargando la descarga al chofer / tramo equivocado.\n\n` +
+      `¿Querés guardar igual?`,
+    )
+  }
+
   function handleEdit(data: TramoFormValues) {
     if (!editando) return
+    if (!confirmarSiRemitoNoCoincide(data.remito_carga, data.remito_descarga)) return
     updateTramo(
       {
         id: editando.id,
@@ -518,16 +537,27 @@ export function ViajesTab() {
 
             const esRepetido = tramosRepetidos.has(tramo.id)
 
+            // Discrepancia entre nº de remito de carga y descarga: solo
+            // aplica a tramos cargados con AMBOS números cargados.
+            const remCarga = (tramo.remito_carga ?? '').trim()
+            const remDescarga = (tramo.remito_descarga ?? '').trim()
+            const remitosDispares = esCargado && remCarga && remDescarga
+              && remCarga.toUpperCase() !== remDescarga.toUpperCase()
             return (
               <div
                 key={tramo.id}
                 className={`rounded-card shadow-card p-4 border-l-4 ${
+                  remitosDispares ? 'bg-rojo-light/40' :
                   esRepetido ? 'bg-[#FEEADB]' : 'bg-white'
                 } ${
+                  remitosDispares ? 'border-rojo' :
                   tramo.estado === 'completado' ? 'border-verde' :
                   esCargado ? 'border-naranja' : 'border-azul-mid'
                 }`}
-                title={esRepetido ? 'Este tramo repite el tipo del tramo anterior del mismo chofer o camión — revisar' : undefined}
+                title={
+                  remitosDispares ? `⚠ Nº de remito no coincide: carga "${remCarga}" vs descarga "${remDescarga}"` :
+                  esRepetido ? 'Este tramo repite el tipo del tramo anterior del mismo chofer o camión — revisar' : undefined
+                }
               >
                 {/* Cabecera */}
                 <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
@@ -543,6 +573,11 @@ export function ViajesTab() {
                       {esRepetido && (
                         <span className="text-[10px] font-bold bg-[#8B3510] text-white px-2 py-0.5 rounded-full uppercase tracking-wide">
                           ⚠ Repetido
+                        </span>
+                      )}
+                      {remitosDispares && (
+                        <span className="text-[10px] font-bold bg-rojo text-white px-2 py-0.5 rounded-full uppercase tracking-wide">
+                          ⚠ Remitos no coinciden
                         </span>
                       )}
                       <span className="font-mono text-xs text-gris-dark">#{tramo.id}</span>
