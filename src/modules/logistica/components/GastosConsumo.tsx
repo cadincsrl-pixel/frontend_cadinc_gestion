@@ -41,10 +41,10 @@ export function GastosConsumo() {
   const { data: ranking, isLoading: lr } = useRankingChoferesCombustible(desde, hasta, 20)
   const { data: consumoCamion, isLoading: lc } = useReporteConsumoCamion(camionId, desde, hasta)
 
-  const top    = ranking?.items.slice(0, 3)  ?? []
-  const bottom = ranking?.items.slice(-3).reverse() ?? []
   const mejorKmL   = ranking?.items[0]?.km_por_litro
-  const peorKmL    = ranking?.items[ranking.items.length - 1]?.km_por_litro
+  // .at(-1) evita evaluar ranking.items.length cuando ranking es undefined
+  // (el ?. solo protegía el acceso a .items, no el bracket).
+  const peorKmL    = ranking?.items.at(-1)?.km_por_litro
   const litrosTotal = ranking?.items.reduce((s, r) => s + r.total_litros, 0) ?? 0
   const gastoTotal  = ranking?.items.reduce((s, r) => s + r.total_gasto, 0) ?? 0
   const flotaKmL    = (() => {
