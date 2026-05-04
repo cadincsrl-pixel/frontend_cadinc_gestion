@@ -10,6 +10,7 @@ import {
   type CumpleanieroItem,
   type DocVencimientoItem,
   type DocChoferVencimientoItem,
+  type ServiceCamionItem,
 } from '@/hooks/useNotificaciones'
 
 /**
@@ -30,6 +31,7 @@ export function NotificationsBell() {
     hoy, proximos,
     papelesVencidos, papelesPorVencer,
     papelesChoferVencidos, papelesChoferPorVencer,
+    serviciosVencidos, serviciosProximos,
     totalUrgente,
   } = useNotificaciones()
   const [abierto, setAbierto] = useState(false)
@@ -46,7 +48,8 @@ export function NotificationsBell() {
   }, [abierto])
 
   const totalNoUrgentes =
-    proximos.length + papelesPorVencer.length + papelesChoferPorVencer.length
+    proximos.length + papelesPorVencer.length + papelesChoferPorVencer.length +
+    serviciosProximos.length
   const sinNotifs = totalUrgente === 0 && totalNoUrgentes === 0
 
   function abrirPersonal(leg: string) {
@@ -68,6 +71,12 @@ export function NotificationsBell() {
     // El tab Choferes no tiene deep-link al modal de un chofer específico.
     // Llevamos al tab; el usuario encuentra el chofer por nombre.
     router.push('/logistica?tab=choferes')
+  }
+
+  function abrirCamionService(_camionId: number) {
+    setAbierto(false)
+    // Igual que con vehículos: no hay deep-link al modal del camión.
+    router.push('/logistica?tab=camiones')
   }
 
   return (
@@ -127,6 +136,19 @@ export function NotificationsBell() {
               </Section>
             )}
 
+            {/* Services de camiones vencidos */}
+            {serviciosVencidos.length > 0 && (
+              <Section titulo="🔧 Services vencidos" tono="rojo">
+                {serviciosVencidos.map(s => (
+                  <ServiceRow
+                    key={s.camion_id}
+                    item={s}
+                    onClick={() => abrirCamionService(s.camion_id)}
+                  />
+                ))}
+              </Section>
+            )}
+
             {/* Cumpleaños hoy */}
             {hoy.length > 0 && (
               <Section titulo="🎂 Cumplen hoy" tono="rojo">
@@ -150,6 +172,19 @@ export function NotificationsBell() {
               <Section titulo="👷 Papeles de choferes por vencer (30 días)" tono="amarillo">
                 {papelesChoferPorVencer.map(d => (
                   <DocChoferRow key={d.doc_id} doc={d} onClick={() => abrirChofer(d.chofer_id)} />
+                ))}
+              </Section>
+            )}
+
+            {/* Services de camiones próximos */}
+            {serviciosProximos.length > 0 && (
+              <Section titulo="🔧 Services próximos" tono="amarillo">
+                {serviciosProximos.map(s => (
+                  <ServiceRow
+                    key={s.camion_id}
+                    item={s}
+                    onClick={() => abrirCamionService(s.camion_id)}
+                  />
                 ))}
               </Section>
             )}
@@ -215,6 +250,30 @@ function DocChoferRow({ doc, onClick }: { doc: DocChoferVencimientoItem; onClick
       </div>
       <div className={`text-xs mt-0.5 ${vencido ? 'text-rojo font-bold' : 'text-gris-dark'}`}>
         {fmtDiasVencimiento(doc.diasParaVencer)} · {doc.vence_el.split('-').reverse().join('/')}
+      </div>
+    </button>
+  )
+}
+
+function ServiceRow({ item, onClick }: { item: ServiceCamionItem; onClick: () => void }) {
+  const vencido = item.estado === 'vencido'
+  const km = item.km_restantes
+  const detalle = vencido
+    ? `Service vencido hace ${Math.abs(km).toLocaleString('es-AR')} km`
+    : `Service en ${km.toLocaleString('es-AR')} km`
+  return (
+    <button
+      onClick={onClick}
+      className="w-full text-left px-3 py-2 hover:bg-gris/40 transition-colors"
+    >
+      <div className="font-bold text-sm text-azul">
+        🚚 {item.patente}
+        <span className={`ml-2 text-xs font-semibold ${vencido ? 'text-rojo' : 'text-gris-dark'}`}>
+          {detalle}
+        </span>
+      </div>
+      <div className="text-[11px] text-gris-dark mt-0.5">
+        Km actuales: {item.km_actuales.toLocaleString('es-AR')} · próx. {item.km_proximo_service.toLocaleString('es-AR')}
       </div>
     </button>
   )

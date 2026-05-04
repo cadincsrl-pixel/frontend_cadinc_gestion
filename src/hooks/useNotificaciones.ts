@@ -39,6 +39,17 @@ export interface DocChoferVencimientoItem {
   diasParaVencer:  number
 }
 
+// Service de camión próximo o vencido (lo devuelve directo el backend desde
+// la vista v_camion_service_estado, ya filtrado por estado IN ('proximo','vencido')).
+export interface ServiceCamionItem {
+  camion_id:          number
+  patente:            string
+  km_actuales:        number
+  km_proximo_service: number
+  km_restantes:       number   // negativo si vencido
+  estado:             'proximo' | 'vencido'
+}
+
 interface NotificacionesResult {
   // Cumpleañeros del día (count → badge rojo).
   hoy:                 CumpleanieroItem[]
@@ -52,6 +63,10 @@ interface NotificacionesResult {
   papelesChoferVencidos:  DocChoferVencimientoItem[]
   // Documentos de choferes por vencer en los próximos 30 días.
   papelesChoferPorVencer: DocChoferVencimientoItem[]
+  // Services de camiones ya vencidos (km_actuales >= km_proximo_service).
+  serviciosVencidos:      ServiceCamionItem[]
+  // Services de camiones próximos (≤ umbral configurado en la vista SQL).
+  serviciosProximos:      ServiceCamionItem[]
   // total de notificaciones "urgentes" (badge rojo).
   totalUrgente:        number
 }
@@ -123,6 +138,12 @@ export function useNotificaciones(): NotificacionesResult {
   const { data: docsChofer = [] } = useQuery({
     queryKey: ['logistica', 'notificaciones', 'documentos-choferes'],
     queryFn:  () => apiGet<DocChoferVencimientoRow[]>('/api/logistica/notificaciones/documentos-choferes'),
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  })
+  const { data: servicesNotif = [] } = useQuery({
+    queryKey: ['logistica', 'notificaciones', 'camion-services'],
+    queryFn:  () => apiGet<ServiceCamionItem[]>('/api/logistica/notificaciones/camion-services'),
     retry: false,
     staleTime: 5 * 60 * 1000,
   })
@@ -205,6 +226,16 @@ export function useNotificaciones(): NotificacionesResult {
     papelesChoferVencidos.sort((a, b) => b.diasParaVencer - a.diasParaVencer)
     papelesChoferPorVencer.sort((a, b) => a.diasParaVencer - b.diasParaVencer)
 
+    // ── Services de camiones ──────────────────────────────────
+    // El backend ya filtra por estado IN ('proximo','vencido') y ordena
+    // por km_restantes asc; acá solo separamos en dos buckets.
+    const serviciosVencidos: ServiceCamionItem[] = []
+    const serviciosProximos: ServiceCamionItem[] = []
+    for (const row of servicesNotif as ServiceCamionItem[]) {
+      if (row.estado === 'vencido') serviciosVencidos.push(row)
+      else if (row.estado === 'proximo') serviciosProximos.push(row)
+    }
+
     return {
       hoy,
       proximos,
@@ -212,9 +243,15 @@ export function useNotificaciones(): NotificacionesResult {
       papelesPorVencer,
       papelesChoferVencidos,
       papelesChoferPorVencer,
-      totalUrgente: hoy.length + papelesVencidos.length + papelesChoferVencidos.length,
+      serviciosVencidos,
+      serviciosProximos,
+      totalUrgente:
+        hoy.length +
+        papelesVencidos.length +
+        papelesChoferVencidos.length +
+        serviciosVencidos.length,
     }
-  }, [personal, docsVenc, docsChofer])
+  }, [personal, docsVenc, docsChofer, servicesNotif])
 }
 
 // Helper para mostrar "hoy", "mañana", "en 3 días" en la lista de próximos.
