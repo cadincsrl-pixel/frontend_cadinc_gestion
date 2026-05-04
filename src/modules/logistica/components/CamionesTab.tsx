@@ -88,15 +88,18 @@ export function CamionesTab() {
         <table className="w-full border-collapse">
           <thead>
             <tr>
-              {['Patente', 'Modelo', 'Año', 'Estado', ''].map(h => (
+              {['Patente', 'Modelo', 'Año', 'Km actuales', 'Faltan p/ service', 'Estado', ''].map(h => (
                 <th key={h} className="bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {camiones.length === 0 ? (
-              <tr><td colSpan={5} className="text-center py-8 text-gris-dark text-sm">No hay camiones registrados.</td></tr>
-            ) : camiones.map(c => (
+              <tr><td colSpan={7} className="text-center py-8 text-gris-dark text-sm">No hay camiones registrados.</td></tr>
+            ) : camiones.map(c => {
+              const est = estadoPorCamion.get(c.id)
+              const km = est?.km_actuales ?? c.km_actuales ?? 0
+              return (
               <tr
                 key={c.id}
                 className="border-b border-gris last:border-0 hover:bg-gris/40 transition-colors cursor-pointer"
@@ -105,20 +108,27 @@ export function CamionesTab() {
                 <td className="px-4 py-3 font-mono font-bold text-sm">{c.patente}</td>
                 <td className="px-4 py-3 text-sm text-carbon">{c.modelo || '—'}</td>
                 <td className="px-4 py-3 font-mono text-xs text-gris-dark">{c.anio || '—'}</td>
+                <td className="px-4 py-3 font-mono text-xs">
+                  {km > 0 ? `${km.toLocaleString('es-AR')} km` : <span className="text-gris-mid">—</span>}
+                </td>
+                <td className="px-4 py-3 font-mono text-xs">
+                  <KmFaltantes estado={est} />
+                </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <Badge
                       variant={c.estado === 'activo' ? 'activo' : c.estado === 'inactivo' ? 'inactivo' : 'pendiente'}
                       label={c.estado === 'mantenimiento' ? 'Mantenimiento' : undefined}
                     />
-                    <ServiceBadge estado={estadoPorCamion.get(c.id)} />
+                    <ServiceBadge estado={est} />
                   </div>
                 </td>
                 <td className="px-4 py-3 text-right text-xs text-gris-mid">
                   {puedeEditar ? '✏️' : '👁'}
                 </td>
               </tr>
-            ))}
+              )
+            })}
           </tbody>
         </table>
         </div>
@@ -130,7 +140,10 @@ export function CamionesTab() {
           <div className="bg-white rounded-card shadow-card p-6 text-center text-gris-dark text-sm">
             No hay camiones registrados.
           </div>
-        ) : camiones.map(c => (
+        ) : camiones.map(c => {
+          const est = estadoPorCamion.get(c.id)
+          const km = est?.km_actuales ?? c.km_actuales ?? 0
+          return (
           <button
             key={c.id}
             onClick={() => openEdit(c)}
@@ -142,17 +155,22 @@ export function CamionesTab() {
                 <div className="text-xs text-gris-dark mt-0.5">
                   {c.modelo || 'sin modelo'}{c.anio ? ` · ${c.anio}` : ''}
                 </div>
+                <div className="text-[11px] text-gris-dark mt-1 font-mono flex flex-wrap gap-x-2 gap-y-0.5">
+                  <span>📏 {km > 0 ? `${km.toLocaleString('es-AR')} km` : '—'}</span>
+                  <KmFaltantes estado={est} />
+                </div>
               </div>
               <div className="flex flex-col items-end gap-1 shrink-0">
                 <Badge
                   variant={c.estado === 'activo' ? 'activo' : c.estado === 'inactivo' ? 'inactivo' : 'pendiente'}
                   label={c.estado === 'mantenimiento' ? 'Mantenimiento' : undefined}
                 />
-                <ServiceBadge estado={estadoPorCamion.get(c.id)} />
+                <ServiceBadge estado={est} />
               </div>
             </div>
           </button>
-        ))}
+          )
+        })}
       </div>
 
       <Modal open={modalNuevo} onClose={() => setModalNuevo(false)} title="🚚 NUEVO CAMIÓN"
@@ -227,4 +245,21 @@ function ServiceBadge({ estado }: { estado?: CamionServiceEstado }) {
       🔴 Service vencido {atraso > 0 ? `(${atraso.toLocaleString('es-AR')} km)` : ''}
     </span>
   )
+}
+
+// Texto contextual de "km faltantes para el próximo service" en la fila/card.
+// Color según estado (verde al día, amarillo próximo, rojo vencido).
+function KmFaltantes({ estado }: { estado?: CamionServiceEstado }) {
+  if (!estado) return <span className="text-gris-mid">—</span>
+  if (estado.estado === 'sin_service') return <span className="text-gris-mid">sin service</span>
+  if (estado.km_restantes == null) return <span className="text-gris-mid">—</span>
+  const km = estado.km_restantes
+  if (estado.estado === 'vencido') {
+    return <span className="text-rojo font-bold">vencido hace {Math.abs(km).toLocaleString('es-AR')} km</span>
+  }
+  if (estado.estado === 'proximo') {
+    return <span className="text-[#7A5500] font-bold">faltan {km.toLocaleString('es-AR')} km</span>
+  }
+  // al_dia
+  return <span className="text-verde">faltan {km.toLocaleString('es-AR')} km</span>
 }
