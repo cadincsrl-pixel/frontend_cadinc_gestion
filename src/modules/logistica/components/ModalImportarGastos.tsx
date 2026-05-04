@@ -120,7 +120,11 @@ async function descargarPlantillaConValidacion(args: {
   wsGastos.addRow(['22/04/2026', 'peaje',           800, choferesOrd[0]?.nombre  ?? 'López, Juan', camionesOrd[0]?.patente ?? 'AE-123-XY', 'Autop. Panamericana','efectivo',      'chofer',  '',          '',             '', '',     '',       ''])
   wsGastos.addRow(['22/04/2026', 'mantenimiento', 48000, '',                                       camionesOrd[1]?.patente ?? 'AE-456-ZZ', 'Taller Martínez',    'transferencia', 'empresa', 'A-0001-12', 'Cambio aceite','', '',     '',       ''])
 
-  wsGastos.columns = COLS.map((_, i) => ({ width: i === 5 || i === 9 ? 28 : 16 }))
+  // Setear widths con getColumn (NO asignar `columns = [...]` después de
+  // addRow — eso reescribe headers y descarta datos en exceljs).
+  COLS.forEach((_, i) => {
+    wsGastos.getColumn(i + 1).width = i === 5 || i === 9 ? 28 : 16
+  })
 
   // Helper para construir el rango de la hoja Listas (filas 2..N).
   const rangoListas = (col: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G', n: number) =>
