@@ -254,7 +254,38 @@ export interface Camion extends AuditFields {
   modelo: string | null
   anio: number | null
   estado: CamionEstado
+  km_actuales: number
   obs: string | null
+}
+
+// ── Service de camiones ──
+export interface CamionService {
+  id: number
+  camion_id: number
+  fecha: string
+  km_service: number
+  km_proximo: number
+  obs: string | null
+  comprobante_url: string | null
+  comprobante_hash: string | null
+  created_at: string
+  updated_at: string
+  created_by: string | null
+  updated_by: string | null
+}
+
+export type CamionServiceEstadoKey = 'sin_service' | 'al_dia' | 'proximo' | 'vencido'
+
+export interface CamionServiceEstado {
+  camion_id: number
+  patente: string
+  km_actuales: number
+  fecha_ultimo_service: string | null
+  km_ultimo_service: number | null
+  km_proximo_service: number | null
+  comprobante_ultimo_service: string | null
+  estado: CamionServiceEstadoKey
+  km_restantes: number | null
 }
 
 // ── Bateas (semirremolques) ──

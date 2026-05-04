@@ -12,7 +12,9 @@ import { useToast } from '@/components/ui/Toast'
 import { useForm } from 'react-hook-form'
 import { usePermisos } from '@/hooks/usePermisos'
 import { VehiculoDocumentosSection } from './VehiculoDocumentosSection'
-import type { Camion } from '@/types/domain.types'
+import { CamionServicesSection } from './CamionServicesSection'
+import { useCamionServiceEstadoTodos } from '../hooks/useCamionServices'
+import type { Camion, CamionServiceEstado } from '@/types/domain.types'
 
 const ESTADO_OPTIONS = [
   { value: 'activo',        label: 'Activo'           },
@@ -24,8 +26,14 @@ export function CamionesTab() {
   const toast = useToast()
   const { puedeCrear, puedeEditar } = usePermisos('logistica')
   const { data: camiones = [] } = useCamiones()
+  const { data: serviceEstados = [] } = useCamionServiceEstadoTodos()
   const { mutate: create, isPending: creating } = useCreateCamion()
   const { mutate: update, isPending: updating } = useUpdateCamion()
+
+  // Map camion_id → estado para acceso O(1) en el render de la lista.
+  const estadoPorCamion = new Map<number, CamionServiceEstado>(
+    serviceEstados.map(e => [e.camion_id, e]),
+  )
 
   const [modalNuevo, setModalNuevo] = useState(false)
   const [editando,   setEditando]   = useState<Camion | null>(null)
@@ -98,10 +106,13 @@ export function CamionesTab() {
                 <td className="px-4 py-3 text-sm text-carbon">{c.modelo || '—'}</td>
                 <td className="px-4 py-3 font-mono text-xs text-gris-dark">{c.anio || '—'}</td>
                 <td className="px-4 py-3">
-                  <Badge
-                    variant={c.estado === 'activo' ? 'activo' : c.estado === 'inactivo' ? 'inactivo' : 'pendiente'}
-                    label={c.estado === 'mantenimiento' ? 'Mantenimiento' : undefined}
-                  />
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <Badge
+                      variant={c.estado === 'activo' ? 'activo' : c.estado === 'inactivo' ? 'inactivo' : 'pendiente'}
+                      label={c.estado === 'mantenimiento' ? 'Mantenimiento' : undefined}
+                    />
+                    <ServiceBadge estado={estadoPorCamion.get(c.id)} />
+                  </div>
                 </td>
                 <td className="px-4 py-3 text-right text-xs text-gris-mid">
                   {puedeEditar ? '✏️' : '👁'}
@@ -132,10 +143,13 @@ export function CamionesTab() {
                   {c.modelo || 'sin modelo'}{c.anio ? ` · ${c.anio}` : ''}
                 </div>
               </div>
-              <Badge
-                variant={c.estado === 'activo' ? 'activo' : c.estado === 'inactivo' ? 'inactivo' : 'pendiente'}
-                label={c.estado === 'mantenimiento' ? 'Mantenimiento' : undefined}
-              />
+              <div className="flex flex-col items-end gap-1 shrink-0">
+                <Badge
+                  variant={c.estado === 'activo' ? 'activo' : c.estado === 'inactivo' ? 'inactivo' : 'pendiente'}
+                  label={c.estado === 'mantenimiento' ? 'Mantenimiento' : undefined}
+                />
+                <ServiceBadge estado={estadoPorCamion.get(c.id)} />
+              </div>
             </div>
           </button>
         ))}
@@ -172,6 +186,12 @@ export function CamionesTab() {
             </div>
           )}
 
+          {editando && (
+            <div className="border-t border-gris-mid pt-4">
+              <CamionServicesSection camionId={editando.id} />
+            </div>
+          )}
+
           <AuditInfo
             createdBy={editando?.created_by}
             updatedBy={editando?.updated_by}
@@ -181,5 +201,30 @@ export function CamionesTab() {
         </div>
       </Modal>
     </>
+  )
+}
+
+// Badge contextual del estado del service del camión.
+// - 'al_dia' / 'sin_service' → no muestra nada (evitar ruido visual).
+// - 'proximo' → amarillo, "Service en X km".
+// - 'vencido' → rojo, "Service vencido" o "vencido hace X km".
+function ServiceBadge({ estado }: { estado?: CamionServiceEstado }) {
+  if (!estado) return null
+  if (estado.estado === 'al_dia' || estado.estado === 'sin_service') return null
+
+  const km = estado.km_restantes ?? 0
+  if (estado.estado === 'proximo') {
+    return (
+      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide bg-amarillo-light text-[#7A5500]">
+        🟡 Service en {Math.round(km).toLocaleString('es-AR')} km
+      </span>
+    )
+  }
+  // vencido
+  const atraso = Math.abs(km)
+  return (
+    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide bg-rojo-light text-rojo">
+      🔴 Service vencido {atraso > 0 ? `(${atraso.toLocaleString('es-AR')} km)` : ''}
+    </span>
   )
 }
