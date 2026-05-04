@@ -22,7 +22,16 @@ Comparten base de datos en Supabase.
 
 **Frontend**: Next.js 16.2.1 (App Router), React 19.2.4, TypeScript, Tailwind v3, React Query v5, Zustand v5, React Hook Form + Zod v4, `@supabase/ssr` + `@supabase/supabase-js`.
 
-**Base de datos**: Supabase (PostgreSQL 17.6), ref `xclobkgmaxioifpkukul`. ~68 tablas. Storage en 2 buckets principales: `cert-adjuntos` (facturas/certificaciones) y `remitos-logistica` (público).
+**Base de datos**: Supabase (PostgreSQL 17.6), ref `xclobkgmaxioifpkukul`. ~80 tablas. Storage:
+- `cert-adjuntos` (facturas/certificaciones, público).
+- `remitos-logistica` (remitos de carga/descarga de tramos, público).
+- `vehiculo-docs` (privado, signed URLs) — tarjeta verde, RTO, póliza, título de camiones y bateas.
+- `personal-docs` (privado) — DNI, licencia y otros docs por trabajador.
+- `chofer-docs` (privado) — DNI, licencia, libreta sanitaria, etc. de choferes.
+- `gastos-logistica` (privado) — comprobantes de gastos de flota.
+- `adelantos-logistica` (privado) — comprobantes de adelantos a choferes.
+- `remitos-retiro-proveedor` (privado) — comprobantes de retiro de stock en proveedores.
+- `cobros-docs` (privado) — adjuntos de cobros (líquido producto, comprobante de pago).
 
 ⚠️ **Next.js 16 + React 19 son versiones recientes con breaking changes respecto al training data. Antes de asumir APIs, consultar `node_modules/next/dist/docs/` o los docs oficiales vía web.** (Este warning también está en `AGENTS.md` — ese archivo se carga automáticamente vía `@AGENTS.md` arriba.)
 
@@ -47,32 +56,49 @@ Cliente (Next.js)
 
 | Módulo | Qué hace | Ruta frontend |
 |---|---|---|
-| **Tarja** | Horas por operario/obra/semana, cierre semanal, recibos | `/tarja`, `/tarja/[obraCod]` |
-| **Personal** | CRUD trabajadores, categorías, condición (blanco/asegurado) | `/personal` (tab de tarja) |
-| **Logística** | Flota, tramos con remitos, liquidaciones choferes, facturación a empresas transportistas | `/logistica` |
-| **Certificaciones** | Solicitudes de compra con workflow granular (ver §5.1) | `/certificaciones` |
-| **Stock** | Inventario depósito central, entradas/salidas, import/export Excel | (integrado) |
+| **Tarja** | Horas por operario/obra/semana, cierre semanal, recibos PDF | `/tarja`, `/tarja/[obraCod]` |
+| **Personal** | CRUD trabajadores, categorías, fecha_nacimiento, documentos (DNI, alta temprana, etc.) | `/personal` (tab de tarja) |
+| **Logística** | Tramos, liquidaciones, choferes, **camiones y bateas**, lugares, facturación, gastos, **rentabilidad** (simulador) | `/logistica` |
+| **Certificaciones** | Solicitudes de compra workflow granular (§5.1), stock interno, **stock en proveedores** (§5.8), materiales facturables | `/certificaciones` |
+| **Stock** | Inventario depósito central, entradas/salidas, import/export Excel | (integrado en certificaciones) |
 | **Herramientas** | Inventario + trazabilidad entre obras | `/herramientas/*` |
 | **Caja** | Movimientos con centros de costo y conceptos | `/caja` |
 | **Ropa** | Entregas por categoría con vencimiento | `/tarja/ropa` |
 | **Préstamos** | Adelantos con descuento en semana | `/tarja/prestamos` |
 | **Admin** | Usuarios, permisos, auditoría | `/admin` |
 
+### 4.1 Sub-tabs de Logística (`/logistica?tab=...`)
+- `viajes` — Tramos cargados/vacíos con remitos foto/PDF, filtro por chofer/tipo/estado/fechas.
+- `liquidaciones` — Saldo por chofer + creación de liquidaciones, **adelantos con comprobante foto/PDF**.
+- `facturacion` — Cobros a empresas transportistas con adjuntos.
+- `choferes` — CRUD con `cuil` (no DNI), camión preasignado (`camion_id`), batea preasignada (`batea_id`), documentos (DNI, licencia, libreta sanitaria, etc.). Modal arranca en modo **detalle** read-only; botón "Editar" lo habilita.
+- `camiones` — Sub-tabs internos: Camiones / Bateas. Documentos por vehículo (tarjeta verde, RTO, póliza, título) con `vence_el`.
+- `lugares` — Canteras y depósitos.
+- `gastos` — Combustible, peajes, viáticos. Inmutabilidad de campos financieros si está aprobado/liquidado.
+- `rentabilidad` — Simulador de margen por viaje (porteado del Excel YTL). Tablas `rentabilidad_parametros` (versionada) + `rentabilidad_viajes`.
+
+### 4.2 Sub-tabs de Certificaciones (`/certificaciones?tab=...`)
+- `solicitudes` — Pedidos de compra y workflow line-item (§5.1).
+- `stock` — Stock en depósito interno por rubro.
+- `stock-proveedor` — Materiales **comprados pero todavía en el galpón del proveedor** (§5.8).
+- `materiales` — Materiales a cuenta del cliente (facturable).
+
 ## 5. Reglas de negocio NO-OBVIAS (críticas)
 
 ### 5.1 Tracking a nivel line-item (certificaciones)
 El estado se trackea por **cada ítem** de la solicitud, no por la solicitud. Una misma solicitud puede tener un ítem `comprado`, otro `de_deposito` y otro `pendiente`. `solicitud_compra_item.estado` es fuente de verdad.
 
-Estados válidos: `pendiente`, `comprado`, `de_deposito`, `enviado`, `rechazado`.
+Estados válidos: `pendiente`, `comprado`, `de_deposito`, `en_proveedor`, `retirado`, `enviado`, `rechazado`.
 
-**Dos caminos de resolución**:
-- **Compra externa** → estado `comprado`. Requiere `proveedor_id` + `precio_unit` + opcional `factura_id`.
-- **Despacho depósito** → estado `de_deposito`. Descuenta `stock_movimientos` con `motivo='despacho_obra'`.
+**Tres caminos de resolución**:
+- **Compra externa** → estado `comprado`. Requiere `proveedor_id` + `precio_unit` + opcional `factura_id`. Inserta en MCC inmediatamente.
+- **Despacho depósito** → estado `de_deposito`. Descuenta `stock_movimientos` con `motivo='despacho_obra'`. Inserta en MCC inmediatamente.
+- **Compra que queda en proveedor** → estado `en_proveedor`. Mismos campos que compra. **NO inserta en MCC todavía**. Suma una entrada en `stock_proveedor_movimientos`. Cuando se retire (con remito) pasa a `retirado` y recién ahí se factura. Ver §5.8.
 
-**Ambos caminos registran en `materiales_a_cuenta_cliente`** (el input para facturar al cliente de la obra), **EXCEPTO** cuando la obra de destino es depósito interno (`obras.es_deposito = true`) — ahí es reposición de stock, no facturable.
+**Compra y despacho registran en `materiales_a_cuenta_cliente`** (el input para facturar al cliente de la obra), **EXCEPTO** cuando la obra de destino es depósito interno (`obras.es_deposito = true`) — ahí es reposición de stock, no facturable.
 
 El campo `materiales_a_cuenta_cliente.origen` persiste uno de dos valores (restringido por CHECK constraint):
-- `'proveedor'` → resolución vía compra externa.
+- `'proveedor'` → resolución vía compra externa o retiro de stock en proveedor.
 - `'deposito'` → resolución vía despacho de depósito.
 
 ### 5.2 Resolución transaccional vía RPCs (Abril 2026)
@@ -96,7 +122,33 @@ Esquema: `permisos: { modulo: { lectura, creacion, actualizacion, eliminacion, t
 `auditMiddleware` del backend corre **después** de la respuesta. Solo loguea POST/PATCH/PUT/DELETE con status 2xx. Extrae entidad/acción de la ruta. **No escribir auditoría manual en handlers**, ya está cubierta.
 
 ### 5.7 Auto-archivo de obras
-`useObras()` dispara `POST /api/obras/auto-archivar` una vez cada 6h por navegador (localStorage). Backend archiva obras sin horas cargadas en las últimas 3 semanas.
+`useObras()` dispara `POST /api/obras/auto-archivar` una vez cada 6h por navegador (localStorage). El backend usa la **RPC `obras_a_auto_archivar(p_dias_atras)`** que calcula del lado del servidor con `NOT EXISTS` contra `horas` y `certificaciones`. **No usar la lógica vieja con `.limit(N)` desde el cliente** — el cap de PostgREST (~1000) generaba archivados erróneos. Migración: `20260430_rpc_obras_auto_archivar.sql`.
+
+### 5.8 Stock en proveedor (compras pendientes de retiro)
+Cuando se compra un material y queda físicamente en el galpón del proveedor (no llega a CADINC ni a la obra todavía), se marca como `en_proveedor`:
+- **RPC `resolver_item_en_proveedor`**: setea estado, agrega entrada en `stock_proveedor_movimientos`. NO inserta en MCC.
+- **RPC `retirar_de_proveedor(p_proveedor_id, p_obra_cod, p_fecha, p_comprobante_*, p_items, p_user_id)`**: crea `remitos_retiro_proveedor` (numerado RR-NNNN auto), inserta movimientos de salida (parciales OK), y **recién ahí** inserta/actualiza MCC con la cantidad acumulada retirada. Comprobante (foto/PDF) en bucket `remitos-retiro-proveedor` con dedup sha256.
+- Vista materializada: `v_stock_proveedor` (cantidad pendiente por item = entradas − salidas).
+
+### 5.9 Notificaciones (campana del topbar)
+Hook `src/hooks/useNotificaciones.ts` calcula 4 secciones in-memory (sin tabla persistente):
+- **Cumpleaños hoy** — usa `personal.fecha_nacimiento`. Cuenta para el badge rojo.
+- **Cumpleaños próximos 7 días** — informativo (punto azul).
+- **Papeles vencidos** (camiones/bateas) — usa vista `v_vehiculo_documentos_vencimientos`. Cuenta para el badge rojo.
+- **Papeles por vencer 30 días** — informativo.
+
+`<NotificationsBell />` (en `Topbar.tsx`) muestra popover con las 4 secciones. Click en cumpleaño → `/personal?leg=XXX` (auto-abre modal). Click en papel → `/logistica?tab=camiones`. Endpoint backend: `GET /api/logistica/notificaciones/documentos`.
+
+### 5.10 Conflicto de tarja en el mismo día
+En `TarjaTable.tsx`: si un operario tiene horas en >1 obra el **mismo día** (no por semana), las celdas se marcan en **rojo** (fondo + borde + ícono ⚠) con tooltip indicando las otras obras y horas. Badge ↔ al lado del nombre solo si hay al menos un día de conflicto. Trabajar lunes en obra A y martes en obra B NO es conflicto.
+
+### 5.11 Cálculo canónico de costos de tarja
+La **fórmula correcta** usa `costoLegConCatObra` (en `src/lib/utils/costos.ts`) que respeta los overrides de `cat_obra` con redondeo per-leg al miles. Usada por:
+- Chip "Costo semana" en `TarjaObraPage`.
+- Footer de `TarjaTable`.
+- `CierresSection` (cierres de semana).
+- `ResumenHistoricoPage`.
+Los 4 lugares deben dar el mismo número. La función vieja `calcularTotalesSemana` (que usa `costoLeg` sin cat_obra) **ya no se usa**.
 
 ## 6. Convenciones de código (frontend)
 
@@ -128,6 +180,9 @@ Esquema: `permisos: { modulo: { lectura, creacion, actualizacion, eliminacion, t
 - **Materiales a cuenta cliente** — Lo que se factura al cliente de la obra.
 - **Centro de costo** — Clasificación contable para movimientos de caja.
 - **Obra depósito** — Obra interna marcada con `es_deposito=true`. Sus materiales no se facturan al cliente; son reposición de stock.
+- **Stock en proveedor** — Material comprado que queda en el galpón del proveedor hasta que se retira con remito. Aún no facturable al cliente.
+- **Retiro** — Acción de traer material desde stock en proveedor a la obra. Genera `remitos_retiro_proveedor`.
+- **Modalidad de pago al chofer** — `km_jornal` (km × $/km + jornal × días) o `pct_jornal` (% sobre tarifa × ton + jornal × días).
 
 ## 8. Qué NO hacer
 
@@ -145,13 +200,18 @@ Esquema: `permisos: { modulo: { lectura, creacion, actualizacion, eliminacion, t
 
 ## 9. Deuda técnica conocida (no-urgente)
 
-- **Modelos paralelos sin consolidar**: `empresas` vs `empresas_transportistas`, `viajes/cargas/descargas` vs `tramos`, múltiples sistemas de remitos (`remitos` vs `remitos_envio` vs `remitos_carga/descarga`).
+- **Modelos paralelos sin consolidar**: `empresas` vs `empresas_transportistas`, `viajes/cargas/descargas` vs `tramos`, múltiples sistemas de remitos (`remitos` vs `remitos_envio` vs `remitos_carga/descarga` vs `remitos_retiro_proveedor`).
 - **Columnas duplicadas**: `camiones.año` y `camiones.anio`.
-- **`useForm<any>` pendientes de tipado**: ViajesTab, PersonalPage.
-- **68 tablas con RLS permisiva**: es decisión consciente, pero documentar antes de cualquier cambio.
+- **`useForm<any>` pendientes de tipado**: ViajesTab, PersonalPage, ChoferesTab, BateasTab, RentabilidadTab, modal adelantos.
+- **~80 tablas con RLS permisiva**: es decisión consciente, pero documentar antes de cualquier cambio.
 - **Login de herramientas separado** (`/herramientas/login`): coexiste con `/login`, razón no documentada.
 - **Falta índice** en `stock_movimientos.material_id` y `.solicitud_item_id`. Considerarlo si el volumen crece.
 - **`npm audit` en el backend**: 3 vulnerabilidades (2 moderate, 1 high) detectadas al clonar. Evaluar con contexto, no correr `audit fix` a ciegas.
+- **Auto-archivado sin auditoría**: el endpoint `/api/obras/auto-archivar` no genera `audit_log` (filtro explícito en `audit.ts`). Si se necesita rastreo, agregar.
+- **Sub-tabs Camiones/Bateas sin URL propia**: `CamionesYBateasTab.tsx` maneja sub-state local, no se puede deep-linkear al modal de un vehículo (la campana de notificaciones lleva al tab pero no abre el modal).
+- **Notificaciones sin persistencia**: el hook `useNotificaciones` calcula in-memory. Para "marcar como leído" o silenciar habría que crear tabla `notificaciones_dismiss`.
+- **Sin notificaciones de docs de choferes**: la campana muestra solo vencimientos de vehículos, no de papeles del personal de conducción (DNI, licencia).
+- **`materiales_a_cuenta_cliente.cantidad` se sobrescribe** en cada retiro parcial desde proveedor (UPSERT con `ON CONFLICT (item_id)`). Eso pierde el detalle por retiro. Si se necesita auditar parciales, mirar `stock_proveedor_movimientos` que sí tiene el desglose.
 
 ## 10. Comandos útiles
 
@@ -221,4 +281,4 @@ El frontend espera al backend en `http://localhost:3001` (configurable vía env)
 
 ---
 
-_Última actualización: 2026-04-23._
+_Última actualización: 2026-05-04._
