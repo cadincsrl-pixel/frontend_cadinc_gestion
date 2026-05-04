@@ -29,6 +29,16 @@ export interface DocVencimientoItem {
   diasParaVencer:   number
 }
 
+// Documento de chofer (DNI, licencia, libreta sanitaria, etc.) con vence_el cargado.
+export interface DocChoferVencimientoItem {
+  doc_id:          number
+  chofer_id:       number
+  chofer_nombre:   string
+  tipo:            string
+  vence_el:        string
+  diasParaVencer:  number
+}
+
 interface NotificacionesResult {
   // Cumpleañeros del día (count → badge rojo).
   hoy:                 CumpleanieroItem[]
@@ -38,7 +48,11 @@ interface NotificacionesResult {
   papelesVencidos:     DocVencimientoItem[]
   // Documentos por vencer en los próximos 30 días (incluye hoy).
   papelesPorVencer:    DocVencimientoItem[]
-  // total de notificaciones "urgentes" (badge rojo): cumpleaños HOY + vencidos.
+  // Documentos de choferes ya vencidos.
+  papelesChoferVencidos:  DocChoferVencimientoItem[]
+  // Documentos de choferes por vencer en los próximos 30 días.
+  papelesChoferPorVencer: DocChoferVencimientoItem[]
+  // total de notificaciones "urgentes" (badge rojo).
   totalUrgente:        number
 }
 
@@ -47,12 +61,24 @@ const VENTANA_DIAS_CUMPLE = 7
 // Días hacia adelante para "papeles por vencer".
 const VENTANA_DIAS_PAPELES = 30
 
-// Etiquetas humanas para los tipos de documento (matchea VehiculoDocumentosSection).
+// Etiquetas humanas para los tipos de documento (matchea VehiculoDocumentosSection
+// + ChoferDocumentosSection).
 const DOC_TIPO_LABEL: Record<string, string> = {
-  titulo:         'Título',
-  tarjeta_verde:  'Tarjeta verde',
-  rto:            'RTO',
-  poliza_seguro:  'Póliza de seguro',
+  // Vehículo
+  titulo:             'Título',
+  tarjeta_verde:      'Tarjeta verde',
+  rto:                'RTO',
+  poliza_seguro:      'Póliza de seguro',
+  // Chofer
+  dni:                'DNI',
+  licencia_conducir:  'Licencia',
+  licencia:           'Licencia',
+  libreta_sanitaria:  'Libreta sanitaria',
+  cnrt:               'CNRT',
+  aptitud_psico:      'Aptitud psicofísica',
+  aptitud_psicofisica:'Aptitud psicofísica',
+  art:                'ART',
+  mopp:               'MOPP',
 }
 export function fmtDocTipo(tipo: string): string {
   return DOC_TIPO_LABEL[tipo] ?? tipo
@@ -63,6 +89,14 @@ interface DocVencimientoRow {
   entidad: 'camion' | 'batea'
   entidad_id: number
   entidad_patente: string
+  tipo: string
+  vence_el: string
+}
+
+interface DocChoferVencimientoRow {
+  doc_id: number
+  chofer_id: number
+  chofer_nombre: string
   tipo: string
   vence_el: string
 }
@@ -85,6 +119,12 @@ export function useNotificaciones(): NotificacionesResult {
     // logística; useQuery devuelve [] como fallback con la config de abajo.
     retry: false,
     staleTime: 5 * 60 * 1000, // 5 min — los vencimientos no cambian seguido.
+  })
+  const { data: docsChofer = [] } = useQuery({
+    queryKey: ['logistica', 'notificaciones', 'documentos-choferes'],
+    queryFn:  () => apiGet<DocChoferVencimientoRow[]>('/api/logistica/notificaciones/documentos-choferes'),
+    retry: false,
+    staleTime: 5 * 60 * 1000,
   })
 
   return useMemo(() => {
@@ -123,37 +163,58 @@ export function useNotificaciones(): NotificacionesResult {
     hoy.sort((a, b) => a.trabajador.nom.localeCompare(b.trabajador.nom))
     proximos.sort((a, b) => a.diasFaltan - b.diasFaltan || a.trabajador.nom.localeCompare(b.trabajador.nom))
 
-    // ── Vencimientos de documentos ──────────────────────────────
-    const papelesVencidos:  DocVencimientoItem[] = []
-    const papelesPorVencer: DocVencimientoItem[] = []
-
-    for (const row of docsVenc as DocVencimientoRow[]) {
-      if (!row.vence_el) continue
-      const [vy, vm, vd] = row.vence_el.split('-').map(Number)
-      if (!vy || !vm || !vd) continue
+    // Helper para clasificar un doc en vencido / por-vencer / fuera-de-ventana.
+    function clasificar(venceISO: string): { dias: number; bucket: 'vencido' | 'porVencer' | null } {
+      const [vy, vm, vd] = venceISO.split('-').map(Number)
+      if (!vy || !vm || !vd) return { dias: 0, bucket: null }
       const fechaVenc = new Date(vy, vm - 1, vd)
       fechaVenc.setHours(0, 0, 0, 0)
       const dias = Math.round(
         (fechaVenc.getTime() - hoyDate.getTime()) / (1000 * 60 * 60 * 24),
       )
-
-      const item: DocVencimientoItem = { ...row, diasParaVencer: dias }
-      if (dias < 0) papelesVencidos.push(item)
-      else if (dias <= VENTANA_DIAS_PAPELES) papelesPorVencer.push(item)
+      if (dias < 0) return { dias, bucket: 'vencido' }
+      if (dias <= VENTANA_DIAS_PAPELES) return { dias, bucket: 'porVencer' }
+      return { dias, bucket: null }
     }
-    // Vencidos ordenados por más recientemente vencido primero (menos negativo arriba).
+
+    // ── Vencimientos de documentos de vehículos ────────────────
+    const papelesVencidos:  DocVencimientoItem[] = []
+    const papelesPorVencer: DocVencimientoItem[] = []
+    for (const row of docsVenc as DocVencimientoRow[]) {
+      if (!row.vence_el) continue
+      const { dias, bucket } = clasificar(row.vence_el)
+      if (!bucket) continue
+      const item: DocVencimientoItem = { ...row, diasParaVencer: dias }
+      if (bucket === 'vencido') papelesVencidos.push(item)
+      else papelesPorVencer.push(item)
+    }
     papelesVencidos.sort((a, b) => b.diasParaVencer - a.diasParaVencer)
-    // Por vencer ordenados ASC (lo más urgente arriba).
     papelesPorVencer.sort((a, b) => a.diasParaVencer - b.diasParaVencer)
+
+    // ── Vencimientos de documentos de choferes ─────────────────
+    const papelesChoferVencidos:  DocChoferVencimientoItem[] = []
+    const papelesChoferPorVencer: DocChoferVencimientoItem[] = []
+    for (const row of docsChofer as DocChoferVencimientoRow[]) {
+      if (!row.vence_el) continue
+      const { dias, bucket } = clasificar(row.vence_el)
+      if (!bucket) continue
+      const item: DocChoferVencimientoItem = { ...row, diasParaVencer: dias }
+      if (bucket === 'vencido') papelesChoferVencidos.push(item)
+      else papelesChoferPorVencer.push(item)
+    }
+    papelesChoferVencidos.sort((a, b) => b.diasParaVencer - a.diasParaVencer)
+    papelesChoferPorVencer.sort((a, b) => a.diasParaVencer - b.diasParaVencer)
 
     return {
       hoy,
       proximos,
       papelesVencidos,
       papelesPorVencer,
-      totalUrgente: hoy.length + papelesVencidos.length,
+      papelesChoferVencidos,
+      papelesChoferPorVencer,
+      totalUrgente: hoy.length + papelesVencidos.length + papelesChoferVencidos.length,
     }
-  }, [personal, docsVenc])
+  }, [personal, docsVenc, docsChofer])
 }
 
 // Helper para mostrar "hoy", "mañana", "en 3 días" en la lista de próximos.

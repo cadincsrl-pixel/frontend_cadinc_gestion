@@ -9,6 +9,7 @@ import {
   fmtDocTipo,
   type CumpleanieroItem,
   type DocVencimientoItem,
+  type DocChoferVencimientoItem,
 } from '@/hooks/useNotificaciones'
 
 /**
@@ -25,7 +26,12 @@ import {
  */
 export function NotificationsBell() {
   const router = useRouter()
-  const { hoy, proximos, papelesVencidos, papelesPorVencer, totalUrgente } = useNotificaciones()
+  const {
+    hoy, proximos,
+    papelesVencidos, papelesPorVencer,
+    papelesChoferVencidos, papelesChoferPorVencer,
+    totalUrgente,
+  } = useNotificaciones()
   const [abierto, setAbierto] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -39,8 +45,9 @@ export function NotificationsBell() {
     return () => document.removeEventListener('mousedown', onClick)
   }, [abierto])
 
-  const totalNoUrgentes = proximos.length + papelesPorVencer.length
-  const sinNotifs       = totalUrgente === 0 && totalNoUrgentes === 0
+  const totalNoUrgentes =
+    proximos.length + papelesPorVencer.length + papelesChoferPorVencer.length
+  const sinNotifs = totalUrgente === 0 && totalNoUrgentes === 0
 
   function abrirPersonal(leg: string) {
     setAbierto(false)
@@ -54,6 +61,13 @@ export function NotificationsBell() {
   function abrirVehiculo(_entidad: 'camion' | 'batea', _id: number) {
     setAbierto(false)
     router.push('/logistica?tab=camiones')
+  }
+
+  function abrirChofer(_id: number) {
+    setAbierto(false)
+    // El tab Choferes no tiene deep-link al modal de un chofer específico.
+    // Llevamos al tab; el usuario encuentra el chofer por nombre.
+    router.push('/logistica?tab=choferes')
   }
 
   return (
@@ -95,11 +109,20 @@ export function NotificationsBell() {
               </div>
             )}
 
-            {/* Papeles vencidos: máxima urgencia */}
+            {/* Papeles de vehículos vencidos */}
             {papelesVencidos.length > 0 && (
-              <Section titulo="🛻 Papeles vencidos" tono="rojo">
+              <Section titulo="🛻 Papeles de vehículos vencidos" tono="rojo">
                 {papelesVencidos.map(d => (
                   <DocRow key={`${d.entidad}-${d.doc_id}`} doc={d} onClick={() => abrirVehiculo(d.entidad, d.entidad_id)} />
+                ))}
+              </Section>
+            )}
+
+            {/* Papeles de choferes vencidos */}
+            {papelesChoferVencidos.length > 0 && (
+              <Section titulo="👷 Papeles de choferes vencidos" tono="rojo">
+                {papelesChoferVencidos.map(d => (
+                  <DocChoferRow key={d.doc_id} doc={d} onClick={() => abrirChofer(d.chofer_id)} />
                 ))}
               </Section>
             )}
@@ -113,11 +136,20 @@ export function NotificationsBell() {
               </Section>
             )}
 
-            {/* Papeles por vencer en 30 días */}
+            {/* Papeles de vehículos por vencer */}
             {papelesPorVencer.length > 0 && (
-              <Section titulo="🛻 Papeles por vencer (30 días)" tono="amarillo">
+              <Section titulo="🛻 Papeles de vehículos por vencer (30 días)" tono="amarillo">
                 {papelesPorVencer.map(d => (
                   <DocRow key={`${d.entidad}-${d.doc_id}`} doc={d} onClick={() => abrirVehiculo(d.entidad, d.entidad_id)} />
+                ))}
+              </Section>
+            )}
+
+            {/* Papeles de choferes por vencer */}
+            {papelesChoferPorVencer.length > 0 && (
+              <Section titulo="👷 Papeles de choferes por vencer (30 días)" tono="amarillo">
+                {papelesChoferPorVencer.map(d => (
+                  <DocChoferRow key={d.doc_id} doc={d} onClick={() => abrirChofer(d.chofer_id)} />
                 ))}
               </Section>
             )}
@@ -161,6 +193,24 @@ function DocRow({ doc, onClick }: { doc: DocVencimientoItem; onClick: () => void
     >
       <div className="font-bold text-sm text-azul">
         {doc.entidad === 'batea' ? '🛻' : '🚚'} {doc.entidad_patente}
+        <span className="ml-2 text-xs font-semibold text-gris-dark">{fmtDocTipo(doc.tipo)}</span>
+      </div>
+      <div className={`text-xs mt-0.5 ${vencido ? 'text-rojo font-bold' : 'text-gris-dark'}`}>
+        {fmtDiasVencimiento(doc.diasParaVencer)} · {doc.vence_el.split('-').reverse().join('/')}
+      </div>
+    </button>
+  )
+}
+
+function DocChoferRow({ doc, onClick }: { doc: DocChoferVencimientoItem; onClick: () => void }) {
+  const vencido = doc.diasParaVencer < 0
+  return (
+    <button
+      onClick={onClick}
+      className="w-full text-left px-3 py-2 hover:bg-gris/40 transition-colors"
+    >
+      <div className="font-bold text-sm text-azul">
+        👷 {doc.chofer_nombre}
         <span className="ml-2 text-xs font-semibold text-gris-dark">{fmtDocTipo(doc.tipo)}</span>
       </div>
       <div className={`text-xs mt-0.5 ${vencido ? 'text-rojo font-bold' : 'text-gris-dark'}`}>
