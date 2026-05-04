@@ -305,7 +305,22 @@ export function ModalImportarGastos({ open, onClose, categorias, choferes, camio
     reader.onload = e => {
       try {
         const wb   = XLSX.read(e.target!.result, { type: 'array', cellDates: false })
-        const ws   = wb.Sheets[wb.SheetNames[0]!]!
+        // La plantilla nueva tiene 3 hojas: "📖 Cómo usar" (primera), "Gastos" y
+        // "Listas". Buscamos primero por nombre exacto "Gastos"; si no existe
+        // (archivo viejo o nombre cambiado), fallback a la primera hoja que tenga
+        // un encabezado "Fecha" en sus primeras filas.
+        const nombreHoja =
+          wb.SheetNames.find(n => n.toLowerCase().trim() === 'gastos') ??
+          wb.SheetNames.find(n => {
+            const sh = wb.Sheets[n]
+            if (!sh) return false
+            const r = XLSX.utils.sheet_to_json<any[]>(sh, { header: 1, defval: '' }) as any[][]
+            return r.slice(0, 5).some(row => row.some((c: any) => norm(String(c)) === 'fecha'))
+          }) ??
+          wb.SheetNames[0]
+        if (!nombreHoja) { toast('No se encontraron hojas en el archivo', 'err'); return }
+        const ws = wb.Sheets[nombreHoja]
+        if (!ws) { toast('No se pudo leer la hoja del archivo', 'err'); return }
         const rows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: '' }) as any[][]
 
         // Localizar fila de encabezados (buscar "Fecha" en la primera col que lo tenga).
