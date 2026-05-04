@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useCamiones, useCreateCamion, useUpdateCamion } from '../hooks/useLogistica'
+import { useCamiones, useCreateCamion, useUpdateCamion, useChoferes } from '../hooks/useLogistica'
 import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input }  from '@/components/ui/Input'
@@ -16,7 +16,7 @@ import { CamionServicesSection } from './CamionServicesSection'
 import { GpsCamionSection, GpsBadge } from './GpsCamionSection'
 import { useCamionServiceEstadoTodos } from '../hooks/useCamionServices'
 import { useSyncGpsTodos } from '../hooks/useGpsSync'
-import type { Camion, CamionServiceEstado } from '@/types/domain.types'
+import type { Camion, CamionServiceEstado, Chofer } from '@/types/domain.types'
 
 const ESTADO_OPTIONS = [
   { value: 'activo',        label: 'Activo'           },
@@ -28,6 +28,7 @@ export function CamionesTab() {
   const toast = useToast()
   const { puedeCrear, puedeEditar } = usePermisos('logistica')
   const { data: camiones = [] } = useCamiones()
+  const { data: choferes = [] } = useChoferes()
   const { data: serviceEstados = [] } = useCamionServiceEstadoTodos()
   const { mutate: create, isPending: creating } = useCreateCamion()
   const { mutate: update, isPending: updating } = useUpdateCamion()
@@ -46,6 +47,23 @@ export function CamionesTab() {
   const estadoPorCamion = new Map<number, CamionServiceEstado>(
     serviceEstados.map(e => [e.camion_id, e]),
   )
+
+  // Map camion_id → choferes asignados (solo activos primero, luego el resto).
+  // Si hay varios asignados al mismo camión mostramos el principal y la lista
+  // completa en el title del td.
+  const choferesPorCamion = new Map<number, Chofer[]>()
+  for (const ch of choferes) {
+    if (ch.camion_id == null) continue
+    const arr = choferesPorCamion.get(ch.camion_id) ?? []
+    arr.push(ch)
+    choferesPorCamion.set(ch.camion_id, arr)
+  }
+  for (const arr of choferesPorCamion.values()) {
+    arr.sort((a, b) => {
+      if (a.estado === b.estado) return a.nombre.localeCompare(b.nombre)
+      return a.estado === 'activo' ? -1 : 1
+    })
+  }
 
   const [modalNuevo, setModalNuevo] = useState(false)
   const [editando,   setEditando]   = useState<Camion | null>(null)
@@ -105,17 +123,19 @@ export function CamionesTab() {
         <table className="w-full border-collapse">
           <thead>
             <tr>
-              {['Patente', 'Modelo', 'Año', 'Km actuales', 'Faltan p/ service', 'Estado', ''].map(h => (
+              {['Patente', 'Modelo', 'Chofer', 'Año', 'Km actuales', 'Faltan p/ service', 'Estado', ''].map(h => (
                 <th key={h} className="bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {camiones.length === 0 ? (
-              <tr><td colSpan={7} className="text-center py-8 text-gris-dark text-sm">No hay camiones registrados.</td></tr>
+              <tr><td colSpan={8} className="text-center py-8 text-gris-dark text-sm">No hay camiones registrados.</td></tr>
             ) : camiones.map(c => {
               const est = estadoPorCamion.get(c.id)
               const km = est?.km_actuales ?? c.km_actuales ?? 0
+              const chofs = choferesPorCamion.get(c.id) ?? []
+              const chofPrincipal = chofs[0]
               return (
               <tr
                 key={c.id}
@@ -124,6 +144,19 @@ export function CamionesTab() {
               >
                 <td className="px-4 py-3 font-mono font-bold text-sm">{c.patente}</td>
                 <td className="px-4 py-3 text-sm text-carbon">{c.modelo || '—'}</td>
+                <td
+                  className="px-4 py-3 text-sm text-carbon"
+                  title={chofs.length > 1 ? `También: ${chofs.slice(1).map(x => x.nombre).join(', ')}` : undefined}
+                >
+                  {chofPrincipal ? (
+                    <span className={chofPrincipal.estado !== 'activo' ? 'text-gris-mid italic' : ''}>
+                      {chofPrincipal.nombre}
+                      {chofs.length > 1 && <span className="ml-1 text-[10px] text-gris-dark">+{chofs.length - 1}</span>}
+                    </span>
+                  ) : (
+                    <span className="text-gris-mid">—</span>
+                  )}
+                </td>
                 <td className="px-4 py-3 font-mono text-xs text-gris-dark">{c.anio || '—'}</td>
                 <td className="px-4 py-3 font-mono text-xs">
                   {km > 0 ? `${km.toLocaleString('es-AR')} km` : <span className="text-gris-mid">—</span>}
@@ -161,6 +194,8 @@ export function CamionesTab() {
         ) : camiones.map(c => {
           const est = estadoPorCamion.get(c.id)
           const km = est?.km_actuales ?? c.km_actuales ?? 0
+          const chofs = choferesPorCamion.get(c.id) ?? []
+          const chofPrincipal = chofs[0]
           return (
           <button
             key={c.id}
@@ -173,6 +208,12 @@ export function CamionesTab() {
                 <div className="text-xs text-gris-dark mt-0.5">
                   {c.modelo || 'sin modelo'}{c.anio ? ` · ${c.anio}` : ''}
                 </div>
+                {chofPrincipal && (
+                  <div className={`text-[11px] mt-0.5 truncate ${chofPrincipal.estado !== 'activo' ? 'text-gris-mid italic' : 'text-carbon'}`}>
+                    👷 {chofPrincipal.nombre}
+                    {chofs.length > 1 && <span className="ml-1 text-gris-dark">+{chofs.length - 1}</span>}
+                  </div>
+                )}
                 <div className="text-[11px] text-gris-dark mt-1 font-mono flex flex-wrap gap-x-2 gap-y-0.5">
                   <span>📏 {km > 0 ? `${km.toLocaleString('es-AR')} km` : '—'}</span>
                   <KmFaltantes estado={est} />
