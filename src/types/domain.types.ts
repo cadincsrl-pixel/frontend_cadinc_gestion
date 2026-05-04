@@ -256,6 +256,37 @@ export interface Camion extends AuditFields {
   estado: CamionEstado
   km_actuales: number
   obs: string | null
+  // GPS Mobile Quest (todos opcionales: solo se llenan si hay mapeo)
+  id_vehiculo_gps:        string | null
+  km_actualizado_en:      string | null
+  gps_ultima_lat:         number | null
+  gps_ultima_lng:         number | null
+  gps_ultima_velocidad:   number | null
+  gps_ultima_lectura_en:  string | null
+  gps_ultimo_sync_en:     string | null
+  gps_ultimo_sync_estado: GpsSyncEstado | null
+  gps_ultimo_sync_error:  string | null
+}
+
+// ── GPS Sync ──
+export type GpsSyncEstado = 'ok' | 'error' | 'no_match' | 'sin_cambio'
+export type GpsSyncTipo   = 'manual_individual' | 'manual_global' | 'cron'
+
+export interface GpsSyncLog {
+  id:               number
+  camion_id:        number | null
+  id_vehiculo_gps:  string | null
+  patente_gps:      string | null
+  tipo:             GpsSyncTipo
+  estado:           GpsSyncEstado
+  km_anterior:      number | null
+  km_nuevo:         number | null
+  velocidad:        number | null
+  lectura_gps_en:   string | null
+  error_mensaje:    string | null
+  duracion_ms:      number | null
+  created_at:       string
+  created_by:       string | null
 }
 
 // ── Service de camiones ──

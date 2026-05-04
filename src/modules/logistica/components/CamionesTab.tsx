@@ -13,7 +13,9 @@ import { useForm } from 'react-hook-form'
 import { usePermisos } from '@/hooks/usePermisos'
 import { VehiculoDocumentosSection } from './VehiculoDocumentosSection'
 import { CamionServicesSection } from './CamionServicesSection'
+import { GpsCamionSection, GpsBadge } from './GpsCamionSection'
 import { useCamionServiceEstadoTodos } from '../hooks/useCamionServices'
+import { useSyncGpsTodos } from '../hooks/useGpsSync'
 import type { Camion, CamionServiceEstado } from '@/types/domain.types'
 
 const ESTADO_OPTIONS = [
@@ -29,6 +31,16 @@ export function CamionesTab() {
   const { data: serviceEstados = [] } = useCamionServiceEstadoTodos()
   const { mutate: create, isPending: creating } = useCreateCamion()
   const { mutate: update, isPending: updating } = useUpdateCamion()
+  const { mutate: syncTodos, isPending: syncingTodos } = useSyncGpsTodos()
+
+  function handleSyncTodos() {
+    syncTodos(undefined, {
+      onSuccess: (r) => {
+        toast(`✓ Sync GPS · ${r.ok} actualizados, ${r.sin_cambio} sin cambio${r.no_match ? `, ${r.no_match} sin match` : ''}${r.error ? `, ${r.error} error` : ''}`, 'ok')
+      },
+      onError: () => toast('Error al sincronizar GPS', 'err'),
+    })
+  }
 
   // Map camion_id → estado para acceso O(1) en el render de la lista.
   const estadoPorCamion = new Map<number, CamionServiceEstado>(
@@ -76,7 +88,12 @@ export function CamionesTab() {
 
   return (
     <>
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        {puedeEditar && (
+          <Button variant="secondary" size="sm" loading={syncingTodos} onClick={handleSyncTodos}>
+            🛰 Sincronizar GPS
+          </Button>
+        )}
         {puedeCrear && (
           <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)}>＋ Nuevo camión</Button>
         )}
@@ -121,6 +138,7 @@ export function CamionesTab() {
                       label={c.estado === 'mantenimiento' ? 'Mantenimiento' : undefined}
                     />
                     <ServiceBadge estado={est} />
+                    <GpsBadge camion={c} />
                   </div>
                 </td>
                 <td className="px-4 py-3 text-right text-xs text-gris-mid">
@@ -166,6 +184,7 @@ export function CamionesTab() {
                   label={c.estado === 'mantenimiento' ? 'Mantenimiento' : undefined}
                 />
                 <ServiceBadge estado={est} />
+                <GpsBadge camion={c} />
               </div>
             </div>
           </button>
@@ -207,6 +226,12 @@ export function CamionesTab() {
           {editando && (
             <div className="border-t border-gris-mid pt-4">
               <CamionServicesSection camionId={editando.id} />
+            </div>
+          )}
+
+          {editando && (
+            <div className="border-t border-gris-mid pt-4">
+              <GpsCamionSection camion={editando} />
             </div>
           )}
 
