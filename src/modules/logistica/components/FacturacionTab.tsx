@@ -303,6 +303,8 @@ function FacturacionSection() {
   // Cobro recién creado: cuando se setea, el modal pasa a "modo adjuntos"
   // (sigue abierto para que el user pueda subir liquidación + comprobante).
   const [cobroCreado,  setCobroCreado]  = useState<{ id: number; total: number; ton: number } | null>(null)
+  // Cobro abierto para revisar/editar adjuntos después de creado.
+  const [cobroDetalle, setCobroDetalle] = useState<Cobro | null>(null)
   const form = useForm<any>()
 
   function cerrarModalCobro() {
@@ -467,7 +469,11 @@ function FacturacionSection() {
           <h2 className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-2">Historial de cobros</h2>
           <div className="flex flex-col gap-3">
             {(cobros as Cobro[]).map(c => (
-              <div key={c.id} className={`bg-white rounded-card shadow-card p-4 border-l-4 ${c.estado === 'cobrado' ? 'border-verde' : 'border-naranja'}`}>
+              <div
+                key={c.id}
+                onClick={() => setCobroDetalle(c)}
+                className={`bg-white rounded-card shadow-card p-4 border-l-4 cursor-pointer hover:bg-gris/40 transition-colors ${c.estado === 'cobrado' ? 'border-verde' : 'border-naranja'}`}
+              >
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div>
                     <div className="flex items-center gap-2 mb-1">
@@ -481,24 +487,136 @@ function FacturacionSection() {
                   </div>
                   <div className="text-right">
                     <div className="font-mono font-bold text-lg text-verde">{fmtM(c.total)}</div>
-                    <div className="text-xs text-gris-dark">Total</div>
+                    <div className="text-xs text-gris-dark">Total · click para ver detalle</div>
                   </div>
                 </div>
-                <div className="flex gap-2 mt-3 flex-wrap">
-                  {c.estado === 'pendiente' && (
-                    <Button variant="primary" size="sm" onClick={() => marcarCobrado(c.id, { onSuccess: () => toast('✓ Marcado como cobrado', 'ok') })}>
+                {c.estado === 'pendiente' && (
+                  <div className="flex gap-2 mt-3 flex-wrap">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={ev => {
+                        ev.stopPropagation()
+                        marcarCobrado(c.id, { onSuccess: () => toast('✓ Marcado como cobrado', 'ok') })
+                      }}
+                    >
                       ✓ Marcar cobrado
                     </Button>
-                  )}
-                  <Button variant="ghost" size="sm" onClick={() => { if (confirm('¿Eliminar cobro?')) deleteCobro(c.id, { onSuccess: () => toast('✓ Eliminado', 'ok') }) }}>
-                    🗑 Eliminar
-                  </Button>
-                </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
         </div>
       )}
+
+      {/* Modal detalle de cobro */}
+      <Modal
+        open={!!cobroDetalle}
+        onClose={() => setCobroDetalle(null)}
+        title="💰 DETALLE DE COBRO"
+        width="max-w-2xl"
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                if (!cobroDetalle) return
+                if (!confirm('¿Eliminar cobro? Los remitos asociados volverán a estar pendientes de cobro.')) return
+                deleteCobro(cobroDetalle.id, {
+                  onSuccess: () => { toast('✓ Cobro eliminado', 'ok'); setCobroDetalle(null) },
+                  onError:   () => toast('Error al eliminar', 'err'),
+                })
+              }}
+            >
+              🗑 Eliminar
+            </Button>
+            {cobroDetalle?.estado === 'pendiente' && (
+              <Button
+                variant="primary"
+                onClick={() => {
+                  if (!cobroDetalle) return
+                  marcarCobrado(cobroDetalle.id, {
+                    onSuccess: () => { toast('✓ Marcado como cobrado', 'ok'); setCobroDetalle(null) },
+                  })
+                }}
+              >
+                ✓ Marcar cobrado
+              </Button>
+            )}
+            <Button variant="secondary" onClick={() => setCobroDetalle(null)}>Cerrar</Button>
+          </>
+        }
+      >
+        {cobroDetalle && (() => {
+          // Tramos asociados a este cobro (vía tramos.cobro_id).
+          const tramosCobro = (tramos as Tramo[]).filter(t => t.cobro_id === cobroDetalle.id)
+          return (
+            <div className="flex flex-col gap-4">
+              {/* Resumen */}
+              <div className={`rounded-xl px-4 py-3 ${cobroDetalle.estado === 'cobrado' ? 'bg-verde-light border border-verde/30' : 'bg-amarillo-light border border-amarillo/30'}`}>
+                <div className="flex items-center gap-2 mb-1">
+                  <Badge
+                    variant={cobroDetalle.estado === 'cobrado' ? 'activo' : 'pendiente'}
+                    label={cobroDetalle.estado === 'cobrado' ? 'Cobrado' : 'Pendiente'}
+                  />
+                  <span className="font-bold text-azul">{cobroDetalle.empresas_transportistas?.nombre ?? '—'}</span>
+                </div>
+                <div className="text-xs text-gris-dark">
+                  {fmtFecha(cobroDetalle.fecha_desde)} → {fmtFecha(cobroDetalle.fecha_hasta)}
+                </div>
+                <div className="grid grid-cols-2 gap-3 mt-3">
+                  <div>
+                    <div className="text-[10px] text-gris-dark uppercase tracking-wide font-bold">Toneladas</div>
+                    <div className="font-mono">{fmtTon(cobroDetalle.toneladas_totales)}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-gris-dark uppercase tracking-wide font-bold">Total</div>
+                    <div className="font-mono font-bold text-verde">{fmtM(cobroDetalle.total)}</div>
+                  </div>
+                </div>
+                {cobroDetalle.obs && (
+                  <div className="text-[11px] text-gris-dark mt-2 italic">{cobroDetalle.obs}</div>
+                )}
+              </div>
+
+              {/* Tramos incluidos */}
+              <div>
+                <h3 className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-2">
+                  Remitos incluidos ({tramosCobro.length})
+                </h3>
+                {tramosCobro.length === 0 ? (
+                  <div className="text-xs text-gris-mid italic">No hay tramos asociados.</div>
+                ) : (
+                  <div className="bg-gris/30 rounded-xl divide-y divide-gris-mid max-h-48 overflow-y-auto">
+                    {tramosCobro.map(t => {
+                      const ton = t.toneladas_descarga ?? t.toneladas_carga ?? 0
+                      const fecha = t.fecha_descarga ?? t.fecha_carga
+                      const cantera = canteras.find(c => c.id === t.cantera_id)
+                      return (
+                        <div key={t.id} className="px-3 py-2 text-xs flex items-center justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-carbon truncate">
+                              {cantera?.nombre ?? '—'} {t.remito_carga ? `· #${t.remito_carga}` : ''}
+                            </div>
+                            <div className="text-gris-dark text-[11px]">{fecha ? fmtFecha(fecha) : '—'}</div>
+                          </div>
+                          <div className="font-mono">{fmtTon(ton)}</div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Adjuntos: liquidación líquido producto + comprobante de pago */}
+              <div className="border-t border-gris-mid pt-4">
+                <CobroAdjuntosSection cobroId={cobroDetalle.id} />
+              </div>
+            </div>
+          )
+        })()}
+      </Modal>
 
       {/* Modal cobrar */}
       <Modal
