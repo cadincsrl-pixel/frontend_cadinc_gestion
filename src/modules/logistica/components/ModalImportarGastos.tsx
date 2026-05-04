@@ -32,23 +32,51 @@ interface Fila {
   pagado_por:       string
   comprobante_nro:  string
   descripcion:      string
+  // Combustible (sólo si categoría = combustible).
+  litros:           number | null
+  odometro:         number | null
+  tipo_combustible: TipoCombustible
+  tanque_lleno:     boolean
   error:            string | null
 }
+
+type TipoCombustible = 'gasoil' | 'nafta' | 'nafta_super' | 'adblue'
 
 const COLS = [
   'Fecha', 'Categoría', 'Monto', 'Chofer', 'Camión',
   'Proveedor', 'Método pago', 'Pagó', 'Nº Comprobante', 'Descripción',
+  'Litros', 'Odómetro', 'Tipo combustible', 'Tanque lleno',
 ]
 
 const METODOS_VALIDOS = ['efectivo', 'transferencia', 'tarjeta', 'cheque', 'cta_cte', 'otro'] as const
 const PAGADORES_VALIDOS = ['empresa', 'chofer'] as const
+const TIPOS_COMBUSTIBLE: readonly TipoCombustible[] = ['gasoil', 'nafta', 'nafta_super', 'adblue']
+
+// Parsea "sí/si/x/true/1" → true; "no/false/0" → false; vacío → null (default true).
+function parseSiNo(v: any): boolean | null {
+  if (v == null || v === '') return null
+  const s = String(v).trim().toLowerCase()
+  if (['si', 'sí', 'x', 'true', '1', 'yes'].includes(s)) return true
+  if (['no', 'false', '0'].includes(s))                  return false
+  return null
+}
+
+// Parsea un número aceptando "1.234,56" o "1234.56" o "1234".
+function parseNum(v: any): number | null {
+  if (v == null || v === '') return null
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null
+  const s = String(v).replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '')
+  const n = Number(s)
+  return Number.isFinite(n) ? n : null
+}
 
 function descargarPlantilla() {
   const ws = XLSX.utils.aoa_to_sheet([
     COLS,
-    ['22/04/2026', 'combustible',   15000, 'López, Juan', 'AE-123-XY', 'YPF Ruta 6',        'efectivo',      'chofer',  '000123-04', 'Carga 150L'],
-    ['22/04/2026', 'peaje',           800, 'López, Juan', 'AE-123-XY', 'Autop. Panamericana','efectivo',     'chofer',  '',          ''],
-    ['22/04/2026', 'mantenimiento', 48000, '',            'AE-456-ZZ', 'Taller Martínez',   'transferencia', 'empresa', 'A-0001-12', 'Cambio aceite'],
+    // combustible: litros + odómetro obligatorios; tipo y tanque lleno opcionales (default gasoil + sí).
+    ['22/04/2026', 'combustible',   15000, 'López, Juan', 'AE-123-XY', 'YPF Ruta 6',        'efectivo',      'chofer',  '000123-04', 'Carga 150L',     150,  185420, 'gasoil',      'sí'],
+    ['22/04/2026', 'peaje',           800, 'López, Juan', 'AE-123-XY', 'Autop. Panamericana','efectivo',     'chofer',  '',          '',                '',     '',     '',           ''],
+    ['22/04/2026', 'mantenimiento', 48000, '',            'AE-456-ZZ', 'Taller Martínez',   'transferencia', 'empresa', 'A-0001-12', 'Cambio aceite',   '',     '',     '',           ''],
   ])
   ws['!cols'] = COLS.map((c, i) => ({ wch: i === 5 || i === 9 ? 28 : 16 }))
   const wb = XLSX.utils.book_new()
@@ -118,6 +146,10 @@ export function ModalImportarGastos({ open, onClose, categorias, choferes, camio
         const iPago    = col('pagó') >= 0 ? col('pagó') : col('pago')
         const iNroComp = col('nº comprobante') >= 0 ? col('nº comprobante') : col('n° comprobante') >= 0 ? col('n° comprobante') : col('comprobante')
         const iDesc    = col('descripción') >= 0 ? col('descripción') : col('descripcion')
+        const iLitros  = col('litros')
+        const iOdo     = col('odómetro') >= 0 ? col('odómetro') : col('odometro')
+        const iTipoComb = col('tipo combustible')
+        const iTanque  = col('tanque lleno')
 
         const dataRows = rows.slice(headerIdx + 1).filter(r =>
           // Fila no vacía: algún campo tiene valor
@@ -149,6 +181,17 @@ export function ModalImportarGastos({ open, onClose, categorias, choferes, camio
           const metodo = iMetodo >= 0 ? norm(String(r[iMetodo] ?? '')) : 'efectivo'
           const pago   = iPago   >= 0 ? norm(String(r[iPago]   ?? '')) : 'empresa'
 
+          // Combustible — sólo lee/valida si la categoría matchea.
+          const esCombustible = catObj?.codigo === 'combustible'
+          const litros   = iLitros >= 0 ? parseNum(r[iLitros]) : null
+          const odometro = iOdo    >= 0 ? parseNum(r[iOdo])    : null
+          const tipoCombText = iTipoComb >= 0 ? norm(String(r[iTipoComb] ?? '')) : ''
+          const tipoCombustible: TipoCombustible = TIPOS_COMBUSTIBLE.includes(tipoCombText as TipoCombustible)
+            ? tipoCombText as TipoCombustible
+            : 'gasoil'
+          const tanqueParsed = iTanque >= 0 ? parseSiNo(r[iTanque]) : null
+          const tanqueLleno = tanqueParsed ?? true
+
           let error: string | null = null
           if (!fecha)                 error = 'Fecha inválida (usar DD/MM/AAAA o AAAA-MM-DD)'
           else if (!catTexto)         error = 'Categoría vacía'
@@ -159,6 +202,16 @@ export function ModalImportarGastos({ open, onClose, categorias, choferes, camio
           else if (camionTexto && !camionObj) error = `Camión "${camionTexto}" no encontrado`
           else if (!METODOS_VALIDOS.includes(metodo as any))   error = `Método pago "${metodo}" inválido`
           else if (!PAGADORES_VALIDOS.includes(pago as any))   error = `Pagó "${pago}" inválido (empresa|chofer)`
+          // Reglas específicas de combustible:
+          else if (esCombustible && !camionObj)               error = 'Combustible requiere camión'
+          else if (esCombustible && (litros == null || litros <= 0))     error = 'Combustible requiere Litros (>0)'
+          else if (esCombustible && (odometro == null || odometro <= 0)) error = 'Combustible requiere Odómetro (>0)'
+          else if (iTipoComb >= 0 && tipoCombText && !TIPOS_COMBUSTIBLE.includes(tipoCombText as TipoCombustible)) {
+            error = `Tipo combustible "${tipoCombText}" inválido (${TIPOS_COMBUSTIBLE.join('|')})`
+          }
+          else if (iTanque >= 0 && String(r[iTanque] ?? '').trim() !== '' && tanqueParsed === null) {
+            error = `Tanque lleno "${r[iTanque]}" inválido (sí|no)`
+          }
 
           return {
             fecha:            fecha ?? '',
@@ -174,6 +227,10 @@ export function ModalImportarGastos({ open, onClose, categorias, choferes, camio
             pagado_por:       pago   || 'empresa',
             comprobante_nro:  iNroComp >= 0 ? String(r[iNroComp] ?? '').trim() : '',
             descripcion:      iDesc    >= 0 ? String(r[iDesc]    ?? '').trim() : '',
+            litros:           esCombustible ? litros   : null,
+            odometro:         esCombustible ? odometro : null,
+            tipo_combustible: tipoCombustible,
+            tanque_lleno:     tanqueLleno,
             error,
           }
         })
@@ -197,6 +254,20 @@ export function ModalImportarGastos({ open, onClose, categorias, choferes, camio
     let creados = 0, errores = 0
     for (const f of validas) {
       try {
+        // Construye carga_combustible solo cuando aplique (backend valida
+        // la combinación categoría=combustible ↔ presencia de carga).
+        const cat = categorias.find(c => c.id === f.categoria_id)
+        const esCombustible = cat?.codigo === 'combustible'
+        const cargaCombustible = esCombustible
+          ? {
+              litros:           f.litros!,
+              odometro_km:      f.odometro,
+              tipo_combustible: f.tipo_combustible,
+              tanque_lleno:     f.tanque_lleno,
+              obs:              '',
+            }
+          : null
+
         await crear({
           categoria_id:    f.categoria_id!,
           fecha:           f.fecha,
@@ -209,6 +280,7 @@ export function ModalImportarGastos({ open, onClose, categorias, choferes, camio
           comprobante_nro: f.comprobante_nro,
           descripcion:     f.descripcion,
           obs:             '',
+          carga_combustible: cargaCombustible,
         } as any)
         creados++
       } catch (err) {
@@ -295,6 +367,11 @@ export function ModalImportarGastos({ open, onClose, categorias, choferes, camio
               Método: <span className="font-mono">efectivo | transferencia | tarjeta | cheque | cta_cte | otro</span>.
               Pagó: <span className="font-mono">empresa | chofer</span>.
               Debe haber al menos chofer o camión por fila.
+              <br />
+              <b>Combustible</b>: <span className="font-mono">Litros</span> y <span className="font-mono">Odómetro</span> obligatorios + <span className="font-mono">Camión</span>.
+              {' '}<span className="font-mono">Tipo combustible</span> opcional (default <span className="font-mono">gasoil</span>;
+              valores: <span className="font-mono">{TIPOS_COMBUSTIBLE.join('|')}</span>).
+              {' '}<span className="font-mono">Tanque lleno</span> opcional (<span className="font-mono">sí|no</span>, default sí).
             </p>
           </>
         )}
@@ -324,6 +401,8 @@ export function ModalImportarGastos({ open, onClose, categorias, choferes, camio
                     <th className="px-2 py-2 text-right font-bold">Monto</th>
                     <th className="px-2 py-2 text-left font-bold">Chofer</th>
                     <th className="px-2 py-2 text-left font-bold">Camión</th>
+                    <th className="px-2 py-2 text-right font-bold">Litros</th>
+                    <th className="px-2 py-2 text-right font-bold">Odóm.</th>
                     <th className="px-2 py-2 text-left font-bold">Estado</th>
                   </tr>
                 </thead>
@@ -347,6 +426,12 @@ export function ModalImportarGastos({ open, onClose, categorias, choferes, camio
                         {f.camion_id
                           ? camiones.find(c => c.id === f.camion_id)?.patente
                           : <span className={f.camion_texto ? 'text-rojo' : 'text-gris-mid italic'}>{f.camion_texto || '—'}</span>}
+                      </td>
+                      <td className="px-2 py-1.5 text-right font-mono">
+                        {f.litros != null ? `${f.litros.toLocaleString('es-AR')} L` : <span className="text-gris-mid">—</span>}
+                      </td>
+                      <td className="px-2 py-1.5 text-right font-mono">
+                        {f.odometro != null ? `${f.odometro.toLocaleString('es-AR')} km` : <span className="text-gris-mid">—</span>}
                       </td>
                       <td className="px-2 py-1.5">
                         {f.error
