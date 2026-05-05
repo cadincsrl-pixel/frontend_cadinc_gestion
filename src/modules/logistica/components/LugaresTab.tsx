@@ -438,10 +438,24 @@ function MapsUrlInput({ register, watch, setValue }: { register: any; watch: any
               {geocoding ? '⏳' : '🔍'} Buscar
             </button>
           )}
+          {/* Verificar visualmente las coords en Google Maps. Útil cuando
+              Geocoding devolvió un punto que no es exactamente el real
+              (ej. el centro de la localidad en lugar de la planta). */}
+          {lat != null && lng != null && lat !== '' && lng !== '' && (
+            <a
+              href={`https://www.google.com/maps?q=${lat},${lng}&z=18`}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Abrir las coordenadas exactas en Google Maps para verificarlas"
+              className="mb-0.5 inline-flex items-center gap-1 px-3 py-2 rounded-lg bg-azul-light text-azul text-xs font-bold hover:bg-azul hover:text-white transition-colors"
+            >
+              📍 Verificar
+            </a>
+          )}
         </div>
         <p className="text-xs text-gris-dark mt-1">
           {(lat != null && lng != null && lat !== '' && lng !== '')
-            ? '✓ Coordenadas cargadas — se usarán para calcular distancia y ETA al destino'
+            ? '✓ Coordenadas cargadas. Verificá en Maps que el punto sea el correcto. Si no, ajustá lat/lng a mano (copialas del lugar exacto en Maps).'
             : 'Click en "Buscar" para autocompletar desde el nombre + localidad, o pegalas manualmente'}
         </p>
       </div>
