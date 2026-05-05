@@ -13,6 +13,7 @@ import { Input }  from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 import { useForm } from 'react-hook-form'
+import { useGeocode } from '../hooks/useEnRuta'
 import type { Cantera, Deposito } from '@/types/domain.types'
 
 export function LugaresTab() {
@@ -110,12 +111,12 @@ export function LugaresTab() {
   }
 
   function openEditCantera(c: Cantera) {
-    formEditCant.reset({ nombre: c.nombre, localidad: c.localidad ?? '', maps_url: c.maps_url ?? '', obs: c.obs ?? '' })
+    formEditCant.reset({ nombre: c.nombre, localidad: c.localidad ?? '', maps_url: c.maps_url ?? '', obs: c.obs ?? '', lat: c.lat ?? null, lng: c.lng ?? null })
     setEditCantera(c)
   }
 
   function openEditDeposito(d: Deposito) {
-    formEditDep.reset({ nombre: d.nombre, localidad: d.localidad ?? '', maps_url: d.maps_url ?? '', obs: d.obs ?? '' })
+    formEditDep.reset({ nombre: d.nombre, localidad: d.localidad ?? '', maps_url: d.maps_url ?? '', obs: d.obs ?? '' , lat: d.lat ?? null, lng: d.lng ?? null })
     setEditDeposito(d)
   }
 
@@ -211,7 +212,7 @@ export function LugaresTab() {
         <div className="flex flex-col gap-4">
           <Input label="Nombre" placeholder="Cantera del Norte" {...formCantera.register('nombre')} />
           <Input label="Localidad" placeholder="Opcional" {...formCantera.register('localidad')} />
-          <Input label="Link Google Maps" placeholder="https://maps.google.com/..." {...formCantera.register('maps_url')} />
+          <MapsUrlInput register={formCantera.register} watch={formCantera.watch} setValue={formCantera.setValue} />
           <Input label="Observaciones" placeholder="Opcional" {...formCantera.register('obs')} />
         </div>
       </Modal>
@@ -223,7 +224,7 @@ export function LugaresTab() {
         <div className="flex flex-col gap-4">
           <Input label="Nombre" {...formEditCant.register('nombre')} />
           <Input label="Localidad" {...formEditCant.register('localidad')} />
-          <MapsUrlInput register={formEditCant.register} watch={formEditCant.watch} />
+          <MapsUrlInput register={formEditCant.register} watch={formEditCant.watch} setValue={formEditCant.setValue} />
           <Input label="Observaciones" {...formEditCant.register('obs')} />
         </div>
       </Modal>
@@ -235,7 +236,7 @@ export function LugaresTab() {
         <div className="flex flex-col gap-4">
           <Input label="Nombre" placeholder="Depósito Central" {...formDeposito.register('nombre')} />
           <Input label="Localidad" placeholder="Opcional" {...formDeposito.register('localidad')} />
-          <Input label="Link Google Maps" placeholder="https://maps.google.com/..." {...formDeposito.register('maps_url')} />
+          <MapsUrlInput register={formDeposito.register} watch={formDeposito.watch} setValue={formDeposito.setValue} />
           <Input label="Observaciones" placeholder="Opcional" {...formDeposito.register('obs')} />
         </div>
       </Modal>
@@ -247,7 +248,7 @@ export function LugaresTab() {
         <div className="flex flex-col gap-4">
           <Input label="Nombre" {...formEditDep.register('nombre')} />
           <Input label="Localidad" {...formEditDep.register('localidad')} />
-          <MapsUrlInput register={formEditDep.register} watch={formEditDep.watch} />
+          <MapsUrlInput register={formEditDep.register} watch={formEditDep.watch} setValue={formEditDep.setValue} />
           <Input label="Observaciones" {...formEditDep.register('obs')} />
         </div>
       </Modal>
@@ -283,28 +284,93 @@ export function LugaresTab() {
   )
 }
 
-function MapsUrlInput({ register, watch }: { register: any; watch: any }) {
+function MapsUrlInput({ register, watch, setValue }: { register: any; watch: any; setValue?: any }) {
   const url = watch('maps_url') ?? ''
+  const lat = watch('lat')
+  const lng = watch('lng')
+  const nombre    = watch('nombre') ?? ''
+  const localidad = watch('localidad') ?? ''
+  const { mutate: geocodeMutate, isPending: geocoding } = useGeocode()
+  const toast = useToast()
+
+  function handleBuscar() {
+    if (!setValue) return
+    const direccion = [nombre, localidad].filter(Boolean).join(', ').trim()
+    if (!direccion) { toast('Cargá al menos el nombre o la localidad', 'err'); return }
+    geocodeMutate(direccion, {
+      onSuccess: (r) => {
+        setValue('lat', r.lat, { shouldDirty: true })
+        setValue('lng', r.lng, { shouldDirty: true })
+        toast(`✓ Coordenadas: ${r.formatted_address}`, 'ok')
+      },
+      onError: (err: any) => {
+        const msg = err?.body?.error === 'GOOGLE_API_KEY_MISSING'
+          ? 'Falta configurar GOOGLE_MAPS_API_KEY en el backend'
+          : 'No se encontró la dirección. Cargá lat/lng manualmente.'
+        toast(msg, 'err')
+      },
+    })
+  }
+
   return (
-    <div>
-      <div className="flex items-end gap-2">
-        <div className="flex-1">
-          <Input label="Link Google Maps" placeholder="https://maps.google.com/..." {...register('maps_url')} />
+    <div className="flex flex-col gap-2">
+      <div>
+        <div className="flex items-end gap-2">
+          <div className="flex-1">
+            <Input label="Link Google Maps" placeholder="https://maps.google.com/..." {...register('maps_url')} />
+          </div>
+          {url && (
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mb-0.5 inline-flex items-center gap-1 px-3 py-2 rounded-lg bg-azul-light text-azul text-xs font-bold hover:bg-azul hover:text-white transition-colors"
+            >
+              📍 Abrir
+            </a>
+          )}
         </div>
-        {url && (
-          <a
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mb-0.5 inline-flex items-center gap-1 px-3 py-2 rounded-lg bg-azul-light text-azul text-xs font-bold hover:bg-azul hover:text-white transition-colors"
-          >
-            📍 Abrir
-          </a>
-        )}
+        <p className="text-xs text-gris-dark mt-1">
+          En Google Maps: botón Compartir → Copiar link
+        </p>
       </div>
-      <p className="text-xs text-gris-dark mt-1">
-        En Google Maps: botón Compartir → Copiar link
-      </p>
+
+      {/* Coordenadas (necesarias para calcular distancia GPS→destino) */}
+      <div>
+        <div className="flex items-end gap-2">
+          <div className="flex-1 grid grid-cols-2 gap-2">
+            <Input
+              label="Latitud"
+              type="number"
+              step="0.0000001"
+              placeholder="-34.6037"
+              {...register('lat', { valueAsNumber: true })}
+            />
+            <Input
+              label="Longitud"
+              type="number"
+              step="0.0000001"
+              placeholder="-58.3816"
+              {...register('lng', { valueAsNumber: true })}
+            />
+          </div>
+          {setValue && (
+            <button
+              type="button"
+              onClick={handleBuscar}
+              disabled={geocoding}
+              className="mb-0.5 inline-flex items-center gap-1 px-3 py-2 rounded-lg bg-verde-light text-verde text-xs font-bold hover:bg-verde hover:text-white transition-colors disabled:opacity-50"
+            >
+              {geocoding ? '⏳' : '🔍'} Buscar
+            </button>
+          )}
+        </div>
+        <p className="text-xs text-gris-dark mt-1">
+          {(lat != null && lng != null && lat !== '' && lng !== '')
+            ? '✓ Coordenadas cargadas — se usarán para calcular distancia y ETA al destino'
+            : 'Click en "Buscar" para autocompletar desde el nombre + localidad, o pegalas manualmente'}
+        </p>
+      </div>
     </div>
   )
 }

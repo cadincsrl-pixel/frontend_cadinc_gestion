@@ -4,6 +4,7 @@ import { Suspense, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useTramos, useChoferes, useCamiones } from '../hooks/useLogistica'
 import { ViajesTab }        from './ViajesTab'
+import { EnRutaTab }        from './EnRutaTab'
 import { LiquidacionesTab } from './LiquidacionesTab'
 import { ChoferesTab }      from './ChoferesTab'
 import { CamionesYBateasTab } from './CamionesYBateasTab'
@@ -17,6 +18,7 @@ import { usePermisos } from '@/hooks/usePermisos'
 
 const TAB_TITLES: Record<string, { icon: string; label: string; sub: string }> = {
   viajes:        { icon: '🚛', label: 'Tramos',        sub: 'Viajes cargados y vacíos'              },
+  'en-ruta':     { icon: '🛰', label: 'En ruta',       sub: 'Camiones cargados con distancia y ETA al destino' },
   liquidaciones: { icon: '💰', label: 'Liquidaciones', sub: 'Pago por días trabajados + km'         },
   choferes:      { icon: '👷', label: 'Choferes',      sub: 'Personal de conducción'                },
   camiones:      { icon: '🚚', label: 'Camiones y bateas', sub: 'Flota de camiones y semirremolques'  },
@@ -75,6 +77,7 @@ function LogisticaContent() {
 
       {/* Contenido según tab */}
       {tab === 'viajes'        && <ViajesTab />}
+      {tab === 'en-ruta'       && <EnRutaTab />}
       {tab === 'liquidaciones' && <LiquidacionesTab />}
       {tab === 'choferes'      && <ChoferesTab />}
       {tab === 'camiones'      && <CamionesYBateasTab />}

@@ -114,6 +114,7 @@ const NAV_ITEMS_TARJA = [
 
 const NAV_ITEMS_LOGISTICA = [
   { tab: 'viajes',        icon: '🚛', label: 'Tramos',        meta: 'Cargados y vacíos'             },
+  { tab: 'en-ruta',       icon: '🛰', label: 'En ruta',       meta: 'Camiones cargados en vivo'      },
   { tab: 'liquidaciones', icon: '💰', label: 'Liquidaciones', meta: 'Saldo y pago a choferes'       },
   { tab: 'facturacion',   icon: '🧾', label: 'Facturación',   meta: 'Cobros a empresas'              },
   { tab: 'choferes',      icon: '👷', label: 'Choferes',      meta: 'Personal de conducción'        },

@@ -363,6 +363,8 @@ export interface Cantera {
   localidad: string | null
   maps_url: string | null
   obs: string | null
+  lat: number | null
+  lng: number | null
 }
 
 export interface Deposito {
@@ -371,6 +373,8 @@ export interface Deposito {
   localidad: string | null
   maps_url: string | null
   obs: string | null
+  lat: number | null
+  lng: number | null
 }
 
 export interface Ruta {
