@@ -14,6 +14,7 @@ import { Badge }    from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
 import { useForm }  from 'react-hook-form'
 import { uploadRemitoImg } from '@/lib/utils/upload'
+import { useTramosEnRuta } from '../hooks/useEnRuta'
 import type { Tramo, TramoTipo } from '@/types/domain.types'
 
 // Shape de los forms de este tab. Todos los campos en string porque los
@@ -48,6 +49,18 @@ export function ViajesTab() {
   const { data: depositos = [] } = useDepositos()
   const { data: rutas     = [] } = useRutas()
   const { data: empresas  = [] } = useEmpresas()
+  // Distancia + ETA al destino para tramos cargados en curso (Google Maps).
+  // El hook devuelve [] si el endpoint falla — no rompe el render.
+  const { data: enRuta    = [] } = useTramosEnRuta()
+  const enRutaPorTramo = useMemo(() => {
+    const m = new Map<number, { distancia_m: number | null; duracion_s: number | null; duracion_traffic_s: number | null }>()
+    for (const r of enRuta) m.set(r.tramo_id, {
+      distancia_m: r.distancia_m,
+      duracion_s: r.duracion_s,
+      duracion_traffic_s: r.duracion_traffic_s,
+    })
+    return m
+  }, [enRuta])
 
   const { mutate: createTramo,  mutateAsync: createTramoAsync, isPending: creating } = useCreateTramo()
   const { mutate: updateTramo,  isPending: updating    } = useUpdateTramo()
@@ -597,6 +610,22 @@ export function ViajesTab() {
                         {km && <span className="ml-2 font-mono">({km.toLocaleString('es-AR')} km)</span>}
                       </div>
                     )}
+                    {/* Distancia restante GPS→destino (solo cargado en curso). */}
+                    {esCargado && tramo.estado === 'en_curso' && (() => {
+                      const er = enRutaPorTramo.get(tramo.id)
+                      if (!er) return null
+                      if (er.distancia_m == null) return null
+                      const km = Math.round(er.distancia_m / 1000)
+                      const segs = er.duracion_traffic_s ?? er.duracion_s
+                      const eta = segs == null ? '' :
+                        segs < 3600 ? ` · ~${Math.round(segs / 60)} min` :
+                        ` · ~${Math.floor(segs / 3600)}h ${Math.round((segs % 3600) / 60)}min`
+                      return (
+                        <div className="mt-1 inline-flex items-center gap-1 text-[11px] font-bold bg-azul-light text-azul-mid px-2 py-0.5 rounded-full">
+                          🛰 Faltan {km.toLocaleString('es-AR')} km{eta}
+                        </div>
+                      )
+                    })()}
                   </div>
                   <div className="flex gap-1 items-center">
                     {(canMoveUp || canMoveDown) && (
