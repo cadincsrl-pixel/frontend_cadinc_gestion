@@ -298,7 +298,7 @@ export function ModalImportarGastos({ open, onClose, categorias, choferes, camio
 
   const [filas,     setFilas]     = useState<Fila[] | null>(null)
   const [guardando, setGuardando] = useState(false)
-  const [resultado, setResultado] = useState<{ creados: number; errores: number } | null>(null)
+  const [resultado, setResultado] = useState<{ creados: number; errores: number; mensajes: string[] } | null>(null)
 
   function parsear(file: File) {
     const reader = new FileReader()
@@ -462,7 +462,10 @@ export function ModalImportarGastos({ open, onClose, categorias, choferes, camio
 
     setGuardando(true)
     let creados = 0, errores = 0
-    for (const f of validas) {
+    // Mensajes únicos para mostrar al user; varias filas suelen fallar por
+    // el mismo motivo, así que deduplicamos para no inundar la UI.
+    const mensajesSet = new Set<string>()
+    for (const [idx, f] of validas.entries()) {
       try {
         // Construye carga_combustible solo cuando aplique (backend valida
         // la combinación categoría=combustible ↔ presencia de carga).
@@ -493,13 +496,26 @@ export function ModalImportarGastos({ open, onClose, categorias, choferes, camio
           carga_combustible: cargaCombustible,
         } as any)
         creados++
-      } catch (err) {
+      } catch (err: any) {
         console.error('[import-gastos] fila fallida', f, err)
         errores++
+        // El cliente HTTP tira Error con .message tipo `[POST /api/...] 400 {"error":"..."}`.
+        // Sacamos lo más informativo posible: el JSON parseado, el text, o el message crudo.
+        let detalle = String(err?.message ?? err ?? 'desconocido')
+        try {
+          const m = detalle.match(/\{[\s\S]*\}$/)
+          if (m) {
+            const json = JSON.parse(m[0])
+            const motivo = json?.error ?? json?.message ?? null
+            const sub    = json?.detail?.message ?? json?.detail ?? null
+            if (motivo) detalle = sub ? `${motivo}: ${typeof sub === 'string' ? sub : JSON.stringify(sub)}` : String(motivo)
+          }
+        } catch { /* mantenemos el message crudo */ }
+        mensajesSet.add(`Fila #${idx + 1} — ${detalle}`)
       }
     }
     setGuardando(false)
-    setResultado({ creados, errores })
+    setResultado({ creados, errores, mensajes: [...mensajesSet].slice(0, 8) })
   }
 
   function handleClose() {
@@ -533,13 +549,27 @@ export function ModalImportarGastos({ open, onClose, categorias, choferes, camio
       <div className="flex flex-col gap-4">
 
         {resultado && (
-          <div className="bg-verde-light border border-verde/30 rounded-xl p-4 text-center">
-            <div className="text-verde font-bold text-lg">✓ Importación completada</div>
-            <div className="text-sm text-carbon mt-1">
+          <div className={`rounded-xl p-4 ${resultado.errores > 0 && resultado.creados === 0 ? 'bg-rojo-light border border-rojo/30' : 'bg-verde-light border border-verde/30'}`}>
+            <div className={`font-bold text-lg text-center ${resultado.errores > 0 && resultado.creados === 0 ? 'text-rojo' : 'text-verde'}`}>
+              {resultado.creados === 0 && resultado.errores > 0 ? '✕ La importación falló' : '✓ Importación completada'}
+            </div>
+            <div className="text-sm text-carbon mt-1 text-center">
               {resultado.creados} gasto{resultado.creados !== 1 ? 's' : ''} creado{resultado.creados !== 1 ? 's' : ''}
               {resultado.errores > 0 && <> · <span className="text-rojo font-bold">{resultado.errores} fallidos</span></>}
             </div>
-            <p className="text-xs text-gris-dark mt-2">
+            {resultado.mensajes.length > 0 && (
+              <div className="mt-3 bg-white/60 rounded-lg p-2 text-left">
+                <div className="text-[10px] font-bold text-gris-dark uppercase tracking-wide mb-1">
+                  Motivos del rechazo (primeros {resultado.mensajes.length}):
+                </div>
+                <ul className="flex flex-col gap-0.5 text-[11px] text-rojo font-mono">
+                  {resultado.mensajes.map((m, i) => (
+                    <li key={i} className="break-all">• {m}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <p className="text-xs text-gris-dark mt-2 text-center">
               Si sos admin, los gastos quedan aprobados automáticamente. Si no,
               entran en estado <b>pendiente</b> y otro usuario debe aprobarlos.
             </p>
