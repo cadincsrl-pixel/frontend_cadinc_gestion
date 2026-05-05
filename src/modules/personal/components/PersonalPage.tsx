@@ -7,6 +7,7 @@ import * as XLSX from 'xlsx'
 import { apiGet } from '@/lib/api/client'
 import { usePersonal, useUpdatePersonal } from '@/modules/tarja/hooks/usePersonal'
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
+import { useObras } from '@/modules/tarja/hooks/useObras'
 import { toISO, getViernes } from '@/lib/utils/dates'
 import type { Hora } from '@/types/domain.types'
 import { useContratistas, useCreateContratista, useUpdateContratista, useDeleteContratista } from '@/modules/tarja/hooks/useContratistas'
@@ -60,6 +61,41 @@ export function PersonalPage() {
       .filter(h => toISO(getViernes(new Date(h.fecha + 'T12:00:00'))) >= semCorte3)
       .map(h => h.leg)
   ), [todasHoras, semCorte3])
+
+  // Última obra (o las dos últimas) en las que cada trabajador tuvo horas.
+  // Se calcula con la SEMANA viernes→jueves más reciente del trabajador,
+  // así si en esa semana laburó en 2 obras, aparecen las dos. CLAUDE.md
+  // §5.3 deja claro que las semanas en CADINC son viernes-jueves.
+  const ultimasObrasPorLeg = useMemo(() => {
+    // 1) última fecha por leg
+    const ultimaFechaPorLeg = new Map<string, string>()
+    for (const h of todasHoras) {
+      const prev = ultimaFechaPorLeg.get(h.leg)
+      if (!prev || h.fecha > prev) ultimaFechaPorLeg.set(h.leg, h.fecha)
+    }
+    // 2) semana viernes (sem_key) de cada leg
+    const semPorLeg = new Map<string, string>()
+    for (const [leg, fecha] of ultimaFechaPorLeg) {
+      semPorLeg.set(leg, toISO(getViernes(new Date(fecha + 'T12:00:00'))))
+    }
+    // 3) obras distintas por leg en su semana más reciente
+    const out = new Map<string, string[]>()
+    for (const h of todasHoras) {
+      const sem = toISO(getViernes(new Date(h.fecha + 'T12:00:00')))
+      if (sem !== semPorLeg.get(h.leg)) continue
+      const arr = out.get(h.leg) ?? []
+      if (!arr.includes(h.obra_cod)) arr.push(h.obra_cod)
+      out.set(h.leg, arr)
+    }
+    return out
+  }, [todasHoras])
+
+  const { data: obras = [] } = useObras()
+  const obraNombrePorCod = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const o of obras) m.set(o.cod, o.nom)
+    return m
+  }, [obras])
 
   function esActivo(p: (typeof personal)[0]): boolean {
     if (p.activo_override === true)  return true
@@ -340,13 +376,14 @@ export function PersonalPage() {
               <table className="w-full border-collapse">
                 <thead>
                   <tr>
-                    {['Leg.', 'Apellido y Nombre', 'DNI', 'Condición', 'Categoría', 'Teléfono', 'Dirección', ''].map(h => (
+                    {['Leg.', 'Apellido y Nombre', 'DNI', 'Condición', 'Categoría', 'Última obra', 'Teléfono', 'Dirección', ''].map(h => (
                       <th
                         key={h}
                         className={`
                           bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide
                           ${h === 'DNI' || h === 'Condición' || h === 'Teléfono' ? 'hidden md:table-cell' : ''}
                           ${h === 'Dirección' ? 'hidden lg:table-cell' : ''}
+                          ${h === 'Última obra' ? 'hidden md:table-cell' : ''}
                         `}
                       >
                         {h}
@@ -357,7 +394,7 @@ export function PersonalPage() {
                 <tbody>
                   {loadingPersonal ? (
                     <tr>
-                      <td colSpan={8} className="text-center py-8">
+                      <td colSpan={9} className="text-center py-8">
                         <span className="inline-flex items-center gap-2 text-gris-dark text-sm">
                           <span className="w-4 h-4 border-2 border-naranja border-t-transparent rounded-full animate-spin" />
                           Cargando...
@@ -366,7 +403,7 @@ export function PersonalPage() {
                     </tr>
                   ) : filtrados.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="text-center py-8 text-gris-dark text-sm">
+                      <td colSpan={9} className="text-center py-8 text-gris-dark text-sm">
                         {busqueda ? 'No se encontraron resultados' : 'No hay trabajadores registrados'}
                       </td>
                     </tr>
@@ -421,6 +458,24 @@ export function PersonalPage() {
                                 <option key={c.id} value={c.id}>{c.nom}</option>
                               ))}
                             </select>
+                          </td>
+                          <td className="text-xs px-4 py-3 hidden md:table-cell">
+                            {(() => {
+                              const codigos = ultimasObrasPorLeg.get(p.leg) ?? []
+                              if (codigos.length === 0) return <span className="text-gris-mid">—</span>
+                              return (
+                                <div className="flex flex-col gap-0.5">
+                                  {codigos.slice(0, 2).map(cod => (
+                                    <span key={cod} className="font-semibold text-carbon truncate" title={obraNombrePorCod.get(cod) ?? cod}>
+                                      {obraNombrePorCod.get(cod) ?? cod}
+                                    </span>
+                                  ))}
+                                  {codigos.length > 2 && (
+                                    <span className="text-[10px] text-gris-dark">+ {codigos.length - 2} más</span>
+                                  )}
+                                </div>
+                              )
+                            })()}
                           </td>
                           <td className="text-sm text-gris-dark px-4 py-3 hidden md:table-cell">
                             {p.tel || '—'}
