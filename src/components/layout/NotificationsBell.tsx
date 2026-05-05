@@ -259,8 +259,8 @@ function ServiceRow({ item, onClick }: { item: ServiceCamionItem; onClick: () =>
   const vencido = item.estado === 'vencido'
   const km = item.km_restantes
   const detalle = vencido
-    ? `Service vencido hace ${Math.abs(km).toLocaleString('es-AR')} km`
-    : `Service en ${km.toLocaleString('es-AR')} km`
+    ? `Service vencido hace ${Math.round(Math.abs(km)).toLocaleString('es-AR')} km`
+    : `Service en ${Math.round(km).toLocaleString('es-AR')} km`
   return (
     <button
       onClick={onClick}
@@ -273,7 +273,7 @@ function ServiceRow({ item, onClick }: { item: ServiceCamionItem; onClick: () =>
         </span>
       </div>
       <div className="text-[11px] text-gris-dark mt-0.5">
-        Km actuales: {item.km_actuales.toLocaleString('es-AR')} · próx. {item.km_proximo_service.toLocaleString('es-AR')}
+        Km actuales: {Math.round(item.km_actuales).toLocaleString('es-AR')} · próx. {Math.round(item.km_proximo_service).toLocaleString('es-AR')}
       </div>
     </button>
   )

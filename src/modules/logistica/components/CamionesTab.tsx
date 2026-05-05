@@ -159,7 +159,7 @@ export function CamionesTab() {
                 </td>
                 <td className="px-4 py-3 font-mono text-xs text-gris-dark">{c.anio || '—'}</td>
                 <td className="px-4 py-3 font-mono text-xs">
-                  {km > 0 ? `${km.toLocaleString('es-AR')} km` : <span className="text-gris-mid">—</span>}
+                  {km > 0 ? `${Math.round(km).toLocaleString('es-AR')} km` : <span className="text-gris-mid">—</span>}
                 </td>
                 <td className="px-4 py-3 font-mono text-xs">
                   <KmFaltantes estado={est} />
@@ -215,7 +215,7 @@ export function CamionesTab() {
                   </div>
                 )}
                 <div className="text-[11px] text-gris-dark mt-1 font-mono flex flex-wrap gap-x-2 gap-y-0.5">
-                  <span>📏 {km > 0 ? `${km.toLocaleString('es-AR')} km` : '—'}</span>
+                  <span>📏 {km > 0 ? `${Math.round(km).toLocaleString('es-AR')} km` : '—'}</span>
                   <KmFaltantes estado={est} />
                 </div>
               </div>
@@ -308,7 +308,7 @@ function ServiceBadge({ estado }: { estado?: CamionServiceEstado }) {
   const atraso = Math.abs(km)
   return (
     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide bg-rojo-light text-rojo">
-      🔴 Service vencido {atraso > 0 ? `(${atraso.toLocaleString('es-AR')} km)` : ''}
+      🔴 Service vencido {atraso > 0 ? `(${Math.round(atraso).toLocaleString('es-AR')} km)` : ''}
     </span>
   )
 }
@@ -321,11 +321,11 @@ function KmFaltantes({ estado }: { estado?: CamionServiceEstado }) {
   if (estado.km_restantes == null) return <span className="text-gris-mid">—</span>
   const km = estado.km_restantes
   if (estado.estado === 'vencido') {
-    return <span className="text-rojo font-bold">vencido hace {Math.abs(km).toLocaleString('es-AR')} km</span>
+    return <span className="text-rojo font-bold">vencido hace {Math.round(Math.abs(km)).toLocaleString('es-AR')} km</span>
   }
   if (estado.estado === 'proximo') {
-    return <span className="text-[#7A5500] font-bold">faltan {km.toLocaleString('es-AR')} km</span>
+    return <span className="text-[#7A5500] font-bold">faltan {Math.round(km).toLocaleString('es-AR')} km</span>
   }
   // al_dia
-  return <span className="text-verde">faltan {km.toLocaleString('es-AR')} km</span>
+  return <span className="text-verde">faltan {Math.round(km).toLocaleString('es-AR')} km</span>
 }

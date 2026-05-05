@@ -180,7 +180,7 @@ export function GpsCamionSection({ camion }: Props) {
           {camion.km_actualizado_en && (
             <div className="bg-white border border-gris rounded-card p-2.5 flex flex-col gap-0.5">
               <div className="text-[10px] text-gris-dark uppercase tracking-wide font-bold">Km actualizados</div>
-              <div className="font-mono">{Number(camion.km_actuales).toLocaleString('es-AR')} km</div>
+              <div className="font-mono">{Math.round(Number(camion.km_actuales)).toLocaleString('es-AR')} km</div>
               <div className="text-gris-mid text-[11px]">{fmtHace(camion.km_actualizado_en)}</div>
             </div>
           )}
