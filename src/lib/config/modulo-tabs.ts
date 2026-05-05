@@ -21,6 +21,7 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
   ],
   logistica: [
     { key: 'viajes',        label: 'Tramos',        icon: '🚛' },
+    { key: 'en-ruta',       label: 'En ruta',       icon: '🛰' },
     { key: 'liquidaciones', label: 'Liquidaciones', icon: '💰' },
     { key: 'facturacion',   label: 'Facturación',   icon: '🧾' },
     { key: 'choferes',      label: 'Choferes',      icon: '👷' },
