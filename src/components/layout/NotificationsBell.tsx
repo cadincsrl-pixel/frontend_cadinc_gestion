@@ -11,6 +11,7 @@ import {
   type DocVencimientoItem,
   type DocChoferVencimientoItem,
   type ServiceCamionItem,
+  type GastoPendienteItem,
 } from '@/hooks/useNotificaciones'
 
 /**
@@ -32,6 +33,7 @@ export function NotificationsBell() {
     papelesVencidos, papelesPorVencer,
     papelesChoferVencidos, papelesChoferPorVencer,
     serviciosVencidos, serviciosProximos,
+    gastosPendientes,
     totalUrgente,
   } = useNotificaciones()
   const [abierto, setAbierto] = useState(false)
@@ -77,6 +79,13 @@ export function NotificationsBell() {
     setAbierto(false)
     // Igual que con vehículos: no hay deep-link al modal del camión.
     router.push('/logistica?tab=camiones')
+  }
+
+  function abrirGastoPendiente(_id: number) {
+    setAbierto(false)
+    // El tab Gastos arranca en "Lista". El user filtra por estado=pendiente
+    // desde el filtro del tab. No hay deep-link al gasto puntual hoy.
+    router.push('/logistica?tab=gastos&estado=pendiente')
   }
 
   return (
@@ -146,6 +155,23 @@ export function NotificationsBell() {
                     onClick={() => abrirCamionService(s.camion_id)}
                   />
                 ))}
+              </Section>
+            )}
+
+            {/* Gastos pendientes de aprobación */}
+            {gastosPendientes.length > 0 && (
+              <Section titulo={`💸 Gastos pendientes de aprobar (${gastosPendientes.length})`} tono="rojo">
+                {gastosPendientes.slice(0, 8).map(g => (
+                  <GastoPendienteRow key={g.id} item={g} onClick={() => abrirGastoPendiente(g.id)} />
+                ))}
+                {gastosPendientes.length > 8 && (
+                  <button
+                    onClick={() => abrirGastoPendiente(0)}
+                    className="w-full text-center px-3 py-2 text-[11px] text-azul hover:underline"
+                  >
+                    Ver los {gastosPendientes.length - 8} restantes →
+                  </button>
+                )}
               </Section>
             )}
 
@@ -274,6 +300,38 @@ function ServiceRow({ item, onClick }: { item: ServiceCamionItem; onClick: () =>
       </div>
       <div className="text-[11px] text-gris-dark mt-0.5">
         Km actuales: {Math.round(item.km_actuales).toLocaleString('es-AR')} · próx. {Math.round(item.km_proximo_service).toLocaleString('es-AR')}
+      </div>
+    </button>
+  )
+}
+
+function GastoPendienteRow({ item, onClick }: { item: GastoPendienteItem; onClick: () => void }) {
+  const fechaFmt = item.fecha.split('-').reverse().join('/')
+  const lugar = item.patente
+    ? `🚚 ${item.patente}`
+    : item.chofer_nombre
+      ? `👷 ${item.chofer_nombre}`
+      : null
+  return (
+    <button
+      onClick={onClick}
+      className="w-full text-left px-3 py-2 hover:bg-gris/40 transition-colors"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="font-bold text-sm text-azul truncate">
+          {item.categoria_nombre ?? 'Gasto'}
+          {item.proveedor && <span className="ml-1 text-xs font-semibold text-gris-dark">· {item.proveedor}</span>}
+        </div>
+        <div className="font-mono font-bold text-sm text-rojo shrink-0">
+          $ {item.monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+        </div>
+      </div>
+      <div className="text-xs text-gris-dark mt-0.5 flex items-center gap-2 flex-wrap">
+        <span>{fechaFmt}</span>
+        {lugar && <span>· {lugar}</span>}
+        {item.descripcion && (
+          <span className="text-gris-mid italic truncate">· {item.descripcion}</span>
+        )}
       </div>
     </button>
   )

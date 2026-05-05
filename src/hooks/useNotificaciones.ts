@@ -50,6 +50,18 @@ export interface ServiceCamionItem {
   estado:             'proximo' | 'vencido'
 }
 
+// Gasto de logística pendiente de aprobación.
+export interface GastoPendienteItem {
+  id:              number
+  fecha:           string
+  monto:           number
+  descripcion:     string | null
+  proveedor:       string | null
+  categoria_nombre: string | null
+  chofer_nombre:   string | null
+  patente:         string | null
+}
+
 interface NotificacionesResult {
   // Cumpleañeros del día (count → badge rojo).
   hoy:                 CumpleanieroItem[]
@@ -67,6 +79,8 @@ interface NotificacionesResult {
   serviciosVencidos:      ServiceCamionItem[]
   // Services de camiones próximos (≤ umbral configurado en la vista SQL).
   serviciosProximos:      ServiceCamionItem[]
+  // Gastos de logística esperando aprobación (cualquier antigüedad).
+  gastosPendientes:    GastoPendienteItem[]
   // total de notificaciones "urgentes" (badge rojo).
   totalUrgente:        number
 }
@@ -146,6 +160,21 @@ export function useNotificaciones(): NotificacionesResult {
     queryFn:  () => apiGet<ServiceCamionItem[]>('/api/logistica/notificaciones/camion-services'),
     retry: false,
     staleTime: 5 * 60 * 1000,
+  })
+  // Gastos pendientes — usamos el listado paginado de gastos con filtro
+  // de estado. Limit 50 para que la campana muestre los más recientes.
+  const { data: gastosPend } = useQuery({
+    queryKey: ['logistica', 'notificaciones', 'gastos-pendientes'],
+    queryFn:  () => apiGet<{
+      items: Array<{
+        id: number; fecha: string; monto: number; descripcion: string | null;
+        proveedor: string | null; categoria?: { nombre: string } | null;
+        chofer?: { nombre: string } | null; camion?: { patente: string } | null;
+      }>
+      total: number
+    }>('/api/logistica/gastos?estado=pendiente&limit=50'),
+    retry: false,
+    staleTime: 60 * 1000, // 1 min — más fresco que los otros porque cambia más
   })
 
   return useMemo(() => {
@@ -236,6 +265,18 @@ export function useNotificaciones(): NotificacionesResult {
       else if (row.estado === 'proximo') serviciosProximos.push(row)
     }
 
+    // ── Gastos pendientes de aprobación ──────────────────────────
+    const gastosPendientes: GastoPendienteItem[] = (gastosPend?.items ?? []).map(g => ({
+      id:               g.id,
+      fecha:            g.fecha,
+      monto:            Number(g.monto),
+      descripcion:      g.descripcion,
+      proveedor:        g.proveedor,
+      categoria_nombre: g.categoria?.nombre ?? null,
+      chofer_nombre:    g.chofer?.nombre ?? null,
+      patente:          g.camion?.patente ?? null,
+    }))
+
     return {
       hoy,
       proximos,
@@ -245,13 +286,15 @@ export function useNotificaciones(): NotificacionesResult {
       papelesChoferPorVencer,
       serviciosVencidos,
       serviciosProximos,
+      gastosPendientes,
       totalUrgente:
         hoy.length +
         papelesVencidos.length +
         papelesChoferVencidos.length +
-        serviciosVencidos.length,
+        serviciosVencidos.length +
+        gastosPendientes.length,
     }
-  }, [personal, docsVenc, docsChofer, servicesNotif])
+  }, [personal, docsVenc, docsChofer, servicesNotif, gastosPend])
 }
 
 // Helper para mostrar "hoy", "mañana", "en 3 días" en la lista de próximos.

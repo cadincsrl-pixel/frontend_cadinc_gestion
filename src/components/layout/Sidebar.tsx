@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useObras }        from '@/modules/tarja/hooks/useObras'
 import { useSessionStore } from '@/store/session.store'
 import { useTabsPermitidos } from '@/hooks/useTabsPermitidos'
+import { useNotificaciones } from '@/hooks/useNotificaciones'
 
 interface SidebarProps {
   open?: boolean
@@ -138,10 +139,15 @@ const HERR_SUBNAV = [
 ]
 
 function LogisticaNav({ navigate, activeTab, allowedTabs }: { navigate: (href: string) => void; activeTab: string; allowedTabs?: string[] }) {
+  // Badge para "Gastos" cuando hay pendientes de aprobación.
+  const { gastosPendientes } = useNotificaciones()
+  const pendientesCount = gastosPendientes.length
+
   return (
     <>
       {NAV_ITEMS_LOGISTICA.filter(item => !allowedTabs || allowedTabs.includes(item.tab)).map(item => {
         const isActive = activeTab === item.tab
+        const showBadge = item.tab === 'gastos' && pendientesCount > 0
         return (
           <button
             key={item.tab}
@@ -158,7 +164,17 @@ function LogisticaNav({ navigate, activeTab, allowedTabs }: { navigate: (href: s
           >
             <span className="text-base w-5 text-center flex-shrink-0">{item.icon}</span>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-bold truncate">{item.label}</div>
+              <div className="text-sm font-bold truncate flex items-center gap-1.5">
+                {item.label}
+                {showBadge && (
+                  <span
+                    title={`${pendientesCount} gasto${pendientesCount !== 1 ? 's' : ''} pendiente${pendientesCount !== 1 ? 's' : ''} de aprobar`}
+                    className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold bg-rojo text-white"
+                  >
+                    {pendientesCount}
+                  </span>
+                )}
+              </div>
               <div className="text-[11px] opacity-60 font-normal">{item.meta}</div>
             </div>
           </button>
