@@ -37,8 +37,11 @@ function LogisticaContent() {
   const { data: choferes = [] } = useChoferes()
   const { data: camiones = [] } = useCamiones()
 
-  const cargas    = tramos.filter((t: any) => t.tipo === 'carga').length
-  const descargas = tramos.filter((t: any) => t.tipo === 'descarga').length
+  // Pulso en vivo: cuántos camiones están rodando AHORA con/sin carga.
+  // Solo contamos `en_curso` — los completados ya cerraron y no aportan
+  // al estado actual de la flota.
+  const cargados = tramos.filter((t: any) => t.tipo === 'cargado' && t.estado === 'en_curso').length
+  const vacios   = tramos.filter((t: any) => t.tipo === 'vacio'   && t.estado === 'en_curso').length
 
   return (
     <div className="p-4 md:p-6 flex flex-col gap-4">
@@ -60,8 +63,8 @@ function LogisticaContent() {
         </div>
         {tab === 'viajes' && (
           <div className="flex gap-3 mt-3 flex-wrap">
-            <Stat value={cargas}    label="Cargas"    color="orange" />
-            <Stat value={descargas} label="Descargas" color="green"  />
+            <Stat value={cargados} label="Cargados ahora" color="orange" />
+            <Stat value={vacios}   label="Vacíos ahora"   color="green"  />
             <Stat value={choferes.filter(c => c.estado === 'activo').length} label="Choferes activos" color="blue" />
             <Stat value={camiones.filter(c => c.estado === 'activo').length} label="Camiones activos" color="blue" />
           </div>
