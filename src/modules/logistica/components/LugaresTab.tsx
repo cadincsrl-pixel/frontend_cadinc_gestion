@@ -28,6 +28,7 @@ export function LugaresTab() {
   const [modalRuta,     setModalRuta]     = useState(false)
   const [editCantera,   setEditCantera]   = useState<Cantera | null>(null)
   const [editDeposito,  setEditDeposito]  = useState<Deposito | null>(null)
+  const [editRuta,      setEditRuta]      = useState<{ id: number; cantera: string; deposito: string } | null>(null)
   const [loading, setLoading] = useState(false)
 
   const formCantera    = useForm<any>()
@@ -35,6 +36,7 @@ export function LugaresTab() {
   const formRuta       = useForm<any>()
   const formEditCant   = useForm<any>()
   const formEditDep    = useForm<any>()
+  const formEditRuta   = useForm<any>()
 
   async function handleCreateCantera(data: any) {
     setLoading(true)
@@ -108,6 +110,33 @@ export function LugaresTab() {
       qc.invalidateQueries({ queryKey: LOG_KEYS.rutas })
       toast('✓ Ruta eliminada', 'ok')
     } catch { toast('Error al eliminar', 'err') }
+  }
+
+  async function handleUpdateRuta(data: any) {
+    if (!editRuta) return
+    setLoading(true)
+    try {
+      await apiPatch(`/api/logistica/lugares/rutas/${editRuta.id}`, {
+        km_ida_vuelta: Number(data.km_ida_vuelta),
+        obs: data.obs ?? '',
+      })
+      qc.invalidateQueries({ queryKey: LOG_KEYS.rutas })
+      toast('✓ Ruta actualizada', 'ok')
+      setEditRuta(null)
+    } catch { toast('Error al actualizar', 'err') }
+    setLoading(false)
+  }
+
+  function openEditRuta(r: any) {
+    formEditRuta.reset({
+      km_ida_vuelta: r.km_ida_vuelta ?? '',
+      obs:           r.obs ?? '',
+    })
+    setEditRuta({
+      id:       r.id,
+      cantera:  r.canteras?.nombre ?? `Cantera #${r.cantera_id}`,
+      deposito: r.depositos?.nombre ?? `Depósito #${r.deposito_id}`,
+    })
   }
 
   function openEditCantera(c: Cantera) {
@@ -194,12 +223,22 @@ export function LugaresTab() {
                   </span>
                 </div>
               </div>
-              <button
-                onClick={() => handleDeleteRuta(r.id)}
-                className="text-gris-mid hover:text-rojo transition-colors text-sm px-2 py-1 shrink-0"
-              >
-                ✕
-              </button>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  onClick={() => openEditRuta(r)}
+                  title="Editar km / observaciones"
+                  className="text-gris-dark hover:text-azul transition-colors text-sm px-2 py-1"
+                >
+                  ✏️
+                </button>
+                <button
+                  onClick={() => handleDeleteRuta(r.id)}
+                  title="Eliminar ruta"
+                  className="text-gris-mid hover:text-rojo transition-colors text-sm px-2 py-1"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
           )}
         />
@@ -278,6 +317,41 @@ export function LugaresTab() {
             {...formRuta.register('km_ida_vuelta')}
           />
           <Input label="Observaciones" placeholder="Opcional" {...formRuta.register('obs')} />
+        </div>
+      </Modal>
+
+      {/* Modal editar ruta — sólo km e observaciones; el par cantera/depósito
+          es la identidad y no se cambia. */}
+      <Modal
+        open={!!editRuta}
+        onClose={() => setEditRuta(null)}
+        title="✏️ EDITAR RUTA"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setEditRuta(null)}>Cancelar</Button>
+            <Button variant="primary" loading={loading} onClick={formEditRuta.handleSubmit(handleUpdateRuta)}>✓ Guardar</Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          {editRuta && (
+            <div className="bg-gris/30 rounded-card p-3 text-sm">
+              <span className="font-bold">{editRuta.cantera}</span>
+              <span className="text-gris-dark mx-2">→</span>
+              <span className="font-bold">{editRuta.deposito}</span>
+              <p className="text-[11px] text-gris-dark mt-1">
+                Para cambiar el origen o destino, eliminá esta ruta y creá una nueva.
+              </p>
+            </div>
+          )}
+          <Input
+            label="Km ida y vuelta (total)"
+            type="number"
+            placeholder="Ej: 1840"
+            hint="Buscá la ruta en Google Maps y sumá ida + vuelta"
+            {...formEditRuta.register('km_ida_vuelta')}
+          />
+          <Input label="Observaciones" placeholder="Opcional" {...formEditRuta.register('obs')} />
         </div>
       </Modal>
     </div>
