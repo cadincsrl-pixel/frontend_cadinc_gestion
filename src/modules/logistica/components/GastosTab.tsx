@@ -56,7 +56,14 @@ export function GastosTab() {
   const esAdmin = useSessionStore(s => s.profile?.rol === 'admin')
 
   // ── Filtros ─────────────────────────────────────────────────
-  const [filters, setFilters] = useState<GastosFilters>({ limit: 100, offset: 0 })
+  // Default: mes en curso (1ro del mes actual hasta hoy). El user puede
+  // limpiar las fechas a mano si quiere ver el histórico completo.
+  const [filters, setFilters] = useState<GastosFilters>(() => {
+    const hoy = new Date()
+    const primerDia = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
+    const iso = (d: Date) => d.toISOString().slice(0, 10)
+    return { limit: 100, offset: 0, desde: iso(primerDia), hasta: iso(hoy) }
+  })
   function setFilter<K extends keyof GastosFilters>(k: K, v: GastosFilters[K]) {
     setFilters(f => ({ ...f, [k]: v, offset: 0 }))
   }
