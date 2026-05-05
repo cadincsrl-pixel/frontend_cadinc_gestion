@@ -3,9 +3,12 @@
 import { useState, useMemo } from 'react'
 import {
   useGastosResumen, useGastosPorCamion, useGastosPorChofer, useGastosPorCategoria,
+  useTramos, useCobros, useTarifasEmpresa, useCamiones, useChoferes,
 } from '../hooks/useLogistica'
+import { calcularPerformance } from '@/lib/utils/performance'
 import { Button } from '@/components/ui/Button'
 import { Input }  from '@/components/ui/Input'
+import type { Camion, Chofer } from '@/types/domain.types'
 
 const fmt$ = (n: number | string) => `$ ${Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const fmtInt = (n: number | string) => Number(n).toLocaleString('es-AR')
@@ -45,6 +48,50 @@ export function GastosReportes() {
   const { data: porChofer,   isLoading: lch } = useGastosPorChofer(desde, hasta, enabled)
   const { data: porCat,      isLoading: lca } = useGastosPorCategoria(desde, hasta, enabled)
 
+  // ── Cruce con facturación ───────────────────────────────────────
+  // Traemos tramos+cobros+tarifas+catálogos y cruzamos cliente-side.
+  // No hay endpoint dedicado; reusamos lo existente.
+  const { data: tramos   = [] }  = useTramos()
+  const { data: cobros   = [] }  = useCobros()
+  const { data: tarifas  = [] }  = useTarifasEmpresa()
+  const { data: camiones = [] }  = useCamiones()
+  const { data: choferes = [] }  = useChoferes()
+
+  const performance = useMemo(
+    () => calcularPerformance(tramos, cobros, tarifas, desde, hasta),
+    [tramos, cobros, tarifas, desde, hasta],
+  )
+
+  // Mapas para mergear gastos por entidad con performance.
+  const gastosCamion = useMemo(() => {
+    const m = new Map<number, number>()
+    for (const r of porCamion ?? []) m.set(r.camion_id, r.total)
+    return m
+  }, [porCamion])
+  const gastosChofer = useMemo(() => {
+    const m = new Map<number, number>()
+    for (const r of porChofer ?? []) m.set(r.chofer_id, r.total)
+    return m
+  }, [porChofer])
+
+  // Patente / nombre por id para mostrar en las filas.
+  const camionPatente = useMemo(() => {
+    const m = new Map<number, string>()
+    for (const c of camiones as Camion[]) m.set(c.id, c.patente)
+    return m
+  }, [camiones])
+  const choferNombre = useMemo(() => {
+    const m = new Map<number, string>()
+    for (const c of choferes as Chofer[]) m.set(c.id, c.nombre)
+    return m
+  }, [choferes])
+
+  // KPIs cruzados: facturación, margen, % margen.
+  const facturacionPeriodo = performance.totales.ingresos
+  const gastosPeriodo      = resumen?.total ?? 0
+  const margenBruto        = facturacionPeriodo - gastosPeriodo
+  const pctMargen          = facturacionPeriodo > 0 ? (margenBruto / facturacionPeriodo) * 100 : null
+
   return (
     <div className="flex flex-col gap-4">
 
@@ -60,15 +107,30 @@ export function GastosReportes() {
         </div>
       </div>
 
-      {/* KPIs */}
+      {/* KPIs cruzados (facturación vs gastos) */}
       {lr ? (
         <div className="bg-white rounded-card shadow-card p-6 text-center text-gris-dark">Cargando resumen…</div>
       ) : resumen && (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Kpi label="Total del período" value={fmt$(resumen.total)} accent="azul" />
+            <Kpi label="Facturación del período" value={fmt$(facturacionPeriodo)} accent="verde" />
+            <Kpi label="Gastos del período"      value={fmt$(gastosPeriodo)}      accent="azul" />
+            <Kpi
+              label="Margen bruto"
+              value={fmt$(margenBruto)}
+              accent={margenBruto >= 0 ? 'verde' : 'naranja'}
+            />
+            <Kpi
+              label="% Margen"
+              value={pctMargen == null ? '—' : `${pctMargen.toFixed(1)}%`}
+              accent={pctMargen != null && pctMargen >= 0 ? 'verde' : 'naranja'}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Kpi label="Cantidad de gastos" value={fmtInt(resumen.count)} />
             <Kpi label="Promedio por gasto" value={fmt$(resumen.promedio)} />
+            <Kpi label="Toneladas movidas"   value={`${fmtInt(Math.round(performance.totales.toneladas))} t`} />
             <Kpi label="Reintegros pendientes" value={fmt$(resumen.reintegros_pendientes)} accent="naranja" />
           </div>
 
@@ -176,15 +238,113 @@ export function GastosReportes() {
             </table>
           )}
       </Section>
+
+      {/* Performance por camión: cruce de tramos + cobros + gastos */}
+      <Section title="Performance por camión (facturación vs gastos)">
+        {performance.por_camion.length === 0 ? (
+          <span className="text-gris-dark text-sm">
+            Sin viajes cargados completados en el rango.
+          </span>
+        ) : (
+          <PerformanceTable
+            filas={performance.por_camion}
+            label="Camión"
+            getNombre={id => camionPatente.get(id) ?? `#${id}`}
+            gastosPor={gastosCamion}
+            mono
+          />
+        )}
+      </Section>
+
+      {/* Performance por chofer */}
+      <Section title="Performance por chofer (facturación vs gastos)">
+        {performance.por_chofer.length === 0 ? (
+          <span className="text-gris-dark text-sm">
+            Sin viajes cargados completados en el rango.
+          </span>
+        ) : (
+          <PerformanceTable
+            filas={performance.por_chofer}
+            label="Chofer"
+            getNombre={id => choferNombre.get(id) ?? `#${id}`}
+            gastosPor={gastosChofer}
+          />
+        )}
+      </Section>
     </div>
+  )
+}
+
+// Tabla compartida para Performance por camión y por chofer. Calcula el
+// margen mergeando ingresos (cruce de tramos+cobros+tarifas) con gastos
+// (que vienen del endpoint /reportes/por-camion|chofer).
+function PerformanceTable({ filas, label, getNombre, gastosPor, mono }: {
+  filas:     Array<{ entidad_id: number; viajes: number; toneladas: number; ingresos: number; sin_tarifa: number; sin_cobrar: number }>
+  label:     string
+  getNombre: (id: number) => string
+  gastosPor: Map<number, number>
+  mono?:     boolean
+}) {
+  return (
+    <table className="w-full text-sm">
+      <thead className="bg-gris-light text-xs text-gris-dark uppercase">
+        <tr>
+          <th className="text-left px-3 py-2">{label}</th>
+          <th className="text-right px-3 py-2">Viajes</th>
+          <th className="text-right px-3 py-2">Toneladas</th>
+          <th className="text-right px-3 py-2">Ingresos</th>
+          <th className="text-right px-3 py-2">Gastos</th>
+          <th className="text-right px-3 py-2">Margen</th>
+          <th className="text-right px-3 py-2">$/tn</th>
+          <th className="text-left px-3 py-2">Notas</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-gris">
+        {filas.map(f => {
+          const gasto  = gastosPor.get(f.entidad_id) ?? 0
+          const margen = f.ingresos - gasto
+          const dxTn   = f.toneladas > 0 ? margen / f.toneladas : null
+          return (
+            <tr key={f.entidad_id}>
+              <td className={`px-3 py-2 ${mono ? 'font-mono font-bold' : 'font-semibold'}`}>{getNombre(f.entidad_id)}</td>
+              <td className="px-3 py-2 text-right font-mono">{fmtInt(f.viajes)}</td>
+              <td className="px-3 py-2 text-right font-mono">{fmtInt(Math.round(f.toneladas))} t</td>
+              <td className="px-3 py-2 text-right font-mono">{fmt$(f.ingresos)}</td>
+              <td className="px-3 py-2 text-right font-mono">{fmt$(gasto)}</td>
+              <td className={`px-3 py-2 text-right font-mono font-bold ${margen >= 0 ? 'text-verde' : 'text-rojo'}`}>
+                {fmt$(margen)}
+              </td>
+              <td className={`px-3 py-2 text-right font-mono ${dxTn == null ? 'text-gris-mid' : ''}`}>
+                {dxTn == null ? '—' : fmt$(dxTn)}
+              </td>
+              <td className="px-3 py-2">
+                <div className="flex flex-wrap gap-1">
+                  {f.sin_cobrar > 0 && (
+                    <span title="Tramos sin cobro registrado (ingreso teórico)" className="text-[10px] bg-amarillo-light text-[#7A5500] px-1.5 py-0.5 rounded font-bold">
+                      📦 {f.sin_cobrar} sin cobrar
+                    </span>
+                  )}
+                  {f.sin_tarifa > 0 && (
+                    <span title="Tramos sin tarifa cargada — ingreso = 0. Cargar la tarifa empresa-cantera correspondiente." className="text-[10px] bg-rojo-light text-rojo px-1.5 py-0.5 rounded font-bold">
+                      ⚠ {f.sin_tarifa} sin tarifa
+                    </span>
+                  )}
+                </div>
+              </td>
+            </tr>
+          )
+        })}
+      </tbody>
+    </table>
   )
 }
 
 // ── Subcomponentes ──────────────────────────────────────────────
 
-function Kpi({ label, value, accent }: { label: string; value: string; accent?: 'azul' | 'naranja' }) {
+function Kpi({ label, value, accent }: { label: string; value: string; accent?: 'azul' | 'naranja' | 'verde' }) {
   const accentCls = accent === 'azul'    ? 'border-azul-light text-azul-mid'
                   : accent === 'naranja' ? 'border-naranja-light text-naranja-dark'
+                  : accent === 'verde'   ? 'border-verde-light text-verde'
                   : 'border-gris-mid text-carbon'
   return (
     <div className={`bg-white rounded-card shadow-card p-3 border-l-[4px] ${accentCls}`}>
