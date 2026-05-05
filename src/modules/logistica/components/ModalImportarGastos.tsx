@@ -469,48 +469,70 @@ export function ModalImportarGastos({ open, onClose, categorias, choferes, camio
       try {
         // Construye carga_combustible solo cuando aplique (backend valida
         // la combinación categoría=combustible ↔ presencia de carga).
+        // Importante: NO mandar `carga_combustible: null` cuando no aplica
+        // — el schema zod `.optional()` acepta undefined pero rechaza null
+        // ("expected object, received null"). Por eso construimos el
+        // payload condicionalmente y omitimos la propiedad en lugar de
+        // ponerla en null.
         const cat = categorias.find(c => c.id === f.categoria_id)
         const esCombustible = cat?.codigo === 'combustible'
-        const cargaCombustible = esCombustible
-          ? {
-              litros:           f.litros!,
-              odometro_km:      f.odometro,
-              tipo_combustible: f.tipo_combustible,
-              tanque_lleno:     f.tanque_lleno,
-              obs:              f.obs_combustible,
-            }
-          : null
 
-        await crear({
+        const payload: Record<string, unknown> = {
           categoria_id:    f.categoria_id!,
           fecha:           f.fecha,
           monto:           f.monto,
           camion_id:       f.camion_id,
           chofer_id:       f.chofer_id,
           proveedor:       f.proveedor || null,
-          metodo_pago:     f.metodo_pago as any,
-          pagado_por:      f.pagado_por as any,
+          metodo_pago:     f.metodo_pago,
+          pagado_por:      f.pagado_por,
           comprobante_nro: f.comprobante_nro,
           descripcion:     f.descripcion,
           obs:             f.obs,
-          carga_combustible: cargaCombustible,
-        } as any)
+        }
+        if (esCombustible) {
+          payload.carga_combustible = {
+            litros:           f.litros!,
+            odometro_km:      f.odometro,
+            tipo_combustible: f.tipo_combustible,
+            tanque_lleno:     f.tanque_lleno,
+            obs:              f.obs_combustible,
+          }
+        }
+
+        await crear(payload as any)
         creados++
       } catch (err: any) {
         console.error('[import-gastos] fila fallida', f, err)
         errores++
-        // El cliente HTTP tira Error con .message tipo `[POST /api/...] 400 {"error":"..."}`.
-        // Sacamos lo más informativo posible: el JSON parseado, el text, o el message crudo.
-        let detalle = String(err?.message ?? err ?? 'desconocido')
-        try {
-          const m = detalle.match(/\{[\s\S]*\}$/)
-          if (m) {
-            const json = JSON.parse(m[0])
-            const motivo = json?.error ?? json?.message ?? null
-            const sub    = json?.detail?.message ?? json?.detail ?? null
-            if (motivo) detalle = sub ? `${motivo}: ${typeof sub === 'string' ? sub : JSON.stringify(sub)}` : String(motivo)
+        // El cliente HTTP tira HttpError con .message (string) y .body
+        // (el JSON crudo). El motivo informativo casi siempre vive en
+        // body.detail, que puede ser:
+        //  - string: lo concatenamos
+        //  - array (zod issues [{path:[], message}]): los serializamos
+        //  - object con .message: usamos message
+        //  - cualquier otra cosa: JSON.stringify acotado
+        let detalle = String(err?.message ?? 'desconocido')
+        const body = err?.body
+        if (body && typeof body === 'object') {
+          const d = (body as any).detail
+          if (typeof d === 'string') {
+            detalle = `${detalle}: ${d}`
+          } else if (Array.isArray(d)) {
+            const issues = d
+              .map((it: any) => {
+                const path = Array.isArray(it?.path) ? it.path.join('.') : ''
+                const msg  = it?.message ?? JSON.stringify(it).slice(0, 60)
+                return path ? `${path}: ${msg}` : msg
+              })
+              .slice(0, 3)
+              .join(' | ')
+            detalle = `${detalle}: ${issues}`
+          } else if (d && typeof d === 'object') {
+            const m = (d as any).message
+            detalle = m ? `${detalle}: ${m}` : `${detalle}: ${JSON.stringify(d).slice(0, 120)}`
           }
-        } catch { /* mantenemos el message crudo */ }
+        }
         mensajesSet.add(`Fila #${idx + 1} — ${detalle}`)
       }
     }
