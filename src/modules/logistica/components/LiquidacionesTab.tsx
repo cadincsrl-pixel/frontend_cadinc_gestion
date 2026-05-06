@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import {
-  useLiquidaciones, useAdelantos, useChoferes, useTramos, useRutas, useCanteras, useDepositos,
+  useLiquidaciones, useAdelantos, useChoferes, useCamiones, useTramos, useRutas, useCanteras, useDepositos,
   useCreateLiquidacion, useUpdateLiquidacion, useCerrarLiquidacion, useDeleteLiquidacion,
   useCreateAdelanto, useUpdateAdelanto, useDeleteAdelanto, useUpdateChofer,
   useGastosReintegrosPendientes,
@@ -15,6 +15,7 @@ import { Combobox } from '@/components/ui/Combobox'
 import { Badge }    from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
 import { useForm }  from 'react-hook-form'
+import { generarPdfLiquidacion, type PdfLiquidacionArgs } from '@/lib/utils/liquidacion-pdf'
 import type { Chofer, Tramo, Adelanto, Ruta } from '@/types/domain.types'
 import { exportLiquidacionExcel, exportLiquidacionPDF } from '@/lib/utils/liquidacion-export'
 
@@ -58,6 +59,20 @@ function diasEntreFechas(desde: string, hasta: string): number {
 }
 
 /** Km de un tramo según la tabla de rutas (busca por cantera+deposito en cualquier orden) */
+// Devuelve la fecha "representativa" de un tramo según su tipo:
+// cargado → fecha_carga, vacio → fecha_vacio. Para filtros de rango.
+function fechaTramo(t: Tramo): string | null {
+  return (t.tipo === 'vacio' ? t.fecha_vacio : t.fecha_carga) ?? null
+}
+
+function tramoEnRango(t: Tramo, desde?: string, hasta?: string): boolean {
+  const f = fechaTramo(t)
+  if (!f) return false
+  if (desde && f < desde) return false
+  if (hasta && f > hasta) return false
+  return true
+}
+
 function kmTramo(t: Tramo, rutas: Ruta[]): number {
   if (!t.cantera_id || !t.deposito_id) return 0
   const ruta = rutas.find(r =>
@@ -72,6 +87,7 @@ export function LiquidacionesTab() {
   const { data: liquidaciones = [] } = useLiquidaciones()
   const { data: adelantos     = [] } = useAdelantos()
   const { data: choferes      = [] } = useChoferes()
+  const { data: camiones      = [] } = useCamiones()
   const { data: tramos        = [] } = useTramos()
   const { data: rutas         = [] } = useRutas()
   const { data: canteras      = [] } = useCanteras()
@@ -130,6 +146,28 @@ export function LiquidacionesTab() {
     if (choferLiq) setSelGastos(gastosReintegro.map(g => g.id))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reintegroIdsKey, choferLiq?.id])
+
+  // Auto-destildar tramos que cayeron fuera del rango Desde/Hasta. Si el
+  // user ajustó el rango para excluir tramos viejos/futuros, no querés
+  // que sigan tildados (afectaría el cálculo del neto).
+  useEffect(() => {
+    if (!choferLiq) return
+    setSelTramos(prev => {
+      // Sólo dejamos los que (a) son del chofer activo, (b) están en rango.
+      const visiblesIds = (tramos as Tramo[])
+        .filter(t => t.chofer_id === choferLiq.id && t.estado === 'completado' && !t.liquidacion_id)
+        .filter(t => tramoEnRango(t, watchDesde, watchHasta))
+        .map(t => t.id)
+      const visiblesSet = new Set(visiblesIds)
+      const filtrado = prev.filter(id => visiblesSet.has(id))
+      // Para que el comportamiento sea coherente con `abrirLiquidar` (todos
+      // pre-tildados al abrir), si el filtro deja tildados los mismos que
+      // estaban antes y la intersección quedó incompleta, no agregamos
+      // nuevos: respeta lo que el user destildó manualmente.
+      return filtrado.length === prev.length ? prev : filtrado
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchDesde, watchHasta, choferLiq?.id])
 
   // Tramos completados aún no liquidados
   const tramosPendientes    = (tramos as Tramo[]).filter(t => t.estado === 'completado' && !t.liquidacion_id)
@@ -203,7 +241,10 @@ export function LiquidacionesTab() {
     const dias_mes         = diasDelMes(desde)
     const basico_dia       = basicoMensual / dias_mes
     const dias             = diasEntreFechas(desde, hasta)
-    const tramosSelec      = tramosPendientes.filter(t => selTramos.includes(t.id))
+    // Sólo tramos del chofer activo, dentro del rango Desde/Hasta y tildados.
+    const tramosSelec      = tramosPendientes.filter(t =>
+      selTramos.includes(t.id) && tramoEnRango(t, desde, hasta),
+    )
     const subtotal_bas     = dias * basico_dia
     const km_cargados      = tramosSelec.filter(t => t.tipo === 'cargado').reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
     const km_vacios        = tramosSelec.filter(t => t.tipo === 'vacio').reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
@@ -241,6 +282,72 @@ export function LiquidacionesTab() {
       onSuccess: () => { toast('✓ Tarifas guardadas', 'ok'); setModalLiq(false); setChoferLiq(null) },
       onError:   () => toast('Error al guardar', 'err'),
     })
+  }
+
+  function handleDescargarPdfPreview(data: any) {
+    if (!choferLiq) return
+    const preview = calcularPreview()
+    const tramosDelChofer = tramosPendientes
+      .filter(t => t.chofer_id === choferLiq.id && selTramos.includes(t.id))
+      .filter(t => tramoEnRango(t, data.desde, data.hasta))
+    const camion = (camiones as any[]).find(c => c.id === choferLiq.camion_id)
+    const args: PdfLiquidacionArgs = {
+      chofer_nombre:       choferLiq.nombre,
+      chofer_cuil:         choferLiq.cuil ?? null,
+      camion_patente:      camion?.patente ?? null,
+      fecha_desde:         data.desde,
+      fecha_hasta:         data.hasta,
+      dias_trabajados:     preview.dias,
+      basico_dia:          preview.basico_dia,
+      basico_mensual:      parseFloat(data.basico_mensual) || 0,
+      km_cargados:         preview.km_cargados,
+      km_vacios:           preview.km_vacios,
+      precio_km_cargado:   preview.precio_km_cargado,
+      precio_km_vacio:     preview.precio_km_vacio,
+      subtotal_basico:     preview.subtotal_bas,
+      subtotal_km:         preview.subtotal_km,
+      total_adelantos:     preview.descuentos,
+      total_reintegros:    preview.reintegros,
+      total_neto:          preview.neto,
+      tramos: tramosDelChofer.map(t => {
+        const cantera  = (canteras  as any[]).find(c => c.id === t.cantera_id)
+        const deposito = (depositos as any[]).find(d => d.id === t.deposito_id)
+        return {
+          fecha:      t.fecha_carga ?? t.fecha_vacio ?? null,
+          tipo:       t.tipo === 'vacio' ? 'vacio' : 'cargado',
+          cantera:    cantera?.nombre ?? null,
+          deposito:   deposito?.nombre ?? null,
+          km:         kmTramo(t, rutas as Ruta[]),
+          toneladas:  t.toneladas_descarga ?? t.toneladas_carga ?? null,
+          remito:     t.remito_carga ?? t.remito_descarga ?? null,
+        }
+      }),
+      adelantos: adelantosPendientes
+        .filter(a => a.chofer_id === choferLiq.id && selAdelant.includes(a.id))
+        .map(a => ({
+          fecha:       a.fecha,
+          descripcion: a.descripcion ?? '',
+          monto:       Number(a.monto),
+        })),
+      gastos: gastosReintegro
+        .filter(g => selGastos.includes(g.id))
+        .map(g => ({
+          fecha:       g.fecha,
+          categoria:   g.categoria?.nombre ?? '—',
+          proveedor:   g.proveedor ?? null,
+          descripcion: g.descripcion ?? null,
+          monto:       Number(g.monto),
+        })),
+      estado:             'borrador',
+      numero_liquidacion: null,
+      observaciones:      data.obs ?? null,
+    }
+    try {
+      generarPdfLiquidacion(args)
+    } catch (e) {
+      console.error('[pdf-liquidacion]', e)
+      toast('Error al generar PDF', 'err')
+    }
   }
 
   function handleLiquidar(data: any) {
@@ -626,6 +733,9 @@ export function LiquidacionesTab() {
         footer={
           <>
             <Button variant="secondary" onClick={() => setModalLiq(false)}>Cancelar</Button>
+            <Button variant="ghost" onClick={formLiq.handleSubmit(handleDescargarPdfPreview)}>
+              📄 PDF parcial
+            </Button>
             <Button variant="ghost" loading={savingTarifas} onClick={formLiq.handleSubmit(handleGuardarTarifas)}>
               Guardar
             </Button>
@@ -662,14 +772,31 @@ export function LiquidacionesTab() {
               <Input label="Período hasta"  type="date" {...formLiq.register('hasta')} />
             </div>
 
-            {/* Tramos */}
-            {tramosPendientes.filter(t => t.chofer_id === choferLiq.id).length > 0 && (
-              <div>
-                <div className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-2">
-                  Tramos a liquidar
-                </div>
-                <div className="bg-gris rounded-xl p-3 max-h-40 overflow-y-auto flex flex-col gap-1">
-                  {tramosPendientes.filter(t => t.chofer_id === choferLiq.id).map(t => {
+            {/* Tramos del chofer dentro del rango Desde/Hasta */}
+            {(() => {
+              const tramosDelChofer = tramosPendientes
+                .filter(t => t.chofer_id === choferLiq.id)
+                .filter(t => tramoEnRango(t, watchDesde, watchHasta))
+              const totalDelChofer = tramosPendientes.filter(t => t.chofer_id === choferLiq.id).length
+              const ocultosPorRango = totalDelChofer - tramosDelChofer.length
+              if (totalDelChofer === 0) return null
+              return (
+                <div>
+                  <div className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-2 flex items-center justify-between">
+                    <span>Tramos a liquidar ({tramosDelChofer.length})</span>
+                    {ocultosPorRango > 0 && (
+                      <span className="text-[10px] font-normal text-gris-mid italic">
+                        {ocultosPorRango} fuera del rango
+                      </span>
+                    )}
+                  </div>
+                  <div className="bg-gris rounded-xl p-3 max-h-40 overflow-y-auto flex flex-col gap-1">
+                    {tramosDelChofer.length === 0 && (
+                      <span className="text-xs text-gris-mid italic">
+                        Ningún tramo cae en el rango Desde/Hasta. Ajustá las fechas.
+                      </span>
+                    )}
+                    {tramosDelChofer.map(t => {
                     const cantera  = (canteras as any[]).find(c => c.id === t.cantera_id)
                     const deposito = (depositos as any[]).find(d => d.id === t.deposito_id)
                     const fecha    = t.fecha_carga ?? t.fecha_vacio ?? ''
@@ -692,9 +819,10 @@ export function LiquidacionesTab() {
                       </label>
                     )
                   })}
+                  </div>
                 </div>
-              </div>
-            )}
+              )
+            })()}
 
             {/* Adelantos */}
             {adelantosPendientes.filter(a => a.chofer_id === choferLiq.id).length > 0 && (
