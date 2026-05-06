@@ -417,6 +417,9 @@ export function ViajesTab() {
         cantera_id:  canteraIdNum,
         deposito_id: proximaCarga.deposito_id,
         fecha_vacio: hoy(),
+        // Forzar en_curso para que aparezca en /maps/en-ruta con
+        // seguimiento GPS hasta llegar a la próxima cantera.
+        estado:      'en_curso',
         obs:         'Tramo vacío auto-generado al registrar descarga',
       } as any)
       toast('✓ Tramo vacío creado · seguimiento activo', 'ok')
