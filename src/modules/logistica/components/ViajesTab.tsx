@@ -73,6 +73,11 @@ export function ViajesTab() {
   const [editando,      setEditando]      = useState<Tramo | null>(null)
   const [descargaTramo, setDescargaTramo] = useState<Tramo | null>(null)
   const [revertirTramo, setRevertirTramo] = useState<Tramo | null>(null)
+  // Modal post-descarga: pregunta a qué cantera vuelve para crear el
+  // tramo `vacio` siguiente. Guardamos el tramo recién descargado para
+  // saber chofer/camión/depósito de origen del vacío.
+  const [proximaCarga,  setProximaCarga]  = useState<Tramo | null>(null)
+  const [canteraVuelta, setCanteraVuelta] = useState<string>('')
   const [filtChofer,    setFiltChofer]    = useState('')
   const [filtTipo,      setFiltTipo]      = useState('cargado')
   const [filtEstado,    setFiltEstado]    = useState('en_curso')
@@ -345,6 +350,7 @@ export function ViajesTab() {
   function handleRegistrarDescarga(data: TramoFormValues) {
     if (!descargaTramo) return
     if (!confirmarSiRemitoNoCoincide(descargaTramo.remito_carga, data.remito_descarga)) return
+    const tramoOriginal = descargaTramo
     regDescarga(
       {
         id: descargaTramo.id,
@@ -356,10 +362,69 @@ export function ViajesTab() {
         },
       },
       {
-        onSuccess: () => { toast('✓ Descarga registrada — tramo completado', 'ok'); setDescargaTramo(null); formDescarga.reset({ fecha_descarga: hoy(), remito_descarga_img_url: '' }) },
+        onSuccess: () => {
+          toast('✓ Descarga registrada — tramo completado', 'ok')
+          setDescargaTramo(null)
+          formDescarga.reset({ fecha_descarga: hoy(), remito_descarga_img_url: '' })
+          // Después de cerrar el modal de descarga, abrimos el modal "¿A
+          // dónde vuelve?" sugiriendo la cantera más frecuente del camión
+          // en el mes en curso.
+          const sug = canteraSugeridaPara(tramoOriginal.camion_id)
+          setCanteraVuelta(sug != null ? String(sug) : '')
+          setProximaCarga(tramoOriginal)
+        },
         onError:   () => toast('Error al registrar descarga', 'err'),
       }
     )
+  }
+
+  // Devuelve el cantera_id más frecuente del camión en el mes en curso
+  // sobre tramos cargados. Null si no hay data suficiente.
+  function canteraSugeridaPara(camionId: number): number | null {
+    const inicioMes = (() => {
+      const d = new Date()
+      return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10)
+    })()
+    const counts = new Map<number, number>()
+    for (const t of (tramos as Tramo[])) {
+      if (t.camion_id !== camionId) continue
+      if (t.tipo !== 'cargado')     continue
+      if (!t.fecha_carga || t.fecha_carga < inicioMes) continue
+      if (t.cantera_id == null)     continue
+      counts.set(t.cantera_id, (counts.get(t.cantera_id) ?? 0) + 1)
+    }
+    let best: { id: number; count: number } | null = null
+    for (const [id, count] of counts) {
+      if (!best || count > best.count) best = { id, count }
+    }
+    return best?.id ?? null
+  }
+
+  async function handleCrearVacioVuelta() {
+    if (!proximaCarga) return
+    const canteraIdNum = canteraVuelta ? Number(canteraVuelta) : null
+    if (!canteraIdNum) { toast('Elegí una cantera', 'err'); return }
+    if (proximaCarga.deposito_id == null) {
+      toast('El tramo no tiene depósito asignado', 'err')
+      return
+    }
+    try {
+      await createTramoAsync({
+        chofer_id:   proximaCarga.chofer_id,
+        camion_id:   proximaCarga.camion_id,
+        tipo:        'vacio',
+        empresa_id:  null,
+        cantera_id:  canteraIdNum,
+        deposito_id: proximaCarga.deposito_id,
+        fecha_vacio: hoy(),
+        obs:         'Tramo vacío auto-generado al registrar descarga',
+      } as any)
+      toast('✓ Tramo vacío creado · seguimiento activo', 'ok')
+      setProximaCarga(null)
+      setCanteraVuelta('')
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Error al crear el vacío', 'err')
+    }
   }
 
   function handleRevertirDescarga() {
@@ -610,8 +675,10 @@ export function ViajesTab() {
                         {km && <span className="ml-2 font-mono">({km.toLocaleString('es-AR')} km)</span>}
                       </div>
                     )}
-                    {/* Distancia restante GPS→destino (solo cargado en curso). */}
-                    {esCargado && tramo.estado === 'en_curso' && (() => {
+                    {/* Distancia restante GPS→destino. Aplica tanto a
+                        tramos cargados (yendo a depósito) como vacíos
+                        (volviendo a cantera). */}
+                    {tramo.estado === 'en_curso' && (() => {
                       const er = enRutaPorTramo.get(tramo.id)
                       if (!er) return null
                       if (er.distancia_m == null) return null
@@ -883,6 +950,53 @@ export function ViajesTab() {
             onPick={f => handleUpload(formDescarga, 'remito_descarga_img_url', f)}
             onClear={() => formDescarga.setValue('remito_descarga_img_url', '')}
           />
+        </div>
+      </Modal>
+
+      {/* Modal post-descarga: ¿a dónde vuelve a cargar? Si elige una
+          cantera se crea automáticamente el tramo `vacio` para hacer
+          seguimiento GPS hasta el próximo origen. */}
+      <Modal
+        open={!!proximaCarga}
+        onClose={() => { setProximaCarga(null); setCanteraVuelta('') }}
+        title="🚚 ¿A DÓNDE VUELVE A CARGAR?"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => { setProximaCarga(null); setCanteraVuelta('') }}>
+              Después
+            </Button>
+            <Button variant="primary" loading={creating} onClick={handleCrearVacioVuelta}>
+              ✓ Crear tramo vacío
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          <div className="bg-azul-light/40 rounded-card p-3 text-xs text-azul-mid">
+            Si lo cargás ahora, el camión queda con un <b>tramo vacío en curso</b>
+            {' '}y vas a ver la distancia/ETA al destino en el tab <b>🛰 En ruta</b>.
+            Si no sabés todavía, podés saltearlo y crearlo después.
+          </div>
+          {(() => {
+            const cam = proximaCarga ? camiones.find(c => c.id === proximaCarga.camion_id) : null
+            const dep = proximaCarga ? depositos.find(d => d.id === proximaCarga.deposito_id) : null
+            return (
+              <div className="text-xs text-gris-dark">
+                <span className="font-bold">{cam?.patente ?? '—'}</span> sale desde{' '}
+                <span className="font-bold">{dep?.nombre ?? '—'}</span> hacia →
+              </div>
+            )
+          })()}
+          <Combobox
+            label="Próxima cantera"
+            placeholder="Elegí cantera"
+            value={canteraVuelta}
+            onChange={(v: string) => setCanteraVuelta(v)}
+            options={(canteras as any[]).map(c => ({ value: String(c.id), label: c.nombre }))}
+          />
+          <p className="text-[11px] text-gris-mid">
+            Sugerencia automática: la cantera donde más cargó este camión en el mes en curso. Editá si vuelve a otro lugar.
+          </p>
         </div>
       </Modal>
 

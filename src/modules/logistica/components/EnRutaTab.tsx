@@ -139,14 +139,24 @@ function FilaEnRuta({ f }: { f: TramoEnRuta }) {
     ? `https://www.google.com/maps/dir/${f.gps_lat},${f.gps_lng}/${f.destino_lat},${f.destino_lng}`
     : null
 
+  // Para cargados: cantera → depósito.
+  // Para vacíos:   depósito → cantera (volviendo a buscar carga).
+  const origen  = f.tipo === 'cargado' ? f.cantera_nombre  : f.deposito_nombre
+  const destino = f.tipo === 'cargado' ? f.deposito_nombre : f.cantera_nombre
+
   return (
     <tr>
-      <td className="px-3 py-2 font-mono font-bold">{f.patente ?? '—'}</td>
+      <td className="px-3 py-2 font-mono font-bold">
+        {f.patente ?? '—'}
+        <span className={`ml-1 inline-block text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ${f.tipo === 'cargado' ? 'bg-naranja-light text-naranja-dark' : 'bg-azul-light text-azul-mid'}`}>
+          {f.tipo === 'cargado' ? '🚛 cargado' : '🔲 vacío'}
+        </span>
+      </td>
       <td className="px-3 py-2">{f.chofer_nombre ?? '—'}</td>
       <td className="px-3 py-2 text-xs">
-        <div className="text-gris-dark">{f.cantera_nombre ?? '—'} →</div>
-        <div className="font-semibold">{f.deposito_nombre ?? '—'}</div>
-        {f.fecha_carga && (
+        <div className="text-gris-dark">{origen ?? '—'} →</div>
+        <div className="font-semibold">{destino ?? '—'}</div>
+        {f.fecha_carga && f.tipo === 'cargado' && (
           <div className="text-[11px] text-gris-mid mt-0.5">
             Cargó {fmtFecha(f.fecha_carga)}
             {f.toneladas != null && ` · ${Number(f.toneladas).toLocaleString('es-AR')} t`}

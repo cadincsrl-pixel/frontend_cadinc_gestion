@@ -3,10 +3,12 @@ import { apiGet, apiPost } from '@/lib/api/client'
 
 export interface TramoEnRuta {
   tramo_id:        number
+  tipo:            'cargado' | 'vacio'
   patente:         string | null
   chofer_nombre:   string | null
   cantera_nombre:  string | null
   deposito_nombre: string | null
+  destino_nombre:  string | null
   fecha_carga:     string | null
   toneladas:       number | null
   gps_lat:         number | null
