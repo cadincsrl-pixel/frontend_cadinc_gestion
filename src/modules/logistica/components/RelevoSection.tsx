@@ -214,9 +214,16 @@ function ModalCrearRelevo({ tramo, open, onClose }: { tramo: Tramo; open: boolea
     if (sugError)   return { tono: 'err',  msg: 'No se pudo calcular la sugerencia.' }
     if (!sug)       return null
     if (sug.encontrado) {
+      const baseMsg = `Sugerencia automática: chofer 1 ${fmtKm(sug.km1!)} km, chofer 2 ${fmtKm(sug.km2!)} km.`
+      if (sug.metodo === 'suma') {
+        return {
+          tono: 'ok',
+          msg: `${baseMsg} Sumados desde las dos rutas cargadas (origen→Chivilcoy + Chivilcoy→destino). Editables.`,
+        }
+      }
       return {
-        tono: 'ok',
-        msg: `Sugerencia automática usando rutas existentes: chofer 1 ${fmtKm(sug.km1!)} km, chofer 2 ${fmtKm(sug.km2!)} km. Editables.`,
+        tono: 'warn',
+        msg: `${baseMsg} Solo está cargada una de las dos rutas con Chivilcoy; el otro segmento se calcula restando de la ruta directa, así que si hay desvío puede ser impreciso. Editables.`,
       }
     }
     if (sug.motivo === 'CHIVILCOY_NO_CARGADO') {

@@ -144,6 +144,7 @@ export interface RelevoSugerencia {
   km1?:       number
   km2?:       number
   motivo?:    string
+  metodo?:    'suma' | 'resta'
 }
 
 // ── Adjuntos de la liquidación (comprobante de pago + recibo firmado) ──
