@@ -27,6 +27,7 @@ export function ResumenHistoricoPage() {
   // ── Tabs ──
   const [tab, setTab] = useState<'semana' | 'historico'>('semana')
   const [vistaObras, setVistaObras] = useState<'activas' | 'archivadas' | 'todas'>('activas')
+  const [prestamosDetalleAbierto, setPrestamosDetalleAbierto] = useState(false)
 
   // ── Filtros ──
   const [filtroNombre, setFiltroNombre] = useState('')
@@ -396,18 +397,108 @@ export function ResumenHistoricoPage() {
             <Chip value={fmtMonto(resumenSemActual.totalCosto)} label="Operarios" variant="green" />
             <Chip value={fmtMonto(resumenSemActual.totalContrat)} label="Contratistas" />
             {(() => {
-              const totalPrestamos = todosPrestamos
-                .filter(p => p.sem_key === semActualKey)
-                .reduce((s, p) => p.tipo === 'otorgado' ? s + p.monto : s - p.monto, 0)
+              const prestamosSem = todosPrestamos.filter(p => p.sem_key === semActualKey)
+              const otorgados  = prestamosSem.filter(p => p.tipo === 'otorgado')
+              const descuentos = prestamosSem.filter(p => p.tipo === 'descontado')
+              const totalOtorgados  = otorgados.reduce((s, p) => s + p.monto, 0)
+              const totalDescuentos = descuentos.reduce((s, p) => s + p.monto, 0)
+              const totalPrestamos  = totalOtorgados - totalDescuentos
               const totalSemana = resumenSemActual.totalCosto + resumenSemActual.totalContrat + totalPrestamos
+              const personalByLeg = new Map(personal.map(p => [p.leg, p]))
               return (
                 <>
                   {totalPrestamos !== 0 && (
-                    <Chip
-                      value={fmtMonto(Math.abs(totalPrestamos))}
-                      label={totalPrestamos > 0 ? 'Préstamos' : 'Descuentos'}
-                      variant="orange"
-                    />
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setPrestamosDetalleAbierto(v => !v)}
+                        className="rounded-[9px] px-3 py-1.5 text-center min-w-[70px] bg-naranja-light text-naranja-dark hover:ring-2 hover:ring-naranja transition-all cursor-pointer"
+                        title="Ver detalle de la semana"
+                      >
+                        <div className="font-mono text-lg font-bold leading-none">
+                          {fmtMonto(Math.abs(totalPrestamos))}
+                        </div>
+                        <div className="text-[10px] font-bold uppercase tracking-wide opacity-70 mt-0.5">
+                          {totalPrestamos > 0 ? 'Préstamos ▾' : 'Descuentos ▾'}
+                        </div>
+                      </button>
+                      {prestamosDetalleAbierto && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-40"
+                            onClick={() => setPrestamosDetalleAbierto(false)}
+                          />
+                          <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-card shadow-card border border-gris z-50 overflow-hidden">
+                            <div className="bg-naranja-light text-naranja-dark px-3 py-2 text-xs font-bold uppercase tracking-wider flex items-center justify-between gap-2">
+                              <span>Detalle de la semana</span>
+                              <span className="text-[10px] opacity-70">{getSemLabel(semConGracia)}</span>
+                            </div>
+                            <div className="max-h-[360px] overflow-y-auto text-left">
+                              {otorgados.length > 0 && (
+                                <div>
+                                  <div className="bg-verde-light text-verde px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider">
+                                    💵 Otorgados — {fmtMonto(totalOtorgados)}
+                                  </div>
+                                  <div className="divide-y divide-gris">
+                                    {otorgados.map(p => {
+                                      const pers = personalByLeg.get(p.leg)
+                                      return (
+                                        <div key={p.id} className="px-3 py-2 flex items-start justify-between gap-2 text-xs">
+                                          <div className="min-w-0">
+                                            <div className="font-bold text-azul">
+                                              {pers?.nom ?? `Leg. ${p.leg}`}
+                                            </div>
+                                            <div className="text-[10px] text-gris-dark font-mono">Leg. {p.leg}</div>
+                                            {p.concepto && (
+                                              <div className="text-[11px] text-gris-dark italic mt-0.5 truncate" title={p.concepto}>
+                                                {p.concepto}
+                                              </div>
+                                            )}
+                                          </div>
+                                          <div className="font-mono font-bold text-verde shrink-0">
+                                            +{fmtMonto(p.monto)}
+                                          </div>
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                              {descuentos.length > 0 && (
+                                <div>
+                                  <div className="bg-rojo-light text-rojo px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider">
+                                    ↩ Descuentos — {fmtMonto(totalDescuentos)}
+                                  </div>
+                                  <div className="divide-y divide-gris">
+                                    {descuentos.map(p => {
+                                      const pers = personalByLeg.get(p.leg)
+                                      return (
+                                        <div key={p.id} className="px-3 py-2 flex items-start justify-between gap-2 text-xs">
+                                          <div className="min-w-0">
+                                            <div className="font-bold text-azul">
+                                              {pers?.nom ?? `Leg. ${p.leg}`}
+                                            </div>
+                                            <div className="text-[10px] text-gris-dark font-mono">Leg. {p.leg}</div>
+                                            {p.concepto && (
+                                              <div className="text-[11px] text-gris-dark italic mt-0.5 truncate" title={p.concepto}>
+                                                {p.concepto}
+                                              </div>
+                                            )}
+                                          </div>
+                                          <div className="font-mono font-bold text-rojo shrink-0">
+                                            −{fmtMonto(p.monto)}
+                                          </div>
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
                   )}
                   <Chip
                     value={fmtMonto(totalSemana)}
