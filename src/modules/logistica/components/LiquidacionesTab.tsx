@@ -579,11 +579,11 @@ export function LiquidacionesTab() {
                         rutas:        rutas as Ruta[],
                         estado:       'En curso',
                       }
+                      // PDF eliminado de esta vista: el "📄 PDF parcial" del
+                      // modal de Liquidar cubre el caso con más detalle (gastos,
+                      // filtro por fechas, selección de tramos).
                       return (
-                        <>
-                          <Button variant="ghost" size="sm" onClick={() => exportLiquidacionExcel(exportData)}>📊 Excel</Button>
-                          <Button variant="ghost" size="sm" onClick={() => exportLiquidacionPDF(exportData)}>🖨 PDF</Button>
-                        </>
+                        <Button variant="ghost" size="sm" onClick={() => exportLiquidacionExcel(exportData)}>📊 Excel</Button>
                       )
                     })()}
                   </div>
