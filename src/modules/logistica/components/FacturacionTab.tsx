@@ -173,8 +173,31 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
   const [modal, setModal] = useState(false)
   const [expandida, setExpandida] = useState<number | null>(null)
   const [editando, setEditando] = useState<TarifaEmpresaCantera | null>(null)
+  const [pisarPosteriores, setPisarPosteriores] = useState(false)
   const form = useForm<any>({ defaultValues: { vigente_desde: new Date().toISOString().slice(0, 10) } })
   const formEdit = useForm<any>()
+
+  // Detecta tarifas con `vigente_desde` posterior a la fecha cargada
+  // (excluyendo opcionalmente una propia, para el caso editar). Sirve
+  // para avisar que la nueva tarifa no va a afectar tramos posteriores
+  // a menos que se "pisen" (eliminen).
+  function tarifasPosteriores(canteraId: number | null, fecha: string, excluirId?: number): TarifaEmpresaCantera[] {
+    if (!canteraId || !fecha) return []
+    return tarifas
+      .filter(t => t.cantera_id === canteraId)
+      .filter(t => excluirId == null || t.id !== excluirId)
+      .filter(t => t.vigente_desde > fecha)
+      .sort((a, b) => a.vigente_desde.localeCompare(b.vigente_desde))
+  }
+
+  const watchCantera = form.watch('cantera_id')
+  const watchFecha   = form.watch('vigente_desde')
+  const posterioresNueva = tarifasPosteriores(watchCantera ? Number(watchCantera) : null, watchFecha)
+
+  const watchEditFecha = formEdit.watch('vigente_desde')
+  const posterioresEdit = editando
+    ? tarifasPosteriores(editando.cantera_id, watchEditFecha, editando.id)
+    : []
 
   function abrirEditar(t: TarifaEmpresaCantera) {
     formEdit.reset({
@@ -187,6 +210,7 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
 
   function handleEditSubmit(data: any) {
     if (!editando) return
+    const ids_a_pisar = pisarPosteriores ? posterioresEdit.map(t => t.id) : []
     actualizar({
       id: editando.id,
       dto: {
@@ -195,12 +219,27 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
         obs:           data.obs ?? '',
       },
     }, {
-      onSuccess: () => { toast('✓ Tarifa actualizada', 'ok'); setEditando(null) },
+      onSuccess: async () => {
+        if (ids_a_pisar.length > 0) {
+          await Promise.allSettled(ids_a_pisar.map(id =>
+            new Promise((res, rej) => remove(id, { onSuccess: () => res(null), onError: rej })),
+          ))
+        }
+        toast(
+          ids_a_pisar.length > 0
+            ? `✓ Tarifa actualizada · ${ids_a_pisar.length} posterior${ids_a_pisar.length !== 1 ? 'es' : ''} reemplazada${ids_a_pisar.length !== 1 ? 's' : ''}`
+            : '✓ Tarifa actualizada',
+          'ok',
+        )
+        setEditando(null)
+        setPisarPosteriores(false)
+      },
       onError:   () => toast('Error al actualizar', 'err'),
     })
   }
 
   function handleSubmit(data: any) {
+    const ids_a_pisar = pisarPosteriores ? posterioresNueva.map(t => t.id) : []
     crear({
       empresa_id:    empresa.id,
       cantera_id:    Number(data.cantera_id),
@@ -208,7 +247,25 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
       vigente_desde: data.vigente_desde,
       obs:           data.obs ?? '',
     }, {
-      onSuccess: () => { toast('✓ Tarifa guardada', 'ok'); setModal(false); form.reset({ vigente_desde: new Date().toISOString().slice(0, 10) }) },
+      onSuccess: async () => {
+        // Si pidió "pisar posteriores", eliminamos en paralelo (best-effort).
+        // Si una falla, igual la nueva ya quedó creada; el user puede
+        // borrar la posterior huérfana a mano.
+        if (ids_a_pisar.length > 0) {
+          await Promise.allSettled(ids_a_pisar.map(id =>
+            new Promise((res, rej) => remove(id, { onSuccess: () => res(null), onError: rej })),
+          ))
+        }
+        toast(
+          ids_a_pisar.length > 0
+            ? `✓ Tarifa guardada · ${ids_a_pisar.length} posterior${ids_a_pisar.length !== 1 ? 'es' : ''} reemplazada${ids_a_pisar.length !== 1 ? 's' : ''}`
+            : '✓ Tarifa guardada',
+          'ok',
+        )
+        setModal(false)
+        setPisarPosteriores(false)
+        form.reset({ vigente_desde: new Date().toISOString().slice(0, 10) })
+      },
       onError:   () => toast('Error al guardar', 'err'),
     })
   }
@@ -306,8 +363,8 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
         )}
       </div>
 
-      <Modal open={modal} onClose={() => setModal(false)} title="💲 NUEVA TARIFA"
-        footer={<><Button variant="secondary" onClick={() => setModal(false)}>Cancelar</Button><Button variant="primary" loading={saving} onClick={form.handleSubmit(handleSubmit)}>✓ Guardar</Button></>}>
+      <Modal open={modal} onClose={() => { setModal(false); setPisarPosteriores(false) }} title="💲 NUEVA TARIFA"
+        footer={<><Button variant="secondary" onClick={() => { setModal(false); setPisarPosteriores(false) }}>Cancelar</Button><Button variant="primary" loading={saving} onClick={form.handleSubmit(handleSubmit)}>✓ Guardar</Button></>}>
         <div className="flex flex-col gap-4">
           <Select label="Cantera" options={canteraOptions} {...form.register('cantera_id')} />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -315,6 +372,36 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
             <Input label="Vigente desde" type="date" {...form.register('vigente_desde')} />
           </div>
           <Input label="Observaciones" placeholder="Notas..." {...form.register('obs')} />
+
+          {posterioresNueva.length > 0 && (
+            <div className="bg-amarillo-light border border-[#7A5500]/30 rounded-card p-3 text-xs">
+              <div className="font-bold text-[#7A5500] mb-1">
+                ⚠ Hay {posterioresNueva.length} tarifa{posterioresNueva.length !== 1 ? 's' : ''} posterior{posterioresNueva.length !== 1 ? 'es' : ''} cargada{posterioresNueva.length !== 1 ? 's' : ''}
+              </div>
+              <div className="text-gris-dark mb-2">
+                {posterioresNueva.map(t => (
+                  <div key={t.id} className="font-mono">
+                    • desde {fmtDate(t.vigente_desde)}: $ {Number(t.valor_ton).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                  </div>
+                ))}
+              </div>
+              <div className="text-gris-dark mb-2">
+                Esta tarifa nueva NO va a afectar tramos del{' '}
+                <b>{posterioresNueva[0] ? fmtDate(posterioresNueva[0].vigente_desde) : ''}</b> en adelante a menos que reemplaces las posteriores.
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={pisarPosteriores}
+                  onChange={e => setPisarPosteriores(e.target.checked)}
+                  className="accent-azul"
+                />
+                <span className="text-carbon">
+                  Reemplazar las {posterioresNueva.length} posterior{posterioresNueva.length !== 1 ? 'es' : ''} (recomendado para actualizaciones retroactivas)
+                </span>
+              </label>
+            </div>
+          )}
         </div>
       </Modal>
 
@@ -322,11 +409,11 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
           par empresa-cantera hay que eliminar y crear una nueva. */}
       <Modal
         open={!!editando}
-        onClose={() => setEditando(null)}
+        onClose={() => { setEditando(null); setPisarPosteriores(false) }}
         title="✏️ EDITAR TARIFA"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setEditando(null)}>Cancelar</Button>
+            <Button variant="secondary" onClick={() => { setEditando(null); setPisarPosteriores(false) }}>Cancelar</Button>
             <Button variant="primary" loading={actualizando} onClick={formEdit.handleSubmit(handleEditSubmit)}>✓ Guardar</Button>
           </>
         }
@@ -347,6 +434,32 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
             <Input label="Vigente desde" type="date" {...formEdit.register('vigente_desde')} />
           </div>
           <Input label="Observaciones" placeholder="Notas..." {...formEdit.register('obs')} />
+
+          {posterioresEdit.length > 0 && (
+            <div className="bg-amarillo-light border border-[#7A5500]/30 rounded-card p-3 text-xs">
+              <div className="font-bold text-[#7A5500] mb-1">
+                ⚠ Hay {posterioresEdit.length} tarifa{posterioresEdit.length !== 1 ? 's' : ''} posterior{posterioresEdit.length !== 1 ? 'es' : ''} cargada{posterioresEdit.length !== 1 ? 's' : ''}
+              </div>
+              <div className="text-gris-dark mb-2">
+                {posterioresEdit.map(t => (
+                  <div key={t.id} className="font-mono">
+                    • desde {fmtDate(t.vigente_desde)}: $ {Number(t.valor_ton).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                  </div>
+                ))}
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={pisarPosteriores}
+                  onChange={e => setPisarPosteriores(e.target.checked)}
+                  className="accent-azul"
+                />
+                <span className="text-carbon">
+                  Reemplazar las {posterioresEdit.length} posterior{posterioresEdit.length !== 1 ? 'es' : ''}
+                </span>
+              </label>
+            </div>
+          )}
         </div>
       </Modal>
     </>
