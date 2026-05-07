@@ -12,6 +12,7 @@ import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
 import { Input }    from '@/components/ui/Input'
 import { Combobox } from '@/components/ui/Combobox'
+import { Select }   from '@/components/ui/Select'
 import { Badge }    from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
 import { useForm }  from 'react-hook-form'
@@ -126,6 +127,14 @@ export function LiquidacionesTab() {
   const [confirmDelLiq, setConfirmDelLiq] = useState<any | null>(null)
   const [confirmDelNumero, setConfirmDelNumero] = useState('')
   const [confirmDelMotivo, setConfirmDelMotivo] = useState('')
+
+  // Filtros + agrupación de la sección "Adelantos pendientes".
+  const [filtChoferAdel,  setFiltChoferAdel]  = useState<string>('')          // '' = todos
+  const [filtEstadoAdel,  setFiltEstadoAdel]  = useState<'pendientes' | 'liquidados' | 'todos'>('pendientes')
+  const [filtDesdeAdel,   setFiltDesdeAdel]   = useState<string>('')
+  const [filtHastaAdel,   setFiltHastaAdel]   = useState<string>('')
+  const [filtSearchAdel,  setFiltSearchAdel]  = useState<string>('')
+  const [expandedChoferes, setExpandedChoferes] = useState<Set<number>>(new Set())
   // Comprobante (foto/PDF) para el adelanto que se está creando/editando.
   const [archivoAdel, setArchivoAdel] = useState<File | null>(null)
   const [archivoEditAdel, setArchivoEditAdel] = useState<File | null>(null)
@@ -812,55 +821,172 @@ export function LiquidacionesTab() {
         </div>
       )}
 
-      {/* ── Adelantos pendientes ── */}
-      {(adelantos as Adelanto[]).filter(a => !a.liquidacion_id).length > 0 && (
-        <div>
-          <h2 className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-2">Adelantos pendientes</h2>
-          <div className="bg-white rounded-card shadow-card overflow-hidden">
-            <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr>
-                  {['Chofer', 'Fecha', 'Descripción', 'Monto', ''].map(h => (
-                    <th key={h} className="bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {(adelantos as Adelanto[]).filter(a => !a.liquidacion_id).map(a => {
-                  const chofer = (choferes as Chofer[]).find(c => c.id === a.chofer_id)
+      {/* ── Adelantos: filtros + agrupado por chofer ── */}
+      {(adelantos as Adelanto[]).length > 0 && (() => {
+        // Aplicar todos los filtros sobre el array crudo
+        const filtrados = (adelantos as Adelanto[]).filter(a => {
+          // Estado
+          if (filtEstadoAdel === 'pendientes' && a.liquidacion_id) return false
+          if (filtEstadoAdel === 'liquidados' && !a.liquidacion_id) return false
+          // Chofer
+          if (filtChoferAdel && a.chofer_id !== Number(filtChoferAdel)) return false
+          // Rango fechas
+          if (filtDesdeAdel && a.fecha < filtDesdeAdel) return false
+          if (filtHastaAdel && a.fecha > filtHastaAdel) return false
+          // Texto libre
+          if (filtSearchAdel) {
+            const q = filtSearchAdel.toLowerCase()
+            const desc = (a.descripcion ?? '').toLowerCase()
+            if (!desc.includes(q)) return false
+          }
+          return true
+        })
+
+        // Agrupar por chofer_id
+        const grupos = new Map<number, Adelanto[]>()
+        for (const a of filtrados) {
+          const arr = grupos.get(a.chofer_id) ?? []
+          arr.push(a)
+          grupos.set(a.chofer_id, arr)
+        }
+        // Ordenar grupos por nombre del chofer
+        const gruposOrdenados = [...grupos.entries()]
+          .map(([id, lista]) => {
+            const chofer = (choferes as Chofer[]).find(c => c.id === id)
+            return { id, chofer, lista: lista.sort((x, y) => y.fecha.localeCompare(x.fecha)) }
+          })
+          .sort((a, b) => (a.chofer?.nombre ?? '').localeCompare(b.chofer?.nombre ?? ''))
+
+        // Si hay un solo grupo (filtro por chofer activo) → arranca expandido
+        const autoExpand = gruposOrdenados.length === 1 ? new Set([gruposOrdenados[0]!.id]) : null
+
+        const totalFiltrado = filtrados.reduce((s, a) => s + Number(a.monto), 0)
+
+        function toggleChofer(id: number) {
+          setExpandedChoferes(prev => {
+            const next = new Set(prev)
+            if (next.has(id)) next.delete(id); else next.add(id)
+            return next
+          })
+        }
+
+        return (
+          <div>
+            <h2 className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-2">Adelantos</h2>
+
+            {/* Barra de filtros */}
+            <div className="bg-white rounded-card shadow-card p-3 mb-3 flex flex-wrap items-end gap-2">
+              <div className="flex gap-1">
+                {(['pendientes', 'liquidados', 'todos'] as const).map(v => (
+                  <button
+                    key={v}
+                    onClick={() => setFiltEstadoAdel(v)}
+                    className={`text-xs font-bold px-3 py-1.5 rounded transition-colors capitalize ${filtEstadoAdel === v ? 'bg-azul text-white' : 'bg-gris text-gris-dark hover:bg-gris-mid'}`}
+                  >
+                    {v}
+                  </button>
+                ))}
+              </div>
+              <Select
+                label="Chofer"
+                value={filtChoferAdel}
+                onChange={e => setFiltChoferAdel((e.target as HTMLSelectElement).value)}
+                options={[
+                  { value: '', label: 'Todos' },
+                  ...((choferes as Chofer[]).filter(c => c.estado !== 'inactivo')
+                    .map(c => ({ value: String(c.id), label: c.nombre }))),
+                ]}
+              />
+              <Input label="Desde" type="date" value={filtDesdeAdel} onChange={e => setFiltDesdeAdel(e.target.value)} />
+              <Input label="Hasta" type="date" value={filtHastaAdel} onChange={e => setFiltHastaAdel(e.target.value)} />
+              <Input label="Buscar" placeholder="Descripción..." value={filtSearchAdel} onChange={e => setFiltSearchAdel(e.target.value)} />
+              {(filtChoferAdel || filtDesdeAdel || filtHastaAdel || filtSearchAdel || filtEstadoAdel !== 'pendientes') && (
+                <button
+                  onClick={() => { setFiltChoferAdel(''); setFiltDesdeAdel(''); setFiltHastaAdel(''); setFiltSearchAdel(''); setFiltEstadoAdel('pendientes') }}
+                  className="text-xs text-azul hover:underline self-end mb-1.5"
+                >
+                  Limpiar filtros
+                </button>
+              )}
+            </div>
+
+            {/* Cards por chofer */}
+            {gruposOrdenados.length === 0 ? (
+              <div className="bg-white rounded-card shadow-card p-6 text-center text-gris-dark text-sm">
+                No hay adelantos con esos filtros.
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {gruposOrdenados.map(({ id, chofer, lista }) => {
+                  const expanded = autoExpand?.has(id) || expandedChoferes.has(id)
+                  const subtotal = lista.reduce((s, a) => s + Number(a.monto), 0)
                   return (
-                    <tr key={a.id} className="border-b border-gris last:border-0 hover:bg-gris/40 transition-colors">
-                      <td className="px-4 py-3 font-bold text-sm text-carbon">{chofer?.nombre ?? '—'}</td>
-                      <td className="px-4 py-3 text-sm text-gris-dark font-mono">{fmtFecha(a.fecha)}</td>
-                      <td className="px-4 py-3 text-sm text-gris-dark">{a.descripcion || '—'}</td>
-                      <td className="px-4 py-3 font-mono font-bold text-rojo">{fmtM(a.monto)}</td>
-                      <td className="px-4 py-3 flex gap-1 justify-end">
-                        {a.comprobante_url && (
-                          <button
-                            onClick={() => verComprobanteAdel(a.id)}
-                            title="Ver comprobante"
-                            className="text-xs font-bold px-2 py-1 rounded hover:bg-azul-light text-gris-dark hover:text-azul transition-colors"
-                          >👁</button>
-                        )}
-                        <button
-                          onClick={() => { setEditandoAdel(a); formEditAdel.reset({ fecha: a.fecha, monto: a.monto, descripcion: a.descripcion ?? '' }); setArchivoEditAdel(null); setRemoverCompEdit(false) }}
-                          className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors"
-                        >✏️</button>
-                        <button
-                          onClick={() => { if (confirm('¿Eliminar adelanto?')) deleteAdel(a.id, { onSuccess: () => toast('✓ Adelanto eliminado', 'ok'), onError: () => toast('Error al eliminar', 'err') }) }}
-                          className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors"
-                        >✕</button>
-                      </td>
-                    </tr>
+                    <div key={id} className="bg-white rounded-card shadow-card overflow-hidden">
+                      <button
+                        onClick={() => toggleChofer(id)}
+                        className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-gris/30 transition-colors text-left"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-gris-dark text-sm">{expanded ? '▼' : '▶'}</span>
+                          <span className="font-bold text-azul">{chofer?.nombre ?? `#${id}`}</span>
+                          <span className="text-xs text-gris-dark">
+                            {lista.length} adelanto{lista.length !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        <span className="font-mono font-bold text-rojo">{fmtM(subtotal)}</span>
+                      </button>
+                      {expanded && (
+                        <div className="border-t border-gris divide-y divide-gris">
+                          {lista.map(a => (
+                            <div key={a.id} className="flex items-center justify-between gap-3 px-4 py-2 text-sm hover:bg-gris/20 transition-colors">
+                              <div className="flex-1 min-w-0">
+                                <div className="text-xs text-gris-dark font-mono">{fmtFecha(a.fecha)}</div>
+                                <div className="text-carbon truncate">{a.descripcion || '—'}</div>
+                                {a.liquidacion_id && (
+                                  <div className="text-[10px] text-gris-mid">Liquidado en N° {a.liquidacion_id}</div>
+                                )}
+                              </div>
+                              <div className="font-mono font-bold text-rojo shrink-0">{fmtM(a.monto)}</div>
+                              <div className="flex gap-1 shrink-0">
+                                {a.comprobante_url && (
+                                  <button
+                                    onClick={() => verComprobanteAdel(a.id)}
+                                    title="Ver comprobante"
+                                    className="text-xs font-bold px-2 py-1 rounded hover:bg-azul-light text-gris-dark hover:text-azul transition-colors"
+                                  >👁</button>
+                                )}
+                                {!a.liquidacion_id && (
+                                  <>
+                                    <button
+                                      onClick={() => { setEditandoAdel(a); formEditAdel.reset({ fecha: a.fecha, monto: a.monto, descripcion: a.descripcion ?? '' }); setArchivoEditAdel(null); setRemoverCompEdit(false) }}
+                                      className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors"
+                                    >✏️</button>
+                                    <button
+                                      onClick={() => { if (confirm('¿Eliminar adelanto?')) deleteAdel(a.id, { onSuccess: () => toast('✓ Adelanto eliminado', 'ok'), onError: () => toast('Error al eliminar', 'err') }) }}
+                                      className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors"
+                                    >✕</button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   )
                 })}
-              </tbody>
-            </table>
-            </div>
+              </div>
+            )}
+
+            {/* Footer con total */}
+            {gruposOrdenados.length > 0 && (
+              <div className="text-xs text-gris-dark mt-2 text-right">
+                Total filtrado: <span className="font-mono font-bold text-rojo">{fmtM(totalFiltrado)}</span> · {filtrados.length} adelanto{filtrados.length !== 1 ? 's' : ''}
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* ── Modal liquidar ── */}
       <Modal open={modalLiq} onClose={() => setModalLiq(false)} title="💰 LIQUIDAR CHOFER" width="max-w-xl"
