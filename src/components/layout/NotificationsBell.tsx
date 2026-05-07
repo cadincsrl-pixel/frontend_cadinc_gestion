@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import {
   useNotificaciones,
   fmtDiasFaltan,
@@ -13,6 +13,15 @@ import {
   type ServiceCamionItem,
   type GastoPendienteItem,
 } from '@/hooks/useNotificaciones'
+
+// Mapea la ruta actual al módulo cuyos avisos queremos mostrar.
+// `null` = no hay módulo específico → mostrar todo (home, admin, login).
+function moduloFromPath(pathname: string | null): 'tarja' | 'logistica' | null {
+  if (!pathname) return null
+  if (pathname.startsWith('/tarja') || pathname.startsWith('/personal')) return 'tarja'
+  if (pathname.startsWith('/logistica')) return 'logistica'
+  return null
+}
 
 /**
  * Campana del topbar. Muestra:
@@ -28,14 +37,25 @@ import {
  */
 export function NotificationsBell() {
   const router = useRouter()
-  const {
-    hoy, proximos,
-    papelesVencidos, papelesPorVencer,
-    papelesChoferVencidos, papelesChoferPorVencer,
-    serviciosVencidos, serviciosProximos,
-    gastosPendientes,
-    totalUrgente,
-  } = useNotificaciones()
+  const pathname = usePathname()
+  const modulo = moduloFromPath(pathname)
+  const notifs = useNotificaciones()
+
+  // Aplico filtro por módulo: tarja sólo cumpleaños, logística sólo papeles/services/gastos.
+  // Si no hay módulo identificado (home, admin), mostramos todo.
+  const showCumple   = modulo === null || modulo === 'tarja'
+  const showLogistica = modulo === null || modulo === 'logistica'
+
+  const hoy                    = showCumple    ? notifs.hoy                    : []
+  const proximos               = showCumple    ? notifs.proximos               : []
+  const papelesVencidos        = showLogistica ? notifs.papelesVencidos        : []
+  const papelesPorVencer       = showLogistica ? notifs.papelesPorVencer       : []
+  const papelesChoferVencidos  = showLogistica ? notifs.papelesChoferVencidos  : []
+  const papelesChoferPorVencer = showLogistica ? notifs.papelesChoferPorVencer : []
+  const serviciosVencidos      = showLogistica ? notifs.serviciosVencidos      : []
+  const serviciosProximos      = showLogistica ? notifs.serviciosProximos      : []
+  const gastosPendientes       = showLogistica ? notifs.gastosPendientes       : []
+
   const [abierto, setAbierto] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -49,6 +69,9 @@ export function NotificationsBell() {
     return () => document.removeEventListener('mousedown', onClick)
   }, [abierto])
 
+  const totalUrgente =
+    hoy.length + papelesVencidos.length + papelesChoferVencidos.length +
+    serviciosVencidos.length + gastosPendientes.length
   const totalNoUrgentes =
     proximos.length + papelesPorVencer.length + papelesChoferPorVencer.length +
     serviciosProximos.length
