@@ -24,6 +24,9 @@ function fmtM(n: number) {
   return '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 0 })
 }
 
+function fmtN(n: number) {
+  return n.toLocaleString('es-AR', { maximumFractionDigits: 0 })
+}
 function fmtFecha(s: string) {
   const [y, m, d] = s.split('-')
   return `${d}/${m}/${y}`
@@ -112,6 +115,11 @@ export function LiquidacionesTab() {
   const [modalAdel,   setModalAdel]   = useState(false)
   const [editandoAdel, setEditandoAdel] = useState<Adelanto | null>(null)
   const [detalleLiq,  setDetalleLiq]  = useState<any | null>(null)
+  // Gastos asociados a la liquidación abierta en el modal de detalle.
+  // Se cargan on-demand al abrir el modal — no se traen siempre porque
+  // serían muchos requests innecesarios.
+  const [detalleGastos, setDetalleGastos] = useState<any[]>([])
+  const [loadingDetalleGastos, setLoadingDetalleGastos] = useState(false)
   // Comprobante (foto/PDF) para el adelanto que se está creando/editando.
   const [archivoAdel, setArchivoAdel] = useState<File | null>(null)
   const [archivoEditAdel, setArchivoEditAdel] = useState<File | null>(null)
@@ -350,6 +358,23 @@ export function LiquidacionesTab() {
       toast('Error al generar PDF', 'err')
     }
   }
+
+  // Carga los gastos del modal de detalle al abrirlo y los limpia al cerrarlo.
+  useEffect(() => {
+    if (!detalleLiq) {
+      setDetalleGastos([])
+      return
+    }
+    let cancelled = false
+    setLoadingDetalleGastos(true)
+    fetchGastosLiquidacion(detalleLiq.id).then(gastos => {
+      if (!cancelled) setDetalleGastos(gastos)
+    }).finally(() => {
+      if (!cancelled) setLoadingDetalleGastos(false)
+    })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detalleLiq?.id])
 
   // Trae los gastos asociados a una liquidación cerrada. Hacemos el fetch
   // on-demand (no se cargan siempre con useGastos) tanto para PDF como para
@@ -1031,9 +1056,17 @@ export function LiquidacionesTab() {
       {/* ── Modal detalle / edición ── */}
       {detalleLiq && (() => {
         const chofer     = (choferes as Chofer[]).find(c => c.id === detalleLiq.chofer_id)
+        const camion     = chofer ? (camiones as any[]).find(c => c.id === chofer.camion_id) : null
         const liqTramos  = (tramos as Tramo[]).filter(t => t.liquidacion_id === detalleLiq.id)
         const liqAdel    = (adelantos as Adelanto[]).filter(a => a.liquidacion_id === detalleLiq.id)
         const esBorrador = detalleLiq.estado === 'borrador'
+
+        // Cálculos derivados para mostrar el desglose completo.
+        const km_cargados = liqTramos.filter(t => t.tipo === 'cargado').reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
+        const km_vacios   = liqTramos.filter(t => t.tipo === 'vacio').reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
+        const km_totales  = km_cargados + km_vacios
+        const sub_km_cargado = detalleLiq.subtotal_km_cargado ?? (km_cargados * (chofer?.precio_km_cargado ?? 0))
+        const sub_km_vacio   = detalleLiq.subtotal_km_vacio   ?? (km_vacios   * (chofer?.precio_km_vacio   ?? 0))
 
         function guardarLiqDto(data: any, onSuccess: () => void) {
           const basicoDia = parseFloat(data.basico_dia) || 0
@@ -1067,8 +1100,8 @@ export function LiquidacionesTab() {
           <Modal
             open={!!detalleLiq}
             onClose={() => setDetalleLiq(null)}
-            title={`${esBorrador ? '✏️ EDITAR' : '🔍 DETALLE'} LIQUIDACIÓN #${detalleLiq.id}`}
-            width="max-w-xl"
+            title={`${esBorrador ? '✏️ EDITAR' : '🔍 DETALLE'} LIQUIDACIÓN N° ${detalleLiq.id}`}
+            width="max-w-3xl"
             footer={
               <>
                 <Button variant="secondary" onClick={() => setDetalleLiq(null)}>Cerrar</Button>
@@ -1094,86 +1127,191 @@ export function LiquidacionesTab() {
             }
           >
             <div className="flex flex-col gap-4">
-              {/* Info chofer */}
-              <div className="bg-azul-light rounded-xl px-4 py-3">
-                <div className="font-bold text-azul">{chofer?.nombre ?? '—'}</div>
-                <div className="text-xs text-azul-mid mt-0.5">
-                  {detalleLiq.dias_trabajados} días · {fmtM(detalleLiq.basico_dia)}/día
+              {/* Header con info principal + accesos rápidos a export */}
+              <div className="bg-azul-light rounded-xl px-4 py-3 flex items-start justify-between gap-3 flex-wrap">
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-azul text-base">{chofer?.nombre ?? '—'}</span>
+                    <Badge
+                      variant={esBorrador ? 'pendiente' : 'cerrado'}
+                      label={esBorrador ? 'Borrador' : 'Cerrada'}
+                    />
+                  </div>
+                  {chofer?.cuil && (
+                    <div className="text-xs text-azul-mid mt-0.5 font-mono">CUIL {chofer.cuil}</div>
+                  )}
+                  {camion?.patente && (
+                    <div className="text-xs text-azul-mid mt-0.5">🚚 Camión: <span className="font-mono font-bold">{camion.patente}</span></div>
+                  )}
+                  <div className="text-xs text-azul-mid mt-0.5">
+                    📅 {fmtFecha(detalleLiq.fecha_desde)} → {fmtFecha(detalleLiq.fecha_hasta)} · <b>{detalleLiq.dias_trabajados} días</b> · {fmtM(detalleLiq.basico_dia)}/día
+                  </div>
                 </div>
+                {!esBorrador && (
+                  <div className="flex gap-2">
+                    <Button variant="ghost" size="sm" onClick={() => {
+                      const liqTramosLocal = liqTramos
+                      handleDescargarExcelCerrada(detalleLiq, {
+                        nombreChofer: chofer?.nombre ?? '—',
+                        desde:        detalleLiq.fecha_desde,
+                        hasta:        detalleLiq.fecha_hasta,
+                        dias:         detalleLiq.dias_trabajados,
+                        basico_dia:   detalleLiq.basico_dia,
+                        subtotal_bas: detalleLiq.subtotal_basico - (detalleLiq.subtotal_km ?? 0),
+                        km_totales:   km_totales,
+                        subtotal_km:  detalleLiq.subtotal_km ?? 0,
+                        descuentos:   detalleLiq.total_adelantos,
+                        neto:         detalleLiq.total_neto,
+                        tramos:       liqTramosLocal,
+                        adelantos:    liqAdel,
+                        canteras:     canteras as any[],
+                        depositos:    depositos as any[],
+                        rutas:        rutas as Ruta[],
+                        estado:       'Cerrada',
+                      })
+                    }}>📊 Excel</Button>
+                    <Button variant="primary" size="sm" onClick={() => handleDescargarPdfCerrada(detalleLiq)}>
+                      📄 PDF
+                    </Button>
+                  </div>
+                )}
               </div>
 
-              {/* Fechas y básico — editables si borrador */}
-              {esBorrador ? (
-                <>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Input label="Básico/día ($)" type="number" step="100" {...formDetalle.register('basico_dia')} />
-                    <div />
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Input label="Período desde" type="date" {...formDetalle.register('fecha_desde')} />
-                    <Input label="Período hasta"  type="date" {...formDetalle.register('fecha_hasta')} />
-                  </div>
-                </>
-              ) : (
-                <div className="text-sm text-gris-dark">
-                  {fmtFecha(detalleLiq.fecha_desde)} → {fmtFecha(detalleLiq.fecha_hasta)}
+              {/* Si es borrador, fecha y básico son editables */}
+              {esBorrador && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <Input label="Básico/día ($)" type="number" step="100" {...formDetalle.register('basico_dia')} />
+                  <Input label="Período desde" type="date" {...formDetalle.register('fecha_desde')} />
+                  <Input label="Período hasta"  type="date" {...formDetalle.register('fecha_hasta')} />
                 </div>
               )}
 
-              {/* Tramos vinculados */}
+              {/* Tramos con detalle completo */}
               {liqTramos.length > 0 && (
                 <div>
                   <div className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-2">
-                    Tramos incluidos ({liqTramos.length})
+                    Tramos incluidos ({liqTramos.length}) · {fmtN(km_totales)} km totales
                   </div>
-                  <div className="bg-gris rounded-xl p-3 max-h-40 overflow-y-auto flex flex-col gap-1">
-                    {liqTramos.map(t => (
-                      <div key={t.id} className="flex justify-between text-xs py-1 border-b border-gris-mid last:border-0">
-                        <span className="text-gris-dark">
-                          #{t.id} · {t.tipo === 'cargado' ? '🚛' : '🔲'} ·{' '}
-                          {t.fecha_carga ? fmtFecha(t.fecha_carga) : t.fecha_vacio ? fmtFecha(t.fecha_vacio) : '—'}
-                        </span>
-                        <span className="font-mono font-semibold">
-                          {t.toneladas_descarga ?? t.toneladas_carga ?? '—'} tn
-                        </span>
-                      </div>
-                    ))}
+                  <div className="bg-gris rounded-xl divide-y divide-gris-mid max-h-56 overflow-y-auto">
+                    {liqTramos.map(t => {
+                      const cantera  = (canteras  as any[]).find(c => c.id === t.cantera_id)
+                      const deposito = (depositos as any[]).find(d => d.id === t.deposito_id)
+                      const fecha    = t.fecha_carga ?? t.fecha_vacio ?? null
+                      const km       = kmTramo(t, rutas as Ruta[])
+                      const ton      = t.toneladas_descarga ?? t.toneladas_carga
+                      return (
+                        <div key={t.id} className="flex items-center justify-between gap-3 px-3 py-2 text-xs">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ${t.tipo === 'cargado' ? 'bg-naranja-light text-naranja-dark' : 'bg-azul-light text-azul-mid'}`}>
+                                {t.tipo === 'cargado' ? '🚛 Cargado' : '🔲 Vacío'}
+                              </span>
+                              <span className="text-gris-dark">{fecha ? fmtFecha(fecha) : '—'}</span>
+                            </div>
+                            <div className="font-semibold text-carbon mt-0.5">
+                              {cantera?.nombre ?? '—'} → {deposito?.nombre ?? '—'}
+                            </div>
+                            {(t.remito_carga || t.remito_descarga) && (
+                              <div className="text-[11px] text-gris-mid mt-0.5">
+                                Remito: {t.remito_carga ?? t.remito_descarga}
+                              </div>
+                            )}
+                          </div>
+                          <div className="text-right shrink-0 font-mono">
+                            <div>{km > 0 ? `${fmtN(km)} km` : '—'}</div>
+                            {ton != null && <div className="text-gris-dark text-[11px]">{ton} tn</div>}
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               )}
 
-              {/* Adelantos vinculados */}
+              {/* Adelantos */}
               {liqAdel.length > 0 && (
                 <div>
                   <div className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-2">
                     Adelantos descontados ({liqAdel.length})
                   </div>
-                  <div className="bg-gris rounded-xl p-3 max-h-32 overflow-y-auto flex flex-col gap-1">
+                  <div className="bg-gris rounded-xl divide-y divide-gris-mid max-h-32 overflow-y-auto">
                     {liqAdel.map((a: Adelanto) => (
-                      <div key={a.id} className="flex justify-between text-xs py-1 border-b border-gris-mid last:border-0">
+                      <div key={a.id} className="flex justify-between text-xs px-3 py-2">
                         <span className="text-gris-dark">{fmtFecha(a.fecha)} · {a.descripcion || 'Adelanto'}</span>
-                        <span className="font-mono font-semibold text-rojo">− {fmtM(a.monto)}</span>
+                        <span className="font-mono font-semibold text-rojo shrink-0">− {fmtM(a.monto)}</span>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              {/* Resumen */}
+              {/* Gastos del chofer (reintegros) — fetch on-demand */}
+              <div>
+                <div className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-2">
+                  Gastos del chofer (reintegros)
+                  {detalleGastos.length > 0 && ` (${detalleGastos.length})`}
+                </div>
+                {loadingDetalleGastos ? (
+                  <div className="bg-gris rounded-xl p-3 text-xs text-gris-dark">Cargando…</div>
+                ) : detalleGastos.length === 0 ? (
+                  <div className="bg-gris rounded-xl p-3 text-xs text-gris-mid italic">
+                    Sin gastos asociados a esta liquidación.
+                  </div>
+                ) : (
+                  <div className="bg-gris rounded-xl divide-y divide-gris-mid max-h-40 overflow-y-auto">
+                    {detalleGastos.map((g: any) => (
+                      <div key={g.id} className="flex items-start justify-between gap-3 px-3 py-2 text-xs">
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-carbon truncate">
+                            {g.categoria?.nombre ?? '—'}
+                            {g.proveedor && <span className="ml-1 text-gris-dark">· {g.proveedor}</span>}
+                          </div>
+                          <div className="text-[11px] text-gris-dark mt-0.5">
+                            {fmtFecha(g.fecha)}
+                            {g.descripcion && ` · ${g.descripcion}`}
+                          </div>
+                        </div>
+                        <span className="font-mono font-semibold text-verde shrink-0">+ {fmtM(Number(g.monto))}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Resumen detallado con desglose por tipo de km */}
               <div className="bg-azul-light rounded-xl p-4">
                 <div className="grid grid-cols-2 gap-y-1.5 text-sm">
-                  <span className="text-gris-dark">Días trabajados:</span>
-                  <span className="font-mono font-bold">{detalleLiq.dias_trabajados} días</span>
-                  <span className="text-gris-dark">Subtotal haberes:</span>
-                  <span className="font-mono font-bold text-azul-mid">{fmtM(detalleLiq.subtotal_basico)}</span>
-                  {detalleLiq.total_adelantos > 0 && (
+                  <span className="text-gris-dark">Días trabajados ({detalleLiq.dias_trabajados}) × {fmtM(detalleLiq.basico_dia)}:</span>
+                  <span className="font-mono font-bold text-right">{fmtM(detalleLiq.subtotal_basico)}</span>
+
+                  {km_cargados > 0 && (
                     <>
-                      <span className="text-gris-dark">Adelantos:</span>
-                      <span className="font-mono font-bold text-rojo">− {fmtM(detalleLiq.total_adelantos)}</span>
+                      <span className="text-gris-dark">Km cargados ({fmtN(km_cargados)}) × {fmtM(chofer?.precio_km_cargado ?? 0)}:</span>
+                      <span className="font-mono text-right">{fmtM(sub_km_cargado)}</span>
                     </>
                   )}
+                  {km_vacios > 0 && (
+                    <>
+                      <span className="text-gris-dark">Km vacíos ({fmtN(km_vacios)}) × {fmtM(chofer?.precio_km_vacio ?? 0)}:</span>
+                      <span className="font-mono text-right">{fmtM(sub_km_vacio)}</span>
+                    </>
+                  )}
+
+                  {detalleLiq.total_adelantos > 0 && (
+                    <>
+                      <span className="text-gris-dark">− Adelantos:</span>
+                      <span className="font-mono font-bold text-right text-rojo">− {fmtM(detalleLiq.total_adelantos)}</span>
+                    </>
+                  )}
+                  {detalleLiq.total_reintegros > 0 && (
+                    <>
+                      <span className="text-gris-dark">+ Reintegros (gastos chofer):</span>
+                      <span className="font-mono font-bold text-right text-verde">+ {fmtM(detalleLiq.total_reintegros)}</span>
+                    </>
+                  )}
+
                   <span className="font-bold text-azul border-t border-azul/20 pt-1.5">TOTAL NETO:</span>
-                  <span className="font-mono font-bold text-lg text-verde border-t border-azul/20 pt-1.5">
+                  <span className="font-mono font-bold text-lg text-verde border-t border-azul/20 pt-1.5 text-right">
                     {fmtM(detalleLiq.total_neto)}
                   </span>
                 </div>
