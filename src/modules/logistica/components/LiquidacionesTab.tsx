@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import {
   useLiquidaciones, useAdelantos, useChoferes, useCamiones, useTramos, useRutas, useCanteras, useDepositos,
-  useCreateLiquidacion, useUpdateLiquidacion, useCerrarLiquidacion, useDeleteLiquidacion,
+  useCreateLiquidacion, useUpdateLiquidacion, useCerrarLiquidacion, useReabrirLiquidacion, useDeleteLiquidacion,
   useCreateAdelanto, useUpdateAdelanto, useDeleteAdelanto, useUpdateChofer,
   useGastosReintegrosPendientes,
   uploadComprobanteAdelanto, fetchAdelantoComprobanteUrl,
@@ -101,6 +101,7 @@ export function LiquidacionesTab() {
   const { mutate: createLiq,   isPending: creating     } = useCreateLiquidacion()
   const { mutate: updateLiq,   isPending: updating     } = useUpdateLiquidacion()
   const { mutate: cerrarLiq   } = useCerrarLiquidacion()
+  const { mutate: reabrirLiq  } = useReabrirLiquidacion()
 
   const { mutate: deleteLiq   } = useDeleteLiquidacion()
   const { mutate: createAdel,  isPending: creatingAdel } = useCreateAdelanto()
@@ -1241,9 +1242,11 @@ export function LiquidacionesTab() {
                 <Button variant="secondary" onClick={() => setDetalleLiq(null)}>Cerrar</Button>
                 {!esBorrador && (
                   <Button variant="ghost" onClick={() => {
-                    setConfirmDelLiq(detalleLiq)
-                    setConfirmDelNumero('')
-                    setConfirmDelMotivo('')
+                    if (!confirm('¿Reabrir la liquidación? Volverá a estado borrador y los tramos/adelantos quedarán disponibles para editar.')) return
+                    reabrirLiq(detalleLiq.id, {
+                      onSuccess: () => { toast('✓ Liquidación reabierta', 'ok'); setDetalleLiq(null) },
+                      onError:   (err: any) => toast(err?.message || 'Error al reabrir', 'err'),
+                    })
                   }}>
                     🔓 Reabrir
                   </Button>
