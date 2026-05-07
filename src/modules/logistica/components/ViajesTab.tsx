@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react'
 import {
   useTramos, useChoferes, useCamiones, useCanteras, useDepositos, useRutas, useEmpresas,
+  useTarifasEmpresa,
   useCreateTramo, useUpdateTramo, useDeleteTramo, useRegistrarDescargaTramo, useRevertirDescargaTramo, useMoverTramo,
 } from '../hooks/useLogistica'
 import { Modal }    from '@/components/ui/Modal'
@@ -49,6 +50,66 @@ export function ViajesTab() {
   const { data: depositos = [] } = useDepositos()
   const { data: rutas     = [] } = useRutas()
   const { data: empresas  = [] } = useEmpresas()
+  // Asociaciones para filtrar dropdowns en el modal de tramo:
+  // - empresa→canteras viene de `tarifas_empresa_cantera` (si una empresa tiene
+  //   tarifa cargada con una cantera, esa empresa carga ahí).
+  // - cantera→depósitos viene de `rutas` (si hay ruta entre ellos, son válidos).
+  // Fallback: si no hay registros para el ítem elegido, mostramos todo.
+  const { data: tarifasEmp = [] } = useTarifasEmpresa()
+  const canterasPorEmpresa = useMemo(() => {
+    const m = new Map<number, Set<number>>()
+    for (const t of tarifasEmp as Array<{ empresa_id: number; cantera_id: number }>) {
+      if (!m.has(t.empresa_id)) m.set(t.empresa_id, new Set())
+      m.get(t.empresa_id)!.add(t.cantera_id)
+    }
+    return m
+  }, [tarifasEmp])
+  const depositosPorCantera = useMemo(() => {
+    const m = new Map<number, Set<number>>()
+    for (const r of rutas as Array<{ cantera_id: number; deposito_id: number }>) {
+      if (!m.has(r.cantera_id)) m.set(r.cantera_id, new Set())
+      m.get(r.cantera_id)!.add(r.deposito_id)
+    }
+    return m
+  }, [rutas])
+  const canterasPorDeposito = useMemo(() => {
+    const m = new Map<number, Set<number>>()
+    for (const r of rutas as Array<{ cantera_id: number; deposito_id: number }>) {
+      if (!m.has(r.deposito_id)) m.set(r.deposito_id, new Set())
+      m.get(r.deposito_id)!.add(r.cantera_id)
+    }
+    return m
+  }, [rutas])
+
+  // Devuelve options de canteras filtradas por empresa. `selectedId` se
+  // preserva siempre aunque no esté asociado, para no perder la selección
+  // actual al editar tramos viejos.
+  function canteraOptions(empresaIdRaw: string | undefined, selectedIdRaw: string | undefined) {
+    const empresaId = empresaIdRaw ? Number(empresaIdRaw) : null
+    const selectedId = selectedIdRaw ? Number(selectedIdRaw) : null
+    const allowed = empresaId != null ? canterasPorEmpresa.get(empresaId) : null
+    return (canteras as any[])
+      .filter((c: any) => !allowed || allowed.size === 0 || allowed.has(c.id) || c.id === selectedId)
+      .map((c: any) => ({ value: String(c.id), label: c.nombre, sub: c.localidad ?? undefined }))
+  }
+  function depositoOptions(canteraIdRaw: string | undefined, selectedIdRaw: string | undefined) {
+    const canteraId = canteraIdRaw ? Number(canteraIdRaw) : null
+    const selectedId = selectedIdRaw ? Number(selectedIdRaw) : null
+    const allowed = canteraId != null ? depositosPorCantera.get(canteraId) : null
+    return (depositos as any[])
+      .filter((d: any) => !allowed || allowed.size === 0 || allowed.has(d.id) || d.id === selectedId)
+      .map((d: any) => ({ value: String(d.id), label: d.nombre, sub: d.localidad ?? undefined }))
+  }
+  // Para tramos vacíos: depósito de origen → cantera de destino. Mismo set
+  // de rutas pero indexado por depósito.
+  function canteraOptionsPorDeposito(depositoIdRaw: string | undefined, selectedIdRaw: string | undefined) {
+    const depositoId = depositoIdRaw ? Number(depositoIdRaw) : null
+    const selectedId = selectedIdRaw ? Number(selectedIdRaw) : null
+    const allowed = depositoId != null ? canterasPorDeposito.get(depositoId) : null
+    return (canteras as any[])
+      .filter((c: any) => !allowed || allowed.size === 0 || allowed.has(c.id) || c.id === selectedId)
+      .map((c: any) => ({ value: String(c.id), label: c.nombre, sub: c.localidad ?? undefined }))
+  }
   // Distancia + ETA al destino para tramos cargados en curso (Google Maps).
   // El hook devuelve [] si el endpoint falla — no rompe el render.
   const { data: enRuta    = [] } = useTramosEnRuta()
@@ -874,14 +935,14 @@ export function ViajesTab() {
                 <Combobox
                   label="Cantera (origen)"
                   placeholder="Buscar cantera..."
-                  options={canteras.map((c: any) => ({ value: String(c.id), label: c.nombre, sub: c.localidad ?? undefined }))}
+                  options={canteraOptions(formNuevo.watch('empresa_id'), formNuevo.watch('cantera_id'))}
                   value={String(formNuevo.watch('cantera_id') ?? '')}
                   onChange={(v: string) => formNuevo.setValue('cantera_id', v)}
                 />
                 <Combobox
                   label="Depósito (destino)"
                   placeholder="Buscar depósito..."
-                  options={depositos.map((d: any) => ({ value: String(d.id), label: d.nombre, sub: d.localidad ?? undefined }))}
+                  options={depositoOptions(formNuevo.watch('cantera_id'), formNuevo.watch('deposito_id'))}
                   value={String(formNuevo.watch('deposito_id') ?? '')}
                   onChange={(v: string) => formNuevo.setValue('deposito_id', v)}
                 />
@@ -908,14 +969,14 @@ export function ViajesTab() {
                 <Combobox
                   label="Depósito (origen)"
                   placeholder="Desde dónde sale..."
-                  options={depositos.map((d: any) => ({ value: String(d.id), label: d.nombre, sub: d.localidad ?? undefined }))}
+                  options={(depositos as any[]).map((d: any) => ({ value: String(d.id), label: d.nombre, sub: d.localidad ?? undefined }))}
                   value={String(formNuevo.watch('deposito_id') ?? '')}
                   onChange={(v: string) => formNuevo.setValue('deposito_id', v)}
                 />
                 <Combobox
                   label="Cantera (destino)"
                   placeholder="A dónde va..."
-                  options={canteras.map((c: any) => ({ value: String(c.id), label: c.nombre, sub: c.localidad ?? undefined }))}
+                  options={canteraOptionsPorDeposito(formNuevo.watch('deposito_id'), formNuevo.watch('cantera_id'))}
                   value={String(formNuevo.watch('cantera_id') ?? '')}
                   onChange={(v: string) => formNuevo.setValue('cantera_id', v)}
                 />
@@ -1048,14 +1109,22 @@ export function ViajesTab() {
             <Combobox
               label={editando?.tipo === 'cargado' ? 'Cantera (origen)' : 'Cantera (destino)'}
               placeholder="Buscar cantera..."
-              options={canteras.map((c: any) => ({ value: String(c.id), label: c.nombre }))}
+              options={
+                editando?.tipo === 'cargado'
+                  ? canteraOptions(formEdit.watch('empresa_id'), formEdit.watch('cantera_id'))
+                  : canteraOptionsPorDeposito(formEdit.watch('deposito_id'), formEdit.watch('cantera_id'))
+              }
               value={String(formEdit.watch('cantera_id') ?? '')}
               onChange={(v: string) => formEdit.setValue('cantera_id', v)}
             />
             <Combobox
               label={editando?.tipo === 'cargado' ? 'Depósito (destino)' : 'Depósito (origen)'}
               placeholder="Buscar depósito..."
-              options={depositos.map((d: any) => ({ value: String(d.id), label: d.nombre }))}
+              options={
+                editando?.tipo === 'cargado'
+                  ? depositoOptions(formEdit.watch('cantera_id'), formEdit.watch('deposito_id'))
+                  : (depositos as any[]).map((d: any) => ({ value: String(d.id), label: d.nombre }))
+              }
               value={String(formEdit.watch('deposito_id') ?? '')}
               onChange={(v: string) => formEdit.setValue('deposito_id', v)}
             />
