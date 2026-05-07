@@ -17,6 +17,14 @@ function kmTramo(t: Tramo, rutas: Ruta[]): number {
   return r?.km_ida_vuelta ?? 0
 }
 
+export interface LiqExportGasto {
+  fecha:       string
+  categoria:   string
+  proveedor:   string | null
+  descripcion: string | null
+  monto:       number
+}
+
 export interface LiqExportData {
   nombreChofer: string
   desde:        string
@@ -27,9 +35,13 @@ export interface LiqExportData {
   km_totales:   number
   subtotal_km:  number
   descuentos:   number
+  // Reintegros = gastos del chofer que la empresa le devuelve.
+  reintegros?:  number
   neto:         number
   tramos:       Tramo[]
   adelantos:    Adelanto[]
+  // Gastos pagados por el chofer en el período (reintegros).
+  gastos?:      LiqExportGasto[]
   canteras:     { id: number; nombre: string }[]
   depositos:    { id: number; nombre: string }[]
   rutas:        Ruta[]
@@ -81,6 +93,19 @@ export function exportLiquidacionExcel(d: LiqExportData) {
       ...filaAdelantos,
       ['Total adelantos ($)', '', d.descuentos],
     ] : []),
+    ...(d.gastos && d.gastos.length > 0 ? [
+      [],
+      ['── GASTOS DEL CHOFER (reintegros) ──'],
+      ['Fecha', 'Categoría', 'Proveedor', 'Descripción', 'Monto ($)'],
+      ...d.gastos.map(g => [
+        fmtF(g.fecha),
+        g.categoria,
+        g.proveedor ?? '—',
+        g.descripcion ?? '—',
+        g.monto,
+      ]),
+      ['Total reintegros ($)', '', '', '', d.reintegros ?? 0],
+    ] : []),
     [],
     ['TOTAL NETO ($)', d.neto],
   ]
@@ -90,96 +115,4 @@ export function exportLiquidacionExcel(d: LiqExportData) {
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Liquidación')
   XLSX.writeFile(wb, `liquidacion_${d.nombreChofer.replace(/\s+/g, '_')}_${d.desde}.xlsx`)
-}
-
-// ── PDF (window.print) ─────────────────────────────────
-export function exportLiquidacionPDF(d: LiqExportData) {
-  const tramosRows = d.tramos.map(t => {
-    const cantera  = d.canteras.find(c => c.id === t.cantera_id)
-    const deposito = d.depositos.find(x => x.id === t.deposito_id)
-    const fecha    = t.fecha_carga ?? t.fecha_vacio ?? ''
-    const km       = kmTramo(t, d.rutas)
-    return `<tr>
-      <td>${fecha ? fmtF(fecha) : '—'}</td>
-      <td>${cantera?.nombre ?? '—'}</td>
-      <td>${deposito?.nombre ?? '—'}</td>
-      <td class="r">${km || '—'}</td>
-      <td class="r">${t.toneladas_carga ?? '—'}</td>
-      <td>${t.remito_carga ?? '—'}</td>
-    </tr>`
-  }).join('')
-
-  const adelantosSection = d.adelantos.length > 0 ? `
-    <h2>ADELANTOS DESCONTADOS</h2>
-    <table>
-      <thead><tr><th>Fecha</th><th>Descripción</th><th class="r">Monto</th></tr></thead>
-      <tbody>
-        ${d.adelantos.map(a => `<tr>
-          <td>${fmtF(a.fecha)}</td>
-          <td>${a.descripcion || 'Adelanto'}</td>
-          <td class="r">${fmtM(a.monto)}</td>
-        </tr>`).join('')}
-      </tbody>
-    </table>` : ''
-
-  const html = `<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <title>Liquidación ${d.nombreChofer}</title>
-  <style>
-    * { box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; font-size: 11px; margin: 20px 28px; color: #111; }
-    h1 { font-size: 16px; margin: 0 0 2px; }
-    h2 { font-size: 11px; font-weight: bold; margin: 14px 0 5px; border-bottom: 1.5px solid #1a3a5c; padding-bottom: 2px; text-transform: uppercase; letter-spacing: .05em; color: #1a3a5c; }
-    .meta { font-size: 11px; color: #555; margin-bottom: 14px; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
-    th { background: #1a3a5c; color: #fff; text-align: left; padding: 4px 7px; font-size: 10px; font-weight: bold; }
-    td { padding: 3px 7px; border-bottom: 1px solid #eee; }
-    .r { text-align: right; }
-    .resumen { width: 280px; margin-left: auto; margin-top: 6px; }
-    .row { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid #f0f0f0; font-size: 11px; }
-    .row.total { font-weight: bold; font-size: 13px; border-top: 1.5px solid #111; border-bottom: none; margin-top: 4px; padding-top: 6px; }
-    .lbl { color: #555; }
-    .neg { color: #b00; }
-    .pos { color: #1a7a4a; }
-    @media print { @page { margin: 15mm; } }
-  </style>
-</head>
-<body>
-  <h1>LIQUIDACIÓN — ${d.nombreChofer.toUpperCase()}</h1>
-  <div class="meta">
-    Período: ${fmtF(d.desde)} al ${fmtF(d.hasta)} &nbsp;·&nbsp;
-    ${d.dias} días &nbsp;·&nbsp;
-    Estado: <b>${d.estado ?? 'En curso'}</b>
-  </div>
-
-  <h2>Tramos realizados (${d.tramos.length})</h2>
-  <table>
-    <thead><tr><th>Fecha</th><th>Cantera</th><th>Depósito</th><th class="r">Km</th><th class="r">Toneladas</th><th>Remito</th></tr></thead>
-    <tbody>${tramosRows || '<tr><td colspan="6" style="color:#999;font-style:italic">Sin tramos registrados</td></tr>'}</tbody>
-  </table>
-
-  ${adelantosSection}
-
-  <h2>Resumen</h2>
-  <div class="resumen">
-    <div class="row"><span class="lbl">Días trabajados</span><span>${d.dias} días</span></div>
-    <div class="row"><span class="lbl">Básico/día</span><span>${fmtM(d.basico_dia)}</span></div>
-    <div class="row"><span class="lbl">Subtotal básico</span><span>${fmtM(d.subtotal_bas)}</span></div>
-    ${d.km_totales > 0 ? `
-    <div class="row"><span class="lbl">Km recorridos</span><span>${d.km_totales.toLocaleString('es-AR')} km</span></div>
-    <div class="row"><span class="lbl">Subtotal km</span><span>${fmtM(d.subtotal_km)}</span></div>
-    ` : ''}
-    ${d.descuentos > 0 ? `
-    <div class="row"><span class="lbl">Adelantos descontados</span><span class="neg">− ${fmtM(d.descuentos)}</span></div>
-    ` : ''}
-    <div class="row total"><span>TOTAL NETO</span><span class="pos">${fmtM(d.neto)}</span></div>
-  </div>
-  <script>window.onload = function() { window.print() }</script>
-</body>
-</html>`
-
-  const win = window.open('', '_blank')
-  if (win) { win.document.write(html); win.document.close() }
 }

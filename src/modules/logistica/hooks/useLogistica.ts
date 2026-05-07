@@ -584,7 +584,8 @@ export type Gasto = {
 export type GastosFilters = {
   chofer_id?: number; camion_id?: number; tramo_id?: number; categoria_id?: number
   estado?: Gasto['estado']; pagado_por?: Gasto['pagado_por']
-  desde?: string; hasta?: string; liquidado?: boolean; q?: string
+  desde?: string; hasta?: string; liquidado?: boolean; liquidacion_id?: number
+  q?: string
   limit?: number; offset?: number
 }
 

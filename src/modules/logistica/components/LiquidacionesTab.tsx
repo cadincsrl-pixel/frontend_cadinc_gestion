@@ -16,8 +16,9 @@ import { Badge }    from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
 import { useForm }  from 'react-hook-form'
 import { generarPdfLiquidacion, type PdfLiquidacionArgs } from '@/lib/utils/liquidacion-pdf'
+import { apiGet } from '@/lib/api/client'
 import type { Chofer, Tramo, Adelanto, Ruta } from '@/types/domain.types'
-import { exportLiquidacionExcel, exportLiquidacionPDF } from '@/lib/utils/liquidacion-export'
+import { exportLiquidacionExcel } from '@/lib/utils/liquidacion-export'
 
 function fmtM(n: number) {
   return '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 0 })
@@ -350,6 +351,106 @@ export function LiquidacionesTab() {
     }
   }
 
+  // Trae los gastos asociados a una liquidación cerrada. Hacemos el fetch
+  // on-demand (no se cargan siempre con useGastos) tanto para PDF como para
+  // Excel.
+  async function fetchGastosLiquidacion(liqId: number): Promise<any[]> {
+    try {
+      const resp = await apiGet<{ items: any[] }>(
+        `/api/logistica/gastos?liquidacion_id=${liqId}&limit=500`,
+      )
+      return resp.items ?? []
+    } catch (err) {
+      console.warn('[liquidacion] no se pudieron traer los gastos:', err)
+      return []
+    }
+  }
+
+  // Excel de una liquidación cerrada con detalle de gastos del chofer.
+  async function handleDescargarExcelCerrada(liq: any, exportData: any) {
+    const gastos = await fetchGastosLiquidacion(liq.id)
+    exportLiquidacionExcel({
+      ...exportData,
+      reintegros: liq.total_reintegros ?? 0,
+      gastos: gastos.map(g => ({
+        fecha:       g.fecha,
+        categoria:   g.categoria?.nombre ?? '—',
+        proveedor:   g.proveedor ?? null,
+        descripcion: g.descripcion ?? null,
+        monto:       Number(g.monto),
+      })),
+    })
+  }
+
+  // PDF de una liquidación ya cerrada/guardada. Trae los gastos asociados
+  // on-demand (en lugar de cargarlos siempre con useGastos) y arma el
+  // PDF con el mismo generador que usa el "PDF parcial" del modal.
+  async function handleDescargarPdfCerrada(liq: any) {
+    const chofer = (choferes as Chofer[]).find(c => c.id === liq.chofer_id)
+    if (!chofer) { toast('Chofer no encontrado', 'err'); return }
+    const camion = (camiones as any[]).find(c => c.id === chofer.camion_id)
+    const liqTramos = (tramos as Tramo[]).filter(t => t.liquidacion_id === liq.id)
+    const liqAdel   = (adelantos as Adelanto[]).filter(a => a.liquidacion_id === liq.id)
+    const gastos    = await fetchGastosLiquidacion(liq.id)
+
+    const km_cargados = liqTramos.filter(t => t.tipo === 'cargado').reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
+    const km_vacios   = liqTramos.filter(t => t.tipo === 'vacio').reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
+
+    const args: PdfLiquidacionArgs = {
+      chofer_nombre:       chofer.nombre,
+      chofer_cuil:         chofer.cuil ?? null,
+      camion_patente:      camion?.patente ?? null,
+      fecha_desde:         liq.fecha_desde,
+      fecha_hasta:         liq.fecha_hasta,
+      dias_trabajados:     liq.dias_trabajados,
+      basico_dia:          liq.basico_dia,
+      basico_mensual:      0,
+      km_cargados,
+      km_vacios,
+      precio_km_cargado:   chofer.precio_km_cargado ?? 0,
+      precio_km_vacio:     chofer.precio_km_vacio ?? 0,
+      subtotal_basico:     liq.subtotal_basico ?? 0,
+      subtotal_km:         liq.subtotal_km ?? 0,
+      total_adelantos:     liq.total_adelantos ?? 0,
+      total_reintegros:    liq.total_reintegros ?? 0,
+      total_neto:          liq.total_neto,
+      tramos: liqTramos.map(t => {
+        const cantera  = (canteras  as any[]).find(c => c.id === t.cantera_id)
+        const deposito = (depositos as any[]).find(d => d.id === t.deposito_id)
+        return {
+          fecha:      t.fecha_carga ?? t.fecha_vacio ?? null,
+          tipo:       t.tipo === 'vacio' ? 'vacio' : 'cargado',
+          cantera:    cantera?.nombre ?? null,
+          deposito:   deposito?.nombre ?? null,
+          km:         kmTramo(t, rutas as Ruta[]),
+          toneladas:  t.toneladas_descarga ?? t.toneladas_carga ?? null,
+          remito:     t.remito_carga ?? t.remito_descarga ?? null,
+        }
+      }),
+      adelantos: liqAdel.map(a => ({
+        fecha:       a.fecha,
+        descripcion: a.descripcion ?? '',
+        monto:       Number(a.monto),
+      })),
+      gastos: gastos.map(g => ({
+        fecha:       g.fecha,
+        categoria:   g.categoria?.nombre ?? '—',
+        proveedor:   g.proveedor ?? null,
+        descripcion: g.descripcion ?? null,
+        monto:       Number(g.monto),
+      })),
+      estado:             liq.estado === 'cerrada' ? 'cerrada' : 'borrador',
+      numero_liquidacion: liq.id,
+      observaciones:      liq.obs ?? null,
+    }
+    try {
+      generarPdfLiquidacion(args)
+    } catch (e) {
+      console.error('[pdf-liquidacion-cerrada]', e)
+      toast('Error al generar PDF', 'err')
+    }
+  }
+
   function handleLiquidar(data: any) {
     if (!choferLiq) return
     const {
@@ -660,8 +761,8 @@ export function LiquidacionesTab() {
                       }
                       return (
                         <>
-                          <Button variant="ghost" size="sm" onClick={() => exportLiquidacionExcel(exportData)}>📊 Excel</Button>
-                          <Button variant="ghost" size="sm" onClick={() => exportLiquidacionPDF(exportData)}>🖨 PDF</Button>
+                          <Button variant="ghost" size="sm" onClick={() => handleDescargarExcelCerrada(liq, exportData)}>📊 Excel</Button>
+                          <Button variant="ghost" size="sm" onClick={() => handleDescargarPdfCerrada(liq)}>📄 PDF</Button>
                         </>
                       )
                     })()}
