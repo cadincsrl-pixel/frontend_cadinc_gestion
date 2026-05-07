@@ -28,6 +28,7 @@ export function ResumenHistoricoPage() {
   const [tab, setTab] = useState<'semana' | 'historico'>('semana')
   const [vistaObras, setVistaObras] = useState<'activas' | 'archivadas' | 'todas'>('activas')
   const [prestamosDetalleAbierto, setPrestamosDetalleAbierto] = useState(false)
+  const [contratistasDetalleAbierto, setContratistasDetalleAbierto] = useState(false)
 
   // ── Filtros ──
   const [filtroNombre, setFiltroNombre] = useState('')
@@ -395,7 +396,72 @@ export function ResumenHistoricoPage() {
             <Chip value={resumenSemActual.trabajadores} label="Personal" />
             <Chip value={fmtHs(resumenSemActual.totalHs)} label="Horas" />
             <Chip value={fmtMonto(resumenSemActual.totalCosto)} label="Operarios" variant="green" />
-            <Chip value={fmtMonto(resumenSemActual.totalContrat)} label="Contratistas" />
+            {(() => {
+              const certsSem = todasCerts.filter(c => c.sem_key === semActualKey)
+              if (resumenSemActual.totalContrat === 0 || certsSem.length === 0) {
+                return <Chip value={fmtMonto(resumenSemActual.totalContrat)} label="Contratistas" />
+              }
+              const contratistasById = new Map(contratistas.map(ct => [ct.id, ct]))
+              const obrasByCod = new Map(obrasCombinadas.map(o => [o.cod, o]))
+              return (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setContratistasDetalleAbierto(v => !v)}
+                    className="rounded-[9px] px-3 py-1.5 text-center min-w-[70px] bg-[#EEE8FF] text-[#5A2D82] hover:ring-2 hover:ring-[#5A2D82]/40 transition-all cursor-pointer"
+                    title="Ver detalle de contratistas"
+                  >
+                    <div className="font-mono text-lg font-bold leading-none">
+                      {fmtMonto(resumenSemActual.totalContrat)}
+                    </div>
+                    <div className="text-[10px] font-bold uppercase tracking-wide opacity-70 mt-0.5">
+                      Contratistas ▾
+                    </div>
+                  </button>
+                  {contratistasDetalleAbierto && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={() => setContratistasDetalleAbierto(false)}
+                      />
+                      <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-card shadow-card border border-gris z-50 overflow-hidden">
+                        <div className="bg-[#EEE8FF] text-[#5A2D82] px-3 py-2 text-xs font-bold uppercase tracking-wider flex items-center justify-between gap-2">
+                          <span>Detalle de contratistas</span>
+                          <span className="text-[10px] opacity-70">{getSemLabel(semConGracia)}</span>
+                        </div>
+                        <div className="max-h-[360px] overflow-y-auto text-left divide-y divide-gris">
+                          {certsSem.map(c => {
+                            const ct = contratistasById.get(c.contrat_id)
+                            const ob = obrasByCod.get(c.obra_cod)
+                            return (
+                              <div key={c.id} className="px-3 py-2 flex items-start justify-between gap-2 text-xs">
+                                <div className="min-w-0">
+                                  <div className="font-bold text-azul truncate" title={ct?.nom ?? `#${c.contrat_id}`}>
+                                    {ct?.nom ?? `Contratista #${c.contrat_id}`}
+                                  </div>
+                                  <div className="text-[10px] text-gris-dark mt-0.5 flex items-center gap-1.5">
+                                    <span className="font-mono bg-gris px-1.5 py-0.5 rounded">{c.obra_cod}</span>
+                                    {ob?.nom && <span className="truncate">{ob.nom}</span>}
+                                  </div>
+                                  {c.desc && (
+                                    <div className="text-[11px] text-gris-dark italic mt-0.5 truncate" title={c.desc}>
+                                      {c.desc}
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="font-mono font-bold text-[#5A2D82] shrink-0">
+                                  {fmtMonto(c.monto)}
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )
+            })()}
             {(() => {
               const prestamosSem = todosPrestamos.filter(p => p.sem_key === semActualKey)
               const otorgados  = prestamosSem.filter(p => p.tipo === 'otorgado')

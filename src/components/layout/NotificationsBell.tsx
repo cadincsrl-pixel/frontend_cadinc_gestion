@@ -16,9 +16,15 @@ import {
 
 // Mapea la ruta actual al módulo cuyos avisos queremos mostrar.
 // `null` = no hay módulo específico → mostrar todo (home, admin, login).
+// Las rutas de tarja están dispersas (sidebar de tarja incluye /dashboard,
+// /horas-trabajador, /configuracion, etc.); las listamos todas explícitamente.
 function moduloFromPath(pathname: string | null): 'tarja' | 'logistica' | null {
   if (!pathname) return null
-  if (pathname.startsWith('/tarja') || pathname.startsWith('/personal')) return 'tarja'
+  if (pathname.startsWith('/tarja') ||
+      pathname.startsWith('/personal') ||
+      pathname.startsWith('/dashboard') ||
+      pathname.startsWith('/horas-trabajador') ||
+      pathname.startsWith('/configuracion')) return 'tarja'
   if (pathname.startsWith('/logistica')) return 'logistica'
   return null
 }
