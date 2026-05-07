@@ -502,6 +502,15 @@ export function useUpsertTarifaEmpresa() {
   })
 }
 
+export function useUpdateTarifaEmpresa() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: number; dto: { valor_ton?: number; vigente_desde?: string; obs?: string } }) =>
+      apiPatch<TarifaEmpresaCantera>(`/api/logistica/empresas/tarifas/${id}`, dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.tarifasEmpresa }),
+  })
+}
+
 export function useDeleteTarifaEmpresa() {
   const qc = useQueryClient()
   return useMutation({

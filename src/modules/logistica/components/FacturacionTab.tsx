@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx'
 import { useForm } from 'react-hook-form'
 import {
   useEmpresas, useCreateEmpresa, useUpdateEmpresa, useDeleteEmpresa,
-  useTarifasEmpresa, useUpsertTarifaEmpresa, useDeleteTarifaEmpresa,
+  useTarifasEmpresa, useUpsertTarifaEmpresa, useUpdateTarifaEmpresa, useDeleteTarifaEmpresa,
   useCobros, useCreateCobro, useMarcarCobrado, useDeleteCobro,
   useTramos, useCanteras, useChoferes, useCamiones,
 } from '../hooks/useLogistica'
@@ -155,6 +155,7 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
   const { data: todasTarifas = [] } = useTarifasEmpresa()
   const { data: canteras     = [] } = useCanteras()
   const { mutate: crear, isPending: saving } = useUpsertTarifaEmpresa()
+  const { mutate: actualizar, isPending: actualizando } = useUpdateTarifaEmpresa()
   const { mutate: remove } = useDeleteTarifaEmpresa()
 
   const tarifas = todasTarifas.filter(t => t.empresa_id === empresa.id)
@@ -171,7 +172,33 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
 
   const [modal, setModal] = useState(false)
   const [expandida, setExpandida] = useState<number | null>(null)
+  const [editando, setEditando] = useState<TarifaEmpresaCantera | null>(null)
   const form = useForm<any>({ defaultValues: { vigente_desde: new Date().toISOString().slice(0, 10) } })
+  const formEdit = useForm<any>()
+
+  function abrirEditar(t: TarifaEmpresaCantera) {
+    formEdit.reset({
+      valor_ton:     t.valor_ton,
+      vigente_desde: t.vigente_desde,
+      obs:           (t as any).obs ?? '',
+    })
+    setEditando(t)
+  }
+
+  function handleEditSubmit(data: any) {
+    if (!editando) return
+    actualizar({
+      id: editando.id,
+      dto: {
+        valor_ton:     Number(data.valor_ton),
+        vigente_desde: data.vigente_desde,
+        obs:           data.obs ?? '',
+      },
+    }, {
+      onSuccess: () => { toast('✓ Tarifa actualizada', 'ok'); setEditando(null) },
+      onError:   () => toast('Error al actualizar', 'err'),
+    })
+  }
 
   function handleSubmit(data: any) {
     crear({
@@ -236,6 +263,13 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
                           {expanded ? '▲ ocultar' : `▼ ${pasadas.length} anterior${pasadas.length > 1 ? 'es' : ''}`}
                         </button>
                       )}
+                      {puedeCrear && (
+                        <button
+                          onClick={() => abrirEditar(vigente)}
+                          title="Editar tarifa"
+                          className="text-xs px-2 py-1 rounded hover:bg-gris transition-colors"
+                        >✏️</button>
+                      )}
                       {puedeEliminar && (
                         <button
                           onClick={() => { if (confirm(`¿Eliminar tarifa de ${cantera.nombre}?`)) remove(vigente.id, { onSuccess: () => toast('✓ Eliminada', 'ok') }) }}
@@ -253,6 +287,9 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
                           <span>desde {fmtDate(t.vigente_desde)}</span>
                           <div className="flex items-center gap-2">
                             <span className="font-mono">${Number(t.valor_ton).toLocaleString('es-AR', { minimumFractionDigits: 2 })}/ton</span>
+                            {puedeCrear && (
+                              <button onClick={() => abrirEditar(t)} title="Editar" className="hover:text-azul">✏️</button>
+                            )}
                             {puedeEliminar && (
                               <button onClick={() => { if (confirm('¿Eliminar?')) remove(t.id, { onSuccess: () => toast('✓ Eliminada', 'ok') }) }}
                                 className="hover:text-rojo">✕</button>
@@ -278,6 +315,38 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
             <Input label="Vigente desde" type="date" {...form.register('vigente_desde')} />
           </div>
           <Input label="Observaciones" placeholder="Notas..." {...form.register('obs')} />
+        </div>
+      </Modal>
+
+      {/* Modal editar tarifa — sólo cambia valor/fecha/obs. Para cambiar el
+          par empresa-cantera hay que eliminar y crear una nueva. */}
+      <Modal
+        open={!!editando}
+        onClose={() => setEditando(null)}
+        title="✏️ EDITAR TARIFA"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setEditando(null)}>Cancelar</Button>
+            <Button variant="primary" loading={actualizando} onClick={formEdit.handleSubmit(handleEditSubmit)}>✓ Guardar</Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          {editando && (
+            <div className="bg-gris/30 rounded-card p-3 text-xs">
+              <span className="font-bold">{empresa.nombre}</span>
+              <span className="text-gris-dark mx-1">·</span>
+              <span className="font-bold">{canteras.find(c => c.id === editando.cantera_id)?.nombre ?? '—'}</span>
+              <p className="text-[11px] text-gris-dark mt-1">
+                Empresa y cantera no son editables. Si la pareja cambió, eliminá esta tarifa y creá una nueva.
+              </p>
+            </div>
+          )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Input label="$/ton" type="number" step="0.01" {...formEdit.register('valor_ton')} />
+            <Input label="Vigente desde" type="date" {...formEdit.register('vigente_desde')} />
+          </div>
+          <Input label="Observaciones" placeholder="Notas..." {...formEdit.register('obs')} />
         </div>
       </Modal>
     </>
