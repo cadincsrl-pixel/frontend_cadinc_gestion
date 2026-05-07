@@ -17,6 +17,7 @@ import { Badge }    from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
 import { useForm }  from 'react-hook-form'
 import { generarPdfLiquidacion, type PdfLiquidacionArgs } from '@/lib/utils/liquidacion-pdf'
+import { LiquidacionAdjuntosSection } from './LiquidacionAdjuntosSection'
 import { apiGet } from '@/lib/api/client'
 import type { Chofer, Tramo, Adelanto, Ruta } from '@/types/domain.types'
 import { exportLiquidacionExcel } from '@/lib/utils/liquidacion-export'
@@ -1454,6 +1455,10 @@ export function LiquidacionesTab() {
                   </span>
                 </div>
               </div>
+
+              {!esBorrador && (
+                <LiquidacionAdjuntosSection liqId={detalleLiq.id} />
+              )}
 
               {esBorrador && (
                 <Input label="Observaciones" {...formDetalle.register('obs')} />

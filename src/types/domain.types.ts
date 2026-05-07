@@ -123,6 +123,23 @@ export interface CobroAdjunto {
   updated_by:     string | null
 }
 
+// ── Adjuntos de la liquidación (comprobante de pago + recibo firmado) ──
+export type LiquidacionAdjuntoTipo = 'comprobante_pago' | 'recibo_firmado'
+
+export interface LiquidacionAdjunto {
+  id:             number
+  liquidacion_id: number
+  tipo:           LiquidacionAdjuntoTipo
+  nombre_archivo: string
+  mime_type:      string
+  size_bytes:     number
+  obs:            string | null
+  created_at:     string
+  created_by:     string | null
+  updated_at:     string
+  updated_by:     string | null
+}
+
 // ── Documentos del legajo de chofer ──
 export type ChoferDocTipo =
   | 'dni' | 'licencia_conducir' | 'alta_temprana' | 'lnh' | 'cnrt'
