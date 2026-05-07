@@ -123,6 +123,29 @@ export interface CobroAdjunto {
   updated_by:     string | null
 }
 
+// ── Relevo de chofer en un tramo (típicamente en Chivilcoy) ──
+export interface TramoChofer {
+  id:            number
+  tramo_id:      number
+  chofer_id:     number
+  orden:         1 | 2
+  km_cargado:    number
+  km_vacio:      number
+  jornales:      number
+  lugar_relevo:  string | null
+  obs:           string | null
+  created_at:    string
+  updated_at:    string
+}
+
+export interface RelevoSugerencia {
+  encontrado: boolean
+  lugar:      string
+  km1?:       number
+  km2?:       number
+  motivo?:    string
+}
+
 // ── Adjuntos de la liquidación (comprobante de pago + recibo firmado) ──
 export type LiquidacionAdjuntoTipo = 'comprobante_pago' | 'recibo_firmado'
 

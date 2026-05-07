@@ -16,6 +16,7 @@ import { useToast } from '@/components/ui/Toast'
 import { useForm }  from 'react-hook-form'
 import { uploadRemitoImg } from '@/lib/utils/upload'
 import { useTramosEnRuta } from '../hooks/useEnRuta'
+import { RelevoSection } from './RelevoSection'
 import type { Tramo, TramoTipo } from '@/types/domain.types'
 
 // Shape de los forms de este tab. Todos los campos en string porque los
@@ -1168,6 +1169,8 @@ export function ViajesTab() {
           )}
 
           <Input label="Observaciones" placeholder="Opcional" {...formEdit.register('obs')} />
+
+          {editando && <RelevoSection tramo={editando} />}
         </div>
       </Modal>
 
