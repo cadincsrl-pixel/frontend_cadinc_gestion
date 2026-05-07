@@ -546,6 +546,14 @@ export function useMarcarCobrado() {
   })
 }
 
+export function useRevertirCobrado() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiPatch<Cobro>(`/api/logistica/cobros/${id}/revertir`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.cobros }),
+  })
+}
+
 export function useDeleteCobro() {
   const qc = useQueryClient()
   return useMutation({

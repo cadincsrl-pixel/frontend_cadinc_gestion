@@ -6,7 +6,7 @@ import { useForm } from 'react-hook-form'
 import {
   useEmpresas, useCreateEmpresa, useUpdateEmpresa, useDeleteEmpresa,
   useTarifasEmpresa, useUpsertTarifaEmpresa, useUpdateTarifaEmpresa, useDeleteTarifaEmpresa,
-  useCobros, useCreateCobro, useMarcarCobrado, useDeleteCobro,
+  useCobros, useCreateCobro, useMarcarCobrado, useRevertirCobrado, useDeleteCobro,
   useTramos, useUpdateTramo, useCanteras, useChoferes, useCamiones,
 } from '../hooks/useLogistica'
 import { Modal }  from '@/components/ui/Modal'
@@ -477,6 +477,7 @@ function FacturacionSection() {
   const { data: cobros       = [] } = useCobros()
   const { mutate: createCobro, isPending: creando } = useCreateCobro()
   const { mutate: marcarCobrado } = useMarcarCobrado()
+  const { mutate: revertirCobrado } = useRevertirCobrado()
   const { mutate: deleteCobro   } = useDeleteCobro()
 
   const [modalCobro,   setModalCobro]   = useState(false)
@@ -754,10 +755,37 @@ function FacturacionSection() {
                       size="sm"
                       onClick={ev => {
                         ev.stopPropagation()
-                        marcarCobrado(c.id, { onSuccess: () => toast('✓ Marcado como cobrado', 'ok') })
+                        marcarCobrado(c.id, {
+                          onSuccess: () => toast('✓ Marcado como cobrado', 'ok'),
+                          onError:   (err: any) => {
+                            if (err?.body?.error === 'FALTA_COMPROBANTE_PAGO') {
+                              toast('Subí el comprobante de pago antes de marcar cobrado', 'err')
+                            } else {
+                              toast(err?.message || 'Error al marcar cobrado', 'err')
+                            }
+                          },
+                        })
                       }}
                     >
                       ✓ Marcar cobrado
+                    </Button>
+                  </div>
+                )}
+                {c.estado === 'cobrado' && (
+                  <div className="flex gap-2 mt-3 flex-wrap">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={ev => {
+                        ev.stopPropagation()
+                        if (!confirm('¿Revertir este cobro a pendiente?')) return
+                        revertirCobrado(c.id, {
+                          onSuccess: () => toast('✓ Cobro revertido a pendiente', 'ok'),
+                          onError:   (err: any) => toast(err?.message || 'Error al revertir', 'err'),
+                        })
+                      }}
+                    >
+                      ↩ Revertir a pendiente
                     </Button>
                   </div>
                 )}
@@ -795,10 +823,32 @@ function FacturacionSection() {
                   if (!cobroDetalle) return
                   marcarCobrado(cobroDetalle.id, {
                     onSuccess: () => { toast('✓ Marcado como cobrado', 'ok'); setCobroDetalle(null) },
+                    onError:   (err: any) => {
+                      if (err?.body?.error === 'FALTA_COMPROBANTE_PAGO') {
+                        toast('Subí el comprobante de pago antes de marcar cobrado', 'err')
+                      } else {
+                        toast(err?.message || 'Error al marcar cobrado', 'err')
+                      }
+                    },
                   })
                 }}
               >
                 ✓ Marcar cobrado
+              </Button>
+            )}
+            {cobroDetalle?.estado === 'cobrado' && (
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  if (!cobroDetalle) return
+                  if (!confirm('¿Revertir este cobro a pendiente?')) return
+                  revertirCobrado(cobroDetalle.id, {
+                    onSuccess: () => { toast('✓ Cobro revertido a pendiente', 'ok'); setCobroDetalle(null) },
+                    onError:   (err: any) => toast(err?.message || 'Error al revertir', 'err'),
+                  })
+                }}
+              >
+                ↩ Revertir a pendiente
               </Button>
             )}
             <Button variant="secondary" onClick={() => setCobroDetalle(null)}>Cerrar</Button>
