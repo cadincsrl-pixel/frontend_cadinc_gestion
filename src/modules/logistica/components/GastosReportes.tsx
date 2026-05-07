@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react'
 import {
   useGastosResumen, useGastosPorCamion, useGastosPorChofer, useGastosPorCategoria,
-  useTramos, useCobros, useTarifasEmpresa, useCamiones, useChoferes,
+  useTramos, useCobros, useTarifasEmpresa, useCamiones, useChoferes, useLiquidaciones,
 } from '../hooks/useLogistica'
 import { calcularPerformance } from '@/lib/utils/performance'
 import { Button } from '@/components/ui/Button'
@@ -56,10 +56,11 @@ export function GastosReportes() {
   const { data: tarifas  = [] }  = useTarifasEmpresa()
   const { data: camiones = [] }  = useCamiones()
   const { data: choferes = [] }  = useChoferes()
+  const { data: liquidaciones = [] } = useLiquidaciones()
 
   const performance = useMemo(
-    () => calcularPerformance(tramos, cobros, tarifas, desde, hasta),
-    [tramos, cobros, tarifas, desde, hasta],
+    () => calcularPerformance(tramos, cobros, tarifas, desde, hasta, liquidaciones, choferes),
+    [tramos, cobros, tarifas, desde, hasta, liquidaciones, choferes],
   )
 
   // Mapas para mergear gastos por entidad con performance.
@@ -89,8 +90,11 @@ export function GastosReportes() {
   // KPIs cruzados: facturación, margen, % margen.
   const facturacionPeriodo = performance.totales.ingresos
   const gastosPeriodo      = resumen?.total ?? 0
+  const costoMOPeriodo     = performance.totales.costo_mo
   const margenBruto        = facturacionPeriodo - gastosPeriodo
+  const margenReal         = margenBruto - costoMOPeriodo
   const pctMargen          = facturacionPeriodo > 0 ? (margenBruto / facturacionPeriodo) * 100 : null
+  const pctMargenReal      = facturacionPeriodo > 0 ? (margenReal  / facturacionPeriodo) * 100 : null
 
   return (
     <div className="flex flex-col gap-4">
@@ -116,21 +120,29 @@ export function GastosReportes() {
             <Kpi label="Facturación del período" value={fmt$(facturacionPeriodo)} accent="verde" />
             <Kpi label="Gastos del período"      value={fmt$(gastosPeriodo)}      accent="azul" />
             <Kpi
+              label="Costo mano de obra"
+              value={fmt$(costoMOPeriodo)}
+              accent="azul"
+            />
+            <Kpi
+              label="% Margen real"
+              value={pctMargenReal == null ? '—' : `${pctMargenReal.toFixed(1)}%`}
+              accent={pctMargenReal != null && pctMargenReal >= 0 ? 'verde' : 'naranja'}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Kpi
               label="Margen bruto"
               value={fmt$(margenBruto)}
               accent={margenBruto >= 0 ? 'verde' : 'naranja'}
             />
             <Kpi
-              label="% Margen"
-              value={pctMargen == null ? '—' : `${pctMargen.toFixed(1)}%`}
-              accent={pctMargen != null && pctMargen >= 0 ? 'verde' : 'naranja'}
+              label="Margen real (− mano de obra)"
+              value={fmt$(margenReal)}
+              accent={margenReal >= 0 ? 'verde' : 'naranja'}
             />
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Kpi label="Cantidad de gastos" value={fmtInt(resumen.count)} />
-            <Kpi label="Promedio por gasto" value={fmt$(resumen.promedio)} />
-            <Kpi label="Toneladas movidas"   value={`${fmtInt(Math.round(performance.totales.toneladas))} t`} />
+            <Kpi label="Toneladas movidas" value={`${fmtInt(Math.round(performance.totales.toneladas))} t`} />
             <Kpi label="Reintegros pendientes" value={fmt$(resumen.reintegros_pendientes)} accent="naranja" />
           </div>
 
@@ -279,7 +291,7 @@ export function GastosReportes() {
 // margen mergeando ingresos (cruce de tramos+cobros+tarifas) con gastos
 // (que vienen del endpoint /reportes/por-camion|chofer).
 function PerformanceTable({ filas, label, getNombre, gastosPor, mono }: {
-  filas:     Array<{ entidad_id: number; viajes: number; toneladas: number; ingresos: number; sin_tarifa: number; sin_cobrar: number }>
+  filas:     Array<{ entidad_id: number; viajes: number; toneladas: number; ingresos: number; costo_mo: number; sin_tarifa: number; sin_cobrar: number }>
   label:     string
   getNombre: (id: number) => string
   gastosPor: Map<number, number>
@@ -291,9 +303,10 @@ function PerformanceTable({ filas, label, getNombre, gastosPor, mono }: {
         <tr>
           <th className="text-left px-3 py-2">{label}</th>
           <th className="text-right px-3 py-2">Viajes</th>
-          <th className="text-right px-3 py-2">Toneladas</th>
+          <th className="text-right px-3 py-2">Tons</th>
           <th className="text-right px-3 py-2">Ingresos</th>
           <th className="text-right px-3 py-2">Gastos</th>
+          <th className="text-right px-3 py-2" title="Costo de mano de obra (subtotal básico + km de liquidaciones cerradas en rango)">Mano obra</th>
           <th className="text-right px-3 py-2">Margen</th>
           <th className="text-right px-3 py-2">$/tn</th>
           <th className="text-left px-3 py-2">Notas</th>
@@ -302,7 +315,7 @@ function PerformanceTable({ filas, label, getNombre, gastosPor, mono }: {
       <tbody className="divide-y divide-gris">
         {filas.map(f => {
           const gasto  = gastosPor.get(f.entidad_id) ?? 0
-          const margen = f.ingresos - gasto
+          const margen = f.ingresos - gasto - f.costo_mo
           const dxTn   = f.toneladas > 0 ? margen / f.toneladas : null
           return (
             <tr key={f.entidad_id}>
@@ -311,6 +324,9 @@ function PerformanceTable({ filas, label, getNombre, gastosPor, mono }: {
               <td className="px-3 py-2 text-right font-mono">{fmtInt(Math.round(f.toneladas))} t</td>
               <td className="px-3 py-2 text-right font-mono">{fmt$(f.ingresos)}</td>
               <td className="px-3 py-2 text-right font-mono">{fmt$(gasto)}</td>
+              <td className={`px-3 py-2 text-right font-mono ${f.costo_mo > 0 ? 'text-azul-mid' : 'text-gris-mid'}`}>
+                {f.costo_mo > 0 ? fmt$(f.costo_mo) : '—'}
+              </td>
               <td className={`px-3 py-2 text-right font-mono font-bold ${margen >= 0 ? 'text-verde' : 'text-rojo'}`}>
                 {fmt$(margen)}
               </td>

@@ -15,7 +15,7 @@
 //   3) Si no hay tarifa cargada → ingreso 0 + flag `sin_tarifa`.
 // - Tramos sin empresa/cantera registrados se excluyen.
 
-import type { Tramo, Cobro, TarifaEmpresaCantera } from '@/types/domain.types'
+import type { Tramo, Cobro, TarifaEmpresaCantera, Liquidacion, Chofer } from '@/types/domain.types'
 
 interface PerformanceFila {
   // id de la entidad agregada (camion_id o chofer_id)
@@ -23,6 +23,10 @@ interface PerformanceFila {
   viajes:        number
   toneladas:     number
   ingresos:      number
+  // Costo de mano de obra: suma de subtotal_basico + subtotal_km de las
+  // liquidaciones cerradas asociadas al chofer/camión en el rango.
+  // 0 si no se pasaron liquidaciones al cálculo.
+  costo_mo:      number
   // Cuántos tramos se contaron sin tarifa cargada (ingreso = 0).
   sin_tarifa:    number
   // Cuántos tramos están sin cobrar todavía (ingreso teórico).
@@ -36,6 +40,7 @@ export interface PerformanceResultado {
     viajes:    number
     toneladas: number
     ingresos:  number
+    costo_mo:  number
   }
 }
 
@@ -61,17 +66,30 @@ function tarifaVigentePara(
 
 /**
  * Filtra tramos relevantes (cargado + completado + fecha en rango), calcula
- * ingreso por tramo, y agrega por camión y chofer.
+ * ingreso por tramo, y agrega por camión y chofer. Si se pasan liquidaciones
+ * cerradas + choferes, también suma el costo de mano de obra (básico + km
+ * pagados al chofer) para calcular el margen real.
+ *
+ * Política de costo MO:
+ * - Solo liquidaciones con `estado='cerrada'` y `fecha_hasta` en el rango.
+ * - Costo bruto = `subtotal_basico + subtotal_km` (lo que la empresa eroga
+ *   por el trabajo del chofer; los adelantos ya están adelantados, los
+ *   reintegros corresponden a gastos en `gastos_logistica`, así que esos
+ *   no se suman acá para no doble-contar).
+ * - Camión asignado: `chofer.camion_id` actual. Aproximación; si el chofer
+ *   cambió de camión durante el período, el costo va al camión actual.
  *
  * @param desde  ISO yyyy-mm-dd inclusive
  * @param hasta  ISO yyyy-mm-dd inclusive
  */
 export function calcularPerformance(
-  tramos:   Tramo[],
-  cobros:   Cobro[],
-  tarifas:  TarifaEmpresaCantera[],
-  desde:    string,
-  hasta:    string,
+  tramos:        Tramo[],
+  cobros:        Cobro[],
+  tarifas:       TarifaEmpresaCantera[],
+  desde:         string,
+  hasta:         string,
+  liquidaciones: Liquidacion[] = [],
+  choferes:      Chofer[]      = [],
 ): PerformanceResultado {
   // Mapa cobro_id → cobro para lookup O(1).
   const cobroPorId = new Map<number, Cobro>()
@@ -80,12 +98,12 @@ export function calcularPerformance(
   // Acumuladores por entidad.
   const accCamion = new Map<number, PerformanceFila>()
   const accChofer = new Map<number, PerformanceFila>()
-  const totales = { viajes: 0, toneladas: 0, ingresos: 0 }
+  const totales = { viajes: 0, toneladas: 0, ingresos: 0, costo_mo: 0 }
 
   function getOrInit(map: Map<number, PerformanceFila>, id: number): PerformanceFila {
     let f = map.get(id)
     if (!f) {
-      f = { entidad_id: id, viajes: 0, toneladas: 0, ingresos: 0, sin_tarifa: 0, sin_cobrar: 0 }
+      f = { entidad_id: id, viajes: 0, toneladas: 0, ingresos: 0, costo_mo: 0, sin_tarifa: 0, sin_cobrar: 0 }
       map.set(id, f)
     }
     return f
@@ -147,6 +165,32 @@ export function calcularPerformance(
     totales.viajes    += 1
     totales.toneladas += ton
     totales.ingresos  += ingreso
+  }
+
+  // ── Costo de mano de obra por liquidaciones cerradas en rango ──
+  const choferPorId = new Map<number, Chofer>()
+  for (const c of choferes) choferPorId.set(c.id, c)
+
+  for (const liq of liquidaciones) {
+    if (liq.estado !== 'cerrada')   continue
+    if (!liq.fecha_hasta)            continue
+    if (liq.fecha_hasta < desde)    continue
+    if (liq.fecha_hasta > hasta)    continue
+
+    const costo = Number(liq.subtotal_basico ?? 0) + Number(liq.subtotal_km ?? 0)
+    if (costo <= 0) continue
+
+    // Por chofer (siempre identificado).
+    const fch = getOrInit(accChofer, liq.chofer_id)
+    fch.costo_mo += costo
+
+    // Por camión: usamos el camión asignado actual del chofer.
+    const chofer = choferPorId.get(liq.chofer_id)
+    if (chofer?.camion_id != null) {
+      const fc = getOrInit(accCamion, chofer.camion_id)
+      fc.costo_mo += costo
+    }
+    totales.costo_mo += costo
   }
 
   return {

@@ -465,8 +465,14 @@ export interface Liquidacion {
   fecha_hasta: string
   dias_trabajados: number
   basico_dia: number
+  km_totales: number | null
+  precio_km: number | null
   subtotal_basico: number
+  subtotal_km: number | null
+  subtotal_km_cargado: number | null
+  subtotal_km_vacio:   number | null
   total_adelantos: number
+  total_reintegros: number | null
   total_neto: number
   estado: LiqEstado
   obs: string | null
