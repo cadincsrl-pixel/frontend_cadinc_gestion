@@ -7,7 +7,7 @@ import {
   useEmpresas, useCreateEmpresa, useUpdateEmpresa, useDeleteEmpresa,
   useTarifasEmpresa, useUpsertTarifaEmpresa, useUpdateTarifaEmpresa, useDeleteTarifaEmpresa,
   useCobros, useCreateCobro, useMarcarCobrado, useDeleteCobro,
-  useTramos, useCanteras, useChoferes, useCamiones,
+  useTramos, useUpdateTramo, useCanteras, useChoferes, useCamiones,
 } from '../hooks/useLogistica'
 import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -487,13 +487,47 @@ function FacturacionSection() {
   const [cobroCreado,  setCobroCreado]  = useState<{ id: number; total: number; ton: number } | null>(null)
   // Cobro abierto para revisar/editar adjuntos después de creado.
   const [cobroDetalle, setCobroDetalle] = useState<Cobro | null>(null)
+  // Empresa expandida en "Saldo corriente" para ver remitos individuales.
+  const [saldoExpandida, setSaldoExpandida] = useState<number | null>(null)
+  // Tramo abierto para editar toneladas/remito de descarga (ajuste fino
+  // cuando la empresa transportista paga distinto a lo del remito).
+  const [editandoTramo, setEditandoTramo] = useState<Tramo | null>(null)
   const form = useForm<any>()
+  const formEditTramo = useForm<any>()
+  const { mutate: updateTramo, isPending: updatingTramo } = useUpdateTramo()
 
   function cerrarModalCobro() {
     setModalCobro(false)
     setEmpresaCobro(null)
     setCobroCreado(null)
     setSelectedIds(new Set())
+  }
+
+  function abrirEditarTramo(t: Tramo) {
+    formEditTramo.reset({
+      toneladas_descarga: t.toneladas_descarga ?? '',
+      remito_descarga:    t.remito_descarga ?? '',
+    })
+    setEditandoTramo(t)
+  }
+
+  function handleEditTramo(data: any) {
+    if (!editandoTramo) return
+    updateTramo({
+      id: editandoTramo.id,
+      dto: {
+        toneladas_descarga: data.toneladas_descarga ? Number(data.toneladas_descarga) : null,
+        remito_descarga:    data.remito_descarga ?? '',
+      },
+    } as any, {
+      onSuccess: () => { toast('✓ Toneladas actualizadas', 'ok'); setEditandoTramo(null) },
+      onError:   (err: any) => {
+        const code = err?.body?.error
+        if (code === 'TRAMO_LIQUIDADO')   toast('No se puede editar: tramo liquidado', 'err')
+        else if (code === 'TRAMO_COBRADO') toast('No se puede editar: tramo ya cobrado', 'err')
+        else toast(err?.message || 'Error al actualizar', 'err')
+      },
+    })
   }
 
   const tramosPendientes = (tramos as Tramo[]).filter(
@@ -628,10 +662,51 @@ function FacturacionSection() {
                   )}
                 </div>
                 {!sinMovimientos && (
-                  <div className="mt-3 pt-3 border-t border-gris">
+                  <div className="mt-3 pt-3 border-t border-gris flex flex-wrap gap-2 items-center">
                     <Button variant="primary" size="sm" onClick={() => abrirCobrar(empresa)}>
                       💰 Registrar cobro
                     </Button>
+                    <button
+                      onClick={() => setSaldoExpandida(saldoExpandida === empresa.id ? null : empresa.id)}
+                      className="text-xs text-azul hover:underline"
+                    >
+                      {saldoExpandida === empresa.id
+                        ? '▲ Ocultar remitos'
+                        : `▼ Ver remitos (${mis_tramos.length})`}
+                    </button>
+                  </div>
+                )}
+
+                {/* Lista expandida de remitos pendientes con botón de
+                    editar toneladas — útil cuando la empresa paga distinto
+                    a lo registrado en el remito. */}
+                {saldoExpandida === empresa.id && !sinMovimientos && (
+                  <div className="mt-3 bg-gris/30 rounded-card divide-y divide-gris-mid">
+                    {desglose
+                      .sort((a, b) => (b.fecha ?? '').localeCompare(a.fecha ?? ''))
+                      .map(d => (
+                        <div key={d.t.id} className="flex items-center gap-3 px-3 py-2 text-xs">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-gris-dark">
+                              {d.fecha ? fmtDate(d.fecha) : '—'} · #{d.t.id}
+                              {d.t.remito_descarga && <span className="ml-1 font-mono">· R-{d.t.remito_descarga}</span>}
+                            </div>
+                            <div className="font-semibold text-carbon truncate">
+                              {d.cantera?.nombre ?? `Cantera ${d.t.cantera_id ?? '?'}`}
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0 font-mono">
+                            <div>{fmtTon(d.ton)}</div>
+                            <div className="text-gris-dark text-[11px]">×${d.tarifa.toLocaleString('es-AR')}</div>
+                          </div>
+                          <div className="font-mono font-bold text-verde shrink-0 w-20 text-right">{fmtM(d.subtotal)}</div>
+                          <button
+                            onClick={() => abrirEditarTramo(d.t)}
+                            title="Editar toneladas / nº remito"
+                            className="text-xs px-2 py-1 rounded hover:bg-gris-mid transition-colors shrink-0"
+                          >✏️</button>
+                        </div>
+                      ))}
                   </div>
                 )}
               </div>
@@ -905,6 +980,58 @@ function FacturacionSection() {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Modal editar toneladas/remito de un tramo pendiente. Útil cuando
+          la empresa transportista paga distinto de lo registrado en el
+          remito de descarga (discrepancia de balanza). */}
+      <Modal
+        open={!!editandoTramo}
+        onClose={() => setEditandoTramo(null)}
+        title="✏️ EDITAR REMITO"
+        width="max-w-md"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setEditandoTramo(null)}>Cancelar</Button>
+            <Button variant="primary" loading={updatingTramo} onClick={formEditTramo.handleSubmit(handleEditTramo)}>
+              ✓ Guardar
+            </Button>
+          </>
+        }
+      >
+        {editandoTramo && (() => {
+          const cantera  = canteras.find(c => c.id === editandoTramo.cantera_id)
+          const fecha    = editandoTramo.fecha_descarga ?? editandoTramo.fecha_carga
+          return (
+            <div className="flex flex-col gap-4">
+              <div className="bg-gris/30 rounded-card p-3 text-xs">
+                <div className="font-bold">Tramo #{editandoTramo.id}</div>
+                <div className="text-gris-dark mt-0.5">
+                  {fecha ? fmtDate(fecha) : '—'} · {cantera?.nombre ?? '—'}
+                </div>
+                <div className="text-[11px] text-gris-mid mt-1">
+                  Cargado al inicio: {editandoTramo.toneladas_carga ?? '—'} tn
+                </div>
+              </div>
+              <Input
+                label="Toneladas de descarga"
+                type="number"
+                step="0.01"
+                placeholder="0.00"
+                hint="Lo que la empresa registró/paga, no lo del remito original."
+                {...formEditTramo.register('toneladas_descarga')}
+              />
+              <Input
+                label="Nº de remito (opcional)"
+                placeholder="R-00456"
+                {...formEditTramo.register('remito_descarga')}
+              />
+              <p className="text-[11px] text-gris-mid italic">
+                Solo se puede editar si el tramo no está liquidado ni cobrado.
+              </p>
+            </div>
+          )
+        })()}
       </Modal>
     </>
   )
