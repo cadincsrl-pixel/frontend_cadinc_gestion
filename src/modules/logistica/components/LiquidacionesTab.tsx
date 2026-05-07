@@ -120,6 +120,12 @@ export function LiquidacionesTab() {
   // serían muchos requests innecesarios.
   const [detalleGastos, setDetalleGastos] = useState<any[]>([])
   const [loadingDetalleGastos, setLoadingDetalleGastos] = useState(false)
+  // Modal de confirmación para eliminar liquidaciones cerradas — pide
+  // tipear el N° y un motivo (>=10 chars) para evitar eliminaciones
+  // accidentales y dejar trazabilidad en audit_log.
+  const [confirmDelLiq, setConfirmDelLiq] = useState<any | null>(null)
+  const [confirmDelNumero, setConfirmDelNumero] = useState('')
+  const [confirmDelMotivo, setConfirmDelMotivo] = useState('')
   // Comprobante (foto/PDF) para el adelanto que se está creando/editando.
   const [archivoAdel, setArchivoAdel] = useState<File | null>(null)
   const [archivoEditAdel, setArchivoEditAdel] = useState<File | null>(null)
@@ -792,7 +798,9 @@ export function LiquidacionesTab() {
                       )
                     })()}
                     <Button variant="ghost" size="sm" onClick={() => {
-                      if (confirm('¿Eliminar?')) deleteLiq(liq.id, { onSuccess: () => toast('✓ Eliminada', 'ok') })
+                      setConfirmDelLiq(liq)
+                      setConfirmDelNumero('')
+                      setConfirmDelMotivo('')
                     }}>
                       🗑 Eliminar
                     </Button>
@@ -1107,8 +1115,9 @@ export function LiquidacionesTab() {
                 <Button variant="secondary" onClick={() => setDetalleLiq(null)}>Cerrar</Button>
                 {!esBorrador && (
                   <Button variant="ghost" onClick={() => {
-                    if (confirm('¿Reabrir esta liquidación? Se eliminará y los tramos/adelantos volverán al saldo corriente.'))
-                      deleteLiq(detalleLiq.id, { onSuccess: () => { toast('✓ Liquidación eliminada — tramos liberados', 'ok'); setDetalleLiq(null) } })
+                    setConfirmDelLiq(detalleLiq)
+                    setConfirmDelNumero('')
+                    setConfirmDelMotivo('')
                   }}>
                     🔓 Reabrir
                   </Button>
@@ -1460,6 +1469,94 @@ export function LiquidacionesTab() {
           </div>
         </div>
       </Modal>
+
+      {/* ── Modal confirmar eliminación de liquidación cerrada ── */}
+      {confirmDelLiq && (() => {
+        const numeroOk  = confirmDelNumero.trim() === String(confirmDelLiq.id)
+        const motivoOk  = confirmDelMotivo.trim().length >= 10
+        const puedeOk   = numeroOk && motivoOk
+        const liqTramosCount = (tramos as Tramo[]).filter(t => t.liquidacion_id === confirmDelLiq.id).length
+        const liqAdelCount   = (adelantos as Adelanto[]).filter(a => a.liquidacion_id === confirmDelLiq.id).length
+        return (
+          <Modal
+            open
+            onClose={() => setConfirmDelLiq(null)}
+            title="🗑 ELIMINAR LIQUIDACIÓN"
+            width="max-w-lg"
+            footer={
+              <>
+                <Button variant="secondary" onClick={() => setConfirmDelLiq(null)}>Cancelar</Button>
+                <Button
+                  variant="primary"
+                  disabled={!puedeOk}
+                  onClick={() => {
+                    deleteLiq(
+                      { id: confirmDelLiq.id, motivo: confirmDelMotivo.trim() },
+                      {
+                        onSuccess: () => {
+                          toast('✓ Liquidación eliminada — tramos liberados', 'ok')
+                          setConfirmDelLiq(null)
+                          setDetalleLiq(null)
+                        },
+                        onError: (err: any) => toast(err?.message ?? 'Error al eliminar', 'err'),
+                      },
+                    )
+                  }}
+                >
+                  🗑 Eliminar definitivamente
+                </Button>
+              </>
+            }
+          >
+            <div className="flex flex-col gap-4">
+              <div className="bg-rojo-light border border-rojo/30 rounded-xl p-3 text-sm text-rojo">
+                <div className="font-bold mb-1">⚠ Esta acción no se puede deshacer.</div>
+                <div className="text-xs">
+                  Al eliminar la liquidación <b>N° {confirmDelLiq.id}</b> ({fmtM(confirmDelLiq.total_neto)}):
+                </div>
+                <ul className="text-xs mt-2 space-y-0.5 ml-4 list-disc">
+                  <li>Los <b>{liqTramosCount} tramo{liqTramosCount !== 1 ? 's' : ''}</b> volverán al saldo corriente.</li>
+                  <li>Los <b>{liqAdelCount} adelanto{liqAdelCount !== 1 ? 's' : ''}</b> quedarán pendientes de descontar.</li>
+                  <li>Los <b>gastos del chofer</b> volverán a estar disponibles para reintegrar.</li>
+                </ul>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-gris-dark uppercase tracking-wider block mb-1">
+                  Para confirmar, escribí el número de la liquidación: <b>{confirmDelLiq.id}</b>
+                </label>
+                <Input
+                  type="text"
+                  placeholder={String(confirmDelLiq.id)}
+                  value={confirmDelNumero}
+                  onChange={e => setConfirmDelNumero(e.target.value)}
+                  autoFocus
+                />
+                {confirmDelNumero && !numeroOk && (
+                  <div className="text-[11px] text-rojo mt-1">No coincide con el número de la liquidación.</div>
+                )}
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-gris-dark uppercase tracking-wider block mb-1">
+                  Motivo de la eliminación <span className="text-rojo">*</span>
+                </label>
+                <Input
+                  type="text"
+                  placeholder="Ej: Liquidé al chofer equivocado, hay que rehacerla"
+                  value={confirmDelMotivo}
+                  onChange={e => setConfirmDelMotivo(e.target.value)}
+                />
+                <div className="text-[11px] text-gris-mid mt-1">
+                  {confirmDelMotivo.trim().length < 10
+                    ? `Faltan ${10 - confirmDelMotivo.trim().length} caracteres (mínimo 10).`
+                    : '✓ Suficiente. El motivo queda registrado en auditoría.'}
+                </div>
+              </div>
+            </div>
+          </Modal>
+        )
+      })()}
     </>
   )
 }

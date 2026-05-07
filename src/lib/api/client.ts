@@ -145,8 +145,11 @@ export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>
 }
 
-export async function apiDelete<T>(path: string): Promise<T> {
-  const res = await authFetch('DELETE', path)
+// DELETE típicamente no tiene body, pero HTTP lo permite. Lo soportamos
+// como opcional para casos donde necesitamos mandar metadata (ej: motivo
+// de eliminación que el backend persiste en audit_log).
+export async function apiDelete<T>(path: string, body?: unknown): Promise<T> {
+  const res = await authFetch('DELETE', path, body)
   if (!res.ok) throw await parseError(res, 'DELETE', path)
   return res.json() as Promise<T>
 }

@@ -358,7 +358,13 @@ export function useReabrirLiquidacion() {
 export function useDeleteLiquidacion() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id: number) => apiDelete(`/api/logistica/liquidaciones/${id}`),
+    // Acepta opcionalmente { id, motivo } para que el modal de confirmación
+    // de liquidaciones cerradas pueda mandar el motivo al backend.
+    mutationFn: (arg: number | { id: number; motivo?: string }) => {
+      const id     = typeof arg === 'number' ? arg : arg.id
+      const motivo = typeof arg === 'number' ? undefined : arg.motivo
+      return apiDelete(`/api/logistica/liquidaciones/${id}`, motivo ? { motivo } : undefined)
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: LOG_KEYS.liquidaciones })
       qc.invalidateQueries({ queryKey: LOG_KEYS.tramos })
