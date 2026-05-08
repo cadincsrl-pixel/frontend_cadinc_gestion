@@ -34,7 +34,7 @@ export const PLANTILLAS: Plantilla[] = [
     permisos: {
       tarja:           { ...fullCRUD },
       logistica:       { ...fullCRUD },
-      certificaciones: { ...fullCRUD },
+      certificaciones: { ...fullCRUD, resolver_items: true, forzar_despacho: true },
       ropa:            { ...fullCRUD },
       prestamos:       { ...fullCRUD },
       configuracion:   { ...fullCRUD },
@@ -51,6 +51,7 @@ export const PLANTILLAS: Plantilla[] = [
       certificaciones: {
         ...fullCRUD,
         tabs: ['solicitudes', 'stock', 'stock-proveedor', 'materiales', 'adicionales', 'costos'],
+        resolver_items: true,
         forzar_despacho: true,
       },
     },
@@ -66,6 +67,7 @@ export const PLANTILLAS: Plantilla[] = [
       certificaciones: {
         lectura: true, creacion: true, actualizacion: true, eliminacion: false,
         tabs: ['stock', 'stock-proveedor', 'solicitudes'],
+        resolver_items: true,
         forzar_despacho: true,
       },
     },

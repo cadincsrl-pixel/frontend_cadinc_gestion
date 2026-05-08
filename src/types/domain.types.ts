@@ -586,8 +586,11 @@ export type ModuloPermisos = { [K in Accion]?: boolean } & {
   tabs?: string[]
   // Flags específicos opcionales:
   // - tarja.ver_costos: si false, la UI oculta precios/totales (capataz).
-  // - certificaciones.forzar_despacho: permite despachar/resolver items.
+  // - certificaciones.resolver_items: puede comprar/despachar/enviar/rechazar
+  //   items (acciones del comprador/encargado, NO del jefe de obra).
+  // - certificaciones.forzar_despacho: forzar despacho sin stock disponible.
   ver_costos?: boolean
+  resolver_items?: boolean
   forzar_despacho?: boolean
 }
 export type Permisos = Record<string, ModuloPermisos>
