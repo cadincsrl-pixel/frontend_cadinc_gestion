@@ -380,12 +380,27 @@ function UsuarioForm({
 }) {
   function toggleModulo(key: string) {
     const tiene = data.modulos.includes(key)
-    onChange({
-      ...data,
-      modulos: tiene
-        ? data.modulos.filter(m => m !== key)
-        : [...data.modulos, key],
-    })
+    if (tiene) {
+      // Quitar módulo → también limpiar sus permisos para evitar drift
+      // (caso Lucas: tenía 'herramientas' en modulos pero sin permisos.herramientas).
+      const nuevosPermisos = { ...data.permisos }
+      delete nuevosPermisos[key]
+      onChange({
+        ...data,
+        modulos:  data.modulos.filter(m => m !== key),
+        permisos: nuevosPermisos,
+      })
+    } else {
+      // Agregar módulo → seedear con bloque vacío de permisos para que la
+      // matriz CRUD aparezca y el admin pueda tildarla.
+      const nuevosPermisos = { ...data.permisos }
+      if (!nuevosPermisos[key]) nuevosPermisos[key] = {}
+      onChange({
+        ...data,
+        modulos:  [...data.modulos, key],
+        permisos: nuevosPermisos,
+      })
+    }
   }
 
   // Aplica una plantilla: setea rol + módulos + permisos + tipo_usuario.

@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api/client'
 import { usePersonal } from '@/modules/tarja/hooks/usePersonal'
+import { useSessionStore } from '@/store/session.store'
 import type { Personal } from '@/types/domain.types'
 
 // Cumpleañero precalculado, listo para renderizar.
@@ -140,29 +141,34 @@ interface DocChoferVencimientoRow {
  * (cumpleaños HOY + papeles ya vencidos).
  */
 export function useNotificaciones(): NotificacionesResult {
+  // Gating por módulo: evita 403s silenciosos cada vez que se monta la
+  // campana para users que no tienen acceso al módulo correspondiente.
+  const hasModulo = useSessionStore(s => s.hasModulo)
+  const tieneTarja     = hasModulo('tarja')
+  const tieneLogistica = hasModulo('logistica')
+
   const { data: personal = [] } = usePersonal()
   const { data: docsVenc = [] } = useQuery({
     queryKey: ['logistica', 'notificaciones', 'documentos'],
     queryFn:  () => apiGet<DocVencimientoRow[]>('/api/logistica/notificaciones/documentos'),
-    // Permitir que falle silenciosamente si el user no tiene permiso de
-    // logística; useQuery devuelve [] como fallback con la config de abajo.
+    enabled:  tieneLogistica,
     retry: false,
-    staleTime: 5 * 60 * 1000, // 5 min — los vencimientos no cambian seguido.
+    staleTime: 5 * 60 * 1000,
   })
   const { data: docsChofer = [] } = useQuery({
     queryKey: ['logistica', 'notificaciones', 'documentos-choferes'],
     queryFn:  () => apiGet<DocChoferVencimientoRow[]>('/api/logistica/notificaciones/documentos-choferes'),
+    enabled:  tieneLogistica,
     retry: false,
     staleTime: 5 * 60 * 1000,
   })
   const { data: servicesNotif = [] } = useQuery({
     queryKey: ['logistica', 'notificaciones', 'camion-services'],
     queryFn:  () => apiGet<ServiceCamionItem[]>('/api/logistica/notificaciones/camion-services'),
+    enabled:  tieneLogistica,
     retry: false,
     staleTime: 5 * 60 * 1000,
   })
-  // Gastos pendientes — usamos el listado paginado de gastos con filtro
-  // de estado. Limit 50 para que la campana muestre los más recientes.
   const { data: gastosPend } = useQuery({
     queryKey: ['logistica', 'notificaciones', 'gastos-pendientes'],
     queryFn:  () => apiGet<{
@@ -173,19 +179,19 @@ export function useNotificaciones(): NotificacionesResult {
       }>
       total: number
     }>('/api/logistica/gastos?estado=pendiente&limit=50'),
+    enabled:  tieneLogistica,
     retry: false,
-    staleTime: 60 * 1000, // 1 min — más fresco que los otros porque cambia más
+    staleTime: 60 * 1000,
   })
-
   return useMemo(() => {
     const hoyDate = new Date()
     hoyDate.setHours(0, 0, 0, 0)
 
-    // ── Cumpleaños ──────────────────────────────────────────────
+    // ── Cumpleaños — solo si tiene módulo tarja ──
     const hoy: CumpleanieroItem[] = []
     const proximos: CumpleanieroItem[] = []
 
-    for (const p of personal as Personal[]) {
+    for (const p of (tieneTarja ? (personal as Personal[]) : [])) {
       if (!p.fecha_nacimiento) continue
       const [y, m, d] = p.fecha_nacimiento.split('-').map(Number)
       if (!m || !d) continue
@@ -294,7 +300,7 @@ export function useNotificaciones(): NotificacionesResult {
         serviciosVencidos.length +
         gastosPendientes.length,
     }
-  }, [personal, docsVenc, docsChofer, servicesNotif, gastosPend])
+  }, [personal, docsVenc, docsChofer, servicesNotif, gastosPend, tieneTarja])
 }
 
 // Helper para mostrar "hoy", "mañana", "en 3 días" en la lista de próximos.
