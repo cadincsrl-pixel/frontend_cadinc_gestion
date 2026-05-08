@@ -46,8 +46,8 @@ interface ObraResumen {
 
 export function ModalDetalleTrabajador({ open, onClose, trabajador, onEditar }: Props) {
   const { data: categorias = [] } = useCategorias()
-  const { data: obras = [] } = useObras()
-  const { data: obrasArchivadas = [] } = useObrasArchivadas()
+  const { data: obras = [] } = useObras('tarja')
+  const { data: obrasArchivadas = [] } = useObrasArchivadas('tarja')
   const { data: horas = [], isLoading: loadingHoras } = useHorasTrabajador(trabajador?.leg)
 
   const [historialAbierto, setHistorialAbierto] = useState(false)

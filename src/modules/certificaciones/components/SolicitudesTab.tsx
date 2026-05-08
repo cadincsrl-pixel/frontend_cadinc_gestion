@@ -77,7 +77,7 @@ function newLinea(): LineaForm { return { _id: nextId++, descripcion: '', cantid
 export function SolicitudesTab() {
   const toast = useToast()
   const perfiles = usePerfilesMap()
-  const { data: obras = [] } = useObras()
+  const { data: obras = [] } = useObras('certificaciones')
   const { data: proveedores = [] } = useProveedores()
   const { data: facturas = [] } = useFacturasCompra()
   const { data: stockMateriales = [] } = useStockMateriales()

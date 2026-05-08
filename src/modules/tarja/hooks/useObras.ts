@@ -6,12 +6,19 @@ import type { CreateObraDto, UpdateObraDto } from '@/types/domain.types'
 
 export const OBRAS_KEY = ['obras'] as const
 
-export function useObras() {
+// `modulo` opcional: cuando se pasa, el endpoint respeta el override
+// `permisos.<modulo>.obras_scope`. Las páginas de tarja deben pasar
+// 'tarja' para que casos como Cristian Sosa (encargado de depósito
+// que también carga horas en la obra depósito) vean solo lo que toca.
+// Sin modulo se usa el scope global y se devuelve todo lo que el user
+// puede ver en alguno de sus módulos (comportamiento legacy / default
+// para llamadas transversales como sidebar y certificaciones).
+export function useObras(modulo?: string) {
   const qc = useQueryClient()
   const profile = useSessionStore(s => s.profile)
   const query = useQuery({
-    queryKey: OBRAS_KEY,
-    queryFn: obrasApi.getAll,
+    queryKey: modulo ? [...OBRAS_KEY, 'modulo', modulo] : OBRAS_KEY,
+    queryFn:  () => obrasApi.getAll(modulo),
   })
 
   // Auto-archivar obras sin horas en 3 semanas. Corre como mucho una vez
@@ -43,17 +50,17 @@ export function useObras() {
   return query
 }
 
-export function useObrasArchivadas() {
+export function useObrasArchivadas(modulo?: string) {
   return useQuery({
-    queryKey: [...OBRAS_KEY, 'archivadas'],
-    queryFn: obrasApi.getArchivadas,
+    queryKey: modulo ? [...OBRAS_KEY, 'archivadas', 'modulo', modulo] : [...OBRAS_KEY, 'archivadas'],
+    queryFn: () => obrasApi.getArchivadas(modulo),
   })
 }
 
-export function useObra(cod: string) {
+export function useObra(cod: string, modulo?: string) {
   return useQuery({
-    queryKey: [...OBRAS_KEY, cod],
-    queryFn: () => obrasApi.getByCod(cod),
+    queryKey: modulo ? [...OBRAS_KEY, cod, 'modulo', modulo] : [...OBRAS_KEY, cod],
+    queryFn: () => obrasApi.getByCod(cod, modulo),
     enabled: !!cod,
   })
 }

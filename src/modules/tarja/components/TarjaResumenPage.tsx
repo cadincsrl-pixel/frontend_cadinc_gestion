@@ -21,7 +21,7 @@ export function TarjaResumenPage() {
   const router = useRouter()
   const toast = useToast()
   const { puedeCrear, soloCargaHoras } = usePermisos('tarja')
-  const { data: obras = [], isLoading } = useObras()
+  const { data: obras = [], isLoading } = useObras('tarja')
   const perfiles = usePerfilesMap()
   const [modalObra, setModalObra] = useState(false)
   const [modalExcelObras, setModalExcelObras] = useState(false)

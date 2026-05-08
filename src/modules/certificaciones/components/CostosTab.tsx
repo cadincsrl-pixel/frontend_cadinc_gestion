@@ -134,7 +134,9 @@ function TotalesObra({ obraCod }: { obraCod: string }) {
 }
 
 export function CostosTab() {
-  const { data: obras = [] } = useObras()
+  // Esta pestaña vive bajo /tarja/costos aunque el archivo esté en
+  // /modules/certificaciones (legacy). Usa el scope de tarja.
+  const { data: obras = [] } = useObras('tarja')
   const [obraSel, setObraSel] = useState('')
 
   const obrasActivas = (obras as Obra[]).filter(o => !o.archivada)

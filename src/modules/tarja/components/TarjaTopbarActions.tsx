@@ -24,7 +24,7 @@ export function TarjaTopbarActions({ obrasOverride }: TarjaTopbarActionsProps) {
   const [modalExcelObras, setModalExcelObras] = useState(false)
   const [modalRecibos, setModalRecibos] = useState(false)
 
-  const { data: obrasData = [] } = useObras()
+  const { data: obrasData = [] } = useObras('tarja')
   const { data: personal = [] } = usePersonal()
   const { data: categorias = [] } = useCategorias()
   const { data: contratistas = [] } = useContratistas()

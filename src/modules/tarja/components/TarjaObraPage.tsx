@@ -52,8 +52,8 @@ export function TarjaObraPage({ obraCod }: Props) {
   const [modalRecibos, setModalRecibos] = useState(false)
 
   // ── Datos de la obra ──
-  const { data: obra, isLoading: loadingObra } = useObra(obraCod)
-  const { data: obras = [] } = useObras()
+  const { data: obra, isLoading: loadingObra } = useObra(obraCod, 'tarja')
+  const { data: obras = [] } = useObras('tarja')
   const { data: categorias = [] } = useCategorias()
   const { data: tarifas = [] } = useTarifasObra(obraCod)
   const { data: contratistas = [] } = useContratistas()

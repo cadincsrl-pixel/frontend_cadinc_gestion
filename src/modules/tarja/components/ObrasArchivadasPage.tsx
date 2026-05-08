@@ -190,7 +190,7 @@ function ObraArchivadasRow({ obra }: { obra: Obra }) {
 
 // ── Página principal ────────────────────────────────────────────────────────
 export function ObrasArchivadasPage() {
-  const { data: obras = [], isLoading } = useObrasArchivadas()
+  const { data: obras = [], isLoading } = useObrasArchivadas('tarja')
   const [busqueda, setBusqueda] = useState('')
 
   const filtradas = obras.filter(o =>

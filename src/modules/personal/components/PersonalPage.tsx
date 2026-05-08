@@ -90,7 +90,7 @@ export function PersonalPage() {
     return out
   }, [todasHoras])
 
-  const { data: obras = [] } = useObras()
+  const { data: obras = [] } = useObras('tarja')
   const obraNombrePorCod = useMemo(() => {
     const m = new Map<string, string>()
     for (const o of obras) m.set(o.cod, o.nom)

@@ -46,7 +46,7 @@ export function HorasTrabajadorPage() {
   // ── Datos ──
   const { data: personal = [] } = usePersonal()
   const { data: categorias = [] } = useCategorias()
-  const { data: obras = [] } = useObras()
+  const { data: obras = [] } = useObras('tarja')
 
   const { data: todasHoras = [], isLoading: loadingHoras } = useQuery({
     queryKey: ['horas', 'semana', desde, hasta],

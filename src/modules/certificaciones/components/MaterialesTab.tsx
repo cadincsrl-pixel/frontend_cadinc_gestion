@@ -241,7 +241,7 @@ function CompraRow({
 // ── Componente principal ─────────────────────────────────────────────────────
 export function MaterialesTab() {
   const toast = useToast()
-  const { data: obras = [] }      = useObras()
+  const { data: obras = [] }      = useObras('certificaciones')
   const [obraFiltro, setObraFiltro] = useState('')
   const { data: materiales = [] } = useMateriales(obraFiltro || undefined)
   const { mutate: create, isPending: creating } = useCreateMaterial()
