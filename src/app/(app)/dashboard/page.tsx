@@ -3,7 +3,7 @@ import { ResumenHistoricoPage } from '@/modules/dashboard/components/ResumenHist
 
 export default function Page() {
   return (
-    <GuardWrapper modulo="tarja">
+    <GuardWrapper modulo="tarja" tabRequerido="dashboard">
       <ResumenHistoricoPage />
     </GuardWrapper>
   )

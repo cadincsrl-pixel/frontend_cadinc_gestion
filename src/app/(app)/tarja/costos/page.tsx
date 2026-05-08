@@ -3,7 +3,7 @@ import { CostosTab } from '@/modules/certificaciones/components/CostosTab'
 
 export default function Page() {
   return (
-    <GuardWrapper modulo="tarja">
+    <GuardWrapper modulo="tarja" tabRequerido="costos">
       <div className="p-4 md:p-6 flex flex-col gap-4">
         <div className="bg-white rounded-card shadow-card p-4 border-l-[5px] border-naranja">
           <h1 className="font-display text-[2rem] tracking-wider text-azul leading-none">

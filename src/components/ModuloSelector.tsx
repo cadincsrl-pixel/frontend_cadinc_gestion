@@ -14,7 +14,7 @@ interface Modulo {
 }
 
 const MODULOS: Modulo[] = [
-  { key: 'tarja',           nombre: 'Tarja de Obra',     descripcion: 'Control de horas y personal',          icono: '📋', appHref: '/dashboard'        },
+  { key: 'tarja',           nombre: 'Tarja de Obra',     descripcion: 'Control de horas y personal',          icono: '📋', appHref: '/tarja'            },
   { key: 'logistica',       nombre: 'Logística',         descripcion: 'Transporte de camiones',               icono: '🚛', appHref: '/logistica'        },
   { key: 'herramientas',    nombre: 'Herramientas',      descripcion: 'Control de herramientas y equipos',    icono: '🔧', appHref: '/herramientas'     },
   { key: 'certificaciones', nombre: 'Compras y Stock',   descripcion: 'Solicitudes, materiales y costos',     icono: '🛒', appHref: '/certificaciones'  },

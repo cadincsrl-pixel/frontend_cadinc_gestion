@@ -1,5 +1,10 @@
 import { RopaPage } from '@/modules/tarja/components/RopaPage'
+import { GuardWrapper } from '@/components/GuardWrapper'
 
 export default function Page() {
-  return <RopaPage />
+  return (
+    <GuardWrapper modulo="tarja" tabRequerido="ropa">
+      <RopaPage />
+    </GuardWrapper>
+  )
 }

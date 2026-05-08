@@ -13,6 +13,7 @@ import {
   type ServiceCamionItem,
   type GastoPendienteItem,
 } from '@/hooks/useNotificaciones'
+import { usePermisos } from '@/hooks/usePermisos'
 
 // Mapea la ruta actual al módulo cuyos avisos queremos mostrar.
 // `null` = no hay módulo específico → mostrar todo (home, admin, login).
@@ -46,10 +47,14 @@ export function NotificationsBell() {
   const pathname = usePathname()
   const modulo = moduloFromPath(pathname)
   const notifs = useNotificaciones()
+  // Capataz (solo_carga_horas): no debería ver cumpleaños del personal global
+  // — el hook `usePersonal` no filtra por obra del user, así que la lista
+  // contiene a todo CADINC. Lo más simple y seguro: ocultarle la sección.
+  const { soloCargaHoras } = usePermisos('tarja')
 
   // Aplico filtro por módulo: tarja sólo cumpleaños, logística sólo papeles/services/gastos.
   // Si no hay módulo identificado (home, admin), mostramos todo.
-  const showCumple   = modulo === null || modulo === 'tarja'
+  const showCumple   = (modulo === null || modulo === 'tarja') && !soloCargaHoras
   const showLogistica = modulo === null || modulo === 'logistica'
 
   const hoy                    = showCumple    ? notifs.hoy                    : []

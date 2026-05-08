@@ -20,7 +20,7 @@ import type { Categoria, Certificacion, Cierre, Contratista, Hora, Personal, Tar
 export function TarjaResumenPage() {
   const router = useRouter()
   const toast = useToast()
-  const { puedeCrear } = usePermisos('tarja')
+  const { puedeCrear, soloCargaHoras } = usePermisos('tarja')
   const { data: obras = [], isLoading } = useObras()
   const perfiles = usePerfilesMap()
   const [modalObra, setModalObra] = useState(false)
@@ -87,6 +87,14 @@ export function TarjaResumenPage() {
   }, [obras, busqueda])
 
   useEffect(() => {
+    // Capataz (solo_carga_horas) no tiene acciones globales: ni Excel, ni
+    // Recibos, ni CSV. No registramos el callback para que el Topbar no
+    // muestre los botones aunque por algún motivo intente leerlo.
+    if (soloCargaHoras) {
+      setTopbarAccion(null)
+      return
+    }
+
     setTopbarAccion((accion: string) => {
       if (accion === 'excel') setModalExcelObras(true)
       if (accion === 'recibos') setModalRecibos(true)
@@ -101,7 +109,7 @@ export function TarjaResumenPage() {
     })
 
     return () => setTopbarAccion(null)
-  }, [obrasFiltradas, setTopbarAccion, toast, todasHoras])
+  }, [obrasFiltradas, setTopbarAccion, toast, todasHoras, soloCargaHoras])
 
   function fmtFecha(fecha: string | null): string {
     if (!fecha) return 'Sin actividad'
@@ -132,7 +140,7 @@ export function TarjaResumenPage() {
               {obras.length} obra{obras.length !== 1 ? 's' : ''} en curso
             </p>
           </div>
-          {puedeCrear && (
+          {puedeCrear && !soloCargaHoras && (
             <Button variant="primary" size="sm" onClick={() => setModalObra(true)}>
               ＋ Nueva obra
             </Button>
