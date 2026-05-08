@@ -88,8 +88,8 @@ export function EnRutaTab() {
         </div>
       </div>
 
-      {/* Tabla */}
-      <div className="bg-white rounded-card shadow-card overflow-hidden">
+      {/* Tabla — desktop/tablet */}
+      <div className="hidden md:block bg-white rounded-card shadow-card overflow-hidden">
         {isLoading ? (
           <div className="p-6 text-center text-gris-dark text-sm">Cargando…</div>
         ) : filas.length === 0 ? (
@@ -116,6 +116,21 @@ export function EnRutaTab() {
               </tbody>
             </table>
           </div>
+        )}
+      </div>
+
+      {/* Cards — mobile */}
+      <div className="md:hidden flex flex-col gap-2">
+        {isLoading ? (
+          <div className="bg-white rounded-card shadow-card p-6 text-center text-gris-dark text-sm">
+            Cargando…
+          </div>
+        ) : filas.length === 0 ? (
+          <div className="bg-white rounded-card shadow-card p-6 text-center text-gris-dark text-sm">
+            No hay camiones cargados en curso.
+          </div>
+        ) : (
+          filas.map(f => <CardEnRuta key={f.tramo_id} f={f} />)
         )}
       </div>
 
@@ -188,6 +203,62 @@ function FilaEnRuta({ f }: { f: TramoEnRuta }) {
         ) : <span className="text-gris-mid text-xs">—</span>}
       </td>
     </tr>
+  )
+}
+
+function CardEnRuta({ f }: { f: TramoEnRuta }) {
+  const etaSegs = f.duracion_traffic_s ?? f.duracion_s
+  const etaCls =
+    etaSegs == null         ? 'text-gris-mid' :
+    etaSegs < 30 * 60       ? 'text-verde font-bold' :
+    etaSegs < 90 * 60       ? 'text-[#7A5500] font-bold' :
+                              'text-carbon'
+
+  const mapsUrl = (f.gps_lat != null && f.gps_lng != null && f.destino_lat != null && f.destino_lng != null)
+    ? `https://www.google.com/maps/dir/${f.gps_lat},${f.gps_lng}/${f.destino_lat},${f.destino_lng}`
+    : null
+
+  const origen  = f.tipo === 'cargado' ? f.cantera_nombre  : f.deposito_nombre
+  const destino = f.tipo === 'cargado' ? f.deposito_nombre : f.cantera_nombre
+
+  return (
+    <div className="bg-white rounded-card shadow-sm border border-gris-mid p-3">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="font-mono font-bold text-sm">
+          {f.patente ?? '—'}
+          <span className={`ml-1 inline-block text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ${f.tipo === 'cargado' ? 'bg-naranja-light text-naranja-dark' : 'bg-azul-light text-azul-mid'}`}>
+            {f.tipo === 'cargado' ? '🚛 cargado' : '🔲 vacío'}
+          </span>
+        </div>
+        <div className="text-xs text-gris-dark">{f.chofer_nombre ?? '—'}</div>
+      </div>
+      <div className="text-xs mt-2">
+        <div className="text-gris-dark">{origen ?? '—'} →</div>
+        <div className="font-semibold">{destino ?? '—'}</div>
+      </div>
+      <div className="flex items-center justify-between gap-2 flex-wrap mt-2 text-xs">
+        <div className="font-mono">
+          {f.distancia_m != null
+            ? <span className="font-bold">{fmtKm(f.distancia_m)}</span>
+            : <span className="text-rojo">⚠ {f.motivo_sin_calcular ?? '—'}</span>}
+        </div>
+        <div className={`font-mono ${etaCls}`}>
+          ETA {fmtETA(etaSegs)}
+          {f.duracion_traffic_s != null && f.duracion_s != null && f.duracion_traffic_s > f.duracion_s + 60 && (
+            <span className="ml-1 text-[10px] text-rojo">+ tráfico</span>
+          )}
+        </div>
+        <div className="font-mono text-gris-dark">
+          {f.gps_velocidad != null ? `${Math.round(f.gps_velocidad)} km/h` : '—'}
+        </div>
+      </div>
+      <div className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-gris">
+        <span className="text-[11px] text-gris-dark">{fmtHace(f.gps_lectura_en)}</span>
+        {mapsUrl
+          ? <a href={mapsUrl} target="_blank" rel="noreferrer" className="text-azul hover:underline text-xs font-bold">Ver ruta ↗</a>
+          : <span className="text-gris-mid text-xs">—</span>}
+      </div>
+    </div>
   )
 }
 

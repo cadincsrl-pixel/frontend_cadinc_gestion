@@ -596,7 +596,7 @@ export function ViajesTab() {
   return (
     <>
       {/* Filtros */}
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:flex-wrap">
         <Select
           options={[{ value: '', label: 'Todos los choferes' }, ...choferes.map(c => ({ value: c.id, label: c.nombre }))]}
           value={filtChofer}
@@ -623,39 +623,43 @@ export function ViajesTab() {
           onChange={e => setFiltEstado(e.target.value)}
           className="w-full sm:w-40"
         />
-        <div className="flex items-center gap-1">
-          <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Desde</label>
-          <input
-            type="date"
-            value={filtDesde}
-            max={filtHasta || undefined}
-            onChange={e => setFiltDesde(e.target.value)}
-            className="px-2 py-1.5 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white focus:border-naranja"
-          />
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-end">
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Desde</label>
+            <input
+              type="date"
+              value={filtDesde}
+              max={filtHasta || undefined}
+              onChange={e => setFiltDesde(e.target.value)}
+              className="w-full px-2 py-1.5 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white focus:border-naranja"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Hasta</label>
+            <input
+              type="date"
+              value={filtHasta}
+              min={filtDesde || undefined}
+              onChange={e => setFiltHasta(e.target.value)}
+              className="w-full px-2 py-1.5 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white focus:border-naranja"
+            />
+          </div>
         </div>
-        <div className="flex items-center gap-1">
-          <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Hasta</label>
-          <input
-            type="date"
-            value={filtHasta}
-            min={filtDesde || undefined}
-            onChange={e => setFiltHasta(e.target.value)}
-            className="px-2 py-1.5 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white focus:border-naranja"
-          />
+        <div className="flex items-center gap-2 flex-wrap sm:ml-auto">
+          {(filtDesde || filtHasta) && (
+            <button
+              type="button"
+              onClick={() => { setFiltDesde(''); setFiltHasta('') }}
+              className="text-xs font-bold text-gris-dark hover:text-rojo px-2 py-1 rounded hover:bg-gris transition-colors"
+              title="Limpiar rango de fechas"
+            >
+              ✕ Fechas
+            </button>
+          )}
+          <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)}>
+            ＋ Nuevo tramo
+          </Button>
         </div>
-        {(filtDesde || filtHasta) && (
-          <button
-            type="button"
-            onClick={() => { setFiltDesde(''); setFiltHasta('') }}
-            className="text-xs font-bold text-gris-dark hover:text-rojo px-2 py-1 rounded hover:bg-gris transition-colors"
-            title="Limpiar rango de fechas"
-          >
-            ✕ Fechas
-          </button>
-        )}
-        <Button variant="primary" size="sm" className="ml-auto" onClick={() => setModalNuevo(true)}>
-          ＋ Nuevo tramo
-        </Button>
       </div>
 
       {/* Lista */}
@@ -767,19 +771,19 @@ export function ViajesTab() {
                           disabled={!canMoveUp}
                           title="Subir dentro del día"
                           aria-label="Subir"
-                          className="text-[10px] leading-none px-1.5 py-0.5 rounded hover:bg-gris text-gris-dark disabled:opacity-30 disabled:cursor-not-allowed"
+                          className="text-xs leading-none px-2 py-1.5 min-h-[36px] min-w-[36px] rounded hover:bg-gris text-gris-dark disabled:opacity-30 disabled:cursor-not-allowed"
                         >▲</button>
                         <button
                           onClick={() => moverTramo({ id: tramo.id, dir: 'down' })}
                           disabled={!canMoveDown}
                           title="Bajar dentro del día"
                           aria-label="Bajar"
-                          className="text-[10px] leading-none px-1.5 py-0.5 rounded hover:bg-gris text-gris-dark disabled:opacity-30 disabled:cursor-not-allowed"
+                          className="text-xs leading-none px-2 py-1.5 min-h-[36px] min-w-[36px] rounded hover:bg-gris text-gris-dark disabled:opacity-30 disabled:cursor-not-allowed"
                         >▼</button>
                       </div>
                     )}
-                    <button onClick={() => openEdit(tramo)} className="text-xs px-2 py-1 rounded hover:bg-gris transition-colors">✏️</button>
-                    <button onClick={() => handleDelete(tramo)} className="text-xs p-1 rounded hover:bg-rojo-light text-gris-mid hover:text-rojo transition-colors">✕</button>
+                    <button onClick={() => openEdit(tramo)} className="text-xs px-2 py-1.5 min-h-[36px] min-w-[36px] rounded hover:bg-gris transition-colors">✏️</button>
+                    <button onClick={() => handleDelete(tramo)} className="text-xs px-2 py-1.5 min-h-[36px] min-w-[36px] rounded hover:bg-rojo-light text-gris-mid hover:text-rojo transition-colors">✕</button>
                   </div>
                 </div>
 

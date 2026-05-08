@@ -389,8 +389,8 @@ function MapsUrlInput({ register, watch, setValue }: { register: any; watch: any
   return (
     <div className="flex flex-col gap-2">
       <div>
-        <div className="flex items-end gap-2">
-          <div className="flex-1">
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="flex-1 min-w-0 basis-full sm:basis-0">
             <Input label="Link Google Maps" placeholder="https://maps.google.com/..." {...register('maps_url')} />
           </div>
           {url && (
@@ -411,8 +411,8 @@ function MapsUrlInput({ register, watch, setValue }: { register: any; watch: any
 
       {/* Coordenadas (necesarias para calcular distancia GPS→destino) */}
       <div>
-        <div className="flex items-end gap-2">
-          <div className="flex-1 grid grid-cols-2 gap-2">
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="flex-1 min-w-0 basis-full sm:basis-0 grid grid-cols-2 gap-2">
             <Input
               label="Latitud"
               type="number"

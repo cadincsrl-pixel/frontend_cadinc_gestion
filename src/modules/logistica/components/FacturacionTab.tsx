@@ -33,6 +33,23 @@ function fmtFecha(s: string) {
 
 // ─── Sección empresas ─────────────────────────────────────────────────────────
 
+// Definido a nivel de módulo (no dentro de EmpresasSection) para que no se
+// recree en cada render del padre — si se redefiniera, los inputs perderían
+// foco al tipear (la identidad del componente cambia y React desmonta/remonta).
+function EmpresaForm({ form }: { form: any }) {
+  return (
+    <div className="flex flex-col gap-3">
+      <Input label="Nombre / Razón social" placeholder="Empresa S.A." {...form.register('nombre')} />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Input label="CUIT" placeholder="20-12345678-9" {...form.register('cuit')} />
+        <Input label="Teléfono" placeholder="299-XXX-XXXX" {...form.register('tel')} />
+      </div>
+      <Input label="Email" placeholder="contacto@empresa.com" {...form.register('email')} />
+      <Input label="Observaciones" placeholder="Notas..." {...form.register('obs')} />
+    </div>
+  )
+}
+
 function EmpresasSection({
   onSelectEmpresa,
   empresaSeleccionada,
@@ -71,18 +88,6 @@ function EmpresasSection({
     formEdit.reset({ nombre: e.nombre, cuit: e.cuit ?? '', tel: e.tel ?? '', email: e.email ?? '', obs: e.obs ?? '', estado: e.estado })
     setEditando(e)
   }
-
-  const EmpresaForm = ({ form }: { form: any }) => (
-    <div className="flex flex-col gap-3">
-      <Input label="Nombre / Razón social" placeholder="Empresa S.A." {...form.register('nombre')} />
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Input label="CUIT" placeholder="20-12345678-9" {...form.register('cuit')} />
-        <Input label="Teléfono" placeholder="299-XXX-XXXX" {...form.register('tel')} />
-      </div>
-      <Input label="Email" placeholder="contacto@empresa.com" {...form.register('email')} />
-      <Input label="Observaciones" placeholder="Notas..." {...form.register('obs')} />
-    </div>
-  )
 
   return (
     <>
@@ -686,8 +691,8 @@ function FacturacionSection() {
                     {desglose
                       .sort((a, b) => (b.fecha ?? '').localeCompare(a.fecha ?? ''))
                       .map(d => (
-                        <div key={d.t.id} className="flex items-center gap-3 px-3 py-2 text-xs">
-                          <div className="flex-1 min-w-0">
+                        <div key={d.t.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-xs">
+                          <div className="flex-1 min-w-0 basis-full sm:basis-auto">
                             <div className="text-gris-dark">
                               {d.fecha ? fmtDate(d.fecha) : '—'} · #{d.t.id}
                               {d.t.remito_descarga && <span className="ml-1 font-mono">· R-{d.t.remito_descarga}</span>}
@@ -696,11 +701,11 @@ function FacturacionSection() {
                               {d.cantera?.nombre ?? `Cantera ${d.t.cantera_id ?? '?'}`}
                             </div>
                           </div>
-                          <div className="text-right shrink-0 font-mono">
+                          <div className="text-right shrink-0 font-mono min-w-0">
                             <div>{fmtTon(d.ton)}</div>
                             <div className="text-gris-dark text-[11px]">×${d.tarifa.toLocaleString('es-AR')}</div>
                           </div>
-                          <div className="font-mono font-bold text-verde shrink-0 w-20 text-right">{fmtM(d.subtotal)}</div>
+                          <div className="font-mono font-bold text-verde shrink-0 w-auto sm:w-20 text-right">{fmtM(d.subtotal)}</div>
                           <button
                             onClick={() => abrirEditarTramo(d.t)}
                             title="Editar toneladas / nº remito"
@@ -872,7 +877,7 @@ function FacturacionSection() {
                 <div className="text-xs text-gris-dark">
                   {fmtFecha(cobroDetalle.fecha_desde)} → {fmtFecha(cobroDetalle.fecha_hasta)}
                 </div>
-                <div className="grid grid-cols-2 gap-3 mt-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
                   <div>
                     <div className="text-[10px] text-gris-dark uppercase tracking-wide font-bold">Toneladas</div>
                     <div className="font-mono">{fmtTon(cobroDetalle.toneladas_totales)}</div>

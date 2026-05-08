@@ -137,7 +137,9 @@ export function RentabilidadTab() {
         {ranking.length === 0 ? (
           <div className="p-6 text-center text-gris-dark text-sm">No hay viajes cargados.</div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          {/* Tabla — desktop/tablet */}
+          <div className="hidden md:block overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>
               <tr>
@@ -174,6 +176,49 @@ export function RentabilidadTab() {
             </tbody>
           </table>
           </div>
+
+          {/* Cards — mobile */}
+          <div className="md:hidden flex flex-col gap-2 p-2">
+            {ranking.map(({ viaje, r }, idx) => (
+              <button
+                key={viaje.id}
+                onClick={() => setEditando(viaje)}
+                className="bg-white rounded-card shadow-sm border border-gris-mid p-3 text-left active:bg-gris/40 transition-colors w-full"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-mono font-bold text-base text-azul shrink-0">#{idx + 1}</span>
+                    <span className="font-bold text-sm text-carbon truncate">{viaje.nombre}</span>
+                  </div>
+                  <Badge variant={diagnosticoVariant[r.diagnostico]} label={diagnosticoLabel(r.diagnostico)} />
+                </div>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1 mt-2 text-xs">
+                  <div>
+                    <div className="text-[10px] text-gris-dark uppercase tracking-wide">Tarifa $/t</div>
+                    <div className="font-mono">{fmtARS(Number(viaje.tarifa_neta_por_ton))}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-gris-dark uppercase tracking-wide">Viajes/mes</div>
+                    <div className="font-mono">{fmtNum(Number(viaje.viajes_por_mes))}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-gris-dark uppercase tracking-wide">Margen</div>
+                    <div className="font-mono font-bold">{fmtARS(r.margen)} <span className="text-gris-dark">({fmtPct(r.margen_pct)})</span></div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-gris-dark uppercase tracking-wide">Margen / mes</div>
+                    <div className="font-mono font-bold text-verde">{fmtARS(r.margen_mensual)}</div>
+                  </div>
+                </div>
+                {puedeEliminar && (
+                  <div className="flex justify-end mt-2 pt-2 border-t border-gris" onClick={(e) => e.stopPropagation()}>
+                    <DeleteViajeBtn id={viaje.id} nombre={viaje.nombre} />
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+          </>
         )}
       </div>
 
@@ -347,7 +392,7 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
       open
       onClose={onClose}
       title={title}
-      width="max-w-5xl"
+      width="max-w-3xl lg:max-w-5xl"
       footer={
         readOnly
           ? <Button variant="secondary" onClick={onClose}>Cerrar</Button>

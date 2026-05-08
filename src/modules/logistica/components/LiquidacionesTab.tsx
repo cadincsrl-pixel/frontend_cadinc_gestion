@@ -877,8 +877,8 @@ export function LiquidacionesTab() {
             <h2 className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-2">Adelantos</h2>
 
             {/* Barra de filtros */}
-            <div className="bg-white rounded-card shadow-card p-3 mb-3 flex flex-wrap items-end gap-2">
-              <div className="flex gap-1">
+            <div className="bg-white rounded-card shadow-card p-3 mb-3 flex flex-col gap-3">
+              <div className="flex flex-wrap gap-1">
                 {(['pendientes', 'liquidados', 'todos'] as const).map(v => (
                   <button
                     key={v}
@@ -889,27 +889,29 @@ export function LiquidacionesTab() {
                   </button>
                 ))}
               </div>
-              <Select
-                label="Chofer"
-                value={filtChoferAdel}
-                onChange={e => setFiltChoferAdel((e.target as HTMLSelectElement).value)}
-                options={[
-                  { value: '', label: 'Todos' },
-                  ...((choferes as Chofer[]).filter(c => c.estado !== 'inactivo')
-                    .map(c => ({ value: String(c.id), label: c.nombre }))),
-                ]}
-              />
-              <Input label="Desde" type="date" value={filtDesdeAdel} onChange={e => setFiltDesdeAdel(e.target.value)} />
-              <Input label="Hasta" type="date" value={filtHastaAdel} onChange={e => setFiltHastaAdel(e.target.value)} />
-              <Input label="Buscar" placeholder="Descripción..." value={filtSearchAdel} onChange={e => setFiltSearchAdel(e.target.value)} />
-              {(filtChoferAdel || filtDesdeAdel || filtHastaAdel || filtSearchAdel || filtEstadoAdel !== 'pendientes') && (
-                <button
-                  onClick={() => { setFiltChoferAdel(''); setFiltDesdeAdel(''); setFiltHastaAdel(''); setFiltSearchAdel(''); setFiltEstadoAdel('pendientes') }}
-                  className="text-xs text-azul hover:underline self-end mb-1.5"
-                >
-                  Limpiar filtros
-                </button>
-              )}
+              <div className="flex flex-wrap gap-2 items-end">
+                <Select
+                  label="Chofer"
+                  value={filtChoferAdel}
+                  onChange={e => setFiltChoferAdel((e.target as HTMLSelectElement).value)}
+                  options={[
+                    { value: '', label: 'Todos' },
+                    ...((choferes as Chofer[]).filter(c => c.estado !== 'inactivo')
+                      .map(c => ({ value: String(c.id), label: c.nombre }))),
+                  ]}
+                />
+                <Input label="Desde" type="date" value={filtDesdeAdel} onChange={e => setFiltDesdeAdel(e.target.value)} />
+                <Input label="Hasta" type="date" value={filtHastaAdel} onChange={e => setFiltHastaAdel(e.target.value)} />
+                <Input label="Buscar" placeholder="Descripción..." value={filtSearchAdel} onChange={e => setFiltSearchAdel(e.target.value)} />
+                {(filtChoferAdel || filtDesdeAdel || filtHastaAdel || filtSearchAdel || filtEstadoAdel !== 'pendientes') && (
+                  <button
+                    onClick={() => { setFiltChoferAdel(''); setFiltDesdeAdel(''); setFiltHastaAdel(''); setFiltSearchAdel(''); setFiltEstadoAdel('pendientes') }}
+                    className="text-xs text-azul hover:underline self-end mb-1.5"
+                  >
+                    Limpiar filtros
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Cards por chofer */}
@@ -1138,7 +1140,7 @@ export function LiquidacionesTab() {
             {/* Resumen */}
             <div className="bg-azul-light rounded-xl p-4">
               <div className="font-display text-lg tracking-wider text-azul mb-3">RESUMEN</div>
-              <div className="grid grid-cols-2 gap-y-1.5 text-sm">
+              <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1.5 text-xs sm:text-sm">
                 <span className="text-gris-dark">Días trabajados:</span>
                 <span className="font-mono font-bold">{preview.dias} días</span>
                 <span className="text-gris-dark">Básico ({preview.dias} días):</span>

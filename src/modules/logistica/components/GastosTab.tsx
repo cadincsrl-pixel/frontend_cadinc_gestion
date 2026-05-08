@@ -357,50 +357,64 @@ export function GastosTab() {
       {view === 'lista' && <>
 
       {/* Toolbar filtros */}
-      <div className="bg-white rounded-card shadow-card p-3 flex flex-wrap items-end gap-2">
-        <Select
-          label="Categoría"
-          value={filters.categoria_id ? String(filters.categoria_id) : ''}
-          onChange={e => setFilter('categoria_id', e.target.value ? Number(e.target.value) : undefined)}
-          options={[{ value: '', label: 'Todas' }, ...categorias.map(c => ({ value: String(c.id), label: c.nombre }))]}
-        />
-        <Select
-          label="Chofer"
-          value={filters.chofer_id ? String(filters.chofer_id) : ''}
-          onChange={e => setFilter('chofer_id', e.target.value ? Number(e.target.value) : undefined)}
-          options={[{ value: '', label: 'Todos' }, ...choferes.map(c => ({ value: String(c.id), label: c.nombre }))]}
-        />
-        <Select
-          label="Camión"
-          value={filters.camion_id ? String(filters.camion_id) : ''}
-          onChange={e => setFilter('camion_id', e.target.value ? Number(e.target.value) : undefined)}
-          options={[{ value: '', label: 'Todos' }, ...camiones.map(c => ({ value: String(c.id), label: c.patente }))]}
-        />
-        <Select
-          label="Estado"
-          value={filters.estado ?? ''}
-          onChange={e => setFilter('estado', (e.target.value || undefined) as any)}
-          options={[
-            { value: '',          label: 'Todos' },
-            { value: 'pendiente', label: 'Pendiente' },
-            { value: 'aprobado',  label: 'Aprobado' },
-            { value: 'rechazado', label: 'Rechazado' },
-            { value: 'pagado',    label: 'Pagado' },
-          ]}
-        />
-        <Input label="Desde" type="date" value={filters.desde ?? ''} onChange={e => setFilter('desde', e.target.value || undefined)} />
-        <Input label="Hasta" type="date" value={filters.hasta ?? ''} onChange={e => setFilter('hasta', e.target.value || undefined)} />
-        <Input label="Buscar" placeholder="Descripción, proveedor..." value={filters.q ?? ''} onChange={e => setFilter('q', e.target.value || undefined)} />
-        <div className="sm:ml-auto flex flex-wrap gap-2">
-          {puedeCrear && (
-            <>
-              <Button variant="secondary" onClick={() => setModalImport(true)}>📥 Importar Excel</Button>
-              <Button variant="primary" onClick={() => { formNuevo.reset({ ...formNuevo.getValues(), fecha: hoy(), categoria_id: '', monto: '' }); resetUpload(); setModalCreate(true) }}>
-                + Registrar gasto
-              </Button>
-            </>
-          )}
+      <div className="bg-white rounded-card shadow-card p-3 flex flex-col gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2 items-end">
+          <div className="min-w-0">
+            <Select
+              label="Categoría"
+              value={filters.categoria_id ? String(filters.categoria_id) : ''}
+              onChange={e => setFilter('categoria_id', e.target.value ? Number(e.target.value) : undefined)}
+              options={[{ value: '', label: 'Todas' }, ...categorias.map(c => ({ value: String(c.id), label: c.nombre }))]}
+            />
+          </div>
+          <div className="min-w-0">
+            <Select
+              label="Chofer"
+              value={filters.chofer_id ? String(filters.chofer_id) : ''}
+              onChange={e => setFilter('chofer_id', e.target.value ? Number(e.target.value) : undefined)}
+              options={[{ value: '', label: 'Todos' }, ...choferes.map(c => ({ value: String(c.id), label: c.nombre }))]}
+            />
+          </div>
+          <div className="min-w-0">
+            <Select
+              label="Camión"
+              value={filters.camion_id ? String(filters.camion_id) : ''}
+              onChange={e => setFilter('camion_id', e.target.value ? Number(e.target.value) : undefined)}
+              options={[{ value: '', label: 'Todos' }, ...camiones.map(c => ({ value: String(c.id), label: c.patente }))]}
+            />
+          </div>
+          <div className="min-w-0">
+            <Select
+              label="Estado"
+              value={filters.estado ?? ''}
+              onChange={e => setFilter('estado', (e.target.value || undefined) as any)}
+              options={[
+                { value: '',          label: 'Todos' },
+                { value: 'pendiente', label: 'Pendiente' },
+                { value: 'aprobado',  label: 'Aprobado' },
+                { value: 'rechazado', label: 'Rechazado' },
+                { value: 'pagado',    label: 'Pagado' },
+              ]}
+            />
+          </div>
+          <div className="min-w-0">
+            <Input label="Desde" type="date" value={filters.desde ?? ''} onChange={e => setFilter('desde', e.target.value || undefined)} />
+          </div>
+          <div className="min-w-0">
+            <Input label="Hasta" type="date" value={filters.hasta ?? ''} onChange={e => setFilter('hasta', e.target.value || undefined)} />
+          </div>
+          <div className="min-w-0 col-span-2 sm:col-span-1">
+            <Input label="Buscar" placeholder="Descripción, proveedor..." value={filters.q ?? ''} onChange={e => setFilter('q', e.target.value || undefined)} />
+          </div>
         </div>
+        {puedeCrear && (
+          <div className="flex flex-wrap gap-2 justify-end">
+            <Button variant="secondary" onClick={() => setModalImport(true)}>📥 Importar Excel</Button>
+            <Button variant="primary" onClick={() => { formNuevo.reset({ ...formNuevo.getValues(), fecha: hoy(), categoria_id: '', monto: '' }); resetUpload(); setModalCreate(true) }}>
+              + Registrar gasto
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Totales */}
