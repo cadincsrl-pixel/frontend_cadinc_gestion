@@ -6,7 +6,6 @@ import { useObras }        from '@/modules/tarja/hooks/useObras'
 import { useSessionStore } from '@/store/session.store'
 import { useTabsPermitidos } from '@/hooks/useTabsPermitidos'
 import { useNotificaciones } from '@/hooks/useNotificaciones'
-import { usePermisos }       from '@/hooks/usePermisos'
 
 interface SidebarProps {
   open?: boolean
@@ -240,7 +239,6 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
   const tarjaTabs = useTabsPermitidos('tarja')
   const herrTabs  = useTabsPermitidos('herramientas')
-  const { soloCargaHoras } = usePermisos('tarja')
   const enHerramientas     = decodedPathname.startsWith('/herramientas')
   const enLogistica        = decodedPathname.startsWith('/logistica')
   const enCertificaciones  = decodedPathname.startsWith('/certificaciones')
@@ -330,10 +328,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           )}
 
           {/* TARJA nav — solo si NO estamos en otros módulos.
-              Para capataz (solo_carga_horas) limitamos a 'tarja' (lista de obras). */}
+              El filtro por tabs[] ya limita lo visible (capataz tiene
+              tabs:['tarja'], capataz_supervisor tabs:['tarja','personal']). */}
           {!enHerramientas && !enLogistica && !enCertificaciones && !enCaja && !enAdmin && NAV_ITEMS_TARJA
             .filter(item => tarjaTabs.includes(item.tabKey))
-            .filter(item => !soloCargaHoras || item.tabKey === 'tarja')
             .map(item => (
             <button
               key={item.href}

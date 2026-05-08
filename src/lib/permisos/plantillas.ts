@@ -122,6 +122,22 @@ export const PLANTILLAS: Plantilla[] = [
     },
     obras_restringidas: true,
   },
+  {
+    key:   'capataz_supervisor',
+    label: 'Capataz + perfiles de personal',
+    descripcion: 'Carga sus horas como capataz Y accede al listado de perfiles del personal asignado a SU obra (DNI, dirección, teléfono).',
+    rol:   'operador',
+    modulos: ['tarja'],
+    permisos: {
+      tarja: {
+        lectura: true, creacion: true, actualizacion: true, eliminacion: false,
+        tabs: ['tarja', 'personal'],
+        ver_costos:       false,
+        solo_carga_horas: true,
+      },
+    },
+    obras_restringidas: true,
+  },
 ]
 
 export function getPlantilla(key: string): Plantilla | null {
