@@ -133,48 +133,105 @@ export function StockProveedorTab() {
                     {grp.total_pendiente_arsAprox > 0 && <> · valor pendiente aprox. <strong>{fmtM(grp.total_pendiente_arsAprox)}</strong></>}
                   </div>
                 </div>
-                <div className="text-[11px] text-gris-mid italic">Click una fila para ver historial. Botón "Retirar" para descargar.</div>
+                <div className="text-[11px] text-gris-mid italic hidden md:block">Click una fila para ver historial. Botón "Retirar" para descargar.</div>
               </div>
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr>
-                    {['Solicitud', 'Obra', 'Descripción', 'Cantidad', 'Pendiente', 'Retirada', 'Precio unit.', 'Estado', ''].map(h => (
-                      <th key={h} className="bg-gris/40 text-xs font-bold px-3 py-2 text-left uppercase tracking-wide text-gris-dark">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {grp.items.map(item => (
-                    <tr
-                      key={item.item_id}
-                      className="border-b border-gris last:border-0 hover:bg-gris/40 transition-colors cursor-pointer"
-                      onClick={() => setDetalleItem(item)}
-                    >
-                      <td className="px-3 py-2 font-mono text-xs">#{item.solicitud_id}</td>
-                      <td className="px-3 py-2 text-xs text-gris-dark">{item.obra_cod || '—'}</td>
-                      <td className="px-3 py-2 text-sm">{item.descripcion}</td>
-                      <td className="px-3 py-2 font-mono text-xs">{fmtNum(item.cantidad_total)} {item.unidad}</td>
-                      <td className="px-3 py-2 font-mono text-xs font-bold text-azul">{fmtNum(item.cantidad_pendiente)} {item.unidad}</td>
-                      <td className="px-3 py-2 font-mono text-xs text-gris-dark">{fmtNum(item.cantidad_retirada)} {item.unidad}</td>
-                      <td className="px-3 py-2 font-mono text-xs">{fmtM(item.precio_unit)}</td>
-                      <td className="px-3 py-2">
-                        <Badge
-                          variant={item.estado === 'retirado' ? 'activo' : 'pendiente'}
-                          label={item.estado === 'retirado' ? 'Retirado' : 'En proveedor'}
-                        />
-                      </td>
-                      <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
-                        {item.estado === 'en_proveedor' && puedeCrear && (
-                          <Button
-                            size="sm"
-                            onClick={() => setModalRetiro({ proveedor_id: item.proveedor_id, nombre: grp.nombre, obra_cod: item.obra_cod ?? '' })}
-                          >📤 Retirar</Button>
-                        )}
-                      </td>
+
+              {/* Tabla — desktop/tablet */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="hidden md:table w-full border-collapse min-w-[820px]">
+                  <thead>
+                    <tr>
+                      {['Solicitud', 'Obra', 'Descripción', 'Cantidad', 'Pendiente', 'Retirada', 'Precio unit.', 'Estado', ''].map(h => (
+                        <th key={h} className="bg-gris/40 text-xs font-bold px-3 py-2 text-left uppercase tracking-wide text-gris-dark">{h}</th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {grp.items.map(item => (
+                      <tr
+                        key={item.item_id}
+                        className="border-b border-gris last:border-0 hover:bg-gris/40 transition-colors cursor-pointer"
+                        onClick={() => setDetalleItem(item)}
+                      >
+                        <td className="px-3 py-2 font-mono text-xs">#{item.solicitud_id}</td>
+                        <td className="px-3 py-2 text-xs text-gris-dark">{item.obra_cod || '—'}</td>
+                        <td className="px-3 py-2 text-sm">{item.descripcion}</td>
+                        <td className="px-3 py-2 font-mono text-xs">{fmtNum(item.cantidad_total)} {item.unidad}</td>
+                        <td className="px-3 py-2 font-mono text-xs font-bold text-azul">{fmtNum(item.cantidad_pendiente)} {item.unidad}</td>
+                        <td className="px-3 py-2 font-mono text-xs text-gris-dark">{fmtNum(item.cantidad_retirada)} {item.unidad}</td>
+                        <td className="px-3 py-2 font-mono text-xs">{fmtM(item.precio_unit)}</td>
+                        <td className="px-3 py-2">
+                          <Badge
+                            variant={item.estado === 'retirado' ? 'activo' : 'pendiente'}
+                            label={item.estado === 'retirado' ? 'Retirado' : 'En proveedor'}
+                          />
+                        </td>
+                        <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
+                          {item.estado === 'en_proveedor' && puedeCrear && (
+                            <Button
+                              size="sm"
+                              onClick={() => setModalRetiro({ proveedor_id: item.proveedor_id, nombre: grp.nombre, obra_cod: item.obra_cod ?? '' })}
+                            >📤 Retirar</Button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Cards — mobile */}
+              <div className="flex flex-col gap-2 p-3 md:hidden">
+                {grp.items.map(item => (
+                  <div
+                    key={item.item_id}
+                    className="bg-white rounded-card shadow-sm border border-gris-mid p-3 active:bg-gris/40 transition-colors"
+                    onClick={() => setDetalleItem(item)}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-bold text-sm text-carbon truncate">{item.descripcion}</div>
+                        <div className="text-[11px] text-gris-dark mt-0.5">
+                          Sol. <span className="font-mono">#{item.solicitud_id}</span>
+                          {item.obra_cod ? <> · Obra <span className="font-mono">{item.obra_cod}</span></> : null}
+                        </div>
+                      </div>
+                      <Badge
+                        variant={item.estado === 'retirado' ? 'activo' : 'pendiente'}
+                        label={item.estado === 'retirado' ? 'Retirado' : 'En proveedor'}
+                      />
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 mt-3 text-[11px]">
+                      <div>
+                        <div className="text-gris-mid uppercase tracking-wide">Total</div>
+                        <div className="font-mono font-bold">{fmtNum(item.cantidad_total)} {item.unidad}</div>
+                      </div>
+                      <div>
+                        <div className="text-gris-mid uppercase tracking-wide">Pendiente</div>
+                        <div className="font-mono font-bold text-azul">{fmtNum(item.cantidad_pendiente)} {item.unidad}</div>
+                      </div>
+                      <div>
+                        <div className="text-gris-mid uppercase tracking-wide">Retirada</div>
+                        <div className="font-mono">{fmtNum(item.cantidad_retirada)} {item.unidad}</div>
+                      </div>
+                    </div>
+                    {item.precio_unit != null && (
+                      <div className="mt-2 text-[11px] text-gris-dark">
+                        Precio unit. <span className="font-mono font-bold">{fmtM(item.precio_unit)}</span>
+                      </div>
+                    )}
+                    {item.estado === 'en_proveedor' && puedeCrear && (
+                      <div className="mt-3" onClick={(e) => e.stopPropagation()}>
+                        <Button
+                          size="sm"
+                          className="w-full"
+                          onClick={() => setModalRetiro({ proveedor_id: item.proveedor_id, nombre: grp.nombre, obra_cod: item.obra_cod ?? '' })}
+                        >📤 Retirar</Button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           ))}
         </div>
@@ -325,7 +382,7 @@ function ModalRetiro({ proveedorId, proveedorNombre, obraCodSugerida, stockDelPr
           Estás creando un remito de retiro. Al guardar: descuenta del stock en proveedor y suma a "materiales a cuenta cliente" (facturable).
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Combobox
             label="Obra (destino)"
             placeholder="Elegir..."
@@ -436,7 +493,7 @@ function ModalDetalleItem({ item, onClose }: { item: StockProveedorRow; onClose:
           <div className="text-[11px] text-gris-dark mt-0.5">
             Solicitud #{item.solicitud_id} · Obra {item.obra_cod ?? '—'} · Proveedor {item.proveedor_nombre}
           </div>
-          <div className="grid grid-cols-3 gap-2 mt-2 text-xs">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2 text-xs">
             <div>Total: <strong className="font-mono">{fmtNum(item.cantidad_total)}</strong> {item.unidad}</div>
             <div>Pendiente: <strong className="font-mono text-azul">{fmtNum(item.cantidad_pendiente)}</strong></div>
             <div>Retirada: <strong className="font-mono">{fmtNum(item.cantidad_retirada)}</strong></div>
@@ -446,36 +503,38 @@ function ModalDetalleItem({ item, onClose }: { item: StockProveedorRow; onClose:
         {isLoading ? (
           <div className="text-xs text-gris-dark">Cargando movimientos…</div>
         ) : (
-          <table className="w-full border-collapse">
-            <thead>
-              <tr>
-                {['Fecha', 'Tipo', 'Cantidad', 'Motivo', 'Remito', ''].map(h => (
-                  <th key={h} className="bg-gris/40 text-[11px] font-bold px-3 py-1.5 text-left uppercase tracking-wide text-gris-dark">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {(movs as any[]).map(m => (
-                <tr key={m.id} className="border-b border-gris last:border-0">
-                  <td className="px-3 py-1.5 text-xs font-mono">{fmtFecha(m.fecha)}</td>
-                  <td className="px-3 py-1.5">
-                    <Badge variant={m.tipo === 'entrada' ? 'activo' : 'inactivo'} label={m.tipo} />
-                  </td>
-                  <td className="px-3 py-1.5 font-mono text-xs font-bold">{fmtNum(Number(m.cantidad))}</td>
-                  <td className="px-3 py-1.5 text-xs text-gris-dark capitalize">{m.motivo}</td>
-                  <td className="px-3 py-1.5 text-xs font-mono">{m.remito?.numero ?? '—'}</td>
-                  <td className="px-3 py-1.5 text-right">
-                    {m.remito_retiro_id && (
-                      <button
-                        onClick={() => verRemito(m.remito_retiro_id)}
-                        className="text-xs font-bold px-2 py-0.5 rounded hover:bg-azul-light text-azul"
-                      >👁</button>
-                    )}
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse min-w-[520px]">
+              <thead>
+                <tr>
+                  {['Fecha', 'Tipo', 'Cantidad', 'Motivo', 'Remito', ''].map(h => (
+                    <th key={h} className="bg-gris/40 text-[11px] font-bold px-3 py-1.5 text-left uppercase tracking-wide text-gris-dark">{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {(movs as any[]).map(m => (
+                  <tr key={m.id} className="border-b border-gris last:border-0">
+                    <td className="px-3 py-1.5 text-xs font-mono">{fmtFecha(m.fecha)}</td>
+                    <td className="px-3 py-1.5">
+                      <Badge variant={m.tipo === 'entrada' ? 'activo' : 'inactivo'} label={m.tipo} />
+                    </td>
+                    <td className="px-3 py-1.5 font-mono text-xs font-bold">{fmtNum(Number(m.cantidad))}</td>
+                    <td className="px-3 py-1.5 text-xs text-gris-dark capitalize">{m.motivo}</td>
+                    <td className="px-3 py-1.5 text-xs font-mono">{m.remito?.numero ?? '—'}</td>
+                    <td className="px-3 py-1.5 text-right">
+                      {m.remito_retiro_id && (
+                        <button
+                          onClick={() => verRemito(m.remito_retiro_id)}
+                          className="text-xs font-bold px-2 py-0.5 rounded hover:bg-azul-light text-azul"
+                        >👁</button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </Modal>

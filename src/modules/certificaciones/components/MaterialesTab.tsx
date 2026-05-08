@@ -382,8 +382,8 @@ export function MaterialesTab() {
         </Button>
       </div>
 
-      {/* Tabla agrupada por compra */}
-      <div className="bg-white rounded-card shadow-card overflow-x-auto">
+      {/* Tabla agrupada por compra — desktop/tablet */}
+      <div className="hidden md:block bg-white rounded-card shadow-card overflow-x-auto">
         <table className="w-full border-collapse min-w-[680px]">
           <thead>
             <tr>
@@ -419,6 +419,95 @@ export function MaterialesTab() {
         </table>
       </div>
 
+      {/* Cards — mobile */}
+      <div className="flex flex-col gap-2 md:hidden">
+        {compras.length === 0 ? (
+          <div className="bg-white rounded-card shadow-card p-6 text-center text-gris-dark text-sm italic">
+            Sin materiales registrados.
+          </div>
+        ) : compras.map(c => {
+          const tieneMultiple = c.items.length > 1
+          const isExp = expanded.has(c.key)
+          return (
+            <div key={c.key} className="bg-white rounded-card shadow-sm border border-gris-mid p-3">
+              <button
+                onClick={() => toggleExpand(c.key)}
+                className="w-full flex items-start justify-between gap-2 text-left"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs font-bold text-azul">{c.obra_cod}</span>
+                    <span className="text-[11px] text-gris-dark font-mono">{fmtF(c.fecha)}</span>
+                  </div>
+                  <div className="mt-1 text-sm font-medium text-carbon">
+                    {tieneMultiple ? (
+                      <span className="text-azul font-semibold">{c.items.length} materiales</span>
+                    ) : (
+                      <span className="break-words">{c.items[0]?.descripcion ?? ''}</span>
+                    )}
+                  </div>
+                  {c.proveedor && <div className="text-[11px] text-gris-dark mt-0.5">{c.proveedor}</div>}
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="font-mono font-bold text-sm text-carbon">{fmtM(c.total)}</div>
+                  {tieneMultiple && (
+                    <span className="text-[10px] text-gris-mid select-none">{isExp ? '▼ ocultar' : '▶ ver detalle'}</span>
+                  )}
+                </div>
+              </button>
+
+              {/* Adjunto + acciones */}
+              <div className="flex flex-wrap items-center gap-2 mt-3">
+                {c.adjunto_url && (
+                  <button
+                    onClick={() => window.open(c.adjunto_url!, '_blank')}
+                    className="text-xs font-bold text-azul hover:underline flex items-center gap-1"
+                  >
+                    📎 {c.adjunto_nombre ?? 'Ver adjunto'}
+                  </button>
+                )}
+                {!tieneMultiple && c.items[0] && (
+                  <div className="flex gap-2 ml-auto">
+                    <button onClick={() => openEdit(c.items[0]!)} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-gris-mid min-h-[36px]">✏️ Editar</button>
+                    <button onClick={() => handleDelete(c.items[0]!.id)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 min-h-[36px]">✕</button>
+                  </div>
+                )}
+              </div>
+
+              {/* Detalle expandible */}
+              {isExp && tieneMultiple && (
+                <div className="mt-3 pt-3 border-t border-gris flex flex-col gap-2">
+                  {c.items.map((m, i) => (
+                    <div key={m.id} className="bg-azul-light/40 rounded-lg p-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs text-gris-mid">#{i + 1}</div>
+                          <div className="text-sm text-carbon">{m.descripcion}</div>
+                          <div className="text-[11px] text-gris-dark font-mono mt-0.5">
+                            {m.cantidad} {m.unidad} × {fmtM(m.precio_unit)}
+                          </div>
+                        </div>
+                        <div className="font-mono font-bold text-sm text-carbon shrink-0">{fmtM(m.total)}</div>
+                      </div>
+                      <div className="flex gap-2 mt-2">
+                        <button onClick={() => openEdit(m)} className="text-xs font-bold px-3 py-1.5 rounded bg-white text-gris-dark hover:bg-gris flex-1 min-h-[36px]">✏️ Editar</button>
+                        <button onClick={() => handleDelete(m.id)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 min-h-[36px]">✕</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })}
+        {compras.length > 0 && (
+          <div className="bg-white rounded-card shadow-sm border border-gris-mid p-3 flex items-center justify-between">
+            <span className="text-xs font-bold text-gris-dark uppercase tracking-wide">Total general</span>
+            <span className="font-mono font-bold text-lg text-naranja">{fmtM(totalGeneral)}</span>
+          </div>
+        )}
+      </div>
+
       {/* ── Modal nueva compra ── */}
       <Modal open={modalNuevo} onClose={() => setModalNuevo(false)} title="📦 CARGAR MATERIALES" width="max-w-3xl"
         footer={
@@ -431,7 +520,7 @@ export function MaterialesTab() {
         }
       >
         <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Combobox
               label="Obra"
               placeholder="Buscar obra..."
@@ -441,7 +530,7 @@ export function MaterialesTab() {
             />
             <Input label="Fecha de compra" type="date" {...formCab.register('fecha')} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input label="Proveedor" placeholder="Nombre del proveedor..." {...formCab.register('proveedor')} />
             <Input label="Observaciones" placeholder="Notas opcionales..." {...formCab.register('obs')} />
           </div>
@@ -466,7 +555,9 @@ export function MaterialesTab() {
           {/* Líneas de detalle */}
           <div>
             <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-2">Detalle de materiales</div>
-            <div className="overflow-x-auto">
+
+            {/* Tabla — desktop */}
+            <div className="hidden sm:block overflow-x-auto">
               <table className="w-full min-w-[560px]">
                 <thead>
                   <tr className="border-b-2 border-gris">
@@ -491,6 +582,63 @@ export function MaterialesTab() {
                 </tbody>
               </table>
             </div>
+
+            {/* Cards — mobile */}
+            <div className="flex flex-col gap-2 sm:hidden">
+              {lineas.map(l => {
+                const total = l.cantidad * l.precio_unit
+                return (
+                  <div key={l.id} className="border border-gris-mid rounded-lg p-3 bg-gris/20">
+                    <input
+                      type="text"
+                      placeholder="Descripción del material..."
+                      value={l.descripcion}
+                      onChange={e => updateLinea(l.id, { ...l, descripcion: e.target.value })}
+                      className="w-full px-2 py-1.5 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja"
+                    />
+                    <div className="flex gap-2 items-center mt-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.001"
+                        value={l.cantidad}
+                        onChange={e => updateLinea(l.id, { ...l, cantidad: parseFloat(e.target.value) || 0 })}
+                        placeholder="Cant."
+                        className="flex-1 min-w-0 px-2 py-1.5 border border-gris-mid rounded-lg text-sm text-right outline-none focus:border-naranja"
+                      />
+                      <select
+                        value={l.unidad}
+                        onChange={e => updateLinea(l.id, { ...l, unidad: e.target.value })}
+                        className="w-20 px-1 py-1.5 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white"
+                      >
+                        {UNIDADES.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
+                      </select>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={l.precio_unit}
+                        onChange={e => updateLinea(l.id, { ...l, precio_unit: parseFloat(e.target.value) || 0 })}
+                        placeholder="P. Unit"
+                        className="flex-1 min-w-0 px-2 py-1.5 border border-gris-mid rounded-lg text-sm text-right outline-none focus:border-naranja"
+                      />
+                      {lineas.length > 1 && (
+                        <button
+                          onClick={() => removeLinea(l.id)}
+                          className="text-gris-mid hover:text-rojo text-lg font-bold px-2"
+                          aria-label="Eliminar línea"
+                        >✕</button>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between mt-2 text-[11px] text-gris-dark">
+                      <span className="uppercase tracking-wide">Total</span>
+                      <span className="font-mono font-bold text-sm text-carbon">{fmtM(total)}</span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
             <button
               onClick={() => setLineas(prev => [...prev, newLinea()])}
               className="mt-2 text-xs font-bold text-azul hover:text-naranja transition-colors flex items-center gap-1"
@@ -515,12 +663,12 @@ export function MaterialesTab() {
         footer={<><Button variant="secondary" onClick={() => setEditando(null)}>Cancelar</Button><Button variant="primary" loading={updating} onClick={formEdit.handleSubmit(handleUpdate)}>✓ Guardar</Button></>}
       >
         <div className="flex flex-col gap-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input label="Fecha" type="date" {...formEdit.register('fecha')} />
             <Input label="Proveedor" {...formEdit.register('proveedor')} />
           </div>
           <Input label="Descripción" {...formEdit.register('descripcion')} />
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <Input label="Cantidad" type="number" step="0.001" {...formEdit.register('cantidad')} />
             <Select label="Unidad" options={UNIDADES} {...formEdit.register('unidad')} />
             <Input label="Precio unitario ($)" type="number" step="1" {...formEdit.register('precio_unit')} />

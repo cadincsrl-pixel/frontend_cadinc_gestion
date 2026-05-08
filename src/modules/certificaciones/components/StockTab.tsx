@@ -324,8 +324,9 @@ export function StockTab() {
   return (
     <>
       {/* Filtros + stats */}
-      <div className="flex items-center gap-3 flex-wrap justify-between">
-        <div className="flex items-center gap-3 flex-wrap flex-1">
+      <div className="flex flex-col gap-3">
+        {/* Filtros (búsqueda + selects) */}
+        <div className="flex flex-wrap gap-2 items-center">
           <select value={rubroFiltro} onChange={e => setRubroFiltro(e.target.value ? Number(e.target.value) : '')}
             className="px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white font-semibold focus:border-naranja">
             <option value="">Todos los rubros</option>
@@ -340,24 +341,26 @@ export function StockTab() {
             <option value="sin_stock">Sin stock</option>
             <option value="stock_bajo">Stock bajo</option>
           </select>
-          <div className="relative flex-1 min-w-[200px] max-w-[350px]">
+          <div className="relative flex-1 min-w-[140px] max-w-full sm:max-w-[350px]">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gris-dark text-sm">🔍</span>
             <input type="text" value={busqueda} onChange={e => setBusqueda(e.target.value)}
               placeholder="Buscar material o proveedor..."
               className="w-full pl-9 pr-8 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white focus:border-naranja" />
             {busqueda && <button onClick={() => setBusqueda('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gris-dark hover:text-carbon text-sm">✕</button>}
           </div>
-          <div className="flex gap-2 text-xs">
+          <div className="flex flex-wrap gap-2 text-xs">
             <span className="bg-azul-light text-azul px-2 py-1 rounded font-bold">{totalItems} materiales</span>
             {stockBajo > 0 && <span className="bg-amarillo-light text-[#7A5500] px-2 py-1 rounded font-bold">{stockBajo} stock bajo</span>}
             {sinStock > 0 && <span className="bg-rojo-light text-rojo px-2 py-1 rounded font-bold">{sinStock} sin stock</span>}
           </div>
         </div>
-        <div className="flex gap-2">
+
+        {/* Botones de acción */}
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={exportarExcel}
             disabled={filtered.length === 0}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-verde-light text-verde border border-verde/30 text-xs font-bold hover:bg-verde hover:text-white transition-colors disabled:opacity-40"
+            className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-verde-light text-verde border border-verde/30 text-xs font-bold hover:bg-verde hover:text-white transition-colors disabled:opacity-40 min-h-[36px]"
           >
             📊 Exportar Excel
           </button>
@@ -367,7 +370,7 @@ export function StockTab() {
                 onChange={e => { if (e.target.files?.[0]) importarExcel(e.target.files[0]); e.target.value = '' }} />
               <button
                 onClick={() => importRef.current?.click()}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amarillo-light text-[#7A5500] border border-[#E0A800]/30 text-xs font-bold hover:bg-[#E0A800] hover:text-white transition-colors"
+                className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-amarillo-light text-[#7A5500] border border-[#E0A800]/30 text-xs font-bold hover:bg-[#E0A800] hover:text-white transition-colors min-h-[36px]"
               >
                 📥 Importar Excel
               </button>
@@ -396,7 +399,8 @@ export function StockTab() {
             <span className="text-white font-bold text-sm uppercase tracking-wide">{rubro.nombre}</span>
             <span className="text-white/50 text-xs ml-2">{items.length} items</span>
           </div>
-          <div className="overflow-x-auto">
+          {/* Tabla — desktop/tablet */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full border-collapse min-w-[700px]">
               <thead>
                 <tr>
@@ -437,6 +441,43 @@ export function StockTab() {
               </tbody>
             </table>
           </div>
+
+          {/* Cards — mobile */}
+          <div className="flex flex-col gap-2 p-3 md:hidden">
+            {items.map(m => {
+              const bajo = m.stock_minimo > 0 && m.stock_actual <= m.stock_minimo
+              const cero = m.stock_actual <= 0
+              return (
+                <div key={m.id} className="bg-white rounded-card shadow-sm border border-gris-mid p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-sm text-carbon">{m.nombre}</div>
+                      <div className="text-[11px] text-gris-dark mt-0.5">
+                        {m.proveedores?.nombre ?? 'Sin proveedor'}
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end shrink-0">
+                      <span className={`font-mono font-bold text-base ${cero ? 'text-rojo' : bajo ? 'text-[#7A5500]' : 'text-verde'}`}>
+                        {m.stock_actual} <span className="text-xs font-normal text-gris-dark">{UNIDADES.find(u => u.value === m.unidad)?.label ?? m.unidad}</span>
+                      </span>
+                      {bajo && !cero && <span className="mt-0.5 text-[9px] font-bold bg-amarillo-light text-[#7A5500] px-1.5 py-0.5 rounded">BAJO</span>}
+                      {cero && <span className="mt-0.5 text-[9px] font-bold bg-rojo-light text-rojo px-1.5 py-0.5 rounded">SIN STOCK</span>}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mt-2 text-[11px] text-gris-dark">
+                    <div>Mínimo: <span className="font-mono">{m.stock_minimo || '—'}</span></div>
+                    <div>Precio ref.: <span className="font-mono">{m.precio_ref > 0 ? fmtM(m.precio_ref) : '—'}</span></div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mt-3">
+                    <button onClick={() => abrirEntrada(m)} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 min-h-[36px]">+ Entrada</button>
+                    <button onClick={() => setModalHistorial(m)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul hover:opacity-80 min-h-[36px]">Historial</button>
+                    <button onClick={() => abrirEditar(m)} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-gris-mid min-h-[36px]">✏️ Editar</button>
+                    <button onClick={() => setModalEliminar(m)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 min-h-[36px]">✕ Eliminar</button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
       ))}
 
@@ -453,7 +494,7 @@ export function StockTab() {
           </div>
           <Input label="Nombre del material" {...formNuevo.register('nombre')} />
           <Combobox label="Proveedor de referencia" placeholder="Buscar proveedor..." options={provOptions} value={formNuevo.watch('proveedor_id')} onChange={v => formNuevo.setValue('proveedor_id', v)} />
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div>
               <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1 block">Unidad</label>
               <select {...formNuevo.register('unidad')} className="w-full px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white font-semibold focus:border-naranja">
@@ -475,7 +516,7 @@ export function StockTab() {
               <div className="font-bold text-sm text-azul">{modalEntrada.nombre}</div>
               <div className="text-xs text-gris-dark">Stock actual: <strong className="font-mono">{modalEntrada.stock_actual}</strong> {UNIDADES.find(u => u.value === modalEntrada.unidad)?.label ?? modalEntrada.unidad}</div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1 block">Tipo</label>
                 <select {...formEntrada.register('tipo')} className="w-full px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white font-semibold focus:border-naranja">
@@ -515,7 +556,7 @@ export function StockTab() {
           </div>
           <Input label="Nombre" {...formEditar.register('nombre')} />
           <Combobox label="Proveedor de referencia" placeholder="Buscar proveedor..." options={provOptions} value={formEditar.watch('proveedor_id')} onChange={v => formEditar.setValue('proveedor_id', v)} />
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div>
               <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1 block">Unidad</label>
               <select {...formEditar.register('unidad')} className="w-full px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white font-semibold focus:border-naranja">
@@ -562,29 +603,31 @@ function HistorialModal({ material, onClose, perfiles }: { material: StockMateri
         {(movimientos as StockMovimiento[]).length === 0 ? (
           <p className="text-center text-gris-dark text-sm italic py-4">Sin movimientos registrados.</p>
         ) : (
-          <table className="w-full border-collapse">
-            <thead>
-              <tr>
-                {['Fecha', 'Tipo', 'Cantidad', 'Motivo', 'Usuario'].map((h, i) => (
-                  <th key={i} className="bg-gris text-gris-dark text-[10px] font-bold px-3 py-2 text-left uppercase tracking-wide">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {(movimientos as StockMovimiento[]).map(m => {
-                const tipoCfg = TIPO_CFG[m.tipo] ?? { label: m.tipo, color: '' }
-                return (
-                  <tr key={m.id} className="border-b border-gris last:border-0">
-                    <td className="px-3 py-2 text-sm font-mono text-gris-dark">{fmtF(m.fecha)}</td>
-                    <td className="px-3 py-2"><span className={`text-xs font-bold ${tipoCfg.color}`}>{tipoCfg.label}</span></td>
-                    <td className="px-3 py-2 font-mono font-bold text-sm">{m.cantidad}</td>
-                    <td className="px-3 py-2 text-xs text-gris-dark">{MOTIVO_LABEL[m.motivo] ?? m.motivo}{m.obra_cod && <span className="ml-1 font-mono text-azul">({m.obra_cod})</span>}{m.obs && <div className="text-[11px] italic mt-0.5">{m.obs}</div>}</td>
-                    <td className="px-3 py-2 text-xs text-gris-dark">{m.created_by ? perfiles.get(m.created_by) ?? '…' : '—'}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse min-w-[520px]">
+              <thead>
+                <tr>
+                  {['Fecha', 'Tipo', 'Cantidad', 'Motivo', 'Usuario'].map((h, i) => (
+                    <th key={i} className="bg-gris text-gris-dark text-[10px] font-bold px-3 py-2 text-left uppercase tracking-wide">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {(movimientos as StockMovimiento[]).map(m => {
+                  const tipoCfg = TIPO_CFG[m.tipo] ?? { label: m.tipo, color: '' }
+                  return (
+                    <tr key={m.id} className="border-b border-gris last:border-0">
+                      <td className="px-3 py-2 text-sm font-mono text-gris-dark">{fmtF(m.fecha)}</td>
+                      <td className="px-3 py-2"><span className={`text-xs font-bold ${tipoCfg.color}`}>{tipoCfg.label}</span></td>
+                      <td className="px-3 py-2 font-mono font-bold text-sm">{m.cantidad}</td>
+                      <td className="px-3 py-2 text-xs text-gris-dark">{MOTIVO_LABEL[m.motivo] ?? m.motivo}{m.obra_cod && <span className="ml-1 font-mono text-azul">({m.obra_cod})</span>}{m.obs && <div className="text-[11px] italic mt-0.5">{m.obs}</div>}</td>
+                      <td className="px-3 py-2 text-xs text-gris-dark">{m.created_by ? perfiles.get(m.created_by) ?? '…' : '—'}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </Modal>

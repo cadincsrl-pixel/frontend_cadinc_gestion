@@ -395,7 +395,7 @@ export function SolicitudesTab() {
           Cargando...
         </div>
       ) : (
-        <div className="bg-white rounded-card shadow-card overflow-hidden">
+        <div className="hidden md:block bg-white rounded-card shadow-card overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full border-collapse min-w-[750px]">
               <thead>
@@ -463,12 +463,12 @@ export function SolicitudesTab() {
                               <div className="flex gap-1 justify-end" onClick={e => e.stopPropagation()}>
                                 {s.estado === 'pendiente' && (
                                   <>
-                                    <button onClick={() => aprobar(s.id)} className="text-[11px] font-bold px-2 py-1 rounded bg-azul-light text-azul hover:opacity-80 transition-colors">Aprobar</button>
-                                    <button onClick={() => rechazar(s.id)} className="text-[11px] font-bold px-2 py-1 rounded bg-rojo-light text-rojo hover:opacity-80 transition-colors">Rechazar</button>
+                                    <button onClick={() => aprobar(s.id)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul hover:opacity-80 transition-colors min-h-[36px]">Aprobar</button>
+                                    <button onClick={() => rechazar(s.id)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 transition-colors min-h-[36px]">Rechazar</button>
                                   </>
                                 )}
-                                <button onClick={() => abrirEditar(s)} className="text-[11px] font-bold px-2 py-1 rounded bg-gris text-gris-dark hover:bg-azul-light hover:text-azul transition-colors">✏️ Editar</button>
-                                <button onClick={() => eliminar(s.id)} className="text-xs px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors">✕</button>
+                                <button onClick={() => abrirEditar(s)} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-azul-light hover:text-azul transition-colors min-h-[36px]">✏️ Editar</button>
+                                <button onClick={() => eliminar(s.id)} className="text-xs px-3 py-1.5 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors min-h-[36px]">✕</button>
                               </div>
                             </td>
                           </tr>
@@ -517,21 +517,21 @@ export function SolicitudesTab() {
                                     <div className="flex gap-1 justify-end flex-wrap">
                                       {item.estado === 'pendiente' && (
                                         <>
-                                          <button onClick={() => abrirComprar(item)} className="text-[10px] font-bold px-2 py-1 rounded bg-azul-light text-azul hover:opacity-80">Comprar</button>
-                                          <button onClick={() => abrirDespachar(item)} className="text-[10px] font-bold px-2 py-1 rounded bg-naranja-light text-naranja hover:opacity-80">Depósito</button>
-                                          <button onClick={() => handleRechazarItem(item.id!)} className="text-[10px] font-bold px-2 py-1 rounded bg-rojo-light text-rojo hover:opacity-80">✕</button>
+                                          <button onClick={() => abrirComprar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul hover:opacity-80 min-h-[36px]">Comprar</button>
+                                          <button onClick={() => abrirDespachar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-naranja-light text-naranja hover:opacity-80 min-h-[36px]">Depósito</button>
+                                          <button onClick={() => handleRechazarItem(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 min-h-[36px]">✕</button>
                                         </>
                                       )}
                                       {(item.estado === 'comprado' || item.estado === 'de_deposito' || item.estado === 'retirado') && (
                                         <>
                                           <input type="checkbox" checked={selected.has(item.id!)} onChange={() => toggleSelect(item.id!)}
-                                            className="accent-verde w-3.5 h-3.5" title="Seleccionar para envío grupal" />
-                                          <button onClick={() => enviarUnoConRemito(s, item.id!)} className="text-[10px] font-bold px-2 py-1 rounded bg-verde-light text-verde hover:opacity-80">Enviar + Remito</button>
-                                          <button onClick={() => handleRevertir(item.id!)} className="text-[10px] px-1.5 py-1 rounded text-gris-dark hover:text-rojo hover:bg-rojo-light">↩</button>
+                                            className="accent-verde w-4 h-4" title="Seleccionar para envío grupal" />
+                                          <button onClick={() => enviarUnoConRemito(s, item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 min-h-[36px]">Enviar + Remito</button>
+                                          <button onClick={() => handleRevertir(item.id!)} className="text-xs px-3 py-1.5 rounded text-gris-dark hover:text-rojo hover:bg-rojo-light min-h-[36px]">↩</button>
                                         </>
                                       )}
                                       {item.estado === 'rechazado' && (
-                                        <button onClick={() => handleRevertir(item.id!)} className="text-[10px] font-bold px-2 py-1 rounded bg-amarillo-light text-[#7A5500] hover:opacity-80">Reactivar</button>
+                                        <button onClick={() => handleRevertir(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-amarillo-light text-[#7A5500] hover:opacity-80 min-h-[36px]">Reactivar</button>
                                       )}
                                     </div>
                                   )}
@@ -581,6 +581,188 @@ export function SolicitudesTab() {
         </div>
       )}
 
+      {/* Cards — mobile */}
+      {!isLoading && (
+        <div className="flex flex-col gap-2 md:hidden">
+          {sorted.length === 0 ? (
+            <div className="bg-white rounded-card shadow-card p-6 text-center text-gris-dark text-sm italic">
+              Sin solicitudes.
+            </div>
+          ) : sorted.map(s => {
+            const obra = obrasMap.get(s.obra_cod)
+            const isExp = expanded.has(s.id)
+            const items = s.items ?? []
+            const itemsSeleccionados = items.filter(it => selected.has(it.id!) && (it.estado === 'comprado' || it.estado === 'de_deposito' || it.estado === 'retirado'))
+            return (
+              <div key={s.id} className="bg-white rounded-card shadow-sm border border-gris-mid p-3">
+                {/* Resumen */}
+                <button
+                  onClick={() => toggleExpand(s.id)}
+                  className="w-full text-left"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-xs font-bold text-azul">{s.obra_cod}</span>
+                        <span className="text-[11px] text-gris-dark font-mono">{fmtF(s.fecha)}</span>
+                        {s.prioridad === 'urgente' && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rojo text-white uppercase">Urgente</span>
+                        )}
+                      </div>
+                      {obra && <div className="text-xs text-gris-dark mt-0.5 truncate">{obra.nom}</div>}
+                    </div>
+                    {s.progreso ? (
+                      <span className={`shrink-0 inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${PROGRESO_CFG[s.progreso].bg} ${PROGRESO_CFG[s.progreso].text}`}>
+                        {PROGRESO_CFG[s.progreso].label}
+                      </span>
+                    ) : (
+                      <span className={`shrink-0 inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${ESTADO_SOL[s.estado].bg} ${ESTADO_SOL[s.estado].text}`}>
+                        {ESTADO_SOL[s.estado].label}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-xs">
+                    <div>
+                      {s.resumen ? (
+                        <span>
+                          <span className="font-bold text-carbon">{s.resumen.resueltos}/{s.resumen.total}</span>
+                          <span className="text-gris-dark ml-1">resueltos</span>
+                          {s.resumen.enviados > 0 && (
+                            <span className="text-verde ml-2 font-bold">{s.resumen.enviados} enviados</span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-gris-dark">{items.length} material{items.length !== 1 ? 'es' : ''}</span>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-gris-mid select-none">{isExp ? '▼ ocultar' : '▶ ver ítems'}</span>
+                  </div>
+                  {s.solicitante && (
+                    <div className="mt-1 text-[11px] text-gris-mid">
+                      Solicitante: {perfiles.get(s.solicitante) ?? '…'}
+                    </div>
+                  )}
+                </button>
+
+                {/* Acciones de cabecera */}
+                <div className="grid grid-cols-2 gap-2 mt-3">
+                  {s.estado === 'pendiente' && (
+                    <>
+                      <button onClick={() => aprobar(s.id)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul hover:opacity-80 min-h-[36px]">Aprobar</button>
+                      <button onClick={() => rechazar(s.id)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 min-h-[36px]">Rechazar</button>
+                    </>
+                  )}
+                  <button onClick={() => abrirEditar(s)} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-azul-light hover:text-azul min-h-[36px]">✏️ Editar</button>
+                  <button onClick={() => eliminar(s.id)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 min-h-[36px]">✕ Eliminar</button>
+                </div>
+
+                {/* Obs */}
+                {isExp && s.obs && (
+                  <div className="mt-3 bg-amarillo-light/30 rounded-lg px-3 py-2 text-xs text-[#7A5500] italic">
+                    💬 {s.obs}
+                  </div>
+                )}
+
+                {/* Detalle de ítems expandido */}
+                {isExp && (
+                  <div className="mt-3 pt-3 border-t border-gris flex flex-col gap-2">
+                    {items.map((item, i) => {
+                      const cfg = ITEM_ESTADO_CFG[item.estado]
+                      const stk = item.material_id ? stockMap.get(item.material_id) : null
+                      return (
+                        <div key={item.id ?? i} className="bg-gris/30 rounded-lg p-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs text-gris-mid">#{i + 1}</div>
+                              <div className="text-sm font-medium text-carbon">{item.descripcion}</div>
+                              <div className="text-[11px] text-gris-dark font-mono mt-0.5">
+                                {item.cantidad} {UNIDADES.find(u => u.value === item.unidad)?.label ?? item.unidad}
+                                {item.precio_unit != null && (
+                                  <span className="ml-2">× {fmtM(item.precio_unit)} = <strong>{fmtM(item.cantidad * item.precio_unit)}</strong></span>
+                                )}
+                              </div>
+                            </div>
+                            <span className={`shrink-0 inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${cfg.bg} ${cfg.text}`}>{cfg.label}</span>
+                          </div>
+
+                          {/* Info extra */}
+                          <div className="mt-2 text-[11px] text-gris-dark space-y-0.5">
+                            {stk && (
+                              <div>
+                                Stock depósito:{' '}
+                                <span className={`font-mono font-bold ${(stk as StockMaterial).stock_actual <= 0 ? 'text-rojo' : (stk as StockMaterial).stock_actual < item.cantidad ? 'text-[#7A5500]' : 'text-verde'}`}>
+                                  {(stk as StockMaterial).stock_actual}
+                                </span>
+                              </div>
+                            )}
+                            {item.proveedores && <div>Prov: <strong>{item.proveedores.nombre}</strong></div>}
+                            {item.estado === 'de_deposito' && <div><strong>Depósito propio</strong></div>}
+                            {item.facturas_compra?.adjunto_url && (
+                              <a href={item.facturas_compra.adjunto_url} target="_blank" rel="noopener" className="text-azul hover:underline font-bold inline-block">
+                                📎 Factura {item.facturas_compra.numero || ''}
+                              </a>
+                            )}
+                            {item.fecha_envio && <div className="text-verde font-semibold">Enviado {fmtF(item.fecha_envio)}</div>}
+                          </div>
+
+                          {/* Acciones del ítem */}
+                          {s.estado === 'aprobada' && (
+                            <div className="mt-3">
+                              {item.estado === 'pendiente' && (
+                                <div className="grid grid-cols-3 gap-2">
+                                  <button onClick={() => abrirComprar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul hover:opacity-80 min-h-[36px]">Comprar</button>
+                                  <button onClick={() => abrirDespachar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-naranja-light text-naranja hover:opacity-80 min-h-[36px]">Depósito</button>
+                                  <button onClick={() => handleRechazarItem(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 min-h-[36px]">✕</button>
+                                </div>
+                              )}
+                              {(item.estado === 'comprado' || item.estado === 'de_deposito' || item.estado === 'retirado') && (
+                                <div className="flex flex-col gap-2">
+                                  <label className="flex items-center gap-2 text-[11px] text-gris-dark">
+                                    <input
+                                      type="checkbox"
+                                      checked={selected.has(item.id!)}
+                                      onChange={() => toggleSelect(item.id!)}
+                                      className="accent-verde w-4 h-4"
+                                    />
+                                    Seleccionar para envío grupal
+                                  </label>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <button onClick={() => enviarUnoConRemito(s, item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 min-h-[36px]">Enviar + Remito</button>
+                                    <button onClick={() => handleRevertir(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo min-h-[36px]">↩ Revertir</button>
+                                  </div>
+                                </div>
+                              )}
+                              {item.estado === 'rechazado' && (
+                                <button onClick={() => handleRevertir(item.id!)} className="w-full text-xs font-bold px-3 py-1.5 rounded bg-amarillo-light text-[#7A5500] hover:opacity-80 min-h-[36px]">Reactivar</button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+
+                    {/* Envío grupal */}
+                    {itemsSeleccionados.length > 0 && (
+                      <div className="bg-verde-light/30 rounded-lg p-3 flex flex-col gap-2">
+                        <span className="text-sm font-bold text-verde">
+                          {itemsSeleccionados.length} ítem{itemsSeleccionados.length > 1 ? 's' : ''} seleccionado{itemsSeleccionados.length > 1 ? 's' : ''}
+                        </span>
+                        <button
+                          onClick={() => enviarConRemito(s, itemsSeleccionados.map(it => it.id!))}
+                          className="w-full text-xs font-bold px-3 py-2 rounded-lg bg-verde text-white hover:opacity-90 min-h-[40px]"
+                        >
+                          📄 Enviar seleccionados + Generar remito
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
       {/* ── Modal nueva solicitud ── */}
       <Modal open={modalNuevo} onClose={() => setModalNuevo(false)} title="🛒 NUEVA SOLICITUD" width="max-w-3xl"
         footer={<>
@@ -588,7 +770,7 @@ export function SolicitudesTab() {
           <Button variant="primary" loading={creating} onClick={formCab.handleSubmit(handleCreate)}>Crear solicitud</Button>
         </>}>
         <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Combobox label="Obra destino" placeholder="Buscar obra..." options={obraOptions} value={obraNueva} onChange={setObraNueva} />
             <div>
               <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1 block">Prioridad</label>
@@ -750,7 +932,7 @@ export function SolicitudesTab() {
         </>}>
         <div className="flex flex-col gap-3">
           <Input label="Nombre" {...formProv.register('nombre')} />
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input label="CUIT" placeholder="XX-XXXXXXXX-X" {...formProv.register('cuit')} />
             <Input label="Teléfono" {...formProv.register('tel')} />
           </div>
@@ -764,11 +946,11 @@ export function SolicitudesTab() {
           <Button variant="primary" loading={uploading} onClick={formFact.handleSubmit(handleCreateFact)}>Guardar</Button>
         </>}>
         <div className="flex flex-col gap-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Combobox label="Proveedor" placeholder="Buscar..." options={provOptions} value={formFact.watch('proveedor_id')} onChange={v => formFact.setValue('proveedor_id', v)} />
             <Input label="Nro factura" {...formFact.register('numero')} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input label="Fecha" type="date" {...formFact.register('fecha')} />
             <Input label="Total ($)" type="number" step="1" {...formFact.register('total')} />
           </div>
@@ -795,7 +977,7 @@ export function SolicitudesTab() {
         </>}>
         {modalEditar && (
           <div className="flex flex-col gap-4">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Combobox label="Obra destino" placeholder="Buscar obra..." options={obraOptions} value={obraEdit} onChange={setObraEdit} />
               <div>
                 <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1 block">Prioridad</label>
