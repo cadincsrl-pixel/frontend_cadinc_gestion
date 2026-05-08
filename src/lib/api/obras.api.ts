@@ -39,4 +39,10 @@ export const obrasApi = {
 
   desarchivar: (cod: string) =>
     apiPatch<Obra>(`/api/obras/${encodeURIComponent(cod)}/desarchivar`, {}),
+
+  responsablesDisponibles: () =>
+    apiGet<{
+      capataces:  Array<{ id: string; nombre: string }>
+      jefes_obra: Array<{ id: string; nombre: string }>
+    }>('/api/obras/responsables-disponibles'),
 }

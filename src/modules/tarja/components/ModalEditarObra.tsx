@@ -1,13 +1,17 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
+import { Combobox } from '@/components/ui/Combobox'
 import { Button } from '@/components/ui/Button'
-import { useUpdateObra, useArchivarObra, useDeleteObra } from '@/modules/tarja/hooks/useObras'
+import {
+  useUpdateObra, useArchivarObra, useDeleteObra,
+  useResponsablesDisponibles,
+} from '@/modules/tarja/hooks/useObras'
 import { useToast } from '@/components/ui/Toast'
 import { useRouter } from 'next/navigation'
 import { AuditInfo } from '@/components/ui/AuditInfo'
@@ -35,6 +39,13 @@ export function ModalEditarObra({ open, onClose, obra }: Props) {
   const { mutate: updateObra, isPending: updating } = useUpdateObra()
   const { mutate: archivarObra, isPending: archivando } = useArchivarObra()
   const { mutate: deleteObra, isPending: eliminando } = useDeleteObra()
+  const { data: responsables } = useResponsablesDisponibles()
+
+  // Estado local para los user_ids — fuera del form porque son selects
+  // (Combobox), no inputs. Esto NO duplica state: los Combobox son
+  // gestionados manualmente y el value se manda en el dto.
+  const [capatazUserId,  setCapatazUserId]  = useState<string>('')
+  const [jefeObraUserId, setJefeObraUserId] = useState<string>('')
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -49,13 +60,32 @@ export function ModalEditarObra({ open, onClose, obra }: Props) {
         resp: obra.resp ?? '',
         obs:  obra.obs ?? '',
       })
+      setCapatazUserId(obra.capataz_user_id ?? '')
+      setJefeObraUserId(obra.jefe_obra_user_id ?? '')
     }
   }, [obra, reset])
+
+  // Opciones para los Combobox (con "(ninguno)" arriba para poder limpiar).
+  const opcionesCapataz = useMemo(() => [
+    { value: '', label: '— sin capataz asignado —' },
+    ...(responsables?.capataces ?? []).map(u => ({ value: u.id, label: u.nombre })),
+  ], [responsables])
+  const opcionesJefe = useMemo(() => [
+    { value: '', label: '— sin jefe de obra asignado —' },
+    ...(responsables?.jefes_obra ?? []).map(u => ({ value: u.id, label: u.nombre })),
+  ], [responsables])
 
   function onSubmit(data: FormData) {
     if (!obra) return
     updateObra(
-      { cod: obra.cod, dto: data },
+      {
+        cod: obra.cod,
+        dto: {
+          ...data,
+          capataz_user_id:   capatazUserId  || null,
+          jefe_obra_user_id: jefeObraUserId || null,
+        },
+      },
       {
         onSuccess: () => {
           toast('✓ Obra actualizada', 'ok')
@@ -123,17 +153,40 @@ export function ModalEditarObra({ open, onClose, obra }: Props) {
           <span className="font-mono font-bold text-azul">{obra?.cod}</span>
         </div>
 
+        <Input
+          label="Nombre de la obra"
+          placeholder="Nombre"
+          error={errors.nom?.message}
+          {...register('nom')}
+        />
+
+        <div className="grid grid-cols-2 gap-3">
+          <Combobox
+            label="Capataz (usuario del sistema)"
+            placeholder="Buscar capataz..."
+            options={opcionesCapataz}
+            value={capatazUserId}
+            onChange={setCapatazUserId}
+          />
+          <Combobox
+            label="Jefe de obra (usuario del sistema)"
+            placeholder="Buscar jefe..."
+            options={opcionesJefe}
+            value={jefeObraUserId}
+            onChange={setJefeObraUserId}
+          />
+        </div>
+        <p className="text-[11px] text-gris-dark -mt-2">
+          Al asignar un capataz o jefe de obra con login, ese usuario va a ver
+          esta obra automáticamente sin necesidad de cargarla a mano en sus
+          permisos. El jefe de obra también la ve en certificaciones para
+          pedir materiales.
+        </p>
+
         <div className="grid grid-cols-2 gap-3">
           <Input
-            label="Nombre de la obra"
-            placeholder="Nombre"
-            error={errors.nom?.message}
-            className="col-span-2"
-            {...register('nom')}
-          />
-          <Input
-            label="Responsable"
-            placeholder="Capataz"
+            label="Responsable (texto libre)"
+            placeholder="Para casos sin login"
             {...register('resp')}
           />
           <Input

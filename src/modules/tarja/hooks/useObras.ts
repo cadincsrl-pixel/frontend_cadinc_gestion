@@ -105,3 +105,16 @@ export function useDeleteObra() {
     onSuccess: () => qc.invalidateQueries({ queryKey: OBRAS_KEY }),
   })
 }
+
+// Lista de users disponibles como responsables de obra (capataz / jefe).
+// El endpoint solo devuelve id+nombre, sin email u otros datos sensibles.
+export interface ResponsablesDisponibles {
+  capataces:  Array<{ id: string; nombre: string }>
+  jefes_obra: Array<{ id: string; nombre: string }>
+}
+export function useResponsablesDisponibles() {
+  return useQuery({
+    queryKey: ['obras-responsables-disponibles'],
+    queryFn: () => obrasApi.responsablesDisponibles(),
+  })
+}

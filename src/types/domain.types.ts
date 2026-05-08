@@ -17,6 +17,11 @@ export interface Obra extends AuditFields {
   archivada: boolean
   fecha_archivo: string | null
   es_deposito: boolean
+  // FK a profiles(id). Cuando se setean, el backend auto-asigna la
+  // obra al user en `usuario_obras` (modulo=NULL), de modo que
+  // capataces y jefes de obra ven sus obras automáticamente.
+  capataz_user_id?:   string | null
+  jefe_obra_user_id?: string | null
 }
 
 export interface CreateObraDto {
@@ -26,6 +31,8 @@ export interface CreateObraDto {
   dir?: string
   resp?: string
   obs?: string
+  capataz_user_id?:   string | null
+  jefe_obra_user_id?: string | null
 }
 
 export interface UpdateObraDto {
@@ -34,6 +41,8 @@ export interface UpdateObraDto {
   dir?: string
   resp?: string
   obs?: string
+  capataz_user_id?:   string | null
+  jefe_obra_user_id?: string | null
 }
 
 // ── Personal ──
