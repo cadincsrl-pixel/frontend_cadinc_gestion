@@ -41,7 +41,7 @@ interface Props {
 
 export function TarjaObraPage({ obraCod }: Props) {
   const toast = useToast()
-  const { puedeEditar, verCostos } = usePermisos('tarja')
+  const { puedeEditar, verCostos, soloCargaHoras } = usePermisos('tarja')
   const [modalTrab, setModalTrab] = useState(false)
   const [modalEditarObra, setModalEditarObra] = useState(false)
   const [modalExcelObras, setModalExcelObras] = useState(false)
@@ -57,11 +57,16 @@ export function TarjaObraPage({ obraCod }: Props) {
   const searchParams = useSearchParams()
 
   useEffect(() => {
+    // Capataz: forzar semana actual y bloquear navegación por ?sem=.
+    if (soloCargaHoras) {
+      setSemActual(getViernes(new Date()))
+      return
+    }
     const semParam = searchParams.get('sem')
     if (semParam && /^\d{4}-\d{2}-\d{2}$/.test(semParam)) {
       setSemActual(new Date(semParam + 'T12:00:00'))
     }
-  }, [searchParams, setSemActual])
+  }, [searchParams, setSemActual, soloCargaHoras])
 
 
   const days = getSemDays(semActual)
@@ -291,8 +296,8 @@ export function TarjaObraPage({ obraCod }: Props) {
             )}
             <Chip value={desde} label="Período" variant="orange" />
           </div>
-          {/* Acciones — solo en obras activas */}
-          {puedeEditar && !archivada && (
+          {/* Acciones — solo en obras activas y para usuarios distintos al capataz */}
+          {puedeEditar && !archivada && !soloCargaHoras && (
             <div className="flex items-center gap-1 flex-wrap">
               <Button variant="ghost" size="sm" onClick={() => setModalEditarObra(true)}>
                 ✏️ Editar
@@ -302,8 +307,8 @@ export function TarjaObraPage({ obraCod }: Props) {
         </div>
       </div>
 
-      {/* ── Toolbar — solo en obras activas ── */}
-      {!archivada && (
+      {/* ── Toolbar — solo en obras activas y para usuarios distintos al capataz ── */}
+      {!archivada && !soloCargaHoras && (
         <ToolbarTarja
           personal={personal}
           categorias={categorias}
@@ -329,14 +334,10 @@ export function TarjaObraPage({ obraCod }: Props) {
         readonly={archivada}
       />
 
-      {/* ── Tarifas ── */}
-      <TarifasPanel obraCod={obraCod} readonly={archivada} />
-
-      {/* ── Contratistas ── */}
-      <ContratistasPanel obraCod={obraCod} readonly={archivada} />
-
-      {/* ── Cierres — solo en obras activas ── */}
-      {!archivada && <CierresSection obraCod={obraCod} />}
+      {/* ── Tarifas / Contratistas / Cierres — ocultos para capataz ── */}
+      {!soloCargaHoras && <TarifasPanel obraCod={obraCod} readonly={archivada} />}
+      {!soloCargaHoras && <ContratistasPanel obraCod={obraCod} readonly={archivada} />}
+      {!soloCargaHoras && !archivada && <CierresSection obraCod={obraCod} />}
 
       {/* ── Modales ── */}
       <ModalAgregarTrabajador

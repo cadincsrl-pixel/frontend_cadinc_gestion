@@ -90,14 +90,15 @@ export const PLANTILLAS: Plantilla[] = [
   {
     key:   'capataz',
     label: 'Capataz',
-    descripcion: 'Solo carga horas de SU obra. No ve precios ni totales.',
+    descripcion: 'Solo carga horas de la semana actual de SU obra. No ve precios, no edita personal ni cierres.',
     rol:   'operador',
     modulos: ['tarja'],
     permisos: {
       tarja: {
         lectura: true, creacion: true, actualizacion: true, eliminacion: false,
         tabs: ['tarja'],
-        ver_costos: false,
+        ver_costos:       false,
+        solo_carga_horas: true,
       },
     },
     obras_restringidas: true,

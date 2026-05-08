@@ -27,8 +27,12 @@ export function usePermisos(modulo: string) {
     puedeEliminar: canDo(modulo, 'eliminacion'),
     // Flags específicos. Por ahora:
     //   tarja.ver_costos: si false, ocultar precios/totales (capataz).
-    //   certificaciones.forzar_despacho: permitido para resolver items.
+    //   tarja.solo_carga_horas: capataz — solo carga horas de la semana actual.
+    //   certificaciones.resolver_items: puede comprar/despachar (compras/encargado).
+    //   certificaciones.forzar_despacho: forzar despacho sin stock.
     verCostos:       flag('ver_costos', true),
+    soloCargaHoras:  flag('solo_carga_horas', false),
+    resolverItems:   flag('resolver_items', false),
     forzarDespacho:  flag('forzar_despacho', false),
   }
 }

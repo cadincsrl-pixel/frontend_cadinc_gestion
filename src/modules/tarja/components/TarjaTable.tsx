@@ -38,7 +38,10 @@ function getHoraClass(h: number): string {
 export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoStateChange, readonly = false }: Props) {
   const { semActual } = useTarjaStore()
   const toast = useToast()
-  const { puedeEditar, puedeEliminar, verCostos } = usePermisos('tarja')
+  const { puedeEditar, puedeEliminar, verCostos, soloCargaHoras } = usePermisos('tarja')
+  // Capataz: ni cambiar categoría, ni hs extras, ni costos.
+  const puedeCambiarCategoria = puedeEditar && !soloCargaHoras
+  const verHsExtras = !soloCargaHoras
   const days = getSemDays(semActual)
   const desde = toISO(days[0]!)
   const hasta = toISO(days[6]!)
@@ -280,9 +283,11 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                   </span>
                 </th>
               ))}
-              <th className="bg-[#8B3510] text-white text-xs font-bold px-2 py-2.5 text-center uppercase tracking-wide min-w-[72px]">
-                Extras
-              </th>
+              {verHsExtras && (
+                <th className="bg-[#8B3510] text-white text-xs font-bold px-2 py-2.5 text-center uppercase tracking-wide min-w-[72px]">
+                  Extras
+                </th>
+              )}
               <th className="bg-verde text-white text-xs font-bold px-2 py-2.5 text-center uppercase tracking-wide min-w-[80px]">
                 Total
               </th>
@@ -351,8 +356,8 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                   <td className="px-2 py-1.5 whitespace-nowrap">
                     <select
                       value={catId}
-                      disabled={!puedeEditar}
-                      onChange={puedeEditar ? (e) => handleCatChange(p.leg, Number(e.target.value)) : undefined}
+                      disabled={!puedeCambiarCategoria}
+                      onChange={puedeCambiarCategoria ? (e) => handleCatChange(p.leg, Number(e.target.value)) : undefined}
                       className={`
                         w-full px-2 py-1 rounded border-[1.5px]
                         text-xs font-bold bg-white text-carbon outline-none
@@ -361,7 +366,7 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                           ? 'border-naranja text-naranja'
                           : 'border-gris-mid'
                         }
-                        ${puedeEditar
+                        ${puedeCambiarCategoria
                           ? 'cursor-pointer hover:border-naranja focus:border-naranja focus:shadow-[0_0_0_3px_rgba(232,98,26,.15)]'
                           : 'cursor-not-allowed opacity-60'
                         }
@@ -439,43 +444,45 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                       </td>
                     )
                   })}
-                  <td className="px-1.5 py-1.5 text-center">
-                    <input
-                      type="number"
-                      min={0}
-                      step={0.5}
-                      max={200}
-                      key={`extra-${p.leg}-${semKey}-${hsExtraLeg}`}
-                      defaultValue={hsExtraLeg || ''}
-                      readOnly={!puedeEditar || readonly}
-                      title="Horas extras de la semana"
-                      // Evitar cambios accidentales con la rueda del mouse.
-                      onWheel={e => (e.currentTarget as HTMLInputElement).blur()}
-                      onBlur={puedeEditar && !readonly
-                        ? e => handleExtraChange(p.leg, e.target.value, hsExtraLeg)
-                        : undefined}
-                      onKeyDown={puedeEditar && !readonly ? e => {
-                        if (e.key === 'Enter') {
-                          handleExtraChange(p.leg, (e.target as HTMLInputElement).value, hsExtraLeg)
-                          ;(e.target as HTMLInputElement).blur()
-                        }
-                      } : undefined}
-                      className={`
-                          w-14 h-8 border-[1.5px] rounded-md
-                          text-center font-mono text-sm font-bold
-                          outline-none transition-colors
-                          ${puedeEditar && !readonly
-                            ? 'focus:border-[#8B3510] focus:shadow-[0_0_0_3px_rgba(139,53,16,.15)]'
-                            : 'cursor-not-allowed opacity-60'
+                  {verHsExtras && (
+                    <td className="px-1.5 py-1.5 text-center">
+                      <input
+                        type="number"
+                        min={0}
+                        step={0.5}
+                        max={200}
+                        key={`extra-${p.leg}-${semKey}-${hsExtraLeg}`}
+                        defaultValue={hsExtraLeg || ''}
+                        readOnly={!puedeEditar || readonly}
+                        title="Horas extras de la semana"
+                        // Evitar cambios accidentales con la rueda del mouse.
+                        onWheel={e => (e.currentTarget as HTMLInputElement).blur()}
+                        onBlur={puedeEditar && !readonly
+                          ? e => handleExtraChange(p.leg, e.target.value, hsExtraLeg)
+                          : undefined}
+                        onKeyDown={puedeEditar && !readonly ? e => {
+                          if (e.key === 'Enter') {
+                            handleExtraChange(p.leg, (e.target as HTMLInputElement).value, hsExtraLeg)
+                            ;(e.target as HTMLInputElement).blur()
                           }
-                          [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none
-                          [&::-webkit-inner-spin-button]:appearance-none
-                          ${hsExtraLeg > 0
-                            ? 'border-[#8B3510] bg-[#FFF3CD] text-[#7A3510]'
-                            : 'border-gris-mid bg-white text-gris-mid'}
-                        `}
-                    />
-                  </td>
+                        } : undefined}
+                        className={`
+                            w-14 h-8 border-[1.5px] rounded-md
+                            text-center font-mono text-sm font-bold
+                            outline-none transition-colors
+                            ${puedeEditar && !readonly
+                              ? 'focus:border-[#8B3510] focus:shadow-[0_0_0_3px_rgba(139,53,16,.15)]'
+                              : 'cursor-not-allowed opacity-60'
+                            }
+                            [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none
+                            [&::-webkit-inner-spin-button]:appearance-none
+                            ${hsExtraLeg > 0
+                              ? 'border-[#8B3510] bg-[#FFF3CD] text-[#7A3510]'
+                              : 'border-gris-mid bg-white text-gris-mid'}
+                          `}
+                      />
+                    </td>
+                  )}
                   <td className="text-center bg-verde-light font-mono text-sm font-bold text-verde px-2 py-1.5 whitespace-nowrap">
                     {totalLeg > 0 ? totalLeg : '—'}
                   </td>
@@ -506,12 +513,14 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                   </td>
                 )
               })}
-              <td className="bg-azul text-[#E8B478] font-mono text-sm font-bold text-center px-2 py-2.5">
-                {(() => {
-                  const totExtras = personal.reduce((s, p) => s + getHsExtrasLeg(hsExtrasData, obraCod, p.leg, semKey), 0)
-                  return totExtras > 0 ? totExtras : '—'
-                })()}
-              </td>
+              {verHsExtras && (
+                <td className="bg-azul text-[#E8B478] font-mono text-sm font-bold text-center px-2 py-2.5">
+                  {(() => {
+                    const totExtras = personal.reduce((s, p) => s + getHsExtrasLeg(hsExtrasData, obraCod, p.leg, semKey), 0)
+                    return totExtras > 0 ? totExtras : '—'
+                  })()}
+                </td>
+              )}
               <td className="bg-azul text-[#7DD9A2] font-mono text-sm font-bold text-center px-2 py-2.5">
                 {totalHs > 0 ? totalHs : '—'}
               </td>

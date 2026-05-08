@@ -586,10 +586,14 @@ export type ModuloPermisos = { [K in Accion]?: boolean } & {
   tabs?: string[]
   // Flags específicos opcionales:
   // - tarja.ver_costos: si false, la UI oculta precios/totales (capataz).
+  // - tarja.solo_carga_horas: bloquea TODO en tarja excepto cargar horas
+  //   de la semana actual (capataz). Sin selector de semana, sin agregar
+  //   trabajadores, sin cierres, sin tarifas, sin cambiar categoría.
   // - certificaciones.resolver_items: puede comprar/despachar/enviar/rechazar
   //   items (acciones del comprador/encargado, NO del jefe de obra).
   // - certificaciones.forzar_despacho: forzar despacho sin stock disponible.
   ver_costos?: boolean
+  solo_carga_horas?: boolean
   resolver_items?: boolean
   forzar_despacho?: boolean
 }
