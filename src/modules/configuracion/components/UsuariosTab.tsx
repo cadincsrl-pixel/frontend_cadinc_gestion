@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api/client'
 import { Modal }    from '@/components/ui/Modal'
@@ -65,6 +65,7 @@ export function UsuariosTab() {
   const [nuevoForm,   setNuevoForm]   = useState<NuevoUsuario>(EMPTY_NUEVO)
   const [resetId,     setResetId]     = useState<string | null>(null)
   const [newPass,     setNewPass]     = useState('')
+  const [busqueda,    setBusqueda]    = useState('')
 
   // Modal de confirmación cuando se está promocionando a un usuario a admin.
   // Pide tipear "ADMIN" para evitar privilege escalation accidental.
@@ -85,6 +86,27 @@ export function UsuariosTab() {
     queryKey: ['usuarios'],
     queryFn:  () => apiGet<Profile[]>('/api/usuarios'),
   })
+
+  // Filtrado client-side: matchea contra nombre, email, rol, rol_base,
+  // tipo_usuario y módulos. Case-insensitive. Sin filtro = todos.
+  const usuariosFiltrados = useMemo(() => {
+    const q = busqueda.trim().toLowerCase()
+    if (!q) return usuarios
+    return usuarios.filter(u => {
+      const haystack = [
+        u.nombre,
+        (u as { email?: string }).email,
+        u.rol,
+        u.rol_base,
+        u.tipo_usuario,
+        ...(u.modulos ?? []),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+      return haystack.includes(q)
+    })
+  }, [usuarios, busqueda])
 
   const { data: modulosDB = [] } = useQuery({
     queryKey: ['modulos'],
@@ -150,15 +172,30 @@ export function UsuariosTab() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="font-bold text-azul text-base">
-            Usuarios ({usuarios.length})
+            Usuarios ({busqueda
+              ? `${usuariosFiltrados.length} de ${usuarios.length}`
+              : usuarios.length})
           </h2>
           <p className="text-xs text-gris-dark mt-0.5">
             Gestioná roles y módulos de acceso por usuario.
           </p>
         </div>
-        <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)}>
-          ＋ Nuevo usuario
-        </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Input
+            placeholder="🔍 Buscar por nombre, email, rol, módulo..."
+            value={busqueda}
+            onChange={e => setBusqueda(e.target.value)}
+            className="w-64"
+          />
+          {busqueda && (
+            <Button variant="ghost" size="sm" onClick={() => setBusqueda('')}>
+              ✕ Limpiar
+            </Button>
+          )}
+          <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)}>
+            ＋ Nuevo usuario
+          </Button>
+        </div>
       </div>
 
       {/* Tabla */}
@@ -183,7 +220,13 @@ export function UsuariosTab() {
                   </span>
                 </td>
               </tr>
-            ) : usuarios.map(u => (
+            ) : usuariosFiltrados.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="text-center py-8 text-xs text-gris-dark italic">
+                  Sin resultados para "{busqueda}".
+                </td>
+              </tr>
+            ) : usuariosFiltrados.map(u => (
               <tr key={u.id} className="border-b border-gris last:border-0 hover:bg-gris/40 transition-colors">
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-3">
