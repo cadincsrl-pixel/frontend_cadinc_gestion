@@ -5,28 +5,25 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api/client'
 import { Modal }    from '@/components/ui/Modal'
 import { UsuarioObrasSection } from './UsuarioObrasSection'
+import { PermisosWizard, type WizardData } from './PermisosWizard'
 import { Button }   from '@/components/ui/Button'
 import { Input }    from '@/components/ui/Input'
 import { useToast } from '@/components/ui/Toast'
 import { useSessionStore } from '@/store/session.store'
-import { TABS_POR_MODULO } from '@/lib/config/modulo-tabs'
-import { PLANTILLAS, getPlantilla, permisosMatchPlantilla } from '@/lib/permisos/plantillas'
-import type { Accion, Permisos, Profile, Modulo } from '@/types/domain.types'
-
-const ACCIONES: { key: Accion; label: string }[] = [
-  { key: 'lectura',       label: 'Ver'      },
-  { key: 'creacion',      label: 'Crear'    },
-  { key: 'actualizacion', label: 'Editar'   },
-  { key: 'eliminacion',   label: 'Eliminar' },
-]
+import { getPlantilla } from '@/lib/permisos/plantillas'
+import type { RolBase, ObrasScope } from '@/lib/permisos/plantillas'
+import type { Permisos, Profile, Modulo } from '@/types/domain.types'
 
 interface NuevoUsuario {
-  email:    string
-  password: string
-  nombre:   string
-  rol:      'admin' | 'operador'
-  modulos:  string[]
-  permisos: Permisos
+  email:        string
+  password:     string
+  nombre:       string
+  rol:          'admin' | 'operador'
+  modulos:      string[]
+  permisos:     Permisos
+  rol_base:     RolBase | null
+  obras_scope:  ObrasScope
+  addons:       string[]
   tipo_usuario?: string | null
 }
 
@@ -37,7 +34,28 @@ const EMPTY_NUEVO: NuevoUsuario = {
   rol:          'operador',
   modulos:      [],
   permisos:     {},
+  rol_base:     null,
+  obras_scope:  'todas',
+  addons:       [],
   tipo_usuario: null,
+}
+
+// Deriva los addons activos a partir del tipo_usuario legacy + rol_base.
+// Se usa al abrir el modal de edición para que el wizard muestre las
+// capacidades extra tildadas (jefe_obra+tarja_lectura, capataz+tab_personal).
+//
+// Importante: los `addons` NO se persisten en DB. Son estado local del
+// wizard que se usa para computar `permisos`, `modulos` y `tipo_usuario`
+// (estos sí persisten). Al releer el perfil, derivamos addons desde
+// tipo_usuario; al guardar, los addons se materializan en los permisos.
+//
+// Esta función es el INVERSO de `computeTipoUsuario` en PermisosWizard.
+// Mantener ambas en sync si agregás un addon nuevo con combo legacy.
+function deriveAddons(rolBase: RolBase | null, tipoUsuario?: string | null): string[] {
+  if (!rolBase) return []
+  if (rolBase === 'jefe_obra' && tipoUsuario === 'jefe_obra_supervisor') return ['tarja_lectura']
+  if (rolBase === 'capataz' && tipoUsuario === 'capataz_supervisor')     return ['tab_personal']
+  return []
 }
 
 export function UsuariosTab() {
@@ -45,7 +63,11 @@ export function UsuariosTab() {
   const qc           = useQueryClient()
   const profileActual = useSessionStore(s => s.profile)
 
-  const [editando,    setEditando]    = useState<Profile | null>(null)
+  // El estado de edición extiende Profile con `addons` (no se persiste en
+  // DB; lo derivamos del tipo_usuario al abrir el modal y lo usa el wizard
+  // para mostrar qué add-ons tiene activos).
+  type EditandoState = Profile & { addons: string[]; email?: string }
+  const [editando,    setEditando]    = useState<EditandoState | null>(null)
   const [rolOriginal, setRolOriginal] = useState<string | null>(null)
   const [modalNuevo,  setModalNuevo]  = useState(false)
   const [nuevoForm,   setNuevoForm]   = useState<NuevoUsuario>(EMPTY_NUEVO)
@@ -181,7 +203,10 @@ export function UsuariosTab() {
                       <div className="flex items-center gap-1.5 mt-0.5">
                         {u.tipo_usuario && u.tipo_usuario !== 'personalizado' && (
                           <span className="text-[10px] font-bold text-azul-mid bg-azul-light px-1.5 py-0.5 rounded">
-                            {getPlantilla(u.tipo_usuario)?.label ?? u.tipo_usuario}
+                            {/* Alias legacy: 'encargado_deposito' (CHECK)
+                                ↔ 'deposito' (preset key). Mostramos el
+                                label del preset para ambos. */}
+                            {getPlantilla(u.tipo_usuario === 'encargado_deposito' ? 'deposito' : u.tipo_usuario)?.label ?? u.tipo_usuario}
                           </span>
                         )}
                         {u.tipo_usuario === 'personalizado' && (
@@ -237,7 +262,21 @@ export function UsuariosTab() {
                 <td className="px-4 py-3">
                   <div className="flex gap-1 justify-end">
                     <button
-                      onClick={() => { setEditando({ ...u }); setRolOriginal(u.rol) }}
+                      onClick={() => {
+                        // Hidrato el state de edición con `addons` derivados.
+                        // Si rol_base no está seteado (perfil legacy o
+                        // 'personalizado'), tratamos al usuario como
+                        // personalizado: rol_base=null, addons=[].
+                        const rolBase = (u.rol_base ?? null) as RolBase | null
+                        const addons  = deriveAddons(rolBase, u.tipo_usuario)
+                        setEditando({
+                          ...u,
+                          rol_base:    rolBase,
+                          obras_scope: u.obras_scope ?? 'todas',
+                          addons,
+                        })
+                        setRolOriginal(u.rol)
+                      }}
                       className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors"
                       title="Editar"
                     >
@@ -301,7 +340,7 @@ export function UsuariosTab() {
         <UsuarioForm
           data={nuevoForm}
           modulos={modulos}
-          onChange={setNuevoForm}
+          onChange={(d) => setNuevoForm(d as NuevoUsuario)}
           showPassword
         />
       </Modal>
@@ -319,24 +358,36 @@ export function UsuariosTab() {
                 variant="primary"
                 loading={updating}
                 onClick={() => {
-                  // Si el usuario tenía tipo_usuario y los permisos ya no
-                  // matchean la plantilla, marcamos 'personalizado'.
-                  const tipo = editando.rol === 'admin'
-                    ? null
-                    : editando.tipo_usuario && editando.tipo_usuario !== 'personalizado'
-                      ? (permisosMatchPlantilla(editando.permisos, editando.rol, editando.modulos, editando.tipo_usuario)
-                          ? editando.tipo_usuario
-                          : 'personalizado')
-                      : editando.tipo_usuario ?? null
-                  const doUpdate = () => update({ id: editando.id, dto: {
-                    nombre:       editando.nombre,
-                    email:        (editando as any).email || undefined,
-                    rol:          editando.rol,
-                    modulos:      editando.modulos,
-                    activo:       editando.activo,
-                    permisos:     editando.permisos,
-                    tipo_usuario: tipo,
-                  } as any})
+                  // Defensa en profundidad: si el rol final es admin,
+                  // forzamos limpieza de permisos/modulos/rol_base aunque
+                  // el wizard ya lo haga al elegir la card "Admin". Evita
+                  // que queden residuos si el admin abre el modal y solo
+                  // cambia el rol con el toggle viejo (que ya no existe
+                  // pero queda como guardia futura).
+                  const dto: Partial<Profile> & { email?: string } = editando.rol === 'admin'
+                    ? {
+                        nombre:       editando.nombre,
+                        email:        editando.email || undefined,
+                        rol:          'admin',
+                        modulos:      [],
+                        activo:       editando.activo,
+                        permisos:     {},
+                        rol_base:     null,
+                        obras_scope:  'todas',
+                        tipo_usuario: null,
+                      }
+                    : {
+                        nombre:       editando.nombre,
+                        email:        editando.email || undefined,
+                        rol:          editando.rol,
+                        modulos:      editando.modulos,
+                        activo:       editando.activo,
+                        permisos:     editando.permisos,
+                        rol_base:     editando.rol_base,
+                        obras_scope:  editando.obras_scope,
+                        tipo_usuario: editando.tipo_usuario ?? null,
+                      }
+                  const doUpdate = () => update({ id: editando.id, dto })
                   // Si se está promoviendo a admin (operador → admin), pedir
                   // doble confirmación. No aplica si ya era admin (cambios
                   // dentro del mismo rol).
@@ -358,9 +409,15 @@ export function UsuariosTab() {
           <UsuarioForm
             data={editando}
             modulos={modulos}
-            onChange={setEditando as any}
+            onChange={(d) => setEditando(d as EditandoState)}
           />
-          <UsuarioObrasSection user={editando} />
+          {/* Las obras asignadas solo importan si el scope es 'asignadas'.
+              Para 'todas' ocultamos la sección — sería ruido (la lista no
+              se usa para filtrar). El admin puede cambiar el scope arriba
+              en el wizard si necesita restringir. */}
+          {editando.rol !== 'admin' && editando.obras_scope === 'asignadas' && (
+            <UsuarioObrasSection user={editando} />
+          )}
         </Modal>
       )}
 
@@ -456,117 +513,27 @@ export function UsuariosTab() {
 function UsuarioForm({
   data, modulos, onChange, showPassword = false,
 }: {
-  data:         NuevoUsuario | Profile
+  data:         NuevoUsuario | (Profile & { addons: string[]; email?: string })
   modulos:      Modulo[]
-  onChange:     (d: any) => void
+  onChange:     (d: NuevoUsuario | (Profile & { addons: string[]; email?: string })) => void
   showPassword?: boolean
 }) {
-  function toggleModulo(key: string) {
-    const tiene = data.modulos.includes(key)
-    if (tiene) {
-      // Quitar módulo → también limpiar sus permisos para evitar drift
-      // (caso Lucas: tenía 'herramientas' en modulos pero sin permisos.herramientas).
-      const nuevosPermisos = { ...data.permisos }
-      delete nuevosPermisos[key]
-      onChange({
-        ...data,
-        modulos:  data.modulos.filter(m => m !== key),
-        permisos: nuevosPermisos,
-      })
-    } else {
-      // Agregar módulo → seedear con bloque vacío de permisos para que la
-      // matriz CRUD aparezca y el admin pueda tildarla.
-      const nuevosPermisos = { ...data.permisos }
-      if (!nuevosPermisos[key]) nuevosPermisos[key] = {}
-      onChange({
-        ...data,
-        modulos:  [...data.modulos, key],
-        permisos: nuevosPermisos,
-      })
-    }
+  // Adapter: el wizard recibe/emite WizardData; el form maneja un superset.
+  const wizardData: WizardData = {
+    rol:          data.rol,
+    rol_base:     ((data as Partial<Profile>).rol_base ?? null) as RolBase | null,
+    obras_scope:  ((data as Partial<Profile>).obras_scope ?? 'todas') as ObrasScope,
+    addons:       (data as { addons?: string[] }).addons ?? [],
+    modulos:      data.modulos,
+    permisos:     data.permisos,
+    tipo_usuario: data.tipo_usuario ?? null,
   }
-
-  // Aplica una plantilla: setea rol + módulos + permisos + tipo_usuario.
-  // Después el admin puede ajustar a mano; al guardar, si cambió respecto
-  // a la plantilla, el indicador "Personalizado" lo refleja.
-  function aplicarPlantilla(key: string) {
-    const p = getPlantilla(key)
-    if (!p) return
-    onChange({
-      ...data,
-      rol:          p.rol,
-      modulos:      [...p.modulos],
-      permisos:     JSON.parse(JSON.stringify(p.permisos)),
-      tipo_usuario: p.key,
-    })
+  const onWizardChange = (patch: Partial<WizardData>) => {
+    onChange({ ...data, ...patch } as typeof data)
   }
-
-  // Tipo "calculado" para mostrar en el selector:
-  // - Si data.tipo_usuario está y coincide con la plantilla → ese tipo.
-  // - Si data.tipo_usuario está pero los permisos no coinciden → 'personalizado'.
-  // - Si no hay tipo_usuario → vacío.
-  const tipoActual = (data as any).tipo_usuario as string | null | undefined
-  const matchPlantilla = tipoActual && tipoActual !== 'personalizado'
-    ? permisosMatchPlantilla(data.permisos, data.rol, data.modulos, tipoActual)
-    : false
-  const valorSelector = data.rol === 'admin'
-    ? '__admin__'
-    : tipoActual && matchPlantilla
-      ? tipoActual
-      : tipoActual === 'personalizado' || (tipoActual && !matchPlantilla)
-        ? '__personalizado__'
-        : ''
-
-  const plantillaSeleccionada = matchPlantilla ? getPlantilla(tipoActual!) : null
 
   return (
     <div className="flex flex-col gap-4">
-
-      {/* Plantilla de permisos */}
-      <div className="bg-azul-light rounded-xl p-3 border border-azul/20 flex flex-col gap-2">
-        <label className="text-xs font-bold text-azul uppercase tracking-wider">
-          🎯 Plantilla de permisos
-        </label>
-        <select
-          value={valorSelector}
-          onChange={e => {
-            const v = e.target.value
-            if (!v) return
-            if (v === '__admin__') {
-              onChange({ ...data, rol: 'admin', modulos: [], permisos: {}, tipo_usuario: null })
-            } else if (v === '__personalizado__') {
-              // No hace nada — solo es etiqueta visual de "ya está editado a mano".
-            } else {
-              aplicarPlantilla(v)
-            }
-          }}
-          className="w-full px-3 py-2 rounded-lg border border-gris-mid bg-white text-sm"
-        >
-          <option value="">— Elegí una plantilla —</option>
-          <option value="__admin__">👑 Administrador (acceso total)</option>
-          {PLANTILLAS.map(p => (
-            <option key={p.key} value={p.key}>{p.label}</option>
-          ))}
-          {valorSelector === '__personalizado__' && (
-            <option value="__personalizado__">⚙ Personalizado (editado a mano)</option>
-          )}
-        </select>
-        {plantillaSeleccionada && (
-          <p className="text-[11px] text-azul-mid">
-            {plantillaSeleccionada.descripcion}
-            {plantillaSeleccionada.obras_restringidas && (
-              <span className="block mt-1 font-semibold text-naranja">
-                ⚠ Este rol solo ve sus obras asignadas. Acordate de cargarlas más abajo.
-              </span>
-            )}
-          </p>
-        )}
-        {valorSelector === '__personalizado__' && (
-          <p className="text-[11px] text-gris-dark italic">
-            Los permisos fueron editados manualmente. Podés volver a aplicar una plantilla en cualquier momento.
-          </p>
-        )}
-      </div>
 
       {/* Nombre */}
       <Input
@@ -584,14 +551,14 @@ function UsuarioForm({
             type="email"
             placeholder="juan@empresa.com"
             value={(data as NuevoUsuario).email}
-            onChange={e => onChange({ ...data, email: e.target.value })}
+            onChange={e => onChange({ ...data, email: e.target.value } as typeof data)}
           />
           <Input
             label="Contraseña"
             type="password"
             placeholder="Mínimo 6 caracteres"
             value={(data as NuevoUsuario).password}
-            onChange={e => onChange({ ...data, password: e.target.value })}
+            onChange={e => onChange({ ...data, password: e.target.value } as typeof data)}
             hint="El usuario podrá cambiarla después"
           />
         </>
@@ -603,230 +570,19 @@ function UsuarioForm({
           label="Email"
           type="email"
           placeholder="juan@empresa.com"
-          value={(data as any).email ?? ''}
-          onChange={e => onChange({ ...data, email: e.target.value })}
+          value={(data as { email?: string }).email ?? ''}
+          onChange={e => onChange({ ...data, email: e.target.value } as typeof data)}
         />
       )}
 
-      {/* Rol */}
-      <div className="flex flex-col gap-1">
-        <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Rol</label>
-        <div className="flex gap-2">
-          {(['admin', 'operador'] as const).map(r => (
-            <button
-              key={r}
-              onClick={() => onChange({ ...data, rol: r })}
-              className={`
-                flex-1 py-2 rounded-lg font-bold text-sm border-[1.5px] transition-all
-                ${data.rol === r
-                  ? r === 'admin'
-                    ? 'bg-[#EEE8FF] border-[#5A2D82] text-[#5A2D82]'
-                    : 'bg-azul-light border-azul text-azul'
-                  : 'bg-white border-gris-mid text-gris-dark hover:border-gris-dark'
-                }
-              `}
-            >
-              {r === 'admin' ? '⭐ Admin' : '👤 Operador'}
-            </button>
-          ))}
-        </div>
-        {data.rol === 'admin' && (
-          <p className="text-xs text-gris-dark mt-1">
-            Los admins tienen acceso a todos los módulos automáticamente.
-          </p>
-        )}
-      </div>
-
-      {/* Módulos + Permisos — solo si operador */}
-      {data.rol === 'operador' && (
-        <div className="flex flex-col gap-2">
-          <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">
-            Módulos y permisos
-          </label>
-          <div className="flex flex-col gap-3">
-            {modulos.map(m => {
-              const tiene = data.modulos.includes(m.key)
-              const permisos: Permisos = (data as any).permisos ?? {}
-              const modPerm = permisos[m.key] ?? {}
-
-              function togglePermiso(accion: Accion) {
-                const newPermisos: Permisos = {
-                  ...permisos,
-                  [m.key]: { ...modPerm, [accion]: !modPerm[accion] },
-                }
-                onChange({ ...data, permisos: newPermisos })
-              }
-
-              return (
-                <div
-                  key={m.key}
-                  className={`
-                    rounded-xl border-[1.5px] overflow-hidden transition-all
-                    ${tiene ? 'border-naranja' : 'border-gris-mid'}
-                  `}
-                >
-                  {/* Header del módulo */}
-                  <label className={`
-                    flex items-center gap-3 p-3 cursor-pointer
-                    ${tiene ? 'bg-naranja-light' : 'bg-white hover:bg-gris/40'}
-                  `}>
-                    <input
-                      type="checkbox"
-                      checked={tiene}
-                      onChange={() => toggleModulo(m.key)}
-                      className="accent-naranja w-4 h-4"
-                    />
-                    <span className="text-2xl">{m.icono}</span>
-                    <div className="flex-1">
-                      <div className="font-bold text-sm text-carbon">{m.nombre}</div>
-                      <div className="text-xs text-gris-dark">{m.descripcion}</div>
-                    </div>
-                  </label>
-
-                  {/* Matriz de permisos — solo si módulo habilitado */}
-                  {tiene && (
-                    <div className="px-3 pb-3 pt-1 bg-white border-t border-naranja/20">
-                      <div className="flex gap-2 flex-wrap">
-                        {ACCIONES.map(({ key, label }) => {
-                          const activo = modPerm[key] === true
-                          return (
-                            <button
-                              key={key}
-                              type="button"
-                              onClick={() => togglePermiso(key)}
-                              className={`
-                                flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg border-[1.5px] transition-all
-                                ${activo
-                                  ? 'bg-azul text-white border-azul'
-                                  : 'bg-white text-gris-dark border-gris-mid hover:border-azul hover:text-azul'
-                                }
-                              `}
-                            >
-                              <span>{activo ? '✓' : '○'}</span>
-                              {label}
-                            </button>
-                          )
-                        })}
-                      </div>
-
-                      {/* Tabs visibles */}
-                      {TABS_POR_MODULO[m.key] && (
-                        <div className="mt-3 pt-2 border-t border-gris">
-                          <div className="text-[10px] font-bold text-gris-dark uppercase tracking-wider mb-1.5">Secciones visibles</div>
-                          <div className="flex gap-1.5 flex-wrap">
-                            {TABS_POR_MODULO[m.key]!.map(tab => {
-                              const tabsActuales = modPerm.tabs ?? []
-                              const tabActivo = tabsActuales.length === 0 || tabsActuales.includes(tab.key)
-                              return (
-                                <button
-                                  key={tab.key}
-                                  type="button"
-                                  onClick={() => {
-                                    const allTabs = TABS_POR_MODULO[m.key]!.map(t => t.key)
-                                    let newTabs: string[]
-                                    if (tabsActuales.length === 0) {
-                                      // Primera vez: quitar este tab de todos
-                                      newTabs = allTabs.filter(t => t !== tab.key)
-                                    } else if (tabActivo) {
-                                      newTabs = tabsActuales.filter(t => t !== tab.key)
-                                    } else {
-                                      newTabs = [...tabsActuales, tab.key]
-                                    }
-                                    // Si quedan todos, limpiar (significa "todos")
-                                    if (newTabs.length === allTabs.length) newTabs = []
-                                    const newPermisos: Permisos = {
-                                      ...permisos,
-                                      [m.key]: { ...modPerm, tabs: newTabs },
-                                    }
-                                    onChange({ ...data, permisos: newPermisos })
-                                  }}
-                                  className={`
-                                    flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg border transition-all
-                                    ${tabActivo
-                                      ? 'bg-naranja text-white border-naranja'
-                                      : 'bg-white text-gris-dark border-gris-mid hover:border-naranja hover:text-naranja'
-                                    }
-                                  `}
-                                >
-                                  <span>{tab.icon}</span>
-                                  {tab.label}
-                                </button>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Vista restringida — solo módulo tarja.
-                          Equivale a vista_completa=false (capataz puro):
-                          fuerza semana actual, oculta toolbar/tarifas/
-                          contratistas/cierres y limita la tabla a carga
-                          de horas. Además seteamos ver_pii=false porque
-                          un capataz puro no debería ver DNI/dirección
-                          del personal global. Si combinás con tab
-                          "Personal" habilitado arriba se reactiva ver_pii
-                          (lo hace el add-on al construir la plantilla;
-                          acá lo seteamos en false porque el admin lo
-                          marca a mano). */}
-                      {m.key === 'tarja' && (() => {
-                        // Estado del toggle: vista_completa=false equivale a
-                        // restringido. Para back-compat también miramos
-                        // solo_carga_horas (legacy).
-                        const isRestringido =
-                          (modPerm as any).vista_completa === false ||
-                          (modPerm as any).solo_carga_horas === true
-                        return (
-                          <div className="mt-3 pt-2 border-t border-gris">
-                            <label className="flex items-start gap-2 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={isRestringido}
-                                onChange={e => {
-                                  const checked = e.target.checked
-                                  const nuevoPerm: any = { ...modPerm }
-                                  if (checked) {
-                                    // Activar restricción: vista_completa=false,
-                                    // ver_pii=false, ver_costos=false.
-                                    nuevoPerm.vista_completa = false
-                                    nuevoPerm.ver_pii        = false
-                                    nuevoPerm.ver_costos     = false
-                                    // Limpiar legacy si estaba.
-                                    delete nuevoPerm.solo_carga_horas
-                                  } else {
-                                    // Quitar restricción: borrar los flags
-                                    // (vuelven a default → vista completa).
-                                    delete nuevoPerm.vista_completa
-                                    delete nuevoPerm.ver_pii
-                                    delete nuevoPerm.ver_costos
-                                    delete nuevoPerm.solo_carga_horas
-                                  }
-                                  onChange({
-                                    ...data,
-                                    permisos: { ...permisos, [m.key]: nuevoPerm },
-                                  })
-                                }}
-                                className="mt-0.5 w-4 h-4"
-                              />
-                              <div>
-                                <div className="text-[11px] font-bold text-azul">
-                                  Vista restringida (capataz)
-                                </div>
-                                <div className="text-[10px] text-gris-dark mt-0.5">
-                                  Fuerza la semana actual, oculta tarifas/contratistas/cierres y limita la tabla a carga de horas. Sin acceso a costos ni datos sensibles del personal.
-                                </div>
-                              </div>
-                            </label>
-                          </div>
-                        )
-                      })()}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
+      {/* Wizard de permisos — reemplaza el dropdown de plantillas, módulos
+          y matriz CRUD. Maneja: rol (admin/preset/personalizado),
+          obras_scope, add-ons y, si es personalizado, edición fina. */}
+      <PermisosWizard
+        data={wizardData}
+        onChange={onWizardChange}
+        modulos={modulos}
+      />
 
       {/* Estado — solo en edición */}
       {'activo' in data && (
@@ -836,7 +592,7 @@ function UsuarioForm({
             <div className="text-xs text-gris-dark">Los usuarios inactivos no pueden ingresar</div>
           </div>
           <button
-            onClick={() => onChange({ ...data, activo: !(data as Profile).activo })}
+            onClick={() => onChange({ ...data, activo: !(data as Profile).activo } as typeof data)}
             className={`
               relative w-12 h-6 rounded-full transition-colors
               ${(data as Profile).activo ? 'bg-verde' : 'bg-gris-mid'}

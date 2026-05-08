@@ -616,6 +616,12 @@ export interface Profile {
   modulos:  string[]
   activo:   boolean
   permisos: Permisos
+  // Sistema de roles v2 — ver `src/lib/permisos/plantillas.ts`.
+  rol_base?:    'administrativo' | 'compras' | 'deposito' | 'jefe_obra' | 'capataz' | null
+  obras_scope?: 'todas' | 'asignadas'
+  // Legacy (back-compat). Antes era el "tipo" del usuario; ahora se deriva
+  // de rol_base + addons. Lo seguimos persistiendo para queries y reportes
+  // viejos. Se va a eliminar en una fase posterior.
   tipo_usuario?: string | null
 }
 
