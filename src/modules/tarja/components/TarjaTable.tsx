@@ -243,7 +243,11 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
     return (
       <div className="bg-white rounded-card shadow-card p-8 text-center text-gris-dark">
         <p className="font-semibold text-azul mb-1">No hay trabajadores en esta semana</p>
-        <p className="text-sm">Agregá trabajadores o copiá la semana anterior.</p>
+        {soloCargaHoras ? (
+          <p className="text-sm">Pedile al administrativo que asigne personal a esta obra.</p>
+        ) : (
+          <p className="text-sm">Agregá trabajadores o copiá la semana anterior.</p>
+        )}
       </div>
     )
   }
