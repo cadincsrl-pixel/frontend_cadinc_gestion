@@ -163,6 +163,26 @@ export const ADDONS: AddOn[] = [
       tarja: { lectura: true, ver_costos: false, ver_pii: false, vista_completa: true },
     }),
   },
+  {
+    key:   'cargar_horas_propias',
+    label: 'Cargar horas propias',
+    descripcion: 'Habilita módulo Tarja con vista restringida (capataz) y scope "asignadas" SOLO para tarja. El admin debe asignar la obra correspondiente abajo. Caso típico: encargado de depósito que también trabaja físicamente y carga sus horas.',
+    aplicaA: ['deposito', 'compras', 'administrativo'],
+    aplicar: (p) => ({
+      ...p,
+      tarja: {
+        lectura: true, creacion: true, actualizacion: true, eliminacion: false,
+        tabs: ['tarja'],
+        ver_costos:     false,
+        ver_pii:        false,
+        vista_completa: false,
+        // Override por módulo: en tarja filtra por usuario_obras (modulo='tarja').
+        // Esto NO afecta obras_scope global (que sigue 'todas' para que en
+        // certificaciones/etc vea todas las obras).
+        obras_scope:    'asignadas',
+      },
+    }),
+  },
 ]
 
 export function getAddOn(key: string): AddOn | null {

@@ -11,6 +11,7 @@ import type { Profile } from '@/types/domain.types'
 
 interface AssignedObra {
   obra_cod: string
+  modulo:   string | null
   obras: { cod: string; nom: string; dir: string | null } | null
 }
 
@@ -18,38 +19,88 @@ interface Props {
   user: Profile
 }
 
-// Sección dentro del modal de "Editar usuario" para asignar obras a un user
-// no-admin. Permite ver, agregar y quitar obras del set asignado.
+// ─── Cálculo de qué módulos requieren obras explícitas ──────────────
 //
-// El backend reemplaza el set completo en cada PUT (es atómico, simple para
-// UI: el user toca checkboxes y al guardar persiste). No mostramos esta
-// sección para usuarios admin: ven todo por definición.
+// Devuelve un array ordenado de "scopes asignables": cada uno es un
+// módulo (o null para "globales") que tiene scope='asignadas'. Si el
+// scope global del perfil es 'asignadas' Y no está sobreescrito por
+// todos los módulos que el user tiene, se incluye "globales" (null).
+function getScopesAsignables(user: Profile): Array<{ key: string | null; label: string }> {
+  if (user.rol === 'admin') return []
+  const result: Array<{ key: string | null; label: string }> = []
+
+  // Globales: aplica si el scope global es 'asignadas'.
+  if (user.obras_scope === 'asignadas') {
+    result.push({ key: null, label: '🌐 Globales (todos los módulos)' })
+  }
+
+  // Por módulo: aplica si hay un override 'asignadas' en permisos.<m>.obras_scope.
+  const permisos = (user.permisos ?? {}) as Record<string, { obras_scope?: 'todas' | 'asignadas' }>
+  for (const [mod, flags] of Object.entries(permisos)) {
+    if (flags?.obras_scope === 'asignadas') {
+      // Si ya está cubierto por "globales" + ese módulo no tiene override
+      // distinto, podríamos omitirlo, pero acá solo entramos si SI hay
+      // override explícito así que es un selector diferenciado.
+      result.push({ key: mod, label: `📋 ${capitalize(mod)}` })
+    }
+  }
+
+  return result
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
+// ─── Componente principal ──────────────────────────────────────────
+
 export function UsuarioObrasSection({ user }: Props) {
   const toast = useToast()
   const qc = useQueryClient()
   const [filtro, setFiltro] = useState('')
   const [seleccionadas, setSeleccionadas] = useState<Set<string>>(new Set())
 
-  // Cargar las obras existentes (sin archivadas).
+  const scopes = useMemo(() => getScopesAsignables(user), [user])
+
+  // Módulo (o null para globales) actualmente seleccionado en la UI.
+  const [moduloActivo, setModuloActivo] = useState<string | null>(scopes[0]?.key ?? null)
+
+  // Si cambian los scopes (por ejemplo el admin cambió el rol del user),
+  // re-seleccionar el primero para no quedar apuntando a uno inválido.
+  useEffect(() => {
+    if (scopes.length === 0) return
+    const aunValido = scopes.some(s => s.key === moduloActivo)
+    if (!aunValido) setModuloActivo(scopes[0].key)
+  }, [scopes, moduloActivo])
+
+  // Cargar obras existentes (no archivadas) y las asignaciones del user.
   const { data: obras = [] } = useObras()
   const { data: asignadas = [], isLoading } = useQuery({
     queryKey: ['usuario-obras', user.id],
     queryFn:  () => apiGet<AssignedObra[]>(`/api/usuarios/${user.id}/obras`),
   })
 
-  // Mantener el set local sincronizado con lo que vino del server.
+  // Filtrar las asignaciones que corresponden al módulo activo.
+  // Ojo: en este selector solo mostramos las rows del scope que
+  // estamos editando. Las rows con otros módulos no se ven acá.
+  const asignadasDelScope = useMemo(
+    () => asignadas.filter(a => a.modulo === moduloActivo),
+    [asignadas, moduloActivo],
+  )
+
+  // Mantener el set local sincronizado con lo que vino del server, filtrado por scope.
   useEffect(() => {
-    setSeleccionadas(new Set(asignadas.map(a => a.obra_cod)))
-  }, [asignadas])
+    setSeleccionadas(new Set(asignadasDelScope.map(a => a.obra_cod)))
+  }, [asignadasDelScope])
 
   const { mutate: guardar, isPending: guardando } = useMutation({
-    mutationFn: (obrasArr: string[]) =>
-      apiPut(`/api/usuarios/${user.id}/obras`, { obras: obrasArr }),
+    mutationFn: (payload: { obras: string[]; modulo: string | null }) =>
+      apiPut(`/api/usuarios/${user.id}/obras`, payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['usuario-obras', user.id] })
       toast('✓ Obras actualizadas', 'ok')
     },
-    onError: (err: any) => toast(err?.message || 'Error al guardar', 'err'),
+    onError: (err: { message?: string }) => toast(err?.message || 'Error al guardar', 'err'),
   })
 
   const obrasFiltradas = useMemo(() => {
@@ -62,8 +113,8 @@ export function UsuarioObrasSection({ user }: Props) {
   }, [obras, filtro])
 
   const initialSet = useMemo(
-    () => new Set(asignadas.map(a => a.obra_cod)),
-    [asignadas],
+    () => new Set(asignadasDelScope.map(a => a.obra_cod)),
+    [asignadasDelScope],
   )
   const dirty = useMemo(() => {
     if (initialSet.size !== seleccionadas.size) return true
@@ -90,15 +141,51 @@ export function UsuarioObrasSection({ user }: Props) {
   // No mostrar para admin: ven todo siempre.
   if (user.rol === 'admin') return null
 
+  // Si ningún módulo requiere obras asignadas, no mostrar la sección.
+  // (Pasa cuando obras_scope='todas' y ningún módulo tiene override.)
+  if (scopes.length === 0) return null
+
+  // Texto contextual del scope activo.
+  const labelActivo = scopes.find(s => s.key === moduloActivo)?.label ?? ''
+  const help = moduloActivo === null
+    ? 'Las obras tildadas aplican a todos los módulos donde el usuario tiene scope "asignadas".'
+    : `Obras visibles solo para el módulo "${moduloActivo}". El resto de los módulos no se ve afectado.`
+
   return (
     <div className="border-t border-gris pt-4 mt-2 flex flex-col gap-3">
       <div>
         <h4 className="font-bold text-sm text-azul">Obras asignadas</h4>
         <p className="text-[11px] text-gris-dark mt-0.5">
-          El usuario solo va a ver pedidos / certificaciones / etc. de las obras tildadas.
-          Sin tildar = sin acceso a ninguna obra.
+          Sin tildar = sin acceso a esa obra en el módulo seleccionado.
         </p>
       </div>
+
+      {/* Tabs por scope, solo si hay >1. */}
+      {scopes.length > 1 && (
+        <div className="flex gap-1 flex-wrap border-b border-gris -mb-2">
+          {scopes.map(s => (
+            <button
+              key={s.key ?? '__global__'}
+              type="button"
+              onClick={() => setModuloActivo(s.key)}
+              className={`text-xs font-bold px-3 py-1.5 rounded-t-lg border-[1.5px] border-b-0 transition-all
+                ${moduloActivo === s.key
+                  ? 'bg-naranja-light border-naranja text-naranja-dark'
+                  : 'bg-white border-transparent text-gris-dark hover:text-naranja'}`}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {scopes.length === 1 && (
+        <div className="text-[11px] text-azul-mid bg-azul-light/50 px-2 py-1 rounded">
+          {labelActivo}
+        </div>
+      )}
+
+      <p className="text-[11px] text-gris-dark italic">{help}</p>
 
       <div className="flex flex-wrap items-center gap-2">
         <Input
@@ -164,7 +251,7 @@ export function UsuarioObrasSection({ user }: Props) {
           size="sm"
           loading={guardando}
           disabled={!dirty}
-          onClick={() => guardar(Array.from(seleccionadas))}
+          onClick={() => guardar({ obras: Array.from(seleccionadas), modulo: moduloActivo })}
         >
           ✓ Guardar obras
         </Button>
