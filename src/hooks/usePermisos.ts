@@ -10,14 +10,26 @@ export function usePermisos(modulo: string) {
   const profile = useSessionStore(s => s.profile)
   const canDo = useSessionStore(s => s.canDo)
 
-  // Flags específicos por módulo (opcionales). Se respetan SOLO para no-admin
-  // — el admin ignora los flags y ve todo. Default = true (back-compat con
-  // usuarios sin estos flags definidos).
-  const flag = (key: string, defaultValue: boolean = true): boolean => {
+  // Lectura del JSONB `profiles.permisos[modulo][key]` con default.
+  // No diferencia admin acá; la polaridad la maneja el wrapper.
+  const rawFlag = (key: string, defaultValue: boolean): boolean => {
     if (!profile) return defaultValue
-    if (profile.rol === 'admin') return true
     const v = (profile.permisos as any)?.[modulo]?.[key]
     return v === undefined ? defaultValue : Boolean(v)
+  }
+
+  // Flag de tipo "capacidad" (true = otorga). Admin SIEMPRE true.
+  // Ejemplos: ver_costos, resolver_items, forzar_despacho.
+  const flagCapacidad = (key: string, defaultValue: boolean = false): boolean => {
+    if (profile?.rol === 'admin') return true
+    return rawFlag(key, defaultValue)
+  }
+
+  // Flag de tipo "restricción" (true = restringe). Admin SIEMPRE false.
+  // Ejemplo: solo_carga_horas.
+  const flagRestriccion = (key: string, defaultValue: boolean = false): boolean => {
+    if (profile?.rol === 'admin') return false
+    return rawFlag(key, defaultValue)
   }
 
   return {
@@ -25,14 +37,10 @@ export function usePermisos(modulo: string) {
     puedeCrear:    canDo(modulo, 'creacion'),
     puedeEditar:   canDo(modulo, 'actualizacion'),
     puedeEliminar: canDo(modulo, 'eliminacion'),
-    // Flags específicos. Por ahora:
-    //   tarja.ver_costos: si false, ocultar precios/totales (capataz).
-    //   tarja.solo_carga_horas: capataz — solo carga horas de la semana actual.
-    //   certificaciones.resolver_items: puede comprar/despachar (compras/encargado).
-    //   certificaciones.forzar_despacho: forzar despacho sin stock.
-    verCostos:       flag('ver_costos', true),
-    soloCargaHoras:  flag('solo_carga_horas', false),
-    resolverItems:   flag('resolver_items', false),
-    forzarDespacho:  flag('forzar_despacho', false),
+    // Flags. Para admin: capacidades=true, restricciones=false.
+    verCostos:       flagCapacidad('ver_costos', true),       // back-compat: ve costos por default
+    resolverItems:   flagCapacidad('resolver_items', false),
+    forzarDespacho:  flagCapacidad('forzar_despacho', false),
+    soloCargaHoras:  flagRestriccion('solo_carga_horas', false),
   }
 }
