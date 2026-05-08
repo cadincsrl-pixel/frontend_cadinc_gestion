@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api/client'
 import { Modal }    from '@/components/ui/Modal'
+import { UsuarioObrasSection } from './UsuarioObrasSection'
 import { Button }   from '@/components/ui/Button'
 import { Input }    from '@/components/ui/Input'
 import { useToast } from '@/components/ui/Toast'
@@ -301,6 +302,7 @@ export function UsuariosTab() {
             modulos={modulos}
             onChange={setEditando as any}
           />
+          <UsuarioObrasSection user={editando} />
         </Modal>
       )}
 
