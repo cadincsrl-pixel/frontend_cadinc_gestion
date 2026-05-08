@@ -45,4 +45,7 @@ export const obrasApi = {
       capataces:  Array<{ id: string; nombre: string }>
       jefes_obra: Array<{ id: string; nombre: string }>
     }>('/api/obras/responsables-disponibles'),
+
+  proximoCodigo: () =>
+    apiGet<{ cod: string }>('/api/obras/proximo-codigo'),
 }

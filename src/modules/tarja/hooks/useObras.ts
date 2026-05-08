@@ -69,7 +69,11 @@ export function useCreateObra() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (dto: CreateObraDto) => obrasApi.create(dto),
-    onSuccess: () => qc.invalidateQueries({ queryKey: OBRAS_KEY }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: OBRAS_KEY })
+      // Invalidar el preview del próximo código: ya consumimos el actual.
+      qc.invalidateQueries({ queryKey: ['obras-proximo-codigo'] })
+    },
   })
 }
 
@@ -116,5 +120,18 @@ export function useResponsablesDisponibles() {
   return useQuery({
     queryKey: ['obras-responsables-disponibles'],
     queryFn: () => obrasApi.responsablesDisponibles(),
+  })
+}
+
+// Preview del próximo código de obra. Re-fetch cada vez que se monta
+// (ej. abrir el modal). NO consume la sequence; el insert real lo
+// recalcula. Si entre preview y submit alguien creó una obra, el
+// código final puede ser distinto (no es bug: se actualiza al guardar).
+export function useProximoCodigoObra(enabled = true) {
+  return useQuery({
+    queryKey: ['obras-proximo-codigo'],
+    queryFn: () => obrasApi.proximoCodigo(),
+    enabled,
+    staleTime: 0,
   })
 }

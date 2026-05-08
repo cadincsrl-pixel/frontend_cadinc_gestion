@@ -8,11 +8,13 @@ import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { Combobox } from '@/components/ui/Combobox'
 import { Button } from '@/components/ui/Button'
-import { useCreateObra, useResponsablesDisponibles } from '@/modules/tarja/hooks/useObras'
+import { useCreateObra, useResponsablesDisponibles, useProximoCodigoObra } from '@/modules/tarja/hooks/useObras'
 import { useToast } from '@/components/ui/Toast'
 
+// Schema sin `cod` — el backend lo autogenera (CC-NNN, atómico vía
+// sequence). El admin ya no puede tipearlo a mano: evita typos,
+// duplicados y mantiene consistencia (la PK es FK en muchas tablas).
 const schema = z.object({
-  cod:  z.string().min(1, 'El código es requerido'),
   nom:  z.string().min(1, 'El nombre es requerido'),
   cc:   z.string().optional(),
   dir:  z.string().optional(),
@@ -31,6 +33,10 @@ export function ModalNuevaObra({ open, onClose }: Props) {
   const toast = useToast()
   const { mutate: createObra, isPending } = useCreateObra()
   const { data: responsables } = useResponsablesDisponibles()
+  // Solo trae el preview cuando el modal está abierto. Si entre el
+  // preview y el submit alguien creó una obra, el cod final puede
+  // ser distinto — el backend recalcula con la sequence atómica.
+  const { data: proxCod } = useProximoCodigoObra(open)
 
   const [capatazUserId,  setCapatazUserId]  = useState<string>('')
   const [jefeObraUserId, setJefeObraUserId] = useState<string>('')
@@ -91,12 +97,30 @@ export function ModalNuevaObra({ open, onClose }: Props) {
       }
     >
       <div className="flex flex-col gap-4">
+        {/* Código autogenerado — solo lectura. La PK es FK en muchas
+            tablas, así que dejarla editable abría puerta a typos y
+            duplicados. El sufijo numérico viene de la sequence
+            obras_cod_seq, atómica vs concurrencia. */}
+        <div className="bg-azul-light border border-azul/20 rounded-lg px-3 py-2 flex items-center gap-3">
+          <div className="flex-1">
+            <div className="text-[10px] font-bold text-azul-mid uppercase tracking-wider">
+              Próximo código
+            </div>
+            <div className="font-mono font-bold text-azul text-sm">
+              {proxCod?.cod ?? 'CC-???'}
+            </div>
+          </div>
+          <span className="text-[11px] text-gris-dark italic">
+            (autogenerado)
+          </span>
+        </div>
+
         <div className="grid grid-cols-2 gap-3">
           <Input
-            label="Código"
-            placeholder="CC-001"
-            error={errors.cod?.message}
-            {...register('cod')}
+            label="Nombre de la obra"
+            placeholder="Nombre de la obra"
+            error={errors.nom?.message}
+            {...register('nom')}
           />
           <Input
             label="Centro de Costo"
@@ -104,12 +128,6 @@ export function ModalNuevaObra({ open, onClose }: Props) {
             {...register('cc')}
           />
         </div>
-        <Input
-          label="Nombre de la obra"
-          placeholder="Nombre de la obra"
-          error={errors.nom?.message}
-          {...register('nom')}
-        />
 
         <div className="grid grid-cols-2 gap-3">
           <Combobox

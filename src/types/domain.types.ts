@@ -24,8 +24,9 @@ export interface Obra extends AuditFields {
   jefe_obra_user_id?: string | null
 }
 
+// El `cod` se autogenera en el backend vía la RPC `siguiente_codigo_obra`.
+// El cliente NO lo manda — si lo manda, el zod lo dropea silenciosamente.
 export interface CreateObraDto {
-  cod: string
   nom: string
   cc?: string
   dir?: string
