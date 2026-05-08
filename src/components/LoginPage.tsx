@@ -1,26 +1,21 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { apiGet } from '@/lib/api/client'
 import { useSessionStore } from '@/store/session.store'
 import type { Profile } from '@/types/domain.types'
 
-const MODULO_META: Record<string, { nombre: string; icono: string; redirect: string }> = {
-  tarja: { nombre: 'Tarja de Obra', icono: '📋', redirect: '/dashboard' },
-  logistica: { nombre: 'Logística', icono: '🚛', redirect: '/logistica' },
-  herramientas: { nombre: 'Herramientas', icono: '🔧', redirect: '/herramientas' },
-}
-
 interface Props {
-  modulo: string
+  // Login genérico (sin filtrar por módulo). Después del login redirige a `/`
+  // que muestra solo los módulos accesibles del user.
+  redirectTo?: string
 }
 
-export function LoginPage({ modulo }: Props) {
+export function LoginPage({ redirectTo = '/' }: Props = {}) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const setProfile = useSessionStore(s => s.setProfile)
-  const meta = MODULO_META[modulo]!
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -28,6 +23,13 @@ export function LoginPage({ modulo }: Props) {
   const [error, setError] = useState('')
   const [resetSent, setResetSent] = useState(false)
   const [resetLoading, setResetLoading] = useState(false)
+
+  // Mensaje cuando ModuloSelector rechaza por usuario sin módulos asignados.
+  useEffect(() => {
+    if (searchParams.get('error') === 'sin-modulos') {
+      setError('Tu usuario no tiene módulos asignados. Contactá al administrador.')
+    }
+  }, [searchParams])
 
   async function handleResetPassword() {
     if (!email) { setError('Ingresá tu email primero'); return }
@@ -83,18 +85,19 @@ export function LoginPage({ modulo }: Props) {
 
       const profile: Profile = await res.json()
 
-      // 3 — Verificar acceso al módulo
-      const tieneAcceso = profile.rol === 'admin' || profile.modulos.includes(modulo)
-      if (!tieneAcceso) {
-        setError(`No tenés acceso al módulo ${meta.nombre}. Contactá al administrador.`)
+      // 3 — Validar que tenga al menos algún módulo o sea admin.
+      const tieneAlgunAcceso = profile.rol === 'admin' || profile.modulos.length > 0
+      if (!tieneAlgunAcceso) {
+        setError('Tu usuario no tiene módulos asignados. Contactá al administrador.')
         await supabase.auth.signOut()
         setLoading(false)
         return
       }
 
-      // 4 — Guardar perfil y redirigir
+      // 4 — Guardar perfil y mandar a `/` que mostrará los módulos accesibles
+      // (o redirigirá automáticamente si tiene uno solo).
       setProfile(profile)
-      router.push(meta.redirect)
+      router.push(redirectTo)
       router.refresh()
 
     } catch {
@@ -106,26 +109,13 @@ export function LoginPage({ modulo }: Props) {
   return (
     <div className="min-h-screen bg-azul flex flex-col items-center justify-center p-6">
 
-      {/* Back */}
-      <button
-        onClick={() => router.push('/')}
-        className="absolute top-6 left-6 text-white/50 hover:text-white transition-colors text-sm font-bold flex items-center gap-1"
-      >
-        ← Volver
-      </button>
-
       <div className="w-full max-w-sm flex flex-col gap-6">
 
         {/* Header */}
         <div className="text-center">
-          <div className="text-5xl mb-4">{meta.icono}</div>
-          <div className="font-display text-[2rem] tracking-[3px] text-white">
-            CADINC<em className="text-naranja not-italic">SRL</em>
-          </div>
-          <div className="mt-2 inline-flex items-center gap-2 bg-white/10 rounded-full px-4 py-1.5">
-            <span className="text-white/60 text-xs font-bold uppercase tracking-wider">
-              {meta.nombre}
-            </span>
+          <img src="/logo-cadinc.png" alt="CADINC" className="h-24 mx-auto mb-3" />
+          <div className="text-white/50 text-xs tracking-wider uppercase font-semibold">
+            Sistema de gestión
           </div>
         </div>
 
