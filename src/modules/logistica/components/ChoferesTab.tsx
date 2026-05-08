@@ -55,10 +55,17 @@ export function ChoferesTab() {
   }
 
   function normalizar(data: any) {
+    // Los inputs type="number" del form devuelven string. Convierto a
+    // number antes de mandar al backend (el schema rechaza "" o strings).
+    const num = (v: any, def = 0): number =>
+      v === '' || v == null || isNaN(Number(v)) ? def : Number(v)
     return {
       ...data,
       camion_id: data.camion_id ? Number(data.camion_id) : null,
       batea_id:  data.batea_id  ? Number(data.batea_id)  : null,
+      basico_dia:        num(data.basico_dia),
+      precio_km_cargado: num(data.precio_km_cargado),
+      precio_km_vacio:   num(data.precio_km_vacio),
     }
   }
 
