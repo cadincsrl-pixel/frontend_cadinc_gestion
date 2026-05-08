@@ -756,6 +756,44 @@ function UsuarioForm({
                           </div>
                         </div>
                       )}
+
+                      {/* Vista restringida — solo módulo tarja.
+                          Cuando se activa: fuerza semana actual, oculta
+                          toolbar/tarifas/contratistas/cierres, deshabilita
+                          select de categoría, oculta hs extras y costos.
+                          Es la vista del capataz. */}
+                      {m.key === 'tarja' && (
+                        <div className="mt-3 pt-2 border-t border-gris">
+                          <label className="flex items-start gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={(modPerm as any).solo_carga_horas === true}
+                              onChange={e => {
+                                const checked = e.target.checked
+                                const nuevoPerm: any = { ...modPerm }
+                                if (checked) {
+                                  nuevoPerm.solo_carga_horas = true
+                                } else {
+                                  delete nuevoPerm.solo_carga_horas
+                                }
+                                onChange({
+                                  ...data,
+                                  permisos: { ...permisos, [m.key]: nuevoPerm },
+                                })
+                              }}
+                              className="mt-0.5 w-4 h-4"
+                            />
+                            <div>
+                              <div className="text-[11px] font-bold text-azul">
+                                Vista restringida (capataz)
+                              </div>
+                              <div className="text-[10px] text-gris-dark mt-0.5">
+                                Fuerza la semana actual, oculta tarifas/contratistas/cierres y limita la tabla a carga de horas. Si combinás con tab "Personal" habilitado arriba, accede a perfiles del personal asignado.
+                              </div>
+                            </div>
+                          </label>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
