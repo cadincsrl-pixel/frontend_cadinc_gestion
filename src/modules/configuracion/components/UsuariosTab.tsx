@@ -10,6 +10,7 @@ import { Input }    from '@/components/ui/Input'
 import { useToast } from '@/components/ui/Toast'
 import { useSessionStore } from '@/store/session.store'
 import { TABS_POR_MODULO } from '@/lib/config/modulo-tabs'
+import { PLANTILLAS, getPlantilla, permisosMatchPlantilla } from '@/lib/permisos/plantillas'
 import type { Accion, Permisos, Profile, Modulo } from '@/types/domain.types'
 
 const ACCIONES: { key: Accion; label: string }[] = [
@@ -26,15 +27,17 @@ interface NuevoUsuario {
   rol:      'admin' | 'operador'
   modulos:  string[]
   permisos: Permisos
+  tipo_usuario?: string | null
 }
 
 const EMPTY_NUEVO: NuevoUsuario = {
-  email:    '',
-  password: '',
-  nombre:   '',
-  rol:      'operador',
-  modulos:  [],
-  permisos: {},
+  email:        '',
+  password:     '',
+  nombre:       '',
+  rol:          'operador',
+  modulos:      [],
+  permisos:     {},
+  tipo_usuario: null,
 }
 
 export function UsuariosTab() {
@@ -166,9 +169,21 @@ export function UsuariosTab() {
                     </div>
                     <div>
                       <div className="font-bold text-sm text-carbon">{u.nombre}</div>
-                      {u.id === profileActual?.id && (
-                        <div className="text-[10px] text-naranja font-bold">Vos</div>
-                      )}
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        {u.tipo_usuario && u.tipo_usuario !== 'personalizado' && (
+                          <span className="text-[10px] font-bold text-azul-mid bg-azul-light px-1.5 py-0.5 rounded">
+                            {getPlantilla(u.tipo_usuario)?.label ?? u.tipo_usuario}
+                          </span>
+                        )}
+                        {u.tipo_usuario === 'personalizado' && (
+                          <span className="text-[10px] font-bold text-gris-dark bg-gris px-1.5 py-0.5 rounded">
+                            ⚙ Personalizado
+                          </span>
+                        )}
+                        {u.id === profileActual?.id && (
+                          <span className="text-[10px] text-naranja font-bold">Vos</span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </td>
@@ -283,14 +298,26 @@ export function UsuariosTab() {
               <Button
                 variant="primary"
                 loading={updating}
-                onClick={() => update({ id: editando.id, dto: {
-                  nombre:   editando.nombre,
-                  email:    (editando as any).email || undefined,
-                  rol:      editando.rol,
-                  modulos:  editando.modulos,
-                  activo:   editando.activo,
-                  permisos: editando.permisos,
-                }})}
+                onClick={() => {
+                  // Si el usuario tenía tipo_usuario y los permisos ya no
+                  // matchean la plantilla, marcamos 'personalizado'.
+                  const tipo = editando.rol === 'admin'
+                    ? null
+                    : editando.tipo_usuario && editando.tipo_usuario !== 'personalizado'
+                      ? (permisosMatchPlantilla(editando.permisos, editando.rol, editando.modulos, editando.tipo_usuario)
+                          ? editando.tipo_usuario
+                          : 'personalizado')
+                      : editando.tipo_usuario ?? null
+                  update({ id: editando.id, dto: {
+                    nombre:       editando.nombre,
+                    email:        (editando as any).email || undefined,
+                    rol:          editando.rol,
+                    modulos:      editando.modulos,
+                    activo:       editando.activo,
+                    permisos:     editando.permisos,
+                    tipo_usuario: tipo,
+                  } as any})
+                }}
               >
                 ✓ Guardar
               </Button>
@@ -361,8 +388,87 @@ function UsuarioForm({
     })
   }
 
+  // Aplica una plantilla: setea rol + módulos + permisos + tipo_usuario.
+  // Después el admin puede ajustar a mano; al guardar, si cambió respecto
+  // a la plantilla, el indicador "Personalizado" lo refleja.
+  function aplicarPlantilla(key: string) {
+    const p = getPlantilla(key)
+    if (!p) return
+    onChange({
+      ...data,
+      rol:          p.rol,
+      modulos:      [...p.modulos],
+      permisos:     JSON.parse(JSON.stringify(p.permisos)),
+      tipo_usuario: p.key,
+    })
+  }
+
+  // Tipo "calculado" para mostrar en el selector:
+  // - Si data.tipo_usuario está y coincide con la plantilla → ese tipo.
+  // - Si data.tipo_usuario está pero los permisos no coinciden → 'personalizado'.
+  // - Si no hay tipo_usuario → vacío.
+  const tipoActual = (data as any).tipo_usuario as string | null | undefined
+  const matchPlantilla = tipoActual && tipoActual !== 'personalizado'
+    ? permisosMatchPlantilla(data.permisos, data.rol, data.modulos, tipoActual)
+    : false
+  const valorSelector = data.rol === 'admin'
+    ? '__admin__'
+    : tipoActual && matchPlantilla
+      ? tipoActual
+      : tipoActual === 'personalizado' || (tipoActual && !matchPlantilla)
+        ? '__personalizado__'
+        : ''
+
+  const plantillaSeleccionada = matchPlantilla ? getPlantilla(tipoActual!) : null
+
   return (
     <div className="flex flex-col gap-4">
+
+      {/* Plantilla de permisos */}
+      <div className="bg-azul-light rounded-xl p-3 border border-azul/20 flex flex-col gap-2">
+        <label className="text-xs font-bold text-azul uppercase tracking-wider">
+          🎯 Plantilla de permisos
+        </label>
+        <select
+          value={valorSelector}
+          onChange={e => {
+            const v = e.target.value
+            if (!v) return
+            if (v === '__admin__') {
+              onChange({ ...data, rol: 'admin', modulos: [], permisos: {}, tipo_usuario: null })
+            } else if (v === '__personalizado__') {
+              // No hace nada — solo es etiqueta visual de "ya está editado a mano".
+            } else {
+              aplicarPlantilla(v)
+            }
+          }}
+          className="w-full px-3 py-2 rounded-lg border border-gris-mid bg-white text-sm"
+        >
+          <option value="">— Elegí una plantilla —</option>
+          <option value="__admin__">👑 Administrador (acceso total)</option>
+          {PLANTILLAS.map(p => (
+            <option key={p.key} value={p.key}>{p.label}</option>
+          ))}
+          {valorSelector === '__personalizado__' && (
+            <option value="__personalizado__">⚙ Personalizado (editado a mano)</option>
+          )}
+        </select>
+        {plantillaSeleccionada && (
+          <p className="text-[11px] text-azul-mid">
+            {plantillaSeleccionada.descripcion}
+            {plantillaSeleccionada.obras_restringidas && (
+              <span className="block mt-1 font-semibold text-naranja">
+                ⚠ Este rol solo ve sus obras asignadas. Acordate de cargarlas más abajo.
+              </span>
+            )}
+          </p>
+        )}
+        {valorSelector === '__personalizado__' && (
+          <p className="text-[11px] text-gris-dark italic">
+            Los permisos fueron editados manualmente. Podés volver a aplicar una plantilla en cualquier momento.
+          </p>
+        )}
+      </div>
 
       {/* Nombre */}
       <Input

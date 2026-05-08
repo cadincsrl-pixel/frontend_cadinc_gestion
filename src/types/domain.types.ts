@@ -582,7 +582,14 @@ export interface Cobro {
 }
 
 export type Accion = 'lectura' | 'creacion' | 'actualizacion' | 'eliminacion'
-export type ModuloPermisos = { [K in Accion]?: boolean } & { tabs?: string[] }
+export type ModuloPermisos = { [K in Accion]?: boolean } & {
+  tabs?: string[]
+  // Flags específicos opcionales:
+  // - tarja.ver_costos: si false, la UI oculta precios/totales (capataz).
+  // - certificaciones.forzar_despacho: permite despachar/resolver items.
+  ver_costos?: boolean
+  forzar_despacho?: boolean
+}
 export type Permisos = Record<string, ModuloPermisos>
 
 export interface Profile {
@@ -592,6 +599,7 @@ export interface Profile {
   modulos:  string[]
   activo:   boolean
   permisos: Permisos
+  tipo_usuario?: string | null
 }
 
 export interface Modulo {
