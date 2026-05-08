@@ -113,15 +113,44 @@ export function getPreset(key: string): PresetBase | null {
 }
 
 // ─── ADD-ONS opcionales que extienden un preset ────────────────────────────
+//
+// Cada addon expone:
+//   - aplicar(p)  : agrega o setea las claves que el addon controla.
+//   - revertir(p) : el inverso. Borra esas mismas claves o restaura
+//                   defaults del preset/personalizado. NO usa state
+//                   externo: solo mira `p` y deshace lo que `aplicar`
+//                   habría agregado.
+//   - aplicaA     : whitelist de presets donde tiene sentido. Si el
+//                   user está en modo Personalizado (rol_base=null),
+//                   el wizard ofrece addons cuyo módulo target esté
+//                   tildado. La validación final la hace el handler
+//                   del onChange.
 
 export interface AddOn {
   key:       string
   label:     string
   descripcion: string
-  // Función que aplica el add-on sobre los permisos del preset.
-  aplicar: (p: Permisos) => Permisos
-  // En qué presets tiene sentido ofrecer este add-on (whitelist).
-  aplicaA: RolBase[]
+  aplicar:    (p: Permisos) => Permisos
+  revertir:   (p: Permisos) => Permisos
+  aplicaA:   RolBase[]
+  // Módulo cuya activación habilita el addon en modo Personalizado.
+  // Si el user está en Personalizado, el wizard ofrece este addon
+  // SOLO cuando ese módulo está tildado en `data.modulos`. Si queda
+  // undefined, el addon se ofrece siempre que haya módulos elegidos.
+  moduloTarget?: string
+}
+
+// Helpers internos para reducir boilerplate.
+function omitTarjaKeys(p: Permisos, claves: string[]): Permisos {
+  const tarja = { ...((p.tarja ?? {}) as Record<string, unknown>) }
+  for (const k of claves) delete tarja[k]
+  // Si tarja queda vacío, lo borramos del root para mantener limpio el JSONB.
+  if (Object.keys(tarja).length === 0) {
+    const out = { ...p } as Permisos
+    delete (out as Record<string, unknown>).tarja
+    return out
+  }
+  return { ...p, tarja: tarja as Permisos[string] }
 }
 
 export const ADDONS: AddOn[] = [
@@ -130,18 +159,28 @@ export const ADDONS: AddOn[] = [
     label: 'Ver tarja (supervisar horas)',
     descripcion: 'Acceso de lectura al módulo Tarja para controlar la carga de horas. Sin edición.',
     aplicaA: ['jefe_obra'],
+    moduloTarget: 'tarja',
     aplicar: (p) => ({
       ...p,
-      tarja: { lectura: true, tabs: ['tarja'], ver_costos: false, ver_pii: false, vista_completa: true },
+      // Spread del tarja existente para preservar claves que el admin
+      // pueda haber tildado a mano en modo Personalizado (ej. creacion).
+      // Las claves del addon pisan a las preexistentes (semántica esperada).
+      tarja: {
+        ...((p.tarja ?? {}) as Permisos[string]),
+        lectura: true, tabs: ['tarja'],
+        ver_costos: false, ver_pii: false, vista_completa: true,
+      },
     }),
+    revertir: (p) => omitTarjaKeys(p, ['lectura', 'tabs', 'ver_costos', 'ver_pii', 'vista_completa']),
   },
   {
     key:   'tab_personal',
     label: 'Acceso al tab Personal',
     descripcion: 'Permite ver el listado de personal asignado a sus obras (incluye DNI, dirección, teléfono).',
     aplicaA: ['capataz'],
+    moduloTarget: 'tarja',
     aplicar: (p) => {
-      const tarja = (p.tarja ?? {}) as any
+      const tarja = (p.tarja ?? {}) as Record<string, unknown> & { tabs?: string[] }
       const tabs = Array.isArray(tarja.tabs) ? tarja.tabs : []
       return {
         ...p,
@@ -149,8 +188,16 @@ export const ADDONS: AddOn[] = [
           ...tarja,
           tabs:    tabs.includes('personal') ? tabs : [...tabs, 'personal'],
           ver_pii: true,
-        },
+        } as Permisos[string],
       }
+    },
+    revertir: (p) => {
+      const tarja = (p.tarja ?? {}) as Record<string, unknown> & { tabs?: string[] }
+      const tabs = Array.isArray(tarja.tabs) ? tarja.tabs.filter((t: string) => t !== 'personal') : []
+      const out: Record<string, unknown> = { ...tarja }
+      out.tabs = tabs
+      delete out.ver_pii
+      return { ...p, tarja: out as Permisos[string] }
     },
   },
   {
@@ -158,19 +205,29 @@ export const ADDONS: AddOn[] = [
     label: 'Ver tarja (operación)',
     descripcion: 'Permite a Compras ver el módulo de Tarja en lectura.',
     aplicaA: ['compras'],
+    moduloTarget: 'tarja',
     aplicar: (p) => ({
       ...p,
-      tarja: { lectura: true, ver_costos: false, ver_pii: false, vista_completa: true },
+      tarja: {
+        ...((p.tarja ?? {}) as Permisos[string]),
+        lectura: true, ver_costos: false, ver_pii: false, vista_completa: true,
+      },
     }),
+    revertir: (p) => omitTarjaKeys(p, ['lectura', 'ver_costos', 'ver_pii', 'vista_completa']),
   },
   {
     key:   'cargar_horas_propias',
     label: 'Cargar horas propias',
     descripcion: 'Habilita módulo Tarja con vista restringida (capataz) y scope "asignadas" SOLO para tarja. El admin debe asignar la obra correspondiente abajo. Caso típico: encargado de depósito que también trabaja físicamente y carga sus horas.',
+    // Whitelist amplia: cualquiera que NO sea ya capataz/jefe_obra puro
+    // (esos ya cargan horas por su preset). Personalizado se trata aparte
+    // en el wizard, donde se ofrece si tarja está tildado.
     aplicaA: ['deposito', 'compras', 'administrativo'],
+    moduloTarget: 'tarja',
     aplicar: (p) => ({
       ...p,
       tarja: {
+        ...((p.tarja ?? {}) as Permisos[string]),
         lectura: true, creacion: true, actualizacion: true, eliminacion: false,
         tabs: ['tarja'],
         ver_costos:     false,
@@ -182,6 +239,10 @@ export const ADDONS: AddOn[] = [
         obras_scope:    'asignadas',
       },
     }),
+    revertir: (p) => omitTarjaKeys(p, [
+      'lectura', 'creacion', 'actualizacion', 'eliminacion', 'tabs',
+      'ver_costos', 'ver_pii', 'vista_completa', 'obras_scope',
+    ]),
   },
 ]
 
@@ -205,11 +266,12 @@ export function deriveAddons(
   rolBase: RolBase | null | undefined,
   permisos: Permisos | undefined | null,
 ): string[] {
-  if (!rolBase) return []
   const tarja = (permisos as Record<string, { lectura?: boolean; creacion?: boolean; tabs?: string[]; obras_scope?: string }> | null | undefined)?.tarja
   const addons: string[] = []
 
   // jefe_obra + tarja_lectura: tarja en lectura, sin creación.
+  // Solo detectable con rol_base — un personalizado puro puede tener
+  // tarja en lectura por elección manual sin querer el addon.
   if (rolBase === 'jefe_obra' && tarja?.lectura === true && tarja?.creacion !== true) {
     addons.push('tarja_lectura')
   }
@@ -224,12 +286,16 @@ export function deriveAddons(
     addons.push('tarja_lectura_compras')
   }
 
-  // deposito/compras/administrativo + cargar_horas_propias: tarja con
-  // override `obras_scope='asignadas'` (marca distintiva del addon).
-  if (
-    (rolBase === 'deposito' || rolBase === 'compras' || rolBase === 'administrativo') &&
-    tarja?.obras_scope === 'asignadas'
-  ) {
+  // cargar_horas_propias: marca distintiva = `tarja.obras_scope='asignadas'`.
+  // Esa setting no se mete por accidente, así que es seguro detectarla
+  // incluso en modo Personalizado (rol_base=null), donde el user puede
+  // venir de un addon previo o haber compuesto manualmente la misma
+  // configuración. Caso típico: Cristian que pasó a Personalizado por
+  // necesitar herramientas, conserva el behavior del addon.
+  const rolBasesValidos: Array<RolBase | null | undefined> = [
+    'deposito', 'compras', 'administrativo', null, undefined,
+  ]
+  if (rolBasesValidos.includes(rolBase) && tarja?.obras_scope === 'asignadas') {
     addons.push('cargar_horas_propias')
   }
 

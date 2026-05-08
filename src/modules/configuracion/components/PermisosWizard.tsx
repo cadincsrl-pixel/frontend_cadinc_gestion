@@ -4,17 +4,17 @@
  * Wizard de permisos v2 — reemplaza el dropdown de plantillas + matriz CRUD
  * inline del UsuariosTab.
  *
- * Tres bloques visibles (no stepper, decisión de UX: admin ve todo de un
+ * Bloques visibles (no stepper, decisión de UX: admin ve todo de un
  * vistazo y entiende qué está otorgando):
  *
  *   1. **Rol base**: 6 cards (admin + 5 presets + personalizado).
  *   2. **Obras visibles**: radio "todas" / "asignadas". Se auto-setea según
  *      el preset elegido pero el admin puede cambiarlo.
- *   3. **Capacidades extra (add-ons)**: checkboxes filtrados por preset.
- *      Solo aparecen los add-ons aplicables al rol elegido.
- *
- * Si el admin elige "Personalizado", aparece adicionalmente un cuarto bloque
- * con la matriz CRUD por módulo (legacy) para edición fina.
+ *   3. **Capacidades extra (add-ons)**: checkboxes filtrados por preset
+ *      O — en modo Personalizado — por módulos tildados.
+ *   4. **Edición fina (solo personalizado)**: matriz CRUD por módulo +
+ *      sub-bloque "Capacidades" (vista_completa, ver_pii, ver_costos,
+ *      obras_scope) por módulo.
  *
  * El componente NO maneja `nombre`, `email`, `password`, `activo`, ni la
  * sección de obras asignadas — esos siguen viviendo en `UsuariosTab`.
@@ -25,17 +25,46 @@
 
 import { useMemo } from 'react'
 import {
-  PRESETS, ADDONS, aplicarPreset, getPreset, computeTipoUsuario,
-  type RolBase, type ObrasScope,
+  PRESETS, ADDONS, aplicarPreset, getPreset, getAddOn, computeTipoUsuario,
+  type RolBase, type ObrasScope, type AddOn,
 } from '@/lib/permisos/plantillas'
 import { TABS_POR_MODULO } from '@/lib/config/modulo-tabs'
-import type { Permisos, Accion, Modulo } from '@/types/domain.types'
+import type { Permisos, ModuloPermisos, Accion, Modulo } from '@/types/domain.types'
 
 const ACCIONES: { key: Accion; label: string }[] = [
   { key: 'lectura',       label: 'Ver'      },
   { key: 'creacion',      label: 'Crear'    },
   { key: 'actualizacion', label: 'Editar'   },
   { key: 'eliminacion',   label: 'Eliminar' },
+]
+
+// Módulos donde el override `obras_scope` por módulo tiene sentido.
+// (Filtran por usuario_obras según `modulo`.)
+const MODULOS_CON_OBRAS_SCOPE: ReadonlySet<string> = new Set([
+  'tarja', 'certificaciones', 'logistica', 'herramientas',
+])
+
+// Toggles secundarios mostrados en el sub-bloque "Capacidades" de cada módulo
+// en modo Personalizado. Se muestran SIEMPRE (es modo experto) pero algunos
+// solo afectan a ciertos módulos en el código del frontend; los `title` lo
+// documentan.
+type FlagBoolean = 'vista_completa' | 'ver_pii' | 'ver_costos'
+const FLAGS_BOOLEAN: { key: FlagBoolean; label: string; help: string }[] = [
+  {
+    key: 'vista_completa',
+    label: 'Vista completa',
+    help: 'Habilita toolbar, tarifas y navegación entre semanas (tarja). Default true.',
+  },
+  {
+    key: 'ver_pii',
+    label: 'Ver datos personales (PII)',
+    help: 'Permite ver DNI, dirección, teléfono y fecha de nacimiento. Aplica principalmente a tarja.',
+  },
+  {
+    key: 'ver_costos',
+    label: 'Ver costos',
+    help: 'Muestra precios, totales y tarifas. Aplica a tarja y otros módulos sensibles.',
+  },
 ]
 
 // El estado del wizard. El parent puede tener más campos (nombre, email…)
@@ -78,11 +107,22 @@ export function PermisosWizard({ data, onChange, modulos }: Props) {
     ? 'admin'
     : data.rol_base ?? 'personalizado'
 
-  // Add-ons disponibles para el preset actual (si hay preset).
-  const addonsDisponibles = useMemo(() => {
-    if (rolElegido === 'admin' || rolElegido === 'personalizado') return []
+  const isAdmin = rolElegido === 'admin'
+  const isPersonalizado = rolElegido === 'personalizado'
+
+  // Add-ons disponibles según el modo:
+  // - Preset: filtra por aplicaA.includes(preset).
+  // - Personalizado: filtra por moduloTarget incluido en data.modulos
+  //   (o sin moduloTarget si "se ofrece siempre"). Permite que un user
+  //   custom como Cristian (depósito + herramientas) pueda volver a
+  //   tildar "Cargar horas propias" si tiene tarja activa.
+  const addonsDisponibles = useMemo<AddOn[]>(() => {
+    if (isAdmin) return []
+    if (isPersonalizado) {
+      return ADDONS.filter(a => !a.moduloTarget || data.modulos.includes(a.moduloTarget))
+    }
     return ADDONS.filter(a => a.aplicaA.includes(rolElegido as RolBase))
-  }, [rolElegido])
+  }, [isAdmin, isPersonalizado, rolElegido, data.modulos])
 
   // ── Handlers ────────────────────────────────────────────────────
 
@@ -113,27 +153,59 @@ export function PermisosWizard({ data, onChange, modulos }: Props) {
     }
     // Preset.
     const preset = getPreset(opcion.key)!
-    const { permisos, modulos: mods } = aplicarPreset(opcion.key, [])
+    // Preservamos los addons que ya estaban tildados Y son compatibles con
+    // el nuevo preset. Caso típico: el admin estaba en Personalizado con
+    // 'cargar_horas_propias' tildado y cambia a 'Encargado de depósito'
+    // (que también lo permite) — no tiene sentido obligarlo a re-tildar.
+    const addonsCompatibles = data.addons.filter(k =>
+      getAddOn(k)?.aplicaA.includes(opcion.key)
+    )
+    const { permisos, modulos: mods } = aplicarPreset(opcion.key, addonsCompatibles)
     onChange({
       rol:           'operador',
       rol_base:      opcion.key,
       obras_scope:   preset.obras_scope_default,
-      addons:        [],
+      addons:        addonsCompatibles,
       permisos,
       modulos:       mods,
-      tipo_usuario:  opcion.key,
+      tipo_usuario:  computeTipoUsuario(opcion.key, addonsCompatibles),
     })
   }
 
   function toggleAddon(addonKey: string) {
-    if (rolElegido === 'admin' || rolElegido === 'personalizado') return
-    const addons = data.addons.includes(addonKey)
+    if (isAdmin) return
+    const addon = getAddOn(addonKey)
+    if (!addon) return
+
+    const tildado = data.addons.includes(addonKey)
+    const newAddons = tildado
       ? data.addons.filter(k => k !== addonKey)
       : [...data.addons, addonKey]
-    const { permisos, modulos: mods } = aplicarPreset(rolElegido as RolBase, addons)
-    // Calcular tipo_usuario para back-compat (matchea plantillas legacy).
-    const tipo = computeTipoUsuario(rolElegido as RolBase, addons)
-    onChange({ addons, permisos, modulos: mods, tipo_usuario: tipo })
+
+    let newPermisos: Permisos
+    if (isPersonalizado) {
+      // En personalizado no hay preset al que volver: aplicamos/revertimos
+      // sobre los permisos actuales.
+      newPermisos = tildado ? addon.revertir(data.permisos) : addon.aplicar(data.permisos)
+    } else {
+      // Con preset, recomputamos desde cero para mantener idempotencia
+      // y borrar correctamente cualquier residuo de un addon ya destildado.
+      const result = aplicarPreset(rolElegido as RolBase, newAddons)
+      newPermisos = result.permisos
+    }
+    const newModulos = Object.keys(newPermisos)
+
+    // En este punto ya descartamos isAdmin con el return temprano.
+    const tipo = rolElegido !== 'personalizado'
+      ? computeTipoUsuario(rolElegido as RolBase, newAddons)
+      : 'personalizado'
+
+    onChange({
+      addons:       newAddons,
+      permisos:     newPermisos,
+      modulos:      newModulos,
+      tipo_usuario: tipo,
+    })
   }
 
   function cambiarScope(scope: ObrasScope) {
@@ -144,7 +216,7 @@ export function PermisosWizard({ data, onChange, modulos }: Props) {
 
   function togglePermiso(modKey: string, accion: Accion) {
     const modPerm = data.permisos[modKey] ?? {}
-    const nuevoPerm = { ...modPerm, [accion]: !modPerm[accion] }
+    const nuevoPerm: ModuloPermisos = { ...modPerm, [accion]: !modPerm[accion] }
     onChange({ permisos: { ...data.permisos, [modKey]: nuevoPerm } })
   }
 
@@ -153,9 +225,16 @@ export function PermisosWizard({ data, onChange, modulos }: Props) {
     if (tiene) {
       const nuevosPermisos = { ...data.permisos }
       delete nuevosPermisos[modKey]
+      // Si el módulo era target de algún addon tildado, también lo destildamos
+      // para mantener `data.addons` consistente con `data.permisos`.
+      const newAddons = data.addons.filter(k => {
+        const a = getAddOn(k)
+        return !(a?.moduloTarget === modKey)
+      })
       onChange({
         modulos:  data.modulos.filter(m => m !== modKey),
         permisos: nuevosPermisos,
+        addons:   newAddons,
       })
     } else {
       onChange({
@@ -183,10 +262,58 @@ export function PermisosWizard({ data, onChange, modulos }: Props) {
     })
   }
 
-  // ── Render ──────────────────────────────────────────────────────
+  function toggleFlag(modKey: string, flag: FlagBoolean) {
+    const modPerm = data.permisos[modKey] ?? {}
+    const actual = modPerm[flag]
+    // Tri-state: undefined (default true) → false → true → undefined.
+    let next: boolean | undefined
+    if (actual === undefined)      next = false
+    else if (actual === false)     next = true
+    else                           next = undefined
 
-  const isAdmin = rolElegido === 'admin'
-  const isPersonalizado = rolElegido === 'personalizado'
+    const nuevoPerm: ModuloPermisos = { ...modPerm }
+    if (next === undefined) {
+      delete nuevoPerm[flag]
+    } else {
+      nuevoPerm[flag] = next
+    }
+    onChange({ permisos: { ...data.permisos, [modKey]: nuevoPerm } })
+  }
+
+  function cambiarObrasScopeModulo(modKey: string, value: 'sin-override' | 'todas' | 'asignadas') {
+    const modPerm = (data.permisos[modKey] ?? {}) as ModuloPermisos & { obras_scope?: ObrasScope }
+    const nuevoPerm: ModuloPermisos & { obras_scope?: ObrasScope } = { ...modPerm }
+    if (value === 'sin-override') {
+      delete nuevoPerm.obras_scope
+    } else {
+      nuevoPerm.obras_scope = value
+    }
+    onChange({ permisos: { ...data.permisos, [modKey]: nuevoPerm } })
+  }
+
+  // ── Hint contextual: addons que setean obras_scope='asignadas' ────
+  //
+  // Caso típico: tildás `cargar_horas_propias` en personalizado → el addon
+  // pone `tarja.obras_scope = 'asignadas'` pero si el módulo target no
+  // está tildado o no hay obras asignadas, el user no va a ver nada.
+  const hintsObrasScope = useMemo<string[]>(() => {
+    if (!isPersonalizado) return []
+    const out: string[] = []
+    for (const k of data.addons) {
+      const a = getAddOn(k)
+      if (!a?.moduloTarget) continue
+      // Detección heurística: aplicar(empty) deja `obras_scope='asignadas'`
+      // en el módulo target. Lo hacemos sobre {} para no depender del state.
+      const probe = a.aplicar({} as Permisos)
+      const probeMod = probe[a.moduloTarget] as (ModuloPermisos & { obras_scope?: string }) | undefined
+      if (probeMod?.obras_scope === 'asignadas') {
+        out.push(`Tildaste "${a.label}". Asegurate de tildar también el módulo "${a.moduloTarget}" y de asignarle obras al usuario.`)
+      }
+    }
+    return out
+  }, [isPersonalizado, data.addons])
+
+  // ── Render ──────────────────────────────────────────────────────
 
   return (
     <div className="flex flex-col gap-4">
@@ -271,7 +398,7 @@ export function PermisosWizard({ data, onChange, modulos }: Props) {
       )}
 
       {/* ── Bloque 3: Capacidades extra ─────────────────────────── */}
-      {!isAdmin && !isPersonalizado && addonsDisponibles.length > 0 && (
+      {!isAdmin && addonsDisponibles.length > 0 && (
         <section className="bg-white rounded-xl p-3 border border-gris-mid">
           <div className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-2">
             3. Capacidades extra
@@ -299,6 +426,18 @@ export function PermisosWizard({ data, onChange, modulos }: Props) {
               )
             })}
           </div>
+          {hintsObrasScope.length > 0 && (
+            <div className="mt-2 flex flex-col gap-1">
+              {hintsObrasScope.map((h, i) => (
+                <div
+                  key={i}
+                  className="text-[11px] text-azul bg-azul-light border border-azul/30 rounded-md px-2 py-1.5"
+                >
+                  ℹ {h}
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       )}
 
@@ -314,7 +453,11 @@ export function PermisosWizard({ data, onChange, modulos }: Props) {
           <div className="flex flex-col gap-3">
             {modulos.map(m => {
               const tiene = data.modulos.includes(m.key)
-              const modPerm = data.permisos[m.key] ?? {}
+              const modPerm = (data.permisos[m.key] ?? {}) as ModuloPermisos & { obras_scope?: ObrasScope }
+              const obrasScopeModulo: 'sin-override' | 'todas' | 'asignadas' =
+                modPerm.obras_scope === 'todas' ? 'todas'
+                : modPerm.obras_scope === 'asignadas' ? 'asignadas'
+                : 'sin-override'
               return (
                 <div
                   key={m.key}
@@ -383,6 +526,63 @@ export function PermisosWizard({ data, onChange, modulos }: Props) {
                           </div>
                         </div>
                       )}
+
+                      {/* Capacidades secundarias (modo experto) */}
+                      <div className="mt-3 pt-2 border-t border-gris">
+                        <div className="text-[10px] font-bold text-gris-dark uppercase tracking-wider mb-1.5">
+                          Capacidades
+                        </div>
+                        <div className="flex gap-1.5 flex-wrap">
+                          {FLAGS_BOOLEAN.map(({ key, label, help }) => {
+                            const v = modPerm[key]
+                            const estado = v === undefined ? 'default' : v ? 'on' : 'off'
+                            const labelEstado =
+                              estado === 'default' ? 'auto'
+                              : estado === 'on'    ? 'sí'
+                              :                      'no'
+                            return (
+                              <button
+                                key={key}
+                                type="button"
+                                onClick={() => toggleFlag(m.key, key)}
+                                title={help}
+                                className={`flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg border transition-all
+                                  ${estado === 'on'
+                                    ? 'bg-verde text-white border-verde'
+                                    : estado === 'off'
+                                      ? 'bg-rojo text-white border-rojo'
+                                      : 'bg-white text-gris-dark border-gris-mid hover:border-azul hover:text-azul'}`}
+                              >
+                                <span>{label}</span>
+                                <span className="opacity-80">[{labelEstado}]</span>
+                              </button>
+                            )
+                          })}
+                        </div>
+
+                        {MODULOS_CON_OBRAS_SCOPE.has(m.key) && (
+                          <div className="mt-2 flex items-center gap-2">
+                            <span
+                              className="text-[10px] font-bold text-gris-dark uppercase tracking-wider"
+                              title="Override del scope de obras solo para este módulo. Si elegís 'sin override', se usa el scope global."
+                            >
+                              Obras (override)
+                            </span>
+                            <select
+                              value={obrasScopeModulo}
+                              onChange={e => cambiarObrasScopeModulo(
+                                m.key,
+                                e.target.value as 'sin-override' | 'todas' | 'asignadas',
+                              )}
+                              className="text-[11px] border border-gris-mid rounded px-2 py-1 bg-white"
+                            >
+                              <option value="sin-override">Sin override</option>
+                              <option value="todas">Todas</option>
+                              <option value="asignadas">Asignadas</option>
+                            </select>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>

@@ -212,8 +212,11 @@ export function UsuariosTab() {
                           </span>
                         )}
                         {/* Chips de addons activos (derivados de los permisos
-                            persistidos). Visibilidad rápida del combo real. */}
-                        {u.rol_base && deriveAddons(u.rol_base as RolBase, u.permisos).map(addonKey => (
+                            persistidos). Visibilidad rápida del combo real.
+                            Funciona también para usuarios "personalizados"
+                            (rol_base=null) cuando el addon dejó marcas
+                            distintivas en permisos (ej: cargar_horas_propias). */}
+                        {deriveAddons((u.rol_base ?? null) as RolBase | null, u.permisos).map(addonKey => (
                           <span
                             key={addonKey}
                             className="text-[10px] font-bold text-naranja-dark bg-naranja-light px-1.5 py-0.5 rounded"
