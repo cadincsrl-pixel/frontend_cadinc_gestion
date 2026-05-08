@@ -10,8 +10,14 @@ import { Button }   from '@/components/ui/Button'
 import { Input }    from '@/components/ui/Input'
 import { useToast } from '@/components/ui/Toast'
 import { useSessionStore } from '@/store/session.store'
-import { getPlantilla } from '@/lib/permisos/plantillas'
+import { getPlantilla, deriveAddons, getAddOn } from '@/lib/permisos/plantillas'
 import type { RolBase, ObrasScope } from '@/lib/permisos/plantillas'
+
+// Etiqueta corta del addon para los chips de la tabla. Cae al key si el
+// addon ya no existe en el catálogo (ej. addon viejo deprecado).
+function addonLabel(key: string): string {
+  return getAddOn(key)?.label ?? key
+}
 import type { Permisos, Profile, Modulo } from '@/types/domain.types'
 
 interface NuevoUsuario {
@@ -40,23 +46,9 @@ const EMPTY_NUEVO: NuevoUsuario = {
   tipo_usuario: null,
 }
 
-// Deriva los addons activos a partir del tipo_usuario legacy + rol_base.
-// Se usa al abrir el modal de edición para que el wizard muestre las
-// capacidades extra tildadas (jefe_obra+tarja_lectura, capataz+tab_personal).
-//
-// Importante: los `addons` NO se persisten en DB. Son estado local del
-// wizard que se usa para computar `permisos`, `modulos` y `tipo_usuario`
-// (estos sí persisten). Al releer el perfil, derivamos addons desde
-// tipo_usuario; al guardar, los addons se materializan en los permisos.
-//
-// Esta función es el INVERSO de `computeTipoUsuario` en PermisosWizard.
-// Mantener ambas en sync si agregás un addon nuevo con combo legacy.
-function deriveAddons(rolBase: RolBase | null, tipoUsuario?: string | null): string[] {
-  if (!rolBase) return []
-  if (rolBase === 'jefe_obra' && tipoUsuario === 'jefe_obra_supervisor') return ['tarja_lectura']
-  if (rolBase === 'capataz' && tipoUsuario === 'capataz_supervisor')     return ['tab_personal']
-  return []
-}
+// `deriveAddons` se importa de `lib/permisos/plantillas.ts` (inspecciona
+// `permisos` directamente para cubrir los 4 addons, no solo los 2
+// "supervisor" que tenían tipo_usuario legacy).
 
 export function UsuariosTab() {
   const toast        = useToast()
@@ -201,11 +193,16 @@ export function UsuariosTab() {
                     <div>
                       <div className="font-bold text-sm text-carbon">{u.nombre}</div>
                       <div className="flex items-center gap-1.5 mt-0.5">
-                        {u.tipo_usuario && u.tipo_usuario !== 'personalizado' && (
+                        {/* Badge principal: rol_base si está, si no tipo_usuario legacy. */}
+                        {u.rol_base && (
+                          <span className="text-[10px] font-bold text-azul-mid bg-azul-light px-1.5 py-0.5 rounded">
+                            {getPlantilla(u.rol_base)?.label ?? u.rol_base}
+                          </span>
+                        )}
+                        {!u.rol_base && u.tipo_usuario && u.tipo_usuario !== 'personalizado' && (
                           <span className="text-[10px] font-bold text-azul-mid bg-azul-light px-1.5 py-0.5 rounded">
                             {/* Alias legacy: 'encargado_deposito' (CHECK)
-                                ↔ 'deposito' (preset key). Mostramos el
-                                label del preset para ambos. */}
+                                ↔ 'deposito' (preset key). */}
                             {getPlantilla(u.tipo_usuario === 'encargado_deposito' ? 'deposito' : u.tipo_usuario)?.label ?? u.tipo_usuario}
                           </span>
                         )}
@@ -214,6 +211,17 @@ export function UsuariosTab() {
                             ⚙ Personalizado
                           </span>
                         )}
+                        {/* Chips de addons activos (derivados de los permisos
+                            persistidos). Visibilidad rápida del combo real. */}
+                        {u.rol_base && deriveAddons(u.rol_base as RolBase, u.permisos).map(addonKey => (
+                          <span
+                            key={addonKey}
+                            className="text-[10px] font-bold text-naranja-dark bg-naranja-light px-1.5 py-0.5 rounded"
+                            title={addonKey}
+                          >
+                            ＋ {addonLabel(addonKey)}
+                          </span>
+                        ))}
                         {u.id === profileActual?.id && (
                           <span className="text-[10px] text-naranja font-bold">Vos</span>
                         )}
@@ -268,7 +276,7 @@ export function UsuariosTab() {
                         // 'personalizado'), tratamos al usuario como
                         // personalizado: rol_base=null, addons=[].
                         const rolBase = (u.rol_base ?? null) as RolBase | null
-                        const addons  = deriveAddons(rolBase, u.tipo_usuario)
+                        const addons  = deriveAddons(rolBase, u.permisos)
                         setEditando({
                           ...u,
                           rol_base:    rolBase,
@@ -343,6 +351,26 @@ export function UsuariosTab() {
           onChange={(d) => setNuevoForm(d as NuevoUsuario)}
           showPassword
         />
+        {/* Aviso si el usuario va a quedar con scope='asignadas' (global o por
+            override de algún addon). En creación no podemos asignar obras
+            todavía (no existe el id), así que dirigimos al admin a
+            re-abrir el usuario después de crear. */}
+        {nuevoForm.rol !== 'admin' && (
+          nuevoForm.obras_scope === 'asignadas' ||
+          Object.values(nuevoForm.permisos ?? {}).some(p =>
+            (p as { obras_scope?: string })?.obras_scope === 'asignadas'
+          )
+        ) && (
+          <div className="mt-4 bg-amarillo-light border border-amarillo/40 rounded-lg p-3 text-[#7A5500] text-xs">
+            <div className="font-bold mb-1">⚠ Falta asignar obras</div>
+            <div>
+              Este rol/configuración requiere que asignes obras explícitamente.
+              <strong> Después de crear al usuario</strong>, abrí su perfil con el ✏️
+              y asignale las obras correspondientes — sin esto, el usuario no
+              va a ver datos en los módulos restringidos.
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* Modal editar */}

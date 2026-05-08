@@ -189,6 +189,66 @@ export function getAddOn(key: string): AddOn | null {
   return ADDONS.find(a => a.key === key) ?? null
 }
 
+// ─── Inversas: derivar addons / tipo_usuario desde el state persistido ──
+//
+// Cuando abrimos el modal de edición, no tenemos `addons` en DB (no se
+// persiste). Lo derivamos inspeccionando `permisos`. Y al guardar,
+// computamos el `tipo_usuario` legacy para el badge de la tabla y para
+// queries que aún lo usen.
+//
+// Ambas funciones DEBEN seguir como inversas: si `deriveAddons` mapea
+// (rolBase, permisos) → ['X'], entonces `computeTipoUsuario(rolBase, ['X'])`
+// debe devolver el tipo legacy correspondiente. Las pongo juntas para que
+// el drift sea visible cuando se modifica una sin la otra.
+
+export function deriveAddons(
+  rolBase: RolBase | null | undefined,
+  permisos: Permisos | undefined | null,
+): string[] {
+  if (!rolBase) return []
+  const tarja = (permisos as Record<string, { lectura?: boolean; creacion?: boolean; tabs?: string[]; obras_scope?: string }> | null | undefined)?.tarja
+  const addons: string[] = []
+
+  // jefe_obra + tarja_lectura: tarja en lectura, sin creación.
+  if (rolBase === 'jefe_obra' && tarja?.lectura === true && tarja?.creacion !== true) {
+    addons.push('tarja_lectura')
+  }
+
+  // capataz + tab_personal: tarja con tab 'personal' habilitado.
+  if (rolBase === 'capataz' && Array.isArray(tarja?.tabs) && tarja.tabs.includes('personal')) {
+    addons.push('tab_personal')
+  }
+
+  // compras + tarja_lectura_compras: tarja en lectura.
+  if (rolBase === 'compras' && tarja?.lectura === true) {
+    addons.push('tarja_lectura_compras')
+  }
+
+  // deposito/compras/administrativo + cargar_horas_propias: tarja con
+  // override `obras_scope='asignadas'` (marca distintiva del addon).
+  if (
+    (rolBase === 'deposito' || rolBase === 'compras' || rolBase === 'administrativo') &&
+    tarja?.obras_scope === 'asignadas'
+  ) {
+    addons.push('cargar_horas_propias')
+  }
+
+  return addons
+}
+
+// Mapeo preset+addons → tipo_usuario legacy. Solo se conocen los combos
+// históricos; combos nuevos (compras+tarja_lectura, deposito+cargar_horas)
+// devuelven el rolBase puro y el badge muestra los addons aparte.
+export function computeTipoUsuario(rolBase: RolBase, addons: string[]): string {
+  if (rolBase === 'jefe_obra' && addons.includes('tarja_lectura')) {
+    return 'jefe_obra_supervisor'
+  }
+  if (rolBase === 'capataz' && addons.includes('tab_personal')) {
+    return 'capataz_supervisor'
+  }
+  return rolBase
+}
+
 // Aplica un preset + lista de add-ons. Devuelve { permisos, modulos }.
 export function aplicarPreset(
   presetKey: RolBase,

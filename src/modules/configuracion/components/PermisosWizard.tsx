@@ -25,7 +25,7 @@
 
 import { useMemo } from 'react'
 import {
-  PRESETS, ADDONS, aplicarPreset, getPreset,
+  PRESETS, ADDONS, aplicarPreset, getPreset, computeTipoUsuario,
   type RolBase, type ObrasScope,
 } from '@/lib/permisos/plantillas'
 import { TABS_POR_MODULO } from '@/lib/config/modulo-tabs'
@@ -403,20 +403,5 @@ export function PermisosWizard({ data, onChange, modulos }: Props) {
   )
 }
 
-// ─── Helper: derivar tipo_usuario legacy desde preset+addons ──────
-//
-// Mantiene compat con queries y reportes que filtran por `tipo_usuario`.
-// Cuando una combinación preset+addon coincide con una plantilla legacy
-// conocida, devolvemos esa key. Si no, devolvemos el preset solo.
-//
-// Importante: este helper es el INVERSO de `deriveAddons` en UsuariosTab.
-// Si agregás un addon nuevo que tenga combo legacy, actualizá ambos en par.
-function computeTipoUsuario(rolBase: RolBase, addons: string[]): string {
-  if (rolBase === 'jefe_obra' && addons.includes('tarja_lectura')) {
-    return 'jefe_obra_supervisor'
-  }
-  if (rolBase === 'capataz' && addons.includes('tab_personal')) {
-    return 'capataz_supervisor'
-  }
-  return rolBase
-}
+// `computeTipoUsuario` se importa de `lib/permisos/plantillas.ts`
+// (su inverso `deriveAddons` también vive ahí).
