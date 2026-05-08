@@ -1,7 +1,9 @@
+import { useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api/client'
 import type { Personal, Hora } from '@/types/domain.types'
 import { getSemDays, toISO } from '@/lib/utils/dates'
+import { useToast } from '@/components/ui/Toast'
 
 export const PERSONAL_SEMANA_KEY = ['personal-semana'] as const
 
@@ -100,4 +102,61 @@ export function useCopiarSemanaAnterior() {
       qc.invalidateQueries({ queryKey: ['asignaciones'] })
     },
   })
+}
+
+// ── Auto-traer trabajadores cuando se entra a una semana vacía ──
+//
+// Cuando el user navega a una semana donde no hay trabajadores cargados,
+// disparamos automáticamente la copia desde la semana anterior. Es el
+// caso típico del lunes después del cierre: la planilla "arranca" con
+// los mismos trabajadores y el user solo ajusta horas.
+//
+// Reglas:
+//   - Solo si `enabled=true` (caller decide: debe tener puedeCrear,
+//     obra no archivada, y no estar en modo solo lectura).
+//   - Solo si la semana actual está VACÍA (sin ningún registro).
+//   - Una sola vez por (obra, semana). Track local con useRef para
+//     evitar disparos duplicados si la semana anterior también está
+//     vacía o si todos los workers ya están.
+//   - Errores se tragan en silencio (la semana puede no tener anterior
+//     con datos, o haber sido vaciada a propósito). Sí mostramos toast
+//     en éxito.
+export function useAutoTraerSemanaAnterior({
+  obraCod, semActual, personal, isLoading, enabled,
+}: {
+  obraCod:   string
+  semActual: Date
+  personal:  Personal[]
+  isLoading: boolean
+  enabled:   boolean
+}) {
+  const intentadas = useRef(new Set<string>())
+  const { mutate, isPending } = useCopiarSemanaAnterior()
+  const toast = useToast()
+
+  useEffect(() => {
+    if (!enabled) return
+    if (isLoading || isPending) return
+    if (personal.length > 0) return
+    if (!obraCod) return
+
+    const key = `${obraCod}:${toISO(semActual)}`
+    if (intentadas.current.has(key)) return
+    intentadas.current.add(key)
+
+    mutate(
+      { obraCod, semActual },
+      {
+        onSuccess: () => {
+          toast('✓ Trabajadores traídos de la semana anterior', 'ok')
+        },
+        onError: () => {
+          // Silencio. Casos esperados:
+          //  - "No hay trabajadores en la semana anterior" (semana origen vacía)
+          //  - "Todos los trabajadores de la semana anterior ya están..."
+          //    (race con otro user que ya disparó la copia).
+        },
+      },
+    )
+  }, [enabled, isLoading, isPending, personal.length, obraCod, semActual, mutate, toast])
 }

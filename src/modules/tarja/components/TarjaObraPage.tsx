@@ -4,7 +4,7 @@ import { useState, useCallback, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useObra } from '@/modules/tarja/hooks/useObras'
 import { useObras } from '@/modules/tarja/hooks/useObras'
-import { usePersonalSemana } from '@/modules/tarja/hooks/useAsignaciones'
+import { usePersonalSemana, useAutoTraerSemanaAnterior } from '@/modules/tarja/hooks/useAsignaciones'
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
 import { useHorasSemana, useUpsertHorasLote, useLimpiarSemana } from '@/modules/tarja/hooks/useHoras'
 import { useHsExtras } from '@/modules/tarja/hooks/useHsExtras'
@@ -76,7 +76,20 @@ export function TarjaObraPage({ obraCod }: Props) {
   const days = getSemDays(semActual)
   const desde = toISO(days[0]!)
   const hasta = toISO(days[6]!)
-  const { data: personal = [] } = usePersonalSemana(obraCod, desde, hasta)
+  const { data: personal = [], isLoading: loadingPersonal } = usePersonalSemana(obraCod, desde, hasta)
+
+  // Auto-traer trabajadores de la semana anterior cuando entrás a una
+  // semana vacía. Caso típico: el lunes después del cierre, la planilla
+  // arranca con los mismos trabajadores y solo ajustás horas. Capataz
+  // siempre lo dispara (tiene puedeCrear, sin archivar). Supervisores en
+  // solo lectura no lo disparan, ni se dispara en obras archivadas.
+  useAutoTraerSemanaAnterior({
+    obraCod,
+    semActual,
+    personal,
+    isLoading: loadingPersonal || loadingObra,
+    enabled: puedeCrear && !soloLectura && !obra?.archivada,
+  })
 
   const { data: horasData = [] } = useHorasSemana(obraCod, desde, hasta)
   const { data: hsExtrasData = [] } = useHsExtras(obraCod, desde, hasta)
