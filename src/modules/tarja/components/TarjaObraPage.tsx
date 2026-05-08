@@ -335,6 +335,14 @@ export function TarjaObraPage({ obraCod }: Props) {
         />
       )}
 
+      {/* ── WeekNavigator suelto para supervisores solo-lectura ──
+          (el toolbar completo está oculto pero necesitan navegar semanas). */}
+      {!archivada && soloLectura && (
+        <div className="bg-white rounded-card shadow-card p-3">
+          <WeekNavigator obraCod={obraCod} />
+        </div>
+      )}
+
       {/* ── Tabla de tarja ── */}
       <TarjaTable
         obraCod={obraCod}
