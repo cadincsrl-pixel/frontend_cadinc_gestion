@@ -127,13 +127,18 @@ export function TarjaObraPage({ obraCod }: Props) {
   }, [obra, setObraActiva])
 
   useEffect(() => {
+    // Capataz no debe ver Excel/Recibos/CSV en el topbar dentro de la obra.
+    if (soloCargaHoras) {
+      setTopbarAccion(null)
+      return
+    }
     setTopbarAccion((accion: string) => {
       if (accion === 'excel') setModalExcelObras(true)
       if (accion === 'recibos') setModalRecibos(true)
       if (accion === 'csv') handleCSV()
     })
     return () => setTopbarAccion(null)
-  }, [obra, personal, horasData, tarifas])
+  }, [obra, personal, horasData, tarifas, soloCargaHoras])
 
   // ── Totales semana (incluye hs extras + cat_obra) ──
   // Mismo criterio canónico que footer de TarjaTable y ResumenHistoricoPage.

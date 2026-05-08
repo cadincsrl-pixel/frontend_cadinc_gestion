@@ -380,16 +380,24 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           ))}
         </div>
 
-        {/* ── Botón cambiar módulo ── */}
-        <div className="px-3 mt-3">
-          <button
-            onClick={() => navigate('/')}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-[9px] border-[1.5px] border-dashed border-white/20 text-white/40 hover:border-white/50 hover:text-white/70 transition-all text-sm font-semibold"
-          >
-            <span>⇐</span>
-            <span>Cambiar módulo</span>
-          </button>
-        </div>
+        {/* ── Botón cambiar módulo — solo si tiene más de un módulo accesible ── */}
+        {(() => {
+          const totalModulos = profile?.rol === 'admin'
+            ? 6 // admin ve todos
+            : (profile?.modulos?.length ?? 0)
+          if (totalModulos <= 1) return null
+          return (
+            <div className="px-3 mt-3">
+              <button
+                onClick={() => navigate('/')}
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-[9px] border-[1.5px] border-dashed border-white/20 text-white/40 hover:border-white/50 hover:text-white/70 transition-all text-sm font-semibold"
+              >
+                <span>⇐</span>
+                <span>Cambiar módulo</span>
+              </button>
+            </div>
+          )
+        })()}
 
         {/* ── Info usuario ── */}
         <div className="mt-auto px-4 pt-4 border-t border-white/10">
