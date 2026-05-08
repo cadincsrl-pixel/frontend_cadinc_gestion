@@ -12,12 +12,18 @@ interface ComboboxProps {
   className?:   string
 }
 
+// Altura aproximada del dropdown (max-h-52 = 13rem ≈ 208px). Se usa para
+// decidir si abrir hacia arriba o hacia abajo.
+const DROPDOWN_HEIGHT = 208
+
 export function Combobox({
   label, placeholder = 'Buscar...', options, value, onChange, disabled, className = '',
 }: ComboboxProps) {
   const [query,  setQuery]  = useState('')
   const [open,   setOpen]   = useState(false)
+  const [flipUp, setFlipUp] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLInputElement>(null)
 
   // Texto visible: si hay valor seleccionado, mostrar su label
   const selected = options.find(o => o.value === value)
@@ -40,6 +46,16 @@ export function Combobox({
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
+
+  // Decidir si abrir el dropdown hacia arriba: si el espacio debajo del
+  // trigger no alcanza para mostrarlo y arriba hay más espacio.
+  useEffect(() => {
+    if (!open || !triggerRef.current) return
+    const rect = triggerRef.current.getBoundingClientRect()
+    const spaceBelow = window.innerHeight - rect.bottom
+    const spaceAbove = rect.top
+    setFlipUp(spaceBelow < DROPDOWN_HEIGHT && spaceAbove > spaceBelow)
+  }, [open])
 
   function handleSelect(val: string) {
     onChange(val)
@@ -65,6 +81,7 @@ export function Combobox({
           🔍
         </span>
         <input
+          ref={triggerRef}
           type="text"
           disabled={disabled}
           value={open ? query : (selected?.label ?? '')}
@@ -90,7 +107,7 @@ export function Combobox({
       </div>
 
       {open && (
-        <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white border border-gris-mid rounded-xl shadow-card-lg max-h-52 overflow-y-auto">
+        <div className={`absolute left-0 right-0 z-50 bg-white border border-gris-mid rounded-xl shadow-card-lg max-h-52 overflow-y-auto ${flipUp ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
           {filtered.length === 0 ? (
             <div className="px-4 py-3 text-sm text-gris-dark text-center">
               Sin resultados

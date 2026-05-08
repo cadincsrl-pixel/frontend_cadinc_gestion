@@ -33,7 +33,7 @@ export function Modal({ open, onClose, title, children, footer, width = 'max-w-m
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4"
       onClick={onClose}
     >
       {/* Backdrop */}
@@ -41,30 +41,31 @@ export function Modal({ open, onClose, title, children, footer, width = 'max-w-m
 
       {/* Modal */}
       <div
-        className={`relative bg-white rounded-[18px] shadow-card-lg w-full ${width} max-h-[90vh] overflow-y-auto animate-[slideUp_0.2s_ease]`}
+        className={`relative bg-white rounded-[18px] shadow-card-lg w-full ${width} max-h-[95vh] sm:max-h-[90vh] overflow-y-auto animate-[slideUp_0.2s_ease]`}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 pb-4">
-          <h3 className="font-display text-2xl text-azul tracking-wider">
+        <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-3 sm:p-6 sm:pb-4">
+          <h3 className="font-display text-lg sm:text-2xl text-azul tracking-wider truncate min-w-0">
             {title}
           </h3>
           <button
             onClick={onClose}
-            className="text-gris-mid hover:text-carbon transition-colors text-xl font-bold w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gris"
+            className="shrink-0 text-gris-mid hover:text-carbon transition-colors text-xl font-bold w-9 h-9 flex items-center justify-center rounded-lg hover:bg-gris"
+            aria-label="Cerrar"
           >
             ✕
           </button>
         </div>
 
         {/* Body */}
-        <div className="px-6 pb-4">
+        <div className="px-4 pb-4 sm:px-6">
           {children}
         </div>
 
         {/* Footer */}
         {footer && (
-          <div className="flex gap-2 justify-end px-6 pb-6 pt-2 border-t border-gris">
+          <div className="flex gap-2 justify-end flex-wrap px-4 pb-4 pt-2 sm:px-6 sm:pb-6 border-t border-gris">
             {footer}
           </div>
         )}
