@@ -46,10 +46,19 @@ export function UsuariosTab() {
   const profileActual = useSessionStore(s => s.profile)
 
   const [editando,    setEditando]    = useState<Profile | null>(null)
+  const [rolOriginal, setRolOriginal] = useState<string | null>(null)
   const [modalNuevo,  setModalNuevo]  = useState(false)
   const [nuevoForm,   setNuevoForm]   = useState<NuevoUsuario>(EMPTY_NUEVO)
   const [resetId,     setResetId]     = useState<string | null>(null)
   const [newPass,     setNewPass]     = useState('')
+
+  // Modal de confirmación cuando se está promocionando a un usuario a admin.
+  // Pide tipear "ADMIN" para evitar privilege escalation accidental.
+  const [confirmAdmin, setConfirmAdmin] = useState<{
+    nombre: string
+    onConfirm: () => void
+  } | null>(null)
+  const [confirmAdminText, setConfirmAdminText] = useState('')
 
   const { mutate: resetPassword, isPending: resetting } = useMutation({
     mutationFn: ({ id, password }: { id: string; password: string }) =>
@@ -228,7 +237,7 @@ export function UsuariosTab() {
                 <td className="px-4 py-3">
                   <div className="flex gap-1 justify-end">
                     <button
-                      onClick={() => setEditando({ ...u })}
+                      onClick={() => { setEditando({ ...u }); setRolOriginal(u.rol) }}
                       className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors"
                       title="Editar"
                     >
@@ -270,7 +279,18 @@ export function UsuariosTab() {
             <Button
               variant="primary"
               loading={creating}
-              onClick={() => create(nuevoForm)}
+              onClick={() => {
+                const doCreate = () => create(nuevoForm)
+                // Si se está creando directo como admin, pedir confirmación.
+                if (nuevoForm.rol === 'admin') {
+                  setConfirmAdmin({
+                    nombre: nuevoForm.nombre || nuevoForm.email,
+                    onConfirm: doCreate,
+                  })
+                } else {
+                  doCreate()
+                }
+              }}
               disabled={!nuevoForm.email || !nuevoForm.password || !nuevoForm.nombre}
             >
               ✓ Crear usuario
@@ -308,7 +328,7 @@ export function UsuariosTab() {
                           ? editando.tipo_usuario
                           : 'personalizado')
                       : editando.tipo_usuario ?? null
-                  update({ id: editando.id, dto: {
+                  const doUpdate = () => update({ id: editando.id, dto: {
                     nombre:       editando.nombre,
                     email:        (editando as any).email || undefined,
                     rol:          editando.rol,
@@ -317,6 +337,17 @@ export function UsuariosTab() {
                     permisos:     editando.permisos,
                     tipo_usuario: tipo,
                   } as any})
+                  // Si se está promoviendo a admin (operador → admin), pedir
+                  // doble confirmación. No aplica si ya era admin (cambios
+                  // dentro del mismo rol).
+                  if (editando.rol === 'admin' && rolOriginal !== 'admin') {
+                    setConfirmAdmin({
+                      nombre: editando.nombre,
+                      onConfirm: doUpdate,
+                    })
+                  } else {
+                    doUpdate()
+                  }
                 }}
               >
                 ✓ Guardar
@@ -363,6 +394,58 @@ export function UsuariosTab() {
             value={newPass}
             onChange={e => setNewPass(e.target.value)}
           />
+        </div>
+      </Modal>
+
+      {/* Modal de doble confirmación para promoción a admin */}
+      <Modal
+        open={!!confirmAdmin}
+        onClose={() => { setConfirmAdmin(null); setConfirmAdminText('') }}
+        title="⚠ CONFIRMAR PROMOCIÓN A ADMIN"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => { setConfirmAdmin(null); setConfirmAdminText('') }}>
+              Cancelar
+            </Button>
+            <Button
+              variant="primary"
+              disabled={confirmAdminText.trim().toUpperCase() !== 'ADMIN'}
+              onClick={() => {
+                confirmAdmin?.onConfirm()
+                setConfirmAdmin(null)
+                setConfirmAdminText('')
+              }}
+            >
+              ✓ Confirmar promoción
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3">
+          <div className="bg-amarillo-light border border-amarillo/40 rounded-lg p-3 text-[#7A5500] text-sm">
+            <p className="font-bold mb-1">Estás otorgando acceso TOTAL al sistema</p>
+            <p className="text-xs">
+              Vas a hacer admin a <b>{confirmAdmin?.nombre}</b>. Un admin puede:
+            </p>
+            <ul className="text-xs list-disc ml-5 mt-1 space-y-0.5">
+              <li>Ver, crear, editar y eliminar TODA la información (todas las obras, costos, salarios, finanzas).</li>
+              <li>Cambiar permisos de cualquier usuario, incluyéndote a vos.</li>
+              <li>Eliminar usuarios.</li>
+              <li>Acceder a todos los módulos (logística, caja, certificaciones, herramientas).</li>
+            </ul>
+          </div>
+          <div>
+            <label className="text-xs font-bold text-gris-dark uppercase tracking-wider">
+              Para confirmar, tipeá <span className="font-mono bg-gris px-1.5 py-0.5 rounded text-carbon">ADMIN</span>
+            </label>
+            <input
+              type="text"
+              value={confirmAdminText}
+              onChange={e => setConfirmAdminText(e.target.value)}
+              autoFocus
+              className="mt-1 w-full px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja"
+            />
+          </div>
         </div>
       </Modal>
     </>
