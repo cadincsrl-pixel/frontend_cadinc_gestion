@@ -1,6 +1,8 @@
 'use client'
 
-import { useSearchParams } from 'next/navigation'
+import { useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useTabsPermitidos } from '@/hooks/useTabsPermitidos'
 import { UsuariosTab } from '@/modules/configuracion/components/UsuariosTab'
 import { AuditoriaTab } from './AuditoriaTab'
 
@@ -10,9 +12,21 @@ const TABS = [
 ]
 
 export function AdminPage() {
+  const router = useRouter()
   const searchParams = useSearchParams()
+  const allowedTabs = useTabsPermitidos('admin')
   const tab = searchParams.get('tab') ?? 'usuarios'
   const info = TABS.find(t => t.key === tab) ?? TABS[0]!
+
+  useEffect(() => {
+    if (allowedTabs.length > 0 && !allowedTabs.includes(tab)) {
+      router.replace(`/admin?tab=${allowedTabs[0]}`)
+    }
+  }, [allowedTabs, tab, router])
+
+  if (allowedTabs.length > 0 && !allowedTabs.includes(tab)) {
+    return null
+  }
 
   return (
     <div className="p-4 md:p-6 flex flex-col gap-4">

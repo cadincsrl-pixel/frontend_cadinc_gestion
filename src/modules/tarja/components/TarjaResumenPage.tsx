@@ -180,29 +180,31 @@ export function TarjaResumenPage() {
         )}
       </div>
 
-      {/* Stats generales */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="bg-white rounded-card shadow-card p-3 text-center">
-          <div className="font-mono text-2xl font-bold text-azul">{obras.length}</div>
-          <div className="text-[11px] text-gris-dark font-bold uppercase tracking-wide">Obras activas</div>
-        </div>
-        <div className="bg-white rounded-card shadow-card p-3 text-center">
-          <div className="font-mono text-2xl font-bold text-naranja">
-            {new Set(todasHoras.map(h => h.leg)).size}
+      {/* Stats generales — ocultas para capataz (no necesita agregados) */}
+      {!soloCargaHoras && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="bg-white rounded-card shadow-card p-3 text-center">
+            <div className="font-mono text-2xl font-bold text-azul">{obras.length}</div>
+            <div className="text-[11px] text-gris-dark font-bold uppercase tracking-wide">Obras activas</div>
           </div>
-          <div className="text-[11px] text-gris-dark font-bold uppercase tracking-wide">Trabajadores</div>
-        </div>
-        <div className="bg-white rounded-card shadow-card p-3 text-center">
-          <div className="font-mono text-2xl font-bold text-verde">
-            {todasHoras.reduce((s, h) => s + h.horas, 0).toLocaleString('es-AR')}
+          <div className="bg-white rounded-card shadow-card p-3 text-center">
+            <div className="font-mono text-2xl font-bold text-naranja">
+              {new Set(todasHoras.map(h => h.leg)).size}
+            </div>
+            <div className="text-[11px] text-gris-dark font-bold uppercase tracking-wide">Trabajadores</div>
           </div>
-          <div className="text-[11px] text-gris-dark font-bold uppercase tracking-wide">Horas totales</div>
+          <div className="bg-white rounded-card shadow-card p-3 text-center">
+            <div className="font-mono text-2xl font-bold text-verde">
+              {todasHoras.reduce((s, h) => s + h.horas, 0).toLocaleString('es-AR')}
+            </div>
+            <div className="text-[11px] text-gris-dark font-bold uppercase tracking-wide">Horas totales</div>
+          </div>
+          <div className="bg-white rounded-card shadow-card p-3 text-center">
+            <div className="font-mono text-2xl font-bold text-[#7A5500]">{todoPersonal.length}</div>
+            <div className="text-[11px] text-gris-dark font-bold uppercase tracking-wide">Personal total</div>
+          </div>
         </div>
-        <div className="bg-white rounded-card shadow-card p-3 text-center">
-          <div className="font-mono text-2xl font-bold text-[#7A5500]">{todoPersonal.length}</div>
-          <div className="text-[11px] text-gris-dark font-bold uppercase tracking-wide">Personal total</div>
-        </div>
-      </div>
+      )}
 
       {/* Lista de obras */}
       {obrasFiltradas.length === 0 ? (
@@ -254,43 +256,47 @@ export function TarjaResumenPage() {
                     )}
                   </div>
 
-                  {/* Stats de la obra */}
+                  {/* Stats de la obra — para capataz: solo el responsable */}
                   <div className="flex flex-col items-end gap-2 flex-shrink-0">
                     {obra.resp && (
                       <span className="text-xs bg-azul-light text-azul-mid font-semibold px-2.5 py-1 rounded-lg">
                         👷 {obra.resp}
                       </span>
                     )}
-                    <div className="flex items-center gap-3 text-right">
-                      <div>
-                        <div className="font-mono text-sm font-bold text-verde">
-                          {stats?.totalHs ? stats.totalHs.toLocaleString('es-AR') + ' hs' : '0 hs'}
+                    {!soloCargaHoras && (
+                      <>
+                        <div className="flex items-center gap-3 text-right">
+                          <div>
+                            <div className="font-mono text-sm font-bold text-verde">
+                              {stats?.totalHs ? stats.totalHs.toLocaleString('es-AR') + ' hs' : '0 hs'}
+                            </div>
+                            <div className="text-[10px] text-gris-dark">Horas totales</div>
+                          </div>
+                          <div>
+                            <div className="font-mono text-sm font-bold text-naranja">
+                              {stats?.trabajadores ?? 0}
+                            </div>
+                            <div className="text-[10px] text-gris-dark">Trabajadores</div>
+                          </div>
                         </div>
-                        <div className="text-[10px] text-gris-dark">Horas totales</div>
-                      </div>
-                      <div>
-                        <div className="font-mono text-sm font-bold text-naranja">
-                          {stats?.trabajadores ?? 0}
+                        <div className="text-[10px] text-gris-dark font-mono">
+                          Última actividad: {fmtFecha(stats?.ultimaActividad ?? null)}
                         </div>
-                        <div className="text-[10px] text-gris-dark">Trabajadores</div>
-                      </div>
-                    </div>
-                    <div className="text-[10px] text-gris-dark font-mono">
-                      Última actividad: {fmtFecha(stats?.ultimaActividad ?? null)}
-                    </div>
-                    {(obra.created_by || obra.updated_by) && (
-                      <div className="flex items-center gap-2 flex-wrap justify-end">
-                        {obra.created_by && (
-                          <span className="text-[9px] text-gris-dark">
-                            ✦ <span className="font-bold text-azul">{perfiles.get(obra.created_by) ?? '…'}</span>
-                          </span>
+                        {(obra.created_by || obra.updated_by) && (
+                          <div className="flex items-center gap-2 flex-wrap justify-end">
+                            {obra.created_by && (
+                              <span className="text-[9px] text-gris-dark">
+                                ✦ <span className="font-bold text-azul">{perfiles.get(obra.created_by) ?? '…'}</span>
+                              </span>
+                            )}
+                            {obra.updated_by && obra.updated_by !== obra.created_by && (
+                              <span className="text-[9px] text-gris-dark">
+                                ✎ <span className="font-bold text-naranja">{perfiles.get(obra.updated_by) ?? '…'}</span>
+                              </span>
+                            )}
+                          </div>
                         )}
-                        {obra.updated_by && obra.updated_by !== obra.created_by && (
-                          <span className="text-[9px] text-gris-dark">
-                            ✎ <span className="font-bold text-naranja">{perfiles.get(obra.updated_by) ?? '…'}</span>
-                          </span>
-                        )}
-                      </div>
+                      </>
                     )}
                   </div>
                 </div>

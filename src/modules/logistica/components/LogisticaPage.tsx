@@ -1,7 +1,8 @@
 'use client'
 
-import { Suspense, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { Suspense, useEffect, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useTabsPermitidos } from '@/hooks/useTabsPermitidos'
 import { useTramos, useChoferes, useCamiones } from '../hooks/useLogistica'
 import { ViajesTab }        from './ViajesTab'
 import { EnRutaTab }        from './EnRutaTab'
@@ -29,10 +30,24 @@ const TAB_TITLES: Record<string, { icon: string; label: string; sub: string }> =
 }
 
 function LogisticaContent() {
+  const router = useRouter()
   const searchParams = useSearchParams()
+  const allowedTabs = useTabsPermitidos('logistica')
   const tab = (searchParams.get('tab') ?? 'viajes') as keyof typeof TAB_TITLES
   const info = TAB_TITLES[tab] ?? TAB_TITLES['viajes']
   const { puedeVer } = usePermisos('logistica')
+
+  // Si el tab no está permitido, redirigir al primero permitido. Cubre el
+  // caso de URL directa con ?tab=X cuando el sidebar oculta esa tab.
+  useEffect(() => {
+    if (allowedTabs.length > 0 && !allowedTabs.includes(tab)) {
+      router.replace(`/logistica?tab=${allowedTabs[0]}`)
+    }
+  }, [allowedTabs, tab, router])
+
+  if (allowedTabs.length > 0 && !allowedTabs.includes(tab)) {
+    return null
+  }
   const [modalExport, setModalExport] = useState(false)
 
   const { data: tramos   = [] } = useTramos()

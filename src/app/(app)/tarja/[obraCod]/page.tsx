@@ -1,3 +1,4 @@
+import { GuardWrapper } from '@/components/GuardWrapper'
 import { TarjaObraPage } from '@/modules/tarja/components/TarjaObraPage'
 
 interface Props {
@@ -7,5 +8,9 @@ interface Props {
 export default async function Page({ params }: Props) {
   const { obraCod } = await params
   const cod = decodeURIComponent(obraCod)
-  return <TarjaObraPage obraCod={cod} />
+  return (
+    <GuardWrapper modulo="tarja" tabRequerido="tarja">
+      <TarjaObraPage obraCod={cod} />
+    </GuardWrapper>
+  )
 }

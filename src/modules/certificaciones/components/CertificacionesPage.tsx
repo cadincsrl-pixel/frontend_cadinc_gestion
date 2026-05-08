@@ -1,6 +1,8 @@
 'use client'
 
-import { useSearchParams } from 'next/navigation'
+import { useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useTabsPermitidos } from '@/hooks/useTabsPermitidos'
 import { SolicitudesTab }     from './SolicitudesTab'
 import { StockTab }           from './StockTab'
 import { MaterialesTab }      from './MaterialesTab'
@@ -14,9 +16,25 @@ const TABS = [
 ]
 
 export function CertificacionesPage() {
+  const router = useRouter()
   const searchParams = useSearchParams()
+  const allowedTabs = useTabsPermitidos('certificaciones')
   const tab = searchParams.get('tab') ?? 'solicitudes'
   const info = TABS.find(t => t.key === tab) ?? TABS[0]!
+
+  // Si el tab del query param no está permitido, redirigir al primer tab
+  // permitido. El sidebar oculta los items prohibidos pero un user podría
+  // tipear `?tab=stock` directo.
+  useEffect(() => {
+    if (allowedTabs.length > 0 && !allowedTabs.includes(tab)) {
+      const fallback = allowedTabs[0]
+      router.replace(`/certificaciones?tab=${fallback}`)
+    }
+  }, [allowedTabs, tab, router])
+
+  if (allowedTabs.length > 0 && !allowedTabs.includes(tab)) {
+    return null
+  }
 
   return (
     <div className="p-4 md:p-6 flex flex-col gap-4">

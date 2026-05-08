@@ -1,6 +1,8 @@
 'use client'
 
-import { useSearchParams } from 'next/navigation'
+import { useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useTabsPermitidos } from '@/hooks/useTabsPermitidos'
 import { MovimientosTab }  from './MovimientosTab'
 import { ResumenTab }      from './ResumenTab'
 import { ConfiguracionTab } from './ConfiguracionTab'
@@ -12,9 +14,21 @@ const TABS = [
 ]
 
 export function CajaPage() {
+  const router = useRouter()
   const searchParams = useSearchParams()
+  const allowedTabs = useTabsPermitidos('caja')
   const tab  = searchParams.get('tab') ?? 'movimientos'
   const info = TABS.find(t => t.key === tab) ?? TABS[0]!
+
+  useEffect(() => {
+    if (allowedTabs.length > 0 && !allowedTabs.includes(tab)) {
+      router.replace(`/caja?tab=${allowedTabs[0]}`)
+    }
+  }, [allowedTabs, tab, router])
+
+  if (allowedTabs.length > 0 && !allowedTabs.includes(tab)) {
+    return null
+  }
 
   return (
     <div className="p-4 md:p-6 flex flex-col gap-4">
