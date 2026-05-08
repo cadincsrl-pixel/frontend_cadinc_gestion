@@ -38,7 +38,7 @@ function getHoraClass(h: number): string {
 export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoStateChange, readonly = false }: Props) {
   const { semActual } = useTarjaStore()
   const toast = useToast()
-  const { puedeEditar, puedeEliminar } = usePermisos('tarja')
+  const { puedeEditar, puedeEliminar, verCostos } = usePermisos('tarja')
   const days = getSemDays(semActual)
   const desde = toISO(days[0]!)
   const hasta = toISO(days[6]!)
@@ -286,9 +286,11 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
               <th className="bg-verde text-white text-xs font-bold px-2 py-2.5 text-center uppercase tracking-wide min-w-[80px]">
                 Total
               </th>
-              <th className="bg-[#0F4A28] text-white text-xs font-bold px-3 py-2.5 text-right uppercase tracking-wide min-w-[130px]">
-                Costo · $/h
-              </th>
+              {verCostos && (
+                <th className="bg-[#0F4A28] text-white text-xs font-bold px-3 py-2.5 text-right uppercase tracking-wide min-w-[130px]">
+                  Costo · $/h
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -477,14 +479,16 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                   <td className="text-center bg-verde-light font-mono text-sm font-bold text-verde px-2 py-1.5 whitespace-nowrap">
                     {totalLeg > 0 ? totalLeg : '—'}
                   </td>
-                  <td className="text-right bg-azul-light px-3 py-1.5 whitespace-nowrap">
-                    <div className="font-mono text-sm font-bold text-azul-mid">
-                      {costo > 0 ? fmtMonto(costo) : '—'}
-                    </div>
-                    <div className="text-[10px] text-gris-dark font-mono">
-                      ${vh.toLocaleString('es-AR')}/h
-                    </div>
-                  </td>
+                  {verCostos && (
+                    <td className="text-right bg-azul-light px-3 py-1.5 whitespace-nowrap">
+                      <div className="font-mono text-sm font-bold text-azul-mid">
+                        {costo > 0 ? fmtMonto(costo) : '—'}
+                      </div>
+                      <div className="text-[10px] text-gris-dark font-mono">
+                        ${vh.toLocaleString('es-AR')}/h
+                      </div>
+                    </td>
+                  )}
                 </tr>
               )
             })}
@@ -511,9 +515,11 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
               <td className="bg-azul text-[#7DD9A2] font-mono text-sm font-bold text-center px-2 py-2.5">
                 {totalHs > 0 ? totalHs : '—'}
               </td>
-              <td className="bg-azul text-naranja font-mono text-sm font-bold text-right px-3 py-2.5">
-                {totalCosto > 0 ? fmtMonto(totalCosto) : '—'}
-              </td>
+              {verCostos && (
+                <td className="bg-azul text-naranja font-mono text-sm font-bold text-right px-3 py-2.5">
+                  {totalCosto > 0 ? fmtMonto(totalCosto) : '—'}
+                </td>
+              )}
             </tr>
           </tbody>
         </table>

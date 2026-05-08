@@ -39,7 +39,7 @@ type SemanaEfectiva = {
 
 export function CierresSection({ obraCod }: Props) {
   const toast = useToast()
-  const { puedeCrear, puedeEditar } = usePermisos('tarja')
+  const { puedeCrear, puedeEditar, verCostos } = usePermisos('tarja')
   const { semActual, setSemActual } = useTarjaStore()
   const { data: cierres = [], isLoading: loadingCierres } = useCierresObra(obraCod)
   const { mutate: createCierre, isPending: creating } = useCreateCierre()
@@ -247,10 +247,10 @@ export function CierresSection({ obraCod }: Props) {
                             {totalHs > 0 && (
                               <Chip value={fmtHs(totalHs)} label="Horas" />
                             )}
-                            {totalCosto > 0 && (
+                            {verCostos && totalCosto > 0 && (
                               <Chip value={fmtMonto(totalCosto)} label="Operarios" variant="green" />
                             )}
-                            {totalContrat > 0 && (
+                            {verCostos && totalContrat > 0 && (
                               <Chip value={fmtMonto(totalContrat)} label="Contratistas" />
                             )}
                           </div>

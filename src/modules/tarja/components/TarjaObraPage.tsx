@@ -41,7 +41,7 @@ interface Props {
 
 export function TarjaObraPage({ obraCod }: Props) {
   const toast = useToast()
-  const { puedeEditar } = usePermisos('tarja')
+  const { puedeEditar, verCostos } = usePermisos('tarja')
   const [modalTrab, setModalTrab] = useState(false)
   const [modalEditarObra, setModalEditarObra] = useState(false)
   const [modalExcelObras, setModalExcelObras] = useState(false)
@@ -286,7 +286,9 @@ export function TarjaObraPage({ obraCod }: Props) {
           <div className="flex gap-2 flex-wrap">
             <Chip value={personal.length} label="Trabajadores" />
             <Chip value={fmtHs(totalHs)} label="Hs semana" />
-            <Chip value={totalCosto > 0 ? fmtMonto(totalCosto) : '$0'} label="Costo semana" variant="green" />
+            {verCostos && (
+              <Chip value={totalCosto > 0 ? fmtMonto(totalCosto) : '$0'} label="Costo semana" variant="green" />
+            )}
             <Chip value={desde} label="Período" variant="orange" />
           </div>
           {/* Acciones — solo en obras activas */}
