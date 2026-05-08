@@ -375,23 +375,22 @@ export function ResumenHistoricoPage() {
       </div>
 
       {/* ══ RESUMEN GENERAL — SEMANA ACTUAL ══ */}
-      {tab === 'semana' && <div className="bg-white rounded-card shadow-card p-4 border-l-[5px] border-naranja">
+      {tab === 'semana' && <div className="bg-white rounded-card shadow-card p-3 sm:p-4 border-l-[5px] border-naranja">
         <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
-          <div>
-            <h1 className="font-display text-[1.8rem] tracking-wider text-azul leading-none">
+          <div className="min-w-0">
+            <h1 className="font-display text-2xl sm:text-[1.8rem] tracking-wider text-azul leading-none">
               📊 RESUMEN GENERAL
             </h1>
-            <p className="text-sm text-gris-dark mt-1">
-              {enGracia ? 'Semana cerrada · ' : 'Vista semana actual · '}
-              {getSemLabel(semConGracia)}
+            <p className="text-xs sm:text-sm text-gris-dark mt-1 flex flex-wrap items-center gap-x-1 gap-y-1">
+              <span>{enGracia ? 'Semana cerrada · ' : 'Vista semana actual · '}{getSemLabel(semConGracia)}</span>
               {enGracia && (
-                <span className="ml-2 text-[11px] font-bold text-naranja bg-naranja-light px-2 py-0.5 rounded-full">
+                <span className="text-[11px] font-bold text-naranja bg-naranja-light px-2 py-0.5 rounded-full">
                   cierre reciente
                 </span>
               )}
             </p>
           </div>
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 flex-wrap w-full sm:w-auto">
             <Chip value={obrasFiltradas.length} label="Obras" />
             <Chip value={resumenSemActual.trabajadores} label="Personal" />
             <Chip value={fmtHs(resumenSemActual.totalHs)} label="Horas" />
@@ -424,7 +423,7 @@ export function ResumenHistoricoPage() {
                         className="fixed inset-0 z-40"
                         onClick={() => setContratistasDetalleAbierto(false)}
                       />
-                      <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-card shadow-card border border-gris z-50 overflow-hidden">
+                      <div className="absolute right-0 top-full mt-2 w-72 sm:w-80 max-w-[calc(100vw-1.5rem)] bg-white rounded-card shadow-card border border-gris z-50 overflow-hidden">
                         <div className="bg-[#EEE8FF] text-[#5A2D82] px-3 py-2 text-xs font-bold uppercase tracking-wider flex items-center justify-between gap-2">
                           <span>Detalle de contratistas</span>
                           <span className="text-[10px] opacity-70">{getSemLabel(semConGracia)}</span>
@@ -494,7 +493,7 @@ export function ResumenHistoricoPage() {
                             className="fixed inset-0 z-40"
                             onClick={() => setPrestamosDetalleAbierto(false)}
                           />
-                          <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-card shadow-card border border-gris z-50 overflow-hidden">
+                          <div className="absolute right-0 top-full mt-2 w-72 sm:w-80 max-w-[calc(100vw-1.5rem)] bg-white rounded-card shadow-card border border-gris z-50 overflow-hidden">
                             <div className="bg-naranja-light text-naranja-dark px-3 py-2 text-xs font-bold uppercase tracking-wider flex items-center justify-between gap-2">
                               <span>Detalle de la semana</span>
                               <span className="text-[10px] opacity-70">{getSemLabel(semConGracia)}</span>
