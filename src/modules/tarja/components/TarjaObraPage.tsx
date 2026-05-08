@@ -41,7 +41,11 @@ interface Props {
 
 export function TarjaObraPage({ obraCod }: Props) {
   const toast = useToast()
-  const { puedeEditar, verCostos, soloCargaHoras } = usePermisos('tarja')
+  const { puedeEditar, puedeCrear, verCostos, soloCargaHoras } = usePermisos('tarja')
+  // Modo "solo lectura" para roles supervisores (jefe_obra_supervisor):
+  // ven la tabla y pueden navegar pero no editan. Ocultamos las secciones
+  // de gestión que les son irrelevantes.
+  const soloLectura = !puedeEditar && !puedeCrear
   const [modalTrab, setModalTrab] = useState(false)
   const [modalEditarObra, setModalEditarObra] = useState(false)
   const [modalExcelObras, setModalExcelObras] = useState(false)
@@ -127,8 +131,8 @@ export function TarjaObraPage({ obraCod }: Props) {
   }, [obra, setObraActiva])
 
   useEffect(() => {
-    // Capataz no debe ver Excel/Recibos/CSV en el topbar dentro de la obra.
-    if (soloCargaHoras) {
+    // Capataz y supervisores solo-lectura no ven Excel/Recibos/CSV en el topbar.
+    if (soloCargaHoras || soloLectura) {
       setTopbarAccion(null)
       return
     }
@@ -138,7 +142,7 @@ export function TarjaObraPage({ obraCod }: Props) {
       if (accion === 'csv') handleCSV()
     })
     return () => setTopbarAccion(null)
-  }, [obra, personal, horasData, tarifas, soloCargaHoras])
+  }, [obra, personal, horasData, tarifas, soloCargaHoras, soloLectura])
 
   // ── Totales semana (incluye hs extras + cat_obra) ──
   // Mismo criterio canónico que footer de TarjaTable y ResumenHistoricoPage.
@@ -314,8 +318,8 @@ export function TarjaObraPage({ obraCod }: Props) {
         </div>
       </div>
 
-      {/* ── Toolbar — solo en obras activas y para usuarios distintos al capataz ── */}
-      {!archivada && !soloCargaHoras && (
+      {/* ── Toolbar — solo en obras activas y para usuarios con permisos de edición ── */}
+      {!archivada && !soloCargaHoras && !soloLectura && (
         <ToolbarTarja
           personal={personal}
           categorias={categorias}
@@ -341,10 +345,10 @@ export function TarjaObraPage({ obraCod }: Props) {
         readonly={archivada}
       />
 
-      {/* ── Tarifas / Contratistas / Cierres — ocultos para capataz ── */}
-      {!soloCargaHoras && <TarifasPanel obraCod={obraCod} readonly={archivada} />}
-      {!soloCargaHoras && <ContratistasPanel obraCod={obraCod} readonly={archivada} />}
-      {!soloCargaHoras && !archivada && <CierresSection obraCod={obraCod} />}
+      {/* ── Tarifas / Contratistas / Cierres — ocultos para capataz y supervisores solo-lectura ── */}
+      {!soloCargaHoras && !soloLectura && <TarifasPanel obraCod={obraCod} readonly={archivada} />}
+      {!soloCargaHoras && !soloLectura && <ContratistasPanel obraCod={obraCod} readonly={archivada} />}
+      {!soloCargaHoras && !soloLectura && !archivada && <CierresSection obraCod={obraCod} />}
 
       {/* ── Modales ── */}
       <ModalAgregarTrabajador

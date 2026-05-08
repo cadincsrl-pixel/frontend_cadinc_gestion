@@ -88,6 +88,25 @@ export const PLANTILLAS: Plantilla[] = [
     obras_restringidas: true,
   },
   {
+    key:   'jefe_obra_supervisor',
+    label: 'Jefe de obra + supervisor',
+    descripcion: 'Jefe de obra (gestiona pedidos) Y supervisor de tarja: solo lectura, navega semanas para controlar quiénes trabajaron y horas cargadas. No ve costos.',
+    rol:   'operador',
+    modulos: ['certificaciones', 'tarja'],
+    permisos: {
+      certificaciones: {
+        ...fullCRUD,
+        tabs: ['solicitudes'],
+      },
+      tarja: {
+        lectura: true,
+        tabs: ['tarja'],
+        ver_costos: false,
+      },
+    },
+    obras_restringidas: true,
+  },
+  {
     key:   'capataz',
     label: 'Capataz',
     descripcion: 'Solo carga horas de la semana actual de SU obra. No ve precios, no edita personal ni cierres.',
