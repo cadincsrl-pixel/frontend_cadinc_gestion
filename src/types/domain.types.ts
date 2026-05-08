@@ -584,17 +584,27 @@ export interface Cobro {
 export type Accion = 'lectura' | 'creacion' | 'actualizacion' | 'eliminacion'
 export type ModuloPermisos = { [K in Accion]?: boolean } & {
   tabs?: string[]
-  // Flags específicos opcionales:
-  // - tarja.ver_costos: si false, la UI oculta precios/totales (capataz).
-  // - tarja.solo_carga_horas: bloquea TODO en tarja excepto cargar horas
-  //   de la semana actual (capataz). Sin selector de semana, sin agregar
-  //   trabajadores, sin cierres, sin tarifas, sin cambiar categoría.
+  // Flags específicos opcionales (todas son CAPACIDADES en v2: default false,
+  // true = "tiene acceso/ve más". El admin las recibe true automáticamente).
+  //
+  // - tarja.ver_costos: ve precios/totales/tarifas en tarja.
+  // - tarja.ver_pii: ve datos sensibles del personal (DNI, dirección, teléfono,
+  //   fecha de nacimiento). Capataz puro no lo tiene.
+  // - tarja.vista_completa: ve toolbar / contratistas / cierres / tarifas y
+  //   puede navegar semanas. Capataz puro = false (solo carga horas de la
+  //   semana actual).
   // - certificaciones.resolver_items: puede comprar/despachar/enviar/rechazar
   //   items (acciones del comprador/encargado, NO del jefe de obra).
   // - certificaciones.forzar_despacho: forzar despacho sin stock disponible.
-  ver_costos?: boolean
+  //
+  // Legacy (en transición, ya no se setea pero se lee si existe):
+  // - tarja.solo_carga_horas: inverso de vista_completa. Reemplazado en
+  //   abril/mayo 2026 por vista_completa para unificar polaridad.
+  ver_costos?:      boolean
+  ver_pii?:         boolean
+  vista_completa?:  boolean
   solo_carga_horas?: boolean
-  resolver_items?: boolean
+  resolver_items?:  boolean
   forzar_despacho?: boolean
 }
 export type Permisos = Record<string, ModuloPermisos>

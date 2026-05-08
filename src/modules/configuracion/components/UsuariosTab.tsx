@@ -758,42 +758,67 @@ function UsuarioForm({
                       )}
 
                       {/* Vista restringida — solo módulo tarja.
-                          Cuando se activa: fuerza semana actual, oculta
-                          toolbar/tarifas/contratistas/cierres, deshabilita
-                          select de categoría, oculta hs extras y costos.
-                          Es la vista del capataz. */}
-                      {m.key === 'tarja' && (
-                        <div className="mt-3 pt-2 border-t border-gris">
-                          <label className="flex items-start gap-2 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={(modPerm as any).solo_carga_horas === true}
-                              onChange={e => {
-                                const checked = e.target.checked
-                                const nuevoPerm: any = { ...modPerm }
-                                if (checked) {
-                                  nuevoPerm.solo_carga_horas = true
-                                } else {
-                                  delete nuevoPerm.solo_carga_horas
-                                }
-                                onChange({
-                                  ...data,
-                                  permisos: { ...permisos, [m.key]: nuevoPerm },
-                                })
-                              }}
-                              className="mt-0.5 w-4 h-4"
-                            />
-                            <div>
-                              <div className="text-[11px] font-bold text-azul">
-                                Vista restringida (capataz)
+                          Equivale a vista_completa=false (capataz puro):
+                          fuerza semana actual, oculta toolbar/tarifas/
+                          contratistas/cierres y limita la tabla a carga
+                          de horas. Además seteamos ver_pii=false porque
+                          un capataz puro no debería ver DNI/dirección
+                          del personal global. Si combinás con tab
+                          "Personal" habilitado arriba se reactiva ver_pii
+                          (lo hace el add-on al construir la plantilla;
+                          acá lo seteamos en false porque el admin lo
+                          marca a mano). */}
+                      {m.key === 'tarja' && (() => {
+                        // Estado del toggle: vista_completa=false equivale a
+                        // restringido. Para back-compat también miramos
+                        // solo_carga_horas (legacy).
+                        const isRestringido =
+                          (modPerm as any).vista_completa === false ||
+                          (modPerm as any).solo_carga_horas === true
+                        return (
+                          <div className="mt-3 pt-2 border-t border-gris">
+                            <label className="flex items-start gap-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={isRestringido}
+                                onChange={e => {
+                                  const checked = e.target.checked
+                                  const nuevoPerm: any = { ...modPerm }
+                                  if (checked) {
+                                    // Activar restricción: vista_completa=false,
+                                    // ver_pii=false, ver_costos=false.
+                                    nuevoPerm.vista_completa = false
+                                    nuevoPerm.ver_pii        = false
+                                    nuevoPerm.ver_costos     = false
+                                    // Limpiar legacy si estaba.
+                                    delete nuevoPerm.solo_carga_horas
+                                  } else {
+                                    // Quitar restricción: borrar los flags
+                                    // (vuelven a default → vista completa).
+                                    delete nuevoPerm.vista_completa
+                                    delete nuevoPerm.ver_pii
+                                    delete nuevoPerm.ver_costos
+                                    delete nuevoPerm.solo_carga_horas
+                                  }
+                                  onChange({
+                                    ...data,
+                                    permisos: { ...permisos, [m.key]: nuevoPerm },
+                                  })
+                                }}
+                                className="mt-0.5 w-4 h-4"
+                              />
+                              <div>
+                                <div className="text-[11px] font-bold text-azul">
+                                  Vista restringida (capataz)
+                                </div>
+                                <div className="text-[10px] text-gris-dark mt-0.5">
+                                  Fuerza la semana actual, oculta tarifas/contratistas/cierres y limita la tabla a carga de horas. Sin acceso a costos ni datos sensibles del personal.
+                                </div>
                               </div>
-                              <div className="text-[10px] text-gris-dark mt-0.5">
-                                Fuerza la semana actual, oculta tarifas/contratistas/cierres y limita la tabla a carga de horas. Si combinás con tab "Personal" habilitado arriba, accede a perfiles del personal asignado.
-                              </div>
-                            </div>
-                          </label>
-                        </div>
-                      )}
+                            </label>
+                          </div>
+                        )
+                      })()}
                     </div>
                   )}
                 </div>

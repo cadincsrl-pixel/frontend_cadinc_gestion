@@ -47,14 +47,14 @@ export function NotificationsBell() {
   const pathname = usePathname()
   const modulo = moduloFromPath(pathname)
   const notifs = useNotificaciones()
-  // Capataz (solo_carga_horas): no debería ver cumpleaños del personal global
-  // — el hook `usePersonal` no filtra por obra del user, así que la lista
-  // contiene a todo CADINC. Lo más simple y seguro: ocultarle la sección.
-  const { soloCargaHoras } = usePermisos('tarja')
+  // Cumpleaños = PII (datos sensibles del trabajador). Los gateamos con
+  // `ver_pii` del módulo tarja: si el usuario no puede ver PII, no le
+  // mostramos esta sección (ej. capataz puro, jefe_obra sin add-on).
+  const { verPii } = usePermisos('tarja')
 
   // Aplico filtro por módulo: tarja sólo cumpleaños, logística sólo papeles/services/gastos.
   // Si no hay módulo identificado (home, admin), mostramos todo.
-  const showCumple   = (modulo === null || modulo === 'tarja') && !soloCargaHoras
+  const showCumple   = (modulo === null || modulo === 'tarja') && verPii
   const showLogistica = modulo === null || modulo === 'logistica'
 
   const hoy                    = showCumple    ? notifs.hoy                    : []

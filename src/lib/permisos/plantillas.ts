@@ -1,16 +1,196 @@
 /**
- * Plantillas de permisos por tipo de usuario.
+ * Sistema de roles v2 — 5 presets base + add-ons opcionales.
  *
- * Aplicar una plantilla setea rol + módulos + permisos. El usuario admin
- * NO usa plantilla (su rol implica acceso total). Si después de aplicar
- * una plantilla el admin edita permisos a mano, `tipo_usuario` queda en
- * 'personalizado' para reflejarlo.
+ * Cada usuario tiene:
+ * - Un `rol_base` (uno de los 5 abajo, o admin que bypaseaa todo).
+ * - Un `obras_scope` ('todas' o 'asignadas').
+ * - Add-ons opcionales que extienden capabilities (ver_costos, ver_pii, etc.).
  *
- * `obras_restringidas: true` significa que el rol DEBE tener obras
- * asignadas (jefe de obra, capataz). El backend filtra automáticamente
- * las obras visibles para esos usuarios.
+ * La UI ofrece "wizard" en 4 pasos: rol → obras_scope → add-ons → asignar
+ * obras (si scope=asignadas). Si admin edita permisos a mano, el rol_base
+ * NO cambia y se muestra badge "modificado" comparando contra el preset.
+ *
+ * Compat: el array PLANTILLAS legacy se mantiene durante la transición
+ * para que el dropdown viejo siga funcionando.
  */
 import type { Permisos } from '@/types/domain.types'
+
+// ─── PRESETS BASE v2 ──────────────────────────────────────────────────────────
+
+export type RolBase = 'administrativo' | 'compras' | 'deposito' | 'jefe_obra' | 'capataz'
+export type ObrasScope = 'todas' | 'asignadas'
+
+export interface PresetBase {
+  key:               RolBase
+  label:             string
+  descripcion:       string
+  modulos:           string[]
+  permisos:          Permisos
+  obras_scope_default: ObrasScope
+}
+
+const fullCRUD = { lectura: true, creacion: true, actualizacion: true, eliminacion: true }
+
+export const PRESETS: PresetBase[] = [
+  {
+    key:   'administrativo',
+    label: 'Administrativo',
+    descripcion: 'Gestión amplia: tarja, logística, certificaciones, ropa, préstamos, configuración. Sin caja.',
+    modulos: ['tarja', 'logistica', 'certificaciones', 'ropa', 'prestamos', 'configuracion'],
+    permisos: {
+      tarja:           { ...fullCRUD, ver_costos: true, ver_pii: true, vista_completa: true },
+      logistica:       { ...fullCRUD },
+      certificaciones: { ...fullCRUD, resolver_items: true, forzar_despacho: true },
+      ropa:            { ...fullCRUD },
+      prestamos:       { ...fullCRUD },
+      configuracion:   { ...fullCRUD },
+    },
+    obras_scope_default: 'todas',
+  },
+  {
+    key:   'compras',
+    label: 'Compras',
+    descripcion: 'Solo certificaciones (todas las tabs). Resuelve compras y despachos.',
+    modulos: ['certificaciones'],
+    permisos: {
+      certificaciones: {
+        ...fullCRUD,
+        tabs: ['solicitudes', 'stock', 'stock-proveedor', 'materiales', 'adicionales', 'costos'],
+        resolver_items: true,
+        forzar_despacho: true,
+      },
+    },
+    obras_scope_default: 'todas',
+  },
+  {
+    key:   'deposito',
+    label: 'Encargado de depósito',
+    descripcion: 'Stock interno + stock en proveedores. Resuelve despachos. Ve solicitudes en lectura.',
+    modulos: ['certificaciones'],
+    permisos: {
+      certificaciones: {
+        lectura: true, creacion: true, actualizacion: true, eliminacion: false,
+        tabs: ['stock', 'stock-proveedor', 'solicitudes'],
+        resolver_items: true,
+        forzar_despacho: true,
+      },
+    },
+    obras_scope_default: 'todas',
+  },
+  {
+    key:   'jefe_obra',
+    label: 'Jefe de obra',
+    descripcion: 'Crea y gestiona pedidos (solicitudes) de SUS obras. No resuelve compras.',
+    modulos: ['certificaciones'],
+    permisos: {
+      certificaciones: {
+        ...fullCRUD,
+        tabs: ['solicitudes'],
+      },
+    },
+    obras_scope_default: 'asignadas',
+  },
+  {
+    key:   'capataz',
+    label: 'Capataz',
+    descripcion: 'Carga horas de la semana actual de SU obra. Sin costos ni datos sensibles.',
+    modulos: ['tarja'],
+    permisos: {
+      tarja: {
+        lectura: true, creacion: true, actualizacion: true, eliminacion: false,
+        tabs: ['tarja'],
+        ver_costos:     false,
+        ver_pii:        false,
+        vista_completa: false,
+      },
+    },
+    obras_scope_default: 'asignadas',
+  },
+]
+
+export function getPreset(key: string): PresetBase | null {
+  return PRESETS.find(p => p.key === key) ?? null
+}
+
+// ─── ADD-ONS opcionales que extienden un preset ────────────────────────────
+
+export interface AddOn {
+  key:       string
+  label:     string
+  descripcion: string
+  // Función que aplica el add-on sobre los permisos del preset.
+  aplicar: (p: Permisos) => Permisos
+  // En qué presets tiene sentido ofrecer este add-on (whitelist).
+  aplicaA: RolBase[]
+}
+
+export const ADDONS: AddOn[] = [
+  {
+    key:   'tarja_lectura',
+    label: 'Ver tarja (supervisar horas)',
+    descripcion: 'Acceso de lectura al módulo Tarja para controlar la carga de horas. Sin edición.',
+    aplicaA: ['jefe_obra'],
+    aplicar: (p) => ({
+      ...p,
+      tarja: { lectura: true, tabs: ['tarja'], ver_costos: false, ver_pii: false, vista_completa: true },
+    }),
+  },
+  {
+    key:   'tab_personal',
+    label: 'Acceso al tab Personal',
+    descripcion: 'Permite ver el listado de personal asignado a sus obras (incluye DNI, dirección, teléfono).',
+    aplicaA: ['capataz'],
+    aplicar: (p) => {
+      const tarja = (p.tarja ?? {}) as any
+      const tabs = Array.isArray(tarja.tabs) ? tarja.tabs : []
+      return {
+        ...p,
+        tarja: {
+          ...tarja,
+          tabs:    tabs.includes('personal') ? tabs : [...tabs, 'personal'],
+          ver_pii: true,
+        },
+      }
+    },
+  },
+  {
+    key:   'tarja_lectura_compras',
+    label: 'Ver tarja (operación)',
+    descripcion: 'Permite a Compras ver el módulo de Tarja en lectura.',
+    aplicaA: ['compras'],
+    aplicar: (p) => ({
+      ...p,
+      tarja: { lectura: true, ver_costos: false, ver_pii: false, vista_completa: true },
+    }),
+  },
+]
+
+export function getAddOn(key: string): AddOn | null {
+  return ADDONS.find(a => a.key === key) ?? null
+}
+
+// Aplica un preset + lista de add-ons. Devuelve { permisos, modulos }.
+export function aplicarPreset(
+  presetKey: RolBase,
+  addons: string[] = [],
+): { permisos: Permisos; modulos: string[] } {
+  const preset = getPreset(presetKey)
+  if (!preset) throw new Error(`Preset desconocido: ${presetKey}`)
+
+  let permisos: Permisos = JSON.parse(JSON.stringify(preset.permisos))
+  for (const addonKey of addons) {
+    const addon = getAddOn(addonKey)
+    if (!addon || !addon.aplicaA.includes(presetKey)) continue
+    permisos = addon.aplicar(permisos)
+  }
+  // modulos derivado de las keys de permisos.
+  const modulos = Object.keys(permisos)
+  return { permisos, modulos }
+}
+
+// ─── COMPAT LEGACY ────────────────────────────────────────────────────────────
+// Las "plantillas" viejas se mantienen para que el UsuariosTab actual siga
+// funcionando hasta que se reemplace por el wizard nuevo.
 
 export interface Plantilla {
   key:                 string
@@ -22,120 +202,35 @@ export interface Plantilla {
   obras_restringidas:  boolean
 }
 
-const fullCRUD = { lectura: true, creacion: true, actualizacion: true, eliminacion: true }
-
 export const PLANTILLAS: Plantilla[] = [
-  {
-    key:   'administrativo',
-    label: 'Administrativo',
-    descripcion: 'Acceso amplio: tarja, logística, certificaciones, ropa, préstamos, configuración. Sin caja.',
-    rol:   'operador',
-    modulos: ['tarja', 'logistica', 'certificaciones', 'ropa', 'prestamos', 'configuracion'],
-    permisos: {
-      tarja:           { ...fullCRUD },
-      logistica:       { ...fullCRUD },
-      certificaciones: { ...fullCRUD, resolver_items: true, forzar_despacho: true },
-      ropa:            { ...fullCRUD },
-      prestamos:       { ...fullCRUD },
-      configuracion:   { ...fullCRUD },
-    },
-    obras_restringidas: false,
-  },
-  {
-    key:   'compras',
-    label: 'Compras',
-    descripcion: 'Solo certificaciones (todas las tabs): solicitudes, stock, proveedores, materiales, costos, adicionales.',
-    rol:   'operador',
-    modulos: ['certificaciones'],
-    permisos: {
-      certificaciones: {
-        ...fullCRUD,
-        tabs: ['solicitudes', 'stock', 'stock-proveedor', 'materiales', 'adicionales', 'costos'],
-        resolver_items: true,
-        forzar_despacho: true,
-      },
-    },
-    obras_restringidas: false,
-  },
-  {
-    key:   'encargado_deposito',
-    label: 'Encargado de depósito',
-    descripcion: 'Stock interno + stock en proveedores. Ve solicitudes en lectura para saber qué se está pidiendo.',
-    rol:   'operador',
-    modulos: ['certificaciones'],
-    permisos: {
-      certificaciones: {
-        lectura: true, creacion: true, actualizacion: true, eliminacion: false,
-        tabs: ['stock', 'stock-proveedor', 'solicitudes'],
-        resolver_items: true,
-        forzar_despacho: true,
-      },
-    },
-    obras_restringidas: false,
-  },
-  {
-    key:   'jefe_obra',
-    label: 'Jefe de obra',
-    descripcion: 'Solo crea y gestiona pedidos de materiales (solicitudes) de SUS obras. No resuelve compras ni despachos.',
-    rol:   'operador',
-    modulos: ['certificaciones'],
-    permisos: {
-      certificaciones: {
-        ...fullCRUD,
-        tabs: ['solicitudes'],
-      },
-    },
-    obras_restringidas: true,
-  },
+  // Mapeo 1:1 con presets.
+  ...PRESETS.map(p => ({
+    key:   p.key,
+    label: p.label,
+    descripcion: p.descripcion,
+    rol:   'operador' as const,
+    modulos: p.modulos,
+    permisos: p.permisos,
+    obras_restringidas: p.obras_scope_default === 'asignadas',
+  })),
+  // Combinaciones que existen en DB (Candela, Cristian futuro).
+  // Internamente son preset+addon, pero la UI vieja las trata como plantilla.
   {
     key:   'jefe_obra_supervisor',
     label: 'Jefe de obra + supervisor',
-    descripcion: 'Jefe de obra (gestiona pedidos) Y supervisor de tarja: solo lectura, navega semanas para controlar quiénes trabajaron y horas cargadas. No ve costos.',
+    descripcion: 'Jefe de obra + ver tarja para supervisar (lectura).',
     rol:   'operador',
-    modulos: ['certificaciones', 'tarja'],
-    permisos: {
-      certificaciones: {
-        ...fullCRUD,
-        tabs: ['solicitudes'],
-      },
-      tarja: {
-        lectura: true,
-        tabs: ['tarja'],
-        ver_costos: false,
-      },
-    },
-    obras_restringidas: true,
-  },
-  {
-    key:   'capataz',
-    label: 'Capataz',
-    descripcion: 'Solo carga horas de la semana actual de SU obra. No ve precios, no edita personal ni cierres.',
-    rol:   'operador',
-    modulos: ['tarja'],
-    permisos: {
-      tarja: {
-        lectura: true, creacion: true, actualizacion: true, eliminacion: false,
-        tabs: ['tarja'],
-        ver_costos:       false,
-        solo_carga_horas: true,
-      },
-    },
+    modulos: aplicarPreset('jefe_obra', ['tarja_lectura']).modulos,
+    permisos: aplicarPreset('jefe_obra', ['tarja_lectura']).permisos,
     obras_restringidas: true,
   },
   {
     key:   'capataz_supervisor',
     label: 'Capataz + perfiles de personal',
-    descripcion: 'Carga sus horas como capataz Y accede al listado de perfiles del personal asignado a SU obra (DNI, dirección, teléfono).',
+    descripcion: 'Capataz + acceso al tab Personal con PII completa.',
     rol:   'operador',
-    modulos: ['tarja'],
-    permisos: {
-      tarja: {
-        lectura: true, creacion: true, actualizacion: true, eliminacion: false,
-        tabs: ['tarja', 'personal'],
-        ver_costos:       false,
-        solo_carga_horas: true,
-      },
-    },
+    modulos: aplicarPreset('capataz', ['tab_personal']).modulos,
+    permisos: aplicarPreset('capataz', ['tab_personal']).permisos,
     obras_restringidas: true,
   },
 ]
@@ -144,15 +239,6 @@ export function getPlantilla(key: string): Plantilla | null {
   return PLANTILLAS.find(p => p.key === key) ?? null
 }
 
-/**
- * Compara los permisos actuales con los de la plantilla declarada en
- * `tipo_usuario`. Devuelve `true` si coinciden — sino, el usuario fue
- * editado manualmente y la UI debería mostrar "Personalizado".
- *
- * Se usa para decidir si seguir mostrando el tipo guardado o cambiarlo
- * a 'personalizado'. Comparación profunda simple por JSON.stringify
- * ordenando keys.
- */
 export function permisosMatchPlantilla(
   permisos: Permisos | undefined | null,
   rol: 'admin' | 'operador',
@@ -174,7 +260,6 @@ function sameSet(a: string[], b: string[]): boolean {
 }
 
 function canon(obj: any): string {
-  // Serializa con keys ordenadas a todos los niveles.
   if (obj === null || typeof obj !== 'object') return JSON.stringify(obj)
   if (Array.isArray(obj)) return '[' + obj.map(canon).join(',') + ']'
   const keys = Object.keys(obj).sort()

@@ -19,18 +19,29 @@ export function usePermisos(modulo: string) {
   }
 
   // Flag de tipo "capacidad" (true = otorga). Admin SIEMPRE true.
-  // Ejemplos: ver_costos, resolver_items, forzar_despacho.
+  // Ejemplos: ver_costos, ver_pii, vista_completa, resolver_items, forzar_despacho.
+  // En v2 todos los flags son capacidades (polaridad unificada). El legacy
+  // solo_carga_horas (restricción) se reemplazó por vista_completa.
   const flagCapacidad = (key: string, defaultValue: boolean = false): boolean => {
     if (profile?.rol === 'admin') return true
     return rawFlag(key, defaultValue)
   }
 
-  // Flag de tipo "restricción" (true = restringe). Admin SIEMPRE false.
-  // Ejemplo: solo_carga_horas.
-  const flagRestriccion = (key: string, defaultValue: boolean = false): boolean => {
-    if (profile?.rol === 'admin') return false
-    return rawFlag(key, defaultValue)
-  }
+  // En v2 unificamos polaridad: todos los flags son capacidades (default false,
+  // true=otorga). vista_completa reemplazó a solo_carga_horas (que era una
+  // restricción, polaridad invertida). Durante la transición leemos AMBOS:
+  // si está seteado vista_completa explícito, lo usamos; si no, derivamos
+  // del legacy solo_carga_horas. Cuando todos los perfiles tengan
+  // vista_completa, podemos borrar la rama legacy (Fase 5).
+  const vistaCompleta = (() => {
+    if (profile?.rol === 'admin') return true
+    if (!profile) return true
+    const t = (profile.permisos as any)?.[modulo]
+    if (!t) return true // sin permisos definidos en este módulo → no aplica
+    if (typeof t.vista_completa === 'boolean') return t.vista_completa
+    if (typeof t.solo_carga_horas === 'boolean') return !t.solo_carga_horas
+    return true // default: vista completa
+  })()
 
   return {
     puedeVer:      canDo(modulo, 'lectura'),
@@ -39,8 +50,12 @@ export function usePermisos(modulo: string) {
     puedeEliminar: canDo(modulo, 'eliminacion'),
     // Flags. Para admin: capacidades=true, restricciones=false.
     verCostos:       flagCapacidad('ver_costos', true),       // back-compat: ve costos por default
+    verPii:          flagCapacidad('ver_pii', true),          // back-compat: ve PII por default (capataz puro lo tiene en false)
+    vistaCompleta,                                            // unificado: true=ve toolbar/cierres/tarifas/etc
     resolverItems:   flagCapacidad('resolver_items', false),
     forzarDespacho:  flagCapacidad('forzar_despacho', false),
-    soloCargaHoras:  flagRestriccion('solo_carga_horas', false),
+    // Legacy: mantengo la prop para no romper consumers que aún no migraron.
+    // Es el inverso exacto de vistaCompleta.
+    soloCargaHoras:  !vistaCompleta,
   }
 }
