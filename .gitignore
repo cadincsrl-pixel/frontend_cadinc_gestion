@@ -40,5 +40,5 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Claude Code local config
-.claude/
+# Claude Code local config (machine-specific only; subagents/commands/hooks van versionados)
+.claude/settings.local.json
