@@ -323,7 +323,7 @@ export function PermisosWizard({ data, onChange, modulos }: Props) {
         <div className="text-xs font-bold text-azul uppercase tracking-wider mb-2">
           1. Rol
         </div>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {OPCIONES_ROL.map(op => {
             const key = op.kind === 'admin' ? 'admin' : op.kind === 'personalizado' ? 'personalizado' : op.key
             const elegido = key === rolElegido
@@ -561,7 +561,7 @@ export function PermisosWizard({ data, onChange, modulos }: Props) {
                         </div>
 
                         {MODULOS_CON_OBRAS_SCOPE.has(m.key) && (
-                          <div className="mt-2 flex items-center gap-2">
+                          <div className="mt-2 flex items-center gap-2 flex-wrap">
                             <span
                               className="text-[10px] font-bold text-gris-dark uppercase tracking-wider"
                               title="Override del scope de obras solo para este módulo. Si elegís 'sin override', se usa el scope global."

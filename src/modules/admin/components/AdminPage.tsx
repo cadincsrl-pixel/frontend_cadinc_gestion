@@ -31,8 +31,8 @@ export function AdminPage() {
   return (
     <div className="p-4 md:p-6 flex flex-col gap-4">
       {/* Header */}
-      <div className="bg-white rounded-card shadow-card p-4 border-l-[5px] border-naranja">
-        <h1 className="font-display text-[2rem] tracking-wider text-azul leading-none">
+      <div className="bg-white rounded-card shadow-card p-3 sm:p-4 border-l-[5px] border-naranja">
+        <h1 className="font-display text-2xl sm:text-[2rem] tracking-wider text-azul leading-none">
           {info.icon} {info.label.toUpperCase()}
         </h1>
         <p className="text-sm text-gris-dark mt-1">{info.sub}</p>

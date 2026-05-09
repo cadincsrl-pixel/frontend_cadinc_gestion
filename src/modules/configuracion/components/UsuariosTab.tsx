@@ -185,7 +185,7 @@ export function UsuariosTab() {
             placeholder="🔍 Buscar por nombre, email, rol, módulo..."
             value={busqueda}
             onChange={e => setBusqueda(e.target.value)}
-            className="w-64"
+            className="w-full sm:w-64"
           />
           {busqueda && (
             <Button variant="ghost" size="sm" onClick={() => setBusqueda('')}>
@@ -200,8 +200,9 @@ export function UsuariosTab() {
 
       {/* Tabla */}
       <div className="bg-white rounded-card shadow-card overflow-hidden">
-        <table className="w-full border-collapse">
-          <thead>
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse min-w-[800px]">
+            <thead>
             <tr>
               {['Usuario', 'Email', 'Rol', 'Módulos', 'Estado', ''].map(h => (
                 <th key={h} className="bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide">
@@ -357,6 +358,7 @@ export function UsuariosTab() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Modal nuevo usuario */}
@@ -364,6 +366,7 @@ export function UsuariosTab() {
         open={modalNuevo}
         onClose={() => { setModalNuevo(false); setNuevoForm(EMPTY_NUEVO) }}
         title="👤 NUEVO USUARIO"
+        width="max-w-2xl"
         footer={
           <>
             <Button variant="secondary" onClick={() => { setModalNuevo(false); setNuevoForm(EMPTY_NUEVO) }}>
@@ -425,6 +428,7 @@ export function UsuariosTab() {
           open={true}
           onClose={() => setEditando(null)}
           title="✏️ EDITAR USUARIO"
+          width="max-w-2xl"
           footer={
             <>
               <Button variant="secondary" onClick={() => setEditando(null)}>Cancelar</Button>
