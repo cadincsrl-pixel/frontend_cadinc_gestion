@@ -65,14 +65,20 @@ export const PRESETS: PresetBase[] = [
   {
     key:   'deposito',
     label: 'Encargado de depósito',
-    descripcion: 'Stock interno + stock en proveedores. Resuelve despachos. Ve solicitudes en lectura.',
-    modulos: ['certificaciones'],
+    descripcion: 'Stock interno + stock en proveedores + herramientas. Resuelve despachos. Ve solicitudes en lectura.',
+    modulos: ['certificaciones', 'herramientas'],
     permisos: {
       certificaciones: {
         lectura: true, creacion: true, actualizacion: true, eliminacion: false,
         tabs: ['stock', 'stock-proveedor', 'solicitudes'],
         resolver_items: true,
         forzar_despacho: true,
+      },
+      herramientas: {
+        lectura: true, creacion: true, actualizacion: true, eliminacion: false,
+        // Excluye 'parametros' para mantener configuración de tipos/categorías
+        // como territorio admin.
+        tabs: ['inventario', 'movimientos', 'trazabilidad', 'remitos'],
       },
     },
     obras_scope_default: 'todas',
