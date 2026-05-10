@@ -126,8 +126,9 @@ const NAV_ITEMS_LOGISTICA = [
 ]
 
 const NAV_ITEMS_ADMIN = [
-  { tab: 'usuarios',  icon: '👥', label: 'Usuarios y permisos', meta: 'Cuentas, roles y accesos' },
-  { tab: 'auditoria', icon: '📋', label: 'Auditoría',           meta: 'Registro de actividad'    },
+  { tab: 'usuarios',   icon: '👥', label: 'Usuarios y permisos', meta: 'Cuentas, roles y accesos' },
+  { tab: 'plantillas', icon: '🎭', label: 'Plantillas de roles', meta: 'Alcance de cada preset'   },
+  { tab: 'auditoria',  icon: '📋', label: 'Auditoría',           meta: 'Registro de actividad'    },
 ]
 
 const HERR_SUBNAV = [

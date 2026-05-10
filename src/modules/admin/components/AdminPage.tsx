@@ -4,11 +4,13 @@ import { useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useTabsPermitidos } from '@/hooks/useTabsPermitidos'
 import { UsuariosTab } from '@/modules/configuracion/components/UsuariosTab'
+import { PlantillasTab } from './PlantillasTab'
 import { AuditoriaTab } from './AuditoriaTab'
 
 const TABS = [
-  { key: 'usuarios',  icon: '👥', label: 'Usuarios y permisos', sub: 'Gestión de cuentas, roles y accesos' },
-  { key: 'auditoria', icon: '📋', label: 'Auditoría',           sub: 'Registro de actividad de usuarios' },
+  { key: 'usuarios',   icon: '👥', label: 'Usuarios y permisos', sub: 'Gestión de cuentas, roles y accesos' },
+  { key: 'plantillas', icon: '🎭', label: 'Plantillas de roles', sub: 'Detalle de los presets de permisos disponibles' },
+  { key: 'auditoria',  icon: '📋', label: 'Auditoría',           sub: 'Registro de actividad de usuarios' },
 ]
 
 export function AdminPage() {
@@ -40,8 +42,9 @@ export function AdminPage() {
 
       {/* Contenido */}
       <div className="flex flex-col gap-4">
-        {tab === 'usuarios'  && <UsuariosTab />}
-        {tab === 'auditoria' && <AuditoriaTab />}
+        {tab === 'usuarios'   && <UsuariosTab />}
+        {tab === 'plantillas' && <PlantillasTab />}
+        {tab === 'auditoria'  && <AuditoriaTab />}
       </div>
     </div>
   )

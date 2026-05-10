@@ -49,7 +49,8 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
     { key: 'configuracion', label: 'Configuración', icon: '⚙️' },
   ],
   admin: [
-    { key: 'usuarios',  label: 'Usuarios y permisos', icon: '👥' },
-    { key: 'auditoria', label: 'Auditoría',           icon: '📋' },
+    { key: 'usuarios',   label: 'Usuarios y permisos', icon: '👥' },
+    { key: 'plantillas', label: 'Plantillas de roles', icon: '🎭' },
+    { key: 'auditoria',  label: 'Auditoría',           icon: '📋' },
   ],
 }
