@@ -178,9 +178,15 @@ export function PermisosWizard({ data, onChange, modulos }: Props) {
     if (!addon) return
 
     const tildado = data.addons.includes(addonKey)
+    // Al activar un addon, destildamos los que excluye para evitar combinaciones
+    // contradictorias (ej. tarja_lectura ↔ tarja_edicion_jefe).
+    const excluidos = !tildado && addon.excluye ? new Set(addon.excluye) : null
+    const baseAddons = excluidos
+      ? data.addons.filter(k => !excluidos.has(k))
+      : data.addons
     const newAddons = tildado
-      ? data.addons.filter(k => k !== addonKey)
-      : [...data.addons, addonKey]
+      ? baseAddons.filter(k => k !== addonKey)
+      : [...baseAddons, addonKey]
 
     let newPermisos: Permisos
     if (isPersonalizado) {

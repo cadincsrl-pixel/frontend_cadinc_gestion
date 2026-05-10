@@ -138,6 +138,11 @@ export interface AddOn {
   // SOLO cuando ese módulo está tildado en `data.modulos`. Si queda
   // undefined, el addon se ofrece siempre que haya módulos elegidos.
   moduloTarget?: string
+  // Addons mutuamente excluyentes con éste. Al tildarlo, el wizard
+  // destilda los addons listados acá. Útil cuando dos addons setean
+  // las mismas claves del módulo target con valores opuestos
+  // (ej. tarja_lectura sin creación vs. tarja_edicion_jefe con creación).
+  excluye?: string[]
 }
 
 // Helpers internos para reducir boilerplate.
@@ -172,6 +177,34 @@ export const ADDONS: AddOn[] = [
       },
     }),
     revertir: (p) => omitTarjaKeys(p, ['lectura', 'tabs', 'ver_costos', 'ver_pii', 'vista_completa']),
+    excluye: ['tarja_edicion_jefe'],
+  },
+  {
+    key:   'tarja_edicion_jefe',
+    label: 'Editar tarja de sus obras',
+    descripcion: 'Carga y modifica horas en las obras donde el usuario es jefe. Vista completa, sin PII ni costos. Mutuamente excluyente con "Ver tarja (supervisar horas)".',
+    aplicaA: ['jefe_obra'],
+    moduloTarget: 'tarja',
+    aplicar: (p) => ({
+      ...p,
+      tarja: {
+        ...((p.tarja ?? {}) as Permisos[string]),
+        lectura: true, creacion: true, actualizacion: true, eliminacion: false,
+        tabs: ['tarja'],
+        ver_costos:     false,
+        ver_pii:        false,
+        vista_completa: true,
+        // Override por módulo: tarja filtra por usuario_obras (modulo='tarja').
+        // Redundante con el scope global del preset jefe_obra ('asignadas'),
+        // pero lo seteamos por si el admin cambió el global a 'todas'.
+        obras_scope:    'asignadas',
+      },
+    }),
+    revertir: (p) => omitTarjaKeys(p, [
+      'lectura', 'creacion', 'actualizacion', 'eliminacion', 'tabs',
+      'ver_costos', 'ver_pii', 'vista_completa', 'obras_scope',
+    ]),
+    excluye: ['tarja_lectura'],
   },
   {
     key:   'tab_personal',
@@ -274,6 +307,12 @@ export function deriveAddons(
   // tarja en lectura por elección manual sin querer el addon.
   if (rolBase === 'jefe_obra' && tarja?.lectura === true && tarja?.creacion !== true) {
     addons.push('tarja_lectura')
+  }
+
+  // jefe_obra + tarja_edicion_jefe: tarja con CRUD (al menos lectura+creación).
+  // Mutuamente excluyente con tarja_lectura por la condición de creación.
+  if (rolBase === 'jefe_obra' && tarja?.lectura === true && tarja?.creacion === true) {
+    addons.push('tarja_edicion_jefe')
   }
 
   // capataz + tab_personal: tarja con tab 'personal' habilitado.
