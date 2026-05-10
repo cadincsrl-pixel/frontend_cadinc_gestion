@@ -278,15 +278,46 @@ export function UsuariosTab() {
                 </td>
                 <td className="px-4 py-3 text-xs text-gris-dark">{(u as any).email ?? '—'}</td>
                 <td className="px-4 py-3">
-                  <span className={`
-                    text-xs font-bold px-2 py-0.5 rounded
-                    ${u.rol === 'admin'
-                      ? 'bg-[#EEE8FF] text-[#5A2D82]'
-                      : 'bg-gris text-gris-dark'
+                  {(() => {
+                    if (u.rol === 'admin') {
+                      return (
+                        <span className="text-xs font-bold px-2 py-0.5 rounded bg-[#EEE8FF] text-[#5A2D82]">
+                          ⭐ Admin
+                        </span>
+                      )
                     }
-                  `}>
-                    {u.rol === 'admin' ? '⭐ Admin' : 'Operador'}
-                  </span>
+                    // Preset v2 (rol_base seteado).
+                    if (u.rol_base) {
+                      return (
+                        <span className="text-xs font-bold px-2 py-0.5 rounded bg-azul-light text-azul-mid">
+                          {getPlantilla(u.rol_base)?.label ?? u.rol_base}
+                        </span>
+                      )
+                    }
+                    // Personalizado explícito.
+                    if (u.tipo_usuario === 'personalizado') {
+                      return (
+                        <span className="text-xs font-bold px-2 py-0.5 rounded bg-gris text-gris-dark">
+                          ⚙ Personalizado
+                        </span>
+                      )
+                    }
+                    // Legacy: tipo_usuario sin rol_base (alias 'encargado_deposito' → 'deposito').
+                    if (u.tipo_usuario) {
+                      const presetKey = u.tipo_usuario === 'encargado_deposito' ? 'deposito' : u.tipo_usuario
+                      return (
+                        <span className="text-xs font-bold px-2 py-0.5 rounded bg-azul-light text-azul-mid">
+                          {getPlantilla(presetKey)?.label ?? u.tipo_usuario}
+                        </span>
+                      )
+                    }
+                    // Fallback: operador legacy sin nada seteado.
+                    return (
+                      <span className="text-xs font-bold px-2 py-0.5 rounded bg-gris text-gris-dark">
+                        Operador
+                      </span>
+                    )
+                  })()}
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex gap-1 flex-wrap">
