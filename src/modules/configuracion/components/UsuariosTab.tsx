@@ -566,7 +566,7 @@ export function UsuariosTab() {
               <li>Ver, crear, editar y eliminar TODA la información (todas las obras, costos, salarios, finanzas).</li>
               <li>Cambiar permisos de cualquier usuario, incluyéndote a vos.</li>
               <li>Eliminar usuarios.</li>
-              <li>Acceder a todos los módulos (logística, caja, certificaciones, herramientas).</li>
+              <li>Acceder a todos los módulos (logística, caja, compras y stock, herramientas).</li>
             </ul>
           </div>
           <div>

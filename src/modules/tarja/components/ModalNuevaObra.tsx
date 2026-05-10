@@ -147,7 +147,7 @@ export function ModalNuevaObra({ open, onClose }: Props) {
         </div>
         <p className="text-[11px] text-gris-dark -mt-2">
           Al asignar un capataz o jefe de obra con login, ese usuario va a ver
-          la obra automáticamente. El jefe también la ve en certificaciones
+          la obra automáticamente. El jefe también la ve en Compras y Stock
           para pedir materiales.
         </p>
 

@@ -35,7 +35,7 @@ export const PRESETS: PresetBase[] = [
   {
     key:   'administrativo',
     label: 'Administrativo',
-    descripcion: 'Gestión amplia: tarja, logística, certificaciones, ropa, préstamos, configuración. Sin caja.',
+    descripcion: 'Gestión amplia: tarja, logística, compras y stock, ropa, préstamos, configuración. Sin caja.',
     modulos: ['tarja', 'logistica', 'certificaciones', 'ropa', 'prestamos', 'configuracion'],
     permisos: {
       tarja:           { ...fullCRUD, ver_costos: true, ver_pii: true, vista_completa: true },
@@ -50,7 +50,7 @@ export const PRESETS: PresetBase[] = [
   {
     key:   'compras',
     label: 'Compras',
-    descripcion: 'Solo certificaciones (todas las tabs). Resuelve compras y despachos.',
+    descripcion: 'Solo Compras y Stock (todas las tabs). Resuelve compras y despachos.',
     modulos: ['certificaciones'],
     permisos: {
       certificaciones: {

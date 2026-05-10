@@ -179,7 +179,7 @@ export function ModalEditarObra({ open, onClose, obra }: Props) {
         <p className="text-[11px] text-gris-dark -mt-2">
           Al asignar un capataz o jefe de obra con login, ese usuario va a ver
           esta obra automáticamente sin necesidad de cargarla a mano en sus
-          permisos. El jefe de obra también la ve en certificaciones para
+          permisos. El jefe de obra también la ve en Compras y Stock para
           pedir materiales.
         </p>
 
