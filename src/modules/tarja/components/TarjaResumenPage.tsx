@@ -201,15 +201,18 @@ export function TarjaResumenPage() {
           </div>
           <div className="bg-white rounded-card shadow-card p-3 text-center">
             <div className="font-mono text-2xl font-bold text-naranja">
-              {new Set(todasHoras.map(h => h.leg)).size}
+              {new Set(todasHoras.filter(h => semDays.has(h.fecha)).map(h => h.leg)).size}
             </div>
-            <div className="text-[11px] text-gris-dark font-bold uppercase tracking-wide">Trabajadores</div>
+            <div className="text-[11px] text-gris-dark font-bold uppercase tracking-wide">Trab. esta semana</div>
           </div>
           <div className="bg-white rounded-card shadow-card p-3 text-center">
             <div className="font-mono text-2xl font-bold text-verde">
-              {todasHoras.reduce((s, h) => s + h.horas, 0).toLocaleString('es-AR')}
+              {todasHoras
+                .filter(h => semDays.has(h.fecha))
+                .reduce((s, h) => s + h.horas, 0)
+                .toLocaleString('es-AR')}
             </div>
-            <div className="text-[11px] text-gris-dark font-bold uppercase tracking-wide">Horas totales</div>
+            <div className="text-[11px] text-gris-dark font-bold uppercase tracking-wide">Horas esta semana</div>
           </div>
           <div className="bg-white rounded-card shadow-card p-3 text-center">
             <div className="font-mono text-2xl font-bold text-[#7A5500]">{todoPersonal.length}</div>
