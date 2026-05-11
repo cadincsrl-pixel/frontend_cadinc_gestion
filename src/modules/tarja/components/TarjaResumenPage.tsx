@@ -96,11 +96,13 @@ export function TarjaResumenPage() {
       const horasSemana = horasObra.filter(h => semDays.has(h.fecha))
       const hsSemana = horasSemana.reduce((s, h) => s + h.horas, 0)
       const trabajadoresSemana = new Set(horasSemana.map(h => h.leg)).size
-      // "Última actividad" sigue siendo el último fecha cargada en toda la
-      // historia, no de la semana — sirve para detectar obras que no se tocan
-      // hace meses aun cuando esta semana no haya horas.
-      const ultimaFecha = horasObra.length
-        ? horasObra.reduce((max, h) => h.fecha > max ? h.fecha : max, horasObra[0]!.fecha)
+      // "Última actividad": último fecha con horas REALES cargadas (horas > 0).
+      // Filtramos los placeholders (horas=0) que se crean al abrir la semana
+      // para una obra, porque sino "última actividad" queda fijada en el día
+      // del placeholder más reciente aunque nadie haya cargado horas reales.
+      const horasReales = horasObra.filter(h => h.horas > 0)
+      const ultimaFecha = horasReales.length
+        ? horasReales.reduce((max, h) => h.fecha > max ? h.fecha : max, horasReales[0]!.fecha)
         : null
       map[o.cod] = { hsSemana, trabajadoresSemana, ultimaActividad: ultimaFecha }
     })
