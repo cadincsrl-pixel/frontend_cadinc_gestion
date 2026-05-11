@@ -18,6 +18,17 @@ import { usePermisos } from '@/hooks/usePermisos'
 import { getViernes, getSemDays, toISO } from '@/lib/utils/dates'
 import type { Categoria, Certificacion, Cierre, Contratista, Hora, Personal, Tarifa } from '@/types/domain.types'
 
+// Orden de obras: persistido en localStorage para que el usuario mantenga
+// su elección entre visitas/sesiones.
+type SortKey = 'nombre' | 'hsSemana' | 'trabSemana' | 'ultimaActividad'
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: 'nombre',          label: 'Nombre (A→Z)' },
+  { key: 'hsSemana',        label: 'Horas esta semana' },
+  { key: 'trabSemana',      label: 'Trab. esta semana' },
+  { key: 'ultimaActividad', label: 'Última actividad' },
+]
+const SORT_STORAGE_KEY = 'tarja:obras:sort'
+
 export function TarjaResumenPage() {
   const router = useRouter()
   const toast = useToast()
@@ -28,6 +39,16 @@ export function TarjaResumenPage() {
   const [modalExcelObras, setModalExcelObras] = useState(false)
   const [modalRecibos, setModalRecibos] = useState(false)
   const [busqueda, setBusqueda] = useState('')
+  const [sortKey, setSortKey] = useState<SortKey>(() => {
+    if (typeof window === 'undefined') return 'nombre'
+    const saved = window.localStorage.getItem(SORT_STORAGE_KEY)
+    return saved && SORT_OPTIONS.some(o => o.key === saved) ? (saved as SortKey) : 'nombre'
+  })
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(SORT_STORAGE_KEY, sortKey)
+  }, [sortKey])
   const setTopbarAccion = useUIStore(s => s.setTopbarAccion)
 
   // Datos globales para stats — todas las horas históricas
@@ -98,6 +119,31 @@ export function TarjaResumenPage() {
     )
   }, [obras, busqueda])
 
+  // Orden derivado del filtro. Para `ultimaActividad`, las obras sin actividad
+  // van al final (no se mezclan con las recién tocadas).
+  const obrasOrdenadas = useMemo(() => {
+    const arr = [...obrasFiltradas]
+    arr.sort((a, b) => {
+      switch (sortKey) {
+        case 'nombre':
+          return a.nom.localeCompare(b.nom, 'es')
+        case 'hsSemana':
+          return (statsMap[b.cod]?.hsSemana ?? 0) - (statsMap[a.cod]?.hsSemana ?? 0)
+        case 'trabSemana':
+          return (statsMap[b.cod]?.trabajadoresSemana ?? 0) - (statsMap[a.cod]?.trabajadoresSemana ?? 0)
+        case 'ultimaActividad': {
+          const aF = statsMap[a.cod]?.ultimaActividad ?? ''
+          const bF = statsMap[b.cod]?.ultimaActividad ?? ''
+          if (!aF && !bF) return 0
+          if (!aF) return 1
+          if (!bF) return -1
+          return bF.localeCompare(aF)
+        }
+      }
+    })
+    return arr
+  }, [obrasFiltradas, sortKey, statsMap])
+
   useEffect(() => {
     // Capataz (solo_carga_horas) no tiene acciones globales: ni Excel, ni
     // Recibos, ni CSV. No registramos el callback para que el Topbar no
@@ -159,29 +205,46 @@ export function TarjaResumenPage() {
           )}
         </div>
 
-        {/* Barra de búsqueda */}
-        <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gris-dark text-sm">🔍</span>
-          <input
-            type="text"
-            value={busqueda}
-            onChange={e => setBusqueda(e.target.value)}
-            placeholder="Buscar por nombre, código, dirección, responsable o centro de costo..."
+        {/* Barra de búsqueda + ordenar */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative flex-1 min-w-[200px]">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gris-dark text-sm">🔍</span>
+            <input
+              type="text"
+              value={busqueda}
+              onChange={e => setBusqueda(e.target.value)}
+              placeholder="Buscar por nombre, código, dirección, responsable o centro de costo..."
+              className="
+                w-full pl-9 pr-3 py-2.5 border-[1.5px] border-gris-mid rounded-lg
+                text-sm outline-none transition-colors bg-white
+                focus:border-naranja focus:shadow-[0_0_0_3px_rgba(232,98,26,.12)]
+                placeholder:text-gris-dark/50
+              "
+            />
+            {busqueda && (
+              <button
+                onClick={() => setBusqueda('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gris-dark hover:text-carbon text-sm"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          <select
+            value={sortKey}
+            onChange={e => setSortKey(e.target.value as SortKey)}
+            title="Ordenar obras"
             className="
-              w-full pl-9 pr-3 py-2.5 border-[1.5px] border-gris-mid rounded-lg
-              text-sm outline-none transition-colors bg-white
+              px-3 py-2.5 border-[1.5px] border-gris-mid rounded-lg
+              text-sm font-semibold text-carbon bg-white cursor-pointer
+              outline-none transition-colors
               focus:border-naranja focus:shadow-[0_0_0_3px_rgba(232,98,26,.12)]
-              placeholder:text-gris-dark/50
             "
-          />
-          {busqueda && (
-            <button
-              onClick={() => setBusqueda('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gris-dark hover:text-carbon text-sm"
-            >
-              ✕
-            </button>
-          )}
+          >
+            {SORT_OPTIONS.map(opt => (
+              <option key={opt.key} value={opt.key}>↕ {opt.label}</option>
+            ))}
+          </select>
         </div>
 
         {/* Resultado de búsqueda */}
@@ -231,7 +294,7 @@ export function TarjaResumenPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-3">
-          {obrasFiltradas.map(obra => {
+          {obrasOrdenadas.map(obra => {
             const stats = statsMap[obra.cod]
             return (
               <button
