@@ -1102,6 +1102,16 @@ function RemitosSection() {
   const { data: canteras     = [] } = useCanteras()
   const { data: choferes     = [] } = useChoferes()
   const { data: camiones     = [] } = useCamiones()
+  const { data: cobros       = [] } = useCobros()
+
+  // Lookup de cobro_id → estado para que la división Adeudados/Cobrados
+  // contemple el estado real del cobro (no solo la presencia de cobro_id).
+  // Un tramo con cobro_id pero estado='pendiente' sigue siendo adeudado.
+  const cobroEstadoById = new Map<number, Cobro['estado']>(
+    (cobros as Cobro[]).map(c => [c.id, c.estado] as const)
+  )
+  const cobroIdConfirmado = (cobroId: number | null | undefined): boolean =>
+    !!cobroId && cobroEstadoById.get(cobroId) === 'cobrado'
 
   const [empresaId,  setEmpresaId]  = useState('')
   const [fechaDesde, setFechaDesde] = useState('')
@@ -1192,8 +1202,11 @@ function RemitosSection() {
     toast('✓ Excel exportado', 'ok')
   }
 
-  const adeudados = tramosBase.filter(t => !t.cobro_id).map(enrichTramo)
-  const cobrados  = tramosBase.filter(t => !!t.cobro_id).map(enrichTramo)
+  // Un tramo se considera cobrado solo cuando su cobro está en estado='cobrado'.
+  // Mientras el cobro siga 'pendiente' (esperando comprobante de pago), el
+  // tramo se queda en adeudados.
+  const adeudados = tramosBase.filter(t => !cobroIdConfirmado(t.cobro_id)).map(enrichTramo)
+  const cobrados  = tramosBase.filter(t =>  cobroIdConfirmado(t.cobro_id)).map(enrichTramo)
 
   const totalAdeudado = adeudados.reduce((s, d) => s + d.subtotal, 0)
   const totalCobrado  = cobrados.reduce((s, d) => s + d.subtotal, 0)
