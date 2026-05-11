@@ -90,7 +90,12 @@ export function TarjaResumenPage() {
 
   // Stats por obra
   const statsMap = useMemo(() => {
-    const map: Record<string, { hsSemana: number; trabajadoresSemana: number; ultimaActividad: string | null }> = {}
+    const map: Record<string, {
+      hsSemana: number
+      trabajadoresSemana: number
+      ultimaActividad: string | null
+      ultimaCargaPor: string | null
+    }> = {}
     obras.forEach(o => {
       const horasObra = todasHoras.filter(h => h.obra_cod === o.cod)
       const horasSemana = horasObra.filter(h => semDays.has(h.fecha))
@@ -104,7 +109,14 @@ export function TarjaResumenPage() {
       const ultimaFecha = horasReales.length
         ? horasReales.reduce((max, h) => h.fecha > max ? h.fecha : max, horasReales[0]!.fecha)
         : null
-      map[o.cod] = { hsSemana, trabajadoresSemana, ultimaActividad: ultimaFecha }
+      // "Última carga por": user_id del registro de horas reales con
+      // updated_at más reciente. Se muestra como chip ✎ en la card de la
+      // obra, en vez del legacy obra.updated_by (que reflejaba edición de
+      // la metadata de la obra, no carga de horas).
+      const ultimaCargaPor = horasReales.length
+        ? horasReales.reduce((a, b) => (a.updated_at ?? '') > (b.updated_at ?? '') ? a : b).updated_by ?? null
+        : null
+      map[o.cod] = { hsSemana, trabajadoresSemana, ultimaActividad: ultimaFecha, ultimaCargaPor }
     })
     return map
   }, [obras, todasHoras, semDays])
@@ -362,16 +374,16 @@ export function TarjaResumenPage() {
                         <div className="text-[10px] text-gris-dark font-mono">
                           Última actividad: {fmtFecha(stats?.ultimaActividad ?? null)}
                         </div>
-                        {(obra.created_by || obra.updated_by) && (
+                        {(obra.created_by || stats?.ultimaCargaPor) && (
                           <div className="flex items-center gap-2 flex-wrap justify-end">
                             {obra.created_by && (
-                              <span className="text-[9px] text-gris-dark">
+                              <span className="text-[9px] text-gris-dark" title="Creador de la obra">
                                 ✦ <span className="font-bold text-azul">{perfiles.get(obra.created_by) ?? '…'}</span>
                               </span>
                             )}
-                            {obra.updated_by && obra.updated_by !== obra.created_by && (
-                              <span className="text-[9px] text-gris-dark">
-                                ✎ <span className="font-bold text-naranja">{perfiles.get(obra.updated_by) ?? '…'}</span>
+                            {stats?.ultimaCargaPor && stats.ultimaCargaPor !== obra.created_by && (
+                              <span className="text-[9px] text-gris-dark" title="Última carga de horas">
+                                ✎ <span className="font-bold text-naranja">{perfiles.get(stats.ultimaCargaPor) ?? '…'}</span>
                               </span>
                             )}
                           </div>
