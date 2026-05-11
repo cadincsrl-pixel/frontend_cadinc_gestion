@@ -15,6 +15,7 @@ import { exportarCSVResumenObras } from '@/lib/utils/excel'
 import { useToast } from '@/components/ui/Toast'
 import { useUIStore } from '@/store/ui.store'
 import { usePermisos } from '@/hooks/usePermisos'
+import { getViernes, getSemDays, toISO } from '@/lib/utils/dates'
 import type { Categoria, Certificacion, Cierre, Contratista, Hora, Personal, Tarifa } from '@/types/domain.types'
 
 export function TarjaResumenPage() {
@@ -59,20 +60,31 @@ export function TarjaResumenPage() {
     queryFn: () => apiGet<Contratista[]>('/api/contratistas'),
   })
 
+  // Días de la semana actual (vie→jue) como set de ISO. Calculado una sola
+  // vez al montar; si la semana cambia mientras la página está abierta el
+  // usuario va a recargar igual al volver al lunes siguiente.
+  const semDays = useMemo(() => {
+    return new Set(getSemDays(getViernes(new Date())).map(toISO))
+  }, [])
+
   // Stats por obra
   const statsMap = useMemo(() => {
-    const map: Record<string, { totalHs: number; trabajadores: number; ultimaActividad: string | null }> = {}
+    const map: Record<string, { hsSemana: number; trabajadoresSemana: number; ultimaActividad: string | null }> = {}
     obras.forEach(o => {
       const horasObra = todasHoras.filter(h => h.obra_cod === o.cod)
-      const legs = new Set(horasObra.map(h => h.leg))
-      const totalHs = horasObra.reduce((s, h) => s + h.horas, 0)
+      const horasSemana = horasObra.filter(h => semDays.has(h.fecha))
+      const hsSemana = horasSemana.reduce((s, h) => s + h.horas, 0)
+      const trabajadoresSemana = new Set(horasSemana.map(h => h.leg)).size
+      // "Última actividad" sigue siendo el último fecha cargada en toda la
+      // historia, no de la semana — sirve para detectar obras que no se tocan
+      // hace meses aun cuando esta semana no haya horas.
       const ultimaFecha = horasObra.length
         ? horasObra.reduce((max, h) => h.fecha > max ? h.fecha : max, horasObra[0]!.fecha)
         : null
-      map[o.cod] = { totalHs, trabajadores: legs.size, ultimaActividad: ultimaFecha }
+      map[o.cod] = { hsSemana, trabajadoresSemana, ultimaActividad: ultimaFecha }
     })
     return map
-  }, [obras, todasHoras])
+  }, [obras, todasHoras, semDays])
 
   const obrasFiltradas = useMemo(() => {
     if (!busqueda.trim()) return obras
@@ -268,15 +280,15 @@ export function TarjaResumenPage() {
                         <div className="flex items-center gap-3 text-right">
                           <div>
                             <div className="font-mono text-sm font-bold text-verde">
-                              {stats?.totalHs ? stats.totalHs.toLocaleString('es-AR') + ' hs' : '0 hs'}
+                              {stats?.hsSemana ? stats.hsSemana.toLocaleString('es-AR') + ' hs' : '0 hs'}
                             </div>
-                            <div className="text-[10px] text-gris-dark">Horas totales</div>
+                            <div className="text-[10px] text-gris-dark">Horas esta semana</div>
                           </div>
                           <div>
                             <div className="font-mono text-sm font-bold text-naranja">
-                              {stats?.trabajadores ?? 0}
+                              {stats?.trabajadoresSemana ?? 0}
                             </div>
-                            <div className="text-[10px] text-gris-dark">Trabajadores</div>
+                            <div className="text-[10px] text-gris-dark">Trab. esta semana</div>
                           </div>
                         </div>
                         <div className="text-[10px] text-gris-dark font-mono">
