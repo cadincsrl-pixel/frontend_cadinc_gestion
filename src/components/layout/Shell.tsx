@@ -3,12 +3,14 @@
 import { useState } from 'react'
 import { Topbar } from './Topbar'
 import { Sidebar } from './Sidebar'
+import { SimulacionBanner } from './SimulacionBanner'
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   return (
     <div className="h-dvh flex flex-col">
+      <SimulacionBanner />
       <Topbar
         showMenuBtn={true}
         onMenuToggle={() => setSidebarOpen(p => !p)}

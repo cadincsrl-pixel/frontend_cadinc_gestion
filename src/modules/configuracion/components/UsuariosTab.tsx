@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api/client'
 import { Modal }    from '@/components/ui/Modal'
@@ -54,6 +55,8 @@ export function UsuariosTab() {
   const toast        = useToast()
   const qc           = useQueryClient()
   const profileActual = useSessionStore(s => s.profile)
+  const iniciarSimulacion = useSessionStore(s => s.iniciarSimulacion)
+  const router = useRouter()
 
   // El estado de edición extiende Profile con `addons` (no se persiste en
   // DB; lo derivamos del tipo_usuario al abrir el modal y lo usa el wizard
@@ -375,6 +378,18 @@ export function UsuariosTab() {
                     >
                       🔑
                     </button>
+                    {u.id !== profileActual?.id && (
+                      <button
+                        onClick={() => {
+                          iniciarSimulacion(u)
+                          router.push('/')
+                        }}
+                        className="text-xs font-bold px-2 py-1 rounded hover:bg-azul-light hover:text-azul-mid transition-colors"
+                        title="Simular como este usuario (solo afecta lo que se ve, no la data del backend)"
+                      >
+                        👁
+                      </button>
+                    )}
                     {u.id !== profileActual?.id && (
                       <button
                         onClick={() => handleDelete(u)}
