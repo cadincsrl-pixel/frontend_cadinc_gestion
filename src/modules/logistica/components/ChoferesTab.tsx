@@ -47,9 +47,6 @@ export function ChoferesTab() {
       estado:            chofer.estado,
       camion_id:         chofer.camion_id ?? '',
       batea_id:          chofer.batea_id ?? '',
-      basico_dia:        chofer.basico_dia ?? 0,
-      precio_km_cargado: chofer.precio_km_cargado ?? 0,
-      precio_km_vacio:   chofer.precio_km_vacio ?? 0,
       obs:               chofer.obs ?? '',
     }
   }
@@ -57,16 +54,17 @@ export function ChoferesTab() {
   function normalizar(data: any) {
     // Los inputs type="number" del form devuelven string. Convierto a
     // number antes de mandar al backend (el schema rechaza "" o strings).
-    const num = (v: any, def = 0): number =>
-      v === '' || v == null || isNaN(Number(v)) ? def : Number(v)
     return {
       ...data,
       camion_id: data.camion_id ? Number(data.camion_id) : null,
       batea_id:  data.batea_id  ? Number(data.batea_id)  : null,
-      basico_dia:        num(data.basico_dia),
-      precio_km_cargado: num(data.precio_km_cargado),
-      precio_km_vacio:   num(data.precio_km_vacio),
     }
+  }
+
+  // Format helper para la sección read-only de pago vigente.
+  function fmtMonto(n: number | null | undefined): string {
+    if (n == null || n === 0) return '—'
+    return '$' + Math.round(n).toLocaleString('es-AR')
   }
 
   function handleCreate(data: any) {
@@ -144,14 +142,37 @@ export function ChoferesTab() {
         <Select label="Camión asignado" options={camionOptions} disabled={disabled} {...form.register('camion_id')} />
         <Select label="Batea asignada"  options={bateaOptions}  disabled={disabled} {...form.register('batea_id')} />
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <Input label="Básico por día ($)"   type="number" step="100" disabled={disabled} {...form.register('basico_dia')} />
-        <Input label="🚛 $/km cargado"      type="number" step="1"   disabled={disabled} {...form.register('precio_km_cargado')} />
-        <Input label="🔲 $/km vacío"        type="number" step="1"   disabled={disabled} {...form.register('precio_km_vacio')} />
-      </div>
       <Input label="Observaciones" placeholder="Notas..." disabled={disabled} {...form.register('obs')} />
     </div>
   )
+
+  // Bloque read-only de pago vigente. El admin lo edita desde Liquidaciones.
+  function PagoVigente({ chofer }: { chofer: Chofer }) {
+    return (
+      <div className="bg-gris/40 rounded-lg p-3 border border-gris-mid">
+        <div className="text-[10px] font-bold text-gris-dark uppercase tracking-wider mb-2">
+          Pago vigente
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+          <div>
+            <div className="text-[11px] text-gris-dark">Básico/día</div>
+            <div className="font-mono font-bold text-azul">{fmtMonto(chofer.basico_dia)}</div>
+          </div>
+          <div>
+            <div className="text-[11px] text-gris-dark">🚛 $/km cargado</div>
+            <div className="font-mono font-bold text-azul">{fmtMonto(chofer.precio_km_cargado)}</div>
+          </div>
+          <div>
+            <div className="text-[11px] text-gris-dark">🔲 $/km vacío</div>
+            <div className="font-mono font-bold text-azul">{fmtMonto(chofer.precio_km_vacio)}</div>
+          </div>
+        </div>
+        <p className="text-[11px] text-gris-dark italic mt-2">
+          Se edita desde Liquidaciones al armar una liquidación.
+        </p>
+      </div>
+    )
+  }
 
   return (
     <>
@@ -309,6 +330,8 @@ export function ChoferesTab() {
       >
         <div className="flex flex-col gap-5">
           <ChoferForm form={formEdit} disabled={!modoEdicion} />
+
+          {editando && <PagoVigente chofer={editando} />}
 
           {editando && (
             <div className="border-t border-gris-mid pt-4">
