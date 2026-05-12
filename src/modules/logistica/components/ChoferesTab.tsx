@@ -188,7 +188,7 @@ export function ChoferesTab() {
         <table className="w-full border-collapse">
           <thead>
             <tr>
-              {['Nombre', 'CUIL', 'Teléfono', 'Licencia', 'Camión', 'Batea', 'Estado', ''].map(h => (
+              {['Nombre', 'CUIL', 'Teléfono', 'Camión', 'Batea', 'Estado', ''].map(h => (
                 <th key={h} className="bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide">
                   {h}
                 </th>
@@ -197,7 +197,7 @@ export function ChoferesTab() {
           </thead>
           <tbody>
             {choferes.length === 0 ? (
-              <tr><td colSpan={9} className="text-center py-8 text-gris-dark text-sm">No hay choferes registrados.</td></tr>
+              <tr><td colSpan={7} className="text-center py-8 text-gris-dark text-sm">No hay choferes registrados.</td></tr>
             ) : choferes.map(c => {
               const camionAsig = camiones.find(cam => cam.id === c.camion_id)
               const bateaAsig  = bateas.find(b => b.id === c.batea_id)
@@ -210,7 +210,6 @@ export function ChoferesTab() {
                 <td className="px-4 py-3 font-bold text-sm text-carbon">{c.nombre}</td>
                 <td className="px-4 py-3 font-mono text-xs text-gris-dark">{c.cuil || '—'}</td>
                 <td className="px-4 py-3 text-sm text-gris-dark">{c.tel || '—'}</td>
-                <td className="px-4 py-3 font-mono text-xs text-gris-dark">{c.licencia || '—'}</td>
                 <td className="px-4 py-3">
                   {camionAsig
                     ? <span className="font-mono text-xs font-bold bg-azul-light text-azul-mid px-2 py-0.5 rounded">{camionAsig.patente}</span>
