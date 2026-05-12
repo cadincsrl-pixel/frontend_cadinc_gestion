@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import * as XLSX from 'xlsx'
+import JSZip from 'jszip'
 import { useForm } from 'react-hook-form'
 import {
   useEmpresas, useCreateEmpresa, useUpdateEmpresa, useDeleteEmpresa,
@@ -22,6 +23,18 @@ import type { EmpresaTransportista, TarifaEmpresaCantera, Tramo, Cobro } from '@
 
 function fmtM(n: number) {
   return '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 0 })
+}
+
+// Adivina la extensión del archivo a partir de la URL (preferido) o el MIME.
+// Se usa al armar los nombres del ZIP de remitos.
+function guessExt(url: string, mime: string): string {
+  const m = url.match(/\.([a-zA-Z0-9]{2,5})(?:\?|$)/)
+  if (m) return m[1].toLowerCase()
+  if (mime.includes('jpeg')) return 'jpg'
+  if (mime.includes('png'))  return 'png'
+  if (mime.includes('pdf'))  return 'pdf'
+  if (mime.includes('webp')) return 'webp'
+  return 'bin'
 }
 function fmtTon(n: number) {
   return n.toLocaleString('es-AR', { maximumFractionDigits: 2 }) + ' tn'
@@ -1226,6 +1239,7 @@ function RemitosSection() {
   const [empresaId,  setEmpresaId]  = useState('')
   const [fechaDesde, setFechaDesde] = useState('')
   const [fechaHasta, setFechaHasta] = useState('')
+  const [descargandoZip, setDescargandoZip] = useState(false)
 
   function tarifaParaFecha(empresaId: number, canteraId: number | null, fecha: string | null): number {
     if (!canteraId || !fecha) return 0
@@ -1318,6 +1332,81 @@ function RemitosSection() {
   const adeudados = tramosBase.filter(t => !cobroIdConfirmado(t.cobro_id)).map(enrichTramo)
   const cobrados  = tramosBase.filter(t =>  cobroIdConfirmado(t.cobro_id)).map(enrichTramo)
 
+  // Descarga en ZIP los archivos (foto/PDF) de remito_carga y remito_descarga
+  // de todos los tramos adeudados visibles. Agrupa por empresa transportista
+  // en subcarpetas. Filtros: los mismos del panel (empresa + rango fechas)
+  // + restricción a adeudados (no cobrados).
+  async function descargarRemitosZip() {
+    if (descargandoZip) return
+    if (adeudados.length === 0) {
+      toast('Sin remitos adeudados con los filtros actuales', 'warn')
+      return
+    }
+    setDescargandoZip(true)
+    try {
+      const zip = new JSZip()
+      let added = 0
+      let tramosSinRemito = 0
+
+      for (const d of adeudados) {
+        const t = d.t
+        const empresaNombre = (d.empresa?.nombre ?? 'Sin empresa').replace(/[\/\\]/g, '-')
+        const folder = zip.folder(empresaNombre)!
+        const items = [
+          { url: t.remito_carga_img_url,    label: 'CARGA',    nro: t.remito_carga    ?? `T${t.id}` },
+          { url: t.remito_descarga_img_url, label: 'DESCARGA', nro: t.remito_descarga ?? `T${t.id}` },
+        ]
+        let tuvoAlguno = false
+        for (const it of items) {
+          if (!it.url) continue
+          try {
+            const resp = await fetch(it.url)
+            if (!resp.ok) continue
+            const blob = await resp.blob()
+            const ext = guessExt(it.url, blob.type)
+            const safeNro = String(it.nro).replace(/[\/\\:*?"<>|]/g, '_')
+            // Si ya hay un archivo con el mismo nombre (mismo nro repetido en
+            // dos tramos), JSZip lo sobrescribe — sufijo con id del tramo.
+            const filename = `${safeNro}-${it.label}-T${t.id}.${ext}`
+            folder.file(filename, blob)
+            added += 1
+            tuvoAlguno = true
+          } catch (err) {
+            console.warn('[remitos-zip] fetch falló', it.url, err)
+          }
+        }
+        if (!tuvoAlguno) tramosSinRemito += 1
+      }
+
+      if (added === 0) {
+        toast('No se pudo descargar ningún remito (¿fotos no subidas?)', 'err')
+        return
+      }
+
+      const blob = await zip.generateAsync({ type: 'blob' })
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      const empNombre = empresaId
+        ? ((empresas as EmpresaTransportista[]).find(e => e.id === Number(empresaId))?.nombre ?? 'empresa').replace(/\s+/g, '_')
+        : 'todas'
+      const rango = [fechaDesde || 'inicio', fechaHasta || 'hoy'].join('_a_')
+      a.href = url
+      a.download = `Remitos_adeudados_${empNombre}_${rango}.zip`
+      a.click()
+      URL.revokeObjectURL(url)
+
+      const msg = tramosSinRemito > 0
+        ? `✓ ZIP con ${added} archivo${added !== 1 ? 's' : ''} · ${tramosSinRemito} tramo${tramosSinRemito !== 1 ? 's' : ''} sin remito adjunto`
+        : `✓ ZIP con ${added} archivo${added !== 1 ? 's' : ''}`
+      toast(msg, 'ok')
+    } catch (err) {
+      console.error('[remitos-zip]', err)
+      toast('Error al generar el ZIP', 'err')
+    } finally {
+      setDescargandoZip(false)
+    }
+  }
+
   const totalAdeudado = adeudados.reduce((s, d) => s + d.subtotal, 0)
   const totalCobrado  = cobrados.reduce((s, d) => s + d.subtotal, 0)
 
@@ -1381,8 +1470,16 @@ function RemitosSection() {
           </button>
         )}
         <button
+          onClick={descargarRemitosZip}
+          disabled={descargandoZip}
+          className="ml-auto self-end inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-naranja-light text-naranja-dark border border-naranja/30 text-xs font-bold hover:bg-naranja hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Bajar los remitos (foto/PDF) de los viajes adeudados en un ZIP, agrupado por empresa"
+        >
+          {descargandoZip ? '⏳ Descargando...' : '📦 Remitos adeudados (ZIP)'}
+        </button>
+        <button
           onClick={exportarExcel}
-          className="ml-auto self-end inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-verde-light text-verde border border-verde/30 text-xs font-bold hover:bg-verde hover:text-white transition-colors"
+          className="self-end inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-verde-light text-verde border border-verde/30 text-xs font-bold hover:bg-verde hover:text-white transition-colors"
           title="Exportar remitos al Excel según los filtros aplicados"
         >
           📊 Exportar Excel
