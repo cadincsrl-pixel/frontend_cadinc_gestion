@@ -41,6 +41,29 @@ export function useAgregarASemana() {
   })
 }
 
+// ── Agregar varios trabajadores a esta semana en una sola llamada ──
+// Construye N × 7 placeholders (legs × días vie→jue) y los upsertea en un
+// solo PUT a /api/horas/lote. Más eficiente que llamar useAgregarASemana en
+// loop.
+export function useAgregarVariosASemana() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ obraCod, legs, semActual }: { obraCod: string; legs: string[]; semActual: Date }) => {
+      if (legs.length === 0) return
+      const days = getSemDays(semActual)
+      const horas = legs.flatMap(leg =>
+        days.map(d => ({ fecha: toISO(d), leg, horas: 0 }))
+      )
+      return apiPut('/api/horas/lote', { obra_cod: obraCod, horas })
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: PERSONAL_SEMANA_KEY })
+      qc.invalidateQueries({ queryKey: ['horas'] })
+      qc.invalidateQueries({ queryKey: ['asignaciones'] })
+    },
+  })
+}
+
 // ── Quitar trabajador de esta semana (borra sus horas de la semana) ──
 export function useQuitarDeSemana() {
   const qc = useQueryClient()
