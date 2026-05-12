@@ -43,6 +43,16 @@ export function HorasTrabajadorPage() {
   const desde = toISO(days[0]!)
   const hasta = toISO(days[6]!)
 
+  // Semana anterior (viernes 7 días antes) para la sección "pendientes".
+  const semAnterior = useMemo(() => {
+    const d = new Date(semActual)
+    d.setDate(d.getDate() - 7)
+    return d
+  }, [semActual])
+  const daysAnt = getSemDays(semAnterior)
+  const desdeAnt = toISO(daysAnt[0]!)
+  const hastaAnt = toISO(daysAnt[6]!)
+
   // ── Datos ──
   const { data: personal = [] } = usePersonal()
   const { data: categorias = [] } = useCategorias()
@@ -51,6 +61,12 @@ export function HorasTrabajadorPage() {
   const { data: todasHoras = [], isLoading: loadingHoras } = useQuery({
     queryKey: ['horas', 'semana', desde, hasta],
     queryFn: () => apiGet<Hora[]>(`/api/horas/all?desde=${desde}&hasta=${hasta}`),
+  })
+  // Horas de la semana anterior — usadas solo para detectar trabajadores
+  // que cargaron la semana pasada pero no esta semana.
+  const { data: horasAnt = [] } = useQuery({
+    queryKey: ['horas', 'semana', desdeAnt, hastaAnt],
+    queryFn: () => apiGet<Hora[]>(`/api/horas/all?desde=${desdeAnt}&hasta=${hastaAnt}`),
   })
   const { data: todasTarifas = [], isLoading: loadingTarifas } = useQuery({
     queryKey: ['tarifas', 'all'],
@@ -203,6 +219,52 @@ export function HorasTrabajadorPage() {
       (f.p.dni ?? '').includes(q)
     )
   }, [filas, busqueda])
+
+  // ── Trabajadores pendientes ──
+  // Tuvieron horas reales (>0) la semana pasada pero NO esta semana
+  // (suman 0 hs cargadas). Útil para que no se nos pase un trabajador
+  // activo cuando el capataz/jefe se olvida de subir las horas.
+  // Respeta filtroObra: si hay filtro, solo entran los que trabajaron en
+  // esa obra la semana pasada.
+  const pendientes = useMemo(() => {
+    // Suma de horas por leg en la semana actual (todas las obras).
+    const horasActPorLeg = new Map<string, number>()
+    todasHoras.forEach(h => {
+      horasActPorLeg.set(h.leg, (horasActPorLeg.get(h.leg) ?? 0) + h.horas)
+    })
+    // Agrupar semana anterior: leg → obra_cod → hs.
+    const porLeg = new Map<string, Map<string, number>>()
+    horasAnt.forEach(h => {
+      if (h.horas <= 0) return
+      if (!porLeg.has(h.leg)) porLeg.set(h.leg, new Map())
+      const m = porLeg.get(h.leg)!
+      m.set(h.obra_cod, (m.get(h.obra_cod) ?? 0) + h.horas)
+    })
+    const out: Array<{
+      p: Personal
+      obrasAnt: Array<{ obra_cod: string; nom: string; hs: number }>
+      totalHsAnt: number
+    }> = []
+    porLeg.forEach((obrasMap, leg) => {
+      if ((horasActPorLeg.get(leg) ?? 0) > 0) return
+      const p = personal.find(x => x.leg === leg)
+      if (!p) return
+      const obrasAnt = Array.from(obrasMap.entries())
+        .map(([cod, hs]) => ({
+          obra_cod: cod,
+          nom: obras.find(o => o.cod === cod)?.nom ?? cod,
+          hs,
+        }))
+        .sort((a, b) => b.hs - a.hs)
+      if (filtroObra && !obrasAnt.some(o => o.obra_cod === filtroObra)) return
+      out.push({
+        p,
+        obrasAnt,
+        totalHsAnt: obrasAnt.reduce((s, o) => s + o.hs, 0),
+      })
+    })
+    return out.sort((a, b) => a.p.nom.localeCompare(b.p.nom))
+  }, [horasAnt, todasHoras, personal, obras, filtroObra])
 
   // Detectar legs en múltiples obras
   const multiObra = useMemo(() => {
@@ -733,6 +795,59 @@ export function HorasTrabajadorPage() {
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── Trabajadores pendientes (activos la semana anterior, sin horas esta) ── */}
+      {!isLoading && pendientes.length > 0 && (
+        <div className="bg-white rounded-card shadow-card overflow-hidden border-l-[5px] border-amarillo">
+          <div className="px-4 py-3 bg-amarillo-light/60 border-b border-amarillo/30">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <h2 className="font-bold text-[#7A5500] text-base">
+                ⚠ Trabajadores pendientes ({pendientes.length})
+              </h2>
+              <p className="text-[11px] text-[#7A5500]/80">
+                Cargaron horas la semana anterior ({getSemLabel(semAnterior)})
+                pero no esta semana.
+              </p>
+            </div>
+          </div>
+          <div className="divide-y divide-gris">
+            {pendientes.map(({ p, obrasAnt, totalHsAnt }) => (
+              <div
+                key={p.leg}
+                className="px-4 py-3 flex items-start justify-between gap-3 flex-wrap hover:bg-gris/30 transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-sm text-carbon">{p.nom}</span>
+                    <span className="text-[10px] font-mono bg-gris text-gris-dark px-1.5 py-0.5 rounded font-bold">
+                      Leg. {p.leg}
+                    </span>
+                    <span className="text-[10px] font-bold bg-verde-light text-verde px-1.5 py-0.5 rounded">
+                      {totalHsAnt} hs sem. anterior
+                    </span>
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {obrasAnt.map(o => (
+                      <button
+                        key={o.obra_cod}
+                        type="button"
+                        onClick={() => router.push(`/tarja/${encodeURIComponent(o.obra_cod)}`)}
+                        className="text-[11px] bg-naranja-light text-naranja-dark px-2 py-0.5 rounded hover:bg-naranja hover:text-white transition-colors"
+                        title="Ir a la tarja de esta obra"
+                      >
+                        {o.nom} <span className="opacity-70">· {o.hs} hs</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="text-[11px] text-gris-dark italic shrink-0">
+                  Esta semana: sin horas cargadas
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
