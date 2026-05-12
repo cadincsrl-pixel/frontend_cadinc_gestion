@@ -498,6 +498,12 @@ function FacturacionSection() {
   // Tramo abierto para editar toneladas/remito de descarga (ajuste fino
   // cuando la empresa transportista paga distinto a lo del remito).
   const [editandoTramo, setEditandoTramo] = useState<Tramo | null>(null)
+  // Filtros del Historial de cobros. Default 'pendientes' porque son los
+  // que requieren acción del usuario.
+  const [filtroEstadoCobro, setFiltroEstadoCobro] = useState<'pendientes' | 'cobrados' | 'todos'>('pendientes')
+  const [busquedaCobro, setBusquedaCobro] = useState('')
+  const [cobroDesde, setCobroDesde] = useState('')
+  const [cobroHasta, setCobroHasta] = useState('')
   const form = useForm<any>()
   const formEditTramo = useForm<any>()
   const { mutate: updateTramo, isPending: updatingTramo } = useUpdateTramo()
@@ -726,79 +732,183 @@ function FacturacionSection() {
         </div>
       </div>
 
-      {/* Historial cobros */}
-      {cobros.length > 0 && (
-        <div>
-          <h2 className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-2">Historial de cobros</h2>
-          <div className="flex flex-col gap-3">
-            {(cobros as Cobro[]).map(c => (
-              <div
-                key={c.id}
-                onClick={() => setCobroDetalle(c)}
-                className={`bg-white rounded-card shadow-card p-4 border-l-4 cursor-pointer hover:bg-gris/40 transition-colors ${c.estado === 'cobrado' ? 'border-verde' : 'border-naranja'}`}
-              >
-                <div className="flex items-start justify-between gap-3 flex-wrap">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <Badge variant={c.estado === 'cobrado' ? 'activo' : 'pendiente'} label={c.estado === 'cobrado' ? 'Cobrado' : 'Pendiente'} />
-                    </div>
-                    <div className="font-bold text-azul">{c.empresas_transportistas?.nombre ?? '—'}</div>
-                    <div className="text-xs text-gris-dark mt-1">
-                      {fmtFecha(c.fecha_desde)} → {fmtFecha(c.fecha_hasta)} &nbsp;·&nbsp;
-                      {fmtTon(c.toneladas_totales)}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-mono font-bold text-lg text-verde">{fmtM(c.total)}</div>
-                    <div className="text-xs text-gris-dark">Total · click para ver detalle</div>
-                  </div>
+      {/* Historial cobros — vista compacta con filtros */}
+      {cobros.length > 0 && (() => {
+        const todos = cobros as Cobro[]
+        const q = busquedaCobro.trim().toLowerCase()
+        const filtrados = todos.filter(c => {
+          if (filtroEstadoCobro === 'pendientes' && c.estado !== 'pendiente') return false
+          if (filtroEstadoCobro === 'cobrados'   && c.estado !== 'cobrado')   return false
+          if (q && !(c.empresas_transportistas?.nombre ?? '').toLowerCase().includes(q)) return false
+          if (cobroDesde && c.fecha_desde < cobroDesde) return false
+          if (cobroHasta && c.fecha_hasta > cobroHasta) return false
+          return true
+        })
+        // Orden por fecha_desde desc (más reciente primero).
+        const ordenados = [...filtrados].sort((a, b) => b.fecha_desde.localeCompare(a.fecha_desde))
+        // Resumen sobre los visibles (después de filtros).
+        const pendientesVis = ordenados.filter(c => c.estado === 'pendiente')
+        const cobradosVis   = ordenados.filter(c => c.estado === 'cobrado')
+        const totalAdeudado = pendientesVis.reduce((s, c) => s + c.total, 0)
+        const totalCobrado  = cobradosVis.reduce((s, c) => s + c.total, 0)
+        const countPendGlob = todos.filter(c => c.estado === 'pendiente').length
+        const countCobrGlob = todos.filter(c => c.estado === 'cobrado').length
+        const hayFiltrosFecha = !!(cobroDesde || cobroHasta)
+
+        return (
+          <div className="bg-white rounded-card shadow-card overflow-hidden">
+            {/* Header con filtros */}
+            <div className="px-4 py-3 border-b border-gris flex flex-col gap-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <h2 className="text-xs font-bold text-gris-dark uppercase tracking-wider">
+                  Historial de cobros
+                </h2>
+                <div className="text-[11px] text-gris-dark">
+                  {ordenados.length} de {todos.length}
                 </div>
-                {c.estado === 'pendiente' && (
-                  <div className="flex gap-2 mt-3 flex-wrap">
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={ev => {
-                        ev.stopPropagation()
-                        marcarCobrado(c.id, {
-                          onSuccess: () => toast('✓ Marcado como cobrado', 'ok'),
-                          onError:   (err: any) => {
-                            if (err?.body?.error === 'FALTA_COMPROBANTE_PAGO') {
-                              toast('Subí el comprobante de pago antes de marcar cobrado', 'err')
-                            } else {
-                              toast(err?.message || 'Error al marcar cobrado', 'err')
-                            }
-                          },
-                        })
-                      }}
+              </div>
+
+              {/* Chips de estado */}
+              <div className="flex gap-1.5 flex-wrap">
+                {([
+                  { key: 'pendientes' as const, label: `⚠ Pendientes (${countPendGlob})`, color: 'bg-naranja text-white border-naranja', alt: 'border-naranja text-naranja-dark' },
+                  { key: 'cobrados'   as const, label: `✓ Cobrados (${countCobrGlob})`,   color: 'bg-verde text-white border-verde',     alt: 'border-verde text-verde' },
+                  { key: 'todos'      as const, label: `Todos (${todos.length})`,         color: 'bg-azul text-white border-azul',       alt: 'border-azul text-azul-mid' },
+                ]).map(opt => {
+                  const active = filtroEstadoCobro === opt.key
+                  return (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => setFiltroEstadoCobro(opt.key)}
+                      className={`text-xs font-bold px-3 py-1.5 rounded-full border-[1.5px] transition-colors ${
+                        active ? opt.color : `bg-white ${opt.alt} hover:bg-gris/40`
+                      }`}
                     >
-                      ✓ Marcar cobrado
-                    </Button>
-                  </div>
-                )}
-                {c.estado === 'cobrado' && (
-                  <div className="flex gap-2 mt-3 flex-wrap">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={ev => {
-                        ev.stopPropagation()
-                        if (!confirm('¿Revertir este cobro a pendiente?')) return
-                        revertirCobrado(c.id, {
-                          onSuccess: () => toast('✓ Cobro revertido a pendiente', 'ok'),
-                          onError:   (err: any) => toast(err?.message || 'Error al revertir', 'err'),
-                        })
-                      }}
+                      {opt.label}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* Búsqueda + rango fechas */}
+              <div className="flex items-end gap-2 flex-wrap">
+                <div className="relative flex-1 min-w-[180px]">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gris-dark text-xs">🔍</span>
+                  <input
+                    type="text"
+                    value={busquedaCobro}
+                    onChange={e => setBusquedaCobro(e.target.value)}
+                    placeholder="Buscar empresa..."
+                    className="w-full pl-8 pr-3 py-1.5 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white focus:border-naranja"
+                  />
+                  {busquedaCobro && (
+                    <button
+                      onClick={() => setBusquedaCobro('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gris-dark hover:text-carbon text-xs"
                     >
-                      ↩ Revertir a pendiente
-                    </Button>
-                  </div>
+                      ✕
+                    </button>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gris-dark uppercase tracking-wider mb-0.5">
+                    Desde
+                  </label>
+                  <input
+                    type="date"
+                    value={cobroDesde}
+                    onChange={e => setCobroDesde(e.target.value)}
+                    className="border-[1.5px] border-gris-mid rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:border-naranja"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gris-dark uppercase tracking-wider mb-0.5">
+                    Hasta
+                  </label>
+                  <input
+                    type="date"
+                    value={cobroHasta}
+                    onChange={e => setCobroHasta(e.target.value)}
+                    className="border-[1.5px] border-gris-mid rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:border-naranja"
+                  />
+                </div>
+                {hayFiltrosFecha && (
+                  <button
+                    onClick={() => { setCobroDesde(''); setCobroHasta('') }}
+                    className="text-[11px] text-gris-dark hover:text-rojo pb-2"
+                  >
+                    ✕ Limpiar fechas
+                  </button>
                 )}
               </div>
-            ))}
+
+              {/* Resumen */}
+              <div className="flex items-center gap-3 flex-wrap text-[11px] text-gris-dark">
+                <span><strong className="text-naranja-dark">{pendientesVis.length}</strong> pendiente{pendientesVis.length !== 1 ? 's' : ''} · <span className="font-mono font-bold text-naranja-dark">{fmtM(totalAdeudado)}</span> adeudado</span>
+                <span className="text-gris-mid">·</span>
+                <span><strong className="text-verde">{cobradosVis.length}</strong> cobrado{cobradosVis.length !== 1 ? 's' : ''} · <span className="font-mono font-bold text-verde">{fmtM(totalCobrado)}</span></span>
+              </div>
+            </div>
+
+            {/* Lista compacta */}
+            {ordenados.length === 0 ? (
+              <div className="px-4 py-8 text-center text-sm text-gris-dark italic">
+                Sin cobros para los filtros aplicados.
+              </div>
+            ) : (
+              <div className="divide-y divide-gris">
+                {ordenados.map(c => {
+                  const cobrado = c.estado === 'cobrado'
+                  return (
+                    <div
+                      key={c.id}
+                      onClick={() => setCobroDetalle(c)}
+                      className={`px-4 py-2.5 flex items-center gap-3 flex-wrap cursor-pointer hover:bg-gris/40 transition-colors border-l-4 ${cobrado ? 'border-verde' : 'border-naranja'}`}
+                    >
+                      <span className={`text-sm shrink-0 ${cobrado ? 'text-verde' : 'text-naranja'}`}>
+                        {cobrado ? '✓' : '⚠'}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-bold text-sm text-azul truncate">
+                          {c.empresas_transportistas?.nombre ?? '—'}
+                        </div>
+                        <div className="text-[11px] text-gris-dark">
+                          {fmtFecha(c.fecha_desde)} → {fmtFecha(c.fecha_hasta)} · {fmtTon(c.toneladas_totales)}
+                        </div>
+                      </div>
+                      <div className="font-mono font-bold text-base shrink-0 text-right">
+                        <span className={cobrado ? 'text-verde' : 'text-naranja-dark'}>{fmtM(c.total)}</span>
+                      </div>
+                      {!cobrado && (
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={ev => {
+                            ev.stopPropagation()
+                            marcarCobrado(c.id, {
+                              onSuccess: () => toast('✓ Marcado como cobrado', 'ok'),
+                              onError:   (err: any) => {
+                                if (err?.body?.error === 'FALTA_COMPROBANTE_PAGO') {
+                                  toast('Subí el comprobante de pago antes de marcar cobrado', 'err')
+                                } else {
+                                  toast(err?.message || 'Error al marcar cobrado', 'err')
+                                }
+                              },
+                            })
+                          }}
+                        >
+                          ✓ Cobrar
+                        </Button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* Modal detalle de cobro */}
       <Modal
