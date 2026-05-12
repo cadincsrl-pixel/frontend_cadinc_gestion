@@ -606,16 +606,23 @@ export type ModuloPermisos = { [K in Accion]?: boolean } & {
   // - certificaciones.resolver_items: puede comprar/despachar/enviar/rechazar
   //   items (acciones del comprador/encargado, NO del jefe de obra).
   // - certificaciones.forzar_despacho: forzar despacho sin stock disponible.
+  // - tarja.administrar_obras: crear/editar/archivar/desarchivar/eliminar
+  //   la entidad obra (metadata: nombre, dir, responsable, etc.).
+  //   Independiente de tarja.{creacion,actualizacion,eliminacion} que
+  //   controlan operaciones sobre horas/asignaciones. Solo
+  //   administrativo/admin lo tienen. El jefe_obra puede cargar horas y
+  //   agregar trabajadores pero NO mutar la entidad obra.
   //
   // Legacy (en transición, ya no se setea pero se lee si existe):
   // - tarja.solo_carga_horas: inverso de vista_completa. Reemplazado en
   //   abril/mayo 2026 por vista_completa para unificar polaridad.
-  ver_costos?:      boolean
-  ver_pii?:         boolean
-  vista_completa?:  boolean
-  solo_carga_horas?: boolean
-  resolver_items?:  boolean
-  forzar_despacho?: boolean
+  ver_costos?:        boolean
+  ver_pii?:           boolean
+  vista_completa?:    boolean
+  solo_carga_horas?:  boolean
+  resolver_items?:    boolean
+  forzar_despacho?:   boolean
+  administrar_obras?: boolean
 }
 export type Permisos = Record<string, ModuloPermisos>
 

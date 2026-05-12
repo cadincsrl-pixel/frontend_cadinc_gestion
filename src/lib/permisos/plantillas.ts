@@ -38,7 +38,7 @@ export const PRESETS: PresetBase[] = [
     descripcion: 'Gestión amplia: tarja, logística, compras y stock, ropa, préstamos, configuración. Sin caja.',
     modulos: ['tarja', 'logistica', 'certificaciones', 'ropa', 'prestamos', 'configuracion'],
     permisos: {
-      tarja:           { ...fullCRUD, ver_costos: true, ver_pii: true, vista_completa: true },
+      tarja:           { ...fullCRUD, ver_costos: true, ver_pii: true, vista_completa: true, administrar_obras: true },
       logistica:       { ...fullCRUD },
       certificaciones: { ...fullCRUD, resolver_items: true, forzar_despacho: true },
       ropa:            { ...fullCRUD },
@@ -86,13 +86,24 @@ export const PRESETS: PresetBase[] = [
   {
     key:   'jefe_obra',
     label: 'Jefe de obra',
-    descripcion: 'Crea y gestiona pedidos (solicitudes) de SUS obras. No resuelve compras.',
-    modulos: ['certificaciones'],
+    descripcion: 'Crea y gestiona pedidos (solicitudes) de SUS obras. Agrega y edita trabajadores en tarja. Sin costos ni datos personales.',
+    modulos: ['certificaciones', 'tarja'],
     permisos: {
       certificaciones: {
         ...fullCRUD,
         tabs: ['solicitudes'],
       },
+      tarja: {
+        lectura: true, creacion: true, actualizacion: true, eliminacion: false,
+        tabs: ['tarja'],
+        ver_costos:     false,
+        ver_pii:        false,
+        vista_completa: true,
+        // Override por módulo (tipo extendido vía cast, igual que en los
+        // addons). Mantiene el scope='asignadas' aun si el admin cambia el
+        // global del usuario.
+        obras_scope:    'asignadas',
+      } as Permisos[string] & { obras_scope: ObrasScope },
     },
     obras_scope_default: 'asignadas',
   },

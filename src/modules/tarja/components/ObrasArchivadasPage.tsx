@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useObrasArchivadas, useDesarchivarObra } from '@/modules/tarja/hooks/useObras'
+import { usePermisos } from '@/hooks/usePermisos'
 import { usePersonal } from '@/modules/tarja/hooks/usePersonal'
 import { useContratistasObra, useCertificacionesObra } from '@/modules/tarja/hooks/useContratistas'
 import { apiGet } from '@/lib/api/client'
@@ -132,6 +133,7 @@ function ObraArchivadasRow({ obra }: { obra: Obra }) {
   const toast = useToast()
   const router = useRouter()
   const { mutate: desarchivar, isPending } = useDesarchivarObra()
+  const { puedeAdministrarObras } = usePermisos('tarja')
 
   function handleDesarchivar(e: React.MouseEvent) {
     e.stopPropagation()
@@ -172,13 +174,15 @@ function ObraArchivadasRow({ obra }: { obra: Obra }) {
           >
             Ver horas
           </button>
-          <button
-            onClick={handleDesarchivar}
-            disabled={isPending}
-            className="text-xs font-bold px-3 py-1 rounded bg-azul text-white hover:bg-azul/80 transition-colors disabled:opacity-50"
-          >
-            {isPending ? '...' : '↩ Desarchivar'}
-          </button>
+          {puedeAdministrarObras && (
+            <button
+              onClick={handleDesarchivar}
+              disabled={isPending}
+              className="text-xs font-bold px-3 py-1 rounded bg-azul text-white hover:bg-azul/80 transition-colors disabled:opacity-50"
+            >
+              {isPending ? '...' : '↩ Desarchivar'}
+            </button>
+          )}
           <span className="text-gris-dark text-sm select-none">{expandida ? '▲' : '▼'}</span>
         </div>
       </div>

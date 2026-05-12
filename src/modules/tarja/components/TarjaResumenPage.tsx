@@ -32,7 +32,7 @@ const SORT_STORAGE_KEY = 'tarja:obras:sort'
 export function TarjaResumenPage() {
   const router = useRouter()
   const toast = useToast()
-  const { puedeCrear, soloCargaHoras } = usePermisos('tarja')
+  const { puedeAdministrarObras, soloCargaHoras } = usePermisos('tarja')
   const { data: obras = [], isLoading } = useObras('tarja')
   const perfiles = usePerfilesMap()
   const [modalObra, setModalObra] = useState(false)
@@ -212,7 +212,7 @@ export function TarjaResumenPage() {
               {obras.length} obra{obras.length !== 1 ? 's' : ''} en curso
             </p>
           </div>
-          {puedeCrear && !soloCargaHoras && (
+          {puedeAdministrarObras && !soloCargaHoras && (
             <Button variant="primary" size="sm" onClick={() => setModalObra(true)}>
               ＋ Nueva obra
             </Button>

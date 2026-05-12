@@ -41,7 +41,7 @@ interface Props {
 
 export function TarjaObraPage({ obraCod }: Props) {
   const toast = useToast()
-  const { puedeEditar, puedeCrear, verCostos, soloCargaHoras } = usePermisos('tarja')
+  const { puedeEditar, puedeCrear, puedeAdministrarObras, verCostos, soloCargaHoras } = usePermisos('tarja')
   // Modo "solo lectura" para roles supervisores (jefe_obra_supervisor):
   // ven la tabla y pueden navegar pero no editan. Ocultamos las secciones
   // de gestión que les son irrelevantes.
@@ -321,7 +321,7 @@ export function TarjaObraPage({ obraCod }: Props) {
             <Chip value={desde} label="Período" variant="orange" />
           </div>
           {/* Acciones — solo en obras activas y para usuarios distintos al capataz */}
-          {puedeEditar && !archivada && !soloCargaHoras && (
+          {puedeAdministrarObras && !archivada && !soloCargaHoras && (
             <div className="flex items-center gap-1 flex-wrap">
               <Button variant="ghost" size="sm" onClick={() => setModalEditarObra(true)}>
                 ✏️ Editar

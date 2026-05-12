@@ -30,8 +30,7 @@ export function useObras(modulo?: string) {
     if (!profile) return
     const puedeAutoArchivar =
       profile.rol === 'admin' ||
-      ((profile.permisos as any)?.tarja?.actualizacion === true &&
-       (profile.permisos as any)?.tarja?.solo_carga_horas !== true)
+      (profile.permisos as any)?.tarja?.administrar_obras === true
     if (!puedeAutoArchivar) return
 
     const KEY = 'obras:autoArchivar:lastRun'

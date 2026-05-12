@@ -54,6 +54,10 @@ export function usePermisos(modulo: string) {
     vistaCompleta,                                            // unificado: true=ve toolbar/cierres/tarifas/etc
     resolverItems:   flagCapacidad('resolver_items', false),
     forzarDespacho:  flagCapacidad('forzar_despacho', false),
+    // tarja.administrar_obras: crear/editar/archivar/borrar la entidad obra.
+    // Independiente de puedeCrear/puedeEditar/puedeEliminar (que en tarja
+    // controlan las horas/asignaciones). Admin siempre true por bypass.
+    puedeAdministrarObras: flagCapacidad('administrar_obras', false),
     // Legacy: mantengo la prop para no romper consumers que aún no migraron.
     // Es el inverso exacto de vistaCompleta.
     soloCargaHoras:  !vistaCompleta,
