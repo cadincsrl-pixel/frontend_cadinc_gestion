@@ -454,6 +454,51 @@ export interface FlotaDocumento {
   updated_by:     string | null
 }
 
+export interface FlotaTipoServicio {
+  id:               number
+  nombre:           string
+  intervalo_km:     number | null
+  intervalo_meses:  number | null
+  activo:           boolean
+  created_at:       string
+}
+
+export interface FlotaServicio {
+  id:                number
+  vehiculo_id:       number
+  tipo_id:           number | null
+  tipo_libre:        string | null
+  fecha:             string
+  km_service:        number
+  km_proximo:        number | null
+  fecha_proximo:     string | null
+  descripcion:       string | null
+  costo:             number | null
+  proveedor:         string | null
+  comprobante_path:  string | null
+  obs:               string | null
+  created_at:        string
+  created_by:        string | null
+  updated_at:        string
+  updated_by:        string | null
+}
+
+export type FlotaServicioEstado = 'sin_service' | 'vencido' | 'proximo' | 'al_dia'
+
+export interface FlotaServicioEstadoRow {
+  vehiculo_id:           number
+  patente:               string
+  km_actuales:           number
+  fecha_ultimo_service:  string | null
+  km_ultimo_service:     number | null
+  km_proximo:            number | null
+  fecha_proximo:         string | null
+  tipo_id_proximo:       number | null
+  estado:                FlotaServicioEstado
+  km_restantes:          number | null
+  dias_restantes:        number | null
+}
+
 export interface Cantera {
   id: number
   nombre: string

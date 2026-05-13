@@ -11,6 +11,7 @@ import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useUpdateFlotaVehiculo, useDeleteFlotaVehiculo } from '../hooks/useFlotaVehiculos'
 import { FlotaDocumentosSection } from './FlotaDocumentosSection'
+import { VehiculoServiciosSection } from './VehiculoServiciosSection'
 import type { FlotaVehiculo, FlotaVehiculoTipo, FlotaVehiculoEstado } from '@/types/domain.types'
 
 interface Props {
@@ -70,8 +71,8 @@ export function VehiculoDetalleModal({ vehiculo, onClose }: Props) {
   const { mutate: update, isPending: updating } = useUpdateFlotaVehiculo()
   const { mutate: remove } = useDeleteFlotaVehiculo()
 
-  // Tab interno: 'datos' (edición) | 'papeles' (uploads).
-  const [tab, setTab] = useState<'datos' | 'papeles'>('datos')
+  // Tab interno del modal: datos del vehículo, papeles, servicios.
+  const [tab, setTab] = useState<'datos' | 'papeles' | 'servicios'>('datos')
   // Modo detalle vs edición — los inputs arrancan deshabilitados.
   const [modoEdicion, setModoEdicion] = useState(false)
   const form = useForm<FormData>()
@@ -184,6 +185,16 @@ export function VehiculoDetalleModal({ vehiculo, onClose }: Props) {
           >
             📂 Papeles
           </button>
+          <button
+            onClick={() => setTab('servicios')}
+            className={`px-3 py-1.5 text-xs font-bold transition-colors border-b-2 -mb-px ${
+              tab === 'servicios'
+                ? 'border-naranja text-naranja-dark'
+                : 'border-transparent text-gris-dark hover:text-naranja'
+            }`}
+          >
+            🔧 Servicios
+          </button>
         </div>
 
         {tab === 'datos' && (
@@ -262,6 +273,10 @@ export function VehiculoDetalleModal({ vehiculo, onClose }: Props) {
 
         {tab === 'papeles' && (
           <FlotaDocumentosSection vehiculoId={vehiculo.id} />
+        )}
+
+        {tab === 'servicios' && (
+          <VehiculoServiciosSection vehiculo={vehiculo} />
         )}
       </div>
     </Modal>

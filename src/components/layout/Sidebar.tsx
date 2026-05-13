@@ -132,7 +132,9 @@ const NAV_ITEMS_ADMIN = [
 ]
 
 const NAV_ITEMS_FLOTA = [
-  { tab: 'vehiculos', icon: '🚙', label: 'Vehículos', meta: 'Flota interna de CADINC' },
+  { tab: 'vehiculos',  icon: '🚙', label: 'Vehículos',  meta: 'Flota interna de CADINC' },
+  { tab: 'servicios',  icon: '🔧', label: 'Servicios',  meta: 'Historial de mantenimiento' },
+  { tab: 'parametros', icon: '⚙️', label: 'Parámetros', meta: 'Tipos de servicio' },
 ]
 
 function FlotaNav({ navigate, activeTab, allowedTabs }: { navigate: (href: string) => void; activeTab: string; allowedTabs?: string[] }) {

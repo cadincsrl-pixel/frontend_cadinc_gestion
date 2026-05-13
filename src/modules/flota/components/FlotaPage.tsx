@@ -4,10 +4,14 @@ import { useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useTabsPermitidos } from '@/hooks/useTabsPermitidos'
 import { VehiculosTab } from './VehiculosTab'
+import { ServiciosTab } from './ServiciosTab'
+import { ParametrosTab } from './ParametrosTab'
 import { FlotaNotificacionesSection } from './FlotaNotificacionesSection'
 
 const TABS = [
-  { key: 'vehiculos', icon: '🚙', label: 'Vehículos', sub: 'Flota interna de CADINC' },
+  { key: 'vehiculos',  icon: '🚙', label: 'Vehículos',  sub: 'Flota interna de CADINC' },
+  { key: 'servicios',  icon: '🔧', label: 'Servicios',  sub: 'Historial de services de mantenimiento' },
+  { key: 'parametros', icon: '⚙️', label: 'Parámetros', sub: 'Catálogo de tipos de servicio y reglas' },
 ]
 
 export function FlotaPage() {
@@ -38,11 +42,13 @@ export function FlotaPage() {
       </div>
 
       {/* Notificaciones locales del módulo (papeles vencidos / por vencer) */}
-      <FlotaNotificacionesSection />
+      {tab === 'vehiculos' && <FlotaNotificacionesSection />}
 
       {/* Contenido */}
       <div className="flex flex-col gap-4">
-        {tab === 'vehiculos' && <VehiculosTab />}
+        {tab === 'vehiculos'  && <VehiculosTab />}
+        {tab === 'servicios'  && <ServiciosTab />}
+        {tab === 'parametros' && <ParametrosTab />}
       </div>
     </div>
   )
