@@ -35,6 +35,17 @@ export function ChoferesTab() {
   // El modal arranca en modo detalle (read-only). El usuario apreta "Editar"
   // para habilitar el form. Cancelar vuelve a detalle y descarta cambios.
   const [modoEdicion, setModoEdicion] = useState(false)
+  // Reasignación pendiente: el camión/batea elegidos ya estaban en otro
+  // chofer y el usuario tiene que confirmar antes de hacer el swap.
+  const [pendienteReasig, setPendienteReasig] = useState<null | {
+    modo: 'crear' | 'editar'
+    dto: any
+    nombreNuevo: string
+    conflictos: {
+      camion?: { chofer_nombre: string; patente: string }
+      batea?:  { chofer_nombre: string; patente: string }
+    }
+  }>(null)
   const formNuevo = useForm<any>()
   const formEdit  = useForm<any>()
 
@@ -67,24 +78,88 @@ export function ChoferesTab() {
     return '$' + Math.round(n).toLocaleString('es-AR')
   }
 
-  function handleCreate(data: any) {
-    create(normalizar(data), {
-      onSuccess: () => { toast('✓ Chofer agregado', 'ok'); setModalNuevo(false); formNuevo.reset() },
+  // Detecta si el camión/batea que se está asignando ya pertenecía a otro
+  // chofer (excluyendo al propio si estamos editando). Devuelve los nombres
+  // para mostrarlos en el modal de confirmación. Usa el cache de React Query
+  // — el backend hace la validación atómica igual, esto es solo UX.
+  function detectarConflictos(dto: any, idActual?: number) {
+    const conflictos: {
+      camion?: { chofer_nombre: string; patente: string }
+      batea?:  { chofer_nombre: string; patente: string }
+    } = {}
+    if (dto.camion_id != null) {
+      const prev = choferes.find(c => c.camion_id === dto.camion_id && c.id !== idActual)
+      const cam  = camiones.find(c => c.id === dto.camion_id)
+      if (prev && cam) conflictos.camion = { chofer_nombre: prev.nombre, patente: cam.patente }
+    }
+    if (dto.batea_id != null) {
+      const prev = choferes.find(c => c.batea_id === dto.batea_id && c.id !== idActual)
+      const bat  = bateas.find(b => b.id === dto.batea_id)
+      if (prev && bat) conflictos.batea = { chofer_nombre: prev.nombre, patente: bat.patente }
+    }
+    return conflictos
+  }
+
+  function ejecutarCrear(dto: any) {
+    create(dto, {
+      onSuccess: (resp: any) => {
+        toast(mensajeExito('Chofer agregado', resp?.displaced), 'ok')
+        setModalNuevo(false)
+        formNuevo.reset()
+      },
       onError:   () => toast('Error al agregar', 'err'),
     })
   }
 
-  function handleUpdate(data: any) {
-    if (!editando) return
-    update({ id: editando.id, dto: normalizar(data) }, {
-      onSuccess: () => {
-        toast('✓ Chofer actualizado', 'ok')
+  function ejecutarActualizar(id: number, dto: any) {
+    update({ id, dto }, {
+      onSuccess: (resp: any) => {
+        toast(mensajeExito('Chofer actualizado', resp?.displaced), 'ok')
         // Volver a modo detalle dentro del mismo modal — el usuario sigue
         // viendo los datos actualizados sin tener que reabrirlo.
         setModoEdicion(false)
       },
       onError:   () => toast('Error al actualizar', 'err'),
     })
+  }
+
+  function mensajeExito(base: string, displaced?: { camion?: { nombre: string }; batea?: { nombre: string } }) {
+    if (!displaced || (!displaced.camion && !displaced.batea)) return `✓ ${base}`
+    const partes: string[] = []
+    if (displaced.camion) partes.push(`camión liberado de ${displaced.camion.nombre}`)
+    if (displaced.batea)  partes.push(`batea liberada de ${displaced.batea.nombre}`)
+    return `✓ ${base} — ${partes.join(' · ')}`
+  }
+
+  function handleCreate(data: any) {
+    const dto = normalizar(data)
+    const conflictos = detectarConflictos(dto)
+    if (conflictos.camion || conflictos.batea) {
+      setPendienteReasig({ modo: 'crear', dto, nombreNuevo: dto.nombre, conflictos })
+      return
+    }
+    ejecutarCrear(dto)
+  }
+
+  function handleUpdate(data: any) {
+    if (!editando) return
+    const dto = normalizar(data)
+    const conflictos = detectarConflictos(dto, editando.id)
+    if (conflictos.camion || conflictos.batea) {
+      setPendienteReasig({ modo: 'editar', dto, nombreNuevo: editando.nombre, conflictos })
+      return
+    }
+    ejecutarActualizar(editando.id, dto)
+  }
+
+  function confirmarReasignacion() {
+    if (!pendienteReasig) return
+    if (pendienteReasig.modo === 'crear') {
+      ejecutarCrear(pendienteReasig.dto)
+    } else if (editando) {
+      ejecutarActualizar(editando.id, pendienteReasig.dto)
+    }
+    setPendienteReasig(null)
   }
 
   function handleDelete(chofer: Chofer) {
@@ -345,6 +420,50 @@ export function ChoferesTab() {
             updatedAt={editando?.updated_at}
           />
         </div>
+      </Modal>
+
+      {/* Confirmación de reasignación: el camión y/o batea elegidos ya estaban
+          en otro chofer. Al confirmar, el backend libera al chofer anterior. */}
+      <Modal
+        open={!!pendienteReasig}
+        onClose={() => setPendienteReasig(null)}
+        title="⚠ REASIGNACIÓN DE UNIDADES"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setPendienteReasig(null)}>Cancelar</Button>
+            <Button variant="primary" loading={creating || updating} onClick={confirmarReasignacion}>
+              ✓ Confirmar
+            </Button>
+          </>
+        }
+      >
+        {pendienteReasig && (
+          <div className="flex flex-col gap-3 text-sm">
+            {pendienteReasig.conflictos.camion && (
+              <div className="bg-amarillo-light border border-amarillo/40 rounded-lg p-3">
+                <div className="font-bold text-carbon">
+                  Camión <span className="font-mono">{pendienteReasig.conflictos.camion.patente}</span>
+                </div>
+                <div className="text-gris-dark text-xs mt-0.5">
+                  Está asignado a <b>{pendienteReasig.conflictos.camion.chofer_nombre}</b> — quedará sin camión.
+                </div>
+              </div>
+            )}
+            {pendienteReasig.conflictos.batea && (
+              <div className="bg-amarillo-light border border-amarillo/40 rounded-lg p-3">
+                <div className="font-bold text-carbon">
+                  Batea <span className="font-mono">{pendienteReasig.conflictos.batea.patente}</span>
+                </div>
+                <div className="text-gris-dark text-xs mt-0.5">
+                  Está asignada a <b>{pendienteReasig.conflictos.batea.chofer_nombre}</b> — quedará sin batea.
+                </div>
+              </div>
+            )}
+            <div className="text-carbon pt-1">
+              ¿Confirmás la reasignación a <b>{pendienteReasig.nombreNuevo}</b>?
+            </div>
+          </div>
+        )}
       </Modal>
     </>
   )
