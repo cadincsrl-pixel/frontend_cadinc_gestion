@@ -264,10 +264,10 @@ export function ViajesTab() {
     return ruta?.km_ida_vuelta ?? null
   }
 
-  // Autocompletado del origen al crear un tramo nuevo. Cuando el user elige
-  // camión + tipo, prellenamos cantera (para cargado) o depósito (para vacío)
-  // con el último valor que tuvo ese camión en un tramo CARGADO. No pisamos
-  // si el user ya eligió manualmente — el watch arranca con string vacío.
+  // Autocompletado de origen + destino al crear un tramo nuevo. Cuando el user
+  // elige camión + tipo, prellenamos cantera y depósito con los del último
+  // tramo CARGADO de ese camión (asumimos que repite la ruta). No pisamos si
+  // el user ya eligió manualmente — el watch arranca con string vacío.
   const watchModalAbierto = modalNuevo
   const watchTipoNuevo    = formNuevo.watch('tipo')
   const watchCamionNuevo  = formNuevo.watch('camion_id')
@@ -276,14 +276,11 @@ export function ViajesTab() {
     const camionId = Number(watchCamionNuevo)
     const ultimoCargado = getUltimoTramoDe(t => t.camion_id === camionId && t.tipo === 'cargado')
     if (!ultimoCargado) return
-    if (watchTipoNuevo === 'cargado') {
-      if (!formNuevo.getValues('cantera_id') && ultimoCargado.cantera_id != null) {
-        formNuevo.setValue('cantera_id', String(ultimoCargado.cantera_id))
-      }
-    } else if (watchTipoNuevo === 'vacio') {
-      if (!formNuevo.getValues('deposito_id') && ultimoCargado.deposito_id != null) {
-        formNuevo.setValue('deposito_id', String(ultimoCargado.deposito_id))
-      }
+    if (!formNuevo.getValues('cantera_id') && ultimoCargado.cantera_id != null) {
+      formNuevo.setValue('cantera_id', String(ultimoCargado.cantera_id))
+    }
+    if (!formNuevo.getValues('deposito_id') && ultimoCargado.deposito_id != null) {
+      formNuevo.setValue('deposito_id', String(ultimoCargado.deposito_id))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watchModalAbierto, watchCamionNuevo, watchTipoNuevo])
