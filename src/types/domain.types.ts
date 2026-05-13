@@ -417,6 +417,14 @@ export type FlotaDocTipo =
   | 'titulo' | 'tarjeta_verde' | 'vtv' | 'rto'
   | 'poliza_seguro' | 'patente' | 'oblea' | 'otro'
 
+// Estado del último sync de GPS para un vehículo.
+// Refleja el outcome del último intento de MobilQuest:
+//   - `ok`         → llegó lectura nueva y se actualizó km.
+//   - `sin_cambio` → llegó lectura pero el km no avanzó (auto detenido, etc).
+//   - `error`      → falló el patch contra DB (raro).
+//   - `no_match`   → MobilQuest no devolvió lecturas para ese device_id.
+export type FlotaGpsSyncEstado = 'ok' | 'sin_cambio' | 'error' | 'no_match'
+
 export interface FlotaVehiculo {
   id:                          number
   patente:                     string
@@ -431,11 +439,62 @@ export interface FlotaVehiculo {
   estado:                      FlotaVehiculoEstado
   mobilquest_device_id:        string | null
   mobilquest_ultima_sync_at:   string | null
+  // ── Cache del último sync de GPS (denormalizado para no joinear con el log) ──
+  gps_ultima_lat?:             number | null
+  gps_ultima_lng?:             number | null
+  gps_ultima_velocidad?:       number | null
+  gps_ultima_lectura_en?:      string | null
+  gps_ultimo_sync_estado?:     FlotaGpsSyncEstado | null
+  gps_ultimo_sync_error?:      string | null
+  km_actualizado_en?:          string | null
   obs:                         string | null
   created_by:                  string | null
   created_at:                  string
   updated_by:                  string | null
   updated_at:                  string
+}
+
+// Bitácora de cada intento de sync (uno por vehículo por ciclo).
+// `tipo` es el disparador: 'manual_global' | 'manual_individual' | 'cron'.
+export interface FlotaGpsSyncLog {
+  id:               number
+  vehiculo_id:      number | null
+  id_vehiculo_gps:  string | null
+  patente_gps:      string | null
+  tipo:             string
+  estado:           FlotaGpsSyncEstado
+  km_anterior:      number | null
+  km_nuevo:         number | null
+  velocidad:        number | null
+  lectura_gps_en:   string | null
+  error_mensaje:    string | null
+  duracion_ms:      number | null
+  created_at:       string
+  created_by:       string | null
+}
+
+// Resumen devuelto por POST /api/flota/gps/sync-todos.
+export interface FlotaGpsSyncResumen {
+  total:       number
+  ok:          number
+  sin_cambio:  number
+  no_match:    number
+  error:       number
+  duracion_ms: number
+}
+
+// Respuesta de POST /api/flota/gps/sync/:vehiculo_id.
+export interface FlotaGpsSyncIndividualResp {
+  vehiculo:  FlotaVehiculo
+  resultado: {
+    vehiculo_id:     number | null
+    id_vehiculo_gps: string
+    patente_gps:     string | null
+    estado:          FlotaGpsSyncEstado
+    km_anterior:     number | null
+    km_nuevo:        number | null
+    error_mensaje:   string | null
+  }
 }
 
 export interface FlotaDocumento {

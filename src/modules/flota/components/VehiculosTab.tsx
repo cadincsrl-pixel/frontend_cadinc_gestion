@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useFlotaVehiculos, useCreateFlotaVehiculo } from '../hooks/useFlotaVehiculos'
+import { useFlotaSyncTodos, mensajeAmigableErrorSync } from '../hooks/useFlotaGpsSync'
 import { VehiculoDetalleModal } from './VehiculoDetalleModal'
 import type { FlotaVehiculo, FlotaVehiculoTipo, FlotaVehiculoEstado } from '@/types/domain.types'
 
@@ -45,9 +46,10 @@ function fmtKm(n: number | null | undefined): string {
 
 export function VehiculosTab() {
   const toast = useToast()
-  const { puedeCrear } = usePermisos('flota')
+  const { puedeCrear, puedeEditar } = usePermisos('flota')
   const { data: vehiculos = [], isLoading } = useFlotaVehiculos()
   const { mutate: create, isPending: creating } = useCreateFlotaVehiculo()
+  const { mutate: syncTodos, isPending: syncingAll } = useFlotaSyncTodos()
 
   const [modalNuevo, setModalNuevo] = useState(false)
   const [detalleId, setDetalleId] = useState<number | null>(null)
@@ -71,6 +73,21 @@ export function VehiculosTab() {
       (v.modelo ?? '').toLowerCase().includes(q),
     )
   }, [vehiculos, busqueda])
+
+  function handleSyncTodos() {
+    syncTodos(undefined, {
+      onSuccess: (r) => {
+        // Mostramos resumen compacto. `ok` = actualizados, `sin_cambio` = ya estaban
+        // al día, `error` + `no_match` los agrupamos como "con problemas".
+        const problemas = r.error + r.no_match
+        toast(
+          `✓ Sync completo — ${r.ok} actualizados, ${r.sin_cambio} sin cambios, ${problemas} con problemas`,
+          problemas > 0 ? 'warn' : 'ok',
+        )
+      },
+      onError: (err) => toast(mensajeAmigableErrorSync(err), 'err'),
+    })
+  }
 
   function handleCreate(data: NuevoForm) {
     create(
@@ -113,11 +130,23 @@ export function VehiculosTab() {
             <Button variant="ghost" size="sm" onClick={() => setBusqueda('')}>✕ Limpiar</Button>
           )}
         </div>
-        {puedeCrear && (
-          <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)}>
-            ＋ Nuevo vehículo
-          </Button>
-        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          {puedeEditar && (
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={syncingAll}
+              onClick={handleSyncTodos}
+            >
+              🔄 Sincronizar flota
+            </Button>
+          )}
+          {puedeCrear && (
+            <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)}>
+              ＋ Nuevo vehículo
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Tabla — desktop/tablet */}

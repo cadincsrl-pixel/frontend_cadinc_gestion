@@ -12,6 +12,7 @@ import { usePermisos } from '@/hooks/usePermisos'
 import { useUpdateFlotaVehiculo, useDeleteFlotaVehiculo } from '../hooks/useFlotaVehiculos'
 import { FlotaDocumentosSection } from './FlotaDocumentosSection'
 import { VehiculoServiciosSection } from './VehiculoServiciosSection'
+import { GpsBlock } from './GpsBlock'
 import type { FlotaVehiculo, FlotaVehiculoTipo, FlotaVehiculoEstado } from '@/types/domain.types'
 
 interface Props {
@@ -243,6 +244,12 @@ export function VehiculoDetalleModal({ vehiculo, onClose }: Props) {
               }
               {...form.register('mobilquest_device_id')}
             />
+
+            {/* Bloque de detalle GPS solo en modo lectura. En edición el user
+                está cambiando el device_id y mostrar este bloque (que muestra
+                datos del device viejo) confunde el flujo. */}
+            {!modoEdicion && <GpsBlock vehiculo={vehiculo} />}
+
             <Input
               label="Observaciones"
               placeholder="Notas..."
