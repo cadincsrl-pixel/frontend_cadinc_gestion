@@ -39,6 +39,10 @@ type TramoFormValues = {
   remito_descarga?: string
   remito_descarga_img_url?: string
   fecha_vacio?: string
+  // Solo se usa cuando tipo='vacio' en el modal manual. Default false → el
+  // tramo se crea `en_curso` (asumimos que se carga mientras está pasando).
+  // Si el user lo carga retrospectivamente, lo tilda y va `completado`.
+  vacio_completado?: boolean
   obs?: string
 }
 
@@ -373,6 +377,12 @@ export function ViajesTab() {
       dto.remito_carga_img_url = data.remito_carga_img_url || null
     } else {
       dto.fecha_vacio = data.fecha_vacio
+      // Override del default del backend (vacio→completado). El caso común es
+      // "lo cargo mientras está pasando" → en_curso. Solo si el user tilda
+      // "ya completado" dejamos que aplique el default.
+      if (!data.vacio_completado) {
+        dto.estado = 'en_curso'
+      }
     }
 
     // Si hay vacío auto, encadenamos. Sino, flujo normal.
@@ -407,6 +417,20 @@ export function ViajesTab() {
       },
       onError: () => toast('Error al registrar tramo', 'err'),
     })
+  }
+
+  // Revierte un tramo `vacio completado` a `en_curso`. Útil cuando el user
+  // creó el tramo después de la descarga pero el camión todavía no llegó a
+  // la próxima cantera de carga, así aparece en el seguimiento GPS.
+  function handleMarcarEnCurso(tramo: Tramo) {
+    if (!confirm(`¿Marcar el tramo #${tramo.id} como "en curso"? Indica que el camión todavía no llegó al destino.`)) return
+    updateTramo(
+      { id: tramo.id, dto: { estado: 'en_curso' } },
+      {
+        onSuccess: () => toast('✓ Tramo en curso', 'ok'),
+        onError:   () => toast('Error al actualizar', 'err'),
+      },
+    )
   }
 
   function handleRegistrarDescarga(data: TramoFormValues) {
@@ -844,6 +868,18 @@ export function ViajesTab() {
                       ↩ Revertir descarga
                     </Button>
                   )}
+                  {/* Marcar vacío como en_curso: cuando se creó el tramo después
+                      de la descarga pero el camión todavía no llegó a destino. */}
+                  {!esCargado && tramo.estado === 'completado' && !tramo.liquidacion_id && !tramo.cobro_id && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      loading={updating}
+                      onClick={() => handleMarcarEnCurso(tramo)}
+                    >
+                      ⏳ Marcar en curso
+                    </Button>
+                  )}
                 </div>
               </div>
             )
@@ -987,6 +1023,20 @@ export function ViajesTab() {
                 />
               </div>
               <Input label="Fecha" type="date" {...formNuevo.register('fecha_vacio')} />
+              <label className="flex items-start gap-2 text-sm bg-gris/40 border border-gris-mid rounded-lg p-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="accent-naranja mt-0.5"
+                  {...formNuevo.register('vacio_completado')}
+                />
+                <span className="flex-1">
+                  <span className="font-bold text-carbon">El camión ya llegó al destino</span>
+                  <span className="block text-[11px] text-gris-dark mt-0.5">
+                    Si lo tildás, el tramo queda <b>completado</b>. Si no, queda
+                    <b> en curso</b> con seguimiento GPS activo hasta el destino.
+                  </span>
+                </span>
+              </label>
             </>
           )}
 
