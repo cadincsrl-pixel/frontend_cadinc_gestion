@@ -13,7 +13,6 @@ import {
 } from '@/lib/utils/dates'
 import { costoLegConCatObra, totalHsLeg, fmtMonto, fmtHs, type CatObraEntry } from '@/lib/utils/costos'
 import { apiGet }            from '@/lib/api/client'
-import { ModalDetalleCierre } from './ModalDetalleCierre'
 import { Badge }  from '@/components/ui/Badge'
 import { Chip }   from '@/components/ui/Chip'
 import { useToast }       from '@/components/ui/Toast'
@@ -45,7 +44,6 @@ export function CierresSection({ obraCod }: Props) {
   const { mutate: createCierre, isPending: creating } = useCreateCierre()
   const { mutate: updateCierre, isPending: updating } = useUpdateCierre()
   const [expanded, setExpanded] = useState(true)
-  const [detalle, setDetalle] = useState<Cierre | null>(null)
 
   const semKeyActual = toISO(semActual)
   const perfiles = usePerfilesMap()
@@ -155,7 +153,6 @@ export function CierresSection({ obraCod }: Props) {
         {
           onSuccess: () => {
             toast(nuevoEstado === 'cerrado' ? '✓ Semana cerrada' : '↩ Semana reabierta', 'ok')
-            setDetalle(null)
           },
           onError: () => toast('Error al actualizar el cierre', 'err'),
         }
@@ -178,15 +175,13 @@ export function CierresSection({ obraCod }: Props) {
       <div className="flex flex-col gap-3 mt-2">
 
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <button
-            onClick={() => setExpanded(p => !p)}
-            className="flex items-center gap-2 font-display text-xl tracking-wider text-azul hover:text-naranja transition-colors"
-          >
-            <span>{expanded ? '▾' : '▸'}</span>
-            CIERRES DE SEMANA
-          </button>
-        </div>
+        <button
+          onClick={() => setExpanded(p => !p)}
+          className="self-start flex items-center gap-2 font-display text-xl tracking-wider text-azul hover:text-naranja transition-colors"
+        >
+          <span>{expanded ? '▾' : '▸'}</span>
+          CIERRES DE SEMANA
+        </button>
 
         {/* Lista */}
         {expanded && (
@@ -207,13 +202,13 @@ export function CierresSection({ obraCod }: Props) {
                   <div
                     key={sem.semKey}
                     className={`
-                      bg-white rounded-card shadow-card p-4
+                      bg-white rounded-card shadow-card p-3 sm:p-4
                       border-l-4 transition-all
                       ${borderClr}
                       ${sem.esActual ? 'ring-2 ring-naranja/30' : ''}
                     `}
                   >
-                    <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
 
                       {/* Info */}
                       <div className="flex-1 min-w-0">
@@ -282,23 +277,24 @@ export function CierresSection({ obraCod }: Props) {
                         )}
                       </div>
 
-                      {/* Acciones */}
-                      <div className="flex items-center gap-2 flex-shrink-0">
+                      {/* Acciones — mobile: 50/50; sm+: en línea a la derecha */}
+                      <div className="flex items-center gap-2 sm:flex-shrink-0">
                         <button
                           onClick={() => {
                             setSemActual(vie)
                             document.getElementById('tarja-table-top')?.scrollIntoView({ behavior: 'smooth' })
                           }}
-                          className="text-xs font-bold px-3 py-1.5 rounded-lg bg-azul-light text-azul hover:bg-azul hover:text-white transition-colors"
+                          className="flex-1 sm:flex-none text-xs font-bold px-3 py-1.5 rounded-lg bg-azul-light text-azul hover:bg-azul hover:text-white transition-colors whitespace-nowrap"
                         >
-                          📋 Ver tarja de esta semana
+                          <span className="sm:hidden">📋 Ver tarja</span>
+                          <span className="hidden sm:inline">📋 Ver tarja de esta semana</span>
                         </button>
                         {(puedeEditar || (puedeCrear && !sem.cierre)) && (
                           <button
                             onClick={() => handleAccion(sem, sem.estadoEfectivo === 'cerrado' ? 'pendiente' : 'cerrado')}
                             disabled={updating || creating}
                             className={`
-                              text-xs font-bold px-3 py-1.5 rounded-lg transition-colors
+                              flex-1 sm:flex-none text-xs font-bold px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap
                               ${sem.estadoEfectivo === 'cerrado'
                                 ? 'bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo'
                                 : 'bg-verde-light text-verde hover:bg-verde hover:text-white'
@@ -319,20 +315,6 @@ export function CierresSection({ obraCod }: Props) {
         )}
 
       </div>
-
-      {/* Modal detalle (mantiene compatibilidad con ModalDetalleCierre) */}
-      <ModalDetalleCierre
-        open={!!detalle}
-        onClose={() => setDetalle(null)}
-        cierre={detalle}
-        onToggleEstado={(c) => handleAccion(
-          semanasEfectivas.find(s => s.semKey === c.sem_key) ?? {
-            semKey: c.sem_key, cierre: c, estadoEfectivo: c.estado, esAutomatico: false, esActual: false,
-          },
-          c.estado === 'cerrado' ? 'pendiente' : 'cerrado',
-        )}
-        isPending={updating || creating}
-      />
     </>
   )
 }
