@@ -19,6 +19,7 @@ const MODULOS: Modulo[] = [
   { key: 'herramientas',    nombre: 'Herramientas',      descripcion: 'Control de herramientas y equipos',    icono: '🔧', appHref: '/herramientas'     },
   { key: 'certificaciones', nombre: 'Compras y Stock',   descripcion: 'Solicitudes, materiales y costos',     icono: '🛒', appHref: '/certificaciones'  },
   { key: 'caja',            nombre: 'Caja',              descripcion: 'Efectivo y movimientos',               icono: '💵', appHref: '/caja'             },
+  { key: 'flota',           nombre: 'Flota CADINC',      descripcion: 'Vehículos internos (autos, camionetas)', icono: '🚙', appHref: '/flota'           },
   { key: 'admin',           nombre: 'Administración',    descripcion: 'Usuarios, permisos y auditoría',       icono: '⚙️', appHref: '/admin'            },
 ]
 

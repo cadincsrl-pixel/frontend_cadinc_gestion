@@ -408,6 +408,52 @@ export interface VehiculoDocumento {
   updated_by:     string | null
 }
 
+// ── Módulo Flota CADINC (vehículos internos: autos, camionetas, utilitarios) ──
+// Separado de camiones/bateas (logística). Documentos tienen tipos propios
+// y bucket distinto (`flota-docs`).
+export type FlotaVehiculoTipo  = 'auto' | 'camioneta' | 'utilitario' | 'pickup' | 'moto' | 'otro'
+export type FlotaVehiculoEstado = 'activo' | 'taller' | 'baja'
+export type FlotaDocTipo =
+  | 'titulo' | 'tarjeta_verde' | 'vtv' | 'rto'
+  | 'poliza_seguro' | 'patente' | 'oblea' | 'otro'
+
+export interface FlotaVehiculo {
+  id:                          number
+  patente:                     string
+  tipo:                        FlotaVehiculoTipo
+  marca:                       string | null
+  modelo:                      string | null
+  anio:                        number | null
+  color:                       string | null
+  vin:                         string | null
+  titular:                     string | null
+  km_actuales:                 number
+  estado:                      FlotaVehiculoEstado
+  mobilquest_device_id:        string | null
+  mobilquest_ultima_sync_at:   string | null
+  obs:                         string | null
+  created_by:                  string | null
+  created_at:                  string
+  updated_by:                  string | null
+  updated_at:                  string
+}
+
+export interface FlotaDocumento {
+  id:             number
+  vehiculo_id:    number
+  tipo:           FlotaDocTipo
+  nombre_archivo: string
+  mime_type:      string
+  size_bytes:     number
+  numero_serie:   string | null
+  vence_el:       string | null
+  obs:            string | null
+  created_at:     string
+  created_by:     string | null
+  updated_at:     string
+  updated_by:     string | null
+}
+
 export interface Cantera {
   id: number
   nombre: string

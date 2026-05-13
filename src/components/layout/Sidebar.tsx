@@ -131,6 +131,48 @@ const NAV_ITEMS_ADMIN = [
   { tab: 'auditoria',  icon: '📋', label: 'Auditoría',           meta: 'Registro de actividad'    },
 ]
 
+const NAV_ITEMS_FLOTA = [
+  { tab: 'vehiculos', icon: '🚙', label: 'Vehículos', meta: 'Flota interna de CADINC' },
+]
+
+function FlotaNav({ navigate, activeTab, allowedTabs }: { navigate: (href: string) => void; activeTab: string; allowedTabs?: string[] }) {
+  return (
+    <>
+      {NAV_ITEMS_FLOTA.filter(item => !allowedTabs || allowedTabs.includes(item.tab)).map(item => {
+        const isActive = activeTab === item.tab
+        return (
+          <button
+            key={item.tab}
+            onClick={() => navigate(`/flota?tab=${item.tab}`)}
+            className={`
+              w-full flex items-center gap-2.5 px-3 py-2.5 mx-2 rounded-[9px]
+              text-left transition-all border border-transparent
+              ${isActive
+                ? 'bg-naranja text-white border-naranja-dark shadow-[0_4px_14px_rgba(232,98,26,.4)]'
+                : 'text-white hover:bg-white hover:text-black'
+              }
+            `}
+            style={{ width: 'calc(100% - 16px)' }}
+          >
+            <span className="text-base w-5 text-center flex-shrink-0">{item.icon}</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-bold truncate">{item.label}</div>
+              <div className="text-[11px] opacity-60 font-normal">{item.meta}</div>
+            </div>
+          </button>
+        )
+      })}
+    </>
+  )
+}
+
+function FlotaNavWithParams({ navigate }: { navigate: (href: string) => void }) {
+  const searchParams = useSearchParams()
+  const activeTab    = searchParams.get('tab') ?? 'vehiculos'
+  const allowedTabs  = useTabsPermitidos('flota')
+  return <FlotaNav navigate={navigate} activeTab={activeTab} allowedTabs={allowedTabs} />
+}
+
 const HERR_SUBNAV = [
   { href: '/herramientas/inventario',   icon: '🔧', label: 'Inventario',   meta: 'Catálogo de herramientas',  tabKey: 'inventario'   },
   { href: '/herramientas/movimientos',  icon: '↔',  label: 'Movimientos',  meta: 'Registrar traslados',       tabKey: 'movimientos'  },
@@ -245,6 +287,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const enCertificaciones  = decodedPathname.startsWith('/certificaciones')
   const enCaja             = decodedPathname.startsWith('/caja')
   const enAdmin            = decodedPathname.startsWith('/admin')
+  const enFlota            = decodedPathname.startsWith('/flota')
 
   function navigate(href: string) {
     router.push(href)
@@ -273,6 +316,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     !enLogistica &&
     !enCertificaciones &&
     !enCaja &&
+    !enFlota &&
     decodedPathname.startsWith('/tarja') &&
     decodedPathname !== '/tarja/archivadas'
 
@@ -297,7 +341,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         {/* ── Nav principal ── */}
         <div className="pt-3">
           <div className="px-4 py-2 text-[10px] font-bold tracking-[2.5px] uppercase text-white/35">
-            {enAdmin ? 'Administración' : enHerramientas ? 'Herramientas' : enLogistica ? 'Logística' : enCertificaciones ? 'Compras y Stock' : enCaja ? 'Caja' : 'Menú'}
+            {enAdmin ? 'Administración' : enHerramientas ? 'Herramientas' : enLogistica ? 'Logística' : enCertificaciones ? 'Compras y Stock' : enCaja ? 'Caja' : enFlota ? 'Flota CADINC' : 'Menú'}
           </div>
 
           {/* LOGÍSTICA nav */}
@@ -328,10 +372,17 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             </Suspense>
           )}
 
+          {/* FLOTA nav */}
+          {enFlota && (
+            <Suspense fallback={<FlotaNav navigate={navigate} activeTab="vehiculos" />}>
+              <FlotaNavWithParams navigate={navigate} />
+            </Suspense>
+          )}
+
           {/* TARJA nav — solo si NO estamos en otros módulos.
               El filtro por tabs[] ya limita lo visible (capataz tiene
               tabs:['tarja'], capataz_supervisor tabs:['tarja','personal']). */}
-          {!enHerramientas && !enLogistica && !enCertificaciones && !enCaja && !enAdmin && NAV_ITEMS_TARJA
+          {!enHerramientas && !enLogistica && !enCertificaciones && !enCaja && !enAdmin && !enFlota && NAV_ITEMS_TARJA
             .filter(item => tarjaTabs.includes(item.tabKey))
             .map(item => (
             <button

@@ -53,4 +53,7 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
     { key: 'plantillas', label: 'Plantillas de roles', icon: '🎭' },
     { key: 'auditoria',  label: 'Auditoría',           icon: '📋' },
   ],
+  flota: [
+    { key: 'vehiculos', label: 'Vehículos', icon: '🚙' },
+  ],
 }

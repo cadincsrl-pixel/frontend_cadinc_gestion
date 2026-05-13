@@ -123,6 +123,7 @@ export function UsuariosTab() {
     { id: 3, key: 'herramientas',   nombre: 'Herramientas',     descripcion: 'Control de herramientas y equipos',     icono: '🔧', activo: true, orden: 3 },
     { id: 4, key: 'certificaciones',nombre: 'Compras y Stock',  descripcion: 'Solicitudes, materiales y stock',       icono: '🛒', activo: true, orden: 4 },
     { id: 5, key: 'caja',           nombre: 'Caja',             descripcion: 'Efectivo y movimientos',                icono: '💵', activo: true, orden: 5 },
+    { id: 7, key: 'flota',          nombre: 'Flota CADINC',     descripcion: 'Vehículos internos (autos, camionetas)', icono: '🚙', activo: true, orden: 6 },
     { id: 6, key: 'admin',          nombre: 'Administración',   descripcion: 'Usuarios, permisos y auditoría',        icono: '⚙️', activo: true, orden: 0 },
   ]
 

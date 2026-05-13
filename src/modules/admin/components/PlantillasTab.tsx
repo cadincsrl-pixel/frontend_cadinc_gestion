@@ -14,6 +14,7 @@ const MODULO_INFO: Record<string, { label: string; icon: string }> = {
   prestamos:       { label: 'Préstamos',        icon: '💰' },
   configuracion:   { label: 'Configuración',    icon: '⚙️' },
   admin:           { label: 'Administración',   icon: '🛠' },
+  flota:           { label: 'Flota CADINC',     icon: '🚙' },
 }
 
 const ACCIONES = [
