@@ -26,7 +26,7 @@ function fmtFechaHora(iso: string | null | undefined): string {
 
 function fmtKm(n: number | null | undefined): string {
   if (n == null) return '—'
-  return n.toLocaleString('es-AR') + ' km'
+  return Math.round(n).toLocaleString('es-AR') + ' km'
 }
 
 // Mapeo de estado → estilo Tailwind del badge. Mismas convenciones

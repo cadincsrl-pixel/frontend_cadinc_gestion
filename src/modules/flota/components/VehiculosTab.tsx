@@ -41,7 +41,7 @@ interface NuevoForm {
 
 function fmtKm(n: number | null | undefined): string {
   if (n == null) return '—'
-  return n.toLocaleString('es-AR') + ' km'
+  return Math.round(n).toLocaleString('es-AR') + ' km'
 }
 
 export function VehiculosTab() {
