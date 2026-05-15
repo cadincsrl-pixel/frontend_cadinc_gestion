@@ -438,6 +438,7 @@ export interface FlotaVehiculo {
   km_actuales:                 number
   estado:                      FlotaVehiculoEstado
   mobilquest_device_id:        string | null
+  mobilquest_alias:            string | null
   mobilquest_ultima_sync_at:   string | null
   // ── Cache del último sync de GPS (denormalizado para no joinear con el log) ──
   gps_ultima_lat?:             number | null

@@ -155,7 +155,7 @@ export function VehiculosTab() {
           <table className="w-full border-collapse min-w-[700px]">
             <thead>
               <tr>
-                {['Patente', 'Tipo', 'Marca / modelo', 'Año', 'Km actuales', 'Estado'].map(h => (
+                {['Patente', 'Alias MQ', 'Tipo', 'Marca / modelo', 'Año', 'Km actuales', 'Estado'].map(h => (
                   <th key={h} className="bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide">
                     {h}
                   </th>
@@ -165,7 +165,7 @@ export function VehiculosTab() {
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-8">
+                  <td colSpan={7} className="text-center py-8">
                     <span className="inline-flex items-center gap-2 text-gris-dark text-sm">
                       <span className="w-4 h-4 border-2 border-naranja border-t-transparent rounded-full animate-spin" />
                       Cargando...
@@ -174,7 +174,7 @@ export function VehiculosTab() {
                 </tr>
               ) : filtrados.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-8 text-gris-dark text-sm italic">
+                  <td colSpan={7} className="text-center py-8 text-gris-dark text-sm italic">
                     {busqueda ? `Sin resultados para "${busqueda}".` : 'No hay vehículos cargados.'}
                   </td>
                 </tr>
@@ -185,6 +185,11 @@ export function VehiculosTab() {
                   onClick={() => setDetalleId(v.id)}
                 >
                   <td className="px-4 py-3 font-mono font-bold text-sm text-carbon">{v.patente}</td>
+                  <td className="px-4 py-3 text-xs">
+                    {v.mobilquest_alias
+                      ? <span className="font-bold text-azul">{v.mobilquest_alias}</span>
+                      : <span className="text-gris-mid">—</span>}
+                  </td>
                   <td className="px-4 py-3 text-xs text-gris-dark capitalize">{v.tipo}</td>
                   <td className="px-4 py-3 text-sm text-carbon">
                     {[v.marca, v.modelo].filter(Boolean).join(' ') || '—'}
@@ -226,7 +231,14 @@ export function VehiculosTab() {
           >
             <div className="flex items-start justify-between gap-2 flex-wrap">
               <div className="flex-1 min-w-0">
-                <div className="font-mono font-bold text-sm text-carbon">{v.patente}</div>
+                <div className="font-mono font-bold text-sm text-carbon flex items-center gap-2 flex-wrap">
+                  {v.patente}
+                  {v.mobilquest_alias && (
+                    <span className="font-sans text-[11px] font-bold text-azul bg-azul-light px-1.5 py-0.5 rounded">
+                      {v.mobilquest_alias}
+                    </span>
+                  )}
+                </div>
                 <div className="text-xs text-gris-dark mt-0.5 capitalize">
                   {v.tipo}{v.marca || v.modelo ? ` · ${[v.marca, v.modelo].filter(Boolean).join(' ')}` : ''}
                 </div>
