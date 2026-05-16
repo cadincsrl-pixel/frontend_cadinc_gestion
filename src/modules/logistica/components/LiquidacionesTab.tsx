@@ -414,6 +414,36 @@ export function LiquidacionesTab() {
     })
   }
 
+  // Excel de una liquidación EN CURSO. Trae los reintegros pendientes del
+  // chofer (a la fecha "hasta" del período) y los agrega al Excel para que
+  // la sección "GASTOS DEL CHOFER" no quede vacía.
+  async function handleDescargarExcelEnCurso(choferId: number, exportData: any) {
+    try {
+      const q = new URLSearchParams({ chofer_id: String(choferId) })
+      if (exportData.hasta) q.set('hasta', exportData.hasta)
+      const resp = await apiGet<{ items: any[]; total: number }>(
+        `/api/logistica/gastos/reintegros-pendientes?${q.toString()}`,
+      )
+      exportLiquidacionExcel({
+        ...exportData,
+        reintegros: resp.total,
+        gastos: resp.items.map((g: any) => ({
+          fecha:       g.fecha,
+          categoria:   g.categoria?.nombre ?? '—',
+          proveedor:   g.proveedor ?? null,
+          descripcion: g.descripcion ?? null,
+          monto:       Number(g.monto),
+        })),
+        // Neto = lo que ya venía + reintegros (no se restan, se suman).
+        neto: (exportData.neto ?? 0) + resp.total,
+      })
+    } catch (err) {
+      console.warn('[liquidacion] no se pudieron traer reintegros pendientes:', err)
+      // Caemos al Excel sin gastos para no bloquear al user.
+      exportLiquidacionExcel(exportData)
+    }
+  }
+
   // PDF de una liquidación ya cerrada/guardada. Trae los gastos asociados
   // on-demand (en lugar de cargarlos siempre con useGastos) y arma el
   // PDF con el mismo generador que usa el "PDF parcial" del modal.
@@ -716,7 +746,7 @@ export function LiquidacionesTab() {
                       // modal de Liquidar cubre el caso con más detalle (gastos,
                       // filtro por fechas, selección de tramos).
                       return (
-                        <Button variant="ghost" size="sm" onClick={() => exportLiquidacionExcel(exportData)}>📊 Excel</Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleDescargarExcelEnCurso(chofer.id, exportData)}>📊 Excel</Button>
                       )
                     })()}
                   </div>
