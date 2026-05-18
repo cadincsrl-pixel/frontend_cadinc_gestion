@@ -5,7 +5,7 @@ import {
   useLiquidaciones, useAdelantos, useChoferes, useCamiones, useTramos, useRutas, useCanteras, useDepositos,
   useCreateLiquidacion, useUpdateLiquidacion, useCerrarLiquidacion, useReabrirLiquidacion, useDeleteLiquidacion,
   useCreateAdelanto, useUpdateAdelanto, useDeleteAdelanto, useUpdateChofer,
-  useGastosReintegrosPendientes,
+  useGastosReintegrosPendientes, useReintegrosPendientesTodos,
   uploadComprobanteAdelanto, fetchAdelantoComprobanteUrl,
 } from '../hooks/useLogistica'
 import { Modal }    from '@/components/ui/Modal'
@@ -192,13 +192,18 @@ export function LiquidacionesTab() {
   // Tramos completados aún no liquidados
   const tramosPendientes    = (tramos as Tramo[]).filter(t => t.estado === 'completado' && !t.liquidacion_id)
   const adelantosPendientes = (adelantos as Adelanto[]).filter(a => !a.liquidacion_id)
+  // Reintegros pendientes (gastos pagados por el chofer, aprobados, sin liquidar)
+  // de todos los choferes — para sumarlos al saldo del listado.
+  const { data: reintegrosTodos } = useReintegrosPendientesTodos()
+  const reintegrosPendientes = reintegrosTodos?.items ?? []
 
   // Todos los choferes activos o de descanso
   const choferesPendientes = (choferes as Chofer[]).filter(c => c.estado !== 'inactivo')
 
   function resumenChofer(chofer: Chofer) {
-    const mis_tramos    = tramosPendientes.filter(t => t.chofer_id === chofer.id)
-    const mis_adelantos = adelantosPendientes.filter(a => a.chofer_id === chofer.id)
+    const mis_tramos      = tramosPendientes.filter(t => t.chofer_id === chofer.id)
+    const mis_adelantos   = adelantosPendientes.filter(a => a.chofer_id === chofer.id)
+    const mis_reintegros  = reintegrosPendientes.filter(g => g.chofer_id === chofer.id)
     const dias          = diasUnicos(mis_tramos)
     const sinBasico     = !chofer.basico_dia
     const subtotal_bas  = dias * (chofer.basico_dia ?? 0)
@@ -215,12 +220,13 @@ export function LiquidacionesTab() {
     const subtotal_km   = subtotal_km_cargado + subtotal_km_vacio
     const subtotal      = subtotal_bas + subtotal_km
     const descuentos    = mis_adelantos.reduce((s, a) => s + a.monto, 0)
-    const saldo         = subtotal - descuentos
+    const reintegros    = mis_reintegros.reduce((s, g) => s + Number(g.monto), 0)
+    const saldo         = subtotal - descuentos + reintegros
     return {
-      mis_tramos, mis_adelantos, dias, sinBasico, subtotal_bas,
+      mis_tramos, mis_adelantos, mis_reintegros, dias, sinBasico, subtotal_bas,
       km_cargados, km_vacios, km_totales,
       subtotal_km_cargado, subtotal_km_vacio, subtotal_km,
-      subtotal, descuentos, saldo,
+      subtotal, descuentos, reintegros, saldo,
     }
   }
 
@@ -620,8 +626,8 @@ export function LiquidacionesTab() {
         </h2>
         <div className="flex flex-col gap-3">
           {choferesPendientes.map(chofer => {
-            const { mis_tramos, mis_adelantos, dias, sinBasico, subtotal_bas, km_cargados, km_vacios, km_totales, subtotal_km, subtotal, descuentos, saldo } = resumenChofer(chofer)
-            const sinMovimientos = mis_tramos.length === 0 && mis_adelantos.length === 0
+            const { mis_tramos, mis_adelantos, mis_reintegros, dias, sinBasico, subtotal_bas, km_cargados, km_vacios, km_totales, subtotal_km, subtotal, descuentos, reintegros, saldo } = resumenChofer(chofer)
+            const sinMovimientos = mis_tramos.length === 0 && mis_adelantos.length === 0 && mis_reintegros.length === 0
             const borrador = (liquidaciones as any[]).find(l => l.chofer_id === chofer.id && l.estado === 'borrador')
 
             return (
@@ -640,7 +646,7 @@ export function LiquidacionesTab() {
                     </div>
 
                     {sinMovimientos ? (
-                      <p className="text-xs text-gris-mid mt-1 italic">Sin tramos ni adelantos pendientes</p>
+                      <p className="text-xs text-gris-mid mt-1 italic">Sin tramos, adelantos ni gastos pendientes</p>
                     ) : (
                       <div className="text-xs text-gris-dark mt-1 space-y-0.5">
                         {mis_tramos.length > 0 && (
@@ -660,10 +666,14 @@ export function LiquidacionesTab() {
                             {fmtM(subtotal_bas)} básico
                             {subtotal_km > 0 && ` + ${fmtM(subtotal_km)} km`}
                             {descuentos > 0 && ` − ${fmtM(descuentos)} adelantos`}
+                            {reintegros > 0 && ` + ${fmtM(reintegros)} gastos`}
                           </div>
                         )}
                         {mis_adelantos.length > 0 && sinBasico && (
                           <div>{mis_adelantos.length} adelanto{mis_adelantos.length !== 1 ? 's' : ''} · {fmtM(descuentos)}</div>
+                        )}
+                        {mis_reintegros.length > 0 && sinBasico && (
+                          <div>{mis_reintegros.length} gasto{mis_reintegros.length !== 1 ? 's' : ''} pagado{mis_reintegros.length !== 1 ? 's' : ''} por el chofer · {fmtM(reintegros)}</div>
                         )}
                       </div>
                     )}
@@ -687,6 +697,7 @@ export function LiquidacionesTab() {
                           <div className="text-[11px] text-gris-dark">
                             {fmtM(subtotal)} haberes
                             {descuentos > 0 ? ` − ${fmtM(descuentos)}` : ''}
+                            {reintegros > 0 ? ` + ${fmtM(reintegros)}` : ''}
                           </div>
                         </>
                       )}
