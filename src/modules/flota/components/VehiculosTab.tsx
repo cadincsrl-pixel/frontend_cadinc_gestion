@@ -1,6 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -71,7 +72,28 @@ export function VehiculosTab() {
 
   const [modalNuevo, setModalNuevo] = useState(false)
   const [detalleId, setDetalleId] = useState<number | null>(null)
+  const [detalleSeccion, setDetalleSeccion] = useState<'datos' | 'papeles' | 'servicios' | 'gastos'>('datos')
   const [busqueda, setBusqueda] = useState('')
+
+  // Deep-link: ?vehiculo=N[&seccion=gastos|servicios|papeles] abre el modal
+  // del vehículo correspondiente con la sección preseleccionada.
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  useEffect(() => {
+    const vehParam = searchParams.get('vehiculo')
+    if (!vehParam) return
+    const vid = Number(vehParam)
+    if (!Number.isFinite(vid)) return
+    const seccion = searchParams.get('seccion') as 'datos' | 'papeles' | 'servicios' | 'gastos' | null
+    setDetalleId(vid)
+    setDetalleSeccion(seccion && ['datos','papeles','servicios','gastos'].includes(seccion) ? seccion : 'datos')
+    // Limpiar query params para no re-abrir.
+    const sp = new URLSearchParams(searchParams.toString())
+    sp.delete('vehiculo')
+    sp.delete('seccion')
+    router.replace(`/flota?${sp.toString()}`)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   // Map vehiculo_id → último service (km y fecha), para mostrar al lado de
   // los km actuales del vehículo en la tabla y la card mobile.
@@ -383,7 +405,8 @@ export function VehiculosTab() {
       {/* Modal detalle */}
       <VehiculoDetalleModal
         vehiculo={detalle}
-        onClose={() => setDetalleId(null)}
+        onClose={() => { setDetalleId(null); setDetalleSeccion('datos') }}
+        seccionInicial={detalleSeccion}
       />
     </>
   )

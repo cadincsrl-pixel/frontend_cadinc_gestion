@@ -545,6 +545,34 @@ export interface FlotaServicio {
 
 export type FlotaServicioEstado = 'sin_service' | 'vencido' | 'proximo' | 'al_dia'
 
+// ── Gastos (combustible, peajes, lavado, multas, etc) ──
+export interface FlotaGastoCategoria {
+  id:     number
+  codigo: string
+  nombre: string
+  icono:  string | null
+  orden:  number
+  activo: boolean
+}
+
+export interface FlotaGasto {
+  id:                number
+  vehiculo_id:       number
+  categoria_id:      number | null
+  categoria?:        Pick<FlotaGastoCategoria, 'id' | 'codigo' | 'nombre' | 'icono'> | null
+  fecha:             string
+  monto:             number
+  proveedor:         string | null
+  descripcion:       string | null
+  comprobante_path:  string | null
+  comprobante_hash:  string | null
+  created_at:        string
+  created_by:        string | null
+  updated_at:        string
+  updated_by:        string | null
+  deleted_at:        string | null
+}
+
 export interface FlotaServicioEstadoRow {
   vehiculo_id:           number
   patente:               string

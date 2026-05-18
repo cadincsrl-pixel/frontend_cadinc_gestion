@@ -13,12 +13,17 @@ import { usePermisos } from '@/hooks/usePermisos'
 import { useUpdateFlotaVehiculo, useDeleteFlotaVehiculo } from '../hooks/useFlotaVehiculos'
 import { FlotaDocumentosSection } from './FlotaDocumentosSection'
 import { VehiculoServiciosSection } from './VehiculoServiciosSection'
+import { VehiculoGastosSection } from './VehiculoGastosSection'
 import { GpsBlock } from './GpsBlock'
 import type { FlotaVehiculo, FlotaVehiculoTipo, FlotaVehiculoEstado } from '@/types/domain.types'
 
+type ModalTab = 'datos' | 'papeles' | 'servicios' | 'gastos'
+
 interface Props {
-  vehiculo: FlotaVehiculo | null
-  onClose: () => void
+  vehiculo:        FlotaVehiculo | null
+  onClose:         () => void
+  /** Sub-tab inicial al abrir. Default: 'datos'. */
+  seccionInicial?: ModalTab
 }
 
 const TIPO_OPTIONS: { value: FlotaVehiculoTipo; label: string }[] = [
@@ -67,14 +72,16 @@ function defaultsFrom(v: FlotaVehiculo): FormData {
   }
 }
 
-export function VehiculoDetalleModal({ vehiculo, onClose }: Props) {
+export function VehiculoDetalleModal({ vehiculo, onClose, seccionInicial = 'datos' }: Props) {
   const toast = useToast()
   const { puedeEditar, puedeEliminar } = usePermisos('flota')
   const { mutate: update, isPending: updating } = useUpdateFlotaVehiculo()
   const { mutate: remove } = useDeleteFlotaVehiculo()
 
-  // Tab interno del modal: datos del vehículo, papeles, servicios.
-  const [tab, setTab] = useState<'datos' | 'papeles' | 'servicios'>('datos')
+  // Tab interno del modal: datos del vehículo, papeles, servicios, gastos.
+  // Arranca en `seccionInicial` (default 'datos') — útil para deep-links
+  // desde el tab global de Gastos que mandan ?seccion=gastos.
+  const [tab, setTab] = useState<ModalTab>(seccionInicial)
   // Modo detalle vs edición — los inputs arrancan deshabilitados.
   const [modoEdicion, setModoEdicion] = useState(false)
   const form = useForm<FormData>()
@@ -84,10 +91,10 @@ export function VehiculoDetalleModal({ vehiculo, onClose }: Props) {
     if (vehiculo) {
       form.reset(defaultsFrom(vehiculo))
       setModoEdicion(false)
-      setTab('datos')
+      setTab(seccionInicial)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vehiculo?.id])
+  }, [vehiculo?.id, seccionInicial])
 
   function handleSubmit(data: FormData) {
     if (!vehiculo) return
@@ -197,6 +204,16 @@ export function VehiculoDetalleModal({ vehiculo, onClose }: Props) {
           >
             🔧 Servicios
           </button>
+          <button
+            onClick={() => setTab('gastos')}
+            className={`px-3 py-1.5 text-xs font-bold transition-colors border-b-2 -mb-px ${
+              tab === 'gastos'
+                ? 'border-naranja text-naranja-dark'
+                : 'border-transparent text-gris-dark hover:text-naranja'
+            }`}
+          >
+            💸 Gastos
+          </button>
         </div>
 
         {tab === 'datos' && (
@@ -285,6 +302,10 @@ export function VehiculoDetalleModal({ vehiculo, onClose }: Props) {
 
         {tab === 'servicios' && (
           <VehiculoServiciosSection vehiculo={vehiculo} />
+        )}
+
+        {tab === 'gastos' && (
+          <VehiculoGastosSection vehiculo={vehiculo} />
         )}
       </div>
     </Modal>

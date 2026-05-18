@@ -134,6 +134,7 @@ const NAV_ITEMS_ADMIN = [
 const NAV_ITEMS_FLOTA = [
   { tab: 'vehiculos',  icon: '🚙', label: 'Vehículos',  meta: 'Flota interna de CADINC' },
   { tab: 'servicios',  icon: '🔧', label: 'Servicios',  meta: 'Historial de mantenimiento' },
+  { tab: 'gastos',     icon: '💸', label: 'Gastos',     meta: 'Combustible, peajes, etc.' },
   { tab: 'parametros', icon: '⚙️', label: 'Parámetros', meta: 'Tipos de servicio' },
 ]
 
