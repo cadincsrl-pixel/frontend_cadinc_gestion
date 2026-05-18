@@ -36,6 +36,11 @@ export function usePermisos(modulo: string) {
     return profile.obras_scope !== 'asignadas'
   })()
 
+  // Identidad estructural: el usuario es capataz puro (rol_base='capataz').
+  // Útil para reglas específicas como "solo carga hoy".
+  // Admin NO es capataz.
+  const esCapataz = profile?.rol === 'operador' && profile?.rol_base === 'capataz'
+
   return {
     puedeVer:      canDo(modulo, 'lectura'),
     puedeCrear:    canDo(modulo, 'creacion'),
@@ -48,5 +53,6 @@ export function usePermisos(modulo: string) {
     forzarDespacho:  flagCapacidad('forzar_despacho', false),
     puedeAdministrarObras: flagCapacidad('administrar_obras', false),
     soloCargaHoras:  !vistaCompleta,
+    esCapataz,
   }
 }

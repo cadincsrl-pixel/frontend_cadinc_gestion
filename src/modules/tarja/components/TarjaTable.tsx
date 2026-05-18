@@ -38,11 +38,15 @@ function getHoraClass(h: number): string {
 export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoStateChange, readonly = false }: Props) {
   const { semActual } = useTarjaStore()
   const toast = useToast()
-  const { puedeEditar, puedeEliminar, verCostos, soloCargaHoras } = usePermisos('tarja')
+  const { puedeEditar, puedeEliminar, verCostos, soloCargaHoras, esCapataz } = usePermisos('tarja')
   // Capataz: ni cambiar categoría, ni hs extras, ni costos.
   const puedeCambiarCategoria = puedeEditar && !soloCargaHoras
   const verHsExtras = !soloCargaHoras
   const days = getSemDays(semActual)
+  // Fecha de hoy en horario Argentina (YYYY-MM-DD). Para capataces el único
+  // día editable es éste — el resto queda read-only aunque sea de la semana
+  // actual. La validación dura está en el backend (horas.routes.ts).
+  const hoyISO = toISO(new Date())
   const desde = toISO(days[0]!)
   const hasta = toISO(days[6]!)
 
@@ -400,11 +404,18 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                           .map(it => `${it.obra_cod}: ${it.horas}hs`)
                       : []
                     const enConflicto = otrasObrasMismoDia.length > 0
+                    // Capataces solo pueden tocar la celda de hoy. El resto
+                    // de los días queda read-only. Backend revalida.
+                    const bloqueadoPorCapataz = esCapataz && fecha !== hoyISO
+                    const celdaEditable = puedeEditar && !readonly && !bloqueadoPorCapataz
+                    const tooltipBloqueo = bloqueadoPorCapataz
+                      ? 'Solo podés cargar horas del día actual.'
+                      : undefined
                     return (
                       <td
                         key={i}
-                        className={`relative px-1.5 py-1.5 text-center ${enConflicto ? 'bg-rojo-light/60' : ''}`}
-                        title={enConflicto ? `⚠ También tiene horas este día en — ${otrasObrasMismoDia.join(' · ')}` : undefined}
+                        className={`relative px-1.5 py-1.5 text-center ${enConflicto ? 'bg-rojo-light/60' : ''} ${bloqueadoPorCapataz ? 'bg-gris/30' : ''}`}
+                        title={tooltipBloqueo ?? (enConflicto ? `⚠ También tiene horas este día en — ${otrasObrasMismoDia.join(' · ')}` : undefined)}
                       >
                         {enConflicto && (
                           <span
@@ -418,12 +429,12 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                           step={0.5}
                           key={`${p.leg}-${fecha}-${h}`}
                           defaultValue={h || ''}
-                          readOnly={!puedeEditar || readonly}
+                          readOnly={!celdaEditable}
                           // Evitar cambios por accidente cuando el usuario
                           // hace scroll con la rueda del mouse sobre la celda.
                           onWheel={e => (e.currentTarget as HTMLInputElement).blur()}
-                          onBlur={puedeEditar && !readonly ? e => handleChange(p.leg, fecha, e.target.value, h) : undefined}
-                          onKeyDown={puedeEditar && !readonly ? e => {
+                          onBlur={celdaEditable ? e => handleChange(p.leg, fecha, e.target.value, h) : undefined}
+                          onKeyDown={celdaEditable ? e => {
                             if (e.key === 'Enter') {
                               const antes = h
                               handleChange(p.leg, fecha, (e.target as HTMLInputElement).value, antes)
@@ -436,7 +447,7 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                               w-14 h-8 border-[1.5px] rounded-md
                               text-center font-mono text-sm font-bold
                               outline-none transition-colors
-                              ${puedeEditar
+                              ${celdaEditable
                                 ? 'focus:border-naranja focus:shadow-[0_0_0_3px_rgba(232,98,26,.15)]'
                                 : 'cursor-not-allowed opacity-60'
                               }
