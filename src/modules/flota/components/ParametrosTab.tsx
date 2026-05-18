@@ -98,7 +98,7 @@ export function ParametrosTab() {
           )}
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full border-collapse min-w-[600px]">
             <thead>
               <tr>
@@ -147,6 +147,48 @@ export function ParametrosTab() {
               ))}
             </tbody>
           </table>
+        </div>
+
+        {/* Cards — mobile */}
+        <div className="md:hidden flex flex-col gap-2 p-3">
+          {isLoading ? (
+            <div className="text-center py-6 text-gris-dark text-sm italic">Cargando...</div>
+          ) : tipos.length === 0 ? (
+            <div className="text-center py-6 text-gris-dark text-sm italic">Sin tipos registrados.</div>
+          ) : tipos.map(t => (
+            <div key={t.id} className="bg-white border border-gris-mid rounded-lg p-3 flex flex-col gap-2 shadow-sm">
+              <div className="flex items-start justify-between gap-2">
+                <div className="font-bold text-sm text-carbon">{t.nombre}</div>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded flex-shrink-0 ${t.activo ? 'bg-verde-light text-verde' : 'bg-gris text-gris-dark'}`}>
+                  {t.activo ? '✓ Activo' : '✕ Inactivo'}
+                </span>
+              </div>
+              <div className="text-[11px] text-gris-dark font-mono flex flex-wrap gap-x-3 gap-y-1">
+                <span>📏 {t.intervalo_km != null ? `${t.intervalo_km.toLocaleString('es-AR')} km` : '—'}</span>
+                <span>📅 {t.intervalo_meses != null ? `${t.intervalo_meses} meses` : '—'}</span>
+              </div>
+              {(puedeEditar || puedeEliminar) && (
+                <div className="flex gap-1 justify-end pt-1 border-t border-gris">
+                  {puedeEditar && (
+                    <button
+                      onClick={() => abrirEdit(t)}
+                      className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors"
+                    >
+                      ✏️ Editar
+                    </button>
+                  )}
+                  {puedeEliminar && (
+                    <button
+                      onClick={() => handleDelete(t)}
+                      className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors"
+                    >
+                      ✕ Eliminar
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       </div>
 

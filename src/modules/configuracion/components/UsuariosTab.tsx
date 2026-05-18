@@ -202,8 +202,8 @@ export function UsuariosTab() {
         </div>
       </div>
 
-      {/* Tabla */}
-      <div className="bg-white rounded-card shadow-card overflow-hidden">
+      {/* Tabla — desktop/tablet */}
+      <div className="hidden md:block bg-white rounded-card shadow-card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full border-collapse min-w-[800px]">
             <thead>
@@ -406,6 +406,121 @@ export function UsuariosTab() {
           </tbody>
         </table>
         </div>
+      </div>
+
+      {/* Cards — mobile */}
+      <div className="md:hidden flex flex-col gap-2">
+        {isLoading ? (
+          <div className="bg-white rounded-card shadow-card p-6 text-center text-gris-dark text-sm">
+            Cargando...
+          </div>
+        ) : usuariosFiltrados.length === 0 ? (
+          <div className="bg-white rounded-card shadow-card p-6 text-center text-gris-dark text-sm italic">
+            Sin resultados para "{busqueda}".
+          </div>
+        ) : usuariosFiltrados.map(u => {
+          const addons = deriveAddons((u.rol_base ?? null) as RolBase | null, u.permisos)
+          return (
+            <div key={u.id} className="bg-white rounded-card shadow-card p-3 flex flex-col gap-2">
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-full bg-naranja-light flex items-center justify-center text-naranja-dark font-bold text-sm flex-shrink-0">
+                  {u.nombre.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-bold text-sm text-carbon truncate">
+                    {u.nombre}
+                    {u.id === profileActual?.id && (
+                      <span className="ml-1.5 text-[10px] text-naranja font-bold">(Vos)</span>
+                    )}
+                  </div>
+                  <div className="text-[11px] text-gris-dark truncate">{(u as any).email ?? '—'}</div>
+                </div>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded flex-shrink-0 ${u.activo ? 'bg-verde-light text-verde' : 'bg-rojo-light text-rojo'}`}>
+                  {u.activo ? '✓' : '✕'}
+                </span>
+              </div>
+
+              {/* Rol y addons */}
+              <div className="flex flex-wrap gap-1">
+                {u.rol === 'admin' ? (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#EEE8FF] text-[#5A2D82]">⭐ Admin</span>
+                ) : u.rol_base ? (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-azul-light text-azul-mid">
+                    {getPlantilla(u.rol_base)?.label ?? u.rol_base}
+                  </span>
+                ) : u.tipo_usuario === 'personalizado' ? (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gris text-gris-dark">⚙ Personalizado</span>
+                ) : u.tipo_usuario ? (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-azul-light text-azul-mid">
+                    {getPlantilla(u.tipo_usuario === 'encargado_deposito' ? 'deposito' : u.tipo_usuario)?.label ?? u.tipo_usuario}
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gris text-gris-dark">Operador</span>
+                )}
+                {addons.map(addonKey => (
+                  <span
+                    key={addonKey}
+                    className="text-[10px] font-bold text-naranja-dark bg-naranja-light px-2 py-0.5 rounded"
+                  >
+                    ＋ {addonLabel(addonKey)}
+                  </span>
+                ))}
+              </div>
+
+              {/* Módulos */}
+              <div className="flex flex-wrap gap-1">
+                <span className="text-[10px] font-bold text-gris-dark uppercase tracking-wide self-center">Módulos:</span>
+                {u.rol === 'admin' ? (
+                  <span className="text-[10px] font-bold bg-azul-light text-azul-mid px-2 py-0.5 rounded">Todos</span>
+                ) : u.modulos.length === 0 ? (
+                  <span className="text-[10px] text-gris-mid">Sin acceso</span>
+                ) : u.modulos.map(m => (
+                  <span key={m} className="text-[10px] font-bold bg-naranja-light text-naranja-dark px-2 py-0.5 rounded capitalize">{m}</span>
+                ))}
+              </div>
+
+              {/* Acciones */}
+              <div className="flex gap-1 justify-end pt-1 border-t border-gris">
+                <button
+                  onClick={() => {
+                    const rolBase = (u.rol_base ?? null) as RolBase | null
+                    const addonsList = deriveAddons(rolBase, u.permisos)
+                    setEditando({ ...u, rol_base: rolBase, obras_scope: u.obras_scope ?? 'todas', addons: addonsList })
+                    setRolOriginal(u.rol)
+                  }}
+                  className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors"
+                  title="Editar"
+                >
+                  ✏️
+                </button>
+                <button
+                  onClick={() => { setResetId(u.id); setNewPass('') }}
+                  className="text-xs font-bold px-2 py-1 rounded hover:bg-amarillo-light transition-colors"
+                  title="Cambiar contraseña"
+                >
+                  🔑
+                </button>
+                {u.id !== profileActual?.id && (
+                  <button
+                    onClick={() => { iniciarSimulacion(u); router.push('/') }}
+                    className="text-xs font-bold px-2 py-1 rounded hover:bg-azul-light hover:text-azul-mid transition-colors"
+                    title="Simular como este usuario"
+                  >
+                    👁
+                  </button>
+                )}
+                {u.id !== profileActual?.id && (
+                  <button
+                    onClick={() => handleDelete(u)}
+                    className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+          )
+        })}
       </div>
 
       {/* Modal nuevo usuario */}

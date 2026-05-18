@@ -249,8 +249,8 @@ export function HerrInventario() {
         )}
       </div>
 
-      {/* Tabla */}
-      <div className="bg-white rounded-card shadow-card overflow-hidden">
+      {/* Tabla — desktop/tablet */}
+      <div className="hidden md:block bg-white rounded-card shadow-card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>
@@ -349,6 +349,86 @@ export function HerrInventario() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Cards — mobile */}
+      <div className="md:hidden flex flex-col gap-2">
+        {isLoading ? (
+          <div className="bg-white rounded-card shadow-card p-6 text-center text-gris-dark text-sm">
+            Cargando...
+          </div>
+        ) : filtradas.length === 0 ? (
+          <div className="bg-white rounded-card shadow-card p-6 text-center text-gris-dark text-sm italic">
+            {busqueda || filtroTipo || filtroEstado
+              ? 'No se encontraron resultados para los filtros aplicados.'
+              : 'No hay herramientas registradas. Agregá la primera.'}
+          </div>
+        ) : filtradas.map(h => (
+          <button
+            key={h.id}
+            onClick={() => setDetalle(h)}
+            className="bg-white rounded-card shadow-card p-3 text-left active:bg-gris/40 transition-colors w-full"
+          >
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                  <span className="font-mono text-[11px] bg-gris px-2 py-0.5 rounded text-gris-dark font-bold">
+                    {h.codigo}
+                  </span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${ESTADO_COLORS[h.estado_key] ?? 'bg-gris text-gris-dark'}`}>
+                    {h.estado?.icono} {h.estado?.nom ?? h.estado_key}
+                  </span>
+                </div>
+                <div className="font-bold text-sm text-carbon truncate">{h.nom}</div>
+                {(h.marca || h.modelo) && (
+                  <div className="text-xs text-gris-dark mt-0.5">
+                    {[h.marca, h.modelo].filter(Boolean).join(' · ')}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              {h.tipo && (
+                <span className="text-[10px] font-bold bg-azul-light text-azul-mid px-2 py-0.5 rounded">
+                  {h.tipo.icono} {h.tipo.nom}
+                </span>
+              )}
+              {h.obra ? (
+                <span className="text-[10px] bg-naranja-light text-naranja-dark px-2 py-0.5 rounded font-bold">
+                  📍 {h.obra.nom}
+                </span>
+              ) : (
+                <span className="text-[10px] text-gris-dark">📦 Depósito</span>
+              )}
+              {h.responsable && (
+                <span className="text-[10px] text-gris-dark">👤 {h.responsable}</span>
+              )}
+            </div>
+            {(puedeEditar || puedeEliminar) && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="flex gap-1 justify-end mt-2 pt-2 border-t border-gris"
+              >
+                {puedeEditar && (
+                  <button
+                    onClick={() => openEdit(h)}
+                    className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors"
+                  >
+                    ✏️ Editar
+                  </button>
+                )}
+                {puedeEliminar && (
+                  <button
+                    onClick={() => handleDelete(h)}
+                    className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors"
+                  >
+                    ✕ Eliminar
+                  </button>
+                )}
+              </div>
+            )}
+          </button>
+        ))}
       </div>
 
       {/* Modal nuevo */}

@@ -134,13 +134,21 @@ export function Topbar({ onMenuToggle, showMenuBtn }: TopbarProps) {
             </>
           )}
 
-          {/* Logout */}
+          {/* Logout — texto en sm+, icono solo en mobile para que no se
+              coma el viewport (sobre todo en /tarja que tiene botón extra). */}
           <button
             onClick={handleLogout}
             disabled={loggingOut}
-            className="bg-white/10 hover:bg-white/20 border border-white/18 text-white px-3 py-1.5 rounded-lg font-sans text-xs font-bold tracking-wide transition-colors disabled:opacity-60"
+            aria-label="Cerrar sesión"
+            title="Cerrar sesión"
+            className="bg-white/10 hover:bg-white/20 border border-white/18 text-white px-3 py-1.5 rounded-lg font-sans text-xs font-bold tracking-wide transition-colors disabled:opacity-60 flex items-center gap-1.5"
           >
-            {loggingOut ? 'Saliendo...' : 'Cerrar sesión'}
+            <span className="hidden sm:inline">
+              {loggingOut ? 'Saliendo...' : 'Cerrar sesión'}
+            </span>
+            <span className="sm:hidden text-base leading-none">
+              {loggingOut ? '⏳' : '⏻'}
+            </span>
           </button>
 
         </div>

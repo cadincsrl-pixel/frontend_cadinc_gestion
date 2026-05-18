@@ -115,8 +115,8 @@ export function ServiciosTab() {
         </div>
       </div>
 
-      {/* Tabla */}
-      <div className="overflow-x-auto">
+      {/* Tabla — desktop/tablet */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full border-collapse min-w-[800px]">
           <thead>
             <tr>
@@ -159,6 +159,47 @@ export function ServiciosTab() {
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Cards — mobile */}
+      <div className="md:hidden flex flex-col gap-2 p-3">
+        {isLoading ? (
+          <div className="text-center py-6 text-gris-dark text-sm italic">Cargando...</div>
+        ) : filtrados.length === 0 ? (
+          <div className="text-center py-6 text-gris-dark text-sm italic">
+            {tieneFiltros ? 'Sin resultados para los filtros aplicados.' : 'Sin servicios registrados.'}
+          </div>
+        ) : filtrados.map(s => (
+          <div key={s.id} className="bg-white border border-gris-mid rounded-lg p-3 flex flex-col gap-1.5 shadow-sm">
+            <div className="flex items-start justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap min-w-0">
+                <span className="font-mono text-[11px] font-bold bg-azul-light text-azul-mid px-2 py-0.5 rounded">
+                  {patente(vehiculos, s.vehiculo_id)}
+                </span>
+                <span className="text-[11px] text-gris-dark">{fmtFecha(s.fecha)}</span>
+              </div>
+              {s.comprobante_path && (
+                <button
+                  onClick={() => handleVerComprobante(s.id)}
+                  className="text-[11px] font-bold px-2 py-1 rounded bg-azul-light text-azul hover:bg-azul hover:text-white transition-colors"
+                  title="Ver comprobante"
+                >
+                  📎
+                </button>
+              )}
+            </div>
+            <div className="font-bold text-sm text-carbon">{tipoLabel(tipos, s)}</div>
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-gris-dark">
+              <span className="font-mono">{s.km_service.toLocaleString('es-AR')} km</span>
+              <span>·</span>
+              <span className="font-mono font-bold text-verde">{fmtMonto(s.costo)}</span>
+              {s.proveedor && (<>
+                <span>·</span>
+                <span className="truncate">{s.proveedor}</span>
+              </>)}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   )
