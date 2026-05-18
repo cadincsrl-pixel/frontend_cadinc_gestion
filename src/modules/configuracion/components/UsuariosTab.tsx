@@ -67,8 +67,10 @@ export function UsuariosTab() {
   const [rolOriginal, setRolOriginal] = useState<string | null>(null)
   const [modalNuevo,  setModalNuevo]  = useState(false)
   const [nuevoForm,   setNuevoForm]   = useState<NuevoUsuario>(EMPTY_NUEVO)
-  const [resetId,     setResetId]     = useState<string | null>(null)
-  const [newPass,     setNewPass]     = useState('')
+  const [resetId,        setResetId]        = useState<string | null>(null)
+  const [newPass,        setNewPass]        = useState('')
+  const [newPassConfirm, setNewPassConfirm] = useState('')
+  const [showPass,       setShowPass]       = useState(false)
   const [busqueda,    setBusqueda]    = useState('')
 
   // Modal de confirmación cuando se está promocionando a un usuario a admin.
@@ -79,10 +81,19 @@ export function UsuariosTab() {
   } | null>(null)
   const [confirmAdminText, setConfirmAdminText] = useState('')
 
+  // Helper para cerrar el modal de cambio de contraseña dejando todo limpio.
+  // Lo usamos desde cancelar, onClose y onSuccess.
+  function cerrarModalPassword() {
+    setResetId(null)
+    setNewPass('')
+    setNewPassConfirm('')
+    setShowPass(false)
+  }
+
   const { mutate: resetPassword, isPending: resetting } = useMutation({
     mutationFn: ({ id, password }: { id: string; password: string }) =>
       apiPost(`/api/usuarios/${id}/reset-password`, { password }),
-    onSuccess: () => { toast('Contraseña actualizada', 'ok'); setResetId(null); setNewPass('') },
+    onSuccess: () => { toast('Contraseña actualizada', 'ok'); cerrarModalPassword() },
     onError: (e: any) => toast(e.message || 'Error', 'err'),
   })
 
@@ -657,37 +668,85 @@ export function UsuariosTab() {
       )}
 
       {/* Modal cambiar contraseña */}
-      <Modal
-        open={!!resetId}
-        onClose={() => { setResetId(null); setNewPass('') }}
-        title="🔑 CAMBIAR CONTRASEÑA"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => { setResetId(null); setNewPass('') }}>Cancelar</Button>
-            <Button
-              variant="primary"
-              loading={resetting}
-              disabled={newPass.length < 6}
-              onClick={() => resetId && resetPassword({ id: resetId, password: newPass })}
-            >
-              Cambiar
-            </Button>
-          </>
-        }
-      >
-        <div className="flex flex-col gap-3">
-          <p className="text-sm text-gris-dark">
-            Usuario: <strong>{(usuarios as Profile[]).find(u => u.id === resetId)?.nombre ?? ''}</strong>
-          </p>
-          <Input
-            label="Nueva contraseña"
-            type="password"
-            placeholder="Mínimo 6 caracteres"
-            value={newPass}
-            onChange={e => setNewPass(e.target.value)}
-          />
-        </div>
-      </Modal>
+      {(() => {
+        const passLargoOk     = newPass.length >= 6
+        const coincide        = newPass === newPassConfirm
+        const confirmTocado   = newPassConfirm.length > 0
+        const puedeGuardar    = passLargoOk && coincide && confirmTocado
+        const errorConfirm    = confirmTocado && !coincide ? 'No coincide con la nueva contraseña.' : undefined
+        return (
+          <Modal
+            open={!!resetId}
+            onClose={cerrarModalPassword}
+            title="🔑 CAMBIAR CONTRASEÑA"
+            footer={
+              <>
+                <Button variant="secondary" onClick={cerrarModalPassword}>Cancelar</Button>
+                <Button
+                  variant="primary"
+                  loading={resetting}
+                  disabled={!puedeGuardar}
+                  onClick={() => resetId && resetPassword({ id: resetId, password: newPass })}
+                >
+                  Cambiar
+                </Button>
+              </>
+            }
+          >
+            <div className="flex flex-col gap-3">
+              <p className="text-sm text-gris-dark">
+                Usuario: <strong>{(usuarios as Profile[]).find(u => u.id === resetId)?.nombre ?? ''}</strong>
+              </p>
+
+              {/* Wrapper relativo para superponer el botón ojo al input.
+                  El padding-right del input deja espacio para el botón. */}
+              <div className="relative">
+                <Input
+                  label="Nueva contraseña"
+                  type={showPass ? 'text' : 'password'}
+                  placeholder="Mínimo 6 caracteres"
+                  value={newPass}
+                  onChange={e => setNewPass(e.target.value)}
+                  hint={!passLargoOk && newPass.length > 0 ? `Faltan ${6 - newPass.length} caracteres.` : undefined}
+                  className="pr-10"
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPass(v => !v)}
+                  aria-label={showPass ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  title={showPass ? 'Ocultar' : 'Mostrar'}
+                  className="absolute right-2 top-[26px] h-9 w-9 flex items-center justify-center rounded hover:bg-gris transition-colors text-base"
+                >
+                  {showPass ? '🙈' : '👁'}
+                </button>
+              </div>
+
+              <div className="relative">
+                <Input
+                  label="Confirmar contraseña"
+                  type={showPass ? 'text' : 'password'}
+                  placeholder="Repetí la contraseña"
+                  value={newPassConfirm}
+                  onChange={e => setNewPassConfirm(e.target.value)}
+                  error={errorConfirm}
+                  className="pr-10"
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPass(v => !v)}
+                  aria-label={showPass ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  title={showPass ? 'Ocultar' : 'Mostrar'}
+                  className="absolute right-2 top-[26px] h-9 w-9 flex items-center justify-center rounded hover:bg-gris transition-colors text-base"
+                >
+                  {showPass ? '🙈' : '👁'}
+                </button>
+              </div>
+            </div>
+          </Modal>
+        )
+      })()}
 
       {/* Modal de doble confirmación para promoción a admin */}
       <Modal

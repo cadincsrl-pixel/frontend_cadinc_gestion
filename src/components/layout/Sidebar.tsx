@@ -466,6 +466,8 @@ function UserInfo() {
   const email   = useSessionStore(s => s.email)
   const [showChangePass, setShowChangePass] = useState(false)
   const [newPass, setNewPass] = useState('')
+  const [newPassConfirm, setNewPassConfirm] = useState('')
+  const [showPass, setShowPass] = useState(false)
   const [changing, setChanging] = useState(false)
   const [msg, setMsg] = useState('')
 
@@ -473,6 +475,7 @@ function UserInfo() {
 
   async function handleChangePassword() {
     if (newPass.length < 6) { setMsg('Mínimo 6 caracteres'); return }
+    if (newPass !== newPassConfirm) { setMsg('Las contraseñas no coinciden'); return }
     setChanging(true)
     setMsg('')
     const { createClient } = await import('@/lib/supabase/client')
@@ -482,6 +485,8 @@ function UserInfo() {
     if (error) { setMsg(error.message); return }
     setMsg('Contraseña actualizada')
     setNewPass('')
+    setNewPassConfirm('')
+    setShowPass(false)
     setTimeout(() => { setShowChangePass(false); setMsg('') }, 2000)
   }
 
@@ -507,16 +512,47 @@ function UserInfo() {
       </button>
       {showChangePass && (
         <div className="flex flex-col gap-1.5">
-          <input
-            type="password"
-            value={newPass}
-            onChange={e => setNewPass(e.target.value)}
-            placeholder="Nueva contraseña..."
-            className="px-2 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white text-xs outline-none focus:border-naranja placeholder:text-white/30"
-          />
+          <div className="relative">
+            <input
+              type={showPass ? 'text' : 'password'}
+              value={newPass}
+              onChange={e => setNewPass(e.target.value)}
+              placeholder="Nueva contraseña..."
+              autoComplete="new-password"
+              className="w-full pl-2 pr-9 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white text-xs outline-none focus:border-naranja placeholder:text-white/30"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPass(v => !v)}
+              aria-label={showPass ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+              title={showPass ? 'Ocultar' : 'Mostrar'}
+              className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 flex items-center justify-center rounded hover:bg-white/10 transition-colors text-sm"
+            >
+              {showPass ? '🙈' : '👁'}
+            </button>
+          </div>
+          <div className="relative">
+            <input
+              type={showPass ? 'text' : 'password'}
+              value={newPassConfirm}
+              onChange={e => setNewPassConfirm(e.target.value)}
+              placeholder="Repetí la contraseña..."
+              autoComplete="new-password"
+              className="w-full pl-2 pr-9 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white text-xs outline-none focus:border-naranja placeholder:text-white/30"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPass(v => !v)}
+              aria-label={showPass ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+              title={showPass ? 'Ocultar' : 'Mostrar'}
+              className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 flex items-center justify-center rounded hover:bg-white/10 transition-colors text-sm"
+            >
+              {showPass ? '🙈' : '👁'}
+            </button>
+          </div>
           <button
             onClick={handleChangePassword}
-            disabled={changing}
+            disabled={changing || newPass.length < 6 || newPass !== newPassConfirm}
             className="text-[10px] font-bold bg-naranja text-white px-3 py-1.5 rounded-lg hover:bg-naranja-dark transition-colors disabled:opacity-50"
           >
             {changing ? 'Guardando...' : 'Cambiar'}
