@@ -12,10 +12,11 @@ import {
   useFlotaServicios,
   useFlotaTiposServicio,
   useCreateFlotaServicio,
+  useUpdateFlotaServicio,
   useDeleteFlotaServicio,
   fetchFlotaServicioComprobanteUrl,
 } from '../hooks/useFlotaServicios'
-import type { FlotaVehiculo, FlotaTipoServicio } from '@/types/domain.types'
+import type { FlotaServicio, FlotaVehiculo, FlotaTipoServicio } from '@/types/domain.types'
 
 interface Props {
   vehiculo: FlotaVehiculo
@@ -58,14 +59,17 @@ function tipoLabel(tipos: FlotaTipoServicio[], tipo_id: number | null, tipo_libr
 
 export function VehiculoServiciosSection({ vehiculo }: Props) {
   const toast = useToast()
-  const { puedeCrear, puedeEliminar } = usePermisos('flota')
+  const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('flota')
 
   const { data: servicios = [], isLoading } = useFlotaServicios(vehiculo.id)
   const { data: tipos = [] } = useFlotaTiposServicio()
   const { mutate: create, isPending: creating } = useCreateFlotaServicio()
+  const { mutate: update, isPending: updating } = useUpdateFlotaServicio()
   const { mutate: remove } = useDeleteFlotaServicio()
 
   const [agregando, setAgregando] = useState(false)
+  // Si está seteado, estamos editando ese service (mismo form, distinta acción).
+  const [editandoId, setEditandoId] = useState<number | null>(null)
   const [comprobante, setComprobante] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -96,7 +100,31 @@ export function VehiculoServiciosSection({ vehiculo }: Props) {
       proveedor:     '',
     })
     setComprobante(null)
+    setEditandoId(null)
     setAgregando(true)
+  }
+
+  function abrirEdicion(s: FlotaServicio) {
+    form.reset({
+      tipo_id:       s.tipo_id != null ? String(s.tipo_id) : '',
+      tipo_libre:    s.tipo_libre ?? '',
+      fecha:         s.fecha,
+      km_service:    String(s.km_service ?? 0),
+      km_proximo:    s.km_proximo != null ? String(s.km_proximo) : '',
+      fecha_proximo: s.fecha_proximo ?? '',
+      descripcion:   s.descripcion ?? '',
+      costo:         s.costo != null ? String(s.costo) : '',
+      proveedor:     s.proveedor ?? '',
+    })
+    setComprobante(null)  // El comprobante existente queda salvo que adjunten uno nuevo.
+    setEditandoId(s.id)
+    setAgregando(true)
+  }
+
+  function cerrarFormulario() {
+    setAgregando(false)
+    setEditandoId(null)
+    setComprobante(null)
   }
 
   function handleSubmit(data: FormData) {
@@ -106,26 +134,42 @@ export function VehiculoServiciosSection({ vehiculo }: Props) {
       toast('Elegí un tipo del catálogo o escribí uno libre', 'err')
       return
     }
+    const dtoComun = {
+      tipo_id,
+      tipo_libre,
+      fecha:         data.fecha,
+      km_service:    Number(data.km_service) || 0,
+      km_proximo:    data.km_proximo    ? Number(data.km_proximo)    : null,
+      fecha_proximo: data.fecha_proximo || null,
+      descripcion:   data.descripcion.trim() || null,
+      costo:         data.costo ? Number(data.costo) : null,
+      proveedor:     data.proveedor.trim() || null,
+    }
+    if (editandoId != null) {
+      // Edición: PATCH al service existente. El comprobante NO se cambia
+      // por ahora desde acá (eso requeriría re-subir y trackear). Si el
+      // user adjuntó uno, le avisamos.
+      if (comprobante) {
+        toast('El comprobante no se puede cambiar al editar — borrá y volvé a cargar.', 'warn')
+        return
+      }
+      update(
+        { id: editandoId, dto: dtoComun as Partial<FlotaServicio> },
+        {
+          onSuccess: () => { toast('✓ Service actualizado', 'ok'); cerrarFormulario() },
+          onError:   (err: any) => toast(err?.message ?? 'Error al actualizar', 'err'),
+        },
+      )
+      return
+    }
     create(
       {
-        vehiculo_id:   vehiculo.id,
-        tipo_id,
-        tipo_libre,
-        fecha:         data.fecha,
-        km_service:    Number(data.km_service) || 0,
-        km_proximo:    data.km_proximo    ? Number(data.km_proximo)    : null,
-        fecha_proximo: data.fecha_proximo || null,
-        descripcion:   data.descripcion.trim() || null,
-        costo:         data.costo ? Number(data.costo) : null,
-        proveedor:     data.proveedor.trim() || null,
+        vehiculo_id: vehiculo.id,
+        ...dtoComun,
         comprobante,
       },
       {
-        onSuccess: () => {
-          toast('✓ Service registrado', 'ok')
-          setAgregando(false)
-          setComprobante(null)
-        },
+        onSuccess: () => { toast('✓ Service registrado', 'ok'); cerrarFormulario() },
         onError: (err: any) => {
           const msg = err?.message ?? 'Error al registrar service'
           toast(msg.includes('COMPROBANTE_DUPLICADO') ? 'Ese comprobante ya está cargado' : msg, 'err')
@@ -164,6 +208,11 @@ export function VehiculoServiciosSection({ vehiculo }: Props) {
 
       {agregando && (
         <div className="bg-gris/30 border border-gris-mid rounded-lg p-3 flex flex-col gap-3">
+          {editandoId != null && (
+            <div className="text-xs font-bold text-azul uppercase tracking-wider">
+              ✏️ Editando service
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Select
               label="Tipo (del catálogo)"
@@ -190,33 +239,43 @@ export function VehiculoServiciosSection({ vehiculo }: Props) {
           </div>
           <Input label="Proveedor / taller" placeholder="Toyota Buenos Aires" {...form.register('proveedor')} />
           <Input label="Descripción" placeholder="Detalle del trabajo" {...form.register('descripcion')} />
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="text-[11px] font-bold px-2.5 py-1 rounded bg-azul-light text-azul border border-azul/30 hover:bg-azul hover:text-white transition-colors"
-            >
-              📎 {comprobante ? 'Cambiar comprobante' : 'Adjuntar comprobante'}
-            </button>
-            {comprobante && (
-              <span className="text-[11px] text-gris-dark truncate max-w-[200px]">
-                {comprobante.name}
-              </span>
-            )}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
-              className="hidden"
-              onChange={e => setComprobante(e.target.files?.[0] ?? null)}
-            />
-          </div>
+          {/* Comprobante: solo al crear. Al editar, lo escondemos para
+              evitar confusión (no se reemplaza desde acá; si quieren
+              cambiarlo deben borrar el service y volver a cargar). */}
+          {editandoId == null && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="text-[11px] font-bold px-2.5 py-1 rounded bg-azul-light text-azul border border-azul/30 hover:bg-azul hover:text-white transition-colors"
+              >
+                📎 {comprobante ? 'Cambiar comprobante' : 'Adjuntar comprobante'}
+              </button>
+              {comprobante && (
+                <span className="text-[11px] text-gris-dark truncate max-w-[200px]">
+                  {comprobante.name}
+                </span>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
+                className="hidden"
+                onChange={e => setComprobante(e.target.files?.[0] ?? null)}
+              />
+            </div>
+          )}
+          {editandoId != null && (
+            <div className="text-[11px] text-gris-dark italic">
+              El comprobante adjunto no se modifica desde acá. Para cambiarlo, borrá el service y cargá uno nuevo.
+            </div>
+          )}
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" size="sm" onClick={() => { setAgregando(false); setComprobante(null) }}>
+            <Button variant="secondary" size="sm" onClick={cerrarFormulario}>
               Cancelar
             </Button>
-            <Button variant="primary" size="sm" loading={creating} onClick={form.handleSubmit(handleSubmit)}>
-              ✓ Guardar
+            <Button variant="primary" size="sm" loading={creating || updating} onClick={form.handleSubmit(handleSubmit)}>
+              {editandoId != null ? '✓ Guardar cambios' : '✓ Guardar'}
             </Button>
           </div>
         </div>
@@ -259,6 +318,15 @@ export function VehiculoServiciosSection({ vehiculo }: Props) {
                   title="Ver comprobante"
                 >
                   📎
+                </button>
+              )}
+              {puedeEditar && (
+                <button
+                  onClick={() => abrirEdicion(s)}
+                  className="text-[11px] font-bold px-2 py-1 rounded bg-gris text-gris-dark hover:bg-azul-light hover:text-azul transition-colors"
+                  title="Editar"
+                >
+                  ✏️
                 </button>
               )}
               {puedeEliminar && (
