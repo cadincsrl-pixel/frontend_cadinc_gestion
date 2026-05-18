@@ -11,6 +11,7 @@ import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useFlotaVehiculos, useCreateFlotaVehiculo } from '../hooks/useFlotaVehiculos'
 import { useFlotaServiciosEstado } from '../hooks/useFlotaServicios'
+import { useFlotaNotificacionesDocs } from '../hooks/useFlotaNotificaciones'
 import { intInputProps } from '@/lib/utils/inputs'
 import { useFlotaSyncTodos, mensajeAmigableErrorSync } from '../hooks/useFlotaGpsSync'
 import { VehiculoDetalleModal } from './VehiculoDetalleModal'
@@ -46,11 +47,25 @@ function fmtKm(n: number | null | undefined): string {
   return Math.round(n).toLocaleString('es-AR') + ' km'
 }
 
+function fmtFechaCorta(iso: string): string {
+  const [y, m, d] = iso.split('-')
+  return `${d}/${m}/${y?.slice(2)}`
+}
+
+// Días entre hoy y la fecha objetivo (positivo = en el futuro, negativo = pasado).
+function diasHasta(iso: string): number {
+  const hoy = new Date()
+  hoy.setHours(0, 0, 0, 0)
+  const target = new Date(iso + 'T00:00:00')
+  return Math.round((target.getTime() - hoy.getTime()) / 86_400_000)
+}
+
 export function VehiculosTab() {
   const toast = useToast()
   const { puedeCrear, puedeEditar } = usePermisos('flota')
   const { data: vehiculos = [], isLoading } = useFlotaVehiculos()
   const { data: estadoServicios = [] } = useFlotaServiciosEstado()
+  const { data: docsVencimientos = [] } = useFlotaNotificacionesDocs()
   const { mutate: create, isPending: creating } = useCreateFlotaVehiculo()
   const { mutate: syncTodos, isPending: syncingAll } = useFlotaSyncTodos()
 
@@ -67,6 +82,18 @@ export function VehiculosTab() {
     }
     return m
   }, [estadoServicios])
+
+  // Map vehiculo_id → fecha de vencimiento de su VTV (último doc tipo='vtv').
+  // La vista v_vehiculo_documentos_vencimientos ya devuelve solo el más
+  // reciente por (entidad, vehiculo_id, tipo), así que confiamos en ese
+  // último resultado.
+  const vtvPorVehiculo = useMemo(() => {
+    const m = new Map<number, string>()
+    for (const d of docsVencimientos) {
+      if (d.tipo === 'vtv') m.set(d.entidad_id, d.vence_el)
+    }
+    return m
+  }, [docsVencimientos])
 
   const formNuevo = useForm<NuevoForm>({
     defaultValues: { tipo: 'camioneta', estado: 'activo', km_actuales: '0' },
@@ -168,7 +195,7 @@ export function VehiculosTab() {
           <table className="w-full border-collapse min-w-[700px]">
             <thead>
               <tr>
-                {['Patente', 'Alias MQ', 'Tipo', 'Marca / modelo', 'Año', 'Km actuales', 'Km último service', 'Estado'].map(h => (
+                {['Patente', 'Alias MQ', 'Marca / modelo', 'Año', 'Km actuales', 'Km último service', 'VTV (vence)', 'Estado'].map(h => (
                   <th key={h} className="bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide">
                     {h}
                   </th>
@@ -203,7 +230,6 @@ export function VehiculosTab() {
                       ? <span className="font-bold text-azul">{v.mobilquest_alias}</span>
                       : <span className="text-gris-mid">—</span>}
                   </td>
-                  <td className="px-4 py-3 text-xs text-gris-dark capitalize">{v.tipo}</td>
                   <td className="px-4 py-3 text-sm text-carbon">
                     {[v.marca, v.modelo].filter(Boolean).join(' ') || '—'}
                   </td>
@@ -216,6 +242,26 @@ export function VehiculosTab() {
                       return (
                         <span title={e.fecha ? `Último service: ${e.fecha}` : undefined}>
                           {fmtKm(e.km)}
+                        </span>
+                      )
+                    })()}
+                  </td>
+                  <td className="px-4 py-3 font-mono text-xs">
+                    {(() => {
+                      const vence = vtvPorVehiculo.get(v.id)
+                      if (!vence) return <span className="text-gris-mid">—</span>
+                      const d = diasHasta(vence)
+                      const cls =
+                        d < 0  ? 'bg-rojo-light text-rojo font-bold' :
+                        d <= 30 ? 'bg-amarillo-light text-[#7A5000] font-bold' :
+                                  'text-gris-dark'
+                      const tooltip =
+                        d < 0  ? `Vencida hace ${Math.abs(d)} días` :
+                        d === 0 ? 'Vence hoy' :
+                                  `Faltan ${d} días`
+                      return (
+                        <span className={`px-2 py-0.5 rounded ${cls}`} title={tooltip}>
+                          {fmtFechaCorta(vence)}
                         </span>
                       )
                     })()}
@@ -263,8 +309,8 @@ export function VehiculosTab() {
                     </span>
                   )}
                 </div>
-                <div className="text-xs text-gris-dark mt-0.5 capitalize">
-                  {v.tipo}{v.marca || v.modelo ? ` · ${[v.marca, v.modelo].filter(Boolean).join(' ')}` : ''}
+                <div className="text-xs text-gris-dark mt-0.5">
+                  {[v.marca, v.modelo].filter(Boolean).join(' ') || '—'}
                 </div>
               </div>
               <Badge
@@ -282,6 +328,16 @@ export function VehiculosTab() {
                 const e = estadoPorVehiculo.get(v.id)
                 if (!e || e.km == null) return null
                 return <span title={e.fecha ? `Último service: ${e.fecha}` : undefined}>🔧 {fmtKm(e.km)} último service</span>
+              })()}
+              {(() => {
+                const vence = vtvPorVehiculo.get(v.id)
+                if (!vence) return null
+                const d = diasHasta(vence)
+                const cls =
+                  d < 0  ? 'text-rojo font-bold' :
+                  d <= 30 ? 'text-[#7A5000] font-bold' :
+                            'text-gris-dark'
+                return <span className={cls}>📋 VTV {fmtFechaCorta(vence)}</span>
               })()}
               {v.anio && <span>{v.anio}</span>}
             </div>
