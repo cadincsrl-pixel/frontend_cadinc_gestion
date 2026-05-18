@@ -740,11 +740,21 @@ export function LiquidacionesTab() {
                     </Button>
                     {mis_tramos.length > 0 && (() => {
                       const { desde, hasta } = rangoTramos(mis_tramos)
+                      // Desglose km cargado/vacío para que el Excel muestre la
+                      // cuenta detallada y no sólo el agregado.
+                      const km_cargados = mis_tramos.filter(t => t.tipo === 'cargado').reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
+                      const km_vacios   = mis_tramos.filter(t => t.tipo === 'vacio'  ).reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
+                      const precio_km_cargado = chofer.precio_km_cargado ?? 0
+                      const precio_km_vacio   = chofer.precio_km_vacio   ?? 0
                       const exportData = {
                         nombreChofer: chofer.nombre,
                         desde, hasta, dias,
                         basico_dia:   chofer.basico_dia ?? 0,
                         subtotal_bas, km_totales, subtotal_km, descuentos,
+                        km_cargados, km_vacios,
+                        precio_km_cargado, precio_km_vacio,
+                        subtotal_km_cargado: km_cargados * precio_km_cargado,
+                        subtotal_km_vacio:   km_vacios   * precio_km_vacio,
                         neto:         saldo,
                         tramos:       mis_tramos,
                         adelantos:    mis_adelantos,
@@ -814,6 +824,13 @@ export function LiquidacionesTab() {
                     {(() => {
                       const liqTramos  = (tramos   as Tramo[]).filter(t => t.liquidacion_id === liq.id)
                       const liqAdel    = (adelantos as Adelanto[]).filter(a => a.liquidacion_id === liq.id)
+                      // Desglose km cargado/vacío para el Excel. Usa precios del
+                      // chofer (no quedaron snapshot en la liquidación — mismo
+                      // criterio que el PDF cerrado).
+                      const km_cargados = liqTramos.filter(t => t.tipo === 'cargado').reduce((s: number, t: Tramo) => s + kmTramo(t, rutas as Ruta[]), 0)
+                      const km_vacios   = liqTramos.filter(t => t.tipo === 'vacio'  ).reduce((s: number, t: Tramo) => s + kmTramo(t, rutas as Ruta[]), 0)
+                      const precio_km_cargado = chofer?.precio_km_cargado ?? 0
+                      const precio_km_vacio   = chofer?.precio_km_vacio   ?? 0
                       const exportData = {
                         nombreChofer: chofer?.nombre ?? '—',
                         desde:        liq.fecha_desde,
@@ -821,8 +838,12 @@ export function LiquidacionesTab() {
                         dias:         liq.dias_trabajados,
                         basico_dia:   liq.basico_dia,
                         subtotal_bas: liq.subtotal_basico - (liq.subtotal_km ?? 0),
-                        km_totales:   liqTramos.reduce((s: number, t: Tramo) => s + kmTramo(t, rutas as Ruta[]), 0),
+                        km_totales:   km_cargados + km_vacios,
                         subtotal_km:  liq.subtotal_km ?? 0,
+                        km_cargados, km_vacios,
+                        precio_km_cargado, precio_km_vacio,
+                        subtotal_km_cargado: km_cargados * precio_km_cargado,
+                        subtotal_km_vacio:   km_vacios   * precio_km_vacio,
                         descuentos:   liq.total_adelantos,
                         neto:         liq.total_neto,
                         tramos:       liqTramos,

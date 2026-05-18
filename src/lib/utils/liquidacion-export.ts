@@ -65,6 +65,13 @@ export interface LiqExportData {
   subtotal_bas: number
   km_totales:   number
   subtotal_km:  number
+  // Desglose de km/subtotales por tipo (opcional para compat con callers viejos).
+  km_cargados?:         number
+  km_vacios?:           number
+  precio_km_cargado?:   number
+  precio_km_vacio?:     number
+  subtotal_km_cargado?: number
+  subtotal_km_vacio?:   number
   descuentos:   number
   // Reintegros = gastos del chofer que la empresa le devuelve.
   reintegros?:  number
@@ -237,13 +244,36 @@ export async function exportLiquidacionExcel(d: LiqExportData) {
   setSectionHeader(ws, row, '📊 RESUMEN', C_AZUL); row++
 
   const haberes: Array<[string, number, string]> = [
-    ['Días trabajados',                       d.dias,        FMT_DIAS],
-    ['Básico por día',                        d.basico_dia,  FMT_MONTO],
+    ['Días trabajados',                       d.dias,         FMT_DIAS],
+    ['Básico por día',                        d.basico_dia,   FMT_MONTO],
     ['Subtotal básico',                       d.subtotal_bas, FMT_MONTO],
   ]
-  if (d.km_totales > 0) {
-    haberes.push(['Km recorridos',            d.km_totales,  '#,##0" km"'])
-    haberes.push(['Subtotal km',              d.subtotal_km, FMT_MONTO])
+  // Desglose por tipo: si tenemos los campos detallados los mostramos como
+  // "X km × $Y/km = $Z" por separado para cargado y vacío. Si no, caemos al
+  // total agregado (compat con callers antiguos).
+  if ((d.km_cargados ?? 0) > 0 && (d.precio_km_cargado ?? 0) > 0) {
+    const sub = d.subtotal_km_cargado ?? (d.km_cargados! * d.precio_km_cargado!)
+    haberes.push([
+      `🚛 Km cargados (${(d.km_cargados ?? 0).toLocaleString('es-AR')} km × $${(d.precio_km_cargado ?? 0).toLocaleString('es-AR')}/km)`,
+      sub,
+      FMT_MONTO,
+    ])
+  }
+  if ((d.km_vacios ?? 0) > 0 && (d.precio_km_vacio ?? 0) > 0) {
+    const sub = d.subtotal_km_vacio ?? (d.km_vacios! * d.precio_km_vacio!)
+    haberes.push([
+      `🔲 Km vacíos (${(d.km_vacios ?? 0).toLocaleString('es-AR')} km × $${(d.precio_km_vacio ?? 0).toLocaleString('es-AR')}/km)`,
+      sub,
+      FMT_MONTO,
+    ])
+  }
+  // Si NO hay desglose pero sí hay km totales, mantenemos el comportamiento viejo.
+  const tieneDesglose = ((d.km_cargados ?? 0) > 0) || ((d.km_vacios ?? 0) > 0)
+  if (!tieneDesglose && d.km_totales > 0) {
+    haberes.push(['Km recorridos',            d.km_totales,   '#,##0" km"'])
+    haberes.push(['Subtotal km',              d.subtotal_km,  FMT_MONTO])
+  } else if (tieneDesglose) {
+    haberes.push(['Subtotal km (cargado + vacío)', d.subtotal_km, FMT_MONTO])
   }
   haberes.push(['Total haberes',              d.subtotal_bas + d.subtotal_km, FMT_MONTO])
 
