@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useFlotaVehiculos, useCreateFlotaVehiculo } from '../hooks/useFlotaVehiculos'
+import { useFlotaServiciosEstado } from '../hooks/useFlotaServicios'
 import { intInputProps } from '@/lib/utils/inputs'
 import { useFlotaSyncTodos, mensajeAmigableErrorSync } from '../hooks/useFlotaGpsSync'
 import { VehiculoDetalleModal } from './VehiculoDetalleModal'
@@ -49,12 +50,23 @@ export function VehiculosTab() {
   const toast = useToast()
   const { puedeCrear, puedeEditar } = usePermisos('flota')
   const { data: vehiculos = [], isLoading } = useFlotaVehiculos()
+  const { data: estadoServicios = [] } = useFlotaServiciosEstado()
   const { mutate: create, isPending: creating } = useCreateFlotaVehiculo()
   const { mutate: syncTodos, isPending: syncingAll } = useFlotaSyncTodos()
 
   const [modalNuevo, setModalNuevo] = useState(false)
   const [detalleId, setDetalleId] = useState<number | null>(null)
   const [busqueda, setBusqueda] = useState('')
+
+  // Map vehiculo_id → último service (km y fecha), para mostrar al lado de
+  // los km actuales del vehículo en la tabla y la card mobile.
+  const estadoPorVehiculo = useMemo(() => {
+    const m = new Map<number, { km: number | null; fecha: string | null }>()
+    for (const e of estadoServicios) {
+      m.set(e.vehiculo_id, { km: e.km_ultimo_service, fecha: e.fecha_ultimo_service })
+    }
+    return m
+  }, [estadoServicios])
 
   const formNuevo = useForm<NuevoForm>({
     defaultValues: { tipo: 'camioneta', estado: 'activo', km_actuales: '0' },
@@ -156,7 +168,7 @@ export function VehiculosTab() {
           <table className="w-full border-collapse min-w-[700px]">
             <thead>
               <tr>
-                {['Patente', 'Alias MQ', 'Tipo', 'Marca / modelo', 'Año', 'Km actuales', 'Estado'].map(h => (
+                {['Patente', 'Alias MQ', 'Tipo', 'Marca / modelo', 'Año', 'Km actuales', 'Km último service', 'Estado'].map(h => (
                   <th key={h} className="bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide">
                     {h}
                   </th>
@@ -166,7 +178,7 @@ export function VehiculosTab() {
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-8">
+                  <td colSpan={8} className="text-center py-8">
                     <span className="inline-flex items-center gap-2 text-gris-dark text-sm">
                       <span className="w-4 h-4 border-2 border-naranja border-t-transparent rounded-full animate-spin" />
                       Cargando...
@@ -197,6 +209,17 @@ export function VehiculosTab() {
                   </td>
                   <td className="px-4 py-3 text-xs text-gris-dark">{v.anio ?? '—'}</td>
                   <td className="px-4 py-3 font-mono text-xs text-gris-dark">{fmtKm(v.km_actuales)}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-gris-dark">
+                    {(() => {
+                      const e = estadoPorVehiculo.get(v.id)
+                      if (!e || e.km == null) return <span className="text-gris-mid">—</span>
+                      return (
+                        <span title={e.fecha ? `Último service: ${e.fecha}` : undefined}>
+                          {fmtKm(e.km)}
+                        </span>
+                      )
+                    })()}
+                  </td>
                   <td className="px-4 py-3">
                     <Badge
                       variant={
@@ -253,8 +276,14 @@ export function VehiculosTab() {
                 label={v.estado === 'taller' ? 'En taller' : undefined}
               />
             </div>
-            <div className="text-[11px] text-gris-dark mt-2 font-mono">
-              {fmtKm(v.km_actuales)}{v.anio ? ` · ${v.anio}` : ''}
+            <div className="text-[11px] text-gris-dark mt-2 font-mono flex flex-wrap gap-x-3 gap-y-0.5">
+              <span>{fmtKm(v.km_actuales)} actuales</span>
+              {(() => {
+                const e = estadoPorVehiculo.get(v.id)
+                if (!e || e.km == null) return null
+                return <span title={e.fecha ? `Último service: ${e.fecha}` : undefined}>🔧 {fmtKm(e.km)} último service</span>
+              })()}
+              {v.anio && <span>{v.anio}</span>}
             </div>
           </button>
         ))}
