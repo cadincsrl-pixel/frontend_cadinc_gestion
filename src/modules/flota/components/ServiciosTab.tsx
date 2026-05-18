@@ -141,7 +141,7 @@ export function ServiciosTab() {
                 <td className="px-4 py-2.5 font-mono text-xs">{fmtFecha(s.fecha)}</td>
                 <td className="px-4 py-2.5 font-mono text-xs font-bold text-azul">{patente(vehiculos, s.vehiculo_id)}</td>
                 <td className="px-4 py-2.5 text-sm">{tipoLabel(tipos, s)}</td>
-                <td className="px-4 py-2.5 font-mono text-xs">{s.km_service.toLocaleString('es-AR')} km</td>
+                <td className="px-4 py-2.5 font-mono text-xs">{Math.round(s.km_service).toLocaleString('es-AR')} km</td>
                 <td className="px-4 py-2.5 font-mono text-sm font-bold text-verde">{fmtMonto(s.costo)}</td>
                 <td className="px-4 py-2.5 text-xs text-gris-dark truncate max-w-[180px]">{s.proveedor ?? '—'}</td>
                 <td className="px-4 py-2.5 text-right">
@@ -190,7 +190,7 @@ export function ServiciosTab() {
             </div>
             <div className="font-bold text-sm text-carbon">{tipoLabel(tipos, s)}</div>
             <div className="flex flex-wrap items-center gap-2 text-[11px] text-gris-dark">
-              <span className="font-mono">{s.km_service.toLocaleString('es-AR')} km</span>
+              <span className="font-mono">{Math.round(s.km_service).toLocaleString('es-AR')} km</span>
               <span>·</span>
               <span className="font-mono font-bold text-verde">{fmtMonto(s.costo)}</span>
               {s.proveedor && (<>

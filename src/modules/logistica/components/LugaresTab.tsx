@@ -13,6 +13,7 @@ import { Input }  from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 import { useForm } from 'react-hook-form'
+import { intInputProps } from '@/lib/utils/inputs'
 import { useGeocode } from '../hooks/useEnRuta'
 import type { Cantera, Deposito } from '@/types/domain.types'
 
@@ -219,7 +220,7 @@ export function LugaresTab() {
                     {r.depositos?.nombre ?? `Depósito #${r.deposito_id}`}
                   </span>
                   <span className="font-mono text-xs text-verde font-bold">
-                    {r.km_ida_vuelta.toLocaleString('es-AR')} km
+                    {Math.round(r.km_ida_vuelta).toLocaleString('es-AR')} km
                   </span>
                 </div>
               </div>
@@ -311,7 +312,7 @@ export function LugaresTab() {
           />
           <Input
             label="Km ida y vuelta (total)"
-            type="number"
+            {...intInputProps}
             placeholder="Ej: 1840"
             hint="Buscá la ruta en Google Maps y sumá ida + vuelta"
             {...formRuta.register('km_ida_vuelta')}

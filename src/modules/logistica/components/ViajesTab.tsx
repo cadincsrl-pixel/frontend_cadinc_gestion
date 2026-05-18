@@ -786,7 +786,7 @@ export function ViajesTab() {
                           ? `⛏ ${cantera.nombre} → 🏭 ${deposito.nombre}`
                           : `🏭 ${deposito.nombre} → ⛏ ${cantera.nombre}`
                         }
-                        {km && <span className="ml-2 font-mono">({km.toLocaleString('es-AR')} km)</span>}
+                        {km && <span className="ml-2 font-mono">({Math.round(km).toLocaleString('es-AR')} km)</span>}
                       </div>
                     )}
                     {/* Distancia restante GPS→destino. Aplica tanto a

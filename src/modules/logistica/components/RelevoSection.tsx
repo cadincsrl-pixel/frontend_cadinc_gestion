@@ -18,7 +18,7 @@ interface Props {
 }
 
 function fmtKm(n: number) {
-  return n.toLocaleString('es-AR', { maximumFractionDigits: 1 })
+  return Math.round(n).toLocaleString('es-AR')
 }
 
 // Sección que va dentro del modal de edición del tramo. Si el tramo no

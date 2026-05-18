@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useFlotaVehiculos, useCreateFlotaVehiculo } from '../hooks/useFlotaVehiculos'
+import { intInputProps } from '@/lib/utils/inputs'
 import { useFlotaSyncTodos, mensajeAmigableErrorSync } from '../hooks/useFlotaGpsSync'
 import { VehiculoDetalleModal } from './VehiculoDetalleModal'
 import type { FlotaVehiculo, FlotaVehiculoTipo, FlotaVehiculoEstado } from '@/types/domain.types'
@@ -285,7 +286,7 @@ export function VehiculosTab() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Input label="Año"         type="number" placeholder="2022" {...formNuevo.register('anio')} />
-            <Input label="Km actuales" type="number" placeholder="0"    {...formNuevo.register('km_actuales')} />
+            <Input label="Km actuales" {...intInputProps} placeholder="0"    {...formNuevo.register('km_actuales')} />
             <Select label="Estado"     options={ESTADO_OPTIONS}         {...formNuevo.register('estado')} />
           </div>
           <p className="text-[11px] text-gris-dark italic">

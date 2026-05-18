@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
+import { intInputProps } from '@/lib/utils/inputs'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -39,7 +40,7 @@ function fmtFecha(iso: string): string {
 
 function fmtKm(n: number | null | undefined): string {
   if (n == null) return '—'
-  return n.toLocaleString('es-AR') + ' km'
+  return Math.round(n).toLocaleString('es-AR') + ' km'
 }
 
 function fmtMonto(n: number | null | undefined): string {
@@ -180,11 +181,11 @@ export function VehiculoServiciosSection({ vehiculo }: Props) {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Input label="Fecha"      type="date"   {...form.register('fecha', { required: true })} />
-            <Input label="Km service" type="number" {...form.register('km_service', { required: true })} />
+            <Input label="Km service" {...intInputProps} {...form.register('km_service', { required: true })} />
             <Input label="Costo ($)"  type="number" step="100" {...form.register('costo')} />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Input label="Km próximo (opcional)"    type="number" placeholder={form.watch('km_service') ? String(Number(form.watch('km_service')) + 10000) : ''} {...form.register('km_proximo')} />
+            <Input label="Km próximo (opcional)"    {...intInputProps} placeholder={form.watch('km_service') ? String(Number(form.watch('km_service')) + 10000) : ''} {...form.register('km_proximo')} />
             <Input label="Fecha próximo (opcional)" type="date"   {...form.register('fecha_proximo')} />
           </div>
           <Input label="Proveedor / taller" placeholder="Toyota Buenos Aires" {...form.register('proveedor')} />

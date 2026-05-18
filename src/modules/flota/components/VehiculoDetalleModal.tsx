@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
+import { intInputProps } from '@/lib/utils/inputs'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -229,7 +230,7 @@ export function VehiculoDetalleModal({ vehiculo, onClose }: Props) {
             </div>
             <Input
               label="Km actuales"
-              type="number"
+              {...intInputProps}
               placeholder="0"
               disabled={!modoEdicion}
               {...form.register('km_actuales')}

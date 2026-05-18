@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
+import { intInputProps } from '@/lib/utils/inputs'
 import {
   useGastos, useGastosCategorias, useCreateGasto, useUpdateGasto, useDeleteGasto,
   useAprobarGasto, useRechazarGasto, useMarcarGastoPagado,
@@ -682,7 +683,7 @@ function GastoFormFields({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input label="Litros" type="number" step="0.001" placeholder="150.500" inputMode="decimal"
               {...form.register('carga_combustible.litros', { required: esCombustible })} />
-            <Input label="Odómetro km (opcional)" type="number" step="1" placeholder="452300" inputMode="numeric"
+            <Input label="Odómetro km (opcional)" {...intInputProps} placeholder="452300"
               {...form.register('carga_combustible.odometro_km')} />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">

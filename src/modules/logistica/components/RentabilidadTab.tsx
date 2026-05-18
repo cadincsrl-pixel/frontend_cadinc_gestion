@@ -13,6 +13,7 @@ import {
   type ParametrosRow,
   type ViajeUpsertDto,
 } from '../hooks/useRentabilidad'
+import { intInputProps } from '@/lib/utils/inputs'
 import {
   calcularRentabilidad,
   diagnosticoLabel,
@@ -410,8 +411,8 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
           <Input label="Nombre del viaje" placeholder="Ej: cristamine 35t" disabled={readOnly} {...form.register('nombre')} />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Input label="Km ida"    type="number" disabled={readOnly} {...form.register('km_ida',    { valueAsNumber: true })} />
-            <Input label="Km vuelta" type="number" disabled={readOnly} {...form.register('km_vuelta', { valueAsNumber: true })} />
+            <Input label="Km ida"    {...intInputProps} disabled={readOnly} {...form.register('km_ida',    { valueAsNumber: true })} />
+            <Input label="Km vuelta" {...intInputProps} disabled={readOnly} {...form.register('km_vuelta', { valueAsNumber: true })} />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Input label="Toneladas"        type="number" step="0.1" disabled={readOnly} {...form.register('toneladas',       { valueAsNumber: true })} />
@@ -622,7 +623,7 @@ function ParametrosCard({ paramsRow, open, onToggle, readOnly }: ParametrosCardP
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Input label="Valor tractor (USD)"           type="number" disabled={readOnly} {...form.register('valor_tractor_usd',          { valueAsNumber: true })} />
               <Input label="Valor residual tractor (USD)"  type="number" disabled={readOnly} {...form.register('valor_residual_tractor_usd', { valueAsNumber: true })} />
-              <Input label="Vida útil tractor (km)"        type="number" disabled={readOnly} {...form.register('vida_util_tractor_km',       { valueAsNumber: true })} />
+              <Input label="Vida útil tractor (km)"        {...intInputProps} disabled={readOnly} {...form.register('vida_util_tractor_km',       { valueAsNumber: true })} />
               <Input label="Valor batea (USD)"             type="number" disabled={readOnly} {...form.register('valor_semirremolque_usd',    { valueAsNumber: true })} />
               <Input label="Vida útil batea (años)"        type="number" disabled={readOnly} {...form.register('vida_util_batea_anios',      { valueAsNumber: true })} />
             </div>
@@ -632,10 +633,10 @@ function ParametrosCard({ paramsRow, open, onToggle, readOnly }: ParametrosCardP
             <legend className="text-[11px] font-bold uppercase tracking-wider text-gris-dark px-1">Mantenimiento + neumáticos</legend>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Input label="Costo service (ARS)"         type="number" disabled={readOnly} {...form.register('costo_service',          { valueAsNumber: true })} />
-              <Input label="Frecuencia service (km)"     type="number" disabled={readOnly} {...form.register('frecuencia_service_km',  { valueAsNumber: true })} />
+              <Input label="Frecuencia service (km)"     {...intInputProps} disabled={readOnly} {...form.register('frecuencia_service_km',  { valueAsNumber: true })} />
               <Input label="Costo cubierta (ARS)"        type="number" disabled={readOnly} {...form.register('costo_cubierta',         { valueAsNumber: true })} />
               <Input label="Cubiertas por equipo"        type="number" disabled={readOnly} {...form.register('cubiertas_por_equipo',   { valueAsNumber: true })} />
-              <Input label="Vida útil neumáticos (km)"   type="number" disabled={readOnly} {...form.register('vida_util_neumaticos_km',{ valueAsNumber: true })} />
+              <Input label="Vida útil neumáticos (km)"   {...intInputProps} disabled={readOnly} {...form.register('vida_util_neumaticos_km',{ valueAsNumber: true })} />
             </div>
           </fieldset>
 
