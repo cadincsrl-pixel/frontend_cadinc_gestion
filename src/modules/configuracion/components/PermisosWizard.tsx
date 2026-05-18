@@ -13,8 +13,8 @@
  *   3. **Capacidades extra (add-ons)**: checkboxes filtrados por preset
  *      O — en modo Personalizado — por módulos tildados.
  *   4. **Edición fina (solo personalizado)**: matriz CRUD por módulo +
- *      sub-bloque "Capacidades" (vista_completa, ver_pii, ver_costos,
- *      obras_scope) por módulo.
+ *      sub-bloque "Capacidades" (ver_pii, ver_costos, administrar_obras,
+ *      resolver_items, forzar_despacho) por módulo.
  *
  * El componente NO maneja `nombre`, `email`, `password`, `activo`, ni la
  * sección de obras asignadas — esos siguen viviendo en `UsuariosTab`.
@@ -48,13 +48,8 @@ const MODULOS_CON_OBRAS_SCOPE: ReadonlySet<string> = new Set([
 // en modo Personalizado. Se muestran SIEMPRE (es modo experto) pero algunos
 // solo afectan a ciertos módulos en el código del frontend; los `title` lo
 // documentan.
-type FlagBoolean = 'vista_completa' | 'ver_pii' | 'ver_costos'
-const FLAGS_BOOLEAN: { key: FlagBoolean; label: string; help: string }[] = [
-  {
-    key: 'vista_completa',
-    label: 'Vista completa',
-    help: 'Habilita toolbar, tarifas y navegación entre semanas (tarja). Default true.',
-  },
+type FlagBoolean = 'ver_pii' | 'ver_costos' | 'administrar_obras' | 'resolver_items' | 'forzar_despacho'
+const FLAGS_BOOLEAN: { key: FlagBoolean; label: string; help: string; modulos?: string[] }[] = [
   {
     key: 'ver_pii',
     label: 'Ver datos personales (PII)',
@@ -64,6 +59,24 @@ const FLAGS_BOOLEAN: { key: FlagBoolean; label: string; help: string }[] = [
     key: 'ver_costos',
     label: 'Ver costos',
     help: 'Muestra precios, totales y tarifas. Aplica a tarja y otros módulos sensibles.',
+  },
+  {
+    key: 'administrar_obras',
+    label: 'Administrar obras (catálogo)',
+    help: 'Crear, editar, archivar y eliminar la entidad obra. Independiente de los permisos sobre horas. Solo tiene efecto en tarja.',
+    modulos: ['tarja'],
+  },
+  {
+    key: 'resolver_items',
+    label: 'Resolver items',
+    help: 'Comprar / despachar / enviar / rechazar items de solicitudes. Solo tiene efecto en certificaciones.',
+    modulos: ['certificaciones'],
+  },
+  {
+    key: 'forzar_despacho',
+    label: 'Forzar despacho',
+    help: 'Override que permite despachar aunque el stock no alcance. Solo tiene efecto en certificaciones.',
+    modulos: ['certificaciones'],
   },
 ]
 
@@ -539,8 +552,10 @@ export function PermisosWizard({ data, onChange, modulos }: Props) {
                           Capacidades
                         </div>
                         <div className="flex gap-1.5 flex-wrap">
-                          {FLAGS_BOOLEAN.map(({ key, label, help }) => {
-                            const v = modPerm[key]
+                          {FLAGS_BOOLEAN
+                            .filter(f => !f.modulos || f.modulos.includes(m.key))
+                            .map(({ key, label, help }) => {
+                            const v = (modPerm as Record<string, unknown>)[key]
                             const estado = v === undefined ? 'default' : v ? 'on' : 'off'
                             const labelEstado =
                               estado === 'default' ? 'auto'

@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api/client'
+import { modulosOrdenados } from '@/lib/config/modulos'
 import { Modal }    from '@/components/ui/Modal'
 import { UsuarioObrasSection } from './UsuarioObrasSection'
 import { PermisosWizard, type WizardData } from './PermisosWizard'
@@ -111,24 +112,18 @@ export function UsuariosTab() {
     })
   }, [usuarios, busqueda])
 
-  const { data: modulosDB = [] } = useQuery({
-    queryKey: ['modulos'],
-    queryFn:  () => apiGet<Modulo[]>('/api/usuarios/modulos'),
-  })
-
-  // Módulos hardcodeados para que siempre aparezcan todos
-  const MODULOS_COMPLETOS: Modulo[] = [
-    { id: 1, key: 'tarja',          nombre: 'Tarja de Obra',    descripcion: 'Control de horas y personal',          icono: '📋', activo: true, orden: 1 },
-    { id: 2, key: 'logistica',      nombre: 'Logística',        descripcion: 'Transporte de camiones',               icono: '🚛', activo: true, orden: 2 },
-    { id: 3, key: 'herramientas',   nombre: 'Herramientas',     descripcion: 'Control de herramientas y equipos',     icono: '🔧', activo: true, orden: 3 },
-    { id: 4, key: 'certificaciones',nombre: 'Compras y Stock',  descripcion: 'Solicitudes, materiales y stock',       icono: '🛒', activo: true, orden: 4 },
-    { id: 5, key: 'caja',           nombre: 'Caja',             descripcion: 'Efectivo y movimientos',                icono: '💵', activo: true, orden: 5 },
-    { id: 7, key: 'flota',          nombre: 'Flota CADINC',     descripcion: 'Vehículos internos (autos, camionetas)', icono: '🚙', activo: true, orden: 6 },
-    { id: 6, key: 'admin',          nombre: 'Administración',   descripcion: 'Usuarios, permisos y auditoría',        icono: '⚙️', activo: true, orden: 0 },
-  ]
-
-  // Usar los de la DB si hay, sino los hardcodeados
-  const modulos = (modulosDB as Modulo[]).length >= MODULOS_COMPLETOS.length ? modulosDB as Modulo[] : MODULOS_COMPLETOS
+  // Módulos: fuente única en `src/lib/config/modulos.ts`. El endpoint
+  // `/api/usuarios/modulos` ya no se consume porque la tabla `modulos` fue
+  // eliminada en la migración Permisos v3 (ver feat/permisos-v3).
+  const modulos: Modulo[] = modulosOrdenados({ incluirAdmin: true }).map((m, idx) => ({
+    id:          idx,
+    key:         m.key,
+    nombre:      m.label,
+    descripcion: m.descripcion,
+    icono:       m.icono,
+    activo:      true,
+    orden:       m.orden,
+  }))
 
   const { mutate: create, isPending: creating } = useMutation({
     mutationFn: (dto: NuevoUsuario) => apiPost('/api/usuarios', dto),
