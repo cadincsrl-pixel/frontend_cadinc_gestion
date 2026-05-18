@@ -2,20 +2,14 @@
 
 import { PRESETS, ADDONS, getPreset } from '@/lib/permisos/plantillas'
 import { TABS_POR_MODULO } from '@/lib/config/modulo-tabs'
+import { MODULO_INFO as MODULO_CATALOG } from '@/lib/config/modulos'
 import type { ModuloPermisos } from '@/types/domain.types'
 
-const MODULO_INFO: Record<string, { label: string; icon: string }> = {
-  tarja:           { label: 'Tarja',            icon: '📋' },
-  logistica:       { label: 'Logística',        icon: '🚛' },
-  herramientas:    { label: 'Herramientas',     icon: '🔧' },
-  certificaciones: { label: 'Compras y Stock',  icon: '🛒' },
-  caja:            { label: 'Caja',             icon: '💵' },
-  ropa:            { label: 'Ropa',             icon: '👕' },
-  prestamos:       { label: 'Préstamos',        icon: '💰' },
-  configuracion:   { label: 'Configuración',    icon: '⚙️' },
-  admin:           { label: 'Administración',   icon: '🛠' },
-  flota:           { label: 'Flota CADINC',     icon: '🚙' },
-}
+// Adaptador del catálogo único (modulos.ts) al shape local que usa este tab.
+// El catálogo tiene más metadata; acá solo necesitamos label + icon.
+const MODULO_INFO: Record<string, { label: string; icon: string }> = Object.fromEntries(
+  Object.entries(MODULO_CATALOG).map(([k, m]) => [k, { label: m.label, icon: m.icono }]),
+)
 
 const ACCIONES = [
   { key: 'lectura',       label: 'Ver' },
@@ -25,9 +19,9 @@ const ACCIONES = [
 ] as const
 
 const FLAGS = [
-  { key: 'vista_completa',   label: 'Vista completa' },
   { key: 'ver_costos',       label: 'Ver costos' },
   { key: 'ver_pii',          label: 'Ver datos personales' },
+  { key: 'administrar_obras', label: 'Administrar obras (catálogo)' },
   { key: 'resolver_items',   label: 'Resolver items' },
   { key: 'forzar_despacho',  label: 'Forzar despacho' },
 ] as const

@@ -35,11 +35,13 @@ export const PRESETS: PresetBase[] = [
   {
     key:   'administrativo',
     label: 'Administrativo',
-    descripcion: 'Gestión amplia: tarja, logística, compras y stock, ropa, préstamos, configuración. Sin caja.',
-    modulos: ['tarja', 'logistica', 'certificaciones', 'ropa', 'prestamos', 'configuracion'],
+    descripcion: 'Gestión amplia: tarja, logística, compras y stock, ropa, préstamos, configuración, caja, flota. Casi-admin sin permisos de usuarios/permisos.',
+    modulos: ['tarja', 'logistica', 'certificaciones', 'ropa', 'prestamos', 'configuracion', 'caja', 'flota'],
     permisos: {
-      tarja:           { ...fullCRUD, ver_costos: true, ver_pii: true, vista_completa: true, administrar_obras: true },
+      tarja:           { ...fullCRUD, ver_costos: true, ver_pii: true, administrar_obras: true },
       logistica:       { ...fullCRUD },
+      caja:            { ...fullCRUD },
+      flota:           { ...fullCRUD },
       certificaciones: { ...fullCRUD, resolver_items: true, forzar_despacho: true },
       ropa:            { ...fullCRUD },
       prestamos:       { ...fullCRUD },
@@ -98,7 +100,6 @@ export const PRESETS: PresetBase[] = [
         tabs: ['tarja'],
         ver_costos:     false,
         ver_pii:        false,
-        vista_completa: true,
         // Override por módulo (tipo extendido vía cast, igual que en los
         // addons). Mantiene el scope='asignadas' aun si el admin cambia el
         // global del usuario.
@@ -118,7 +119,6 @@ export const PRESETS: PresetBase[] = [
         tabs: ['tarja'],
         ver_costos:     false,
         ver_pii:        false,
-        vista_completa: false,
       },
     },
     obras_scope_default: 'asignadas',
@@ -190,10 +190,10 @@ export const ADDONS: AddOn[] = [
       tarja: {
         ...((p.tarja ?? {}) as Permisos[string]),
         lectura: true, tabs: ['tarja'],
-        ver_costos: false, ver_pii: false, vista_completa: true,
+        ver_costos: false, ver_pii: false,
       },
     }),
-    revertir: (p) => omitTarjaKeys(p, ['lectura', 'tabs', 'ver_costos', 'ver_pii', 'vista_completa']),
+    revertir: (p) => omitTarjaKeys(p, ['lectura', 'tabs', 'ver_costos', 'ver_pii',]),
     excluye: ['tarja_edicion_jefe'],
   },
   {
@@ -210,7 +210,6 @@ export const ADDONS: AddOn[] = [
         tabs: ['tarja'],
         ver_costos:     false,
         ver_pii:        false,
-        vista_completa: true,
         // Override por módulo: tarja filtra por usuario_obras (modulo='tarja').
         // Redundante con el scope global del preset jefe_obra ('asignadas'),
         // pero lo seteamos por si el admin cambió el global a 'todas'.
@@ -219,7 +218,7 @@ export const ADDONS: AddOn[] = [
     }),
     revertir: (p) => omitTarjaKeys(p, [
       'lectura', 'creacion', 'actualizacion', 'eliminacion', 'tabs',
-      'ver_costos', 'ver_pii', 'vista_completa', 'obras_scope',
+      'ver_costos', 'ver_pii', 'obras_scope',
     ]),
     excluye: ['tarja_lectura'],
   },
@@ -260,10 +259,10 @@ export const ADDONS: AddOn[] = [
       ...p,
       tarja: {
         ...((p.tarja ?? {}) as Permisos[string]),
-        lectura: true, ver_costos: false, ver_pii: false, vista_completa: true,
+        lectura: true, ver_costos: false, ver_pii: false,
       },
     }),
-    revertir: (p) => omitTarjaKeys(p, ['lectura', 'ver_costos', 'ver_pii', 'vista_completa']),
+    revertir: (p) => omitTarjaKeys(p, ['lectura', 'ver_costos', 'ver_pii',]),
   },
   {
     key:   'cargar_horas_propias',
@@ -282,7 +281,6 @@ export const ADDONS: AddOn[] = [
         tabs: ['tarja'],
         ver_costos:     false,
         ver_pii:        false,
-        vista_completa: false,
         // Override por módulo: en tarja filtra por usuario_obras (modulo='tarja').
         // Esto NO afecta obras_scope global (que sigue 'todas' para que en
         // certificaciones/etc vea todas las obras).
@@ -291,7 +289,7 @@ export const ADDONS: AddOn[] = [
     }),
     revertir: (p) => omitTarjaKeys(p, [
       'lectura', 'creacion', 'actualizacion', 'eliminacion', 'tabs',
-      'ver_costos', 'ver_pii', 'vista_completa', 'obras_scope',
+      'ver_costos', 'ver_pii', 'obras_scope',
     ]),
   },
 ]

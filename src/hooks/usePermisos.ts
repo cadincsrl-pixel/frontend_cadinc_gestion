@@ -18,29 +18,22 @@ export function usePermisos(modulo: string) {
     return v === undefined ? defaultValue : Boolean(v)
   }
 
-  // Flag de tipo "capacidad" (true = otorga). Admin SIEMPRE true.
-  // Ejemplos: ver_costos, ver_pii, vista_completa, resolver_items, forzar_despacho.
-  // En v2 todos los flags son capacidades (polaridad unificada). El legacy
-  // solo_carga_horas (restricción) se reemplazó por vista_completa.
+  // Capacidad: true = el user la tiene. Admin siempre true (bypass).
+  // Capacidades v3: ver_costos, ver_pii, resolver_items, forzar_despacho,
+  // administrar_obras. vista_completa y solo_carga_horas fueron eliminadas.
   const flagCapacidad = (key: string, defaultValue: boolean = false): boolean => {
     if (profile?.rol === 'admin') return true
     return rawFlag(key, defaultValue)
   }
 
-  // En v2 unificamos polaridad: todos los flags son capacidades (default false,
-  // true=otorga). vista_completa reemplazó a solo_carga_horas (que era una
-  // restricción, polaridad invertida). Durante la transición leemos AMBOS:
-  // si está seteado vista_completa explícito, lo usamos; si no, derivamos
-  // del legacy solo_carga_horas. Cuando todos los perfiles tengan
-  // vista_completa, podemos borrar la rama legacy (Fase 5).
+  // vistaCompleta y soloCargaHoras se mantienen como props derivadas para no
+  // romper consumers. La fuente de verdad ahora es `profile.obras_scope`:
+  //   - scope='todas'    → vistaCompleta=true (ve cierres/tarifas/etc)
+  //   - scope='asignadas' → vistaCompleta=false (vista capataz / cargas propias)
   const vistaCompleta = (() => {
     if (profile?.rol === 'admin') return true
     if (!profile) return true
-    const t = (profile.permisos as any)?.[modulo]
-    if (!t) return true // sin permisos definidos en este módulo → no aplica
-    if (typeof t.vista_completa === 'boolean') return t.vista_completa
-    if (typeof t.solo_carga_horas === 'boolean') return !t.solo_carga_horas
-    return true // default: vista completa
+    return profile.obras_scope !== 'asignadas'
   })()
 
   return {
@@ -48,18 +41,12 @@ export function usePermisos(modulo: string) {
     puedeCrear:    canDo(modulo, 'creacion'),
     puedeEditar:   canDo(modulo, 'actualizacion'),
     puedeEliminar: canDo(modulo, 'eliminacion'),
-    // Flags. Para admin: capacidades=true, restricciones=false.
     verCostos:       flagCapacidad('ver_costos', true),       // back-compat: ve costos por default
-    verPii:          flagCapacidad('ver_pii', true),          // back-compat: ve PII por default (capataz puro lo tiene en false)
-    vistaCompleta,                                            // unificado: true=ve toolbar/cierres/tarifas/etc
+    verPii:          flagCapacidad('ver_pii', true),          // back-compat: ve PII por default
+    vistaCompleta,
     resolverItems:   flagCapacidad('resolver_items', false),
     forzarDespacho:  flagCapacidad('forzar_despacho', false),
-    // tarja.administrar_obras: crear/editar/archivar/borrar la entidad obra.
-    // Independiente de puedeCrear/puedeEditar/puedeEliminar (que en tarja
-    // controlan las horas/asignaciones). Admin siempre true por bypass.
     puedeAdministrarObras: flagCapacidad('administrar_obras', false),
-    // Legacy: mantengo la prop para no romper consumers que aún no migraron.
-    // Es el inverso exacto de vistaCompleta.
     soloCargaHoras:  !vistaCompleta,
   }
 }
