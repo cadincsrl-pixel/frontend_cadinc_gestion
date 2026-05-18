@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useEffect } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import {
   useTramos, useChoferes, useCamiones, useCanteras, useDepositos, useRutas, useEmpresas,
   useTarifasEmpresa,
@@ -154,6 +155,27 @@ export function ViajesTab() {
   const formEdit     = useForm<TramoFormValues>()
   const formDescarga = useForm<TramoFormValues>({ defaultValues: { fecha_descarga: hoy(), remito_descarga_img_url: '' } })
   const [uploading, setUploading] = useState<string | null>(null)
+
+  // Deep link: si vino ?tramo=ID en la URL (por ejemplo desde Facturación
+  // clickeando un remito), abrimos el modal de edición de ese tramo en
+  // cuanto se carga el listado. Después limpiamos el query param para no
+  // re-abrir si el user navega adentro de la pestaña.
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  useEffect(() => {
+    const tramoIdRaw = searchParams.get('tramo')
+    if (!tramoIdRaw) return
+    const tramoId = Number(tramoIdRaw)
+    if (!Number.isFinite(tramoId)) return
+    const t = (tramos as Tramo[]).find(t => t.id === tramoId)
+    if (!t) return
+    openEdit(t)
+    // Quitamos solo el query param 'tramo', preservando 'tab=viajes' u otros.
+    const sp = new URLSearchParams(searchParams.toString())
+    sp.delete('tramo')
+    router.replace(`/logistica?${sp.toString()}`)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tramos])
 
   async function handleUpload(form: { setValue: (k: any, v: any) => void }, field: string, file: File | undefined) {
     if (!file) return

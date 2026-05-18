@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import * as XLSX from 'xlsx'
 import JSZip from 'jszip'
 import { useForm } from 'react-hook-form'
@@ -488,10 +489,12 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
 
 function FacturacionSection() {
   const toast = useToast()
+  const router = useRouter()
   const { data: empresas     = [] } = useEmpresas()
   const { data: tramos       = [] } = useTramos()
   const { data: todasTarifas = [] } = useTarifasEmpresa()
   const { data: canteras     = [] } = useCanteras()
+  const { data: choferes     = [] } = useChoferes()
   const { data: cobros       = [] } = useCobros()
   const { mutate: createCobro, isPending: creando } = useCreateCobro()
   const { mutate: marcarCobrado } = useMarcarCobrado()
@@ -704,34 +707,54 @@ function FacturacionSection() {
 
                 {/* Lista expandida de remitos pendientes con botón de
                     editar toneladas — útil cuando la empresa paga distinto
-                    a lo registrado en el remito. */}
+                    a lo registrado en el remito. Cada fila es clickeable y
+                    abre el tab Viajes con un deep-link al tramo en cuestión.
+                    El botón ✏️ tiene stopPropagation para no abrir el deep
+                    link cuando se edita acá. */}
                 {saldoExpandida === empresa.id && !sinMovimientos && (
                   <div className="mt-3 bg-gris/30 rounded-card divide-y divide-gris-mid">
                     {desglose
                       .sort((a, b) => (b.fecha ?? '').localeCompare(a.fecha ?? ''))
-                      .map(d => (
-                        <div key={d.t.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-xs">
-                          <div className="flex-1 min-w-0 basis-full sm:basis-auto">
-                            <div className="text-gris-dark">
-                              {d.fecha ? fmtDate(d.fecha) : '—'} · #{d.t.id}
-                              {d.t.remito_descarga && <span className="ml-1 font-mono">· R-{d.t.remito_descarga}</span>}
+                      .map(d => {
+                        const chofer = choferes.find(c => c.id === d.t.chofer_id)
+                        return (
+                          <div
+                            key={d.t.id}
+                            role="link"
+                            tabIndex={0}
+                            onClick={() => router.push(`/logistica?tab=viajes&tramo=${d.t.id}`)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault()
+                                router.push(`/logistica?tab=viajes&tramo=${d.t.id}`)
+                              }
+                            }}
+                            title="Abrir tramo en la pestaña Viajes"
+                            className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-xs cursor-pointer hover:bg-azul-light/40 transition-colors"
+                          >
+                            <div className="flex-1 min-w-0 basis-full sm:basis-auto">
+                              <div className="text-gris-dark">
+                                {d.fecha ? fmtDate(d.fecha) : '—'} · #{d.t.id}
+                                {d.t.remito_descarga && <span className="ml-1 font-mono">· R-{d.t.remito_descarga}</span>}
+                                {chofer && <span className="ml-1">· 👷 {chofer.nombre}</span>}
+                              </div>
+                              <div className="font-semibold text-carbon truncate">
+                                {d.cantera?.nombre ?? `Cantera ${d.t.cantera_id ?? '?'}`}
+                              </div>
                             </div>
-                            <div className="font-semibold text-carbon truncate">
-                              {d.cantera?.nombre ?? `Cantera ${d.t.cantera_id ?? '?'}`}
+                            <div className="text-right shrink-0 font-mono min-w-0">
+                              <div>{fmtTon(d.ton)}</div>
+                              <div className="text-gris-dark text-[11px]">×${d.tarifa.toLocaleString('es-AR')}</div>
                             </div>
+                            <div className="font-mono font-bold text-verde shrink-0 w-auto sm:w-20 text-right">{fmtM(d.subtotal)}</div>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); abrirEditarTramo(d.t) }}
+                              title="Editar toneladas / nº remito"
+                              className="text-xs px-2 py-1 rounded hover:bg-gris-mid transition-colors shrink-0"
+                            >✏️</button>
                           </div>
-                          <div className="text-right shrink-0 font-mono min-w-0">
-                            <div>{fmtTon(d.ton)}</div>
-                            <div className="text-gris-dark text-[11px]">×${d.tarifa.toLocaleString('es-AR')}</div>
-                          </div>
-                          <div className="font-mono font-bold text-verde shrink-0 w-auto sm:w-20 text-right">{fmtM(d.subtotal)}</div>
-                          <button
-                            onClick={() => abrirEditarTramo(d.t)}
-                            title="Editar toneladas / nº remito"
-                            className="text-xs px-2 py-1 rounded hover:bg-gris-mid transition-colors shrink-0"
-                          >✏️</button>
-                        </div>
-                      ))}
+                        )
+                      })}
                   </div>
                 )}
               </div>
