@@ -264,26 +264,65 @@ export function ViajesTab() {
     return ruta?.km_ida_vuelta ?? null
   }
 
-  // Autocompletado de origen + destino al crear un tramo nuevo. Cuando el user
-  // elige camión + tipo, prellenamos cantera y depósito con los del último
-  // tramo CARGADO de ese camión (asumimos que repite la ruta). No pisamos si
-  // el user ya eligió manualmente — el watch arranca con string vacío.
+  // Autocompletado de origen + destino al crear un tramo nuevo.
+  //
+  // Reglas:
+  // 1) Prioridad CHOFER: si el user eligió un chofer, tomamos su ÚLTIMO
+  //    tramo (cualquier tipo) y usamos el destino de ese tramo como el
+  //    origen del nuevo. Es decir: donde quedó parado el chofer pasa a
+  //    ser el punto de inicio del próximo viaje.
+  //      - Último cargado → terminó en depósito → si nuevo=vacío, deposito_id
+  //        precargado. Si nuevo=cargado (caso atípico), también.
+  //      - Último vacío   → terminó en cantera  → si nuevo=cargado,
+  //        cantera_id precargado. Si nuevo=vacío, también.
+  //    Además, si el último era cargado, sugerimos el par cantera↔depósito
+  //    completo (la ruta que probablemente repite).
+  // 2) Fallback CAMIÓN: si no hay chofer elegido pero sí camión,
+  //    repetimos la ruta del último cargado del camión (comportamiento
+  //    histórico previo a este cambio).
+  // 3) Nunca pisamos lo que el user ya seleccionó manualmente.
   const watchModalAbierto = modalNuevo
   const watchTipoNuevo    = formNuevo.watch('tipo')
   const watchCamionNuevo  = formNuevo.watch('camion_id')
+  const watchChoferNuevo  = formNuevo.watch('chofer_id')
   useEffect(() => {
-    if (!watchModalAbierto || !watchCamionNuevo) return
-    const camionId = Number(watchCamionNuevo)
-    const ultimoCargado = getUltimoTramoDe(t => t.camion_id === camionId && t.tipo === 'cargado')
-    if (!ultimoCargado) return
-    if (!formNuevo.getValues('cantera_id') && ultimoCargado.cantera_id != null) {
-      formNuevo.setValue('cantera_id', String(ultimoCargado.cantera_id))
+    if (!watchModalAbierto) return
+
+    const setOrigenSiVacio = (campo: 'cantera_id' | 'deposito_id', valor: number | null | undefined) => {
+      if (valor == null) return
+      if (!formNuevo.getValues(campo)) formNuevo.setValue(campo, String(valor))
     }
-    if (!formNuevo.getValues('deposito_id') && ultimoCargado.deposito_id != null) {
-      formNuevo.setValue('deposito_id', String(ultimoCargado.deposito_id))
+
+    // 1) Si hay chofer, miramos su último tramo (de cualquier tipo).
+    if (watchChoferNuevo) {
+      const choferId = Number(watchChoferNuevo)
+      const ultimo = getUltimoTramoDe(t => t.chofer_id === choferId)
+      if (ultimo) {
+        if (ultimo.tipo === 'cargado') {
+          // Último cargado terminó en depósito → origen probable de un vacío
+          // o continuación de ruta.
+          setOrigenSiVacio('deposito_id', ultimo.deposito_id)
+          setOrigenSiVacio('cantera_id',  ultimo.cantera_id)
+        } else {
+          // Último vacío terminó en cantera → origen probable de un cargado.
+          setOrigenSiVacio('cantera_id',  ultimo.cantera_id)
+          setOrigenSiVacio('deposito_id', ultimo.deposito_id)
+        }
+        return
+      }
+    }
+
+    // 2) Fallback al camión si no hay chofer o el chofer no tiene historia.
+    if (watchCamionNuevo) {
+      const camionId = Number(watchCamionNuevo)
+      const ultimoCargado = getUltimoTramoDe(t => t.camion_id === camionId && t.tipo === 'cargado')
+      if (ultimoCargado) {
+        setOrigenSiVacio('cantera_id',  ultimoCargado.cantera_id)
+        setOrigenSiVacio('deposito_id', ultimoCargado.deposito_id)
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [watchModalAbierto, watchCamionNuevo, watchTipoNuevo])
+  }, [watchModalAbierto, watchChoferNuevo, watchCamionNuevo, watchTipoNuevo])
 
   async function handleCreate(data: TramoFormValues) {
     const choferId = data.chofer_id ? Number(data.chofer_id) : null
