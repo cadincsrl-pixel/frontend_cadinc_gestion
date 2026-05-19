@@ -13,6 +13,8 @@ import {
 interface Props {
   /** Si es null, la herramienta todavía no fue guardada (modo nuevo). */
   herramientaId: number | null
+  /** En modo detalle ocultamos botones de subir/borrar (solo lectura). */
+  readOnly?: boolean
 }
 
 /**
@@ -24,7 +26,7 @@ interface Props {
  * Si `herramientaId` es null avisa que hay que guardar la herramienta
  * primero (la tabla herramienta_fotos requiere FK).
  */
-export function HerramientaFotosSection({ herramientaId }: Props) {
+export function HerramientaFotosSection({ herramientaId, readOnly = false }: Props) {
   const toast = useToast()
   const { puedeCrear, puedeEliminar } = usePermisos('herramientas')
 
@@ -102,7 +104,7 @@ export function HerramientaFotosSection({ herramientaId }: Props) {
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h3 className="text-sm font-bold text-azul uppercase tracking-wider">📷 Fotos</h3>
-        {puedeCrear && (
+        {puedeCrear && !readOnly && (
           <>
             <button
               type="button"
@@ -153,7 +155,7 @@ export function HerramientaFotosSection({ herramientaId }: Props) {
                     Cargando…
                   </div>
                 )}
-                {puedeEliminar && (
+                {puedeEliminar && !readOnly && (
                   <button
                     onClick={() => handleBorrar(f.id)}
                     title="Borrar foto"

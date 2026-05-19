@@ -504,7 +504,8 @@ export function HerrMovimientos() {
           </select>
         </div>
 
-        <div className="overflow-x-auto">
+        {/* Desktop: tabla */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>
               <tr>
@@ -564,6 +565,48 @@ export function HerrMovimientos() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile: cards */}
+        <div className="md:hidden flex flex-col gap-2 p-3">
+          {loadingMov ? (
+            <div className="text-center py-8">
+              <span className="inline-flex items-center gap-2 text-gris-dark text-sm">
+                <span className="w-4 h-4 border-2 border-naranja border-t-transparent rounded-full animate-spin" />
+                Cargando...
+              </span>
+            </div>
+          ) : movFiltrados.length === 0 ? (
+            <div className="text-center py-8 text-gris-dark text-sm">
+              No hay movimientos registrados
+            </div>
+          ) : (
+            movFiltrados.map(m => (
+              <div key={m.id} className="bg-white border border-gris rounded-xl p-3 flex flex-col gap-2 shadow-sm">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-sm text-carbon truncate">{m.herramienta?.nom ?? '—'}</div>
+                    <div className="font-mono text-[10px] text-gris-dark">{m.herramienta?.codigo}</div>
+                  </div>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded whitespace-nowrap ${MOV_COLORS[m.tipo?.color ?? 'azul']}`}>
+                    {m.tipo?.icono} {m.tipo?.nom ?? m.tipo_key}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-xs flex-wrap">
+                  <span className="text-gris-dark">{m.obra_origen?.nom ?? '—'}</span>
+                  <span className="text-naranja font-bold">→</span>
+                  <span className="text-azul font-semibold">{m.obra_destino?.nom ?? '—'}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2 text-[11px] text-gris-dark pt-1 border-t border-gris">
+                  <span className="font-mono">{fmtFecha(m.fecha)}</span>
+                  {m.responsable && <span className="truncate">👤 {m.responsable}</span>}
+                </div>
+                {m.obs && (
+                  <div className="text-xs text-gris-dark italic">{m.obs}</div>
+                )}
+              </div>
+            ))
+          )}
         </div>
       </div>
 

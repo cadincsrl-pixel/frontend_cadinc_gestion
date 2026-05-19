@@ -16,6 +16,17 @@ import { usePermisos } from '@/hooks/usePermisos'
 import { HerramientaFotosSection } from './HerramientaFotosSection'
 import type { Herramienta } from '@/types/domain.types'
 
+interface HerrFormData {
+  codigo: string
+  nom: string
+  tipo_id: string
+  marca: string
+  modelo: string
+  serie: string
+  fecha_ingreso: string
+  obs: string
+}
+
 const ESTADO_COLORS: Record<string, string> = {
   disponible: 'bg-verde-light text-verde',
   uso:        'bg-naranja-light text-naranja-dark',
@@ -45,8 +56,8 @@ export function HerrInventario() {
   const [filtroTipo,  setFiltroTipo]  = useState('')
   const [filtroEstado,setFiltroEstado]= useState('')
 
-  const formNuevo = useForm<any>()
-  const formEdit  = useForm<any>()
+  const formNuevo = useForm<HerrFormData>()
+  const formEdit  = useForm<HerrFormData>()
 
   const filtradas = useMemo(() => {
     return herramientas.filter(h => {
@@ -62,7 +73,7 @@ export function HerrInventario() {
     })
   }, [herramientas, busqueda, filtroTipo, filtroEstado])
 
-  function handleCreate(data: any) {
+  function handleCreate(data: HerrFormData) {
     create(
       { ...data, tipo_id: data.tipo_id ? Number(data.tipo_id) : null },
       {
@@ -76,7 +87,7 @@ export function HerrInventario() {
     )
   }
 
-  function handleUpdate(data: any) {
+  function handleUpdate(data: HerrFormData) {
     if (!editando) return
     update(
       {
@@ -129,7 +140,7 @@ export function HerrInventario() {
     return `HER-${String(max + 1).padStart(3, '0')}`
   }
 
-  const HerrForm = ({ form, errors, codigoReadOnly }: { form: any; errors: any; codigoReadOnly?: boolean }) => (
+  const HerrForm = ({ form, errors, codigoReadOnly }: { form: ReturnType<typeof useForm<HerrFormData>>; errors: ReturnType<typeof useForm<HerrFormData>>['formState']['errors']; codigoReadOnly?: boolean }) => (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Input
@@ -520,7 +531,7 @@ export function HerrInventario() {
 
             {/* Galería de fotos read-only (sin botón subir/borrar — eso
                 se hace desde Editar). */}
-            <HerramientaFotosSection herramientaId={detalle.id} />
+            <HerramientaFotosSection herramientaId={detalle.id} readOnly />
 
             <AuditInfo
               createdBy={detalle.created_by}
