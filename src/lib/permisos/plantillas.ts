@@ -42,7 +42,7 @@ export const PRESETS: PresetBase[] = [
       logistica:       { ...fullCRUD },
       caja:            { ...fullCRUD },
       flota:           { ...fullCRUD },
-      certificaciones: { ...fullCRUD, resolver_items: true, forzar_despacho: true },
+      certificaciones: { ...fullCRUD, resolver_items: true, forzar_despacho: true, aprobar_ajustes_stock: true },
       ropa:            { ...fullCRUD },
       prestamos:       { ...fullCRUD },
       configuracion:   { ...fullCRUD },

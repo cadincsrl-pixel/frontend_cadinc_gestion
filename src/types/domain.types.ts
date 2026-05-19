@@ -783,15 +783,20 @@ export type ModuloPermisos = { [K in Accion]?: boolean } & {
   //   controlan operaciones sobre horas/asignaciones.
   // - certificaciones.resolver_items: comprar/despachar/enviar/rechazar items.
   // - certificaciones.forzar_despacho: forzar despacho sin stock disponible.
+  // - certificaciones.aprobar_ajustes_stock: aprobar/rechazar ajustes
+  //   manuales de stock pendientes (doble control para evitar tapado de
+  //   faltantes). Independiente de actualizacion (que permite CREAR el
+  //   ajuste pendiente).
   //
   // Flags eliminadas en Permisos v3 (2026-05-18):
   // - vista_completa: reemplazada por `obras_scope` global del profile.
   // - solo_carga_horas: cubierta por tabs=['tarja'] + obras_scope='asignadas'.
-  ver_costos?:        boolean
-  ver_pii?:           boolean
-  resolver_items?:    boolean
-  forzar_despacho?:   boolean
-  administrar_obras?: boolean
+  ver_costos?:             boolean
+  ver_pii?:                boolean
+  resolver_items?:         boolean
+  forzar_despacho?:        boolean
+  administrar_obras?:      boolean
+  aprobar_ajustes_stock?:  boolean
 }
 export type Permisos = Record<string, ModuloPermisos>
 

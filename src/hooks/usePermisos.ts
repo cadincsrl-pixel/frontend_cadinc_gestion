@@ -49,10 +49,12 @@ export function usePermisos(modulo: string) {
     verCostos:       flagCapacidad('ver_costos', true),       // back-compat: ve costos por default
     verPii:          flagCapacidad('ver_pii', true),          // back-compat: ve PII por default
     vistaCompleta,
-    resolverItems:   flagCapacidad('resolver_items', false),
-    forzarDespacho:  flagCapacidad('forzar_despacho', false),
+    resolverItems:        flagCapacidad('resolver_items', false),
+    forzarDespacho:       flagCapacidad('forzar_despacho', false),
+    aprobarAjustesStock:  flagCapacidad('aprobar_ajustes_stock', false),
     puedeAdministrarObras: flagCapacidad('administrar_obras', false),
     soloCargaHoras:  !vistaCompleta,
     esCapataz,
+    esAdmin:         profile?.rol === 'admin',
   }
 }

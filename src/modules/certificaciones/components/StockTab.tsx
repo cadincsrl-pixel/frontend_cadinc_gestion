@@ -15,6 +15,8 @@ import { Button } from '@/components/ui/Button'
 import { Input }  from '@/components/ui/Input'
 import { Combobox } from '@/components/ui/Combobox'
 import { useToast } from '@/components/ui/Toast'
+import { DeclararAjusteModal } from './DeclararAjusteModal'
+import { AjustesPendientesSection } from './AjustesPendientesSection'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import type { StockMaterial, StockRubro, StockMovimiento, Proveedor } from '@/types/domain.types'
 
@@ -87,6 +89,7 @@ export function StockTab() {
   const [modalEditar, setModalEditar] = useState<StockMaterial | null>(null)
   const [modalNuevoRubro, setModalNuevoRubro] = useState(false)
   const [modalEliminar, setModalEliminar] = useState<StockMaterial | null>(null)
+  const [modalAjuste, setModalAjuste] = useState<StockMaterial | null>(null)
 
   const formNuevo = useForm<MaterialForm>({ defaultValues: { rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0, proveedor_id: '' } })
   const formEntrada = useForm<MovimientoForm>({ defaultValues: { cantidad: 0, tipo: 'entrada', motivo: 'compra', obs: '' } })
@@ -127,11 +130,71 @@ export function StockTab() {
   const stockBajo = filtered.filter(m => m.stock_actual > 0 && m.stock_actual <= m.stock_minimo).length
   const sinStock = filtered.filter(m => m.stock_actual <= 0).length
 
+  // Normalizador para comparar nombres (case-insensitive + whitespace)
+  const normNombre = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ')
+
+  // Detección de duplicado para el modal "Nuevo"
+  const nuevoNombre = formNuevo.watch('nombre') ?? ''
+  const nuevoRubroId = formNuevo.watch('rubro_id')
+  const nuevoNombreN = normNombre(nuevoNombre)
+  const duplicadoNuevoMismoRubro = nuevoNombreN && nuevoRubroId
+    ? (materiales as StockMaterial[]).find(m => m.rubro_id === Number(nuevoRubroId) && normNombre(m.nombre) === nuevoNombreN)
+    : null
+  const duplicadoNuevoOtroRubro = nuevoNombreN && !duplicadoNuevoMismoRubro
+    ? (materiales as StockMaterial[]).find(m => normNombre(m.nombre) === nuevoNombreN)
+    : null
+  const rubroOtroNombre = duplicadoNuevoOtroRubro
+    ? (rubros as StockRubro[]).find(r => r.id === duplicadoNuevoOtroRubro.rubro_id)?.nombre ?? '—'
+    : null
+
+  // Detección de duplicado para el modal "Editar" (excluye el propio item)
+  const editNombre = formEditar.watch('nombre') ?? ''
+  const editRubroId = formEditar.watch('rubro_id')
+  const editNombreN = normNombre(editNombre)
+  const duplicadoEditMismoRubro = editNombreN && editRubroId && modalEditar
+    ? (materiales as StockMaterial[]).find(m => m.id !== modalEditar.id && m.rubro_id === Number(editRubroId) && normNombre(m.nombre) === editNombreN)
+    : null
+  const duplicadoEditOtroRubro = editNombreN && modalEditar && !duplicadoEditMismoRubro
+    ? (materiales as StockMaterial[]).find(m => m.id !== modalEditar.id && normNombre(m.nombre) === editNombreN)
+    : null
+  const rubroEditOtroNombre = duplicadoEditOtroRubro
+    ? (rubros as StockRubro[]).find(r => r.id === duplicadoEditOtroRubro.rubro_id)?.nombre ?? '—'
+    : null
+
+  // Opciones de autocomplete para el modal "Nuevo": todos los materiales del rubro elegido
+  const nombreOptionsNuevo = useMemo(() => {
+    if (!nuevoRubroId) return []
+    return (materiales as StockMaterial[])
+      .filter(m => m.rubro_id === Number(nuevoRubroId))
+      .map(m => ({
+        value: m.nombre,
+        label: m.nombre,
+        sub: `Stock: ${m.stock_actual} ${UNIDADES.find(u => u.value === m.unidad)?.label ?? m.unidad}`,
+      }))
+  }, [materiales, nuevoRubroId])
+
+  // Opciones de autocomplete para el modal "Editar": todos del rubro elegido, excluyendo el propio
+  const nombreOptionsEditar = useMemo(() => {
+    if (!editRubroId) return []
+    return (materiales as StockMaterial[])
+      .filter(m => m.rubro_id === Number(editRubroId) && (!modalEditar || m.id !== modalEditar.id))
+      .map(m => ({
+        value: m.nombre,
+        label: m.nombre,
+        sub: `Stock: ${m.stock_actual} ${UNIDADES.find(u => u.value === m.unidad)?.label ?? m.unidad}`,
+      }))
+  }, [materiales, editRubroId, modalEditar])
+
   // Crear material
   function handleCreateMat(data: MaterialForm) {
     if (!data.rubro_id) { toast('Seleccioná un rubro', 'err'); return }
     const nombre = data.nombre.trim()
     if (!nombre) { toast('Ingresá un nombre', 'err'); return }
+    // Validación final de duplicado (defensiva — el botón ya está deshabilitado)
+    const dup = (materiales as StockMaterial[]).find(
+      m => m.rubro_id === Number(data.rubro_id) && normNombre(m.nombre) === normNombre(nombre)
+    )
+    if (dup) { toast(`Ya existe "${dup.nombre}" en este rubro`, 'err'); return }
     const stockMinimo = Number(data.stock_minimo)
     const precioRef = Number(data.precio_ref)
     if (!Number.isFinite(stockMinimo) || stockMinimo < 0) { toast('Stock mínimo inválido', 'err'); return }
@@ -179,6 +242,11 @@ export function StockTab() {
     if (!data.rubro_id) { toast('Seleccioná un rubro', 'err'); return }
     const nombre = data.nombre.trim()
     if (!nombre) { toast('Ingresá un nombre', 'err'); return }
+    // Validación final de duplicado (defensiva — el botón ya está deshabilitado)
+    const dup = (materiales as StockMaterial[]).find(
+      m => m.id !== modalEditar.id && m.rubro_id === Number(data.rubro_id) && normNombre(m.nombre) === normNombre(nombre)
+    )
+    if (dup) { toast(`Ya existe "${dup.nombre}" en este rubro`, 'err'); return }
     const stockMinimo = Number(data.stock_minimo)
     const precioRef = Number(data.precio_ref)
     if (!Number.isFinite(stockMinimo) || stockMinimo < 0) { toast('Stock mínimo inválido', 'err'); return }
@@ -323,6 +391,10 @@ export function StockTab() {
 
   return (
     <>
+      {/* Panel para aprobadores: ajustes pendientes de revisión.
+          El componente se auto-oculta si el usuario no tiene la capacidad. */}
+      <AjustesPendientesSection />
+
       {/* Filtros + stats */}
       <div className="flex flex-col gap-3">
         {/* Filtros (búsqueda + selects) */}
@@ -430,6 +502,7 @@ export function StockTab() {
                       <td className="px-4 py-2.5">
                         <div className="flex gap-1 justify-end">
                           <button onClick={() => abrirEntrada(m)} className="text-[10px] font-bold px-2 py-1 rounded bg-verde-light text-verde hover:opacity-80">+ Entrada</button>
+                          <button onClick={() => setModalAjuste(m)} title="Declarar diferencia (queda pendiente de aprobación)" className="text-[10px] font-bold px-2 py-1 rounded bg-naranja-light text-naranja-dark hover:opacity-80">↔ Diferencia</button>
                           <button onClick={() => setModalHistorial(m)} className="text-[10px] font-bold px-2 py-1 rounded bg-azul-light text-azul hover:opacity-80">Historial</button>
                           <button onClick={() => abrirEditar(m)} aria-label={`Editar ${m.nombre}`} title="Editar" className="text-xs px-1.5 py-1 rounded hover:bg-gris transition-colors">✏️</button>
                           <button onClick={() => setModalEliminar(m)} aria-label={`Eliminar ${m.nombre}`} title="Eliminar" className="text-xs px-1.5 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors">✕</button>
@@ -470,6 +543,7 @@ export function StockTab() {
                   </div>
                   <div className="grid grid-cols-2 gap-2 mt-3">
                     <button onClick={() => abrirEntrada(m)} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 min-h-[36px]">+ Entrada</button>
+                    <button onClick={() => setModalAjuste(m)} className="text-xs font-bold px-3 py-1.5 rounded bg-naranja-light text-naranja-dark hover:opacity-80 min-h-[36px]">↔ Diferencia</button>
                     <button onClick={() => setModalHistorial(m)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul hover:opacity-80 min-h-[36px]">Historial</button>
                     <button onClick={() => abrirEditar(m)} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-gris-mid min-h-[36px]">✏️ Editar</button>
                     <button onClick={() => setModalEliminar(m)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 min-h-[36px]">✕ Eliminar</button>
@@ -483,7 +557,12 @@ export function StockTab() {
 
       {/* ── Modal nuevo material ── */}
       <Modal open={modalNuevo} onClose={() => setModalNuevo(false)} title="➕ NUEVO MATERIAL"
-        footer={<><Button variant="secondary" onClick={() => setModalNuevo(false)}>Cancelar</Button><Button variant="primary" onClick={formNuevo.handleSubmit(handleCreateMat)}>Crear</Button></>}>
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setModalNuevo(false)}>Cancelar</Button>
+            <Button variant="primary" disabled={!!duplicadoNuevoMismoRubro} onClick={formNuevo.handleSubmit(handleCreateMat)}>Crear</Button>
+          </>
+        }>
         <div className="flex flex-col gap-3">
           <div>
             <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1 block">Rubro</label>
@@ -492,7 +571,29 @@ export function StockTab() {
               {(rubros as StockRubro[]).map(r => <option key={r.id} value={r.id}>{r.icono} {r.nombre}</option>)}
             </select>
           </div>
-          <Input label="Nombre del material" {...formNuevo.register('nombre')} />
+          <div>
+            <Combobox
+              label="Nombre del material"
+              placeholder={nuevoRubroId ? 'Buscar o escribir nombre nuevo...' : 'Elegí un rubro primero'}
+              options={nombreOptionsNuevo}
+              value={nuevoNombre}
+              disabled={!nuevoRubroId}
+              onChange={v => formNuevo.setValue('nombre', v)}
+              onCreate={q => formNuevo.setValue('nombre', q)}
+              createLabel="Usar nombre"
+              freeText
+            />
+            {duplicadoNuevoMismoRubro && (
+              <div className="mt-1 text-[11px] font-bold text-rojo bg-rojo-light px-2 py-1 rounded">
+                Ya existe &ldquo;{duplicadoNuevoMismoRubro.nombre}&rdquo; en este rubro
+              </div>
+            )}
+            {!duplicadoNuevoMismoRubro && duplicadoNuevoOtroRubro && (
+              <div className="mt-1 text-[11px] font-bold text-[#7A5500] bg-amarillo-light px-2 py-1 rounded">
+                Existe en rubro &ldquo;{rubroOtroNombre}&rdquo; — verificá si querés moverlo o duplicar
+              </div>
+            )}
+          </div>
           <Combobox label="Proveedor de referencia" placeholder="Buscar proveedor..." options={provOptions} value={formNuevo.watch('proveedor_id')} onChange={v => formNuevo.setValue('proveedor_id', v)} />
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div>
@@ -546,7 +647,12 @@ export function StockTab() {
 
       {/* ── Modal editar material ── */}
       <Modal open={!!modalEditar} onClose={() => setModalEditar(null)} title="✏️ EDITAR MATERIAL"
-        footer={<><Button variant="secondary" onClick={() => setModalEditar(null)}>Cancelar</Button><Button variant="primary" onClick={formEditar.handleSubmit(handleUpdate)}>Guardar</Button></>}>
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setModalEditar(null)}>Cancelar</Button>
+            <Button variant="primary" disabled={!!duplicadoEditMismoRubro} onClick={formEditar.handleSubmit(handleUpdate)}>Guardar</Button>
+          </>
+        }>
         <div className="flex flex-col gap-3">
           <div>
             <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1 block">Rubro</label>
@@ -554,7 +660,29 @@ export function StockTab() {
               {(rubros as StockRubro[]).map(r => <option key={r.id} value={r.id}>{r.icono} {r.nombre}</option>)}
             </select>
           </div>
-          <Input label="Nombre" {...formEditar.register('nombre')} />
+          <div>
+            <Combobox
+              label="Nombre"
+              placeholder={editRubroId ? 'Buscar o escribir nombre...' : 'Elegí un rubro primero'}
+              options={nombreOptionsEditar}
+              value={editNombre}
+              disabled={!editRubroId}
+              onChange={v => formEditar.setValue('nombre', v)}
+              onCreate={q => formEditar.setValue('nombre', q)}
+              createLabel="Usar nombre"
+              freeText
+            />
+            {duplicadoEditMismoRubro && (
+              <div className="mt-1 text-[11px] font-bold text-rojo bg-rojo-light px-2 py-1 rounded">
+                Ya existe &ldquo;{duplicadoEditMismoRubro.nombre}&rdquo; en este rubro
+              </div>
+            )}
+            {!duplicadoEditMismoRubro && duplicadoEditOtroRubro && (
+              <div className="mt-1 text-[11px] font-bold text-[#7A5500] bg-amarillo-light px-2 py-1 rounded">
+                Existe en rubro &ldquo;{rubroEditOtroNombre}&rdquo; — verificá si querés moverlo o duplicar
+              </div>
+            )}
+          </div>
           <Combobox label="Proveedor de referencia" placeholder="Buscar proveedor..." options={provOptions} value={formEditar.watch('proveedor_id')} onChange={v => formEditar.setValue('proveedor_id', v)} />
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div>
@@ -587,6 +715,14 @@ export function StockTab() {
           <Input label="Ícono (emoji)" placeholder="🔧" {...formRubro.register('icono')} />
         </div>
       </Modal>
+
+      {/* ── Modal Declarar diferencia (ajuste pendiente de aprobación) ── */}
+      {modalAjuste && (
+        <DeclararAjusteModal
+          material={modalAjuste}
+          onClose={() => setModalAjuste(null)}
+        />
+      )}
     </>
   )
 }

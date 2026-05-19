@@ -75,3 +75,74 @@ export function useCreateMovimiento() {
     },
   })
 }
+
+// ─── Ajustes con doble aprobación ───────────────────────────────────────
+
+const AJUSTES_PENDIENTES_KEY = ['stock', 'ajustes-pendientes'] as const
+
+export function useAjustesPendientes(enabled: boolean = true) {
+  return useQuery({
+    queryKey: AJUSTES_PENDIENTES_KEY,
+    queryFn:  () => apiGet<any[]>('/api/stock/ajustes-pendientes'),
+    enabled,
+    staleTime: 60_000,
+  })
+}
+
+export function useAprobarAjuste() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (movId: number) => apiPost(`/api/stock/movimientos/${movId}/aprobar`, {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: AJUSTES_PENDIENTES_KEY })
+      qc.invalidateQueries({ queryKey: ['stock', 'movimientos'] })
+      qc.invalidateQueries({ queryKey: ['stock', 'materiales'] })
+    },
+  })
+}
+
+export function useRechazarAjuste() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ movId, motivo }: { movId: number; motivo: string }) =>
+      apiPost(`/api/stock/movimientos/${movId}/rechazar`, { rechazo_motivo: motivo }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: AJUSTES_PENDIENTES_KEY })
+      qc.invalidateQueries({ queryKey: ['stock', 'movimientos'] })
+    },
+  })
+}
+
+interface UploadUrlResp {
+  storage_path: string
+  signed_url:   string
+}
+
+async function sha256Hex(file: File): Promise<string> {
+  const buf  = await file.arrayBuffer()
+  const hash = await crypto.subtle.digest('SHA-256', buf)
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+/** Sube el comprobante al bucket y devuelve { storage_path, file_hash }. */
+export async function subirComprobanteAjuste(file: File): Promise<{ storage_path: string; file_hash: string }> {
+  if (file.size > 5 * 1024 * 1024) throw new Error('El comprobante supera los 5 MB')
+  const file_hash = await sha256Hex(file)
+  const up = await apiPost<UploadUrlResp>('/api/stock/comprobante-upload-url', {
+    nombre_archivo: file.name,
+    mime_type:      file.type,
+    size_bytes:     file.size,
+  })
+  const putRes = await fetch(up.signed_url, {
+    method:  'PUT',
+    body:    file,
+    headers: { 'content-type': file.type },
+  })
+  if (!putRes.ok) throw new Error(`Error al subir comprobante (${putRes.status})`)
+  return { storage_path: up.storage_path, file_hash }
+}
+
+export async function fetchComprobanteUrl(path: string): Promise<string> {
+  const data = await apiGet<{ url: string }>(`/api/stock/comprobante-url?path=${encodeURIComponent(path)}`)
+  return data.url
+}

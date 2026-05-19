@@ -48,7 +48,7 @@ const MODULOS_CON_OBRAS_SCOPE: ReadonlySet<string> = new Set([
 // en modo Personalizado. Se muestran SIEMPRE (es modo experto) pero algunos
 // solo afectan a ciertos módulos en el código del frontend; los `title` lo
 // documentan.
-type FlagBoolean = 'ver_pii' | 'ver_costos' | 'administrar_obras' | 'resolver_items' | 'forzar_despacho'
+type FlagBoolean = 'ver_pii' | 'ver_costos' | 'administrar_obras' | 'resolver_items' | 'forzar_despacho' | 'aprobar_ajustes_stock'
 const FLAGS_BOOLEAN: { key: FlagBoolean; label: string; help: string; modulos?: string[] }[] = [
   {
     key: 'ver_pii',
