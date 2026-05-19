@@ -318,6 +318,7 @@ export function useCreateLiquidacion() {
       qc.invalidateQueries({ queryKey: LOG_KEYS.liquidaciones })
       qc.invalidateQueries({ queryKey: LOG_KEYS.adelantos })
       qc.invalidateQueries({ queryKey: LOG_KEYS.tramos })
+      qc.invalidateQueries({ queryKey: LOG_KEYS.gastos })
     },
   })
 }
@@ -339,6 +340,7 @@ export function useCerrarLiquidacion() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: LOG_KEYS.liquidaciones })
       qc.invalidateQueries({ queryKey: LOG_KEYS.tramos })
+      qc.invalidateQueries({ queryKey: LOG_KEYS.gastos })
     },
   })
 }
@@ -351,6 +353,8 @@ export function useReabrirLiquidacion() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: LOG_KEYS.liquidaciones })
       qc.invalidateQueries({ queryKey: LOG_KEYS.tramos })
+      qc.invalidateQueries({ queryKey: LOG_KEYS.adelantos })
+      qc.invalidateQueries({ queryKey: LOG_KEYS.gastos })
     },
   })
 }
@@ -368,6 +372,8 @@ export function useDeleteLiquidacion() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: LOG_KEYS.liquidaciones })
       qc.invalidateQueries({ queryKey: LOG_KEYS.tramos })
+      qc.invalidateQueries({ queryKey: LOG_KEYS.adelantos })
+      qc.invalidateQueries({ queryKey: LOG_KEYS.gastos })
     },
   })
 }
