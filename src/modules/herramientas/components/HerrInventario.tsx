@@ -2,9 +2,11 @@
 
 import { useState, useMemo } from 'react'
 import {
-  useHerramientas, useHerrConfig,
+  useHerramientas, useHerrConfig, useHerrMarcas,
   useCreateHerramienta, useUpdateHerramienta, useDeleteHerramienta,
+  useCreateMarca, useCreateModelo,
 } from '../hooks/useHerramientas'
+import { Combobox } from '@/components/ui/Combobox'
 import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
 import { Input }    from '@/components/ui/Input'
@@ -21,14 +23,109 @@ import { useObras } from '@/modules/tarja/hooks/useObras'
 import type { Herramienta } from '@/types/domain.types'
 
 interface HerrFormData {
-  codigo: string
-  nom: string
-  tipo_id: string
-  marca: string
-  modelo: string
-  serie: string
+  codigo:        string
+  nom:           string
+  tipo_id:       string
+  marca_id:      string // value del combobox ('' = sin marca, 'new:Nombre' = crear nueva)
+  modelo_id:     string // value del combobox ('' = sin modelo, 'new:Nombre' = crear nuevo)
+  serie:         string
   fecha_ingreso: string
-  obs: string
+  obs:           string
+}
+
+function MarcaCombobox({ form }: { form: ReturnType<typeof useForm<HerrFormData>> }) {
+  const { data: marcas = [] } = useHerrMarcas()
+  const { mutateAsync: createMarcaAsync } = useCreateMarca()
+  const toast = useToast()
+  const value = form.watch('marca_id')
+
+  async function handleNueva() {
+    const nom = window.prompt('Nombre de la marca nueva:')
+    if (!nom || !nom.trim()) return
+    try {
+      const m = await createMarcaAsync({ nom: nom.trim() }) as { id: number; nom: string }
+      form.setValue('marca_id',  String(m.id))
+      form.setValue('modelo_id', '') // reset al cambiar marca
+      toast(`✓ Marca "${m.nom}" creada`, 'ok')
+    } catch (e: any) {
+      toast(e?.message ?? 'Error al crear marca', 'err')
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between">
+        <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Marca</label>
+        <button type="button" onClick={handleNueva} className="text-[10px] font-bold text-naranja hover:text-naranja-dark">
+          ＋ Nueva
+        </button>
+      </div>
+      <Combobox
+        placeholder="Buscar marca..."
+        options={[
+          { value: '', label: '— Sin marca —' },
+          ...marcas.filter(m => m.activo).map(m => ({ value: String(m.id), label: m.nom })),
+        ]}
+        value={value}
+        onChange={(v) => {
+          form.setValue('marca_id', v)
+          form.setValue('modelo_id', '') // reset modelo al cambiar marca
+        }}
+      />
+    </div>
+  )
+}
+
+function ModeloCombobox({ form }: { form: ReturnType<typeof useForm<HerrFormData>> }) {
+  const { data: marcas = [] } = useHerrMarcas()
+  const { mutateAsync: createModeloAsync } = useCreateModelo()
+  const toast = useToast()
+  const marcaId = form.watch('marca_id')
+  const value   = form.watch('modelo_id')
+
+  const marcaSel = marcaId ? marcas.find(m => String(m.id) === marcaId) : null
+  const disabled = !marcaSel
+
+  async function handleNuevo() {
+    if (!marcaSel) {
+      toast('Elegí una marca primero', 'err')
+      return
+    }
+    const nom = window.prompt(`Modelo nuevo para ${marcaSel.nom}:`)
+    if (!nom || !nom.trim()) return
+    try {
+      const m = await createModeloAsync({ marcaId: marcaSel.id, nom: nom.trim() }) as { id: number; nom: string }
+      form.setValue('modelo_id', String(m.id))
+      toast(`✓ Modelo "${m.nom}" creado`, 'ok')
+    } catch (e: any) {
+      toast(e?.message ?? 'Error al crear modelo', 'err')
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between">
+        <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Modelo</label>
+        {!disabled && (
+          <button type="button" onClick={handleNuevo} className="text-[10px] font-bold text-naranja hover:text-naranja-dark">
+            ＋ Nuevo
+          </button>
+        )}
+      </div>
+      <Combobox
+        placeholder={disabled ? 'Elegí una marca primero' : 'Buscar modelo...'}
+        options={[
+          { value: '', label: '— Sin modelo —' },
+          ...(marcaSel?.modelos ?? [])
+            .filter(mo => mo.activo)
+            .map(mo => ({ value: String(mo.id), label: mo.nom })),
+        ]}
+        value={value}
+        onChange={(v) => form.setValue('modelo_id', v)}
+        disabled={disabled}
+      />
+    </div>
+  )
 }
 
 const ESTADO_COLORS: Record<string, string> = {
@@ -85,9 +182,22 @@ export function HerrInventario() {
     })
   }, [herramientas, busqueda, filtroTipo, filtroEstado, filtroObra])
 
+  function payloadFromForm(data: HerrFormData) {
+    return {
+      codigo:        data.codigo,
+      nom:           data.nom,
+      tipo_id:       data.tipo_id  ? Number(data.tipo_id)  : null,
+      marca_id:      data.marca_id ? Number(data.marca_id) : null,
+      modelo_id:     data.modelo_id ? Number(data.modelo_id) : null,
+      serie:         data.serie,
+      fecha_ingreso: data.fecha_ingreso,
+      obs:           data.obs,
+    }
+  }
+
   function handleCreate(data: HerrFormData) {
     create(
-      { ...data, tipo_id: data.tipo_id ? Number(data.tipo_id) : null },
+      payloadFromForm(data),
       {
         onSuccess: async (creada) => {
           const creadaH = creada as Herramienta
@@ -131,7 +241,7 @@ export function HerrInventario() {
     update(
       {
         id:  editando.id,
-        dto: { ...data, tipo_id: data.tipo_id ? Number(data.tipo_id) : null },
+        dto: payloadFromForm(data),
       },
       {
         onSuccess: () => {
@@ -157,10 +267,11 @@ export function HerrInventario() {
 
   function openEdit(h: Herramienta) {
     formEdit.reset({
+      codigo:        h.codigo,
       nom:           h.nom,
       tipo_id:       String(h.tipo_id ?? ''),
-      marca:         h.marca   ?? '',
-      modelo:        h.modelo  ?? '',
+      marca_id:      h.marca_id  ? String(h.marca_id)  : '',
+      modelo_id:     h.modelo_id ? String(h.modelo_id) : '',
       serie:         h.serie   ?? '',
       fecha_ingreso: h.fecha_ingreso ?? '',
       obs:           h.obs     ?? '',
@@ -208,20 +319,10 @@ export function HerrInventario() {
           options={[{ value: '', label: '— Sin tipo —' }, ...tipoOptions]}
           {...form.register('tipo_id')}
         />
-        <Input
-          label="Marca"
-          placeholder="Bosch, Makita..."
-          autoComplete="off"
-          {...form.register('marca')}
-        />
+        <MarcaCombobox form={form} />
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Input
-          label="Modelo"
-          placeholder="GSB 21-2"
-          autoComplete="off"
-          {...form.register('modelo')}
-        />
+        <ModeloCombobox form={form} />
         <Input
           label="N° de serie"
           placeholder="Opcional"

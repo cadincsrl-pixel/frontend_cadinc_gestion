@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiPatch, apiDelete }   from '@/lib/api/client'
 import type {
   Herramienta, HerrConfig, HerrStats,
-  HerrMovimiento,
+  HerrMovimiento, HerrMarca,
 } from '@/types/domain.types'
 
 const KEY = ['herramientas']
@@ -13,6 +13,33 @@ export function useHerrConfig() {
     queryFn:  () => apiGet<HerrConfig>('/api/herramientas/config'),
     staleTime: 0,
     gcTime:    0,
+  })
+}
+
+const MARCAS_KEY = ['herr-marcas']
+
+export function useHerrMarcas() {
+  return useQuery({
+    queryKey: MARCAS_KEY,
+    queryFn:  () => apiGet<HerrMarca[]>('/api/herramientas/marcas'),
+    staleTime: 5 * 60_000,
+  })
+}
+
+export function useCreateMarca() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: { nom: string }) => apiPost('/api/herramientas/marcas', dto),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: MARCAS_KEY }),
+  })
+}
+
+export function useCreateModelo() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ marcaId, nom }: { marcaId: number; nom: string }) =>
+      apiPost(`/api/herramientas/marcas/${marcaId}/modelos`, { nom }),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: MARCAS_KEY }),
   })
 }
 

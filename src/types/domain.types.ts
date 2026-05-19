@@ -838,6 +838,21 @@ export interface HerrEstado {
   orden:  number
 }
 
+export interface HerrModelo {
+  id:       number
+  marca_id: number
+  nom:      string
+  activo:   boolean
+}
+
+export interface HerrMarca {
+  id:       number
+  nom:      string
+  activo:   boolean
+  orden:    number
+  modelos:  HerrModelo[]
+}
+
 export interface HerrMovTipo {
   key:         string
   nom:         string
@@ -855,7 +870,11 @@ export interface Herramienta {
   tipo_id:       number | null
   tipo:          HerrTipo | null
   marca:         string | null
+  marca_id:      number | null
+  marca_ref:     { id: number; nom: string } | null
   modelo:        string | null
+  modelo_id:     number | null
+  modelo_ref:    { id: number; nom: string } | null
   serie:         string | null
   fecha_ingreso: string | null
   estado_key:    string
