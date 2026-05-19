@@ -338,7 +338,17 @@ export function HerrMovimientos() {
               sub:   t.descripcion ?? '',
             }))}
             value={tipoMov}
-            onChange={v => { setTipoMov(v); setObraDestino('') }}
+            onChange={v => {
+              setTipoMov(v)
+              // Una devolución siempre va al depósito interno — no tiene sentido
+              // que el usuario elija otra obra. Auto-seteamos el destino.
+              if (v === 'devolucion') {
+                const depo = obras.find((o: Obra) => o.es_deposito)
+                setObraDestino(depo?.cod ?? '')
+              } else {
+                setObraDestino('')
+              }
+            }}
             disabled={!herrSel}
           />
 
@@ -392,7 +402,21 @@ export function HerrMovimientos() {
                 </div>
               </div>
             )}
-            {campos.destino && (
+            {campos.destino && tipoMov === 'devolucion' && (
+              // Devolución va siempre al depósito — readonly para evitar errores.
+              <div className="flex flex-col gap-1">
+                <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">
+                  Obra destino *
+                </label>
+                <div className="px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm bg-gris text-carbon font-semibold">
+                  {(() => {
+                    const depo = obras.find((o: Obra) => o.es_deposito)
+                    return depo ? `${depo.nom} (${depo.cod})` : '⚠ No hay obra marcada como depósito'
+                  })()}
+                </div>
+              </div>
+            )}
+            {campos.destino && tipoMov !== 'devolucion' && (
               <Combobox
                 label="Obra destino *"
                 placeholder="Buscar obra por nombre o código..."
