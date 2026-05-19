@@ -82,7 +82,7 @@ export function HerrMovimientos() {
 
   // Formulario
   const [herrSel, setHerrSel] = useState('')
-  const [tipoMov, setTipoMov] = useState('asignacion')
+  const [tipoMov, setTipoMov] = useState('')
   const [obraOrigen, setObraOrigen] = useState('')
   const [obraDestino, setObraDestino] = useState('')
   // Combo unificado: value codificado como `leg:XXX` (personal) o `user:UUID` (profile).
@@ -170,7 +170,7 @@ export function HerrMovimientos() {
           toast('✓ Movimiento registrado', 'ok')
           setHerrSel(''); setObraOrigen(''); setObraDestino('')
           setResponsableSel(''); setObs(''); setFechaManual('')
-          setTipoMov('asignacion')
+          setTipoMov('')
         },
         onError: (e: any) => toast(e.message ?? 'Error al registrar', 'err'),
       }
@@ -380,16 +380,21 @@ export function HerrMovimientos() {
                 <div className="flex items-center gap-2 text-sm font-mono">
                   {campos.origen && (
                     <span className="text-gris-dark">
-                      {obras.find(o => o.cod === obraOrigen)?.nom ?? (obraOrigen || '—')}
+                      {obras.find(o => o.cod === obraOrigen)?.nom
+                        ?? (obraOrigen || (tipoMov === 'retorno_rep' ? 'Taller / Depósito' : '—'))}
                     </span>
                   )}
                   {campos.origen && campos.destino && (
-                    <span className="text-naranja font-bold text-lg">→</span>
+                    <span className={`font-bold text-lg ${obraDestino ? 'text-naranja' : 'text-gris-mid'}`}>→</span>
                   )}
                   {campos.destino && (
-                    <span className="text-azul font-bold">
-                      {obras.find(o => o.cod === obraDestino)?.nom ?? (obraDestino || '—')}
-                    </span>
+                    obraDestino ? (
+                      <span className="text-azul font-bold">
+                        {obras.find(o => o.cod === obraDestino)?.nom ?? obraDestino}
+                      </span>
+                    ) : (
+                      <span className="text-gris-dark italic font-sans">elegí destino</span>
+                    )
                   )}
                 </div>
               </>
@@ -397,23 +402,10 @@ export function HerrMovimientos() {
           </div>
         )}
 
-        {/* Selectores de obras */}
-        {(campos.origen || campos.destino) && (
+        {/* Obra destino */}
+        {herramientaActual && tipoMov && campos.destino && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {campos.origen && (
-              <div className="flex flex-col gap-1">
-                <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">
-                  Obra origen
-                </label>
-                <div className="px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm bg-gris text-carbon font-semibold">
-                  {obras.find(o => o.cod === obraOrigen)?.nom
-                    ? `${obras.find(o => o.cod === obraOrigen)!.nom} (${obraOrigen})`
-                    : obraOrigen || (tipoMov === 'retorno_rep' ? 'Taller / Depósito' : '—')
-                  }
-                </div>
-              </div>
-            )}
-            {campos.destino && tipoMov === 'devolucion' && (
+            {tipoMov === 'devolucion' ? (
               // Devolución va siempre al depósito — readonly para evitar errores.
               <div className="flex flex-col gap-1">
                 <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">
@@ -426,8 +418,7 @@ export function HerrMovimientos() {
                   })()}
                 </div>
               </div>
-            )}
-            {campos.destino && tipoMov !== 'devolucion' && (
+            ) : (
               <Combobox
                 label="Obra destino *"
                 placeholder="Buscar obra por nombre o código..."
@@ -598,15 +589,23 @@ export function HerrMovimientos() {
               <option key={o.cod} value={o.cod}>{o.nom}</option>
             ))}
           </select>
+          {(busqueda || filtroHerr || filtroTipo || filtroObra) && (
+            <button
+              onClick={() => { setBusqueda(''); setFiltroHerr(''); setFiltroTipo(''); setFiltroObra('') }}
+              className="text-xs font-bold text-gris-dark hover:text-carbon px-2 py-1 rounded hover:bg-white transition-colors"
+            >
+              ✕ Limpiar
+            </button>
+          )}
         </div>
 
         {/* Desktop: tabla */}
-        <div className="hidden md:block overflow-x-auto">
+        <div className="hidden md:block overflow-auto max-h-[70vh]">
           <table className="w-full border-collapse">
             <thead>
               <tr>
                 {['Fecha', 'Herramienta', 'Movimiento', 'Origen', '→', 'Destino', 'Responsable', 'Obs'].map(h => (
-                  <th key={h} className="bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide whitespace-nowrap">
+                  <th key={h} className="sticky top-0 z-10 bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide whitespace-nowrap">
                     {h}
                   </th>
                 ))}
@@ -629,7 +628,9 @@ export function HerrMovimientos() {
                   </td>
                 </tr>
               ) : (
-                movFiltrados.map(m => (
+                movFiltrados.map(m => {
+                  const hasObras = !!(m.obra_origen?.nom || m.obra_destino?.nom)
+                  return (
                   <tr key={m.id} className="border-b border-gris last:border-0 hover:bg-gris/40 transition-colors">
                     <td className="px-4 py-3 font-mono text-xs text-gris-dark whitespace-nowrap">
                       {fmtFecha(m.fecha)}
@@ -643,21 +644,31 @@ export function HerrMovimientos() {
                         {m.tipo?.icono} {m.tipo?.nom ?? m.tipo_key}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-sm text-gris-dark">
-                      {m.obra_origen?.nom ?? '—'}
-                    </td>
-                    <td className="px-4 py-3 text-naranja font-bold">→</td>
-                    <td className="px-4 py-3 text-sm text-gris-dark">
-                      {m.obra_destino?.nom ?? '—'}
-                    </td>
+                    {hasObras ? (
+                      <>
+                        <td className="px-4 py-3 text-sm text-gris-dark">
+                          {m.obra_origen?.nom ?? '—'}
+                        </td>
+                        <td className="px-4 py-3 text-naranja font-bold">→</td>
+                        <td className="px-4 py-3 text-sm text-gris-dark">
+                          {m.obra_destino?.nom ?? '—'}
+                        </td>
+                      </>
+                    ) : (
+                      <td colSpan={3} className="px-4 py-3 text-center text-gris-dark">—</td>
+                    )}
                     <td className="px-4 py-3 text-sm text-gris-dark">
                       {m.responsable || '—'}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gris-dark max-w-[150px] truncate">
+                    <td
+                      className="px-4 py-3 text-sm text-gris-dark max-w-[150px] truncate"
+                      title={m.obs || undefined}
+                    >
                       {m.obs || '—'}
                     </td>
                   </tr>
-                ))
+                  )
+                })
               )}
             </tbody>
           </table>
@@ -677,7 +688,9 @@ export function HerrMovimientos() {
               No hay movimientos registrados
             </div>
           ) : (
-            movFiltrados.map(m => (
+            movFiltrados.map(m => {
+              const hasObras = !!(m.obra_origen?.nom || m.obra_destino?.nom)
+              return (
               <div key={m.id} className="bg-white border border-gris rounded-xl p-3 flex flex-col gap-2 shadow-sm">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
@@ -688,20 +701,23 @@ export function HerrMovimientos() {
                     {m.tipo?.icono} {m.tipo?.nom ?? m.tipo_key}
                   </span>
                 </div>
-                <div className="flex items-center gap-2 text-xs flex-wrap">
-                  <span className="text-gris-dark">{m.obra_origen?.nom ?? '—'}</span>
-                  <span className="text-naranja font-bold">→</span>
-                  <span className="text-azul font-semibold">{m.obra_destino?.nom ?? '—'}</span>
-                </div>
+                {hasObras && (
+                  <div className="flex items-center gap-2 text-xs flex-wrap">
+                    <span className="text-gris-dark">{m.obra_origen?.nom ?? '—'}</span>
+                    <span className="text-naranja font-bold">→</span>
+                    <span className="text-azul font-semibold">{m.obra_destino?.nom ?? '—'}</span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between gap-2 text-[11px] text-gris-dark pt-1 border-t border-gris">
                   <span className="font-mono">{fmtFecha(m.fecha)}</span>
                   {m.responsable && <span className="truncate">👤 {m.responsable}</span>}
                 </div>
                 {m.obs && (
-                  <div className="text-xs text-gris-dark italic">{m.obs}</div>
+                  <div className="text-xs text-gris-dark italic" title={m.obs}>{m.obs}</div>
                 )}
               </div>
-            ))
+              )
+            })
           )}
         </div>
       </div>
