@@ -180,11 +180,15 @@ export function HerrInventario() {
   }
 
   const HerrForm = ({ form, errors, codigoReadOnly }: { form: ReturnType<typeof useForm<HerrFormData>>; errors: ReturnType<typeof useForm<HerrFormData>>['formState']['errors']; codigoReadOnly?: boolean }) => (
+    // autoComplete="off" en cada input para que Chrome no sugiera valores
+    // aprendidos en otros forms (p.ej. nombres de personal en el campo
+    // "Nombre", que comparte el name `nom` con personal.nom).
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Input
           label="Código *"
           placeholder="HER-001"
+          autoComplete="off"
           error={errors.codigo?.message}
           readOnly={codigoReadOnly}
           className={codigoReadOnly ? 'bg-gris cursor-not-allowed' : ''}
@@ -193,6 +197,7 @@ export function HerrInventario() {
         <Input
           label="Nombre *"
           placeholder="Taladro percutor"
+          autoComplete="off"
           error={errors.nom?.message}
           {...form.register('nom', { required: 'Requerido' })}
         />
@@ -206,6 +211,7 @@ export function HerrInventario() {
         <Input
           label="Marca"
           placeholder="Bosch, Makita..."
+          autoComplete="off"
           {...form.register('marca')}
         />
       </div>
@@ -213,17 +219,20 @@ export function HerrInventario() {
         <Input
           label="Modelo"
           placeholder="GSB 21-2"
+          autoComplete="off"
           {...form.register('modelo')}
         />
         <Input
           label="N° de serie"
           placeholder="Opcional"
+          autoComplete="off"
           {...form.register('serie')}
         />
       </div>
       <Input
         label="Fecha de ingreso"
         type="date"
+        autoComplete="off"
         {...form.register('fecha_ingreso')}
       />
       <div className="flex flex-col gap-1">
@@ -233,6 +242,7 @@ export function HerrInventario() {
         <textarea
           rows={3}
           placeholder="Estado inicial, notas, etc."
+          autoComplete="off"
           className="px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja transition-colors resize-none"
           {...form.register('obs')}
         />
