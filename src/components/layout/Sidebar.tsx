@@ -180,7 +180,6 @@ const HERR_SUBNAV = [
   { href: '/herramientas/inventario',   icon: '🔧', label: 'Inventario',   meta: 'Catálogo de herramientas',  tabKey: 'inventario'   },
   { href: '/herramientas/movimientos',  icon: '↔',  label: 'Movimientos',  meta: 'Registrar traslados',       tabKey: 'movimientos'  },
   { href: '/herramientas/trazabilidad', icon: '📍', label: 'Trazabilidad', meta: 'Historial por herramienta', tabKey: 'trazabilidad' },
-  { href: '/herramientas/remitos',      icon: '📄', label: 'Remitos',      meta: 'Emisión de remitos',        tabKey: 'remitos'      },
   { href: '/herramientas/parametros',   icon: '⚙️', label: 'Parámetros',   meta: 'Tipos y configuración',     tabKey: 'parametros'   },
 ]
 

@@ -80,7 +80,7 @@ export const PRESETS: PresetBase[] = [
         lectura: true, creacion: true, actualizacion: true, eliminacion: false,
         // Excluye 'parametros' para mantener configuración de tipos/categorías
         // como territorio admin.
-        tabs: ['inventario', 'movimientos', 'trazabilidad', 'remitos'],
+        tabs: ['inventario', 'movimientos', 'trazabilidad'],
       },
     },
     obras_scope_default: 'todas',

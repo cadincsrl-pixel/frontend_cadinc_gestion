@@ -14,6 +14,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useToast }   from '@/components/ui/Toast'
 import { Button }    from '@/components/ui/Button'
 import { Combobox }  from '@/components/ui/Combobox'
+import { Modal }     from '@/components/ui/Modal'
 import type { Herramienta, HerrMovTipo, Obra, Profile } from '@/types/domain.types'
 
 function fmtFecha(s: string) {
@@ -461,30 +462,56 @@ export function HerrMovimientos() {
         </div>
       </div>
 
-      {/* Banner remito */}
+      {/* Modal post-registro: ofrece imprimir el remito por triplicado */}
       {ultimoRemito && (
-        <div className="bg-verde-light border border-verde/30 rounded-card p-4 flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">✓</span>
-            <div>
-              <div className="font-bold text-verde">Movimiento registrado</div>
-              <div className="text-xs text-verde/80">
-                {ultimoRemito.tipoIcono} {ultimoRemito.tipoNom} · {ultimoRemito.herramienta.nom} · Remito Nº {ultimoRemito.numero}
+        <Modal
+          open={!!ultimoRemito}
+          onClose={() => setUltimoRemito(null)}
+          title="✓ Movimiento registrado"
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setUltimoRemito(null)}>
+                No imprimir
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => { imprimirRemito(ultimoRemito); setUltimoRemito(null) }}
+              >
+                🖨 Imprimir remito triplicado
+              </Button>
+            </>
+          }
+        >
+          <div className="flex flex-col gap-4">
+            <p className="text-sm text-carbon">
+              El movimiento se guardó correctamente. ¿Querés imprimir el remito
+              en una hoja con tres copias (original, duplicado y triplicado)?
+            </p>
+            <div className="bg-gris rounded-xl p-3 flex flex-col gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold text-gris-dark uppercase tracking-wider">Remito</span>
+                <span className="font-mono font-bold text-naranja">Nº {ultimoRemito.numero}</span>
               </div>
+              <div className="flex items-center gap-2 flex-wrap text-sm">
+                <span className="text-lg">{ultimoRemito.tipoIcono}</span>
+                <span className="font-bold text-carbon">{ultimoRemito.tipoNom}</span>
+                <span className="text-gris-dark">·</span>
+                <span className="font-mono text-xs text-gris-dark">{ultimoRemito.herramienta.codigo}</span>
+                <span className="text-carbon">{ultimoRemito.herramienta.nom}</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-gris-dark">{ultimoRemito.obraOrigen}</span>
+                <span className="text-naranja font-bold">→</span>
+                <span className="text-azul font-semibold">{ultimoRemito.obraDestino}</span>
+              </div>
+              {ultimoRemito.responsable && (
+                <div className="text-xs text-gris-dark">
+                  Responsable: <span className="font-semibold text-carbon">{ultimoRemito.responsable}</span>
+                </div>
+              )}
             </div>
           </div>
-          <div className="flex gap-2">
-            <Button variant="primary" size="sm" onClick={() => imprimirRemito(ultimoRemito)}>
-              🖨 Imprimir remito
-            </Button>
-            <button
-              onClick={() => setUltimoRemito(null)}
-              className="text-xs text-verde/60 hover:text-verde px-2"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Historial */}
