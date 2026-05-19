@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { useMateriales, useCreateMaterial, useUpdateMaterial, useDeleteMaterial } from '../hooks/useCertificaciones'
+import { useStockMateriales } from '../hooks/useStock'
 import { useObras } from '@/modules/tarja/hooks/useObras'
 import { createClient } from '@/lib/supabase/client'
 import { Modal }    from '@/components/ui/Modal'
@@ -11,7 +12,9 @@ import { Input }    from '@/components/ui/Input'
 import { Select }   from '@/components/ui/Select'
 import { Combobox } from '@/components/ui/Combobox'
 import { useToast } from '@/components/ui/Toast'
-import type { CertMaterial, Obra } from '@/types/domain.types'
+import type { CertMaterial, Obra, StockMaterial } from '@/types/domain.types'
+
+type DescripcionOption = { value: string; label: string; sub?: string }
 
 const UNIDADES = [
   { value: 'unid', label: 'Unid.' },
@@ -86,23 +89,26 @@ interface Linea {
 }
 
 function LineaRow({
-  linea, onChange, onRemove, showRemove,
+  linea, onChange, onRemove, showRemove, descripcionOptions,
 }: {
   linea:     Linea
   onChange:  (l: Linea) => void
   onRemove:  () => void
   showRemove: boolean
+  descripcionOptions: DescripcionOption[]
 }) {
   const total = linea.cantidad * linea.precio_unit
   return (
     <tr className="border-b border-gris last:border-0">
       <td className="py-1.5 pr-2">
-        <input
-          type="text"
-          placeholder="Descripción del material..."
+        <Combobox
+          placeholder="Buscar o escribir material..."
+          options={descripcionOptions}
           value={linea.descripcion}
-          onChange={e => onChange({ ...linea, descripcion: e.target.value })}
-          className="w-full px-2 py-1.5 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja"
+          onChange={v => onChange({ ...linea, descripcion: v })}
+          onCreate={q => onChange({ ...linea, descripcion: q })}
+          createLabel="Usar"
+          freeText
         />
       </td>
       <td className="py-1.5 pr-2 w-20">
@@ -244,6 +250,11 @@ export function MaterialesTab() {
   const { data: obras = [] }      = useObras('certificaciones')
   const [obraFiltro, setObraFiltro] = useState('')
   const { data: materiales = [] } = useMateriales(obraFiltro || undefined)
+  // Para el autocomplete del modal: necesitamos descripciones de TODAS las
+  // obras + nombres del catálogo de stock. El query sin filtro de obra usa
+  // queryKey distinto (`'all'`) y no compite con el filtrado.
+  const { data: materialesAll = [] } = useMateriales(undefined)
+  const { data: stockMateriales = [] } = useStockMateriales()
   const { mutate: create, isPending: creating } = useCreateMaterial()
   const { mutate: update, isPending: updating } = useUpdateMaterial()
   const { mutate: remove } = useDeleteMaterial()
@@ -266,6 +277,34 @@ export function MaterialesTab() {
   const totalCompra = lineas.reduce((s, l) => s + l.cantidad * l.precio_unit, 0)
   const compras     = groupMateriales(materiales as CertMaterial[])
   const totalGeneral = compras.reduce((s, c) => s + c.total, 0)
+
+  // Opciones de autocomplete para descripciones (catálogo de stock + descripciones
+  // ya usadas en cert_materiales, dedupeadas por nombre normalizado). Se calcula
+  // una sola vez en el padre y se pasa como prop a cada LineaRow para evitar
+  // recálculos por línea.
+  const descripcionOptions = useMemo<DescripcionOption[]>(() => {
+    const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ')
+    const map = new Map<string, DescripcionOption>()
+    // 1) Catálogo de stock (prioridad — se muestra el sub "📦 catálogo")
+    for (const m of stockMateriales as StockMaterial[]) {
+      const nom = m.nombre?.trim()
+      if (!nom) continue
+      const key = norm(nom)
+      if (!map.has(key)) {
+        map.set(key, { value: nom, label: nom, sub: '📦 catálogo' })
+      }
+    }
+    // 2) Descripciones ya usadas en cert_materiales (solo agregar si no estaba)
+    for (const m of materialesAll as CertMaterial[]) {
+      const desc = m.descripcion?.trim()
+      if (!desc) continue
+      const key = norm(desc)
+      if (!map.has(key)) {
+        map.set(key, { value: desc, label: desc, sub: 'usado antes' })
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label, 'es'))
+  }, [stockMateriales, materialesAll])
 
   function toggleExpand(key: string) {
     setExpanded(prev => {
@@ -577,6 +616,7 @@ export function MaterialesTab() {
                       onChange={updated => updateLinea(l.id, updated)}
                       onRemove={() => removeLinea(l.id)}
                       showRemove={lineas.length > 1}
+                      descripcionOptions={descripcionOptions}
                     />
                   ))}
                 </tbody>
@@ -589,12 +629,14 @@ export function MaterialesTab() {
                 const total = l.cantidad * l.precio_unit
                 return (
                   <div key={l.id} className="border border-gris-mid rounded-lg p-3 bg-gris/20">
-                    <input
-                      type="text"
-                      placeholder="Descripción del material..."
+                    <Combobox
+                      placeholder="Buscar o escribir material..."
+                      options={descripcionOptions}
                       value={l.descripcion}
-                      onChange={e => updateLinea(l.id, { ...l, descripcion: e.target.value })}
-                      className="w-full px-2 py-1.5 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja"
+                      onChange={v => updateLinea(l.id, { ...l, descripcion: v })}
+                      onCreate={q => updateLinea(l.id, { ...l, descripcion: q })}
+                      createLabel="Usar"
+                      freeText
                     />
                     <div className="flex gap-2 items-center mt-2">
                       <input

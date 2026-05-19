@@ -19,6 +19,13 @@ interface ComboboxProps {
   onCreate?:    (query: string) => void | Promise<void>
   /** Texto del item de creación. Default: "Crear". */
   createLabel?: string
+  /**
+   * Si true, cuando el `value` actual no matchea ningún `option.value`,
+   * el input muestra el `value` literal (modo texto libre). Útil cuando
+   * el value es texto humano editable (ej. nombre de material) en vez
+   * de un ID opaco. Default: false (mantiene comportamiento legacy).
+   */
+  freeText?:    boolean
 }
 
 // Altura aproximada del dropdown (max-h-52 = 13rem ≈ 208px). Se usa para
@@ -27,7 +34,7 @@ const DROPDOWN_HEIGHT = 208
 
 export function Combobox({
   label, placeholder = 'Buscar...', options, value, onChange, disabled, className = '',
-  onCreate, createLabel = 'Crear',
+  onCreate, createLabel = 'Crear', freeText = false,
 }: ComboboxProps) {
   const [query,  setQuery]  = useState('')
   const [open,   setOpen]   = useState(false)
@@ -35,8 +42,11 @@ export function Combobox({
   const ref = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLInputElement>(null)
 
-  // Texto visible: si hay valor seleccionado, mostrar su label
+  // Texto visible: si hay valor seleccionado, mostrar su label.
+  // En modo freeText, si el value no matchea ningún option, igual lo
+  // mostramos como label (para que el usuario vea lo que tipeó libre).
   const selected = options.find(o => o.value === value)
+    ?? (freeText && value ? { value, label: value } : undefined)
 
   const filtered = query.trim()
     ? options.filter(o =>
