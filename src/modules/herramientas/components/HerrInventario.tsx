@@ -583,11 +583,31 @@ export function HerrInventario() {
               : 'No hay herramientas registradas. Agregá la primera.'}
           </div>
         ) : filtradas.map(h => (
-          <button
+          <div
             key={h.id}
             onClick={() => setDetalle(h)}
-            className="bg-white rounded-card shadow-card p-3 text-left active:bg-gris/40 transition-colors w-full"
+            role="button"
+            tabIndex={0}
+            className={`bg-white rounded-card shadow-card p-3 text-left active:bg-gris/40 transition-colors w-full flex items-start gap-2 cursor-pointer ${selectedIds.has(h.id) ? 'ring-2 ring-naranja bg-naranja-light/30' : ''}`}
           >
+            {puedeEditar && (
+              <input
+                type="checkbox"
+                aria-label={`Seleccionar ${h.codigo}`}
+                checked={selectedIds.has(h.id)}
+                onClick={(e) => e.stopPropagation()}
+                onChange={() => {
+                  setSelectedIds(prev => {
+                    const next = new Set(prev)
+                    if (next.has(h.id)) next.delete(h.id)
+                    else                next.add(h.id)
+                    return next
+                  })
+                }}
+                className="mt-1 w-5 h-5 cursor-pointer accent-naranja shrink-0"
+              />
+            )}
+            <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2 mb-2">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -652,7 +672,8 @@ export function HerrInventario() {
                 )}
               </div>
             )}
-          </button>
+            </div>
+          </div>
         ))}
       </div>
 
