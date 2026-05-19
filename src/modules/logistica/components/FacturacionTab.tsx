@@ -1263,6 +1263,9 @@ function RemitosSection() {
   const [fechaDesde, setFechaDesde] = useState('')
   const [fechaHasta, setFechaHasta] = useState('')
   const [descargandoZip, setDescargandoZip] = useState(false)
+  // Modal de armado manual de paquete.
+  const [modalArmadoOpen, setModalArmadoOpen] = useState(false)
+  const [seleccionados,   setSeleccionados]   = useState<Set<number>>(new Set())
 
   function tarifaParaFecha(empresaId: number, canteraId: number | null, fecha: string | null): number {
     if (!canteraId || !fecha) return 0
@@ -1355,14 +1358,17 @@ function RemitosSection() {
   const adeudados = tramosBase.filter(t => !cobroIdConfirmado(t.cobro_id)).map(enrichTramo)
   const cobrados  = tramosBase.filter(t =>  cobroIdConfirmado(t.cobro_id)).map(enrichTramo)
 
-  // Descarga en ZIP los archivos (foto/PDF) de remito_carga y remito_descarga
-  // de todos los tramos adeudados visibles. Agrupa por empresa transportista
-  // en subcarpetas. Filtros: los mismos del panel (empresa + rango fechas)
-  // + restricción a adeudados (no cobrados).
-  async function descargarRemitosZip() {
+  // Genera y descarga el ZIP con los remitos (carga + descarga) de la lista
+  // de tramos enriched que se le pase. Los agrupa por empresa transportista
+  // en subcarpetas. Es la lógica core reutilizada por el botón "todos los
+  // adeudados" y el modal de armado manual.
+  async function armarZipDeTramos(
+    items: ReturnType<typeof enrichTramo>[],
+    nombreArchivo: string,
+  ) {
     if (descargandoZip) return
-    if (adeudados.length === 0) {
-      toast('Sin remitos adeudados con los filtros actuales', 'warn')
+    if (items.length === 0) {
+      toast('Seleccioná al menos un remito', 'warn')
       return
     }
     setDescargandoZip(true)
@@ -1371,16 +1377,16 @@ function RemitosSection() {
       let added = 0
       let tramosSinRemito = 0
 
-      for (const d of adeudados) {
+      for (const d of items) {
         const t = d.t
         const empresaNombre = (d.empresa?.nombre ?? 'Sin empresa').replace(/[\/\\]/g, '-')
         const folder = zip.folder(empresaNombre)!
-        const items = [
+        const archivos = [
           { url: t.remito_carga_img_url,    label: 'CARGA',    nro: t.remito_carga    ?? `T${t.id}` },
           { url: t.remito_descarga_img_url, label: 'DESCARGA', nro: t.remito_descarga ?? `T${t.id}` },
         ]
         let tuvoAlguno = false
-        for (const it of items) {
+        for (const it of archivos) {
           if (!it.url) continue
           try {
             const resp = await fetch(it.url)
@@ -1409,12 +1415,8 @@ function RemitosSection() {
       const blob = await zip.generateAsync({ type: 'blob' })
       const url  = URL.createObjectURL(blob)
       const a    = document.createElement('a')
-      const empNombre = empresaId
-        ? ((empresas as EmpresaTransportista[]).find(e => e.id === Number(empresaId))?.nombre ?? 'empresa').replace(/\s+/g, '_')
-        : 'todas'
-      const rango = [fechaDesde || 'inicio', fechaHasta || 'hoy'].join('_a_')
       a.href = url
-      a.download = `Remitos_adeudados_${empNombre}_${rango}.zip`
+      a.download = nombreArchivo
       a.click()
       URL.revokeObjectURL(url)
 
@@ -1428,6 +1430,29 @@ function RemitosSection() {
     } finally {
       setDescargandoZip(false)
     }
+  }
+
+  // Wrapper "todos los adeudados" — comportamiento histórico del botón existente.
+  async function descargarRemitosZip() {
+    if (adeudados.length === 0) {
+      toast('Sin remitos adeudados con los filtros actuales', 'warn')
+      return
+    }
+    const empNombre = empresaId
+      ? ((empresas as EmpresaTransportista[]).find(e => e.id === Number(empresaId))?.nombre ?? 'empresa').replace(/\s+/g, '_')
+      : 'todas'
+    const rango = [fechaDesde || 'inicio', fechaHasta || 'hoy'].join('_a_')
+    await armarZipDeTramos(adeudados, `Remitos_adeudados_${empNombre}_${rango}.zip`)
+  }
+
+  // Wrapper "armado manual" — los tramos marcados con checkbox en el modal.
+  async function descargarSeleccionados() {
+    const items = adeudados.filter(d => seleccionados.has(d.t.id))
+    if (items.length === 0) return
+    const fecha = new Date().toISOString().slice(0, 10)
+    await armarZipDeTramos(items, `Remitos_paquete_${fecha}.zip`)
+    setModalArmadoOpen(false)
+    setSeleccionados(new Set())
   }
 
   const totalAdeudado = adeudados.reduce((s, d) => s + d.subtotal, 0)
@@ -1493,12 +1518,20 @@ function RemitosSection() {
           </button>
         )}
         <button
+          onClick={() => { setSeleccionados(new Set()); setModalArmadoOpen(true) }}
+          disabled={descargandoZip}
+          className="ml-auto self-end inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-azul-light text-azul border border-azul/30 text-xs font-bold hover:bg-azul hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Elegir remitos específicos para armar un paquete ZIP"
+        >
+          🗂 Armar paquete...
+        </button>
+        <button
           onClick={descargarRemitosZip}
           disabled={descargandoZip}
-          className="ml-auto self-end inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-naranja-light text-naranja-dark border border-naranja/30 text-xs font-bold hover:bg-naranja hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          title="Bajar los remitos (foto/PDF) de los viajes adeudados en un ZIP, agrupado por empresa"
+          className="self-end inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-naranja-light text-naranja-dark border border-naranja/30 text-xs font-bold hover:bg-naranja hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Bajar los remitos (foto/PDF) de TODOS los viajes adeudados en un ZIP, agrupado por empresa"
         >
-          {descargandoZip ? '⏳ Descargando...' : '📦 Remitos adeudados (ZIP)'}
+          {descargandoZip ? '⏳ Descargando...' : '📦 Todos los adeudados (ZIP)'}
         </button>
         <button
           onClick={exportarExcel}
@@ -1543,6 +1576,155 @@ function RemitosSection() {
           </div>
         </div>
       </div>
+
+      {/* Modal: armar paquete manual de remitos adeudados */}
+      {modalArmadoOpen && (() => {
+        // Agrupamos los adeudados por empresa para mostrar el modal con
+        // acordeones colapsables y un check "marcar todos" por grupo.
+        const grupos = new Map<string, { empresa: string; items: typeof adeudados }>()
+        for (const d of adeudados) {
+          const key = String(d.empresa?.id ?? 0)
+          if (!grupos.has(key)) grupos.set(key, { empresa: d.empresa?.nombre ?? 'Sin empresa', items: [] })
+          grupos.get(key)!.items.push(d)
+        }
+        const total = adeudados.length
+
+        function toggleId(id: number) {
+          setSeleccionados(prev => {
+            const next = new Set(prev)
+            if (next.has(id)) next.delete(id)
+            else              next.add(id)
+            return next
+          })
+        }
+        function toggleGrupo(ids: number[], allMarked: boolean) {
+          setSeleccionados(prev => {
+            const next = new Set(prev)
+            if (allMarked) ids.forEach(id => next.delete(id))
+            else           ids.forEach(id => next.add(id))
+            return next
+          })
+        }
+        function toggleAll() {
+          if (seleccionados.size === total) setSeleccionados(new Set())
+          else                              setSeleccionados(new Set(adeudados.map(d => d.t.id)))
+        }
+        const allChecked = total > 0 && seleccionados.size === total
+
+        return (
+          <Modal
+            open={modalArmadoOpen}
+            onClose={() => { setModalArmadoOpen(false); setSeleccionados(new Set()) }}
+            title="🗂 ARMAR PAQUETE DE REMITOS"
+            width="max-w-3xl"
+            footer={
+              <>
+                <span className="mr-auto text-sm font-bold text-gris-dark">
+                  {seleccionados.size} de {total} marcados
+                </span>
+                <Button variant="secondary" onClick={() => { setModalArmadoOpen(false); setSeleccionados(new Set()) }}>
+                  Cancelar
+                </Button>
+                <Button
+                  variant="primary"
+                  loading={descargandoZip}
+                  disabled={seleccionados.size === 0}
+                  onClick={descargarSeleccionados}
+                >
+                  📦 Generar ZIP ({seleccionados.size})
+                </Button>
+              </>
+            }
+          >
+            <div className="flex flex-col gap-3">
+              <p className="text-xs text-gris-dark">
+                Solo se listan tramos <strong>adeudados</strong> (sin cobro confirmado), filtrados por los criterios del panel.
+                Marcá los remitos que querés incluir en el paquete. Se agrupan por empresa transportista al armar el ZIP.
+              </p>
+
+              {total === 0 ? (
+                <div className="bg-gris rounded-lg p-6 text-center text-sm text-gris-dark italic">
+                  No hay tramos adeudados con los filtros actuales. Cambiá empresa o rango de fechas.
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 pb-2 border-b border-gris">
+                    <input
+                      type="checkbox"
+                      checked={allChecked}
+                      onChange={toggleAll}
+                      className="w-4 h-4 cursor-pointer accent-naranja"
+                    />
+                    <span className="text-sm font-bold">
+                      {allChecked ? 'Desmarcar todos' : 'Marcar todos'}
+                    </span>
+                  </div>
+
+                  {Array.from(grupos.values())
+                    .sort((a, b) => a.empresa.localeCompare(b.empresa))
+                    .map(g => {
+                      const idsGrupo = g.items.map(d => d.t.id)
+                      const enGrupo  = idsGrupo.filter(id => seleccionados.has(id)).length
+                      const allMarked = enGrupo === g.items.length
+                      const someMarked = enGrupo > 0 && !allMarked
+
+                      return (
+                        <div key={g.empresa} className="bg-white border border-gris rounded-lg overflow-hidden">
+                          <div className="flex items-center gap-2 bg-azul-light/30 px-3 py-2 border-b border-gris">
+                            <input
+                              type="checkbox"
+                              checked={allMarked}
+                              ref={el => { if (el) el.indeterminate = someMarked }}
+                              onChange={() => toggleGrupo(idsGrupo, allMarked)}
+                              className="w-4 h-4 cursor-pointer accent-naranja"
+                            />
+                            <span className="font-bold text-sm text-azul flex-1">{g.empresa}</span>
+                            <span className="text-xs text-gris-dark">
+                              {enGrupo} / {g.items.length}
+                            </span>
+                          </div>
+                          <div>
+                            {g.items.map(d => {
+                              const t = d.t
+                              const tieneCarga    = !!t.remito_carga_img_url
+                              const tieneDescarga = !!t.remito_descarga_img_url
+                              const checked = seleccionados.has(t.id)
+                              return (
+                                <label
+                                  key={t.id}
+                                  className={`flex items-center gap-2 px-3 py-2 text-xs border-b border-gris last:border-0 cursor-pointer hover:bg-gris/30 ${checked ? 'bg-naranja-light/20' : ''}`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggleId(t.id)}
+                                    className="w-4 h-4 cursor-pointer accent-naranja"
+                                  />
+                                  <span className="font-mono text-gris-dark w-20 shrink-0">
+                                    {d.fecha ? fmtFecha(d.fecha) : '—'}
+                                  </span>
+                                  <span className="flex-1 min-w-0 truncate">
+                                    {d.cantera?.nombre ?? '—'}
+                                    {t.remito_carga    && <span className="ml-1 font-mono">· #{t.remito_carga}</span>}
+                                    {t.remito_descarga && <span className="ml-1 font-mono">/ {t.remito_descarga}</span>}
+                                  </span>
+                                  <span className="flex items-center gap-1 shrink-0">
+                                    <span title="Remito carga"    className={tieneCarga    ? 'text-verde' : 'text-gris-mid'}>{tieneCarga    ? '📷' : '–'}</span>
+                                    <span title="Remito descarga" className={tieneDescarga ? 'text-verde' : 'text-gris-mid'}>{tieneDescarga ? '📷' : '–'}</span>
+                                  </span>
+                                </label>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })}
+                </>
+              )}
+            </div>
+          </Modal>
+        )
+      })()}
     </div>
   )
 }
