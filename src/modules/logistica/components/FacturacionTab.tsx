@@ -1263,9 +1263,15 @@ function RemitosSection() {
   const [fechaDesde, setFechaDesde] = useState('')
   const [fechaHasta, setFechaHasta] = useState('')
   const [descargandoZip, setDescargandoZip] = useState(false)
+  // Paneles colapsables: default ambos cerrados para que la vista entre
+  // de una sola pantalla (las listas se hacían muy largas).
+  const [adeudadosAbierto, setAdeudadosAbierto] = useState(false)
+  const [cobradosAbierto,  setCobradosAbierto]  = useState(false)
   // Modal de armado manual de paquete.
   const [modalArmadoOpen, setModalArmadoOpen] = useState(false)
   const [seleccionados,   setSeleccionados]   = useState<Set<number>>(new Set())
+  // Filtro de estado dentro del modal: adeudados (default) / cobrados / ambos.
+  const [modalFiltroEstado, setModalFiltroEstado] = useState<'adeudados' | 'cobrados' | 'ambos'>('adeudados')
 
   function tarifaParaFecha(empresaId: number, canteraId: number | null, fecha: string | null): number {
     if (!canteraId || !fecha) return 0
@@ -1446,13 +1452,23 @@ function RemitosSection() {
   }
 
   // Wrapper "armado manual" — los tramos marcados con checkbox en el modal.
+  // Acepta tanto adeudados como cobrados. El nombre del ZIP refleja la mezcla.
   async function descargarSeleccionados() {
-    const items = adeudados.filter(d => seleccionados.has(d.t.id))
+    const itemsAdeudados = adeudados.filter(d => seleccionados.has(d.t.id))
+    const itemsCobrados  = cobrados.filter(d => seleccionados.has(d.t.id))
+    const items = [...itemsAdeudados, ...itemsCobrados]
     if (items.length === 0) return
+
     const fecha = new Date().toISOString().slice(0, 10)
-    await armarZipDeTramos(items, `Remitos_paquete_${fecha}.zip`)
+    let sufijo: string
+    if (itemsAdeudados.length > 0 && itemsCobrados.length > 0) sufijo = 'mixto'
+    else if (itemsCobrados.length > 0)                          sufijo = 'cobrados'
+    else                                                        sufijo = 'adeudados'
+
+    await armarZipDeTramos(items, `Remitos_${sufijo}_${fecha}.zip`)
     setModalArmadoOpen(false)
     setSeleccionados(new Set())
+    setModalFiltroEstado('adeudados')
   }
 
   const totalAdeudado = adeudados.reduce((s, d) => s + d.subtotal, 0)
@@ -1542,52 +1558,78 @@ function RemitosSection() {
         </button>
       </div>
 
-      {/* Columnas adeudado / cobrado */}
-      <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-gris">
+      {/* Paneles colapsables — resumen siempre visible, click para expandir */}
+      <div className="flex flex-col gap-3 p-4">
         {/* Adeudados */}
-        <div className="p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="text-xs font-bold text-naranja uppercase tracking-wider">
-              Adeudados ({adeudados.length})
+        <div className="rounded-card border-l-[5px] border-naranja overflow-hidden bg-white shadow-sm">
+          <button
+            type="button"
+            onClick={() => setAdeudadosAbierto(v => !v)}
+            aria-expanded={adeudadosAbierto}
+            aria-controls="panel-adeudados"
+            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-naranja-light/40 transition-colors"
+          >
+            <span className={`text-naranja text-sm transition-transform ${adeudadosAbierto ? 'rotate-90' : ''}`}>▸</span>
+            <span className="text-xs font-bold text-naranja uppercase tracking-wider">Adeudados</span>
+            <span className="text-xs text-gris-dark">· {adeudados.length} tramo{adeudados.length !== 1 ? 's' : ''}</span>
+            <span className="ml-auto font-mono font-bold text-naranja">{fmtM(totalAdeudado)}</span>
+          </button>
+          <div id="panel-adeudados" className={`overflow-hidden transition-all duration-200 ${adeudadosAbierto ? 'max-h-[200vh]' : 'max-h-0'}`}>
+            <div className="bg-gris">
+              {adeudados.length === 0
+                ? <p className="text-xs text-gris-dark text-center py-4 italic">Sin remitos adeudados</p>
+                : adeudados.map(d => <FilaRemito key={d.t.id} d={d} />)
+              }
             </div>
-            <div className="font-mono font-bold text-naranja">{fmtM(totalAdeudado)}</div>
-          </div>
-          <div className="bg-gris rounded-xl overflow-hidden">
-            {adeudados.length === 0
-              ? <p className="text-xs text-gris-dark text-center py-4 italic">Sin remitos adeudados</p>
-              : adeudados.map(d => <FilaRemito key={d.t.id} d={d} />)
-            }
           </div>
         </div>
 
         {/* Cobrados */}
-        <div className="p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="text-xs font-bold text-verde uppercase tracking-wider">
-              Cobrados ({cobrados.length})
+        <div className="rounded-card border-l-[5px] border-verde overflow-hidden bg-white shadow-sm">
+          <button
+            type="button"
+            onClick={() => setCobradosAbierto(v => !v)}
+            aria-expanded={cobradosAbierto}
+            aria-controls="panel-cobrados"
+            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-verde-light/40 transition-colors"
+          >
+            <span className={`text-verde text-sm transition-transform ${cobradosAbierto ? 'rotate-90' : ''}`}>▸</span>
+            <span className="text-xs font-bold text-verde uppercase tracking-wider">Cobrados</span>
+            <span className="text-xs text-gris-dark">· {cobrados.length} tramo{cobrados.length !== 1 ? 's' : ''}</span>
+            <span className="ml-auto font-mono font-bold text-verde">{fmtM(totalCobrado)}</span>
+          </button>
+          <div id="panel-cobrados" className={`overflow-hidden transition-all duration-200 ${cobradosAbierto ? 'max-h-[200vh]' : 'max-h-0'}`}>
+            <div className="bg-gris">
+              {cobrados.length === 0
+                ? <p className="text-xs text-gris-dark text-center py-4 italic">Sin remitos cobrados</p>
+                : cobrados.map(d => <FilaRemito key={d.t.id} d={d} />)
+              }
             </div>
-            <div className="font-mono font-bold text-verde">{fmtM(totalCobrado)}</div>
-          </div>
-          <div className="bg-gris rounded-xl overflow-hidden">
-            {cobrados.length === 0
-              ? <p className="text-xs text-gris-dark text-center py-4 italic">Sin remitos cobrados</p>
-              : cobrados.map(d => <FilaRemito key={d.t.id} d={d} />)
-            }
           </div>
         </div>
       </div>
 
       {/* Modal: armar paquete manual de remitos adeudados */}
       {modalArmadoOpen && (() => {
-        // Agrupamos los adeudados por empresa para mostrar el modal con
-        // acordeones colapsables y un check "marcar todos" por grupo.
-        const grupos = new Map<string, { empresa: string; items: typeof adeudados }>()
-        for (const d of adeudados) {
+        // Enriquezco cada item con su estado para mostrar chip en la fila y
+        // para que toggleAll opere sobre el subconjunto correcto.
+        type ItemModal = ReturnType<typeof enrichTramo> & { estado: 'adeudado' | 'cobrado' }
+        const itemsTodos: ItemModal[] = [
+          ...adeudados.map(d => ({ ...d, estado: 'adeudado' as const })),
+          ...cobrados .map(d => ({ ...d, estado: 'cobrado'  as const })),
+        ]
+        const itemsAMostrar: ItemModal[] = itemsTodos.filter(d =>
+          modalFiltroEstado === 'ambos' ? true : d.estado === (modalFiltroEstado === 'adeudados' ? 'adeudado' : 'cobrado')
+        )
+
+        // Agrupar por empresa.
+        const grupos = new Map<string, { empresa: string; items: ItemModal[] }>()
+        for (const d of itemsAMostrar) {
           const key = String(d.empresa?.id ?? 0)
           if (!grupos.has(key)) grupos.set(key, { empresa: d.empresa?.nombre ?? 'Sin empresa', items: [] })
           grupos.get(key)!.items.push(d)
         }
-        const total = adeudados.length
+        const totalVisible = itemsAMostrar.length
 
         function toggleId(id: number) {
           setSeleccionados(prev => {
@@ -1605,24 +1647,46 @@ function RemitosSection() {
             return next
           })
         }
-        function toggleAll() {
-          if (seleccionados.size === total) setSeleccionados(new Set())
-          else                              setSeleccionados(new Set(adeudados.map(d => d.t.id)))
+        // "Marcar todos los visibles" opera sólo sobre la vista actual,
+        // así si el user está en filtro "Adeudados" no termina marcando
+        // sin querer todos los cobrados.
+        function toggleAllVisibles() {
+          const idsVisibles = itemsAMostrar.map(d => d.t.id)
+          const todosMarcados = idsVisibles.every(id => seleccionados.has(id))
+          setSeleccionados(prev => {
+            const next = new Set(prev)
+            if (todosMarcados) idsVisibles.forEach(id => next.delete(id))
+            else               idsVisibles.forEach(id => next.add(id))
+            return next
+          })
         }
-        const allChecked = total > 0 && seleccionados.size === total
+        const idsVisibles = itemsAMostrar.map(d => d.t.id)
+        const allVisiblesChecked = totalVisible > 0 && idsVisibles.every(id => seleccionados.has(id))
+
+        function cerrar() {
+          setModalArmadoOpen(false)
+          setSeleccionados(new Set())
+          setModalFiltroEstado('adeudados')
+        }
+
+        const tabs = [
+          { key: 'adeudados' as const, label: `Adeudados (${adeudados.length})`, activoCls: 'bg-naranja text-white shadow-sm' },
+          { key: 'cobrados'  as const, label: `Cobrados (${cobrados.length})`,   activoCls: 'bg-verde text-white shadow-sm'   },
+          { key: 'ambos'     as const, label: 'Ambos',                            activoCls: 'bg-azul text-white shadow-sm'    },
+        ]
 
         return (
           <Modal
             open={modalArmadoOpen}
-            onClose={() => { setModalArmadoOpen(false); setSeleccionados(new Set()) }}
+            onClose={cerrar}
             title="🗂 ARMAR PAQUETE DE REMITOS"
             width="max-w-3xl"
             footer={
               <>
                 <span className="mr-auto text-sm font-bold text-gris-dark">
-                  {seleccionados.size} de {total} marcados
+                  {seleccionados.size} marcado{seleccionados.size !== 1 ? 's' : ''} en total
                 </span>
-                <Button variant="secondary" onClick={() => { setModalArmadoOpen(false); setSeleccionados(new Set()) }}>
+                <Button variant="secondary" onClick={cerrar}>
                   Cancelar
                 </Button>
                 <Button
@@ -1638,26 +1702,46 @@ function RemitosSection() {
           >
             <div className="flex flex-col gap-3">
               <p className="text-xs text-gris-dark">
-                Solo se listan tramos <strong>adeudados</strong> (sin cobro confirmado), filtrados por los criterios del panel.
-                Marcá los remitos que querés incluir en el paquete. Se agrupan por empresa transportista al armar el ZIP.
+                Marcá los remitos que querés incluir. Las selecciones se mantienen al cambiar de filtro,
+                así podés mezclar adeudados y cobrados en un mismo paquete.
               </p>
 
-              {total === 0 ? (
+              {/* Filtro por estado */}
+              <div className="flex items-center gap-1 bg-gris rounded-lg p-1">
+                {tabs.map(t => {
+                  const activo = modalFiltroEstado === t.key
+                  return (
+                    <button
+                      key={t.key}
+                      type="button"
+                      onClick={() => setModalFiltroEstado(t.key)}
+                      className={`flex-1 px-3 py-1.5 text-xs font-bold rounded-md transition-colors ${
+                        activo ? t.activoCls : 'text-gris-dark hover:bg-white/60'
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {totalVisible === 0 ? (
                 <div className="bg-gris rounded-lg p-6 text-center text-sm text-gris-dark italic">
-                  No hay tramos adeudados con los filtros actuales. Cambiá empresa o rango de fechas.
+                  No hay tramos {modalFiltroEstado === 'ambos' ? 'que coincidan' : modalFiltroEstado} con los filtros actuales.
                 </div>
               ) : (
                 <>
                   <div className="flex items-center gap-2 pb-2 border-b border-gris">
                     <input
                       type="checkbox"
-                      checked={allChecked}
-                      onChange={toggleAll}
+                      checked={allVisiblesChecked}
+                      onChange={toggleAllVisibles}
                       className="w-4 h-4 cursor-pointer accent-naranja"
                     />
                     <span className="text-sm font-bold">
-                      {allChecked ? 'Desmarcar todos' : 'Marcar todos'}
+                      {allVisiblesChecked ? 'Desmarcar todos los visibles' : 'Marcar todos los visibles'}
                     </span>
+                    <span className="ml-auto text-xs text-gris-dark">{totalVisible} a la vista</span>
                   </div>
 
                   {Array.from(grupos.values())
@@ -1689,10 +1773,11 @@ function RemitosSection() {
                               const tieneCarga    = !!t.remito_carga_img_url
                               const tieneDescarga = !!t.remito_descarga_img_url
                               const checked = seleccionados.has(t.id)
+                              const esAdeudado = d.estado === 'adeudado'
                               return (
                                 <label
                                   key={t.id}
-                                  className={`flex items-center gap-2 px-3 py-2 text-xs border-b border-gris last:border-0 cursor-pointer hover:bg-gris/30 ${checked ? 'bg-naranja-light/20' : ''}`}
+                                  className={`flex items-center gap-2 px-3 py-2 text-xs border-b border-gris last:border-0 cursor-pointer hover:bg-gris/30 ${checked ? (esAdeudado ? 'bg-naranja-light/20' : 'bg-verde-light/20') : ''}`}
                                 >
                                   <input
                                     type="checkbox"
@@ -1700,6 +1785,9 @@ function RemitosSection() {
                                     onChange={() => toggleId(t.id)}
                                     className="w-4 h-4 cursor-pointer accent-naranja"
                                   />
+                                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 ${esAdeudado ? 'bg-naranja-light text-naranja-dark' : 'bg-verde-light text-verde'}`}>
+                                    {esAdeudado ? '🟠 Adeudado' : '🟢 Cobrado'}
+                                  </span>
                                   <span className="font-mono text-gris-dark w-20 shrink-0">
                                     {d.fecha ? fmtFecha(d.fecha) : '—'}
                                   </span>
