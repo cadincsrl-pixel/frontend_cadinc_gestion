@@ -137,24 +137,67 @@ export function CostosTab() {
   // Esta pestaña vive bajo /tarja/costos aunque el archivo esté en
   // /modules/certificaciones (legacy). Usa el scope de tarja.
   const { data: obras = [] } = useObras('tarja')
+  const [ccSel,   setCcSel]   = useState('')
   const [obraSel, setObraSel] = useState('')
 
   const obrasActivas = (obras as Obra[]).filter(o => !o.archivada)
 
+  // Centros de costo únicos (excluye null/vacío). Varias obras pueden
+  // compartir el mismo CC → útil para acotar la búsqueda de obra.
+  const centrosCosto = Array.from(
+    new Set(obrasActivas.map(o => o.cc).filter((cc): cc is string => !!cc?.trim()))
+  ).sort()
+
+  // Si hay CC seleccionado, mostramos solo las obras de ese CC.
+  const obrasFiltradas = ccSel
+    ? obrasActivas.filter(o => o.cc === ccSel)
+    : obrasActivas
+
   return (
     <>
-      <div className="max-w-xs">
-        <Combobox
-          placeholder="Buscar obra..."
-          options={obrasActivas.map(o => ({ value: o.cod, label: `${o.cod} — ${o.nom}`, sub: o.resp ?? undefined }))}
-          value={obraSel}
-          onChange={setObraSel}
-        />
+      <div className="flex flex-wrap gap-3">
+        <div className="min-w-[200px]">
+          <Combobox
+            label="Centro de costo"
+            placeholder="Todos los CC"
+            options={[
+              { value: '', label: '— Todos —' },
+              ...centrosCosto.map(cc => ({
+                value: cc,
+                label: cc,
+                sub: `${obrasActivas.filter(o => o.cc === cc).length} obra${obrasActivas.filter(o => o.cc === cc).length === 1 ? '' : 's'}`,
+              })),
+            ]}
+            value={ccSel}
+            onChange={(v) => {
+              setCcSel(v)
+              // Si la obra elegida no pertenece al nuevo CC, la limpiamos.
+              if (v && obraSel && !obrasActivas.find(o => o.cod === obraSel && o.cc === v)) {
+                setObraSel('')
+              }
+            }}
+          />
+        </div>
+        <div className="flex-1 max-w-md min-w-[260px]">
+          <Combobox
+            label="Obra"
+            placeholder={ccSel ? `Buscar obra de ${ccSel}...` : 'Buscar obra...'}
+            options={obrasFiltradas.map(o => ({
+              value: o.cod,
+              label: `${o.cod} — ${o.nom}`,
+              sub: [o.cc, o.resp].filter(Boolean).join(' · ') || undefined,
+            }))}
+            value={obraSel}
+            onChange={setObraSel}
+          />
+        </div>
       </div>
 
       {!obraSel ? (
         <div className="bg-white rounded-card shadow-card p-8 text-center text-gris-dark text-sm italic">
-          Seleccioná una obra para ver el detalle de costos semana a semana.
+          {ccSel
+            ? `Mostrando ${obrasFiltradas.length} obra${obrasFiltradas.length === 1 ? '' : 's'} del CC "${ccSel}". Elegí una para ver el detalle semanal.`
+            : 'Seleccioná una obra para ver el detalle de costos semana a semana.'}
         </div>
       ) : (
         <div className="bg-white rounded-card shadow-card overflow-hidden">
