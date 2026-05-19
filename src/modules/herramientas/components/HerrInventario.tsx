@@ -78,10 +78,13 @@ export function HerrInventario() {
     create(
       { ...data, tipo_id: data.tipo_id ? Number(data.tipo_id) : null },
       {
-        onSuccess: () => {
-          toast('✓ Herramienta creada', 'ok')
+        onSuccess: (creada) => {
+          toast('✓ Herramienta creada — ahora podés cargar fotos', 'ok')
           setModalNuevo(false)
           formNuevo.reset()
+          // Saltamos directo al modal de edición para que la persona
+          // pueda subir fotos sin tener que buscar la herramienta en la grilla.
+          openEdit(creada as Herramienta)
         },
         onError: (e: any) => toast(e.message ?? 'Error al crear', 'err'),
       }
