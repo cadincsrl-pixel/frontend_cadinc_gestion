@@ -880,7 +880,7 @@ export interface Herramienta {
   estado_key:    string
   estado:        HerrEstado | null
   obra_cod:      string | null
-  obra:          { cod: string; nom: string } | null
+  obra:          { cod: string; nom: string; es_deposito?: boolean } | null
   responsable:   string | null
   obs:           string | null
   activo:        boolean

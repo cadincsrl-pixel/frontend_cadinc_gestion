@@ -144,7 +144,9 @@ export function HerrInventario() {
   const [busqueda,    setBusqueda]    = useState('')
   const [filtroTipo,  setFiltroTipo]  = useState('')
   const [filtroEstado,setFiltroEstado]= useState('')
-  // '' = todas, '__deposito__' = sin obra asignada (depósito), o un cod de obra.
+  // '' = todas, o un cod de obra. La obra depósito (es_deposito=true) aparece
+  // en el dropdown como una más; ya no hay caso especial "sin obra" porque
+  // las herramientas siempre tienen obra asignada tras la unificación.
   const [filtroObra,  setFiltroObra]  = useState('')
 
   const formNuevo = useForm<HerrFormData>()
@@ -162,8 +164,7 @@ export function HerrInventario() {
         (h.obra?.cod ?? '').toLowerCase().includes(q)
       const matchTipo   = !filtroTipo   || String(h.tipo_id) === filtroTipo
       const matchEstado = !filtroEstado || h.estado_key === filtroEstado
-      const matchObra   = !filtroObra
-        || (filtroObra === '__deposito__' ? !h.obra_cod : h.obra_cod === filtroObra)
+      const matchObra   = !filtroObra || h.obra_cod === filtroObra
       return matchQ && matchTipo && matchEstado && matchObra
     })
   }, [herramientas, busqueda, filtroTipo, filtroEstado, filtroObra])
@@ -396,9 +397,10 @@ export function HerrInventario() {
           className="px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja transition-colors bg-white"
         >
           <option value="">Todas las obras</option>
-          <option value="__deposito__">📦 Depósito (sin obra)</option>
           {obras.map(o => (
-            <option key={o.cod} value={o.cod}>📍 {o.nom}</option>
+            <option key={o.cod} value={o.cod}>
+              {o.es_deposito ? '📦' : '📍'} {o.nom}
+            </option>
           ))}
         </select>
         {(busqueda || filtroTipo || filtroEstado || filtroObra) && (
@@ -470,11 +472,17 @@ export function HerrInventario() {
                     </td>
                     <td className="px-4 py-3">
                       {h.obra ? (
-                        <span className="text-xs bg-naranja-light text-naranja-dark px-2 py-0.5 rounded font-bold">
-                          {h.obra.nom}
-                        </span>
+                        h.obra.es_deposito ? (
+                          <span className="text-xs bg-gris text-gris-dark px-2 py-0.5 rounded font-bold">
+                            📦 {h.obra.nom}
+                          </span>
+                        ) : (
+                          <span className="text-xs bg-naranja-light text-naranja-dark px-2 py-0.5 rounded font-bold">
+                            {h.obra.nom}
+                          </span>
+                        )
                       ) : (
-                        <span className="text-xs text-gris-dark">Depósito</span>
+                        <span className="text-xs text-gris-dark italic">Sin asignar</span>
                       )}
                     </td>
                     <td className="px-4 py-3">
@@ -556,11 +564,17 @@ export function HerrInventario() {
                 </span>
               )}
               {h.obra ? (
-                <span className="text-[10px] bg-naranja-light text-naranja-dark px-2 py-0.5 rounded font-bold">
-                  📍 {h.obra.nom}
-                </span>
+                h.obra.es_deposito ? (
+                  <span className="text-[10px] bg-gris text-gris-dark px-2 py-0.5 rounded font-bold">
+                    📦 {h.obra.nom}
+                  </span>
+                ) : (
+                  <span className="text-[10px] bg-naranja-light text-naranja-dark px-2 py-0.5 rounded font-bold">
+                    📍 {h.obra.nom}
+                  </span>
+                )
               ) : (
-                <span className="text-[10px] text-gris-dark">📦 Depósito</span>
+                <span className="text-[10px] text-gris-dark italic">Sin asignar</span>
               )}
               {h.responsable && (
                 <span className="text-[10px] text-gris-dark">👤 {h.responsable}</span>
@@ -678,7 +692,7 @@ export function HerrInventario() {
               <InfoField label="N° de serie"  value={detalle.serie} />
               <InfoField label="Fecha ingreso" value={fmtFecha(detalle.fecha_ingreso)} />
               <InfoField label="Estado"       value={`${detalle.estado?.icono ?? ''} ${detalle.estado?.nom ?? detalle.estado_key}`} />
-              <InfoField label="Ubicación"    value={detalle.obra ? `${detalle.obra.cod} — ${detalle.obra.nom}` : 'Depósito'} />
+              <InfoField label="Ubicación"    value={detalle.obra ? `${detalle.obra.es_deposito ? '📦' : '📍'} ${detalle.obra.cod} — ${detalle.obra.nom}` : 'Sin asignar'} />
               <InfoField label="Responsable"  value={detalle.responsable} />
             </div>
             {detalle.obs && (
