@@ -18,6 +18,7 @@ import { usePermisos } from '@/hooks/usePermisos'
 import { HerramientaFotosSection } from './HerramientaFotosSection'
 import { HerramientaFotosCola } from './HerramientaFotosCola'
 import { HerramientasAlertasSection } from './HerramientasAlertasSection'
+import { MoverLoteModal } from './MoverLoteModal'
 import { useUploadHerramientaFoto } from '../hooks/useHerramientaFotos'
 import { useObras } from '@/modules/tarja/hooks/useObras'
 import type { Herramienta } from '@/types/domain.types'
@@ -141,6 +142,9 @@ export function HerrInventario() {
   const [detalle,     setDetalle]     = useState<Herramienta | null>(null)
   const [fotosCola,   setFotosCola]   = useState<File[]>([])
   const [subiendoFotos, setSubiendoFotos] = useState(false)
+  // Selección múltiple para movimiento en lote.
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [loteModalOpen, setLoteModalOpen] = useState(false)
   const [busqueda,    setBusqueda]    = useState('')
   const [filtroTipo,  setFiltroTipo]  = useState('')
   const [filtroEstado,setFiltroEstado]= useState('')
@@ -419,6 +423,33 @@ export function HerrInventario() {
           <table className="w-full border-collapse">
             <thead>
               <tr>
+                <th className="bg-azul text-white px-3 py-3 w-10">
+                  {puedeEditar && (
+                    <input
+                      type="checkbox"
+                      title="Marcar todas las visibles"
+                      aria-label="Seleccionar todas las herramientas visibles"
+                      checked={filtradas.length > 0 && filtradas.every(h => selectedIds.has(h.id))}
+                      ref={el => {
+                        if (el) {
+                          const marcadas = filtradas.filter(h => selectedIds.has(h.id)).length
+                          el.indeterminate = marcadas > 0 && marcadas < filtradas.length
+                        }
+                      }}
+                      onChange={() => {
+                        const visibleIds = filtradas.map(h => h.id)
+                        const allMarked = visibleIds.length > 0 && visibleIds.every(id => selectedIds.has(id))
+                        setSelectedIds(prev => {
+                          const next = new Set(prev)
+                          if (allMarked) visibleIds.forEach(id => next.delete(id))
+                          else            visibleIds.forEach(id => next.add(id))
+                          return next
+                        })
+                      }}
+                      className="w-4 h-4 cursor-pointer accent-naranja"
+                    />
+                  )}
+                </th>
                 {['Código', 'Herramienta', 'Tipo', 'Marca / Modelo', 'Obra actual', 'Estado', 'Responsable', ''].map(h => (
                   <th key={h} className="bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide whitespace-nowrap">
                     {h}
@@ -429,7 +460,7 @@ export function HerrInventario() {
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-10">
+                  <td colSpan={9} className="text-center py-10">
                     <span className="inline-flex items-center gap-2 text-gris-dark text-sm">
                       <span className="w-4 h-4 border-2 border-naranja border-t-transparent rounded-full animate-spin" />
                       Cargando...
@@ -438,7 +469,7 @@ export function HerrInventario() {
                 </tr>
               ) : filtradas.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-10 text-gris-dark text-sm">
+                  <td colSpan={9} className="text-center py-10 text-gris-dark text-sm">
                     {busqueda || filtroTipo || filtroEstado
                       ? 'No se encontraron resultados para los filtros aplicados'
                       : 'No hay herramientas registradas. Agregá la primera.'
@@ -449,9 +480,27 @@ export function HerrInventario() {
                 filtradas.map(h => (
                   <tr
                     key={h.id}
-                    className="border-b border-gris last:border-0 hover:bg-gris/40 transition-colors cursor-pointer"
+                    className={`border-b border-gris last:border-0 hover:bg-gris/40 transition-colors cursor-pointer ${selectedIds.has(h.id) ? 'bg-naranja-light/30' : ''}`}
                     onClick={() => setDetalle(h)}
                   >
+                    <td className="px-3 py-3 w-10" onClick={e => e.stopPropagation()}>
+                      {puedeEditar && (
+                        <input
+                          type="checkbox"
+                          aria-label={`Seleccionar ${h.codigo}`}
+                          checked={selectedIds.has(h.id)}
+                          onChange={() => {
+                            setSelectedIds(prev => {
+                              const next = new Set(prev)
+                              if (next.has(h.id)) next.delete(h.id)
+                              else                next.add(h.id)
+                              return next
+                            })
+                          }}
+                          className="w-4 h-4 cursor-pointer accent-naranja"
+                        />
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       <span className="font-mono text-xs bg-gris px-2 py-0.5 rounded text-gris-dark font-bold">
                         {h.codigo}
@@ -714,6 +763,39 @@ export function HerrInventario() {
             />
           </div>
         </Modal>
+      )}
+
+      {/* Sticky bar — selección múltiple para movimiento en lote */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 bg-azul text-white px-4 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.2)] z-40 flex items-center gap-3 flex-wrap">
+          <span className="font-bold text-sm">
+            ✓ {selectedIds.size} herramienta{selectedIds.size !== 1 ? 's' : ''} seleccionada{selectedIds.size !== 1 ? 's' : ''}
+          </span>
+          <span className="text-xs text-white/70 hidden sm:inline">
+            {[...selectedIds].slice(0, 3).map(id => herramientas.find(h => h.id === id)?.codigo).filter(Boolean).join(', ')}
+            {selectedIds.size > 3 ? ` +${selectedIds.size - 3}` : ''}
+          </span>
+          <div className="ml-auto flex items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={() => setSelectedIds(new Set())}>
+              ✕ Limpiar
+            </Button>
+            <Button variant="primary" size="sm" onClick={() => setLoteModalOpen(true)}>
+              📦 Mover seleccionadas
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de movimiento múltiple */}
+      {loteModalOpen && (
+        <MoverLoteModal
+          herramientas={herramientas.filter(h => selectedIds.has(h.id))}
+          onClose={() => setLoteModalOpen(false)}
+          onSuccess={() => {
+            setLoteModalOpen(false)
+            setSelectedIds(new Set())
+          }}
+        />
       )}
 
     </div>

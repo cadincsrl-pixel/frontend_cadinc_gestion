@@ -126,3 +126,27 @@ export function useRegistrarMovimiento() {
     },
   })
 }
+
+interface MovimientoLoteDto {
+  herramienta_ids:      number[]
+  tipo_key:             string
+  obra_destino_cod?:    string | null
+  responsable?:         string
+  responsable_user_id?: string | null
+  responsable_leg?:     string | null
+  obs?:                 string
+  fecha?:               string
+}
+
+export function useRegistrarMovimientoLote() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: MovimientoLoteDto) =>
+      apiPost<{ count: number; movimiento_ids: number[] }>('/api/herramientas/movimientos/lote', dto),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: KEY })
+      qc.invalidateQueries({ queryKey: ['herr-stats'] })
+      qc.invalidateQueries({ queryKey: ['herr-movimientos'] })
+    },
+  })
+}
