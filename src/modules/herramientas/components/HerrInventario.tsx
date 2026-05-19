@@ -39,11 +39,9 @@ function MarcaCombobox({ form }: { form: ReturnType<typeof useForm<HerrFormData>
   const toast = useToast()
   const value = form.watch('marca_id')
 
-  async function handleNueva() {
-    const nom = window.prompt('Nombre de la marca nueva:')
-    if (!nom || !nom.trim()) return
+  async function crearMarca(nom: string) {
     try {
-      const m = await createMarcaAsync({ nom: nom.trim() }) as { id: number; nom: string }
+      const m = await createMarcaAsync({ nom }) as { id: number; nom: string }
       form.setValue('marca_id',  String(m.id))
       form.setValue('modelo_id', '') // reset al cambiar marca
       toast(`✓ Marca "${m.nom}" creada`, 'ok')
@@ -53,26 +51,21 @@ function MarcaCombobox({ form }: { form: ReturnType<typeof useForm<HerrFormData>
   }
 
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center justify-between">
-        <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Marca</label>
-        <button type="button" onClick={handleNueva} className="text-[10px] font-bold text-naranja hover:text-naranja-dark">
-          ＋ Nueva
-        </button>
-      </div>
-      <Combobox
-        placeholder="Buscar marca..."
-        options={[
-          { value: '', label: '— Sin marca —' },
-          ...marcas.filter(m => m.activo).map(m => ({ value: String(m.id), label: m.nom })),
-        ]}
-        value={value}
-        onChange={(v) => {
-          form.setValue('marca_id', v)
-          form.setValue('modelo_id', '') // reset modelo al cambiar marca
-        }}
-      />
-    </div>
+    <Combobox
+      label="Marca"
+      placeholder="Buscar o escribir marca nueva..."
+      options={[
+        { value: '', label: '— Sin marca —' },
+        ...marcas.filter(m => m.activo).map(m => ({ value: String(m.id), label: m.nom })),
+      ]}
+      value={value}
+      onChange={(v) => {
+        form.setValue('marca_id', v)
+        form.setValue('modelo_id', '') // reset modelo al cambiar marca
+      }}
+      onCreate={crearMarca}
+      createLabel="Crear marca"
+    />
   )
 }
 
@@ -86,15 +79,13 @@ function ModeloCombobox({ form }: { form: ReturnType<typeof useForm<HerrFormData
   const marcaSel = marcaId ? marcas.find(m => String(m.id) === marcaId) : null
   const disabled = !marcaSel
 
-  async function handleNuevo() {
+  async function crearModelo(nom: string) {
     if (!marcaSel) {
       toast('Elegí una marca primero', 'err')
       return
     }
-    const nom = window.prompt(`Modelo nuevo para ${marcaSel.nom}:`)
-    if (!nom || !nom.trim()) return
     try {
-      const m = await createModeloAsync({ marcaId: marcaSel.id, nom: nom.trim() }) as { id: number; nom: string }
+      const m = await createModeloAsync({ marcaId: marcaSel.id, nom }) as { id: number; nom: string }
       form.setValue('modelo_id', String(m.id))
       toast(`✓ Modelo "${m.nom}" creado`, 'ok')
     } catch (e: any) {
@@ -103,28 +94,21 @@ function ModeloCombobox({ form }: { form: ReturnType<typeof useForm<HerrFormData
   }
 
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center justify-between">
-        <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Modelo</label>
-        {!disabled && (
-          <button type="button" onClick={handleNuevo} className="text-[10px] font-bold text-naranja hover:text-naranja-dark">
-            ＋ Nuevo
-          </button>
-        )}
-      </div>
-      <Combobox
-        placeholder={disabled ? 'Elegí una marca primero' : 'Buscar modelo...'}
-        options={[
-          { value: '', label: '— Sin modelo —' },
-          ...(marcaSel?.modelos ?? [])
-            .filter(mo => mo.activo)
-            .map(mo => ({ value: String(mo.id), label: mo.nom })),
-        ]}
-        value={value}
-        onChange={(v) => form.setValue('modelo_id', v)}
-        disabled={disabled}
-      />
-    </div>
+    <Combobox
+      label="Modelo"
+      placeholder={disabled ? 'Elegí una marca primero' : 'Buscar o escribir modelo nuevo...'}
+      options={[
+        { value: '', label: '— Sin modelo —' },
+        ...(marcaSel?.modelos ?? [])
+          .filter(mo => mo.activo)
+          .map(mo => ({ value: String(mo.id), label: mo.nom })),
+      ]}
+      value={value}
+      onChange={(v) => form.setValue('modelo_id', v)}
+      disabled={disabled}
+      onCreate={crearModelo}
+      createLabel="Crear modelo"
+    />
   )
 }
 

@@ -10,6 +10,15 @@ interface ComboboxProps {
   onChange:     (value: string) => void
   disabled?:    boolean
   className?:   string
+  /**
+   * Si está definido, habilita "creatable mode": cuando el usuario
+   * tipea un valor que no coincide exactamente con ningún label, se
+   * muestra una opción extra "＋ Crear: 'XXX'". Al elegirla, se
+   * llama `onCreate(texto)` en lugar de `onChange`.
+   */
+  onCreate?:    (query: string) => void | Promise<void>
+  /** Texto del item de creación. Default: "Crear". */
+  createLabel?: string
 }
 
 // Altura aproximada del dropdown (max-h-52 = 13rem ≈ 208px). Se usa para
@@ -18,6 +27,7 @@ const DROPDOWN_HEIGHT = 208
 
 export function Combobox({
   label, placeholder = 'Buscar...', options, value, onChange, disabled, className = '',
+  onCreate, createLabel = 'Crear',
 }: ComboboxProps) {
   const [query,  setQuery]  = useState('')
   const [open,   setOpen]   = useState(false)
@@ -62,6 +72,24 @@ export function Combobox({
     setOpen(false)
     setQuery('')
   }
+
+  async function handleCreate() {
+    if (!onCreate) return
+    const q = query.trim()
+    if (!q) return
+    await onCreate(q)
+    setOpen(false)
+    setQuery('')
+  }
+
+  // Mostramos la opción de "crear" cuando hay query no vacío y ningún label
+  // matchea exacto (case-insensitive). Así un usuario que tipea "Bosch" y
+  // ya existe "Bosch" en la lista no ve la opción duplicada.
+  const queryTrim = query.trim()
+  const exactMatch = queryTrim
+    ? options.some(o => o.label.toLowerCase() === queryTrim.toLowerCase())
+    : false
+  const showCreate = !!onCreate && !!queryTrim && !exactMatch
 
   function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     setQuery(e.target.value)
@@ -108,25 +136,35 @@ export function Combobox({
 
       {open && (
         <div className={`absolute left-0 right-0 z-50 bg-white border border-gris-mid rounded-xl shadow-card-lg max-h-52 overflow-y-auto ${flipUp ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
-          {filtered.length === 0 ? (
+          {filtered.length === 0 && !showCreate ? (
             <div className="px-4 py-3 text-sm text-gris-dark text-center">
               Sin resultados
             </div>
           ) : (
-            filtered.map(o => (
-              <button
-                key={o.value}
-                onMouseDown={() => handleSelect(o.value)}
-                className={`
-                  w-full text-left px-4 py-2.5 text-sm transition-colors border-b border-gris last:border-0
-                  hover:bg-naranja-light hover:text-naranja-dark
-                  ${o.value === value ? 'bg-azul-light text-azul font-bold' : 'text-carbon'}
-                `}
-              >
-                <div className="font-semibold">{o.label}</div>
-                {o.sub && <div className="text-[11px] text-gris-dark mt-0.5">{o.sub}</div>}
-              </button>
-            ))
+            <>
+              {filtered.map(o => (
+                <button
+                  key={o.value}
+                  onMouseDown={() => handleSelect(o.value)}
+                  className={`
+                    w-full text-left px-4 py-2.5 text-sm transition-colors border-b border-gris last:border-0
+                    hover:bg-naranja-light hover:text-naranja-dark
+                    ${o.value === value ? 'bg-azul-light text-azul font-bold' : 'text-carbon'}
+                  `}
+                >
+                  <div className="font-semibold">{o.label}</div>
+                  {o.sub && <div className="text-[11px] text-gris-dark mt-0.5">{o.sub}</div>}
+                </button>
+              ))}
+              {showCreate && (
+                <button
+                  onMouseDown={handleCreate}
+                  className="w-full text-left px-4 py-2.5 text-sm transition-colors border-t border-gris-mid bg-naranja-light/30 hover:bg-naranja text-naranja-dark hover:text-white font-bold"
+                >
+                  ＋ {createLabel}: <span className="font-mono">&ldquo;{queryTrim}&rdquo;</span>
+                </button>
+              )}
+            </>
           )}
         </div>
       )}
