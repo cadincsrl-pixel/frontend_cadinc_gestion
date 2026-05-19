@@ -14,6 +14,7 @@ import { useToast } from '@/components/ui/Toast'
 import { useForm }  from 'react-hook-form'
 import { usePermisos } from '@/hooks/usePermisos'
 import { HerramientaFotosSection } from './HerramientaFotosSection'
+import { HerramientasAlertasSection } from './HerramientasAlertasSection'
 import type { Herramienta } from '@/types/domain.types'
 
 interface HerrFormData {
@@ -218,6 +219,9 @@ export function HerrInventario() {
           </Button>
         )}
       </div>
+
+      {/* Alertas — solo se renderiza si hay items que llamen atención */}
+      <HerramientasAlertasSection onSelectHerramienta={setDetalle} />
 
       {/* Filtros */}
       <div className="bg-white rounded-card shadow-card p-3 flex items-center gap-2 flex-wrap">
