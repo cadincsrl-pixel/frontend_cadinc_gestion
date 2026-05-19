@@ -173,7 +173,9 @@ export function HerrInventario() {
         h.codigo.toLowerCase().includes(q) ||
         h.nom.toLowerCase().includes(q)    ||
         (h.marca ?? '').toLowerCase().includes(q) ||
-        (h.serie ?? '').toLowerCase().includes(q)
+        (h.serie ?? '').toLowerCase().includes(q) ||
+        (h.obra?.nom ?? '').toLowerCase().includes(q) ||
+        (h.obra?.cod ?? '').toLowerCase().includes(q)
       const matchTipo   = !filtroTipo   || String(h.tipo_id) === filtroTipo
       const matchEstado = !filtroEstado || h.estado_key === filtroEstado
       const matchObra   = !filtroObra
@@ -378,7 +380,7 @@ export function HerrInventario() {
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gris-dark text-sm pointer-events-none">🔍</span>
           <input
             type="text"
-            placeholder="Buscar por código, nombre, marca o serie..."
+            placeholder="Buscar por código, nombre, marca, serie u obra..."
             value={busqueda}
             onChange={e => setBusqueda(e.target.value)}
             className="w-full pl-9 pr-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja transition-colors"
