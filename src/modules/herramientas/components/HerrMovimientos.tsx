@@ -15,6 +15,8 @@ import { useToast }   from '@/components/ui/Toast'
 import { Button }    from '@/components/ui/Button'
 import { Combobox }  from '@/components/ui/Combobox'
 import { Modal }     from '@/components/ui/Modal'
+import { usePermisos } from '@/hooks/usePermisos'
+import { MovimientoLoteModal } from './MovimientoLoteModal'
 import type { Herramienta, HerrMovTipo, Obra, Profile } from '@/types/domain.types'
 
 function fmtFecha(s: string) {
@@ -63,6 +65,8 @@ const MOV_CAMPOS: Record<string, { origen: boolean; destino: boolean }> = {
 
 export function HerrMovimientos() {
   const toast = useToast()
+  const { puedeCrear } = usePermisos('herramientas')
+  const [loteModalOpen, setLoteModalOpen] = useState(false)
 
   const { data: herramientas = [] } = useHerramientas()
   const { data: config } = useHerrConfig()
@@ -299,9 +303,16 @@ export function HerrMovimientos() {
     <div className="p-4 md:p-6 flex flex-col gap-5">
 
       {/* Header */}
-      <div>
-        <h1 className="font-display text-[2rem] tracking-wider text-azul">MOVIMIENTOS</h1>
-        <p className="text-sm text-gris-dark mt-0.5">Registrá asignaciones y traslados entre obras</p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="font-display text-[2rem] tracking-wider text-azul">MOVIMIENTOS</h1>
+          <p className="text-sm text-gris-dark mt-0.5">Registrá asignaciones y traslados entre obras</p>
+        </div>
+        {puedeCrear && (
+          <Button variant="primary" size="sm" onClick={() => setLoteModalOpen(true)}>
+            📦 Movimiento múltiple
+          </Button>
+        )}
       </div>
 
       {/* Formulario */}
@@ -694,6 +705,14 @@ export function HerrMovimientos() {
           )}
         </div>
       </div>
+
+      {/* Modal de movimiento múltiple */}
+      {loteModalOpen && (
+        <MovimientoLoteModal
+          onClose={() => setLoteModalOpen(false)}
+          onSuccess={() => setLoteModalOpen(false)}
+        />
+      )}
 
     </div>
   )
