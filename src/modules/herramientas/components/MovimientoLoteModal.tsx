@@ -313,33 +313,41 @@ export function MovimientoLoteModal({ onClose, onSuccess }: Props) {
                 return (
                   <label
                     key={h.id}
-                    className={`flex items-center gap-3 px-3 py-2 border-b border-gris last:border-0 cursor-pointer hover:bg-gris/40 transition-colors ${marcada ? 'bg-naranja-light/30' : ''}`}
+                    className={`flex items-start gap-3 px-3 py-2 border-b border-gris last:border-0 cursor-pointer hover:bg-gris/40 transition-colors ${marcada ? 'bg-naranja-light/30' : ''}`}
                   >
                     <input
                       type="checkbox"
                       checked={marcada}
                       onChange={() => toggle(h.id)}
-                      className="w-4 h-4 cursor-pointer accent-naranja shrink-0"
+                      className="w-4 h-4 mt-1 cursor-pointer accent-naranja shrink-0"
                     />
-                    <span className="font-mono text-xs bg-gris px-2 py-0.5 rounded text-gris-dark font-bold shrink-0">
-                      {h.codigo}
-                    </span>
-                    <span className="font-bold text-sm text-carbon truncate flex-1 min-w-0">
-                      {h.nom}
-                    </span>
-                    {(h.marca || h.modelo) && (
-                      <span className="hidden md:inline text-xs text-gris-dark truncate max-w-[120px]">
-                        {[h.marca, h.modelo].filter(Boolean).join(' · ')}
-                      </span>
-                    )}
-                    {h.obra && (
-                      <span className={`text-[10px] px-2 py-0.5 rounded font-bold shrink-0 ${h.obra.es_deposito ? 'bg-gris text-gris-dark' : 'bg-naranja-light text-naranja-dark'}`}>
-                        {h.obra.es_deposito ? '📦' : '📍'} {h.obra.nom}
-                      </span>
-                    )}
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded shrink-0 ${ESTADO_COLORS[h.estado_key] ?? 'bg-gris text-gris-dark'}`}>
-                      {h.estado?.icono} {h.estado?.nom ?? h.estado_key}
-                    </span>
+                    <div className="flex-1 min-w-0 flex flex-col gap-1 md:flex-row md:items-center md:gap-3">
+                      {/* Info principal */}
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-mono text-xs bg-gris px-2 py-0.5 rounded text-gris-dark font-bold shrink-0">
+                          {h.codigo}
+                        </span>
+                        <span className="font-bold text-sm text-carbon truncate">
+                          {h.nom}
+                        </span>
+                      </div>
+                      {/* Chips */}
+                      <div className="flex items-center gap-2 flex-wrap md:ml-auto md:shrink-0">
+                        {(h.marca || h.modelo) && (
+                          <span className="text-[11px] text-gris-dark truncate max-w-[140px]">
+                            {[h.marca, h.modelo].filter(Boolean).join(' · ')}
+                          </span>
+                        )}
+                        {h.obra && (
+                          <span className={`text-[10px] px-2 py-0.5 rounded font-bold shrink-0 ${h.obra.es_deposito ? 'bg-gris text-gris-dark' : 'bg-naranja-light text-naranja-dark'}`}>
+                            {h.obra.es_deposito ? '📦' : '📍'} {h.obra.nom}
+                          </span>
+                        )}
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded shrink-0 ${ESTADO_COLORS[h.estado_key] ?? 'bg-gris text-gris-dark'}`}>
+                          {h.estado?.icono} {h.estado?.nom ?? h.estado_key}
+                        </span>
+                      </div>
+                    </div>
                   </label>
                 )
               })
@@ -370,6 +378,17 @@ export function MovimientoLoteModal({ onClose, onSuccess }: Props) {
               <span className="font-bold uppercase tracking-wide">Origen:</span>
               <span>{origenLabel}</span>
             </div>
+
+            {/* Aviso cuando la mezcla de estados restringe los tipos disponibles */}
+            {(() => {
+              const estadosPresentes = Array.from(new Set(seleccionadas.map(h => h.estado?.nom ?? h.estado_key)))
+              if (estadosPresentes.length <= 1) return null
+              return (
+                <div className="bg-azul-light/40 border border-azul/20 rounded-lg px-3 py-2 text-xs text-azul">
+                  Los tipos disponibles están acotados a los compatibles con los {estadosPresentes.length} estados de la selección ({estadosPresentes.join(', ')}).
+                </div>
+              )
+            })()}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Combobox

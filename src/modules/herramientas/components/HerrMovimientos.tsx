@@ -121,6 +121,15 @@ export function HerrMovimientos() {
     if (campos.origen && !obraOrigen && tipoMov !== 'retorno_rep') { toast('Seleccioná la obra origen', 'err'); return }
     if (campos.destino && !obraDestino) { toast('Seleccioná la obra destino', 'err'); return }
 
+    // Confirmación destructiva: una baja saca la herramienta del inventario activo.
+    if (tipoMov === 'baja') {
+      const herr = herramientas.find(x => String(x.id) === herrSel)
+      const nombre = herr ? `${herr.codigo} ${herr.nom}` : 'esta herramienta'
+      if (!window.confirm(`¿Confirmás dar de BAJA ${nombre}?\n\nVa a salir del inventario activo. La operación queda registrada en auditoría pero no se puede deshacer desde la UI.`)) {
+        return
+      }
+    }
+
     // Decodificar responsable: `leg:XXX` o `user:UUID` (vacío = sin responsable).
     let responsable_leg: string | null = null
     let responsable_user_id: string | null = null
@@ -175,6 +184,30 @@ export function HerrMovimientos() {
         onError: (e: any) => toast(e.message ?? 'Error al registrar', 'err'),
       }
     )
+  }
+
+  // Reimprime el remito de un movimiento existente (desde el historial).
+  // Construye el RemitoData a partir del registro y de la herramienta cacheada
+  // (la cual aporta marca/modelo/tipo que no vienen joineados en el movimiento).
+  function reimprimirRemito(m: typeof movimientos[number]) {
+    const herr = herramientas.find(h => h.id === m.herramienta_id)
+    imprimirRemito({
+      numero:      String(m.id).padStart(6, '0'),
+      fecha:       m.fecha,
+      tipoNom:     m.tipo?.nom   ?? m.tipo_key,
+      tipoIcono:   m.tipo?.icono ?? '→',
+      herramienta: {
+        codigo: m.herramienta?.codigo ?? herr?.codigo ?? '',
+        nom:    m.herramienta?.nom    ?? herr?.nom    ?? '',
+        marca:  herr?.marca  ?? undefined,
+        modelo: herr?.modelo ?? undefined,
+        tipo:   herr?.tipo ? `${herr.tipo.icono ?? ''} ${herr.tipo.nom}` : undefined,
+      },
+      obraOrigen:  m.obra_origen?.nom  ?? '—',
+      obraDestino: m.obra_destino?.nom ?? '—',
+      responsable: m.responsable ?? '',
+      obs:         m.obs ?? '',
+    })
   }
 
   function imprimirRemito(r: RemitoData) {
@@ -478,12 +511,12 @@ export function HerrMovimientos() {
 
         <div className="flex justify-end pt-2 border-t border-gris">
           <Button
-            variant="primary"
+            variant={tipoMov === 'baja' ? 'danger' : 'primary'}
             loading={registrando}
             disabled={!herrSel || !tipoMov}
             onClick={handleRegistrar}
           >
-            ✓ Registrar movimiento
+            {tipoMov === 'baja' ? '✕ Confirmar baja' : '✓ Registrar movimiento'}
           </Button>
         </div>
       </div>
@@ -604,8 +637,8 @@ export function HerrMovimientos() {
           <table className="w-full border-collapse">
             <thead>
               <tr>
-                {['Fecha', 'Herramienta', 'Movimiento', 'Origen', '→', 'Destino', 'Responsable', 'Obs'].map(h => (
-                  <th key={h} className="sticky top-0 z-10 bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide whitespace-nowrap">
+                {['Fecha', 'Herramienta', 'Movimiento', 'Origen', '→', 'Destino', 'Responsable', 'Obs', ''].map((h, i) => (
+                  <th key={i} className="sticky top-0 z-10 bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide whitespace-nowrap">
                     {h}
                   </th>
                 ))}
@@ -614,7 +647,7 @@ export function HerrMovimientos() {
             <tbody>
               {loadingMov ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-8">
+                  <td colSpan={9} className="text-center py-8">
                     <span className="inline-flex items-center gap-2 text-gris-dark text-sm">
                       <span className="w-4 h-4 border-2 border-naranja border-t-transparent rounded-full animate-spin" />
                       Cargando...
@@ -623,7 +656,7 @@ export function HerrMovimientos() {
                 </tr>
               ) : movFiltrados.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-8 text-gris-dark text-sm">
+                  <td colSpan={9} className="text-center py-8 text-gris-dark text-sm">
                     No hay movimientos registrados
                   </td>
                 </tr>
@@ -665,6 +698,17 @@ export function HerrMovimientos() {
                       title={m.obs || undefined}
                     >
                       {m.obs || '—'}
+                    </td>
+                    <td className="px-2 py-3 text-right">
+                      {hasObras && (
+                        <button
+                          onClick={() => reimprimirRemito(m)}
+                          title="Reimprimir remito"
+                          className="text-gris-dark hover:text-naranja hover:bg-gris/50 rounded p-1.5 transition-colors"
+                        >
+                          🖨
+                        </button>
+                      )}
                     </td>
                   </tr>
                   )
@@ -710,7 +754,18 @@ export function HerrMovimientos() {
                 )}
                 <div className="flex items-center justify-between gap-2 text-[11px] text-gris-dark pt-1 border-t border-gris">
                   <span className="font-mono">{fmtFecha(m.fecha)}</span>
-                  {m.responsable && <span className="truncate">👤 {m.responsable}</span>}
+                  <div className="flex items-center gap-2">
+                    {m.responsable && <span className="truncate">👤 {m.responsable}</span>}
+                    {hasObras && (
+                      <button
+                        onClick={() => reimprimirRemito(m)}
+                        title="Reimprimir remito"
+                        className="text-gris-dark hover:text-naranja active:bg-gris/50 rounded p-1 -mr-1 transition-colors"
+                      >
+                        🖨
+                      </button>
+                    )}
+                  </div>
                 </div>
                 {m.obs && (
                   <div className="text-xs text-gris-dark italic" title={m.obs}>{m.obs}</div>
