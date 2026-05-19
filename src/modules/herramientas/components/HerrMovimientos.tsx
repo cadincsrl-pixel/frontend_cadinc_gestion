@@ -8,10 +8,13 @@ import {
   useRegistrarMovimiento,
 } from '../hooks/useHerramientas'
 import { useObras } from '@/modules/tarja/hooks/useObras'
+import { usePersonal } from '@/modules/tarja/hooks/usePersonal'
+import { apiGet } from '@/lib/api/client'
+import { useQuery } from '@tanstack/react-query'
 import { useToast }   from '@/components/ui/Toast'
 import { Button }    from '@/components/ui/Button'
 import { Combobox }  from '@/components/ui/Combobox'
-import type { Herramienta, HerrMovTipo, Obra } from '@/types/domain.types'
+import type { Herramienta, HerrMovTipo, Obra, Profile } from '@/types/domain.types'
 
 function fmtFecha(s: string) {
   const d = new Date(s)
@@ -64,6 +67,12 @@ export function HerrMovimientos() {
   const { data: config } = useHerrConfig()
   const { data: movimientos = [], isLoading: loadingMov } = useHerrMovimientosAll()
   const { data: obras = [] } = useObras()
+  const { data: personal = [] } = usePersonal()
+  const { data: usuarios = [] } = useQuery({
+    queryKey: ['usuarios-activos'],
+    queryFn:  () => apiGet<Profile[]>('/api/usuarios'),
+    staleTime: 5 * 60_000,
+  })
   const { mutate: registrar, isPending: registrando } = useRegistrarMovimiento()
 
   // Formulario
@@ -71,7 +80,9 @@ export function HerrMovimientos() {
   const [tipoMov, setTipoMov] = useState('asignacion')
   const [obraOrigen, setObraOrigen] = useState('')
   const [obraDestino, setObraDestino] = useState('')
-  const [responsable, setResponsable] = useState('')
+  // Combo unificado: value codificado como `leg:XXX` (personal) o `user:UUID` (profile).
+  // Vacío = sin responsable.
+  const [responsableSel, setResponsableSel] = useState('')
   const [obs, setObs] = useState('')
   const [fechaManual, setFechaManual] = useState('')
   const [ultimoRemito, setUltimoRemito] = useState<RemitoData | null>(null)
@@ -105,13 +116,26 @@ export function HerrMovimientos() {
     if (campos.origen && !obraOrigen && tipoMov !== 'retorno_rep') { toast('Seleccioná la obra origen', 'err'); return }
     if (campos.destino && !obraDestino) { toast('Seleccioná la obra destino', 'err'); return }
 
+    // Decodificar responsable: `leg:XXX` o `user:UUID` (vacío = sin responsable).
+    let responsable_leg: string | null = null
+    let responsable_user_id: string | null = null
+    let responsableNombre = ''
+    if (responsableSel.startsWith('leg:')) {
+      responsable_leg = responsableSel.slice(4)
+      responsableNombre = personal.find(p => p.leg === responsable_leg)?.nom ?? ''
+    } else if (responsableSel.startsWith('user:')) {
+      responsable_user_id = responsableSel.slice(5)
+      responsableNombre = usuarios.find(u => u.id === responsable_user_id)?.nombre ?? ''
+    }
+
     registrar(
       {
         herramienta_id: Number(herrSel),
         tipo_key: tipoMov,
         obra_origen_cod: campos.origen && obraOrigen ? obraOrigen : null,
         obra_destino_cod: campos.destino ? obraDestino : null,
-        responsable: responsable || undefined,
+        responsable_leg,
+        responsable_user_id,
         obs: obs || undefined,
         fecha: fechaManual ? new Date(fechaManual).toISOString() : undefined,
       },
@@ -135,12 +159,12 @@ export function HerrMovimientos() {
             },
             obraOrigen:  origenNom,
             obraDestino: destinoNom,
-            responsable,
+            responsable: responsableNombre,
             obs,
           })
           toast('✓ Movimiento registrado', 'ok')
           setHerrSel(''); setObraOrigen(''); setObraDestino('')
-          setResponsable(''); setObs(''); setFechaManual('')
+          setResponsableSel(''); setObs(''); setFechaManual('')
           setTipoMov('asignacion')
         },
         onError: (e: any) => toast(e.message ?? 'Error al registrar', 'err'),
@@ -384,16 +408,26 @@ export function HerrMovimientos() {
 
         {/* Responsable + Obs + Fecha */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Responsable</label>
-            <input
-              type="text"
-              value={responsable}
-              onChange={e => setResponsable(e.target.value)}
-              placeholder="Nombre del responsable"
-              className="px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja transition-colors"
-            />
-          </div>
+          <Combobox
+            label="Responsable"
+            placeholder="Buscar operario o usuario..."
+            options={[
+              ...personal.map(p => ({
+                value: `leg:${p.leg}`,
+                label: p.nom,
+                sub:   `Leg. ${p.leg} · Operario`,
+              })),
+              ...usuarios
+                .filter(u => u.activo !== false)
+                .map(u => ({
+                  value: `user:${u.id}`,
+                  label: u.nombre,
+                  sub:   `Usuario · ${u.rol_base ?? u.rol}`,
+                })),
+            ]}
+            value={responsableSel}
+            onChange={setResponsableSel}
+          />
           <div className="flex flex-col gap-1">
             <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Observaciones</label>
             <input
