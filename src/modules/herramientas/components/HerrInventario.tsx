@@ -17,6 +17,7 @@ import { HerramientaFotosSection } from './HerramientaFotosSection'
 import { HerramientaFotosCola } from './HerramientaFotosCola'
 import { HerramientasAlertasSection } from './HerramientasAlertasSection'
 import { useUploadHerramientaFoto } from '../hooks/useHerramientaFotos'
+import { useObras } from '@/modules/tarja/hooks/useObras'
 import type { Herramienta } from '@/types/domain.types'
 
 interface HerrFormData {
@@ -48,6 +49,7 @@ export function HerrInventario() {
   const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('herramientas')
   const { data: herramientas = [], isLoading } = useHerramientas()
   const { data: config }                        = useHerrConfig()
+  const { data: obras = [] }                    = useObras()
   const { mutate: create,  isPending: creating  } = useCreateHerramienta()
   const { mutate: update,  isPending: updating  } = useUpdateHerramienta()
   const { mutate: remove                        } = useDeleteHerramienta()
@@ -61,6 +63,8 @@ export function HerrInventario() {
   const [busqueda,    setBusqueda]    = useState('')
   const [filtroTipo,  setFiltroTipo]  = useState('')
   const [filtroEstado,setFiltroEstado]= useState('')
+  // '' = todas, '__deposito__' = sin obra asignada (depósito), o un cod de obra.
+  const [filtroObra,  setFiltroObra]  = useState('')
 
   const formNuevo = useForm<HerrFormData>()
   const formEdit  = useForm<HerrFormData>()
@@ -75,9 +79,11 @@ export function HerrInventario() {
         (h.serie ?? '').toLowerCase().includes(q)
       const matchTipo   = !filtroTipo   || String(h.tipo_id) === filtroTipo
       const matchEstado = !filtroEstado || h.estado_key === filtroEstado
-      return matchQ && matchTipo && matchEstado
+      const matchObra   = !filtroObra
+        || (filtroObra === '__deposito__' ? !h.obra_cod : h.obra_cod === filtroObra)
+      return matchQ && matchTipo && matchEstado && matchObra
     })
-  }, [herramientas, busqueda, filtroTipo, filtroEstado])
+  }, [herramientas, busqueda, filtroTipo, filtroEstado, filtroObra])
 
   function handleCreate(data: HerrFormData) {
     create(
@@ -287,9 +293,20 @@ export function HerrInventario() {
             <option key={e.key} value={e.key}>{e.icono} {e.nom}</option>
           ))}
         </select>
-        {(busqueda || filtroTipo || filtroEstado) && (
+        <select
+          value={filtroObra}
+          onChange={e => setFiltroObra(e.target.value)}
+          className="px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja transition-colors bg-white"
+        >
+          <option value="">Todas las obras</option>
+          <option value="__deposito__">📦 Depósito (sin obra)</option>
+          {obras.map(o => (
+            <option key={o.cod} value={o.cod}>📍 {o.nom}</option>
+          ))}
+        </select>
+        {(busqueda || filtroTipo || filtroEstado || filtroObra) && (
           <button
-            onClick={() => { setBusqueda(''); setFiltroTipo(''); setFiltroEstado('') }}
+            onClick={() => { setBusqueda(''); setFiltroTipo(''); setFiltroEstado(''); setFiltroObra('') }}
             className="text-xs font-bold text-gris-dark hover:text-carbon px-2 py-1 rounded hover:bg-gris transition-colors"
           >
             ✕ Limpiar
