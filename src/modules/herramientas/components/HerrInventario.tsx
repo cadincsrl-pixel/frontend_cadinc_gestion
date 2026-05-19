@@ -14,7 +14,9 @@ import { useToast } from '@/components/ui/Toast'
 import { useForm }  from 'react-hook-form'
 import { usePermisos } from '@/hooks/usePermisos'
 import { HerramientaFotosSection } from './HerramientaFotosSection'
+import { HerramientaFotosCola } from './HerramientaFotosCola'
 import { HerramientasAlertasSection } from './HerramientasAlertasSection'
+import { useUploadHerramientaFoto } from '../hooks/useHerramientaFotos'
 import type { Herramienta } from '@/types/domain.types'
 
 interface HerrFormData {
@@ -49,10 +51,13 @@ export function HerrInventario() {
   const { mutate: create,  isPending: creating  } = useCreateHerramienta()
   const { mutate: update,  isPending: updating  } = useUpdateHerramienta()
   const { mutate: remove                        } = useDeleteHerramienta()
+  const { mutateAsync: uploadFotoAsync          } = useUploadHerramientaFoto()
 
   const [modalNuevo,  setModalNuevo]  = useState(false)
   const [editando,    setEditando]    = useState<Herramienta | null>(null)
   const [detalle,     setDetalle]     = useState<Herramienta | null>(null)
+  const [fotosCola,   setFotosCola]   = useState<File[]>([])
+  const [subiendoFotos, setSubiendoFotos] = useState(false)
   const [busqueda,    setBusqueda]    = useState('')
   const [filtroTipo,  setFiltroTipo]  = useState('')
   const [filtroEstado,setFiltroEstado]= useState('')
@@ -78,13 +83,37 @@ export function HerrInventario() {
     create(
       { ...data, tipo_id: data.tipo_id ? Number(data.tipo_id) : null },
       {
-        onSuccess: (creada) => {
-          toast('✓ Herramienta creada — ahora podés cargar fotos', 'ok')
+        onSuccess: async (creada) => {
+          const creadaH = creada as Herramienta
+          // Subir las fotos en cola (si hay). Si falla alguna, seguimos con
+          // el resto para no perder lo que sí funcionó.
+          if (fotosCola.length > 0) {
+            setSubiendoFotos(true)
+            let exitos  = 0
+            let fallidos = 0
+            for (const [idx, file] of fotosCola.entries()) {
+              try {
+                await uploadFotoAsync({
+                  herramientaId: creadaH.id,
+                  file,
+                  orden: idx * 10,
+                })
+                exitos++
+              } catch (err: any) {
+                fallidos++
+                const msg = err?.message ?? 'Error al subir foto'
+                toast(msg.includes('FOTO_DUPLICADA') ? `${file.name}: ya estaba cargada` : `${file.name}: ${msg}`, 'err')
+              }
+            }
+            setSubiendoFotos(false)
+            if (exitos > 0) toast(`✓ Herramienta creada · ${exitos} foto${exitos === 1 ? '' : 's'} subida${exitos === 1 ? '' : 's'}`, 'ok')
+            else if (fallidos === fotosCola.length) toast('✓ Herramienta creada (las fotos fallaron — reintentá desde Editar)', 'ok')
+          } else {
+            toast('✓ Herramienta creada', 'ok')
+          }
           setModalNuevo(false)
           formNuevo.reset()
-          // Saltamos directo al modal de edición para que la persona
-          // pueda subir fotos sin tener que buscar la herramienta en la grilla.
-          openEdit(creada as Herramienta)
+          setFotosCola([])
         },
         onError: (e: any) => toast(e.message ?? 'Error al crear', 'err'),
       }
@@ -453,18 +482,27 @@ export function HerrInventario() {
       {/* Modal nuevo */}
       <Modal
         open={modalNuevo}
-        onClose={() => { setModalNuevo(false); formNuevo.reset() }}
+        onClose={() => { setModalNuevo(false); formNuevo.reset(); setFotosCola([]) }}
         title="🔧 NUEVA HERRAMIENTA"
         footer={
           <>
-            <Button variant="secondary" onClick={() => { setModalNuevo(false); formNuevo.reset() }}>Cancelar</Button>
-            <Button variant="primary" loading={creating} onClick={formNuevo.handleSubmit(handleCreate)}>
-              ✓ Guardar
+            <Button variant="secondary" onClick={() => { setModalNuevo(false); formNuevo.reset(); setFotosCola([]) }}>Cancelar</Button>
+            <Button
+              variant="primary"
+              loading={creating || subiendoFotos}
+              onClick={formNuevo.handleSubmit(handleCreate)}
+            >
+              ✓ Guardar{fotosCola.length > 0 ? ` y subir ${fotosCola.length} foto${fotosCola.length === 1 ? '' : 's'}` : ''}
             </Button>
           </>
         }
       >
         <HerrForm form={formNuevo} errors={formNuevo.formState.errors} codigoReadOnly />
+
+        {/* Cola de fotos: se suben con el id resultante apenas se crea la herramienta. */}
+        <div className="border-t border-gris-mid pt-4 mt-4">
+          <HerramientaFotosCola files={fotosCola} onChange={setFotosCola} />
+        </div>
       </Modal>
 
       {/* Modal editar */}
