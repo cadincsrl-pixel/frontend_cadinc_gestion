@@ -871,6 +871,17 @@ export interface Herramienta {
   updated_by?:   string | null
 }
 
+export interface HerramientaFoto {
+  id:             number
+  herramienta_id: number
+  storage_path:   string
+  file_hash:      string | null
+  descripcion:    string | null
+  orden:          number
+  created_at:     string
+  created_by:     string | null
+}
+
 export interface HerrMovimiento {
   id:               number
   herramienta_id:   number

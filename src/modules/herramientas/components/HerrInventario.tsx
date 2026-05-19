@@ -13,6 +13,7 @@ import { AuditInfo } from '@/components/ui/AuditInfo'
 import { useToast } from '@/components/ui/Toast'
 import { useForm }  from 'react-hook-form'
 import { usePermisos } from '@/hooks/usePermisos'
+import { HerramientaFotosSection } from './HerramientaFotosSection'
 import type { Herramienta } from '@/types/domain.types'
 
 const ESTADO_COLORS: Record<string, string> = {
@@ -466,6 +467,15 @@ export function HerrInventario() {
         }
       >
         <HerrForm form={formEdit} errors={formEdit.formState.errors} />
+
+        {/* Galería de fotos: visible solo en edición porque requiere id
+            de herramienta existente (FK en herramienta_fotos). */}
+        {editando && (
+          <div className="border-t border-gris-mid pt-4 mt-1">
+            <HerramientaFotosSection herramientaId={editando.id} />
+          </div>
+        )}
+
         <AuditInfo
           createdBy={editando?.created_by}
           updatedBy={editando?.updated_by}
@@ -507,6 +517,11 @@ export function HerrInventario() {
                 <p className="text-sm text-carbon">{detalle.obs}</p>
               </div>
             )}
+
+            {/* Galería de fotos read-only (sin botón subir/borrar — eso
+                se hace desde Editar). */}
+            <HerramientaFotosSection herramientaId={detalle.id} />
+
             <AuditInfo
               createdBy={detalle.created_by}
               updatedBy={detalle.updated_by}
