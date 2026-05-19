@@ -111,8 +111,21 @@ async function parseError(res: Response, method: string, path: string): Promise<
   let message = `${method} ${path} → ${res.status}`
   try {
     body = await res.json()
-    const b = body as { error?: string; message?: string }
-    message = b.error || b.message || message
+    const b = body as { error?: unknown; message?: unknown }
+    // Algunos endpoints devuelven `{ error: { code, detail } }` en vez de
+    // un string. Si pasa, intentamos extraer algo útil; el fallback es
+    // serializar para evitar el clásico "[object Object]" en el toast.
+    const pickString = (v: unknown): string | undefined => {
+      if (typeof v === 'string')      return v
+      if (v && typeof v === 'object') {
+        const o = v as Record<string, unknown>
+        if (typeof o.code    === 'string') return o.code
+        if (typeof o.message === 'string') return o.message
+        try { return JSON.stringify(v) } catch { return undefined }
+      }
+      return undefined
+    }
+    message = pickString(b.error) || pickString(b.message) || message
   } catch {
     /* body vacío o no-JSON */
   }

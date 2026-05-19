@@ -73,8 +73,20 @@ export function HerramientaFotosSection({ herramientaId, readOnly = false }: Pro
         { herramientaId, file, orden: (fotos.length + idx) * 10 },
         {
           onError: (err: any) => {
-            const msg = err?.message ?? 'Error al subir foto'
-            toast(msg.includes('FOTO_DUPLICADA') ? `${file.name}: ya estaba cargada` : `${file.name}: ${msg}`, 'err')
+            // Asegurar string — en algunos casos err.message ha venido como
+            // objeto y el toast terminaba mostrando "[object Object]".
+            const raw = err?.message ?? err?.error ?? 'Error al subir foto'
+            const msg = typeof raw === 'string' ? raw : JSON.stringify(raw)
+            if (msg.includes('FOTO_DUPLICADA')) {
+              toast(`${file.name}: ya estaba cargada`, 'err')
+            } else if (msg.includes('MIME_NO_PERMITIDO')) {
+              toast(`${file.name}: tipo de archivo no soportado`, 'err')
+            } else if (msg.includes('TAMAÑO_INVALIDO') || msg.includes('5 MB')) {
+              toast(`${file.name}: supera los 5 MB`, 'err')
+            } else {
+              console.error('[upload-foto]', err)
+              toast(`${file.name}: ${msg}`, 'err')
+            }
           },
         },
       )
