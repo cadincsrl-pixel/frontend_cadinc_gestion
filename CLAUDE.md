@@ -197,6 +197,7 @@ Los 4 lugares deben dar el mismo número. La función vieja `calcularTotalesSema
 - ❌ Modificar `permisos.modulo.accion` sin reflejar el cambio en backend Y frontend.
 - ❌ Ignorar los warnings del advisor de Supabase sin documentar por qué.
 - ❌ Hacer `fetch` directo desde componentes — usar `apiGet/Post/Put/Patch/Delete` del client central.
+- ❌ Mergear features **multi-paso** (upload con signed URL, workflows entre 2+ endpoints, transacciones distribuidas) sin probar manualmente el happy path en local. TS check + build limpio NO atrapa mismatch de shapes entre repos backend/frontend (ej. el bug del 2026-05-19 donde el backend devolvía `path` y el frontend esperaba `storage_path` en upload de fotos de herramientas — 0 filas creadas en prod aunque el archivo sí subía al bucket).
 
 ## 9. Deuda técnica conocida (no-urgente)
 
