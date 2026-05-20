@@ -34,9 +34,6 @@ export const obrasApi = {
   delete: (cod: string) =>
     apiDelete<{ success: boolean }>(`/api/obras/${encodeURIComponent(cod)}`),
 
-  autoArchivar: () =>
-    apiPost<{ archivadas: string[] }>('/api/obras/auto-archivar', {}),
-
   desarchivar: (cod: string) =>
     apiPatch<Obra>(`/api/obras/${encodeURIComponent(cod)}/desarchivar`, {}),
 
