@@ -6,28 +6,40 @@ import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api/client'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
-import type { HerrTipo, HerrMovTipo, HerrConfig } from '@/types/domain.types'
+import type { HerrTipo, HerrMovTipo, HerrConfig, HerrMarca, HerrModelo } from '@/types/domain.types'
+import {
+  useHerrMarcas,
+  useCreateMarca,
+  useUpdateMarca,
+  useDeleteMarca,
+  useCreateModelo,
+  useUpdateModelo,
+  useDeleteModelo,
+} from '../hooks/useHerramientas'
+
+type ParamTab = 'tipos' | 'movimientos' | 'marcas'
 
 export function HerrParametros() {
-  const [tab, setTab] = useState<'tipos' | 'movimientos'>('tipos')
+  const [tab, setTab] = useState<ParamTab>('tipos')
 
   return (
     <div className="p-4 md:p-6 flex flex-col gap-4">
       <div>
         <h1 className="font-display text-[2rem] tracking-wider text-azul">PARÁMETROS</h1>
         <p className="text-sm text-gris-dark mt-0.5">
-          Tipos de herramienta y tipos de movimiento
+          Tipos de herramienta, tipos de movimiento y catálogo de marcas/modelos
         </p>
       </div>
 
-      <div className="flex gap-1 bg-white rounded-card shadow-card p-1.5 w-fit">
+      <div className="flex gap-1 bg-white rounded-card shadow-card p-1.5 w-fit flex-wrap">
         {[
           { id: 'tipos', icon: '🔧', label: 'Tipos de herramienta' },
           { id: 'movimientos', icon: '↔', label: 'Tipos de movimiento' },
+          { id: 'marcas', icon: '🏷️', label: 'Marcas y modelos' },
         ].map(t => (
           <button
             key={t.id}
-            onClick={() => setTab(t.id as any)}
+            onClick={() => setTab(t.id as ParamTab)}
             className={`
               flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-all
               ${tab === t.id
@@ -43,6 +55,7 @@ export function HerrParametros() {
 
       {tab === 'tipos' && <TiposTab />}
       {tab === 'movimientos' && <MovTiposTab />}
+      {tab === 'marcas' && <MarcasTab />}
     </div>
   )
 }
@@ -379,6 +392,289 @@ function MovTiposTab() {
               className="px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja transition-colors resize-none"
             />
           </div>
+        </div>
+      </Modal>
+    </>
+  )
+}
+
+// ── Marcas y modelos ──
+function MarcasTab() {
+  const toast = useToast()
+  const { data: marcas = [], isLoading } = useHerrMarcas()
+  const { mutate: createMarca, isPending: creatingMarca } = useCreateMarca()
+  const { mutate: updateMarca, isPending: updatingMarca } = useUpdateMarca()
+  const { mutate: deleteMarca } = useDeleteMarca()
+  const { mutate: createModelo, isPending: creatingModelo } = useCreateModelo()
+  const { mutate: updateModelo, isPending: updatingModelo } = useUpdateModelo()
+  const { mutate: deleteModelo } = useDeleteModelo()
+
+  const [expanded,  setExpanded]  = useState<Set<number>>(new Set())
+  const [marcaForm, setMarcaForm] = useState<{ open: boolean; editando: HerrMarca | null; nom: string }>({
+    open: false, editando: null, nom: '',
+  })
+  const [modeloForm, setModeloForm] = useState<{ open: boolean; marcaId: number | null; editando: HerrModelo | null; nom: string }>({
+    open: false, marcaId: null, editando: null, nom: '',
+  })
+
+  function toggleExpand(id: number) {
+    setExpanded(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else              next.add(id)
+      return next
+    })
+  }
+
+  function openNewMarca()              { setMarcaForm({ open: true, editando: null, nom: '' }) }
+  function openEditMarca(m: HerrMarca) { setMarcaForm({ open: true, editando: m, nom: m.nom }) }
+  function closeMarcaForm()            { setMarcaForm({ open: false, editando: null, nom: '' }) }
+
+  function submitMarca() {
+    if (!marcaForm.nom.trim()) return
+    const dto = { nom: marcaForm.nom.trim() }
+    if (marcaForm.editando) {
+      updateMarca({ id: marcaForm.editando.id, dto }, {
+        onSuccess: () => { toast('✓ Marca actualizada', 'ok'); closeMarcaForm() },
+        onError:   (e: any) => toast(e.message ?? 'Error al actualizar', 'err'),
+      })
+    } else {
+      createMarca(dto, {
+        onSuccess: () => { toast('✓ Marca creada', 'ok'); closeMarcaForm() },
+        onError:   (e: any) => toast(e.message ?? 'Error al crear', 'err'),
+      })
+    }
+  }
+
+  function openNewModelo(marcaId: number)                 { setModeloForm({ open: true, marcaId, editando: null, nom: '' }) }
+  function openEditModelo(marcaId: number, m: HerrModelo) { setModeloForm({ open: true, marcaId, editando: m, nom: m.nom }) }
+  function closeModeloForm()                              { setModeloForm({ open: false, marcaId: null, editando: null, nom: '' }) }
+
+  function submitModelo() {
+    if (!modeloForm.nom.trim() || !modeloForm.marcaId) return
+    if (modeloForm.editando) {
+      updateModelo({ id: modeloForm.editando.id, dto: { nom: modeloForm.nom.trim() } }, {
+        onSuccess: () => { toast('✓ Modelo actualizado', 'ok'); closeModeloForm() },
+        onError:   (e: any) => toast(e.message ?? 'Error al actualizar', 'err'),
+      })
+    } else {
+      createModelo({ marcaId: modeloForm.marcaId, nom: modeloForm.nom.trim() }, {
+        onSuccess: () => { toast('✓ Modelo creado', 'ok'); closeModeloForm() },
+        onError:   (e: any) => toast(e.message ?? 'Error al crear', 'err'),
+      })
+    }
+  }
+
+  function handleDeleteMarca(m: HerrMarca) {
+    const modelosActivos = m.modelos.filter(x => x.activo).length
+    const msg = modelosActivos > 0
+      ? `¿Desactivar "${m.nom}"?\n\nTiene ${modelosActivos} modelo${modelosActivos !== 1 ? 's' : ''} activo${modelosActivos !== 1 ? 's' : ''}. Las herramientas existentes que la usen conservan el snapshot del nombre.`
+      : `¿Desactivar "${m.nom}"?\n\nLas herramientas existentes que la usen conservan el snapshot del nombre.`
+    if (!window.confirm(msg)) return
+    deleteMarca(m.id, {
+      onSuccess: () => toast('✓ Marca desactivada', 'ok'),
+      onError:   (e: any) => toast(e.message ?? 'Error al desactivar', 'err'),
+    })
+  }
+
+  function handleDeleteModelo(m: HerrModelo) {
+    if (!window.confirm(`¿Desactivar el modelo "${m.nom}"?\n\nLas herramientas existentes lo conservan como snapshot.`)) return
+    deleteModelo(m.id, {
+      onSuccess: () => toast('✓ Modelo desactivado', 'ok'),
+      onError:   (e: any) => toast(e.message ?? 'Error al desactivar', 'err'),
+    })
+  }
+
+  return (
+    <>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="font-bold text-azul text-base">
+            Marcas y modelos ({marcas.length})
+          </h2>
+          <p className="text-xs text-gris-dark mt-0.5">
+            Catálogo usado en alta y edición de herramientas. El soft-delete preserva el snapshot del nombre en las herramientas existentes.
+          </p>
+        </div>
+        <Button variant="primary" size="sm" onClick={openNewMarca}>
+          ＋ Nueva marca
+        </Button>
+      </div>
+
+      <div className="bg-white rounded-card shadow-card overflow-hidden">
+        {isLoading ? (
+          <div className="text-center py-8">
+            <span className="inline-flex items-center gap-2 text-gris-dark text-sm">
+              <span className="w-4 h-4 border-2 border-naranja border-t-transparent rounded-full animate-spin" />
+              Cargando...
+            </span>
+          </div>
+        ) : marcas.length === 0 ? (
+          <div className="text-center py-8 text-gris-dark text-sm">
+            No hay marcas configuradas. Creá la primera con &ldquo;＋ Nueva marca&rdquo;.
+          </div>
+        ) : (
+          <div className="divide-y divide-gris">
+            {marcas.map(m => {
+              const isOpen = expanded.has(m.id)
+              const modelosActivos = m.modelos.filter(x => x.activo).length
+              return (
+                <div key={m.id} className={m.activo ? '' : 'opacity-60'}>
+                  {/* Fila marca */}
+                  <div className="flex items-center gap-2 px-4 py-3 hover:bg-gris/40 transition-colors">
+                    <button
+                      onClick={() => toggleExpand(m.id)}
+                      className="text-gris-dark hover:text-carbon shrink-0 w-5 text-center"
+                      title={isOpen ? 'Contraer' : 'Expandir'}
+                    >
+                      <span className={`inline-block transition-transform ${isOpen ? 'rotate-90' : ''}`}>▸</span>
+                    </button>
+                    <span className="font-bold text-sm text-carbon flex-1 min-w-0 truncate">{m.nom}</span>
+                    <span className="text-xs text-gris-dark whitespace-nowrap">
+                      {modelosActivos} modelo{modelosActivos !== 1 ? 's' : ''}
+                    </span>
+                    {!m.activo && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gris text-gris-dark">
+                        Inactiva
+                      </span>
+                    )}
+                    <button
+                      onClick={() => openEditMarca(m)}
+                      title="Editar marca"
+                      className="text-xs px-2 py-1 rounded hover:bg-gris transition-colors"
+                    >
+                      ✏️
+                    </button>
+                    {m.activo && (
+                      <button
+                        onClick={() => handleDeleteMarca(m)}
+                        title="Desactivar marca"
+                        className="text-xs px-2 py-1 rounded hover:bg-rojo-light hover:text-rojo transition-colors"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Modelos */}
+                  {isOpen && (
+                    <div className="bg-gris/30 px-4 py-2 flex flex-col gap-1">
+                      {m.modelos.length === 0 ? (
+                        <p className="text-xs text-gris-dark italic py-2 pl-7">
+                          Sin modelos cargados.
+                        </p>
+                      ) : (
+                        m.modelos.map(mod => (
+                          <div
+                            key={mod.id}
+                            className={`flex items-center gap-2 pl-7 pr-2 py-1.5 rounded hover:bg-white transition-colors ${mod.activo ? '' : 'opacity-60'}`}
+                          >
+                            <span className="text-gris-mid text-xs">·</span>
+                            <span className="text-sm text-carbon flex-1 min-w-0 truncate">{mod.nom}</span>
+                            {!mod.activo && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gris text-gris-dark">
+                                Inactivo
+                              </span>
+                            )}
+                            <button
+                              onClick={() => openEditModelo(m.id, mod)}
+                              title="Editar modelo"
+                              className="text-xs px-2 py-1 rounded hover:bg-gris transition-colors"
+                            >
+                              ✏️
+                            </button>
+                            {mod.activo && (
+                              <button
+                                onClick={() => handleDeleteModelo(mod)}
+                                title="Desactivar modelo"
+                                className="text-xs px-2 py-1 rounded hover:bg-rojo-light hover:text-rojo transition-colors"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                        ))
+                      )}
+                      {m.activo && (
+                        <div className="pl-7 pr-2 pt-1">
+                          <button
+                            onClick={() => openNewModelo(m.id)}
+                            className="text-xs text-azul hover:text-naranja font-bold transition-colors"
+                          >
+                            ＋ Nuevo modelo
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Modal Marca */}
+      <Modal
+        open={marcaForm.open}
+        onClose={closeMarcaForm}
+        title={marcaForm.editando ? '✏️ EDITAR MARCA' : '🏷️ NUEVA MARCA'}
+        footer={
+          <>
+            <Button variant="secondary" onClick={closeMarcaForm}>Cancelar</Button>
+            <Button
+              variant="primary"
+              loading={creatingMarca || updatingMarca}
+              onClick={submitMarca}
+            >
+              ✓ Guardar
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-1">
+          <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Nombre *</label>
+          <input
+            type="text"
+            autoFocus
+            value={marcaForm.nom}
+            onChange={e => setMarcaForm(f => ({ ...f, nom: e.target.value }))}
+            onKeyDown={e => { if (e.key === 'Enter') submitMarca() }}
+            placeholder="Ej: Bosch"
+            className="px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja transition-colors"
+          />
+        </div>
+      </Modal>
+
+      {/* Modal Modelo */}
+      <Modal
+        open={modeloForm.open}
+        onClose={closeModeloForm}
+        title={modeloForm.editando ? '✏️ EDITAR MODELO' : '🔧 NUEVO MODELO'}
+        footer={
+          <>
+            <Button variant="secondary" onClick={closeModeloForm}>Cancelar</Button>
+            <Button
+              variant="primary"
+              loading={creatingModelo || updatingModelo}
+              onClick={submitModelo}
+            >
+              ✓ Guardar
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-1">
+          <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Nombre *</label>
+          <input
+            type="text"
+            autoFocus
+            value={modeloForm.nom}
+            onChange={e => setModeloForm(f => ({ ...f, nom: e.target.value }))}
+            onKeyDown={e => { if (e.key === 'Enter') submitModelo() }}
+            placeholder="Ej: GBH 2-26"
+            className="px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja transition-colors"
+          />
         </div>
       </Modal>
     </>

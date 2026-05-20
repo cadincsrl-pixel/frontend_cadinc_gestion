@@ -34,11 +34,45 @@ export function useCreateMarca() {
   })
 }
 
+export function useUpdateMarca() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: number; dto: { nom?: string; orden?: number; activo?: boolean } }) =>
+      apiPatch(`/api/herramientas/marcas/${id}`, dto),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: MARCAS_KEY }),
+  })
+}
+
+export function useDeleteMarca() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiDelete(`/api/herramientas/marcas/${id}`),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: MARCAS_KEY }),
+  })
+}
+
 export function useCreateModelo() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ marcaId, nom }: { marcaId: number; nom: string }) =>
       apiPost(`/api/herramientas/marcas/${marcaId}/modelos`, { nom }),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: MARCAS_KEY }),
+  })
+}
+
+export function useUpdateModelo() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: number; dto: { nom?: string; activo?: boolean } }) =>
+      apiPatch(`/api/herramientas/modelos/${id}`, dto),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: MARCAS_KEY }),
+  })
+}
+
+export function useDeleteModelo() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiDelete(`/api/herramientas/modelos/${id}`),
     onSuccess:  () => qc.invalidateQueries({ queryKey: MARCAS_KEY }),
   })
 }
