@@ -2,10 +2,22 @@
 
 import { useState, useRef, useEffect } from 'react'
 
+interface ComboboxOption {
+  value: string
+  label: string
+  sub?:  string
+  /**
+   * Si se define en al menos una option, el dropdown agrupa visualmente
+   * los items bajo un header con el nombre del grupo. Backward-compatible:
+   * sin `group` el render es igual al legacy.
+   */
+  group?: string
+}
+
 interface ComboboxProps {
   label?:       string
   placeholder?: string
-  options:      { value: string; label: string; sub?: string }[]
+  options:      ComboboxOption[]
   value:        string
   onChange:     (value: string) => void
   disabled?:    boolean
@@ -31,6 +43,53 @@ interface ComboboxProps {
 // Altura aproximada del dropdown (max-h-52 = 13rem ≈ 208px). Se usa para
 // decidir si abrir hacia arriba o hacia abajo.
 const DROPDOWN_HEIGHT = 208
+
+function OptionButton({ o, selected, onSelect }: {
+  o: ComboboxOption
+  selected: boolean
+  onSelect: (v: string) => void
+}) {
+  return (
+    <button
+      onMouseDown={() => onSelect(o.value)}
+      className={`
+        w-full text-left px-4 py-2.5 text-sm transition-colors border-b border-gris last:border-0
+        hover:bg-naranja-light hover:text-naranja-dark
+        ${selected ? 'bg-azul-light text-azul font-bold' : 'text-carbon'}
+      `}
+    >
+      <div className="font-semibold">{o.label}</div>
+      {o.sub && <div className="text-[11px] text-gris-dark mt-0.5">{o.sub}</div>}
+    </button>
+  )
+}
+
+function renderOptions(filtered: ComboboxOption[], value: string, onSelect: (v: string) => void) {
+  const anyGrouped = filtered.some(o => o.group)
+  if (!anyGrouped) {
+    return filtered.map(o => (
+      <OptionButton key={o.value} o={o} selected={o.value === value} onSelect={onSelect} />
+    ))
+  }
+  // Agrupar manteniendo el orden de primera aparición de cada grupo.
+  const groups: { name: string; items: ComboboxOption[] }[] = []
+  for (const o of filtered) {
+    const name = o.group ?? 'Otros'
+    let g = groups.find(x => x.name === name)
+    if (!g) { g = { name, items: [] }; groups.push(g) }
+    g.items.push(o)
+  }
+  return groups.map(g => (
+    <div key={g.name}>
+      <div className="px-4 py-1 text-[10px] font-bold text-gris-dark uppercase tracking-wider bg-gris/60 border-b border-gris-mid sticky top-0">
+        {g.name}
+      </div>
+      {g.items.map(o => (
+        <OptionButton key={o.value} o={o} selected={o.value === value} onSelect={onSelect} />
+      ))}
+    </div>
+  ))
+}
 
 export function Combobox({
   label, placeholder = 'Buscar...', options, value, onChange, disabled, className = '',
@@ -152,20 +211,7 @@ export function Combobox({
             </div>
           ) : (
             <>
-              {filtered.map(o => (
-                <button
-                  key={o.value}
-                  onMouseDown={() => handleSelect(o.value)}
-                  className={`
-                    w-full text-left px-4 py-2.5 text-sm transition-colors border-b border-gris last:border-0
-                    hover:bg-naranja-light hover:text-naranja-dark
-                    ${o.value === value ? 'bg-azul-light text-azul font-bold' : 'text-carbon'}
-                  `}
-                >
-                  <div className="font-semibold">{o.label}</div>
-                  {o.sub && <div className="text-[11px] text-gris-dark mt-0.5">{o.sub}</div>}
-                </button>
-              ))}
+              {renderOptions(filtered, value, handleSelect)}
               {showCreate && (
                 <button
                   onMouseDown={handleCreate}

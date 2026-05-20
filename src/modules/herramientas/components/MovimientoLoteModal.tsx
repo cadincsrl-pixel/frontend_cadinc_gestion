@@ -437,14 +437,16 @@ export function MovimientoLoteModal({ onClose, onSuccess }: Props) {
                 ...personal.map(p => ({
                   value: `leg:${p.leg}`,
                   label: p.nom,
-                  sub:   `Leg. ${p.leg} · Operario`,
+                  sub:   `Leg. ${p.leg}`,
+                  group: 'Operarios',
                 })),
                 ...usuarios
                   .filter(u => u.activo !== false)
                   .map(u => ({
                     value: `user:${u.id}`,
                     label: u.nombre,
-                    sub:   `Usuario · ${u.rol_base ?? u.rol}`,
+                    sub:   u.rol_base ?? u.rol,
+                    group: 'Usuarios del sistema',
                   })),
               ]}
               value={responsableSel}

@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react'
 import {
   useHerramientas,
   useHerrConfig,
-  useHerrMovimientosAll,
+  useHerrMovimientosPaginated,
   useRegistrarMovimiento,
 } from '../hooks/useHerramientas'
 import { useObras } from '@/modules/tarja/hooks/useObras'
@@ -70,7 +70,6 @@ export function HerrMovimientos() {
 
   const { data: herramientas = [] } = useHerramientas()
   const { data: config } = useHerrConfig()
-  const { data: movimientos = [], isLoading: loadingMov } = useHerrMovimientosAll()
   const { data: obras = [] } = useObras()
   const { data: personal = [] } = usePersonal()
   const { data: usuarios = [] } = useQuery({
@@ -92,11 +91,33 @@ export function HerrMovimientos() {
   const [fechaManual, setFechaManual] = useState('')
   const [ultimoRemito, setUltimoRemito] = useState<RemitoData | null>(null)
 
-  // Filtros historial
+  // Filtros historial — los structurados van al server (re-query); la búsqueda
+  // libre se filtra client-side sobre lo ya cargado.
   const [filtroHerr, setFiltroHerr] = useState('')
   const [filtroTipo, setFiltroTipo] = useState('')
   const [filtroObra, setFiltroObra] = useState('')
+  const [filtroDesde, setFiltroDesde] = useState('') // YYYY-MM-DD
+  const [filtroHasta, setFiltroHasta] = useState('') // YYYY-MM-DD
   const [busqueda, setBusqueda] = useState('')
+
+  const {
+    data: movPages,
+    isLoading: loadingMov,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useHerrMovimientosPaginated({
+    herramienta_id: filtroHerr ? Number(filtroHerr) : null,
+    tipo_key:       filtroTipo || null,
+    obra_cod:       filtroObra || null,
+    desde:          filtroDesde ? `${filtroDesde}T00:00:00` : null,
+    hasta:          filtroHasta ? `${filtroHasta}T23:59:59.999` : null,
+  })
+  const movimientos = useMemo(
+    () => movPages?.pages.flatMap(p => p.items) ?? [],
+    [movPages],
+  )
+  const totalMovimientos = movPages?.pages[0]?.total ?? 0
 
   const herramientaActual = herramientas.find(h => String(h.id) === herrSel) ?? null
   const campos = MOV_CAMPOS[tipoMov] ?? { origen: true, destino: true }
@@ -315,22 +336,17 @@ export function HerrMovimientos() {
     })
   }, [herramientaActual, config])
 
-  // Filtrar historial
+  // Búsqueda libre client-side sobre la data ya paginada. Los filtros
+  // estructurados (herr/tipo/obra/desde/hasta) los aplica el server.
   const movFiltrados = useMemo(() => {
-    return movimientos.filter(m => {
-      const q = busqueda.toLowerCase()
-      const matchQ = !q ||
-        (m.herramienta?.nom ?? '').toLowerCase().includes(q) ||
-        (m.herramienta?.codigo ?? '').toLowerCase().includes(q) ||
-        (m.responsable ?? '').toLowerCase().includes(q)
-      const matchHerr = !filtroHerr || String(m.herramienta_id) === filtroHerr
-      const matchTipo = !filtroTipo || m.tipo_key === filtroTipo
-      const matchObra = !filtroObra ||
-        m.obra_origen_cod === filtroObra ||
-        m.obra_destino_cod === filtroObra
-      return matchQ && matchHerr && matchTipo && matchObra
-    })
-  }, [movimientos, busqueda, filtroHerr, filtroTipo, filtroObra])
+    const q = busqueda.toLowerCase().trim()
+    if (!q) return movimientos
+    return movimientos.filter(m =>
+      (m.herramienta?.nom ?? '').toLowerCase().includes(q) ||
+      (m.herramienta?.codigo ?? '').toLowerCase().includes(q) ||
+      (m.responsable ?? '').toLowerCase().includes(q)
+    )
+  }, [movimientos, busqueda])
 
   return (
     <div className="p-4 md:p-6 flex flex-col gap-5">
@@ -475,14 +491,16 @@ export function HerrMovimientos() {
               ...personal.map(p => ({
                 value: `leg:${p.leg}`,
                 label: p.nom,
-                sub:   `Leg. ${p.leg} · Operario`,
+                sub:   `Leg. ${p.leg}`,
+                group: 'Operarios',
               })),
               ...usuarios
                 .filter(u => u.activo !== false)
                 .map(u => ({
                   value: `user:${u.id}`,
                   label: u.nombre,
-                  sub:   `Usuario · ${u.rol_base ?? u.rol}`,
+                  sub:   u.rol_base ?? u.rol,
+                  group: 'Usuarios del sistema',
                 })),
             ]}
             value={responsableSel}
@@ -577,7 +595,11 @@ export function HerrMovimientos() {
       <div className="bg-white rounded-card shadow-card overflow-hidden">
         <div className="px-4 py-3 border-b border-gris flex items-center justify-between flex-wrap gap-2">
           <h3 className="font-bold text-azul">Historial de movimientos</h3>
-          <span className="text-xs text-gris-dark">{movFiltrados.length} registros</span>
+          <span className="text-xs text-gris-dark">
+            {busqueda
+              ? `${movFiltrados.length} de ${movimientos.length} cargados`
+              : `${movimientos.length} de ${totalMovimientos} cargados`}
+          </span>
         </div>
 
         {/* Filtros */}
@@ -622,9 +644,30 @@ export function HerrMovimientos() {
               <option key={o.cod} value={o.cod}>{o.nom}</option>
             ))}
           </select>
-          {(busqueda || filtroHerr || filtroTipo || filtroObra) && (
+          <div className="flex items-center gap-1 text-xs">
+            <label className="text-gris-dark font-bold">Desde</label>
+            <input
+              type="date"
+              value={filtroDesde}
+              max={filtroHasta || undefined}
+              onChange={e => setFiltroDesde(e.target.value)}
+              className="px-2 py-1.5 border-[1.5px] border-gris-mid rounded-lg outline-none focus:border-naranja bg-white"
+            />
+            <label className="text-gris-dark font-bold ml-1">Hasta</label>
+            <input
+              type="date"
+              value={filtroHasta}
+              min={filtroDesde || undefined}
+              onChange={e => setFiltroHasta(e.target.value)}
+              className="px-2 py-1.5 border-[1.5px] border-gris-mid rounded-lg outline-none focus:border-naranja bg-white"
+            />
+          </div>
+          {(busqueda || filtroHerr || filtroTipo || filtroObra || filtroDesde || filtroHasta) && (
             <button
-              onClick={() => { setBusqueda(''); setFiltroHerr(''); setFiltroTipo(''); setFiltroObra('') }}
+              onClick={() => {
+                setBusqueda(''); setFiltroHerr(''); setFiltroTipo(''); setFiltroObra('')
+                setFiltroDesde(''); setFiltroHasta('')
+              }}
               className="text-xs font-bold text-gris-dark hover:text-carbon px-2 py-1 rounded hover:bg-white transition-colors"
             >
               ✕ Limpiar
@@ -663,6 +706,9 @@ export function HerrMovimientos() {
               ) : (
                 movFiltrados.map(m => {
                   const hasObras = !!(m.obra_origen?.nom || m.obra_destino?.nom)
+                  // marca/modelo no vienen joineados en el movimiento — los traemos del cache.
+                  const herrCache = herramientas.find(h => h.id === m.herramienta_id)
+                  const marcaModelo = [herrCache?.marca, herrCache?.modelo].filter(Boolean).join(' · ')
                   return (
                   <tr key={m.id} className="border-b border-gris last:border-0 hover:bg-gris/40 transition-colors">
                     <td className="px-4 py-3 font-mono text-xs text-gris-dark whitespace-nowrap">
@@ -670,7 +716,10 @@ export function HerrMovimientos() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="font-bold text-sm text-carbon">{m.herramienta?.nom ?? '—'}</div>
-                      <div className="font-mono text-[10px] text-gris-dark">{m.herramienta?.codigo}</div>
+                      <div className="flex items-center gap-1.5 text-[10px] text-gris-dark">
+                        <span className="font-mono">{m.herramienta?.codigo}</span>
+                        {marcaModelo && <span className="font-sans">· {marcaModelo}</span>}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <span className={`text-xs font-bold px-2 py-0.5 rounded ${MOV_COLORS[m.tipo?.color ?? 'azul']}`}>
@@ -734,12 +783,17 @@ export function HerrMovimientos() {
           ) : (
             movFiltrados.map(m => {
               const hasObras = !!(m.obra_origen?.nom || m.obra_destino?.nom)
+              const herrCache = herramientas.find(h => h.id === m.herramienta_id)
+              const marcaModelo = [herrCache?.marca, herrCache?.modelo].filter(Boolean).join(' · ')
               return (
               <div key={m.id} className="bg-white border border-gris rounded-xl p-3 flex flex-col gap-2 shadow-sm">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
                     <div className="font-bold text-sm text-carbon truncate">{m.herramienta?.nom ?? '—'}</div>
-                    <div className="font-mono text-[10px] text-gris-dark">{m.herramienta?.codigo}</div>
+                    <div className="flex items-center gap-1.5 text-[10px] text-gris-dark">
+                      <span className="font-mono">{m.herramienta?.codigo}</span>
+                      {marcaModelo && <span className="truncate">· {marcaModelo}</span>}
+                    </div>
                   </div>
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded whitespace-nowrap ${MOV_COLORS[m.tipo?.color ?? 'azul']}`}>
                     {m.tipo?.icono} {m.tipo?.nom ?? m.tipo_key}
@@ -775,6 +829,22 @@ export function HerrMovimientos() {
             })
           )}
         </div>
+
+        {/* Cargar más — server-side pagination. Si hay búsqueda libre activa,
+            la próxima página podría no devolver matches; ese caso se resuelve
+            cuando el user limpia la búsqueda. */}
+        {hasNextPage && !loadingMov && (
+          <div className="px-4 py-3 border-t border-gris flex justify-center">
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={isFetchingNextPage}
+              onClick={() => fetchNextPage()}
+            >
+              Cargar más ({movimientos.length} / {totalMovimientos})
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Modal de movimiento múltiple */}

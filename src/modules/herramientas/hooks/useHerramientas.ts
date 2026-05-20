@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiPatch, apiDelete }   from '@/lib/api/client'
 import type {
   Herramienta, HerrConfig, HerrStats,
@@ -75,10 +75,66 @@ export function useHerrMovimientos(herramientaId: number) {
   })
 }
 
+// Response shape del endpoint /movimientos/all (con paginación opcional).
+interface MovListResponse {
+  items: HerrMovimiento[]
+  total: number
+}
+
+/**
+ * Trae TODOS los movimientos (sin paginar — cap servidor 500). Usado por
+ * componentes que necesitan el dataset completo en memoria, como
+ * `HerramientasAlertasSection` que calcula "sin movimiento >90d" por herramienta.
+ *
+ * Para listados paginables (historial con filtros), usar `useHerrMovimientosPaginated`.
+ */
 export function useHerrMovimientosAll() {
   return useQuery({
     queryKey: ['herr-movimientos', 'all'],
-    queryFn:  () => apiGet<HerrMovimiento[]>('/api/herramientas/movimientos/all'),
+    queryFn:  async () => {
+      const res = await apiGet<MovListResponse>('/api/herramientas/movimientos/all')
+      return res.items
+    },
+  })
+}
+
+export interface HerrMovFilters {
+  herramienta_id?: number | null
+  tipo_key?:       string | null
+  obra_cod?:       string | null
+  desde?:          string | null
+  hasta?:          string | null
+}
+
+const PAGE_SIZE = 50
+
+/**
+ * Versión paginada con filtros server-side. Cada fetch trae `PAGE_SIZE` rows.
+ * `useInfiniteQuery` provee `fetchNextPage` para el botón "Cargar más".
+ *
+ * Notar: la búsqueda libre (`q` por texto) NO está en los filtros — el backend
+ * no la soporta porque Supabase no permite filtrar across joined columns sin RPC.
+ * Esa búsqueda se mantiene client-side en el componente sobre la data ya cargada.
+ */
+export function useHerrMovimientosPaginated(filters: HerrMovFilters) {
+  return useInfiniteQuery({
+    queryKey:    ['herr-movimientos', 'paginated', filters],
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) => {
+      const params = new URLSearchParams()
+      params.set('limit',  String(PAGE_SIZE))
+      params.set('offset', String(pageParam))
+      if (filters.herramienta_id) params.set('herramienta_id', String(filters.herramienta_id))
+      if (filters.tipo_key)       params.set('tipo_key', filters.tipo_key)
+      if (filters.obra_cod)       params.set('obra_cod', filters.obra_cod)
+      if (filters.desde)          params.set('desde', filters.desde)
+      if (filters.hasta)          params.set('hasta', filters.hasta)
+      return apiGet<MovListResponse>(`/api/herramientas/movimientos/all?${params}`)
+    },
+    getNextPageParam: (lastPage, allPages) => {
+      const loaded = allPages.reduce((acc, p) => acc + p.items.length, 0)
+      return loaded < lastPage.total ? loaded : undefined
+    },
   })
 }
 
