@@ -10,10 +10,10 @@ export function ConfiguracionPage() {
 
       <div>
         <h1 className="font-display text-[2rem] tracking-wider text-azul">
-          CONFIGURACIÓN
+          CATEGORÍAS Y TARIFAS
         </h1>
         <p className="text-sm text-gris-dark mt-0.5">
-          Categorías y tarifas
+          Roles y valor hora global del personal. Cada obra puede personalizar su tarifa.
         </p>
       </div>
 

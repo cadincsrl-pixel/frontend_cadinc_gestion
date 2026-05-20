@@ -53,7 +53,7 @@ export const MODULO_INFO: Record<Modulo, ModuloInfo> = {
   caja:            { key: 'caja',            label: 'Caja',             descripcion: 'Efectivo y movimientos',                icono: '💵', orden: 5 },
   ropa:            { key: 'ropa',            label: 'Ropa',             descripcion: 'Entregas de ropa por categoría',        icono: '👕', orden: 6 },
   prestamos:       { key: 'prestamos',       label: 'Préstamos',        descripcion: 'Adelantos y descuentos',                icono: '💸', orden: 7 },
-  configuracion:   { key: 'configuracion',   label: 'Configuración',    descripcion: 'Categorías, tarifas, cat. obra',        icono: '⚙️', orden: 8 },
+  configuracion:   { key: 'configuracion',   label: 'Categorías y tarifas', descripcion: 'Valor hora global por categoría',   icono: '⚙️', orden: 8 },
   flota:           { key: 'flota',           label: 'Flota CADINC',     descripcion: 'Vehículos internos (autos, camionetas)', icono: '🚙', orden: 9 },
   admin:           { key: 'admin',           label: 'Administración',   descripcion: 'Usuarios, permisos y auditoría',        icono: '⚙', orden: 0, noAsignable: true },
 }

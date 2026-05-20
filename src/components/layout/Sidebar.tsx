@@ -109,7 +109,7 @@ const NAV_ITEMS_TARJA = [
   { href: '/tarja/ropa',       icon: '👕', label: 'Ropa de trabajo',    meta: 'Control de entregas',         exact: false, tabKey: 'ropa'             },
   { href: '/personal',         icon: '👷', label: 'Personal',           meta: 'Gestión de nómina',           exact: false, tabKey: 'personal'         },
   { href: '/tarja/costos',     icon: '📊', label: 'Costos',              meta: 'Operarios y contratistas',    exact: false, tabKey: 'costos'           },
-  { href: '/configuracion',    icon: '⚙️', label: 'Configuración',      meta: 'Categorías y tarifas',        exact: false, tabKey: 'configuracion'    },
+  { href: '/configuracion',    icon: '⚙️', label: 'Categorías y tarifas', meta: 'Valor hora por categoría',  exact: false, tabKey: 'configuracion'    },
   { href: '/tarja/archivadas', icon: '📦', label: 'Obras archivadas',   meta: 'Historial de obras',          exact: true,  tabKey: 'archivadas'       },
 ]
 

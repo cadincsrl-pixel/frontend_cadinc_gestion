@@ -16,7 +16,7 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
     { key: 'ropa',             label: 'Ropa de trabajo',    icon: '👕' },
     { key: 'personal',         label: 'Personal',           icon: '👷' },
     { key: 'costos',           label: 'Costos',             icon: '📊' },
-    { key: 'configuracion',    label: 'Configuración',      icon: '⚙️' },
+    { key: 'configuracion',    label: 'Categorías y tarifas', icon: '⚙️' },
     { key: 'archivadas',       label: 'Obras archivadas',   icon: '📦' },
   ],
   logistica: [
