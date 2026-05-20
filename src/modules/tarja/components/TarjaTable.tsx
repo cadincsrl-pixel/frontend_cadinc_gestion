@@ -8,6 +8,7 @@ import { useQuitarDeSemana } from '../hooks/useAsignaciones'
 import { useCatObraSemana, useSetCatObra } from '../hooks/useCatObra'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import { usePermisos } from '@/hooks/usePermisos'
+import { useSessionStore } from '@/store/session.store'
 import { getSemDays, toISO, esFinde, esJueves, esHoy, DIAS } from '@/lib/utils/dates'
 import { costoLeg, getVHenFecha, getTarifaEnFecha, fmtMonto, getHsExtrasLeg } from '@/lib/utils/costos'
 import { useToast } from '@/components/ui/Toast'
@@ -38,10 +39,14 @@ function getHoraClass(h: number): string {
 export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoStateChange, readonly = false }: Props) {
   const { semActual } = useTarjaStore()
   const toast = useToast()
-  const { puedeEditar, puedeEliminar, verCostos, soloCargaHoras, esCapataz } = usePermisos('tarja')
-  // Capataz: ni cambiar categoría, ni hs extras, ni costos.
-  const puedeCambiarCategoria = puedeEditar && !soloCargaHoras
-  const verHsExtras = !soloCargaHoras
+  const { puedeEditar, puedeEliminar, verCostos, esCapataz } = usePermisos('tarja')
+  // Vista restringida (scope='asignadas' y no es admin): el user solo carga
+  // horas; ni cambia categoría, ni ve hs extras, ni costos.
+  const scopeAsignadas = useSessionStore(s =>
+    s.profile?.rol !== 'admin' && s.profile?.obras_scope === 'asignadas'
+  )
+  const puedeCambiarCategoria = puedeEditar && !scopeAsignadas
+  const verHsExtras = !scopeAsignadas
   const days = getSemDays(semActual)
   // Fecha de hoy en horario Argentina (YYYY-MM-DD). Para capataces el único
   // día editable es éste — el resto queda read-only aunque sea de la semana
@@ -247,7 +252,7 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
     return (
       <div className="bg-white rounded-card shadow-card p-8 text-center text-gris-dark">
         <p className="font-semibold text-azul mb-1">No hay trabajadores en esta semana</p>
-        {soloCargaHoras ? (
+        {scopeAsignadas ? (
           <p className="text-sm">Pedile al administrativo que asigne personal a esta obra.</p>
         ) : (
           <p className="text-sm">Agregá trabajadores o copiá la semana anterior.</p>

@@ -16,6 +16,7 @@ import { exportarCSVResumenObras } from '@/lib/utils/excel'
 import { useToast } from '@/components/ui/Toast'
 import { useUIStore } from '@/store/ui.store'
 import { usePermisos } from '@/hooks/usePermisos'
+import { useSessionStore } from '@/store/session.store'
 import { getViernes, getSemDays, toISO } from '@/lib/utils/dates'
 import type { Categoria, Certificacion, Cierre, Contratista, Hora, Personal, Tarifa } from '@/types/domain.types'
 
@@ -33,7 +34,12 @@ const SORT_STORAGE_KEY = 'tarja:obras:sort'
 export function TarjaResumenPage() {
   const router = useRouter()
   const toast = useToast()
-  const { puedeAdministrarObras, soloCargaHoras, verPii } = usePermisos('tarja')
+  const { puedeAdministrarObras, verPii } = usePermisos('tarja')
+  // Vista restringida (scope='asignadas' y no es admin): solo ve obras asignadas
+  // y la semana actual; sin export, sin cierre semanal, sin tarifas.
+  const scopeAsignadas = useSessionStore(s =>
+    s.profile?.rol !== 'admin' && s.profile?.obras_scope === 'asignadas'
+  )
   const { data: obras = [], isLoading } = useObras('tarja')
   const perfiles = usePerfilesMap()
   const [modalObra, setModalObra] = useState(false)
@@ -163,7 +169,7 @@ export function TarjaResumenPage() {
     // Capataz (solo_carga_horas) no tiene acciones globales: ni Excel, ni
     // Recibos, ni CSV. No registramos el callback para que el Topbar no
     // muestre los botones aunque por algún motivo intente leerlo.
-    if (soloCargaHoras) {
+    if (scopeAsignadas) {
       setTopbarAccion(null)
       return
     }
@@ -182,7 +188,7 @@ export function TarjaResumenPage() {
     })
 
     return () => setTopbarAccion(null)
-  }, [obrasFiltradas, setTopbarAccion, toast, todasHoras, soloCargaHoras])
+  }, [obrasFiltradas, setTopbarAccion, toast, todasHoras, scopeAsignadas])
 
   function fmtFecha(fecha: string | null): string {
     if (!fecha) return 'Sin actividad'
@@ -221,7 +227,7 @@ export function TarjaResumenPage() {
               {obras.length} obra{obras.length !== 1 ? 's' : ''} en curso
             </p>
           </div>
-          {puedeAdministrarObras && !soloCargaHoras && (
+          {puedeAdministrarObras && !scopeAsignadas && (
             <Button variant="primary" size="sm" onClick={() => setModalObra(true)}>
               ＋ Nueva obra
             </Button>
@@ -279,7 +285,7 @@ export function TarjaResumenPage() {
       </div>
 
       {/* Stats generales — ocultas para capataz (no necesita agregados) */}
-      {!soloCargaHoras && (
+      {!scopeAsignadas && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="bg-white rounded-card shadow-card p-3 text-center">
             <div className="font-mono text-2xl font-bold text-azul">{obras.length}</div>
@@ -364,7 +370,7 @@ export function TarjaResumenPage() {
                         👷 {obra.resp}
                       </span>
                     )}
-                    {!soloCargaHoras && (
+                    {!scopeAsignadas && (
                       <>
                         <div className="flex items-center gap-3 text-right">
                           <div>

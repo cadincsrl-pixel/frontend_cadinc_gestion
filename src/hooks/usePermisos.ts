@@ -20,21 +20,11 @@ export function usePermisos(modulo: string) {
 
   // Capacidad: true = el user la tiene. Admin siempre true (bypass).
   // Capacidades v3: ver_costos, ver_pii, resolver_items, forzar_despacho,
-  // administrar_obras. vista_completa y solo_carga_horas fueron eliminadas.
+  // aprobar_ajustes_stock, administrar_obras.
   const flagCapacidad = (key: string, defaultValue: boolean = false): boolean => {
     if (profile?.rol === 'admin') return true
     return rawFlag(key, defaultValue)
   }
-
-  // vistaCompleta y soloCargaHoras se mantienen como props derivadas para no
-  // romper consumers. La fuente de verdad ahora es `profile.obras_scope`:
-  //   - scope='todas'    → vistaCompleta=true (ve cierres/tarifas/etc)
-  //   - scope='asignadas' → vistaCompleta=false (vista capataz / cargas propias)
-  const vistaCompleta = (() => {
-    if (profile?.rol === 'admin') return true
-    if (!profile) return true
-    return profile.obras_scope !== 'asignadas'
-  })()
 
   // Identidad estructural: el usuario es capataz puro (rol_base='capataz').
   // Útil para reglas específicas como "solo carga hoy".
@@ -48,12 +38,10 @@ export function usePermisos(modulo: string) {
     puedeEliminar: canDo(modulo, 'eliminacion'),
     verCostos:       flagCapacidad('ver_costos', true),       // back-compat: ve costos por default
     verPii:          flagCapacidad('ver_pii', true),          // back-compat: ve PII por default
-    vistaCompleta,
     resolverItems:        flagCapacidad('resolver_items', false),
     forzarDespacho:       flagCapacidad('forzar_despacho', false),
     aprobarAjustesStock:  flagCapacidad('aprobar_ajustes_stock', false),
     puedeAdministrarObras: flagCapacidad('administrar_obras', false),
-    soloCargaHoras:  !vistaCompleta,
     esCapataz,
     esAdmin:         profile?.rol === 'admin',
   }

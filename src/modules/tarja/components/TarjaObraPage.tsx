@@ -33,6 +33,7 @@ import type { Hora, Tarifa, Cierre, Certificacion } from '@/types/domain.types'
 import { useEffect } from 'react'
 import { useUIStore } from '@/store/ui.store'
 import { usePermisos } from '@/hooks/usePermisos'
+import { useSessionStore } from '@/store/session.store'
 import { useSearchParams } from 'next/navigation'
 
 interface Props {
@@ -41,7 +42,12 @@ interface Props {
 
 export function TarjaObraPage({ obraCod }: Props) {
   const toast = useToast()
-  const { puedeEditar, puedeCrear, puedeAdministrarObras, verCostos, soloCargaHoras } = usePermisos('tarja')
+  const { puedeEditar, puedeCrear, puedeAdministrarObras, verCostos } = usePermisos('tarja')
+  // Vista restringida (scope='asignadas' y no es admin): solo carga horas en
+  // la semana actual, sin acceso a tarifas/cierres/edición fuera de hoy.
+  const scopeAsignadas = useSessionStore(s =>
+    s.profile?.rol !== 'admin' && s.profile?.obras_scope === 'asignadas'
+  )
   // Modo "solo lectura" para roles supervisores (jefe_obra_supervisor):
   // ven la tabla y pueden navegar pero no editan. Ocultamos las secciones
   // de gestión que les son irrelevantes.
@@ -62,7 +68,7 @@ export function TarjaObraPage({ obraCod }: Props) {
 
   useEffect(() => {
     // Capataz: forzar semana actual y bloquear navegación por ?sem=.
-    if (soloCargaHoras) {
+    if (scopeAsignadas) {
       setSemActual(getViernes(new Date()))
       return
     }
@@ -70,7 +76,7 @@ export function TarjaObraPage({ obraCod }: Props) {
     if (semParam && /^\d{4}-\d{2}-\d{2}$/.test(semParam)) {
       setSemActual(new Date(semParam + 'T12:00:00'))
     }
-  }, [searchParams, setSemActual, soloCargaHoras])
+  }, [searchParams, setSemActual, scopeAsignadas])
 
 
   const days = getSemDays(semActual)
@@ -145,7 +151,7 @@ export function TarjaObraPage({ obraCod }: Props) {
 
   useEffect(() => {
     // Capataz y supervisores solo-lectura no ven Excel/Recibos/CSV en el topbar.
-    if (soloCargaHoras || soloLectura) {
+    if (scopeAsignadas || soloLectura) {
       setTopbarAccion(null)
       return
     }
@@ -155,7 +161,7 @@ export function TarjaObraPage({ obraCod }: Props) {
       if (accion === 'csv') handleCSV()
     })
     return () => setTopbarAccion(null)
-  }, [obra, personal, horasData, tarifas, soloCargaHoras, soloLectura])
+  }, [obra, personal, horasData, tarifas, scopeAsignadas, soloLectura])
 
   // ── Totales semana (incluye hs extras + cat_obra) ──
   // Mismo criterio canónico que footer de TarjaTable y ResumenHistoricoPage.
@@ -301,7 +307,7 @@ export function TarjaObraPage({ obraCod }: Props) {
           <p className="text-sm text-gris-dark mt-1">
             {[obra.cod, obra.dir, obra.resp].filter(Boolean).join(' · ')}
           </p>
-          {!soloCargaHoras && (
+          {!scopeAsignadas && (
             <AuditInfo
               createdBy={obra.created_by}
               updatedBy={obra.updated_by}
@@ -321,7 +327,7 @@ export function TarjaObraPage({ obraCod }: Props) {
             <Chip value={desde} label="Período" variant="orange" />
           </div>
           {/* Acciones — solo en obras activas y para usuarios distintos al capataz */}
-          {puedeAdministrarObras && !archivada && !soloCargaHoras && (
+          {puedeAdministrarObras && !archivada && !scopeAsignadas && (
             <div className="flex items-center gap-1 flex-wrap">
               <Button variant="ghost" size="sm" onClick={() => setModalEditarObra(true)}>
                 ✏️ Editar
@@ -332,7 +338,7 @@ export function TarjaObraPage({ obraCod }: Props) {
       </div>
 
       {/* ── Toolbar — solo en obras activas y para usuarios con permisos de edición ── */}
-      {!archivada && !soloCargaHoras && !soloLectura && (
+      {!archivada && !scopeAsignadas && !soloLectura && (
         <ToolbarTarja
           personal={personal}
           categorias={categorias}
@@ -367,9 +373,9 @@ export function TarjaObraPage({ obraCod }: Props) {
       />
 
       {/* ── Tarifas / Contratistas / Cierres — ocultos para capataz y supervisores solo-lectura ── */}
-      {!soloCargaHoras && !soloLectura && <TarifasPanel obraCod={obraCod} readonly={archivada} />}
-      {!soloCargaHoras && !soloLectura && <ContratistasPanel obraCod={obraCod} readonly={archivada} />}
-      {!soloCargaHoras && !soloLectura && !archivada && <CierresSection obraCod={obraCod} />}
+      {!scopeAsignadas && !soloLectura && <TarifasPanel obraCod={obraCod} readonly={archivada} />}
+      {!scopeAsignadas && !soloLectura && <ContratistasPanel obraCod={obraCod} readonly={archivada} />}
+      {!scopeAsignadas && !soloLectura && !archivada && <CierresSection obraCod={obraCod} />}
 
       {/* ── Modales ── */}
       <ModalAgregarTrabajador
