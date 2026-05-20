@@ -121,8 +121,24 @@ Esquema: `permisos: { modulo: { lectura, creacion, actualizacion, eliminacion, t
 ### 5.6 Auditoría automática
 `auditMiddleware` del backend corre **después** de la respuesta. Solo loguea POST/PATCH/PUT/DELETE con status 2xx. Extrae entidad/acción de la ruta. **No escribir auditoría manual en handlers**, ya está cubierta.
 
-### 5.7 Auto-archivo de obras
-`useObras()` dispara `POST /api/obras/auto-archivar` una vez cada 6h por navegador (localStorage). El backend usa la **RPC `obras_a_auto_archivar(p_dias_atras)`** que calcula del lado del servidor con `NOT EXISTS` contra `horas` y `certificaciones`. **No usar la lógica vieja con `.limit(N)` desde el cliente** — el cap de PostgREST (~1000) generaba archivados erróneos. Migración: `20260430_rpc_obras_auto_archivar.sql`.
+### 5.7 Hard cap PostgREST (1000 rows) + cuándo usar RPC
+El servidor PostgREST de Supabase impone un **cap duro de 1000 rows por response que NO se bypassea desde el cliente**. Pasar `.range(0, 99999)` o header `Range: 0-99999` parece arreglarlo pero el server recorta igual (verificable: `content-range: 0-999/N`).
+
+**Síntoma típico**: un capataz/jefe-de-obra con muchas semanas cargadas (>1000 filas en `horas` para sus obras) deja de ver trabajadores recientes — el cap recorta los rows nuevos antes de que el backend los pase al filter.
+
+**Regla**: cualquier query Supabase de la forma
+```ts
+supabase.from('X').select(...).in('obra_cod', allowed)
+```
+sobre una tabla que **puede crecer >1000 rows totales en las obras del usuario** debe ir vía **RPC con `RETURNS SETOF X`** o con DISTINCT/agregación server-side.
+
+**RPCs vivas para este patrón** (todas en migración `20260520_rpcs_de_obras.sql` salvo la primera):
+- `legs_de_obras(text[])` — DISTINCT de legs en `horas+asignaciones` (`20260520_rpc_legs_de_obras.sql`)
+- `asignaciones_de_obras(text[])` · `cierres_de_obras(text[])` · `hs_extras_de_obras(text[])`
+- `certificaciones_de_obras(text[])` · `tarifas_de_obras(text[])` · `cat_obra_de_obras(text[])`
+- `rutas_de_canteras_depositos(int[], int[])` — doble filtro
+
+Caso histórico: 2026-05-20 — Candela (jefe_obra, 1705 filas en sus obras) no veía 5 trabajadores. Fix con `legs_de_obras`. La feature de auto-archivado de obras se eliminó el mismo día.
 
 ### 5.8 Stock en proveedor (compras pendientes de retiro)
 Cuando se compra un material y queda físicamente en el galpón del proveedor (no llega a CADINC ni a la obra todavía), se marca como `en_proveedor`:
