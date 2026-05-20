@@ -435,18 +435,55 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                           key={`${p.leg}-${fecha}-${h}`}
                           defaultValue={h || ''}
                           readOnly={!celdaEditable}
+                          data-tarja-leg={p.leg}
+                          data-tarja-day={i}
                           // Evitar cambios por accidente cuando el usuario
                           // hace scroll con la rueda del mouse sobre la celda.
                           onWheel={e => (e.currentTarget as HTMLInputElement).blur()}
                           onBlur={celdaEditable ? e => handleChange(p.leg, fecha, e.target.value, h) : undefined}
                           onKeyDown={celdaEditable ? e => {
+                            const el = e.target as HTMLInputElement
                             if (e.key === 'Enter') {
-                              const antes = h
-                              handleChange(p.leg, fecha, (e.target as HTMLInputElement).value, antes)
-                              const inputs = document.querySelectorAll<HTMLInputElement>('input[type="number"]')
-                              const idx = Array.from(inputs).indexOf(e.target as HTMLInputElement)
-                              inputs[idx + 1]?.focus()
+                              handleChange(p.leg, fecha, el.value, h)
+                              const next = document.querySelector<HTMLInputElement>(
+                                `input[data-tarja-leg="${p.leg}"][data-tarja-day="${i + 1}"]`
+                              )
+                              next?.focus()
+                              return
                             }
+                            // Navegación con flechas. ↑/↓ saltan a la misma columna
+                            // del trabajador anterior/siguiente; ←/→ saltan al día
+                            // anterior/siguiente del mismo trabajador. Antes de
+                            // mover el foco, commiteamos el valor (igual que onBlur).
+                            const arrows: Record<string, [string, number] | undefined> = {
+                              ArrowUp:    ['leg-prev', i],
+                              ArrowDown:  ['leg-next', i],
+                              ArrowLeft:  ['same-leg', i - 1],
+                              ArrowRight: ['same-leg', i + 1],
+                            }
+                            const move = arrows[e.key]
+                            if (!move) return
+                            // Inputs de horas son números cortos (1-3 chars);
+                            // ←/→ siempre saltan de celda en vez de mover el caret.
+                            e.preventDefault()
+                            handleChange(p.leg, fecha, el.value, h)
+                            const [direction, targetDay] = move
+                            let selector: string
+                            if (direction === 'same-leg') {
+                              selector = `input[data-tarja-leg="${p.leg}"][data-tarja-day="${targetDay}"]`
+                            } else {
+                              // Buscar todos los inputs por leg y elegir el anterior/siguiente.
+                              const allLegs = Array.from(document.querySelectorAll<HTMLInputElement>(
+                                `input[data-tarja-day="${i}"]`
+                              ))
+                              const here = allLegs.findIndex(x => x.dataset.tarjaLeg === p.leg)
+                              const targetIdx = direction === 'leg-prev' ? here - 1 : here + 1
+                              const target = allLegs[targetIdx]
+                              if (target) { target.focus(); target.select() }
+                              return
+                            }
+                            const target = document.querySelector<HTMLInputElement>(selector)
+                            if (target) { target.focus(); target.select() }
                           } : undefined}
                           className={`
                               w-14 h-8 border-[1.5px] rounded-md
