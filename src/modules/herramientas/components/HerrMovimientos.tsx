@@ -63,6 +63,27 @@ const MOV_CAMPOS: Record<string, { origen: boolean; destino: boolean }> = {
   baja: { origen: true, destino: false },
 }
 
+// Cuando el join de obra no resuelve (archivada/renombrada), mostramos el cod
+// literal en cursiva gris con tooltip explicativo. El cod sigue siendo info útil
+// para el auditor aunque la obra ya no exista en `obras`.
+function renderObraCell(
+  obra: { cod: string; nom: string } | null | undefined,
+  cod: string | null | undefined,
+) {
+  if (obra?.nom) return obra.nom
+  if (cod) {
+    return (
+      <span
+        className="italic text-gris-mid"
+        title="Obra no encontrada (probablemente archivada o renombrada)"
+      >
+        [{cod}]
+      </span>
+    )
+  }
+  return '—'
+}
+
 export function HerrMovimientos() {
   const toast = useToast()
   const { puedeCrear } = usePermisos('herramientas')
@@ -482,8 +503,8 @@ export function HerrMovimientos() {
           </div>
         )}
 
-        {/* Responsable + Obs + Fecha */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {/* Responsable + Obs */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <Combobox
             label="Responsable"
             placeholder="Buscar operario o usuario..."
@@ -516,16 +537,33 @@ export function HerrMovimientos() {
               className="px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja transition-colors"
             />
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Fecha (opcional)</label>
+        </div>
+
+        {/* Fecha opcional — colapsada por defecto. Si vacío, el backend usa now(). */}
+        <details className="group" {...(fechaManual ? { open: true } : {})}>
+          <summary className="cursor-pointer text-xs text-gris-dark hover:text-carbon inline-flex items-center gap-1.5 select-none list-none">
+            <span className="group-open:rotate-90 transition-transform inline-block">▸</span>
+            <span>Cambiar fecha del movimiento</span>
+            <span className="text-gris-mid">(por defecto: ahora)</span>
+          </summary>
+          <div className="mt-2 flex items-center gap-2">
             <input
               type="datetime-local"
               value={fechaManual}
               onChange={e => setFechaManual(e.target.value)}
               className="px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja transition-colors"
             />
+            {fechaManual && (
+              <button
+                type="button"
+                onClick={() => setFechaManual('')}
+                className="text-xs text-gris-dark hover:text-carbon px-2 py-1 rounded hover:bg-gris"
+              >
+                ✕ Volver a ahora
+              </button>
+            )}
           </div>
-        </div>
+        </details>
 
         <div className="flex justify-end pt-2 border-t border-gris">
           <Button
@@ -705,7 +743,9 @@ export function HerrMovimientos() {
                 </tr>
               ) : (
                 movFiltrados.map(m => {
-                  const hasObras = !!(m.obra_origen?.nom || m.obra_destino?.nom)
+                  // hasObras chequea el cod (no el nom resuelto) para que las filas
+                  // con obras archivadas/renombradas no se colapsen.
+                  const hasObras = !!(m.obra_origen_cod || m.obra_destino_cod)
                   // marca/modelo no vienen joineados en el movimiento — los traemos del cache.
                   const herrCache = herramientas.find(h => h.id === m.herramienta_id)
                   const marcaModelo = [herrCache?.marca, herrCache?.modelo].filter(Boolean).join(' · ')
@@ -729,18 +769,25 @@ export function HerrMovimientos() {
                     {hasObras ? (
                       <>
                         <td className="px-4 py-3 text-sm text-gris-dark">
-                          {m.obra_origen?.nom ?? '—'}
+                          {renderObraCell(m.obra_origen, m.obra_origen_cod)}
                         </td>
                         <td className="px-4 py-3 text-naranja font-bold">→</td>
                         <td className="px-4 py-3 text-sm text-gris-dark">
-                          {m.obra_destino?.nom ?? '—'}
+                          {renderObraCell(m.obra_destino, m.obra_destino_cod)}
                         </td>
                       </>
                     ) : (
                       <td colSpan={3} className="px-4 py-3 text-center text-gris-dark">—</td>
                     )}
                     <td className="px-4 py-3 text-sm text-gris-dark">
-                      {m.responsable || '—'}
+                      {m.responsable
+                        ? (
+                          <span className="inline-flex items-center gap-1.5">
+                            <span className="text-gris-mid">{m.responsable === 'Sistema' ? '⚙' : '👤'}</span>
+                            <span className={m.responsable === 'Sistema' ? 'italic' : ''}>{m.responsable}</span>
+                          </span>
+                        )
+                        : '—'}
                     </td>
                     <td
                       className="px-4 py-3 text-sm text-gris-dark max-w-[150px] truncate"
@@ -782,7 +829,7 @@ export function HerrMovimientos() {
             </div>
           ) : (
             movFiltrados.map(m => {
-              const hasObras = !!(m.obra_origen?.nom || m.obra_destino?.nom)
+              const hasObras = !!(m.obra_origen_cod || m.obra_destino_cod)
               const herrCache = herramientas.find(h => h.id === m.herramienta_id)
               const marcaModelo = [herrCache?.marca, herrCache?.modelo].filter(Boolean).join(' · ')
               return (
@@ -801,15 +848,20 @@ export function HerrMovimientos() {
                 </div>
                 {hasObras && (
                   <div className="flex items-center gap-2 text-xs flex-wrap">
-                    <span className="text-gris-dark">{m.obra_origen?.nom ?? '—'}</span>
+                    <span className="text-gris-dark">{renderObraCell(m.obra_origen, m.obra_origen_cod)}</span>
                     <span className="text-naranja font-bold">→</span>
-                    <span className="text-azul font-semibold">{m.obra_destino?.nom ?? '—'}</span>
+                    <span className="text-azul font-semibold">{renderObraCell(m.obra_destino, m.obra_destino_cod)}</span>
                   </div>
                 )}
                 <div className="flex items-center justify-between gap-2 text-[11px] text-gris-dark pt-1 border-t border-gris">
                   <span className="font-mono">{fmtFecha(m.fecha)}</span>
                   <div className="flex items-center gap-2">
-                    {m.responsable && <span className="truncate">👤 {m.responsable}</span>}
+                    {m.responsable && (
+                      <span className={`truncate inline-flex items-center gap-1 ${m.responsable === 'Sistema' ? 'italic' : ''}`}>
+                        <span className="text-gris-mid">{m.responsable === 'Sistema' ? '⚙' : '👤'}</span>
+                        {m.responsable}
+                      </span>
+                    )}
                     {hasObras && (
                       <button
                         onClick={() => reimprimirRemito(m)}
