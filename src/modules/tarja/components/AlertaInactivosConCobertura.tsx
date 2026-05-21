@@ -41,6 +41,9 @@ export function AlertaInactivosConCobertura({ personal, horas }: Props) {
     )
 
     return personal.filter(p => {
+      // Mensualizados nunca cargan horas → la regla "sin horas en 3 sem"
+      // los marcaría siempre como inactivos. Quedan fuera de la alerta.
+      if (p.modalidad === 'mes') return false
       const tieneCobertura = p.condicion === 'blanco' || p.condicion === 'asegurado'
       if (!tieneCobertura) return false
       // ¿Está inactivo según la regla esActivo invertida?

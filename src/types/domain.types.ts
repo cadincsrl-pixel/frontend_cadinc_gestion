@@ -52,11 +52,14 @@ export interface CatHistorial {
   desde: string
 }
 
+export type PersonalModalidad = 'hora' | 'mes'
+
 export interface Personal extends AuditFields {
   leg: string
   nom: string
   dni: string | null
   condicion: 'blanco' | 'asegurado' | null
+  modalidad: PersonalModalidad
   cat_id: number
   tel: string | null
   dir: string | null
@@ -74,6 +77,7 @@ export interface CreatePersonalDto {
   nom: string
   dni?: string
   condicion?: 'blanco' | 'asegurado'
+  modalidad?: PersonalModalidad
   cat_id: number
   tel?: string
   dir?: string
@@ -88,6 +92,7 @@ export interface UpdatePersonalDto {
   nom?: string
   dni?: string
   condicion?: 'blanco' | 'asegurado' | null
+  modalidad?: PersonalModalidad
   cat_id?: number
   tel?: string
   dir?: string

@@ -19,6 +19,7 @@ const schema = z.object({
   nom:             z.string().min(1, 'El nombre es requerido'),
   dni:             z.string().optional(),
   condicion:       z.enum(['blanco', 'asegurado', '']).optional(),
+  modalidad:       z.enum(['hora', 'mes']).optional(),
   cat_id:          z.coerce.number().min(1, 'Seleccioná una categoría'),
   tel:             z.string().optional(),
   dir:             z.string().optional(),
@@ -54,6 +55,7 @@ export function ModalEditarTrabajador({ open, onClose, trabajador }: Props) {
         nom:             trabajador.nom,
         dni:             trabajador.dni ?? '',
         condicion:       trabajador.condicion ?? '',
+        modalidad:       trabajador.modalidad ?? 'hora',
         cat_id:          trabajador.cat_id,
         tel:             trabajador.tel ?? '',
         dir:             trabajador.dir ?? '',
@@ -152,6 +154,19 @@ export function ModalEditarTrabajador({ open, onClose, trabajador }: Props) {
             ]}
             {...register('condicion')}
           />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Select
+            label="Modalidad de liquidación"
+            options={[
+              { value: 'hora', label: 'Por hora' },
+              { value: 'mes',  label: 'Mensualizado' },
+            ]}
+            {...register('modalidad')}
+          />
+          <p className="text-[11px] text-gris-dark">
+            Mensualizados no cargan horas en tarja y quedan fuera de la alerta de inactivos.
+          </p>
         </div>
         <Select
           label="Categoría"
