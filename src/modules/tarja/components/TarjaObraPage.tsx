@@ -42,7 +42,7 @@ interface Props {
 
 export function TarjaObraPage({ obraCod }: Props) {
   const toast = useToast()
-  const { puedeEditar, puedeCrear, puedeAdministrarObras, verCostos } = usePermisos('tarja')
+  const { puedeEditar, puedeCrear, puedeAdministrarObras, verCostos, esJefeObra } = usePermisos('tarja')
   // Vista restringida (scope='asignadas' y no es admin): solo carga horas en
   // la semana actual, sin acceso a tarifas/cierres/edición fuera de hoy.
   const scopeAsignadas = useSessionStore(s =>
@@ -352,6 +352,18 @@ export function TarjaObraPage({ obraCod }: Props) {
           undoCount={undoState.count}
           onUndo={undoState.fn ?? undefined}
         />
+      )}
+
+      {/* ── Jefes de obra: botón suelto "+ Trabajador" ──
+          La toolbar completa queda oculta porque scope='asignadas' implica
+          vista restringida (sin auto-fill, limpiar, tarifas, etc.), pero
+          sí pueden sumar un legajo existente a la semana de su obra. */}
+      {!archivada && scopeAsignadas && esJefeObra && puedeCrear && (
+        <div className="flex justify-end">
+          <Button variant="primary" size="sm" onClick={() => setModalTrab(true)}>
+            ＋ Trabajador
+          </Button>
+        </div>
       )}
 
       {/* ── WeekNavigator suelto para supervisores solo-lectura ──
