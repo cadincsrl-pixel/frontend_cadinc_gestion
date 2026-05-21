@@ -72,7 +72,7 @@ export function AlertaInactivosConCobertura({ personal, horas }: Props) {
           <div className="font-bold text-naranja-dark">{titulo}</div>
           <div className="text-[11px] text-naranja-dark/80">
             Sin horas en las últimas 3 semanas, pero todavía en blanco o asegurado.
-            CADINC puede estar pagando cobertura al pedo. Click para ver el detalle.
+            Click para ver el detalle.
           </div>
         </div>
         <span className={`text-xs text-naranja-dark font-bold transition-transform ${expandido ? 'rotate-180' : ''}`}>

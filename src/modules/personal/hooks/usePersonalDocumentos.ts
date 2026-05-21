@@ -15,6 +15,19 @@ export function usePersonalDocumentos(leg: string) {
   })
 }
 
+/**
+ * Resumen global: legs que tienen al menos 1 documento de cada tipo.
+ * Usado por banners que detectan papelitos pendientes (ej. AlertaDniFaltante).
+ * Devuelve un Record `tipo → legs[]`. Tipos sin documentos no aparecen como key.
+ */
+export function useResumenDocumentos() {
+  return useQuery({
+    queryKey: [...PERSONAL_DOCS_KEY, 'resumen'],
+    queryFn:  () => apiGet<Record<PersonalDocTipo, string[]>>('/api/personal/documentos/resumen'),
+    staleTime: 60_000,
+  })
+}
+
 // ── Upload flow ──────────────────────────────────────────────────
 //
 // 1. POST /upload-url → recibe signed upload URL + path.

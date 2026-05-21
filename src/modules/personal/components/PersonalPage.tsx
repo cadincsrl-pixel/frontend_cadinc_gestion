@@ -25,6 +25,7 @@ import { AuditInfo } from '@/components/ui/AuditInfo'
 import { useToast } from '@/components/ui/Toast'
 import { useForm } from 'react-hook-form'
 import { usePermisos } from '@/hooks/usePermisos'
+import { AlertaDniFaltante } from './AlertaDniFaltante'
 import type { Personal, Contratista } from '@/types/domain.types'
 
 type Tab = 'personal' | 'contratistas'
@@ -263,6 +264,15 @@ export function PersonalPage() {
   return (
     <div className="p-4 md:p-6 flex flex-col gap-4">
       <TarjaTopbarActions />
+
+      {/* Alerta amarilla: activos sin DNI subido. Solo en el tab Personal. */}
+      {tab === 'personal' && (
+        <AlertaDniFaltante
+          personal={personal}
+          horas={todasHoras}
+          onSelect={p => setEditando(p)}
+        />
+      )}
 
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
