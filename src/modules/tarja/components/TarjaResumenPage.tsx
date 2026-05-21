@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import { ModalNuevaObra } from './ModalNuevaObra'
 import { AlertaSinCobertura } from './AlertaSinCobertura'
+import { AlertaInactivosConCobertura } from './AlertaInactivosConCobertura'
 import { ModalExcelObras } from './ModalExcelObras'
 import { ModalRecibos } from './ModalRecibos'
 import { useQuery } from '@tanstack/react-query'
@@ -208,12 +209,14 @@ export function TarjaResumenPage() {
   return (
     <div className="p-4 md:p-6 flex flex-col gap-4">
 
-      {/* Alerta de gente sin cobertura trabajando esta semana.
-          Se muestra solo si el user tiene ver_pii (admin / administrativo /
-          jefe_obra con addon); capataces no la ven para no exponerles datos
-          que no manejan. Si no hay matches, el componente no renderiza nada. */}
+      {/* Alertas de Personal — solo para users con ver_pii.
+          1. Sin cobertura trabajando esta semana (rojo, riesgo legal).
+          2. Inactivos con cobertura activa (naranja, sangrado financiero). */}
       {verPii && (
-        <AlertaSinCobertura personal={todoPersonal} horas={todasHoras} />
+        <>
+          <AlertaSinCobertura personal={todoPersonal} horas={todasHoras} />
+          <AlertaInactivosConCobertura personal={todoPersonal} horas={todasHoras} />
+        </>
       )}
 
       {/* Header */}
