@@ -79,7 +79,7 @@ export function AlertaSinCobertura({ personal, horas }: Props) {
                 )}
               </div>
               <Link
-                href={`/tarja?tab=personal&leg=${encodeURIComponent(p.leg)}`}
+                href={`/personal?leg=${encodeURIComponent(p.leg)}`}
                 className="text-[11px] font-bold px-2 py-1 rounded bg-rojo text-white hover:bg-rojo-dark transition-colors flex-shrink-0"
               >
                 Revisar

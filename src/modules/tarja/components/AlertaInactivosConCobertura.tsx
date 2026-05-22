@@ -100,7 +100,7 @@ export function AlertaInactivosConCobertura({ personal, horas }: Props) {
                   </div>
                 </div>
                 <Link
-                  href={`/tarja?tab=personal&leg=${encodeURIComponent(p.leg)}`}
+                  href={`/personal?leg=${encodeURIComponent(p.leg)}`}
                   className="text-[11px] font-bold px-2 py-1 rounded bg-naranja text-white hover:bg-naranja-dark transition-colors flex-shrink-0"
                 >
                   Revisar
