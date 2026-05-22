@@ -20,11 +20,12 @@ export function exportarTarjaExcel(
   categorias: Categoria[],
   horas: Hora[],
   tarifas: Tarifa[],
-  opts: { sinHoras?: boolean } = {},
+  opts: { sinHoras?: boolean; prestamos?: Prestamo[] } = {},
 ) {
-  const { sinHoras = false } = opts
+  const { sinHoras = false, prestamos = [] } = opts
   const wb = XLSX.utils.book_new()
   const days = getSemDays(semActual)
+  const semKey = toISO(getViernes(semActual))
 
   const fechaRow = ['', '', '', ...days.map(d => toISO(d)), '']
   const headerRow = [
@@ -76,6 +77,34 @@ export function exportarTarjaExcel(
   const ws2 = XLSX.utils.aoa_to_sheet(refRows)
   ws2['!cols'] = [{ wch: 26 }, { wch: 14 }]
   XLSX.utils.book_append_sheet(wb, ws2, 'Referencia')
+
+  // Hoja "Préstamos": solo movs de la semana del export. Se omite cuando es
+  // plantilla (sinHoras) porque la plantilla se reimporta y no debe arrastrar
+  // info administrativa.
+  if (!sinHoras) {
+    const prestamosSemana = prestamos
+      .filter(p => p.sem_key === semKey)
+      .map(p => {
+        const nom = personal.find(per => per.leg === p.leg)?.nom ?? '—'
+        const tipo = p.tipo === 'otorgado' ? 'Otorgado' : 'Descontado'
+        const fecha = p.created_at ? p.created_at.slice(0, 10) : ''
+        return [p.leg, nom, tipo, p.monto, p.concepto ?? '', fecha]
+      })
+
+    const prestamosRows: (string | number)[][] = [
+      [`PRÉSTAMOS — ${obraNom} (${obraCod}) — ${getSemLabel(semActual)}`],
+      [],
+      ['Legajo', 'Apellido y Nombre', 'Tipo', 'Monto', 'Concepto', 'Fecha'],
+      ...(prestamosSemana.length
+        ? prestamosSemana
+        : [['—', 'Sin movimientos de préstamos en esta semana', '', '', '', '']]),
+    ]
+    const ws3 = XLSX.utils.aoa_to_sheet(prestamosRows)
+    ws3['!cols'] = [
+      { wch: 8 }, { wch: 28 }, { wch: 12 }, { wch: 12 }, { wch: 30 }, { wch: 12 },
+    ]
+    XLSX.utils.book_append_sheet(wb, ws3, 'Préstamos')
+  }
 
   const prefijo = sinHoras ? 'Tarja_Plantilla' : 'Tarja'
   XLSX.writeFile(wb, `${prefijo}_${obraCod}_${toISO(semActual)}.xlsx`)

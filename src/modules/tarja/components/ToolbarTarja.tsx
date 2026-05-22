@@ -9,7 +9,9 @@ import { exportarTarjaExcel, importarTarjaExcel } from '@/lib/utils/excel'
 import { useUpsertHorasLote } from '../hooks/useHoras'
 import { useCopiarSemanaAnterior } from '../hooks/useAsignaciones'
 import { usePermisos } from '@/hooks/usePermisos'
-import type { Personal, Categoria, Hora, Tarifa, Obra } from '@/types/domain.types'
+import { createClient } from '@/lib/supabase/client'
+import { getViernes, toISO } from '@/lib/utils/dates'
+import type { Personal, Categoria, Hora, Tarifa, Obra, Prestamo } from '@/types/domain.types'
 
 interface Props {
   personal: Personal[]
@@ -74,11 +76,22 @@ export function ToolbarTarja({
     )
   }
 
-  function handleExportExcel() {
+  async function handleExportExcel() {
     if (!personal.length) { toast('No hay trabajadores asignados', 'warn'); return }
+    // Préstamos de los legs de la planilla, acotados a la semana del export.
+    // Fetch puntual en vez de hook global para no traer todos los movs.
+    const legs = personal.map(p => p.leg)
+    const semKey = toISO(getViernes(semActual))
+    const { data: prestamos, error } = await createClient()
+      .from('prestamos')
+      .select('*')
+      .in('leg', legs)
+      .eq('sem_key', semKey)
+    if (error) { toast(`No se pudo cargar préstamos: ${error.message}`, 'err'); return }
     exportarTarjaExcel(
       obraCod, obra.nom, semActual,
-      personal, categorias, horasData, tarifas
+      personal, categorias, horasData, tarifas,
+      { prestamos: (prestamos ?? []) as Prestamo[] },
     )
     toast('⬇ Excel exportado', 'ok')
   }
