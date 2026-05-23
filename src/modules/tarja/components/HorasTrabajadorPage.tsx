@@ -152,6 +152,29 @@ export function HorasTrabajadorPage() {
     )?.horas ?? 0
   }
 
+  // ── Obras con actividad en la semana actual (horas > 0 o hs extras > 0). ──
+  // El select del filtro las muestra solo a ellas; las obras sin movimientos
+  // esta semana no tienen sentido en el dropdown.
+  const obrasConHorasSemana = useMemo(() => {
+    const codsActivas = new Set<string>()
+    todasHoras.forEach(h => {
+      if (h.horas > 0 && h.fecha >= desde && h.fecha <= hasta) codsActivas.add(h.obra_cod)
+    })
+    todasHsExtras.forEach(e => {
+      if (e.hs > 0 && e.sem_key === semKey) codsActivas.add(e.obra_cod)
+    })
+    return obras.filter(o => codsActivas.has(o.cod))
+  }, [obras, todasHoras, todasHsExtras, desde, hasta, semKey])
+
+  // Si el filtro apunta a una obra que ya no tiene horas en la semana actual
+  // (típico al navegar a otra semana), reseteamos a "Todas" para evitar un
+  // select con valor "fantasma" que no aparece entre las opciones.
+  useEffect(() => {
+    if (filtroObra && !obrasConHorasSemana.some(o => o.cod === filtroObra)) {
+      setFiltroObra('')
+    }
+  }, [filtroObra, obrasConHorasSemana])
+
   // ── Filas: una por leg+obra ──
   const obrasTarget = useMemo(() => {
     return filtroObra ? obras.filter(o => o.cod === filtroObra) : obras
@@ -490,7 +513,7 @@ export function HorasTrabajadorPage() {
           className="px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white font-semibold focus:border-naranja"
         >
           <option value="">Todas las obras</option>
-          {obras.map(o => (
+          {obrasConHorasSemana.map(o => (
             <option key={o.cod} value={o.cod}>{o.nom}</option>
           ))}
         </select>
