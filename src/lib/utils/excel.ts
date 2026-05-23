@@ -254,6 +254,7 @@ export function exportarExcelObras(
   catObra: Array<{ obra_cod: string; leg: string; cat_id: number; desde: string }> = [],
   semHasta: string = '',
   hsExtras: TarjaHsExtra[] = [],
+  prestamos: Prestamo[] = [],
 ) {
   const wb = XLSX.utils.book_new()
   const hoy = new Date()
@@ -611,6 +612,42 @@ export function exportarExcelObras(
     { wch: 16 }, { wch: 22 }, { wch: 20 }, { wch: 40 },
   ]
   XLSX.utils.book_append_sheet(wb, ws4, 'Personal')
+
+  // ── HOJA 5: Préstamos ──
+  // Respeta el filtro de semanas del export. Ordenado por semana, luego nombre.
+  const prestRows: any[][] = [
+    [`PRÉSTAMOS${labelRango()}`],
+    [],
+    ['Legajo', 'Apellido y Nombre', 'Tipo', 'Monto', 'Concepto', 'Semana', 'Fecha'],
+  ]
+  const prestamosFiltrados = prestamos
+    .filter(p => semOk(p.sem_key))
+    .map(p => {
+      const nom = personal.find(per => per.leg === p.leg)?.nom ?? '—'
+      const tipo = p.tipo === 'otorgado' ? 'Otorgado' : 'Descontado'
+      const fecha = p.created_at ? p.created_at.slice(0, 10) : ''
+      return { leg: p.leg, nom, tipo, monto: p.monto, concepto: p.concepto ?? '', sem: p.sem_key, fecha }
+    })
+    .sort((a, b) => a.sem.localeCompare(b.sem) || a.nom.localeCompare(b.nom))
+
+  if (prestamosFiltrados.length) {
+    prestamosFiltrados.forEach(p => {
+      prestRows.push([p.leg, p.nom, p.tipo, p.monto, p.concepto, p.sem, p.fecha])
+    })
+  } else {
+    prestRows.push(['—', 'Sin movimientos de préstamos en el período seleccionado', '', '', '', '', ''])
+  }
+
+  const ws5 = XLSX.utils.aoa_to_sheet(prestRows)
+  // Formato moneda en columna Monto (D), desde fila 4 hasta el final
+  for (let r = 4; r <= 3 + prestamosFiltrados.length; r++) {
+    const cellRef = `D${r}`
+    if (ws5[cellRef]) ws5[cellRef].z = moneyFmt
+  }
+  ws5['!cols'] = [
+    { wch: 8 }, { wch: 28 }, { wch: 12 }, { wch: 14 }, { wch: 30 }, { wch: 14 }, { wch: 12 },
+  ]
+  XLSX.utils.book_append_sheet(wb, ws5, 'Préstamos')
 
   const sufijo = !skDesde
     ? ''

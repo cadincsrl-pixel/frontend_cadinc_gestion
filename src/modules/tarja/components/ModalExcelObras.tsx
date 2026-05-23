@@ -9,7 +9,8 @@ import { exportarExcelObras } from '@/lib/utils/excel'
 import { getVHConCatObra } from '@/lib/utils/costos'
 import { useToast } from '@/components/ui/Toast'
 import { getSemLabel, getViernes, toISO } from '@/lib/utils/dates'
-import type { Obra, Personal, Categoria, Hora, Tarifa, Cierre, Certificacion, Contratista } from '@/types/domain.types'
+import { createClient } from '@/lib/supabase/client'
+import type { Obra, Personal, Categoria, Hora, Tarifa, Cierre, Certificacion, Contratista, Prestamo } from '@/types/domain.types'
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api/client'
 import { useHsExtrasAll } from '../hooks/useHsExtras'
@@ -142,16 +143,26 @@ export function ModalExcelObras({
     return { totalHs, totalCertif, costoOp, operarios, contratNum, semanas, cerradas, obrasCount: obrasTarget.length }
   }, [obrasSelec, filtroSem.desde, filtroSem.hasta, horas, certificaciones, cierres, personal, categorias, tarifas, obras, todasCatObra, todasHsExtras])
 
-  function handleExportar() {
+  async function handleExportar() {
     if (!obrasSelec.length) { toast('Seleccioná al menos una obra', 'err'); return }
     if (rangoInvalido) { toast('La semana "desde" debe ser anterior o igual a "hasta"', 'err'); return }
     if (rangoIncompleto) { toast('Completá ambas semanas del rango', 'err'); return }
     if (unaSinSem) { toast('Seleccioná una semana', 'err'); return }
     const obrasTarget = obras.filter(o => obrasSelec.includes(o.cod))
+
+    // Préstamos de los operarios de la nómina, acotados al rango del export.
+    // Fetch puntual para no traer históricos enteros.
+    const legs = personal.map(p => p.leg)
+    let q = createClient().from('prestamos').select('*').in('leg', legs)
+    if (filtroSem.desde) q = q.gte('sem_key', filtroSem.desde)
+    if (filtroSem.hasta) q = q.lte('sem_key', filtroSem.hasta)
+    const { data: prestamos, error } = await q
+    if (error) { toast(`No se pudo cargar préstamos: ${error.message}`, 'err'); return }
+
     exportarExcelObras(
       obrasTarget, personal, categorias, horas, tarifas, cierres,
       certificaciones, contratistas, filtroSem.desde, todasCatObra, filtroSem.hasta,
-      todasHsExtras,
+      todasHsExtras, (prestamos ?? []) as Prestamo[],
     )
     toast('📊 Excel exportado', 'ok')
     onClose()
