@@ -710,6 +710,7 @@ export function HorasTrabajadorPage() {
                               cls += ' border-amarillo/40 bg-amarillo-light text-[#7A5500]'
                             }
 
+                            const rowKey = `${f.leg}-${f.obra.cod}`
                             return (
                               <td key={i} className="px-1.5 py-1.5 text-center">
                                 <input
@@ -718,10 +719,52 @@ export function HorasTrabajadorPage() {
                                   step={0.5}
                                   value={displayVal}
                                   readOnly={!puedeEditar}
+                                  data-htrab-row={rowKey}
+                                  data-htrab-day={i}
                                   onWheel={e => (e.currentTarget as HTMLInputElement).blur()}
                                   onChange={puedeEditar ? e => handleCellChange(f.leg, f.obra.cod, ds, e.target.value) : undefined}
                                   onBlur={puedeEditar ? e => handleCellBlur(f.leg, f.obra.cod, ds, val, e.target.value) : undefined}
                                   onFocus={puedeEditar ? e => { setEditingCell({ key: ck, val: e.target.value }); e.target.select() } : undefined}
+                                  onKeyDown={puedeEditar ? e => {
+                                    const el = e.target as HTMLInputElement
+                                    // Enter: commit + saltar al día siguiente del mismo trabajador-obra.
+                                    if (e.key === 'Enter') {
+                                      handleCellBlur(f.leg, f.obra.cod, ds, val, el.value)
+                                      const next = document.querySelector<HTMLInputElement>(
+                                        `input[data-htrab-row="${rowKey}"][data-htrab-day="${i + 1}"]`
+                                      )
+                                      next?.focus()
+                                      return
+                                    }
+                                    // Flechas: ←/→ mismo trabajador-obra; ↑/↓ misma columna,
+                                    // fila anterior/siguiente. preventDefault porque type=number
+                                    // usa ↑/↓ para incrementar/decrementar.
+                                    const arrows: Record<string, 'left' | 'right' | 'up' | 'down' | undefined> = {
+                                      ArrowLeft:  'left',
+                                      ArrowRight: 'right',
+                                      ArrowUp:    'up',
+                                      ArrowDown:  'down',
+                                    }
+                                    const dir = arrows[e.key]
+                                    if (!dir) return
+                                    e.preventDefault()
+                                    handleCellBlur(f.leg, f.obra.cod, ds, val, el.value)
+                                    if (dir === 'left' || dir === 'right') {
+                                      const targetDay = dir === 'left' ? i - 1 : i + 1
+                                      const t = document.querySelector<HTMLInputElement>(
+                                        `input[data-htrab-row="${rowKey}"][data-htrab-day="${targetDay}"]`
+                                      )
+                                      if (t) { t.focus(); t.select() }
+                                    } else {
+                                      const allRows = Array.from(document.querySelectorAll<HTMLInputElement>(
+                                        `input[data-htrab-day="${i}"]`
+                                      ))
+                                      const here = allRows.findIndex(x => x.dataset.htrabRow === rowKey)
+                                      const targetIdx = dir === 'up' ? here - 1 : here + 1
+                                      const t = allRows[targetIdx]
+                                      if (t) { t.focus(); t.select() }
+                                    }
+                                  } : undefined}
                                   className={`${cls} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none${!puedeEditar ? ' cursor-not-allowed opacity-60' : ''}`}
                                 />
                               </td>
