@@ -8,6 +8,11 @@ import { useToast } from '@/components/ui/Toast'
 export const PERSONAL_SEMANA_KEY = ['personal-semana'] as const
 
 // ── Trabajadores presentes en una obra ESTA semana (tienen registros en horas) ──
+// Si la semana actual está vacía (típico el primer día de la semana, antes de
+// que alguien cargue horas), heredamos los legs de la semana anterior como
+// placeholders visuales. Esto destraba a capataces que no tienen el botón
+// "+ Trabajador" ni el toolbar de "Copiar semana anterior". No muta DB:
+// las celdas siguen vacías hasta que el capataz cargue la primera hora.
 export function usePersonalSemana(obraCod: string, desde: string, hasta: string) {
   return useQuery({
     queryKey: [...PERSONAL_SEMANA_KEY, obraCod, desde, hasta],
@@ -15,7 +20,20 @@ export function usePersonalSemana(obraCod: string, desde: string, hasta: string)
       const horas = await apiGet<Hora[]>(
         `/api/horas/${encodeURIComponent(obraCod)}?desde=${desde}&hasta=${hasta}`
       )
-      const legs = [...new Set(horas.map(h => h.leg))]
+      let legs = [...new Set(horas.map(h => h.leg))]
+
+      if (!legs.length && desde && hasta) {
+        const semAnt = (iso: string) => {
+          const d = new Date(iso + 'T12:00:00')
+          d.setDate(d.getDate() - 7)
+          return toISO(d)
+        }
+        const horasAnt = await apiGet<Hora[]>(
+          `/api/horas/${encodeURIComponent(obraCod)}?desde=${semAnt(desde)}&hasta=${semAnt(hasta)}`
+        )
+        legs = [...new Set(horasAnt.map(h => h.leg))]
+      }
+
       if (!legs.length) return []
       const personal = await apiGet<Personal[]>('/api/personal')
       return personal.filter(p => legs.includes(p.leg))
