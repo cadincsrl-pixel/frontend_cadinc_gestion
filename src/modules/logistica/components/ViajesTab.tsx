@@ -87,6 +87,31 @@ export function ViajesTab() {
     return m
   }, [rutas])
 
+  // Para preselección automática del depósito en el modal Nuevo Tramo: para
+  // cada cantera, qué depósito acumuló más DESCARGAS históricas (= tramos
+  // cargado con fecha_descarga registrada). Solo cuenta tramos completados
+  // para evitar sesgar con tramos creados-y-descartados.
+  const depositoMasFrecuentePorCantera = useMemo(() => {
+    const conteo = new Map<number, Map<number, number>>() // cantera → (depo → count)
+    for (const t of tramos) {
+      if (t.tipo !== 'cargado') continue
+      if (!t.fecha_descarga) continue
+      if (t.cantera_id == null || t.deposito_id == null) continue
+      if (!conteo.has(t.cantera_id)) conteo.set(t.cantera_id, new Map())
+      const m = conteo.get(t.cantera_id)!
+      m.set(t.deposito_id, (m.get(t.deposito_id) ?? 0) + 1)
+    }
+    const winner = new Map<number, number>() // cantera → depósito top
+    for (const [canteraId, deposCount] of conteo) {
+      let best: { dep: number; n: number } | null = null
+      for (const [dep, n] of deposCount) {
+        if (!best || n > best.n) best = { dep, n }
+      }
+      if (best) winner.set(canteraId, best.dep)
+    }
+    return winner
+  }, [tramos])
+
   // Devuelve options de canteras filtradas por empresa. `selectedId` se
   // preserva siempre aunque no esté asociado, para no perder la selección
   // actual al editar tramos viejos.
@@ -1060,7 +1085,22 @@ export function ViajesTab() {
                   placeholder="Buscar cantera..."
                   options={canteraOptions(formNuevo.watch('empresa_id'), formNuevo.watch('cantera_id'))}
                   value={String(formNuevo.watch('cantera_id') ?? '')}
-                  onChange={(v: string) => formNuevo.setValue('cantera_id', v)}
+                  onChange={(v: string) => {
+                    formNuevo.setValue('cantera_id', v)
+                    // Auto-preseleccionar depósito con el más frecuente para
+                    // esta cantera, pero solo si el actual está vacío o ya no
+                    // es válido para la nueva cantera (no pisamos elección
+                    // manual si sigue siendo válida).
+                    const newCanteraId = v ? Number(v) : null
+                    if (!newCanteraId) return
+                    const currentDep = formNuevo.getValues('deposito_id')
+                    const currentDepNum = currentDep ? Number(currentDep) : null
+                    const validos = depositosPorCantera.get(newCanteraId)
+                    if (!currentDepNum || !validos?.has(currentDepNum)) {
+                      const sug = depositoMasFrecuentePorCantera.get(newCanteraId)
+                      if (sug) formNuevo.setValue('deposito_id', String(sug))
+                    }
+                  }}
                 />
                 <Combobox
                   label="Depósito (destino)"
