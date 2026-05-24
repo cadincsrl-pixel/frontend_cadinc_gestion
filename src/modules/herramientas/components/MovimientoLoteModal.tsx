@@ -14,7 +14,7 @@ import {
   useHerrConfig,
   useRegistrarMovimientoLote,
 } from '../hooks/useHerramientas'
-import type { Obra, Profile } from '@/types/domain.types'
+import type { Obra, Profile, Contratista } from '@/types/domain.types'
 
 // Espejo de las matrices que usa HerrMovimientos para movimientos de a uno.
 const TRANSICIONES: Record<string, string[]> = {
@@ -53,6 +53,11 @@ export function MovimientoLoteModal({ onClose, onSuccess }: Props) {
   const { data: usuarios = [] } = useQuery({
     queryKey: ['usuarios-activos'],
     queryFn:  () => apiGet<Profile[]>('/api/usuarios'),
+    staleTime: 5 * 60_000,
+  })
+  const { data: contratistas = [] } = useQuery({
+    queryKey: ['contratistas'],
+    queryFn:  () => apiGet<Contratista[]>('/api/contratistas'),
     staleTime: 5 * 60_000,
   })
   const { mutate: registrar, isPending } = useRegistrarMovimientoLote()
@@ -175,10 +180,22 @@ export function MovimientoLoteModal({ onClose, onSuccess }: Props) {
       }
     }
 
+    // `cont:ID` (contratista) no tiene FK propia en herr_movimientos: mandamos
+    // solo el nombre como snapshot. El backend lo persiste tal cual si las dos
+    // FKs son null.
     let responsable_leg:     string | null = null
     let responsable_user_id: string | null = null
-    if      (responsableSel.startsWith('leg:'))  responsable_leg     = responsableSel.slice(4)
-    else if (responsableSel.startsWith('user:')) responsable_user_id = responsableSel.slice(5)
+    let responsableNombre = ''
+    if (responsableSel.startsWith('leg:')) {
+      responsable_leg = responsableSel.slice(4)
+      responsableNombre = personal.find(p => p.leg === responsable_leg)?.nom ?? ''
+    } else if (responsableSel.startsWith('user:')) {
+      responsable_user_id = responsableSel.slice(5)
+      responsableNombre = usuarios.find(u => u.id === responsable_user_id)?.nombre ?? ''
+    } else if (responsableSel.startsWith('cont:')) {
+      const id = Number(responsableSel.slice(5))
+      responsableNombre = contratistas.find(c => c.id === id)?.nom ?? ''
+    }
 
     registrar(
       {
@@ -187,6 +204,7 @@ export function MovimientoLoteModal({ onClose, onSuccess }: Props) {
         obra_destino_cod: campos.destino ? destinoFinal : null,
         responsable_leg,
         responsable_user_id,
+        responsable:      responsableNombre || undefined,
         obs:              obs || undefined,
         fecha:            fechaManual ? new Date(fechaManual).toISOString() : undefined,
       },
@@ -432,7 +450,7 @@ export function MovimientoLoteModal({ onClose, onSuccess }: Props) {
 
             <Combobox
               label="Responsable"
-              placeholder="Buscar operario o usuario..."
+              placeholder="Buscar operario, usuario o contratista..."
               options={[
                 ...personal.map(p => ({
                   value: `leg:${p.leg}`,
@@ -448,6 +466,12 @@ export function MovimientoLoteModal({ onClose, onSuccess }: Props) {
                     sub:   u.rol_base ?? u.rol,
                     group: 'Usuarios del sistema',
                   })),
+                ...contratistas.map(c => ({
+                  value: `cont:${c.id}`,
+                  label: c.nom,
+                  sub:   c.especialidad ?? 'Contratista',
+                  group: 'Contratistas',
+                })),
               ]}
               value={responsableSel}
               onChange={setResponsableSel}

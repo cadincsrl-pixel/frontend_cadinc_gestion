@@ -17,7 +17,7 @@ import { Combobox }  from '@/components/ui/Combobox'
 import { Modal }     from '@/components/ui/Modal'
 import { usePermisos } from '@/hooks/usePermisos'
 import { MovimientoLoteModal } from './MovimientoLoteModal'
-import type { Herramienta, HerrMovTipo, Obra, Profile } from '@/types/domain.types'
+import type { Herramienta, HerrMovTipo, Obra, Profile, Contratista } from '@/types/domain.types'
 
 function fmtFecha(s: string) {
   const d = new Date(s)
@@ -98,6 +98,11 @@ export function HerrMovimientos() {
     queryFn:  () => apiGet<Profile[]>('/api/usuarios'),
     staleTime: 5 * 60_000,
   })
+  const { data: contratistas = [] } = useQuery({
+    queryKey: ['contratistas'],
+    queryFn:  () => apiGet<Contratista[]>('/api/contratistas'),
+    staleTime: 5 * 60_000,
+  })
   const { mutate: registrar, isPending: registrando } = useRegistrarMovimiento()
 
   // Formulario
@@ -172,7 +177,10 @@ export function HerrMovimientos() {
       }
     }
 
-    // Decodificar responsable: `leg:XXX` o `user:UUID` (vacío = sin responsable).
+    // Decodificar responsable: `leg:XXX` | `user:UUID` | `cont:ID` (vacío = sin
+    // responsable). Para contratistas no hay FK en herr_movimientos, así que
+    // mandamos solo el nombre como snapshot — el backend lo persiste tal cual
+    // si las dos FKs vienen null.
     let responsable_leg: string | null = null
     let responsable_user_id: string | null = null
     let responsableNombre = ''
@@ -182,6 +190,9 @@ export function HerrMovimientos() {
     } else if (responsableSel.startsWith('user:')) {
       responsable_user_id = responsableSel.slice(5)
       responsableNombre = usuarios.find(u => u.id === responsable_user_id)?.nombre ?? ''
+    } else if (responsableSel.startsWith('cont:')) {
+      const id = Number(responsableSel.slice(5))
+      responsableNombre = contratistas.find(c => c.id === id)?.nom ?? ''
     }
 
     registrar(
@@ -192,6 +203,7 @@ export function HerrMovimientos() {
         obra_destino_cod: campos.destino ? obraDestino : null,
         responsable_leg,
         responsable_user_id,
+        responsable: responsableNombre || undefined,
         obs: obs || undefined,
         fecha: fechaManual ? new Date(fechaManual).toISOString() : undefined,
       },
@@ -507,7 +519,7 @@ export function HerrMovimientos() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <Combobox
             label="Responsable"
-            placeholder="Buscar operario o usuario..."
+            placeholder="Buscar operario, usuario o contratista..."
             options={[
               ...personal.map(p => ({
                 value: `leg:${p.leg}`,
@@ -523,6 +535,12 @@ export function HerrMovimientos() {
                   sub:   u.rol_base ?? u.rol,
                   group: 'Usuarios del sistema',
                 })),
+              ...contratistas.map(c => ({
+                value: `cont:${c.id}`,
+                label: c.nom,
+                sub:   c.especialidad ?? 'Contratista',
+                group: 'Contratistas',
+              })),
             ]}
             value={responsableSel}
             onChange={setResponsableSel}
