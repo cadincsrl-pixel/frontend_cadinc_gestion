@@ -8,6 +8,20 @@
 
 ---
 
+## 0. Workflow del agente — al cerrar un turno
+
+**Antes de cerrar cualquier turno que haya generado uno o más commits, actualizar el diario de Obsidian** (`~/Documents/Notas-CADINC/Diario/YYYY-MM-DD.md`):
+
+- Si el archivo del día no existe, crearlo siguiendo el formato del día anterior más reciente (frontmatter `type: diario` + `fecha` + tag, secciones 🎯 Foco / ✅ Hecho / 🚧 Pendientes / 🗒 Notas / 🔗 Links).
+- Sumar una sub-sección por cada commit no trivial con: causa, fix, link al commit hash.
+- No bajar al diario los chores triviales (rename de variables, typos sueltos) — solo lo que un futuro yo (o el user) necesitaría recordar.
+
+**Por qué**: Obsidian es la fuente de verdad operativa del user. Las memorias del agente no son sustituto — el user lee el diario, el agente no. Sin esto, los aprendizajes y decisiones se pierden entre sesiones.
+
+Hay un hook post-commit configurado en `.claude/settings.json` que dispara un recordatorio mecánico — esta sección sirve para juzgar **qué** anotar; el hook recuerda **cuándo**.
+
+---
+
 ## 1. Qué es esto
 
 **CADINC SRL** es una empresa argentina de construcción y logística. Este sistema es su **ERP interno**: reemplaza planillas Excel y procesos manuales, unificando operación y administración.
