@@ -90,7 +90,8 @@ export function HerrPorObra() {
           h.nom.toLowerCase().includes(q) ||
           h.codigo.toLowerCase().includes(q) ||
           (h.marca ?? '').toLowerCase().includes(q) ||
-          (h.modelo ?? '').toLowerCase().includes(q),
+          (h.modelo ?? '').toLowerCase().includes(q) ||
+          (h.responsable ?? '').toLowerCase().includes(q),
         ),
       }))
       .filter(g => g.herrs.length > 0)
@@ -137,7 +138,7 @@ export function HerrPorObra() {
           type="text"
           value={busqueda}
           onChange={e => setBusqueda(e.target.value)}
-          placeholder="Buscar por obra, herramienta, marca o modelo..."
+          placeholder="Buscar por obra, herramienta, marca, modelo o responsable..."
           className="w-full pl-9 pr-8 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white focus:border-naranja"
         />
         {busqueda && (
@@ -194,6 +195,7 @@ export function HerrPorObra() {
                             <th className="text-left text-xs font-bold text-gris-dark px-3 py-2 uppercase tracking-wide">Tipo</th>
                             <th className="text-left text-xs font-bold text-gris-dark px-3 py-2 uppercase tracking-wide">Marca / Modelo</th>
                             <th className="text-left text-xs font-bold text-gris-dark px-3 py-2 uppercase tracking-wide">Estado</th>
+                            <th className="text-left text-xs font-bold text-gris-dark px-3 py-2 uppercase tracking-wide">Responsable</th>
                             <th className="text-left text-xs font-bold text-gris-dark px-3 py-2 uppercase tracking-wide">Desde</th>
                           </tr>
                         </thead>
@@ -209,6 +211,7 @@ export function HerrPorObra() {
                               <td className="px-3 py-2 text-xs">
                                 <span className="font-mono">{h.estado?.nom ?? h.estado_key}</span>
                               </td>
+                              <td className="px-3 py-2 text-xs text-gris-dark">{h.responsable ?? '—'}</td>
                               <td className="px-3 py-2 font-mono text-xs">{fmtFecha(h.desde)}</td>
                             </tr>
                           ))}
