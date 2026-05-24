@@ -177,10 +177,11 @@ function FlotaNavWithParams({ navigate }: { navigate: (href: string) => void }) 
 }
 
 const HERR_SUBNAV = [
-  { href: '/herramientas/inventario',   icon: '🔧', label: 'Inventario',   meta: 'Catálogo de herramientas',  tabKey: 'inventario'   },
-  { href: '/herramientas/movimientos',  icon: '↔',  label: 'Movimientos',  meta: 'Registrar traslados',       tabKey: 'movimientos'  },
-  { href: '/herramientas/trazabilidad', icon: '📍', label: 'Trazabilidad', meta: 'Historial por herramienta', tabKey: 'trazabilidad' },
-  { href: '/herramientas/parametros',   icon: '⚙️', label: 'Parámetros',   meta: 'Tipos y configuración',     tabKey: 'parametros'   },
+  { href: '/herramientas/inventario',   icon: '🔧', label: 'Inventario',   meta: 'Catálogo de herramientas',   tabKey: 'inventario'   },
+  { href: '/herramientas/por-obra',     icon: '🏗', label: 'Por obra',     meta: 'Inventario pivotado por obra', tabKey: 'inventario' },
+  { href: '/herramientas/movimientos',  icon: '↔',  label: 'Movimientos',  meta: 'Registrar traslados',        tabKey: 'movimientos'  },
+  { href: '/herramientas/trazabilidad', icon: '📍', label: 'Trazabilidad', meta: 'Historial por herramienta',  tabKey: 'trazabilidad' },
+  { href: '/herramientas/parametros',   icon: '⚙️', label: 'Parámetros',   meta: 'Tipos y configuración',      tabKey: 'parametros'   },
 ]
 
 function LogisticaNav({ navigate, activeTab, allowedTabs }: { navigate: (href: string) => void; activeTab: string; allowedTabs?: string[] }) {
