@@ -118,6 +118,7 @@ export function PersonalPage() {
   const [detalle,       setDetalle]       = useState<Personal | null>(null)
   const [busqueda,      setBusqueda]      = useState('')
   const [filterCondicion, setFilterCondicion] = useState<'' | 'blanco' | 'asegurado'>('')
+  const [filterActivo,    setFilterActivo]    = useState<'activos' | 'inactivos' | 'todos'>('activos')
   const [pageP,         setPageP]         = useState(1)
   const [pageSizeP,     setPageSizeP]     = useState(12)
 
@@ -143,9 +144,14 @@ export function PersonalPage() {
       p.leg.includes(busqueda) ||
       (p.dni ?? '').includes(busqueda)
     const matchCondicion = !filterCondicion || p.condicion === filterCondicion
-    return matchText && matchCondicion
+    const activo = esActivo(p)
+    const matchActivo =
+      filterActivo === 'todos' ||
+      (filterActivo === 'activos'  && activo) ||
+      (filterActivo === 'inactivos' && !activo)
+    return matchText && matchCondicion && matchActivo
   })
-  useEffect(() => { setPageP(1) }, [busqueda, filterCondicion])
+  useEffect(() => { setPageP(1) }, [busqueda, filterCondicion, filterActivo])
 
   // Si llegamos con ?leg=XXX (ej. desde la campana de notificaciones),
   // abrir el modal de detalle del trabajador apenas cargue.
@@ -355,6 +361,15 @@ export function PersonalPage() {
               <option value="">Todas las condiciones</option>
               <option value="blanco">Blanco</option>
               <option value="asegurado">Asegurado</option>
+            </select>
+            <select
+              value={filterActivo}
+              onChange={e => setFilterActivo(e.target.value as any)}
+              className="px-3 py-2 border-[1.5px] border-gris-mid rounded-lg font-sans text-sm outline-none transition-colors focus:border-naranja bg-white"
+            >
+              <option value="activos">Solo activos</option>
+              <option value="inactivos">Solo inactivos</option>
+              <option value="todos">Activos + inactivos</option>
             </select>
             <div className="flex gap-2 text-xs">
               <button
