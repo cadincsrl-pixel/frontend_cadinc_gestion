@@ -2,16 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Quitar las flechas spinner de los <input type="number"> dentro de
-   contenedores marcados como .no-spinner. Se usa en RentabilidadTab
-   donde el ajuste +/- de a 1 no aporta nada (los valores son montos
-   o cantidades grandes). */
-.no-spinner input[type='number']::-webkit-outer-spin-button,
-.no-spinner input[type='number']::-webkit-inner-spin-button {
+/* Quitar las flechas spinner de TODOS los <input type="number"> de la app.
+   El ajuste +/- de a 1 del control nativo no aporta nada en este dominio
+   (montos, toneladas, cantidades) y la rueda del mouse incrementa por error.
+   El user sigue pudiendo escribir decimales libremente. */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
-.no-spinner input[type='number'] {
+input[type='number'] {
   -moz-appearance: textfield;
   appearance: textfield;
 }
