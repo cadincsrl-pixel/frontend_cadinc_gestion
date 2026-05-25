@@ -15,10 +15,22 @@ const CADINC = {
   cuit:   '33-71719194-9',
 }
 
+const DIAS_SEMANA = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado']
+
+// Formato pedido por las cementeras/proveedores: "miércoles 27-05-26"
+// (día de la semana en español, DD-MM-YY con guiones, año a 2 dígitos).
+// Construyo la Date en hora local (no UTC) para evitar que "2026-05-27"
+// se interprete como midnight UTC y cambie de día en zonas al oeste.
 function fmtFecha(iso: string): string {
   if (!iso) return ''
-  const [y, m, d] = iso.split('-')
-  return `${d}/${m}/${y}`
+  const [yStr, mStr, dStr] = iso.split('-')
+  const y = Number(yStr), m = Number(mStr), d = Number(dStr)
+  if (!y || !m || !d) return ''
+  const dow = DIAS_SEMANA[new Date(y, m - 1, d).getDay()]
+  const dd = String(d).padStart(2, '0')
+  const mm = String(m).padStart(2, '0')
+  const yy = String(y).slice(-2)
+  return `${dow} ${dd}-${mm}-${yy}`
 }
 
 function todayISO(): string {
