@@ -18,6 +18,7 @@ import { useForm }  from 'react-hook-form'
 import { uploadRemitoImg } from '@/lib/utils/upload'
 import { useTramosEnRuta } from '../hooks/useEnRuta'
 import { RelevoSection } from './RelevoSection'
+import { ModalSolicitudTurno } from './ModalSolicitudTurno'
 import type { Tramo, TramoTipo } from '@/types/domain.types'
 
 // Shape de los forms de este tab. Todos los campos en string porque los
@@ -172,7 +173,8 @@ export function ViajesTab() {
   const { mutate: revDescarga,  isPending: revirtiendo } = useRevertirDescargaTramo()
   const { mutate: moverTramo   } = useMoverTramo()
 
-  const [modalNuevo,    setModalNuevo]    = useState(false)
+  const [modalNuevo,      setModalNuevo]      = useState(false)
+  const [modalSolicitud,  setModalSolicitud]  = useState(false)
   const [editando,      setEditando]      = useState<Tramo | null>(null)
   const [descargaTramo, setDescargaTramo] = useState<Tramo | null>(null)
   const [revertirTramo, setRevertirTramo] = useState<Tramo | null>(null)
@@ -788,11 +790,19 @@ export function ViajesTab() {
               ✕ Fechas
             </button>
           )}
+          <Button variant="secondary" size="sm" onClick={() => setModalSolicitud(true)}>
+            📋 Solicitud de turno
+          </Button>
           <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)}>
             ＋ Nuevo tramo
           </Button>
         </div>
       </div>
+
+      <ModalSolicitudTurno
+        open={modalSolicitud}
+        onClose={() => setModalSolicitud(false)}
+      />
 
       {/* Lista */}
       {filtered.length === 0 ? (
