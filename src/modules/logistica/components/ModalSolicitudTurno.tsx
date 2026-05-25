@@ -1,9 +1,8 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
-import { Combobox } from '@/components/ui/Combobox'
 import { Input }    from '@/components/ui/Input'
 import { useToast } from '@/components/ui/Toast'
 import { useChoferes, useCamiones, useBateas } from '../hooks/useLogistica'
@@ -41,25 +40,106 @@ export function ModalSolicitudTurno({ open, onClose }: Props) {
   const { data: camiones = [] } = useCamiones()
   const { data: bateas   = [] } = useBateas()
 
-  const [choferSel, setChoferSel] = useState<string>('')
-  const [fecha,     setFecha]     = useState<string>(todayISO())
+  const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set())
+  const [fecha,         setFecha]         = useState<string>(todayISO())
+  const [busqueda,      setBusqueda]      = useState('')
 
-  const choferData = choferes.find(c => String(c.id) === choferSel) ?? null
-  const camion = choferData?.camion_id ? camiones.find(c => c.id === choferData.camion_id) ?? null : null
-  const batea  = choferData?.batea_id  ? bateas.find(b => b.id === choferData.batea_id) ?? null   : null
+  // Reset al cerrar/abrir para no arrastrar selección de la sesión anterior.
+  useEffect(() => {
+    if (!open) {
+      setSeleccionados(new Set())
+      setBusqueda('')
+      setFecha(todayISO())
+    }
+  }, [open])
+
+  const choferesActivos = useMemo(
+    () => choferes.filter(c => c.estado === 'activo'),
+    [choferes],
+  )
+
+  const filtrados = useMemo(() => {
+    const q = busqueda.trim().toLowerCase()
+    if (!q) return choferesActivos
+    return choferesActivos.filter(c =>
+      c.nombre.toLowerCase().includes(q) ||
+      (c.cuil ?? '').toLowerCase().includes(q),
+    )
+  }, [choferesActivos, busqueda])
+
+  function toggle(id: string) {
+    setSeleccionados(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function seleccionarTodosFiltrados() {
+    setSeleccionados(prev => {
+      const next = new Set(prev)
+      filtrados.forEach(c => next.add(String(c.id)))
+      return next
+    })
+  }
+
+  function limpiarSeleccion() {
+    setSeleccionados(new Set())
+  }
+
+  // Datos de los choferes seleccionados, ordenados como aparecen en la lista
+  // (alfabético por nombre) para que el texto generado sea estable.
+  const choferesSel = useMemo(() => {
+    return choferesActivos
+      .filter(c => seleccionados.has(String(c.id)))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre))
+  }, [choferesActivos, seleccionados])
+
+  function camionDe(choferId: number | null) {
+    if (!choferId) return null
+    const ch = choferes.find(c => c.id === choferId)
+    if (!ch?.camion_id) return null
+    return camiones.find(c => c.id === ch.camion_id) ?? null
+  }
+  function bateaDe(choferId: number | null) {
+    if (!choferId) return null
+    const ch = choferes.find(c => c.id === choferId)
+    if (!ch?.batea_id) return null
+    return bateas.find(b => b.id === ch.batea_id) ?? null
+  }
 
   const texto = useMemo(() => {
-    if (!choferData || !fecha) return ''
-    return [
+    if (!choferesSel.length || !fecha) return ''
+    const header = [
       `Solicitud de turno — ${fmtFecha(fecha)}`,
       ``,
       `Solicitante: ${CADINC.nombre}`,
       `CUIT: ${CADINC.cuit}`,
-      `Chofer: ${choferData.nombre}${choferData.cuil ? ` / CUIL ${choferData.cuil}` : ''}`,
-      `Camión: ${camion?.patente ?? '—'}`,
-      `Batea: ${batea?.patente ?? '—'}`,
-    ].join('\n')
-  }, [choferData, fecha, camion, batea])
+    ]
+    const bloques = choferesSel.map(ch => {
+      const camion = camionDe(ch.id)
+      const batea  = bateaDe(ch.id)
+      return [
+        `Chofer: ${ch.nombre}${ch.cuil ? ` / CUIL ${ch.cuil}` : ''}`,
+        `Camión: ${camion?.patente ?? '—'}`,
+        `Batea: ${batea?.patente ?? '—'}`,
+      ].join('\n')
+    })
+    return [...header, '', bloques.join('\n\n')].join('\n')
+  }, [choferesSel, fecha, choferes, camiones, bateas])
+
+  // Detectar datos faltantes para mostrar advertencias por chofer
+  // (CUIL ausente, camión o batea no preasignados).
+  const advertencias = useMemo(() => {
+    const out: string[] = []
+    for (const ch of choferesSel) {
+      if (!ch.cuil)          out.push(`${ch.nombre}: sin CUIL cargado.`)
+      if (!camionDe(ch.id))  out.push(`${ch.nombre}: sin camión preasignado.`)
+      if (!bateaDe(ch.id))   out.push(`${ch.nombre}: sin batea preasignada.`)
+    }
+    return out
+  }, [choferesSel, choferes, camiones, bateas])
 
   async function handleCopiar() {
     if (!texto) return
@@ -90,18 +170,7 @@ export function ModalSolicitudTurno({ open, onClose }: Props) {
     URL.revokeObjectURL(url)
   }
 
-  const choferOptions = choferes
-    .filter(c => c.estado === 'activo')
-    .map(c => ({
-      value: String(c.id),
-      label: c.nombre,
-      sub:   c.cuil ?? 'sin CUIL',
-    }))
-
-  const advertencias: string[] = []
-  if (choferData && !choferData.cuil) advertencias.push('Este chofer no tiene CUIL cargado.')
-  if (choferData && !camion)          advertencias.push('Este chofer no tiene camión preasignado.')
-  if (choferData && !batea)           advertencias.push('Este chofer no tiene batea preasignada.')
+  const cantSelec = seleccionados.size
 
   return (
     <Modal
@@ -112,13 +181,6 @@ export function ModalSolicitudTurno({ open, onClose }: Props) {
       footer={<Button variant="secondary" onClick={onClose}>Cerrar</Button>}
     >
       <div className="flex flex-col gap-3">
-        <Combobox
-          label="Chofer *"
-          placeholder="Buscar chofer..."
-          options={choferOptions}
-          value={choferSel}
-          onChange={setChoferSel}
-        />
         <Input
           label="Fecha del turno *"
           type="date"
@@ -126,18 +188,93 @@ export function ModalSolicitudTurno({ open, onClose }: Props) {
           onChange={e => setFecha(e.target.value)}
         />
 
-        {/* Vista previa del texto generado. Es lo que se va a copiar/enviar. */}
+        {/* Multi-select de choferes con buscador + acciones rápidas. */}
+        <div className="flex flex-col gap-2">
+          <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">
+            Choferes * (uno o más)
+          </label>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Input
+              placeholder="🔍 Buscar por nombre o CUIL..."
+              value={busqueda}
+              onChange={e => setBusqueda(e.target.value)}
+              className="flex-1 min-w-[160px]"
+            />
+            <span className="text-[11px] text-gris-dark font-bold">
+              {busqueda
+                ? `${filtrados.length} de ${choferesActivos.length}`
+                : `${choferesActivos.length} activos`}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap text-[11px]">
+            <button
+              type="button"
+              onClick={seleccionarTodosFiltrados}
+              disabled={filtrados.length === 0}
+              className="font-bold text-azul hover:text-naranja disabled:text-gris-mid disabled:cursor-not-allowed underline-offset-2 hover:underline"
+            >
+              Seleccionar {busqueda ? 'filtrados' : 'todos'}
+            </button>
+            <span className="text-gris-mid">·</span>
+            <button
+              type="button"
+              onClick={limpiarSeleccion}
+              disabled={cantSelec === 0}
+              className="font-bold text-gris-dark hover:text-rojo disabled:text-gris-mid disabled:cursor-not-allowed underline-offset-2 hover:underline"
+            >
+              Limpiar
+            </button>
+            {cantSelec > 0 && (
+              <span className="ml-auto text-naranja-dark font-bold">
+                {cantSelec} seleccionado{cantSelec !== 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+          <div className="bg-gris/40 rounded-lg max-h-56 overflow-y-auto divide-y divide-gris border border-gris-mid">
+            {filtrados.length === 0 ? (
+              <p className="px-3 py-3 text-xs text-gris-dark text-center italic">
+                {busqueda ? `Sin resultados para "${busqueda}"` : 'No hay choferes activos.'}
+              </p>
+            ) : (
+              filtrados.map(c => {
+                const id = String(c.id)
+                const checked = seleccionados.has(id)
+                return (
+                  <label
+                    key={id}
+                    className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-white/60 transition-colors"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggle(id)}
+                      className="w-4 h-4 accent-naranja"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-sm text-carbon truncate">{c.nombre}</div>
+                      <div className="text-[11px] text-gris-dark font-mono">
+                        {c.cuil ?? 'sin CUIL'}
+                      </div>
+                    </div>
+                  </label>
+                )
+              })
+            )}
+          </div>
+        </div>
+
+        {/* Vista previa del texto generado. */}
         <div className="flex flex-col gap-2">
           <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">
             Vista previa
           </div>
           {texto ? (
-            <pre className="bg-gris/40 border border-gris-mid rounded-lg p-3 text-xs font-mono text-carbon whitespace-pre-wrap leading-relaxed">
+            <pre className="bg-gris/40 border border-gris-mid rounded-lg p-3 text-xs font-mono text-carbon whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto">
               {texto}
             </pre>
           ) : (
             <div className="bg-gris/40 border border-gris-mid rounded-lg p-3 text-xs text-gris-dark italic text-center">
-              Seleccioná un chofer para ver la vista previa.
+              Seleccioná al menos un chofer para ver la vista previa.
             </div>
           )}
           {advertencias.map((a, i) => (
@@ -150,7 +287,7 @@ export function ModalSolicitudTurno({ open, onClose }: Props) {
           ))}
         </div>
 
-        {/* Botones de export: copiar / WhatsApp / .txt */}
+        {/* Botones de export. */}
         <div className="grid grid-cols-3 gap-2">
           <Button variant="primary" size="sm" onClick={handleCopiar} disabled={!texto}>
             📋 Copiar
