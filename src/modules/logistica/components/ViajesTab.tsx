@@ -112,23 +112,32 @@ export function ViajesTab() {
     return winner
   }, [tramos])
 
-  // Devuelve options de canteras filtradas por empresa. `selectedId` se
-  // preserva siempre aunque no esté asociado, para no perder la selección
-  // actual al editar tramos viejos.
+  // Devuelve options de canteras filtradas por empresa.
+  // - Sin empresa seleccionada → mostrar todas.
+  // - Con empresa pero sin tarifas cargadas → lista vacía (el user ve que
+  //   falta cargar la tarifa, en vez de aparecerle todas como si fuera ok).
+  // - `selectedId` se preserva siempre aunque no esté asociado, para no
+  //   perder la selección actual al editar tramos viejos.
   function canteraOptions(empresaIdRaw: string | undefined, selectedIdRaw: string | undefined) {
     const empresaId = empresaIdRaw ? Number(empresaIdRaw) : null
     const selectedId = selectedIdRaw ? Number(selectedIdRaw) : null
-    const allowed = empresaId != null ? canterasPorEmpresa.get(empresaId) : null
+    const allowed: Set<number> | null = empresaId != null
+      ? (canterasPorEmpresa.get(empresaId) ?? new Set<number>())
+      : null
     return (canteras as any[])
-      .filter((c: any) => !allowed || allowed.size === 0 || allowed.has(c.id) || c.id === selectedId)
+      .filter((c: any) => allowed === null || allowed.has(c.id) || c.id === selectedId)
       .map((c: any) => ({ value: String(c.id), label: c.nombre, sub: c.localidad ?? undefined }))
   }
+  // Mismo criterio que canteraOptions: si hay cantera pero sin rutas
+  // cargadas, lista vacía (el user ve que falta cargar la ruta).
   function depositoOptions(canteraIdRaw: string | undefined, selectedIdRaw: string | undefined) {
     const canteraId = canteraIdRaw ? Number(canteraIdRaw) : null
     const selectedId = selectedIdRaw ? Number(selectedIdRaw) : null
-    const allowed = canteraId != null ? depositosPorCantera.get(canteraId) : null
+    const allowed: Set<number> | null = canteraId != null
+      ? (depositosPorCantera.get(canteraId) ?? new Set<number>())
+      : null
     return (depositos as any[])
-      .filter((d: any) => !allowed || allowed.size === 0 || allowed.has(d.id) || d.id === selectedId)
+      .filter((d: any) => allowed === null || allowed.has(d.id) || d.id === selectedId)
       .map((d: any) => ({ value: String(d.id), label: d.nombre, sub: d.localidad ?? undefined }))
   }
   // Para tramos vacíos: depósito de origen → cantera de destino. Mismo set
@@ -136,9 +145,11 @@ export function ViajesTab() {
   function canteraOptionsPorDeposito(depositoIdRaw: string | undefined, selectedIdRaw: string | undefined) {
     const depositoId = depositoIdRaw ? Number(depositoIdRaw) : null
     const selectedId = selectedIdRaw ? Number(selectedIdRaw) : null
-    const allowed = depositoId != null ? canterasPorDeposito.get(depositoId) : null
+    const allowed: Set<number> | null = depositoId != null
+      ? (canterasPorDeposito.get(depositoId) ?? new Set<number>())
+      : null
     return (canteras as any[])
-      .filter((c: any) => !allowed || allowed.size === 0 || allowed.has(c.id) || c.id === selectedId)
+      .filter((c: any) => allowed === null || allowed.has(c.id) || c.id === selectedId)
       .map((c: any) => ({ value: String(c.id), label: c.nombre, sub: c.localidad ?? undefined }))
   }
   // Distancia + ETA al destino para tramos cargados en curso (Google Maps).
@@ -1114,7 +1125,7 @@ export function ViajesTab() {
                 <div className="text-xs font-bold text-gris-dark uppercase tracking-wider">⛏ Carga en cantera</div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <Input label="Fecha carga" type="date" {...formNuevo.register('fecha_carga')} />
-                  <Input label="Toneladas" type="number" step="0.01" placeholder="0.00" {...formNuevo.register('toneladas_carga')} />
+                  <Input label="Toneladas" type="number" step="0.01" min="0" placeholder="0.00" {...formNuevo.register('toneladas_carga')} />
                   <Input label="Nº Remito" placeholder="R-00456" {...formNuevo.register('remito_carga')} />
                 </div>
                 <RemitoImgField
@@ -1181,7 +1192,7 @@ export function ViajesTab() {
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Input label="Fecha descarga" type="date" {...formDescarga.register('fecha_descarga')} />
-            <Input label="Toneladas" type="number" step="0.01" placeholder="0.00" {...formDescarga.register('toneladas_descarga')} />
+            <Input label="Toneladas" type="number" step="0.01" min="0" placeholder="0.00" {...formDescarga.register('toneladas_descarga')} />
             <Input label="Nº Remito" placeholder="R-00456" {...formDescarga.register('remito_descarga')} />
           </div>
           <RemitoImgField
@@ -1313,7 +1324,7 @@ export function ViajesTab() {
                 <div className="text-xs font-bold text-gris-dark uppercase tracking-wider">⛏ Carga</div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <Input label="Fecha" type="date" {...formEdit.register('fecha_carga')} />
-                  <Input label="Toneladas" type="number" step="0.01" {...formEdit.register('toneladas_carga')} />
+                  <Input label="Toneladas" type="number" step="0.01" min="0" {...formEdit.register('toneladas_carga')} />
                   <Input label="Nº Remito" {...formEdit.register('remito_carga')} />
                 </div>
                 <RemitoImgField
@@ -1328,7 +1339,7 @@ export function ViajesTab() {
                 <div className="text-xs font-bold text-gris-dark uppercase tracking-wider">🏭 Descarga</div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <Input label="Fecha" type="date" {...formEdit.register('fecha_descarga')} />
-                  <Input label="Toneladas" type="number" step="0.01" {...formEdit.register('toneladas_descarga')} />
+                  <Input label="Toneladas" type="number" step="0.01" min="0" {...formEdit.register('toneladas_descarga')} />
                   <Input label="Nº Remito" {...formEdit.register('remito_descarga')} />
                 </div>
                 <RemitoImgField
