@@ -87,6 +87,8 @@ export type DetalleTipo = 'operario' | 'contratista' | 'subtotal'
 
 export interface DetalleRow {
   tipo:            DetalleTipo
+  /** Legajo del operario (solo `tipo='operario'`); `null` en contratistas y subtotales. */
+  leg:             string | null
   semKey:          string
   periodoCorto:    string
   cobro:           Date | null

@@ -15,6 +15,7 @@ import ExcelJS from 'exceljs'
 import { toISO } from '@/lib/utils/dates'
 import { collectData } from './collectData'
 import { buildResumenSheet } from './builders/buildResumenSheet'
+import { buildTotalesOperarioSheet } from './builders/buildTotalesOperarioSheet'
 import { buildDetalleSemanalSheet } from './builders/buildDetalleSemanalSheet'
 import type { ExportInput } from './types'
 
@@ -27,6 +28,7 @@ export async function exportarTarjaObra(input: ExportInput): Promise<void> {
   wb.modified = data.meta.generadoEn
 
   buildResumenSheet(wb, data)
+  buildTotalesOperarioSheet(wb, data)
   buildDetalleSemanalSheet(wb, data)
 
   // ── Descarga ──

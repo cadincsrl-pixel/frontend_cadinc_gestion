@@ -231,6 +231,7 @@ export function collectData(input: ExportInput): ExportData {
     for (const op of operariosSem) {
       detalleSemanal.push({
         tipo:            'operario',
+        leg:             op.pdo.leg,
         semKey:          sem.semKey,
         periodoCorto:    sem.periodoCorto,
         cobro:           sem.cobro,
@@ -254,6 +255,7 @@ export function collectData(input: ExportInput): ExportData {
     for (const c of contratsSem) {
       detalleSemanal.push({
         tipo:            'contratista',
+        leg:             null,
         semKey:          sem.semKey,
         periodoCorto:    sem.periodoCorto,
         cobro:           sem.cobro,
@@ -268,6 +270,7 @@ export function collectData(input: ExportInput): ExportData {
     // Subtotal de la semana.
     detalleSemanal.push({
       tipo:            'subtotal',
+      leg:             null,
       semKey:          sem.semKey,
       periodoCorto:    sem.periodoCorto,
       cobro:           null,

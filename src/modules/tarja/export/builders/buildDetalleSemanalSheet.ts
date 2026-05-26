@@ -26,9 +26,23 @@ import {
 import { FMT_FECHA, FMT_HORAS, FMT_MONEDA_CERO } from '../helpers/formatters'
 import type { DetalleRow, ExportData } from '../types'
 
-const SHEET_NAME = 'Detalle Semanal'
+export const DETALLE_SHEET_NAME = 'Detalle Semanal'
+// Columnas (1-based) — se exportan para que otros builders puedan armar
+// fórmulas referenciando esta hoja sin duplicar magic numbers.
+export const DETALLE_COL = {
+  TIPO:     1,
+  LEG:      2,
+  PERIODO:  3,
+  COBRO:    4,
+  NOMBRE:   5,
+  CAT_ESP:  6,
+  HORAS:    7,
+  MONTO:    8,
+  ESTADO:   9,
+} as const
 const HEADERS = [
   'Tipo',
+  'Legajo',
   'Período',
   'Cobro',
   'Nombre / Contratista',
@@ -41,8 +55,8 @@ const COL_COUNT = HEADERS.length
 const HEADER_ROW = 3
 
 export function buildDetalleSemanalSheet(wb: ExcelJS.Workbook, data: ExportData): void {
-  const ws = wb.addWorksheet(SHEET_NAME)
-  setColWidths(ws, [12, 26, 12, 28, 24, 10, 16, 12])
+  const ws = wb.addWorksheet(DETALLE_SHEET_NAME)
+  setColWidths(ws, [12, 10, 26, 12, 28, 24, 10, 16, 12])
 
   // ── Fila 1: título ────────────────────────────────────────────
   applyTitle(ws, `DETALLE SEMANAL — ${data.meta.obraNom} (${data.meta.obraCod})`, COL_COUNT)
@@ -96,49 +110,47 @@ export function buildDetalleSemanalSheet(wb: ExcelJS.Workbook, data: ExportData)
 function writeRow(ws: ExcelJS.Worksheet, rowIdx: number, r: DetalleRow): void {
   const row = ws.getRow(rowIdx)
 
-  // Col 1: Tipo
-  row.getCell(1).value = labelTipo(r.tipo)
-  row.getCell(1).alignment = { horizontal: 'left', vertical: 'middle', indent: 1 }
+  row.getCell(DETALLE_COL.TIPO).value = labelTipo(r.tipo)
+  row.getCell(DETALLE_COL.TIPO).alignment = { horizontal: 'left', vertical: 'middle', indent: 1 }
 
-  // Col 2: Período
-  row.getCell(2).value = r.periodoCorto
-  row.getCell(2).alignment = { horizontal: 'left', vertical: 'middle' }
+  // Legajo (vacío en contratistas y subtotales).
+  if (r.leg) row.getCell(DETALLE_COL.LEG).value = r.leg
+  row.getCell(DETALLE_COL.LEG).alignment = { horizontal: 'center', vertical: 'middle' }
 
-  // Col 3: Cobro (Date para que se formatee con dd/mm/yyyy)
+  row.getCell(DETALLE_COL.PERIODO).value = r.periodoCorto
+  row.getCell(DETALLE_COL.PERIODO).alignment = { horizontal: 'left', vertical: 'middle' }
+
+  // Cobro (Date para que se formatee con dd/mm/yyyy).
   if (r.cobro) {
-    row.getCell(3).value = r.cobro
-    row.getCell(3).numFmt = FMT_FECHA
+    row.getCell(DETALLE_COL.COBRO).value = r.cobro
+    row.getCell(DETALLE_COL.COBRO).numFmt = FMT_FECHA
   }
-  row.getCell(3).alignment = { horizontal: 'center', vertical: 'middle' }
+  row.getCell(DETALLE_COL.COBRO).alignment = { horizontal: 'center', vertical: 'middle' }
 
-  // Col 4: Nombre / Contratista
-  row.getCell(4).value = r.nombre
-  row.getCell(4).alignment = { horizontal: 'left', vertical: 'middle' }
-  if (r.tipo === 'subtotal') row.getCell(4).font = { name: 'Calibri', size: 10, bold: true }
+  row.getCell(DETALLE_COL.NOMBRE).value = r.nombre
+  row.getCell(DETALLE_COL.NOMBRE).alignment = { horizontal: 'left', vertical: 'middle' }
+  if (r.tipo === 'subtotal') row.getCell(DETALLE_COL.NOMBRE).font = { name: 'Calibri', size: 10, bold: true }
 
-  // Col 5: Categoría / Especialidad
-  row.getCell(5).value = r.catEspecialidad
-  row.getCell(5).alignment = { horizontal: 'left', vertical: 'middle' }
+  row.getCell(DETALLE_COL.CAT_ESP).value = r.catEspecialidad
+  row.getCell(DETALLE_COL.CAT_ESP).alignment = { horizontal: 'left', vertical: 'middle' }
 
-  // Col 6: Horas (null → "—")
+  // Horas (null → "—").
   if (r.horas !== null) {
-    row.getCell(6).value = r.horas
-    row.getCell(6).numFmt = FMT_HORAS
+    row.getCell(DETALLE_COL.HORAS).value = r.horas
+    row.getCell(DETALLE_COL.HORAS).numFmt = FMT_HORAS
   } else {
-    row.getCell(6).value = '—'
+    row.getCell(DETALLE_COL.HORAS).value = '—'
   }
-  row.getCell(6).alignment = { horizontal: 'right', vertical: 'middle' }
+  row.getCell(DETALLE_COL.HORAS).alignment = { horizontal: 'right', vertical: 'middle' }
 
-  // Col 7: Monto
-  row.getCell(7).value = r.monto
-  row.getCell(7).numFmt = FMT_MONEDA_CERO
-  row.getCell(7).alignment = { horizontal: 'right', vertical: 'middle' }
+  row.getCell(DETALLE_COL.MONTO).value = r.monto
+  row.getCell(DETALLE_COL.MONTO).numFmt = FMT_MONEDA_CERO
+  row.getCell(DETALLE_COL.MONTO).alignment = { horizontal: 'right', vertical: 'middle' }
 
-  // Col 8: Estado (vacío en subtotales)
   if (r.estado) {
-    row.getCell(8).value = r.estado === 'cerrado' ? 'Cerrado' : 'Pendiente'
+    row.getCell(DETALLE_COL.ESTADO).value = r.estado === 'cerrado' ? 'Cerrado' : 'Pendiente'
   }
-  row.getCell(8).alignment = { horizontal: 'center', vertical: 'middle' }
+  row.getCell(DETALLE_COL.ESTADO).alignment = { horizontal: 'center', vertical: 'middle' }
 }
 
 function labelTipo(tipo: DetalleRow['tipo']): string {
