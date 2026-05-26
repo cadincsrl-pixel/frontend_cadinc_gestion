@@ -5,7 +5,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
 import { Input } from '@/components/ui/Input'
-import { exportarTarjaObra } from '@/modules/tarja/export'
+import { exportarTarjaObras } from '@/modules/tarja/export'
 import { getVHConCatObra } from '@/lib/utils/costos'
 import { useToast } from '@/components/ui/Toast'
 import { getSemLabel, getViernes, toISO } from '@/lib/utils/dates'
@@ -170,35 +170,34 @@ export function ModalExcelObras({
     const { data: prestamos, error } = await q
     if (error) { toast(`No se pudo cargar préstamos: ${error.message}`, 'err'); return }
 
-    // El nuevo orquestador es por una obra a la vez. Si se seleccionaron varias,
-    // generamos un archivo XLSX independiente por cada una. El browser puede
-    // bloquear los downloads múltiples después del primero — el user lo
-    // desbloquea desde la barra de URL.
+    // Si N=1: descarga directa del XLSX.
+    // Si N>1: ZIP con un XLSX por obra + 1 XLSX "Comparativa" con resumen
+    // multi-obra y totales por operario consolidados. Un solo download (el
+    // browser no bloquea descargas múltiples porque es un único archivo).
     const filtroSemExport = filtroSem.desde
       ? { desde: filtroSem.desde, hasta: filtroSem.hasta }
       : null
 
     try {
-      for (const obra of obrasTarget) {
-        await exportarTarjaObra({
-          obra,
-          personalAll,
-          categorias,
-          horasAll:           horas,
-          tarifasAll:         tarifas,
-          cierres,
-          certificacionesAll: certificaciones,
-          contratistas,
-          catObraAll:         todasCatObra,
-          hsExtrasAll:        todasHsExtras,
-          prestamosAll:       (prestamos ?? []) as Prestamo[],
-          filtroSem:          filtroSemExport,
-        })
-      }
+      const inputs = obrasTarget.map(obra => ({
+        obra,
+        personalAll,
+        categorias,
+        horasAll:           horas,
+        tarifasAll:         tarifas,
+        cierres,
+        certificacionesAll: certificaciones,
+        contratistas,
+        catObraAll:         todasCatObra,
+        hsExtrasAll:        todasHsExtras,
+        prestamosAll:       (prestamos ?? []) as Prestamo[],
+        filtroSem:          filtroSemExport,
+      }))
+      await exportarTarjaObras(inputs)
       toast(
         obrasTarget.length === 1
           ? '📊 Excel exportado'
-          : `📊 ${obrasTarget.length} archivos exportados`,
+          : `📦 ZIP con ${obrasTarget.length} obras + comparativa exportado`,
         'ok',
       )
       onClose()
