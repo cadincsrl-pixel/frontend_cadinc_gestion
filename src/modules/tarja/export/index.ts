@@ -15,7 +15,6 @@
  */
 import ExcelJS from 'exceljs'
 import JSZip from 'jszip'
-import { toISO } from '@/lib/utils/dates'
 import { collectData } from './collectData'
 import { buildResumenSheet } from './builders/buildResumenSheet'
 import { buildTotalesOperarioSheet } from './builders/buildTotalesOperarioSheet'
@@ -26,7 +25,7 @@ import { buildPrestamosSheet } from './builders/buildPrestamosSheet'
 import { buildPersonalSheet } from './builders/buildPersonalSheet'
 import { buildComparativaWorkbook } from './buildComparativa'
 import { buildGeneralCajaWorkbook } from './buildGeneralCaja'
-import type { ExportInput, ExportData } from './types'
+import type { ExportInput, ExportData, FiltroSemanas } from './types'
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
@@ -44,7 +43,6 @@ export async function exportarTarjaObras(
 ): Promise<void> {
   if (inputs.length === 0) return
 
-  const generadoEn = new Date()
   // Pre-cómputo de ExportData[]: lo usamos en cualquier modo. Lo armamos
   // una sola vez para no duplicar trabajo.
   const datas: ExportData[] = []
@@ -55,16 +53,22 @@ export async function exportarTarjaObras(
     workbooks.push(wb)
   }
 
+  // Período común del filtro (asumimos que todos los inputs comparten filtro
+  // — es lo que hace el modal). Si en algún momento permitimos por-obra,
+  // hay que pasar a "rangos-mixtos".
+  const periodo = periodoSlug(inputs[0]!.filtroSem)
+  const N = inputs.length
+
   if (modo === 'general') {
     const wb = buildGeneralCajaWorkbook(datas)
     const blob = await workbookToBlob(wb)
-    downloadBlob(blob, `TarjaObras_General_${toISO(generadoEn)}.xlsx`)
+    downloadBlob(blob, `TarjaObras_General_${N}${N === 1 ? 'obra' : 'obras'}_${periodo}.xlsx`)
     return
   }
 
-  if (modo === 'detallado' && inputs.length === 1) {
+  if (modo === 'detallado' && N === 1) {
     const blob = await workbookToBlob(workbooks[0]!)
-    downloadBlob(blob, buildFilename(datas[0]!.meta.obraCod, generadoEn))
+    downloadBlob(blob, obraFilename(datas[0]!.meta.obraNom, periodo))
     return
   }
 
@@ -73,24 +77,24 @@ export async function exportarTarjaObras(
 
   for (let i = 0; i < workbooks.length; i++) {
     const buffer = await workbooks[i]!.xlsx.writeBuffer()
-    zip.file(buildFilename(datas[i]!.meta.obraCod, generadoEn), buffer)
+    zip.file(obraFilename(datas[i]!.meta.obraNom, periodo), buffer)
   }
 
   // Comparativa: solo cuando hay >1 obra y el modo es 'detallado' o 'ambos'.
-  if (inputs.length > 1) {
+  if (N > 1) {
     const wbComp = buildComparativaWorkbook(datas)
     const bufferComp = await wbComp.xlsx.writeBuffer()
-    zip.file(`TarjaObras_Comparativa_${toISO(generadoEn)}.xlsx`, bufferComp)
+    zip.file(`TarjaObras_Comparativa_${N}${N === 1 ? 'obra' : 'obras'}_${periodo}.xlsx`, bufferComp)
   }
 
   if (modo === 'ambos') {
     const wbGen = buildGeneralCajaWorkbook(datas)
     const bufferGen = await wbGen.xlsx.writeBuffer()
-    zip.file(`TarjaObras_General_${toISO(generadoEn)}.xlsx`, bufferGen)
+    zip.file(`TarjaObras_General_${N}${N === 1 ? 'obra' : 'obras'}_${periodo}.xlsx`, bufferGen)
   }
 
   const zipBlob = await zip.generateAsync({ type: 'blob' })
-  downloadBlob(zipBlob, `TarjaObras_${toISO(generadoEn)}.zip`)
+  downloadBlob(zipBlob, `TarjaObras_${N}${N === 1 ? 'obra' : 'obras'}_${periodo}.zip`)
 }
 
 // ── Internals reutilizables ───────────────────────────────────────
@@ -128,7 +132,24 @@ function downloadBlob(blob: Blob, filename: string): void {
   URL.revokeObjectURL(url)
 }
 
-function buildFilename(obraCod: string, generadoEn: Date): string {
-  const safe = obraCod.replace(/[^a-z0-9_-]+/gi, '_').replace(/^_+|_+$/g, '')
-  return `TarjaObra_${safe}_${toISO(generadoEn)}.xlsx`
+/** Filename del XLSX detallado por obra: `TarjaObra_<nombre>_<periodo>.xlsx`. */
+function obraFilename(obraNom: string, periodo: string): string {
+  return `TarjaObra_${sanitize(obraNom)}_${periodo}.xlsx`
+}
+
+/**
+ * Slug del período para meter en filenames.
+ *   - sin filtro            → "todas"
+ *   - 1 semana              → "sem-2026-03-13"
+ *   - rango                 → "2026-03-13_a_2026-05-22"
+ */
+function periodoSlug(filtro: FiltroSemanas): string {
+  if (!filtro) return 'todas'
+  if (filtro.desde === filtro.hasta) return `sem-${filtro.desde}`
+  return `${filtro.desde}_a_${filtro.hasta}`
+}
+
+/** Colapsa todo lo que no sea `[a-z0-9_-]` a `_` y recorta los `_` del borde. */
+function sanitize(s: string): string {
+  return s.replace(/[^a-z0-9_-]+/gi, '_').replace(/^_+|_+$/g, '')
 }
