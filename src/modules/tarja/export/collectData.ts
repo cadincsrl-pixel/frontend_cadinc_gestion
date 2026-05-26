@@ -18,7 +18,6 @@ import {
   getCatIdEfectivo,
   getVHConCatObra,
   getHsExtrasLeg,
-  totalHsLeg,
 } from '@/lib/utils/costos'
 import { getSemDays, getViernes, getViernesCobro, toISO } from '@/lib/utils/dates'
 import { fmtDiaSemana, fmtPeriodoCorto, fmtPeriodoLabel, parseISODate } from './helpers/formatters'

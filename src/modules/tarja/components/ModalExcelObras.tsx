@@ -5,7 +5,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
 import { Input } from '@/components/ui/Input'
-import { exportarExcelObras } from '@/lib/utils/excel'
+import { exportarTarjaObra } from '@/modules/tarja/export'
 import { getVHConCatObra } from '@/lib/utils/costos'
 import { useToast } from '@/components/ui/Toast'
 import { getSemLabel, getViernes, toISO } from '@/lib/utils/dates'
@@ -159,13 +159,42 @@ export function ModalExcelObras({
     const { data: prestamos, error } = await q
     if (error) { toast(`No se pudo cargar préstamos: ${error.message}`, 'err'); return }
 
-    exportarExcelObras(
-      obrasTarget, personal, categorias, horas, tarifas, cierres,
-      certificaciones, contratistas, filtroSem.desde, todasCatObra, filtroSem.hasta,
-      todasHsExtras, (prestamos ?? []) as Prestamo[],
-    )
-    toast('📊 Excel exportado', 'ok')
-    onClose()
+    // El nuevo orquestador es por una obra a la vez. Si se seleccionaron varias,
+    // generamos un archivo XLSX independiente por cada una. El browser puede
+    // bloquear los downloads múltiples después del primero — el user lo
+    // desbloquea desde la barra de URL.
+    const filtroSemExport = filtroSem.desde
+      ? { desde: filtroSem.desde, hasta: filtroSem.hasta }
+      : null
+
+    try {
+      for (const obra of obrasTarget) {
+        await exportarTarjaObra({
+          obra,
+          personalAll:        personal,
+          categorias,
+          horasAll:           horas,
+          tarifasAll:         tarifas,
+          cierres,
+          certificacionesAll: certificaciones,
+          contratistas,
+          catObraAll:         todasCatObra,
+          hsExtrasAll:        todasHsExtras,
+          prestamosAll:       (prestamos ?? []) as Prestamo[],
+          filtroSem:          filtroSemExport,
+        })
+      }
+      toast(
+        obrasTarget.length === 1
+          ? '📊 Excel exportado'
+          : `📊 ${obrasTarget.length} archivos exportados`,
+        'ok',
+      )
+      onClose()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'error desconocido'
+      toast(`Error al exportar: ${msg}`, 'err')
+    }
   }
 
   return (
@@ -397,7 +426,7 @@ export function ModalExcelObras({
 
             {/* Hojas que incluye */}
             <div className="bg-gris px-4 py-2 flex items-center gap-1.5 flex-wrap border-t border-gris-mid">
-              {['Resumen', 'Detalle Semanal', 'Contratistas', 'Personal'].map(h => (
+              {['Resumen', 'Totales por Operario', 'Detalle Semanal', 'Planillas Tarja', 'Contratistas', 'Préstamos', 'Personal'].map(h => (
                 <span key={h} className="text-[10px] font-bold bg-white border border-gris-mid text-gris-dark px-2 py-0.5 rounded-full">
                   {h}
                 </span>

@@ -21,7 +21,7 @@ export function parseISODate(s: string | null | undefined): Date | null {
   if (!s) return null
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s)
   if (!m) return null
-  const [_, y, mo, d] = m
+  const [, y, mo, d] = m
   return new Date(Number(y), Number(mo) - 1, Number(d), 12)
 }
 
