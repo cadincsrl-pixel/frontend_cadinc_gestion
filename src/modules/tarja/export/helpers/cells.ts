@@ -45,7 +45,6 @@ export function applyTitle(
   ws.mergeCells(1, 1, 1, lastCol)
   const cell = ws.getCell(1, 1)
   cell.value = text
-  Object.assign(cell, STYLE_TITLE)
   cell.font      = STYLE_TITLE.font!
   cell.alignment = STYLE_TITLE.alignment!
   cell.fill      = STYLE_TITLE.fill!
