@@ -426,7 +426,7 @@ export function ModalExcelObras({
 
             {/* Hojas que incluye */}
             <div className="bg-gris px-4 py-2 flex items-center gap-1.5 flex-wrap border-t border-gris-mid">
-              {['Resumen', 'Totales por Operario', 'Detalle Semanal', 'Planillas Tarja', 'Contratistas', 'Préstamos', 'Personal'].map(h => (
+              {['Resumen', 'Totales por Operario', 'Detalle Semanal', 'Planillas (1 por semana)', 'Contratistas', 'Préstamos', 'Personal'].map(h => (
                 <span key={h} className="text-[10px] font-bold bg-white border border-gris-mid text-gris-dark px-2 py-0.5 rounded-full">
                   {h}
                 </span>
