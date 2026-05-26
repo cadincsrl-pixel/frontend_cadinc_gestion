@@ -11,7 +11,6 @@ import { useObras } from '@/modules/tarja/hooks/useObras'
 import { toISO, getViernes } from '@/lib/utils/dates'
 import type { Hora } from '@/types/domain.types'
 import { useContratistas, useCreateContratista, useUpdateContratista, useDeleteContratista } from '@/modules/tarja/hooks/useContratistas'
-import { TarjaTopbarActions } from '@/modules/tarja/components/TarjaTopbarActions'
 import { Pagination } from '@/components/ui/Pagination'
 import { ModalNuevoTrabajador }    from './ModalNuevoTrabajador'
 import { ModalEditarTrabajador }   from './ModalEditarTrabajador'
@@ -269,9 +268,7 @@ export function PersonalPage() {
 
   return (
     <div className="p-4 md:p-6 flex flex-col gap-4">
-      <TarjaTopbarActions />
-
-      {/* Alerta amarilla: activos sin DNI subido. Solo en el tab Personal. */}
+      {/* Alerta amarilla: activos con datos faltantes. Solo en el tab Personal. */}
       {tab === 'personal' && (
         <AlertaDniFaltante
           personal={personal}

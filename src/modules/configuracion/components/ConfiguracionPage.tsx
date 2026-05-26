@@ -1,13 +1,10 @@
 'use client'
 
-import { TarjaTopbarActions } from '@/modules/tarja/components/TarjaTopbarActions'
 import { CategoriasTab } from './CategoriasTab'
 
 export function ConfiguracionPage() {
   return (
     <div className="p-4 md:p-6 flex flex-col gap-4">
-      <TarjaTopbarActions />
-
       <div>
         <h1 className="font-display text-[2rem] tracking-wider text-azul">
           CATEGORÍAS Y TARIFAS
