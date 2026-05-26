@@ -5,7 +5,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
 import { Input } from '@/components/ui/Input'
-import { exportarTarjaObras } from '@/modules/tarja/export'
+import { exportarTarjaObras, type ExportModo } from '@/modules/tarja/export'
 import { getVHConCatObra } from '@/lib/utils/costos'
 import { useToast } from '@/components/ui/Toast'
 import { getSemLabel, getViernes, toISO } from '@/lib/utils/dates'
@@ -43,6 +43,7 @@ export function ModalExcelObras({
   const [semHasta, setSemHasta] = useState('')
   const [obrasSelec, setObrasSelec] = useState<string[]>(obras.map(o => o.cod))
   const [busqueda, setBusqueda] = useState('')
+  const [exportModo, setExportModo] = useState<ExportModo>('detallado')
 
   const busquedaNorm = busqueda.trim().toLowerCase()
   const obrasVisibles = useMemo(() => {
@@ -193,13 +194,17 @@ export function ModalExcelObras({
         prestamosAll:       (prestamos ?? []) as Prestamo[],
         filtroSem:          filtroSemExport,
       }))
-      await exportarTarjaObras(inputs)
-      toast(
-        obrasTarget.length === 1
-          ? '📊 Excel exportado'
-          : `📦 ZIP con ${obrasTarget.length} obras + comparativa exportado`,
-        'ok',
-      )
+      await exportarTarjaObras(inputs, exportModo)
+      const N = obrasTarget.length
+      const msg =
+        exportModo === 'general'
+          ? '📊 Excel general (salidas de caja) exportado'
+          : exportModo === 'ambos'
+            ? `📦 ZIP con detallado + general (${N} obra${N !== 1 ? 's' : ''}) exportado`
+            : N === 1
+              ? '📊 Excel exportado'
+              : `📦 ZIP con ${N} obras + comparativa exportado`
+      toast(msg, 'ok')
       onClose()
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'error desconocido'
@@ -227,6 +232,38 @@ export function ModalExcelObras({
       }
     >
       <div className="flex flex-col gap-4">
+
+        {/* Tipo de export */}
+        <div>
+          <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-2">
+            Tipo de export
+          </div>
+          <div className="flex gap-1 mb-1 bg-gris rounded-xl p-1">
+            {([
+              ['detallado', 'Detallado'],
+              ['general', 'General (caja)'],
+              ['ambos', 'Ambos'],
+            ] as const).map(([val, label]) => (
+              <button
+                key={val}
+                type="button"
+                onClick={() => setExportModo(val)}
+                className={`flex-1 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${
+                  exportModo === val
+                    ? 'bg-azul text-white shadow-sm'
+                    : 'text-gris-dark hover:text-carbon hover:bg-white'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-gris-dark mt-1">
+            {exportModo === 'detallado' && 'Un XLSX completo por obra (7 hojas c/u). Multi-obra: ZIP con comparativa.'}
+            {exportModo === 'general' && 'Un XLSX simple "Salidas de Caja" para cargar en caja después de liquidar.'}
+            {exportModo === 'ambos' && 'ZIP con el detallado de cada obra + el general de salidas de caja.'}
+          </p>
+        </div>
 
         {/* Filtro semana */}
         <div>
@@ -436,11 +473,19 @@ export function ModalExcelObras({
 
             {/* Hojas que incluye */}
             <div className="bg-gris px-4 py-2 flex items-center gap-1.5 flex-wrap border-t border-gris-mid">
-              {['Resumen', 'Totales por Operario', 'Detalle Semanal', 'Planillas (1 por semana)', 'Contratistas', 'Préstamos', 'Personal'].map(h => (
+              {(exportModo === 'general'
+                ? ['Salidas de Caja']
+                : ['Resumen', 'Totales por Operario', 'Detalle Semanal', 'Planillas Tarja', 'Contratistas', 'Préstamos', 'Personal']
+              ).map(h => (
                 <span key={h} className="text-[10px] font-bold bg-white border border-gris-mid text-gris-dark px-2 py-0.5 rounded-full">
                   {h}
                 </span>
               ))}
+              {exportModo === 'ambos' && (
+                <span className="text-[10px] font-bold bg-azul-light border border-azul-mid text-azul px-2 py-0.5 rounded-full">
+                  + Salidas de Caja
+                </span>
+              )}
             </div>
           </div>
         )}

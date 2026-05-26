@@ -1,13 +1,17 @@
 /**
  * Orquestador del export "Tarja por Obra".
  *
- * Tres modos de uso:
- *   - `exportarTarjaObra(input)`     → 1 obra, descarga XLSX directo.
- *   - `exportarTarjaObras(inputs[])` → N obras, descarga 1 ZIP con N XLSX
- *     individuales + 1 XLSX "Comparativa" con resumen multi-obra y
- *     totales por operario consolidados.
- *   - `buildTarjaObraWorkbook(input)` → solo arma el Workbook (no descarga),
- *     útil para combinar en ZIP.
+ * Tres modos de uso del entry point `exportarTarjaObras(inputs, modo)`:
+ *   - `'detallado'`: XLSX detallado por obra. Si N>1, ZIP con XLSX
+ *     individuales + Comparativa.
+ *   - `'general'`: 1 XLSX "Salidas de Caja" con las salidas de la(s)
+ *     semana(s) listadas por obra (operarios consolidados, contratistas
+ *     individuales, préstamos otorgados). Para cargar en caja después de
+ *     liquidar.
+ *   - `'ambos'`: descarga un ZIP con todo lo del detallado + el General.
+ *
+ * APIs internas reutilizables:
+ *   - `buildTarjaObraWorkbook(input)`  → arma Workbook de 1 obra (no descarga).
  */
 import ExcelJS from 'exceljs'
 import JSZip from 'jszip'
@@ -21,43 +25,69 @@ import { buildContratistasSheet } from './builders/buildContratistasSheet'
 import { buildPrestamosSheet } from './builders/buildPrestamosSheet'
 import { buildPersonalSheet } from './builders/buildPersonalSheet'
 import { buildComparativaWorkbook } from './buildComparativa'
+import { buildGeneralCajaWorkbook } from './buildGeneralCaja'
 import type { ExportInput, ExportData } from './types'
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
-// ── API pública: 1 obra ───────────────────────────────────────────
+export type ExportModo = 'detallado' | 'general' | 'ambos'
 
-export async function exportarTarjaObra(input: ExportInput): Promise<void> {
-  const { wb, data } = buildTarjaObraWorkbook(input)
-  const blob = await workbookToBlob(wb)
-  downloadBlob(blob, buildFilename(data.meta.obraCod, data.meta.generadoEn))
-}
+// ── API pública ───────────────────────────────────────────────────
 
-// ── API pública: N obras → 1 ZIP ──────────────────────────────────
-
-export async function exportarTarjaObras(inputs: ExportInput[]): Promise<void> {
+/**
+ * Entry point único del export. El componente decide qué modo según
+ * el radio del modal.
+ */
+export async function exportarTarjaObras(
+  inputs: ExportInput[],
+  modo: ExportModo = 'detallado',
+): Promise<void> {
   if (inputs.length === 0) return
-  if (inputs.length === 1) {
-    await exportarTarjaObra(inputs[0]!)
+
+  const generadoEn = new Date()
+  // Pre-cómputo de ExportData[]: lo usamos en cualquier modo. Lo armamos
+  // una sola vez para no duplicar trabajo.
+  const datas: ExportData[] = []
+  const workbooks: ExcelJS.Workbook[] = []
+  for (const input of inputs) {
+    const { wb, data } = buildTarjaObraWorkbook(input)
+    datas.push(data)
+    workbooks.push(wb)
+  }
+
+  if (modo === 'general') {
+    const wb = buildGeneralCajaWorkbook(datas)
+    const blob = await workbookToBlob(wb)
+    downloadBlob(blob, `TarjaObras_General_${toISO(generadoEn)}.xlsx`)
     return
   }
 
-  const generadoEn = new Date()
-  const zip = new JSZip()
-
-  // Un XLSX individual por obra + recolectar los ExportData para la comparativa.
-  const dataPorObra: ExportData[] = []
-  for (const input of inputs) {
-    const { wb, data } = buildTarjaObraWorkbook(input)
-    dataPorObra.push(data)
-    const buffer = await wb.xlsx.writeBuffer()
-    zip.file(buildFilename(data.meta.obraCod, generadoEn), buffer)
+  if (modo === 'detallado' && inputs.length === 1) {
+    const blob = await workbookToBlob(workbooks[0]!)
+    downloadBlob(blob, buildFilename(datas[0]!.meta.obraCod, generadoEn))
+    return
   }
 
-  // XLSX "Comparativa" con resumen multi-obra + totales por operario consolidados.
-  const wbComp = buildComparativaWorkbook(dataPorObra)
-  const bufferComp = await wbComp.xlsx.writeBuffer()
-  zip.file(`TarjaObras_Comparativa_${toISO(generadoEn)}.xlsx`, bufferComp)
+  // Para 'detallado' con N>1 o 'ambos': ZIP.
+  const zip = new JSZip()
+
+  for (let i = 0; i < workbooks.length; i++) {
+    const buffer = await workbooks[i]!.xlsx.writeBuffer()
+    zip.file(buildFilename(datas[i]!.meta.obraCod, generadoEn), buffer)
+  }
+
+  // Comparativa: solo cuando hay >1 obra y el modo es 'detallado' o 'ambos'.
+  if (inputs.length > 1) {
+    const wbComp = buildComparativaWorkbook(datas)
+    const bufferComp = await wbComp.xlsx.writeBuffer()
+    zip.file(`TarjaObras_Comparativa_${toISO(generadoEn)}.xlsx`, bufferComp)
+  }
+
+  if (modo === 'ambos') {
+    const wbGen = buildGeneralCajaWorkbook(datas)
+    const bufferGen = await wbGen.xlsx.writeBuffer()
+    zip.file(`TarjaObras_General_${toISO(generadoEn)}.xlsx`, bufferGen)
+  }
 
   const zipBlob = await zip.generateAsync({ type: 'blob' })
   downloadBlob(zipBlob, `TarjaObras_${toISO(generadoEn)}.zip`)
