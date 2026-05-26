@@ -100,16 +100,21 @@ export interface DetalleRow {
   estado:          'pendiente' | 'cerrado' | null
 }
 
-export interface PlanillaLongRow {
-  semKey:       string
-  periodoCorto: string
+export interface PlanillaSemanaOperario {
   leg:          string
   nom:          string
   catNom:       string
-  fecha:        Date
-  diaSemana:    string
-  horas:        number
-  tipo:         'Regular' | 'Extra'
+  /** Mapa `ISO yyyy-mm-dd → horas regulares` (solo días con horas > 0). */
+  horasPorDia:  Record<string, number>
+  hsExtras:     number
+  totalHs:      number
+  /** Costo de la semana incluyendo hs_extras × VH efectivo (`costoLegConCatObra`). */
+  monto:        number
+}
+
+export interface PlanillaMatrix {
+  sem:        SemanaTotal
+  operarios:  PlanillaSemanaOperario[]
 }
 
 export interface ContratistaRow {
@@ -163,7 +168,7 @@ export interface ExportData {
     neto:               number
   }
   detalleSemanal:  DetalleRow[]
-  planillasLong:   PlanillaLongRow[]
+  planillas:       PlanillaMatrix[]
   contratistas:    ContratistaRow[]
   prestamos:       PrestamoRow[]
   personalDeObra:  PersonalRow[]

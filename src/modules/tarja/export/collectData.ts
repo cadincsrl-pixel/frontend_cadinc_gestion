@@ -20,7 +20,7 @@ import {
   getHsExtrasLeg,
 } from '@/lib/utils/costos'
 import { getSemDays, getViernes, getViernesCobro, toISO } from '@/lib/utils/dates'
-import { fmtDiaSemana, fmtPeriodoCorto, fmtPeriodoLabel, parseISODate } from './helpers/formatters'
+import { fmtPeriodoCorto, fmtPeriodoLabel, parseISODate } from './helpers/formatters'
 import type {
   ContratistaRow,
   DetalleRow,
@@ -28,7 +28,8 @@ import type {
   ExportInput,
   OperarioTotal,
   PersonalRow,
-  PlanillaLongRow,
+  PlanillaMatrix,
+  PlanillaSemanaOperario,
   PrestamoRow,
   SemanaTotal,
 } from './types'
@@ -281,51 +282,50 @@ export function collectData(input: ExportInput): ExportData {
     })
   }
 
-  // ── 8. Planillas en formato largo (una fila por día/leg con horas > 0 + filas por hs extras) ──
-  const planillasLong: PlanillaLongRow[] = []
-  for (const sem of semanas) {
+  // ── 8. Planillas: matriz por semana ──
+  // Una `PlanillaMatrix` por semana con sus operarios alfabéticos, sus
+  // horas por día (Record ISO→horas), hs_extras agregadas y monto de la
+  // semana ya calculado. El builder solo escribe.
+  const planillas: PlanillaMatrix[] = semanas.map(sem => {
     const vie = new Date(sem.semKey + 'T12:00:00')
     const days = getSemDays(vie)
+    const fechasISO = days.map(toISO)
 
+    const operariosSem: PlanillaSemanaOperario[] = []
     for (const pdo of personalDeObra) {
+      const horasPorDia: Record<string, number> = {}
+      let hsReg = 0
+      for (let i = 0; i < days.length; i++) {
+        const fecha = fechasISO[i]!
+        const h = horas.find(x => x.leg === pdo.leg && x.fecha === fecha)
+        if (h && h.horas > 0) {
+          horasPorDia[fecha] = h.horas
+          hsReg += h.horas
+        }
+      }
+      const hsExt = getHsExtrasLeg(hsExtras, obra.cod, pdo.leg, sem.semKey)
+      if (hsReg === 0 && hsExt === 0) continue
+
       const catId = getCatIdEfectivo(catObraAll, personalAll, obra.cod, pdo.leg, sem.semKey)
       const catNom = catId ? (categorias.find(c => c.id === catId)?.nom ?? '—') : '—'
+      const monto = Math.round(
+        costoLegConCatObra(horas, hsExtras, personalAll, categorias, tarifasAll, catObraAll, obra.cod, pdo.leg, days) / 1000,
+      ) * 1000
 
-      // Horas regulares por día.
-      for (const d of days) {
-        const f = toISO(d)
-        const h = horas.find(x => x.leg === pdo.leg && x.fecha === f)
-        if (!h || h.horas <= 0) continue
-        planillasLong.push({
-          semKey:       sem.semKey,
-          periodoCorto: sem.periodoCorto,
-          leg:          pdo.leg,
-          nom:          pdo.nom,
-          catNom,
-          fecha:        new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12),
-          diaSemana:    fmtDiaSemana(d),
-          horas:        h.horas,
-          tipo:         'Regular',
-        })
-      }
-
-      // Hs extras: fila aparte con fecha = viernes de la semana (no hay día específico).
-      const ext = getHsExtrasLeg(hsExtras, obra.cod, pdo.leg, sem.semKey)
-      if (ext > 0) {
-        planillasLong.push({
-          semKey:       sem.semKey,
-          periodoCorto: sem.periodoCorto,
-          leg:          pdo.leg,
-          nom:          pdo.nom,
-          catNom,
-          fecha:        new Date(vie.getFullYear(), vie.getMonth(), vie.getDate(), 12),
-          diaSemana:    fmtDiaSemana(vie),
-          horas:        ext,
-          tipo:         'Extra',
-        })
-      }
+      operariosSem.push({
+        leg:         pdo.leg,
+        nom:         pdo.nom,
+        catNom,
+        horasPorDia,
+        hsExtras:    hsExt,
+        totalHs:     hsReg + hsExt,
+        monto,
+      })
     }
-  }
+
+    operariosSem.sort((a, b) => a.nom.localeCompare(b.nom))
+    return { sem, operarios: operariosSem }
+  })
 
   // ── 9. Contratistas (filas planas, sin subtotales — eso queda para el builder) ──
   const contratistasRows: ContratistaRow[] = certificaciones
@@ -414,7 +414,7 @@ export function collectData(input: ExportInput): ExportData {
     operarios,
     totalesObra,
     detalleSemanal,
-    planillasLong,
+    planillas,
     contratistas: contratistasRows,
     prestamos: prestamosRows,
     personalDeObra,

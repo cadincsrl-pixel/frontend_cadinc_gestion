@@ -1,20 +1,20 @@
 /**
- * Hojas "Sem dd-mm-yy": una pestaña por semana en formato matriz
- * (operarios × 7 días + Hs Extras + TOTAL). Es el formato familiar de la
- * app TarjaTable y la planilla de papel.
+ * Hoja "Planillas Tarja": matrices semanales apiladas verticalmente en una
+ * sola pestaña, una abajo de la otra con un separador claro por semana.
  *
- * Si hay N semanas en el rango exportado, se crean N hojas con nombre
- * "Sem 13-03-26" (viernes de la semana, dd-mm-aa, ordenable
- * alfabéticamente). Cada hoja es compacta y autocontenida — para ver una
- * semana específica el user va directo a esa pestaña.
+ * Formato familiar de la app TarjaTable y la planilla de papel:
+ *   Leg | Nombre | Categoría | Vie | Sáb | Dom | Lun | Mar | Mié | Jue | HsExt | TOTAL | Costo
  *
- * Layout por hoja:
- *   A: Legajo · B: Nombre · C: Categoría
- *   D–J: 7 días (Vie a Jue) con header "Vie 13/3"
- *   K: Hs Extras
- *   L: TOTAL (fórmula =SUM(D:K))
+ * Cada bloque termina con una fila TOTAL (sumas por columna). El costo de
+ * la semana se calcula en `collectData.planillas[].sem.costoOperarios`.
  *
- * Fila TOTAL al pie con `=SUM(<col>)` por cada columna numérica.
+ * Decisión vs alternativas:
+ *  - Una pestaña por semana (versión previa): incómodo navegar entre
+ *    docenas de pestañas en exports largos.
+ *  - Tabla larga (versión original): difícil de leer un día/semana
+ *    específico sin pivotar.
+ *  - Matrices apiladas (esta): un solo lugar para scrollear, formato
+ *    familiar, costo total por semana visible al pie del bloque.
  */
 import type ExcelJS from 'exceljs'
 import {
@@ -27,55 +27,80 @@ import {
   freezeHeader,
   setColWidths,
 } from '../helpers/cells'
-import { FMT_HORAS, fmtDiaSemana } from '../helpers/formatters'
+import { FMT_HORAS, FMT_MONEDA_CERO, fmtDiaSemana } from '../helpers/formatters'
 import { sumRange } from '../helpers/formulas'
+import { C_AZUL_LIGHT, C_CARBON } from '../helpers/styles'
 import { getSemDays, toISO } from '@/lib/utils/dates'
-import type { ExportData, SemanaTotal } from '../types'
+import type { ExportData, PlanillaMatrix } from '../types'
 
-const COL_COUNT = 12
-const HEADER_ROW = 3
+const SHEET_NAME = 'Planillas Tarja'
+const COL_COUNT = 13
 const COL = {
   LEG:    1,
   NOMBRE: 2,
   CAT:    3,
-  // D..J → días (índices 4..10)
+  // D..J → 7 días (índices 4..10)
   HS_EXT: 11,
   TOTAL:  12,
+  COSTO:  13,
 } as const
 
 export function buildPlanillasTarjaSheet(wb: ExcelJS.Workbook, data: ExportData): void {
-  if (data.semanas.length === 0) {
-    // Sin datos: emitimos una hoja vacía como marcador para que el archivo
-    // no se vea "trunco" entre Planillas Tarja y Contratistas.
-    const ws = wb.addWorksheet('Planillas Tarja')
-    applyTitle(ws, `PLANILLAS DE TARJA — ${data.meta.obraNom} (${data.meta.obraCod})`, COL_COUNT)
-    applySubtitle(ws, 'Sin datos en el rango seleccionado.', COL_COUNT)
-    return
-  }
-
-  for (const sem of data.semanas) {
-    buildOneSheet(wb, data, sem)
-  }
-}
-
-// ── Una hoja por semana ───────────────────────────────────────────
-
-function buildOneSheet(wb: ExcelJS.Workbook, data: ExportData, sem: SemanaTotal): void {
-  const ws = wb.addWorksheet(sheetNameFor(sem.semKey))
-  setColWidths(ws, [8, 28, 18, 9, 9, 9, 9, 9, 9, 9, 10, 10])
+  const ws = wb.addWorksheet(SHEET_NAME)
+  setColWidths(ws, [8, 28, 18, 9, 9, 9, 9, 9, 9, 9, 10, 10, 14])
 
   // ── Fila 1: título ─────────────────────────────────────────────
-  applyTitle(ws, `${sem.periodoCorto} — ${data.meta.obraNom} (${data.meta.obraCod})`, COL_COUNT)
+  applyTitle(ws, `PLANILLAS DE TARJA — ${data.meta.obraNom} (${data.meta.obraCod})`, COL_COUNT)
 
   // ── Fila 2: subtítulo ──────────────────────────────────────────
   applySubtitle(
     ws,
-    `${sem.hsRegulares + sem.hsExtras} hs totales  ·  Cobro ${fmtCobro(sem.cobro)}  ·  Estado: ${sem.estado === 'cerrado' ? 'Cerrado' : 'Pendiente'}`,
+    `Período: ${data.meta.periodoLabel}  ·  ${data.planillas.length} semana${data.planillas.length !== 1 ? 's' : ''}  ·  ${data.totalesObra.hsTotal} hs totales`,
     COL_COUNT,
   )
 
-  // ── Fila 3: header ─────────────────────────────────────────────
+  if (data.planillas.length === 0) {
+    ws.mergeCells(4, 1, 4, COL_COUNT)
+    const c = ws.getCell(4, 1)
+    c.value = 'Sin datos en el rango seleccionado.'
+    c.font = { name: 'Calibri', size: 11, italic: true }
+    c.alignment = { horizontal: 'center', vertical: 'middle' }
+    return
+  }
+
+  // ── Filas 4+: matrices apiladas ────────────────────────────────
+  let row = 4
+  for (const matrix of data.planillas) {
+    row = writeMatrix(ws, row, matrix)
+    row += 1 // separador entre bloques
+  }
+
+  // Freeze del título + subtítulo, no del header (porque cada bloque tiene su propio header).
+  freezeHeader(ws, 2)
+}
+
+// ── Internals ─────────────────────────────────────────────────────
+
+/**
+ * Escribe un bloque (semana) empezando en `startRow`. Devuelve la fila
+ * siguiente al bloque (donde el caller puede agregar separador o el
+ * siguiente bloque).
+ */
+function writeMatrix(ws: ExcelJS.Worksheet, startRow: number, matrix: PlanillaMatrix): number {
+  const { sem, operarios } = matrix
   const days = getSemDays(new Date(sem.semKey + 'T12:00:00'))
+
+  // ── Section header: "Sem Vie 13/3 → Jue 19/3 · Cobro 20/3 · Estado" ──
+  ws.mergeCells(startRow, 1, startRow, COL_COUNT)
+  const sectionCell = ws.getCell(startRow, 1)
+  sectionCell.value = `${sem.periodoCorto}  ·  Cobro ${fmtFecha(sem.cobro)}  ·  ${sem.estado === 'cerrado' ? 'Cerrado' : 'Pendiente'}`
+  sectionCell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: C_CARBON } }
+  sectionCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 }
+  sectionCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C_AZUL_LIGHT } }
+  ws.getRow(startRow).height = 22
+
+  // ── Header de tabla ────────────────────────────────────────────
+  const headerRowIdx = startRow + 1
   const headers = [
     'Legajo',
     'Nombre',
@@ -83,66 +108,43 @@ function buildOneSheet(wb: ExcelJS.Workbook, data: ExportData, sem: SemanaTotal)
     ...days.map(d => `${fmtDiaSemana(d)} ${d.getDate()}/${d.getMonth() + 1}`),
     'Hs Extras',
     'TOTAL',
+    'Costo',
   ]
-  const headerRow = ws.getRow(HEADER_ROW)
+  const headerRow = ws.getRow(headerRowIdx)
   headers.forEach((h, i) => {
     headerRow.getCell(i + 1).value = h
   })
-  applyHeaderRow(ws, HEADER_ROW, COL_COUNT)
+  applyHeaderRow(ws, headerRowIdx, COL_COUNT)
 
-  // ── Reagrupar planillasLong por leg para esta semana ───────────
-  const filasSem = data.planillasLong.filter(p => p.semKey === sem.semKey)
-  if (filasSem.length === 0) {
-    freezeHeader(ws, HEADER_ROW)
-    return
-  }
-
-  // Map<leg, { nombre, catNom, horasPorDia: Record<isoFecha, number>, hsExtras }>
-  const porLeg = new Map<string, {
-    nombre: string
-    catNom: string
-    horasPorDia: Record<string, number>
-    hsExtras: number
-  }>()
-
-  for (const r of filasSem) {
-    const entry = porLeg.get(r.leg) ?? {
-      nombre:      r.nom,
-      catNom:      r.catNom,
-      horasPorDia: {},
-      hsExtras:    0,
-    }
-    if (r.tipo === 'Regular') {
-      entry.horasPorDia[toISO(r.fecha)] = r.horas
-    } else {
-      entry.hsExtras += r.horas
-    }
-    porLeg.set(r.leg, entry)
-  }
-
-  // ── Filas 4+: operarios (alfabético) ───────────────────────────
-  const operariosOrdenados = [...porLeg.entries()].sort(
-    ([, a], [, b]) => a.nombre.localeCompare(b.nombre),
-  )
-
-  let row = HEADER_ROW + 1
+  // ── Filas de operarios ─────────────────────────────────────────
+  let row = headerRowIdx + 1
   const firstDataRow = row
-  for (const [leg, info] of operariosOrdenados) {
+
+  if (operarios.length === 0) {
+    ws.mergeCells(row, 1, row, COL_COUNT)
+    const c = ws.getCell(row, 1)
+    c.value = 'Sin trabajadores con horas esta semana.'
+    c.font = { name: 'Calibri', size: 10, italic: true }
+    c.alignment = { horizontal: 'center', vertical: 'middle' }
+    return row + 1
+  }
+
+  for (const op of operarios) {
     const r = ws.getRow(row)
 
-    r.getCell(COL.LEG).value = leg
+    r.getCell(COL.LEG).value = op.leg
     r.getCell(COL.LEG).alignment = { horizontal: 'center', vertical: 'middle' }
 
-    r.getCell(COL.NOMBRE).value = info.nombre
+    r.getCell(COL.NOMBRE).value = op.nom
     r.getCell(COL.NOMBRE).alignment = { horizontal: 'left', vertical: 'middle' }
 
-    r.getCell(COL.CAT).value = info.catNom
+    r.getCell(COL.CAT).value = op.catNom
     r.getCell(COL.CAT).alignment = { horizontal: 'left', vertical: 'middle' }
 
     // Días: D..J (4..10).
     days.forEach((d, i) => {
       const col = 4 + i
-      const hs = info.horasPorDia[toISO(d)] ?? 0
+      const hs = op.horasPorDia[toISO(d)] ?? 0
       const cell = r.getCell(col)
       if (hs > 0) {
         cell.value  = hs
@@ -153,76 +155,69 @@ function buildOneSheet(wb: ExcelJS.Workbook, data: ExportData, sem: SemanaTotal)
       cell.alignment = { horizontal: 'right', vertical: 'middle' }
     })
 
-    // Hs Extras (col K).
+    // Hs Extras (K).
     const ext = r.getCell(COL.HS_EXT)
-    if (info.hsExtras > 0) {
-      ext.value  = info.hsExtras
+    if (op.hsExtras > 0) {
+      ext.value  = op.hsExtras
       ext.numFmt = FMT_HORAS
     } else {
       ext.value = '—'
     }
     ext.alignment = { horizontal: 'right', vertical: 'middle' }
 
-    // TOTAL (col L) con fórmula =SUM(D<row>:K<row>).
-    // Las celdas con "—" cuentan como 0 en SUM (Excel ignora texto).
+    // TOTAL (L) con fórmula =SUM(D<row>:K<row>).
+    // Excel ignora celdas de texto ("—") en SUM, así que el total es correcto.
     const totFormula = `SUM(${colLetter(4)}${row}:${colLetter(COL.HS_EXT)}${row})`
     const totCell = r.getCell(COL.TOTAL)
-    const totResult = days.reduce((s, d) => s + (info.horasPorDia[toISO(d)] ?? 0), 0) + info.hsExtras
-    totCell.value  = { formula: totFormula, result: totResult }
+    totCell.value  = { formula: totFormula, result: op.totalHs }
     totCell.numFmt = FMT_HORAS
     totCell.font   = { name: 'Calibri', size: 10, bold: true }
     totCell.alignment = { horizontal: 'right', vertical: 'middle' }
+
+    // Costo (M) — viene pre-calculado de collectData.
+    const costoCell = r.getCell(COL.COSTO)
+    costoCell.value  = op.monto
+    costoCell.numFmt = FMT_MONEDA_CERO
+    costoCell.alignment = { horizontal: 'right', vertical: 'middle' }
 
     row++
   }
   const lastDataRow = row - 1
   applyDataBorders(ws, firstDataRow, lastDataRow, COL_COUNT)
 
-  // ── Fila TOTAL al pie ──────────────────────────────────────────
+  // ── Fila TOTAL al pie del bloque ───────────────────────────────
   const totalRow = ws.getRow(row)
   totalRow.getCell(COL.NOMBRE).value = 'TOTAL'
   totalRow.getCell(COL.NOMBRE).alignment = { horizontal: 'left', vertical: 'middle', indent: 1 }
 
-  // Sumas por columna (D..K + L).
-  for (let c = 4; c <= COL.TOTAL; c++) {
+  // Sumas por columna (D..K → horas; L → total; M → costo).
+  for (let c = 4; c <= COL.COSTO; c++) {
     const letter = colLetter(c)
     const range = `${letter}${firstDataRow}:${letter}${lastDataRow}`
-    // Resultado total: re-derivado de info.horasPorDia y sumas.
     let result = 0
     if (c >= 4 && c <= 10) {
       const dayIdx = c - 4
       const fecha = toISO(days[dayIdx]!)
-      result = [...porLeg.values()].reduce((s, info) => s + (info.horasPorDia[fecha] ?? 0), 0)
+      result = operarios.reduce((s, op) => s + (op.horasPorDia[fecha] ?? 0), 0)
     } else if (c === COL.HS_EXT) {
-      result = [...porLeg.values()].reduce((s, info) => s + info.hsExtras, 0)
+      result = operarios.reduce((s, op) => s + op.hsExtras, 0)
     } else if (c === COL.TOTAL) {
       result = sem.hsRegulares + sem.hsExtras
+    } else if (c === COL.COSTO) {
+      result = sem.costoOperarios
     }
     const cell = totalRow.getCell(c)
     cell.value  = { formula: sumRange(range), result }
-    cell.numFmt = FMT_HORAS
+    cell.numFmt = c === COL.COSTO ? FMT_MONEDA_CERO : FMT_HORAS
     cell.alignment = { horizontal: 'right', vertical: 'middle' }
   }
   applyTotalRow(ws, row, COL_COUNT)
 
-  freezeHeader(ws, HEADER_ROW)
+  // Devuelvo la fila siguiente para que el caller agregue el separador.
+  return row + 1
 }
 
-// ── Internals ─────────────────────────────────────────────────────
-
-/**
- * Sheet name: "Sem 13-03-26". Excel prohíbe `\ / ? * [ ]` y limita a 31 chars.
- * Formato dd-mm-aa: 11 chars total, ordenable alfabéticamente *dentro del
- * mismo año* (que es el caso típico de un export filtrado).
- */
-function sheetNameFor(semKey: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(semKey)
-  if (!m) return `Sem ${semKey}`
-  const [, y, mo, d] = m
-  return `Sem ${d}-${mo}-${y!.slice(2)}`
-}
-
-function fmtCobro(d: Date): string {
+function fmtFecha(d: Date): string {
   const dd = String(d.getDate()).padStart(2, '0')
   const mm = String(d.getMonth() + 1).padStart(2, '0')
   const yyyy = d.getFullYear()

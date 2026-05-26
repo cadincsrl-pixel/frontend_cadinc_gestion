@@ -82,6 +82,16 @@ export function ModalExcelObras({
 
   const { data: todasHsExtras = [] } = useHsExtrasAll()
 
+  // El `personal` que llega como prop está filtrado a la semana de la UI
+  // (via `usePersonalSemana`). Para el export necesitamos TODOS los legs
+  // históricos — si no, los operarios que tarjaron en semanas pasadas pero
+  // no en la actual desaparecen del XLSX. Bug observado en producción
+  // (planillas con solo 4 trabajadores cuando en semanas anteriores había más).
+  const { data: personalAll = personal } = useQuery({
+    queryKey: ['personal', 'all'],
+    queryFn: () => apiGet<Personal[]>('/api/personal'),
+  })
+
   // Wrapper que cierra sobre la data del componente.
   const getVHConCatObraLocal = (obraCod: string, leg: string, fechaRef: string) =>
     getVHConCatObra(todasCatObra, personal, categorias, tarifas, obraCod, leg, fechaRef)
@@ -151,8 +161,9 @@ export function ModalExcelObras({
     const obrasTarget = obras.filter(o => obrasSelec.includes(o.cod))
 
     // Préstamos de los operarios de la nómina, acotados al rango del export.
-    // Fetch puntual para no traer históricos enteros.
-    const legs = personal.map(p => p.leg)
+    // Usamos personalAll (toda la nómina histórica), no personal (que viene
+    // filtrado por la semana de la UI).
+    const legs = personalAll.map(p => p.leg)
     let q = createClient().from('prestamos').select('*').in('leg', legs)
     if (filtroSem.desde) q = q.gte('sem_key', filtroSem.desde)
     if (filtroSem.hasta) q = q.lte('sem_key', filtroSem.hasta)
@@ -171,7 +182,7 @@ export function ModalExcelObras({
       for (const obra of obrasTarget) {
         await exportarTarjaObra({
           obra,
-          personalAll:        personal,
+          personalAll,
           categorias,
           horasAll:           horas,
           tarifasAll:         tarifas,
