@@ -9,10 +9,9 @@
  *  - `Monto bruto`: `SUMIFS('Detalle Semanal'!Monto, 'Detalle Semanal'!Tipo, "Operario", 'Detalle Semanal'!Legajo, <Legajo>)`.
  *    Si el user edita un monto en `Detalle Semanal`, este total recalcula.
  *  - `Neto`: `=MontoBruto + Otorgados − Descuentos`.
- *  - `Préstamos otorgados` / `Descuentos`: por ahora **valores fijos**
- *    pre-calculados en `collectData`. Cuando se cree la hoja `Préstamos`
- *    en el PR 6, se reemplazan por `SUMIFS` contra esa hoja (los valores
- *    quedan sincronizados igual porque `collectData` es la fuente única).
+ *  - `Préstamos otorgados` / `Descuentos`: `SUMIFS` contra hoja `Préstamos`
+ *    filtrando por (Tipo, Legajo). Si el user agrega un préstamo manual
+ *    en esa hoja, este total recalcula.
  *  - Fila TOTAL al pie con `SUM(...)` por columna.
  *
  * Estilo:
@@ -36,6 +35,7 @@ import { sumRange, sumifs } from '../helpers/formulas'
 import { STYLE_WARNING } from '../helpers/styles'
 import type { ExportData } from '../types'
 import { DETALLE_COL, DETALLE_SHEET_NAME } from './buildDetalleSemanalSheet'
+import { PRESTAMOS_COL, PRESTAMOS_SHEET_NAME } from './buildPrestamosSheet'
 
 const SHEET_NAME = 'Totales por Operario'
 const HEADERS = [
@@ -100,6 +100,9 @@ export function buildTotalesOperarioSheet(wb: ExcelJS.Workbook, data: ExportData
   const detTipoRange   = `'${DETALLE_SHEET_NAME}'!$${colLetter(DETALLE_COL.TIPO)}:$${colLetter(DETALLE_COL.TIPO)}`
   const detLegRange    = `'${DETALLE_SHEET_NAME}'!$${colLetter(DETALLE_COL.LEG)}:$${colLetter(DETALLE_COL.LEG)}`
   const detMontoRange  = `'${DETALLE_SHEET_NAME}'!$${colLetter(DETALLE_COL.MONTO)}:$${colLetter(DETALLE_COL.MONTO)}`
+  const prLegRange     = `'${PRESTAMOS_SHEET_NAME}'!$${colLetter(PRESTAMOS_COL.LEG)}:$${colLetter(PRESTAMOS_COL.LEG)}`
+  const prTipoRange    = `'${PRESTAMOS_SHEET_NAME}'!$${colLetter(PRESTAMOS_COL.TIPO)}:$${colLetter(PRESTAMOS_COL.TIPO)}`
+  const prMontoRange   = `'${PRESTAMOS_SHEET_NAME}'!$${colLetter(PRESTAMOS_COL.MONTO)}:$${colLetter(PRESTAMOS_COL.MONTO)}`
 
   let row = HEADER_ROW + 1
   const firstDataRow = row
@@ -133,12 +136,20 @@ export function buildTotalesOperarioSheet(wb: ExcelJS.Workbook, data: ExportData
     r.getCell(COL.MONTO).numFmt = FMT_MONEDA_CERO
     r.getCell(COL.MONTO).alignment = { horizontal: 'right', vertical: 'middle' }
 
-    // Préstamos y descuentos: valor fijo por ahora (PR 6 los pasa a SUMIFS).
-    r.getCell(COL.OTORGADOS).value  = op.prestamosOtorgados
+    // Préstamos: SUMIFS contra hoja Préstamos por (Tipo, Legajo).
+    const otorgadosFormula = sumifs(prMontoRange, [
+      { range: prTipoRange, criteria: 'Otorgado' },
+      { range: prLegRange,  criteria: `${colLetter(COL.LEG)}${row}` },
+    ])
+    r.getCell(COL.OTORGADOS).value  = { formula: otorgadosFormula, result: op.prestamosOtorgados }
     r.getCell(COL.OTORGADOS).numFmt = FMT_MONEDA_CERO
     r.getCell(COL.OTORGADOS).alignment = { horizontal: 'right', vertical: 'middle' }
 
-    r.getCell(COL.DESCUENTOS).value  = op.descuentos
+    const descuentosFormula = sumifs(prMontoRange, [
+      { range: prTipoRange, criteria: 'Descontado' },
+      { range: prLegRange,  criteria: `${colLetter(COL.LEG)}${row}` },
+    ])
+    r.getCell(COL.DESCUENTOS).value  = { formula: descuentosFormula, result: op.descuentos }
     r.getCell(COL.DESCUENTOS).numFmt = FMT_MONEDA_CERO
     r.getCell(COL.DESCUENTOS).alignment = { horizontal: 'right', vertical: 'middle' }
 
