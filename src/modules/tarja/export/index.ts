@@ -17,6 +17,7 @@ import { collectData } from './collectData'
 import { buildResumenSheet } from './builders/buildResumenSheet'
 import { buildTotalesOperarioSheet } from './builders/buildTotalesOperarioSheet'
 import { buildDetalleSemanalSheet } from './builders/buildDetalleSemanalSheet'
+import { buildPlanillasTarjaSheet } from './builders/buildPlanillasTarjaSheet'
 import type { ExportInput } from './types'
 
 export async function exportarTarjaObra(input: ExportInput): Promise<void> {
@@ -30,6 +31,7 @@ export async function exportarTarjaObra(input: ExportInput): Promise<void> {
   buildResumenSheet(wb, data)
   buildTotalesOperarioSheet(wb, data)
   buildDetalleSemanalSheet(wb, data)
+  buildPlanillasTarjaSheet(wb, data)
 
   // ── Descarga ──
   const buffer = await wb.xlsx.writeBuffer()
