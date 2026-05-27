@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, type ReactNode } from 'react'
 import {
   useGastosResumen, useGastosPorCamion, useGastosPorChofer, useGastosPorCategoria,
   useTramos, useCobros, useTarifasEmpresa, useCamiones, useChoferes, useLiquidaciones,
+  useRutas,
 } from '../hooks/useLogistica'
 import { calcularPerformance } from '@/lib/utils/performance'
 import { Button } from '@/components/ui/Button'
@@ -57,10 +58,11 @@ export function GastosReportes() {
   const { data: camiones = [] }  = useCamiones()
   const { data: choferes = [] }  = useChoferes()
   const { data: liquidaciones = [] } = useLiquidaciones()
+  const { data: rutas         = [] } = useRutas()
 
   const performance = useMemo(
-    () => calcularPerformance(tramos, cobros, tarifas, desde, hasta, liquidaciones, choferes),
-    [tramos, cobros, tarifas, desde, hasta, liquidaciones, choferes],
+    () => calcularPerformance(tramos, cobros, tarifas, desde, hasta, liquidaciones, choferes, rutas),
+    [tramos, cobros, tarifas, desde, hasta, liquidaciones, choferes, rutas],
   )
 
   // Mapas para mergear gastos por entidad con performance.
@@ -120,7 +122,19 @@ export function GastosReportes() {
             <Kpi label="Facturación del período" value={fmt$(facturacionPeriodo)} accent="verde" />
             <Kpi label="Gastos del período"      value={fmt$(gastosPeriodo)}      accent="azul" />
             <Kpi
-              label="Costo mano de obra"
+              label={
+                <span className="inline-flex items-center gap-1.5">
+                  Costo mano de obra
+                  {performance.totales.tiene_parcial && (
+                    <span
+                      title={`Incluye ${fmt$(performance.totales.costo_mo_parcial)} estimados (días con tramos sin liquidación cerrada). Migra a "cerrado" cuando se cierre la liquidación del chofer.`}
+                      className="text-[9px] font-bold bg-naranja-light text-naranja-dark px-1.5 py-0.5 rounded-full uppercase tracking-wide"
+                    >
+                      + parcial
+                    </span>
+                  )}
+                </span>
+              }
               value={fmt$(costoMOPeriodo)}
               accent="azul"
             />
@@ -357,7 +371,7 @@ function PerformanceTable({ filas, label, getNombre, gastosPor, mono }: {
 
 // ── Subcomponentes ──────────────────────────────────────────────
 
-function Kpi({ label, value, accent }: { label: string; value: string; accent?: 'azul' | 'naranja' | 'verde' }) {
+function Kpi({ label, value, accent }: { label: ReactNode; value: string; accent?: 'azul' | 'naranja' | 'verde' }) {
   const accentCls = accent === 'azul'    ? 'border-azul-light text-azul-mid'
                   : accent === 'naranja' ? 'border-naranja-light text-naranja-dark'
                   : accent === 'verde'   ? 'border-verde-light text-verde'

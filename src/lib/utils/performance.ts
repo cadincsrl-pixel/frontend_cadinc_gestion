@@ -15,32 +15,42 @@
 //   3) Si no hay tarifa cargada → ingreso 0 + flag `sin_tarifa`.
 // - Tramos sin empresa/cantera registrados se excluyen.
 
-import type { Tramo, Cobro, TarifaEmpresaCantera, Liquidacion, Chofer } from '@/types/domain.types'
+import type { Tramo, Cobro, TarifaEmpresaCantera, Liquidacion, Chofer, Ruta } from '@/types/domain.types'
 
 interface PerformanceFila {
   // id de la entidad agregada (camion_id o chofer_id)
-  entidad_id:    number
-  viajes:        number
-  toneladas:     number
-  ingresos:      number
-  // Costo de mano de obra: suma de subtotal_basico + subtotal_km de las
-  // liquidaciones cerradas asociadas al chofer/camión en el rango.
-  // 0 si no se pasaron liquidaciones al cálculo.
-  costo_mo:      number
+  entidad_id:        number
+  viajes:            number
+  toneladas:         number
+  ingresos:          number
+  // Costo total de mano de obra = `costo_mo_cerrado + costo_mo_parcial`.
+  costo_mo:          number
+  // Subset que viene de liquidaciones en estado `cerrada`.
+  costo_mo_cerrado:  number
+  // Subset estimado "vivo" para días con tramos del chofer que NO están
+  // cubiertos por ninguna liquidación cerrada. Permite ver un margen real
+  // aproximado cuando hay choferes con varios meses sin cerrar liquidación.
+  // Calculado como `(días vivos × chofer.basico_dia) + Σ (km × precio_km)`.
+  // Cuando el chofer cierra la liquidación, este monto migra a `costo_mo_cerrado`.
+  costo_mo_parcial:  number
   // Cuántos tramos se contaron sin tarifa cargada (ingreso = 0).
-  sin_tarifa:    number
+  sin_tarifa:        number
   // Cuántos tramos están sin cobrar todavía (ingreso teórico).
-  sin_cobrar:    number
+  sin_cobrar:        number
 }
 
 export interface PerformanceResultado {
   por_camion:        PerformanceFila[]
   por_chofer:        PerformanceFila[]
   totales: {
-    viajes:    number
-    toneladas: number
-    ingresos:  number
-    costo_mo:  number
+    viajes:            number
+    toneladas:         number
+    ingresos:          number
+    costo_mo:          number
+    costo_mo_cerrado:  number
+    costo_mo_parcial:  number
+    /** `true` si algún chofer tiene `costo_mo_parcial > 0` — la UI muestra un chip "parcial estimado". */
+    tiene_parcial:     boolean
   }
 }
 
@@ -90,6 +100,7 @@ export function calcularPerformance(
   hasta:         string,
   liquidaciones: Liquidacion[] = [],
   choferes:      Chofer[]      = [],
+  rutas:         Ruta[]        = [],
 ): PerformanceResultado {
   // Mapa cobro_id → cobro para lookup O(1).
   const cobroPorId = new Map<number, Cobro>()
@@ -98,12 +109,20 @@ export function calcularPerformance(
   // Acumuladores por entidad.
   const accCamion = new Map<number, PerformanceFila>()
   const accChofer = new Map<number, PerformanceFila>()
-  const totales = { viajes: 0, toneladas: 0, ingresos: 0, costo_mo: 0 }
+  const totales = {
+    viajes: 0, toneladas: 0, ingresos: 0,
+    costo_mo: 0, costo_mo_cerrado: 0, costo_mo_parcial: 0,
+    tiene_parcial: false,
+  }
 
   function getOrInit(map: Map<number, PerformanceFila>, id: number): PerformanceFila {
     let f = map.get(id)
     if (!f) {
-      f = { entidad_id: id, viajes: 0, toneladas: 0, ingresos: 0, costo_mo: 0, sin_tarifa: 0, sin_cobrar: 0 }
+      f = {
+        entidad_id: id, viajes: 0, toneladas: 0, ingresos: 0,
+        costo_mo: 0, costo_mo_cerrado: 0, costo_mo_parcial: 0,
+        sin_tarifa: 0, sin_cobrar: 0,
+      }
       map.set(id, f)
     }
     return f
@@ -182,15 +201,124 @@ export function calcularPerformance(
 
     // Por chofer (siempre identificado).
     const fch = getOrInit(accChofer, liq.chofer_id)
-    fch.costo_mo += costo
+    fch.costo_mo         += costo
+    fch.costo_mo_cerrado += costo
 
     // Por camión: usamos el camión asignado actual del chofer.
     const chofer = choferPorId.get(liq.chofer_id)
     if (chofer?.camion_id != null) {
       const fc = getOrInit(accCamion, chofer.camion_id)
-      fc.costo_mo += costo
+      fc.costo_mo         += costo
+      fc.costo_mo_cerrado += costo
     }
-    totales.costo_mo += costo
+    totales.costo_mo         += costo
+    totales.costo_mo_cerrado += costo
+  }
+
+  // ── Parcial estimado para choferes con tramos en rango pero sin liq que cubra esos días ──
+  // Para cada chofer:
+  //   1) días con tramos `completados` en rango (cargado o vacío)
+  //   2) días cubiertos por liquidaciones cerradas suyas (expandiendo
+  //      liq.fecha_desde..liq.fecha_hasta, sin importar si caen en rango —
+  //      esos días ya están contabilizados en costo_mo_cerrado)
+  //   3) días vivos = (1) − (2)
+  //   4) costo = días_vivos × basico_dia + Σ km_tramo × precio_km
+  //
+  // Cuando el chofer cierre la liquidación, esos días caen en (2) y el
+  // parcial se va a 0 — el total `costo_mo` queda igual (migración interna
+  // de parcial → cerrado).
+  if (rutas.length > 0 || choferes.length > 0) {
+    const kmPorRuta = new Map<string, number>()
+    for (const r of rutas) {
+      // ruta es simétrica (cantera→depósito y depósito→cantera). Indexamos
+      // ambas direcciones para lookup O(1).
+      const k1 = `${r.cantera_id}->${r.deposito_id}`
+      const k2 = `${r.deposito_id}->${r.cantera_id}`
+      kmPorRuta.set(k1, r.km_ida_vuelta)
+      kmPorRuta.set(k2, r.km_ida_vuelta)
+    }
+    function kmTramo(t: Tramo): number {
+      if (!t.cantera_id || !t.deposito_id) return 0
+      // Cargado: cantera → depósito (mitad de ida_vuelta).
+      // Vacío:   depósito → cantera (la otra mitad).
+      const k = kmPorRuta.get(`${t.cantera_id}->${t.deposito_id}`)
+        ?? kmPorRuta.get(`${t.deposito_id}->${t.cantera_id}`)
+        ?? 0
+      return k / 2
+    }
+
+    // Agrupar tramos por chofer.
+    const tramosPorChofer = new Map<number, Tramo[]>()
+    for (const t of tramos) {
+      if (t.estado !== 'completado') continue
+      const fechaTramo = t.tipo === 'cargado' ? t.fecha_descarga : t.fecha_vacio
+      if (!fechaTramo || fechaTramo < desde || fechaTramo > hasta) continue
+      const arr = tramosPorChofer.get(t.chofer_id) ?? []
+      arr.push(t)
+      tramosPorChofer.set(t.chofer_id, arr)
+    }
+
+    // Liquidaciones cerradas por chofer (todas, no solo las del rango — el
+    // set de días cubiertos importa para ver qué tramo queda sin cubrir).
+    const liqCerradasPorChofer = new Map<number, Liquidacion[]>()
+    for (const liq of liquidaciones) {
+      if (liq.estado !== 'cerrada') continue
+      const arr = liqCerradasPorChofer.get(liq.chofer_id) ?? []
+      arr.push(liq)
+      liqCerradasPorChofer.set(liq.chofer_id, arr)
+    }
+
+    for (const [choferId, tramosChofer] of tramosPorChofer) {
+      const chofer = choferPorId.get(choferId)
+      if (!chofer) continue
+      const basicoDia       = Number(chofer.basico_dia ?? 0)
+      const precioKmCargado = Number(chofer.precio_km_cargado ?? 0)
+      const precioKmVacio   = Number(chofer.precio_km_vacio ?? 0)
+
+      // Set de días cubiertos por liq cerradas (ISO yyyy-mm-dd).
+      const diasCubiertos = new Set<string>()
+      for (const liq of liqCerradasPorChofer.get(choferId) ?? []) {
+        if (!liq.fecha_desde || !liq.fecha_hasta) continue
+        const d0 = new Date(liq.fecha_desde + 'T12:00:00')
+        const d1 = new Date(liq.fecha_hasta + 'T12:00:00')
+        for (const d = new Date(d0); d <= d1; d.setDate(d.getDate() + 1)) {
+          diasCubiertos.add(d.toISOString().slice(0, 10))
+        }
+      }
+
+      // Días con tramos no cubiertos + km vivos.
+      const diasVivos = new Set<string>()
+      let kmVivosCargado = 0
+      let kmVivosVacio   = 0
+      for (const t of tramosChofer) {
+        const fechaTramo = t.tipo === 'cargado' ? t.fecha_descarga : t.fecha_vacio
+        if (!fechaTramo) continue
+        if (diasCubiertos.has(fechaTramo)) continue
+        diasVivos.add(fechaTramo)
+        const km = kmTramo(t)
+        if (t.tipo === 'cargado') kmVivosCargado += km
+        else                       kmVivosVacio   += km
+      }
+
+      const costoParcial =
+        diasVivos.size * basicoDia
+        + kmVivosCargado * precioKmCargado
+        + kmVivosVacio   * precioKmVacio
+      if (costoParcial <= 0) continue
+
+      const fch = getOrInit(accChofer, choferId)
+      fch.costo_mo         += costoParcial
+      fch.costo_mo_parcial += costoParcial
+
+      if (chofer.camion_id != null) {
+        const fc = getOrInit(accCamion, chofer.camion_id)
+        fc.costo_mo         += costoParcial
+        fc.costo_mo_parcial += costoParcial
+      }
+      totales.costo_mo         += costoParcial
+      totales.costo_mo_parcial += costoParcial
+      totales.tiene_parcial = true
+    }
   }
 
   return {
