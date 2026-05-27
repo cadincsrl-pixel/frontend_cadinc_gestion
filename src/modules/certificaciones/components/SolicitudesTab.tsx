@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useMemo, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import {
   useSolicitudes, useCreateSolicitud, useUpdateSolicitud, useDeleteSolicitud,
@@ -73,6 +74,37 @@ interface LineaForm { _id: number; descripcion: string; cantidad: number; unidad
 let nextId = 1
 function newLinea(): LineaForm { return { _id: nextId++, descripcion: '', cantidad: 1, unidad: 'unid', obs: '', material_id: null } }
 
+// ── Categorías para los tabs ──
+// "Por comprar" / "Por enviar" / "Enviadas" son los 3 tabs principales y mapean
+// a `progreso` cuando la solicitud está aprobada. "Sin aprobar" y "Rechazadas"
+// son secundarias y viven en un dropdown "Otras" para no saturar el header.
+const CATEGORIAS_PRINCIPALES = ['por-comprar', 'por-enviar', 'enviadas'] as const
+const CATEGORIAS_OTRAS       = ['sin-aprobar', 'rechazadas']           as const
+const CATEGORIAS_ALL = [...CATEGORIAS_PRINCIPALES, ...CATEGORIAS_OTRAS] as const
+type CategoriaSol = typeof CATEGORIAS_ALL[number]
+
+const CATEGORIA_LABEL: Record<CategoriaSol, string> = {
+  'por-comprar': 'Por comprar',
+  'por-enviar':  'Por enviar',
+  'enviadas':    'Enviadas',
+  'sin-aprobar': 'Sin aprobar',
+  'rechazadas':  'Rechazadas',
+}
+
+function matchCategoria(s: SolicitudCompra, cat: CategoriaSol): boolean {
+  switch (cat) {
+    case 'por-comprar': return s.estado === 'aprobada' && s.progreso === 'pendiente'
+    case 'por-enviar':  return s.estado === 'aprobada' && s.progreso === 'en_gestion'
+    case 'enviadas':    return s.estado === 'aprobada' && s.progreso === 'enviada'
+    case 'sin-aprobar': return s.estado === 'pendiente'
+    case 'rechazadas':  return s.estado === 'rechazada'
+  }
+}
+
+function isCategoriaValida(s: string | null): s is CategoriaSol {
+  return s !== null && (CATEGORIAS_ALL as readonly string[]).includes(s)
+}
+
 // ── Componente principal ──
 export function SolicitudesTab() {
   const toast = useToast()
@@ -86,7 +118,27 @@ export function SolicitudesTab() {
   const stockMap = new Map((stockMateriales as StockMaterial[]).map(m => [m.id, m]))
 
   const [obraFiltro, setObraFiltro] = useState('')
-  const [estadoFiltro, setEstadoFiltro] = useState<string>('')
+  const router       = useRouter()
+  const searchParams = useSearchParams()
+  // Categoría activa: viene del query param `?categoria=...`. Si no hay,
+  // default a "por-comprar" (lo más accionable del día a día).
+  const catParam = searchParams.get('categoria')
+  const categoriaSel: CategoriaSol = isCategoriaValida(catParam) ? catParam : 'por-comprar'
+  function setCategoria(c: CategoriaSol) {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('categoria', c)
+    router.replace(`?${params.toString()}`, { scroll: false })
+  }
+  // Si la URL trae un valor inválido (ej. del dropdown viejo) lo normalizamos
+  // al default — evita que quede una categoría "fantasma" en URL.
+  useEffect(() => {
+    if (catParam && !isCategoriaValida(catParam)) {
+      const params = new URLSearchParams(searchParams.toString())
+      params.delete('categoria')
+      router.replace(`?${params.toString()}`, { scroll: false })
+    }
+  }, [catParam, router, searchParams])
+
   const { data: solicitudes = [], isLoading } = useSolicitudes(obraFiltro || undefined)
   const { mutate: create, isPending: creating } = useCreateSolicitud()
   const { mutate: updateSol } = useUpdateSolicitud()
@@ -133,15 +185,22 @@ export function SolicitudesTab() {
   const obrasMap = new Map((obras as Obra[]).map(o => [o.cod, o]))
   const provOptions = (proveedores as Proveedor[]).map(p => ({ value: String(p.id), label: p.nombre, sub: p.cuit ?? undefined }))
 
-  // Filtrar
-  const filtered = (solicitudes as SolicitudCompra[]).filter(s => {
-    if (!estadoFiltro) return true
-    if (estadoFiltro === 'pendiente' || estadoFiltro === 'rechazada') return s.estado === estadoFiltro
-    if (estadoFiltro === 'aprobada') return s.estado === 'aprobada' && s.progreso === 'pendiente'
-    if (estadoFiltro === 'en_gestion') return s.progreso === 'en_gestion'
-    if (estadoFiltro === 'enviada') return s.progreso === 'enviada'
-    return true
-  })
+  // Contadores live por categoría — para los chips de cada tab.
+  const counts = useMemo(() => {
+    const c: Record<CategoriaSol, number> = {
+      'por-comprar': 0, 'por-enviar': 0, 'enviadas': 0,
+      'sin-aprobar': 0, 'rechazadas': 0,
+    }
+    for (const s of (solicitudes as SolicitudCompra[])) {
+      for (const cat of CATEGORIAS_ALL) {
+        if (matchCategoria(s, cat)) c[cat]++
+      }
+    }
+    return c
+  }, [solicitudes])
+
+  // Filtrar por la categoría activa.
+  const filtered = (solicitudes as SolicitudCompra[]).filter(s => matchCategoria(s, categoriaSel))
 
   const sorted = [...filtered].sort((a, b) => {
     if (a.prioridad !== b.prioridad) return a.prioridad === 'urgente' ? -1 : 1
@@ -369,21 +428,13 @@ export function SolicitudesTab() {
 
   return (
     <>
-      {/* Filtros */}
+      {/* Header: filtro de obra + tabs por categoría + botón nueva */}
       <div className="flex items-center gap-3 flex-wrap justify-between">
-        <div className="flex items-center gap-3 flex-wrap flex-1">
+        <div className="flex items-center gap-3 flex-wrap flex-1 min-w-0">
           <div className="min-w-[220px] max-w-xs">
             <Combobox placeholder="Filtrar por obra..." options={obraOptions} value={obraFiltro} onChange={setObraFiltro} />
           </div>
-          <select value={estadoFiltro} onChange={e => setEstadoFiltro(e.target.value)}
-            className="px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white font-semibold focus:border-naranja">
-            <option value="">Todos</option>
-            <option value="pendiente">Pend. aprobación</option>
-            <option value="aprobada">Aprobada — pendiente</option>
-            <option value="en_gestion">En gestión</option>
-            <option value="enviada">Enviada</option>
-            <option value="rechazada">Rechazada</option>
-          </select>
+          <CategoriaTabs categoriaSel={categoriaSel} counts={counts} onSelect={setCategoria} />
         </div>
         <Button variant="primary" size="sm" onClick={abrirNuevo}>+ Nueva solicitud</Button>
       </div>
@@ -1071,5 +1122,109 @@ export function SolicitudesTab() {
         )}
       </Modal>
     </>
+  )
+}
+
+// ── Tabs de categoría (segmented control) + dropdown "Otras" ──
+// Componente local para no inflar la API de SolicitudesTab. Si en algún
+// momento se reusa en otro módulo, se extrae a `components/ui/`.
+function CategoriaTabs({
+  categoriaSel,
+  counts,
+  onSelect,
+}: {
+  categoriaSel: CategoriaSol
+  counts:       Record<CategoriaSol, number>
+  onSelect:     (c: CategoriaSol) => void
+}) {
+  const [otrasOpen, setOtrasOpen] = useState(false)
+  const otrasActiva = (CATEGORIAS_OTRAS as readonly string[]).includes(categoriaSel)
+  const totalOtras = counts['sin-aprobar'] + counts['rechazadas']
+
+  // Cerrar dropdown al perder foco (cualquier click afuera).
+  useEffect(() => {
+    if (!otrasOpen) return
+    const onDocClick = () => setOtrasOpen(false)
+    // Defer 1 tick para que el click que lo abrió no lo cierre.
+    const id = setTimeout(() => document.addEventListener('click', onDocClick), 0)
+    return () => {
+      clearTimeout(id)
+      document.removeEventListener('click', onDocClick)
+    }
+  }, [otrasOpen])
+
+  return (
+    <div className="flex gap-1 bg-gris rounded-xl p-1 relative">
+      {CATEGORIAS_PRINCIPALES.map(c => {
+        const active = categoriaSel === c
+        return (
+          <button
+            key={c}
+            type="button"
+            onClick={() => onSelect(c)}
+            className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-2 ${
+              active
+                ? 'bg-azul text-white shadow-sm'
+                : 'text-gris-dark hover:text-carbon hover:bg-white'
+            }`}
+          >
+            {CATEGORIA_LABEL[c]}
+            <span
+              className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center ${
+                active ? 'bg-white/20' : 'bg-white border border-gris-mid text-carbon'
+              }`}
+            >
+              {counts[c]}
+            </span>
+          </button>
+        )
+      })}
+      {/* Otras dropdown */}
+      <div className="relative">
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setOtrasOpen(v => !v) }}
+          className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-2 ${
+            otrasActiva
+              ? 'bg-azul text-white shadow-sm'
+              : 'text-gris-dark hover:text-carbon hover:bg-white'
+          }`}
+        >
+          {otrasActiva ? CATEGORIA_LABEL[categoriaSel] : 'Otras'}
+          {totalOtras > 0 && (
+            <span
+              className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center ${
+                otrasActiva ? 'bg-white/20' : 'bg-white border border-gris-mid text-carbon'
+              }`}
+            >
+              {totalOtras}
+            </span>
+          )}
+          <span className="text-[8px] opacity-70">▾</span>
+        </button>
+        {otrasOpen && (
+          <div
+            className="absolute top-full right-0 mt-1 bg-white border border-gris-mid rounded-lg shadow-lg z-10 min-w-[180px] py-1"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {CATEGORIAS_OTRAS.map(c => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => { onSelect(c); setOtrasOpen(false) }}
+                className={`w-full text-left text-xs font-bold px-3 py-2 hover:bg-gris transition-colors flex items-center justify-between ${
+                  categoriaSel === c ? 'text-azul' : 'text-carbon'
+                }`}
+              >
+                <span>{CATEGORIA_LABEL[c]}</span>
+                <span className="text-[10px] font-bold bg-gris text-gris-dark px-1.5 py-0.5 rounded-full">
+                  {counts[c]}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
