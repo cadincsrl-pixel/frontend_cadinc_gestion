@@ -150,6 +150,29 @@ export function SolicitudesTab() {
   const { mutate: revertirItem } = useRevertirItem()
   const { mutate: createRemito } = useCreateRemitoEnvio()
   const [selected, setSelected] = useState<Set<number>>(new Set())
+  // Selección de items pendientes para compra en LOTE (mismo proveedor +
+  // misma factura, precio individual por item). Map<solicitudId, Set<itemId>>
+  // — la selección es por solicitud porque una factura típicamente cubre
+  // items de UNA solicitud.
+  const [selCompra, setSelCompra] = useState<Map<number, Set<number>>>(new Map())
+  function toggleSelCompra(solId: number, itemId: number) {
+    setSelCompra(prev => {
+      const next = new Map(prev)
+      const set  = new Set(next.get(solId) ?? [])
+      if (set.has(itemId)) set.delete(itemId)
+      else                 set.add(itemId)
+      if (set.size > 0) next.set(solId, set)
+      else              next.delete(solId)
+      return next
+    })
+  }
+  function clearSelCompra(solId: number) {
+    setSelCompra(prev => {
+      const next = new Map(prev)
+      next.delete(solId)
+      return next
+    })
+  }
 
   // Estado UI
   const [modalNuevo, setModalNuevo] = useState(false)
@@ -164,6 +187,12 @@ export function SolicitudesTab() {
   // Modales de acciones sobre ítems
   const [modalComprar, setModalComprar] = useState<SolicitudCompraItem | null>(null)
   const [modalDespachar, setModalDespachar] = useState<SolicitudCompraItem | null>(null)
+  const [modalComprarLote, setModalComprarLote] = useState<{
+    solId: number
+    items: SolicitudCompraItem[]
+  } | null>(null)
+  const [fallidosLote, setFallidosLote] = useState<Array<{ desc: string; error: string }>>([])
+  const [loteSubmitting, setLoteSubmitting] = useState(false)
   const [modalNuevoProveedor, setModalNuevoProveedor] = useState(false)
   const [modalNuevaFactura, setModalNuevaFactura] = useState(false)
 
@@ -171,6 +200,9 @@ export function SolicitudesTab() {
   const formCab = useForm<any>({ defaultValues: { prioridad: 'normal', obs: '' } })
   const formEdit = useForm<any>({ defaultValues: { prioridad: 'normal', obs: '' } })
   const formComprar = useForm<any>({ defaultValues: { proveedor_id: '', precio_unit: 0, factura_id: '' } })
+  const formComprarLote = useForm<any>({
+    defaultValues: { proveedor_id: '', factura_id: '', queda_en_proveedor: false, precios: {} },
+  })
   const formDespachar = useForm<any>({ defaultValues: { precio_unit: 0 } })
   const formProv = useForm<any>({ defaultValues: { nombre: '', cuit: '', tel: '' } })
   const formFact = useForm<any>({ defaultValues: { proveedor_id: '', numero: '', fecha: '', total: 0 } })
@@ -316,6 +348,72 @@ export function SolicitudesTab() {
       },
       onError: (e: any) => toast(e.message || 'Error', 'err'),
     })
+  }
+
+  // ── Compra LOTE: misma factura/proveedor para N items pendientes de una sol ──
+  function abrirComprarLote(solId: number, items: SolicitudCompraItem[]) {
+    // Precarga precios con stock.precio_ref si está vinculado; si no, 0.
+    const precios: Record<string, number> = {}
+    for (const it of items) {
+      const mat = it.material_id ? stockMap.get(it.material_id) : null
+      precios[String(it.id)] = (mat as StockMaterial | undefined)?.precio_ref ?? 0
+    }
+    formComprarLote.reset({ proveedor_id: '', factura_id: '', queda_en_proveedor: false, precios })
+    setFallidosLote([])
+    setModalComprarLote({ solId, items })
+  }
+
+  // Manejo independiente de errores (decisión del user): los que andan se
+  // aplican igual; los que fallan se reportan al final con opción de reintentar.
+  async function handleComprarLote(data: any) {
+    if (!modalComprarLote || loteSubmitting) return
+    if (!data.proveedor_id) { toast('Elegí proveedor', 'err'); return }
+    const proveedorId = Number(data.proveedor_id)
+    const facturaId   = data.factura_id ? Number(data.factura_id) : null
+    const queda       = !!data.queda_en_proveedor
+    setLoteSubmitting(true)
+
+    const fallidos: Array<{ desc: string; error: string }> = []
+    let ok = 0
+    // Si llegamos acá después de un intento previo, retomamos solo los items
+    // que estaban fallados — los exitosos ya cambiaron de estado en backend
+    // y el invalidate los va a refrescar.
+    const itemsActuales = fallidosLote.length > 0
+      ? modalComprarLote.items.filter(it => fallidosLote.some(f => f.desc === it.descripcion))
+      : modalComprarLote.items
+
+    for (const it of itemsActuales) {
+      const precio = Number(data.precios?.[String(it.id)] ?? 0)
+      if (!precio || precio <= 0) {
+        fallidos.push({ desc: it.descripcion, error: 'precio inválido' })
+        continue
+      }
+      try {
+        await new Promise<void>((resolve, reject) => {
+          comprarItem({
+            itemId: it.id!,
+            dto: { proveedor_id: proveedorId, precio_unit: precio, factura_id: facturaId, queda_en_proveedor: queda },
+          }, { onSuccess: () => resolve(), onError: (e: any) => reject(e) })
+        })
+        ok++
+      } catch (e: any) {
+        fallidos.push({ desc: it.descripcion, error: e?.message || 'error desconocido' })
+      }
+    }
+    setLoteSubmitting(false)
+
+    if (fallidos.length === 0) {
+      toast(`✓ ${ok} ítem${ok !== 1 ? 's' : ''} comprado${ok !== 1 ? 's' : ''}${queda ? ' (queda en proveedor)' : ''}`, 'ok')
+      clearSelCompra(modalComprarLote.solId)
+      setModalComprarLote(null)
+      setFallidosLote([])
+    } else {
+      const txt = ok > 0
+        ? `${ok} ok · ${fallidos.length} con error`
+        : `${fallidos.length} ítem${fallidos.length !== 1 ? 's' : ''} no se pudo${fallidos.length !== 1 ? 'eron' : ''} comprar`
+      toast(txt, 'err')
+      setFallidosLote(fallidos)
+    }
   }
 
   function abrirDespachar(item: SolicitudCompraItem) {
@@ -568,6 +666,13 @@ export function SolicitudesTab() {
                                     <div className="flex gap-1 justify-end flex-wrap">
                                       {item.estado === 'pendiente' && (
                                         <>
+                                          <input
+                                            type="checkbox"
+                                            checked={selCompra.get(s.id)?.has(item.id!) ?? false}
+                                            onChange={() => toggleSelCompra(s.id, item.id!)}
+                                            className="accent-azul w-4 h-4"
+                                            title="Seleccionar para compra en lote (mismo proveedor)"
+                                          />
                                           <button onClick={() => abrirComprar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul hover:opacity-80 min-h-[36px]">Comprar</button>
                                           <button onClick={() => abrirDespachar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-naranja-light text-naranja hover:opacity-80 min-h-[36px]">Depósito</button>
                                           <button onClick={() => handleRechazarItem(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 min-h-[36px]">✕</button>
@@ -598,6 +703,39 @@ export function SolicitudesTab() {
                               <td colSpan={7} className="px-4 py-2 text-sm text-[#7A5500] italic">{s.obs}</td>
                             </tr>
                           )}
+
+                          {/* Compra en lote (items pendientes seleccionados) */}
+                          {isExp && (() => {
+                            const set = selCompra.get(s.id)
+                            if (!set || set.size === 0) return null
+                            const itemsLote = items.filter(it => it.estado === 'pendiente' && set.has(it.id!))
+                            if (itemsLote.length === 0) return null
+                            return (
+                              <tr className="border-b border-gris bg-azul-light/40">
+                                <td colSpan={8} className="px-4 py-2.5">
+                                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                                    <span className="text-sm font-bold text-azul">
+                                      {itemsLote.length} ítem{itemsLote.length > 1 ? 's' : ''} para comprar al mismo proveedor
+                                    </span>
+                                    <div className="flex gap-2">
+                                      <button
+                                        onClick={() => clearSelCompra(s.id)}
+                                        className="text-xs font-bold px-3 py-1.5 rounded-lg text-gris-dark hover:bg-white transition-colors"
+                                      >
+                                        Limpiar
+                                      </button>
+                                      <button
+                                        onClick={() => abrirComprarLote(s.id, itemsLote)}
+                                        className="text-xs font-bold px-3 py-1.5 rounded-lg bg-azul text-white hover:opacity-90 transition-colors"
+                                      >
+                                        🛒 Comprar {itemsLote.length} ítem{itemsLote.length > 1 ? 's' : ''}
+                                      </button>
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          })()}
 
                           {/* Envío grupal */}
                           {isExp && (() => {
@@ -934,6 +1072,116 @@ export function SolicitudesTab() {
                 <div className="text-sm font-bold text-azul">🏭 Material queda en proveedor</div>
                 <div className="text-[11px] text-gris-dark mt-0.5">
                   El material no llega a CADINC ni a la obra todavía: queda en el galpón del proveedor. Lo vas a retirar después desde el tab "Stock en proveedores". No se factura al cliente hasta retirarlo.
+                </div>
+              </div>
+            </label>
+          </div>
+        )}
+      </Modal>
+
+      {/* ── Modal COMPRAR EN LOTE (N items, mismo proveedor + factura) ── */}
+      <Modal
+        open={!!modalComprarLote}
+        onClose={() => { if (!loteSubmitting) { setModalComprarLote(null); setFallidosLote([]) } }}
+        title={`🛒 COMPRAR ${modalComprarLote?.items.length ?? 0} ÍTEMS AL MISMO PROVEEDOR`}
+        width="max-w-2xl"
+        footer={<>
+          <Button variant="secondary" onClick={() => { setModalComprarLote(null); setFallidosLote([]) }} disabled={loteSubmitting}>
+            {fallidosLote.length > 0 ? 'Cerrar' : 'Cancelar'}
+          </Button>
+          <Button variant="primary" onClick={formComprarLote.handleSubmit(handleComprarLote)} loading={loteSubmitting}>
+            {fallidosLote.length > 0 ? 'Reintentar fallidos' : `Confirmar compra (${modalComprarLote?.items.length ?? 0})`}
+          </Button>
+        </>}
+      >
+        {modalComprarLote && (
+          <div className="flex flex-col gap-4">
+            {fallidosLote.length > 0 && (
+              <div className="bg-rojo-light border border-rojo/30 rounded-xl px-4 py-3 text-sm">
+                <div className="font-bold text-rojo mb-1.5">⚠ No se pudieron comprar:</div>
+                <ul className="list-disc list-inside text-rojo text-xs space-y-0.5">
+                  {fallidosLote.map((f, i) => <li key={i}><strong>{f.desc}</strong>: {f.error}</li>)}
+                </ul>
+              </div>
+            )}
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <Combobox label="Proveedor" placeholder="Buscar proveedor..." options={provOptions}
+                  value={formComprarLote.watch('proveedor_id')}
+                  onChange={v => formComprarLote.setValue('proveedor_id', v)} />
+              </div>
+              <Button variant="secondary" size="sm" onClick={() => { formProv.reset({ nombre: '', cuit: '', tel: '' }); setModalNuevoProveedor(true) }}>+ Nuevo</Button>
+            </div>
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1 block">Factura (opcional, compartida por todos)</label>
+                <select {...formComprarLote.register('factura_id')} className="w-full px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white font-semibold focus:border-naranja">
+                  <option value="">Sin factura</option>
+                  {(facturas as any[]).map(f => <option key={f.id} value={f.id}>#{f.numero || f.id} — {f.proveedores?.nombre ?? ''}</option>)}
+                </select>
+              </div>
+              <Button variant="secondary" size="sm" onClick={() => {
+                formFact.reset({ proveedor_id: formComprarLote.watch('proveedor_id'), numero: '', fecha: new Date().toISOString().slice(0, 10), total: 0 })
+                setAdjunto(null); setModalNuevaFactura(true)
+              }}>+ Factura</Button>
+            </div>
+            <div>
+              <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1 block">Precios por ítem</label>
+              <div className="border border-gris-mid rounded-xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gris">
+                    <tr>
+                      <th className="text-left px-3 py-2 text-[11px] font-bold text-gris-dark uppercase">Ítem</th>
+                      <th className="text-right px-3 py-2 text-[11px] font-bold text-gris-dark uppercase">Cant.</th>
+                      <th className="text-right px-3 py-2 text-[11px] font-bold text-gris-dark uppercase w-[120px]">Precio unit. ($)</th>
+                      <th className="text-right px-3 py-2 text-[11px] font-bold text-gris-dark uppercase w-[110px]">Subtotal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {modalComprarLote.items.map(it => {
+                      const precio = Number(formComprarLote.watch(`precios.${it.id}`) ?? 0)
+                      const subtotal = precio * it.cantidad
+                      return (
+                        <tr key={it.id} className="border-t border-gris">
+                          <td className="px-3 py-2">
+                            <div className="font-medium text-sm">{it.descripcion}</div>
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono text-xs text-gris-dark">
+                            {it.cantidad} {UNIDADES.find(u => u.value === it.unidad)?.label ?? it.unidad}
+                          </td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="number"
+                              step="1"
+                              min="0"
+                              {...formComprarLote.register(`precios.${it.id}`, { valueAsNumber: true })}
+                              className="w-full px-2 py-1 border border-gris-mid rounded text-right font-mono text-sm outline-none focus:border-naranja"
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono text-sm font-bold">
+                            {subtotal > 0 ? fmtM(subtotal) : '—'}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                  <tfoot className="bg-gris">
+                    <tr>
+                      <td colSpan={3} className="px-3 py-2 text-right text-xs font-bold text-gris-dark uppercase">Total</td>
+                      <td className="px-3 py-2 text-right font-mono text-sm font-bold text-azul">
+                        {fmtM(modalComprarLote.items.reduce((acc, it) => acc + (Number(formComprarLote.watch(`precios.${it.id}`) ?? 0) * it.cantidad), 0))}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+            <label className="flex items-start gap-2.5 px-3 py-2.5 border-[1.5px] border-gris-mid rounded-lg hover:border-naranja transition-colors cursor-pointer">
+              <input type="checkbox" {...formComprarLote.register('queda_en_proveedor')} className="mt-0.5" />
+              <div className="flex-1">
+                <div className="text-sm font-bold text-azul">🏭 Todos los ítems quedan en el galpón del proveedor</div>
+                <div className="text-[11px] text-gris-dark mt-0.5">
+                  Aplica a todos los ítems del lote. Los retirás después desde "Stock en proveedores".
                 </div>
               </div>
             </label>
