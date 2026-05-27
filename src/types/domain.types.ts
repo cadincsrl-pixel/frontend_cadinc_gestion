@@ -1031,6 +1031,15 @@ export type ItemEstado =
   | 'rechazado'
 export type SolicitudProgreso = 'pendiente' | 'en_gestion' | 'enviada'
 
+/**
+ * Quién pagó al proveedor en una compra:
+ * - 'cadinc':  CADINC adelantó. Se suma a la cuenta del cliente (deuda).
+ * - 'cliente': el cliente pagó directo al proveedor. Solo registro de rendición.
+ *
+ * Despacho de depósito interno siempre es 'cadinc' (material propio).
+ */
+export type PagadoPor = 'cadinc' | 'cliente'
+
 export interface SolicitudCompraItem {
   id?:              number
   solicitud_id?:    number
@@ -1045,6 +1054,8 @@ export interface SolicitudCompraItem {
   factura_id?:      number | null
   fecha_resolucion?: string | null
   fecha_envio?:     string | null
+  /** Quién pagó esta compra. Default `'cadinc'` en datos históricos. */
+  pagado_por?:      PagadoPor
   proveedores?:     { nombre: string } | null
   facturas_compra?: { numero: string | null; adjunto_url: string | null } | null
 }
@@ -1078,6 +1089,12 @@ export interface MaterialACuentaCliente extends AuditFields {
   proveedor_id:     number | null
   factura_id:       number | null
   fecha_resolucion: string
+  /**
+   * Quién pagó al proveedor. Si `'cadinc'` → suma a la cuenta del cliente
+   * (deuda). Si `'cliente'` → solo se registra para rendición (no deuda).
+   * Heredado de `solicitud_compra_item.pagado_por` al insertar el MCC.
+   */
+  pagado_por:       PagadoPor
 }
 
 // ── Stock en Depósito ──
