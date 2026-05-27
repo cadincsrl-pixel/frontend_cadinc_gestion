@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   useCanteras, useDepositos, useRutas,
 } from '../hooks/useLogistica'
@@ -30,7 +30,19 @@ export function LugaresTab() {
   const [editCantera,   setEditCantera]   = useState<Cantera | null>(null)
   const [editDeposito,  setEditDeposito]  = useState<Deposito | null>(null)
   const [editRuta,      setEditRuta]      = useState<{ id: number; cantera: string; deposito: string } | null>(null)
+  const [busquedaRutas, setBusquedaRutas] = useState('')
   const [loading, setLoading] = useState(false)
+
+  // Filtra rutas por nombre de cantera o depósito (case-insensitive).
+  const rutasVisibles = useMemo(() => {
+    const q = busquedaRutas.trim().toLowerCase()
+    if (!q) return rutas
+    return rutas.filter(r => {
+      const cant = (r.canteras?.nombre ?? '').toLowerCase()
+      const dep  = (r.depositos?.nombre ?? '').toLowerCase()
+      return cant.includes(q) || dep.includes(q)
+    })
+  }, [rutas, busquedaRutas])
 
   const formCantera    = useForm<any>()
   const formDeposito   = useForm<any>()
@@ -205,9 +217,30 @@ export function LugaresTab() {
 
       {/* Rutas */}
       <Section title="🗺️ Rutas" onAdd={() => setModalRuta(true)} addLabel="＋ Ruta">
+        {/* Buscador: filtra por nombre de cantera o depósito. */}
+        <div className="px-3 py-2.5 border-b border-gris bg-gris/30">
+          <Input
+            type="text"
+            value={busquedaRutas}
+            onChange={e => setBusquedaRutas(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Escape' && busquedaRutas) {
+                e.stopPropagation()
+                setBusquedaRutas('')
+              }
+            }}
+            placeholder="Buscar por cantera o depósito…"
+            className="text-sm"
+          />
+          {busquedaRutas && (
+            <p className="text-[11px] text-gris-dark mt-1.5">
+              {rutasVisibles.length} de {rutas.length} ruta{rutas.length !== 1 ? 's' : ''}
+            </p>
+          )}
+        </div>
         <SimpleList
-          items={rutas}
-          emptyMsg="No hay rutas registradas."
+          items={rutasVisibles}
+          emptyMsg={busquedaRutas ? `Sin rutas que coincidan con "${busquedaRutas}".` : 'No hay rutas registradas.'}
           renderItem={r => (
             <div key={r.id} className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-gris last:border-0">
               <div className="text-sm flex-1 min-w-0">
