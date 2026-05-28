@@ -199,9 +199,9 @@ export function SolicitudesTab() {
   // Forms
   const formCab = useForm<any>({ defaultValues: { prioridad: 'normal', obs: '' } })
   const formEdit = useForm<any>({ defaultValues: { prioridad: 'normal', obs: '' } })
-  const formComprar = useForm<any>({ defaultValues: { proveedor_id: '', precio_unit: 0, factura_id: '' } })
+  const formComprar = useForm<any>({ defaultValues: { proveedor_id: '', precio_unit: 0, factura_id: '', pagado_por: 'cadinc' } })
   const formComprarLote = useForm<any>({
-    defaultValues: { proveedor_id: '', factura_id: '', queda_en_proveedor: false, precios: {} },
+    defaultValues: { proveedor_id: '', factura_id: '', queda_en_proveedor: false, pagado_por: 'cadinc', precios: {} },
   })
   const formDespachar = useForm<any>({ defaultValues: { precio_unit: 0 } })
   const formProv = useForm<any>({ defaultValues: { nombre: '', cuit: '', tel: '' } })
@@ -328,7 +328,7 @@ export function SolicitudesTab() {
 
   // ── Acciones sobre ítems ──
   function abrirComprar(item: SolicitudCompraItem) {
-    formComprar.reset({ proveedor_id: '', precio_unit: 0, factura_id: '', queda_en_proveedor: false })
+    formComprar.reset({ proveedor_id: '', precio_unit: 0, factura_id: '', queda_en_proveedor: false, pagado_por: 'cadinc' })
     setModalComprar(item)
   }
   function handleComprar(data: any) {
@@ -340,6 +340,7 @@ export function SolicitudesTab() {
         precio_unit:         Number(data.precio_unit),
         factura_id:          data.factura_id ? Number(data.factura_id) : null,
         queda_en_proveedor:  !!data.queda_en_proveedor,
+        pagado_por:          data.pagado_por === 'cliente' ? 'cliente' : 'cadinc',
       },
     }, {
       onSuccess: () => {
@@ -358,7 +359,7 @@ export function SolicitudesTab() {
       const mat = it.material_id ? stockMap.get(it.material_id) : null
       precios[String(it.id)] = (mat as StockMaterial | undefined)?.precio_ref ?? 0
     }
-    formComprarLote.reset({ proveedor_id: '', factura_id: '', queda_en_proveedor: false, precios })
+    formComprarLote.reset({ proveedor_id: '', factura_id: '', queda_en_proveedor: false, pagado_por: 'cadinc', precios })
     setFallidosLote([])
     setModalComprarLote({ solId, items })
   }
@@ -371,6 +372,7 @@ export function SolicitudesTab() {
     const proveedorId = Number(data.proveedor_id)
     const facturaId   = data.factura_id ? Number(data.factura_id) : null
     const queda       = !!data.queda_en_proveedor
+    const pagadoPor: 'cadinc' | 'cliente' = data.pagado_por === 'cliente' ? 'cliente' : 'cadinc'
     setLoteSubmitting(true)
 
     const fallidos: Array<{ desc: string; error: string }> = []
@@ -392,7 +394,13 @@ export function SolicitudesTab() {
         await new Promise<void>((resolve, reject) => {
           comprarItem({
             itemId: it.id!,
-            dto: { proveedor_id: proveedorId, precio_unit: precio, factura_id: facturaId, queda_en_proveedor: queda },
+            dto: {
+              proveedor_id: proveedorId,
+              precio_unit: precio,
+              factura_id: facturaId,
+              queda_en_proveedor: queda,
+              pagado_por: pagadoPor,
+            },
           }, { onSuccess: () => resolve(), onError: (e: any) => reject(e) })
         })
         ok++
@@ -654,6 +662,13 @@ export function SolicitudesTab() {
                                 <td colSpan={2} className="px-4 py-2.5 text-xs text-gris-dark">
                                   {item.proveedores && <div>Prov: <strong>{item.proveedores.nombre}</strong></div>}
                                   {item.estado === 'de_deposito' && <div><strong>Depósito propio</strong></div>}
+                                  {item.pagado_por === 'cliente' && ['comprado', 'en_proveedor', 'retirado', 'enviado'].includes(item.estado) && (
+                                    <div className="mt-0.5">
+                                      <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-naranja-light text-naranja-dark uppercase tracking-wide">
+                                        💵 Cliente pagó directo
+                                      </span>
+                                    </div>
+                                  )}
                                   {item.facturas_compra?.adjunto_url && (
                                     <a href={item.facturas_compra.adjunto_url} target="_blank" rel="noopener" className="text-azul hover:underline font-bold">
                                       📎 Factura {item.facturas_compra.numero || ''}
@@ -1062,6 +1077,26 @@ export function SolicitudesTab() {
                 setAdjunto(null); setModalNuevaFactura(true)
               }}>+ Factura</Button>
             </div>
+            {/* Pagador: CADINC adelanta (se suma a la cuenta del cliente) o cliente paga directo */}
+            <div>
+              <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1.5">¿Quién pagó al proveedor?</div>
+              <div className="grid grid-cols-2 gap-2">
+                <label className={`flex items-start gap-2 px-3 py-2 border-[1.5px] rounded-lg cursor-pointer transition-colors ${formComprar.watch('pagado_por') === 'cadinc' ? 'border-azul bg-azul-light' : 'border-gris-mid hover:border-azul'}`}>
+                  <input type="radio" value="cadinc" {...formComprar.register('pagado_por')} className="mt-0.5" />
+                  <div className="flex-1">
+                    <div className="text-sm font-bold text-azul">CADINC</div>
+                    <div className="text-[10px] text-gris-dark">Se suma a la cuenta del cliente</div>
+                  </div>
+                </label>
+                <label className={`flex items-start gap-2 px-3 py-2 border-[1.5px] rounded-lg cursor-pointer transition-colors ${formComprar.watch('pagado_por') === 'cliente' ? 'border-naranja bg-naranja-light' : 'border-gris-mid hover:border-naranja'}`}>
+                  <input type="radio" value="cliente" {...formComprar.register('pagado_por')} className="mt-0.5" />
+                  <div className="flex-1">
+                    <div className="text-sm font-bold text-naranja">Cliente directo</div>
+                    <div className="text-[10px] text-gris-dark">Solo registro de rendición</div>
+                  </div>
+                </label>
+              </div>
+            </div>
             <label className="flex items-start gap-2.5 px-3 py-2.5 border-[1.5px] border-gris-mid rounded-lg hover:border-naranja transition-colors cursor-pointer">
               <input
                 type="checkbox"
@@ -1174,6 +1209,26 @@ export function SolicitudesTab() {
                     </tr>
                   </tfoot>
                 </table>
+              </div>
+            </div>
+            {/* Pagador del lote: común a todos los ítems */}
+            <div>
+              <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1.5">¿Quién pagó al proveedor? (común al lote)</div>
+              <div className="grid grid-cols-2 gap-2">
+                <label className={`flex items-start gap-2 px-3 py-2 border-[1.5px] rounded-lg cursor-pointer transition-colors ${formComprarLote.watch('pagado_por') === 'cadinc' ? 'border-azul bg-azul-light' : 'border-gris-mid hover:border-azul'}`}>
+                  <input type="radio" value="cadinc" {...formComprarLote.register('pagado_por')} className="mt-0.5" />
+                  <div className="flex-1">
+                    <div className="text-sm font-bold text-azul">CADINC</div>
+                    <div className="text-[10px] text-gris-dark">Se suma a la cuenta del cliente</div>
+                  </div>
+                </label>
+                <label className={`flex items-start gap-2 px-3 py-2 border-[1.5px] rounded-lg cursor-pointer transition-colors ${formComprarLote.watch('pagado_por') === 'cliente' ? 'border-naranja bg-naranja-light' : 'border-gris-mid hover:border-naranja'}`}>
+                  <input type="radio" value="cliente" {...formComprarLote.register('pagado_por')} className="mt-0.5" />
+                  <div className="flex-1">
+                    <div className="text-sm font-bold text-naranja">Cliente directo</div>
+                    <div className="text-[10px] text-gris-dark">Solo registro de rendición</div>
+                  </div>
+                </label>
               </div>
             </div>
             <label className="flex items-start gap-2.5 px-3 py-2.5 border-[1.5px] border-gris-mid rounded-lg hover:border-naranja transition-colors cursor-pointer">
