@@ -1528,6 +1528,45 @@ function RemitosSection() {
     )
   }
 
+  // Renderiza una lista de remitos (adeudados o cobrados).
+  // - Con filtro de empresa activo: lista plana ordenada por fecha desc.
+  // - Sin filtro: agrupada por empresa (header con nombre · N · subtotal),
+  //   empresas alfabéticas, remitos por fecha desc dentro de cada grupo.
+  function renderListaRemitos(items: ReturnType<typeof enrichTramo>[], vacioMsg: string) {
+    if (items.length === 0) {
+      return <p className="text-xs text-gris-dark text-center py-4 italic">{vacioMsg}</p>
+    }
+    const porFechaDesc = (a: typeof items[0], b: typeof items[0]) =>
+      (b.fecha ?? '').localeCompare(a.fecha ?? '')
+
+    // Con filtro de empresa: una sola empresa, no tiene sentido agrupar.
+    if (empresaId) {
+      return [...items].sort(porFechaDesc).map(d => <FilaRemito key={d.t.id} d={d} />)
+    }
+
+    // Sin filtro: agrupar por empresa.
+    const grupos = new Map<string, { nombre: string; items: typeof items; subtotal: number }>()
+    for (const d of items) {
+      const key = String(d.empresa?.id ?? 0)
+      const g = grupos.get(key) ?? { nombre: d.empresa?.nombre ?? 'Sin empresa', items: [], subtotal: 0 }
+      g.items.push(d)
+      g.subtotal += d.subtotal
+      grupos.set(key, g)
+    }
+    const gruposOrden = [...grupos.values()].sort((a, b) => a.nombre.localeCompare(b.nombre))
+
+    return gruposOrden.map(g => (
+      <div key={g.nombre}>
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-gris-mid/40 border-b border-gris-mid">
+          <span className="text-[11px] font-bold text-carbon uppercase tracking-wide truncate">{g.nombre}</span>
+          <span className="text-[10px] text-gris-dark">· {g.items.length} remito{g.items.length !== 1 ? 's' : ''}</span>
+          <span className="ml-auto font-mono font-bold text-[11px] text-carbon">{fmtM(g.subtotal)}</span>
+        </div>
+        {[...g.items].sort(porFechaDesc).map(d => <FilaRemito key={d.t.id} d={d} />)}
+      </div>
+    ))
+  }
+
   return (
     <div className="bg-white rounded-card shadow-card">
       <div className="px-5 py-4 border-b border-gris">
@@ -1607,10 +1646,7 @@ function RemitosSection() {
           </button>
           <div id="panel-adeudados" className={`overflow-hidden transition-all duration-200 ${adeudadosAbierto ? 'max-h-[200vh]' : 'max-h-0'}`}>
             <div className="bg-gris">
-              {adeudados.length === 0
-                ? <p className="text-xs text-gris-dark text-center py-4 italic">Sin remitos adeudados</p>
-                : adeudados.map(d => <FilaRemito key={d.t.id} d={d} />)
-              }
+              {renderListaRemitos(adeudados, 'Sin remitos adeudados')}
             </div>
           </div>
         </div>
@@ -1631,10 +1667,7 @@ function RemitosSection() {
           </button>
           <div id="panel-cobrados" className={`overflow-hidden transition-all duration-200 ${cobradosAbierto ? 'max-h-[200vh]' : 'max-h-0'}`}>
             <div className="bg-gris">
-              {cobrados.length === 0
-                ? <p className="text-xs text-gris-dark text-center py-4 italic">Sin remitos cobrados</p>
-                : cobrados.map(d => <FilaRemito key={d.t.id} d={d} />)
-              }
+              {renderListaRemitos(cobrados, 'Sin remitos cobrados')}
             </div>
           </div>
         </div>
