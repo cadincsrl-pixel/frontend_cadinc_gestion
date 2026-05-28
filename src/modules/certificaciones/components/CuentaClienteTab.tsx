@@ -2,8 +2,11 @@
 
 import { useMemo, useState } from 'react'
 import { Combobox } from '@/components/ui/Combobox'
+import { Button } from '@/components/ui/Button'
+import { useToast } from '@/components/ui/Toast'
 import { useObras } from '@/modules/tarja/hooks/useObras'
 import { useCuentaCliente, type CuentaClienteRow } from '../hooks/useCuentaCliente'
+import { exportarCuentaCliente } from '../utils/cuentaClienteExport'
 import type { Obra } from '@/types/domain.types'
 
 type FiltroPagador = 'todos' | 'cadinc' | 'cliente'
@@ -16,9 +19,11 @@ const fmtF = (s: string | null | undefined) => {
 }
 
 export function CuentaClienteTab() {
+  const toast = useToast()
   const { data: obras = [] } = useObras('certificaciones')
   const [obraSel, setObraSel] = useState<string>('')
   const [pagadorSel, setPagadorSel] = useState<FiltroPagador>('todos')
+  const [exporting, setExporting] = useState(false)
 
   // Si el user no eligió obra, llama al endpoint sin obra_cod → backend
   // devuelve todas las obras permitidas (o 400 si es scope global).
@@ -37,6 +42,28 @@ export function CuentaClienteTab() {
     return rows.filter(r => r.pagado_por === pagadorSel)
   }, [rows, pagadorSel])
 
+  // Export Excel: respeta el filtro de pagador activo. Si exportás "Pagó
+  // directo", el XLSX solo trae esas filas. Si exportás "Todos", trae todo.
+  // El user es responsable de elegir qué bucket quiere mandar al cliente.
+  async function handleExport() {
+    if (filtered.length === 0) { toast('Nada para exportar con esta selección', 'err'); return }
+    setExporting(true)
+    try {
+      await exportarCuentaCliente({
+        rows: filtered,
+        obrasMap,
+        obraFiltro: obraSel,
+        pagadorFiltro: pagadorSel,
+      })
+      toast('📊 Excel exportado', 'ok')
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'error desconocido'
+      toast(`Error al exportar: ${msg}`, 'err')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   // KPIs calculados desde la lista sin filtrar (los chips muestran totales
   // por categoría independientes del filtro activo, para que el user vea
   // cuánta plata representa cada bucket).
@@ -54,40 +81,45 @@ export function CuentaClienteTab() {
   return (
     <div className="flex flex-col gap-4">
 
-      {/* Header: filtro obra + segmented pagador */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="min-w-[260px] max-w-sm">
-          <Combobox
-            placeholder="— Todas mis obras —"
-            options={obraOptions}
-            value={obraSel}
-            onChange={setObraSel}
-          />
+      {/* Header: filtro obra + segmented pagador + export */}
+      <div className="flex items-center gap-3 flex-wrap justify-between">
+        <div className="flex items-center gap-3 flex-wrap flex-1 min-w-0">
+          <div className="min-w-[260px] max-w-sm">
+            <Combobox
+              placeholder="— Todas mis obras —"
+              options={obraOptions}
+              value={obraSel}
+              onChange={setObraSel}
+            />
+          </div>
+          <div className="flex gap-1 bg-gris rounded-xl p-1">
+            {([
+              ['todos',   'Todos',           rows.length],
+              ['cadinc',  'Debe el cliente', rows.filter(r => r.pagado_por !== 'cliente').length],
+              ['cliente', 'Pagó directo',    rows.filter(r => r.pagado_por === 'cliente').length],
+            ] as const).map(([val, label, count]) => {
+              const active = pagadorSel === val
+              return (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => setPagadorSel(val)}
+                  className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-2 ${
+                    active ? 'bg-azul text-white shadow-sm' : 'text-gris-dark hover:text-carbon hover:bg-white'
+                  }`}
+                >
+                  {label}
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center ${
+                    active ? 'bg-white/20' : 'bg-white border border-gris-mid text-carbon'
+                  }`}>{count}</span>
+                </button>
+              )
+            })}
+          </div>
         </div>
-        <div className="flex gap-1 bg-gris rounded-xl p-1">
-          {([
-            ['todos',   'Todos',           rows.length],
-            ['cadinc',  'Debe el cliente', rows.filter(r => r.pagado_por !== 'cliente').length],
-            ['cliente', 'Pagó directo',    rows.filter(r => r.pagado_por === 'cliente').length],
-          ] as const).map(([val, label, count]) => {
-            const active = pagadorSel === val
-            return (
-              <button
-                key={val}
-                type="button"
-                onClick={() => setPagadorSel(val)}
-                className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-2 ${
-                  active ? 'bg-azul text-white shadow-sm' : 'text-gris-dark hover:text-carbon hover:bg-white'
-                }`}
-              >
-                {label}
-                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center ${
-                  active ? 'bg-white/20' : 'bg-white border border-gris-mid text-carbon'
-                }`}>{count}</span>
-              </button>
-            )
-          })}
-        </div>
+        <Button variant="secondary" size="sm" onClick={handleExport} loading={exporting} disabled={filtered.length === 0}>
+          📊 Exportar Excel
+        </Button>
       </div>
 
       {/* KPIs */}
