@@ -1,107 +1,22 @@
 'use client'
 
-import { Suspense, useState } from 'react'
+import { Suspense, useState, type ReactNode } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useObras }        from '@/modules/tarja/hooks/useObras'
 import { useSessionStore } from '@/store/session.store'
 import { useTabsPermitidos } from '@/hooks/useTabsPermitidos'
 import { useNotificaciones } from '@/hooks/useNotificaciones'
+import { TABS_POR_MODULO } from '@/lib/config/modulo-tabs'
 
 interface SidebarProps {
   open?: boolean
   onClose?: () => void
 }
 
-const NAV_ITEMS_CERT = [
-  { tab: 'solicitudes',     icon: '🛒', label: 'Solicitudes',          meta: 'Pedidos de compra y envío'      },
-  { tab: 'stock',           icon: '🏗️', label: 'Stock',                meta: 'Stock en depósito'              },
-  { tab: 'stock-proveedor', icon: '🏭', label: 'Stock en proveedores', meta: 'Materiales comprados sin retirar' },
-  { tab: 'materiales',      icon: '📦', label: 'Materiales',           meta: 'A cuenta del cliente'           },
-  { tab: 'cuenta-cliente',  icon: '💳', label: 'Cuenta del cliente',   meta: 'Deuda y pagos directos'         },
-]
-
-function CertNav({ navigate, activeTab, allowedTabs }: { navigate: (href: string) => void; activeTab: string; allowedTabs?: string[] }) {
-  return (
-    <>
-      {NAV_ITEMS_CERT.filter(item => !allowedTabs || allowedTabs.includes(item.tab)).map(item => {
-        const isActive = activeTab === item.tab
-        return (
-          <button
-            key={item.tab}
-            onClick={() => navigate(`/certificaciones?tab=${item.tab}`)}
-            className={`
-              w-full flex items-center gap-2.5 px-3 py-2.5 mx-2 rounded-[9px]
-              text-left transition-all border border-transparent
-              ${isActive
-                ? 'bg-naranja text-white border-naranja-dark shadow-[0_4px_14px_rgba(232,98,26,.4)]'
-                : 'text-white hover:bg-white hover:text-black'
-              }
-            `}
-            style={{ width: 'calc(100% - 16px)' }}
-          >
-            <span className="text-base w-5 text-center flex-shrink-0">{item.icon}</span>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-bold truncate">{item.label}</div>
-              <div className="text-[11px] opacity-60 font-normal">{item.meta}</div>
-            </div>
-          </button>
-        )
-      })}
-    </>
-  )
-}
-
-function CertNavWithParams({ navigate }: { navigate: (href: string) => void }) {
-  const searchParams = useSearchParams()
-  const activeTab    = searchParams.get('tab') ?? 'solicitudes'
-  const allowedTabs  = useTabsPermitidos('certificaciones')
-  return <CertNav navigate={navigate} activeTab={activeTab} allowedTabs={allowedTabs} />
-}
-
-const NAV_ITEMS_CAJA = [
-  { tab: 'movimientos',   icon: '💵', label: 'Movimientos',   meta: 'Ingresos y egresos'       },
-  { tab: 'resumen',       icon: '📊', label: 'Resumen',       meta: 'Totales por período'      },
-  { tab: 'configuracion', icon: '⚙️', label: 'Configuración', meta: 'Conceptos y centros'      },
-]
-
-function CajaNav({ navigate, activeTab, allowedTabs }: { navigate: (href: string) => void; activeTab: string; allowedTabs?: string[] }) {
-  return (
-    <>
-      {NAV_ITEMS_CAJA.filter(item => !allowedTabs || allowedTabs.includes(item.tab)).map(item => {
-        const isActive = activeTab === item.tab
-        return (
-          <button
-            key={item.tab}
-            onClick={() => navigate(`/caja?tab=${item.tab}`)}
-            className={`
-              w-full flex items-center gap-2.5 px-3 py-2.5 mx-2 rounded-[9px]
-              text-left transition-all border border-transparent
-              ${isActive
-                ? 'bg-naranja text-white border-naranja-dark shadow-[0_4px_14px_rgba(232,98,26,.4)]'
-                : 'text-white hover:bg-white hover:text-black'
-              }
-            `}
-            style={{ width: 'calc(100% - 16px)' }}
-          >
-            <span className="text-base w-5 text-center flex-shrink-0">{item.icon}</span>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-bold truncate">{item.label}</div>
-              <div className="text-[11px] opacity-60 font-normal">{item.meta}</div>
-            </div>
-          </button>
-        )
-      })}
-    </>
-  )
-}
-
-function CajaNavWithParams({ navigate }: { navigate: (href: string) => void }) {
-  const searchParams = useSearchParams()
-  const activeTab    = searchParams.get('tab') ?? 'movimientos'
-  const allowedTabs  = useTabsPermitidos('caja')
-  return <CajaNav navigate={navigate} activeTab={activeTab} allowedTabs={allowedTabs} />
-}
-
+// ── Tabs basados en path absoluto (no ?tab=...) ───────────────────
+// Tarja y Herramientas tienen páginas separadas, no son tabs de una sola
+// page como certificaciones/caja/etc. Mantienen estructura propia con
+// `href`. `tabKey` apunta al permiso correspondiente en `TABS_POR_MODULO`.
 const NAV_ITEMS_TARJA = [
   { href: '/tarja',            icon: '📋', label: 'Tarja',              meta: 'Control de horas',            exact: false, tabKey: 'tarja'            },
   { href: '/dashboard',        icon: '📊', label: 'Resumen General',    meta: 'Resumen general e histórico', exact: false, tabKey: 'dashboard'        },
@@ -114,69 +29,6 @@ const NAV_ITEMS_TARJA = [
   { href: '/tarja/archivadas', icon: '📦', label: 'Obras archivadas',   meta: 'Historial de obras',          exact: true,  tabKey: 'archivadas'       },
 ]
 
-const NAV_ITEMS_LOGISTICA = [
-  { tab: 'viajes',        icon: '🚛', label: 'Tramos',        meta: 'Cargados y vacíos'             },
-  { tab: 'en-ruta',       icon: '🛰', label: 'En ruta',       meta: 'Camiones cargados en vivo'      },
-  { tab: 'liquidaciones', icon: '💰', label: 'Liquidaciones', meta: 'Saldo y pago a choferes'       },
-  { tab: 'facturacion',   icon: '🧾', label: 'Facturación',   meta: 'Cobros a empresas'              },
-  { tab: 'choferes',      icon: '👷', label: 'Choferes',      meta: 'Personal de conducción'        },
-  { tab: 'camiones',      icon: '🚚', label: 'Camiones y bateas', meta: 'Flota de camiones y semirremolques' },
-  { tab: 'lugares',       icon: '📍', label: 'Lugares',       meta: 'Canteras · Depósitos'          },
-  { tab: 'gastos',        icon: '💸', label: 'Gastos',        meta: 'Combustible · Gomería · Peajes' },
-  { tab: 'rentabilidad',  icon: '📈', label: 'Rentabilidad',  meta: 'Simulador de margen por viaje'  },
-]
-
-const NAV_ITEMS_ADMIN = [
-  { tab: 'usuarios',   icon: '👥', label: 'Usuarios y permisos', meta: 'Cuentas, roles y accesos' },
-  { tab: 'plantillas', icon: '🎭', label: 'Plantillas de roles', meta: 'Alcance de cada preset'   },
-  { tab: 'auditoria',  icon: '📋', label: 'Auditoría',           meta: 'Registro de actividad'    },
-]
-
-const NAV_ITEMS_FLOTA = [
-  { tab: 'vehiculos',  icon: '🚙', label: 'Vehículos',  meta: 'Flota interna de CADINC' },
-  { tab: 'servicios',  icon: '🔧', label: 'Servicios',  meta: 'Historial de mantenimiento' },
-  { tab: 'gastos',     icon: '💸', label: 'Gastos',     meta: 'Combustible, peajes, etc.' },
-  { tab: 'parametros', icon: '⚙️', label: 'Parámetros', meta: 'Tipos de servicio' },
-]
-
-function FlotaNav({ navigate, activeTab, allowedTabs }: { navigate: (href: string) => void; activeTab: string; allowedTabs?: string[] }) {
-  return (
-    <>
-      {NAV_ITEMS_FLOTA.filter(item => !allowedTabs || allowedTabs.includes(item.tab)).map(item => {
-        const isActive = activeTab === item.tab
-        return (
-          <button
-            key={item.tab}
-            onClick={() => navigate(`/flota?tab=${item.tab}`)}
-            className={`
-              w-full flex items-center gap-2.5 px-3 py-2.5 mx-2 rounded-[9px]
-              text-left transition-all border border-transparent
-              ${isActive
-                ? 'bg-naranja text-white border-naranja-dark shadow-[0_4px_14px_rgba(232,98,26,.4)]'
-                : 'text-white hover:bg-white hover:text-black'
-              }
-            `}
-            style={{ width: 'calc(100% - 16px)' }}
-          >
-            <span className="text-base w-5 text-center flex-shrink-0">{item.icon}</span>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-bold truncate">{item.label}</div>
-              <div className="text-[11px] opacity-60 font-normal">{item.meta}</div>
-            </div>
-          </button>
-        )
-      })}
-    </>
-  )
-}
-
-function FlotaNavWithParams({ navigate }: { navigate: (href: string) => void }) {
-  const searchParams = useSearchParams()
-  const activeTab    = searchParams.get('tab') ?? 'vehiculos'
-  const allowedTabs  = useTabsPermitidos('flota')
-  return <FlotaNav navigate={navigate} activeTab={activeTab} allowedTabs={allowedTabs} />
-}
-
 const HERR_SUBNAV = [
   { href: '/herramientas/inventario',   icon: '🔧', label: 'Inventario',   meta: 'Catálogo de herramientas',   tabKey: 'inventario'   },
   { href: '/herramientas/por-obra',     icon: '🏗', label: 'Por obra',     meta: 'Inventario pivotado por obra', tabKey: 'inventario' },
@@ -185,20 +37,38 @@ const HERR_SUBNAV = [
   { href: '/herramientas/parametros',   icon: '⚙️', label: 'Parámetros',   meta: 'Tipos y configuración',      tabKey: 'parametros'   },
 ]
 
-function LogisticaNav({ navigate, activeTab, allowedTabs }: { navigate: (href: string) => void; activeTab: string; allowedTabs?: string[] }) {
-  // Badge para "Gastos" cuando hay pendientes de aprobación.
-  const { gastosPendientes } = useNotificaciones()
-  const pendientesCount = gastosPendientes.length
+// ── ModuloNav genérico para módulos con ?tab=... ──────────────────
+// Reemplaza a los antiguos CertNav/LogisticaNav/AdminNav/CajaNav/FlotaNav.
+// Toda la info de tabs (label, icon, meta) vive en `TABS_POR_MODULO`. El
+// filtrado por permisos viene de `useTabsPermitidos`. Soporta un slot
+// opcional `renderBadge` para casos como "Logística > Gastos pendientes".
+function ModuloNav({
+  modulo,
+  basePath,
+  defaultTab,
+  navigate,
+  renderBadge,
+}: {
+  modulo:      string
+  basePath:    string
+  defaultTab:  string
+  navigate:    (href: string) => void
+  renderBadge?: (tabKey: string) => ReactNode
+}) {
+  const searchParams = useSearchParams()
+  const activeTab    = searchParams.get('tab') ?? defaultTab
+  const allowedTabs  = useTabsPermitidos(modulo)
+  const items        = TABS_POR_MODULO[modulo] ?? []
 
   return (
     <>
-      {NAV_ITEMS_LOGISTICA.filter(item => !allowedTabs || allowedTabs.includes(item.tab)).map(item => {
-        const isActive = activeTab === item.tab
-        const showBadge = item.tab === 'gastos' && pendientesCount > 0
+      {items.filter(item => allowedTabs.includes(item.key)).map(item => {
+        const isActive = activeTab === item.key
+        const badge    = renderBadge?.(item.key)
         return (
           <button
-            key={item.tab}
-            onClick={() => navigate(`/logistica?tab=${item.tab}`)}
+            key={item.key}
+            onClick={() => navigate(`${basePath}?tab=${item.key}`)}
             className={`
               w-full flex items-center gap-2.5 px-3 py-2.5 mx-2 rounded-[9px]
               text-left transition-all border border-transparent
@@ -213,16 +83,9 @@ function LogisticaNav({ navigate, activeTab, allowedTabs }: { navigate: (href: s
             <div className="flex-1 min-w-0">
               <div className="text-sm font-bold truncate flex items-center gap-1.5">
                 {item.label}
-                {showBadge && (
-                  <span
-                    title={`${pendientesCount} gasto${pendientesCount !== 1 ? 's' : ''} pendiente${pendientesCount !== 1 ? 's' : ''} de aprobar`}
-                    className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold bg-rojo text-white"
-                  >
-                    {pendientesCount}
-                  </span>
-                )}
+                {badge}
               </div>
-              <div className="text-[11px] opacity-60 font-normal">{item.meta}</div>
+              {item.meta && <div className="text-[11px] opacity-60 font-normal">{item.meta}</div>}
             </div>
           </button>
         )
@@ -231,49 +94,19 @@ function LogisticaNav({ navigate, activeTab, allowedTabs }: { navigate: (href: s
   )
 }
 
-function LogisticaNavWithParams({ navigate }: { navigate: (href: string) => void }) {
-  const searchParams = useSearchParams()
-  const activeTab    = searchParams.get('tab') ?? 'viajes'
-  const allowedTabs  = useTabsPermitidos('logistica')
-  return <LogisticaNav navigate={navigate} activeTab={activeTab} allowedTabs={allowedTabs} />
-}
-
-function AdminNav({ navigate, activeTab, allowedTabs }: { navigate: (href: string) => void; activeTab: string; allowedTabs?: string[] }) {
+// Badge específico de "Logística > Gastos" — lo usa `renderBadge` del ModuloNav.
+function GastosPendientesBadge() {
+  const { gastosPendientes } = useNotificaciones()
+  const n = gastosPendientes.length
+  if (n === 0) return null
   return (
-    <>
-      {NAV_ITEMS_ADMIN.filter(item => !allowedTabs || allowedTabs.includes(item.tab)).map(item => {
-        const isActive = activeTab === item.tab
-        return (
-          <button
-            key={item.tab}
-            onClick={() => navigate(`/admin?tab=${item.tab}`)}
-            className={`
-              w-full flex items-center gap-2.5 px-3 py-2.5 mx-2 rounded-[9px]
-              text-left transition-all border border-transparent
-              ${isActive
-                ? 'bg-naranja text-white border-naranja-dark shadow-[0_4px_14px_rgba(232,98,26,.4)]'
-                : 'text-white hover:bg-white hover:text-black'
-              }
-            `}
-            style={{ width: 'calc(100% - 16px)' }}
-          >
-            <span className="text-base w-5 text-center flex-shrink-0">{item.icon}</span>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-bold truncate">{item.label}</div>
-              <div className="text-[11px] opacity-60 font-normal">{item.meta}</div>
-            </div>
-          </button>
-        )
-      })}
-    </>
+    <span
+      title={`${n} gasto${n !== 1 ? 's' : ''} pendiente${n !== 1 ? 's' : ''} de aprobar`}
+      className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold bg-rojo text-white"
+    >
+      {n}
+    </span>
   )
-}
-
-function AdminNavWithParams({ navigate }: { navigate: (href: string) => void }) {
-  const searchParams = useSearchParams()
-  const activeTab    = searchParams.get('tab') ?? 'usuarios'
-  const allowedTabs  = useTabsPermitidos('admin')
-  return <AdminNav navigate={navigate} activeTab={activeTab} allowedTabs={allowedTabs} />
 }
 
 export function Sidebar({ open, onClose }: SidebarProps) {
@@ -348,38 +181,40 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             {enAdmin ? 'Administración' : enHerramientas ? 'Herramientas' : enLogistica ? 'Logística' : enCertificaciones ? 'Compras y Stock' : enCaja ? 'Caja' : enFlota ? 'Flota CADINC' : 'Menú'}
           </div>
 
-          {/* LOGÍSTICA nav */}
+          {/* Módulos con ?tab=... — todos usan el mismo `<ModuloNav>`. */}
           {enLogistica && (
-            <Suspense fallback={<LogisticaNav navigate={navigate} activeTab="viajes" />}>
-              <LogisticaNavWithParams navigate={navigate} />
+            <Suspense fallback={null}>
+              <ModuloNav
+                modulo="logistica"
+                basePath="/logistica"
+                defaultTab="viajes"
+                navigate={navigate}
+                renderBadge={(key) => key === 'gastos' ? <GastosPendientesBadge /> : null}
+              />
             </Suspense>
           )}
 
-          {/* CERTIFICACIONES nav */}
           {enCertificaciones && (
-            <Suspense fallback={<CertNav navigate={navigate} activeTab="solicitudes" />}>
-              <CertNavWithParams navigate={navigate} />
+            <Suspense fallback={null}>
+              <ModuloNav modulo="certificaciones" basePath="/certificaciones" defaultTab="solicitudes" navigate={navigate} />
             </Suspense>
           )}
 
-          {/* CAJA nav */}
           {enCaja && (
-            <Suspense fallback={<CajaNav navigate={navigate} activeTab="movimientos" />}>
-              <CajaNavWithParams navigate={navigate} />
+            <Suspense fallback={null}>
+              <ModuloNav modulo="caja" basePath="/caja" defaultTab="movimientos" navigate={navigate} />
             </Suspense>
           )}
 
-          {/* ADMIN nav */}
           {enAdmin && (
             <Suspense fallback={null}>
-              <AdminNavWithParams navigate={navigate} />
+              <ModuloNav modulo="admin" basePath="/admin" defaultTab="usuarios" navigate={navigate} />
             </Suspense>
           )}
 
-          {/* FLOTA nav */}
           {enFlota && (
-            <Suspense fallback={<FlotaNav navigate={navigate} activeTab="vehiculos" />}>
-              <FlotaNavWithParams navigate={navigate} />
+            <Suspense fallback={null}>
+              <ModuloNav modulo="flota" basePath="/flota" defaultTab="vehiculos" navigate={navigate} />
             </Suspense>
           )}
 

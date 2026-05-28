@@ -1,10 +1,18 @@
-// Definición de tabs disponibles por módulo
-// Se usa para: formulario de permisos, filtro de sidebar, filtro de pages
+// Definición de tabs disponibles por módulo. Es la ÚNICA fuente de verdad:
+// - Form de permisos: usa label + icon para mostrar tabs configurables.
+// - Sidebar: itera con `<ModuloNav>` y rendera label + meta + icon.
+// - Pages (`Cert/Caja/etc.`): usan `useTabsPermitidos` que cruza con esta lista.
+//
+// `meta` es un subtítulo opcional que solo se muestra en el sidebar (no en
+// el form de permisos). Mantenerlo opcional para que módulos sin sub-label
+// no se rompan.
 
 export interface TabDef {
-  key: string
+  key:   string
   label: string
-  icon: string
+  icon:  string
+  /** Subtítulo descriptivo del sidebar. Opcional. */
+  meta?: string
 }
 
 export const TABS_POR_MODULO: Record<string, TabDef[]> = {
@@ -20,15 +28,15 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
     { key: 'archivadas',       label: 'Obras archivadas',   icon: '📦' },
   ],
   logistica: [
-    { key: 'viajes',        label: 'Tramos',        icon: '🚛' },
-    { key: 'en-ruta',       label: 'En ruta',       icon: '🛰' },
-    { key: 'liquidaciones', label: 'Liquidaciones', icon: '💰' },
-    { key: 'facturacion',   label: 'Facturación',   icon: '🧾' },
-    { key: 'choferes',      label: 'Choferes',      icon: '👷' },
-    { key: 'camiones',      label: 'Camiones y bateas', icon: '🚚' },
-    { key: 'lugares',       label: 'Lugares',       icon: '📍' },
-    { key: 'gastos',        label: 'Gastos',        icon: '💸' },
-    { key: 'rentabilidad',  label: 'Rentabilidad',  icon: '📈' },
+    { key: 'viajes',        label: 'Tramos',            icon: '🚛', meta: 'Cargados y vacíos' },
+    { key: 'en-ruta',       label: 'En ruta',           icon: '🛰', meta: 'Camiones cargados en vivo' },
+    { key: 'liquidaciones', label: 'Liquidaciones',     icon: '💰', meta: 'Saldo y pago a choferes' },
+    { key: 'facturacion',   label: 'Facturación',       icon: '🧾', meta: 'Cobros a empresas' },
+    { key: 'choferes',      label: 'Choferes',          icon: '👷', meta: 'Personal de conducción' },
+    { key: 'camiones',      label: 'Camiones y bateas', icon: '🚚', meta: 'Flota de camiones y semirremolques' },
+    { key: 'lugares',       label: 'Rutas',             icon: '🗺️', meta: 'Rutas · Canteras · Depósitos' },
+    { key: 'gastos',        label: 'Gastos',            icon: '💸', meta: 'Combustible · Gomería · Peajes' },
+    { key: 'rentabilidad',  label: 'Rentabilidad',      icon: '📈', meta: 'Simulador de margen por viaje' },
   ],
   herramientas: [
     { key: 'inventario',   label: 'Inventario',   icon: '🔧' },
@@ -38,26 +46,26 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
     { key: 'parametros',   label: 'Parámetros',   icon: '⚙️' },
   ],
   certificaciones: [
-    { key: 'solicitudes',     label: 'Solicitudes',         icon: '🛒' },
-    { key: 'stock',           label: 'Stock',               icon: '🏗️' },
-    { key: 'stock-proveedor', label: 'Stock en proveedores', icon: '🏭' },
-    { key: 'materiales',      label: 'Materiales',          icon: '📦' },
-    { key: 'cuenta-cliente',  label: 'Cuenta del cliente',  icon: '💳' },
+    { key: 'solicitudes',     label: 'Solicitudes',          icon: '🛒',  meta: 'Pedidos de compra y envío' },
+    { key: 'stock',           label: 'Stock',                icon: '🏗️', meta: 'Stock en depósito' },
+    { key: 'stock-proveedor', label: 'Stock en proveedores', icon: '🏭',  meta: 'Materiales comprados sin retirar' },
+    { key: 'materiales',      label: 'Materiales',           icon: '📦',  meta: 'A cuenta del cliente' },
+    { key: 'cuenta-cliente',  label: 'Cuenta del cliente',   icon: '💳',  meta: 'Deuda y pagos directos' },
   ],
   caja: [
-    { key: 'movimientos',   label: 'Movimientos',   icon: '💵' },
-    { key: 'resumen',       label: 'Resumen',       icon: '📊' },
-    { key: 'configuracion', label: 'Configuración', icon: '⚙️' },
+    { key: 'movimientos',   label: 'Movimientos',   icon: '💵', meta: 'Ingresos y egresos' },
+    { key: 'resumen',       label: 'Resumen',       icon: '📊', meta: 'Totales por período' },
+    { key: 'configuracion', label: 'Configuración', icon: '⚙️', meta: 'Conceptos y centros' },
   ],
   admin: [
-    { key: 'usuarios',   label: 'Usuarios y permisos', icon: '👥' },
-    { key: 'plantillas', label: 'Plantillas de roles', icon: '🎭' },
-    { key: 'auditoria',  label: 'Auditoría',           icon: '📋' },
+    { key: 'usuarios',   label: 'Usuarios y permisos', icon: '👥', meta: 'Cuentas, roles y accesos' },
+    { key: 'plantillas', label: 'Plantillas de roles', icon: '🎭', meta: 'Alcance de cada preset' },
+    { key: 'auditoria',  label: 'Auditoría',           icon: '📋', meta: 'Registro de actividad' },
   ],
   flota: [
-    { key: 'vehiculos',  label: 'Vehículos', icon: '🚙' },
-    { key: 'servicios',  label: 'Servicios', icon: '🔧' },
-    { key: 'gastos',     label: 'Gastos',    icon: '💸' },
-    { key: 'parametros', label: 'Parámetros', icon: '⚙️' },
+    { key: 'vehiculos',  label: 'Vehículos',  icon: '🚙', meta: 'Flota interna de CADINC' },
+    { key: 'servicios',  label: 'Servicios',  icon: '🔧', meta: 'Historial de mantenimiento' },
+    { key: 'gastos',     label: 'Gastos',     icon: '💸', meta: 'Combustible, peajes, etc.' },
+    { key: 'parametros', label: 'Parámetros', icon: '⚙️', meta: 'Tipos de servicio' },
   ],
 }
