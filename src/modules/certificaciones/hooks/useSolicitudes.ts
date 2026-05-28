@@ -89,6 +89,17 @@ export function useRevertirItem() {
   })
 }
 
+// Deshace solo el envío: el item vuelve a comprado/de_deposito (no a
+// pendiente). Mantiene la compra. Borra/limpia el remito asociado.
+export function useRevertirEnvio() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (itemId: number) =>
+      apiPost(`/api/solicitudes/items/${itemId}/revertir-envio`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['solicitudes'] }),
+  })
+}
+
 export function useEditarItem() {
   const qc = useQueryClient()
   return useMutation({

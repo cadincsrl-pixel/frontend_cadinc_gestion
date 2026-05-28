@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import {
   useSolicitudes, useCreateSolicitud, useUpdateSolicitud, useDeleteSolicitud,
-  useComprarItem, useDespacharItem, useEnviarItem, useRechazarItem, useRevertirItem,
+  useComprarItem, useDespacharItem, useEnviarItem, useRechazarItem, useRevertirItem, useRevertirEnvio,
 } from '../hooks/useSolicitudes'
 import { useProveedores, useCreateProveedor } from '../hooks/useProveedores'
 import { useFacturasCompra, useCreateFactura } from '../hooks/useFacturasCompra'
@@ -148,6 +148,7 @@ export function SolicitudesTab() {
   const { mutate: enviarItem } = useEnviarItem()
   const { mutate: rechazarItem } = useRechazarItem()
   const { mutate: revertirItem } = useRevertirItem()
+  const { mutate: revertirEnvio } = useRevertirEnvio()
   const { mutate: createRemito } = useCreateRemitoEnvio()
   const [selected, setSelected] = useState<Set<number>>(new Set())
   // Selección de items pendientes para compra en LOTE (mismo proveedor +
@@ -459,6 +460,15 @@ export function SolicitudesTab() {
     })
   }
 
+  // Deshace solo el envío: vuelve a comprado/de_deposito y borra el remito.
+  function handleRevertirEnvio(itemId: number) {
+    if (!confirm('¿Deshacer el envío? El ítem vuelve a "comprado/depósito" y se elimina el remito generado. La compra se mantiene.')) return
+    revertirEnvio(itemId, {
+      onSuccess: () => toast('Envío deshecho — ítem listo para reenviar', 'ok'),
+      onError: (e: any) => toast(e.message || 'Error', 'err'),
+    })
+  }
+
   // ── Selección y envío grupal con remito ──
   function toggleSelect(itemId: number) {
     setSelected(prev => { const n = new Set(prev); n.has(itemId) ? n.delete(itemId) : n.add(itemId); return n })
@@ -467,6 +477,9 @@ export function SolicitudesTab() {
   function enviarConRemito(solicitud: SolicitudCompra, itemIds: number[]) {
     const items = (solicitud.items ?? []).filter(it => itemIds.includes(it.id!))
     if (!items.length) return
+
+    const n = items.length
+    if (!confirm(`¿Generar remito y marcar como enviado${n > 1 ? ` ${n} ítems` : ''}? Esta acción crea el remito de envío a la obra.`)) return
 
     const obra = obrasMap.get(solicitud.obra_cod)
     const remitoItems = items.map(it => ({
@@ -704,6 +717,9 @@ export function SolicitudesTab() {
                                       {item.estado === 'rechazado' && (
                                         <button onClick={() => handleRevertir(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-amarillo-light text-[#7A5500] hover:opacity-80 min-h-[36px]">Reactivar</button>
                                       )}
+                                      {item.estado === 'enviado' && (
+                                        <button onClick={() => handleRevertirEnvio(item.id!)} title="Deshacer el envío (vuelve a comprado/depósito, borra el remito)" className="text-xs font-bold px-3 py-1.5 rounded text-gris-dark hover:text-rojo hover:bg-rojo-light min-h-[36px]">↩ Deshacer envío</button>
+                                      )}
                                     </div>
                                   )}
                                 </td>
@@ -938,6 +954,9 @@ export function SolicitudesTab() {
                               )}
                               {item.estado === 'rechazado' && (
                                 <button onClick={() => handleRevertir(item.id!)} className="w-full text-xs font-bold px-3 py-1.5 rounded bg-amarillo-light text-[#7A5500] hover:opacity-80 min-h-[36px]">Reactivar</button>
+                              )}
+                              {item.estado === 'enviado' && (
+                                <button onClick={() => handleRevertirEnvio(item.id!)} className="w-full text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo min-h-[36px]">↩ Deshacer envío</button>
                               )}
                             </div>
                           )}
