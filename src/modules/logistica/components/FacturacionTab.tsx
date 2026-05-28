@@ -1009,6 +1009,14 @@ function FacturacionSection() {
         {cobroDetalle && (() => {
           // Tramos asociados a este cobro (vía tramos.cobro_id).
           const tramosCobro = (tramos as Tramo[]).filter(t => t.cobro_id === cobroDetalle.id)
+          // Importe individual por remito = ton × tarifa vigente a la fecha del
+          // tramo — el mismo cálculo (calcDesglose) con el que se armó el total
+          // del cobro. La suma debería dar cobroDetalle.total; si difiere (tarifa
+          // histórica borrada o total ajustado a mano) se avisa al pie.
+          const desgloseCobro   = calcDesglose(tramosCobro, cobroDetalle.empresa_id)
+          const sumaSubtotales  = desgloseCobro.reduce((s, d) => s + d.subtotal, 0)
+          const difiereDelTotal = Math.abs(sumaSubtotales - cobroDetalle.total) > 1
+          const subtotalPorTramo = new Map(desgloseCobro.map(d => [d.t.id, d]))
           return (
             <div className="flex flex-col gap-4">
               {/* Resumen */}
@@ -1046,24 +1054,47 @@ function FacturacionSection() {
                 {tramosCobro.length === 0 ? (
                   <div className="text-xs text-gris-mid italic">No hay tramos asociados.</div>
                 ) : (
-                  <div className="bg-gris/30 rounded-xl divide-y divide-gris-mid max-h-48 overflow-y-auto">
-                    {tramosCobro.map(t => {
-                      const ton = t.toneladas_descarga ?? t.toneladas_carga ?? 0
-                      const fecha = t.fecha_descarga ?? t.fecha_carga
-                      const cantera = canteras.find(c => c.id === t.cantera_id)
-                      return (
-                        <div key={t.id} className="px-3 py-2 text-xs flex items-center justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <div className="font-semibold text-carbon truncate">
-                              {cantera?.nombre ?? '—'} {t.remito_carga ? `· #${t.remito_carga}` : ''}
+                  <>
+                    <div className="bg-gris/30 rounded-xl divide-y divide-gris-mid max-h-56 overflow-y-auto">
+                      {tramosCobro.map(t => {
+                        const d = subtotalPorTramo.get(t.id)
+                        const ton = d?.ton ?? (t.toneladas_descarga ?? t.toneladas_carga ?? 0)
+                        const fecha = t.fecha_descarga ?? t.fecha_carga
+                        const cantera = canteras.find(c => c.id === t.cantera_id)
+                        const tarifa = d?.tarifa ?? 0
+                        const subtotal = d?.subtotal ?? 0
+                        return (
+                          <div key={t.id} className="px-3 py-2 text-xs flex items-center justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="font-semibold text-carbon truncate">
+                                {cantera?.nombre ?? '—'} {t.remito_carga ? `· #${t.remito_carga}` : ''}
+                              </div>
+                              <div className="text-gris-dark text-[11px]">
+                                {fecha ? fmtFecha(fecha) : '—'}
+                                {' · '}{fmtTon(ton)}
+                                {tarifa > 0 && <> {' × '}${tarifa.toLocaleString('es-AR')}/t</>}
+                              </div>
                             </div>
-                            <div className="text-gris-dark text-[11px]">{fecha ? fmtFecha(fecha) : '—'}</div>
+                            <div className="font-mono font-bold text-verde shrink-0">
+                              {subtotal > 0 ? fmtM(subtotal) : '—'}
+                            </div>
                           </div>
-                          <div className="font-mono">{fmtTon(ton)}</div>
-                        </div>
-                      )
-                    })}
-                  </div>
+                        )
+                      })}
+                    </div>
+                    {/* Suma de los importes individuales. Debería igualar el total
+                        del cobro; si difiere, avisamos (tarifa histórica borrada
+                        o total ajustado a mano al cobrar). */}
+                    <div className="flex items-center justify-between gap-2 px-3 py-2 mt-1 text-xs font-bold">
+                      <span className="text-gris-dark uppercase tracking-wide">Suma remitos</span>
+                      <span className="font-mono text-verde">{fmtM(sumaSubtotales)}</span>
+                    </div>
+                    {difiereDelTotal && (
+                      <div className="text-[11px] text-[#7A5500] bg-amarillo-light border border-amarillo/30 rounded-lg px-3 py-2 mt-1">
+                        ⚠ La suma de los remitos ({fmtM(sumaSubtotales)}) no coincide con el total cobrado ({fmtM(cobroDetalle.total)}). Puede deberse a una tarifa modificada después del cobro o a un ajuste manual del total.
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 
