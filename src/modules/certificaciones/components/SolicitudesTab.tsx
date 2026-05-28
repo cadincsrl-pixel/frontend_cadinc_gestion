@@ -200,7 +200,7 @@ export function SolicitudesTab() {
   // Forms
   const formCab = useForm<any>({ defaultValues: { prioridad: 'normal', obs: '' } })
   const formEdit = useForm<any>({ defaultValues: { prioridad: 'normal', obs: '' } })
-  const formComprar = useForm<any>({ defaultValues: { proveedor_id: '', precio_unit: 0, factura_id: '', pagado_por: 'cadinc' } })
+  const formComprar = useForm<any>({ defaultValues: { proveedor_id: '', precio_unit: 0, factura_id: '', pagado_por: 'cadinc', cantidad_comprada: 0 } })
   const formComprarLote = useForm<any>({
     defaultValues: { proveedor_id: '', factura_id: '', queda_en_proveedor: false, pagado_por: 'cadinc', precios: {} },
   })
@@ -329,11 +329,12 @@ export function SolicitudesTab() {
 
   // ── Acciones sobre ítems ──
   function abrirComprar(item: SolicitudCompraItem) {
-    formComprar.reset({ proveedor_id: '', precio_unit: 0, factura_id: '', queda_en_proveedor: false, pagado_por: 'cadinc' })
+    formComprar.reset({ proveedor_id: '', precio_unit: 0, factura_id: '', queda_en_proveedor: false, pagado_por: 'cadinc', cantidad_comprada: item.cantidad })
     setModalComprar(item)
   }
   function handleComprar(data: any) {
     if (!modalComprar?.id) return
+    const cantComprada = Number(data.cantidad_comprada)
     comprarItem({
       itemId: modalComprar.id,
       dto: {
@@ -342,6 +343,10 @@ export function SolicitudesTab() {
         factura_id:          data.factura_id ? Number(data.factura_id) : null,
         queda_en_proveedor:  !!data.queda_en_proveedor,
         pagado_por:          data.pagado_por === 'cliente' ? 'cliente' : 'cadinc',
+        // Solo se manda si difiere de la solicitada (>0). Si es igual, queda null.
+        ...(cantComprada > 0 && cantComprada !== modalComprar.cantidad
+          ? { cantidad_comprada: cantComprada }
+          : {}),
       },
     }, {
       onSuccess: () => {
@@ -355,12 +360,15 @@ export function SolicitudesTab() {
   // ── Compra LOTE: misma factura/proveedor para N items pendientes de una sol ──
   function abrirComprarLote(solId: number, items: SolicitudCompraItem[]) {
     // Precarga precios con stock.precio_ref si está vinculado; si no, 0.
+    // Cantidades arrancan con la solicitada (editable si se compró distinto).
     const precios: Record<string, number> = {}
+    const cantidades: Record<string, number> = {}
     for (const it of items) {
       const mat = it.material_id ? stockMap.get(it.material_id) : null
       precios[String(it.id)] = (mat as StockMaterial | undefined)?.precio_ref ?? 0
+      cantidades[String(it.id)] = it.cantidad
     }
-    formComprarLote.reset({ proveedor_id: '', factura_id: '', queda_en_proveedor: false, pagado_por: 'cadinc', precios })
+    formComprarLote.reset({ proveedor_id: '', factura_id: '', queda_en_proveedor: false, pagado_por: 'cadinc', precios, cantidades })
     setFallidosLote([])
     setModalComprarLote({ solId, items })
   }
@@ -391,6 +399,7 @@ export function SolicitudesTab() {
         fallidos.push({ desc: it.descripcion, error: 'precio inválido' })
         continue
       }
+      const cantComprada = Number(data.cantidades?.[String(it.id)] ?? it.cantidad)
       try {
         await new Promise<void>((resolve, reject) => {
           comprarItem({
@@ -401,6 +410,10 @@ export function SolicitudesTab() {
               factura_id: facturaId,
               queda_en_proveedor: queda,
               pagado_por: pagadoPor,
+              // Solo si difiere de la solicitada.
+              ...(cantComprada > 0 && cantComprada !== it.cantidad
+                ? { cantidad_comprada: cantComprada }
+                : {}),
             },
           }, { onSuccess: () => resolve(), onError: (e: any) => reject(e) })
         })
@@ -485,7 +498,8 @@ export function SolicitudesTab() {
     const remitoItems = items.map(it => ({
       item_id: it.id,
       descripcion: it.descripcion,
-      cantidad: it.cantidad,
+      // Cantidad efectiva: la comprada si difiere de la solicitada.
+      cantidad: it.cantidad_comprada ?? it.cantidad,
       unidad: it.unidad,
       precio_unit: it.precio_unit ?? null,
       origen: (it.estado === 'comprado' || it.estado === 'retirado') ? 'proveedor' : 'deposito',
@@ -652,10 +666,25 @@ export function SolicitudesTab() {
                                 <td className="pl-8 pr-2 py-2.5 text-xs text-gris-mid text-center">{i + 1}</td>
                                 <td className="px-4 py-2.5">
                                   <div className="text-sm font-medium text-carbon">{item.descripcion}</div>
-                                  <div className="text-xs text-gris-dark font-mono mt-0.5">
-                                    {item.cantidad} {UNIDADES.find(u => u.value === item.unidad)?.label ?? item.unidad}
-                                    {item.precio_unit != null && <span className="ml-2">× {fmtM(item.precio_unit)} = <strong>{fmtM(item.cantidad * item.precio_unit)}</strong></span>}
-                                  </div>
+                                  {(() => {
+                                    const unidLabel = UNIDADES.find(u => u.value === item.unidad)?.label ?? item.unidad
+                                    const cantEfectiva = item.cantidad_comprada ?? item.cantidad
+                                    const difiere = item.cantidad_comprada != null && item.cantidad_comprada !== item.cantidad
+                                    return (
+                                      <div className="text-xs text-gris-dark font-mono mt-0.5">
+                                        {difiere ? (
+                                          <span title={`Solicitado: ${item.cantidad} ${unidLabel}`}>
+                                            <span className="line-through text-gris-mid">{item.cantidad}</span>
+                                            {' → '}
+                                            <strong className="text-naranja-dark">{cantEfectiva}</strong> {unidLabel}
+                                          </span>
+                                        ) : (
+                                          <>{item.cantidad} {unidLabel}</>
+                                        )}
+                                        {item.precio_unit != null && <span className="ml-2">× {fmtM(item.precio_unit)} = <strong>{fmtM(cantEfectiva * item.precio_unit)}</strong></span>}
+                                      </div>
+                                    )
+                                  })()}
                                 </td>
                                 <td className="px-4 py-2.5 text-center">
                                   {stk ? (
@@ -1074,7 +1103,9 @@ export function SolicitudesTab() {
           <div className="flex flex-col gap-4">
             <div className="bg-azul-light rounded-xl px-4 py-3">
               <div className="font-bold text-sm text-azul">{modalComprar.descripcion}</div>
-              <div className="text-xs text-gris-dark font-mono">{modalComprar.cantidad} {UNIDADES.find(u => u.value === modalComprar.unidad)?.label ?? modalComprar.unidad}</div>
+              <div className="text-xs text-gris-dark font-mono">
+                Solicitado: {modalComprar.cantidad} {UNIDADES.find(u => u.value === modalComprar.unidad)?.label ?? modalComprar.unidad}
+              </div>
             </div>
             <div className="flex items-end gap-2">
               <div className="flex-1">
@@ -1082,7 +1113,15 @@ export function SolicitudesTab() {
               </div>
               <Button variant="secondary" size="sm" onClick={() => { formProv.reset({ nombre: '', cuit: '', tel: '' }); setModalNuevoProveedor(true) }}>+ Nuevo</Button>
             </div>
-            <Input label="Precio unitario ($)" type="number" step="1" {...formComprar.register('precio_unit')} />
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                label={`Cantidad comprada (${UNIDADES.find(u => u.value === modalComprar.unidad)?.label ?? modalComprar.unidad})`}
+                type="number" step="any" min="0"
+                hint={Number(formComprar.watch('cantidad_comprada')) !== modalComprar.cantidad ? `Difiere de lo solicitado (${modalComprar.cantidad})` : undefined}
+                {...formComprar.register('cantidad_comprada')}
+              />
+              <Input label="Precio unitario ($)" type="number" step="1" {...formComprar.register('precio_unit')} />
+            </div>
             <div className="flex items-end gap-2">
               <div className="flex-1">
                 <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1 block">Factura (opcional)</label>
@@ -1186,7 +1225,7 @@ export function SolicitudesTab() {
                   <thead className="bg-gris">
                     <tr>
                       <th className="text-left px-3 py-2 text-[11px] font-bold text-gris-dark uppercase">Ítem</th>
-                      <th className="text-right px-3 py-2 text-[11px] font-bold text-gris-dark uppercase">Cant.</th>
+                      <th className="text-right px-3 py-2 text-[11px] font-bold text-gris-dark uppercase w-[110px]">Cant. comprada</th>
                       <th className="text-right px-3 py-2 text-[11px] font-bold text-gris-dark uppercase w-[120px]">Precio unit. ($)</th>
                       <th className="text-right px-3 py-2 text-[11px] font-bold text-gris-dark uppercase w-[110px]">Subtotal</th>
                     </tr>
@@ -1194,14 +1233,27 @@ export function SolicitudesTab() {
                   <tbody>
                     {modalComprarLote.items.map(it => {
                       const precio = Number(formComprarLote.watch(`precios.${it.id}`) ?? 0)
-                      const subtotal = precio * it.cantidad
+                      const cant   = Number(formComprarLote.watch(`cantidades.${it.id}`) ?? it.cantidad)
+                      const subtotal = precio * cant
+                      const difiere = cant !== it.cantidad
+                      const unidLabel = UNIDADES.find(u => u.value === it.unidad)?.label ?? it.unidad
                       return (
                         <tr key={it.id} className="border-t border-gris">
                           <td className="px-3 py-2">
                             <div className="font-medium text-sm">{it.descripcion}</div>
+                            <div className="text-[10px] text-gris-dark">Solicitado: {it.cantidad} {unidLabel}</div>
                           </td>
-                          <td className="px-3 py-2 text-right font-mono text-xs text-gris-dark">
-                            {it.cantidad} {UNIDADES.find(u => u.value === it.unidad)?.label ?? it.unidad}
+                          <td className="px-3 py-2">
+                            <div className="flex items-center gap-1 justify-end">
+                              <input
+                                type="number"
+                                step="any"
+                                min="0"
+                                {...formComprarLote.register(`cantidades.${it.id}`, { valueAsNumber: true })}
+                                className={`w-16 px-2 py-1 border rounded text-right font-mono text-sm outline-none focus:border-naranja ${difiere ? 'border-naranja bg-naranja-light/40' : 'border-gris-mid'}`}
+                              />
+                              <span className="text-[10px] text-gris-dark">{unidLabel}</span>
+                            </div>
                           </td>
                           <td className="px-3 py-2">
                             <input
@@ -1223,7 +1275,7 @@ export function SolicitudesTab() {
                     <tr>
                       <td colSpan={3} className="px-3 py-2 text-right text-xs font-bold text-gris-dark uppercase">Total</td>
                       <td className="px-3 py-2 text-right font-mono text-sm font-bold text-azul">
-                        {fmtM(modalComprarLote.items.reduce((acc, it) => acc + (Number(formComprarLote.watch(`precios.${it.id}`) ?? 0) * it.cantidad), 0))}
+                        {fmtM(modalComprarLote.items.reduce((acc, it) => acc + (Number(formComprarLote.watch(`precios.${it.id}`) ?? 0) * Number(formComprarLote.watch(`cantidades.${it.id}`) ?? it.cantidad)), 0))}
                       </td>
                     </tr>
                   </tfoot>
