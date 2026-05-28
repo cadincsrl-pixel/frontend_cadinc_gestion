@@ -42,6 +42,7 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
     { key: 'stock',           label: 'Stock',               icon: '🏗️' },
     { key: 'stock-proveedor', label: 'Stock en proveedores', icon: '🏭' },
     { key: 'materiales',      label: 'Materiales',          icon: '📦' },
+    { key: 'cuenta-cliente',  label: 'Cuenta del cliente',  icon: '💳' },
   ],
   caja: [
     { key: 'movimientos',   label: 'Movimientos',   icon: '💵' },
