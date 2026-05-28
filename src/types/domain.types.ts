@@ -1045,6 +1045,8 @@ export interface SolicitudCompraItem {
   solicitud_id?:    number
   descripcion:      string
   cantidad:         number
+  /** Cantidad realmente comprada si difiere de la solicitada. `null` = se compró lo solicitado. */
+  cantidad_comprada?: number | null
   unidad:           string
   obs?:             string | null
   estado:           ItemEstado
