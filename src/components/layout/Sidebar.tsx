@@ -17,6 +17,7 @@ const NAV_ITEMS_CERT = [
   { tab: 'stock',           icon: '🏗️', label: 'Stock',                meta: 'Stock en depósito'              },
   { tab: 'stock-proveedor', icon: '🏭', label: 'Stock en proveedores', meta: 'Materiales comprados sin retirar' },
   { tab: 'materiales',      icon: '📦', label: 'Materiales',           meta: 'A cuenta del cliente'           },
+  { tab: 'cuenta-cliente',  icon: '💳', label: 'Cuenta del cliente',   meta: 'Deuda y pagos directos'         },
 ]
 
 function CertNav({ navigate, activeTab, allowedTabs }: { navigate: (href: string) => void; activeTab: string; allowedTabs?: string[] }) {
