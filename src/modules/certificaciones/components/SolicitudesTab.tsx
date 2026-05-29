@@ -603,8 +603,8 @@ export function SolicitudesTab() {
                   <span className="text-xs text-gris-dark select-none shrink-0">{isExp ? '▼' : '▶'}</span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono text-xs font-bold text-azul">{s.obra_cod}</span>
-                      {obra && <span className="text-sm text-carbon truncate">{obra.nom}</span>}
+                      <span className="text-lg font-extrabold text-carbon leading-tight">{obra?.nom ?? s.obra_cod}</span>
+                      {obra && <span className="font-mono text-[11px] font-bold text-azul bg-azul-light px-2 py-0.5 rounded">{s.obra_cod}</span>}
                       {s.progreso ? (
                         <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold ${PROGRESO_CFG[s.progreso].bg} ${PROGRESO_CFG[s.progreso].text}`}>
                           {PROGRESO_CFG[s.progreso].label}
@@ -861,13 +861,15 @@ export function SolicitudesTab() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-mono text-xs font-bold text-azul">{s.obra_cod}</span>
-                        <span className="text-[11px] text-gris-dark font-mono">{fmtF(s.fecha)}</span>
+                        <span className="text-base font-extrabold text-carbon leading-tight">{obra?.nom ?? s.obra_cod}</span>
                         {s.prioridad === 'urgente' && (
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rojo text-white uppercase">Urgente</span>
                         )}
                       </div>
-                      {obra && <div className="text-xs text-gris-dark mt-0.5 truncate">{obra.nom}</div>}
+                      <div className="flex items-center gap-2 flex-wrap mt-0.5 text-[11px] text-gris-dark font-mono">
+                        {obra && <span className="font-bold text-azul">{s.obra_cod}</span>}
+                        <span>{fmtF(s.fecha)}</span>
+                      </div>
                     </div>
                     {s.progreso ? (
                       <span className={`shrink-0 inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${PROGRESO_CFG[s.progreso].bg} ${PROGRESO_CFG[s.progreso].text}`}>
