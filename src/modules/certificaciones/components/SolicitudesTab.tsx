@@ -499,9 +499,12 @@ export function SolicitudesTab() {
     if (!items.length) return
 
     const n = items.length
-    if (!confirm(`¿Generar remito y marcar como enviado${n > 1 ? ` ${n} ítems` : ''}? Esta acción crea el remito de envío a la obra.`)) return
-
     const obra = obrasMap.get(solicitud.obra_cod)
+    const esDeposito = obra?.es_deposito === true
+    const msgConfirm = esDeposito
+      ? `¿Recibir ${n > 1 ? `${n} ítems` : 'el ítem'} en el depósito? Ingresan al stock y se genera el comprobante.`
+      : `¿Generar remito y marcar como enviado${n > 1 ? ` ${n} ítems` : ''}? Esta acción crea el remito de envío a la obra.`
+    if (!confirm(msgConfirm)) return
     const remitoItems = items.map(it => ({
       item_id: it.id,
       descripcion: it.descripcion,
@@ -521,7 +524,7 @@ export function SolicitudesTab() {
       enviar_items: itemIds,
     }, {
       onSuccess: (remito: any) => {
-        toast('Remito generado e ítems enviados', 'ok')
+        toast(esDeposito ? 'Recibido e ingresado al depósito' : 'Remito generado e ítems enviados', 'ok')
         setSelected(new Set())
         imprimirRemito(remito, obra?.nom)
       },
@@ -760,7 +763,7 @@ export function SolicitudesTab() {
                                       <>
                                         <input type="checkbox" disabled={!resolverItems} checked={selected.has(item.id!)} onChange={() => toggleSelect(item.id!)}
                                           className="accent-verde w-4 h-4 disabled:opacity-40" title="Seleccionar para envío grupal" />
-                                        <button disabled={!resolverItems} onClick={() => enviarUnoConRemito(s, item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Enviar + Remito</button>
+                                        <button disabled={!resolverItems} onClick={() => enviarUnoConRemito(s, item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">{obra?.es_deposito ? 'Recibir en depósito' : 'Enviar + Remito'}</button>
                                         <button disabled={!resolverItems} onClick={() => handleRevertir(item.id!)} className="text-xs px-3 py-1.5 rounded text-gris-dark hover:text-rojo hover:bg-rojo-light min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">↩</button>
                                       </>
                                     )}
@@ -1001,7 +1004,7 @@ export function SolicitudesTab() {
                                     Seleccionar para envío grupal
                                   </label>
                                   <div className="grid grid-cols-2 gap-2">
-                                    <button disabled={!resolverItems} onClick={() => enviarUnoConRemito(s, item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Enviar + Remito</button>
+                                    <button disabled={!resolverItems} onClick={() => enviarUnoConRemito(s, item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">{obra?.es_deposito ? 'Recibir en depósito' : 'Enviar + Remito'}</button>
                                     <button disabled={!resolverItems} onClick={() => handleRevertir(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">↩ Revertir</button>
                                   </div>
                                 </div>
