@@ -243,6 +243,7 @@ Los 4 lugares deben dar el mismo número. La función vieja `calcularTotalesSema
 - **Notificaciones sin persistencia**: el hook `useNotificaciones` calcula in-memory. Para "marcar como leído" o silenciar habría que crear tabla `notificaciones_dismiss`.
 - **Sin notificaciones de docs de choferes**: la campana muestra solo vencimientos de vehículos, no de papeles del personal de conducción (DNI, licencia).
 - **`materiales_a_cuenta_cliente.cantidad` se sobrescribe** en cada retiro parcial desde proveedor (UPSERT con `ON CONFLICT (item_id)`). Eso pierde el detalle por retiro. Si se necesita auditar parciales, mirar `stock_proveedor_movimientos` que sí tiene el desglose.
+- **⚠️ RPCs SECURITY DEFINER: SIEMPRE llamarlas con el cliente admin (`supabase` service_role), NUNCA con `createSupabaseClient(token)`.** Ese cliente per-request manda el service key como `apikey` pero el JWT del usuario en `Authorization` → PostgREST resuelve el rol por el JWT → rol efectivo `authenticated`. La migración `20260527_revoke_secdef_from_public` revocó EXECUTE de TODAS las funciones SECURITY DEFINER para `authenticated` (dejando solo `service_role`), así que llamarlas con el token client tira `permission denied`. Patrón correcto: `obras.service.ts` (usa `supabaseAdmin`). Las validaciones de permiso/obra-scope corren en el backend ANTES de la RPC; las funciones reciben `p_user_id` explícito (no usan `auth.uid()`), así que correrlas como service_role es seguro. Regresión detectada y arreglada el 2026-05-29 (commit backend `9c1be32`).
 
 ## 10. Comandos útiles
 
