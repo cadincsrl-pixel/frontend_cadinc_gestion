@@ -139,13 +139,13 @@ export function VehiculosTab() {
   function handleSyncTodos() {
     syncTodos(undefined, {
       onSuccess: (r) => {
-        // Mostramos resumen compacto. `ok` = actualizados, `sin_cambio` = ya estaban
-        // al día, `error` + `no_match` los agrupamos como "con problemas".
-        const problemas = r.error + r.no_match
-        toast(
-          `✓ Sync completo — ${r.ok} actualizados, ${r.sin_cambio} sin cambios, ${problemas} con problemas`,
-          problemas > 0 ? 'warn' : 'ok',
-        )
+        // Resumen compacto. `ok` = actualizados, `sin_cambio` = ya estaban al día.
+        // `no_match` = GPS de MobilQuest sin vincular a un vehículo cargado
+        // (informativo, NO es un error). `error` = falló el guardado (sí es problema).
+        const partes = [`${r.ok} actualizados`, `${r.sin_cambio} sin cambios`]
+        if (r.no_match > 0) partes.push(`${r.no_match} GPS sin vincular`)
+        if (r.error > 0)    partes.push(`${r.error} con error`)
+        toast(`✓ Sync completo — ${partes.join(', ')}`, r.error > 0 ? 'warn' : 'ok')
       },
       onError: (err) => toast(mensajeAmigableErrorSync(err), 'err'),
     })
