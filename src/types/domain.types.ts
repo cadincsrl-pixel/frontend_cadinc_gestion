@@ -1070,6 +1070,7 @@ export interface SolicitudCompra extends AuditFields {
   estado:       SolicitudEstado
   prioridad:    'normal' | 'urgente'
   obs:          string | null
+  entrega_tentativa: string | null
   aprobado_por: string | null
   items:        SolicitudCompraItem[]
   progreso:     SolicitudProgreso | null

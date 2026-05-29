@@ -58,6 +58,8 @@ const ITEM_ESTADO_CFG: Record<ItemEstado, { label: string; bg: string; text: str
 
 function fmtF(s: string) { const [y,m,d] = s.split('-'); return `${d}/${m}/${y}` }
 function fmtM(n: number) { return '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 0 }) }
+// Formatea un timestamp "YYYY-MM-DDTHH:mm[:ss]" a "DD/MM/YYYY HH:mm".
+function fmtFH(s: string) { const [fecha, hora = ''] = s.split('T'); return `${fmtF(fecha)}${hora ? ' ' + hora.slice(0, 5) : ''}` }
 
 const BUCKET = 'cert-adjuntos'
 async function uploadAdjunto(file: File): Promise<{ url: string; nombre: string }> {
@@ -202,8 +204,8 @@ export function SolicitudesTab() {
   const [modalNuevaFactura, setModalNuevaFactura] = useState(false)
 
   // Forms
-  const formCab = useForm<any>({ defaultValues: { prioridad: 'normal', obs: '' } })
-  const formEdit = useForm<any>({ defaultValues: { prioridad: 'normal', obs: '' } })
+  const formCab = useForm<any>({ defaultValues: { prioridad: 'normal', obs: '', entrega_tentativa: '' } })
+  const formEdit = useForm<any>({ defaultValues: { prioridad: 'normal', obs: '', entrega_tentativa: '' } })
   const formComprar = useForm<any>({ defaultValues: { proveedor_id: '', precio_unit: 0, factura_id: '', pagado_por: 'cadinc', cantidad_comprada: 0 } })
   const formComprarLote = useForm<any>({
     defaultValues: { proveedor_id: '', factura_id: '', queda_en_proveedor: false, pagado_por: 'cadinc', precios: {} },
@@ -250,14 +252,14 @@ export function SolicitudesTab() {
 
   // ── Crear solicitud ──
   function abrirNuevo() {
-    setLineas([newLinea()]); setObraNueva(''); formCab.reset({ prioridad: 'normal', obs: '' }); setModalNuevo(true)
+    setLineas([newLinea()]); setObraNueva(''); formCab.reset({ prioridad: 'normal', obs: '', entrega_tentativa: '' }); setModalNuevo(true)
   }
 
   function handleCreate(cab: any) {
     if (!obraNueva) { toast('Seleccioná una obra', 'err'); return }
     const items = lineas.filter(l => l.descripcion.trim()).map(l => ({ descripcion: l.descripcion, cantidad: l.cantidad, unidad: l.unidad, obs: l.obs || null, material_id: l.material_id }))
     if (!items.length) { toast('Agregá al menos un material', 'err'); return }
-    create({ obra_cod: obraNueva, prioridad: cab.prioridad, obs: cab.obs || null, items }, {
+    create({ obra_cod: obraNueva, prioridad: cab.prioridad, obs: cab.obs || null, entrega_tentativa: cab.entrega_tentativa || null, items }, {
       onSuccess: () => { toast('Solicitud creada', 'ok'); setModalNuevo(false) },
       onError: () => toast('Error al crear solicitud', 'err'),
     })
@@ -265,7 +267,7 @@ export function SolicitudesTab() {
 
   // ── Editar solicitud ──
   function abrirEditar(s: SolicitudCompra) {
-    formEdit.reset({ prioridad: s.prioridad, obs: s.obs ?? '' })
+    formEdit.reset({ prioridad: s.prioridad, obs: s.obs ?? '', entrega_tentativa: s.entrega_tentativa ? s.entrega_tentativa.slice(0, 16) : '' })
     setObraEdit(s.obra_cod)
     setItemsAEliminar([])
     const editLines = (s.items ?? []).map((it, i) => ({
@@ -304,6 +306,7 @@ export function SolicitudesTab() {
         obra_cod: obraEdit,
         prioridad: cab.prioridad,
         obs: cab.obs || null,
+        entrega_tentativa: cab.entrega_tentativa || null,
         items: itemsToSend,
         remove_items: itemsAEliminar.length > 0 ? itemsAEliminar : undefined,
       },
@@ -633,6 +636,11 @@ export function SolicitudesTab() {
                       ) : (
                         <span>{items.length} material{items.length !== 1 ? 'es' : ''}</span>
                       )}
+                      {s.entrega_tentativa && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-naranja-light text-naranja-dark font-bold">
+                          📅 Entrega: {fmtFH(s.entrega_tentativa)}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="flex gap-1 justify-end shrink-0" onClick={e => e.stopPropagation()}>
@@ -870,6 +878,11 @@ export function SolicitudesTab() {
                         {obra && <span className="font-bold text-azul">{s.obra_cod}</span>}
                         <span>{fmtF(s.fecha)}</span>
                       </div>
+                      {s.entrega_tentativa && (
+                        <div className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-naranja-light text-naranja-dark text-[10px] font-bold">
+                          📅 Entrega: {fmtFH(s.entrega_tentativa)}
+                        </div>
+                      )}
                     </div>
                     {s.progreso ? (
                       <span className={`shrink-0 inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${PROGRESO_CFG[s.progreso].bg} ${PROGRESO_CFG[s.progreso].text}`}>
@@ -1043,6 +1056,15 @@ export function SolicitudesTab() {
                 <option value="urgente">Urgente</option>
               </select>
             </div>
+          </div>
+          <div>
+            <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1 block">📅 Entrega tentativa (fecha y hora)</label>
+            <input
+              type="datetime-local"
+              {...formCab.register('entrega_tentativa')}
+              className="w-full px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white font-semibold focus:border-naranja"
+            />
+            <p className="text-[10px] text-gris-mid mt-1">Opcional — cuándo se espera/necesita el material en obra.</p>
           </div>
           <Input label="Observaciones" placeholder="Notas adicionales..." {...formCab.register('obs')} />
           <div>
@@ -1432,6 +1454,14 @@ export function SolicitudesTab() {
                   <option value="urgente">Urgente</option>
                 </select>
               </div>
+            </div>
+            <div>
+              <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1 block">📅 Entrega tentativa (fecha y hora)</label>
+              <input
+                type="datetime-local"
+                {...formEdit.register('entrega_tentativa')}
+                className="w-full px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white font-semibold focus:border-naranja"
+              />
             </div>
             <Input label="Observaciones" placeholder="Notas adicionales..." {...formEdit.register('obs')} />
 
