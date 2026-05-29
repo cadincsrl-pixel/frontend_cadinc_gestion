@@ -14,6 +14,7 @@ import { useCreateRemitoEnvio } from '../hooks/useRemitosEnvio'
 import { imprimirRemito } from './RemitoEnvioPrint'
 import { useObras } from '@/modules/tarja/hooks/useObras'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
+import { usePermisos } from '@/hooks/usePermisos'
 import { createClient } from '@/lib/supabase/client'
 import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
@@ -109,6 +110,9 @@ function isCategoriaValida(s: string | null): s is CategoriaSol {
 export function SolicitudesTab() {
   const toast = useToast()
   const perfiles = usePerfilesMap()
+  // Permisos: deshabilitar (no ocultar) botones según capacidad. El backend
+  // valida igual; esto evita clicks que rebotan con error feo (CLAUDE.md §6).
+  const { puedeCrear, puedeEditar, puedeEliminar, resolverItems } = usePermisos('certificaciones')
   const { data: obras = [] } = useObras('certificaciones')
   const { data: proveedores = [] } = useProveedores()
   const { data: facturas = [] } = useFacturasCompra()
@@ -569,7 +573,7 @@ export function SolicitudesTab() {
           </div>
           <CategoriaTabs categoriaSel={categoriaSel} counts={counts} onSelect={setCategoria} />
         </div>
-        <Button variant="primary" size="sm" onClick={abrirNuevo}>+ Nueva solicitud</Button>
+        <Button variant="primary" size="sm" onClick={abrirNuevo} disabled={!puedeCrear}>+ Nueva solicitud</Button>
       </div>
 
       {/* Tabla */}
@@ -647,12 +651,12 @@ export function SolicitudesTab() {
                               <div className="flex gap-1 justify-end" onClick={e => e.stopPropagation()}>
                                 {s.estado === 'pendiente' && (
                                   <>
-                                    <button onClick={() => aprobar(s.id)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul hover:opacity-80 transition-colors min-h-[36px]">Aprobar</button>
-                                    <button onClick={() => rechazar(s.id)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 transition-colors min-h-[36px]">Rechazar</button>
+                                    <button disabled={!puedeEditar} onClick={() => aprobar(s.id)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul hover:opacity-80 transition-colors min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Aprobar</button>
+                                    <button disabled={!puedeEditar} onClick={() => rechazar(s.id)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 transition-colors min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Rechazar</button>
                                   </>
                                 )}
-                                <button onClick={() => abrirEditar(s)} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-azul-light hover:text-azul transition-colors min-h-[36px]">✏️ Editar</button>
-                                <button onClick={() => eliminar(s.id)} className="text-xs px-3 py-1.5 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors min-h-[36px]">✕</button>
+                                <button disabled={!puedeEditar} onClick={() => abrirEditar(s)} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-azul-light hover:text-azul transition-colors min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✏️ Editar</button>
+                                <button disabled={!puedeEliminar} onClick={() => eliminar(s.id)} className="text-xs px-3 py-1.5 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
                               </div>
                             </td>
                           </tr>
@@ -725,29 +729,30 @@ export function SolicitudesTab() {
                                         <>
                                           <input
                                             type="checkbox"
+                                            disabled={!resolverItems}
                                             checked={selCompra.get(s.id)?.has(item.id!) ?? false}
                                             onChange={() => toggleSelCompra(s.id, item.id!)}
-                                            className="accent-azul w-4 h-4"
+                                            className="accent-azul w-4 h-4 disabled:opacity-40"
                                             title="Seleccionar para compra en lote (mismo proveedor)"
                                           />
-                                          <button onClick={() => abrirComprar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul hover:opacity-80 min-h-[36px]">Comprar</button>
-                                          <button onClick={() => abrirDespachar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-naranja-light text-naranja hover:opacity-80 min-h-[36px]">Depósito</button>
-                                          <button onClick={() => handleRechazarItem(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 min-h-[36px]">✕</button>
+                                          <button disabled={!resolverItems} onClick={() => abrirComprar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Comprar</button>
+                                          <button disabled={!resolverItems} onClick={() => abrirDespachar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-naranja-light text-naranja hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Depósito</button>
+                                          <button disabled={!resolverItems} onClick={() => handleRechazarItem(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
                                         </>
                                       )}
                                       {(item.estado === 'comprado' || item.estado === 'de_deposito' || item.estado === 'retirado') && (
                                         <>
-                                          <input type="checkbox" checked={selected.has(item.id!)} onChange={() => toggleSelect(item.id!)}
-                                            className="accent-verde w-4 h-4" title="Seleccionar para envío grupal" />
-                                          <button onClick={() => enviarUnoConRemito(s, item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 min-h-[36px]">Enviar + Remito</button>
-                                          <button onClick={() => handleRevertir(item.id!)} className="text-xs px-3 py-1.5 rounded text-gris-dark hover:text-rojo hover:bg-rojo-light min-h-[36px]">↩</button>
+                                          <input type="checkbox" disabled={!resolverItems} checked={selected.has(item.id!)} onChange={() => toggleSelect(item.id!)}
+                                            className="accent-verde w-4 h-4 disabled:opacity-40" title="Seleccionar para envío grupal" />
+                                          <button disabled={!resolverItems} onClick={() => enviarUnoConRemito(s, item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Enviar + Remito</button>
+                                          <button disabled={!resolverItems} onClick={() => handleRevertir(item.id!)} className="text-xs px-3 py-1.5 rounded text-gris-dark hover:text-rojo hover:bg-rojo-light min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">↩</button>
                                         </>
                                       )}
                                       {item.estado === 'rechazado' && (
-                                        <button onClick={() => handleRevertir(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-amarillo-light text-[#7A5500] hover:opacity-80 min-h-[36px]">Reactivar</button>
+                                        <button disabled={!resolverItems} onClick={() => handleRevertir(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-amarillo-light text-[#7A5500] hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Reactivar</button>
                                       )}
                                       {item.estado === 'enviado' && (
-                                        <button onClick={() => handleRevertirEnvio(item.id!)} title="Deshacer el envío (vuelve a comprado/depósito, borra el remito)" className="text-xs font-bold px-3 py-1.5 rounded text-gris-dark hover:text-rojo hover:bg-rojo-light min-h-[36px]">↩ Deshacer envío</button>
+                                        <button disabled={!resolverItems} onClick={() => handleRevertirEnvio(item.id!)} title="Deshacer el envío (vuelve a comprado/depósito, borra el remito)" className="text-xs font-bold px-3 py-1.5 rounded text-gris-dark hover:text-rojo hover:bg-rojo-light min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">↩ Deshacer envío</button>
                                       )}
                                     </div>
                                   )}
@@ -785,8 +790,9 @@ export function SolicitudesTab() {
                                         Limpiar
                                       </button>
                                       <button
+                                        disabled={!resolverItems}
                                         onClick={() => abrirComprarLote(s.id, itemsLote)}
-                                        className="text-xs font-bold px-3 py-1.5 rounded-lg bg-azul text-white hover:opacity-90 transition-colors"
+                                        className="text-xs font-bold px-3 py-1.5 rounded-lg bg-azul text-white hover:opacity-90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                                       >
                                         🛒 Comprar {itemsLote.length} ítem{itemsLote.length > 1 ? 's' : ''}
                                       </button>
@@ -897,12 +903,12 @@ export function SolicitudesTab() {
                 <div className="grid grid-cols-2 gap-2 mt-3">
                   {s.estado === 'pendiente' && (
                     <>
-                      <button onClick={() => aprobar(s.id)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul hover:opacity-80 min-h-[36px]">Aprobar</button>
-                      <button onClick={() => rechazar(s.id)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 min-h-[36px]">Rechazar</button>
+                      <button disabled={!puedeEditar} onClick={() => aprobar(s.id)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Aprobar</button>
+                      <button disabled={!puedeEditar} onClick={() => rechazar(s.id)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Rechazar</button>
                     </>
                   )}
-                  <button onClick={() => abrirEditar(s)} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-azul-light hover:text-azul min-h-[36px]">✏️ Editar</button>
-                  <button onClick={() => eliminar(s.id)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 min-h-[36px]">✕ Eliminar</button>
+                  <button disabled={!puedeEditar} onClick={() => abrirEditar(s)} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-azul-light hover:text-azul min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✏️ Editar</button>
+                  <button disabled={!puedeEliminar} onClick={() => eliminar(s.id)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✕ Eliminar</button>
                 </div>
 
                 {/* Obs */}
@@ -959,9 +965,9 @@ export function SolicitudesTab() {
                             <div className="mt-3">
                               {item.estado === 'pendiente' && (
                                 <div className="grid grid-cols-3 gap-2">
-                                  <button onClick={() => abrirComprar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul hover:opacity-80 min-h-[36px]">Comprar</button>
-                                  <button onClick={() => abrirDespachar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-naranja-light text-naranja hover:opacity-80 min-h-[36px]">Depósito</button>
-                                  <button onClick={() => handleRechazarItem(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 min-h-[36px]">✕</button>
+                                  <button disabled={!resolverItems} onClick={() => abrirComprar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Comprar</button>
+                                  <button disabled={!resolverItems} onClick={() => abrirDespachar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-naranja-light text-naranja hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Depósito</button>
+                                  <button disabled={!resolverItems} onClick={() => handleRechazarItem(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
                                 </div>
                               )}
                               {(item.estado === 'comprado' || item.estado === 'de_deposito' || item.estado === 'retirado') && (
@@ -969,23 +975,24 @@ export function SolicitudesTab() {
                                   <label className="flex items-center gap-2 text-[11px] text-gris-dark">
                                     <input
                                       type="checkbox"
+                                      disabled={!resolverItems}
                                       checked={selected.has(item.id!)}
                                       onChange={() => toggleSelect(item.id!)}
-                                      className="accent-verde w-4 h-4"
+                                      className="accent-verde w-4 h-4 disabled:opacity-40 disabled:cursor-not-allowed"
                                     />
                                     Seleccionar para envío grupal
                                   </label>
                                   <div className="grid grid-cols-2 gap-2">
-                                    <button onClick={() => enviarUnoConRemito(s, item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 min-h-[36px]">Enviar + Remito</button>
-                                    <button onClick={() => handleRevertir(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo min-h-[36px]">↩ Revertir</button>
+                                    <button disabled={!resolverItems} onClick={() => enviarUnoConRemito(s, item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Enviar + Remito</button>
+                                    <button disabled={!resolverItems} onClick={() => handleRevertir(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">↩ Revertir</button>
                                   </div>
                                 </div>
                               )}
                               {item.estado === 'rechazado' && (
-                                <button onClick={() => handleRevertir(item.id!)} className="w-full text-xs font-bold px-3 py-1.5 rounded bg-amarillo-light text-[#7A5500] hover:opacity-80 min-h-[36px]">Reactivar</button>
+                                <button disabled={!resolverItems} onClick={() => handleRevertir(item.id!)} className="w-full text-xs font-bold px-3 py-1.5 rounded bg-amarillo-light text-[#7A5500] hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Reactivar</button>
                               )}
                               {item.estado === 'enviado' && (
-                                <button onClick={() => handleRevertirEnvio(item.id!)} className="w-full text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo min-h-[36px]">↩ Deshacer envío</button>
+                                <button disabled={!resolverItems} onClick={() => handleRevertirEnvio(item.id!)} className="w-full text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">↩ Deshacer envío</button>
                               )}
                             </div>
                           )}
@@ -1094,10 +1101,17 @@ export function SolicitudesTab() {
       </Modal>
 
       {/* ── Modal comprar a proveedor ── */}
+      {(() => {
+        // Validación: requiere proveedor + precio > 0 + cantidad > 0.
+        const cpProv   = formComprar.watch('proveedor_id')
+        const cpPrecio = Number(formComprar.watch('precio_unit'))
+        const cpCant   = Number(formComprar.watch('cantidad_comprada'))
+        const compraInvalida = !cpProv || !(cpPrecio > 0) || !(cpCant > 0)
+        return (
       <Modal open={!!modalComprar} onClose={() => setModalComprar(null)} title="🛒 COMPRAR A PROVEEDOR"
         footer={<>
           <Button variant="secondary" onClick={() => setModalComprar(null)}>Cancelar</Button>
-          <Button variant="primary" onClick={formComprar.handleSubmit(handleComprar)}>Confirmar compra</Button>
+          <Button variant="primary" onClick={formComprar.handleSubmit(handleComprar)} disabled={compraInvalida}>Confirmar compra</Button>
         </>}>
         {modalComprar && (
           <div className="flex flex-col gap-4">
@@ -1171,6 +1185,8 @@ export function SolicitudesTab() {
           </div>
         )}
       </Modal>
+        )
+      })()}
 
       {/* ── Modal COMPRAR EN LOTE (N items, mismo proveedor + factura) ── */}
       <Modal
