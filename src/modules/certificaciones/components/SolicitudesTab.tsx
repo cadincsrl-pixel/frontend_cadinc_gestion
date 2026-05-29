@@ -583,256 +583,259 @@ export function SolicitudesTab() {
           Cargando...
         </div>
       ) : (
-        <div className="hidden md:block bg-white rounded-card shadow-card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse min-w-[750px]">
-              <thead>
-                <tr>
-                  {['', 'Obra', 'Fecha', 'Items', 'Estado', 'Solicitante', 'Prioridad', ''].map((h, i) => (
-                    <th key={i} className="bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide last:text-right">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {sorted.length === 0 ? (
-                  <tr><td colSpan={8} className="text-center py-8 text-gris-dark text-sm italic">Sin solicitudes.</td></tr>
-                ) : sorted.map(s => {
-                  const obra = obrasMap.get(s.obra_cod)
-                  const isExp = expanded.has(s.id)
-                  const items = s.items ?? []
+        <div className="hidden md:flex flex-col gap-3">
+          {sorted.length === 0 ? (
+            <div className="bg-white rounded-card shadow-card p-8 text-center text-gris-dark text-sm italic">
+              Sin solicitudes.
+            </div>
+          ) : sorted.map(s => {
+            const obra = obrasMap.get(s.obra_cod)
+            const isExp = expanded.has(s.id)
+            const items = s.items ?? []
 
-                  return (
-                    <tr key={s.id}>
-                      <td colSpan={8} className="p-0">
-                        <table className="w-full"><tbody>
-                          {/* Fila cabecera */}
-                          <tr className="border-b border-gris hover:bg-gris/30 transition-colors cursor-pointer" onClick={() => toggleExpand(s.id)}>
-                            <td className="px-4 py-3 w-8">
-                              <span className="text-xs text-gris-dark select-none">{isExp ? '▼' : '▶'}</span>
-                            </td>
-                            <td className="px-4 py-3">
-                              <span className="font-mono text-xs font-bold text-azul">{s.obra_cod}</span>
-                              {obra && <div className="text-[11px] text-gris-dark">{obra.nom}</div>}
-                            </td>
-                            <td className="px-4 py-3 text-sm text-gris-dark font-mono">{fmtF(s.fecha)}</td>
-                            <td className="px-4 py-3">
-                              {s.resumen ? (
-                                <div className="text-sm">
-                                  <span className="font-bold text-carbon">{s.resumen.resueltos}/{s.resumen.total}</span>
-                                  <span className="text-gris-dark text-xs ml-1">resueltos</span>
-                                  {s.resumen.enviados > 0 && (
-                                    <span className="text-verde text-xs ml-2 font-bold">{s.resumen.enviados} enviados</span>
-                                  )}
-                                </div>
-                              ) : (
-                                <span className="text-sm text-gris-dark">{items.length} material{items.length !== 1 ? 'es' : ''}</span>
-                              )}
-                            </td>
-                            <td className="px-4 py-3">
-                              {s.progreso ? (
-                                <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold ${PROGRESO_CFG[s.progreso].bg} ${PROGRESO_CFG[s.progreso].text}`}>
-                                  {PROGRESO_CFG[s.progreso].label}
-                                </span>
-                              ) : (
-                                <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold ${ESTADO_SOL[s.estado].bg} ${ESTADO_SOL[s.estado].text}`}>
-                                  {ESTADO_SOL[s.estado].label}
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-4 py-3 text-xs text-gris-dark">
-                              {s.solicitante ? (perfiles.get(s.solicitante) ?? '…') : '—'}
-                            </td>
-                            <td className="px-4 py-3">
-                              {s.prioridad === 'urgente' && (
-                                <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-rojo text-white uppercase">Urgente</span>
-                              )}
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex gap-1 justify-end" onClick={e => e.stopPropagation()}>
-                                {s.estado === 'pendiente' && (
-                                  <>
-                                    <button disabled={!puedeEditar} onClick={() => aprobar(s.id)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul hover:opacity-80 transition-colors min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Aprobar</button>
-                                    <button disabled={!puedeEditar} onClick={() => rechazar(s.id)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 transition-colors min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Rechazar</button>
-                                  </>
-                                )}
-                                <button disabled={!puedeEditar} onClick={() => abrirEditar(s)} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-azul-light hover:text-azul transition-colors min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✏️ Editar</button>
-                                <button disabled={!puedeEliminar} onClick={() => eliminar(s.id)} className="text-xs px-3 py-1.5 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
-                              </div>
-                            </td>
-                          </tr>
-
-                          {/* Detalle de ítems */}
-                          {isExp && items.map((item, i) => {
-                            const cfg = ITEM_ESTADO_CFG[item.estado]
-                            const stk = item.material_id ? stockMap.get(item.material_id) : null
-                            return (
-                              <tr key={item.id ?? i} className="border-b border-gris bg-gris/20">
-                                <td className="pl-8 pr-2 py-2.5 text-xs text-gris-mid text-center">{i + 1}</td>
-                                <td className="px-4 py-2.5">
-                                  <div className="text-sm font-medium text-carbon">{item.descripcion}</div>
-                                  {(() => {
-                                    const unidLabel = UNIDADES.find(u => u.value === item.unidad)?.label ?? item.unidad
-                                    const cantEfectiva = item.cantidad_comprada ?? item.cantidad
-                                    const difiere = item.cantidad_comprada != null && item.cantidad_comprada !== item.cantidad
-                                    return (
-                                      <div className="text-xs text-gris-dark font-mono mt-0.5">
-                                        {difiere ? (
-                                          <span title={`Solicitado: ${item.cantidad} ${unidLabel}`}>
-                                            <span className="line-through text-gris-mid">{item.cantidad}</span>
-                                            {' → '}
-                                            <strong className="text-naranja-dark">{cantEfectiva}</strong> {unidLabel}
-                                          </span>
-                                        ) : (
-                                          <>{item.cantidad} {unidLabel}</>
-                                        )}
-                                        {item.precio_unit != null && <span className="ml-2">× {fmtM(item.precio_unit)} = <strong>{fmtM(cantEfectiva * item.precio_unit)}</strong></span>}
-                                      </div>
-                                    )
-                                  })()}
-                                </td>
-                                <td className="px-4 py-2.5 text-center">
-                                  {stk ? (
-                                    <div>
-                                      <span className={`font-mono font-bold text-sm ${(stk as StockMaterial).stock_actual <= 0 ? 'text-rojo' : (stk as StockMaterial).stock_actual < item.cantidad ? 'text-[#7A5500]' : 'text-verde'}`}>
-                                        {(stk as StockMaterial).stock_actual}
-                                      </span>
-                                      <div className="text-[9px] text-gris-dark">en depósito</div>
-                                    </div>
-                                  ) : (
-                                    <span className="text-gris-mid text-xs">—</span>
-                                  )}
-                                </td>
-                                <td className="px-4 py-2.5">
-                                  <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${cfg.bg} ${cfg.text}`}>{cfg.label}</span>
-                                </td>
-                                <td colSpan={2} className="px-4 py-2.5 text-xs text-gris-dark">
-                                  {item.proveedores && <div>Prov: <strong>{item.proveedores.nombre}</strong></div>}
-                                  {item.estado === 'de_deposito' && <div><strong>Depósito propio</strong></div>}
-                                  {item.pagado_por === 'cliente' && ['comprado', 'en_proveedor', 'retirado', 'enviado'].includes(item.estado) && (
-                                    <div className="mt-0.5">
-                                      <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-naranja-light text-naranja-dark uppercase tracking-wide">
-                                        💵 Cliente pagó directo
-                                      </span>
-                                    </div>
-                                  )}
-                                  {item.facturas_compra?.adjunto_url && (
-                                    <a href={item.facturas_compra.adjunto_url} target="_blank" rel="noopener" className="text-azul hover:underline font-bold">
-                                      📎 Factura {item.facturas_compra.numero || ''}
-                                    </a>
-                                  )}
-                                  {item.fecha_envio && <div className="text-verde font-semibold mt-0.5">Enviado {fmtF(item.fecha_envio)}</div>}
-                                </td>
-                                <td className="px-4 py-2.5">
-                                  {s.estado === 'aprobada' && (
-                                    <div className="flex gap-1 justify-end flex-wrap">
-                                      {item.estado === 'pendiente' && (
-                                        <>
-                                          <input
-                                            type="checkbox"
-                                            disabled={!resolverItems}
-                                            checked={selCompra.get(s.id)?.has(item.id!) ?? false}
-                                            onChange={() => toggleSelCompra(s.id, item.id!)}
-                                            className="accent-azul w-4 h-4 disabled:opacity-40"
-                                            title="Seleccionar para compra en lote (mismo proveedor)"
-                                          />
-                                          <button disabled={!resolverItems} onClick={() => abrirComprar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Comprar</button>
-                                          <button disabled={!resolverItems} onClick={() => abrirDespachar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-naranja-light text-naranja hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Depósito</button>
-                                          <button disabled={!resolverItems} onClick={() => handleRechazarItem(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
-                                        </>
-                                      )}
-                                      {(item.estado === 'comprado' || item.estado === 'de_deposito' || item.estado === 'retirado') && (
-                                        <>
-                                          <input type="checkbox" disabled={!resolverItems} checked={selected.has(item.id!)} onChange={() => toggleSelect(item.id!)}
-                                            className="accent-verde w-4 h-4 disabled:opacity-40" title="Seleccionar para envío grupal" />
-                                          <button disabled={!resolverItems} onClick={() => enviarUnoConRemito(s, item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Enviar + Remito</button>
-                                          <button disabled={!resolverItems} onClick={() => handleRevertir(item.id!)} className="text-xs px-3 py-1.5 rounded text-gris-dark hover:text-rojo hover:bg-rojo-light min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">↩</button>
-                                        </>
-                                      )}
-                                      {item.estado === 'rechazado' && (
-                                        <button disabled={!resolverItems} onClick={() => handleRevertir(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-amarillo-light text-[#7A5500] hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Reactivar</button>
-                                      )}
-                                      {item.estado === 'enviado' && (
-                                        <button disabled={!resolverItems} onClick={() => handleRevertirEnvio(item.id!)} title="Deshacer el envío (vuelve a comprado/depósito, borra el remito)" className="text-xs font-bold px-3 py-1.5 rounded text-gris-dark hover:text-rojo hover:bg-rojo-light min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">↩ Deshacer envío</button>
-                                      )}
-                                    </div>
-                                  )}
-                                </td>
-                              </tr>
-                            )
-                          })}
-
-                          {/* Obs */}
-                          {isExp && s.obs && (
-                            <tr className="border-b border-gris bg-amarillo-light/30">
-                              <td className="pl-8 text-xs text-gris-mid">💬</td>
-                              <td colSpan={7} className="px-4 py-2 text-sm text-[#7A5500] italic">{s.obs}</td>
-                            </tr>
+            return (
+              <div key={s.id} className="bg-white rounded-card shadow-card overflow-hidden">
+                {/* Header del card (clickeable) */}
+                <div
+                  className="flex items-center gap-3 px-4 py-3 hover:bg-gris/30 transition-colors cursor-pointer"
+                  onClick={() => toggleExpand(s.id)}
+                >
+                  <span className="text-xs text-gris-dark select-none shrink-0">{isExp ? '▼' : '▶'}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono text-xs font-bold text-azul">{s.obra_cod}</span>
+                      {obra && <span className="text-sm text-carbon truncate">{obra.nom}</span>}
+                      {s.progreso ? (
+                        <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold ${PROGRESO_CFG[s.progreso].bg} ${PROGRESO_CFG[s.progreso].text}`}>
+                          {PROGRESO_CFG[s.progreso].label}
+                        </span>
+                      ) : (
+                        <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold ${ESTADO_SOL[s.estado].bg} ${ESTADO_SOL[s.estado].text}`}>
+                          {ESTADO_SOL[s.estado].label}
+                        </span>
+                      )}
+                      {s.prioridad === 'urgente' && (
+                        <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-rojo text-white uppercase">Urgente</span>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-gris-dark mt-0.5 flex items-center gap-1.5 flex-wrap">
+                      <span className="font-mono">{fmtF(s.fecha)}</span>
+                      <span>·</span>
+                      <span>{s.solicitante ? (perfiles.get(s.solicitante) ?? '…') : '—'}</span>
+                      <span>·</span>
+                      {s.resumen ? (
+                        <span>
+                          <span className="font-bold text-carbon">{s.resumen.resueltos}/{s.resumen.total}</span> resueltos
+                          {s.resumen.enviados > 0 && (
+                            <span className="text-verde font-bold ml-1.5">{s.resumen.enviados} enviados</span>
                           )}
+                        </span>
+                      ) : (
+                        <span>{items.length} material{items.length !== 1 ? 'es' : ''}</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex gap-1 justify-end shrink-0" onClick={e => e.stopPropagation()}>
+                    {s.estado === 'pendiente' && (
+                      <>
+                        <button disabled={!puedeEditar} onClick={() => aprobar(s.id)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul hover:opacity-80 transition-colors min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Aprobar</button>
+                        <button disabled={!puedeEditar} onClick={() => rechazar(s.id)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 transition-colors min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Rechazar</button>
+                      </>
+                    )}
+                    <button disabled={!puedeEditar} onClick={() => abrirEditar(s)} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-azul-light hover:text-azul transition-colors min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✏️ Editar</button>
+                    <button disabled={!puedeEliminar} onClick={() => eliminar(s.id)} className="text-xs px-3 py-1.5 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
+                  </div>
+                </div>
 
-                          {/* Compra en lote (items pendientes seleccionados) */}
-                          {isExp && (() => {
-                            const set = selCompra.get(s.id)
-                            if (!set || set.size === 0) return null
-                            const itemsLote = items.filter(it => it.estado === 'pendiente' && set.has(it.id!))
-                            if (itemsLote.length === 0) return null
-                            return (
-                              <tr className="border-b border-gris bg-azul-light/40">
-                                <td colSpan={8} className="px-4 py-2.5">
-                                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                                    <span className="text-sm font-bold text-azul">
-                                      {itemsLote.length} ítem{itemsLote.length > 1 ? 's' : ''} para comprar al mismo proveedor
-                                    </span>
-                                    <div className="flex gap-2">
-                                      <button
-                                        onClick={() => clearSelCompra(s.id)}
-                                        className="text-xs font-bold px-3 py-1.5 rounded-lg text-gris-dark hover:bg-white transition-colors"
-                                      >
-                                        Limpiar
-                                      </button>
-                                      <button
-                                        disabled={!resolverItems}
-                                        onClick={() => abrirComprarLote(s.id, itemsLote)}
-                                        className="text-xs font-bold px-3 py-1.5 rounded-lg bg-azul text-white hover:opacity-90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                                      >
-                                        🛒 Comprar {itemsLote.length} ítem{itemsLote.length > 1 ? 's' : ''}
-                                      </button>
+                {/* Detalle expandido */}
+                {isExp && (
+                  <div className="border-t border-gris">
+                    <table className="w-full table-fixed border-collapse">
+                      <colgroup>
+                        <col className="w-10" />
+                        <col />
+                        <col className="w-[72px]" />
+                        <col className="w-[112px]" />
+                        <col className="w-[24%]" />
+                        <col className="w-[230px]" />
+                      </colgroup>
+                      <thead>
+                        <tr className="bg-gris/50">
+                          <th className="px-2 py-2 text-center text-[10px] font-bold text-gris-dark uppercase tracking-wide">#</th>
+                          <th className="px-4 py-2 text-left text-[10px] font-bold text-gris-dark uppercase tracking-wide">Material</th>
+                          <th className="px-2 py-2 text-center text-[10px] font-bold text-gris-dark uppercase tracking-wide">Stock</th>
+                          <th className="px-4 py-2 text-left text-[10px] font-bold text-gris-dark uppercase tracking-wide">Estado</th>
+                          <th className="px-4 py-2 text-left text-[10px] font-bold text-gris-dark uppercase tracking-wide">Detalle</th>
+                          <th className="px-4 py-2 text-right text-[10px] font-bold text-gris-dark uppercase tracking-wide">Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {items.map((item, i) => {
+                          const cfg = ITEM_ESTADO_CFG[item.estado]
+                          const stk = item.material_id ? stockMap.get(item.material_id) : null
+                          return (
+                            <tr key={item.id ?? i} className="border-t border-gris bg-gris/20 align-top">
+                              <td className="px-2 py-2.5 text-xs text-gris-mid text-center">{i + 1}</td>
+                              <td className="px-4 py-2.5">
+                                <div className="text-sm font-medium text-carbon">{item.descripcion}</div>
+                                {(() => {
+                                  const unidLabel = UNIDADES.find(u => u.value === item.unidad)?.label ?? item.unidad
+                                  const cantEfectiva = item.cantidad_comprada ?? item.cantidad
+                                  const difiere = item.cantidad_comprada != null && item.cantidad_comprada !== item.cantidad
+                                  return (
+                                    <div className="text-xs text-gris-dark font-mono mt-0.5">
+                                      {difiere ? (
+                                        <span title={`Solicitado: ${item.cantidad} ${unidLabel}`}>
+                                          <span className="line-through text-gris-mid">{item.cantidad}</span>
+                                          {' → '}
+                                          <strong className="text-naranja-dark">{cantEfectiva}</strong> {unidLabel}
+                                        </span>
+                                      ) : (
+                                        <>{item.cantidad} {unidLabel}</>
+                                      )}
+                                      {item.precio_unit != null && <span className="ml-2">× {fmtM(item.precio_unit)} = <strong>{fmtM(cantEfectiva * item.precio_unit)}</strong></span>}
                                     </div>
-                                  </div>
-                                </td>
-                              </tr>
-                            )
-                          })()}
-
-                          {/* Envío grupal */}
-                          {isExp && (() => {
-                            const itemsSeleccionados = items.filter(it => selected.has(it.id!) && (it.estado === 'comprado' || it.estado === 'de_deposito' || it.estado === 'retirado'))
-                            if (itemsSeleccionados.length === 0) return null
-                            return (
-                              <tr className="border-b border-gris bg-verde-light/30">
-                                <td colSpan={8} className="px-4 py-2.5">
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-sm font-bold text-verde">
-                                      {itemsSeleccionados.length} ítem{itemsSeleccionados.length > 1 ? 's' : ''} seleccionado{itemsSeleccionados.length > 1 ? 's' : ''}
+                                  )
+                                })()}
+                              </td>
+                              <td className="px-2 py-2.5 text-center">
+                                {stk ? (
+                                  <div>
+                                    <span className={`font-mono font-bold text-sm ${(stk as StockMaterial).stock_actual <= 0 ? 'text-rojo' : (stk as StockMaterial).stock_actual < item.cantidad ? 'text-[#7A5500]' : 'text-verde'}`}>
+                                      {(stk as StockMaterial).stock_actual}
                                     </span>
-                                    <button
-                                      onClick={() => enviarConRemito(s, itemsSeleccionados.map(it => it.id!))}
-                                      className="text-xs font-bold px-3 py-1.5 rounded-lg bg-verde text-white hover:opacity-90 transition-colors"
-                                    >
-                                      📄 Enviar seleccionados + Generar remito
-                                    </button>
+                                    <div className="text-[9px] text-gris-dark">en depósito</div>
                                   </div>
-                                </td>
-                              </tr>
-                            )
-                          })()}
-                        </tbody></table>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+                                ) : (
+                                  <span className="text-gris-mid text-xs">—</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-2.5">
+                                <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${cfg.bg} ${cfg.text}`}>{cfg.label}</span>
+                              </td>
+                              <td className="px-4 py-2.5 text-xs text-gris-dark break-words">
+                                {item.proveedores && <div>Prov: <strong>{item.proveedores.nombre}</strong></div>}
+                                {item.estado === 'de_deposito' && <div><strong>Depósito propio</strong></div>}
+                                {item.pagado_por === 'cliente' && ['comprado', 'en_proveedor', 'retirado', 'enviado'].includes(item.estado) && (
+                                  <div className="mt-0.5">
+                                    <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-naranja-light text-naranja-dark uppercase tracking-wide">
+                                      💵 Cliente pagó directo
+                                    </span>
+                                  </div>
+                                )}
+                                {item.facturas_compra?.adjunto_url && (
+                                  <a href={item.facturas_compra.adjunto_url} target="_blank" rel="noopener" className="text-azul hover:underline font-bold">
+                                    📎 Factura {item.facturas_compra.numero || ''}
+                                  </a>
+                                )}
+                                {item.fecha_envio && <div className="text-verde font-semibold mt-0.5">Enviado {fmtF(item.fecha_envio)}</div>}
+                              </td>
+                              <td className="px-4 py-2.5">
+                                {s.estado === 'aprobada' && (
+                                  <div className="flex gap-1 justify-end flex-wrap items-center">
+                                    {item.estado === 'pendiente' && (
+                                      <>
+                                        <input
+                                          type="checkbox"
+                                          disabled={!resolverItems}
+                                          checked={selCompra.get(s.id)?.has(item.id!) ?? false}
+                                          onChange={() => toggleSelCompra(s.id, item.id!)}
+                                          className="accent-azul w-4 h-4 disabled:opacity-40"
+                                          title="Seleccionar para compra en lote (mismo proveedor)"
+                                        />
+                                        <button disabled={!resolverItems} onClick={() => abrirComprar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Comprar</button>
+                                        <button disabled={!resolverItems} onClick={() => abrirDespachar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-naranja-light text-naranja hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Depósito</button>
+                                        <button disabled={!resolverItems} onClick={() => handleRechazarItem(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
+                                      </>
+                                    )}
+                                    {(item.estado === 'comprado' || item.estado === 'de_deposito' || item.estado === 'retirado') && (
+                                      <>
+                                        <input type="checkbox" disabled={!resolverItems} checked={selected.has(item.id!)} onChange={() => toggleSelect(item.id!)}
+                                          className="accent-verde w-4 h-4 disabled:opacity-40" title="Seleccionar para envío grupal" />
+                                        <button disabled={!resolverItems} onClick={() => enviarUnoConRemito(s, item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Enviar + Remito</button>
+                                        <button disabled={!resolverItems} onClick={() => handleRevertir(item.id!)} className="text-xs px-3 py-1.5 rounded text-gris-dark hover:text-rojo hover:bg-rojo-light min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">↩</button>
+                                      </>
+                                    )}
+                                    {item.estado === 'rechazado' && (
+                                      <button disabled={!resolverItems} onClick={() => handleRevertir(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-amarillo-light text-[#7A5500] hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Reactivar</button>
+                                    )}
+                                    {item.estado === 'enviado' && (
+                                      <button disabled={!resolverItems} onClick={() => handleRevertirEnvio(item.id!)} title="Deshacer el envío (vuelve a comprado/depósito, borra el remito)" className="text-xs font-bold px-3 py-1.5 rounded text-gris-dark hover:text-rojo hover:bg-rojo-light min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">↩ Deshacer envío</button>
+                                    )}
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+
+                    {/* Obs */}
+                    {s.obs && (
+                      <div className="border-t border-gris bg-amarillo-light/30 px-4 py-2 text-sm text-[#7A5500] italic flex gap-2">
+                        <span className="text-gris-mid not-italic">💬</span>
+                        <span>{s.obs}</span>
+                      </div>
+                    )}
+
+                    {/* Compra en lote (items pendientes seleccionados) */}
+                    {(() => {
+                      const set = selCompra.get(s.id)
+                      if (!set || set.size === 0) return null
+                      const itemsLote = items.filter(it => it.estado === 'pendiente' && set.has(it.id!))
+                      if (itemsLote.length === 0) return null
+                      return (
+                        <div className="border-t border-gris bg-azul-light/40 px-4 py-2.5">
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <span className="text-sm font-bold text-azul">
+                              {itemsLote.length} ítem{itemsLote.length > 1 ? 's' : ''} para comprar al mismo proveedor
+                            </span>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => clearSelCompra(s.id)}
+                                className="text-xs font-bold px-3 py-1.5 rounded-lg text-gris-dark hover:bg-white transition-colors"
+                              >
+                                Limpiar
+                              </button>
+                              <button
+                                disabled={!resolverItems}
+                                onClick={() => abrirComprarLote(s.id, itemsLote)}
+                                className="text-xs font-bold px-3 py-1.5 rounded-lg bg-azul text-white hover:opacity-90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                              >
+                                🛒 Comprar {itemsLote.length} ítem{itemsLote.length > 1 ? 's' : ''}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })()}
+
+                    {/* Envío grupal */}
+                    {(() => {
+                      const itemsSeleccionados = items.filter(it => selected.has(it.id!) && (it.estado === 'comprado' || it.estado === 'de_deposito' || it.estado === 'retirado'))
+                      if (itemsSeleccionados.length === 0) return null
+                      return (
+                        <div className="border-t border-gris bg-verde-light/30 px-4 py-2.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-bold text-verde">
+                              {itemsSeleccionados.length} ítem{itemsSeleccionados.length > 1 ? 's' : ''} seleccionado{itemsSeleccionados.length > 1 ? 's' : ''}
+                            </span>
+                            <button
+                              onClick={() => enviarConRemito(s, itemsSeleccionados.map(it => it.id!))}
+                              className="text-xs font-bold px-3 py-1.5 rounded-lg bg-verde text-white hover:opacity-90 transition-colors"
+                            >
+                              📄 Enviar seleccionados + Generar remito
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })()}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
 
