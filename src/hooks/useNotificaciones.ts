@@ -5,7 +5,8 @@ import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api/client'
 import { usePersonal } from '@/modules/tarja/hooks/usePersonal'
 import { useSessionStore } from '@/store/session.store'
-import type { Personal } from '@/types/domain.types'
+import { usePermisos } from '@/hooks/usePermisos'
+import type { Personal, SolicitudCompra } from '@/types/domain.types'
 
 // Cumpleañero precalculado, listo para renderizar.
 export interface CumpleanieroItem {
@@ -51,6 +52,15 @@ export interface ServiceCamionItem {
   estado:             'proximo' | 'vencido'
 }
 
+// Solicitud de compra con ítems pendientes de comprar (para el encargado de
+// compras/depósito). Aparece en la campana y dispara el aviso de "nuevo pedido".
+export interface SolicitudPorComprarItem {
+  id:          number
+  obra_cod:    string
+  fecha:       string
+  nPendientes: number
+}
+
 // Gasto de logística pendiente de aprobación.
 export interface GastoPendienteItem {
   id:              number
@@ -82,6 +92,8 @@ interface NotificacionesResult {
   serviciosProximos:      ServiceCamionItem[]
   // Gastos de logística esperando aprobación (cualquier antigüedad).
   gastosPendientes:    GastoPendienteItem[]
+  // Solicitudes de compra con ítems por comprar (para compras/depósito).
+  solicitudesPorComprar: SolicitudPorComprarItem[]
   // total de notificaciones "urgentes" (badge rojo).
   totalUrgente:        number
 }
@@ -146,6 +158,9 @@ export function useNotificaciones(): NotificacionesResult {
   const hasModulo = useSessionStore(s => s.hasModulo)
   const tieneTarja     = hasModulo('tarja')
   const tieneLogistica = hasModulo('logistica')
+  // Solicitudes "por comprar": solo para quien resuelve ítems (compras/depósito).
+  const tieneCertificaciones = hasModulo('certificaciones')
+  const { resolverItems } = usePermisos('certificaciones')
 
   const { data: personal = [] } = usePersonal()
   const { data: docsVenc = [] } = useQuery({
@@ -183,6 +198,18 @@ export function useNotificaciones(): NotificacionesResult {
     retry: false,
     staleTime: 60 * 1000,
   })
+  // Solicitudes de compra (comparte caché con el tab de certificaciones).
+  // refetchInterval: poll para que el aviso de "nuevo pedido" llegue solo,
+  // mientras el encargado tiene la app abierta.
+  const { data: solicitudes = [] } = useQuery({
+    queryKey: ['solicitudes', 'all'],
+    queryFn:  () => apiGet<SolicitudCompra[]>('/api/solicitudes'),
+    enabled:  tieneCertificaciones && resolverItems,
+    retry: false,
+    staleTime: 30 * 1000,
+    refetchInterval: 60 * 1000,
+  })
+
   return useMemo(() => {
     const hoyDate = new Date()
     hoyDate.setHours(0, 0, 0, 0)
@@ -283,6 +310,17 @@ export function useNotificaciones(): NotificacionesResult {
       patente:          g.camion?.patente ?? null,
     }))
 
+    // ── Solicitudes con ítems por comprar (progreso 'pendiente') ──
+    const solicitudesPorComprar: SolicitudPorComprarItem[] = (solicitudes as SolicitudCompra[])
+      .filter(s => s.progreso === 'pendiente')
+      .map(s => ({
+        id:          s.id,
+        obra_cod:    s.obra_cod,
+        fecha:       s.fecha,
+        nPendientes: (s.items ?? []).filter(i => i.estado === 'pendiente').length,
+      }))
+      .sort((a, b) => b.fecha.localeCompare(a.fecha) || b.id - a.id)
+
     return {
       hoy,
       proximos,
@@ -293,14 +331,16 @@ export function useNotificaciones(): NotificacionesResult {
       serviciosVencidos,
       serviciosProximos,
       gastosPendientes,
+      solicitudesPorComprar,
       totalUrgente:
         hoy.length +
         papelesVencidos.length +
         papelesChoferVencidos.length +
         serviciosVencidos.length +
-        gastosPendientes.length,
+        gastosPendientes.length +
+        solicitudesPorComprar.length,
     }
-  }, [personal, docsVenc, docsChofer, servicesNotif, gastosPend, tieneTarja])
+  }, [personal, docsVenc, docsChofer, servicesNotif, gastosPend, solicitudes, tieneTarja])
 }
 
 // Helper para mostrar "hoy", "mañana", "en 3 días" en la lista de próximos.

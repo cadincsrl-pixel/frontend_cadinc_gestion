@@ -12,8 +12,10 @@ import {
   type DocChoferVencimientoItem,
   type ServiceCamionItem,
   type GastoPendienteItem,
+  type SolicitudPorComprarItem,
 } from '@/hooks/useNotificaciones'
 import { usePermisos } from '@/hooks/usePermisos'
+import { useToast } from '@/components/ui/Toast'
 
 // Mapea la ruta actual al módulo cuyos avisos queremos mostrar.
 // `null` = no hay módulo específico → mostrar todo (home, admin, login).
@@ -51,6 +53,31 @@ export function NotificationsBell() {
   // `ver_pii` del módulo tarja: si el usuario no puede ver PII, no le
   // mostramos esta sección (ej. capataz puro, jefe_obra sin add-on).
   const { verPii } = usePermisos('tarja')
+  // Pedidos por comprar: para compras/depósito (resolver_items). No se filtra
+  // por ruta — al encargado le sirve verlos esté donde esté.
+  const { resolverItems } = usePermisos('certificaciones')
+  const toast = useToast()
+  const solicitudesPorComprar = resolverItems ? notifs.solicitudesPorComprar : []
+
+  // Aviso (toast) cuando entra un pedido nuevo mientras la app está abierta.
+  // Warmup de 4s: los pedidos ya existentes al cargar se registran sin avisar;
+  // recién después se avisan los nuevos (los que aparecen por el poll de 60s).
+  const seenRef = useRef<Set<number>>(new Set())
+  const warmRef = useRef(false)
+  useEffect(() => {
+    const t = setTimeout(() => { warmRef.current = true }, 4000)
+    return () => clearTimeout(t)
+  }, [])
+  useEffect(() => {
+    for (const s of solicitudesPorComprar) {
+      if (!seenRef.current.has(s.id)) {
+        seenRef.current.add(s.id)
+        if (warmRef.current) {
+          toast(`🛒 Nuevo pedido por comprar: ${s.obra_cod} · ${s.nPendientes} ítem${s.nPendientes !== 1 ? 's' : ''}`, 'warn')
+        }
+      }
+    }
+  }, [solicitudesPorComprar, toast])
 
   // Aplico filtro por módulo: tarja sólo cumpleaños, logística sólo papeles/services/gastos.
   // Si no hay módulo identificado (home, admin), mostramos todo.
@@ -82,7 +109,7 @@ export function NotificationsBell() {
 
   const totalUrgente =
     hoy.length + papelesVencidos.length + papelesChoferVencidos.length +
-    serviciosVencidos.length + gastosPendientes.length
+    serviciosVencidos.length + gastosPendientes.length + solicitudesPorComprar.length
   const totalNoUrgentes =
     proximos.length + papelesPorVencer.length + papelesChoferPorVencer.length +
     serviciosProximos.length
@@ -122,6 +149,11 @@ export function NotificationsBell() {
     router.push('/logistica?tab=gastos&estado=pendiente')
   }
 
+  function abrirSolicitudes() {
+    setAbierto(false)
+    router.push('/certificaciones?tab=solicitudes')
+  }
+
   return (
     <div className="relative" ref={ref}>
       <button
@@ -159,6 +191,23 @@ export function NotificationsBell() {
               <div className="px-3 py-6 text-center text-xs text-gris-dark">
                 Sin notificaciones pendientes.
               </div>
+            )}
+
+            {/* Pedidos por comprar (compras/depósito) */}
+            {solicitudesPorComprar.length > 0 && (
+              <Section titulo={`🛒 Pedidos por comprar (${solicitudesPorComprar.length})`} tono="amarillo">
+                {solicitudesPorComprar.slice(0, 10).map(s => (
+                  <SolicitudRow key={s.id} item={s} onClick={abrirSolicitudes} />
+                ))}
+                {solicitudesPorComprar.length > 10 && (
+                  <button
+                    onClick={abrirSolicitudes}
+                    className="w-full text-center px-3 py-2 text-[11px] text-azul hover:underline"
+                  >
+                    Ver los {solicitudesPorComprar.length - 10} restantes →
+                  </button>
+                )}
+              </Section>
             )}
 
             {/* Papeles de vehículos vencidos */}
@@ -367,6 +416,24 @@ function GastoPendienteRow({ item, onClick }: { item: GastoPendienteItem; onClic
           <span className="text-gris-mid italic truncate">· {item.descripcion}</span>
         )}
       </div>
+    </button>
+  )
+}
+
+function SolicitudRow({ item, onClick }: { item: SolicitudPorComprarItem; onClick: () => void }) {
+  const fechaFmt = item.fecha.split('-').reverse().join('/')
+  return (
+    <button
+      onClick={onClick}
+      className="w-full text-left px-3 py-2 hover:bg-gris/40 transition-colors"
+    >
+      <div className="font-bold text-sm text-azul">
+        🛒 {item.obra_cod}
+        <span className="ml-2 text-xs font-semibold text-[#7A5500]">
+          {item.nPendientes} ítem{item.nPendientes !== 1 ? 's' : ''} por comprar
+        </span>
+      </div>
+      <div className="text-xs text-gris-dark mt-0.5">Cargado el {fechaFmt}</div>
     </button>
   )
 }
