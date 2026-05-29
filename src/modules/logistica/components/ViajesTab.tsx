@@ -969,7 +969,15 @@ export function ViajesTab() {
                     <Button
                       variant="primary"
                       size="sm"
-                      onClick={() => { formDescarga.reset({ fecha_descarga: hoy() }); setDescargaTramo(tramo) }}
+                      onClick={() => {
+                        // Precarga toneladas con las de la carga (típicamente
+                        // coinciden); el user puede editarlas si difieren.
+                        formDescarga.reset({
+                          fecha_descarga: hoy(),
+                          toneladas_descarga: tramo.toneladas_carga != null ? String(tramo.toneladas_carga) : '',
+                        })
+                        setDescargaTramo(tramo)
+                      }}
                     >
                       🏭 Registrar descarga
                     </Button>
