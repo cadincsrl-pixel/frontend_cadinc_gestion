@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { matchesSearch, normalizeText } from '@/lib/utils/text'
 
 interface ComboboxOption {
   value: string
@@ -107,11 +108,11 @@ export function Combobox({
   const selected = options.find(o => o.value === value)
     ?? (freeText && value ? { value, label: value } : undefined)
 
+  // Búsqueda tolerante a acentos y al orden de los términos: cada palabra del
+  // query debe aparecer en label o sub (ver matchesSearch). Concatenamos
+  // label + sub para que un token pueda matchear en cualquiera de los dos.
   const filtered = query.trim()
-    ? options.filter(o =>
-        o.label.toLowerCase().includes(query.toLowerCase()) ||
-        (o.sub ?? '').toLowerCase().includes(query.toLowerCase())
-      )
+    ? options.filter(o => matchesSearch(`${o.label} ${o.sub ?? ''}`, query))
     : options
 
   // Cerrar al clickear fuera
@@ -156,7 +157,7 @@ export function Combobox({
   // ya existe "Bosch" en la lista no ve la opción duplicada.
   const queryTrim = query.trim()
   const exactMatch = queryTrim
-    ? options.some(o => o.label.toLowerCase() === queryTrim.toLowerCase())
+    ? options.some(o => normalizeText(o.label) === normalizeText(queryTrim))
     : false
   const showCreate = !!onCreate && !!queryTrim && !exactMatch
 

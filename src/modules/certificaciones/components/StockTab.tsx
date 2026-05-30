@@ -19,6 +19,7 @@ import { DeclararAjusteModal } from './DeclararAjusteModal'
 import { AjustesPendientesSection } from './AjustesPendientesSection'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import { toISO } from '@/lib/utils/dates'
+import { matchesSearch } from '@/lib/utils/text'
 import type { StockMaterial, StockRubro, StockMovimiento, Proveedor } from '@/types/domain.types'
 
 const UNIDADES = [
@@ -105,10 +106,9 @@ export function StockTab() {
     if (stockFiltro === 'sin_stock') list = list.filter(m => m.stock_actual <= 0)
     if (stockFiltro === 'stock_bajo') list = list.filter(m => m.stock_minimo > 0 && m.stock_actual > 0 && m.stock_actual <= m.stock_minimo)
     if (busqueda.trim()) {
-      const q = busqueda.toLowerCase()
+      // Búsqueda tolerante a acentos y al orden de los términos (ver matchesSearch).
       list = list.filter(m =>
-        m.nombre.toLowerCase().includes(q)
-        || (m.proveedores?.nombre?.toLowerCase().includes(q) ?? false)
+        matchesSearch(`${m.nombre} ${m.proveedores?.nombre ?? ''}`, busqueda)
       )
     }
     return list
