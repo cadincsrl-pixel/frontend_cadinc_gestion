@@ -10,6 +10,7 @@ import { Select } from '@/components/ui/Select'
 import { AuditInfo } from '@/components/ui/AuditInfo'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
+import { EMPRESA } from '@/lib/config/empresa'
 import { useUpdateFlotaVehiculo, useDeleteFlotaVehiculo } from '../hooks/useFlotaVehiculos'
 import { FlotaDocumentosSection } from './FlotaDocumentosSection'
 import { VehiculoServiciosSection } from './VehiculoServiciosSection'
@@ -243,7 +244,7 @@ export function VehiculoDetalleModal({ vehiculo, onClose, seccionInicial = 'dato
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Input label="Chasis (VIN)" placeholder="JT..."  disabled={!modoEdicion} {...form.register('vin')} />
-              <Input label="Titular"      placeholder="CADINC SRL" disabled={!modoEdicion} {...form.register('titular')} />
+              <Input label="Titular"      placeholder={EMPRESA.nombre} disabled={!modoEdicion} {...form.register('titular')} />
             </div>
             <Input
               label="Km actuales"

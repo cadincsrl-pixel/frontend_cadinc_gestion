@@ -4,6 +4,7 @@
 import pdfMake from 'pdfmake/build/pdfmake'
 import pdfFonts from 'pdfmake/build/vfs_fonts'
 import type { TDocumentDefinitions, Content } from 'pdfmake/interfaces'
+import { EMPRESA } from '@/lib/config/empresa'
 
 // Inicialización del VFS para que pdfmake encuentre Roboto.
 // La estructura del module varía según versión: a veces es .vfs, a veces
@@ -207,7 +208,7 @@ export function generarPdfLiquidacion(args: PdfLiquidacionArgs): void {
     pageMargins: [40, 40, 40, 50],
     info: {
       title:   `Liquidación ${args.chofer_nombre} ${args.fecha_desde} a ${args.fecha_hasta}`,
-      author:  'CADINC SRL',
+      author:  EMPRESA.nombre,
       subject: 'Liquidación de chofer',
     },
     content: [

@@ -8,12 +8,13 @@
  * pagó, a quién, en qué obra y cuándo.
  */
 import ExcelJS from 'exceljs'
+import { EMPRESA } from '@/lib/config/empresa'
 import { buildSalidasCajaSheet } from './builders/buildSalidasCajaSheet'
 import type { ExportData } from './types'
 
 export function buildGeneralCajaWorkbook(datas: ExportData[]): ExcelJS.Workbook {
   const wb = new ExcelJS.Workbook()
-  wb.creator  = 'CADINC ERP'
+  wb.creator  = EMPRESA.nombre
   const generadoEn = datas[0]?.meta.generadoEn ?? new Date()
   wb.created  = generadoEn
   wb.modified = generadoEn

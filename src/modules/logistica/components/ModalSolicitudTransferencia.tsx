@@ -6,6 +6,7 @@ import { Button }   from '@/components/ui/Button'
 import { Input }    from '@/components/ui/Input'
 import { useToast } from '@/components/ui/Toast'
 import { useChoferes } from '../hooks/useLogistica'
+import { EMPRESA } from '@/lib/config/empresa'
 
 // Mismo patrón que ModalSolicitudTurno: este modal NO mueve plata ni toca el
 // backend. Solo arma un texto plano (chofer + datos bancarios + monto) que el
@@ -123,7 +124,7 @@ export function ModalSolicitudTransferencia({ open, onClose }: Props) {
     const header = [
       `Solicitud de transferencia — ${fmtFecha(fecha)}`,
       ``,
-      `Solicitante: CADINC SRL`,
+      `Solicitante: ${EMPRESA.nombre}`,
     ]
     const bloques = choferesSel.map(c => {
       const monto = parseMonto(montos[String(c.id)] ?? '')

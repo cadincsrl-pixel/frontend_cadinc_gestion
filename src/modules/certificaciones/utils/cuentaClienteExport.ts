@@ -10,6 +10,7 @@
  */
 import ExcelJS from 'exceljs'
 import { toISO } from '@/lib/utils/dates'
+import { EMPRESA } from '@/lib/config/empresa'
 import type { CuentaClienteRow } from '../hooks/useCuentaCliente'
 import type { Obra } from '@/types/domain.types'
 
@@ -36,7 +37,7 @@ export async function exportarCuentaCliente(opts: ExportOpts): Promise<void> {
   const generadoEn = new Date()
 
   const wb = new ExcelJS.Workbook()
-  wb.creator  = 'CADINC ERP'
+  wb.creator  = EMPRESA.nombre
   wb.created  = generadoEn
   wb.modified = generadoEn
 
@@ -80,7 +81,7 @@ function buildResumenSheet(
   ws.mergeCells(2, 1, 2, 5)
   const s = ws.getCell(2, 1)
   const filtroTxt = pagadorFiltro === 'todos' ? 'todos los pagadores'
-                  : pagadorFiltro === 'cadinc' ? 'solo deuda (CADINC adelantó)'
+                  : pagadorFiltro === 'cadinc' ? `solo deuda (${EMPRESA.nombre} adelantó)`
                   : 'solo pagado directo por cliente'
   s.value = `Generado: ${fmtFechaCorta(generadoEn)}  ·  Filtro: ${filtroTxt}`
   s.font = { name: 'Calibri', size: 10, italic: true, color: { argb: C_CARBON } }

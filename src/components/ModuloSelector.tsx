@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useSessionStore } from '@/store/session.store'
+import { EMPRESA } from '@/lib/config/empresa'
 
 interface Modulo {
   key: string
@@ -19,7 +20,7 @@ const MODULOS: Modulo[] = [
   { key: 'herramientas',    nombre: 'Herramientas',      descripcion: 'Control de herramientas y equipos',    icono: '🔧', appHref: '/herramientas'     },
   { key: 'certificaciones', nombre: 'Compras y Stock',   descripcion: 'Solicitudes, materiales y costos',     icono: '🛒', appHref: '/certificaciones'  },
   { key: 'caja',            nombre: 'Caja',              descripcion: 'Efectivo y movimientos',               icono: '💵', appHref: '/caja'             },
-  { key: 'flota',           nombre: 'Flota CADINC',      descripcion: 'Vehículos internos (autos, camionetas)', icono: '🚙', appHref: '/flota'           },
+  { key: 'flota',           nombre: 'Flota interna',     descripcion: 'Vehículos internos (autos, camionetas)', icono: '🚙', appHref: '/flota'           },
   { key: 'admin',           nombre: 'Administración',    descripcion: 'Usuarios, permisos y auditoría',       icono: '⚙️', appHref: '/admin'            },
 ]
 
@@ -113,7 +114,7 @@ export function ModuloSelector() {
 
       {/* Logo */}
       <div className="mb-10 text-center">
-        <img src="/logo-cadinc.png" alt="CADINC" className="h-32 mx-auto mb-3" />
+        <img src={EMPRESA.logoUrl} alt={EMPRESA.nombre} className="h-32 mx-auto mb-3" />
         <p className="text-white/50 text-sm mt-2 tracking-wider uppercase font-semibold">
           Sistema de gestión
         </p>

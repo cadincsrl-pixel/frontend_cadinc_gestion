@@ -7,6 +7,7 @@ import { useToast } from '@/components/ui/Toast'
 import { useObras } from '@/modules/tarja/hooks/useObras'
 import { useCuentaCliente, type CuentaClienteRow } from '../hooks/useCuentaCliente'
 import { exportarCuentaCliente } from '../utils/cuentaClienteExport'
+import { EMPRESA } from '@/lib/config/empresa'
 import type { Obra } from '@/types/domain.types'
 
 type FiltroPagador = 'todos' | 'cadinc' | 'cliente'
@@ -126,7 +127,7 @@ export function CuentaClienteTab() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <Kpi
           label="Debe el cliente"
-          sub="CADINC adelantó — pendiente de cobrar"
+          sub={`${EMPRESA.nombre} adelantó — pendiente de cobrar`}
           value={fmt$(kpis.debeCadinc)}
           accent="azul"
         />
@@ -177,7 +178,7 @@ export function CuentaClienteTab() {
                   <tr><td colSpan={10} className="text-center py-8 text-gris-dark text-sm italic">
                     {pagadorSel === 'todos'
                       ? 'No hay materiales a cuenta del cliente en esta selección.'
-                      : `Sin ítems con pagador "${pagadorSel === 'cadinc' ? 'CADINC' : 'Cliente'}".`}
+                      : `Sin ítems con pagador "${pagadorSel === 'cadinc' ? EMPRESA.nombre : 'Cliente'}".`}
                   </td></tr>
                 ) : filtered.map(r => <Row key={r.id} r={r} obrasMap={obrasMap} />)}
               </tbody>
@@ -228,7 +229,7 @@ function Row({ r, obrasMap }: { r: CuentaClienteRow; obrasMap: Map<string, Obra>
         <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
           esCliente ? 'bg-verde-light text-verde' : 'bg-azul-light text-azul'
         }`}>
-          {esCliente ? '💵 Cliente' : 'CADINC'}
+          {esCliente ? '💵 Cliente' : EMPRESA.nombre}
         </span>
       </td>
       <td className="px-3 py-2 text-right font-mono text-xs">{fmt$(Number(r.precio_unit ?? 0))}</td>

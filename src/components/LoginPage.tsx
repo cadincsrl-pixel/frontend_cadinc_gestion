@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useSessionStore } from '@/store/session.store'
+import { EMPRESA } from '@/lib/config/empresa'
 import type { Profile } from '@/types/domain.types'
 
 interface Props {
@@ -113,7 +114,7 @@ export function LoginPage({ redirectTo = '/' }: Props = {}) {
 
         {/* Header */}
         <div className="text-center">
-          <img src="/logo-cadinc.png" alt="CADINC" className="h-24 mx-auto mb-3" />
+          <img src={EMPRESA.logoUrl} alt={EMPRESA.nombre} className="h-24 mx-auto mb-3" />
           <div className="text-white/50 text-xs tracking-wider uppercase font-semibold">
             Sistema de gestión
           </div>
@@ -198,7 +199,7 @@ export function LoginPage({ redirectTo = '/' }: Props = {}) {
         </div>
 
         <p className="text-white/20 text-xs text-center">
-          CADINC SRL · {new Date().getFullYear()}
+          {EMPRESA.nombre} · {new Date().getFullYear()}
         </p>
       </div>
     </div>

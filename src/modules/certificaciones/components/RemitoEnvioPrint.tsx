@@ -1,5 +1,6 @@
 'use client'
 
+import { EMPRESA } from '@/lib/config/empresa'
 import type { RemitoEnvio } from '@/types/domain.types'
 
 function fmtF(s: string) { const [y,m,d] = s.split('-'); return `${d}/${m}/${y}` }
@@ -21,8 +22,8 @@ export function RemitoEnvioPrint({ remito, obraNom }: Props) {
           {/* Header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #E8621A', paddingBottom: '10px', marginBottom: '15px' }}>
             <div>
-              <img src="/logo-cadinc.png" alt="CADINC" style={{ height: '50px', marginBottom: '5px' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
-              <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#1A365D' }}>CADINC SRL</div>
+              <img src={EMPRESA.logoUrl} alt={EMPRESA.nombre} style={{ height: '50px', marginBottom: '5px' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+              <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#1A365D' }}>{EMPRESA.nombre}</div>
               <div style={{ fontSize: '10px', color: '#666' }}>Remito de envío de materiales</div>
             </div>
             <div style={{ textAlign: 'right' }}>
@@ -121,7 +122,7 @@ export function imprimirRemito(remito: RemitoEnvio, obraNom?: string) {
       <!-- Header -->
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid #E8621A;padding-bottom:4px;margin-bottom:6px">
         <div>
-          <span style="font-size:12px;font-weight:bold;color:#1A365D">CADINC SRL</span>
+          <span style="font-size:12px;font-weight:bold;color:#1A365D">${EMPRESA.nombre}</span>
           <span style="font-size:7px;color:#666;margin-left:6px">Remito de envío</span>
         </div>
         <div style="text-align:right">

@@ -12,6 +12,7 @@ import { useFacturasCompra, useCreateFactura } from '../hooks/useFacturasCompra'
 import { useStockMateriales } from '../hooks/useStock'
 import { useCreateRemitoEnvio } from '../hooks/useRemitosEnvio'
 import { imprimirRemito } from './RemitoEnvioPrint'
+import { EMPRESA } from '@/lib/config/empresa'
 import { ItemHistorialModal } from './ItemHistorialModal'
 import { useObras } from '@/modules/tarja/hooks/useObras'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
@@ -1206,7 +1207,7 @@ export function SolicitudesTab() {
                 <label className={`flex items-start gap-2 px-3 py-2 border-[1.5px] rounded-lg cursor-pointer transition-colors ${formComprar.watch('pagado_por') === 'cadinc' ? 'border-azul bg-azul-light' : 'border-gris-mid hover:border-azul'}`}>
                   <input type="radio" value="cadinc" {...formComprar.register('pagado_por')} className="mt-0.5" />
                   <div className="flex-1">
-                    <div className="text-sm font-bold text-azul">CADINC</div>
+                    <div className="text-sm font-bold text-azul">{EMPRESA.nombre}</div>
                     <div className="text-[10px] text-gris-dark">Se suma a la cuenta del cliente</div>
                   </div>
                 </label>
@@ -1355,7 +1356,7 @@ export function SolicitudesTab() {
                 <label className={`flex items-start gap-2 px-3 py-2 border-[1.5px] rounded-lg cursor-pointer transition-colors ${formComprarLote.watch('pagado_por') === 'cadinc' ? 'border-azul bg-azul-light' : 'border-gris-mid hover:border-azul'}`}>
                   <input type="radio" value="cadinc" {...formComprarLote.register('pagado_por')} className="mt-0.5" />
                   <div className="flex-1">
-                    <div className="text-sm font-bold text-azul">CADINC</div>
+                    <div className="text-sm font-bold text-azul">{EMPRESA.nombre}</div>
                     <div className="text-[10px] text-gris-dark">Se suma a la cuenta del cliente</div>
                   </div>
                 </label>

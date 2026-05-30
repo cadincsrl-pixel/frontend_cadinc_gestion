@@ -9,6 +9,7 @@ import { generarRecibos } from '@/lib/utils/excel'
 import { getVHConCatObra } from '@/lib/utils/costos'
 import { useToast } from '@/components/ui/Toast'
 import { getSemLabel, getViernes, getViernesCobro, toISO } from '@/lib/utils/dates'
+import { EMPRESA } from '@/lib/config/empresa'
 import type { Obra, Personal, Categoria, Hora, Tarifa, Cierre, Certificacion, Contratista } from '@/types/domain.types'
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api/client'
@@ -46,7 +47,7 @@ export function ModalRecibos({
   const { data: prestamos = [] } = usePrestamos()
   const { data: todasHsExtras = [] } = useHsExtrasAll()
   const [semKey, setSemKey] = useState(semActual ? toISO(semActual) : '')
-  const [empresa, setEmpresa] = useState('CADINC SRL')
+  const [empresa, setEmpresa] = useState(EMPRESA.nombre)
   const [obrasSelec, setObrasSelec] = useState<string[]>(obras.map(o => o.cod))
   const [incluirOp, setIncluirOp] = useState(true)
   const [incluirCont, setIncluirCont] = useState(true)

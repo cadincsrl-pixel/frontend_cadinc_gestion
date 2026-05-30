@@ -10,6 +10,7 @@ import {
 import { useObras } from '@/modules/tarja/hooks/useObras'
 import { usePersonal } from '@/modules/tarja/hooks/usePersonal'
 import { apiGet } from '@/lib/api/client'
+import { EMPRESA } from '@/lib/config/empresa'
 import { useQuery } from '@tanstack/react-query'
 import { useToast }   from '@/components/ui/Toast'
 import { Button }    from '@/components/ui/Button'
@@ -278,7 +279,7 @@ export function HerrMovimientos() {
     const copiasHTML = copias.map(c => `
       <div class="copia">
         <div class="cabecera">
-          <div class="empresa">CADINC</div>
+          <div class="empresa">${EMPRESA.nombre}</div>
           <div class="titulo">REMITO DE MOVIMIENTO DE HERRAMIENTAS</div>
           <div class="numero-bloque">
             <div class="numero">Nº ${r.numero}</div>

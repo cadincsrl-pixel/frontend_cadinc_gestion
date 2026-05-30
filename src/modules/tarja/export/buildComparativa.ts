@@ -6,13 +6,14 @@
  *     que recibieron sumando obras.
  */
 import ExcelJS from 'exceljs'
+import { EMPRESA } from '@/lib/config/empresa'
 import { buildResumenMultiObraSheet } from './builders/buildResumenMultiObraSheet'
 import { buildTotalesOperarioMultiObraSheet } from './builders/buildTotalesOperarioMultiObraSheet'
 import type { ExportData } from './types'
 
 export function buildComparativaWorkbook(datas: ExportData[]): ExcelJS.Workbook {
   const wb = new ExcelJS.Workbook()
-  wb.creator  = 'CADINC ERP'
+  wb.creator  = EMPRESA.nombre
   const generadoEn = datas[0]?.meta.generadoEn ?? new Date()
   wb.created  = generadoEn
   wb.modified = generadoEn

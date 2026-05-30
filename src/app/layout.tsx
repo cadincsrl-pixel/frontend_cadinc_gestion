@@ -1,10 +1,11 @@
 import type { Metadata } from 'next'
 import { Providers } from './providers'
+import { EMPRESA } from '@/lib/config/empresa'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'CADINC SRL — Sistema de gestión',
-  description: 'Sistema de gestión CADINC SRL',
+  title: `${EMPRESA.nombre} — Sistema de gestión`,
+  description: `Sistema de gestión ${EMPRESA.nombre}`,
 }
 
 export default function RootLayout({

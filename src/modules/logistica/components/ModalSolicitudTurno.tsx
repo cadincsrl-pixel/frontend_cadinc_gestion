@@ -6,13 +6,13 @@ import { Button }   from '@/components/ui/Button'
 import { Input }    from '@/components/ui/Input'
 import { useToast } from '@/components/ui/Toast'
 import { useChoferes, useCamiones, useBateas } from '../hooks/useLogistica'
+import { EMPRESA } from '@/lib/config/empresa'
 
-// Datos fijos del solicitante. CADINC SRL es siempre quien pide el cupo
-// a la cementera/proveedor; este componente solo genera el texto que se
-// reenvía por WhatsApp/email/etc.
+// El solicitante es la empresa operadora (CADINC por default). Este componente
+// solo genera el texto que se reenvía por WhatsApp/email/etc.
 const CADINC = {
-  nombre: 'CADINC SRL',
-  cuit:   '33-71719194-9',
+  nombre: EMPRESA.nombre,
+  cuit:   EMPRESA.cuit,
 }
 
 const DIAS_SEMANA = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado']

@@ -15,6 +15,7 @@
  */
 import ExcelJS from 'exceljs'
 import JSZip from 'jszip'
+import { EMPRESA } from '@/lib/config/empresa'
 import { collectData } from './collectData'
 import { buildResumenSheet } from './builders/buildResumenSheet'
 import { buildTotalesOperarioSheet } from './builders/buildTotalesOperarioSheet'
@@ -101,7 +102,7 @@ export async function exportarTarjaObras(
 
 function buildWorkbookFromData(data: ExportData): ExcelJS.Workbook {
   const wb = new ExcelJS.Workbook()
-  wb.creator  = 'CADINC ERP'
+  wb.creator  = EMPRESA.nombre
   wb.created  = data.meta.generadoEn
   wb.modified = data.meta.generadoEn
 

@@ -7,6 +7,7 @@
  * (RESUMEN usa A+B, ADELANTOS pone monto en G, etc).
  */
 import ExcelJS from 'exceljs'
+import { EMPRESA } from '@/lib/config/empresa'
 import type { Tramo, Adelanto, Ruta } from '@/types/domain.types'
 
 // ── Paleta (ARGB) alineada al theme Tailwind del front ─────────────
@@ -147,8 +148,8 @@ function setSubtotalRow(r: ExcelJS.Row) {
 // ── Export ─────────────────────────────────────────────────────────
 export async function exportLiquidacionExcel(d: LiqExportData) {
   const wb = new ExcelJS.Workbook()
-  wb.creator     = 'CADINC SRL'
-  wb.lastModifiedBy = 'CADINC SRL'
+  wb.creator     = EMPRESA.nombre
+  wb.lastModifiedBy = EMPRESA.nombre
   wb.created     = new Date()
   wb.modified    = new Date()
 
@@ -384,7 +385,7 @@ export async function exportLiquidacionExcel(d: LiqExportData) {
   row += 2
   ws.mergeCells(`A${row}:G${row}`)
   const footer = ws.getCell(`A${row}`)
-  footer.value = `Generado el ${new Date().toLocaleString('es-AR')} · CADINC SRL`
+  footer.value = `Generado el ${new Date().toLocaleString('es-AR')} · ${EMPRESA.nombre}`
   footer.font = { name: 'Calibri', size: 9, italic: true, color: { argb: 'FF888888' } }
   footer.alignment = { horizontal: 'right' }
 

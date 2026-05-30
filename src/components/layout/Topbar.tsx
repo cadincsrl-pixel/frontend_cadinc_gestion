@@ -5,14 +5,17 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter, usePathname } from 'next/navigation'
 import { useUIStore } from '@/store/ui.store'
 import { NotificationsBell } from './NotificationsBell'
+import { marcaEmpresa } from '@/lib/config/empresa'
 
+// Marca de la empresa operadora (la última palabra se resalta en naranja).
+const MARCA = marcaEmpresa()
 const MODULO_BRANDING: Record<string, { label: string; accent: string; icono: string }> = {
-  tarja:          { label: 'CADINC',  accent: 'SRL',  icono: '📋' },
-  herramientas:   { label: 'CADINC',  accent: 'SRL',  icono: '🔧' },
-  logistica:      { label: 'CADINC',  accent: 'SRL',  icono: '🚛' },
-  certificaciones:{ label: 'CADINC',  accent: 'SRL',  icono: '🛒' },
-  caja:           { label: 'CADINC',  accent: 'SRL',  icono: '💵' },
-  admin:          { label: 'CADINC',  accent: 'SRL',  icono: '⚙️' },
+  tarja:          { label: MARCA.label, accent: MARCA.accent, icono: '📋' },
+  herramientas:   { label: MARCA.label, accent: MARCA.accent, icono: '🔧' },
+  logistica:      { label: MARCA.label, accent: MARCA.accent, icono: '🚛' },
+  certificaciones:{ label: MARCA.label, accent: MARCA.accent, icono: '🛒' },
+  caja:           { label: MARCA.label, accent: MARCA.accent, icono: '💵' },
+  admin:          { label: MARCA.label, accent: MARCA.accent, icono: '⚙️' },
 }
 
 function getModuloActual(pathname: string): string {
