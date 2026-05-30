@@ -60,7 +60,7 @@ function diasEntreFechas(desde: string, hasta: string): number {
   return Math.round((new Date(hasta).getTime() - new Date(desde).getTime()) / 86_400_000) + 1
 }
 
-/** Km de un tramo según la tabla de rutas (busca por cantera+deposito en cualquier orden) */
+/** Km de un tramo según la tabla de rutas (lookup direccional cantera→depósito) */
 // Devuelve la fecha "representativa" de un tramo según su tipo:
 // cargado → fecha_carga, vacio → fecha_vacio. Para filtros de rango.
 function fechaTramo(t: Tramo): string | null {
@@ -75,11 +75,15 @@ function tramoEnRango(t: Tramo, desde?: string, hasta?: string): boolean {
   return true
 }
 
+// Lookup DIRECCIONAL cantera→depósito. cantera_id y deposito_id salen de
+// tablas DISTINTAS (canteras/depositos) con ids solapados, así que el match
+// invertido (cantera↔depósito) podía devolver la ruta de OTRO par por
+// colisión de ids (ej. tramo DELTA ARENAS→MASUR agarraba YESO→BASE NEXA).
+// Cada tramo apunta a su ruta del sentido real — igual que ViajesTab.
 function kmTramo(t: Tramo, rutas: Ruta[]): number {
   if (!t.cantera_id || !t.deposito_id) return 0
   const ruta = rutas.find(r =>
-    (r.cantera_id === t.cantera_id && r.deposito_id === t.deposito_id) ||
-    (r.cantera_id === t.deposito_id && r.deposito_id === t.cantera_id)
+    r.cantera_id === t.cantera_id && r.deposito_id === t.deposito_id
   )
   return ruta?.km_ida_vuelta ?? 0
 }

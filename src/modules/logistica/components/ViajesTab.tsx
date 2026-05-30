@@ -432,7 +432,7 @@ export function ViajesTab() {
           const msg =
             `Detecté un tramo vacío implícito entre el último cargado y este:\n\n` +
             `  ${depNom} → ${cantNom}\n` +
-            `  ${ruta.km_ida_vuelta ?? '—'} km ida-vuelta\n\n` +
+            `  ${ruta.km_ida_vuelta ?? '—'} km (un sentido)\n\n` +
             `¿Crear el tramo vacío + el cargado juntos?`
           if (confirm(msg)) {
             vacioAuto = {

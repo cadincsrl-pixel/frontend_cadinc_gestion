@@ -41,9 +41,10 @@ function fmtFechaUI(s: string): string {
 
 function kmTramo(t: Tramo, rutas: Ruta[]): number {
   if (!t.cantera_id || !t.deposito_id) return 0
+  // Lookup direccional: el par cantera/depósito viene de tablas distintas con
+  // ids solapados, así que el match invertido agarraba la ruta equivocada.
   const r = rutas.find(r =>
-    (r.cantera_id === t.cantera_id  && r.deposito_id === t.deposito_id) ||
-    (r.cantera_id === t.deposito_id && r.deposito_id === t.cantera_id),
+    r.cantera_id === t.cantera_id && r.deposito_id === t.deposito_id,
   )
   return r?.km_ida_vuelta ?? 0
 }

@@ -344,10 +344,10 @@ export function LugaresTab() {
             {...formRuta.register('deposito_id')}
           />
           <Input
-            label="Km ida y vuelta (total)"
+            label="Km del trayecto (un sentido)"
             {...intInputProps}
-            placeholder="Ej: 1840"
-            hint="Buscá la ruta en Google Maps y sumá ida + vuelta"
+            placeholder="Ej: 1220"
+            hint="Distancia de la ruta en Google Maps en UN solo sentido (no sumes ida + vuelta). Cargado y vacío se cuentan por separado."
             {...formRuta.register('km_ida_vuelta')}
           />
           <Input label="Observaciones" placeholder="Opcional" {...formRuta.register('obs')} />
@@ -379,10 +379,10 @@ export function LugaresTab() {
             </div>
           )}
           <Input
-            label="Km ida y vuelta (total)"
+            label="Km del trayecto (un sentido)"
             type="number"
-            placeholder="Ej: 1840"
-            hint="Buscá la ruta en Google Maps y sumá ida + vuelta"
+            placeholder="Ej: 1220"
+            hint="Distancia de la ruta en Google Maps en UN solo sentido (no sumes ida + vuelta). Cargado y vacío se cuentan por separado."
             {...formEditRuta.register('km_ida_vuelta')}
           />
           <Input label="Observaciones" placeholder="Opcional" {...formEditRuta.register('obs')} />

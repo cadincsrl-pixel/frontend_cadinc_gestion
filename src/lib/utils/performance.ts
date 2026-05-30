@@ -230,21 +230,18 @@ export function calcularPerformance(
   if (rutas.length > 0 || choferes.length > 0) {
     const kmPorRuta = new Map<string, number>()
     for (const r of rutas) {
-      // ruta es simétrica (cantera→depósito y depósito→cantera). Indexamos
-      // ambas direcciones para lookup O(1).
-      const k1 = `${r.cantera_id}->${r.deposito_id}`
-      const k2 = `${r.deposito_id}->${r.cantera_id}`
-      kmPorRuta.set(k1, r.km_ida_vuelta)
-      kmPorRuta.set(k2, r.km_ida_vuelta)
+      // Lookup DIRECCIONAL cantera→depósito. cantera_id/deposito_id salen de
+      // tablas distintas (canteras/depositos) con ids solapados; indexar la
+      // dirección inversa hacía colisionar pares ajenos. Solo el sentido real.
+      kmPorRuta.set(`${r.cantera_id}->${r.deposito_id}`, r.km_ida_vuelta)
     }
     function kmTramo(t: Tramo): number {
       if (!t.cantera_id || !t.deposito_id) return 0
-      // Cargado: cantera → depósito (mitad de ida_vuelta).
-      // Vacío:   depósito → cantera (la otra mitad).
-      const k = kmPorRuta.get(`${t.cantera_id}->${t.deposito_id}`)
-        ?? kmPorRuta.get(`${t.deposito_id}->${t.cantera_id}`)
-        ?? 0
-      return k / 2
+      // km_ida_vuelta es la distancia de UNA pata (el dato se carga one-way
+      // por ruta direccional; cargado y vacío son tramos SEPARADOS con su
+      // propia ruta). Se cuenta completo por tramo, igual que la liquidación.
+      // (Antes dividía /2 asumiendo round-trip → subcontaba el costo a la mitad.)
+      return kmPorRuta.get(`${t.cantera_id}->${t.deposito_id}`) ?? 0
     }
 
     // Agrupar tramos por chofer.
