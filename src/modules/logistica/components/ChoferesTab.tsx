@@ -55,6 +55,8 @@ export function ChoferesTab() {
       cuil:              chofer.cuil ?? '',
       tel:               chofer.tel ?? '',
       licencia:          chofer.licencia ?? '',
+      alias:             chofer.alias ?? '',
+      cbu:               chofer.cbu ?? '',
       estado:            chofer.estado,
       camion_id:         chofer.camion_id ?? '',
       batea_id:          chofer.batea_id ?? '',
@@ -216,6 +218,12 @@ export function ChoferesTab() {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Select label="Camión asignado" options={camionOptions} disabled={disabled} {...form.register('camion_id')} />
         <Select label="Batea asignada"  options={bateaOptions}  disabled={disabled} {...form.register('batea_id')} />
+      </div>
+      {/* Datos bancarios para las solicitudes de transferencia (Liquidaciones).
+          Alias o CBU/CVU — alcanza con uno para poder transferir. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Input label="Alias (transferencias)" placeholder="juan.perez.mp" disabled={disabled} {...form.register('alias')} />
+        <Input label="CBU / CVU" placeholder="22 dígitos" disabled={disabled} {...form.register('cbu')} />
       </div>
       <Input label="Observaciones" placeholder="Notas..." disabled={disabled} {...form.register('obs')} />
     </div>

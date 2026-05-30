@@ -18,6 +18,7 @@ import { useToast } from '@/components/ui/Toast'
 import { useForm }  from 'react-hook-form'
 import { generarPdfLiquidacion, type PdfLiquidacionArgs } from '@/lib/utils/liquidacion-pdf'
 import { LiquidacionAdjuntosSection } from './LiquidacionAdjuntosSection'
+import { ModalSolicitudTransferencia } from './ModalSolicitudTransferencia'
 import { apiGet } from '@/lib/api/client'
 import type { Chofer, Tramo, Adelanto, Ruta } from '@/types/domain.types'
 import { exportLiquidacionExcel } from '@/lib/utils/liquidacion-export'
@@ -111,6 +112,7 @@ export function LiquidacionesTab() {
   const [selTramos,   setSelTramos]   = useState<number[]>([])
   const [selGastos,   setSelGastos]   = useState<number[]>([])
   const [modalAdel,   setModalAdel]   = useState(false)
+  const [modalTransf, setModalTransf] = useState(false)
   const [editandoAdel, setEditandoAdel] = useState<Adelanto | null>(null)
   const [detalleLiq,  setDetalleLiq]  = useState<any | null>(null)
   // Gastos asociados a la liquidación abierta en el modal de detalle.
@@ -612,6 +614,9 @@ export function LiquidacionesTab() {
   return (
     <>
       <div className="flex gap-2 justify-end flex-wrap">
+        <Button variant="secondary" size="sm" onClick={() => setModalTransf(true)}>
+          🏦 Solicitud de transferencia
+        </Button>
         <Button variant="secondary" size="sm" onClick={() => {
           formAdel.setValue('fecha', toISO(new Date()))
           setModalAdel(true)
@@ -1746,6 +1751,8 @@ export function LiquidacionesTab() {
           </Modal>
         )
       })()}
+
+      <ModalSolicitudTransferencia open={modalTransf} onClose={() => setModalTransf(false)} />
     </>
   )
 }

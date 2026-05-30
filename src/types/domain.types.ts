@@ -295,6 +295,8 @@ export interface Chofer extends AuditFields {
   cuil: string | null
   tel: string | null
   licencia: string | null
+  alias: string | null
+  cbu: string | null
   estado: ChoferEstado
   camion_id: number | null
   batea_id: number | null
