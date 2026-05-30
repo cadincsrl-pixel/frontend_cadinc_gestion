@@ -83,21 +83,24 @@ export function TarjaObraPage({ obraCod }: Props) {
   const desde = toISO(days[0]!)
   const hasta = toISO(days[6]!)
   const { data: personal = [], isLoading: loadingPersonal } = usePersonalSemana(obraCod, desde, hasta)
+  const { data: horasData = [], isLoading: loadingHoras } = useHorasSemana(obraCod, desde, hasta)
 
-  // Auto-traer trabajadores de la semana anterior cuando entrás a una
+  // Auto-copiar trabajadores de la semana anterior cuando entrás a una
   // semana vacía. Caso típico: el lunes después del cierre, la planilla
   // arranca con los mismos trabajadores y solo ajustás horas. Capataz
   // siempre lo dispara (tiene puedeCrear, sin archivar). Supervisores en
   // solo lectura no lo disparan, ni se dispara en obras archivadas.
+  //
+  // El signal de "vacía" sale de `horasData` (registros reales en DB), NO
+  // de `personal`: usePersonalSemana backfillea placeholders visuales de la
+  // semana anterior, que taparían este disparo (ver useAutoTraerSemanaAnterior).
   useAutoTraerSemanaAnterior({
     obraCod,
     semActual,
-    personal,
-    isLoading: loadingPersonal || loadingObra,
+    vaciaEnDB: horasData.length === 0,
+    isLoading: loadingPersonal || loadingObra || loadingHoras,
     enabled: puedeCrear && !soloLectura && !obra?.archivada,
   })
-
-  const { data: horasData = [] } = useHorasSemana(obraCod, desde, hasta)
   const { data: hsExtrasData = [] } = useHsExtras(obraCod, desde, hasta)
   const { mutate: upsertLote } = useUpsertHorasLote()
   const { mutate: limpiarSemana } = useLimpiarSemana()

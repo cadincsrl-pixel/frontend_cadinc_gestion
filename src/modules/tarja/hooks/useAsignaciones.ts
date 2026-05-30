@@ -145,17 +145,23 @@ export function useCopiarSemanaAnterior() {
   })
 }
 
-// ── Auto-traer trabajadores cuando se entra a una semana vacía ──
+// ── Auto-copiar trabajadores cuando se entra a una semana vacía ──
 //
-// Cuando el user navega a una semana donde no hay trabajadores cargados,
-// disparamos automáticamente la copia desde la semana anterior. Es el
-// caso típico del lunes después del cierre: la planilla "arranca" con
-// los mismos trabajadores y el user solo ajusta horas.
+// Cuando el user navega a una semana donde no hay NINGÚN registro de horas,
+// disparamos automáticamente la copia (real, persistida) desde la semana
+// anterior. Es el caso típico del lunes después del cierre: la planilla
+// "arranca" con los mismos trabajadores y el user solo ajusta horas.
+//
+// ⚠️ El signal de "vacía" debe venir de los registros REALES en DB
+// (`useHorasSemana`), NO de `usePersonalSemana`: ese hook backfillea
+// placeholders visuales de la semana anterior, así que `personal.length`
+// casi nunca es 0 y taparía este disparo. Por eso recibimos `vaciaEnDB`.
 //
 // Reglas:
 //   - Solo si `enabled=true` (caller decide: debe tener puedeCrear,
-//     obra no archivada, y no estar en modo solo lectura).
-//   - Solo si la semana actual está VACÍA (sin ningún registro).
+//     obra no archivada, y no estar en modo solo lectura — persistir
+//     requiere permiso de escritura).
+//   - Solo si la semana actual está VACÍA en DB (sin ningún registro).
 //   - Una sola vez por (obra, semana). Track local con useRef para
 //     evitar disparos duplicados si la semana anterior también está
 //     vacía o si todos los workers ya están.
@@ -163,11 +169,11 @@ export function useCopiarSemanaAnterior() {
 //     con datos, o haber sido vaciada a propósito). Sí mostramos toast
 //     en éxito.
 export function useAutoTraerSemanaAnterior({
-  obraCod, semActual, personal, isLoading, enabled,
+  obraCod, semActual, vaciaEnDB, isLoading, enabled,
 }: {
   obraCod:   string
   semActual: Date
-  personal:  Personal[]
+  vaciaEnDB: boolean
   isLoading: boolean
   enabled:   boolean
 }) {
@@ -178,7 +184,7 @@ export function useAutoTraerSemanaAnterior({
   useEffect(() => {
     if (!enabled) return
     if (isLoading || isPending) return
-    if (personal.length > 0) return
+    if (!vaciaEnDB) return
     if (!obraCod) return
 
     const key = `${obraCod}:${toISO(semActual)}`
@@ -199,5 +205,5 @@ export function useAutoTraerSemanaAnterior({
         },
       },
     )
-  }, [enabled, isLoading, isPending, personal.length, obraCod, semActual, mutate, toast])
+  }, [enabled, isLoading, isPending, vaciaEnDB, obraCod, semActual, mutate, toast])
 }
