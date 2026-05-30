@@ -21,8 +21,9 @@ import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useSessionStore } from '@/store/session.store'
 import { ModalImportarGastos } from './ModalImportarGastos'
+import { toISO } from '@/lib/utils/dates'
 
-const hoy = () => new Date().toISOString().slice(0, 10)
+const hoy = () => toISO(new Date())
 const fmt$ = (n: number | string) => `$ ${Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const fmtFecha = (s: string | null) => s ? new Date(s + 'T00:00').toLocaleDateString('es-AR') : '—'
 

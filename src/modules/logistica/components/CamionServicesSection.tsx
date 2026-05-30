@@ -23,6 +23,7 @@ import type {
   CamionServiceEstado,
   CamionServiceEstadoKey,
 } from '@/types/domain.types'
+import { toISO } from '@/lib/utils/dates'
 
 interface Props {
   camionId: number
@@ -334,7 +335,7 @@ function RegistrarServiceModal({ camionId, kmActuales, onClose }: ModalProps) {
 
   const form = useForm<ServiceFormValues>({
     defaultValues: {
-      fecha:      new Date().toISOString().slice(0, 10),
+      fecha:      toISO(new Date()),
       km_service: kmActuales,
       km_proximo: '',
       obs:        '',

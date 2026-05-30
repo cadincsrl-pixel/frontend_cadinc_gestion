@@ -21,6 +21,7 @@ import { useForm as useRHF } from 'react-hook-form'
 import { usePermisos } from '@/hooks/usePermisos'
 import { CobroAdjuntosSection } from './CobroAdjuntosSection'
 import type { EmpresaTransportista, TarifaEmpresaCantera, Tramo, Cobro } from '@/types/domain.types'
+import { toISO } from '@/lib/utils/dates'
 
 function fmtM(n: number) {
   return '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 0 })
@@ -193,7 +194,7 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
   const [expandida, setExpandida] = useState<number | null>(null)
   const [editando, setEditando] = useState<TarifaEmpresaCantera | null>(null)
   const [pisarPosteriores, setPisarPosteriores] = useState(false)
-  const form = useForm<any>({ defaultValues: { vigente_desde: new Date().toISOString().slice(0, 10) } })
+  const form = useForm<any>({ defaultValues: { vigente_desde: toISO(new Date()) } })
   const formEdit = useForm<any>()
 
   // Detecta tarifas con `vigente_desde` posterior a la fecha cargada
@@ -283,7 +284,7 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
         )
         setModal(false)
         setPisarPosteriores(false)
-        form.reset({ vigente_desde: new Date().toISOString().slice(0, 10) })
+        form.reset({ vigente_desde: toISO(new Date()) })
       },
       onError:   () => toast('Error al guardar', 'err'),
     })
@@ -595,7 +596,7 @@ function FacturacionSection() {
     const fechas = mis_tramos.map(t => t.fecha_descarga ?? t.fecha_carga).filter(Boolean) as string[]
     const desde  = fechas.length ? fechas.reduce((a, b) => a < b ? a : b) : ''
     const hasta  = fechas.length ? fechas.reduce((a, b) => a > b ? a : b) : ''
-    form.reset({ fecha: new Date().toISOString().slice(0, 10), obs: '' })
+    form.reset({ fecha: toISO(new Date()), obs: '' })
     setModalCobro(true)
   }
 
@@ -1490,7 +1491,7 @@ function RemitosSection() {
     const items = [...itemsAdeudados, ...itemsCobrados]
     if (items.length === 0) return
 
-    const fecha = new Date().toISOString().slice(0, 10)
+    const fecha = toISO(new Date())
     let sufijo: string
     if (itemsAdeudados.length > 0 && itemsCobrados.length > 0) sufijo = 'mixto'
     else if (itemsCobrados.length > 0)                          sufijo = 'cobrados'

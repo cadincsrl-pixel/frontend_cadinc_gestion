@@ -16,6 +16,7 @@ import { Badge }    from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
 import { useForm }  from 'react-hook-form'
 import { uploadRemitoImg } from '@/lib/utils/upload'
+import { toISO } from '@/lib/utils/dates'
 import { useTramosEnRuta } from '../hooks/useEnRuta'
 import { RelevoSection } from './RelevoSection'
 import { ModalSolicitudTurno } from './ModalSolicitudTurno'
@@ -1457,5 +1458,5 @@ function fmtFecha(s: string) {
 }
 
 function hoy() {
-  return new Date().toISOString().slice(0, 10)
+  return toISO(new Date())
 }

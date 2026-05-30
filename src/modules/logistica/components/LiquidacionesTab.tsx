@@ -21,6 +21,7 @@ import { LiquidacionAdjuntosSection } from './LiquidacionAdjuntosSection'
 import { apiGet } from '@/lib/api/client'
 import type { Chofer, Tramo, Adelanto, Ruta } from '@/types/domain.types'
 import { exportLiquidacionExcel } from '@/lib/utils/liquidacion-export'
+import { toISO } from '@/lib/utils/dates'
 
 function fmtM(n: number) {
   return '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 0 })
@@ -612,7 +613,7 @@ export function LiquidacionesTab() {
     <>
       <div className="flex gap-2 justify-end flex-wrap">
         <Button variant="secondary" size="sm" onClick={() => {
-          formAdel.setValue('fecha', new Date().toISOString().slice(0, 10))
+          formAdel.setValue('fecha', toISO(new Date()))
           setModalAdel(true)
         }}>
           💵 Registrar adelanto

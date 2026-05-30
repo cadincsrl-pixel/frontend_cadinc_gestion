@@ -16,6 +16,7 @@ import {
   fetchFlotaGastoComprobanteUrl,
 } from '../hooks/useFlotaGastos'
 import type { FlotaGasto, FlotaVehiculo } from '@/types/domain.types'
+import { toISO } from '@/lib/utils/dates'
 
 interface Props {
   vehiculo: FlotaVehiculo
@@ -57,7 +58,7 @@ export function VehiculoGastosSection({ vehiculo }: Props) {
   const form = useForm<FormData>({
     defaultValues: {
       categoria_id: '',
-      fecha:        new Date().toISOString().slice(0, 10),
+      fecha:        toISO(new Date()),
       monto:        '',
       proveedor:    '',
       descripcion:  '',
@@ -67,7 +68,7 @@ export function VehiculoGastosSection({ vehiculo }: Props) {
   function abrirNuevo() {
     form.reset({
       categoria_id: '',
-      fecha:        new Date().toISOString().slice(0, 10),
+      fecha:        toISO(new Date()),
       monto:        '',
       proveedor:    '',
       descripcion:  '',

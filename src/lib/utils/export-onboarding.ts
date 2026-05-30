@@ -1,6 +1,7 @@
 import JSZip from 'jszip'
 import * as XLSX from 'xlsx'
 import { apiGet } from '@/lib/api/client'
+import { toISO } from '@/lib/utils/dates'
 import type {
   Chofer, Camion, Batea,
   ChoferDocumento, ChoferDocTipo,
@@ -245,7 +246,7 @@ export async function exportarPaqueteOnboarding(
   )
 
   const empresa = safeName(input.empresa || 'paquete')
-  const fecha = new Date().toISOString().slice(0, 10)
+  const fecha = toISO(new Date())
   const filename = `CADINC_paquete_${empresa}_${fecha}.zip`
 
   return { blob, filename, errores }

@@ -13,6 +13,7 @@ import {
 } from '../hooks/useStockProveedor'
 import { useObras } from '@/modules/tarja/hooks/useObras'
 import { useProveedores } from '../hooks/useProveedores'
+import { toISO } from '@/lib/utils/dates'
 import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
 import { Input }    from '@/components/ui/Input'
@@ -307,7 +308,7 @@ function ModalRetiro({ proveedorId, proveedorNombre, obraCodSugerida, stockDelPr
   const form = useForm<{ obra_cod: string; fecha: string; obs: string }>({
     defaultValues: {
       obra_cod: obraCodSugerida || '',
-      fecha:    new Date().toISOString().slice(0, 10),
+      fecha:    toISO(new Date()),
       obs:      '',
     },
   })

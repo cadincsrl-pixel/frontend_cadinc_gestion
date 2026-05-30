@@ -17,6 +17,7 @@ import {
   fetchFlotaServicioComprobanteUrl,
 } from '../hooks/useFlotaServicios'
 import type { FlotaServicio, FlotaVehiculo, FlotaTipoServicio } from '@/types/domain.types'
+import { toISO } from '@/lib/utils/dates'
 
 interface Props {
   vehiculo: FlotaVehiculo
@@ -77,7 +78,7 @@ export function VehiculoServiciosSection({ vehiculo }: Props) {
     defaultValues: {
       tipo_id:       '',
       tipo_libre:    '',
-      fecha:         new Date().toISOString().slice(0, 10),
+      fecha:         toISO(new Date()),
       km_service:    String(vehiculo.km_actuales || 0),
       km_proximo:    '',
       fecha_proximo: '',
@@ -91,7 +92,7 @@ export function VehiculoServiciosSection({ vehiculo }: Props) {
     form.reset({
       tipo_id:       '',
       tipo_libre:    '',
-      fecha:         new Date().toISOString().slice(0, 10),
+      fecha:         toISO(new Date()),
       km_service:    String(vehiculo.km_actuales || 0),
       km_proximo:    '',
       fecha_proximo: '',

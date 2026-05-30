@@ -8,6 +8,7 @@ import {
 import { Button } from '@/components/ui/Button'
 import { Input }  from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
+import { toISO } from '@/lib/utils/dates'
 
 const fmt$  = (n: number | string | null | undefined) =>
   n == null ? '—' : `$ ${Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -17,7 +18,7 @@ const fmtInt = (n: number | string | null | undefined) =>
   n == null ? '—' : Number(n).toLocaleString('es-AR')
 const fmtFecha = (s: string | null) => s ? new Date(s + 'T00:00').toLocaleDateString('es-AR') : '—'
 
-function isoHoy() { return new Date().toISOString().slice(0, 10) }
+function isoHoy() { return toISO(new Date()) }
 function primerDiaMes(base: Date) { const d = new Date(base); d.setDate(1); return d.toISOString().slice(0, 10) }
 function ultimoDiaMes(base: Date) { const d = new Date(base.getFullYear(), base.getMonth() + 1, 0); return d.toISOString().slice(0, 10) }
 function primerDiaAnio(base: Date){ return `${base.getFullYear()}-01-01` }

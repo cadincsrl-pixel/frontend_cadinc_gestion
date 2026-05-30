@@ -6,7 +6,14 @@ export const MESES = [
 ] as const
 
 export function toISO(d: Date): string {
-  return d.toISOString().slice(0, 10)
+  // TZ-safe: usa componentes locales del navegador (Argentina UTC-3 en prod),
+  // no UTC. Antes hacía .toISOString().slice(0,10) y después de las 21:00 local
+  // un new Date() daba el día siguiente. Los callers que pasan dates anclados a
+  // mediodía local (getViernes, getSemDays) dan exactamente el mismo resultado.
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
 }
 
 export function getViernes(d: Date): Date {

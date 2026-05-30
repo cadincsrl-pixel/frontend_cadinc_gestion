@@ -10,11 +10,12 @@ import { calcularPerformance } from '@/lib/utils/performance'
 import { Button } from '@/components/ui/Button'
 import { Input }  from '@/components/ui/Input'
 import type { Camion, Chofer } from '@/types/domain.types'
+import { toISO } from '@/lib/utils/dates'
 
 const fmt$ = (n: number | string) => `$ ${Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const fmtInt = (n: number | string) => Number(n).toLocaleString('es-AR')
 
-function isoHoy() { return new Date().toISOString().slice(0, 10) }
+function isoHoy() { return toISO(new Date()) }
 function isoSumDias(base: Date, dias: number) {
   const d = new Date(base); d.setDate(d.getDate() + dias)
   return d.toISOString().slice(0, 10)

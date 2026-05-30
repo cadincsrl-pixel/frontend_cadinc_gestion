@@ -16,6 +16,7 @@ import { useObras } from '@/modules/tarja/hooks/useObras'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import { usePermisos } from '@/hooks/usePermisos'
 import { createClient } from '@/lib/supabase/client'
+import { toISO } from '@/lib/utils/dates'
 import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
 import { Input }    from '@/components/ui/Input'
@@ -1175,7 +1176,7 @@ export function SolicitudesTab() {
                 </select>
               </div>
               <Button variant="secondary" size="sm" onClick={() => {
-                formFact.reset({ proveedor_id: formComprar.watch('proveedor_id'), numero: '', fecha: new Date().toISOString().slice(0, 10), total: 0 })
+                formFact.reset({ proveedor_id: formComprar.watch('proveedor_id'), numero: '', fecha: toISO(new Date()), total: 0 })
                 setAdjunto(null); setModalNuevaFactura(true)
               }}>+ Factura</Button>
             </div>
@@ -1260,7 +1261,7 @@ export function SolicitudesTab() {
                 </select>
               </div>
               <Button variant="secondary" size="sm" onClick={() => {
-                formFact.reset({ proveedor_id: formComprarLote.watch('proveedor_id'), numero: '', fecha: new Date().toISOString().slice(0, 10), total: 0 })
+                formFact.reset({ proveedor_id: formComprarLote.watch('proveedor_id'), numero: '', fecha: toISO(new Date()), total: 0 })
                 setAdjunto(null); setModalNuevaFactura(true)
               }}>+ Factura</Button>
             </div>

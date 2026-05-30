@@ -18,6 +18,7 @@ import { useToast } from '@/components/ui/Toast'
 import { DeclararAjusteModal } from './DeclararAjusteModal'
 import { AjustesPendientesSection } from './AjustesPendientesSection'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
+import { toISO } from '@/lib/utils/dates'
 import type { StockMaterial, StockRubro, StockMovimiento, Proveedor } from '@/types/domain.types'
 
 const UNIDADES = [
@@ -306,7 +307,7 @@ export function StockTab() {
     ws['!cols'] = [{ wch: 22 }, { wch: 35 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 20 }]
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Stock')
-    XLSX.writeFile(wb, `Stock_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    XLSX.writeFile(wb, `Stock_${toISO(new Date())}.xlsx`)
     toast('Excel exportado', 'ok')
   }
 

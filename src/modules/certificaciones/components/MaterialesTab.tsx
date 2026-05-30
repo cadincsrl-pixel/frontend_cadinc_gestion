@@ -6,6 +6,7 @@ import { useMateriales, useCreateMaterial, useUpdateMaterial, useDeleteMaterial 
 import { useStockMateriales } from '../hooks/useStock'
 import { useObras } from '@/modules/tarja/hooks/useObras'
 import { createClient } from '@/lib/supabase/client'
+import { toISO } from '@/lib/utils/dates'
 import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
 import { Input }    from '@/components/ui/Input'
@@ -318,7 +319,7 @@ export function MaterialesTab() {
     setLineas([newLinea()])
     setAdjunto(null)
     setObraNueva('')
-    formCab.reset({ fecha: new Date().toISOString().slice(0, 10), proveedor: '', obs: '' })
+    formCab.reset({ fecha: toISO(new Date()), proveedor: '', obs: '' })
     setModalNuevo(true)
   }
 

@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form'
 import { useAdicionales, useCreateAdicional, useUpdateAdicional, useDeleteAdicional } from '../hooks/useCertificaciones'
 import { useObras } from '@/modules/tarja/hooks/useObras'
 import { createClient } from '@/lib/supabase/client'
+import { toISO } from '@/lib/utils/dates'
 import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input }  from '@/components/ui/Input'
@@ -141,7 +142,7 @@ export function AdicionalesTab() {
           />
         </div>
         <Button variant="primary" size="sm" onClick={() => {
-          formNuevo.setValue('fecha', new Date().toISOString().slice(0, 10))
+          formNuevo.setValue('fecha', toISO(new Date()))
           setAdjuntoNuevo(null)
           setModalNuevo(true)
         }}>
