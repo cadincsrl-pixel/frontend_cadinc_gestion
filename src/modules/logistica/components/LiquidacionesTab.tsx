@@ -138,6 +138,9 @@ export function LiquidacionesTab() {
   const [filtHastaAdel,   setFiltHastaAdel]   = useState<string>('')
   const [filtSearchAdel,  setFiltSearchAdel]  = useState<string>('')
   const [expandedChoferes, setExpandedChoferes] = useState<Set<number>>(new Set())
+  // Historial de liquidaciones cerradas: colapsado por default para no ocupar
+  // tanto espacio (puede crecer mucho con el tiempo).
+  const [historialAbierto, setHistorialAbierto] = useState(false)
   // Comprobante (foto/PDF) para el adelanto que se está creando/editando.
   const [archivoAdel, setArchivoAdel] = useState<File | null>(null)
   const [archivoEditAdel, setArchivoEditAdel] = useState<File | null>(null)
@@ -793,12 +796,24 @@ export function LiquidacionesTab() {
         </div>
       </div>
 
-      {/* ── Historial ── */}
-      {(liquidaciones as any[]).filter(l => l.estado === 'cerrada').length > 0 && (
+      {/* ── Historial (colapsable para no ocupar tanto espacio) ── */}
+      {(() => {
+        const cerradas = (liquidaciones as any[]).filter(l => l.estado === 'cerrada')
+        if (cerradas.length === 0) return null
+        return (
         <div>
-          <h2 className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-2">Historial de liquidaciones</h2>
+          <button
+            type="button"
+            onClick={() => setHistorialAbierto(v => !v)}
+            className="flex items-center gap-2 text-xs font-bold text-gris-dark uppercase tracking-wider mb-2 hover:text-azul transition-colors"
+          >
+            <span className="text-[10px] text-gris-mid">{historialAbierto ? '▼' : '▶'}</span>
+            Historial de liquidaciones
+            <span className="text-gris-mid normal-case font-semibold">({cerradas.length})</span>
+          </button>
+          {historialAbierto && (
           <div className="flex flex-col gap-3">
-            {(liquidaciones as any[]).filter(l => l.estado === 'cerrada').map(liq => {
+            {cerradas.map(liq => {
               const chofer = (choferes as Chofer[]).find(c => c.id === liq.chofer_id)
               return (
                 <div key={liq.id} className={`bg-white rounded-card shadow-card p-4 border-l-4 ${liq.estado === 'cerrada' ? 'border-verde' : 'border-amarillo'}`}>
@@ -887,8 +902,10 @@ export function LiquidacionesTab() {
               )
             })}
           </div>
+          )}
         </div>
-      )}
+        )
+      })()}
 
       {/* ── Adelantos: filtros + agrupado por chofer ── */}
       {(adelantos as Adelanto[]).length > 0 && (() => {
