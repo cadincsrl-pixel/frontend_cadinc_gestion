@@ -39,13 +39,14 @@ function fmtMonto(n: number): string {
   return '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 2 })
 }
 
-// Parsea el string del input a número. Acepta vacío → 0. Tolera el separador
-// de miles con punto y decimal con coma por si el usuario tipea "150.000,50".
+// El value de un <input type="number"> es siempre vacío o un número
+// JS-parseable con PUNTO decimal (el browser no emite separador de miles ni
+// coma para type=number). Así que parseamos directo — NO hay que tocar el
+// punto: borrarlo convertía "1234.56" en 123456 (x100). Negativos/NaN → 0.
 function parseMonto(raw: string): number {
   if (!raw) return 0
-  const norm = raw.trim().replace(/\./g, '').replace(',', '.')
-  const n = Number(norm)
-  return Number.isFinite(n) ? n : 0
+  const n = Number(raw.trim())
+  return Number.isFinite(n) && n >= 0 ? n : 0
 }
 
 interface Props {
@@ -246,6 +247,7 @@ export function ModalSolicitudTransferencia({ open, onClose }: Props) {
                         <Input
                           type="number"
                           step="0.01"
+                          min="0"
                           placeholder="Monto"
                           value={montos[id] ?? ''}
                           onChange={e => setMonto(id, e.target.value)}
