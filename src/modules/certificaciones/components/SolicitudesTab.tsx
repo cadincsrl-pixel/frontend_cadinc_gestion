@@ -12,6 +12,7 @@ import { useFacturasCompra, useCreateFactura } from '../hooks/useFacturasCompra'
 import { useStockMateriales } from '../hooks/useStock'
 import { useCreateRemitoEnvio } from '../hooks/useRemitosEnvio'
 import { imprimirRemito } from './RemitoEnvioPrint'
+import { ItemHistorialModal } from './ItemHistorialModal'
 import { useObras } from '@/modules/tarja/hooks/useObras'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import { usePermisos } from '@/hooks/usePermisos'
@@ -203,6 +204,8 @@ export function SolicitudesTab() {
   const [loteSubmitting, setLoteSubmitting] = useState(false)
   const [modalNuevoProveedor, setModalNuevoProveedor] = useState(false)
   const [modalNuevaFactura, setModalNuevaFactura] = useState(false)
+  // Historial de transiciones de un ítem (timeline read-only).
+  const [modalHistorial, setModalHistorial] = useState<SolicitudCompraItem | null>(null)
 
   // Forms
   const formCab = useForm<any>({ defaultValues: { prioridad: 'normal', obs: '', entrega_tentativa: '' } })
@@ -743,39 +746,44 @@ export function SolicitudesTab() {
                                 {item.fecha_envio && <div className="text-verde font-semibold mt-0.5">Enviado {fmtF(item.fecha_envio)}</div>}
                               </td>
                               <td className="px-4 py-2.5">
-                                {s.estado === 'aprobada' && (
-                                  <div className="flex gap-1 justify-end flex-wrap items-center">
-                                    {item.estado === 'pendiente' && (
-                                      <>
-                                        <input
-                                          type="checkbox"
-                                          disabled={!resolverItems}
-                                          checked={selCompra.get(s.id)?.has(item.id!) ?? false}
-                                          onChange={() => toggleSelCompra(s.id, item.id!)}
-                                          className="accent-azul w-4 h-4 disabled:opacity-40"
-                                          title="Seleccionar para compra en lote (mismo proveedor)"
-                                        />
-                                        <button disabled={!resolverItems} onClick={() => abrirComprar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Comprar</button>
-                                        <button disabled={!resolverItems} onClick={() => abrirDespachar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-naranja-light text-naranja hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Depósito</button>
-                                        <button disabled={!resolverItems} onClick={() => handleRechazarItem(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
-                                      </>
-                                    )}
-                                    {(item.estado === 'comprado' || item.estado === 'de_deposito' || item.estado === 'retirado') && (
-                                      <>
-                                        <input type="checkbox" disabled={!resolverItems} checked={selected.has(item.id!)} onChange={() => toggleSelect(item.id!)}
-                                          className="accent-verde w-4 h-4 disabled:opacity-40" title="Seleccionar para envío grupal" />
-                                        <button disabled={!resolverItems || enviandoRemito} onClick={() => enviarUnoConRemito(s, item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">{obra?.es_deposito ? 'Recibir en depósito' : 'Enviar + Remito'}</button>
-                                        <button disabled={!resolverItems} onClick={() => handleRevertir(item.id!)} className="text-xs px-3 py-1.5 rounded text-gris-dark hover:text-rojo hover:bg-rojo-light min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">↩</button>
-                                      </>
-                                    )}
-                                    {item.estado === 'rechazado' && (
-                                      <button disabled={!resolverItems} onClick={() => handleRevertir(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-amarillo-light text-[#7A5500] hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Reactivar</button>
-                                    )}
-                                    {item.estado === 'enviado' && (
-                                      <button disabled={!resolverItems} onClick={() => handleRevertirEnvio(item.id!)} title="Deshacer el envío (vuelve a comprado/depósito, borra el remito)" className="text-xs font-bold px-3 py-1.5 rounded text-gris-dark hover:text-rojo hover:bg-rojo-light min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">↩ Deshacer envío</button>
-                                    )}
-                                  </div>
-                                )}
+                                <div className="flex gap-1 justify-end flex-wrap items-center">
+                                  {item.id != null && (
+                                    <button onClick={() => setModalHistorial(item)} title="Ver historial del ítem" className="text-xs px-2 py-1.5 rounded text-gris-dark hover:text-azul hover:bg-azul-light min-h-[36px]">🕑</button>
+                                  )}
+                                  {s.estado === 'aprobada' && (
+                                    <>
+                                      {item.estado === 'pendiente' && (
+                                        <>
+                                          <input
+                                            type="checkbox"
+                                            disabled={!resolverItems}
+                                            checked={selCompra.get(s.id)?.has(item.id!) ?? false}
+                                            onChange={() => toggleSelCompra(s.id, item.id!)}
+                                            className="accent-azul w-4 h-4 disabled:opacity-40"
+                                            title="Seleccionar para compra en lote (mismo proveedor)"
+                                          />
+                                          <button disabled={!resolverItems} onClick={() => abrirComprar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Comprar</button>
+                                          <button disabled={!resolverItems} onClick={() => abrirDespachar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-naranja-light text-naranja hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Depósito</button>
+                                          <button disabled={!resolverItems} onClick={() => handleRechazarItem(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
+                                        </>
+                                      )}
+                                      {(item.estado === 'comprado' || item.estado === 'de_deposito' || item.estado === 'retirado') && (
+                                        <>
+                                          <input type="checkbox" disabled={!resolverItems} checked={selected.has(item.id!)} onChange={() => toggleSelect(item.id!)}
+                                            className="accent-verde w-4 h-4 disabled:opacity-40" title="Seleccionar para envío grupal" />
+                                          <button disabled={!resolverItems || enviandoRemito} onClick={() => enviarUnoConRemito(s, item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">{obra?.es_deposito ? 'Recibir en depósito' : 'Enviar + Remito'}</button>
+                                          <button disabled={!resolverItems} onClick={() => handleRevertir(item.id!)} className="text-xs px-3 py-1.5 rounded text-gris-dark hover:text-rojo hover:bg-rojo-light min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">↩</button>
+                                        </>
+                                      )}
+                                      {item.estado === 'rechazado' && (
+                                        <button disabled={!resolverItems} onClick={() => handleRevertir(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-amarillo-light text-[#7A5500] hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Reactivar</button>
+                                      )}
+                                      {item.estado === 'enviado' && (
+                                        <button disabled={!resolverItems} onClick={() => handleRevertirEnvio(item.id!)} title="Deshacer el envío (vuelve a comprado/depósito, borra el remito)" className="text-xs font-bold px-3 py-1.5 rounded text-gris-dark hover:text-rojo hover:bg-rojo-light min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">↩ Deshacer envío</button>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           )
@@ -983,6 +991,13 @@ export function SolicitudesTab() {
                             {item.fecha_envio && <div className="text-verde font-semibold">Enviado {fmtF(item.fecha_envio)}</div>}
                           </div>
 
+                          {/* Historial (siempre disponible, read-only) */}
+                          {item.id != null && (
+                            <button onClick={() => setModalHistorial(item)} className="mt-2 text-[11px] font-bold text-gris-dark hover:text-azul">
+                              🕑 Ver historial
+                            </button>
+                          )}
+
                           {/* Acciones del ítem */}
                           {s.estado === 'aprobada' && (
                             <div className="mt-3">
@@ -1044,6 +1059,9 @@ export function SolicitudesTab() {
           })}
         </div>
       )}
+
+      {/* ── Modal historial del ítem (timeline) ── */}
+      <ItemHistorialModal item={modalHistorial} onClose={() => setModalHistorial(null)} />
 
       {/* ── Modal nueva solicitud ── */}
       <Modal open={modalNuevo} onClose={() => setModalNuevo(false)} title="🛒 NUEVA SOLICITUD" width="max-w-3xl"

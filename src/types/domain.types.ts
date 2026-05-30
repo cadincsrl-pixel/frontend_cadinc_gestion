@@ -1064,6 +1064,27 @@ export interface SolicitudCompraItem {
   facturas_compra?: { numero: string | null; adjunto_url: string | null } | null
 }
 
+/**
+ * Evento de transición de estado de un ítem de solicitud (timeline de
+ * trazabilidad). Tabla `solicitud_item_eventos`, append-only.
+ * `user_id` referencia auth.users — el nombre se resuelve en el front con
+ * usePerfilesMap (no hay FK a profiles para embeber en el backend).
+ * `accion` es texto libre (sin enum en DB): ver ACCION_CFG en ItemHistorialModal.
+ */
+export interface ItemEvento {
+  id:              number
+  item_id:         number
+  solicitud_id:    number | null
+  accion:          string
+  estado_anterior: string | null
+  estado_nuevo:    string
+  cantidad:        number | null
+  comentario:      string | null
+  meta:            Record<string, unknown> | null
+  user_id:         string | null
+  created_at:      string
+}
+
 export interface SolicitudCompra extends AuditFields {
   id:           number
   obra_cod:     string

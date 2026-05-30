@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api/client'
-import type { SolicitudCompra } from '@/types/domain.types'
+import type { SolicitudCompra, ItemEvento } from '@/types/domain.types'
 
 const KEYS = {
   list: (obra?: string) => ['solicitudes', obra ?? 'all'] as const,
@@ -13,6 +13,18 @@ export function useSolicitudes(obra_cod?: string) {
       apiGet<SolicitudCompra[]>(
         `/api/solicitudes${obra_cod ? `?obra_cod=${obra_cod}` : ''}`
       ),
+  })
+}
+
+// Historial de transiciones de un ítem (timeline). La queryKey arranca con
+// 'solicitudes', así que las mutaciones de items (que invalidan ['solicitudes'])
+// ya refrescan estos eventos sin tocar nada acá.
+export function useItemEventos(itemId: number | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ['solicitudes', 'items', itemId, 'eventos'] as const,
+    queryFn: () => apiGet<ItemEvento[]>(`/api/solicitudes/items/${itemId}/eventos`),
+    enabled: !!itemId && enabled,
+    staleTime: 30_000,
   })
 }
 
