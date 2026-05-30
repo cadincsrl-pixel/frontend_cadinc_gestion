@@ -15,6 +15,7 @@ import { Input }    from '@/components/ui/Input'
 import { Badge }    from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
 import { useForm }  from 'react-hook-form'
+import { usePermisos } from '@/hooks/usePermisos'
 import { uploadRemitoImg } from '@/lib/utils/upload'
 import { toISO } from '@/lib/utils/dates'
 import { useTramosEnRuta } from '../hooks/useEnRuta'
@@ -51,6 +52,9 @@ type TramoFormValues = {
 
 export function ViajesTab() {
   const toast = useToast()
+  // Permisos: deshabilitar (no ocultar — CLAUDE.md §6) los botones según
+  // capacidad. El backend valida igual; esto evita clicks que rebotan 403.
+  const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('logistica')
   const { data: tramos    = [] } = useTramos()
   const { data: choferes  = [] } = useChoferes()
   const { data: camiones  = [] } = useCamiones()
@@ -791,10 +795,10 @@ export function ViajesTab() {
               ✕ Fechas
             </button>
           )}
-          <Button variant="secondary" size="sm" onClick={() => setModalSolicitud(true)}>
+          <Button variant="secondary" size="sm" disabled={!puedeCrear} onClick={() => setModalSolicitud(true)}>
             📋 Solicitud de turno
           </Button>
-          <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)}>
+          <Button variant="primary" size="sm" disabled={!puedeCrear} onClick={() => setModalNuevo(true)}>
             ＋ Nuevo tramo
           </Button>
         </div>
@@ -911,22 +915,22 @@ export function ViajesTab() {
                       <div className="flex flex-col">
                         <button
                           onClick={() => moverTramo({ id: tramo.id, dir: 'up' })}
-                          disabled={!canMoveUp}
+                          disabled={!canMoveUp || !puedeEditar}
                           title="Subir dentro del día"
                           aria-label="Subir"
                           className="text-xs leading-none px-2 py-1.5 min-h-[36px] min-w-[36px] rounded hover:bg-gris text-gris-dark disabled:opacity-30 disabled:cursor-not-allowed"
                         >▲</button>
                         <button
                           onClick={() => moverTramo({ id: tramo.id, dir: 'down' })}
-                          disabled={!canMoveDown}
+                          disabled={!canMoveDown || !puedeEditar}
                           title="Bajar dentro del día"
                           aria-label="Bajar"
                           className="text-xs leading-none px-2 py-1.5 min-h-[36px] min-w-[36px] rounded hover:bg-gris text-gris-dark disabled:opacity-30 disabled:cursor-not-allowed"
                         >▼</button>
                       </div>
                     )}
-                    <button onClick={() => openEdit(tramo)} className="text-xs px-2 py-1.5 min-h-[36px] min-w-[36px] rounded hover:bg-gris transition-colors">✏️</button>
-                    <button onClick={() => handleDelete(tramo)} className="text-xs px-2 py-1.5 min-h-[36px] min-w-[36px] rounded hover:bg-rojo-light text-gris-mid hover:text-rojo transition-colors">✕</button>
+                    <button disabled={!puedeEditar} onClick={() => openEdit(tramo)} className="text-xs px-2 py-1.5 min-h-[36px] min-w-[36px] rounded hover:bg-gris transition-colors disabled:opacity-40 disabled:cursor-not-allowed">✏️</button>
+                    <button disabled={!puedeEliminar} onClick={() => handleDelete(tramo)} className="text-xs px-2 py-1.5 min-h-[36px] min-w-[36px] rounded hover:bg-rojo-light text-gris-mid hover:text-rojo transition-colors disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
                   </div>
                 </div>
 
@@ -970,6 +974,7 @@ export function ViajesTab() {
                     <Button
                       variant="primary"
                       size="sm"
+                      disabled={!puedeEditar}
                       onClick={() => {
                         // Precarga toneladas con las de la carga (típicamente
                         // coinciden); el user puede editarlas si difieren.
@@ -990,6 +995,7 @@ export function ViajesTab() {
                     <Button
                       variant="secondary"
                       size="sm"
+                      disabled={!puedeEditar}
                       onClick={() => setRevertirTramo(tramo)}
                     >
                       ↩ Revertir descarga
