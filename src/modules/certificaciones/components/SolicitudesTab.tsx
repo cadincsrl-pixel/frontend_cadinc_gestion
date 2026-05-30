@@ -120,8 +120,8 @@ export function SolicitudesTab() {
   const { data: proveedores = [] } = useProveedores()
   const { data: facturas = [] } = useFacturasCompra()
   const { data: stockMateriales = [] } = useStockMateriales()
-  const { mutate: createProveedor } = useCreateProveedor()
-  const { mutate: createFactura } = useCreateFactura()
+  const { mutate: createProveedor, isPending: creandoProv } = useCreateProveedor()
+  const { mutate: createFactura, isPending: creandoFact } = useCreateFactura()
   const stockMap = new Map((stockMateriales as StockMaterial[]).map(m => [m.id, m]))
 
   const [obraFiltro, setObraFiltro] = useState('')
@@ -148,15 +148,15 @@ export function SolicitudesTab() {
 
   const { data: solicitudes = [], isLoading } = useSolicitudes(obraFiltro || undefined)
   const { mutate: create, isPending: creating } = useCreateSolicitud()
-  const { mutate: updateSol } = useUpdateSolicitud()
+  const { mutate: updateSol, isPending: updating } = useUpdateSolicitud()
   const { mutate: removeSol } = useDeleteSolicitud()
-  const { mutate: comprarItem } = useComprarItem()
-  const { mutate: despacharItem } = useDespacharItem()
+  const { mutate: comprarItem, isPending: comprando } = useComprarItem()
+  const { mutate: despacharItem, isPending: despachando } = useDespacharItem()
   const { mutate: enviarItem } = useEnviarItem()
   const { mutate: rechazarItem } = useRechazarItem()
   const { mutate: revertirItem } = useRevertirItem()
   const { mutate: revertirEnvio } = useRevertirEnvio()
-  const { mutate: createRemito } = useCreateRemitoEnvio()
+  const { mutate: createRemito, isPending: enviandoRemito } = useCreateRemitoEnvio()
   const [selected, setSelected] = useState<Set<number>>(new Set())
   // Selección de items pendientes para compra en LOTE (mismo proveedor +
   // misma factura, precio individual por item). Map<solicitudId, Set<itemId>>
@@ -764,7 +764,7 @@ export function SolicitudesTab() {
                                       <>
                                         <input type="checkbox" disabled={!resolverItems} checked={selected.has(item.id!)} onChange={() => toggleSelect(item.id!)}
                                           className="accent-verde w-4 h-4 disabled:opacity-40" title="Seleccionar para envío grupal" />
-                                        <button disabled={!resolverItems} onClick={() => enviarUnoConRemito(s, item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">{obra?.es_deposito ? 'Recibir en depósito' : 'Enviar + Remito'}</button>
+                                        <button disabled={!resolverItems || enviandoRemito} onClick={() => enviarUnoConRemito(s, item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">{obra?.es_deposito ? 'Recibir en depósito' : 'Enviar + Remito'}</button>
                                         <button disabled={!resolverItems} onClick={() => handleRevertir(item.id!)} className="text-xs px-3 py-1.5 rounded text-gris-dark hover:text-rojo hover:bg-rojo-light min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">↩</button>
                                       </>
                                     )}
@@ -834,8 +834,9 @@ export function SolicitudesTab() {
                               {itemsSeleccionados.length} ítem{itemsSeleccionados.length > 1 ? 's' : ''} seleccionado{itemsSeleccionados.length > 1 ? 's' : ''}
                             </span>
                             <button
+                              disabled={enviandoRemito}
                               onClick={() => enviarConRemito(s, itemsSeleccionados.map(it => it.id!))}
-                              className="text-xs font-bold px-3 py-1.5 rounded-lg bg-verde text-white hover:opacity-90 transition-colors"
+                              className="text-xs font-bold px-3 py-1.5 rounded-lg bg-verde text-white hover:opacity-90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                               📄 Enviar seleccionados + Generar remito
                             </button>
@@ -1005,7 +1006,7 @@ export function SolicitudesTab() {
                                     Seleccionar para envío grupal
                                   </label>
                                   <div className="grid grid-cols-2 gap-2">
-                                    <button disabled={!resolverItems} onClick={() => enviarUnoConRemito(s, item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">{obra?.es_deposito ? 'Recibir en depósito' : 'Enviar + Remito'}</button>
+                                    <button disabled={!resolverItems || enviandoRemito} onClick={() => enviarUnoConRemito(s, item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">{obra?.es_deposito ? 'Recibir en depósito' : 'Enviar + Remito'}</button>
                                     <button disabled={!resolverItems} onClick={() => handleRevertir(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">↩ Revertir</button>
                                   </div>
                                 </div>
@@ -1142,7 +1143,7 @@ export function SolicitudesTab() {
       <Modal open={!!modalComprar} onClose={() => setModalComprar(null)} title="🛒 COMPRAR A PROVEEDOR"
         footer={<>
           <Button variant="secondary" onClick={() => setModalComprar(null)}>Cancelar</Button>
-          <Button variant="primary" onClick={formComprar.handleSubmit(handleComprar)} disabled={compraInvalida}>Confirmar compra</Button>
+          <Button variant="primary" loading={comprando} onClick={formComprar.handleSubmit(handleComprar)} disabled={compraInvalida}>Confirmar compra</Button>
         </>}>
         {modalComprar && (
           <div className="flex flex-col gap-4">
@@ -1366,7 +1367,7 @@ export function SolicitudesTab() {
       <Modal open={!!modalDespachar} onClose={() => setModalDespachar(null)} title="📦 DESPACHAR DE DEPÓSITO"
         footer={<>
           <Button variant="secondary" onClick={() => setModalDespachar(null)}>Cancelar</Button>
-          <Button variant="primary" onClick={formDespachar.handleSubmit(handleDespachar)}>Confirmar despacho</Button>
+          <Button variant="primary" loading={despachando} onClick={formDespachar.handleSubmit(handleDespachar)}>Confirmar despacho</Button>
         </>}>
         {modalDespachar && (
           <div className="flex flex-col gap-4">
@@ -1400,7 +1401,7 @@ export function SolicitudesTab() {
       <Modal open={modalNuevoProveedor} onClose={() => setModalNuevoProveedor(false)} title="➕ NUEVO PROVEEDOR"
         footer={<>
           <Button variant="secondary" onClick={() => setModalNuevoProveedor(false)}>Cancelar</Button>
-          <Button variant="primary" onClick={formProv.handleSubmit(handleCreateProv)}>Crear</Button>
+          <Button variant="primary" loading={creandoProv} onClick={formProv.handleSubmit(handleCreateProv)}>Crear</Button>
         </>}>
         <div className="flex flex-col gap-3">
           <Input label="Nombre" {...formProv.register('nombre')} />
@@ -1415,7 +1416,7 @@ export function SolicitudesTab() {
       <Modal open={modalNuevaFactura} onClose={() => setModalNuevaFactura(false)} title="🧾 CARGAR FACTURA"
         footer={<>
           <Button variant="secondary" onClick={() => setModalNuevaFactura(false)}>Cancelar</Button>
-          <Button variant="primary" loading={uploading} onClick={formFact.handleSubmit(handleCreateFact)}>Guardar</Button>
+          <Button variant="primary" loading={uploading || creandoFact} onClick={formFact.handleSubmit(handleCreateFact)}>Guardar</Button>
         </>}>
         <div className="flex flex-col gap-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1445,7 +1446,7 @@ export function SolicitudesTab() {
       <Modal open={!!modalEditar} onClose={() => setModalEditar(null)} title="✏️ EDITAR SOLICITUD" width="max-w-3xl"
         footer={<>
           <Button variant="secondary" onClick={() => setModalEditar(null)}>Cancelar</Button>
-          <Button variant="primary" onClick={formEdit.handleSubmit(handleEditar)}>Guardar cambios</Button>
+          <Button variant="primary" loading={updating} onClick={formEdit.handleSubmit(handleEditar)}>Guardar cambios</Button>
         </>}>
         {modalEditar && (
           <div className="flex flex-col gap-4">
