@@ -622,13 +622,19 @@ function FacturacionSection() {
       .filter(Boolean) as string[]
     const fecha_desde = fechasSel.length ? fechasSel.reduce((a, b) => (a < b ? a : b)) : data.fecha
     const fecha_hasta = fechasSel.length ? fechasSel.reduce((a, b) => (a > b ? a : b)) : data.fecha
+    // La fecha del input no tiene columna propia en `cobros`; la dejamos
+    // anotada en obs para no perderla (el periodo viaja en fecha_desde/hasta).
+    const obsConFecha = [
+      data.fecha ? `Cobrado el ${fmtFecha(data.fecha)}` : '',
+      (data.obs ?? '').trim(),
+    ].filter(Boolean).join(' · ')
     createCobro({
       empresa_id:        empresaCobro.id,
       fecha_desde,
       fecha_hasta,
       toneladas_totales: ton_totales,
       total,
-      obs:               data.obs,
+      obs:               obsConFecha,
       tramo_ids:         modalTramos.map(t => t.id),
     }, {
       onSuccess: (creado) => {
@@ -1214,7 +1220,7 @@ function FacturacionSection() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Input label="Fecha de cobro" type="date" {...form.register('fecha')} />
+              <Input label="Fecha de cobro" type="date" required {...form.register('fecha', { required: true })} />
               <Input label="Observaciones" placeholder="Nº factura, referencia..." {...form.register('obs')} />
             </div>
           </div>

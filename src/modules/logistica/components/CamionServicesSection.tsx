@@ -379,8 +379,17 @@ function RegistrarServiceModal({ camionId, kmActuales, onClose }: ModalProps) {
         ...(comprobante_path ? { comprobante_path } : {}),
       },
       {
-        onSuccess: () => {
-          toast('✓ Service registrado', 'ok')
+        onSuccess: (created: any) => {
+          const w = Array.isArray(created?.warnings)
+            ? created.warnings.find((x: any) => x.code === 'KM_SERVICE_MENOR_ODOMETRO')
+            : null
+          if (w) {
+            const kmS = Number(w.detail?.km_service ?? 0).toLocaleString('es-AR')
+            const kmA = Number(w.detail?.km_actuales ?? 0).toLocaleString('es-AR')
+            toast(`Service guardado. ⚠ El km del service (${kmS}) es menor al odómetro actual del camión (${kmA} km).`, 'ok')
+          } else {
+            toast('✓ Service registrado', 'ok')
+          }
           onClose()
         },
         onError: (err: any) => {
