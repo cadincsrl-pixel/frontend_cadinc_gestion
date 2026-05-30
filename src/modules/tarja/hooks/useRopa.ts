@@ -1,7 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
+import { apiPost, apiPatch, apiDelete } from '@/lib/api/client'
 import type { RopaCategoria, RopaEntrega } from '@/types/domain.types'
 
+// Lectura va por Supabase directo (RLS permisiva, data no-PII).
+// Mutaciones pasan por el backend Hono (requirePermiso('tarja',*) + audit).
 function sb() { return createClient() }
 
 const KEY_CAT      = ['ropa_categorias']
@@ -27,15 +30,8 @@ export function useRopaCategorias() {
 export function useCreateRopaCategoria() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (dto: { nombre: string; icono?: string; meses_vencimiento?: number }) => {
-      const { data, error } = await sb()
-        .from('ropa_categorias')
-        .insert(dto)
-        .select()
-        .single()
-      if (error) throw new Error(error.message)
-      return data as RopaCategoria
-    },
+    mutationFn: (dto: { nombre: string; icono?: string; meses_vencimiento?: number }) =>
+      apiPost<RopaCategoria>('/api/ropa/categorias', dto),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY_CAT }),
   })
 }
@@ -43,13 +39,8 @@ export function useCreateRopaCategoria() {
 export function useUpdateRopaCategoria() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async ({ id, meses_vencimiento }: { id: number; meses_vencimiento: number }) => {
-      const { error } = await sb()
-        .from('ropa_categorias')
-        .update({ meses_vencimiento })
-        .eq('id', id)
-      if (error) throw new Error(error.message)
-    },
+    mutationFn: ({ id, meses_vencimiento }: { id: number; meses_vencimiento: number }) =>
+      apiPatch<RopaCategoria>(`/api/ropa/categorias/${id}`, { meses_vencimiento }),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY_CAT }),
   })
 }
@@ -57,13 +48,7 @@ export function useUpdateRopaCategoria() {
 export function useDeleteRopaCategoria() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (id: number) => {
-      const { error } = await sb()
-        .from('ropa_categorias')
-        .update({ activo: false })
-        .eq('id', id)
-      if (error) throw new Error(error.message)
-    },
+    mutationFn: (id: number) => apiDelete(`/api/ropa/categorias/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY_CAT }),
   })
 }
@@ -108,20 +93,12 @@ export function useRopaEntregasPorLeg(leg: string) {
 export function useCreateRopaEntrega() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (dto: {
+    mutationFn: (dto: {
       leg:           string
       categoria_id:  number
       fecha_entrega: string
       obs?:          string | null
-    }) => {
-      const { data, error } = await sb()
-        .from('ropa_entregas')
-        .insert(dto)
-        .select()
-        .single()
-      if (error) throw new Error(error.message)
-      return data as RopaEntrega
-    },
+    }) => apiPost<RopaEntrega>('/api/ropa/entregas', dto),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY_ENTREGAS }),
   })
 }
@@ -129,10 +106,7 @@ export function useCreateRopaEntrega() {
 export function useDeleteRopaEntrega() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (id: number) => {
-      const { error } = await sb().from('ropa_entregas').delete().eq('id', id)
-      if (error) throw new Error(error.message)
-    },
+    mutationFn: (id: number) => apiDelete(`/api/ropa/entregas/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY_ENTREGAS }),
   })
 }

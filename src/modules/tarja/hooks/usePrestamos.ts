@@ -1,9 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
+import { apiPost, apiDelete } from '@/lib/api/client'
 import type { Prestamo } from '@/types/domain.types'
 
 const KEY = ['prestamos']
 
+// Solo lectura va por Supabase directo (data no-PII, RLS permisiva).
+// Las mutaciones (create/delete) pasan por el backend Hono para que apliquen
+// requirePermiso('tarja',...) y queden en audit_log.
 function sb() { return createClient() }
 
 /** Todos los movimientos (peso ligero: solo leg + tipo + monto) para calcular saldos */
@@ -56,21 +60,13 @@ export function usePrestamos() {
 export function useCreatePrestamo() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (dto: {
+    mutationFn: (dto: {
       leg:      string
       sem_key:  string
       tipo:     'otorgado' | 'descontado'
       monto:    number
       concepto?: string | null
-    }) => {
-      const { data, error } = await sb()
-        .from('prestamos')
-        .insert(dto)
-        .select()
-        .single()
-      if (error) throw new Error(error.message)
-      return data as Prestamo
-    },
+    }) => apiPost<Prestamo>('/api/prestamos', dto),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
   })
 }
@@ -78,13 +74,7 @@ export function useCreatePrestamo() {
 export function useDeletePrestamo() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (id: number) => {
-      const { error } = await sb()
-        .from('prestamos')
-        .delete()
-        .eq('id', id)
-      if (error) throw new Error(error.message)
-    },
+    mutationFn: (id: number) => apiDelete(`/api/prestamos/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
   })
 }
