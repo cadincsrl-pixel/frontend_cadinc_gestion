@@ -250,6 +250,15 @@ export function GastosTab() {
 
   function handleEdit(data: GastoForm) {
     if (!editando) return
+    // Tres casos para comprobante_path:
+    //  - subió uno nuevo (uploadFile)            → enviar el path nuevo.
+    //  - había comprobante y lo quitó (✕ Quitar) → enviar null (el backend borra).
+    //  - no lo tocó                              → enviar undefined (no se toca).
+    // El backend distingue null (borrar) de undefined (no tocar); ver gastos.service.ts.
+    const comprobante_path =
+      uploadFile ? uploadPath
+      : editando.comprobante_url && uploadPath === null ? null
+      : undefined
     updateGasto({
       id: editando.id,
       dto: {
@@ -264,8 +273,7 @@ export function GastosTab() {
         comprobante_nro: data.comprobante_nro,
         descripcion:  data.descripcion,
         obs:          data.obs,
-        // Si subió uno nuevo, usa ese path. Si quedó igual, mandar undefined.
-        comprobante_path: uploadFile ? uploadPath : undefined,
+        comprobante_path,
       } as any,
     }, {
       onSuccess: () => { toast('✓ Gasto actualizado', 'ok'); setEditando(null); resetUpload() },

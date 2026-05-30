@@ -141,7 +141,7 @@ function EmpresasSection({
                     className="text-xs px-2 py-1 rounded hover:bg-gris transition-colors">✏️</button>
                 )}
                 {puedeEliminar && (
-                  <button onClick={ev => { ev.stopPropagation(); if (confirm(`¿Eliminar ${e.nombre}?`)) remove(e.id, { onSuccess: () => toast('✓ Eliminada', 'ok') }) }}
+                  <button onClick={ev => { ev.stopPropagation(); if (confirm(`¿Eliminar ${e.nombre}?`)) remove(e.id, { onSuccess: () => toast('✓ Eliminada', 'ok'), onError: () => toast('No se puede eliminar: la empresa tiene cobros o viajes asociados', 'err') }) }}
                     className="text-xs px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors">✕</button>
                 )}
               </div>
@@ -593,9 +593,6 @@ function FacturacionSection() {
     setEmpresaCobro(empresa)
     const mis_tramos = tramosPendientes.filter(t => t.empresa_id === empresa.id)
     setSelectedIds(new Set(mis_tramos.map(t => t.id)))
-    const fechas = mis_tramos.map(t => t.fecha_descarga ?? t.fecha_carga).filter(Boolean) as string[]
-    const desde  = fechas.length ? fechas.reduce((a, b) => a < b ? a : b) : ''
-    const hasta  = fechas.length ? fechas.reduce((a, b) => a > b ? a : b) : ''
     form.reset({ fecha: toISO(new Date()), obs: '' })
     setModalCobro(true)
   }
@@ -616,10 +613,19 @@ function FacturacionSection() {
     const desglose    = calcDesglose(modalTramos, empresaCobro.id)
     const ton_totales = desglose.reduce((s, d) => s + d.ton, 0)
     const total       = desglose.reduce((s, d) => s + d.subtotal, 0)
+    // El periodo del cobro es el rango real de fechas de los tramos
+    // seleccionados (no la fecha del input, que es solo informativa: la DB
+    // no tiene columna 'fecha de cobro'). Fallback a data.fecha si por algun
+    // motivo ningun tramo tuviera fecha, para no romper fecha_desde<=fecha_hasta.
+    const fechasSel = modalTramos
+      .map(t => t.fecha_descarga ?? t.fecha_carga)
+      .filter(Boolean) as string[]
+    const fecha_desde = fechasSel.length ? fechasSel.reduce((a, b) => (a < b ? a : b)) : data.fecha
+    const fecha_hasta = fechasSel.length ? fechasSel.reduce((a, b) => (a > b ? a : b)) : data.fecha
     createCobro({
       empresa_id:        empresaCobro.id,
-      fecha_desde:       data.fecha,
-      fecha_hasta:       data.fecha,
+      fecha_desde,
+      fecha_hasta,
       toneladas_totales: ton_totales,
       total,
       obs:               data.obs,

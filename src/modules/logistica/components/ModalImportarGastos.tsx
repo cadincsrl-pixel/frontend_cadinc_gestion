@@ -90,11 +90,20 @@ function parseSiNo(v: any): boolean | null {
   return null
 }
 
-// Parsea un número aceptando "1.234,56" o "1234.56" o "1234".
+// Parsea un número aceptando "1.234,56" (es-AR), "1234.56" (plano) o "1234".
+// Locale-aware: si hay coma, la coma es el decimal y los puntos son miles;
+// si NO hay coma, el punto ya es el separador decimal (no se borra).
+// Excel puede entregar number (se devuelve tal cual) o string.
 function parseNum(v: any): number | null {
   if (v == null || v === '') return null
   if (typeof v === 'number') return Number.isFinite(v) ? v : null
-  const s = String(v).replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '')
+  let s = String(v).trim()
+  if (s.includes(',')) {
+    // Formato es-AR: "1.234,56" → puntos = miles, coma = decimal.
+    s = s.replace(/\./g, '').replace(',', '.')
+  }
+  // Sin coma: el punto ya es decimal, no se toca. Solo limpiamos símbolos.
+  s = s.replace(/[^\d.-]/g, '')
   const n = Number(s)
   return Number.isFinite(n) ? n : null
 }
@@ -377,9 +386,18 @@ export function ModalImportarGastos({ open, onClose, categorias, choferes, camio
           const monto = parseNum(iMonto >= 0 ? r[iMonto] : '') ?? 0
 
           const choferTexto = iChofer >= 0 ? String(r[iChofer] ?? '').trim() : ''
-          const choferObj   = choferTexto
-            ? choferes.find(c => norm(c.nombre) === norm(choferTexto) || norm(c.nombre).includes(norm(choferTexto)))
-            : null
+          // Match exacto (normalizado) primero. Si no hay, probamos includes()
+          // pero SOLO asignamos si el substring matchea a un único chofer
+          // (>1 candidato = ambiguo → no asignar, se reporta como no encontrado).
+          let choferObj = null as (typeof choferes)[number] | null
+          if (choferTexto) {
+            const objetivo = norm(choferTexto)
+            choferObj = choferes.find(c => norm(c.nombre) === objetivo) ?? null
+            if (!choferObj) {
+              const candidatos = choferes.filter(c => norm(c.nombre).includes(objetivo))
+              if (candidatos.length === 1) choferObj = candidatos[0]!
+            }
+          }
 
           const camionTexto = iCamion >= 0 ? String(r[iCamion] ?? '').trim() : ''
           const camionObj   = camionTexto
@@ -457,7 +475,11 @@ export function ModalImportarGastos({ open, onClose, categorias, choferes, camio
 
   async function handleGuardar() {
     if (!filas) return
-    const validas = filas.filter(f => !f.error)
+    // Conservamos el índice original en `filas` para reportar el N° de fila
+    // real (el mismo que muestra la tabla de preview) en los mensajes de error.
+    const validas = filas
+      .map((f, idx) => ({ f, idx }))
+      .filter(({ f }) => !f.error)
     if (!validas.length) { toast('No hay filas válidas para importar', 'err'); return }
 
     setGuardando(true)
@@ -465,7 +487,7 @@ export function ModalImportarGastos({ open, onClose, categorias, choferes, camio
     // Mensajes únicos para mostrar al user; varias filas suelen fallar por
     // el mismo motivo, así que deduplicamos para no inundar la UI.
     const mensajesSet = new Set<string>()
-    for (const [idx, f] of validas.entries()) {
+    for (const { f, idx } of validas) {
       try {
         // Construye carga_combustible solo cuando aplique (backend valida
         // la combinación categoría=combustible ↔ presencia de carga).

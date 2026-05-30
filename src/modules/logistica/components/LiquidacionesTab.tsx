@@ -554,12 +554,17 @@ export function LiquidacionesTab() {
       gasto_ids:           selGastos,
     } as any, {
       onSuccess: (nueva: any) => {
-        cerrarLiq(nueva.id, { onSuccess: () => toast('✓ Liquidación cerrada', 'ok') })
-        setModalLiq(false)
-        setChoferLiq(null)
-        setSelAdelant([])
-        setSelTramos([])
-        setSelGastos([])
+        cerrarLiq(nueva.id, {
+          onSuccess: () => {
+            toast('✓ Liquidación cerrada', 'ok')
+            setModalLiq(false)
+            setChoferLiq(null)
+            setSelAdelant([])
+            setSelTramos([])
+            setSelGastos([])
+          },
+          onError: (e: any) => toast(`Borrador creado pero no se pudo cerrar: ${e?.message ?? 'error desconocido'}. Cerralo desde la card de saldo.`, 'err'),
+        })
       },
       onError: (err: any) => {
         const code = err?.body?.error || err?.code
@@ -847,7 +852,7 @@ export function LiquidacionesTab() {
                         hasta:        liq.fecha_hasta,
                         dias:         liq.dias_trabajados,
                         basico_dia:   liq.basico_dia,
-                        subtotal_bas: liq.subtotal_basico - (liq.subtotal_km ?? 0),
+                        subtotal_bas: liq.subtotal_basico ?? 0,
                         km_totales:   km_cargados + km_vacios,
                         subtotal_km:  liq.subtotal_km ?? 0,
                         km_cargados, km_vacios,
@@ -1140,6 +1145,9 @@ export function LiquidacionesTab() {
                           <b>{cantera?.nombre ?? `#${t.cantera_id}`}</b>
                           {deposito && <> → {deposito.nombre}</>}
                           {km > 0 && <> · {km} km</>}
+                          {t.cantera_id && t.deposito_id && km === 0 && (
+                            <span className="ml-1 text-[10px] font-bold uppercase tracking-wide bg-amarillo/20 text-amber-700 px-1.5 py-0.5 rounded" title="No hay ruta cargada para este par cantera→depósito: el tramo aporta 0 km al liquidar.">⚠ sin ruta</span>
+                          )}
                           {t.toneladas_carga && <> · {t.toneladas_carga} t</>}
                         </span>
                       </label>
@@ -1360,7 +1368,7 @@ export function LiquidacionesTab() {
                         hasta:        detalleLiq.fecha_hasta,
                         dias:         detalleLiq.dias_trabajados,
                         basico_dia:   detalleLiq.basico_dia,
-                        subtotal_bas: detalleLiq.subtotal_basico - (detalleLiq.subtotal_km ?? 0),
+                        subtotal_bas: detalleLiq.subtotal_basico ?? 0,
                         km_totales:   km_totales,
                         subtotal_km:  detalleLiq.subtotal_km ?? 0,
                         descuentos:   detalleLiq.total_adelantos,

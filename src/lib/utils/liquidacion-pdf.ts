@@ -67,7 +67,7 @@ const fmtFecha = (s: string | null | undefined): string => {
 }
 
 const fmtM = (n: number): string =>
-  '$ ' + n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  '$ ' + n.toLocaleString('es-AR', { maximumFractionDigits: 0 })
 
 const fmtN = (n: number, dec = 0): string =>
   n.toLocaleString('es-AR', { minimumFractionDigits: dec, maximumFractionDigits: dec })
@@ -95,7 +95,9 @@ export function generarPdfLiquidacion(args: PdfLiquidacionArgs): void {
         ...args.tramos.map(t => [
           { text: fmtFecha(t.fecha) },
           { text: t.tipo === 'cargado' ? 'Cargado' : 'Vacío' },
-          { text: `${t.cantera ?? '—'} → ${t.deposito ?? '—'}` },
+          { text: t.tipo === 'cargado'
+              ? `${t.cantera ?? '—'} → ${t.deposito ?? '—'}`
+              : `${t.deposito ?? '—'} → ${t.cantera ?? '—'}` },
           { text: fmtN(t.km), alignment: 'right' as const },
           { text: t.toneladas != null ? fmtN(t.toneladas, 2) : '—', alignment: 'right' as const },
           { text: t.remito ?? '—' },

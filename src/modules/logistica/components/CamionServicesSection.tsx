@@ -127,15 +127,15 @@ export function CamionServicesSection({ camionId }: Props) {
       return { text: 'Sin services registrados', cls: 'text-gris-dark italic' }
     }
     if (estado.estado === 'vencido') {
-      const km = Math.abs(estado.km_restantes ?? 0)
+      const km = Math.round(Math.abs(estado.km_restantes ?? 0))
       return { text: `🔴 Vencido hace ${km.toLocaleString('es-AR')} km`, cls: 'text-rojo font-bold' }
     }
     if (estado.estado === 'proximo') {
-      const km = estado.km_restantes ?? 0
+      const km = Math.round(estado.km_restantes ?? 0)
       return { text: `⚠ Próximo en ${km.toLocaleString('es-AR')} km`, cls: 'text-[#7A5500] font-bold' }
     }
     // al_dia
-    const km = estado.km_restantes ?? 0
+    const km = Math.round(estado.km_restantes ?? 0)
     return { text: `Faltan ${km.toLocaleString('es-AR')} km`, cls: 'text-verde font-semibold' }
   }
 

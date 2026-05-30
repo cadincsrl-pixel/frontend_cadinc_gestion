@@ -357,20 +357,22 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
 
   function onSubmit(data: ViajeUpsertDto) {
     if (!data.nombre?.trim()) { toast('Falta el nombre del viaje', 'err'); return }
+    // valueAsNumber produce NaN al vaciar un input; defaulteamos a 0 (igual que la preview en vivo)
+    // para no mandar NaN → JSON.stringify lo serializa como null y el zod del backend tira 400 generico.
     const dto: ViajeUpsertDto = {
       ...data,
-      km_ida:              Number(data.km_ida),
-      km_vuelta:           Number(data.km_vuelta),
-      toneladas:           Number(data.toneladas),
-      dias_calendario:     Number(data.dias_calendario),
-      viajes_por_mes:      Number(data.viajes_por_mes),
-      tarifa_neta_por_ton: Number(data.tarifa_neta_por_ton),
-      precio_gasoil:       Number(data.precio_gasoil),
-      consumo_camion:      Number(data.consumo_camion),
-      peajes_total:        Number(data.peajes_total),
-      chofer_por_km:       Number(data.chofer_por_km),
-      chofer_por_dia:      Number(data.chofer_por_dia),
-      pct_sobre_tarifa:    Number(data.pct_sobre_tarifa),
+      km_ida:              Number(data.km_ida) || 0,
+      km_vuelta:           Number(data.km_vuelta) || 0,
+      toneladas:           Number(data.toneladas) || 0,
+      dias_calendario:     Number(data.dias_calendario) || 0,
+      viajes_por_mes:      Number(data.viajes_por_mes) || 0,
+      tarifa_neta_por_ton: Number(data.tarifa_neta_por_ton) || 0,
+      precio_gasoil:       Number(data.precio_gasoil) || 0,
+      consumo_camion:      Number(data.consumo_camion) || 0,
+      peajes_total:        Number(data.peajes_total) || 0,
+      chofer_por_km:       Number(data.chofer_por_km) || 0,
+      chofer_por_dia:      Number(data.chofer_por_dia) || 0,
+      pct_sobre_tarifa:    Number(data.pct_sobre_tarifa) || 0,
     }
     if (mode === 'create') {
       create(dto, {

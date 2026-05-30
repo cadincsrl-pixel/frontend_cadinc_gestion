@@ -34,8 +34,12 @@ function fmtSize(bytes: number): string {
 }
 
 function fmtFecha(iso: string): string {
-  const d = new Date(iso)
-  return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`
+  // TZ-safe: parsea los componentes de la fecha (YYYY-MM-DD) sin construir un
+  // Date, que interpretaría el string date-only como UTC y en UTC-3 mostraría
+  // un día menos (inconsistente con el badge de vencimiento). Toma sólo la
+  // parte de fecha, por si llega un timestamp ISO completo (ej. created_at).
+  const [y, m, day] = iso.slice(0, 10).split('-')
+  return `${day}/${m}/${y}`
 }
 
 function badgeVencimiento(vence_el: string | null) {

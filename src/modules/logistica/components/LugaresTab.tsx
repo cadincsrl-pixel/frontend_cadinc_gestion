@@ -112,7 +112,14 @@ export function LugaresTab() {
       toast('✓ Ruta agregada', 'ok')
       setModalRuta(false)
       formRuta.reset()
-    } catch { toast('Error al agregar', 'err') }
+    } catch (err: any) {
+      // El par (cantera, depósito) tiene UNIQUE en DB. El backend reenvía el
+      // mensaje crudo de Postgres (no el code 23505), así que detectamos por
+      // texto. Mensaje claro en vez del genérico "Error al agregar".
+      const detalle = `${err?.message ?? ''} ${(err?.body as any)?.error ?? ''}`.toLowerCase()
+      const esDuplicado = detalle.includes('duplicate key') || detalle.includes('unique constraint')
+      toast(esDuplicado ? 'Ya existe una ruta para ese par cantera/depósito' : 'Error al agregar', 'err')
+    }
     setLoading(false)
   }
 
@@ -127,6 +134,11 @@ export function LugaresTab() {
 
   async function handleUpdateRuta(data: any) {
     if (!editRuta) return
+    const km = Number(data.km_ida_vuelta)
+    if (!Number.isFinite(km) || km <= 0) {
+      toast('Ingresá un valor de km mayor a 0', 'err')
+      return
+    }
     setLoading(true)
     try {
       await apiPatch(`/api/logistica/lugares/rutas/${editRuta.id}`, {
@@ -380,7 +392,7 @@ export function LugaresTab() {
           )}
           <Input
             label="Km del trayecto (un sentido)"
-            type="number"
+            {...intInputProps}
             placeholder="Ej: 1220"
             hint="Distancia de la ruta en Google Maps en UN solo sentido (no sumes ida + vuelta). Cargado y vacío se cuentan por separado."
             {...formEditRuta.register('km_ida_vuelta')}
