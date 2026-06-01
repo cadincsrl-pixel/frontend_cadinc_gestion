@@ -17,18 +17,26 @@ import {
 import { usePermisos } from '@/hooks/usePermisos'
 import { useToast } from '@/components/ui/Toast'
 
-// Mapea la ruta actual al módulo cuyos avisos queremos mostrar.
-// `null` = no hay módulo específico → mostrar todo (home, admin, login).
+// Mapea la ruta actual al módulo cuyos avisos queremos mostrar. Cada tipo de
+// notificación aparece SOLO en su módulo (la campana refleja dónde estás).
+// `null` = home/login (sin módulo) → overview (mostrar todo). Mapeamos también
+// los módulos sin notificaciones (caja/herramientas/flota/admin) para que en
+// ellos la campana quede vacía en vez de mostrar avisos ajenos.
 // Las rutas de tarja están dispersas (sidebar de tarja incluye /dashboard,
 // /horas-trabajador, /configuracion, etc.); las listamos todas explícitamente.
-function moduloFromPath(pathname: string | null): 'tarja' | 'logistica' | null {
+function moduloFromPath(pathname: string | null): string | null {
   if (!pathname) return null
   if (pathname.startsWith('/tarja') ||
       pathname.startsWith('/personal') ||
       pathname.startsWith('/dashboard') ||
       pathname.startsWith('/horas-trabajador') ||
       pathname.startsWith('/configuracion')) return 'tarja'
-  if (pathname.startsWith('/logistica')) return 'logistica'
+  if (pathname.startsWith('/logistica'))       return 'logistica'
+  if (pathname.startsWith('/certificaciones')) return 'certificaciones'
+  if (pathname.startsWith('/caja'))            return 'caja'
+  if (pathname.startsWith('/herramientas'))    return 'herramientas'
+  if (pathname.startsWith('/flota'))           return 'flota'
+  if (pathname.startsWith('/admin'))           return 'admin'
   return null
 }
 
@@ -53,11 +61,13 @@ export function NotificationsBell() {
   // `ver_pii` del módulo tarja: si el usuario no puede ver PII, no le
   // mostramos esta sección (ej. capataz puro, jefe_obra sin add-on).
   const { verPii } = usePermisos('tarja')
-  // Pedidos por comprar: para compras/depósito (resolver_items). No se filtra
-  // por ruta — al encargado le sirve verlos esté donde esté.
+  // Pedidos por comprar: para compras/depósito (resolver_items).
   const { resolverItems } = usePermisos('certificaciones')
   const toast = useToast()
-  const solicitudesPorComprar = resolverItems ? notifs.solicitudesPorComprar : []
+  // Lista COMPLETA (independiente de la ruta): la usa el toast de "nuevo pedido"
+  // para alertar al encargado esté donde esté + el seguimiento de "vistos". La
+  // versión que se MUESTRA en la campana se scopea por módulo más abajo.
+  const solicitudesAll = resolverItems ? notifs.solicitudesPorComprar : []
 
   // Aviso (toast) cuando entra un pedido nuevo mientras la app está abierta.
   // Warmup de 4s: los pedidos ya existentes al cargar se registran sin avisar;
@@ -69,7 +79,7 @@ export function NotificationsBell() {
     return () => clearTimeout(t)
   }, [])
   useEffect(() => {
-    for (const s of solicitudesPorComprar) {
+    for (const s of solicitudesAll) {
       if (!seenRef.current.has(s.id)) {
         seenRef.current.add(s.id)
         if (warmRef.current) {
@@ -77,12 +87,15 @@ export function NotificationsBell() {
         }
       }
     }
-  }, [solicitudesPorComprar, toast])
+  }, [solicitudesAll, toast])
 
-  // Aplico filtro por módulo: tarja sólo cumpleaños, logística sólo papeles/services/gastos.
-  // Si no hay módulo identificado (home, admin), mostramos todo.
-  const showCumple   = (modulo === null || modulo === 'tarja') && verPii
-  const showLogistica = modulo === null || modulo === 'logistica'
+  // Filtro por módulo: cada tipo de aviso aparece SOLO en su módulo (la campana
+  // refleja el módulo donde estás). Sin módulo identificado (home) → todo.
+  const showCumple    = (modulo === null || modulo === 'tarja') && verPii
+  const showLogistica =  modulo === null || modulo === 'logistica'
+  const showCompras   =  modulo === null || modulo === 'certificaciones'
+  // Pedidos por comprar visibles en la campana (scopeados al módulo de compras).
+  const solicitudesPorComprar = showCompras ? solicitudesAll : []
 
   const hoy                    = showCumple    ? notifs.hoy                    : []
   const proximos               = showCumple    ? notifs.proximos               : []
