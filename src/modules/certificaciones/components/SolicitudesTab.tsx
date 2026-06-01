@@ -97,11 +97,42 @@ const CATEGORIA_LABEL: Record<CategoriaSol, string> = {
   'rechazadas':  'Rechazadas',
 }
 
+// Mapeo estado-de-ítem → tab donde se muestra ese ítem. Los 3 tabs principales
+// se arman por ESTADO DE ÍTEM (no por el `progreso` global de la solicitud), de
+// modo que un mismo pedido aparezca REPARTIDO: sus ítems pendientes en "Por
+// comprar" y los ya comprados en "Por enviar". Un ítem `rechazado` no cae en
+// ningún tab (se oculta de comprar/enviar/enviadas; sigue visible en el detalle).
+const ITEM_CAT: Partial<Record<ItemEstado, CategoriaSol>> = {
+  pendiente:    'por-comprar',
+  comprado:     'por-enviar',
+  de_deposito:  'por-enviar',
+  en_proveedor: 'por-enviar',   // comprado pero aún en el proveedor (falta retirar)
+  retirado:     'por-enviar',
+  enviado:      'enviadas',
+}
+function esTabPorItem(cat: CategoriaSol): boolean {
+  return cat === 'por-comprar' || cat === 'por-enviar' || cat === 'enviadas'
+}
+function itemEnCategoria(estado: ItemEstado, cat: CategoriaSol): boolean {
+  return ITEM_CAT[estado] === cat
+}
+
 function matchCategoria(s: SolicitudCompra, cat: CategoriaSol): boolean {
+  const items = s.items ?? []
   switch (cat) {
-    case 'por-comprar': return s.estado === 'aprobada' && s.progreso === 'pendiente'
-    case 'por-enviar':  return s.estado === 'aprobada' && s.progreso === 'en_gestion'
-    case 'enviadas':    return s.estado === 'aprobada' && s.progreso === 'enviada'
+    // Tabs por-ítem: la solicitud aprobada aparece si tiene AL MENOS un ítem
+    // cuyo estado cae en este tab (por eso un pedido se reparte entre tabs).
+    case 'por-comprar':
+    case 'por-enviar':
+      return s.estado === 'aprobada' && items.some(it => itemEnCategoria(it.estado, cat))
+    case 'enviadas': {
+      if (s.estado !== 'aprobada' || items.length === 0) return false
+      // Terminal: tiene ítems enviados, o ya no queda nada activo (todo
+      // enviado/rechazado) — así un pedido "cerrado" no desaparece de la vista.
+      const hayActivo = items.some(it =>
+        itemEnCategoria(it.estado, 'por-comprar') || itemEnCategoria(it.estado, 'por-enviar'))
+      return items.some(it => it.estado === 'enviado') || !hayActivo
+    }
     case 'sin-aprobar': return s.estado === 'pendiente'
     case 'rechazadas':  return s.estado === 'rechazada'
   }
@@ -603,6 +634,13 @@ export function SolicitudesTab() {
             const obra = obrasMap.get(s.obra_cod)
             const isExp = expanded.has(s.id)
             const items = s.items ?? []
+            // En los tabs por-ítem mostramos SOLO los ítems de ese tab (lista
+            // limpia). Si el filtro dejara la card vacía (caso terminal), no la
+            // vaciamos: mostramos todos los ítems.
+            const itemsFiltrados = items.filter(it => itemEnCategoria(it.estado, categoriaSel))
+            const itemsVisibles = !esTabPorItem(categoriaSel) || itemsFiltrados.length === 0
+              ? items
+              : itemsFiltrados
 
             return (
               <div key={s.id} className="bg-white rounded-card shadow-card overflow-hidden">
@@ -686,7 +724,7 @@ export function SolicitudesTab() {
                         </tr>
                       </thead>
                       <tbody>
-                        {items.map((item, i) => {
+                        {itemsVisibles.map((item, i) => {
                           const cfg = ITEM_ESTADO_CFG[item.estado]
                           const stk = item.material_id ? stockMap.get(item.material_id) : null
                           return (
@@ -873,6 +911,10 @@ export function SolicitudesTab() {
             const isExp = expanded.has(s.id)
             const items = s.items ?? []
             const itemsSeleccionados = items.filter(it => selected.has(it.id!) && (it.estado === 'comprado' || it.estado === 'de_deposito' || it.estado === 'retirado'))
+            const itemsFiltrados = items.filter(it => itemEnCategoria(it.estado, categoriaSel))
+            const itemsVisibles = !esTabPorItem(categoriaSel) || itemsFiltrados.length === 0
+              ? items
+              : itemsFiltrados
             return (
               <div key={s.id} className="bg-white rounded-card shadow-sm border border-gris-mid p-3">
                 {/* Resumen */}
@@ -953,7 +995,7 @@ export function SolicitudesTab() {
                 {/* Detalle de ítems expandido */}
                 {isExp && (
                   <div className="mt-3 pt-3 border-t border-gris flex flex-col gap-2">
-                    {items.map((item, i) => {
+                    {itemsVisibles.map((item, i) => {
                       const cfg = ITEM_ESTADO_CFG[item.estado]
                       const stk = item.material_id ? stockMap.get(item.material_id) : null
                       return (
