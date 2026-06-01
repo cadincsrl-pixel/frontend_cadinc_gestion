@@ -77,6 +77,15 @@ export function VehiculoDocumentosSection({ entidad, id }: Props) {
   const [pendingVence, setPendingVence] = useState<Record<VehiculoDocTipo, string>>(
     Object.fromEntries(TIPOS.map(t => [t.key, ''])) as any,
   )
+  // Tipos cuyo "anteriores (archivados)" está desplegado.
+  const [verAnteriores, setVerAnteriores] = useState<Set<VehiculoDocTipo>>(new Set())
+  function toggleAnteriores(tipo: VehiculoDocTipo) {
+    setVerAnteriores(prev => {
+      const next = new Set(prev)
+      if (next.has(tipo)) next.delete(tipo); else next.add(tipo)
+      return next
+    })
+  }
 
   function handleFileChange(tipo: VehiculoDocTipo, e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -149,10 +158,75 @@ export function VehiculoDocumentosSection({ entidad, id }: Props) {
     )
   }
 
-  const porTipo = TIPOS.map(t => ({
-    ...t,
-    docs: docs.filter(d => d.tipo === t.key),
-  }))
+  // Render de un doc (vigente o archivado). Para archivados muestra un badge
+  // gris "Archivado" en vez del rojo "Vencido".
+  function renderDocLi(doc: VehiculoDocumento, archivado: boolean, venceObligatorio?: boolean) {
+    return (
+      <li
+        key={doc.id}
+        className={`flex items-center gap-2 bg-white border border-gris-mid rounded px-2 py-1.5 flex-wrap ${archivado ? 'opacity-60' : ''}`}
+      >
+        <span className="text-base">{doc.mime_type === 'application/pdf' ? '📕' : '🖼'}</span>
+        <div className="flex-1 min-w-0">
+          <div className="text-xs font-semibold text-carbon truncate" title={doc.nombre_archivo}>
+            {doc.nombre_archivo}
+          </div>
+          <div className="text-[10px] text-gris-dark flex items-center gap-1.5 flex-wrap">
+            <span>{fmtSize(doc.size_bytes)} · {fmtFecha(doc.created_at)}</span>
+            {doc.vence_el && (
+              <>
+                <span>·</span>
+                <span>vence {fmtFecha(doc.vence_el)}</span>
+              </>
+            )}
+            {archivado ? (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide bg-gris text-gris-dark">
+                Archivado
+              </span>
+            ) : badgeVencimiento(doc.vence_el)}
+          </div>
+        </div>
+        <button
+          onClick={() => handleVer(doc)}
+          className="text-[11px] font-bold px-2 py-1 rounded bg-azul-light text-azul hover:bg-azul hover:text-white transition-colors"
+          title="Ver / descargar"
+        >
+          👁
+        </button>
+        {puedeEditar && (venceObligatorio || doc.vence_el) && (
+          <button
+            onClick={() => handleEditarVence(doc)}
+            className="text-[11px] font-bold px-2 py-1 rounded bg-naranja-light text-naranja-dark hover:bg-naranja hover:text-white transition-colors"
+            title="Editar fecha de vencimiento"
+          >
+            📅
+          </button>
+        )}
+        {puedeEliminar && (
+          <button
+            onClick={() => handleBorrar(doc)}
+            className="text-[11px] font-bold px-2 py-1 rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors"
+            title="Eliminar"
+          >
+            ✕
+          </button>
+        )}
+      </li>
+    )
+  }
+
+  // Para tipos renovables (los que vencen, ej. RTO/póliza): el doc más nuevo es
+  // el VIGENTE y los anteriores quedan "archivados" (no muestran 'vencido', van
+  // a un desplegable). Para el resto se muestran todos como hasta ahora.
+  const porTipo = TIPOS.map(t => {
+    const docsTipo = docs.filter(d => d.tipo === t.key)
+    if (t.venceObligatorio && docsTipo.length > 1) {
+      const ord = [...docsTipo].sort((a, b) =>
+        (b.created_at ?? '').localeCompare(a.created_at ?? '') || (b.id - a.id))
+      return { ...t, vigentes: ord.slice(0, 1), archivados: ord.slice(1) }
+    }
+    return { ...t, vigentes: docsTipo, archivados: [] as VehiculoDocumento[] }
+  })
 
   return (
     <div className="flex flex-col gap-3">
@@ -167,7 +241,7 @@ export function VehiculoDocumentosSection({ entidad, id }: Props) {
         <div className="text-xs text-gris-dark italic">Cargando…</div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {porTipo.map(({ key, label, icon, venceObligatorio, docs: docsTipo }) => (
+          {porTipo.map(({ key, label, icon, venceObligatorio, vigentes, archivados }) => (
             <div
               key={key}
               className="border border-gris-mid rounded-lg p-3 flex flex-col gap-2 bg-gris/20"
@@ -175,9 +249,9 @@ export function VehiculoDocumentosSection({ entidad, id }: Props) {
               <div className="font-bold text-sm text-carbon flex items-center gap-1.5">
                 <span>{icon}</span>
                 <span>{label}</span>
-                {docsTipo.length > 0 && (
+                {(vigentes.length + archivados.length) > 0 && (
                   <span className="text-[10px] font-bold bg-azul-light text-azul px-1.5 py-0.5 rounded-full">
-                    {docsTipo.length}
+                    {vigentes.length + archivados.length}
                   </span>
                 )}
               </div>
@@ -210,59 +284,29 @@ export function VehiculoDocumentosSection({ entidad, id }: Props) {
                 </div>
               )}
 
-              {docsTipo.length === 0 ? (
+              {vigentes.length === 0 && archivados.length === 0 ? (
                 <div className="text-[11px] text-gris-dark italic">Sin documentos.</div>
               ) : (
-                <ul className="flex flex-col gap-1.5">
-                  {docsTipo.map(doc => (
-                    <li
-                      key={doc.id}
-                      className="flex items-center gap-2 bg-white border border-gris-mid rounded px-2 py-1.5 flex-wrap"
-                    >
-                      <span className="text-base">{doc.mime_type === 'application/pdf' ? '📕' : '🖼'}</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs font-semibold text-carbon truncate" title={doc.nombre_archivo}>
-                          {doc.nombre_archivo}
-                        </div>
-                        <div className="text-[10px] text-gris-dark flex items-center gap-1.5 flex-wrap">
-                          <span>{fmtSize(doc.size_bytes)} · {fmtFecha(doc.created_at)}</span>
-                          {doc.vence_el && (
-                            <>
-                              <span>·</span>
-                              <span>vence {fmtFecha(doc.vence_el)}</span>
-                            </>
-                          )}
-                          {badgeVencimiento(doc.vence_el)}
-                        </div>
-                      </div>
+                <>
+                  <ul className="flex flex-col gap-1.5">
+                    {vigentes.map(doc => renderDocLi(doc, false, venceObligatorio))}
+                  </ul>
+                  {archivados.length > 0 && (
+                    <div className="mt-0.5">
                       <button
-                        onClick={() => handleVer(doc)}
-                        className="text-[11px] font-bold px-2 py-1 rounded bg-azul-light text-azul hover:bg-azul hover:text-white transition-colors"
-                        title="Ver / descargar"
+                        onClick={() => toggleAnteriores(key)}
+                        className="text-[11px] font-semibold text-gris-dark hover:text-azul transition-colors"
                       >
-                        👁
+                        {verAnteriores.has(key) ? '▼ Ocultar' : '▸ Ver'} anteriores ({archivados.length})
                       </button>
-                      {puedeEditar && (venceObligatorio || doc.vence_el) && (
-                        <button
-                          onClick={() => handleEditarVence(doc)}
-                          className="text-[11px] font-bold px-2 py-1 rounded bg-naranja-light text-naranja-dark hover:bg-naranja hover:text-white transition-colors"
-                          title="Editar fecha de vencimiento"
-                        >
-                          📅
-                        </button>
+                      {verAnteriores.has(key) && (
+                        <ul className="flex flex-col gap-1.5 mt-1.5">
+                          {archivados.map(doc => renderDocLi(doc, true, venceObligatorio))}
+                        </ul>
                       )}
-                      {puedeEliminar && (
-                        <button
-                          onClick={() => handleBorrar(doc)}
-                          className="text-[11px] font-bold px-2 py-1 rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors"
-                          title="Eliminar"
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </li>
-                  ))}
-                </ul>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           ))}
