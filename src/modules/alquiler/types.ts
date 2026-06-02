@@ -63,6 +63,31 @@ export interface Parte {
   obs:            string | null
 }
 
+// Remito diario por máquina/día (Fase 2). 1:1 con el parte.
+// El backend devuelve un snapshot desnormalizado (nombres de obra/máquina,
+// horarios, etc.) para que el remito sea autocontenido al imprimirse.
+export interface RemitoAlquiler {
+  id:                     number
+  numero:                 string        // 'RA-0001'
+  parte_id:               number
+  obra_id:                number | null
+  maquina_id:             number | null
+  fecha_trabajo:          string        // 'YYYY-MM-DD'
+  obra_nombre:            string | null
+  cliente:                string | null
+  ubicacion:              string | null
+  maquina_nombre:         string | null
+  maquina_tipo:           string | null // 'hidrogrua' | 'retropala' | ... (string crudo del enum)
+  maquina_identificacion: string | null
+  manana_entrada:         string | null // 'HH:MM:SS' (columna SQL time)
+  manana_salida:          string | null
+  tarde_entrada:          string | null
+  tarde_salida:           string | null
+  horas:                  number
+  detalle:                string | null
+  fecha_emision:          string        // 'YYYY-MM-DD'
+}
+
 // ── Labels legibles ──
 export const MAQUINA_TIPO_LABEL: Record<MaquinaTipo, string> = {
   hidrogrua:       'Hidrogrúa',

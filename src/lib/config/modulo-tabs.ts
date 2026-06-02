@@ -72,5 +72,6 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
     { key: 'maquinas', label: 'Máquinas', icon: '🚜', meta: 'Flota de maquinaria' },
     { key: 'obras',    label: 'Obras',    icon: '🏗', meta: 'Obras de alquiler y asignaciones' },
     { key: 'partes',   label: 'Partes',   icon: '📝', meta: 'Carga de horas por día' },
+    { key: 'remitos',  label: 'Remitos',  icon: '🧾', meta: 'Remitos diarios por máquina' },
   ],
 }

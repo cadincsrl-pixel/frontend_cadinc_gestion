@@ -8,6 +8,7 @@ import type {
   ObraAlquilerDetalle,
   ObraMaquina,
   Parte,
+  RemitoAlquiler,
 } from '../types'
 
 // ── Query keys (constantes, como el resto del proyecto) ──
@@ -209,5 +210,50 @@ export function useDeleteParte() {
   return useMutation({
     mutationFn: (id: number) => apiDelete(`/api/alquiler/partes/${id}`),
     onSuccess:  () => qc.invalidateQueries({ queryKey: ['alquiler', 'partes'] }),
+  })
+}
+
+// ─────────────────────────── Remitos ───────────────────────────
+export interface RemitosFiltro {
+  obra_id?:    number
+  maquina_id?: number
+  desde?:      string
+  hasta?:      string
+}
+export const remitosKey = (f: RemitosFiltro) => ['alquiler', 'remitos', f] as const
+
+function remitosQueryString(f: RemitosFiltro): string {
+  const sp = new URLSearchParams()
+  if (f.obra_id    != null) sp.set('obra_id', String(f.obra_id))
+  if (f.maquina_id != null) sp.set('maquina_id', String(f.maquina_id))
+  if (f.desde)              sp.set('desde', f.desde)
+  if (f.hasta)              sp.set('hasta', f.hasta)
+  const qs = sp.toString()
+  return qs ? `?${qs}` : ''
+}
+
+export function useRemitos(f: RemitosFiltro, enabled = true) {
+  return useQuery({
+    queryKey: remitosKey(f),
+    queryFn:  () => apiGet<RemitoAlquiler[]>(`/api/alquiler/remitos${remitosQueryString(f)}`),
+    enabled,
+  })
+}
+
+// Emite o REFRESCA el remito de un parte (idempotente: conserva RA-NNNN).
+export function useEmitirRemito() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (parteId: number) =>
+      apiPost<RemitoAlquiler>(`/api/alquiler/partes/${parteId}/remito`, {}),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['alquiler', 'remitos'] }),
+  })
+}
+
+export function useDeleteRemito() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiDelete(`/api/alquiler/remitos/${id}`),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['alquiler', 'remitos'] }),
   })
 }

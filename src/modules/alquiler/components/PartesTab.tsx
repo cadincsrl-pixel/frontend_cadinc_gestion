@@ -13,9 +13,11 @@ import {
   usePartes,
   useCreateParte,
   useUpdateParte,
+  useEmitirRemito,
 } from '../hooks/useAlquiler'
 import { calcularHorasParte, fmtHoras } from '../utils/horas'
-import { MAQUINA_TIPO_LABEL, type ObraMaquina, type Parte } from '../types'
+import { MAQUINA_TIPO_LABEL, type ObraMaquina, type Parte, type RemitoAlquiler } from '../types'
+import { RemitoAlquilerModal } from './RemitoAlquilerModal'
 
 // Normaliza HH:MM:SS → HH:MM para los inputs type="time".
 function toHHMM(t: string | null | undefined): string {
@@ -34,6 +36,9 @@ export function PartesTab() {
 
   const [obraId, setObraId] = useState<number | null>(null)
   const [fecha, setFecha] = useState<string>(() => toISO(new Date()))
+
+  // Remito recién emitido → se muestra en un único modal a nivel del tab.
+  const [remitoModal, setRemitoModal] = useState<RemitoAlquiler | null>(null)
 
   // Default a la primera obra activa cuando cargan las obras. Se keya por
   // cantidad de obras (primitivo) y solo dispara mientras no haya selección.
@@ -116,9 +121,17 @@ export function PartesTab() {
           maquinas={maquinas}
           partePorMaquina={partePorMaquina}
           puedeCargar={puedeCargar}
+          puedeCrear={puedeCrear}
           onToast={toast}
+          onRemito={setRemitoModal}
         />
       )}
+
+      <RemitoAlquilerModal
+        open={remitoModal != null}
+        onClose={() => setRemitoModal(null)}
+        remito={remitoModal}
+      />
     </div>
   )
 }
@@ -130,14 +143,18 @@ function PartesDelDia({
   maquinas,
   partePorMaquina,
   puedeCargar,
+  puedeCrear,
   onToast,
+  onRemito,
 }: {
   obraId: number
   fecha: string
   maquinas: ObraMaquina[]
   partePorMaquina: Map<number, Parte>
   puedeCargar: boolean
+  puedeCrear: boolean
   onToast: (msg: string, type?: 'ok' | 'err' | 'warn') => void
+  onRemito: (remito: RemitoAlquiler) => void
 }) {
   // Total del día (suma en vivo de los totales por máquina).
   const [totales, setTotales] = useState<Record<number, number>>({})
@@ -160,8 +177,10 @@ function PartesDelDia({
           obraMaquina={om}
           parteExistente={partePorMaquina.get(om.maquina_id) ?? null}
           puedeCargar={puedeCargar}
+          puedeCrear={puedeCrear}
           onToast={onToast}
           onTotal={reportarTotal}
+          onRemito={onRemito}
         />
       ))}
 
@@ -181,19 +200,24 @@ function MaquinaParteBlock({
   obraMaquina,
   parteExistente,
   puedeCargar,
+  puedeCrear,
   onToast,
   onTotal,
+  onRemito,
 }: {
   obraId: number
   fecha: string
   obraMaquina: ObraMaquina
   parteExistente: Parte | null
   puedeCargar: boolean
+  puedeCrear: boolean
   onToast: (msg: string, type?: 'ok' | 'err' | 'warn') => void
   onTotal: (maquinaId: number, horas: number) => void
+  onRemito: (remito: RemitoAlquiler) => void
 }) {
   const { mutate: create, isPending: creating } = useCreateParte()
   const { mutate: update, isPending: updating } = useUpdateParte()
+  const { mutate: emitirRemito, isPending: emitiendo } = useEmitirRemito()
 
   // Estado local de los 4 horarios + detalle (precargado del parte existente).
   const [mEnt, setMEnt] = useState('')
@@ -255,6 +279,15 @@ function MaquinaParteBlock({
     }
   }
 
+  // Emite (o refresca) el remito del parte ya guardado y abre el modal.
+  function handleRemito() {
+    if (!parteExistente) return
+    emitirRemito(parteExistente.id, {
+      onSuccess: (remito) => onRemito(remito),
+      onError: (err: unknown) => onToast((err as { message?: string })?.message || 'Error al emitir el remito', 'err'),
+    })
+  }
+
   return (
     <div className="bg-white rounded-card shadow-card p-3 sm:p-4 flex flex-col gap-3">
       {/* Cabecera de la máquina */}
@@ -306,6 +339,22 @@ function MaquinaParteBlock({
           onClick={handleGuardar}
         >
           ✓ {parteExistente ? 'Actualizar' : 'Guardar'}
+        </Button>
+        <Button
+          variant="secondary"
+          size="md"
+          loading={emitiendo}
+          disabled={!parteExistente || !puedeCrear}
+          onClick={handleRemito}
+          title={
+            !parteExistente
+              ? 'Guardá el parte antes de emitir el remito'
+              : !puedeCrear
+                ? 'No tenés permiso para emitir remitos'
+                : 'Emitir / reimprimir remito'
+          }
+        >
+          🧾 Remito
         </Button>
       </div>
     </div>
