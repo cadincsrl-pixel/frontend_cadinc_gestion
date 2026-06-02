@@ -7,12 +7,14 @@ import { MaquinasTab } from './MaquinasTab'
 import { ObrasTab } from './ObrasTab'
 import { PartesTab } from './PartesTab'
 import { RemitosTab } from './RemitosTab'
+import { ReportesTab } from './ReportesTab'
 
 const TABS = [
   { key: 'maquinas', icon: '🚜', label: 'Máquinas', sub: 'Flota de maquinaria para alquiler' },
   { key: 'obras',    icon: '🏗', label: 'Obras',    sub: 'Obras de alquiler y máquinas asignadas' },
   { key: 'partes',   icon: '📝', label: 'Partes',   sub: 'Carga de horas por día y por máquina' },
   { key: 'remitos',  icon: '🧾', label: 'Remitos',  sub: 'Remitos diarios para imprimir y enviar' },
+  { key: 'reportes', icon: '📊', label: 'Reportes', sub: 'Horas por máquina y resumen por obra' },
 ]
 
 export function AlquilerPage() {
@@ -48,6 +50,7 @@ export function AlquilerPage() {
         {tab === 'obras'    && <ObrasTab />}
         {tab === 'partes'   && <PartesTab />}
         {tab === 'remitos'  && <RemitosTab />}
+        {tab === 'reportes' && <ReportesTab />}
       </div>
     </div>
   )

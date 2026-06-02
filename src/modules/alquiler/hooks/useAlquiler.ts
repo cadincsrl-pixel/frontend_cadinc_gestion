@@ -9,6 +9,7 @@ import type {
   ObraMaquina,
   Parte,
   RemitoAlquiler,
+  ReporteHoraMaquina,
 } from '../types'
 
 // ── Query keys (constantes, como el resto del proyecto) ──
@@ -255,5 +256,31 @@ export function useDeleteRemito() {
   return useMutation({
     mutationFn: (id: number) => apiDelete(`/api/alquiler/remitos/${id}`),
     onSuccess:  () => qc.invalidateQueries({ queryKey: ['alquiler', 'remitos'] }),
+  })
+}
+
+// ─────────────────────────── Reportes ───────────────────────────
+export interface ReporteHorasFiltro {
+  obra_id?: number
+  desde?:   string
+  hasta?:   string
+}
+export const reporteHorasKey = (f: ReporteHorasFiltro) =>
+  ['alquiler', 'reportes', 'horas', f] as const
+
+function reporteHorasQueryString(f: ReporteHorasFiltro): string {
+  const sp = new URLSearchParams()
+  if (f.obra_id != null) sp.set('obra_id', String(f.obra_id))
+  if (f.desde)           sp.set('desde', f.desde)
+  if (f.hasta)           sp.set('hasta', f.hasta)
+  const qs = sp.toString()
+  return qs ? `?${qs}` : ''
+}
+
+export function useReporteHoras(f: ReporteHorasFiltro, enabled = true) {
+  return useQuery({
+    queryKey: reporteHorasKey(f),
+    queryFn:  () => apiGet<ReporteHoraMaquina[]>(`/api/alquiler/reportes/horas${reporteHorasQueryString(f)}`),
+    enabled,
   })
 }

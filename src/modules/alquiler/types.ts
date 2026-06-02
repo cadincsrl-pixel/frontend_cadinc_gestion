@@ -88,6 +88,17 @@ export interface RemitoAlquiler {
   fecha_emision:          string        // 'YYYY-MM-DD'
 }
 
+// Fila del reporte "Horas por máquina" (Fase 3). La devuelve el endpoint
+// GET /api/alquiler/reportes/horas, ya ordenada por total_horas desc y
+// scopeada por el backend.
+export interface ReporteHoraMaquina {
+  maquina_id:     number
+  maquina_nombre: string | null
+  maquina_tipo:   string | null // 'retropala' | 'hidrogrua' | ... (string crudo del enum)
+  total_horas:    number
+  dias:           number        // cantidad de días con carga
+}
+
 // ── Labels legibles ──
 export const MAQUINA_TIPO_LABEL: Record<MaquinaTipo, string> = {
   hidrogrua:       'Hidrogrúa',
