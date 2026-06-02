@@ -138,6 +138,16 @@ function matchCategoria(s: SolicitudCompra, cat: CategoriaSol): boolean {
   }
 }
 
+// Fecha del envío más reciente de un pedido = max(fecha_envio) de sus ítems
+// enviados. Se usa para ordenar la pestaña "Enviadas" por lo último que se mandó.
+function ultimoEnvio(s: SolicitudCompra): string {
+  let max = ''
+  for (const it of s.items ?? []) {
+    if (it.estado === 'enviado' && it.fecha_envio && it.fecha_envio > max) max = it.fecha_envio
+  }
+  return max
+}
+
 function isCategoriaValida(s: string | null): s is CategoriaSol {
   return s !== null && (CATEGORIAS_ALL as readonly string[]).includes(s)
 }
@@ -278,6 +288,13 @@ export function SolicitudesTab() {
   const filtered = (solicitudes as SolicitudCompra[]).filter(s => matchCategoria(s, categoriaSel))
 
   const sorted = [...filtered].sort((a, b) => {
+    // En "Enviadas" ordenamos por el envío MÁS RECIENTE del pedido (la última
+    // fecha en que se marcó algún ítem como enviado), de más nuevo a más viejo.
+    if (categoriaSel === 'enviadas') {
+      const ea = ultimoEnvio(a), eb = ultimoEnvio(b)
+      if (ea !== eb) return eb.localeCompare(ea)
+      return b.id - a.id   // mismo día → el pedido más nuevo primero
+    }
     if (a.prioridad !== b.prioridad) return a.prioridad === 'urgente' ? -1 : 1
     return b.fecha.localeCompare(a.fecha)
   })
