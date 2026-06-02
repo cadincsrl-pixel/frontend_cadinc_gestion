@@ -29,8 +29,14 @@ import {
 // ── Form tipado (sin useForm<any>) ──
 const schema = z.object({
   nombre:         z.string().trim().min(1, 'El nombre es requerido'),
-  tipo:           z.enum(['hidrogrua', 'retropala', 'minicargadora', 'trailer_canasta', 'otro']),
+  tipo:           z.enum([
+    'cargadora_frontal', 'retroexcavadora', 'retropala', 'excavadora',
+    'miniexcavadora', 'minicargadora', 'motoniveladora', 'topadora',
+    'compactador', 'pavimentadora', 'manipulador_telescopico', 'hidrogrua',
+    'grua', 'camion_volcador', 'trailer_canasta', 'otro',
+  ]),
   identificacion: z.string().trim().optional(),
+  seguro:         z.string().trim().optional(),
   estado:         z.enum(['activa', 'mantenimiento', 'inactiva']),
   obs:            z.string().trim().optional(),
 })
@@ -38,8 +44,9 @@ type FormData = z.infer<typeof schema>
 
 const DEFAULTS: FormData = {
   nombre:         '',
-  tipo:           'hidrogrua',
+  tipo:           'cargadora_frontal',
   identificacion: '',
+  seguro:         '',
   estado:         'activa',
   obs:            '',
 }
@@ -90,6 +97,7 @@ export function MaquinasTab() {
       nombre:         m.nombre,
       tipo:           m.tipo,
       identificacion: m.identificacion ?? '',
+      seguro:         m.seguro ?? '',
       estado:         m.estado,
       obs:            m.obs ?? '',
     })
@@ -101,6 +109,7 @@ export function MaquinasTab() {
       nombre:         data.nombre.trim(),
       tipo:           data.tipo as MaquinaTipo,
       identificacion: data.identificacion?.trim() || null,
+      seguro:         data.seguro?.trim() || null,
       estado:         data.estado as MaquinaEstado,
       obs:            data.obs?.trim() || null,
     }
@@ -263,6 +272,11 @@ export function MaquinasTab() {
             label="Identificación (patente / nº interno)"
             placeholder="Opcional"
             {...register('identificacion')}
+          />
+          <Input
+            label="Seguro"
+            placeholder="Compañía / nº de póliza (opcional)"
+            {...register('seguro')}
           />
           <Input label="Observaciones" placeholder="Notas adicionales" {...register('obs')} />
         </div>

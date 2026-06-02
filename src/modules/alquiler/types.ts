@@ -4,9 +4,20 @@
 // comparten con otros módulos, se migran a domain.types.ts.
 
 export type MaquinaTipo =
-  | 'hidrogrua'
+  | 'cargadora_frontal'
+  | 'retroexcavadora'
   | 'retropala'
+  | 'excavadora'
+  | 'miniexcavadora'
   | 'minicargadora'
+  | 'motoniveladora'
+  | 'topadora'
+  | 'compactador'
+  | 'pavimentadora'
+  | 'manipulador_telescopico'
+  | 'hidrogrua'
+  | 'grua'
+  | 'camion_volcador'
   | 'trailer_canasta'
   | 'otro'
 
@@ -17,6 +28,7 @@ export interface Maquina {
   nombre:         string
   tipo:           MaquinaTipo
   identificacion: string | null
+  seguro:         string | null
   estado:         MaquinaEstado
   obs:            string | null
 }
@@ -101,20 +113,43 @@ export interface ReporteHoraMaquina {
 
 // ── Labels legibles ──
 export const MAQUINA_TIPO_LABEL: Record<MaquinaTipo, string> = {
-  hidrogrua:       'Hidrogrúa',
-  retropala:       'Retropala',
-  minicargadora:   'Minicargadora',
-  trailer_canasta: 'Trailer con canasta',
-  otro:            'Otro',
+  cargadora_frontal:       'Cargadora frontal',
+  retroexcavadora:         'Retroexcavadora',
+  retropala:               'Retropala',
+  excavadora:              'Excavadora',
+  miniexcavadora:          'Miniexcavadora',
+  minicargadora:           'Minicargadora',
+  motoniveladora:          'Motoniveladora',
+  topadora:                'Topadora (Bulldozer)',
+  compactador:             'Compactador / Rodillo',
+  pavimentadora:           'Pavimentadora',
+  manipulador_telescopico: 'Manipulador telescópico',
+  hidrogrua:               'Hidrogrúa',
+  grua:                    'Grúa',
+  camion_volcador:         'Camión volcador',
+  trailer_canasta:         'Trailer con canasta',
+  otro:                    'Otro',
 }
 
+// Orden del dropdown: máquinas viales más comunes primero, "Otro" al final.
 export const MAQUINA_TIPO_OPTIONS: { value: MaquinaTipo; label: string }[] = [
-  { value: 'hidrogrua',       label: MAQUINA_TIPO_LABEL.hidrogrua },
-  { value: 'retropala',       label: MAQUINA_TIPO_LABEL.retropala },
-  { value: 'minicargadora',   label: MAQUINA_TIPO_LABEL.minicargadora },
-  { value: 'trailer_canasta', label: MAQUINA_TIPO_LABEL.trailer_canasta },
-  { value: 'otro',            label: MAQUINA_TIPO_LABEL.otro },
-]
+  'cargadora_frontal',
+  'retroexcavadora',
+  'retropala',
+  'excavadora',
+  'miniexcavadora',
+  'minicargadora',
+  'motoniveladora',
+  'topadora',
+  'compactador',
+  'pavimentadora',
+  'manipulador_telescopico',
+  'hidrogrua',
+  'grua',
+  'camion_volcador',
+  'trailer_canasta',
+  'otro',
+].map(t => ({ value: t as MaquinaTipo, label: MAQUINA_TIPO_LABEL[t as MaquinaTipo] }))
 
 export const MAQUINA_ESTADO_LABEL: Record<MaquinaEstado, string> = {
   activa:        'Activa',
