@@ -29,6 +29,12 @@ export interface Maquina {
   tipo:           MaquinaTipo
   identificacion: string | null
   seguro:         string | null
+  // Vencimiento del seguro (yyyy-mm-dd) — se setea por el PATCH/POST normal.
+  seguro_vence:   string | null
+  // Póliza adjunta (storage path + nombre original) — se setea por endpoints
+  // dedicados de upload/registro, no por el PATCH normal.
+  seguro_poliza_path:   string | null
+  seguro_poliza_nombre: string | null
   estado:         MaquinaEstado
   obs:            string | null
 }

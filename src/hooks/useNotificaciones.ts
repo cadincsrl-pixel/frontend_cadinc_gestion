@@ -61,6 +61,17 @@ export interface SolicitudPorComprarItem {
   nPendientes: number
 }
 
+// Máquina de alquiler con seguro vencido o por vencer. El backend ya devuelve
+// las filas scopeadas y ordenadas por seguro_vence asc.
+export interface SeguroMaquinaItem {
+  maquina_id:     number
+  nombre:         string
+  identificacion: string | null
+  seguro_vence:   string  // ISO yyyy-mm-dd
+  // Días de vencimiento: <0 = ya venció hace tanto, 0 = vence hoy, >0 = vence en N días.
+  diasParaVencer: number
+}
+
 // Gasto de logística pendiente de aprobación.
 export interface GastoPendienteItem {
   id:              number
@@ -92,6 +103,10 @@ interface NotificacionesResult {
   serviciosProximos:      ServiceCamionItem[]
   // Gastos de logística esperando aprobación (cualquier antigüedad).
   gastosPendientes:    GastoPendienteItem[]
+  // Seguros de máquinas (alquiler) ya vencidos.
+  segurosVencidos:     SeguroMaquinaItem[]
+  // Seguros de máquinas por vencer en los próximos 30 días.
+  segurosPorVencer:    SeguroMaquinaItem[]
   // Solicitudes de compra con ítems por comprar (para compras/depósito).
   solicitudesPorComprar: SolicitudPorComprarItem[]
   // total de notificaciones "urgentes" (badge rojo).
@@ -143,6 +158,15 @@ interface DocChoferVencimientoRow {
   vence_el: string
 }
 
+// Shape crudo del endpoint de notificaciones de seguros de alquiler.
+interface SeguroMaquinaRow {
+  id:             number
+  nombre:         string
+  identificacion: string | null
+  seguro:         string | null
+  seguro_vence:   string
+}
+
 /**
  * Calcula on-the-fly notificaciones a partir de:
  *  - cumpleaños del personal (próximos 7 días).
@@ -158,6 +182,7 @@ export function useNotificaciones(): NotificacionesResult {
   const hasModulo = useSessionStore(s => s.hasModulo)
   const tieneTarja     = hasModulo('tarja')
   const tieneLogistica = hasModulo('logistica')
+  const tieneAlquiler  = hasModulo('alquiler')
   // Solicitudes "por comprar": solo para quien resuelve ítems (compras/depósito).
   const tieneCertificaciones = hasModulo('certificaciones')
   const { resolverItems } = usePermisos('certificaciones')
@@ -181,6 +206,13 @@ export function useNotificaciones(): NotificacionesResult {
     queryKey: ['logistica', 'notificaciones', 'camion-services'],
     queryFn:  () => apiGet<ServiceCamionItem[]>('/api/logistica/notificaciones/camion-services'),
     enabled:  tieneLogistica,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  })
+  const { data: segurosNotif = [] } = useQuery({
+    queryKey: ['alquiler', 'notificaciones', 'seguros'],
+    queryFn:  () => apiGet<SeguroMaquinaRow[]>('/api/alquiler/notificaciones/seguros'),
+    enabled:  tieneAlquiler,
     retry: false,
     staleTime: 5 * 60 * 1000,
   })
@@ -288,6 +320,28 @@ export function useNotificaciones(): NotificacionesResult {
     papelesChoferVencidos.sort((a, b) => b.diasParaVencer - a.diasParaVencer)
     papelesChoferPorVencer.sort((a, b) => a.diasParaVencer - b.diasParaVencer)
 
+    // ── Seguros de máquinas (alquiler) ─────────────────────────
+    const segurosVencidos:  SeguroMaquinaItem[] = []
+    const segurosPorVencer: SeguroMaquinaItem[] = []
+    for (const row of segurosNotif as SeguroMaquinaRow[]) {
+      if (!row.seguro_vence) continue
+      const { dias, bucket } = clasificar(row.seguro_vence)
+      if (!bucket) continue
+      const item: SeguroMaquinaItem = {
+        maquina_id:     row.id,
+        nombre:         row.nombre,
+        identificacion: row.identificacion,
+        seguro_vence:   row.seguro_vence,
+        diasParaVencer: dias,
+      }
+      if (bucket === 'vencido') segurosVencidos.push(item)
+      else segurosPorVencer.push(item)
+    }
+    // Mismo criterio que los papeles de vehículos: vencidos por más vencido
+    // primero (más negativo), por-vencer por más próximo primero.
+    segurosVencidos.sort((a, b) => a.diasParaVencer - b.diasParaVencer)
+    segurosPorVencer.sort((a, b) => a.diasParaVencer - b.diasParaVencer)
+
     // ── Services de camiones ──────────────────────────────────
     // El backend ya filtra por estado IN ('proximo','vencido') y ordena
     // por km_restantes asc; acá solo separamos en dos buckets.
@@ -331,6 +385,8 @@ export function useNotificaciones(): NotificacionesResult {
       serviciosVencidos,
       serviciosProximos,
       gastosPendientes,
+      segurosVencidos,
+      segurosPorVencer,
       solicitudesPorComprar,
       totalUrgente:
         hoy.length +
@@ -338,9 +394,10 @@ export function useNotificaciones(): NotificacionesResult {
         papelesChoferVencidos.length +
         serviciosVencidos.length +
         gastosPendientes.length +
+        segurosVencidos.length +
         solicitudesPorComprar.length,
     }
-  }, [personal, docsVenc, docsChofer, servicesNotif, gastosPend, solicitudes, tieneTarja])
+  }, [personal, docsVenc, docsChofer, servicesNotif, gastosPend, segurosNotif, solicitudes, tieneTarja])
 }
 
 // Helper para mostrar "hoy", "mañana", "en 3 días" en la lista de próximos.

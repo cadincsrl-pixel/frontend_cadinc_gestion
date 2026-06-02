@@ -12,6 +12,7 @@ import {
   type DocChoferVencimientoItem,
   type ServiceCamionItem,
   type GastoPendienteItem,
+  type SeguroMaquinaItem,
   type SolicitudPorComprarItem,
 } from '@/hooks/useNotificaciones'
 import { usePermisos } from '@/hooks/usePermisos'
@@ -95,6 +96,7 @@ export function NotificationsBell() {
   const showCumple    = (modulo === null || modulo === 'tarja') && verPii
   const showLogistica =  modulo === null || modulo === 'logistica'
   const showCompras   =  modulo === null || modulo === 'certificaciones'
+  const showAlquiler  =  modulo === null || modulo === 'alquiler'
   // Pedidos por comprar visibles en la campana (scopeados al módulo de compras).
   const solicitudesPorComprar = showCompras ? solicitudesAll : []
 
@@ -107,6 +109,8 @@ export function NotificationsBell() {
   const serviciosVencidos      = showLogistica ? notifs.serviciosVencidos      : []
   const serviciosProximos      = showLogistica ? notifs.serviciosProximos      : []
   const gastosPendientes       = showLogistica ? notifs.gastosPendientes       : []
+  const segurosVencidos        = showAlquiler  ? notifs.segurosVencidos        : []
+  const segurosPorVencer       = showAlquiler  ? notifs.segurosPorVencer       : []
 
   const [abierto, setAbierto] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -123,10 +127,11 @@ export function NotificationsBell() {
 
   const totalUrgente =
     hoy.length + papelesVencidos.length + papelesChoferVencidos.length +
-    serviciosVencidos.length + gastosPendientes.length + solicitudesPorComprar.length
+    serviciosVencidos.length + gastosPendientes.length + segurosVencidos.length +
+    solicitudesPorComprar.length
   const totalNoUrgentes =
     proximos.length + papelesPorVencer.length + papelesChoferPorVencer.length +
-    serviciosProximos.length
+    serviciosProximos.length + segurosPorVencer.length
   const sinNotifs = totalUrgente === 0 && totalNoUrgentes === 0
 
   function abrirPersonal(leg: string) {
@@ -166,6 +171,13 @@ export function NotificationsBell() {
   function abrirSolicitudes() {
     setAbierto(false)
     router.push('/certificaciones?tab=solicitudes')
+  }
+
+  function abrirSeguroMaquina() {
+    setAbierto(false)
+    // El tab Máquinas no tiene deep-link al modal de una máquina puntual.
+    // Llevamos al tab; el user encuentra la máquina por nombre/identificación.
+    router.push('/alquiler?tab=maquinas')
   }
 
   return (
@@ -272,6 +284,15 @@ export function NotificationsBell() {
               </Section>
             )}
 
+            {/* Seguros de máquinas vencidos */}
+            {segurosVencidos.length > 0 && (
+              <Section titulo="🚜 Seguros de máquinas vencidos" tono="rojo">
+                {segurosVencidos.map(s => (
+                  <SeguroMaquinaRow key={s.maquina_id} item={s} onClick={abrirSeguroMaquina} />
+                ))}
+              </Section>
+            )}
+
             {/* Cumpleaños hoy */}
             {hoy.length > 0 && (
               <Section titulo="🎂 Cumplen hoy" tono="rojo">
@@ -308,6 +329,15 @@ export function NotificationsBell() {
                     item={s}
                     onClick={() => abrirCamionService(s.camion_id)}
                   />
+                ))}
+              </Section>
+            )}
+
+            {/* Seguros de máquinas por vencer */}
+            {segurosPorVencer.length > 0 && (
+              <Section titulo="🚜 Seguros de máquinas por vencer (30 días)" tono="amarillo">
+                {segurosPorVencer.map(s => (
+                  <SeguroMaquinaRow key={s.maquina_id} item={s} onClick={abrirSeguroMaquina} />
                 ))}
               </Section>
             )}
@@ -373,6 +403,26 @@ function DocChoferRow({ doc, onClick }: { doc: DocChoferVencimientoItem; onClick
       </div>
       <div className={`text-xs mt-0.5 ${vencido ? 'text-rojo font-bold' : 'text-gris-dark'}`}>
         {fmtDiasVencimiento(doc.diasParaVencer)} · {doc.vence_el.split('-').reverse().join('/')}
+      </div>
+    </button>
+  )
+}
+
+function SeguroMaquinaRow({ item, onClick }: { item: SeguroMaquinaItem; onClick: () => void }) {
+  const vencido = item.diasParaVencer < 0
+  return (
+    <button
+      onClick={onClick}
+      className="w-full text-left px-3 py-2 hover:bg-gris/40 transition-colors"
+    >
+      <div className="font-bold text-sm text-azul">
+        🚜 {item.nombre}
+        {item.identificacion && (
+          <span className="ml-2 text-xs font-semibold text-gris-dark font-mono">{item.identificacion}</span>
+        )}
+      </div>
+      <div className={`text-xs mt-0.5 ${vencido ? 'text-rojo font-bold' : 'text-gris-dark'}`}>
+        {fmtDiasVencimiento(item.diasParaVencer)} · {item.seguro_vence.split('-').reverse().join('/')}
       </div>
     </button>
   )

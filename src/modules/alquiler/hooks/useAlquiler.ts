@@ -79,6 +79,90 @@ export function useDeleteMaquina() {
   })
 }
 
+// ──────────────────── Póliza del seguro de la máquina ────────────────────
+// Mismo flujo de 2 pasos que los documentos de vehículo
+// (useVehiculoDocumentos.ts): upload-url → PUT al signed URL → registrar.
+
+// Tipos/límite permitidos por el backend. Se valida en el cliente antes de
+// subir para dar feedback inmediato (el backend revalida igual).
+const POLIZA_MIME_PERMITIDOS = [
+  'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif',
+  'application/pdf',
+] as const
+const POLIZA_MAX_BYTES = 10 * 1024 * 1024 // 10 MB
+
+// Lanza un Error con mensaje legible si el archivo no cumple. Reutilizable
+// desde el componente para validar antes de disparar la mutation.
+export function validarArchivoPoliza(file: File): void {
+  if (!POLIZA_MIME_PERMITIDOS.includes(file.type as (typeof POLIZA_MIME_PERMITIDOS)[number])) {
+    throw new Error('Tipo de archivo no permitido. Subí una imagen (JPG/PNG/WEBP/HEIC) o PDF.')
+  }
+  if (file.size > POLIZA_MAX_BYTES) {
+    throw new Error('El archivo supera los 10 MB.')
+  }
+}
+
+interface SeguroPolizaUploadUrlResponse {
+  path:       string
+  token:      string
+  signed_url: string
+}
+
+export function useUploadSeguroPoliza() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ maquinaId, file }: { maquinaId: number; file: File }) => {
+      validarArchivoPoliza(file)
+      const up = await apiPost<SeguroPolizaUploadUrlResponse>(
+        `/api/alquiler/maquinas/${maquinaId}/seguro-poliza/upload-url`,
+        {
+          nombre_archivo: file.name,
+          mime_type:      file.type,
+          size_bytes:     file.size,
+        },
+      )
+      const putRes = await fetch(up.signed_url, {
+        method: 'PUT', body: file, headers: { 'content-type': file.type },
+      })
+      if (!putRes.ok) throw new Error(`Error al subir archivo (${putRes.status})`)
+      return apiPost<Maquina>(
+        `/api/alquiler/maquinas/${maquinaId}/seguro-poliza`,
+        {
+          storage_path:   up.path,
+          nombre_archivo: file.name,
+          mime_type:      file.type,
+          size_bytes:     file.size,
+        },
+      )
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: MAQUINAS_KEY })
+      qc.invalidateQueries({ queryKey: OBRAS_KEY })
+    },
+  })
+}
+
+export function useDeleteSeguroPoliza() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ maquinaId }: { maquinaId: number }) =>
+      apiDelete<Maquina>(`/api/alquiler/maquinas/${maquinaId}/seguro-poliza`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: MAQUINAS_KEY })
+      qc.invalidateQueries({ queryKey: OBRAS_KEY })
+    },
+  })
+}
+
+// Devuelve la URL firmada para ver/descargar la póliza adjunta (abrir en
+// nueva pestaña). El backend tira 404 si la máquina no tiene póliza.
+export async function fetchSeguroPolizaSignedUrl(maquinaId: number): Promise<string> {
+  const data = await apiGet<{ url: string; nombre_archivo: string }>(
+    `/api/alquiler/maquinas/${maquinaId}/seguro-poliza`,
+  )
+  return data.url
+}
+
 // ─────────────────────────── Obras ───────────────────────────
 export function useObrasAlquiler() {
   return useQuery({
