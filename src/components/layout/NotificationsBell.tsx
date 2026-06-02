@@ -36,6 +36,7 @@ function moduloFromPath(pathname: string | null): string | null {
   if (pathname.startsWith('/caja'))            return 'caja'
   if (pathname.startsWith('/herramientas'))    return 'herramientas'
   if (pathname.startsWith('/flota'))           return 'flota'
+  if (pathname.startsWith('/alquiler'))        return 'alquiler'
   if (pathname.startsWith('/admin'))           return 'admin'
   return null
 }

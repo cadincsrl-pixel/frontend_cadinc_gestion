@@ -125,6 +125,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const enCaja             = decodedPathname.startsWith('/caja')
   const enAdmin            = decodedPathname.startsWith('/admin')
   const enFlota            = decodedPathname.startsWith('/flota')
+  const enAlquiler         = decodedPathname.startsWith('/alquiler')
 
   function navigate(href: string) {
     router.push(href)
@@ -154,6 +155,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     !enCertificaciones &&
     !enCaja &&
     !enFlota &&
+    !enAlquiler &&
     decodedPathname.startsWith('/tarja') &&
     decodedPathname !== '/tarja/archivadas'
 
@@ -178,7 +180,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         {/* ── Nav principal ── */}
         <div className="pt-3">
           <div className="px-4 py-2 text-[10px] font-bold tracking-[2.5px] uppercase text-white/35">
-            {enAdmin ? 'Administración' : enHerramientas ? 'Herramientas' : enLogistica ? 'Logística' : enCertificaciones ? 'Compras y Stock' : enCaja ? 'Caja' : enFlota ? 'Flota interna' : 'Menú'}
+            {enAdmin ? 'Administración' : enHerramientas ? 'Herramientas' : enLogistica ? 'Logística' : enCertificaciones ? 'Compras y Stock' : enCaja ? 'Caja' : enFlota ? 'Flota interna' : enAlquiler ? 'Alquiler de maquinaria' : 'Menú'}
           </div>
 
           {/* Módulos con ?tab=... — todos usan el mismo `<ModuloNav>`. */}
@@ -218,10 +220,16 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             </Suspense>
           )}
 
+          {enAlquiler && (
+            <Suspense fallback={null}>
+              <ModuloNav modulo="alquiler" basePath="/alquiler" defaultTab="maquinas" navigate={navigate} />
+            </Suspense>
+          )}
+
           {/* TARJA nav — solo si NO estamos en otros módulos.
               El filtro por tabs[] ya limita lo visible (capataz tiene
               tabs:['tarja'], capataz_supervisor tabs:['tarja','personal']). */}
-          {!enHerramientas && !enLogistica && !enCertificaciones && !enCaja && !enAdmin && !enFlota && NAV_ITEMS_TARJA
+          {!enHerramientas && !enLogistica && !enCertificaciones && !enCaja && !enAdmin && !enFlota && !enAlquiler && NAV_ITEMS_TARJA
             .filter(item => tarjaTabs.includes(item.tabKey))
             .map(item => (
             <button

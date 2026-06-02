@@ -19,6 +19,7 @@ export const MODULOS = [
   'prestamos',
   'configuracion',
   'flota',
+  'alquiler',
   'admin',
 ] as const
 
@@ -55,6 +56,7 @@ export const MODULO_INFO: Record<Modulo, ModuloInfo> = {
   prestamos:       { key: 'prestamos',       label: 'Préstamos',        descripcion: 'Adelantos y descuentos',                icono: '💸', orden: 7 },
   configuracion:   { key: 'configuracion',   label: 'Categorías y tarifas', descripcion: 'Valor hora global por categoría',   icono: '⚙️', orden: 8 },
   flota:           { key: 'flota',           label: 'Flota CADINC',     descripcion: 'Vehículos internos (autos, camionetas)', icono: '🚙', orden: 9 },
+  alquiler:        { key: 'alquiler',        label: 'Alquiler de maquinaria', descripcion: 'Máquinas, obras y partes de horas', icono: '🚜', orden: 10 },
   admin:           { key: 'admin',           label: 'Administración',   descripcion: 'Usuarios, permisos y auditoría',        icono: '⚙', orden: 0, noAsignable: true },
 }
 

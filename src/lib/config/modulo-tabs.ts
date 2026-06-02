@@ -68,4 +68,9 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
     { key: 'gastos',     label: 'Gastos',     icon: '💸', meta: 'Combustible, peajes, etc.' },
     { key: 'parametros', label: 'Parámetros', icon: '⚙️', meta: 'Tipos de servicio' },
   ],
+  alquiler: [
+    { key: 'maquinas', label: 'Máquinas', icon: '🚜', meta: 'Flota de maquinaria' },
+    { key: 'obras',    label: 'Obras',    icon: '🏗', meta: 'Obras de alquiler y asignaciones' },
+    { key: 'partes',   label: 'Partes',   icon: '📝', meta: 'Carga de horas por día' },
+  ],
 }

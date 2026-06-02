@@ -21,6 +21,7 @@ const MODULOS: Modulo[] = [
   { key: 'certificaciones', nombre: 'Compras y Stock',   descripcion: 'Solicitudes, materiales y costos',     icono: '🛒', appHref: '/certificaciones'  },
   { key: 'caja',            nombre: 'Caja',              descripcion: 'Efectivo y movimientos',               icono: '💵', appHref: '/caja'             },
   { key: 'flota',           nombre: 'Flota interna',     descripcion: 'Vehículos internos (autos, camionetas)', icono: '🚙', appHref: '/flota'           },
+  { key: 'alquiler',        nombre: 'Alquiler',          descripcion: 'Máquinas, obras y partes de horas',    icono: '🚜', appHref: '/alquiler'         },
   { key: 'admin',           nombre: 'Administración',    descripcion: 'Usuarios, permisos y auditoría',       icono: '⚙️', appHref: '/admin'            },
 ]
 
