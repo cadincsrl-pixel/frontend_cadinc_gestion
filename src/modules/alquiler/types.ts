@@ -58,6 +58,10 @@ export interface ObraMaquina {
   id:                 number
   obra_id:            number
   maquina_id:         number
+  // Maquinista = trabajador del listado de personal (legajo). Es la fuente
+  // principal de "quién opera la máquina".
+  maquinista_leg:     string | null
+  // Legacy (Fase 3): maquinista como usuario del sistema. Hoy la UI usa el leg.
   maquinista_user_id: string | null
   maquina:            Maquina
 }

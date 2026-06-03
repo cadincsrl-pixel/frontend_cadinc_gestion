@@ -219,7 +219,7 @@ export function useObraMaquinas(obraId: number | null) {
 export function useAsignarMaquina() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ obraId, dto }: { obraId: number; dto: { maquina_id: number; maquinista_user_id?: string | null } }) =>
+    mutationFn: ({ obraId, dto }: { obraId: number; dto: { maquina_id: number; maquinista_leg?: string | null } }) =>
       apiPost<ObraMaquina>(`/api/alquiler/obras/${obraId}/maquinas`, dto),
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: obraMaquinasKey(vars.obraId) })
@@ -232,8 +232,8 @@ export function useAsignarMaquina() {
 export function useUpdateMaquinista() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, maquinista_user_id }: { id: number; obraId: number; maquinista_user_id: string | null }) =>
-      apiPatch<ObraMaquina>(`/api/alquiler/obra-maquinas/${id}`, { maquinista_user_id }),
+    mutationFn: ({ id, maquinista_leg }: { id: number; obraId: number; maquinista_leg: string | null }) =>
+      apiPatch<ObraMaquina>(`/api/alquiler/obra-maquinas/${id}`, { maquinista_leg }),
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: obraMaquinasKey(vars.obraId) })
       qc.invalidateQueries({ queryKey: obraDetalleKey(vars.obraId) })

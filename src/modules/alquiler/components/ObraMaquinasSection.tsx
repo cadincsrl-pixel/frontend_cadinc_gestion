@@ -11,8 +11,8 @@ import {
   useAsignarMaquina,
   useUpdateMaquinista,
   useDesasignarMaquina,
-  usePerfilesLista,
 } from '../hooks/useAlquiler'
+import { usePersonal } from '@/modules/tarja/hooks/usePersonal'
 import { MAQUINA_TIPO_LABEL } from '../types'
 
 interface Props {
@@ -27,7 +27,8 @@ export function ObraMaquinasSection({ obraId, puedeEditar }: Props) {
   const toast = useToast()
   const { data: asignadas = [], isLoading, isError } = useObraMaquinas(obraId)
   const { data: todasMaquinas = [] } = useMaquinas()
-  const { data: perfiles = [] } = usePerfilesLista()
+  // Maquinista = trabajador del listado de personal de tarja (sin login).
+  const { data: personal = [] } = usePersonal()
   const { mutate: asignar, isPending: asignando } = useAsignarMaquina()
   const { mutate: cambiarMaquinista } = useUpdateMaquinista()
   const { mutate: desasignar } = useDesasignarMaquina()
@@ -46,19 +47,22 @@ export function ObraMaquinasSection({ obraId, puedeEditar }: Props) {
     [disponibles],
   )
 
+  // Opciones de maquinista desde el personal (ordenado por nombre).
   const opcionesMaquinista = useMemo(
     () => [
       { value: '', label: '— sin maquinista —' },
-      ...perfiles.map(p => ({ value: p.id, label: p.nombre })),
+      ...[...personal]
+        .sort((a, b) => a.nom.localeCompare(b.nom))
+        .map(p => ({ value: p.leg, label: `${p.leg} · ${p.nom}` })),
     ],
-    [perfiles],
+    [personal],
   )
 
-  const nombrePerfil = useMemo(() => {
+  const nombrePersonal = useMemo(() => {
     const m = new Map<string, string>()
-    perfiles.forEach(p => m.set(p.id, p.nombre))
+    personal.forEach(p => m.set(p.leg, p.nom))
     return m
-  }, [perfiles])
+  }, [personal])
 
   function handleAsignar() {
     if (!maquinaSel) { toast('Elegí una máquina', 'warn'); return }
@@ -67,7 +71,7 @@ export function ObraMaquinasSection({ obraId, puedeEditar }: Props) {
         obraId,
         dto: {
           maquina_id: Number(maquinaSel),
-          maquinista_user_id: maquinistaSel || null,
+          maquinista_leg: maquinistaSel || null,
         },
       },
       {
@@ -83,7 +87,7 @@ export function ObraMaquinasSection({ obraId, puedeEditar }: Props) {
 
   function handleCambiarMaquinista(id: number, value: string) {
     cambiarMaquinista(
-      { id, obraId, maquinista_user_id: value || null },
+      { id, obraId, maquinista_leg: value || null },
       {
         onSuccess: () => toast('✓ Maquinista actualizado', 'ok'),
         onError: (err: unknown) => toast((err as { message?: string })?.message || 'Error al actualizar', 'err'),
@@ -167,13 +171,13 @@ export function ObraMaquinasSection({ obraId, puedeEditar }: Props) {
                   <Select
                     aria-label="Maquinista"
                     options={opcionesMaquinista}
-                    value={a.maquinista_user_id ?? ''}
+                    value={a.maquinista_leg ?? ''}
                     onChange={e => handleCambiarMaquinista(a.id, e.target.value)}
                     className="text-xs"
                   />
                 ) : (
                   <span className="text-xs text-gris-dark">
-                    👷 {a.maquinista_user_id ? (nombrePerfil.get(a.maquinista_user_id) ?? '—') : 'Sin maquinista'}
+                    👷 {a.maquinista_leg ? (nombrePersonal.get(a.maquinista_leg) ?? '—') : 'Sin maquinista'}
                   </span>
                 )}
                 {puedeEditar && (
