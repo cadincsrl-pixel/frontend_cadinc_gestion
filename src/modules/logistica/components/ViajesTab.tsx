@@ -548,6 +548,21 @@ export function ViajesTab() {
     )
   }
 
+  // Finaliza un vacío `en_curso` (lo pasa a `completado`) sin esperar a que el
+  // camión vuelva a cargar. Caso típico: el chofer se va de descanso / lo
+  // reemplazan y su tramo vacío debe entrar YA a su liquidación (la liquidación
+  // sólo levanta tramos `completado`).
+  function handleFinalizarVacio(tramo: Tramo) {
+    if (!confirm(`¿Finalizar el tramo vacío #${tramo.id}? Pasa a "completado" y queda disponible para liquidar al chofer.`)) return
+    updateTramo(
+      { id: tramo.id, dto: { estado: 'completado' } },
+      {
+        onSuccess: () => toast('✓ Tramo finalizado — disponible para liquidar', 'ok'),
+        onError:   () => toast('Error al finalizar el tramo', 'err'),
+      },
+    )
+  }
+
   function handleRegistrarDescarga(data: TramoFormValues) {
     if (!descargaTramo) return
     if (!confirmarSiRemitoNoCoincide(descargaTramo.remito_carga, data.remito_descarga)) return
@@ -1011,6 +1026,21 @@ export function ViajesTab() {
                       onClick={() => handleMarcarEnCurso(tramo)}
                     >
                       ⏳ Marcar en curso
+                    </Button>
+                  )}
+                  {/* Finalizar vacío en_curso: cierra el tramo a mano (sin esperar
+                      a que el camión vuelva a cargar) para que entre a la
+                      liquidación del chofer. Caso: chofer se va de descanso / lo
+                      reemplazan. */}
+                  {!esCargado && tramo.estado === 'en_curso' && !tramo.liquidacion_id && !tramo.cobro_id && (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      disabled={!puedeEditar}
+                      loading={updating}
+                      onClick={() => handleFinalizarVacio(tramo)}
+                    >
+                      ✓ Finalizar tramo
                     </Button>
                   )}
                 </div>
