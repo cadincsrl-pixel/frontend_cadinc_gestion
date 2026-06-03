@@ -16,6 +16,7 @@ import {
   useObrasAlquiler,
   useCreateObraAlquiler,
   usePerfilesLista,
+  useClientes,
 } from '../hooks/useAlquiler'
 import { ObraDetalleModal } from './ObraDetalleModal'
 import {
@@ -26,7 +27,6 @@ import {
 
 const schema = z.object({
   nombre:       z.string().trim().min(1, 'El nombre es requerido'),
-  cliente:      z.string().trim().optional(),
   ubicacion:    z.string().trim().optional(),
   descripcion:  z.string().trim().optional(),
   estado:       z.enum(['activa', 'cerrada']),
@@ -36,7 +36,7 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>
 
 const DEFAULTS: FormData = {
-  nombre: '', cliente: '', ubicacion: '', descripcion: '',
+  nombre: '', ubicacion: '', descripcion: '',
   estado: 'activa', fecha_inicio: '', obs: '',
 }
 
@@ -50,12 +50,14 @@ export function ObrasTab() {
   const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('alquiler')
   const { data: obras = [], isLoading, isError, refetch } = useObrasAlquiler()
   const { data: perfiles = [] } = usePerfilesLista()
+  const { data: clientes = [] } = useClientes()
   const { mutate: create, isPending: creating } = useCreateObraAlquiler()
 
   const [modalNuevo, setModalNuevo] = useState(false)
   const [detalleId, setDetalleId] = useState<number | null>(null)
   const [busqueda, setBusqueda] = useState('')
   const [jefeUserId, setJefeUserId] = useState('')
+  const [clienteId, setClienteId] = useState('')
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -68,6 +70,20 @@ export function ObrasTab() {
     return m
   }, [perfiles])
 
+  // Mapa cliente_id → nombre para resolver la ficha en la tabla/cards.
+  const nombreCliente = useMemo(() => {
+    const m = new Map<number, string>()
+    clientes.forEach(c => m.set(c.id, c.nombre))
+    return m
+  }, [clientes])
+
+  // Resuelve el cliente a mostrar para una obra: ficha (cliente_id) primero,
+  // texto libre legacy como fallback.
+  function clienteDeObra(o: ObraAlquiler): string | null {
+    if (o.cliente_id != null) return nombreCliente.get(o.cliente_id) ?? null
+    return o.cliente || null
+  }
+
   const opcionesJefe = useMemo(
     () => [
       { value: '', label: '— sin jefe de obra —' },
@@ -76,28 +92,38 @@ export function ObrasTab() {
     [perfiles],
   )
 
+  const opcionesCliente = useMemo(
+    () => [
+      { value: '', label: '— sin cliente —' },
+      ...clientes.map(c => ({ value: String(c.id), label: c.nombre })),
+    ],
+    [clientes],
+  )
+
   const filtradas = useMemo(() => {
     const q = busqueda.trim().toLowerCase()
     if (!q) return obras
     return obras.filter(o =>
       o.nombre.toLowerCase().includes(q) ||
-      (o.cliente ?? '').toLowerCase().includes(q) ||
+      (clienteDeObra(o) ?? '').toLowerCase().includes(q) ||
       (o.ubicacion ?? '').toLowerCase().includes(q),
     )
-  }, [obras, busqueda])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [obras, busqueda, nombreCliente])
 
   const detalle = useMemo(() => obras.find(o => o.id === detalleId) ?? null, [obras, detalleId])
 
   function abrirNuevo() {
     reset(DEFAULTS)
     setJefeUserId('')
+    setClienteId('')
     setModalNuevo(true)
   }
 
   function onSubmit(data: FormData) {
     const dto: Partial<ObraAlquiler> = {
       nombre:            data.nombre.trim(),
-      cliente:           data.cliente?.trim() || null,
+      cliente_id:        clienteId ? Number(clienteId) : null,
       ubicacion:         data.ubicacion?.trim() || null,
       descripcion:       data.descripcion?.trim() || null,
       jefe_obra_user_id: jefeUserId || null,
@@ -176,7 +202,7 @@ export function ObrasTab() {
                       onClick={() => setDetalleId(o.id)}
                     >
                       <td className="px-4 py-3 font-bold text-sm text-carbon">{o.nombre}</td>
-                      <td className="px-4 py-3 text-sm text-carbon">{o.cliente || '—'}</td>
+                      <td className="px-4 py-3 text-sm text-carbon">{clienteDeObra(o) || '—'}</td>
                       <td className="px-4 py-3 text-xs text-gris-dark">{o.ubicacion || '—'}</td>
                       <td className="px-4 py-3 text-xs text-gris-dark">
                         {o.jefe_obra_user_id ? (nombreJefe.get(o.jefe_obra_user_id) ?? '—') : '—'}
@@ -207,7 +233,7 @@ export function ObrasTab() {
                   <div className="min-w-0">
                     <div className="font-bold text-sm text-carbon truncate">{o.nombre}</div>
                     <div className="text-xs text-gris-dark mt-0.5">
-                      {o.cliente || 'Sin cliente'}
+                      {clienteDeObra(o) || 'Sin cliente'}
                       {o.ubicacion && <span> · {o.ubicacion}</span>}
                     </div>
                   </div>
@@ -244,7 +270,13 @@ export function ObrasTab() {
         <div className="flex flex-col gap-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input label="Nombre" placeholder="Ej: San Pablo" error={errors.nombre?.message} {...register('nombre')} />
-            <Input label="Cliente (texto libre)" placeholder="Ej: Constructora XYZ" {...register('cliente')} />
+            <Combobox
+              label="Cliente"
+              placeholder="Buscar cliente..."
+              options={opcionesCliente}
+              value={clienteId}
+              onChange={setClienteId}
+            />
             <Input label="Ubicación" placeholder="Dirección o zona" {...register('ubicacion')} />
             <Input label="Fecha de inicio" type="date" {...register('fecha_inicio')} />
             <Select label="Estado" options={OBRA_ESTADO_OPTIONS} {...register('estado')} />
@@ -259,7 +291,8 @@ export function ObrasTab() {
           <Input label="Descripción" placeholder="Detalle de la obra" {...register('descripcion')} />
           <Input label="Observaciones" {...register('obs')} />
           <p className="text-[11px] text-gris-dark italic">
-            Después de crear la obra vas a poder asignarle máquinas y un maquinista a cada una.
+            Los clientes se cargan en el tab «Clientes». Después de crear la obra
+            vas a poder asignarle máquinas y un maquinista a cada una.
           </p>
         </div>
       </Modal>

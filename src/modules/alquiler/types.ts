@@ -39,11 +39,26 @@ export interface Maquina {
   obs:            string | null
 }
 
+// Ficha de cliente (cuenta corriente del módulo Alquiler). Una obra apunta a
+// uno de estos vía `cliente_id`. ABM en el tab Clientes.
+export interface Cliente {
+  id:       number
+  nombre:   string
+  cuit:     string | null
+  contacto: string | null
+  tel:      string | null
+  email:    string | null
+  obs:      string | null
+}
+
 export type ObraAlquilerEstado = 'activa' | 'cerrada'
 
 export interface ObraAlquiler {
   id:                number
   nombre:            string
+  // Cliente como ficha (fuente de verdad actual).
+  cliente_id:        number | null
+  // Legacy: cliente como texto libre. Se conserva como fallback de display.
   cliente:           string | null
   ubicacion:         string | null
   descripcion:       string | null
@@ -63,6 +78,8 @@ export interface ObraMaquina {
   maquinista_leg:     string | null
   // Legacy (Fase 3): maquinista como usuario del sistema. Hoy la UI usa el leg.
   maquinista_user_id: string | null
+  // Precio por hora de esta máquina en esta obra (cuenta corriente, Fase A).
+  precio_hora:        number | null
   maquina:            Maquina
 }
 

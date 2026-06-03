@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api/client'
 import type {
+  Cliente,
   Maquina,
   ObraAlquiler,
   ObraAlquilerDetalle,
@@ -13,6 +14,7 @@ import type {
 } from '../types'
 
 // ── Query keys (constantes, como el resto del proyecto) ──
+export const CLIENTES_KEY = ['alquiler', 'clientes'] as const
 export const MAQUINAS_KEY = ['alquiler', 'maquinas'] as const
 export const OBRAS_KEY    = ['alquiler', 'obras'] as const
 export const obraDetalleKey = (id: number) => ['alquiler', 'obras', id] as const
@@ -36,6 +38,48 @@ export function usePerfilesLista() {
     queryKey: ['perfiles-nombres'],
     queryFn:  () => apiGet<PerfilNombre[]>('/api/me/perfiles'),
     staleTime: 5 * 60 * 1000,
+  })
+}
+
+// ─────────────────────────── Clientes ───────────────────────────
+// Ficha de cliente para la cuenta corriente (Fase A). Las obras apuntan a un
+// cliente vía cliente_id, por eso el update/delete invalidan también OBRAS_KEY
+// (las obras muestran el nombre del cliente resuelto).
+export function useClientes() {
+  return useQuery({
+    queryKey: CLIENTES_KEY,
+    queryFn:  () => apiGet<Cliente[]>('/api/alquiler/clientes'),
+  })
+}
+
+export function useCreateCliente() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: Partial<Cliente>) => apiPost<Cliente>('/api/alquiler/clientes', dto),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: CLIENTES_KEY }),
+  })
+}
+
+export function useUpdateCliente() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: number; dto: Partial<Cliente> }) =>
+      apiPatch<Cliente>(`/api/alquiler/clientes/${id}`, dto),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: CLIENTES_KEY })
+      qc.invalidateQueries({ queryKey: OBRAS_KEY })
+    },
+  })
+}
+
+export function useDeleteCliente() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiDelete(`/api/alquiler/clientes/${id}`),
+    onSuccess:  () => {
+      qc.invalidateQueries({ queryKey: CLIENTES_KEY })
+      qc.invalidateQueries({ queryKey: OBRAS_KEY })
+    },
   })
 }
 
@@ -219,7 +263,10 @@ export function useObraMaquinas(obraId: number | null) {
 export function useAsignarMaquina() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ obraId, dto }: { obraId: number; dto: { maquina_id: number; maquinista_leg?: string | null } }) =>
+    mutationFn: ({ obraId, dto }: {
+      obraId: number
+      dto: { maquina_id: number; maquinista_leg?: string | null; precio_hora?: number | null }
+    }) =>
       apiPost<ObraMaquina>(`/api/alquiler/obras/${obraId}/maquinas`, dto),
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: obraMaquinasKey(vars.obraId) })
@@ -229,11 +276,18 @@ export function useAsignarMaquina() {
   })
 }
 
-export function useUpdateMaquinista() {
+// Actualiza una asignación máquina↔obra. El PATCH del backend es flexible:
+// se manda solo lo que cambió (maquinista_leg y/o precio_hora). `obraId` solo
+// se usa para invalidar las queries dependientes.
+export function useUpdateObraMaquina() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, maquinista_leg }: { id: number; obraId: number; maquinista_leg: string | null }) =>
-      apiPatch<ObraMaquina>(`/api/alquiler/obra-maquinas/${id}`, { maquinista_leg }),
+    mutationFn: ({ id, dto }: {
+      id: number
+      obraId: number
+      dto: { maquinista_leg?: string | null; precio_hora?: number | null }
+    }) =>
+      apiPatch<ObraMaquina>(`/api/alquiler/obra-maquinas/${id}`, dto),
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: obraMaquinasKey(vars.obraId) })
       qc.invalidateQueries({ queryKey: obraDetalleKey(vars.obraId) })

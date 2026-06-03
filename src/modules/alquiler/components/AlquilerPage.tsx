@@ -5,16 +5,18 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useTabsPermitidos } from '@/hooks/useTabsPermitidos'
 import { MaquinasTab } from './MaquinasTab'
 import { ObrasTab } from './ObrasTab'
+import { ClientesTab } from './ClientesTab'
 import { PartesTab } from './PartesTab'
 import { RemitosTab } from './RemitosTab'
 import { ReportesTab } from './ReportesTab'
 
 const TABS = [
-  { key: 'maquinas', icon: '🚜', label: 'Máquinas', sub: 'Flota de maquinaria para alquiler' },
-  { key: 'obras',    icon: '🏗', label: 'Obras',    sub: 'Obras de alquiler y máquinas asignadas' },
-  { key: 'partes',   icon: '📝', label: 'Partes',   sub: 'Carga de horas por día y por máquina' },
-  { key: 'remitos',  icon: '🧾', label: 'Remitos',  sub: 'Remitos diarios para imprimir y enviar' },
-  { key: 'reportes', icon: '📊', label: 'Reportes', sub: 'Horas por máquina y resumen por obra' },
+  { key: 'maquinas', icon: '🚜',  label: 'Máquinas', sub: 'Flota de maquinaria para alquiler' },
+  { key: 'obras',    icon: '🏗',  label: 'Obras',    sub: 'Obras de alquiler y máquinas asignadas' },
+  { key: 'clientes', icon: '🧑‍💼', label: 'Clientes', sub: 'Fichas de clientes y cuenta corriente' },
+  { key: 'partes',   icon: '📝',  label: 'Partes',   sub: 'Carga de horas por día y por máquina' },
+  { key: 'remitos',  icon: '🧾',  label: 'Remitos',  sub: 'Remitos diarios para imprimir y enviar' },
+  { key: 'reportes', icon: '📊',  label: 'Reportes', sub: 'Horas por máquina y resumen por obra' },
 ]
 
 export function AlquilerPage() {
@@ -48,6 +50,7 @@ export function AlquilerPage() {
       <div className="flex flex-col gap-4">
         {tab === 'maquinas' && <MaquinasTab />}
         {tab === 'obras'    && <ObrasTab />}
+        {tab === 'clientes' && <ClientesTab />}
         {tab === 'partes'   && <PartesTab />}
         {tab === 'remitos'  && <RemitosTab />}
         {tab === 'reportes' && <ReportesTab />}

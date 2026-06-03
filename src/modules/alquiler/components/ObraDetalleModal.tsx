@@ -14,6 +14,7 @@ import {
   useUpdateObraAlquiler,
   useDeleteObraAlquiler,
   usePerfilesLista,
+  useClientes,
 } from '../hooks/useAlquiler'
 import { ObraMaquinasSection } from './ObraMaquinasSection'
 import {
@@ -24,7 +25,6 @@ import {
 
 const schema = z.object({
   nombre:       z.string().trim().min(1, 'El nombre es requerido'),
-  cliente:      z.string().trim().optional(),
   ubicacion:    z.string().trim().optional(),
   descripcion:  z.string().trim().optional(),
   estado:       z.enum(['activa', 'cerrada']),
@@ -48,9 +48,11 @@ export function ObraDetalleModal({ obra, onClose, puedeEditar, puedeEliminar }: 
   const { mutate: update, isPending: updating } = useUpdateObraAlquiler()
   const { mutate: remove, isPending: removing } = useDeleteObraAlquiler()
   const { data: perfiles = [] } = usePerfilesLista()
+  const { data: clientes = [] } = useClientes()
 
   const [editando, setEditando] = useState(false)
   const [jefeUserId, setJefeUserId] = useState('')
+  const [clienteId, setClienteId] = useState('')
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -62,7 +64,6 @@ export function ObraDetalleModal({ obra, onClose, puedeEditar, puedeEliminar }: 
     if (!obra) return
     reset({
       nombre:       obra.nombre,
-      cliente:      obra.cliente ?? '',
       ubicacion:    obra.ubicacion ?? '',
       descripcion:  obra.descripcion ?? '',
       estado:       obra.estado,
@@ -70,6 +71,7 @@ export function ObraDetalleModal({ obra, onClose, puedeEditar, puedeEliminar }: 
       obs:          obra.obs ?? '',
     })
     setJefeUserId(obra.jefe_obra_user_id ?? '')
+    setClienteId(obra.cliente_id != null ? String(obra.cliente_id) : '')
     setEditando(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [obra?.id])
@@ -82,10 +84,28 @@ export function ObraDetalleModal({ obra, onClose, puedeEditar, puedeEliminar }: 
     [perfiles],
   )
 
+  const opcionesCliente = useMemo(
+    () => [
+      { value: '', label: '— sin cliente —' },
+      ...clientes.map(c => ({ value: String(c.id), label: c.nombre })),
+    ],
+    [clientes],
+  )
+
   const nombreJefe = useMemo(() => {
     if (!obra?.jefe_obra_user_id) return null
     return perfiles.find(p => p.id === obra.jefe_obra_user_id)?.nombre ?? null
   }, [obra, perfiles])
+
+  // Nombre del cliente en modo read-only: resuelve cliente_id contra la lista.
+  // Si la obra no tiene cliente_id, cae al texto libre legacy como fallback.
+  const nombreCliente = useMemo(() => {
+    if (!obra) return null
+    if (obra.cliente_id != null) {
+      return clientes.find(c => c.id === obra.cliente_id)?.nombre ?? null
+    }
+    return obra.cliente || null
+  }, [obra, clientes])
 
   if (!obra) return null
 
@@ -96,7 +116,7 @@ export function ObraDetalleModal({ obra, onClose, puedeEditar, puedeEliminar }: 
         id: obra.id,
         dto: {
           nombre:            data.nombre.trim(),
-          cliente:           data.cliente?.trim() || null,
+          cliente_id:        clienteId ? Number(clienteId) : null,
           ubicacion:         data.ubicacion?.trim() || null,
           descripcion:       data.descripcion?.trim() || null,
           jefe_obra_user_id: jefeUserId || null,
@@ -153,7 +173,20 @@ export function ObraDetalleModal({ obra, onClose, puedeEditar, puedeEliminar }: 
         {/* Datos de la obra */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input label="Nombre" disabled={!editando} error={errors.nombre?.message} {...register('nombre')} />
-          <Input label="Cliente" placeholder="Texto libre" disabled={!editando} {...register('cliente')} />
+          {editando ? (
+            <Combobox
+              label="Cliente"
+              placeholder="Buscar cliente..."
+              options={opcionesCliente}
+              value={clienteId}
+              onChange={setClienteId}
+            />
+          ) : (
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Cliente</label>
+              <div className="px-3 py-2 text-sm text-carbon">{nombreCliente ?? '—'}</div>
+            </div>
+          )}
           <Input label="Ubicación" disabled={!editando} {...register('ubicacion')} />
           <Input label="Fecha de inicio" type="date" disabled={!editando} {...register('fecha_inicio')} />
           <Select label="Estado" options={OBRA_ESTADO_OPTIONS} disabled={!editando} {...register('estado')} />

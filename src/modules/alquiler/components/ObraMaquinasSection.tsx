@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Combobox } from '@/components/ui/Combobox'
 import { useToast } from '@/components/ui/Toast'
@@ -9,7 +10,7 @@ import {
   useObraMaquinas,
   useMaquinas,
   useAsignarMaquina,
-  useUpdateMaquinista,
+  useUpdateObraMaquina,
   useDesasignarMaquina,
 } from '../hooks/useAlquiler'
 import { usePersonal } from '@/modules/tarja/hooks/usePersonal'
@@ -18,6 +19,21 @@ import { MAQUINA_TIPO_LABEL } from '../types'
 interface Props {
   obraId: number
   puedeEditar: boolean
+}
+
+// Plata: '$' + miles es-AR, sin decimales (mismo formato que FacturacionTab).
+function fmtPrecio(n: number): string {
+  return '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 0 })
+}
+
+// Parsea el value de un <input type="number"> a number|null. Vacío, NaN o
+// negativo → null (sin precio).
+function parsePrecio(raw: string): number | null {
+  const t = raw.trim()
+  if (!t) return null
+  const n = Number(t)
+  if (!Number.isFinite(n) || n < 0) return null
+  return n
 }
 
 // Sección "Máquinas asignadas" dentro del detalle de una obra de alquiler.
@@ -30,11 +46,12 @@ export function ObraMaquinasSection({ obraId, puedeEditar }: Props) {
   // Maquinista = trabajador del listado de personal de tarja (sin login).
   const { data: personal = [] } = usePersonal()
   const { mutate: asignar, isPending: asignando } = useAsignarMaquina()
-  const { mutate: cambiarMaquinista } = useUpdateMaquinista()
+  const { mutate: actualizarAsignacion } = useUpdateObraMaquina()
   const { mutate: desasignar } = useDesasignarMaquina()
 
   const [maquinaSel, setMaquinaSel] = useState('')
   const [maquinistaSel, setMaquinistaSel] = useState('')
+  const [precioSel, setPrecioSel] = useState('')
 
   // Máquinas que todavía no están asignadas a esta obra.
   const disponibles = useMemo(() => {
@@ -72,6 +89,7 @@ export function ObraMaquinasSection({ obraId, puedeEditar }: Props) {
         dto: {
           maquina_id: Number(maquinaSel),
           maquinista_leg: maquinistaSel || null,
+          precio_hora: parsePrecio(precioSel),
         },
       },
       {
@@ -79,6 +97,7 @@ export function ObraMaquinasSection({ obraId, puedeEditar }: Props) {
           toast('✓ Máquina asignada', 'ok')
           setMaquinaSel('')
           setMaquinistaSel('')
+          setPrecioSel('')
         },
         onError: (err: unknown) => toast((err as { message?: string })?.message || 'Error al asignar', 'err'),
       },
@@ -86,10 +105,20 @@ export function ObraMaquinasSection({ obraId, puedeEditar }: Props) {
   }
 
   function handleCambiarMaquinista(id: number, value: string) {
-    cambiarMaquinista(
-      { id, obraId, maquinista_leg: value || null },
+    actualizarAsignacion(
+      { id, obraId, dto: { maquinista_leg: value || null } },
       {
         onSuccess: () => toast('✓ Maquinista actualizado', 'ok'),
+        onError: (err: unknown) => toast((err as { message?: string })?.message || 'Error al actualizar', 'err'),
+      },
+    )
+  }
+
+  function handleCambiarPrecio(id: number, precio: number | null) {
+    actualizarAsignacion(
+      { id, obraId, dto: { precio_hora: precio } },
+      {
+        onSuccess: () => toast('✓ Precio actualizado', 'ok'),
         onError: (err: unknown) => toast((err as { message?: string })?.message || 'Error al actualizar', 'err'),
       },
     )
@@ -131,6 +160,16 @@ export function ObraMaquinasSection({ obraId, puedeEditar }: Props) {
               value={maquinistaSel}
               onChange={setMaquinistaSel}
             />
+            <Input
+              label="$/hora (opcional)"
+              type="number"
+              min={0}
+              step="any"
+              inputMode="decimal"
+              placeholder="Ej: 25000"
+              value={precioSel}
+              onChange={e => setPrecioSel(e.target.value)}
+            />
           </div>
           <div className="flex justify-end">
             <Button
@@ -166,7 +205,7 @@ export function ObraMaquinasSection({ obraId, puedeEditar }: Props) {
                   {a.maquina.identificacion && <span className="font-mono"> · {a.maquina.identificacion}</span>}
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 {puedeEditar ? (
                   <Select
                     aria-label="Maquinista"
@@ -180,6 +219,20 @@ export function ObraMaquinasSection({ obraId, puedeEditar }: Props) {
                     👷 {a.maquinista_leg ? (nombrePersonal.get(a.maquinista_leg) ?? '—') : 'Sin maquinista'}
                   </span>
                 )}
+                {puedeEditar ? (
+                  <PrecioHoraCell
+                    // Remontar cuando cambia el valor del servidor (tras
+                    // invalidar la query) para re-inicializar el draft sin
+                    // sincronizar estado en un effect.
+                    key={`precio-${a.id}-${a.precio_hora ?? 'null'}`}
+                    initial={a.precio_hora}
+                    onCommit={precio => handleCambiarPrecio(a.id, precio)}
+                  />
+                ) : (
+                  <span className="text-xs text-gris-dark whitespace-nowrap">
+                    {a.precio_hora != null ? `${fmtPrecio(a.precio_hora)}/h` : 'Sin precio'}
+                  </span>
+                )}
                 {puedeEditar && (
                   <Button variant="ghost" size="sm" onClick={() => handleDesasignar(a.id, a.maquina.nombre)}>🗑</Button>
                 )}
@@ -188,6 +241,43 @@ export function ObraMaquinasSection({ obraId, puedeEditar }: Props) {
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+// Input numérico chico para editar el $/hora de una asignación. Mantiene un
+// draft local mientras se tipea y recién dispara `onCommit` en blur/Enter, y
+// solo si el valor cambió (evita PATCHs redundantes). El padre lo remonta vía
+// `key` cuando cambia el valor del servidor, así `initial` re-siembra el draft
+// sin sincronizar estado en un effect.
+function PrecioHoraCell({ initial, onCommit }: {
+  initial:  number | null
+  onCommit: (precio: number | null) => void
+}) {
+  const [draft, setDraft] = useState(initial != null ? String(initial) : '')
+
+  function commit() {
+    const parsed = parsePrecio(draft)
+    if (parsed === initial) return
+    onCommit(parsed)
+  }
+
+  return (
+    <div className="relative">
+      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gris-dark pointer-events-none">$</span>
+      <input
+        type="number"
+        min={0}
+        step="any"
+        inputMode="decimal"
+        aria-label="Precio por hora"
+        placeholder="$/h"
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+        className="w-24 pl-5 pr-2 py-1.5 border-[1.5px] border-gris-mid rounded-lg text-xs text-carbon bg-white outline-none transition-colors focus:border-naranja"
+      />
     </div>
   )
 }
