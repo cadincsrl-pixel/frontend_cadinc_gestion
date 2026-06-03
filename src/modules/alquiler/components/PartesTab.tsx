@@ -27,6 +27,11 @@ function toHHMM(t: string | null | undefined): string {
   return `${h.padStart(2, '0')}:${m.padStart(2, '0')}`
 }
 
+// Plata: '$' + miles es-AR, sin decimales (mismo formato que el resto del módulo).
+function fmtPesos(n: number): string {
+  return '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 0 })
+}
+
 export function PartesTab() {
   const toast = useToast()
   const { puedeCrear, puedeEditar } = usePermisos('alquiler')
@@ -309,6 +314,12 @@ function MaquinaParteBlock({
         <div className="text-right">
           <div className="text-[10px] font-bold text-gris-dark uppercase tracking-wider">Total</div>
           <div className="font-display text-xl tracking-wider text-azul">{fmtHoras(horas)} hs</div>
+          {/* Importe del día = horas × $/hora de la asignación (Fase B). */}
+          {obraMaquina.precio_hora != null && (
+            <div className="text-xs text-gris-dark mt-0.5">
+              {fmtPesos(horas * obraMaquina.precio_hora)}
+            </div>
+          )}
         </div>
       </div>
 

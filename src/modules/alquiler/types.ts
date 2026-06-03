@@ -98,6 +98,11 @@ export interface Parte {
   tarde_entrada:  string | null
   tarde_salida:   string | null
   horas:          number
+  // Importe devengado del parte (horas × precio_hora) y el precio_hora vigente
+  // de la asignación máquina↔obra (Fase B, cuenta corriente). null si la
+  // asignación no tiene tarifa cargada. El backend ya los devuelve en getPartes.
+  importe:        number | null
+  precio_hora:    number | null
   detalle:        string | null
   obs:            string | null
 }
@@ -136,6 +141,21 @@ export interface ReporteHoraMaquina {
   maquina_tipo:   string | null // 'retropala' | 'hidrogrua' | ... (string crudo del enum)
   total_horas:    number
   dias:           number        // cantidad de días con carga
+}
+
+// Fila de la cuenta corriente por cliente (Fase B). Solo lectura: el
+// "devengado" es lo que se le debe al cliente por el trabajo (horas ×
+// $/hora de cada máquina). NO incluye cobros ni saldo (eso es Fase C).
+// La devuelve GET /api/alquiler/cuenta-corriente, ordenada por devengado desc.
+export interface CuentaCorrienteCliente {
+  cliente_id:     number | null // null = "Sin cliente" (obras sin ficha)
+  cliente_nombre: string        // ej. "Gaston Brignoli" o "Sin cliente"
+  devengado:      number        // total $ devengado del cliente (todas sus obras en el rango)
+  obras: Array<{
+    obra_id:     number
+    obra_nombre: string
+    devengado:   number
+  }>
 }
 
 // ── Labels legibles ──

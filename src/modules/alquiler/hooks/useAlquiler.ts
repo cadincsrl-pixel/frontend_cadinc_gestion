@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api/client'
 import type {
   Cliente,
+  CuentaCorrienteCliente,
   Maquina,
   ObraAlquiler,
   ObraAlquilerDetalle,
@@ -419,6 +420,36 @@ export function useReporteHoras(f: ReporteHorasFiltro, enabled = true) {
   return useQuery({
     queryKey: reporteHorasKey(f),
     queryFn:  () => apiGet<ReporteHoraMaquina[]>(`/api/alquiler/reportes/horas${reporteHorasQueryString(f)}`),
+    enabled,
+  })
+}
+
+// ─────────────────────── Cuenta corriente (Fase B) ───────────────────────
+// Devengado por cliente (horas × $/hora). Solo lectura. desde/hasta filtran
+// por la fecha del parte ('YYYY-MM-DD'); cliente_id acota a un solo cliente.
+export interface CuentaCorrienteFiltro {
+  desde?:      string
+  hasta?:      string
+  cliente_id?: number
+}
+export const cuentaCorrienteKey = (f: CuentaCorrienteFiltro) =>
+  ['alquiler', 'cuenta-corriente', f] as const
+
+function cuentaCorrienteQueryString(f: CuentaCorrienteFiltro): string {
+  const sp = new URLSearchParams()
+  if (f.desde)              sp.set('desde', f.desde)
+  if (f.hasta)              sp.set('hasta', f.hasta)
+  if (f.cliente_id != null) sp.set('cliente_id', String(f.cliente_id))
+  const qs = sp.toString()
+  return qs ? `?${qs}` : ''
+}
+
+export function useCuentaCorriente(f: CuentaCorrienteFiltro, enabled = true) {
+  return useQuery({
+    queryKey: cuentaCorrienteKey(f),
+    queryFn:  () => apiGet<CuentaCorrienteCliente[]>(
+      `/api/alquiler/cuenta-corriente${cuentaCorrienteQueryString(f)}`,
+    ),
     enabled,
   })
 }
