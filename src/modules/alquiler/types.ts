@@ -143,20 +143,47 @@ export interface ReporteHoraMaquina {
   dias:           number        // cantidad de días con carga
 }
 
-// Fila de la cuenta corriente por cliente (Fase B). Solo lectura: el
-// "devengado" es lo que se le debe al cliente por el trabajo (horas ×
-// $/hora de cada máquina). NO incluye cobros ni saldo (eso es Fase C).
-// La devuelve GET /api/alquiler/cuenta-corriente, ordenada por devengado desc.
+// Fila de la cuenta corriente por cliente (Fase C). El "devengado" es lo que
+// se le debe facturar al cliente por el trabajo (horas × $/hora de cada
+// máquina); los "cobros" es lo efectivamente cobrado en el período; el "saldo"
+// es devengado − cobros (>0 = el cliente DEBE; <0 = a favor del cliente).
+// El filtro de fecha aplica a AMBOS (devengado y cobros); sin filtro = saldo
+// total acumulado. La devuelve GET /api/alquiler/cuenta-corriente, ordenada
+// por saldo desc.
 export interface CuentaCorrienteCliente {
   cliente_id:     number | null // null = "Sin cliente" (obras sin ficha)
   cliente_nombre: string        // ej. "Gaston Brignoli" o "Sin cliente"
   devengado:      number        // total $ devengado del cliente (todas sus obras en el rango)
+  cobros:         number        // total $ cobrado en el período del filtro
+  saldo:          number        // devengado − cobros
   obras: Array<{
     obra_id:     number
     obra_nombre: string
     devengado:   number
   }>
 }
+
+// ─────────────────────────── Cobros (Fase C) ───────────────────────────
+// Un cobro registra plata efectivamente recibida de un cliente. Reduce el
+// saldo de su cuenta corriente. NO está atado a una obra puntual (es a nivel
+// cliente), por eso vive en su propio CRUD.
+export type MedioCobro = 'efectivo' | 'transferencia' | 'cheque' | 'otro'
+
+export interface Cobro {
+  id:         number
+  cliente_id: number
+  fecha:      string   // 'YYYY-MM-DD'
+  monto:      number
+  medio:      MedioCobro
+  obs:        string | null
+}
+
+export const MEDIO_COBRO_LABEL: Record<MedioCobro, string> = {
+  efectivo: 'Efectivo', transferencia: 'Transferencia', cheque: 'Cheque', otro: 'Otro',
+}
+
+export const MEDIO_COBRO_OPTIONS = (Object.keys(MEDIO_COBRO_LABEL) as MedioCobro[])
+  .map(m => ({ value: m, label: MEDIO_COBRO_LABEL[m] }))
 
 // ── Labels legibles ──
 export const MAQUINA_TIPO_LABEL: Record<MaquinaTipo, string> = {

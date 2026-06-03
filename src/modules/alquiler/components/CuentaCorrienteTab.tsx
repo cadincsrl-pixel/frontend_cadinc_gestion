@@ -3,7 +3,17 @@
 import { useMemo, useState } from 'react'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
-import { useClientes, useCuentaCorriente } from '../hooks/useAlquiler'
+import { Button } from '@/components/ui/Button'
+import { useToast } from '@/components/ui/Toast'
+import { usePermisos } from '@/hooks/usePermisos'
+import {
+  useClientes,
+  useCuentaCorriente,
+  useCobros,
+  useDeleteCobro,
+} from '../hooks/useAlquiler'
+import { MEDIO_COBRO_LABEL, type Cobro, type CuentaCorrienteCliente } from '../types'
+import { RegistrarCobroModal } from './RegistrarCobroModal'
 
 // Plata: '$' + miles es-AR, sin decimales (mismo formato que el resto del
 // módulo — ver ObraMaquinasSection/FacturacionTab).
@@ -11,12 +21,28 @@ function fmtPesos(n: number): string {
   return '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 0 })
 }
 
+// dd/mm/yyyy por split de string (NO new Date(iso) — evita corrimiento de TZ).
+function fmtFecha(iso: string): string {
+  return iso.split('-').reverse().join('/')
+}
+
+// Solo las fechas del filtro se propagan a la lista de cobros del acordeón,
+// para que devengado/cobros/saldo y el detalle hablen del mismo período.
+interface FiltroFechas {
+  desde?: string
+  hasta?: string
+}
+
 export function CuentaCorrienteTab() {
   const { data: clientes = [], isLoading: loadingClientes } = useClientes()
+  const permisos = usePermisos('alquiler')
 
   const [desde, setDesde] = useState('')
   const [hasta, setHasta] = useState('')
   const [clienteId, setClienteId] = useState<number | null>(null)
+
+  // Cliente sobre el que se está registrando un cobro (modal). null = cerrado.
+  const [cobroPara, setCobroPara] = useState<{ id: number; nombre: string } | null>(null)
 
   const filtro = useMemo(() => {
     const f: { desde?: string; hasta?: string; cliente_id?: number } = {}
@@ -25,6 +51,13 @@ export function CuentaCorrienteTab() {
     if (clienteId != null) f.cliente_id = clienteId
     return f
   }, [desde, hasta, clienteId])
+
+  const filtroFechas = useMemo<FiltroFechas>(() => {
+    const f: FiltroFechas = {}
+    if (desde) f.desde = desde
+    if (hasta) f.hasta = hasta
+    return f
+  }, [desde, hasta])
 
   const { data: filas = [], isLoading, isError } = useCuentaCorriente(filtro)
 
@@ -36,8 +69,16 @@ export function CuentaCorrienteTab() {
     [clientes],
   )
 
-  const totalGeneral = useMemo(
-    () => filas.reduce((acc, c) => acc + c.devengado, 0),
+  const totales = useMemo(
+    () =>
+      filas.reduce(
+        (acc, c) => ({
+          devengado: acc.devengado + c.devengado,
+          cobros:    acc.cobros + c.cobros,
+          saldo:     acc.saldo + c.saldo,
+        }),
+        { devengado: 0, cobros: 0, saldo: 0 },
+      ),
     [filas],
   )
 
@@ -62,107 +103,277 @@ export function CuentaCorrienteTab() {
         </div>
       </div>
 
-      {/* Aclaración: esto es devengado, no saldo. */}
+      {/* Aclaración: el saldo es devengado − cobros del período filtrado. */}
       <div className="bg-azul-light/40 border-l-[4px] border-azul rounded-card px-4 py-3 text-sm text-azul">
-        <span className="font-bold">Devengado por horas trabajadas.</span>{' '}
+        <span className="font-bold">Saldo = devengado − cobros.</span>{' '}
         <span className="text-gris-dark">
-          (Los cobros y el saldo vienen en la próxima etapa.)
+          Con filtro de fechas, ambos se acotan al período. Sin filtro, es el saldo total acumulado.
         </span>
       </div>
 
       {/* Estados */}
       {isLoading ? (
-        <SpinnerCard texto="Calculando devengado por cliente..." />
+        <SpinnerCard texto="Calculando saldos por cliente..." />
       ) : isError ? (
         <ErrorCard />
       ) : filas.length === 0 ? (
-        <EmptyCard texto="No hay devengado para los filtros seleccionados." />
+        <EmptyCard texto="No hay movimientos para los filtros seleccionados." />
       ) : (
         <>
           <div className="flex flex-col gap-3">
             {filas.map(c => (
-              <ClienteCard key={c.cliente_id ?? 'sin-cliente'} cliente={c} />
+              <ClienteCard
+                key={c.cliente_id ?? 'sin-cliente'}
+                cliente={c}
+                filtroFechas={filtroFechas}
+                puedeCrear={permisos.puedeCrear}
+                puedeEliminar={permisos.puedeEliminar}
+                onRegistrarCobro={() =>
+                  c.cliente_id != null &&
+                  setCobroPara({ id: c.cliente_id, nombre: c.cliente_nombre })
+                }
+              />
             ))}
           </div>
 
           {/* Total general */}
-          <div className="bg-azul text-white rounded-card shadow-card px-4 py-3 flex items-center justify-between">
+          <div className="bg-azul text-white rounded-card shadow-card px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <span className="text-sm font-bold uppercase tracking-wide">
-              Total devengado ({filas.length} {filas.length === 1 ? 'cliente' : 'clientes'})
+              Total ({filas.length} {filas.length === 1 ? 'cliente' : 'clientes'})
             </span>
-            <span className="font-display text-2xl tracking-wider whitespace-nowrap">
-              {fmtPesos(totalGeneral)}
-            </span>
+            <div className="flex items-center gap-5 sm:gap-7 flex-wrap">
+              <TotalNum label="Devengado" valor={totales.devengado} />
+              <TotalNum label="Cobros" valor={totales.cobros} />
+              <div className="text-right">
+                <div className="text-[10px] font-bold text-white/70 uppercase tracking-wider">Saldo</div>
+                <div className="font-display text-2xl tracking-wider whitespace-nowrap">
+                  {fmtPesos(totales.saldo)}
+                </div>
+              </div>
+            </div>
           </div>
         </>
+      )}
+
+      {/* Modal de registro de cobro (preset al cliente clickeado) */}
+      {cobroPara && (
+        <RegistrarCobroModal
+          open
+          onClose={() => setCobroPara(null)}
+          clienteId={cobroPara.id}
+          clienteNombre={cobroPara.nombre}
+        />
       )}
     </div>
   )
 }
 
-// ── Card de un cliente con desglose por obra expandible ──
+function TotalNum({ label, valor }: { label: string; valor: number }) {
+  return (
+    <div className="text-right">
+      <div className="text-[10px] font-bold text-white/70 uppercase tracking-wider">{label}</div>
+      <div className="font-display text-lg tracking-wider whitespace-nowrap text-white/90">
+        {fmtPesos(valor)}
+      </div>
+    </div>
+  )
+}
+
+// ── Estilo y label del saldo según signo ──
+// >0 = el cliente DEBE (naranja), <0 = a favor del cliente (verde), 0 = al día.
+function saldoUI(saldo: number): { color: string; label: string } {
+  if (saldo > 0) return { color: 'text-naranja', label: 'Debe' }
+  if (saldo < 0) return { color: 'text-verde', label: 'A favor' }
+  return { color: 'text-gris-dark', label: 'Al día' }
+}
+
+// ── Card de un cliente: devengado / cobros / saldo + acordeón ──
 function ClienteCard({
   cliente,
+  filtroFechas,
+  puedeCrear,
+  puedeEliminar,
+  onRegistrarCobro,
 }: {
-  cliente: {
-    cliente_id:     number | null
-    cliente_nombre: string
-    devengado:      number
-    obras: Array<{ obra_id: number; obra_nombre: string; devengado: number }>
-  }
+  cliente:          CuentaCorrienteCliente
+  filtroFechas:     FiltroFechas
+  puedeCrear:       boolean
+  puedeEliminar:    boolean
+  onRegistrarCobro: () => void
 }) {
   const [abierto, setAbierto] = useState(false)
-  const tieneObras = cliente.obras.length > 0
+  const esSinCliente = cliente.cliente_id == null
+  const { color: saldoColor, label: saldoLabel } = saldoUI(cliente.saldo)
 
   return (
     <div className="bg-white rounded-card shadow-card overflow-hidden">
+      {/* Cabecera: expandible (siempre, para mostrar obras y/o cobros) */}
       <button
         type="button"
-        onClick={() => tieneObras && setAbierto(o => !o)}
-        disabled={!tieneObras}
-        className={`w-full p-3 sm:p-4 flex items-center justify-between gap-3 text-left ${
-          tieneObras ? 'hover:bg-gris/50 transition-colors cursor-pointer' : 'cursor-default'
-        }`}
+        onClick={() => setAbierto(o => !o)}
+        className="w-full p-3 sm:p-4 flex items-center justify-between gap-3 text-left hover:bg-gris/50 transition-colors cursor-pointer"
       >
         <div className="min-w-0 flex items-center gap-2">
-          {tieneObras && (
-            <span className="text-gris-dark shrink-0 text-sm select-none">
-              {abierto ? '▾' : '▸'}
-            </span>
-          )}
+          <span className="text-gris-dark shrink-0 text-sm select-none">
+            {abierto ? '▾' : '▸'}
+          </span>
           <div className="min-w-0">
             <div className="font-bold text-base text-carbon truncate">
-              🧑‍💼 {cliente.cliente_nombre}
+              {esSinCliente ? '❔' : '🧑‍💼'} {cliente.cliente_nombre}
             </div>
             <div className="text-xs text-gris-dark">
               {cliente.obras.length} {cliente.obras.length === 1 ? 'obra' : 'obras'}
             </div>
           </div>
         </div>
-        <div className="text-right shrink-0">
-          <div className="text-[10px] font-bold text-gris-dark uppercase tracking-wider">Devengado</div>
-          <div className="font-display text-2xl tracking-wider text-azul whitespace-nowrap">
-            {fmtPesos(cliente.devengado)}
+        <div className="flex items-center gap-4 sm:gap-6 shrink-0">
+          <div className="text-right hidden sm:block">
+            <div className="text-[10px] font-bold text-gris-dark uppercase tracking-wider">Devengado</div>
+            <div className="font-semibold text-sm text-azul whitespace-nowrap">
+              {fmtPesos(cliente.devengado)}
+            </div>
+          </div>
+          <div className="text-right hidden sm:block">
+            <div className="text-[10px] font-bold text-gris-dark uppercase tracking-wider">Cobros</div>
+            <div className="font-semibold text-sm text-verde whitespace-nowrap">
+              {fmtPesos(cliente.cobros)}
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-[10px] font-bold text-gris-dark uppercase tracking-wider">
+              Saldo · {saldoLabel}
+            </div>
+            <div className={`font-display text-2xl tracking-wider whitespace-nowrap ${saldoColor}`}>
+              {fmtPesos(cliente.saldo)}
+            </div>
           </div>
         </div>
       </button>
 
-      {/* Desglose por obra */}
-      {abierto && tieneObras && (
-        <div className="border-t border-gris divide-y divide-gris bg-gris/30">
-          {cliente.obras.map(o => (
-            <div
-              key={o.obra_id}
-              className="px-4 py-2.5 sm:pl-10 flex items-center justify-between gap-3"
-            >
-              <span className="min-w-0 truncate text-sm text-carbon">🏗 {o.obra_nombre}</span>
-              <span className="shrink-0 font-semibold text-sm text-azul whitespace-nowrap">
-                {fmtPesos(o.devengado)}
-              </span>
+      {/* Acordeón: desglose de obras + acción de cobro + lista de cobros */}
+      {abierto && (
+        <div className="border-t border-gris bg-gris/30">
+          {/* Devengado por obra */}
+          {cliente.obras.length > 0 ? (
+            <div className="divide-y divide-gris">
+              {cliente.obras.map(o => (
+                <div
+                  key={o.obra_id}
+                  className="px-4 py-2.5 sm:pl-10 flex items-center justify-between gap-3"
+                >
+                  <span className="min-w-0 truncate text-sm text-carbon">🏗 {o.obra_nombre}</span>
+                  <span className="shrink-0 font-semibold text-sm text-azul whitespace-nowrap">
+                    {fmtPesos(o.devengado)}
+                  </span>
+                </div>
+              ))}
             </div>
-          ))}
+          ) : (
+            <div className="px-4 py-2.5 sm:pl-10 text-sm text-gris-dark italic">
+              Sin obras con devengado en el período.
+            </div>
+          )}
+
+          {/* Cobros del cliente. "Sin cliente" no es una ficha → sin cobros. */}
+          {!esSinCliente && (
+            <div className="border-t border-gris">
+              <div className="px-4 py-2.5 sm:px-6 flex items-center justify-between gap-3">
+                <span className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">
+                  💵 Cobros
+                </span>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  disabled={!puedeCrear}
+                  onClick={onRegistrarCobro}
+                >
+                  ＋ Registrar cobro
+                </Button>
+              </div>
+              <CobrosLista
+                clienteId={cliente.cliente_id!}
+                filtroFechas={filtroFechas}
+                puedeEliminar={puedeEliminar}
+                enabled={abierto}
+              />
+            </div>
+          )}
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Lista de cobros de un cliente (lazy: solo cuando el acordeón está abierto) ──
+function CobrosLista({
+  clienteId,
+  filtroFechas,
+  puedeEliminar,
+  enabled,
+}: {
+  clienteId:     number
+  filtroFechas:  FiltroFechas
+  puedeEliminar: boolean
+  enabled:       boolean
+}) {
+  const toast = useToast()
+  const { data: cobros = [], isLoading, isError } = useCobros(
+    { cliente_id: clienteId, ...filtroFechas },
+    enabled,
+  )
+  const { mutate: remove, isPending: removing } = useDeleteCobro()
+
+  function handleEliminar(c: Cobro) {
+    if (!confirm(`¿Eliminar el cobro de ${fmtPesos(c.monto)} del ${fmtFecha(c.fecha)}?`)) return
+    remove(c.id, {
+      onSuccess: () => toast('✓ Cobro eliminado', 'ok'),
+      onError: (err: unknown) =>
+        toast((err as { message?: string })?.message || 'No se pudo eliminar el cobro', 'err'),
+    })
+  }
+
+  if (isLoading) {
+    return (
+      <div className="px-4 sm:px-6 py-3 text-xs text-gris-dark italic">Cargando cobros…</div>
+    )
+  }
+  if (isError) {
+    return (
+      <div className="px-4 sm:px-6 py-3 text-xs text-rojo italic">No se pudieron cargar los cobros.</div>
+    )
+  }
+  if (cobros.length === 0) {
+    return (
+      <div className="px-4 sm:px-6 pb-3 text-xs text-gris-dark italic">
+        Todavía no hay cobros registrados.
+      </div>
+    )
+  }
+
+  return (
+    <div className="divide-y divide-gris">
+      {cobros.map(c => (
+        <div
+          key={c.id}
+          className="px-4 sm:px-6 py-2.5 flex items-center justify-between gap-3"
+        >
+          <div className="min-w-0 flex items-center gap-2 flex-wrap">
+            <span className="font-mono text-xs text-gris-dark">{fmtFecha(c.fecha)}</span>
+            <span className="font-semibold text-sm text-verde whitespace-nowrap">{fmtPesos(c.monto)}</span>
+            <span className="text-xs text-gris-dark">· {MEDIO_COBRO_LABEL[c.medio]}</span>
+            {c.obs && <span className="text-xs text-gris-dark truncate">· {c.obs}</span>}
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={!puedeEliminar || removing}
+            onClick={() => handleEliminar(c)}
+            aria-label="Eliminar cobro"
+          >
+            🗑
+          </Button>
+        </div>
+      ))}
     </div>
   )
 }

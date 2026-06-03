@@ -4,8 +4,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api/client'
 import type {
   Cliente,
+  Cobro,
   CuentaCorrienteCliente,
   Maquina,
+  MedioCobro,
   ObraAlquiler,
   ObraAlquilerDetalle,
   ObraMaquina,
@@ -451,5 +453,79 @@ export function useCuentaCorriente(f: CuentaCorrienteFiltro, enabled = true) {
       `/api/alquiler/cuenta-corriente${cuentaCorrienteQueryString(f)}`,
     ),
     enabled,
+  })
+}
+
+// ─────────────────────────── Cobros (Fase C) ───────────────────────────
+// Plata efectivamente recibida del cliente. Cada cobro reduce el saldo de su
+// cuenta corriente → toda mutación invalida también CUENTA_CORRIENTE (el saldo
+// cambió). La clave raíz ['alquiler','cobros'] permite invalidar todas las
+// variantes de filtro de una.
+export const COBROS_KEY = ['alquiler', 'cobros'] as const
+export const CUENTA_CORRIENTE_KEY = ['alquiler', 'cuenta-corriente'] as const
+
+export interface CobrosFiltro {
+  cliente_id?: number
+  desde?:      string
+  hasta?:      string
+}
+export const cobrosKey = (f: CobrosFiltro) => ['alquiler', 'cobros', f] as const
+
+function cobrosQueryString(f: CobrosFiltro): string {
+  const sp = new URLSearchParams()
+  if (f.cliente_id != null) sp.set('cliente_id', String(f.cliente_id))
+  if (f.desde)              sp.set('desde', f.desde)
+  if (f.hasta)              sp.set('hasta', f.hasta)
+  const qs = sp.toString()
+  return qs ? `?${qs}` : ''
+}
+
+export function useCobros(f: CobrosFiltro, enabled = true) {
+  return useQuery({
+    queryKey: cobrosKey(f),
+    queryFn:  () => apiGet<Cobro[]>(`/api/alquiler/cobros${cobrosQueryString(f)}`),
+    enabled,
+  })
+}
+
+export interface CrearCobroDto {
+  cliente_id: number
+  fecha:      string
+  monto:      number
+  medio:      MedioCobro
+  obs?:       string | null
+}
+
+export function useCreateCobro() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: CrearCobroDto) => apiPost<Cobro>('/api/alquiler/cobros', dto),
+    onSuccess:  () => {
+      qc.invalidateQueries({ queryKey: COBROS_KEY })
+      qc.invalidateQueries({ queryKey: CUENTA_CORRIENTE_KEY })
+    },
+  })
+}
+
+export function useUpdateCobro() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: number; dto: Partial<CrearCobroDto> }) =>
+      apiPatch<Cobro>(`/api/alquiler/cobros/${id}`, dto),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: COBROS_KEY })
+      qc.invalidateQueries({ queryKey: CUENTA_CORRIENTE_KEY })
+    },
+  })
+}
+
+export function useDeleteCobro() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiDelete(`/api/alquiler/cobros/${id}`),
+    onSuccess:  () => {
+      qc.invalidateQueries({ queryKey: COBROS_KEY })
+      qc.invalidateQueries({ queryKey: CUENTA_CORRIENTE_KEY })
+    },
   })
 }
