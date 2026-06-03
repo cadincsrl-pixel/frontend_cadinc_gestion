@@ -100,3 +100,81 @@ export function useDeleteContratista() {
     onSuccess: () => qc.invalidateQueries({ queryKey: CONTRAT_KEY }),
   })
 }
+
+// ──────────────────── Documento de DNI del contratista ────────────────────
+// Flujo de 2 pasos idéntico al de la póliza del seguro de máquinas
+// (useAlquiler.useUploadSeguroPoliza): upload-url → PUT al signed URL → registrar.
+
+// Tipos/límite permitidos por el backend. Se valida en el cliente antes de
+// subir para dar feedback inmediato (el backend revalida igual).
+const DNI_MIME_PERMITIDOS = [
+  'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif',
+  'application/pdf',
+] as const
+const DNI_MAX_BYTES = 10 * 1024 * 1024 // 10 MB
+
+// Lanza un Error con mensaje legible si el archivo no cumple. Reutilizable
+// desde el componente para validar antes de disparar la mutation.
+export function validarArchivoDni(file: File): void {
+  if (!DNI_MIME_PERMITIDOS.includes(file.type as (typeof DNI_MIME_PERMITIDOS)[number])) {
+    throw new Error('Tipo de archivo no permitido. Subí una imagen (JPG/PNG/WEBP/HEIC) o PDF.')
+  }
+  if (file.size > DNI_MAX_BYTES) {
+    throw new Error('El archivo supera los 10 MB.')
+  }
+}
+
+interface DniUploadUrlResponse {
+  path:       string
+  token:      string
+  signed_url: string
+}
+
+export function useUploadDniContratista() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ contratId, file }: { contratId: number; file: File }) => {
+      validarArchivoDni(file)
+      const up = await apiPost<DniUploadUrlResponse>(
+        `/api/contratistas/${contratId}/dni/upload-url`,
+        {
+          nombre_archivo: file.name,
+          mime_type:      file.type,
+          size_bytes:     file.size,
+        },
+      )
+      const putRes = await fetch(up.signed_url, {
+        method: 'PUT', body: file, headers: { 'content-type': file.type },
+      })
+      if (!putRes.ok) throw new Error(`Error al subir archivo (${putRes.status})`)
+      return apiPost<Contratista>(
+        `/api/contratistas/${contratId}/dni`,
+        {
+          storage_path:   up.path,
+          nombre_archivo: file.name,
+          mime_type:      file.type,
+          size_bytes:     file.size,
+        },
+      )
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: CONTRAT_KEY }),
+  })
+}
+
+export function useDeleteDniContratista() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ contratId }: { contratId: number }) =>
+      apiDelete<Contratista>(`/api/contratistas/${contratId}/dni`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: CONTRAT_KEY }),
+  })
+}
+
+// Devuelve la URL firmada para ver/descargar el DNI adjunto (abrir en nueva
+// pestaña). El backend tira 404 si el contratista no tiene DNI adjunto.
+export async function fetchDniContratistaSignedUrl(contratId: number): Promise<string> {
+  const data = await apiGet<{ url: string; nombre_archivo: string }>(
+    `/api/contratistas/${contratId}/dni/signed-url`,
+  )
+  return data.url
+}

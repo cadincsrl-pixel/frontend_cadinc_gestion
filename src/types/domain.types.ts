@@ -266,8 +266,14 @@ export interface Cierre extends AuditFields {
 export interface Contratista extends AuditFields {
   id: number
   nom: string
+  razon_social: string | null
   especialidad: string | null
   tel: string | null
+  cuit: string | null
+  cuil: string | null
+  dni: string | null
+  dni_doc_path: string | null
+  dni_doc_nombre: string | null
   obs: string | null
 }
 
