@@ -177,25 +177,24 @@ export function LiquidacionesTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reintegroIdsKey, choferLiq?.id])
 
-  // Auto-destildar tramos que cayeron fuera del rango Desde/Hasta. Si el
-  // user ajustó el rango para excluir tramos viejos/futuros, no querés
-  // que sigan tildados (afectaría el cálculo del neto).
+  // Al cambiar el rango Desde/Hasta, la selección de tramos = TODOS los
+  // pendientes del chofer que caen dentro del rango.
+  //
+  // Antes esto sólo filtraba (`prev.filter`), nunca re-agregaba. Problema:
+  // al editar la fecha "hasta" (ej. 06/02 → 05/31) se pasa por estados
+  // intermedios (ej. hasta=05/02, que queda < desde=05/04 → rango invertido →
+  // todo "fuera de rango"). Eso vaciaba la selección y, como nunca re-agregaba,
+  // al terminar de tipear la fecha correcta los tramos quedaban VISIBLES pero
+  // DESTILDADOS. Re-seleccionando los que están en rango, manda la fecha final.
+  // (Trade-off: si destildás un tramo a mano y después cambiás el período, se
+  // vuelve a tildar; el flujo típico es elegir período → ajustar selección.)
   useEffect(() => {
     if (!choferLiq) return
-    setSelTramos(prev => {
-      // Sólo dejamos los que (a) son del chofer activo, (b) están en rango.
-      const visiblesIds = (tramos as Tramo[])
-        .filter(t => t.chofer_id === choferLiq.id && t.estado === 'completado' && !t.liquidacion_id)
-        .filter(t => tramoEnRango(t, watchDesde, watchHasta))
-        .map(t => t.id)
-      const visiblesSet = new Set(visiblesIds)
-      const filtrado = prev.filter(id => visiblesSet.has(id))
-      // Para que el comportamiento sea coherente con `abrirLiquidar` (todos
-      // pre-tildados al abrir), si el filtro deja tildados los mismos que
-      // estaban antes y la intersección quedó incompleta, no agregamos
-      // nuevos: respeta lo que el user destildó manualmente.
-      return filtrado.length === prev.length ? prev : filtrado
-    })
+    const visiblesIds = (tramos as Tramo[])
+      .filter(t => t.chofer_id === choferLiq.id && t.estado === 'completado' && !t.liquidacion_id)
+      .filter(t => tramoEnRango(t, watchDesde, watchHasta))
+      .map(t => t.id)
+    setSelTramos(visiblesIds)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watchDesde, watchHasta, choferLiq?.id])
 
