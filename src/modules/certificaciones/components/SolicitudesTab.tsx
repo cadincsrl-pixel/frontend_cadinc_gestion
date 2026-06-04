@@ -632,15 +632,19 @@ export function SolicitudesTab() {
 
   return (
     <>
-      {/* Header: filtro de obra + tabs por categoría + botón nueva */}
-      <div className="flex items-center gap-3 flex-wrap justify-between">
-        <div className="flex items-center gap-3 flex-wrap flex-1 min-w-0">
-          <div className="min-w-[220px] max-w-xs">
+      {/* Header: filtro de obra + botón nueva (fila 1) + tabs por categoría (fila 2).
+          En mobile el botón queda siempre visible (no se corta) y los tabs envuelven. */}
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex-1 min-w-0 sm:max-w-xs">
             <Combobox placeholder="Filtrar por obra..." options={obraOptions} value={obraFiltro} onChange={setObraFiltro} />
           </div>
-          <CategoriaTabs categoriaSel={categoriaSel} counts={counts} onSelect={setCategoria} />
+          <Button variant="primary" size="sm" onClick={abrirNuevo} disabled={!puedeCrear} className="shrink-0">
+            <span className="sm:hidden">+ Nueva</span>
+            <span className="hidden sm:inline">+ Nueva solicitud</span>
+          </Button>
         </div>
-        <Button variant="primary" size="sm" onClick={abrirNuevo} disabled={!puedeCrear}>+ Nueva solicitud</Button>
+        <CategoriaTabs categoriaSel={categoriaSel} counts={counts} onSelect={setCategoria} />
       </div>
 
       {/* Tabla */}
@@ -1670,7 +1674,7 @@ function CategoriaTabs({
   }, [otrasOpen])
 
   return (
-    <div className="flex gap-1 bg-gris rounded-xl p-1 relative">
+    <div className="flex flex-wrap gap-1 bg-gris rounded-xl p-1 relative w-fit max-w-full">
       {CATEGORIAS_PRINCIPALES.map(c => {
         const active = categoriaSel === c
         return (
