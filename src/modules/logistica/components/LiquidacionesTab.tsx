@@ -450,8 +450,11 @@ export function LiquidacionesTab() {
           descripcion: g.descripcion ?? null,
           monto:       Number(g.monto),
         })),
-        // Neto = lo que ya venía + reintegros (no se restan, se suman).
-        neto: (exportData.neto ?? 0) + resp.total,
+        // Neto = básico + km − adelantos + reintegros, contando los reintegros
+        // UNA sola vez. OJO: exportData.neto (= saldo de resumenChofer) YA
+        // incluía reintegros, así que sumar resp.total los duplicaba (el Excel
+        // daba más que el PDF parcial). Recomputamos desde los subtotales.
+        neto: (exportData.subtotal_bas ?? 0) + (exportData.subtotal_km ?? 0) - (exportData.descuentos ?? 0) + resp.total,
       })
     } catch (err) {
       console.warn('[liquidacion] no se pudieron traer reintegros pendientes:', err)
@@ -758,6 +761,11 @@ export function LiquidacionesTab() {
                     </Button>
                     {mis_tramos.length > 0 && (() => {
                       const { desde, hasta } = rangoTramos(mis_tramos)
+                      // Básico por días del RANGO (igual que el PDF y la
+                      // liquidación que se guarda), no por días únicos con tramos.
+                      // Si no, el Excel daba un básico distinto al PDF parcial.
+                      const diasRango = diasEntreFechas(desde, hasta)
+                      const subtotalBasRango = diasRango * (chofer.basico_dia ?? 0)
                       // Desglose km cargado/vacío para que el Excel muestre la
                       // cuenta detallada y no sólo el agregado.
                       const km_cargados = mis_tramos.filter(t => t.tipo === 'cargado').reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
@@ -766,14 +774,16 @@ export function LiquidacionesTab() {
                       const precio_km_vacio   = chofer.precio_km_vacio   ?? 0
                       const exportData = {
                         nombreChofer: chofer.nombre,
-                        desde, hasta, dias,
+                        desde, hasta, dias: diasRango,
                         basico_dia:   chofer.basico_dia ?? 0,
-                        subtotal_bas, km_totales, subtotal_km, descuentos,
+                        subtotal_bas: subtotalBasRango, km_totales, subtotal_km, descuentos,
                         km_cargados, km_vacios,
                         precio_km_cargado, precio_km_vacio,
                         subtotal_km_cargado: km_cargados * precio_km_cargado,
                         subtotal_km_vacio:   km_vacios   * precio_km_vacio,
-                        neto:         saldo,
+                        // Reintegros contados UNA vez (para el fallback si falla el
+                        // endpoint; en el camino normal se recomputa con resp.total).
+                        neto: subtotalBasRango + subtotal_km - descuentos + reintegros,
                         tramos:       mis_tramos,
                         adelantos:    mis_adelantos,
                         canteras:     canteras as any[],
