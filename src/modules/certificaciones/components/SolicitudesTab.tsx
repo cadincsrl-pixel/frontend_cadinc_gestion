@@ -63,6 +63,14 @@ function fmtF(s: string) { const [y,m,d] = s.split('-'); return `${d}/${m}/${y}`
 function fmtM(n: number) { return '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 0 }) }
 // Formatea un timestamp "YYYY-MM-DDTHH:mm[:ss]" a "DD/MM/YYYY HH:mm".
 function fmtFH(s: string) { const [fecha, hora = ''] = s.split('T'); return `${fmtF(fecha)}${hora ? ' ' + hora.slice(0, 5) : ''}` }
+// Hora local (zona del navegador, AR) de un timestamp CON timezone como
+// `created_at` (viene en UTC). Acá `new Date()` es correcto: el valor trae
+// offset, no es un date-only (no aplica el corrimiento de los 'YYYY-MM-DD').
+function fmtHora(s: string | null | undefined): string {
+  if (!s) return ''
+  const d = new Date(s)
+  return isNaN(d.getTime()) ? '' : d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+}
 
 const BUCKET = 'cert-adjuntos'
 async function uploadAdjunto(file: File): Promise<{ url: string; nombre: string }> {
@@ -685,7 +693,7 @@ export function SolicitudesTab() {
                       )}
                     </div>
                     <div className="text-[11px] text-gris-dark mt-0.5 flex items-center gap-1.5 flex-wrap">
-                      <span className="font-mono">{fmtF(s.fecha)}</span>
+                      <span className="font-mono">{fmtF(s.fecha)}{s.created_at ? ` ${fmtHora(s.created_at)}` : ''}</span>
                       <span>·</span>
                       <span>{s.solicitante ? (perfiles.get(s.solicitante) ?? '…') : '—'}</span>
                       <span>·</span>
@@ -949,7 +957,7 @@ export function SolicitudesTab() {
                       </div>
                       <div className="flex items-center gap-2 flex-wrap mt-0.5 text-[11px] text-gris-dark font-mono">
                         {obra && <span className="font-bold text-azul">{s.obra_cod}</span>}
-                        <span>{fmtF(s.fecha)}</span>
+                        <span>{fmtF(s.fecha)}{s.created_at ? ` ${fmtHora(s.created_at)}` : ''}</span>
                       </div>
                       {s.entrega_tentativa && (
                         <div className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-naranja-light text-naranja-dark text-[10px] font-bold">
