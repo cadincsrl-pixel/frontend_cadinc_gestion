@@ -519,6 +519,8 @@ function FacturacionSection() {
   // que requieren acción del usuario.
   const [filtroEstadoCobro, setFiltroEstadoCobro] = useState<'pendientes' | 'cobrados' | 'todos'>('pendientes')
   const [busquedaCobro, setBusquedaCobro] = useState('')
+  // Buscador de remitos DENTRO del modal de registrar cobro.
+  const [busquedaRemito, setBusquedaRemito] = useState('')
   const [cobroDesde, setCobroDesde] = useState('')
   const [cobroHasta, setCobroHasta] = useState('')
   const form = useForm<any>()
@@ -530,6 +532,7 @@ function FacturacionSection() {
     setEmpresaCobro(null)
     setCobroCreado(null)
     setSelectedIds(new Set())
+    setBusquedaRemito('')
   }
 
   function abrirEditarTramo(t: Tramo) {
@@ -594,6 +597,7 @@ function FacturacionSection() {
     const mis_tramos = tramosPendientes.filter(t => t.empresa_id === empresa.id)
     setSelectedIds(new Set(mis_tramos.map(t => t.id)))
     form.reset({ fecha: toISO(new Date()), obs: '' })
+    setBusquedaRemito('')
     setModalCobro(true)
   }
 
@@ -652,6 +656,17 @@ function FacturacionSection() {
     ? tramosPendientes.filter(t => t.empresa_id === empresaCobro.id)
     : []
   const modalDesglose = empresaCobro ? calcDesglose(modalTodosTramos, empresaCobro.id) : []
+  // Filtrado por el buscador del modal (remito, cantera, fecha o #tramo).
+  const modalDesgloseFiltrado = (() => {
+    const q = busquedaRemito.trim().toLowerCase()
+    if (!q) return modalDesglose
+    return modalDesglose.filter(d =>
+      (d.t.remito_descarga ?? d.t.remito_carga ?? `tramo #${d.t.id}`).toLowerCase().includes(q) ||
+      (d.cantera?.nombre ?? '').toLowerCase().includes(q) ||
+      (d.fecha ?? '').includes(q) ||
+      String(d.t.id).includes(q),
+    )
+  })()
   const selDesglose   = modalDesglose.filter(d => selectedIds.has(d.t.id))
   const selTon        = selDesglose.reduce((s, d) => s + d.ton, 0)
   const selTotal      = selDesglose.reduce((s, d) => s + d.subtotal, 0)
@@ -1171,20 +1186,33 @@ function FacturacionSection() {
                 </span>
                 <div className="flex gap-3 text-xs">
                   <button className="text-azul hover:underline"
-                    onClick={() => setSelectedIds(new Set(modalTodosTramos.map(t => t.id)))}>
-                    Todos
+                    onClick={() => setSelectedIds(prev => new Set([...prev, ...modalDesgloseFiltrado.map(d => d.t.id)]))}>
+                    {busquedaRemito ? 'Todos (filtrados)' : 'Todos'}
                   </button>
                   <button className="text-azul hover:underline"
-                    onClick={() => setSelectedIds(new Set())}>
-                    Ninguno
+                    onClick={() => setSelectedIds(prev => {
+                      const next = new Set(prev)
+                      modalDesgloseFiltrado.forEach(d => next.delete(d.t.id))
+                      return next
+                    })}>
+                    {busquedaRemito ? 'Ninguno (filtrados)' : 'Ninguno'}
                   </button>
                 </div>
               </div>
+              {/* Buscador de remitos del modal */}
+              <Input
+                placeholder="🔍 Buscar remito, cantera o fecha..."
+                value={busquedaRemito}
+                onChange={e => setBusquedaRemito(e.target.value)}
+                className="mb-2"
+              />
               <div className="bg-gris rounded-xl divide-y divide-gris-mid max-h-60 overflow-y-auto">
-                {modalDesglose.length === 0 && (
-                  <p className="text-center py-4 text-sm text-gris-dark">Sin remitos pendientes</p>
+                {modalDesgloseFiltrado.length === 0 && (
+                  <p className="text-center py-4 text-sm text-gris-dark">
+                    {busquedaRemito ? `Sin remitos que coincidan con "${busquedaRemito}"` : 'Sin remitos pendientes'}
+                  </p>
                 )}
-                {modalDesglose.map(d => {
+                {modalDesgloseFiltrado.map(d => {
                   const checked  = selectedIds.has(d.t.id)
                   const remito   = d.t.remito_descarga ?? d.t.remito_carga ?? `Tramo #${d.t.id}`
                   const fechaStr = d.fecha ? fmtFecha(d.fecha) : '—'
