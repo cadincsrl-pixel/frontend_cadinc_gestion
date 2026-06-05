@@ -205,14 +205,17 @@ export function ChoferesTab() {
   ]
 
   const ChoferForm = ({ form, disabled }: { form: any; disabled?: boolean }) => (
+    // autoComplete="off" en todos los campos: Chrome interpretaba Alias/CBU como
+    // usuario/clave y ofrecía las contraseñas guardadas del admin. Son datos del
+    // chofer, no del usuario logueado → nada de autofill.
     <div className="flex flex-col gap-4">
-      <Input label="Nombre completo" placeholder="Apellido, Nombre" disabled={disabled} {...form.register('nombre')} />
+      <Input label="Nombre completo" placeholder="Apellido, Nombre" autoComplete="off" disabled={disabled} {...form.register('nombre')} />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Input label="CUIL" placeholder="20-12345678-3" disabled={disabled} {...form.register('cuil')} />
-        <Input label="Teléfono" placeholder="299-XXX-XXXX" disabled={disabled} {...form.register('tel')} />
+        <Input label="CUIL" placeholder="20-12345678-3" autoComplete="off" disabled={disabled} {...form.register('cuil')} />
+        <Input label="Teléfono" placeholder="299-XXX-XXXX" autoComplete="off" disabled={disabled} {...form.register('tel')} />
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Input label="Licencia" placeholder="Nº licencia" disabled={disabled} {...form.register('licencia')} />
+        <Input label="Licencia" placeholder="Nº licencia" autoComplete="off" disabled={disabled} {...form.register('licencia')} />
         <Select label="Estado" options={ESTADO_OPTIONS} disabled={disabled} {...form.register('estado')} />
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -222,10 +225,10 @@ export function ChoferesTab() {
       {/* Datos bancarios para las solicitudes de transferencia (Liquidaciones).
           Alias o CBU/CVU — alcanza con uno para poder transferir. */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Input label="Alias (transferencias)" placeholder="juan.perez.mp" disabled={disabled} {...form.register('alias')} />
-        <Input label="CBU / CVU" placeholder="22 dígitos" disabled={disabled} {...form.register('cbu')} />
+        <Input label="Alias (transferencias)" placeholder="juan.perez.mp" autoComplete="off" disabled={disabled} {...form.register('alias')} />
+        <Input label="CBU / CVU" placeholder="22 dígitos" autoComplete="off" inputMode="numeric" disabled={disabled} {...form.register('cbu')} />
       </div>
-      <Input label="Observaciones" placeholder="Notas..." disabled={disabled} {...form.register('obs')} />
+      <Input label="Observaciones" placeholder="Notas..." autoComplete="off" disabled={disabled} {...form.register('obs')} />
     </div>
   )
 
