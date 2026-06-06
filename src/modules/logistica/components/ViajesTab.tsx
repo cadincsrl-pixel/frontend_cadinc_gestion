@@ -284,8 +284,14 @@ export function ViajesTab() {
     return { fuente, ultimoChofer: choferRepite ? ultimoChofer : null, ultimoCamion: camionRepite ? ultimoCamion : null }
   }
 
-  // Set de tramo IDs "sospechosos": tienen un tramo previo del mismo chofer o
-  // camión con el mismo tipo (capa 3: marca visual en la lista).
+  // Set de tramo IDs "sospechosos": tienen un tramo previo del mismo CHOFER con
+  // el mismo tipo (capa 3: marca visual en la lista).
+  //
+  // OJO: NO se chequea por camión. Un camión cambia de chofer (lo dejan en un
+  // lado y lo agarra otro), así que el "repetido por camión" daba falsos
+  // positivos — el primer tramo del nuevo chofer matcheaba el último del chofer
+  // anterior en ese camión (caso real: Mario sube a un camión que otro dejó en
+  // Chivilcoy). La alternancia cargado/vacío es por chofer, no por camión.
   const tramosRepetidos = useMemo(() => {
     const sorted = [...tramos].sort((a, b) => {
       const fa = fechaRef(a) ?? ''
@@ -296,16 +302,13 @@ export function ViajesTab() {
       return oa - ob
     })
     const lastByChofer = new Map<number, Tramo>()
-    const lastByCamion = new Map<number, Tramo>()
     const repetidos = new Set<number>()
     for (const t of sorted) {
       const prevChofer = lastByChofer.get(t.chofer_id)
-      const prevCamion = lastByCamion.get(t.camion_id)
-      if ((prevChofer && prevChofer.tipo === t.tipo) || (prevCamion && prevCamion.tipo === t.tipo)) {
+      if (prevChofer && prevChofer.tipo === t.tipo) {
         repetidos.add(t.id)
       }
       lastByChofer.set(t.chofer_id, t)
-      lastByCamion.set(t.camion_id, t)
     }
     return repetidos
   }, [tramos])
@@ -865,7 +868,7 @@ export function ViajesTab() {
                 }`}
                 title={
                   remitosDispares ? `⚠ Nº de remito no coincide: carga "${remCarga}" vs descarga "${remDescarga}"` :
-                  esRepetido ? 'Este tramo repite el tipo del tramo anterior del mismo chofer o camión — revisar' : undefined
+                  esRepetido ? 'Este tramo repite el tipo del tramo anterior del mismo chofer — revisar' : undefined
                 }
               >
                 {/* Cabecera */}
