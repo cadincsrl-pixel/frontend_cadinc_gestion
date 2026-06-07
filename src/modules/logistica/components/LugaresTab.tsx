@@ -15,7 +15,8 @@ import { useToast } from '@/components/ui/Toast'
 import { useForm } from 'react-hook-form'
 import { intInputProps } from '@/lib/utils/inputs'
 import { useGeocode } from '../hooks/useEnRuta'
-import type { Cantera, Deposito } from '@/types/domain.types'
+import { Combobox } from '@/components/ui/Combobox'
+import type { Cantera, Deposito, Ruta } from '@/types/domain.types'
 
 export function LugaresTab() {
   const toast = useToast()
@@ -30,19 +31,27 @@ export function LugaresTab() {
   const [editCantera,   setEditCantera]   = useState<Cantera | null>(null)
   const [editDeposito,  setEditDeposito]  = useState<Deposito | null>(null)
   const [editRuta,      setEditRuta]      = useState<{ id: number; cantera: string; deposito: string } | null>(null)
-  const [busquedaRutas, setBusquedaRutas] = useState('')
   const [loading, setLoading] = useState(false)
 
-  // Filtra rutas por nombre de cantera o depósito (case-insensitive).
-  const rutasVisibles = useMemo(() => {
-    const q = busquedaRutas.trim().toLowerCase()
-    if (!q) return rutas
-    return rutas.filter(r => {
-      const cant = (r.canteras?.nombre ?? '').toLowerCase()
-      const dep  = (r.depositos?.nombre ?? '').toLowerCase()
-      return cant.includes(q) || dep.includes(q)
-    })
-  }, [rutas, busquedaRutas])
+  // Selector doble + matriz de cobertura de rutas (reemplaza la lista plana).
+  const [selCant,  setSelCant]  = useState('')  // cantera_id (string) elegida en el selector
+  const [selDep,   setSelDep]   = useState('')  // deposito_id (string) elegido en el selector
+  const [kmInline, setKmInline] = useState('')  // km tipeado para carga inline desde el selector
+  const [soloFaltantes, setSoloFaltantes] = useState(false)  // resaltar faltantes en la matriz
+
+  // Lookup O(1) del par (cantera_id, deposito_id) → ruta. Lo usan el selector
+  // doble y cada celda de la matriz. Las 56 combinaciones (7×8) son pocas.
+  const rutaPorPar = useMemo(() => {
+    const m = new Map<string, Ruta>()
+    for (const r of rutas as Ruta[]) m.set(`${r.cantera_id}-${r.deposito_id}`, r)
+    return m
+  }, [rutas])
+
+  const rutaSel: Ruta | null = selCant && selDep
+    ? rutaPorPar.get(`${selCant}-${selDep}`) ?? null
+    : null
+
+  const faltantes = canteras.length * depositos.length - rutas.length
 
   const formCantera    = useForm<any>()
   const formDeposito   = useForm<any>()
@@ -121,6 +130,34 @@ export function LugaresTab() {
       toast(esDuplicado ? 'Ya existe una ruta para ese par cantera/depósito' : 'Error al agregar', 'err')
     }
     setLoading(false)
+  }
+
+  // Carga inline de una ruta desde el selector doble (par ya elegido arriba).
+  async function guardarRutaInline(canteraId: number, depositoId: number, kmRaw: string) {
+    const km = Number(kmRaw)
+    if (!Number.isFinite(km) || km <= 0) { toast('Ingresá un valor de km mayor a 0', 'err'); return }
+    setLoading(true)
+    try {
+      await apiPost('/api/logistica/lugares/rutas', {
+        cantera_id: canteraId, deposito_id: depositoId, km_ida_vuelta: km, obs: '',
+      })
+      qc.invalidateQueries({ queryKey: LOG_KEYS.rutas })
+      toast('✓ Ruta agregada', 'ok')
+      setKmInline('')
+    } catch (err) {
+      const e = err as { message?: string; body?: { error?: string } }
+      const detalle = `${e?.message ?? ''} ${e?.body?.error ?? ''}`.toLowerCase()
+      const esDuplicado = detalle.includes('duplicate key') || detalle.includes('unique constraint')
+      toast(esDuplicado ? 'Ya existe una ruta para ese par cantera/depósito' : 'Error al agregar', 'err')
+    }
+    setLoading(false)
+  }
+
+  // Abre el modal "Nueva ruta" con el par precargado (desde una celda vacía de
+  // la matriz). El usuario sólo completa el km.
+  function openNuevaRutaPar(canteraId: number, depositoId: number) {
+    formRuta.reset({ cantera_id: canteraId, deposito_id: depositoId, km_ida_vuelta: '', obs: '' })
+    setModalRuta(true)
   }
 
   async function handleDeleteRuta(id: number) {
@@ -227,68 +264,175 @@ export function LugaresTab() {
         />
       </Section>
 
-      {/* Rutas */}
-      <Section title="🗺️ Rutas" onAdd={() => setModalRuta(true)} addLabel="＋ Ruta">
-        {/* Buscador: filtra por nombre de cantera o depósito. */}
-        <div className="px-3 py-2.5 border-b border-gris bg-gris/30">
-          <Input
-            type="text"
-            value={busquedaRutas}
-            onChange={e => setBusquedaRutas(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Escape' && busquedaRutas) {
-                e.stopPropagation()
-                setBusquedaRutas('')
-              }
-            }}
-            placeholder="Buscar por cantera o depósito…"
-            className="text-sm"
-          />
-          {busquedaRutas && (
-            <p className="text-[11px] text-gris-dark mt-1.5">
-              {rutasVisibles.length} de {rutas.length} ruta{rutas.length !== 1 ? 's' : ''}
+      {/* Rutas — selector doble (cantera→depósito→km) + matriz de cobertura.
+          Reemplaza la lista plana: el km no se carga a mano en el tramo, sale
+          de acá, así que ver/llenar la matriz destraba la carga de tramos. */}
+      <div>
+        <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+          <h3 className="font-display text-lg tracking-wider text-azul">🗺️ Rutas</h3>
+          <div className="flex items-center gap-3">
+            {faltantes > 0 && (
+              <label className="flex items-center gap-1.5 text-xs font-bold text-gris-dark cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={soloFaltantes}
+                  onChange={e => setSoloFaltantes(e.target.checked)}
+                  className="accent-rojo"
+                />
+                Resaltar faltantes
+              </label>
+            )}
+            <Button variant="secondary" size="sm" onClick={() => { formRuta.reset(); setModalRuta(true) }}>＋ Ruta</Button>
+          </div>
+        </div>
+
+        {/* Selector doble. Va fuera de un card con overflow-hidden para que el
+            dropdown del Combobox no se recorte. */}
+        <div className="bg-white rounded-card shadow-card p-4 mb-3">
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] gap-3 items-end">
+            <Combobox
+              label="Cantera (origen)"
+              placeholder="Buscar cantera…"
+              value={selCant}
+              onChange={v => { setSelCant(v); setKmInline('') }}
+              options={(canteras as Cantera[]).map(c => ({
+                value: String(c.id), label: c.nombre, sub: c.localidad ?? undefined,
+              }))}
+            />
+            <span className="hidden sm:flex items-center justify-center pb-2.5 text-gris-dark text-lg">→</span>
+            <Combobox
+              label="Depósito (destino)"
+              placeholder="Buscar depósito…"
+              value={selDep}
+              onChange={v => { setSelDep(v); setKmInline('') }}
+              options={(depositos as Deposito[]).map(d => ({
+                value: String(d.id), label: d.nombre, sub: d.localidad ?? undefined,
+              }))}
+            />
+          </div>
+
+          {selCant && selDep && (
+            <div className="mt-3">
+              {rutaSel ? (
+                <div className="flex items-center justify-between gap-3 bg-verde-light/40 rounded-card px-4 py-3">
+                  <div className="text-sm min-w-0">
+                    <span className="text-gris-dark">Distancia (un sentido): </span>
+                    <span className="font-mono font-bold text-verde text-lg">
+                      {Math.round(rutaSel.km_ida_vuelta).toLocaleString('es-AR')} km
+                    </span>
+                    {rutaSel.obs && <p className="text-[11px] text-gris-dark mt-0.5 truncate">{rutaSel.obs}</p>}
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button onClick={() => openEditRuta(rutaSel)} title="Editar km / observaciones"
+                      className="text-gris-dark hover:text-azul transition-colors text-sm px-2 py-1">✏️</button>
+                    <button onClick={() => handleDeleteRuta(rutaSel.id)} title="Eliminar ruta"
+                      className="text-gris-mid hover:text-rojo transition-colors text-sm px-2 py-1">✕</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-rojo-light/50 rounded-card px-4 py-3">
+                  <p className="text-sm font-bold text-rojo-dark mb-2">⚠ Falta cargar esta ruta — agregá el km</p>
+                  <div className="flex items-end gap-2 flex-wrap">
+                    <div className="flex-1 min-w-[140px]">
+                      <Input
+                        label="Km (un sentido)"
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="Ej: 1220"
+                        value={kmInline}
+                        onChange={e => setKmInline(e.target.value.replace(/[^\d]/g, ''))}
+                        onKeyDown={e => { if (e.key === 'Enter') guardarRutaInline(Number(selCant), Number(selDep), kmInline) }}
+                      />
+                    </div>
+                    <Button variant="primary" loading={loading}
+                      onClick={() => guardarRutaInline(Number(selCant), Number(selDep), kmInline)}>
+                      ✓ Guardar
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Matriz de cobertura: filas = canteras, columnas = depósitos. */}
+        <div className="bg-white rounded-card shadow-card overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-gris bg-gris/30 text-sm">
+            <span className="font-bold text-verde">{rutas.length}</span>
+            <span className="text-gris-dark"> de </span>
+            <span className="font-bold">{canteras.length * depositos.length}</span>
+            <span className="text-gris-dark"> combinaciones con km</span>
+            {faltantes > 0 && <span className="ml-2 text-rojo font-bold">· faltan {faltantes}</span>}
+            <span className="block text-[11px] text-gris-dark mt-0.5">
+              Tocá una celda con km para editar, o una vacía (＋) para cargarla.
+            </span>
+          </div>
+          {canteras.length > 0 && depositos.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="border-collapse text-sm">
+                <thead>
+                  <tr>
+                    <th className="sticky left-0 z-10 bg-white px-3 py-2 text-left text-[10px] font-bold text-gris-dark uppercase tracking-wider border-b border-r border-gris">
+                      Cantera ╲ Depósito
+                    </th>
+                    {(depositos as Deposito[]).map(d => (
+                      <th key={d.id} title={d.nombre}
+                        className="px-2 py-2 text-center text-[10px] font-bold text-gris-dark border-b border-gris min-w-[60px] max-w-[88px]">
+                        <span className="block truncate">{d.nombre}</span>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(canteras as Cantera[]).map(c => (
+                    <tr key={c.id}>
+                      <th title={c.nombre}
+                        className="sticky left-0 z-10 bg-white px-3 py-2 text-left font-bold text-carbon text-xs border-b border-r border-gris whitespace-nowrap">
+                        {c.nombre}
+                      </th>
+                      {(depositos as Deposito[]).map(d => {
+                        const r = rutaPorPar.get(`${c.id}-${d.id}`)
+                        const isSel = String(c.id) === selCant && String(d.id) === selDep
+                        return (
+                          <td key={d.id} className="border-b border-gris p-0">
+                            {r ? (
+                              <button
+                                onClick={() => openEditRuta(r)}
+                                title={`${c.nombre} → ${d.nombre} · ${Math.round(r.km_ida_vuelta).toLocaleString('es-AR')} km · editar`}
+                                className={`w-full px-2 py-2.5 text-center font-mono text-xs font-bold transition-colors
+                                  ${soloFaltantes ? 'text-gris-mid hover:bg-gris/40' : 'text-verde hover:bg-verde-light/50'}
+                                  ${isSel ? 'ring-2 ring-azul ring-inset bg-azul-light/30' : ''}`}
+                              >
+                                {Math.round(r.km_ida_vuelta).toLocaleString('es-AR')}
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => openNuevaRutaPar(c.id, d.id)}
+                                title={`${c.nombre} → ${d.nombre} · falta — tocá para cargar el km`}
+                                className={`w-full px-2 py-2.5 text-center text-sm transition-colors
+                                  ${soloFaltantes
+                                    ? 'bg-rojo-light/60 text-rojo-dark font-bold hover:bg-rojo-light'
+                                    : 'text-gris-mid hover:bg-rojo-light/40 hover:text-rojo'}
+                                  ${isSel ? 'ring-2 ring-azul ring-inset' : ''}`}
+                              >
+                                ＋
+                              </button>
+                            )}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-center py-6 text-gris-dark text-sm">
+              Cargá al menos una cantera y un depósito para ver la matriz.
             </p>
           )}
         </div>
-        <SimpleList
-          items={rutasVisibles}
-          emptyMsg={busquedaRutas ? `Sin rutas que coincidan con "${busquedaRutas}".` : 'No hay rutas registradas.'}
-          renderItem={r => (
-            <div key={r.id} className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-gris last:border-0">
-              <div className="text-sm flex-1 min-w-0">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="font-bold text-carbon">
-                    {r.canteras?.nombre ?? `Cantera #${r.cantera_id}`}
-                  </span>
-                  <span className="text-gris-dark">→</span>
-                  <span className="font-bold text-carbon">
-                    {r.depositos?.nombre ?? `Depósito #${r.deposito_id}`}
-                  </span>
-                  <span className="font-mono text-xs text-verde font-bold">
-                    {Math.round(r.km_ida_vuelta).toLocaleString('es-AR')} km
-                  </span>
-                </div>
-              </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <button
-                  onClick={() => openEditRuta(r)}
-                  title="Editar km / observaciones"
-                  className="text-gris-dark hover:text-azul transition-colors text-sm px-2 py-1"
-                >
-                  ✏️
-                </button>
-                <button
-                  onClick={() => handleDeleteRuta(r.id)}
-                  title="Eliminar ruta"
-                  className="text-gris-mid hover:text-rojo transition-colors text-sm px-2 py-1"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-          )}
-        />
-      </Section>
+      </div>
 
       {/* Modal nueva cantera */}
       <Modal open={modalCantera} onClose={() => setModalCantera(false)} title="⛏ NUEVA CANTERA"
