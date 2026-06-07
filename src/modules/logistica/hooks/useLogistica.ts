@@ -150,6 +150,15 @@ export function useRutas() {
   })
 }
 
+export function useCreateRuta() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: { cantera_id: number; deposito_id: number; km_ida_vuelta: number; obs?: string }) =>
+      apiPost<Ruta>('/api/logistica/lugares/rutas', dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.rutas }),
+  })
+}
+
 // ── Tramos ──
 export function useTramos() {
   return useQuery({

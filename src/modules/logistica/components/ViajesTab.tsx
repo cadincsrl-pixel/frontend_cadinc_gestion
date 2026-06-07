@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import {
   useTramos, useChoferes, useCamiones, useCanteras, useDepositos, useRutas, useEmpresas,
-  useTarifasEmpresa,
+  useTarifasEmpresa, useCreateRuta,
   useCreateTramo, useUpdateTramo, useDeleteTramo, useRegistrarDescargaTramo, useRevertirDescargaTramo, useMoverTramo,
 } from '../hooks/useLogistica'
 import { Modal }    from '@/components/ui/Modal'
@@ -21,7 +21,7 @@ import { toISO } from '@/lib/utils/dates'
 import { useTramosEnRuta } from '../hooks/useEnRuta'
 import { RelevoSection } from './RelevoSection'
 import { ModalSolicitudTurno } from './ModalSolicitudTurno'
-import type { Tramo, TramoTipo } from '@/types/domain.types'
+import type { Tramo, TramoTipo, Cantera, Deposito, Ruta } from '@/types/domain.types'
 
 // Shape de los forms de este tab. Todos los campos en string porque los
 // inputs/selects del proyecto devuelven strings; los parseos a number/null
@@ -134,17 +134,19 @@ export function ViajesTab() {
       .filter((c: any) => allowed === null || allowed.has(c.id) || c.id === selectedId)
       .map((c: any) => ({ value: String(c.id), label: c.nombre, sub: c.localidad ?? undefined }))
   }
-  // Mismo criterio que canteraOptions: si hay cantera pero sin rutas
-  // cargadas, lista vacía (el user ve que falta cargar la ruta).
-  function depositoOptions(canteraIdRaw: string | undefined, selectedIdRaw: string | undefined) {
+  // Mostramos TODOS los depósitos (antes filtrábamos a los que ya tenían ruta,
+  // lo que bloqueaba pares nuevos). Si hay cantera elegida, los agrupamos por
+  // "con km" vs "sin km todavía"; el km faltante se carga inline bajo el grid
+  // (RutaFaltanteInline), sin tener que ir a Lugares.
+  function depositoOptions(canteraIdRaw: string | undefined) {
     const canteraId = canteraIdRaw ? Number(canteraIdRaw) : null
-    const selectedId = selectedIdRaw ? Number(selectedIdRaw) : null
-    const allowed: Set<number> | null = canteraId != null
-      ? (depositosPorCantera.get(canteraId) ?? new Set<number>())
-      : null
-    return (depositos as any[])
-      .filter((d: any) => allowed === null || allowed.has(d.id) || d.id === selectedId)
-      .map((d: any) => ({ value: String(d.id), label: d.nombre, sub: d.localidad ?? undefined }))
+    const conRuta = canteraId != null ? depositosPorCantera.get(canteraId) : null
+    return (depositos as Deposito[]).map(d => ({
+      value: String(d.id),
+      label: d.nombre,
+      sub:   d.localidad ?? undefined,
+      group: conRuta ? (conRuta.has(d.id) ? 'Con km cargado' : 'Sin km todavía') : undefined,
+    }))
   }
   // Para tramos vacíos: depósito de origen → cantera de destino. Mismo set
   // de rutas pero indexado por depósito.
@@ -177,6 +179,7 @@ export function ViajesTab() {
   const { mutate: regDescarga,  isPending: descargando } = useRegistrarDescargaTramo()
   const { mutate: revDescarga,  isPending: revirtiendo } = useRevertirDescargaTramo()
   const { mutate: moverTramo   } = useMoverTramo()
+  const createRuta = useCreateRuta()
 
   const [modalNuevo,      setModalNuevo]      = useState(false)
   const [modalSolicitud,  setModalSolicitud]  = useState(false)
@@ -447,13 +450,28 @@ export function ViajesTab() {
           // Si dijo no, dejamos pasar al flujo normal y el warning de
           // "consecutivo mismo tipo" abajo cubre como fallback.
         } else {
-          // Sin ruta → bloqueamos el cargado para forzar consistencia.
-          alert(
-            `No se puede crear el tramo cargado: detecté que falta el vacío implícito\n` +
-            `${depNom} → ${cantNom}, pero no hay ruta cargada entre esos puntos.\n\n` +
-            `Cargá la ruta en Logística > Rutas o creá el tramo vacío a mano antes.`
+          // Sin ruta para el vacío implícito. Antes bloqueábamos y mandábamos a
+          // Lugares; ahora ofrecemos cargar el km al toque y seguir (Fase 2).
+          const kmRaw = prompt(
+            `Falta el km de la ruta del vacío implícito:\n\n` +
+            `  ${depNom} → ${cantNom}\n\n` +
+            `Ingresá los km (un sentido) para cargar la ruta y crear el vacío + el cargado.\n` +
+            `(Cancelá para crear sólo el cargado, sin el vacío.)`
           )
-          return
+          const km = kmRaw != null ? Number(kmRaw.replace(/[^\d.]/g, '')) : NaN
+          if (Number.isFinite(km) && km > 0) {
+            try {
+              await createRuta.mutateAsync({
+                cantera_id: newCanteraId, deposito_id: ultimo.deposito_id, km_ida_vuelta: km, obs: '',
+              })
+              vacioAuto = { cantera_id: newCanteraId, deposito_id: ultimo.deposito_id, km_ida_vuelta: km }
+            } catch {
+              toast('No se pudo guardar la ruta; se crea sólo el cargado', 'err')
+            }
+          } else if (kmRaw != null) {
+            toast('Km inválido; se crea sólo el cargado', 'err')
+          }
+          // Si canceló (kmRaw == null) o falló: seguimos sin vacioAuto.
         }
       }
     }
@@ -1164,11 +1182,19 @@ export function ViajesTab() {
                 <Combobox
                   label="Depósito (destino)"
                   placeholder="Buscar depósito..."
-                  options={depositoOptions(formNuevo.watch('cantera_id'), formNuevo.watch('deposito_id'))}
+                  options={depositoOptions(formNuevo.watch('cantera_id'))}
                   value={String(formNuevo.watch('deposito_id') ?? '')}
                   onChange={(v: string) => formNuevo.setValue('deposito_id', v)}
                 />
               </div>
+              <RutaFaltanteInline
+                canteraId={formNuevo.watch('cantera_id')}
+                depositoId={formNuevo.watch('deposito_id')}
+                canteras={canteras as Cantera[]}
+                depositos={depositos as Deposito[]}
+                rutas={rutas as Ruta[]}
+                createRuta={createRuta}
+              />
               <div className="bg-gris rounded-xl p-3 flex flex-col gap-3">
                 <div className="text-xs font-bold text-gris-dark uppercase tracking-wider">⛏ Carga en cantera</div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1203,6 +1229,14 @@ export function ViajesTab() {
                   onChange={(v: string) => formNuevo.setValue('cantera_id', v)}
                 />
               </div>
+              <RutaFaltanteInline
+                canteraId={formNuevo.watch('cantera_id')}
+                depositoId={formNuevo.watch('deposito_id')}
+                canteras={canteras as Cantera[]}
+                depositos={depositos as Deposito[]}
+                rutas={rutas as Ruta[]}
+                createRuta={createRuta}
+              />
               <Input label="Fecha" type="date" {...formNuevo.register('fecha_vacio')} />
               <label className="flex items-start gap-2 text-sm bg-gris/40 border border-gris-mid rounded-lg p-3 cursor-pointer">
                 <input
@@ -1358,13 +1392,21 @@ export function ViajesTab() {
               placeholder="Buscar depósito..."
               options={
                 editando?.tipo === 'cargado'
-                  ? depositoOptions(formEdit.watch('cantera_id'), formEdit.watch('deposito_id'))
+                  ? depositoOptions(formEdit.watch('cantera_id'))
                   : (depositos as any[]).map((d: any) => ({ value: String(d.id), label: d.nombre }))
               }
               value={String(formEdit.watch('deposito_id') ?? '')}
               onChange={(v: string) => formEdit.setValue('deposito_id', v)}
             />
           </div>
+          <RutaFaltanteInline
+            canteraId={formEdit.watch('cantera_id')}
+            depositoId={formEdit.watch('deposito_id')}
+            canteras={canteras as Cantera[]}
+            depositos={depositos as Deposito[]}
+            rutas={rutas as Ruta[]}
+            createRuta={createRuta}
+          />
 
           {editando?.tipo === 'cargado' ? (
             <>
@@ -1460,6 +1502,71 @@ function InfoBlock({ titulo, icono, fecha, toneladas, remito, imgUrl, vacio }: {
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// Carga inline del km de la ruta cantera↔depósito desde el form del tramo.
+// Si el par ya tiene km, lo confirma; si falta, deja cargarlo en el momento
+// (Fase 2) sin ir a Logística > Lugares > Rutas. El km del tramo sale de acá.
+function RutaFaltanteInline({ canteraId, depositoId, canteras, depositos, rutas, createRuta }: {
+  canteraId:  string | undefined
+  depositoId: string | undefined
+  canteras:   Cantera[]
+  depositos:  Deposito[]
+  rutas:      Ruta[]
+  createRuta: ReturnType<typeof useCreateRuta>
+}) {
+  const toast = useToast()
+  const [km, setKm] = useState('')
+  const cId = canteraId  ? Number(canteraId)  : null
+  const dId = depositoId ? Number(depositoId) : null
+  if (!cId || !dId) return null
+
+  const ruta = rutas.find(r => r.cantera_id === cId && r.deposito_id === dId)
+  const cantNom = canteras.find(c => c.id === cId)?.nombre ?? `#${cId}`
+  const depNom  = depositos.find(d => d.id === dId)?.nombre ?? `#${dId}`
+
+  if (ruta) {
+    return (
+      <div className="text-[11px] text-verde font-bold -mt-2">
+        ✓ {cantNom} → {depNom}: {Math.round(ruta.km_ida_vuelta).toLocaleString('es-AR')} km (un sentido)
+      </div>
+    )
+  }
+
+  async function guardar() {
+    const n = Number(km)
+    if (!Number.isFinite(n) || n <= 0) { toast('Ingresá un km mayor a 0', 'err'); return }
+    try {
+      await createRuta.mutateAsync({ cantera_id: cId!, deposito_id: dId!, km_ida_vuelta: n, obs: '' })
+      toast('✓ Ruta agregada', 'ok')
+      setKm('')
+    } catch {
+      toast('No se pudo guardar la ruta', 'err')
+    }
+  }
+
+  return (
+    <div className="bg-rojo-light/50 rounded-lg px-3 py-2.5 -mt-2">
+      <p className="text-[11px] font-bold text-rojo-dark mb-1.5">
+        ⚠ No hay km para {cantNom} → {depNom}. Cargalo acá — lo usa el tramo para la distancia.
+      </p>
+      <div className="flex items-end gap-2">
+        <Input
+          label="Km (un sentido)"
+          type="text"
+          inputMode="numeric"
+          placeholder="Ej: 1220"
+          value={km}
+          onChange={e => setKm(e.target.value.replace(/[^\d]/g, ''))}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); guardar() } }}
+          className="text-sm"
+        />
+        <Button type="button" variant="primary" size="sm" loading={createRuta.isPending} onClick={guardar}>
+          Guardar
+        </Button>
+      </div>
     </div>
   )
 }
