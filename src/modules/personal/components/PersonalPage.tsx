@@ -78,14 +78,14 @@ export function PersonalPage() {
     for (const [leg, fecha] of ultimaFechaPorLeg) {
       semPorLeg.set(leg, toISO(getViernes(new Date(fecha + 'T12:00:00'))))
     }
-    // 3) obras distintas por leg en su semana más reciente
-    const out = new Map<string, string[]>()
+    // 3) obras distintas por leg en su semana más reciente + fecha del último día
+    const out = new Map<string, { fecha: string; obras: string[] }>()
     for (const h of todasHoras) {
       const sem = toISO(getViernes(new Date(h.fecha + 'T12:00:00')))
       if (sem !== semPorLeg.get(h.leg)) continue
-      const arr = out.get(h.leg) ?? []
-      if (!arr.includes(h.obra_cod)) arr.push(h.obra_cod)
-      out.set(h.leg, arr)
+      const entry = out.get(h.leg) ?? { fecha: ultimaFechaPorLeg.get(h.leg)!, obras: [] }
+      if (!entry.obras.includes(h.obra_cod)) entry.obras.push(h.obra_cod)
+      out.set(h.leg, entry)
     }
     return out
   }, [todasHoras])
@@ -242,6 +242,7 @@ export function PersonalPage() {
     const rows = personal.map(p => {
       const cat    = categorias.find(c => c.id === p.cat_id)
       const activo = esActivo(p)
+      const ultima = ultimasObrasPorLeg.get(p.leg)
       return {
         'Legajo':          p.leg,
         'Apellido y Nombre': p.nom,
@@ -249,6 +250,8 @@ export function PersonalPage() {
         'DNI':             p.dni ?? '',
         'Categoría':       cat?.nom ?? '',
         'Valor hora ($)':  cat?.vh ?? '',
+        'Última obra':     ultima ? ultima.obras.map(c => obraNombrePorCod.get(c) ?? c).join(', ') : '',
+        'Último día con horas': ultima ? ultima.fecha.split('-').reverse().join('/') : '',
         'Teléfono':        p.tel ?? '',
         'Dirección':       p.dir ?? '',
         'Pantalón':        p.talle_pantalon ?? '',
@@ -261,6 +264,7 @@ export function PersonalPage() {
     const ws = XLSX.utils.json_to_sheet(rows)
     ws['!cols'] = [
       { wch: 8 }, { wch: 28 }, { wch: 10 }, { wch: 14 }, { wch: 22 }, { wch: 14 },
+      { wch: 28 }, { wch: 14 },
       { wch: 16 }, { wch: 28 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 30 },
     ]
     const wb = XLSX.utils.book_new()
@@ -491,18 +495,21 @@ export function PersonalPage() {
                           </td>
                           <td className="text-xs px-4 py-3 hidden md:table-cell">
                             {(() => {
-                              const codigos = ultimasObrasPorLeg.get(p.leg) ?? []
-                              if (codigos.length === 0) return <span className="text-gris-mid">—</span>
+                              const ultima = ultimasObrasPorLeg.get(p.leg)
+                              if (!ultima || ultima.obras.length === 0) return <span className="text-gris-mid">—</span>
                               return (
                                 <div className="flex flex-col gap-0.5">
-                                  {codigos.slice(0, 2).map(cod => (
+                                  {ultima.obras.slice(0, 2).map(cod => (
                                     <span key={cod} className="font-semibold text-carbon truncate" title={obraNombrePorCod.get(cod) ?? cod}>
                                       {obraNombrePorCod.get(cod) ?? cod}
                                     </span>
                                   ))}
-                                  {codigos.length > 2 && (
-                                    <span className="text-[10px] text-gris-dark">+ {codigos.length - 2} más</span>
+                                  {ultima.obras.length > 2 && (
+                                    <span className="text-[10px] text-gris-dark">+ {ultima.obras.length - 2} más</span>
                                   )}
+                                  <span className="text-[10px] text-gris-dark">
+                                    {ultima.fecha.split('-').reverse().join('/')}
+                                  </span>
                                 </div>
                               )
                             })()}
