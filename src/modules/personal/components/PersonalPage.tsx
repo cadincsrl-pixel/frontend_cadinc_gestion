@@ -116,7 +116,7 @@ export function PersonalPage() {
   const [editando,      setEditando]      = useState<Personal | null>(null)
   const [detalle,       setDetalle]       = useState<Personal | null>(null)
   const [busqueda,      setBusqueda]      = useState('')
-  const [filterCondicion, setFilterCondicion] = useState<'' | 'blanco' | 'asegurado'>('')
+  const [filterCondicion, setFilterCondicion] = useState<'' | 'blanco' | 'asegurado' | 'sin_definir'>('')
   const [filterActivo,    setFilterActivo]    = useState<'activos' | 'inactivos' | 'todos'>('activos')
   const [pageP,         setPageP]         = useState(1)
   const [pageSizeP,     setPageSizeP]     = useState(12)
@@ -142,7 +142,9 @@ export function PersonalPage() {
     const matchText = p.nom.toLowerCase().includes(busqueda.toLowerCase()) ||
       p.leg.includes(busqueda) ||
       (p.dni ?? '').includes(busqueda)
-    const matchCondicion = !filterCondicion || p.condicion === filterCondicion
+    const matchCondicion =
+      !filterCondicion ||
+      (filterCondicion === 'sin_definir' ? !p.condicion : p.condicion === filterCondicion)
     const activo = esActivo(p)
     const matchActivo =
       filterActivo === 'todos' ||
@@ -358,6 +360,7 @@ export function PersonalPage() {
               <option value="">Todas las condiciones</option>
               <option value="blanco">Blanco</option>
               <option value="asegurado">Asegurado</option>
+              <option value="sin_definir">Sin definir</option>
             </select>
             <select
               value={filterActivo}
@@ -386,9 +389,14 @@ export function PersonalPage() {
                 Asegurado: {countAsegurado}
               </button>
               {countSinCondicion > 0 && (
-                <span className="px-2 py-1 rounded font-bold bg-amarillo-light text-[#7A5500]" title="Sin condición definida">
+                <button
+                  type="button"
+                  onClick={() => setFilterCondicion(filterCondicion === 'sin_definir' ? '' : 'sin_definir')}
+                  className={`px-2 py-1 rounded font-bold transition-colors ${filterCondicion === 'sin_definir' ? 'bg-[#7A5500] text-white' : 'bg-amarillo-light text-[#7A5500] hover:opacity-80'}`}
+                  title="Filtrar por sin condición definida"
+                >
                   Sin definir: {countSinCondicion}
-                </span>
+                </button>
               )}
             </div>
           </div>
