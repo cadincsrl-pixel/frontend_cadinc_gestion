@@ -1,0 +1,234 @@
+'use client'
+
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api/client'
+import type {
+  MaterialArido,
+  ClienteArido,
+  PrecioCliente,
+  MovimientoArido,
+  StockMaterial,
+  CobroArido,
+  CuentaCorrienteArido,
+} from '../types'
+
+// ── Query keys ──
+export const MATERIALES_KEY = ['aridos', 'materiales'] as const
+export const CLIENTES_KEY   = ['aridos', 'clientes'] as const
+export const PRECIOS_KEY    = ['aridos', 'precios'] as const
+export const STOCK_KEY      = ['aridos', 'stock'] as const
+export const CTACTE_KEY     = ['aridos', 'cuenta-corriente'] as const
+
+export interface MovimientosFiltro {
+  tipo?:        'venta' | 'acopio' | 'ajuste'
+  cliente_id?:  number
+  material_id?: number
+  fecha_desde?: string
+  fecha_hasta?: string
+}
+export const movimientosKey = (f: MovimientosFiltro) => ['aridos', 'movimientos', f] as const
+export const cobrosKey = (clienteId?: number) => ['aridos', 'cobros', clienteId ?? 'all'] as const
+
+function invalidarDerivados(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ['aridos', 'movimientos'] })
+  qc.invalidateQueries({ queryKey: STOCK_KEY })
+  qc.invalidateQueries({ queryKey: CTACTE_KEY })
+}
+
+// ─────────────────────────── Materiales ───────────────────────────
+export function useMateriales() {
+  return useQuery({
+    queryKey: MATERIALES_KEY,
+    queryFn:  () => apiGet<MaterialArido[]>('/api/aridos/materiales'),
+  })
+}
+
+export function useCreateMaterial() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: Partial<MaterialArido>) => apiPost<MaterialArido>('/api/aridos/materiales', dto),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: MATERIALES_KEY }),
+  })
+}
+
+export function useUpdateMaterial() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: number; dto: Partial<MaterialArido> }) =>
+      apiPatch<MaterialArido>(`/api/aridos/materiales/${id}`, dto),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: MATERIALES_KEY })
+      qc.invalidateQueries({ queryKey: STOCK_KEY })
+    },
+  })
+}
+
+export function useDeleteMaterial() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiDelete(`/api/aridos/materiales/${id}`),
+    onSuccess:  () => {
+      qc.invalidateQueries({ queryKey: MATERIALES_KEY })
+      qc.invalidateQueries({ queryKey: STOCK_KEY })
+    },
+  })
+}
+
+// ─────────────────────────── Clientes ───────────────────────────
+export function useClientesAridos() {
+  return useQuery({
+    queryKey: CLIENTES_KEY,
+    queryFn:  () => apiGet<ClienteArido[]>('/api/aridos/clientes'),
+  })
+}
+
+export function useCreateClienteArido() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: Partial<ClienteArido>) => apiPost<ClienteArido>('/api/aridos/clientes', dto),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: CLIENTES_KEY }),
+  })
+}
+
+export function useUpdateClienteArido() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: number; dto: Partial<ClienteArido> }) =>
+      apiPatch<ClienteArido>(`/api/aridos/clientes/${id}`, dto),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: CLIENTES_KEY })
+      qc.invalidateQueries({ queryKey: CTACTE_KEY })
+    },
+  })
+}
+
+export function useDeleteClienteArido() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiDelete(`/api/aridos/clientes/${id}`),
+    onSuccess:  () => {
+      qc.invalidateQueries({ queryKey: CLIENTES_KEY })
+      qc.invalidateQueries({ queryKey: CTACTE_KEY })
+    },
+  })
+}
+
+// ─────────────────────── Precios por cliente ───────────────────────
+export function usePreciosCliente() {
+  return useQuery({
+    queryKey: PRECIOS_KEY,
+    queryFn:  () => apiGet<PrecioCliente[]>('/api/aridos/precios'),
+  })
+}
+
+export function useCreatePrecio() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: { cliente_id: number; material_id: number; precio: number; vigente_desde: string; obs?: string }) =>
+      apiPost<PrecioCliente>('/api/aridos/precios', dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: PRECIOS_KEY }),
+  })
+}
+
+export function useUpdatePrecio() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: number; dto: { precio?: number; vigente_desde?: string; obs?: string } }) =>
+      apiPatch<PrecioCliente>(`/api/aridos/precios/${id}`, dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: PRECIOS_KEY }),
+  })
+}
+
+export function useDeletePrecio() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiDelete(`/api/aridos/precios/${id}`),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: PRECIOS_KEY }),
+  })
+}
+
+// ─────────────────────────── Movimientos ───────────────────────────
+export function useMovimientos(filtro: MovimientosFiltro = {}) {
+  const params = new URLSearchParams()
+  if (filtro.tipo)        params.set('tipo', filtro.tipo)
+  if (filtro.cliente_id)  params.set('cliente_id', String(filtro.cliente_id))
+  if (filtro.material_id) params.set('material_id', String(filtro.material_id))
+  if (filtro.fecha_desde) params.set('fecha_desde', filtro.fecha_desde)
+  if (filtro.fecha_hasta) params.set('fecha_hasta', filtro.fecha_hasta)
+  const qs = params.toString()
+  return useQuery({
+    queryKey: movimientosKey(filtro),
+    queryFn:  () => apiGet<MovimientoArido[]>(`/api/aridos/movimientos${qs ? `?${qs}` : ''}`),
+  })
+}
+
+export function useCreateMovimiento() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: Record<string, unknown>) => apiPost<MovimientoArido>('/api/aridos/movimientos', dto),
+    onSuccess:  () => invalidarDerivados(qc),
+  })
+}
+
+export function useUpdateMovimiento() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: number; dto: Record<string, unknown> }) =>
+      apiPatch<MovimientoArido>(`/api/aridos/movimientos/${id}`, dto),
+    onSuccess: () => invalidarDerivados(qc),
+  })
+}
+
+export function useDeleteMovimiento() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiDelete(`/api/aridos/movimientos/${id}`),
+    onSuccess:  () => invalidarDerivados(qc),
+  })
+}
+
+// ─────────────────────────── Stock ───────────────────────────
+export function useStockAridos() {
+  return useQuery({
+    queryKey: STOCK_KEY,
+    queryFn:  () => apiGet<StockMaterial[]>('/api/aridos/stock'),
+  })
+}
+
+// ─────────────────────── Cobros y cuenta corriente ───────────────────────
+export function useCobrosAridos(clienteId?: number) {
+  return useQuery({
+    queryKey: cobrosKey(clienteId),
+    queryFn:  () => apiGet<CobroArido[]>(`/api/aridos/cobros${clienteId ? `?cliente_id=${clienteId}` : ''}`),
+  })
+}
+
+export function useCreateCobroArido() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: { cliente_id: number; fecha: string; monto: number; medio: string; obs?: string }) =>
+      apiPost<CobroArido>('/api/aridos/cobros', dto),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['aridos', 'cobros'] })
+      qc.invalidateQueries({ queryKey: CTACTE_KEY })
+    },
+  })
+}
+
+export function useDeleteCobroArido() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiDelete(`/api/aridos/cobros/${id}`),
+    onSuccess:  () => {
+      qc.invalidateQueries({ queryKey: ['aridos', 'cobros'] })
+      qc.invalidateQueries({ queryKey: CTACTE_KEY })
+    },
+  })
+}
+
+export function useCuentaCorrienteAridos() {
+  return useQuery({
+    queryKey: CTACTE_KEY,
+    queryFn:  () => apiGet<CuentaCorrienteArido[]>('/api/aridos/cuenta-corriente'),
+  })
+}

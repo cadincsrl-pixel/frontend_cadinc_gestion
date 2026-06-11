@@ -1,0 +1,94 @@
+// Tipos del módulo Áridos — espejo de las tablas aridos_* (migración 20260611b_aridos.sql)
+
+export type UnidadArido = 'm3' | 'viaje'
+export type TipoMovimiento = 'venta' | 'acopio' | 'ajuste'
+export type OrigenVenta = 'cantera' | 'deposito'
+export type MedioCobro = 'efectivo' | 'transferencia' | 'cheque' | 'otro'
+
+export interface MaterialArido {
+  id: number
+  nombre: string
+  unidad: UnidadArido
+  activo: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface ClienteArido {
+  id: number
+  nombre: string
+  cuit: string | null
+  tel: string | null
+  email: string | null
+  direccion: string | null
+  obs: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface PrecioCliente {
+  id: number
+  cliente_id: number
+  material_id: number
+  precio: number
+  vigente_desde: string
+  obs: string | null
+  aridos_clientes?: { nombre: string }
+  aridos_materiales?: { nombre: string; unidad: UnidadArido }
+}
+
+export interface MovimientoArido {
+  id: number
+  tipo: TipoMovimiento
+  fecha: string
+  material_id: number
+  cantidad: number
+  origen: OrigenVenta | null
+  cantera_id: number | null
+  cliente_id: number | null
+  precio_unit: number | null
+  importe: number | null
+  chofer_id: number | null
+  camion_id: number | null
+  flete_obs: string | null
+  remito: string | null
+  obs: string | null
+  created_at: string
+  aridos_materiales?: { nombre: string; unidad: UnidadArido }
+  aridos_clientes?: { nombre: string } | null
+  canteras?: { nombre: string } | null
+  choferes?: { nombre: string } | null
+  camiones?: { patente: string } | null
+}
+
+export interface StockMaterial {
+  material_id: number
+  nombre: string
+  unidad: UnidadArido
+  activo: boolean
+  entradas: number
+  salidas: number
+  ajustes: number
+  stock: number
+}
+
+export interface CobroArido {
+  id: number
+  cliente_id: number
+  fecha: string
+  monto: number
+  medio: MedioCobro
+  obs: string | null
+  created_at: string
+  aridos_clientes?: { nombre: string }
+}
+
+export interface CuentaCorrienteArido {
+  id: number
+  nombre: string
+  cuit: string | null
+  tel: string | null
+  vendido: number
+  cobrado: number
+  saldo: number
+}
