@@ -759,6 +759,7 @@ export interface TarifaEmpresaCantera {
   id: number
   empresa_id: number
   cantera_id: number
+  deposito_id: number | null   // null = tarifa general; set = específica para descargas en ese depósito
   valor_ton: number
   vigente_desde: string
   obs: string | null
@@ -766,6 +767,7 @@ export interface TarifaEmpresaCantera {
   updated_by: string | null
   empresas_transportistas?: { nombre: string }
   canteras?: { nombre: string; localidad: string | null }
+  depositos?: { nombre: string; localidad: string | null } | null
 }
 
 export type CobroEstado = 'pendiente' | 'cobrado'

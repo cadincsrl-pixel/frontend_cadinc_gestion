@@ -511,7 +511,7 @@ export function useTarifasEmpresa() {
 export function useUpsertTarifaEmpresa() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (dto: { empresa_id: number; cantera_id: number; valor_ton: number; vigente_desde: string; obs?: string }) =>
+    mutationFn: (dto: { empresa_id: number; cantera_id: number; deposito_id?: number | null; valor_ton: number; vigente_desde: string; obs?: string }) =>
       apiPost<TarifaEmpresaCantera>('/api/logistica/empresas/tarifas', dto),
     onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.tarifasEmpresa }),
   })

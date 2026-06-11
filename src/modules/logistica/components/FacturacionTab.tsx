@@ -9,7 +9,7 @@ import {
   useEmpresas, useCreateEmpresa, useUpdateEmpresa, useDeleteEmpresa,
   useTarifasEmpresa, useUpsertTarifaEmpresa, useUpdateTarifaEmpresa, useDeleteTarifaEmpresa,
   useCobros, useCreateCobro, useMarcarCobrado, useRevertirCobrado, useDeleteCobro,
-  useTramos, useUpdateTramo, useCanteras, useChoferes, useCamiones,
+  useTramos, useUpdateTramo, useCanteras, useDepositos, useChoferes, useCamiones,
 } from '../hooks/useLogistica'
 import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -169,29 +169,61 @@ function fmtDate(s: string) {
   return `${d}/${m}/${y}`
 }
 
+// Resuelve la tarifa $/ton de un tramo: si existe una tarifa específica para
+// el depósito de descarga (empresa+cantera+depósito), gana sobre la general
+// (empresa+cantera con deposito_id null). En ambos casos se toma la de
+// `vigente_desde` más reciente que no supere la fecha de descarga.
+function tarifaParaFecha(
+  tarifas: TarifaEmpresaCantera[],
+  empresaId: number,
+  canteraId: number | null,
+  depositoId: number | null,
+  fecha: string | null,
+): number {
+  if (!canteraId || !fecha) return 0
+  const base = tarifas.filter(t =>
+    t.empresa_id === empresaId && t.cantera_id === canteraId && t.vigente_desde <= fecha
+  )
+  const especificas = depositoId != null ? base.filter(t => t.deposito_id === depositoId) : []
+  const pool = especificas.length > 0 ? especificas : base.filter(t => t.deposito_id == null)
+  const vigente = pool.sort((a, b) => b.vigente_desde.localeCompare(a.vigente_desde))[0]
+  return vigente?.valor_ton ?? 0
+}
+
 function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
   const toast = useToast()
   const { puedeCrear, puedeEliminar } = usePermisos('logistica')
   const { data: todasTarifas = [] } = useTarifasEmpresa()
   const { data: canteras     = [] } = useCanteras()
+  const { data: depositos    = [] } = useDepositos()
   const { mutate: crear, isPending: saving } = useUpsertTarifaEmpresa()
   const { mutate: actualizar, isPending: actualizando } = useUpdateTarifaEmpresa()
   const { mutate: remove } = useDeleteTarifaEmpresa()
 
   const tarifas = todasTarifas.filter(t => t.empresa_id === empresa.id)
 
-  // Agrupar por cantera_id, ordenadas por vigente_desde desc (la primera es la vigente)
-  const porCantera = canteras
-    .map(c => ({
-      cantera: c,
-      historial: tarifas
-        .filter(t => t.cantera_id === c.id)
-        .sort((a, b) => b.vigente_desde.localeCompare(a.vigente_desde)),
-    }))
+  // Agrupar por cantera × depósito (null = tarifa general de la cantera),
+  // historial ordenado por vigente_desde desc (la primera es la vigente).
+  // La general va primero, después las específicas por depósito.
+  const grupos = canteras
+    .flatMap(c => {
+      const deCantera = tarifas.filter(t => t.cantera_id === c.id)
+      const depIds = Array.from(new Set(deCantera.map(t => t.deposito_id ?? null)))
+        .sort((a, b) => (a === null ? -1 : b === null ? 1 : a - b))
+      return depIds.map(depId => ({
+        key:      `${c.id}|${depId ?? 'gral'}`,
+        cantera:  c,
+        deposito: depId === null ? null : depositos.find(d => d.id === depId) ?? null,
+        depositoId: depId,
+        historial: deCantera
+          .filter(t => (t.deposito_id ?? null) === depId)
+          .sort((a, b) => b.vigente_desde.localeCompare(a.vigente_desde)),
+      }))
+    })
     .filter(g => g.historial.length > 0)
 
   const [modal, setModal] = useState(false)
-  const [expandida, setExpandida] = useState<number | null>(null)
+  const [expandida, setExpandida] = useState<string | null>(null)
   const [editando, setEditando] = useState<TarifaEmpresaCantera | null>(null)
   const [pisarPosteriores, setPisarPosteriores] = useState(false)
   const form = useForm<any>({ defaultValues: { vigente_desde: toISO(new Date()) } })
@@ -201,22 +233,27 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
   // (excluyendo opcionalmente una propia, para el caso editar). Sirve
   // para avisar que la nueva tarifa no va a afectar tramos posteriores
   // a menos que se "pisen" (eliminen).
-  function tarifasPosteriores(canteraId: number | null, fecha: string, excluirId?: number): TarifaEmpresaCantera[] {
+  function tarifasPosteriores(canteraId: number | null, depositoId: number | null, fecha: string, excluirId?: number): TarifaEmpresaCantera[] {
     if (!canteraId || !fecha) return []
     return tarifas
-      .filter(t => t.cantera_id === canteraId)
+      .filter(t => t.cantera_id === canteraId && (t.deposito_id ?? null) === depositoId)
       .filter(t => excluirId == null || t.id !== excluirId)
       .filter(t => t.vigente_desde > fecha)
       .sort((a, b) => a.vigente_desde.localeCompare(b.vigente_desde))
   }
 
-  const watchCantera = form.watch('cantera_id')
-  const watchFecha   = form.watch('vigente_desde')
-  const posterioresNueva = tarifasPosteriores(watchCantera ? Number(watchCantera) : null, watchFecha)
+  const watchCantera  = form.watch('cantera_id')
+  const watchDeposito = form.watch('deposito_id')
+  const watchFecha    = form.watch('vigente_desde')
+  const posterioresNueva = tarifasPosteriores(
+    watchCantera ? Number(watchCantera) : null,
+    watchDeposito ? Number(watchDeposito) : null,
+    watchFecha,
+  )
 
   const watchEditFecha = formEdit.watch('vigente_desde')
   const posterioresEdit = editando
-    ? tarifasPosteriores(editando.cantera_id, watchEditFecha, editando.id)
+    ? tarifasPosteriores(editando.cantera_id, editando.deposito_id ?? null, watchEditFecha, editando.id)
     : []
 
   function abrirEditar(t: TarifaEmpresaCantera) {
@@ -263,6 +300,7 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
     crear({
       empresa_id:    empresa.id,
       cantera_id:    Number(data.cantera_id),
+      deposito_id:   data.deposito_id ? Number(data.deposito_id) : null,
       valor_ton:     Number(data.valor_ton),
       vigente_desde: data.vigente_desde,
       obs:           data.obs ?? '',
@@ -295,35 +333,45 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
     ...canteras.map(c => ({ value: c.id, label: c.nombre + (c.localidad ? ` — ${c.localidad}` : '') })),
   ]
 
+  const depositoOptions = [
+    { value: '', label: 'Todas las descargas (tarifa general)' },
+    ...depositos.map(d => ({ value: d.id, label: d.nombre + (d.localidad ? ` — ${d.localidad}` : '') })),
+  ]
+
   return (
     <>
       <div className="bg-white rounded-card shadow-card">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gris">
           <div>
             <h2 className="font-bold text-azul text-base">Tarifas — {empresa.nombre}</h2>
-            <p className="text-xs text-gris-dark mt-0.5">Historial de $/ton por cantera · cada entrega usa la tarifa vigente en su fecha de descarga</p>
+            <p className="text-xs text-gris-dark mt-0.5">Historial de $/ton por cantera (y depósito, si paga según destino) · cada entrega usa la tarifa vigente en su fecha de descarga</p>
           </div>
           {puedeCrear && (
             <Button variant="primary" size="sm" onClick={() => setModal(true)}>＋ Nueva tarifa</Button>
           )}
         </div>
 
-        {porCantera.length === 0 ? (
+        {grupos.length === 0 ? (
           <p className="text-center py-6 text-sm text-gris-dark">Sin tarifas. Agregá una con el botón de arriba.</p>
         ) : (
           <div className="divide-y divide-gris">
-            {porCantera.map(({ cantera, historial }) => {
+            {grupos.map(({ key, cantera, deposito, depositoId, historial }) => {
               const vigente  = historial[0]
               const pasadas  = historial.slice(1)
-              const expanded = expandida === cantera.id
+              const expanded = expandida === key
 
               return (
-                <div key={cantera.id} className="px-5 py-3">
+                <div key={key} className="px-5 py-3">
                   {/* Fila vigente */}
                   <div className="flex items-center justify-between gap-3 flex-wrap">
                     <div>
                       <span className="font-bold text-sm text-carbon">{cantera.nombre}</span>
                       {cantera.localidad && <span className="text-xs text-gris-dark ml-2">{cantera.localidad}</span>}
+                      {depositoId != null && (
+                        <span className="text-xs font-bold text-azul-mid ml-2 bg-azul/5 px-1.5 py-0.5 rounded" title="Tarifa específica para descargas en este depósito">
+                          → {deposito?.nombre ?? `depósito #${depositoId}`}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-3">
                       <div className="text-right">
@@ -334,7 +382,7 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
                       </div>
                       {pasadas.length > 0 && (
                         <button
-                          onClick={() => setExpandida(expanded ? null : cantera.id)}
+                          onClick={() => setExpandida(expanded ? null : key)}
                           className="text-xs text-azul-mid hover:underline"
                         >
                           {expanded ? '▲ ocultar' : `▼ ${pasadas.length} anterior${pasadas.length > 1 ? 'es' : ''}`}
@@ -349,7 +397,7 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
                       )}
                       {puedeEliminar && (
                         <button
-                          onClick={() => { if (confirm(`¿Eliminar tarifa de ${cantera.nombre}?`)) remove(vigente.id, { onSuccess: () => toast('✓ Eliminada', 'ok') }) }}
+                          onClick={() => { if (confirm(`¿Eliminar tarifa de ${cantera.nombre}${deposito ? ` → ${deposito.nombre}` : ''}?`)) remove(vigente.id, { onSuccess: () => toast('✓ Eliminada', 'ok') }) }}
                           className="text-xs px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors"
                         >✕</button>
                       )}
@@ -387,6 +435,12 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
         footer={<><Button variant="secondary" onClick={() => { setModal(false); setPisarPosteriores(false) }}>Cancelar</Button><Button variant="primary" loading={saving} onClick={form.handleSubmit(handleSubmit)}>✓ Guardar</Button></>}>
         <div className="flex flex-col gap-4">
           <Select label="Cantera" options={canteraOptions} {...form.register('cantera_id')} />
+          <div>
+            <Select label="Depósito de descarga" options={depositoOptions} {...form.register('deposito_id')} />
+            <p className="text-[11px] text-gris-dark mt-1">
+              Dejá &quot;Todas las descargas&quot; salvo que esta cantera pague distinto según el depósito de destino. La tarifa específica gana sobre la general.
+            </p>
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input label="$/ton" type="number" step="0.01" placeholder="0.00" {...form.register('valor_ton')} />
             <Input label="Vigente desde" type="date" {...form.register('vigente_desde')} />
@@ -444,8 +498,14 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
               <span className="font-bold">{empresa.nombre}</span>
               <span className="text-gris-dark mx-1">·</span>
               <span className="font-bold">{canteras.find(c => c.id === editando.cantera_id)?.nombre ?? '—'}</span>
+              {editando.deposito_id != null && (
+                <>
+                  <span className="text-gris-dark mx-1">→</span>
+                  <span className="font-bold text-azul-mid">{depositos.find(d => d.id === editando.deposito_id)?.nombre ?? `depósito #${editando.deposito_id}`}</span>
+                </>
+              )}
               <p className="text-[11px] text-gris-dark mt-1">
-                Empresa y cantera no son editables. Si la pareja cambió, eliminá esta tarifa y creá una nueva.
+                Empresa, cantera y depósito no son editables. Si la combinación cambió, eliminá esta tarifa y creá una nueva.
               </p>
             </div>
           )}
@@ -566,19 +626,11 @@ function FacturacionSection() {
     t => t.tipo === 'cargado' && t.estado === 'completado' && !t.cobro_id
   )
 
-  function tarifaParaFecha(empresaId: number, canteraId: number | null, fecha: string | null): number {
-    if (!canteraId || !fecha) return 0
-    const candidates = (todasTarifas as TarifaEmpresaCantera[])
-      .filter(t => t.empresa_id === empresaId && t.cantera_id === canteraId && t.vigente_desde <= fecha)
-      .sort((a, b) => b.vigente_desde.localeCompare(a.vigente_desde))
-    return candidates[0]?.valor_ton ?? 0
-  }
-
   function calcDesglose(tramosArr: Tramo[], empresaId: number) {
     return tramosArr.map(t => {
       const ton     = t.toneladas_descarga ?? t.toneladas_carga ?? 0
       const fecha   = t.fecha_descarga ?? t.fecha_carga
-      const tarifa  = tarifaParaFecha(empresaId, t.cantera_id, fecha)
+      const tarifa  = tarifaParaFecha(todasTarifas as TarifaEmpresaCantera[], empresaId, t.cantera_id, t.deposito_id, fecha)
       const cantera = canteras.find(c => c.id === t.cantera_id)
       return { t, ton, tarifa, subtotal: ton * tarifa, fecha, cantera }
     })
@@ -1345,19 +1397,11 @@ function RemitosSection() {
   // Filtro de estado dentro del modal: adeudados (default) / cobrados / ambos.
   const [modalFiltroEstado, setModalFiltroEstado] = useState<'adeudados' | 'cobrados' | 'ambos'>('adeudados')
 
-  function tarifaParaFecha(empresaId: number, canteraId: number | null, fecha: string | null): number {
-    if (!canteraId || !fecha) return 0
-    const candidates = (todasTarifas as TarifaEmpresaCantera[])
-      .filter(t => t.empresa_id === empresaId && t.cantera_id === canteraId && t.vigente_desde <= fecha)
-      .sort((a, b) => b.vigente_desde.localeCompare(a.vigente_desde))
-    return candidates[0]?.valor_ton ?? 0
-  }
-
   function enrichTramo(t: Tramo) {
     const empId   = t.empresa_id ?? 0
     const ton     = t.toneladas_descarga ?? t.toneladas_carga ?? 0
     const fecha   = t.fecha_descarga ?? t.fecha_carga
-    const tarifa  = tarifaParaFecha(empId, t.cantera_id, fecha ?? null)
+    const tarifa  = tarifaParaFecha(todasTarifas as TarifaEmpresaCantera[], empId, t.cantera_id, t.deposito_id, fecha ?? null)
     const cantera = canteras.find(c => c.id === t.cantera_id)
     const empresa = (empresas as EmpresaTransportista[]).find(e => e.id === empId)
     const remito  = t.remito_descarga ?? t.remito_carga
