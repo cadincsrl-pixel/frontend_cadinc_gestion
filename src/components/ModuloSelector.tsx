@@ -22,6 +22,7 @@ const MODULOS: Modulo[] = [
   { key: 'caja',            nombre: 'Caja',              descripcion: 'Efectivo y movimientos',               icono: '💵', appHref: '/caja'             },
   { key: 'flota',           nombre: 'Flota interna',     descripcion: 'Vehículos internos (autos, camionetas)', icono: '🚙', appHref: '/flota'           },
   { key: 'alquiler',        nombre: 'Alquiler',          descripcion: 'Máquinas, obras y partes de horas',    icono: '🚜', appHref: '/alquiler'         },
+  { key: 'aridos',          nombre: 'Áridos',            descripcion: 'Venta de áridos, stock y cta. corriente', icono: '⛰️', appHref: '/aridos'        },
   { key: 'admin',           nombre: 'Administración',    descripcion: 'Usuarios, permisos y auditoría',       icono: '⚙️', appHref: '/admin'            },
 ]
 
