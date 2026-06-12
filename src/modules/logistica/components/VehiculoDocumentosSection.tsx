@@ -23,6 +23,9 @@ const TIPOS: { key: VehiculoDocTipo; label: string; icon: string; venceObligator
   { key: 'tarjeta_verde',  label: 'Tarjeta verde',   icon: '🪪' },
   { key: 'rto',            label: 'RTO',             icon: '🛠', venceObligatorio: true },
   { key: 'poliza_seguro',  label: 'Póliza de seguro',icon: '🛡', venceObligatorio: true },
+  { key: 'homologacion',   label: 'Homologación',    icon: '✅' },
+  // Son 2 PDFs: el casillero acepta varios archivos (se listan todos)
+  { key: 'registro_modificacion', label: 'Registro de modificación', icon: '🔧' },
 ]
 
 const ACCEPT = 'image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf'

@@ -31,6 +31,8 @@ const LABEL_VEHICULO_TIPOS: Record<VehiculoDocTipo, string> = {
   tarjeta_verde: 'Tarjeta_verde',
   rto:           'RTO',
   poliza_seguro: 'Poliza_seguro',
+  homologacion:          'Homologacion',
+  registro_modificacion: 'Registro_modificacion',
 }
 
 export { DEFAULT_CHOFER_TIPOS, DEFAULT_VEHICULO_TIPOS, LABEL_CHOFER_TIPOS, LABEL_VEHICULO_TIPOS }

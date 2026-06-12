@@ -402,7 +402,7 @@ export interface Batea extends AuditFields {
 }
 
 // ── Documentos del vehículo (camión y batea, mismo schema) ──
-export type VehiculoDocTipo = 'titulo' | 'tarjeta_verde' | 'rto' | 'poliza_seguro'
+export type VehiculoDocTipo = 'titulo' | 'tarjeta_verde' | 'rto' | 'poliza_seguro' | 'homologacion' | 'registro_modificacion'
 export type VehiculoEntidad = 'camion' | 'batea'
 
 export interface VehiculoDocumento {
