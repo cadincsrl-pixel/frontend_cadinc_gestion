@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -13,6 +13,7 @@ import {
   useCanterasAridos, useCreateCanteraArido, useUpdateCanteraArido, useDeleteCanteraArido,
   useUnidades, useCreateUnidad, useUpdateUnidad, useDeleteUnidad,
   useCostosCantera, useCreateCostoCantera, useDeleteCostoCantera,
+  useGpsCatalogo,
 } from '../hooks/useAridos'
 import type { CanteraArido, UnidadFlota } from '../types'
 
@@ -21,10 +22,10 @@ import type { CanteraArido, UnidadFlota } from '../types'
 // independiente de la flota y las canteras de logística.
 
 interface CanteraForm { nombre: string; direccion: string; localidad: string; obs: string }
-interface UnidadForm  { nombre: string; patente: string; chofer: string; obs: string }
+interface UnidadForm  { nombre: string; patente: string; chofer: string; id_vehiculo_gps: string; obs: string }
 
 const CANTERA_DEFAULTS: CanteraForm = { nombre: '', direccion: '', localidad: '', obs: '' }
-const UNIDAD_DEFAULTS: UnidadForm   = { nombre: '', patente: '', chofer: '', obs: '' }
+const UNIDAD_DEFAULTS: UnidadForm   = { nombre: '', patente: '', chofer: '', id_vehiculo_gps: '', obs: '' }
 
 export function FlotaAridosTab() {
   return (
@@ -323,7 +324,19 @@ function UnidadesSection() {
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editId, setEditId] = useState<number | null>(null)
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<UnidadForm>({ defaultValues: UNIDAD_DEFAULTS })
+  const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<UnidadForm>({ defaultValues: UNIDAD_DEFAULTS })
+
+  // Catálogo de Mobile Quest: vincular por ID (sin margen de error de patente).
+  const { data: gpsCatalogo = [], isLoading: loadingGps, isError: errorGps } = useGpsCatalogo(modalOpen)
+  const wGps = watch('id_vehiculo_gps')
+
+  // El select es uncontrolled: si el catálogo llega después del reset()
+  // (editar unidad), la option todavía no existía y el DOM cae al default.
+  // Re-aplicamos el valor cuando el catálogo está disponible.
+  useEffect(() => {
+    if (gpsCatalogo.length > 0 && wGps) setValue('id_vehiculo_gps', wGps)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gpsCatalogo.length])
 
   function abrirNueva() {
     setEditId(null)
@@ -333,8 +346,14 @@ function UnidadesSection() {
 
   function abrirEditar(u: UnidadFlota) {
     setEditId(u.id)
-    reset({ nombre: u.nombre, patente: u.patente, chofer: u.chofer ?? '', obs: u.obs ?? '' })
+    reset({ nombre: u.nombre, patente: u.patente, chofer: u.chofer ?? '', id_vehiculo_gps: u.id_vehiculo_gps ?? '', obs: u.obs ?? '' })
     setModalOpen(true)
+  }
+
+  // Al elegir el vehículo del catálogo, autocompletar la patente real del GPS.
+  function onGpsChange(idVehiculo: string) {
+    const v = gpsCatalogo.find(g => g.id_vehiculo === idVehiculo)
+    if (v) setValue('patente', v.patente.replace(/\s+/g, '').toUpperCase())
   }
 
   function onSubmit(data: UnidadForm) {
@@ -342,6 +361,7 @@ function UnidadesSection() {
       nombre:  data.nombre.trim(),
       patente: data.patente.trim(),
       chofer:  data.chofer.trim() || null,
+      id_vehiculo_gps: data.id_vehiculo_gps || null,
       obs:     data.obs.trim() || null,
     }
     if (editId == null) {
@@ -376,7 +396,7 @@ function UnidadesSection() {
       <div className="flex items-center justify-between px-5 py-4 border-b border-gris">
         <div>
           <h2 className="font-bold text-azul text-base">🚚 Unidades</h2>
-          <p className="text-xs text-gris-dark mt-0.5">Camión + chofer del negocio de áridos. El GPS se vincula solo por patente (Mobile Quest) la primera vez que consultás &quot;¿dónde está?&quot; desde una venta.</p>
+          <p className="text-xs text-gris-dark mt-0.5">Camión + chofer del negocio de áridos. El GPS se elige directo del catálogo Mobile Quest (vínculo por ID) al crear o editar la unidad.</p>
         </div>
         {puedeCrear && <Button variant="primary" size="sm" onClick={abrirNueva}>＋ Nueva unidad</Button>}
       </div>
@@ -433,15 +453,25 @@ function UnidadesSection() {
         }
       >
         <div className="flex flex-col gap-3">
+          <div>
+            <Select
+              label="Vehículo GPS (Mobile Quest)"
+              options={[
+                { value: '', label: loadingGps ? 'Cargando catálogo…' : errorGps ? 'No se pudo cargar el catálogo GPS' : 'Sin GPS / elegir vehículo…' },
+                ...gpsCatalogo.map(v => ({ value: v.id_vehiculo, label: `${v.alias ? `${v.alias} — ` : ''}${v.patente} (ID ${v.id_vehiculo})` })),
+              ]}
+              {...register('id_vehiculo_gps', { onChange: e => onGpsChange(e.target.value) })}
+            />
+            <p className="text-[11px] text-gris-dark mt-1">
+              Elegí el equipo del catálogo del GPS — es el vínculo directo por ID, sin margen de error. Al elegirlo se completa la patente sola.
+            </p>
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input label="Nombre" placeholder="Ej: Unidad 1 — Volcador" error={errors.nombre?.message} {...register('nombre', { required: 'Requerido' })} />
-            <Input label="Patente" placeholder="AA123BB" error={errors.patente?.message} {...register('patente', { required: 'Requerida' })} />
+            <Input label="Patente" placeholder="AA123BB" error={errors.patente?.message} readOnly={!!wGps} {...register('patente', { required: 'Requerida' })} />
           </div>
           <Input label="Chofer" placeholder="Nombre del chofer habitual" {...register('chofer')} />
           <Input label="Observaciones" placeholder="Notas..." {...register('obs')} />
-          <p className="text-[11px] text-gris-dark">
-            La patente tiene que coincidir con la del equipo GPS (Mobile Quest) para que funcione el seguimiento y el tiempo de llegada.
-          </p>
         </div>
       </Modal>
     </div>

@@ -263,6 +263,23 @@ export function useDeleteUnidad() {
   })
 }
 
+// Catálogo de vehículos del GPS (Mobile Quest) para vincular unidades
+// por ID en vez de matchear por patente.
+export interface GpsVehiculo {
+  id_vehiculo: string
+  patente: string
+  alias: string | null
+}
+
+export function useGpsCatalogo(enabled = true) {
+  return useQuery({
+    queryKey: ['aridos', 'gps-catalogo'],
+    queryFn:  () => apiGet<GpsVehiculo[]>('/api/aridos/gps-catalogo'),
+    staleTime: 5 * 60 * 1000,
+    enabled,
+  })
+}
+
 // Consulta on-demand (GPS + Google Maps): no se cachea como query
 // porque cada llamada cuesta — se dispara con un botón.
 export function useUnidadEta() {
