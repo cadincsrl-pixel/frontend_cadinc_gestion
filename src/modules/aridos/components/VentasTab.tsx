@@ -9,12 +9,12 @@ import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { toISO } from '@/lib/utils/dates'
-import { useCanteras, useChoferes, useCamiones } from '@/modules/logistica/hooks/useLogistica'
 import {
   useMovimientos, useCreateMovimiento, useUpdateMovimiento, useDeleteMovimiento,
   useClientesAridos, useMateriales, usePreciosCliente, useStockAridos, useMunicipios,
+  useCanterasAridos, useUnidades, useUnidadEta,
 } from '../hooks/useAridos'
-import type { MovimientoArido, PrecioCliente, MunicipioArido } from '../types'
+import type { MovimientoArido, PrecioCliente, MunicipioArido, UnidadEta } from '../types'
 
 interface VentaForm {
   fecha:       string
@@ -27,8 +27,7 @@ interface VentaForm {
   precio_unit: string
   entrega_direccion: string
   municipio_id: string
-  chofer_id:   string
-  camion_id:   string
+  unidad_id:   string
   flete_obs:   string
   remito:      string
   obs:         string
@@ -37,7 +36,7 @@ interface VentaForm {
 const DEFAULTS: VentaForm = {
   fecha: '', cliente_id: '', material_id: '', cantidad: '', origen: 'cantera',
   cantera_id: '', modo_precio: 'lista', precio_unit: '', entrega_direccion: '', municipio_id: '',
-  chofer_id: '', camion_id: '', flete_obs: '', remito: '', obs: '',
+  unidad_id: '', flete_obs: '', remito: '', obs: '',
 }
 
 function fmtDate(s: string) {
@@ -96,15 +95,17 @@ export function VentasTab() {
   const { data: precios = [] }    = usePreciosCliente()
   const { data: municipios = [] } = useMunicipios()
   const { data: stock = [] }      = useStockAridos()
-  const { data: canteras = [] }   = useCanteras()
-  const { data: choferes = [] }   = useChoferes()
-  const { data: camiones = [] }   = useCamiones()
+  const { data: canteras = [] }   = useCanterasAridos()
+  const { data: unidades = [] }   = useUnidades()
   const { mutate: crear, isPending: creando }       = useCreateMovimiento()
   const { mutate: actualizar, isPending: editando } = useUpdateMovimiento()
   const { mutate: borrar } = useDeleteMovimiento()
+  const { mutate: consultarEta, isPending: consultandoEta } = useUnidadEta()
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editId, setEditId] = useState<number | null>(null)
+  const [etaResult, setEtaResult] = useState<UnidadEta | null>(null)
+  const [etaDe, setEtaDe] = useState<number | null>(null)  // id del movimiento consultando
 
   const { register, handleSubmit, reset, watch, setValue, formState: { errors } } = useForm<VentaForm>({
     defaultValues: { ...DEFAULTS, fecha: toISO(new Date()) },
@@ -177,8 +178,7 @@ export function VentasTab() {
       precio_unit: v.precio_unit != null ? String(v.precio_unit) : '',
       entrega_direccion: v.entrega_direccion ?? '',
       municipio_id: v.municipio_id ? String(v.municipio_id) : '',
-      chofer_id:   v.chofer_id ? String(v.chofer_id) : '',
-      camion_id:   v.camion_id ? String(v.camion_id) : '',
+      unidad_id:   v.unidad_id ? String(v.unidad_id) : '',
       flete_obs:   v.flete_obs ?? '',
       remito:      v.remito ?? '',
       obs:         v.obs ?? '',
@@ -204,8 +204,7 @@ export function VentasTab() {
       precio_especial:   data.modo_precio === 'especial',
       entrega_direccion: data.entrega_direccion.trim() || null,
       municipio_id:      data.municipio_id ? Number(data.municipio_id) : null,
-      chofer_id:   data.chofer_id ? Number(data.chofer_id) : null,
-      camion_id:   data.camion_id ? Number(data.camion_id) : null,
+      unidad_id:   data.unidad_id ? Number(data.unidad_id) : null,
       flete_obs:   data.flete_obs.trim() || null,
       remito:      data.remito.trim() || null,
       obs:         data.obs.trim() || null,
@@ -232,12 +231,22 @@ export function VentasTab() {
     })
   }
 
+  // Consulta GPS + Google Maps on-demand: ¿dónde está la unidad y cuánto
+  // falta para que llegue a la dirección de entrega de esta venta?
+  function handleEta(v: MovimientoArido) {
+    if (!v.unidad_id || !v.entrega_direccion) return
+    setEtaDe(v.id)
+    consultarEta({ unidadId: v.unidad_id, direccion: v.entrega_direccion }, {
+      onSuccess: (r) => { setEtaResult(r); setEtaDe(null) },
+      onError:   (err: unknown) => { toast(mensajeError(err, 'No se pudo consultar el GPS'), 'err'); setEtaDe(null) },
+    })
+  }
+
   const clienteOptions   = [{ value: '', label: 'Seleccionar cliente…' }, ...clientes.map(c => ({ value: c.id, label: c.nombre }))]
   const materialOptions  = [{ value: '', label: 'Seleccionar material…' }, ...materiales.filter(m => m.activo).map(m => ({ value: m.id, label: `${m.nombre} ($/${m.unidad === 'm3' ? 'm³' : 'viaje'})` }))]
-  const canteraOptions   = [{ value: '', label: 'Sin especificar' }, ...canteras.map(c => ({ value: c.id, label: c.nombre }))]
+  const canteraOptions   = [{ value: '', label: 'Sin especificar' }, ...canteras.filter(c => c.activo).map(c => ({ value: c.id, label: c.nombre }))]
   const municipioOptions = [{ value: '', label: 'Sin recargo (zona base)' }, ...municipios.map(m => ({ value: m.id, label: `${m.nombre}${Number(m.recargo_pct) > 0 ? ` (+${m.recargo_pct}%)` : ''}` }))]
-  const choferOptions    = [{ value: '', label: 'Sin especificar' }, ...choferes.map(c => ({ value: c.id, label: c.nombre }))]
-  const camionOptions    = [{ value: '', label: 'Sin especificar' }, ...camiones.map(c => ({ value: c.id, label: c.patente }))]
+  const unidadOptions    = [{ value: '', label: 'Sin especificar' }, ...unidades.filter(u => u.activo).map(u => ({ value: u.id, label: `${u.nombre} · ${u.patente}${u.chofer ? ` · ${u.chofer}` : ''}` }))]
 
   return (
     <>
@@ -289,7 +298,7 @@ export function VentasTab() {
                         ? <span className="font-bold text-azul-mid">Depósito</span>
                         : v.origen === 'obra'
                           ? <span className="font-bold text-[#7A5500]">Obra (escombro)</span>
-                          : <span>{v.canteras?.nombre ?? 'Cantera'}</span>}
+                          : <span>{v.aridos_canteras?.nombre ?? 'Cantera'}</span>}
                     </td>
                     <td className="px-3 py-2.5 text-xs text-gris-dark max-w-[180px]">
                       <div className="truncate" title={v.entrega_direccion ?? ''}>{v.entrega_direccion || '—'}</div>
@@ -302,6 +311,16 @@ export function VentasTab() {
                     <td className="px-3 py-2.5 text-sm font-mono font-bold text-verde whitespace-nowrap">{v.importe != null ? fmtM(Number(v.importe)) : '—'}</td>
                     <td className="px-3 py-2.5 text-xs text-gris-dark font-mono">{v.remito || '—'}</td>
                     <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                      {v.unidad_id != null && v.entrega_direccion && (
+                        <Button
+                          variant="ghost" size="sm"
+                          disabled={consultandoEta}
+                          onClick={() => handleEta(v)}
+                          title={`¿Dónde está ${v.aridos_unidades?.nombre ?? 'la unidad'}? Tiempo de llegada a la entrega`}
+                        >
+                          {etaDe === v.id ? '⏳' : '🛰'}
+                        </Button>
+                      )}
                       <Button variant="ghost" size="sm" disabled={!puedeEditar} onClick={() => abrirEditar(v)}>✎</Button>
                       <Button variant="ghost" size="sm" disabled={!puedeEliminar} onClick={() => handleEliminar(v)}>🗑</Button>
                     </td>
@@ -440,9 +459,10 @@ export function VentasTab() {
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <Select label="Chofer" options={choferOptions} {...register('chofer_id')} />
-            <Select label="Camión" options={camionOptions} {...register('camion_id')} />
-            <Input label="Flete externo" placeholder="Si no es flota propia" {...register('flete_obs')} />
+            <div className="sm:col-span-2">
+              <Select label="Unidad (camión + chofer)" options={unidadOptions} {...register('unidad_id')} />
+            </div>
+            <Input label="Flete externo" placeholder="Si no es unidad propia" {...register('flete_obs')} />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -450,6 +470,42 @@ export function VentasTab() {
             <Input label="Observaciones" placeholder="Notas..." {...register('obs')} />
           </div>
         </div>
+      </Modal>
+
+      {/* Modal resultado ETA (GPS + Google Maps) */}
+      <Modal
+        open={!!etaResult}
+        onClose={() => setEtaResult(null)}
+        title={`🛰 ${etaResult?.unidad.nombre ?? ''} — ${etaResult?.unidad.patente ?? ''}`}
+        width="max-w-md"
+        footer={<Button variant="secondary" onClick={() => setEtaResult(null)}>Cerrar</Button>}
+      >
+        {etaResult && (
+          <div className="flex flex-col gap-3">
+            <div className="bg-azul/5 rounded-card p-4 text-center">
+              <div className="text-3xl font-display text-azul">
+                {etaResult.eta_traffic_min ?? etaResult.eta_min} min
+              </div>
+              <div className="text-xs text-gris-dark mt-1">
+                tiempo estimado de llegada{etaResult.eta_traffic_min != null ? ' (con tráfico)' : ''} · {etaResult.distancia_km} km
+              </div>
+            </div>
+            <div className="text-xs text-gris-dark flex flex-col gap-1">
+              <div><b>Destino:</b> {etaResult.destino.direccion}</div>
+              {etaResult.unidad.chofer && <div><b>Chofer:</b> {etaResult.unidad.chofer}</div>}
+              <div>
+                <b>Posición:</b>{' '}
+                <a
+                  href={`https://www.google.com/maps?q=${etaResult.posicion.lat},${etaResult.posicion.lng}`}
+                  target="_blank" rel="noreferrer"
+                  className="text-azul-mid underline"
+                >ver en el mapa</a>
+                {etaResult.posicion.velocidad != null && <span> · {Math.round(etaResult.posicion.velocidad)} km/h</span>}
+                {etaResult.posicion.lectura_en && <span> · lectura {new Date(etaResult.posicion.lectura_en).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</span>}
+              </div>
+            </div>
+          </div>
+        )}
       </Modal>
     </>
   )

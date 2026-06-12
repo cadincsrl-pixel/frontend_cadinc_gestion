@@ -11,11 +11,11 @@ import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { toISO } from '@/lib/utils/dates'
-import { useCanteras } from '@/modules/logistica/hooks/useLogistica'
 import {
   useMateriales, useCreateMaterial, useUpdateMaterial, useDeleteMaterial,
   useCostosCantera, useCreateCostoCantera, useDeleteCostoCantera,
   useMunicipios, useCreateMunicipio, useUpdateMunicipio, useDeleteMunicipio,
+  useCanterasAridos,
 } from '../hooks/useAridos'
 import type { MaterialArido, MunicipioArido } from '../types'
 
@@ -206,7 +206,7 @@ function CostosCanteraModal({ material, onClose }: { material: MaterialArido | n
   const toast = useToast()
   const { puedeCrear, puedeEliminar } = usePermisos('aridos')
   const { data: costos = [] } = useCostosCantera()
-  const { data: canteras = [] } = useCanteras()
+  const { data: canteras = [] } = useCanterasAridos()
   const { mutate: crear, isPending } = useCreateCostoCantera()
   const { mutate: borrar } = useDeleteCostoCantera()
 

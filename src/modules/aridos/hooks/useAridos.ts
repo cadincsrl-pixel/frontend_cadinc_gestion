@@ -12,6 +12,9 @@ import type {
   CuentaCorrienteArido,
   MunicipioArido,
   CostoCantera,
+  CanteraArido,
+  UnidadFlota,
+  UnidadEta,
 } from '../types'
 
 // ── Query keys ──
@@ -186,6 +189,86 @@ export function useDeleteMovimiento() {
   return useMutation({
     mutationFn: (id: number) => apiDelete(`/api/aridos/movimientos/${id}`),
     onSuccess:  () => invalidarDerivados(qc),
+  })
+}
+
+// ─────────────────── Canteras y unidades propias ───────────────────
+export const CANTERAS_KEY = ['aridos', 'canteras'] as const
+export const UNIDADES_KEY = ['aridos', 'unidades'] as const
+
+export function useCanterasAridos() {
+  return useQuery({
+    queryKey: CANTERAS_KEY,
+    queryFn:  () => apiGet<CanteraArido[]>('/api/aridos/canteras'),
+  })
+}
+
+export function useCreateCanteraArido() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: Partial<CanteraArido>) => apiPost<CanteraArido>('/api/aridos/canteras', dto),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: CANTERAS_KEY }),
+  })
+}
+
+export function useUpdateCanteraArido() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: number; dto: Partial<CanteraArido> }) =>
+      apiPatch<CanteraArido>(`/api/aridos/canteras/${id}`, dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: CANTERAS_KEY }),
+  })
+}
+
+export function useDeleteCanteraArido() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiDelete(`/api/aridos/canteras/${id}`),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: CANTERAS_KEY }),
+  })
+}
+
+export function useUnidades() {
+  return useQuery({
+    queryKey: UNIDADES_KEY,
+    queryFn:  () => apiGet<UnidadFlota[]>('/api/aridos/unidades'),
+  })
+}
+
+export function useCreateUnidad() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: Partial<UnidadFlota>) => apiPost<UnidadFlota>('/api/aridos/unidades', dto),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: UNIDADES_KEY }),
+  })
+}
+
+export function useUpdateUnidad() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: number; dto: Partial<UnidadFlota> }) =>
+      apiPatch<UnidadFlota>(`/api/aridos/unidades/${id}`, dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: UNIDADES_KEY }),
+  })
+}
+
+export function useDeleteUnidad() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiDelete(`/api/aridos/unidades/${id}`),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: UNIDADES_KEY }),
+  })
+}
+
+// Consulta on-demand (GPS + Google Maps): no se cachea como query
+// porque cada llamada cuesta — se dispara con un botón.
+export function useUnidadEta() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ unidadId, direccion }: { unidadId: number; direccion: string }) =>
+      apiGet<UnidadEta>(`/api/aridos/unidades/${unidadId}/eta?direccion=${encodeURIComponent(direccion)}`),
+    // La consulta persiste la última posición en la unidad
+    onSuccess: () => qc.invalidateQueries({ queryKey: UNIDADES_KEY }),
   })
 }
 

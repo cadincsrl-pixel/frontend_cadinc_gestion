@@ -9,9 +9,9 @@ import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { toISO } from '@/lib/utils/dates'
-import { useCanteras, useChoferes, useCamiones } from '@/modules/logistica/hooks/useLogistica'
 import {
   useMovimientos, useCreateMovimiento, useDeleteMovimiento, useMateriales,
+  useCanterasAridos, useUnidades,
 } from '../hooks/useAridos'
 import type { MovimientoArido } from '../types'
 
@@ -20,8 +20,7 @@ interface AcopioForm {
   material_id: string
   cantidad:    string
   cantera_id:  string
-  chofer_id:   string
-  camion_id:   string
+  unidad_id:   string
   flete_obs:   string
   remito:      string
   obs:         string
@@ -51,9 +50,8 @@ export function AcopiosTab() {
   const { data: acopios = [], isLoading: loadA } = useMovimientos({ tipo: 'acopio' })
   const { data: ajustes = [], isLoading: loadJ } = useMovimientos({ tipo: 'ajuste' })
   const { data: materiales = [] } = useMateriales()
-  const { data: canteras = [] }   = useCanteras()
-  const { data: choferes = [] }   = useChoferes()
-  const { data: camiones = [] }   = useCamiones()
+  const { data: canteras = [] }   = useCanterasAridos()
+  const { data: unidades = [] }   = useUnidades()
   const { mutate: crear, isPending: creando } = useCreateMovimiento()
   const { mutate: borrar } = useDeleteMovimiento()
 
@@ -65,7 +63,7 @@ export function AcopiosTab() {
   const [modalAjuste, setModalAjuste] = useState(false)
 
   const formAcopio = useForm<AcopioForm>({
-    defaultValues: { fecha: toISO(new Date()), material_id: '', cantidad: '', cantera_id: '', chofer_id: '', camion_id: '', flete_obs: '', remito: '', obs: '' },
+    defaultValues: { fecha: toISO(new Date()), material_id: '', cantidad: '', cantera_id: '', unidad_id: '', flete_obs: '', remito: '', obs: '' },
   })
   const formAjuste = useForm<AjusteForm>({
     defaultValues: { fecha: toISO(new Date()), material_id: '', cantidad: '', obs: '' },
@@ -78,8 +76,7 @@ export function AcopiosTab() {
       material_id: Number(data.material_id),
       cantidad:    Number(data.cantidad),
       cantera_id:  data.cantera_id ? Number(data.cantera_id) : null,
-      chofer_id:   data.chofer_id ? Number(data.chofer_id) : null,
-      camion_id:   data.camion_id ? Number(data.camion_id) : null,
+      unidad_id:   data.unidad_id ? Number(data.unidad_id) : null,
       flete_obs:   data.flete_obs.trim() || null,
       remito:      data.remito.trim() || null,
       obs:         data.obs.trim() || null,
@@ -87,7 +84,7 @@ export function AcopiosTab() {
       onSuccess: () => {
         toast('✓ Acopio registrado', 'ok')
         setModalAcopio(false)
-        formAcopio.reset({ fecha: toISO(new Date()), material_id: '', cantidad: '', cantera_id: '', chofer_id: '', camion_id: '', flete_obs: '', remito: '', obs: '' })
+        formAcopio.reset({ fecha: toISO(new Date()), material_id: '', cantidad: '', cantera_id: '', unidad_id: '', flete_obs: '', remito: '', obs: '' })
       },
       onError: (err: unknown) => toast(mensajeError(err, 'Error al registrar el acopio'), 'err'),
     })
@@ -120,9 +117,8 @@ export function AcopiosTab() {
   }
 
   const materialOptions = [{ value: '', label: 'Seleccionar material…' }, ...materiales.filter(m => m.activo && m.unidad === 'm3').map(m => ({ value: m.id, label: m.nombre }))]
-  const canteraOptions  = [{ value: '', label: 'Sin especificar' }, ...canteras.map(c => ({ value: c.id, label: c.nombre }))]
-  const choferOptions   = [{ value: '', label: 'Sin especificar' }, ...choferes.map(c => ({ value: c.id, label: c.nombre }))]
-  const camionOptions   = [{ value: '', label: 'Sin especificar' }, ...camiones.map(c => ({ value: c.id, label: c.patente }))]
+  const canteraOptions  = [{ value: '', label: 'Sin especificar' }, ...canteras.filter(c => c.activo).map(c => ({ value: c.id, label: c.nombre }))]
+  const unidadOptions   = [{ value: '', label: 'Sin especificar' }, ...unidades.filter(u => u.activo).map(u => ({ value: u.id, label: `${u.nombre} · ${u.patente}` }))]
 
   const isLoading = loadA || loadJ
 
@@ -167,7 +163,7 @@ export function AcopiosTab() {
                     <td className={`px-3 py-2.5 text-sm font-mono whitespace-nowrap ${Number(m.cantidad) < 0 ? 'text-rojo' : 'text-verde'}`}>
                       {Number(m.cantidad) >= 0 ? '+' : ''}{fmtCant(Number(m.cantidad))} m³
                     </td>
-                    <td className="px-3 py-2.5 text-xs text-gris-dark">{m.canteras?.nombre ?? '—'}</td>
+                    <td className="px-3 py-2.5 text-xs text-gris-dark">{m.aridos_canteras?.nombre ?? '—'}</td>
                     <td className="px-3 py-2.5 text-xs text-gris-dark font-mono">{m.remito || '—'}</td>
                     <td className="px-3 py-2.5 text-xs text-gris-dark max-w-[200px] truncate" title={m.obs ?? ''}>{m.obs || '—'}</td>
                     <td className="px-3 py-2.5 text-right">
@@ -204,11 +200,10 @@ export function AcopiosTab() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Select label="Cantera de origen" options={canteraOptions} {...formAcopio.register('cantera_id')} />
-            <Select label="Chofer" options={choferOptions} {...formAcopio.register('chofer_id')} />
-            <Select label="Camión" options={camionOptions} {...formAcopio.register('camion_id')} />
+            <Select label="Unidad (camión + chofer)" options={unidadOptions} {...formAcopio.register('unidad_id')} />
+            <Input label="Flete externo" placeholder="Si no es unidad propia" {...formAcopio.register('flete_obs')} />
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <Input label="Flete externo" placeholder="Si no es flota propia" {...formAcopio.register('flete_obs')} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input label="Remito" placeholder="Opcional" {...formAcopio.register('remito')} />
             <Input label="Observaciones" placeholder="Notas..." {...formAcopio.register('obs')} />
           </div>
