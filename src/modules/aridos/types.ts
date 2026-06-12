@@ -2,8 +2,27 @@
 
 export type UnidadArido = 'm3' | 'viaje'
 export type TipoMovimiento = 'venta' | 'acopio' | 'ajuste'
-export type OrigenVenta = 'cantera' | 'deposito'
+// 'obra' = retiro de escombro: sale de la obra del cliente hacia el depósito
+export type OrigenVenta = 'cantera' | 'deposito' | 'obra'
 export type MedioCobro = 'efectivo' | 'transferencia' | 'cheque' | 'otro'
+
+export interface MunicipioArido {
+  id: number
+  nombre: string
+  recargo_pct: number
+  obs: string | null
+}
+
+export interface CostoCantera {
+  id: number
+  cantera_id: number
+  material_id: number
+  costo: number
+  vigente_desde: string
+  obs: string | null
+  canteras?: { nombre: string }
+  aridos_materiales?: { nombre: string; unidad: UnidadArido }
+}
 
 export interface MaterialArido {
   id: number
@@ -48,6 +67,9 @@ export interface MovimientoArido {
   cliente_id: number | null
   precio_unit: number | null
   importe: number | null
+  precio_especial: boolean
+  entrega_direccion: string | null
+  municipio_id: number | null
   chofer_id: number | null
   camion_id: number | null
   flete_obs: string | null
@@ -56,6 +78,7 @@ export interface MovimientoArido {
   created_at: string
   aridos_materiales?: { nombre: string; unidad: UnidadArido }
   aridos_clientes?: { nombre: string } | null
+  aridos_municipios?: { nombre: string; recargo_pct: number } | null
   canteras?: { nombre: string } | null
   choferes?: { nombre: string } | null
   camiones?: { patente: string } | null

@@ -10,6 +10,8 @@ import type {
   StockMaterial,
   CobroArido,
   CuentaCorrienteArido,
+  MunicipioArido,
+  CostoCantera,
 } from '../types'
 
 // ── Query keys ──
@@ -184,6 +186,67 @@ export function useDeleteMovimiento() {
   return useMutation({
     mutationFn: (id: number) => apiDelete(`/api/aridos/movimientos/${id}`),
     onSuccess:  () => invalidarDerivados(qc),
+  })
+}
+
+// ─────────────────────── Municipios y costos de cantera ───────────────────────
+export const MUNICIPIOS_KEY = ['aridos', 'municipios'] as const
+export const COSTOS_KEY     = ['aridos', 'costos-cantera'] as const
+
+export function useMunicipios() {
+  return useQuery({
+    queryKey: MUNICIPIOS_KEY,
+    queryFn:  () => apiGet<MunicipioArido[]>('/api/aridos/municipios'),
+  })
+}
+
+export function useCreateMunicipio() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: { nombre: string; recargo_pct: number; obs?: string | null }) =>
+      apiPost<MunicipioArido>('/api/aridos/municipios', dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: MUNICIPIOS_KEY }),
+  })
+}
+
+export function useUpdateMunicipio() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: number; dto: { nombre?: string; recargo_pct?: number; obs?: string | null } }) =>
+      apiPatch<MunicipioArido>(`/api/aridos/municipios/${id}`, dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: MUNICIPIOS_KEY }),
+  })
+}
+
+export function useDeleteMunicipio() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiDelete(`/api/aridos/municipios/${id}`),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: MUNICIPIOS_KEY }),
+  })
+}
+
+export function useCostosCantera() {
+  return useQuery({
+    queryKey: COSTOS_KEY,
+    queryFn:  () => apiGet<CostoCantera[]>('/api/aridos/costos-cantera'),
+  })
+}
+
+export function useCreateCostoCantera() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: { cantera_id: number; material_id: number; costo: number; vigente_desde: string; obs?: string | null }) =>
+      apiPost<CostoCantera>('/api/aridos/costos-cantera', dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: COSTOS_KEY }),
+  })
+}
+
+export function useDeleteCostoCantera() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiDelete(`/api/aridos/costos-cantera/${id}`),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: COSTOS_KEY }),
   })
 }
 

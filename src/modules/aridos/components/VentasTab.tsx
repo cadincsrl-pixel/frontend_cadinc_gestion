@@ -12,18 +12,21 @@ import { toISO } from '@/lib/utils/dates'
 import { useCanteras, useChoferes, useCamiones } from '@/modules/logistica/hooks/useLogistica'
 import {
   useMovimientos, useCreateMovimiento, useUpdateMovimiento, useDeleteMovimiento,
-  useClientesAridos, useMateriales, usePreciosCliente, useStockAridos,
+  useClientesAridos, useMateriales, usePreciosCliente, useStockAridos, useMunicipios,
 } from '../hooks/useAridos'
-import type { MovimientoArido } from '../types'
+import type { MovimientoArido, PrecioCliente, MunicipioArido } from '../types'
 
 interface VentaForm {
   fecha:       string
   cliente_id:  string
   material_id: string
   cantidad:    string
-  origen:      'cantera' | 'deposito'
+  origen:      'cantera' | 'deposito' | 'obra'
   cantera_id:  string
+  modo_precio: 'lista' | 'especial'
   precio_unit: string
+  entrega_direccion: string
+  municipio_id: string
   chofer_id:   string
   camion_id:   string
   flete_obs:   string
@@ -33,7 +36,8 @@ interface VentaForm {
 
 const DEFAULTS: VentaForm = {
   fecha: '', cliente_id: '', material_id: '', cantidad: '', origen: 'cantera',
-  cantera_id: '', precio_unit: '', chofer_id: '', camion_id: '', flete_obs: '', remito: '', obs: '',
+  cantera_id: '', modo_precio: 'lista', precio_unit: '', entrega_direccion: '', municipio_id: '',
+  chofer_id: '', camion_id: '', flete_obs: '', remito: '', obs: '',
 }
 
 function fmtDate(s: string) {
@@ -47,6 +51,28 @@ function fmtM(n: number) {
 
 function fmtCant(n: number) {
   return n.toLocaleString('es-AR', { maximumFractionDigits: 2 })
+}
+
+// Precio de lista del cliente (vigente a la fecha) con el recargo del
+// municipio aplicado. Devuelve null si no hay precio de lista cargado.
+function precioConRecargo(
+  precios: PrecioCliente[],
+  municipios: MunicipioArido[],
+  clienteId: string,
+  materialId: string,
+  fecha: string,
+  municipioId: string,
+): { base: PrecioCliente; final: number; recargoPct: number } | null {
+  if (!clienteId || !materialId || !fecha) return null
+  const base = precios
+    .filter(p => p.cliente_id === Number(clienteId) && p.material_id === Number(materialId) && p.vigente_desde <= fecha)
+    .sort((a, b) => b.vigente_desde.localeCompare(a.vigente_desde))[0]
+  if (!base) return null
+  const recargoPct = municipioId
+    ? Number(municipios.find(m => m.id === Number(municipioId))?.recargo_pct ?? 0)
+    : 0
+  const final = Math.round(Number(base.precio) * (1 + recargoPct / 100) * 100) / 100
+  return { base, final, recargoPct }
 }
 
 export function VentasTab() {
@@ -68,6 +94,7 @@ export function VentasTab() {
   const { data: clientes = [] }   = useClientesAridos()
   const { data: materiales = [] } = useMateriales()
   const { data: precios = [] }    = usePreciosCliente()
+  const { data: municipios = [] } = useMunicipios()
   const { data: stock = [] }      = useStockAridos()
   const { data: canteras = [] }   = useCanteras()
   const { data: choferes = [] }   = useChoferes()
@@ -83,38 +110,49 @@ export function VentasTab() {
     defaultValues: { ...DEFAULTS, fecha: toISO(new Date()) },
   })
 
-  const wCliente  = watch('cliente_id')
-  const wMaterial = watch('material_id')
-  const wFecha    = watch('fecha')
-  const wCantidad = watch('cantidad')
-  const wPrecio   = watch('precio_unit')
-  const wOrigen   = watch('origen')
+  const wCliente   = watch('cliente_id')
+  const wMaterial  = watch('material_id')
+  const wFecha     = watch('fecha')
+  const wCantidad  = watch('cantidad')
+  const wPrecio    = watch('precio_unit')
+  const wOrigen    = watch('origen')
+  const wModo      = watch('modo_precio')
+  const wMunicipio = watch('municipio_id')
 
   const materialSel = materiales.find(m => m.id === Number(wMaterial))
-  const unidadLabel = materialSel?.unidad === 'viaje' ? 'viaje(s)' : 'm³'
+  const esViaje     = materialSel?.unidad === 'viaje'
+  const unidadLabel = esViaje ? 'viaje(s)' : 'm³'
 
-  // Precio de lista del cliente para el material, vigente a la fecha.
-  // Se autocompleta al elegir cliente+material; queda editable (escombro
-  // u operaciones puntuales se cotizan a mano).
-  const precioLista = useMemo(() => {
-    if (!wCliente || !wMaterial || !wFecha) return null
-    const candidatos = precios
-      .filter(p => p.cliente_id === Number(wCliente) && p.material_id === Number(wMaterial) && p.vigente_desde <= wFecha)
-      .sort((a, b) => b.vigente_desde.localeCompare(a.vigente_desde))
-    return candidatos[0] ?? null
-  }, [precios, wCliente, wMaterial, wFecha])
+  const lista = precioConRecargo(precios, municipios, wCliente, wMaterial, wFecha, wMunicipio)
 
-  function autofillPrecio(clienteId: string, materialId: string, fecha: string) {
-    if (!clienteId || !materialId || !fecha) return
-    const cand = precios
-      .filter(p => p.cliente_id === Number(clienteId) && p.material_id === Number(materialId) && p.vigente_desde <= fecha)
-      .sort((a, b) => b.vigente_desde.localeCompare(a.vigente_desde))[0]
-    setValue('precio_unit', cand ? String(cand.precio) : '')
+  // Recalcula el precio cuando cambia algo que afecta la lista,
+  // solo si el modo es "lista" (el especial no se pisa).
+  function recalc(over: Partial<Record<'cliente' | 'material' | 'fecha' | 'municipio' | 'modo', string>>) {
+    const cli  = over.cliente   ?? wCliente
+    const mat  = over.material  ?? wMaterial
+    const fec  = over.fecha     ?? wFecha
+    const mun  = over.municipio ?? wMunicipio
+    const modo = over.modo      ?? wModo
+    if (modo !== 'lista') return
+    const r = precioConRecargo(precios, municipios, cli, mat, fec, mun)
+    setValue('precio_unit', r ? String(r.final) : '')
+  }
+
+  // El escombro (unidad viaje) sale de la obra del cliente; los m³ de
+  // cantera o depósito. Al cambiar el material se corrige el origen.
+  function onMaterialChange(materialId: string) {
+    const mat = materiales.find(m => m.id === Number(materialId))
+    if (mat?.unidad === 'viaje') {
+      setValue('origen', 'obra')
+      setValue('cantera_id', '')
+    } else if (watch('origen') === 'obra') {
+      setValue('origen', 'cantera')
+    }
+    recalc({ material: materialId })
   }
 
   const importe = (Number(wCantidad) || 0) * (Number(wPrecio) || 0)
 
-  // Aviso (no bloqueo) si la venta desde depósito supera el stock calculado
   const stockMaterial = stock.find(s => s.material_id === Number(wMaterial))?.stock ?? null
   const excedeStock = wOrigen === 'deposito' && stockMaterial != null && Number(wCantidad) > stockMaterial
 
@@ -135,7 +173,10 @@ export function VentasTab() {
       cantidad:    String(v.cantidad),
       origen:      v.origen ?? 'cantera',
       cantera_id:  v.cantera_id ? String(v.cantera_id) : '',
+      modo_precio: v.precio_especial ? 'especial' : 'lista',
       precio_unit: v.precio_unit != null ? String(v.precio_unit) : '',
+      entrega_direccion: v.entrega_direccion ?? '',
+      municipio_id: v.municipio_id ? String(v.municipio_id) : '',
       chofer_id:   v.chofer_id ? String(v.chofer_id) : '',
       camion_id:   v.camion_id ? String(v.camion_id) : '',
       flete_obs:   v.flete_obs ?? '',
@@ -146,16 +187,23 @@ export function VentasTab() {
   }
 
   function onSubmit(data: VentaForm) {
+    // El escombro (unidad viaje) siempre sale de la obra del cliente,
+    // aunque el registro editado venga con un origen viejo.
+    const mat = materiales.find(m => m.id === Number(data.material_id))
+    const origen = mat?.unidad === 'viaje' ? 'obra' : data.origen
     const dto = {
       tipo:        'venta',
       fecha:       data.fecha,
       cliente_id:  Number(data.cliente_id),
       material_id: Number(data.material_id),
       cantidad:    Number(data.cantidad),
-      origen:      data.origen,
-      cantera_id:  data.origen === 'cantera' && data.cantera_id ? Number(data.cantera_id) : null,
+      origen,
+      cantera_id:  origen === 'cantera' && data.cantera_id ? Number(data.cantera_id) : null,
       precio_unit: data.precio_unit ? Number(data.precio_unit) : null,
       importe:     (Number(data.cantidad) || 0) * (Number(data.precio_unit) || 0),
+      precio_especial:   data.modo_precio === 'especial',
+      entrega_direccion: data.entrega_direccion.trim() || null,
+      municipio_id:      data.municipio_id ? Number(data.municipio_id) : null,
       chofer_id:   data.chofer_id ? Number(data.chofer_id) : null,
       camion_id:   data.camion_id ? Number(data.camion_id) : null,
       flete_obs:   data.flete_obs.trim() || null,
@@ -184,11 +232,12 @@ export function VentasTab() {
     })
   }
 
-  const clienteOptions  = [{ value: '', label: 'Seleccionar cliente…' }, ...clientes.map(c => ({ value: c.id, label: c.nombre }))]
-  const materialOptions = [{ value: '', label: 'Seleccionar material…' }, ...materiales.filter(m => m.activo).map(m => ({ value: m.id, label: `${m.nombre} ($/${m.unidad === 'm3' ? 'm³' : 'viaje'})` }))]
-  const canteraOptions  = [{ value: '', label: 'Sin especificar' }, ...canteras.map(c => ({ value: c.id, label: c.nombre }))]
-  const choferOptions   = [{ value: '', label: 'Sin especificar' }, ...choferes.map(c => ({ value: c.id, label: c.nombre }))]
-  const camionOptions   = [{ value: '', label: 'Sin especificar' }, ...camiones.map(c => ({ value: c.id, label: c.patente }))]
+  const clienteOptions   = [{ value: '', label: 'Seleccionar cliente…' }, ...clientes.map(c => ({ value: c.id, label: c.nombre }))]
+  const materialOptions  = [{ value: '', label: 'Seleccionar material…' }, ...materiales.filter(m => m.activo).map(m => ({ value: m.id, label: `${m.nombre} ($/${m.unidad === 'm3' ? 'm³' : 'viaje'})` }))]
+  const canteraOptions   = [{ value: '', label: 'Sin especificar' }, ...canteras.map(c => ({ value: c.id, label: c.nombre }))]
+  const municipioOptions = [{ value: '', label: 'Sin recargo (zona base)' }, ...municipios.map(m => ({ value: m.id, label: `${m.nombre}${Number(m.recargo_pct) > 0 ? ` (+${m.recargo_pct}%)` : ''}` }))]
+  const choferOptions    = [{ value: '', label: 'Sin especificar' }, ...choferes.map(c => ({ value: c.id, label: c.nombre }))]
+  const camionOptions    = [{ value: '', label: 'Sin especificar' }, ...camiones.map(c => ({ value: c.id, label: c.patente }))]
 
   return (
     <>
@@ -218,10 +267,10 @@ export function VentasTab() {
       ) : (
         <div className="bg-white rounded-card shadow-card overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse min-w-[860px]">
+            <table className="w-full border-collapse min-w-[980px]">
               <thead>
                 <tr>
-                  {['Fecha', 'Cliente', 'Material', 'Cantidad', 'Origen', 'Precio', 'Importe', 'Remito', ''].map((h, i) => (
+                  {['Fecha', 'Cliente', 'Material', 'Cantidad', 'Origen', 'Entrega', 'Precio', 'Importe', 'Remito', ''].map((h, i) => (
                     <th key={i} className="bg-azul text-white text-xs font-bold px-3 py-3 text-left uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
@@ -238,9 +287,18 @@ export function VentasTab() {
                     <td className="px-3 py-2.5 text-xs text-gris-dark">
                       {v.origen === 'deposito'
                         ? <span className="font-bold text-azul-mid">Depósito</span>
-                        : <span>{v.canteras?.nombre ?? 'Cantera'}</span>}
+                        : v.origen === 'obra'
+                          ? <span className="font-bold text-[#7A5500]">Obra (escombro)</span>
+                          : <span>{v.canteras?.nombre ?? 'Cantera'}</span>}
                     </td>
-                    <td className="px-3 py-2.5 text-sm font-mono text-gris-dark whitespace-nowrap">{v.precio_unit != null ? fmtM(Number(v.precio_unit)) : '—'}</td>
+                    <td className="px-3 py-2.5 text-xs text-gris-dark max-w-[180px]">
+                      <div className="truncate" title={v.entrega_direccion ?? ''}>{v.entrega_direccion || '—'}</div>
+                      {v.aridos_municipios && <div className="text-[10px]">{v.aridos_municipios.nombre}</div>}
+                    </td>
+                    <td className="px-3 py-2.5 text-sm font-mono text-gris-dark whitespace-nowrap">
+                      {v.precio_unit != null ? fmtM(Number(v.precio_unit)) : '—'}
+                      {v.precio_especial && <span className="text-[10px] text-naranja font-bold ml-1" title="Precio especial (no de lista)">ESP</span>}
+                    </td>
                     <td className="px-3 py-2.5 text-sm font-mono font-bold text-verde whitespace-nowrap">{v.importe != null ? fmtM(Number(v.importe)) : '—'}</td>
                     <td className="px-3 py-2.5 text-xs text-gris-dark font-mono">{v.remito || '—'}</td>
                     <td className="px-3 py-2.5 text-right whitespace-nowrap">
@@ -252,7 +310,7 @@ export function VentasTab() {
               </tbody>
               <tfoot>
                 <tr className="bg-gris/40">
-                  <td colSpan={6} className="px-3 py-2.5 text-xs font-bold text-gris-dark text-right uppercase">Total listado ({ventas.length} venta{ventas.length !== 1 ? 's' : ''})</td>
+                  <td colSpan={7} className="px-3 py-2.5 text-xs font-bold text-gris-dark text-right uppercase">Total listado ({ventas.length} venta{ventas.length !== 1 ? 's' : ''})</td>
                   <td className="px-3 py-2.5 text-sm font-mono font-bold text-verde whitespace-nowrap">{fmtM(totalListado)}</td>
                   <td colSpan={2} />
                 </tr>
@@ -282,13 +340,13 @@ export function VentasTab() {
             <Input label="Fecha" type="date" error={errors.fecha?.message}
               {...register('fecha', {
                 required: 'Requerida',
-                onChange: e => autofillPrecio(wCliente, wMaterial, e.target.value),
+                onChange: e => recalc({ fecha: e.target.value }),
               })} />
             <div className="sm:col-span-2">
               <Select label="Cliente" options={clienteOptions} error={errors.cliente_id?.message}
                 {...register('cliente_id', {
                   required: 'Elegí un cliente',
-                  onChange: e => autofillPrecio(e.target.value, wMaterial, wFecha),
+                  onChange: e => recalc({ cliente: e.target.value }),
                 })} />
             </div>
           </div>
@@ -298,44 +356,82 @@ export function VentasTab() {
               <Select label="Material" options={materialOptions} error={errors.material_id?.message}
                 {...register('material_id', {
                   required: 'Elegí un material',
-                  onChange: e => autofillPrecio(wCliente, e.target.value, wFecha),
+                  onChange: e => onMaterialChange(e.target.value),
                 })} />
             </div>
             <Input label={`Cantidad (${unidadLabel})`} type="number" step="0.01" placeholder="0" error={errors.cantidad?.message}
               {...register('cantidad', { required: 'Requerida', validate: v => Number(v) > 0 || 'Debe ser mayor a 0' })} />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <Select label="Origen" options={[
-              { value: 'cantera', label: 'Cantera (directo)' },
-              { value: 'deposito', label: 'Depósito propio' },
-            ]} {...register('origen')} />
-            {wOrigen === 'cantera' ? (
-              <Select label="Cantera" options={canteraOptions} {...register('cantera_id')} />
-            ) : (
+          {/* Origen: m³ desde cantera/depósito; escombro siempre desde la obra del cliente */}
+          {!esViaje ? (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <Select label="Origen" options={[
+                { value: 'cantera', label: 'Cantera (directo)' },
+                { value: 'deposito', label: 'Depósito propio' },
+              ]} {...register('origen')} />
+              {wOrigen === 'cantera' ? (
+                <Select label="Cantera" options={canteraOptions} {...register('cantera_id')} />
+              ) : (
+                <div className="flex items-end pb-2">
+                  <span className="text-xs text-gris-dark">
+                    Stock actual: <b className="font-mono">{stockMaterial != null ? fmtCant(stockMaterial) : '—'} m³</b>
+                  </span>
+                </div>
+              )}
+              <Select label="Municipio de entrega" options={municipioOptions}
+                {...register('municipio_id', { onChange: e => recalc({ municipio: e.target.value }) })} />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="flex items-end pb-2">
-                <span className="text-xs text-gris-dark">
-                  Stock actual: <b className="font-mono">{stockMaterial != null ? fmtCant(stockMaterial) : '—'} m³</b>
+                <span className="text-xs font-bold text-[#7A5500] bg-amarillo-light px-2 py-1 rounded">
+                  🚧 Retiro: obra del cliente → depósito
                 </span>
               </div>
-            )}
-            <Input label="Precio unitario ($)" type="number" step="0.01" placeholder="0.00" error={errors.precio_unit?.message}
+              <div className="sm:col-span-2">
+                <Select label="Municipio (de la obra)" options={municipioOptions}
+                  {...register('municipio_id', { onChange: e => recalc({ municipio: e.target.value }) })} />
+              </div>
+            </div>
+          )}
+
+          <Input
+            label={esViaje ? 'Dirección de retiro (obra del cliente)' : 'Dirección de entrega'}
+            placeholder={esViaje ? 'Ej: Obra Av. Aconquija 1500, Yerba Buena' : 'Ej: Av. Roca 2300, San Miguel de Tucumán'}
+            {...register('entrega_direccion')}
+          />
+
+          {/* Precio: lista (autocalculado, bloqueado) o especial (a mano) */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Select label="Tipo de precio" options={[
+              { value: 'lista',    label: 'Precio de lista' },
+              { value: 'especial', label: 'Precio especial (a mano)' },
+            ]} {...register('modo_precio', { onChange: e => recalc({ modo: e.target.value }) })} />
+            <Input label="Precio unitario ($)" type="number" step="0.01" placeholder="0.00"
+              disabled={wModo === 'lista'}
+              error={errors.precio_unit?.message}
               {...register('precio_unit', { required: 'Requerido', validate: v => Number(v) >= 0 || 'Inválido' })} />
+            <div className="flex items-end pb-2">
+              <span className="text-sm font-bold text-carbon">
+                Importe: <span className="font-mono text-verde">{fmtM(importe)}</span>
+              </span>
+            </div>
           </div>
 
-          {/* Hints de precio e importe */}
-          <div className="bg-gris/30 rounded-card px-3 py-2 flex items-center justify-between flex-wrap gap-2 text-xs">
-            <span className="text-gris-dark">
-              {precioLista
-                ? <>Precio de lista del cliente: <b className="font-mono">{fmtM(Number(precioLista.precio))}</b> (desde {fmtDate(precioLista.vigente_desde)})</>
-                : (wCliente && wMaterial)
-                  ? <span className="text-[#7A5500] font-semibold">⚠ Este cliente no tiene precio de lista para este material — cargalo a mano.</span>
-                  : 'Elegí cliente y material para autocompletar el precio de lista.'}
-            </span>
-            <span className="font-bold text-carbon">
-              Importe: <span className="font-mono text-verde">{fmtM(importe)}</span>
-            </span>
+          <div className="bg-gris/30 rounded-card px-3 py-2 text-xs text-gris-dark">
+            {lista
+              ? <>Lista del cliente: <b className="font-mono">{fmtM(Number(lista.base.precio))}</b> (desde {fmtDate(lista.base.vigente_desde)}){lista.recargoPct > 0 && <> + <b>{lista.recargoPct}%</b> municipio = <b className="font-mono">{fmtM(lista.final)}</b></>}</>
+              : (wCliente && wMaterial)
+                ? <span className="text-[#7A5500] font-semibold">⚠ Sin precio de lista para este cliente/material — usá &quot;Precio especial&quot;.</span>
+                : 'Elegí cliente y material para ver el precio de lista.'}
           </div>
+
+          {wModo === 'lista' && !lista && wCliente && wMaterial && (
+            <div className="bg-amarillo-light border border-[#7A5500]/30 rounded-card px-3 py-2 text-xs text-[#7A5500] font-semibold">
+              ⚠ No hay precio de lista: cambiá a &quot;Precio especial&quot; para cargar el valor a mano, o precargalo en la ficha del cliente.
+            </div>
+          )}
 
           {excedeStock && (
             <div className="bg-amarillo-light border border-[#7A5500]/30 rounded-card px-3 py-2 text-xs text-[#7A5500] font-semibold">
