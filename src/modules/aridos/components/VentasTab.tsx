@@ -18,6 +18,7 @@ import type { MovimientoArido, PrecioCliente, MunicipioArido, UnidadEta } from '
 
 interface VentaForm {
   fecha:       string
+  hora:        string
   cliente_id:  string
   material_id: string
   cantidad:    string
@@ -35,7 +36,7 @@ interface VentaForm {
 }
 
 const DEFAULTS: VentaForm = {
-  fecha: '', cliente_id: '', material_id: '', cantidad: '', origen: 'cantera',
+  fecha: '', hora: '', cliente_id: '', material_id: '', cantidad: '', origen: 'cantera',
   cantera_id: '', modo_precio: 'lista', precio_unit: '', entrega_direccion: '', municipio_id: '',
   unidad_id: '', costo_total: '', flete_obs: '', remito: '', obs: '',
 }
@@ -170,6 +171,7 @@ export function VentasTab() {
     setEditId(v.id)
     reset({
       fecha:       v.fecha,
+      hora:        v.hora ? v.hora.slice(0, 5) : '',
       cliente_id:  String(v.cliente_id ?? ''),
       material_id: String(v.material_id),
       cantidad:    String(v.cantidad),
@@ -196,6 +198,7 @@ export function VentasTab() {
     const dto = {
       tipo:        'venta',
       fecha:       data.fecha,
+      hora:        data.hora || null,
       cliente_id:  Number(data.cliente_id),
       material_id: Number(data.material_id),
       cantidad:    Number(data.cantidad),
@@ -290,7 +293,10 @@ export function VentasTab() {
               <tbody>
                 {ventas.map(v => (
                   <tr key={v.id} className="border-b border-gris last:border-0 hover:bg-gris/40 transition-colors">
-                    <td className="px-3 py-2.5 text-sm text-carbon whitespace-nowrap">{fmtDate(v.fecha)}</td>
+                    <td className="px-3 py-2.5 text-sm text-carbon whitespace-nowrap">
+                      {fmtDate(v.fecha)}
+                      {v.hora && <span className="text-[10px] text-gris-dark ml-1">{v.hora.slice(0, 5)} hs</span>}
+                    </td>
                     <td className="px-3 py-2.5 text-sm font-bold text-carbon">{v.aridos_clientes?.nombre ?? '—'}</td>
                     <td className="px-3 py-2.5 text-sm text-carbon">{v.aridos_materiales?.nombre ?? '—'}</td>
                     <td className="px-3 py-2.5 text-sm font-mono text-carbon whitespace-nowrap">
@@ -358,13 +364,14 @@ export function VentasTab() {
         }
       >
         <div className="flex flex-col gap-3">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <Input label="Fecha" type="date" error={errors.fecha?.message}
               {...register('fecha', {
                 required: 'Requerida',
                 onChange: e => recalc({ fecha: e.target.value }),
               })} />
-            <div className="sm:col-span-2">
+            <Input label="Hora" type="time" {...register('hora')} />
+            <div className="col-span-2">
               <Select label="Cliente" options={clienteOptions} error={errors.cliente_id?.message}
                 {...register('cliente_id', {
                   required: 'Elegí un cliente',

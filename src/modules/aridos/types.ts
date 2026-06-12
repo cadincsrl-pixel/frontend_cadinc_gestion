@@ -123,6 +123,7 @@ export interface MovimientoArido {
   id: number
   tipo: TipoMovimiento
   fecha: string
+  hora: string | null
   material_id: number
   cantidad: number
   origen: OrigenVenta | null
