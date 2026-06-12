@@ -224,7 +224,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
           {enAlquiler && (
             <Suspense fallback={null}>
-              <ModuloNav modulo="alquiler" basePath="/alquiler" defaultTab="maquinas" navigate={navigate} />
+              <ModuloNav modulo="alquiler" basePath="/alquiler" defaultTab="remitos" navigate={navigate} />
             </Suspense>
           )}
 

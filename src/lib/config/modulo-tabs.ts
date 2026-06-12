@@ -69,11 +69,11 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
     { key: 'parametros', label: 'Parámetros', icon: '⚙️', meta: 'Tipos de servicio' },
   ],
   alquiler: [
+    { key: 'remitos',  label: 'Remitos',  icon: '🧾', meta: 'Remitos diarios y carga rápida' },
+    { key: 'partes',   label: 'Partes',   icon: '📝',  meta: 'Carga de horas por día' },
     { key: 'maquinas', label: 'Máquinas', icon: '🚜',  meta: 'Flota de maquinaria' },
     { key: 'obras',    label: 'Obras',    icon: '🏗',  meta: 'Obras de alquiler y asignaciones' },
     { key: 'clientes', label: 'Clientes', icon: '🧑‍💼', meta: 'Fichas de clientes' },
-    { key: 'partes',   label: 'Partes',   icon: '📝',  meta: 'Carga de horas por día' },
-    { key: 'remitos',  label: 'Remitos',  icon: '🧾', meta: 'Remitos diarios por máquina' },
     { key: 'reportes', label: 'Reportes', icon: '📊', meta: 'Horas por máquina y por obra' },
     { key: 'cuenta-corriente', label: 'Cuenta corriente', icon: '💰', meta: 'Devengado y saldo por cliente' },
   ],

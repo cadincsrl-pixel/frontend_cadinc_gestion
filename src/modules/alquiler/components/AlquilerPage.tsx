@@ -12,11 +12,11 @@ import { ReportesTab } from './ReportesTab'
 import { CuentaCorrienteTab } from './CuentaCorrienteTab'
 
 const TABS = [
+  { key: 'remitos',  icon: '🧾',  label: 'Remitos',  sub: 'Remitos diarios y carga rápida de horas' },
+  { key: 'partes',   icon: '📝',  label: 'Partes',   sub: 'Carga de horas por día y por máquina' },
   { key: 'maquinas', icon: '🚜',  label: 'Máquinas', sub: 'Flota de maquinaria para alquiler' },
   { key: 'obras',    icon: '🏗',  label: 'Obras',    sub: 'Obras de alquiler y máquinas asignadas' },
   { key: 'clientes', icon: '🧑‍💼', label: 'Clientes', sub: 'Fichas de clientes y cuenta corriente' },
-  { key: 'partes',   icon: '📝',  label: 'Partes',   sub: 'Carga de horas por día y por máquina' },
-  { key: 'remitos',  icon: '🧾',  label: 'Remitos',  sub: 'Remitos diarios para imprimir y enviar' },
   { key: 'reportes', icon: '📊',  label: 'Reportes', sub: 'Horas por máquina y resumen por obra' },
   { key: 'cuenta-corriente', icon: '💰', label: 'Cuenta corriente', sub: 'Devengado por cliente' },
 ]
@@ -25,7 +25,7 @@ export function AlquilerPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const allowedTabs = useTabsPermitidos('alquiler')
-  const tab = searchParams.get('tab') ?? 'maquinas'
+  const tab = searchParams.get('tab') ?? 'remitos'
   const info = TABS.find(t => t.key === tab) ?? TABS[0]!
 
   useEffect(() => {
