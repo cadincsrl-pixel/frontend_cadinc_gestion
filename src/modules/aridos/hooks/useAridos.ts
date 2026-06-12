@@ -15,6 +15,8 @@ import type {
   CanteraArido,
   UnidadFlota,
   UnidadEta,
+  PagoCantera,
+  CuentaCorrienteCantera,
 } from '../types'
 
 // ── Query keys ──
@@ -38,6 +40,7 @@ function invalidarDerivados(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ['aridos', 'movimientos'] })
   qc.invalidateQueries({ queryKey: STOCK_KEY })
   qc.invalidateQueries({ queryKey: CTACTE_KEY })
+  qc.invalidateQueries({ queryKey: ['aridos', 'cuenta-corriente-canteras'] })
 }
 
 // ─────────────────────────── Materiales ───────────────────────────
@@ -319,9 +322,50 @@ export function useCostosCantera() {
 export function useCreateCostoCantera() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (dto: { cantera_id: number; material_id: number; costo: number; vigente_desde: string; obs?: string | null }) =>
+    mutationFn: (dto: { cantera_id: number; concepto: string; zona?: string | null; material_id?: number | null; costo: number; vigente_desde: string; obs?: string | null }) =>
       apiPost<CostoCantera>('/api/aridos/costos-cantera', dto),
     onSuccess: () => qc.invalidateQueries({ queryKey: COSTOS_KEY }),
+  })
+}
+
+// ── Pagos a canteras y cta cte del proveedor ──
+export const CTACTE_CANTERAS_KEY = ['aridos', 'cuenta-corriente-canteras'] as const
+export const pagosCanteraKey = (canteraId?: number) => ['aridos', 'pagos-cantera', canteraId ?? 'all'] as const
+
+export function usePagosCantera(canteraId?: number) {
+  return useQuery({
+    queryKey: pagosCanteraKey(canteraId),
+    queryFn:  () => apiGet<PagoCantera[]>(`/api/aridos/pagos-cantera${canteraId ? `?cantera_id=${canteraId}` : ''}`),
+  })
+}
+
+export function useCreatePagoCantera() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: { cantera_id: number; fecha: string; monto: number; medio: string; obs?: string | null }) =>
+      apiPost<PagoCantera>('/api/aridos/pagos-cantera', dto),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['aridos', 'pagos-cantera'] })
+      qc.invalidateQueries({ queryKey: CTACTE_CANTERAS_KEY })
+    },
+  })
+}
+
+export function useDeletePagoCantera() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiDelete(`/api/aridos/pagos-cantera/${id}`),
+    onSuccess:  () => {
+      qc.invalidateQueries({ queryKey: ['aridos', 'pagos-cantera'] })
+      qc.invalidateQueries({ queryKey: CTACTE_CANTERAS_KEY })
+    },
+  })
+}
+
+export function useCuentaCorrienteCanteras() {
+  return useQuery({
+    queryKey: CTACTE_CANTERAS_KEY,
+    queryFn:  () => apiGet<CuentaCorrienteCantera[]>('/api/aridos/cuenta-corriente-canteras'),
   })
 }
 

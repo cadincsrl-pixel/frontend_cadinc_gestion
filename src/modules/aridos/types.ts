@@ -13,15 +13,40 @@ export interface MunicipioArido {
   obs: string | null
 }
 
+// Lista de precios de la cantera (proveedor): concepto del proveedor
+// ("Viaje de Arena fina") × zona de entrega, con historial de vigencia.
 export interface CostoCantera {
   id: number
   cantera_id: number
-  material_id: number
+  concepto: string | null
+  zona: string | null
+  material_id: number | null
   costo: number
   vigente_desde: string
   obs: string | null
   canteras?: { nombre: string }
-  aridos_materiales?: { nombre: string; unidad: UnidadArido }
+  aridos_materiales?: { nombre: string; unidad: UnidadArido } | null
+}
+
+export interface PagoCantera {
+  id: number
+  cantera_id: number
+  fecha: string
+  monto: number
+  medio: MedioCobro
+  obs: string | null
+  aridos_canteras?: { nombre: string }
+}
+
+export interface CuentaCorrienteCantera {
+  id: number
+  nombre: string
+  obs: string | null
+  retiros: number
+  retiros_sin_costo: number
+  retirado: number
+  pagado: number
+  saldo: number
 }
 
 // Canteras y unidades PROPIAS del negocio de áridos (independientes de logística)
@@ -106,6 +131,8 @@ export interface MovimientoArido {
   entrega_direccion: string | null
   municipio_id: number | null
   unidad_id: number | null
+  costo_unit: number | null
+  costo_total: number | null
   flete_obs: string | null
   remito: string | null
   obs: string | null

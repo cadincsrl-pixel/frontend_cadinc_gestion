@@ -28,6 +28,7 @@ interface VentaForm {
   entrega_direccion: string
   municipio_id: string
   unidad_id:   string
+  costo_total: string
   flete_obs:   string
   remito:      string
   obs:         string
@@ -36,7 +37,7 @@ interface VentaForm {
 const DEFAULTS: VentaForm = {
   fecha: '', cliente_id: '', material_id: '', cantidad: '', origen: 'cantera',
   cantera_id: '', modo_precio: 'lista', precio_unit: '', entrega_direccion: '', municipio_id: '',
-  unidad_id: '', flete_obs: '', remito: '', obs: '',
+  unidad_id: '', costo_total: '', flete_obs: '', remito: '', obs: '',
 }
 
 function fmtDate(s: string) {
@@ -179,6 +180,7 @@ export function VentasTab() {
       entrega_direccion: v.entrega_direccion ?? '',
       municipio_id: v.municipio_id ? String(v.municipio_id) : '',
       unidad_id:   v.unidad_id ? String(v.unidad_id) : '',
+      costo_total: v.costo_total != null ? String(v.costo_total) : '',
       flete_obs:   v.flete_obs ?? '',
       remito:      v.remito ?? '',
       obs:         v.obs ?? '',
@@ -205,6 +207,7 @@ export function VentasTab() {
       entrega_direccion: data.entrega_direccion.trim() || null,
       municipio_id:      data.municipio_id ? Number(data.municipio_id) : null,
       unidad_id:   data.unidad_id ? Number(data.unidad_id) : null,
+      costo_total: origen === 'cantera' && data.costo_total ? Number(data.costo_total) : null,
       flete_obs:   data.flete_obs.trim() || null,
       remito:      data.remito.trim() || null,
       obs:         data.obs.trim() || null,
@@ -390,7 +393,7 @@ export function VentasTab() {
                 { value: 'deposito', label: 'Depósito propio' },
               ]} {...register('origen')} />
               {wOrigen === 'cantera' ? (
-                <Select label="Cantera" options={canteraOptions} {...register('cantera_id')} />
+                <Select label="Cantera (proveedor)" options={canteraOptions} {...register('cantera_id')} />
               ) : (
                 <div className="flex items-end pb-2">
                   <span className="text-xs text-gris-dark">
@@ -420,6 +423,15 @@ export function VentasTab() {
             placeholder={esViaje ? 'Ej: Obra Av. Aconquija 1500, Yerba Buena' : 'Ej: Av. Roca 2300, San Miguel de Tucumán'}
             {...register('entrega_direccion')}
           />
+
+          {wOrigen === 'cantera' && !esViaje && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+              <Input label="Costo cantera ($ total del viaje)" type="number" step="0.01" placeholder="Lo que cobra la cantera" {...register('costo_total')} />
+              <p className="sm:col-span-2 text-[11px] text-gris-dark pb-2">
+                Es lo que la cantera te cobra por este retiro — carga la deuda en su cuenta corriente. La lista de precios está en Canteras y unidades → 💲 Precios.
+              </p>
+            </div>
+          )}
 
           {/* Precio: lista (autocalculado, bloqueado) o especial (a mano) */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

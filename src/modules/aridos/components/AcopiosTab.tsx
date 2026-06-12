@@ -21,6 +21,7 @@ interface AcopioForm {
   cantidad:    string
   cantera_id:  string
   unidad_id:   string
+  costo_total: string
   flete_obs:   string
   remito:      string
   obs:         string
@@ -63,7 +64,7 @@ export function AcopiosTab() {
   const [modalAjuste, setModalAjuste] = useState(false)
 
   const formAcopio = useForm<AcopioForm>({
-    defaultValues: { fecha: toISO(new Date()), material_id: '', cantidad: '', cantera_id: '', unidad_id: '', flete_obs: '', remito: '', obs: '' },
+    defaultValues: { fecha: toISO(new Date()), material_id: '', cantidad: '', cantera_id: '', unidad_id: '', costo_total: '', flete_obs: '', remito: '', obs: '' },
   })
   const formAjuste = useForm<AjusteForm>({
     defaultValues: { fecha: toISO(new Date()), material_id: '', cantidad: '', obs: '' },
@@ -77,6 +78,7 @@ export function AcopiosTab() {
       cantidad:    Number(data.cantidad),
       cantera_id:  data.cantera_id ? Number(data.cantera_id) : null,
       unidad_id:   data.unidad_id ? Number(data.unidad_id) : null,
+      costo_total: data.costo_total ? Number(data.costo_total) : null,
       flete_obs:   data.flete_obs.trim() || null,
       remito:      data.remito.trim() || null,
       obs:         data.obs.trim() || null,
@@ -84,7 +86,7 @@ export function AcopiosTab() {
       onSuccess: () => {
         toast('✓ Acopio registrado', 'ok')
         setModalAcopio(false)
-        formAcopio.reset({ fecha: toISO(new Date()), material_id: '', cantidad: '', cantera_id: '', unidad_id: '', flete_obs: '', remito: '', obs: '' })
+        formAcopio.reset({ fecha: toISO(new Date()), material_id: '', cantidad: '', cantera_id: '', unidad_id: '', costo_total: '', flete_obs: '', remito: '', obs: '' })
       },
       onError: (err: unknown) => toast(mensajeError(err, 'Error al registrar el acopio'), 'err'),
     })
@@ -201,6 +203,9 @@ export function AcopiosTab() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Select label="Cantera de origen" options={canteraOptions} {...formAcopio.register('cantera_id')} />
             <Select label="Unidad (camión + chofer)" options={unidadOptions} {...formAcopio.register('unidad_id')} />
+            <Input label="Costo cantera ($ total)" type="number" step="0.01" placeholder="Lo que cobra la cantera" {...formAcopio.register('costo_total')} />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Input label="Flete externo" placeholder="Si no es unidad propia" {...formAcopio.register('flete_obs')} />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

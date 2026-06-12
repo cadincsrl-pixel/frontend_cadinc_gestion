@@ -1,20 +1,24 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
+import { toISO } from '@/lib/utils/dates'
 import {
   useCanterasAridos, useCreateCanteraArido, useUpdateCanteraArido, useDeleteCanteraArido,
   useUnidades, useCreateUnidad, useUpdateUnidad, useDeleteUnidad,
+  useCostosCantera, useCreateCostoCantera, useDeleteCostoCantera,
 } from '../hooks/useAridos'
 import type { CanteraArido, UnidadFlota } from '../types'
 
-// Canteras y unidades PROPIAS del negocio de áridos — es otro brazo de
-// la empresa, independiente de la flota y las canteras de logística.
+// Canteras (PROVEEDORES de los que se retira material, con su lista de
+// precios por viaje) y unidades propias del negocio de áridos —
+// independiente de la flota y las canteras de logística.
 
 interface CanteraForm { nombre: string; direccion: string; localidad: string; obs: string }
 interface UnidadForm  { nombre: string; patente: string; chofer: string; obs: string }
@@ -42,6 +46,7 @@ function CanterasSection() {
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editId, setEditId] = useState<number | null>(null)
+  const [preciosDe, setPreciosDe] = useState<CanteraArido | null>(null)
   const { register, handleSubmit, reset, formState: { errors } } = useForm<CanteraForm>({ defaultValues: CANTERA_DEFAULTS })
 
   function abrirNueva() {
@@ -94,8 +99,8 @@ function CanterasSection() {
     <div className="bg-white rounded-card shadow-card">
       <div className="flex items-center justify-between px-5 py-4 border-b border-gris">
         <div>
-          <h2 className="font-bold text-azul text-base">⛰ Canteras de áridos</h2>
-          <p className="text-xs text-gris-dark mt-0.5">Las canteras de este negocio — independientes de las de logística. La dirección se geolocaliza sola al guardar.</p>
+          <h2 className="font-bold text-azul text-base">⛰ Canteras (proveedores)</h2>
+          <p className="text-xs text-gris-dark mt-0.5">De acá se retira el material — cada una con su lista de precios por viaje. La dirección se geolocaliza sola al guardar.</p>
         </div>
         {puedeCrear && <Button variant="primary" size="sm" onClick={abrirNueva}>＋ Nueva cantera</Button>}
       </div>
@@ -116,6 +121,13 @@ function CanterasSection() {
                 </span>
               </div>
               <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => setPreciosDe(c)}
+                  className="text-xs font-bold px-2 py-1 rounded bg-verde-light text-verde hover:opacity-80 transition-opacity"
+                  title="Lista de precios de la cantera"
+                >
+                  💲 Precios
+                </button>
                 <button
                   onClick={() => toggleActivo(c)}
                   disabled={!puedeEditar}
@@ -151,11 +163,152 @@ function CanterasSection() {
             <Input label="Dirección" placeholder="Ruta 9 km 1300" {...register('direccion')} />
             <Input label="Localidad" placeholder="El Cadillal, Tucumán" {...register('localidad')} />
           </div>
-          <Input label="Observaciones" placeholder="Notas..." {...register('obs')} />
+          <Input label="Observaciones" placeholder="Contacto, teléfono, notas..." {...register('obs')} />
           <p className="text-[11px] text-gris-dark">Con dirección cargada se geolocaliza automáticamente (📍) para rutas y tiempos.</p>
         </div>
       </Modal>
+
+      <ListaPreciosCanteraModal cantera={preciosDe} onClose={() => setPreciosDe(null)} />
     </div>
+  )
+}
+
+// ── Lista de precios de la cantera (concepto × zona, por viaje) ───────
+function ListaPreciosCanteraModal({ cantera, onClose }: { cantera: CanteraArido | null; onClose: () => void }) {
+  const toast = useToast()
+  const { puedeCrear, puedeEliminar } = usePermisos('aridos')
+  const { data: costos = [] } = useCostosCantera()
+  const { mutate: crear, isPending } = useCreateCostoCantera()
+  const { mutate: borrar } = useDeleteCostoCantera()
+
+  const form = useForm<{ concepto: string; zona: string; costo: string; vigente_desde: string }>({
+    defaultValues: { concepto: '', zona: '', costo: '', vigente_desde: toISO(new Date()) },
+  })
+
+  const propios = useMemo(
+    () => (cantera ? costos.filter(c => c.cantera_id === cantera.id) : []),
+    [costos, cantera],
+  )
+
+  // Zonas existentes de la cantera (para agrupar y sugerir en el alta)
+  const zonas = useMemo(() => {
+    const set = new Set<string>()
+    for (const c of propios) set.add(c.zona ?? '')
+    return Array.from(set).sort()
+  }, [propios])
+
+  // Por zona → concepto → historial (vigente primero)
+  function preciosDeZona(zona: string) {
+    const deZona = propios.filter(c => (c.zona ?? '') === zona)
+    const conceptos = Array.from(new Set(deZona.map(c => c.concepto ?? ''))).sort()
+    return conceptos.map(con => ({
+      concepto: con,
+      historial: deZona
+        .filter(c => (c.concepto ?? '') === con)
+        .sort((a, b) => b.vigente_desde.localeCompare(a.vigente_desde)),
+    }))
+  }
+
+  function fmtDate(s: string) {
+    const [y, m, d] = s.split('-')
+    return `${d}/${m}/${y}`
+  }
+
+  function fmtM(n: number) {
+    return '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 0 })
+  }
+
+  function onSubmit(data: { concepto: string; zona: string; costo: string; vigente_desde: string }) {
+    if (!cantera) return
+    if (!data.concepto.trim()) { toast('Poné el concepto (ej: Viaje de Arena)', 'err'); return }
+    if (!data.costo || Number(data.costo) <= 0) { toast('Precio inválido', 'err'); return }
+    crear({
+      cantera_id:    cantera.id,
+      concepto:      data.concepto.trim(),
+      zona:          data.zona.trim() || null,
+      costo:         Number(data.costo),
+      vigente_desde: data.vigente_desde,
+    }, {
+      onSuccess: () => {
+        toast('✓ Precio guardado', 'ok')
+        form.reset({ concepto: '', zona: data.zona, costo: '', vigente_desde: data.vigente_desde })
+      },
+      onError: (err: unknown) => toast(mensajeError(err, 'Error al guardar'), 'err'),
+    })
+  }
+
+  return (
+    <Modal
+      open={!!cantera}
+      onClose={onClose}
+      title={`💲 LISTA DE PRECIOS — ${cantera?.nombre ?? ''}`}
+      width="max-w-3xl"
+      footer={<Button variant="secondary" onClick={onClose}>Cerrar</Button>}
+    >
+      <div className="flex flex-col gap-4">
+        {puedeCrear && (
+          <div className="bg-gris/30 rounded-card p-3">
+            <p className="text-xs font-bold text-gris-dark uppercase mb-2">Nuevo precio (para actualizar uno, cargalo de nuevo con la fecha desde la que rige)</p>
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+              <div className="sm:col-span-2">
+                <Input label="Concepto" placeholder="Ej: Viaje de Arena" list="conceptos-cantera" {...form.register('concepto')} />
+                <datalist id="conceptos-cantera">
+                  {Array.from(new Set(propios.map(c => c.concepto ?? ''))).map(c => <option key={c} value={c} />)}
+                </datalist>
+              </div>
+              <div className="sm:col-span-2">
+                <Input label="Zona (opcional)" placeholder="Ej: Capital, Yerba Buena..." list="zonas-cantera" {...form.register('zona')} />
+                <datalist id="zonas-cantera">
+                  {zonas.filter(Boolean).map(z => <option key={z} value={z} />)}
+                </datalist>
+              </div>
+              <Input label="Precio ($)" type="number" step="0.01" placeholder="0" {...form.register('costo')} />
+              <Input label="Vigente desde" type="date" {...form.register('vigente_desde')} />
+            </div>
+            <div className="flex justify-end mt-2">
+              <Button variant="primary" size="sm" loading={isPending} onClick={form.handleSubmit(onSubmit)}>✓ Agregar</Button>
+            </div>
+          </div>
+        )}
+
+        {propios.length === 0 ? (
+          <p className="text-center text-sm text-gris-dark italic py-4">Sin precios cargados para esta cantera.</p>
+        ) : (
+          zonas.map(zona => (
+            <div key={zona || '(sin zona)'}>
+              <p className="text-xs font-bold text-azul uppercase tracking-wide mb-1">
+                {zona ? `Zona: ${zona}` : 'Sin zona'}
+              </p>
+              <div className="divide-y divide-gris border border-gris rounded-card overflow-hidden">
+                {preciosDeZona(zona).map(({ concepto, historial }) => {
+                  const vigente = historial[0]!
+                  return (
+                    <div key={concepto} className="px-3 py-1.5 flex items-center justify-between gap-3 bg-white">
+                      <span className="text-sm text-carbon">{concepto}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-sm text-carbon">{fmtM(Number(vigente.costo))}</span>
+                        <span className="text-[10px] text-gris-dark">desde {fmtDate(vigente.vigente_desde)}</span>
+                        {historial.length > 1 && (
+                          <span className="text-[10px] text-gris-mid" title={historial.slice(1).map(h => `${fmtM(Number(h.costo))} desde ${fmtDate(h.vigente_desde)}`).join(' · ')}>
+                            +{historial.length - 1} ant.
+                          </span>
+                        )}
+                        {puedeEliminar && (
+                          <button
+                            onClick={() => { if (confirm(`¿Eliminar "${concepto}" (${fmtM(Number(vigente.costo))})?`)) borrar(vigente.id, { onSuccess: () => toast('✓ Eliminado', 'ok') }) }}
+                            className="text-xs text-gris-dark hover:text-rojo"
+                          >✕</button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </Modal>
   )
 }
 

@@ -10,12 +10,9 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
-import { toISO } from '@/lib/utils/dates'
 import {
   useMateriales, useCreateMaterial, useUpdateMaterial, useDeleteMaterial,
-  useCostosCantera, useCreateCostoCantera, useDeleteCostoCantera,
   useMunicipios, useCreateMunicipio, useUpdateMunicipio, useDeleteMunicipio,
-  useCanterasAridos,
 } from '../hooks/useAridos'
 import type { MaterialArido, MunicipioArido } from '../types'
 
@@ -38,29 +35,17 @@ export function MaterialesTab() {
   const toast = useToast()
   const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('aridos')
   const { data: materiales = [], isLoading } = useMateriales()
-  const { data: costos = [] } = useCostosCantera()
   const { mutate: create, isPending: creating } = useCreateMaterial()
   const { mutate: update, isPending: updating } = useUpdateMaterial()
   const { mutate: remove } = useDeleteMaterial()
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editId, setEditId] = useState<number | null>(null)
-  const [costosDe, setCostosDe] = useState<MaterialArido | null>(null)
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: { nombre: '', unidad: 'm3' },
   })
-
-  // Canteras con costo vigente por material (para el badge de la tabla)
-  const canterasConCosto = useMemo(() => {
-    const m = new Map<number, Set<number>>()
-    for (const c of costos) {
-      if (!m.has(c.material_id)) m.set(c.material_id, new Set())
-      m.get(c.material_id)!.add(c.cantera_id)
-    }
-    return m
-  }, [costos])
 
   function abrirNuevo() {
     setEditId(null)
@@ -118,7 +103,7 @@ export function MaterialesTab() {
           <table className="w-full border-collapse">
             <thead>
               <tr>
-                {['Material', 'Se vende por', 'Costo en canteras', 'Estado', ''].map((h, i) => (
+                {['Material', 'Se vende por', 'Estado', ''].map((h, i) => (
                   <th key={i} className="bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide">
                     {h}
                   </th>
@@ -127,24 +112,10 @@ export function MaterialesTab() {
             </thead>
             <tbody>
               {materiales.map(m => {
-                const nCanteras = canterasConCosto.get(m.id)?.size ?? 0
                 return (
                   <tr key={m.id} className={`border-b border-gris last:border-0 hover:bg-gris/40 transition-colors ${!m.activo ? 'opacity-50' : ''}`}>
                     <td className="px-4 py-3 font-bold text-sm text-carbon">{m.nombre}</td>
                     <td className="px-4 py-3 text-sm text-gris-dark">{m.unidad === 'm3' ? 'm³ (metro cúbico)' : 'viaje'}</td>
-                    <td className="px-4 py-3">
-                      {m.unidad === 'm3' ? (
-                        <button
-                          onClick={() => setCostosDe(m)}
-                          className={`text-xs font-bold px-2 py-1 rounded transition-colors ${nCanteras > 0 ? 'bg-verde-light text-verde hover:opacity-80' : 'bg-gris text-gris-dark hover:bg-gris-mid'}`}
-                          title="Precio de compra por cantera"
-                        >
-                          ⛏ {nCanteras > 0 ? `${nCanteras} cantera${nCanteras !== 1 ? 's' : ''}` : 'Sin costos'}
-                        </button>
-                      ) : (
-                        <span className="text-xs text-gris-mid">—</span>
-                      )}
-                    </td>
                     <td className="px-4 py-3">
                       <button
                         onClick={() => toggleActivo(m)}
@@ -196,129 +167,7 @@ export function MaterialesTab() {
         </div>
       </Modal>
 
-      <CostosCanteraModal material={costosDe} onClose={() => setCostosDe(null)} />
     </>
-  )
-}
-
-// ── Costos de compra por cantera (modal por material) ─────────────────
-function CostosCanteraModal({ material, onClose }: { material: MaterialArido | null; onClose: () => void }) {
-  const toast = useToast()
-  const { puedeCrear, puedeEliminar } = usePermisos('aridos')
-  const { data: costos = [] } = useCostosCantera()
-  const { data: canteras = [] } = useCanterasAridos()
-  const { mutate: crear, isPending } = useCreateCostoCantera()
-  const { mutate: borrar } = useDeleteCostoCantera()
-
-  const form = useForm<{ cantera_id: string; costo: string; vigente_desde: string }>({
-    defaultValues: { cantera_id: '', costo: '', vigente_desde: toISO(new Date()) },
-  })
-
-  const grupos = useMemo(() => {
-    if (!material) return []
-    const propios = costos.filter(c => c.material_id === material.id)
-    return canteras
-      .map(cant => ({
-        cantera: cant,
-        historial: propios
-          .filter(c => c.cantera_id === cant.id)
-          .sort((a, b) => b.vigente_desde.localeCompare(a.vigente_desde)),
-      }))
-      .filter(g => g.historial.length > 0)
-  }, [material, costos, canteras])
-
-  function onSubmit(data: { cantera_id: string; costo: string; vigente_desde: string }) {
-    if (!material) return
-    if (!data.cantera_id) { toast('Elegí una cantera', 'err'); return }
-    if (!data.costo || Number(data.costo) < 0) { toast('Costo inválido', 'err'); return }
-    crear({
-      cantera_id:    Number(data.cantera_id),
-      material_id:   material.id,
-      costo:         Number(data.costo),
-      vigente_desde: data.vigente_desde,
-    }, {
-      onSuccess: () => {
-        toast('✓ Costo guardado', 'ok')
-        form.reset({ cantera_id: '', costo: '', vigente_desde: toISO(new Date()) })
-      },
-      onError: (err: unknown) => toast(mensajeError(err, 'Error al guardar'), 'err'),
-    })
-  }
-
-  const canteraOptions = [
-    { value: '', label: 'Seleccionar cantera…' },
-    ...canteras.map(c => ({ value: c.id, label: c.nombre })),
-  ]
-
-  return (
-    <Modal
-      open={!!material}
-      onClose={onClose}
-      title={`⛏ COSTO DE COMPRA — ${material?.nombre ?? ''}`}
-      width="max-w-2xl"
-      footer={<Button variant="secondary" onClick={onClose}>Cerrar</Button>}
-    >
-      <div className="flex flex-col gap-4">
-        {puedeCrear && (
-          <div className="bg-gris/30 rounded-card p-3">
-            <p className="text-xs font-bold text-gris-dark uppercase mb-2">Nuevo costo ($/m³ que nos cobra la cantera)</p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <Select label="Cantera" options={canteraOptions} {...form.register('cantera_id')} />
-              <Input label="Costo ($/m³)" type="number" step="0.01" placeholder="0.00" {...form.register('costo')} />
-              <Input label="Vigente desde" type="date" {...form.register('vigente_desde')} />
-            </div>
-            <div className="flex justify-end mt-2">
-              <Button variant="primary" size="sm" loading={isPending} onClick={form.handleSubmit(onSubmit)}>✓ Agregar</Button>
-            </div>
-          </div>
-        )}
-
-        {grupos.length === 0 ? (
-          <p className="text-center text-sm text-gris-dark italic py-4">Sin costos cargados para este material.</p>
-        ) : (
-          <div className="divide-y divide-gris">
-            {grupos.map(({ cantera, historial }) => {
-              const vigente = historial[0]!
-              const pasadas = historial.slice(1)
-              return (
-                <div key={cantera.id} className="py-2 flex flex-col gap-1">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="font-bold text-sm text-carbon">{cantera.nombre}</span>
-                    <div className="flex items-center gap-2">
-                      <div className="text-right">
-                        <span className="font-mono font-bold text-carbon">{fmtM(Number(vigente.costo))}/m³</span>
-                        <span className="text-[11px] text-gris-dark ml-2">desde {fmtDate(vigente.vigente_desde)}</span>
-                      </div>
-                      {puedeEliminar && (
-                        <button
-                          onClick={() => { if (confirm(`¿Eliminar costo de ${cantera.nombre}?`)) borrar(vigente.id, { onSuccess: () => toast('✓ Eliminado', 'ok') }) }}
-                          className="text-xs px-1.5 py-0.5 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors"
-                        >✕</button>
-                      )}
-                    </div>
-                  </div>
-                  {pasadas.length > 0 && (
-                    <div className="pl-3 border-l-2 border-gris flex flex-col gap-0.5">
-                      {pasadas.map(p => (
-                        <div key={p.id} className="flex items-center justify-between text-xs text-gris-dark">
-                          <span>desde {fmtDate(p.vigente_desde)}</span>
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono">{fmtM(Number(p.costo))}/m³</span>
-                            {puedeEliminar && (
-                              <button onClick={() => { if (confirm('¿Eliminar este costo histórico?')) borrar(p.id, { onSuccess: () => toast('✓ Eliminado', 'ok') }) }} className="hover:text-rojo">✕</button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </div>
-    </Modal>
   )
 }
 
