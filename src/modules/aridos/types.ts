@@ -108,6 +108,15 @@ export interface ClienteArido {
   updated_at: string
 }
 
+export interface PrecioGlobal {
+  id: number
+  material_id: number
+  precio: number
+  vigente_desde: string
+  obs: string | null
+  aridos_materiales?: { nombre: string; unidad: UnidadArido }
+}
+
 export interface PrecioCliente {
   id: number
   cliente_id: number
@@ -139,6 +148,7 @@ export interface MovimientoArido {
   costo_total: number | null
   flete_obs: string | null
   remito: string | null
+  cobro_id: number | null
   remito_numero: string | null
   remito_emitido_en: string | null
   obs: string | null

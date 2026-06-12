@@ -13,9 +13,10 @@ import {
   useMovimientos, useCreateMovimiento, useUpdateMovimiento, useDeleteMovimiento,
   useClientesAridos, useMateriales, usePreciosCliente, useStockAridos, useMunicipios,
   useCanterasAridos, useUnidades, useUnidadEta, useEmitirRemitoVenta,
+  usePreciosGlobal,
 } from '../hooks/useAridos'
 import { RemitoVentaModal } from './RemitoVentaModal'
-import type { MovimientoArido, PrecioCliente, MunicipioArido, UnidadEta } from '../types'
+import type { MovimientoArido, PrecioCliente, PrecioGlobal, MunicipioArido, UnidadEta } from '../types'
 
 interface VentaForm {
   fecha:       string
@@ -61,26 +62,31 @@ function fmtCant(n: number) {
   return n.toLocaleString('es-AR', { maximumFractionDigits: 2 })
 }
 
-// Precio de lista del cliente (vigente a la fecha) con el recargo del
-// municipio aplicado. Devuelve null si no hay precio de lista cargado.
+// Precio de lista (vigente a la fecha) con el recargo del municipio.
+// Resolución: precio propio del CLIENTE si tiene; si no, lista GLOBAL.
 function precioConRecargo(
   precios: PrecioCliente[],
+  preciosGlobal: PrecioGlobal[],
   municipios: MunicipioArido[],
   clienteId: string,
   materialId: string,
   fecha: string,
   municipioId: string,
-): { base: PrecioCliente; final: number; recargoPct: number } | null {
+): { precio: number; vigente_desde: string; fuente: 'cliente' | 'global'; final: number; recargoPct: number } | null {
   if (!clienteId || !materialId || !fecha) return null
-  const base = precios
+  const delCliente = precios
     .filter(p => p.cliente_id === Number(clienteId) && p.material_id === Number(materialId) && p.vigente_desde <= fecha)
     .sort((a, b) => b.vigente_desde.localeCompare(a.vigente_desde))[0]
+  const global = preciosGlobal
+    .filter(p => p.material_id === Number(materialId) && p.vigente_desde <= fecha)
+    .sort((a, b) => b.vigente_desde.localeCompare(a.vigente_desde))[0]
+  const base = delCliente ?? global
   if (!base) return null
   const recargoPct = municipioId
     ? Number(municipios.find(m => m.id === Number(municipioId))?.recargo_pct ?? 0)
     : 0
   const final = Math.round(Number(base.precio) * (1 + recargoPct / 100) * 100) / 100
-  return { base, final, recargoPct }
+  return { precio: Number(base.precio), vigente_desde: base.vigente_desde, fuente: delCliente ? 'cliente' : 'global', final, recargoPct }
 }
 
 export function VentasTab() {
@@ -102,6 +108,7 @@ export function VentasTab() {
   const { data: clientes = [] }   = useClientesAridos()
   const { data: materiales = [] } = useMateriales()
   const { data: precios = [] }    = usePreciosCliente()
+  const { data: preciosGlobal = [] } = usePreciosGlobal()
   const { data: municipios = [] } = useMunicipios()
   const { data: stock = [] }      = useStockAridos()
   const { data: canteras = [] }   = useCanterasAridos()
@@ -136,7 +143,7 @@ export function VentasTab() {
   const esViaje     = materialSel?.unidad === 'viaje'
   const unidadLabel = esViaje ? 'viaje(s)' : 'm³'
 
-  const lista = precioConRecargo(precios, municipios, wCliente, wMaterial, wFecha, wMunicipio)
+  const lista = precioConRecargo(precios, preciosGlobal, municipios, wCliente, wMaterial, wFecha, wMunicipio)
 
   // Recalcula el precio cuando cambia algo que afecta la lista,
   // solo si el modo es "lista" (el especial no se pisa).
@@ -147,7 +154,7 @@ export function VentasTab() {
     const mun  = over.municipio ?? wMunicipio
     const modo = over.modo      ?? wModo
     if (modo !== 'lista') return
-    const r = precioConRecargo(precios, municipios, cli, mat, fec, mun)
+    const r = precioConRecargo(precios, preciosGlobal, municipios, cli, mat, fec, mun)
     setValue('precio_unit', r ? String(r.final) : '')
   }
 
@@ -227,7 +234,13 @@ export function VentasTab() {
     }
     if (editId == null) {
       crear(dto, {
-        onSuccess: () => { toast('✓ Venta registrada', 'ok'); setModalOpen(false) },
+        onSuccess: (mov) => {
+          toast(mov.remito_numero ? `✓ Venta registrada · remito ${mov.remito_numero}` : '✓ Venta registrada', 'ok')
+          setModalOpen(false)
+          // El remito se emite solo al registrar: lo dejamos abierto
+          // para imprimir/mandar al cliente en el momento.
+          if (mov.remito_numero) setRemitoVenta(mov)
+        },
         onError:   (err: unknown) => toast(mensajeError(err, 'Error al registrar la venta'), 'err'),
       })
     } else {
@@ -336,7 +349,10 @@ export function VentasTab() {
                       {v.precio_unit != null ? fmtM(Number(v.precio_unit)) : '—'}
                       {v.precio_especial && <span className="text-[10px] text-naranja font-bold ml-1" title="Precio especial (no de lista)">ESP</span>}
                     </td>
-                    <td className="px-3 py-2.5 text-sm font-mono font-bold text-verde whitespace-nowrap">{v.importe != null ? fmtM(Number(v.importe)) : '—'}</td>
+                    <td className="px-3 py-2.5 text-sm font-mono font-bold text-verde whitespace-nowrap">
+                      {v.importe != null ? fmtM(Number(v.importe)) : '—'}
+                      {v.cobro_id != null && <span className="text-[9px] font-sans bg-verde-light text-verde px-1 py-0.5 rounded ml-1" title="Remito cobrado">✓ COBRADO</span>}
+                    </td>
                     <td className="px-3 py-2.5 text-xs font-mono">
                       {v.remito_numero && <div className="font-bold text-naranja">{v.remito_numero}</div>}
                       <div className="text-gris-dark">{v.remito || (v.remito_numero ? '' : '—')}</div>
@@ -489,9 +505,9 @@ export function VentasTab() {
 
           <div className="bg-gris/30 rounded-card px-3 py-2 text-xs text-gris-dark">
             {lista
-              ? <>Lista del cliente: <b className="font-mono">{fmtM(Number(lista.base.precio))}</b> (desde {fmtDate(lista.base.vigente_desde)}){lista.recargoPct > 0 && <> + <b>{lista.recargoPct}%</b> municipio = <b className="font-mono">{fmtM(lista.final)}</b></>}</>
+              ? <>{lista.fuente === 'cliente' ? 'Precio propio del cliente' : 'Lista global'}: <b className="font-mono">{fmtM(lista.precio)}</b> (desde {fmtDate(lista.vigente_desde)}){lista.recargoPct > 0 && <> + <b>{lista.recargoPct}%</b> municipio = <b className="font-mono">{fmtM(lista.final)}</b></>}</>
               : (wCliente && wMaterial)
-                ? <span className="text-[#7A5500] font-semibold">⚠ Sin precio de lista para este cliente/material — usá &quot;Precio especial&quot;.</span>
+                ? <span className="text-[#7A5500] font-semibold">⚠ Sin precio en la lista global ni del cliente — usá &quot;Precio especial&quot;.</span>
                 : 'Elegí cliente y material para ver el precio de lista.'}
           </div>
 

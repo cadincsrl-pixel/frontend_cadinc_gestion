@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -13,6 +13,7 @@ import { apiGet } from '@/lib/api/client'
 import {
   useCuentaCorrienteAridos, useCobrosAridos, useCreateCobroArido, useDeleteCobroArido,
   useCuentaCorrienteCanteras, usePagosCantera, useCreatePagoCantera, useDeletePagoCantera,
+  useMovimientos,
 } from '../hooks/useAridos'
 import type { CuentaCorrienteArido, CobroArido, CuentaCorrienteCantera, PagoCantera, MovimientoArido } from '../types'
 import { descargarCuentaClientePdf } from '../utils/cuenta-pdf'
@@ -424,9 +425,34 @@ function CobrosDelCliente({ clienteId }: { clienteId: number }) {
 function RegistrarCobroModal({ cliente, onClose }: { cliente: CuentaCorrienteArido | null; onClose: () => void }) {
   const toast = useToast()
   const { mutate: crear, isPending } = useCreateCobroArido()
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<CobroForm>({
+  const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<CobroForm>({
     defaultValues: { fecha: toISO(new Date()), monto: '', medio: 'transferencia', obs: '' },
   })
+
+  // Ventas adeudadas del cliente para imputar el cobro (opcional).
+  const { data: ventasCliente = [] } = useMovimientos(
+    { tipo: 'venta', cliente_id: cliente?.id ?? 0 },
+    !!cliente,
+  )
+  const adeudadas = ventasCliente.filter(v => v.cobro_id == null)
+  const [seleccion, setSeleccion] = useState<Set<number>>(new Set())
+
+  // Reset al cambiar de cliente / abrir.
+  useEffect(() => {
+    setSeleccion(new Set())
+    reset({ fecha: toISO(new Date()), monto: '', medio: 'transferencia', obs: '' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cliente?.id])
+
+  // Al tildar remitos, el monto se autocompleta con la suma (editable).
+  function toggleVenta(id: number) {
+    const next = new Set(seleccion)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    setSeleccion(next)
+    const suma = adeudadas.filter(v => next.has(v.id)).reduce((s, v) => s + Number(v.importe ?? 0), 0)
+    if (suma > 0) setValue('monto', String(suma))
+  }
 
   function onSubmit(data: CobroForm) {
     if (!cliente) return
@@ -436,10 +462,12 @@ function RegistrarCobroModal({ cliente, onClose }: { cliente: CuentaCorrienteAri
       monto:      Number(data.monto),
       medio:      data.medio,
       obs:        data.obs.trim() || undefined,
+      venta_ids:  Array.from(seleccion),
     }, {
       onSuccess: () => {
-        toast('✓ Cobro registrado', 'ok')
+        toast(seleccion.size > 0 ? `✓ Cobro registrado · ${seleccion.size} remito${seleccion.size !== 1 ? 's' : ''} cancelado${seleccion.size !== 1 ? 's' : ''}` : '✓ Cobro registrado', 'ok')
         reset({ fecha: toISO(new Date()), monto: '', medio: 'transferencia', obs: '' })
+        setSeleccion(new Set())
         onClose()
       },
       onError: (err: unknown) => {
@@ -469,6 +497,28 @@ function RegistrarCobroModal({ cliente, onClose }: { cliente: CuentaCorrienteAri
             <span className="mx-1">·</span> Vendido {fmtM(cliente.vendido)} · Cobrado {fmtM(cliente.cobrado)}
           </div>
         )}
+
+        {/* Imputación opcional: qué remitos cancela este pago */}
+        {adeudadas.length > 0 && (
+          <div className="border border-gris rounded-card overflow-hidden">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-gris-dark px-3 py-2 bg-gris/30">
+              ¿Qué remitos paga? (opcional — sin tildar es pago a cuenta)
+            </p>
+            <div className="max-h-44 overflow-y-auto divide-y divide-gris">
+              {adeudadas.map(v => (
+                <label key={v.id} className="flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer hover:bg-gris/20">
+                  <input type="checkbox" checked={seleccion.has(v.id)} onChange={() => toggleVenta(v.id)} className="accent-azul" />
+                  <span className="flex-1 text-carbon">
+                    {fmtDate(v.fecha)} · {v.aridos_materiales?.nombre ?? '—'} · {Number(v.cantidad).toLocaleString('es-AR')} {v.aridos_materiales?.unidad === 'viaje' ? 'viaje(s)' : 'm³'}
+                    {v.remito_numero && <span className="font-mono text-naranja ml-1">{v.remito_numero}</span>}
+                  </span>
+                  <span className="font-mono font-bold text-carbon">{v.importe != null ? fmtM(Number(v.importe)) : '—'}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input label="Fecha" type="date" {...register('fecha', { required: true })} />
           <Input label="Monto ($)" type="number" step="0.01" placeholder="0.00" error={errors.monto?.message}

@@ -6,6 +6,7 @@ import type {
   MaterialArido,
   ClienteArido,
   PrecioCliente,
+  PrecioGlobal,
   MovimientoArido,
   StockMaterial,
   CobroArido,
@@ -155,8 +156,35 @@ export function useDeletePrecio() {
   })
 }
 
+// ─────────────────── Lista de precios global ───────────────────
+export const PRECIOS_GLOBAL_KEY = ['aridos', 'precios-global'] as const
+
+export function usePreciosGlobal() {
+  return useQuery({
+    queryKey: PRECIOS_GLOBAL_KEY,
+    queryFn:  () => apiGet<PrecioGlobal[]>('/api/aridos/precios-global'),
+  })
+}
+
+export function useCreatePrecioGlobal() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: { material_id: number; precio: number; vigente_desde: string; obs?: string | null }) =>
+      apiPost<PrecioGlobal>('/api/aridos/precios-global', dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: PRECIOS_GLOBAL_KEY }),
+  })
+}
+
+export function useDeletePrecioGlobal() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiDelete(`/api/aridos/precios-global/${id}`),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: PRECIOS_GLOBAL_KEY }),
+  })
+}
+
 // ─────────────────────────── Movimientos ───────────────────────────
-export function useMovimientos(filtro: MovimientosFiltro = {}) {
+export function useMovimientos(filtro: MovimientosFiltro = {}, enabled = true) {
   const params = new URLSearchParams()
   if (filtro.tipo)        params.set('tipo', filtro.tipo)
   if (filtro.cliente_id)  params.set('cliente_id', String(filtro.cliente_id))
@@ -167,6 +195,7 @@ export function useMovimientos(filtro: MovimientosFiltro = {}) {
   return useQuery({
     queryKey: movimientosKey(filtro),
     queryFn:  () => apiGet<MovimientoArido[]>(`/api/aridos/movimientos${qs ? `?${qs}` : ''}`),
+    enabled,
   })
 }
 
@@ -423,11 +452,12 @@ export function useCobrosAridos(clienteId?: number) {
 export function useCreateCobroArido() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (dto: { cliente_id: number; fecha: string; monto: number; medio: string; obs?: string }) =>
+    mutationFn: (dto: { cliente_id: number; fecha: string; monto: number; medio: string; obs?: string; venta_ids?: number[] }) =>
       apiPost<CobroArido>('/api/aridos/cobros', dto),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['aridos', 'cobros'] })
       qc.invalidateQueries({ queryKey: CTACTE_KEY })
+      qc.invalidateQueries({ queryKey: ['aridos', 'movimientos'] })
     },
   })
 }
@@ -439,6 +469,8 @@ export function useDeleteCobroArido() {
     onSuccess:  () => {
       qc.invalidateQueries({ queryKey: ['aridos', 'cobros'] })
       qc.invalidateQueries({ queryKey: CTACTE_KEY })
+      // El FK es ON DELETE SET NULL: las ventas imputadas vuelven a adeudadas
+      qc.invalidateQueries({ queryKey: ['aridos', 'movimientos'] })
     },
   })
 }

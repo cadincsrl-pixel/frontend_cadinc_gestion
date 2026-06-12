@@ -14,8 +14,9 @@ import { toISO } from '@/lib/utils/dates'
 import {
   useClientesAridos, useCreateClienteArido, useUpdateClienteArido, useDeleteClienteArido,
   useMateriales, usePreciosCliente, useCreatePrecio, useDeletePrecio,
+  usePreciosGlobal, useCreatePrecioGlobal,
 } from '../hooks/useAridos'
-import type { ClienteArido, PrecioCliente } from '../types'
+import type { ClienteArido, PrecioCliente, MaterialArido } from '../types'
 
 // ── Form de cliente (tipado, sin useForm<any>) ──
 const clienteSchema = z.object({
@@ -55,6 +56,7 @@ export function ClientesAridosTab() {
   const { data: clientes = [], isLoading, isError, refetch } = useClientesAridos()
   const { data: materiales = [] } = useMateriales()
   const { data: precios = [] } = usePreciosCliente()
+  const { data: preciosGlobal = [] } = usePreciosGlobal()
   const { mutate: create, isPending: creating } = useCreateClienteArido()
   const { mutate: update, isPending: updating } = useUpdateClienteArido()
   const { mutate: remove, isPending: removing } = useDeleteClienteArido()
@@ -166,6 +168,19 @@ export function ClientesAridosTab() {
     })
   }
 
+  // Precio global vigente hoy por material (referencia en la ficha)
+  const hoyISO = toISO(new Date())
+  const globalVigente = useMemo(() => {
+    const m = new Map<number, number>()
+    for (const mat of materiales) {
+      const v = preciosGlobal
+        .filter(p => p.material_id === mat.id && p.vigente_desde <= hoyISO)
+        .sort((a, b) => b.vigente_desde.localeCompare(a.vigente_desde))[0]
+      if (v) m.set(mat.id, Number(v.precio))
+    }
+    return m
+  }, [preciosGlobal, materiales, hoyISO])
+
   // Precios del cliente abierto, agrupados por material (vigente primero)
   const preciosDelCliente = useMemo(() => {
     if (!preciosDe) return []
@@ -187,6 +202,8 @@ export function ClientesAridosTab() {
 
   return (
     <>
+      <PreciosGlobalCard />
+
       {/* Barra superior */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2 flex-wrap">
@@ -366,13 +383,22 @@ export function ClientesAridosTab() {
             </div>
           )}
 
-          {/* Lista por material */}
-          {preciosDelCliente.every(g => g.historial.length === 0) ? (
-            <p className="text-center text-sm text-gris-dark italic py-4">
-              Sin precios cargados. El escombro se cotiza al momento del retiro; el resto conviene precargarlo acá.
-            </p>
-          ) : (
+          {/* Lista por material: override del cliente o herencia de la global */}
+          {(
             <div className="divide-y divide-gris">
+              {preciosDelCliente.filter(g => g.historial.length === 0).map(({ material }) => (
+                <div key={`g-${material.id}`} className="py-2 flex items-center justify-between gap-3">
+                  <span className="text-sm text-carbon">
+                    {material.nombre}
+                    <span className="text-xs text-gris-dark ml-1">$/{material.unidad === 'm3' ? 'm³' : 'viaje'}</span>
+                  </span>
+                  {globalVigente.has(material.id) ? (
+                    <span className="text-xs text-gris-dark">usa global <b className="font-mono">{fmt(globalVigente.get(material.id)!)}</b></span>
+                  ) : (
+                    <span className="text-xs text-gris-mid italic">sin precio (ni global)</span>
+                  )}
+                </div>
+              ))}
               {preciosDelCliente.filter(g => g.historial.length > 0).map(({ material, historial }) => {
                 const vigente = historial[0]!
                 const pasadas = historial.slice(1)
@@ -382,6 +408,9 @@ export function ClientesAridosTab() {
                       <span className="font-bold text-sm text-carbon">
                         {material.nombre}
                         <span className="text-xs text-gris-dark font-normal ml-1">$/{material.unidad === 'm3' ? 'm³' : 'viaje'}</span>
+                        {globalVigente.has(material.id) && (
+                          <span className="text-[10px] text-gris-mid ml-2" title="Este precio propio pisa al de la lista global">pisa global {fmt(globalVigente.get(material.id)!)}</span>
+                        )}
                       </span>
                       <div className="flex items-center gap-2">
                         <div className="text-right">
@@ -422,6 +451,132 @@ export function ClientesAridosTab() {
         </div>
       </Modal>
     </>
+  )
+}
+
+// ── Lista de precios global: tabla de carga rápida por material ──────
+// Es el precio base de venta. Los clientes la heredan automáticamente;
+// un precio cargado en la ficha del cliente la pisa para ese cliente.
+function PreciosGlobalCard() {
+  const toast = useToast()
+  const { puedeCrear, puedeEliminar } = usePermisos('aridos')
+  const { data: materiales = [] } = useMateriales()
+  const { data: precios = [] } = usePreciosGlobal()
+  const { mutate: crear } = useCreatePrecioGlobal()
+
+  const [abierta, setAbierta] = useState(true)
+  const [vigencia, setVigencia] = useState(() => toISO(new Date()))
+  const [drafts, setDrafts] = useState<Record<number, string>>({})
+  const [guardando, setGuardando] = useState<number | null>(null)
+
+  // Precio global vigente HOY por material
+  const hoy = toISO(new Date())
+  function vigenteDe(materialId: number) {
+    return precios
+      .filter(p => p.material_id === materialId && p.vigente_desde <= hoy)
+      .sort((a, b) => b.vigente_desde.localeCompare(a.vigente_desde))[0] ?? null
+  }
+  // Próximo precio ya cargado (vigencia futura)
+  function futuroDe(materialId: number) {
+    return precios
+      .filter(p => p.material_id === materialId && p.vigente_desde > hoy)
+      .sort((a, b) => a.vigente_desde.localeCompare(b.vigente_desde))[0] ?? null
+  }
+
+  function guardar(mat: MaterialArido) {
+    const valor = drafts[mat.id]
+    if (!valor || Number(valor) <= 0) { toast('Poné un precio válido', 'err'); return }
+    setGuardando(mat.id)
+    crear({ material_id: mat.id, precio: Number(valor), vigente_desde: vigencia }, {
+      onSuccess: () => {
+        toast(`✓ ${mat.nombre}: ${fmt(Number(valor))} desde ${fmtDate(vigencia)}`, 'ok')
+        setDrafts(prev => { const next = { ...prev }; delete next[mat.id]; return next })
+        setGuardando(null)
+      },
+      onError: (err: unknown) => { toast(mensajeError(err, 'Error al guardar'), 'err'); setGuardando(null) },
+    })
+  }
+
+  return (
+    <div className="bg-white rounded-card shadow-card">
+      <button
+        onClick={() => setAbierta(!abierta)}
+        className="w-full flex items-center justify-between px-5 py-4 text-left"
+      >
+        <div>
+          <h2 className="font-bold text-azul text-base">💲 Lista de precios global</h2>
+          <p className="text-xs text-gris-dark mt-0.5">
+            Precio base de venta por material. Todos los clientes la usan, salvo que tengan un precio propio cargado en su ficha (que la pisa).
+          </p>
+        </div>
+        <span className="text-gris-dark">{abierta ? '▲' : '▼'}</span>
+      </button>
+
+      {abierta && (
+        <div className="border-t border-gris">
+          <div className="flex items-center gap-2 px-5 py-2 bg-gris/20 text-xs text-gris-dark">
+            Los precios nuevos rigen desde:
+            <input
+              type="date"
+              value={vigencia}
+              onChange={e => setVigencia(e.target.value)}
+              className="border-[1.5px] border-gris-mid rounded px-2 py-1 text-xs bg-white outline-none focus:border-naranja"
+            />
+            (hoy = desde ahora; fecha futura = aumento programado)
+          </div>
+          <table className="w-full border-collapse">
+            <thead>
+              <tr>
+                {['Material', 'Precio vigente', 'Nuevo precio ($)', ''].map((h, i) => (
+                  <th key={i} className="bg-azul text-white text-xs font-bold px-4 py-2 text-left uppercase tracking-wide">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {materiales.filter(m => m.activo).map(mat => {
+                const vig = vigenteDe(mat.id)
+                const fut = futuroDe(mat.id)
+                return (
+                  <tr key={mat.id} className="border-b border-gris last:border-0 hover:bg-gris/30 transition-colors">
+                    <td className="px-4 py-2 text-sm font-bold text-carbon">
+                      {mat.nombre}
+                      <span className="text-xs text-gris-dark font-normal ml-1">$/{mat.unidad === 'm3' ? 'm³' : 'viaje'}</span>
+                    </td>
+                    <td className="px-4 py-2">
+                      {vig ? (
+                        <span className="font-mono font-bold text-verde text-sm">{fmt(Number(vig.precio))}
+                          <span className="text-[10px] text-gris-dark font-sans font-normal ml-1">desde {fmtDate(vig.vigente_desde)}</span>
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gris-mid italic">sin precio</span>
+                      )}
+                      {fut && (
+                        <div className="text-[10px] text-[#7A5500]">→ {fmt(Number(fut.precio))} desde {fmtDate(fut.vigente_desde)}</div>
+                      )}
+                    </td>
+                    <td className="px-4 py-2">
+                      <input
+                        type="number" step="0.01" placeholder={vig ? String(vig.precio) : '0.00'}
+                        value={drafts[mat.id] ?? ''}
+                        onChange={e => setDrafts(prev => ({ ...prev, [mat.id]: e.target.value }))}
+                        onKeyDown={e => { if (e.key === 'Enter') guardar(mat) }}
+                        disabled={!puedeCrear}
+                        className="w-32 border-[1.5px] border-gris-mid rounded px-2 py-1 text-sm font-mono outline-none focus:border-naranja disabled:opacity-50"
+                      />
+                    </td>
+                    <td className="px-4 py-2">
+                      {drafts[mat.id] && (
+                        <Button variant="primary" size="sm" loading={guardando === mat.id} onClick={() => guardar(mat)}>✓</Button>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   )
 }
 

@@ -47,6 +47,9 @@ export function descargarCuentaClientePdf(
     { text: v.remito_numero ?? v.remito ?? '—', fontSize: 8 },
     { text: v.precio_unit != null ? fmtM(Number(v.precio_unit)) : '—', fontSize: 8, alignment: 'right' },
     { text: v.importe != null ? fmtM(Number(v.importe)) : '—', fontSize: 8, alignment: 'right', bold: true },
+    v.cobro_id != null
+      ? { text: 'Pagado', fontSize: 7, alignment: 'center', color: '#2F855A', bold: true }
+      : { text: 'Adeudado', fontSize: 7, alignment: 'center', color: '#C53030' },
   ]))
 
   const filasCobros: Content[][] = cobros.map(c => ([
@@ -99,9 +102,9 @@ export function descargarCuentaClientePdf(
             margin: [0, 0, 0, 16] as [number, number, number, number],
             table: {
               headerRows: 1,
-              widths: [62, '*', 50, '*', 44, 52, 56],
+              widths: [58, '*', 46, '*', 42, 48, 54, 42],
               body: [
-                ['Fecha', 'Material', 'Cant.', 'Entrega', 'Remito', 'Precio', 'Importe'].map(h => ({
+                ['Fecha', 'Material', 'Cant.', 'Entrega', 'Remito', 'Precio', 'Importe', 'Estado'].map(h => ({
                   text: h, fontSize: 8, bold: true, color: 'white', fillColor: AZUL,
                 })),
                 ...filasVentas,
