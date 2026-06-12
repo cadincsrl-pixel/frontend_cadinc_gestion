@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { usePermisos } from '@/hooks/usePermisos'
@@ -13,6 +14,7 @@ import {
 import { fmtHoras } from '../utils/horas'
 import type { RemitoAlquiler } from '../types'
 import { RemitoAlquilerModal } from './RemitoAlquilerModal'
+import { NuevaCargaModal } from './NuevaCargaModal'
 
 // dd/mm/yyyy desde 'YYYY-MM-DD' por split (NO new Date: corrimiento TZ).
 function fmtFecha(s: string | null | undefined): string {
@@ -23,7 +25,7 @@ function fmtFecha(s: string | null | undefined): string {
 }
 
 export function RemitosTab() {
-  const { puedeEliminar } = usePermisos('alquiler')
+  const { puedeCrear, puedeEliminar } = usePermisos('alquiler')
 
   const { data: obras = [], isLoading: loadingObras } = useObrasAlquiler()
 
@@ -33,6 +35,8 @@ export function RemitosTab() {
 
   // Remito abierto en el modal (reimprimir / reenviar).
   const [remitoModal, setRemitoModal] = useState<RemitoAlquiler | null>(null)
+  // Modal de carga rápida: parte + remito en un paso.
+  const [cargaOpen, setCargaOpen] = useState(false)
 
   const filtro: RemitosFiltro = useMemo(() => {
     const f: RemitosFiltro = {}
@@ -81,6 +85,9 @@ export function RemitosTab() {
         <div className="w-full sm:w-44">
           <Input label="Hasta" type="date" value={hasta} onChange={e => setHasta(e.target.value)} />
         </div>
+        <Button variant="primary" size="md" disabled={!puedeCrear} onClick={() => setCargaOpen(true)}>
+          ＋ Nueva carga
+        </Button>
       </div>
 
       {/* Estados */}
@@ -97,7 +104,7 @@ export function RemitosTab() {
         </div>
       ) : remitos.length === 0 ? (
         <div className="bg-white rounded-card shadow-card p-8 text-center text-gris-dark text-sm italic">
-          No hay remitos para los filtros seleccionados. Emití uno desde el tab Partes.
+          No hay remitos para los filtros seleccionados. Cargá uno con &quot;＋ Nueva carga&quot; o desde el tab Partes.
         </div>
       ) : (
         <div className="flex flex-col gap-2">
@@ -155,6 +162,12 @@ export function RemitosTab() {
         open={remitoModal != null}
         onClose={() => setRemitoModal(null)}
         remito={remitoModal}
+      />
+
+      <NuevaCargaModal
+        open={cargaOpen}
+        onClose={() => setCargaOpen(false)}
+        onRemito={setRemitoModal}
       />
     </div>
   )
