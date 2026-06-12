@@ -182,8 +182,8 @@ function ListaPreciosCanteraModal({ cantera, onClose }: { cantera: CanteraArido 
   const { mutate: crear, isPending } = useCreateCostoCantera()
   const { mutate: borrar } = useDeleteCostoCantera()
 
-  const form = useForm<{ concepto: string; zona: string; costo: string; vigente_desde: string }>({
-    defaultValues: { concepto: '', zona: '', costo: '', vigente_desde: toISO(new Date()) },
+  const form = useForm<{ concepto: string; zona: string; costo: string; unidad: 'm3' | 'viaje' | 'hora'; vigente_desde: string }>({
+    defaultValues: { concepto: '', zona: '', costo: '', unidad: 'm3', vigente_desde: toISO(new Date()) },
   })
 
   const propios = useMemo(
@@ -219,15 +219,16 @@ function ListaPreciosCanteraModal({ cantera, onClose }: { cantera: CanteraArido 
     return '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 0 })
   }
 
-  function onSubmit(data: { concepto: string; zona: string; costo: string; vigente_desde: string }) {
+  function onSubmit(data: { concepto: string; zona: string; costo: string; unidad: 'm3' | 'viaje' | 'hora'; vigente_desde: string }) {
     if (!cantera) return
-    if (!data.concepto.trim()) { toast('Poné el concepto (ej: Viaje de Arena)', 'err'); return }
+    if (!data.concepto.trim()) { toast('Poné el concepto (ej: Arena)', 'err'); return }
     if (!data.costo || Number(data.costo) <= 0) { toast('Precio inválido', 'err'); return }
     crear({
       cantera_id:    cantera.id,
       concepto:      data.concepto.trim(),
       zona:          data.zona.trim() || null,
       costo:         Number(data.costo),
+      unidad:        data.unidad,
       vigente_desde: data.vigente_desde,
     }, {
       onSuccess: () => {
@@ -252,7 +253,7 @@ function ListaPreciosCanteraModal({ cantera, onClose }: { cantera: CanteraArido 
             <p className="text-xs font-bold text-gris-dark uppercase mb-2">Nuevo precio (para actualizar uno, cargalo de nuevo con la fecha desde la que rige)</p>
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
               <div className="sm:col-span-2">
-                <Input label="Concepto" placeholder="Ej: Viaje de Arena" list="conceptos-cantera" {...form.register('concepto')} />
+                <Input label="Concepto" placeholder="Ej: Arena" list="conceptos-cantera" {...form.register('concepto')} />
                 <datalist id="conceptos-cantera">
                   {Array.from(new Set(propios.map(c => c.concepto ?? ''))).map(c => <option key={c} value={c} />)}
                 </datalist>
@@ -264,6 +265,11 @@ function ListaPreciosCanteraModal({ cantera, onClose }: { cantera: CanteraArido 
                 </datalist>
               </div>
               <Input label="Precio ($)" type="number" step="0.01" placeholder="0" {...form.register('costo')} />
+              <Select label="Por" options={[
+                { value: 'm3', label: 'm³' },
+                { value: 'viaje', label: 'viaje' },
+                { value: 'hora', label: 'hora' },
+              ]} {...form.register('unidad')} />
               <Input label="Vigente desde" type="date" {...form.register('vigente_desde')} />
             </div>
             <div className="flex justify-end mt-2">
@@ -287,7 +293,7 @@ function ListaPreciosCanteraModal({ cantera, onClose }: { cantera: CanteraArido 
                     <div key={concepto} className="px-3 py-1.5 flex items-center justify-between gap-3 bg-white">
                       <span className="text-sm text-carbon">{concepto}</span>
                       <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-sm text-carbon">{fmtM(Number(vigente.costo))}</span>
+                        <span className="font-mono font-bold text-sm text-carbon">{fmtM(Number(vigente.costo))}<span className="font-sans font-normal text-[10px] text-gris-dark">/{vigente.unidad === 'm3' ? 'm³' : vigente.unidad}</span></span>
                         <span className="text-[10px] text-gris-dark">desde {fmtDate(vigente.vigente_desde)}</span>
                         {historial.length > 1 && (
                           <span className="text-[10px] text-gris-mid" title={historial.slice(1).map(h => `${fmtM(Number(h.costo))} desde ${fmtDate(h.vigente_desde)}`).join(' · ')}>

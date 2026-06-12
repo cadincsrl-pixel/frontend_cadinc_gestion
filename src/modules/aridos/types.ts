@@ -14,7 +14,9 @@ export interface MunicipioArido {
 }
 
 // Lista de precios de la cantera (proveedor): concepto del proveedor
-// ("Viaje de Arena fina") × zona de entrega, con historial de vigencia.
+// × zona de entrega, con historial de vigencia. La unidad es del precio:
+// materiales por m³ (Centeno vende por viaje de 5 m³ → convertido),
+// servicios por viaje (escombros) u hora (máquina).
 export interface CostoCantera {
   id: number
   cantera_id: number
@@ -22,6 +24,7 @@ export interface CostoCantera {
   zona: string | null
   material_id: number | null
   costo: number
+  unidad: 'm3' | 'viaje' | 'hora'
   vigente_desde: string
   obs: string | null
   canteras?: { nombre: string }

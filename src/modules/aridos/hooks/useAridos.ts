@@ -339,7 +339,7 @@ export function useCostosCantera() {
 export function useCreateCostoCantera() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (dto: { cantera_id: number; concepto: string; zona?: string | null; material_id?: number | null; costo: number; vigente_desde: string; obs?: string | null }) =>
+    mutationFn: (dto: { cantera_id: number; concepto: string; zona?: string | null; material_id?: number | null; costo: number; unidad?: 'm3' | 'viaje' | 'hora'; vigente_desde: string; obs?: string | null }) =>
       apiPost<CostoCantera>('/api/aridos/costos-cantera', dto),
     onSuccess: () => qc.invalidateQueries({ queryKey: COSTOS_KEY }),
   })
