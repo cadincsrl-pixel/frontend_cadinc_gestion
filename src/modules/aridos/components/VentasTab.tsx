@@ -46,6 +46,12 @@ function fmtDate(s: string) {
   return `${d}/${m}/${y}`
 }
 
+// HH:MM local para el default del campo hora
+function horaActual(): string {
+  const d = new Date()
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
 function fmtM(n: number) {
   return '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 0 })
 }
@@ -110,7 +116,7 @@ export function VentasTab() {
   const [etaDe, setEtaDe] = useState<number | null>(null)  // id del movimiento consultando
 
   const { register, handleSubmit, reset, watch, setValue, formState: { errors } } = useForm<VentaForm>({
-    defaultValues: { ...DEFAULTS, fecha: toISO(new Date()) },
+    defaultValues: { ...DEFAULTS, fecha: toISO(new Date()), hora: horaActual() },
   })
 
   const wCliente   = watch('cliente_id')
@@ -163,7 +169,7 @@ export function VentasTab() {
 
   function abrirNueva() {
     setEditId(null)
-    reset({ ...DEFAULTS, fecha: toISO(new Date()) })
+    reset({ ...DEFAULTS, fecha: toISO(new Date()), hora: horaActual() })
     setModalOpen(true)
   }
 
