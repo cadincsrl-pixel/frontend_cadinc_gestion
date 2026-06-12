@@ -16,6 +16,7 @@ import {
   useEmitirRemito,
 } from '../hooks/useAlquiler'
 import { calcularHorasParte, fmtHoras } from '../utils/horas'
+import { HoraInput } from './HoraInput'
 import type { Parte, RemitoAlquiler } from '../types'
 
 // Carga rápida desde el tab Remitos: obra → máquina → fecha → horarios,
@@ -185,10 +186,10 @@ export function NuevaCargaModal({ open, onClose, onRemito }: {
         )}
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <Input label="Mañana entrada" type="time" value={mEnt} onChange={e => setMEnt(e.target.value)} />
-          <Input label="Mañana salida"  type="time" value={mSal} onChange={e => setMSal(e.target.value)} />
-          <Input label="Tarde entrada"  type="time" value={tEnt} onChange={e => setTEnt(e.target.value)} />
-          <Input label="Tarde salida"   type="time" value={tSal} onChange={e => setTSal(e.target.value)} />
+          <HoraInput label="Mañana entrada" value={mEnt} onChange={setMEnt} />
+          <HoraInput label="Mañana salida"  value={mSal} onChange={setMSal} />
+          <HoraInput label="Tarde entrada"  value={tEnt} onChange={setTEnt} />
+          <HoraInput label="Tarde salida"   value={tSal} onChange={setTSal} />
         </div>
 
         <Input label="Detalle de trabajos" placeholder="Qué se hizo con la máquina"

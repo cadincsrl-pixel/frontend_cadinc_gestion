@@ -126,6 +126,9 @@ export function RemitosTab() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-display text-lg tracking-wider text-naranja">{r.numero}</span>
                   <span className="text-xs text-gris-dark">· {fmtFecha(r.fecha_trabajo)}</span>
+                  {r.cobro_id != null && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-verde/10 text-verde">✓ COBRADO</span>
+                  )}
                 </div>
                 <div className="text-sm font-bold text-carbon truncate">
                   {r.obra_nombre ?? '—'}

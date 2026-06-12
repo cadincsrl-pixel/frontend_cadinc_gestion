@@ -13,6 +13,7 @@ import type {
   ObraMaquina,
   Parte,
   RemitoAlquiler,
+  RemitoCliente,
   ReporteHoraMaquina,
 } from '../types'
 
@@ -488,12 +489,28 @@ export function useCobros(f: CobrosFiltro, enabled = true) {
   })
 }
 
+// Remitos de un cliente con importe (del parte 1:1) y estado de cobro.
+// Alimenta el desglose del acordeón, la imputación del modal y el PDF.
+export const REMITOS_CLIENTE_KEY = ['alquiler', 'remitos-cliente'] as const
+export const remitosClienteKey = (clienteId: number) =>
+  ['alquiler', 'remitos-cliente', clienteId] as const
+
+export function useRemitosCliente(clienteId: number | null, enabled = true) {
+  return useQuery({
+    queryKey: remitosClienteKey(clienteId ?? 0),
+    queryFn:  () => apiGet<RemitoCliente[]>(`/api/alquiler/cuenta-corriente/${clienteId}/remitos`),
+    enabled:  enabled && clienteId != null,
+  })
+}
+
 export interface CrearCobroDto {
   cliente_id: number
   fecha:      string
   monto:      number
   medio:      MedioCobro
   obs?:       string | null
+  // Remitos que este cobro cancela (vacío = pago a cuenta).
+  remito_ids?: number[]
 }
 
 export function useCreateCobro() {
@@ -503,6 +520,8 @@ export function useCreateCobro() {
     onSuccess:  () => {
       qc.invalidateQueries({ queryKey: COBROS_KEY })
       qc.invalidateQueries({ queryKey: CUENTA_CORRIENTE_KEY })
+      qc.invalidateQueries({ queryKey: REMITOS_CLIENTE_KEY })
+      qc.invalidateQueries({ queryKey: ['alquiler', 'remitos'] })
     },
   })
 }
@@ -526,6 +545,9 @@ export function useDeleteCobro() {
     onSuccess:  () => {
       qc.invalidateQueries({ queryKey: COBROS_KEY })
       qc.invalidateQueries({ queryKey: CUENTA_CORRIENTE_KEY })
+      // Al borrar el cobro, los remitos imputados vuelven a adeudados (FK SET NULL).
+      qc.invalidateQueries({ queryKey: REMITOS_CLIENTE_KEY })
+      qc.invalidateQueries({ queryKey: ['alquiler', 'remitos'] })
     },
   })
 }

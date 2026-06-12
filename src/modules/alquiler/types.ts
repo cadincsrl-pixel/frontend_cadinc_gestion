@@ -130,6 +130,15 @@ export interface RemitoAlquiler {
   horas:                  number
   detalle:                string | null
   fecha_emision:          string        // 'YYYY-MM-DD'
+  // Cobro que canceló este remito (null = adeudado). FK ON DELETE SET NULL:
+  // si se borra el cobro, el remito vuelve a adeudado.
+  cobro_id:               number | null
+}
+
+// Remito enriquecido para cuenta corriente: suma el importe del parte 1:1
+// (horas × $/h congelado). Lo devuelve GET /cuenta-corriente/:id/remitos.
+export interface RemitoCliente extends RemitoAlquiler {
+  importe: number | null
 }
 
 // Fila del reporte "Horas por máquina" (Fase 3). La devuelve el endpoint

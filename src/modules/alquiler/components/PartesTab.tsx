@@ -18,6 +18,7 @@ import {
 import { calcularHorasParte, fmtHoras } from '../utils/horas'
 import { MAQUINA_TIPO_LABEL, type ObraMaquina, type Parte, type RemitoAlquiler } from '../types'
 import { RemitoAlquilerModal } from './RemitoAlquilerModal'
+import { HoraInput } from './HoraInput'
 
 // Normaliza HH:MM:SS → HH:MM para los inputs type="time".
 function toHHMM(t: string | null | undefined): string {
@@ -323,12 +324,12 @@ function MaquinaParteBlock({
         </div>
       </div>
 
-      {/* Horarios */}
+      {/* Horarios (24 hs con auto-formato: "1330" → "13:30") */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <Input label="Mañana entrada" type="time" value={mEnt} onChange={e => setMEnt(e.target.value)} disabled={!puedeCargar} />
-        <Input label="Mañana salida"  type="time" value={mSal} onChange={e => setMSal(e.target.value)} disabled={!puedeCargar} />
-        <Input label="Tarde entrada"  type="time" value={tEnt} onChange={e => setTEnt(e.target.value)} disabled={!puedeCargar} />
-        <Input label="Tarde salida"   type="time" value={tSal} onChange={e => setTSal(e.target.value)} disabled={!puedeCargar} />
+        <HoraInput label="Mañana entrada" value={mEnt} onChange={setMEnt} disabled={!puedeCargar} />
+        <HoraInput label="Mañana salida"  value={mSal} onChange={setMSal} disabled={!puedeCargar} />
+        <HoraInput label="Tarde entrada"  value={tEnt} onChange={setTEnt} disabled={!puedeCargar} />
+        <HoraInput label="Tarde salida"   value={tSal} onChange={setTSal} disabled={!puedeCargar} />
       </div>
 
       {/* Detalle + guardar */}
