@@ -195,6 +195,16 @@ export function useDeleteMovimiento() {
   })
 }
 
+// Emitir (o re-obtener) el remito RV-NNNN de una venta — idempotente.
+export function useEmitirRemitoVenta() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (movimientoId: number) =>
+      apiPost<MovimientoArido>(`/api/aridos/movimientos/${movimientoId}/remito`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['aridos', 'movimientos'] }),
+  })
+}
+
 // ─────────────────── Canteras y unidades propias ───────────────────
 export const CANTERAS_KEY = ['aridos', 'canteras'] as const
 export const UNIDADES_KEY = ['aridos', 'unidades'] as const

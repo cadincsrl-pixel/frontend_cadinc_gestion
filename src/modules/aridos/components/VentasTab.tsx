@@ -12,8 +12,9 @@ import { toISO } from '@/lib/utils/dates'
 import {
   useMovimientos, useCreateMovimiento, useUpdateMovimiento, useDeleteMovimiento,
   useClientesAridos, useMateriales, usePreciosCliente, useStockAridos, useMunicipios,
-  useCanterasAridos, useUnidades, useUnidadEta,
+  useCanterasAridos, useUnidades, useUnidadEta, useEmitirRemitoVenta,
 } from '../hooks/useAridos'
+import { RemitoVentaModal } from './RemitoVentaModal'
 import type { MovimientoArido, PrecioCliente, MunicipioArido, UnidadEta } from '../types'
 
 interface VentaForm {
@@ -109,11 +110,14 @@ export function VentasTab() {
   const { mutate: actualizar, isPending: editando } = useUpdateMovimiento()
   const { mutate: borrar } = useDeleteMovimiento()
   const { mutate: consultarEta, isPending: consultandoEta } = useUnidadEta()
+  const { mutate: emitirRemito, isPending: emitiendoRemito } = useEmitirRemitoVenta()
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editId, setEditId] = useState<number | null>(null)
   const [etaResult, setEtaResult] = useState<UnidadEta | null>(null)
   const [etaDe, setEtaDe] = useState<number | null>(null)  // id del movimiento consultando
+  const [remitoVenta, setRemitoVenta] = useState<MovimientoArido | null>(null)
+  const [remitoDe, setRemitoDe] = useState<number | null>(null)
 
   const { register, handleSubmit, reset, watch, setValue, formState: { errors } } = useForm<VentaForm>({
     defaultValues: { ...DEFAULTS, fecha: toISO(new Date()), hora: horaActual() },
@@ -254,6 +258,15 @@ export function VentasTab() {
     })
   }
 
+  // Emite (o reusa) el remito RV-NNNN y abre la vista previa.
+  function handleRemito(v: MovimientoArido) {
+    setRemitoDe(v.id)
+    emitirRemito(v.id, {
+      onSuccess: (mov) => { setRemitoVenta(mov); setRemitoDe(null) },
+      onError:   (err: unknown) => { toast(mensajeError(err, 'Error al emitir el remito'), 'err'); setRemitoDe(null) },
+    })
+  }
+
   const clienteOptions   = [{ value: '', label: 'Seleccionar cliente…' }, ...clientes.map(c => ({ value: c.id, label: c.nombre }))]
   const materialOptions  = [{ value: '', label: 'Seleccionar material…' }, ...materiales.filter(m => m.activo).map(m => ({ value: m.id, label: `${m.nombre} ($/${m.unidad === 'm3' ? 'm³' : 'viaje'})` }))]
   const canteraOptions   = [{ value: '', label: 'Sin especificar' }, ...canteras.filter(c => c.activo).map(c => ({ value: c.id, label: c.nombre }))]
@@ -324,8 +337,19 @@ export function VentasTab() {
                       {v.precio_especial && <span className="text-[10px] text-naranja font-bold ml-1" title="Precio especial (no de lista)">ESP</span>}
                     </td>
                     <td className="px-3 py-2.5 text-sm font-mono font-bold text-verde whitespace-nowrap">{v.importe != null ? fmtM(Number(v.importe)) : '—'}</td>
-                    <td className="px-3 py-2.5 text-xs text-gris-dark font-mono">{v.remito || '—'}</td>
+                    <td className="px-3 py-2.5 text-xs font-mono">
+                      {v.remito_numero && <div className="font-bold text-naranja">{v.remito_numero}</div>}
+                      <div className="text-gris-dark">{v.remito || (v.remito_numero ? '' : '—')}</div>
+                    </td>
                     <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                      <Button
+                        variant="ghost" size="sm"
+                        disabled={emitiendoRemito}
+                        onClick={() => handleRemito(v)}
+                        title={v.remito_numero ? `Ver remito ${v.remito_numero}` : 'Emitir remito de la venta'}
+                      >
+                        {remitoDe === v.id ? '⏳' : '🧾'}
+                      </Button>
                       {v.unidad_id != null && v.entrega_direccion && (
                         <Button
                           variant="ghost" size="sm"
@@ -491,11 +515,13 @@ export function VentasTab() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Input label="Remito" placeholder="N° de remito (opcional)" {...register('remito')} />
+            <Input label="Remito papel (N°)" placeholder="Si entregaste remito físico" {...register('remito')} />
             <Input label="Observaciones" placeholder="Notas..." {...register('obs')} />
           </div>
         </div>
       </Modal>
+
+      <RemitoVentaModal venta={remitoVenta} onClose={() => setRemitoVenta(null)} />
 
       {/* Modal resultado ETA (GPS + Google Maps) */}
       <Modal

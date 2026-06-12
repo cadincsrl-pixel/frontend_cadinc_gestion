@@ -9,11 +9,13 @@ import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { toISO } from '@/lib/utils/dates'
+import { apiGet } from '@/lib/api/client'
 import {
   useCuentaCorrienteAridos, useCobrosAridos, useCreateCobroArido, useDeleteCobroArido,
   useCuentaCorrienteCanteras, usePagosCantera, useCreatePagoCantera, useDeletePagoCantera,
 } from '../hooks/useAridos'
-import type { CuentaCorrienteArido, CobroArido, CuentaCorrienteCantera, PagoCantera } from '../types'
+import type { CuentaCorrienteArido, CobroArido, CuentaCorrienteCantera, PagoCantera, MovimientoArido } from '../types'
+import { descargarCuentaClientePdf } from '../utils/cuenta-pdf'
 
 interface CobroForm {
   fecha: string
@@ -339,6 +341,25 @@ function CuentaRow({ cuenta, expandido, onToggle, onCobrar, puedeCrear }: {
   onCobrar: () => void
   puedeCrear: boolean
 }) {
+  const toast = useToast()
+  const [generandoPdf, setGenerandoPdf] = useState(false)
+
+  // Trae ventas + cobros del cliente y arma el PDF del detalle.
+  async function handlePdf() {
+    setGenerandoPdf(true)
+    try {
+      const [ventas, cobros] = await Promise.all([
+        apiGet<MovimientoArido[]>(`/api/aridos/movimientos?tipo=venta&cliente_id=${cuenta.id}`),
+        apiGet<CobroArido[]>(`/api/aridos/cobros?cliente_id=${cuenta.id}`),
+      ])
+      descargarCuentaClientePdf(cuenta, ventas, cobros)
+    } catch {
+      toast('No se pudo generar el PDF', 'err')
+    } finally {
+      setGenerandoPdf(false)
+    }
+  }
+
   return (
     <>
       <tr className="border-b border-gris last:border-0 hover:bg-gris/40 transition-colors cursor-pointer" onClick={onToggle}>
@@ -352,6 +373,7 @@ function CuentaRow({ cuenta, expandido, onToggle, onCobrar, puedeCrear }: {
           {fmtM(cuenta.saldo)}
         </td>
         <td className="px-4 py-3 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
+          <Button variant="ghost" size="sm" loading={generandoPdf} onClick={handlePdf} title="Descargar detalle de cuenta en PDF">📄 PDF</Button>
           <Button variant="primary" size="sm" disabled={!puedeCrear} onClick={onCobrar}>💰 Registrar cobro</Button>
         </td>
       </tr>

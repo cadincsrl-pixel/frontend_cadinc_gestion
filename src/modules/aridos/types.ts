@@ -139,6 +139,8 @@ export interface MovimientoArido {
   costo_total: number | null
   flete_obs: string | null
   remito: string | null
+  remito_numero: string | null
+  remito_emitido_en: string | null
   obs: string | null
   created_at: string
   aridos_materiales?: { nombre: string; unidad: UnidadArido }
