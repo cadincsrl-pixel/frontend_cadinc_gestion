@@ -12,6 +12,7 @@ import { useToast } from '@/components/ui/Toast'
 import { useForm } from 'react-hook-form'
 import { usePermisos } from '@/hooks/usePermisos'
 import { ChoferDocumentosSection } from './ChoferDocumentosSection'
+import { TraspasoUnidadesModal } from './TraspasoUnidadesModal'
 import type { Chofer } from '@/types/domain.types'
 
 const ESTADO_OPTIONS = [
@@ -30,7 +31,8 @@ export function ChoferesTab() {
   const { mutate: update, isPending: updating } = useUpdateChofer()
   const { mutate: remove } = useDeleteChofer()
 
-  const [modalNuevo,  setModalNuevo]  = useState(false)
+  const [modalNuevo,    setModalNuevo]    = useState(false)
+  const [modalTraspaso, setModalTraspaso] = useState(false)
   const [editando,    setEditando]    = useState<Chofer | null>(null)
   // El modal arranca en modo detalle (read-only). El usuario apreta "Editar"
   // para habilitar el form. Cancelar vuelve a detalle y descarta cambios.
@@ -262,7 +264,10 @@ export function ChoferesTab() {
 
   return (
     <>
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        {puedeEditar && (
+          <Button variant="secondary" size="sm" onClick={() => setModalTraspaso(true)}>⇄ Traspaso</Button>
+        )}
         {puedeCrear && (
           <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)}>＋ Nuevo chofer</Button>
         )}
@@ -380,6 +385,14 @@ export function ChoferesTab() {
           )
         })}
       </div>
+
+      <TraspasoUnidadesModal
+        open={modalTraspaso}
+        onClose={() => setModalTraspaso(false)}
+        choferes={choferes}
+        camiones={camiones}
+        bateas={bateas}
+      />
 
       <Modal open={modalNuevo} onClose={() => setModalNuevo(false)} title="👷 NUEVO CHOFER"
         footer={

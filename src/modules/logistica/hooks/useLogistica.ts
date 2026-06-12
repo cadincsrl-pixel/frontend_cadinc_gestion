@@ -52,6 +52,17 @@ export function useUpdateChofer() {
   })
 }
 
+// Traspaso de camión/batea entre dos choferes en un solo paso (con opción de
+// intercambio). El backend resuelve la regla 1↔1 con el orden de updates.
+export function useTraspasoChofer() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: { origen_id: number; destino_id: number; camion: boolean; batea: boolean; intercambio: boolean }) =>
+      apiPost<{ origen: Chofer; destino: Chofer }>('/api/logistica/choferes/traspaso', dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.choferes }),
+  })
+}
+
 export function useDeleteChofer() {
   const qc = useQueryClient()
   return useMutation({
