@@ -82,12 +82,12 @@ export function imprimirRemitoVenta(v: MovimientoArido, conPrecios: boolean) {
         </div>
         <div style="text-align:right">
           <div style="font-size:20px;font-weight:bold;color:#E8621A">${esc(v.remito_numero)}</div>
-          <div style="font-size:11px">${fmtFecha(v.fecha)}${v.hora ? ` · ${esc(v.hora.slice(0, 5))} hs` : ''}</div>
           <div style="font-size:9px;color:#999;margin-top:3px">${tipo}</div>
         </div>
       </div>
 
       <table style="width:100%;border-collapse:collapse;margin-bottom:14px">
+        ${fila('Fecha y hora', `<b>${fmtFecha(v.fecha)}${v.hora ? ` · ${esc(v.hora.slice(0, 5))} hs` : ''}</b>`)}
         ${fila('Cliente', esc(v.aridos_clientes?.nombre) || '—')}
         ${fila('Material', esc(v.aridos_materiales?.nombre) || '—')}
         ${fila('Cantidad', `<b>${fmtCant(Number(v.cantidad))} ${unidadMedida}</b>`)}
