@@ -13,12 +13,12 @@ import { FlotaAridosTab } from './FlotaAridosTab'
 
 const TABS = [
   { key: 'ventas',     icon: '🛒', label: 'Ventas',     sub: 'Ventas por m³ y retiros de escombro' },
+  { key: 'cuenta-corriente', icon: '💰', label: 'Cuenta corriente', sub: 'Vendido, cobrado y saldo por cliente' },
   { key: 'acopios',    icon: '⛏',  label: 'Acopios',    sub: 'Entradas de cantera al depósito y ajustes de inventario' },
   { key: 'stock',      icon: '📦', label: 'Stock',      sub: 'Disponible por material en el depósito propio' },
   { key: 'clientes',   icon: '🧑‍💼', label: 'Clientes',   sub: 'Fichas de clientes y precios preestablecidos' },
   { key: 'materiales', icon: '🪨', label: 'Materiales', sub: 'Catálogo, costos de cantera y municipios' },
   { key: 'flota',      icon: '🚚', label: 'Canteras y unidades', sub: 'Canteras propias y camiones con GPS del negocio de áridos' },
-  { key: 'cuenta-corriente', icon: '💰', label: 'Cuenta corriente', sub: 'Vendido, cobrado y saldo por cliente' },
 ]
 
 export function AridosPage() {

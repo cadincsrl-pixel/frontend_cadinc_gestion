@@ -13,12 +13,12 @@ import { CuentaCorrienteTab } from './CuentaCorrienteTab'
 
 const TABS = [
   { key: 'remitos',  icon: '🧾',  label: 'Remitos',  sub: 'Remitos diarios y carga rápida de horas' },
+  { key: 'cuenta-corriente', icon: '💰', label: 'Cuenta corriente', sub: 'Devengado por cliente' },
   { key: 'partes',   icon: '📝',  label: 'Partes',   sub: 'Carga de horas por día y por máquina' },
   { key: 'maquinas', icon: '🚜',  label: 'Máquinas', sub: 'Flota de maquinaria para alquiler' },
   { key: 'obras',    icon: '🏗',  label: 'Obras',    sub: 'Obras de alquiler y máquinas asignadas' },
   { key: 'clientes', icon: '🧑‍💼', label: 'Clientes', sub: 'Fichas de clientes y cuenta corriente' },
   { key: 'reportes', icon: '📊',  label: 'Reportes', sub: 'Horas por máquina y resumen por obra' },
-  { key: 'cuenta-corriente', icon: '💰', label: 'Cuenta corriente', sub: 'Devengado por cliente' },
 ]
 
 export function AlquilerPage() {

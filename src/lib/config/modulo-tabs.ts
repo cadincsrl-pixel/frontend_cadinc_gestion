@@ -70,20 +70,20 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
   ],
   alquiler: [
     { key: 'remitos',  label: 'Remitos',  icon: '🧾', meta: 'Remitos diarios y carga rápida' },
+    { key: 'cuenta-corriente', label: 'Cuenta corriente', icon: '💰', meta: 'Devengado y saldo por cliente' },
     { key: 'partes',   label: 'Partes',   icon: '📝',  meta: 'Carga de horas por día' },
     { key: 'maquinas', label: 'Máquinas', icon: '🚜',  meta: 'Flota de maquinaria' },
     { key: 'obras',    label: 'Obras',    icon: '🏗',  meta: 'Obras de alquiler y asignaciones' },
     { key: 'clientes', label: 'Clientes', icon: '🧑‍💼', meta: 'Fichas de clientes' },
     { key: 'reportes', label: 'Reportes', icon: '📊', meta: 'Horas por máquina y por obra' },
-    { key: 'cuenta-corriente', label: 'Cuenta corriente', icon: '💰', meta: 'Devengado y saldo por cliente' },
   ],
   aridos: [
     { key: 'ventas',     label: 'Ventas',     icon: '🛒', meta: 'Ventas por m³ y retiros de escombro' },
+    { key: 'cuenta-corriente', label: 'Cuenta corriente', icon: '💰', meta: 'Vendido, cobrado y saldo por cliente' },
     { key: 'acopios',    label: 'Acopios',    icon: '⛏', meta: 'Entradas de cantera al depósito y ajustes' },
     { key: 'stock',      label: 'Stock',      icon: '📦', meta: 'Disponible por material en el depósito' },
     { key: 'clientes',   label: 'Clientes',   icon: '🧑‍💼', meta: 'Fichas y precios por cliente' },
     { key: 'materiales', label: 'Materiales', icon: '🪨', meta: 'Catálogo, costos de cantera y municipios' },
     { key: 'flota',      label: 'Canteras y unidades', icon: '🚚', meta: 'Canteras propias y camiones con GPS' },
-    { key: 'cuenta-corriente', label: 'Cuenta corriente', icon: '💰', meta: 'Vendido, cobrado y saldo por cliente' },
   ],
 }
