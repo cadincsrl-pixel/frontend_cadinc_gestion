@@ -431,7 +431,7 @@ function RegistrarCobroModal({ cliente, onClose }: { cliente: CuentaCorrienteAri
 
   // Ventas adeudadas del cliente para imputar el cobro (opcional).
   const { data: ventasCliente = [] } = useMovimientos(
-    { tipo: 'venta', cliente_id: cliente?.id ?? 0 },
+    { tipo: 'venta', cliente_id: cliente?.id },
     !!cliente,
   )
   const adeudadas = ventasCliente.filter(v => v.cobro_id == null)
@@ -450,8 +450,10 @@ function RegistrarCobroModal({ cliente, onClose }: { cliente: CuentaCorrienteAri
     if (next.has(id)) next.delete(id)
     else next.add(id)
     setSeleccion(next)
+    // Autocompletar el monto con la suma de lo tildado. Si se destildó todo,
+    // limpiar (antes quedaba el monto viejo y se cobraba de más a cuenta).
     const suma = adeudadas.filter(v => next.has(v.id)).reduce((s, v) => s + Number(v.importe ?? 0), 0)
-    if (suma > 0) setValue('monto', String(suma))
+    setValue('monto', suma > 0 ? String(suma) : '')
   }
 
   function onSubmit(data: CobroForm) {

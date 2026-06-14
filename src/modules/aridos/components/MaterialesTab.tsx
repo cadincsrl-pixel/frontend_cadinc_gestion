@@ -100,7 +100,8 @@ export function MaterialesTab() {
         <div className="bg-white rounded-card shadow-card p-8 text-center text-gris-dark text-sm">Cargando...</div>
       ) : (
         <div className="bg-white rounded-card shadow-card overflow-hidden">
-          <table className="w-full border-collapse">
+          <div className="overflow-x-auto">
+          <table className="w-full border-collapse min-w-[480px]">
             <thead>
               <tr>
                 {['Material', 'Se vende por', 'Estado', ''].map((h, i) => (
@@ -135,6 +136,7 @@ export function MaterialesTab() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

@@ -524,7 +524,8 @@ function PreciosGlobalCard() {
             />
             (hoy = desde ahora; fecha futura = aumento programado)
           </div>
-          <table className="w-full border-collapse">
+          <div className="overflow-x-auto">
+          <table className="w-full border-collapse min-w-[520px]">
             <thead>
               <tr>
                 {['Material', 'Precio vigente', 'Nuevo precio ($)', ''].map((h, i) => (
@@ -574,6 +575,7 @@ function PreciosGlobalCard() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>

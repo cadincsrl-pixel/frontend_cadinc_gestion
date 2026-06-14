@@ -121,6 +121,9 @@ export function VentasTab() {
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editId, setEditId] = useState<number | null>(null)
+  // Movimiento en edición: lo guardamos para comparar el stock sin falso "excede"
+  // (el stock que vemos ya tiene descontada esta venta si era de depósito).
+  const [editMov, setEditMov] = useState<MovimientoArido | null>(null)
   const [etaResult, setEtaResult] = useState<UnidadEta | null>(null)
   const [etaDe, setEtaDe] = useState<number | null>(null)  // id del movimiento consultando
   const [remitoVenta, setRemitoVenta] = useState<MovimientoArido | null>(null)
@@ -147,13 +150,21 @@ export function VentasTab() {
 
   // Recalcula el precio cuando cambia algo que afecta la lista,
   // solo si el modo es "lista" (el especial no se pisa).
-  function recalc(over: Partial<Record<'cliente' | 'material' | 'fecha' | 'municipio' | 'modo', string>>) {
+  // `force`: al EDITAR una venta vieja NO re-cotizamos automáticamente (cambiar
+  // fecha/cliente/municipio no debe pisar el precio histórico y descuadrar la
+  // cuenta corriente). Solo recalculamos ante intención explícita: cambiar el
+  // material (otro producto) o pasar el modo a "lista".
+  function recalc(
+    over: Partial<Record<'cliente' | 'material' | 'fecha' | 'municipio' | 'modo', string>>,
+    opts?: { force?: boolean },
+  ) {
     const cli  = over.cliente   ?? wCliente
     const mat  = over.material  ?? wMaterial
     const fec  = over.fecha     ?? wFecha
     const mun  = over.municipio ?? wMunicipio
     const modo = over.modo      ?? wModo
     if (modo !== 'lista') return
+    if (editId != null && !opts?.force) return
     const r = precioConRecargo(precios, preciosGlobal, municipios, cli, mat, fec, mun)
     setValue('precio_unit', r ? String(r.final) : '')
   }
@@ -168,24 +179,33 @@ export function VentasTab() {
     } else if (watch('origen') === 'obra') {
       setValue('origen', 'cantera')
     }
-    recalc({ material: materialId })
+    recalc({ material: materialId }, { force: true })
   }
 
   const importe = (Number(wCantidad) || 0) * (Number(wPrecio) || 0)
 
   const stockMaterial = stock.find(s => s.material_id === Number(wMaterial))?.stock ?? null
-  const excedeStock = wOrigen === 'deposito' && stockMaterial != null && Number(wCantidad) > stockMaterial
+  // Al editar una venta de depósito ya registrada, el stock que muestra el
+  // backend YA tiene restada su cantidad; se la sumamos de vuelta para comparar
+  // contra el stock real disponible y no dar un falso "excede".
+  const stockComparable = stockMaterial == null ? null : stockMaterial + (
+    editMov && editMov.origen === 'deposito' && editMov.material_id === Number(wMaterial)
+      ? Number(editMov.cantidad) : 0
+  )
+  const excedeStock = wOrigen === 'deposito' && stockComparable != null && Number(wCantidad) > stockComparable
 
   const totalListado = ventas.reduce((s, v) => s + Number(v.importe ?? 0), 0)
 
   function abrirNueva() {
     setEditId(null)
+    setEditMov(null)
     reset({ ...DEFAULTS, fecha: toISO(new Date()), hora: horaActual() })
     setModalOpen(true)
   }
 
   function abrirEditar(v: MovimientoArido) {
     setEditId(v.id)
+    setEditMov(v)
     reset({
       fecha:       v.fecha,
       hora:        v.hora ? v.hora.slice(0, 5) : '',
@@ -312,7 +332,9 @@ export function VentasTab() {
           Sin ventas registradas{(fCliente || fMaterial || fDesde || fHasta) ? ' para los filtros elegidos' : ''}.
         </div>
       ) : (
-        <div className="bg-white rounded-card shadow-card overflow-hidden">
+        <>
+        {/* Tabla — desktop/tablet */}
+        <div className="hidden md:block bg-white rounded-card shadow-card overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full border-collapse min-w-[980px]">
               <thead>
@@ -369,7 +391,7 @@ export function VentasTab() {
                       {v.unidad_id != null && v.entrega_direccion && (
                         <Button
                           variant="ghost" size="sm"
-                          disabled={consultandoEta}
+                          disabled={consultandoEta && etaDe === v.id}
                           onClick={() => handleEta(v)}
                           title={`¿Dónde está ${v.aridos_unidades?.nombre ?? 'la unidad'}? Tiempo de llegada a la entrega`}
                         >
@@ -392,6 +414,64 @@ export function VentasTab() {
             </table>
           </div>
         </div>
+
+        {/* Cards — mobile */}
+        <div className="md:hidden flex flex-col gap-2">
+          {ventas.map(v => (
+            <div key={v.id} className="bg-white rounded-card shadow-card p-3 flex flex-col gap-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-xs text-gris-dark">
+                    {fmtDate(v.fecha)}{v.hora && <span className="ml-1">{v.hora.slice(0, 5)} hs</span>}
+                  </div>
+                  <div className="font-bold text-sm text-carbon truncate">{v.aridos_clientes?.nombre ?? '—'}</div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="font-mono font-bold text-verde text-sm whitespace-nowrap">{v.importe != null ? fmtM(Number(v.importe)) : '—'}</div>
+                  {v.cobro_id != null && <span className="text-[9px] font-bold bg-verde-light text-verde px-1 py-0.5 rounded">✓ COBRADO</span>}
+                </div>
+              </div>
+
+              <div className="text-xs text-carbon flex flex-wrap gap-x-2 gap-y-0.5">
+                <span>{v.aridos_materiales?.nombre ?? '—'}</span>
+                <span className="font-mono">· {fmtCant(Number(v.cantidad))} {v.aridos_materiales?.unidad === 'viaje' ? 'viaje(s)' : 'm³'}</span>
+                <span className="text-gris-dark">·{' '}
+                  {v.origen === 'deposito' ? 'Depósito' : v.origen === 'obra' ? 'Obra (escombro)' : (v.aridos_canteras?.nombre ?? 'Cantera')}
+                </span>
+              </div>
+
+              {v.entrega_direccion && (
+                <div className="text-[11px] text-gris-dark truncate">📍 {v.entrega_direccion}{v.aridos_municipios ? ` (${v.aridos_municipios.nombre})` : ''}</div>
+              )}
+
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="text-xs font-mono text-gris-dark">
+                  {v.precio_unit != null ? fmtM(Number(v.precio_unit)) : '—'}
+                  {v.precio_especial && <span className="text-[10px] text-naranja font-bold ml-1">ESP</span>}
+                  {v.remito_numero && <span className="text-naranja font-bold ml-2">{v.remito_numero}</span>}
+                  {v.remito && <span className="ml-1">· {v.remito}</span>}
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button variant="ghost" size="sm" disabled={emitiendoRemito} onClick={() => handleRemito(v)} title={v.remito_numero ? `Ver remito ${v.remito_numero}` : 'Emitir remito'}>
+                    {remitoDe === v.id ? '⏳' : '🧾'}
+                  </Button>
+                  {v.unidad_id != null && v.entrega_direccion && (
+                    <Button variant="ghost" size="sm" disabled={consultandoEta && etaDe === v.id} onClick={() => handleEta(v)} title="Tiempo de llegada">
+                      {etaDe === v.id ? '⏳' : '🛰'}
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="sm" disabled={!puedeEditar} onClick={() => abrirEditar(v)}>✎</Button>
+                  <Button variant="ghost" size="sm" disabled={!puedeEliminar} onClick={() => handleEliminar(v)}>🗑</Button>
+                </div>
+              </div>
+            </div>
+          ))}
+          <div className="bg-gris/40 rounded-card px-3 py-2 flex items-center justify-between">
+            <span className="text-xs font-bold text-gris-dark uppercase">Total ({ventas.length} venta{ventas.length !== 1 ? 's' : ''})</span>
+            <span className="font-mono font-bold text-verde text-sm">{fmtM(totalListado)}</span>
+          </div>
+        </div>
+        </>
       )}
 
       {/* Modal nueva/editar venta */}
@@ -450,7 +530,7 @@ export function VentasTab() {
               ) : (
                 <div className="flex items-end pb-2">
                   <span className="text-xs text-gris-dark">
-                    Stock actual: <b className="font-mono">{stockMaterial != null ? fmtCant(stockMaterial) : '—'} m³</b>
+                    Stock disponible: <b className="font-mono">{stockComparable != null ? fmtCant(stockComparable) : '—'} m³</b>
                   </span>
                 </div>
               )}
@@ -491,7 +571,7 @@ export function VentasTab() {
             <Select label="Tipo de precio" options={[
               { value: 'lista',    label: 'Precio de lista' },
               { value: 'especial', label: 'Precio especial (a mano)' },
-            ]} {...register('modo_precio', { onChange: e => recalc({ modo: e.target.value }) })} />
+            ]} {...register('modo_precio', { onChange: e => recalc({ modo: e.target.value }, { force: true }) })} />
             <Input label="Precio unitario ($)" type="number" step="0.01" placeholder="0.00"
               disabled={wModo === 'lista'}
               error={errors.precio_unit?.message}
@@ -505,7 +585,11 @@ export function VentasTab() {
 
           <div className="bg-gris/30 rounded-card px-3 py-2 text-xs text-gris-dark">
             {lista
-              ? <>{lista.fuente === 'cliente' ? 'Precio propio del cliente' : 'Lista global'}: <b className="font-mono">{fmtM(lista.precio)}</b> (desde {fmtDate(lista.vigente_desde)}){lista.recargoPct > 0 && <> + <b>{lista.recargoPct}%</b> municipio = <b className="font-mono">{fmtM(lista.final)}</b></>}</>
+              ? wModo === 'especial'
+                // En especial el recargo de municipio NO se aplica solo: el
+                // precio de lista va como referencia para no confundir.
+                ? <>Precio de lista (referencia): <b className="font-mono">{fmtM(lista.final)}</b>{lista.recargoPct > 0 && <> (incluye +{lista.recargoPct}% municipio)</>}. Estás cargando un <b>precio especial a mano</b> — el recargo no se aplica automáticamente.</>
+                : <>{lista.fuente === 'cliente' ? 'Precio propio del cliente' : 'Lista global'}: <b className="font-mono">{fmtM(lista.precio)}</b> (desde {fmtDate(lista.vigente_desde)}){lista.recargoPct > 0 && <> + <b>{lista.recargoPct}%</b> municipio = <b className="font-mono">{fmtM(lista.final)}</b></>}</>
               : (wCliente && wMaterial)
                 ? <span className="text-[#7A5500] font-semibold">⚠ Sin precio en la lista global ni del cliente — usá &quot;Precio especial&quot;.</span>
                 : 'Elegí cliente y material para ver el precio de lista.'}
@@ -519,7 +603,7 @@ export function VentasTab() {
 
           {excedeStock && (
             <div className="bg-amarillo-light border border-[#7A5500]/30 rounded-card px-3 py-2 text-xs text-[#7A5500] font-semibold">
-              ⚠ La cantidad supera el stock calculado del depósito ({fmtCant(stockMaterial!)} m³). Se puede registrar igual — el papel manda — pero revisá si falta cargar un acopio.
+              ⚠ La cantidad supera el stock calculado del depósito ({fmtCant(stockComparable!)} m³). Se puede registrar igual — el papel manda — pero revisá si falta cargar un acopio.
             </div>
           )}
 
