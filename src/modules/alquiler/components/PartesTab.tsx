@@ -173,6 +173,17 @@ function PartesDelDia({
     setTotales(prev => (prev[maquinaId] === horas ? prev : { ...prev, [maquinaId]: horas }))
   }
 
+  // Podar los totales de máquinas que ya no están asignadas. Sin esto, al
+  // desasignar una máquina su último total quedaba sumando ("total fantasma")
+  // hasta cambiar de obra/fecha (que remonta el contenedor).
+  useEffect(() => {
+    const ids = new Set(maquinas.map(m => m.maquina_id))
+    setTotales(prev => {
+      const entries = Object.entries(prev).filter(([k]) => ids.has(Number(k)))
+      return entries.length === Object.keys(prev).length ? prev : Object.fromEntries(entries)
+    })
+  }, [maquinas])
+
   return (
     <div className="flex flex-col gap-3">
       {maquinas.map(om => (

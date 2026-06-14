@@ -79,8 +79,10 @@ export function RegistrarCobroModal({ open, onClose, clienteId, clienteNombre }:
     if (next.has(id)) next.delete(id)
     else next.add(id)
     setSeleccion(next)
+    // Autocompletar el monto con la suma de lo tildado. Si se destildó todo,
+    // limpiar (antes quedaba el monto viejo y se cobraba de más a cuenta).
     const suma = adeudados.filter(r => next.has(r.id)).reduce((s, r) => s + Number(r.importe ?? 0), 0)
-    if (suma > 0) setValue('monto', String(suma))
+    setValue('monto', suma > 0 ? String(suma) : '')
   }
 
   function onSubmit(data: FormData) {

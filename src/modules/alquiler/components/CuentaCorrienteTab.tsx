@@ -317,7 +317,7 @@ function ClienteCard({
 
           {/* Desglose de remitos del cliente: pendientes vs cobrados. */}
           {!esSinCliente && (
-            <RemitosClienteSection clienteId={cliente.cliente_id!} enabled={abierto} />
+            <RemitosClienteSection clienteId={cliente.cliente_id!} enabled={abierto} filtroFechas={filtroFechas} />
           )}
 
           {/* Cobros del cliente. "Sin cliente" no es una ficha → sin cobros. */}
@@ -352,8 +352,15 @@ function ClienteCard({
 
 // ── Remitos del cliente: pendientes arriba (destacados), cobrados después ──
 // Lazy: solo carga cuando el acordeón está abierto.
-function RemitosClienteSection({ clienteId, enabled }: { clienteId: number; enabled: boolean }) {
-  const { data: remitos = [], isLoading } = useRemitosCliente(clienteId, enabled)
+function RemitosClienteSection({ clienteId, enabled, filtroFechas }: { clienteId: number; enabled: boolean; filtroFechas: FiltroFechas }) {
+  const { data: remitosAll = [], isLoading } = useRemitosCliente(clienteId, enabled)
+  // Acotar al período del filtro (por fecha_trabajo) para que el desglose
+  // cierre con el devengado/cobros del header y la lista de cobros, que sí
+  // respetan el rango. Sin filtro, son todos.
+  const remitos = remitosAll.filter(r =>
+    (!filtroFechas.desde || r.fecha_trabajo >= filtroFechas.desde) &&
+    (!filtroFechas.hasta || r.fecha_trabajo <= filtroFechas.hasta)
+  )
   const pendientes = remitos.filter(r => r.cobro_id == null)
   const cobrados   = remitos.filter(r => r.cobro_id != null)
   const totalPendiente = pendientes.reduce((s, r) => s + Number(r.importe ?? 0), 0)

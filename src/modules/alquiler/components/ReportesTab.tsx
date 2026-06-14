@@ -364,7 +364,7 @@ function ResumenGrilla({
                 {om.maquina.nombre}
               </th>
             ))}
-            <th className="px-3 py-2 font-bold uppercase tracking-wide text-[11px] text-right whitespace-nowrap bg-azul-mid">
+            <th className="px-3 py-2 font-bold uppercase tracking-wide text-[11px] text-right whitespace-nowrap bg-azul-mid sticky right-0 z-10">
               Total
             </th>
           </tr>
@@ -391,7 +391,7 @@ function ResumenGrilla({
                     </td>
                   )
                 })}
-                <td className="px-3 py-2 text-right font-display tracking-wider text-azul whitespace-nowrap bg-azul-light/40">
+                <td className={`px-3 py-2 text-right font-display tracking-wider text-azul whitespace-nowrap sticky right-0 z-10 ${filaBg}`}>
                   {fmtHoras(totalFila(fecha))}
                 </td>
               </tr>
@@ -411,7 +411,7 @@ function ResumenGrilla({
                 </td>
               )
             })}
-            <td className="px-3 py-2 text-right font-display text-lg tracking-wider whitespace-nowrap">
+            <td className="px-3 py-2 text-right font-display text-lg tracking-wider whitespace-nowrap sticky right-0 z-10 bg-azul-mid">
               {fmtHoras(totalGeneral)} hs
             </td>
           </tr>

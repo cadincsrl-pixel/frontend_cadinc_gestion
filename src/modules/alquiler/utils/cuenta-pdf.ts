@@ -72,6 +72,10 @@ export function descargarCuentaClientePdf(
       },
       { text: 'Detalle de cuenta corriente — Alquiler de maquinaria', fontSize: 10, color: '#666', margin: [0, 2, 0, 12] },
       { text: cuenta.cliente_nombre, fontSize: 14, bold: true, color: NARANJA },
+      // El PDF SIEMPRE refleja el estado total acumulado (sin el filtro de
+      // fechas de la pantalla), para que resumen, remitos y cobros cierren
+      // entre sí. Se aclara para que no se confunda con la card filtrada.
+      { text: 'Estado total acumulado — incluye todos los períodos', fontSize: 8, italics: true, color: '#999', margin: [0, 1, 0, 0] },
 
       // Resumen
       {

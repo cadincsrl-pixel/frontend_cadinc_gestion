@@ -384,12 +384,17 @@ export function useRemitos(f: RemitosFiltro, enabled = true) {
 }
 
 // Emite o REFRESCA el remito de un parte (idempotente: conserva RA-NNNN).
+// Invalida también el desglose de remitos del cliente (acordeón de cta cte),
+// que antes no se refrescaba al emitir un remito nuevo.
 export function useEmitirRemito() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (parteId: number) =>
       apiPost<RemitoAlquiler>(`/api/alquiler/partes/${parteId}/remito`, {}),
-    onSuccess:  () => qc.invalidateQueries({ queryKey: ['alquiler', 'remitos'] }),
+    onSuccess:  () => {
+      qc.invalidateQueries({ queryKey: ['alquiler', 'remitos'] })
+      qc.invalidateQueries({ queryKey: ['alquiler', 'remitos-cliente'] })
+    },
   })
 }
 
@@ -397,7 +402,10 @@ export function useDeleteRemito() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: number) => apiDelete(`/api/alquiler/remitos/${id}`),
-    onSuccess:  () => qc.invalidateQueries({ queryKey: ['alquiler', 'remitos'] }),
+    onSuccess:  () => {
+      qc.invalidateQueries({ queryKey: ['alquiler', 'remitos'] })
+      qc.invalidateQueries({ queryKey: ['alquiler', 'remitos-cliente'] })
+    },
   })
 }
 
