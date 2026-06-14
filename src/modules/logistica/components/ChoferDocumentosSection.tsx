@@ -11,6 +11,7 @@ import {
 } from '../hooks/useChoferDocumentos'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
+import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
 import type { ChoferDocumento, ChoferDocTipo } from '@/types/domain.types'
 
 interface Props {
@@ -130,12 +131,10 @@ export function ChoferDocumentosSection({ choferId }: Props) {
   }
 
   async function handleVer(doc: ChoferDocumento) {
-    try {
-      const url = await fetchChoferDocSignedUrl(choferId, doc.id)
-      window.open(url, '_blank', 'noopener,noreferrer')
-    } catch {
-      toast('No se pudo generar el link', 'err')
-    }
+    await abrirAdjuntoFirmado(
+      () => fetchChoferDocSignedUrl(choferId, doc.id),
+      () => toast('No se pudo generar el link', 'err'),
+    )
   }
 
   function handleBorrar(doc: ChoferDocumento) {

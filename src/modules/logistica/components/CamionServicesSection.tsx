@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
+import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
 import { useCamiones, useUpdateCamion } from '../hooks/useLogistica'
 import {
   useCamionServices,
@@ -105,12 +106,10 @@ export function CamionServicesSection({ camionId }: Props) {
   }
 
   async function handleVerComprobante(serviceId: number) {
-    try {
-      const url = await fetchServiceComprobanteUrl(serviceId)
-      window.open(url, '_blank', 'noopener,noreferrer')
-    } catch {
-      toast('No se pudo abrir el comprobante', 'err')
-    }
+    await abrirAdjuntoFirmado(
+      () => fetchServiceComprobanteUrl(serviceId),
+      () => toast('No se pudo abrir el comprobante', 'err'),
+    )
   }
 
   function handleDeleteService(s: CamionService) {

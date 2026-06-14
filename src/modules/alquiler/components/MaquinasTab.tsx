@@ -11,6 +11,7 @@ import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
+import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
 import {
   useMaquinas,
   useCreateMaquina,
@@ -178,12 +179,10 @@ export function MaquinasTab() {
 
   async function handleVerPoliza() {
     if (editId == null) return
-    try {
-      const url = await fetchSeguroPolizaSignedUrl(editId)
-      window.open(url, '_blank')
-    } catch (err: unknown) {
-      toast(mensajeError(err, 'No se pudo abrir la póliza'), 'err')
-    }
+    await abrirAdjuntoFirmado(
+      () => fetchSeguroPolizaSignedUrl(editId),
+      (err) => toast(mensajeError(err, 'No se pudo abrir la póliza'), 'err'),
+    )
   }
 
   function handleQuitarPoliza() {

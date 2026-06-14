@@ -7,6 +7,7 @@ import {
 } from '../hooks/useCobroAdjuntos'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
+import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
 import type { CobroAdjunto, CobroAdjuntoTipo } from '@/types/domain.types'
 
 interface Props {
@@ -67,12 +68,10 @@ export function CobroAdjuntosSection({ cobroId }: Props) {
   }
 
   async function handleVer(adj: CobroAdjunto) {
-    try {
-      const url = await fetchCobroAdjSignedUrl(cobroId, adj.id)
-      window.open(url, '_blank', 'noopener,noreferrer')
-    } catch {
-      toast('No se pudo generar el link', 'err')
-    }
+    await abrirAdjuntoFirmado(
+      () => fetchCobroAdjSignedUrl(cobroId, adj.id),
+      () => toast('No se pudo generar el link', 'err'),
+    )
   }
 
   function handleBorrar(adj: CobroAdjunto) {

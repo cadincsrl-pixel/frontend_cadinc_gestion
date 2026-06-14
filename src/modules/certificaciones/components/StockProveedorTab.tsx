@@ -21,6 +21,7 @@ import { Combobox } from '@/components/ui/Combobox'
 import { Badge }    from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
+import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
 
 const fmtM   = (n: number | null) => n == null ? '—' : '$' + n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtNum = (n: number) => n.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
@@ -472,12 +473,10 @@ function ModalDetalleItem({ item, onClose }: { item: StockProveedorRow; onClose:
   const { data: movs = [], isLoading } = useMovimientosItemProveedor(item.item_id)
 
   async function verRemito(remitoId: number) {
-    try {
-      const url = await fetchRemitoComprobanteUrl(remitoId)
-      window.open(url, '_blank')
-    } catch {
-      toast('No hay comprobante en ese remito', 'err')
-    }
+    await abrirAdjuntoFirmado(
+      () => fetchRemitoComprobanteUrl(remitoId),
+      () => toast('No hay comprobante en ese remito', 'err'),
+    )
   }
 
   return (

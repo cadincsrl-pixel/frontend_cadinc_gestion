@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/Button'
 import { Input }  from '@/components/ui/Input'
 import { Combobox } from '@/components/ui/Combobox'
 import { useToast } from '@/components/ui/Toast'
+import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
 import type { CertAdicional, Obra } from '@/types/domain.types'
 
 function fmtM(n: number) { return '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 0 }) }
@@ -120,12 +121,10 @@ export function AdicionalesTab() {
   }
 
   async function abrirAdjunto(url: string) {
-    try {
-      const signed = await getSignedUrl(url)
-      window.open(signed, '_blank')
-    } catch {
-      toast('Error al abrir adjunto', 'err')
-    }
+    await abrirAdjuntoFirmado(
+      () => getSignedUrl(url),
+      () => toast('Error al abrir adjunto', 'err'),
+    )
   }
 
   const totalGeneral = (adicionales as CertAdicional[]).reduce((s, a) => s + a.monto, 0)

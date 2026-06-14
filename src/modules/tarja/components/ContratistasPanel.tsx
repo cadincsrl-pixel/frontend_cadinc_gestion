@@ -28,6 +28,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { usePermisos } from '@/hooks/usePermisos'
+import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
 import type { Contratista } from '@/types/domain.types'
 
 // Sugerencias de especialidad (free text + datalist: el operario puede escribir
@@ -205,12 +206,10 @@ export function ContratistasPanel({ obraCod, readonly = false }: Props) {
 
   async function handleVerDni() {
     if (editId == null) return
-    try {
-      const url = await fetchDniContratistaSignedUrl(editId)
-      window.open(url, '_blank')
-    } catch (err: unknown) {
-      toast(mensajeError(err, 'No se pudo abrir el DNI'), 'err')
-    }
+    await abrirAdjuntoFirmado(
+      () => fetchDniContratistaSignedUrl(editId),
+      (err) => toast(mensajeError(err, 'No se pudo abrir el DNI'), 'err'),
+    )
   }
 
   function handleQuitarDni() {

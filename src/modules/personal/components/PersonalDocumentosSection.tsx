@@ -7,6 +7,7 @@ import {
 } from '../hooks/usePersonalDocumentos'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
+import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
 import type { PersonalDocumento, PersonalDocTipo } from '@/types/domain.types'
 
 interface Props {
@@ -76,12 +77,10 @@ export function PersonalDocumentosSection({ leg }: Props) {
   }
 
   async function handleVer(doc: PersonalDocumento) {
-    try {
-      const url = await fetchDocSignedUrl(leg, doc.id)
-      window.open(url, '_blank', 'noopener,noreferrer')
-    } catch {
-      toast('No se pudo generar el link', 'err')
-    }
+    await abrirAdjuntoFirmado(
+      () => fetchDocSignedUrl(leg, doc.id),
+      () => toast('No se pudo generar el link', 'err'),
+    )
   }
 
   function handleBorrar(doc: PersonalDocumento) {

@@ -11,6 +11,7 @@ import {
 } from '../hooks/useVehiculoDocumentos'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
+import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
 import type { VehiculoDocumento, VehiculoDocTipo, VehiculoEntidad } from '@/types/domain.types'
 
 interface Props {
@@ -124,12 +125,10 @@ export function VehiculoDocumentosSection({ entidad, id }: Props) {
   }
 
   async function handleVer(doc: VehiculoDocumento) {
-    try {
-      const url = await fetchVehiculoDocSignedUrl(entidad, id, doc.id)
-      window.open(url, '_blank', 'noopener,noreferrer')
-    } catch {
-      toast('No se pudo generar el link', 'err')
-    }
+    await abrirAdjuntoFirmado(
+      () => fetchVehiculoDocSignedUrl(entidad, id, doc.id),
+      () => toast('No se pudo generar el link', 'err'),
+    )
   }
 
   function handleBorrar(doc: VehiculoDocumento) {

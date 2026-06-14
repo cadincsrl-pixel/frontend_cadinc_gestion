@@ -11,6 +11,7 @@ import {
   fetchFlotaGastoComprobanteUrl,
 } from '../hooks/useFlotaGastos'
 import { useFlotaVehiculos } from '../hooks/useFlotaVehiculos'
+import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
 import type { FlotaGasto, FlotaVehiculo } from '@/types/domain.types'
 
 function fmtFecha(iso: string): string {
@@ -52,12 +53,10 @@ export function GastosTab() {
   const tieneFiltros = !!(vehiculoId || categoriaId || desde || hasta)
 
   async function handleVerComprobante(id: number) {
-    try {
-      const url = await fetchFlotaGastoComprobanteUrl(id)
-      window.open(url, '_blank', 'noopener,noreferrer')
-    } catch {
-      toast('No se pudo abrir el comprobante', 'err')
-    }
+    await abrirAdjuntoFirmado(
+      () => fetchFlotaGastoComprobanteUrl(id),
+      () => toast('No se pudo abrir el comprobante', 'err'),
+    )
   }
 
   function abrirVehiculo(g: FlotaGasto) {

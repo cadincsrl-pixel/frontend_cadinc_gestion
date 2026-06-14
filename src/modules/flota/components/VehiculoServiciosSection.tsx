@@ -18,6 +18,7 @@ import {
 } from '../hooks/useFlotaServicios'
 import type { FlotaServicio, FlotaVehiculo, FlotaTipoServicio } from '@/types/domain.types'
 import { toISO } from '@/lib/utils/dates'
+import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
 
 interface Props {
   vehiculo: FlotaVehiculo
@@ -180,12 +181,10 @@ export function VehiculoServiciosSection({ vehiculo }: Props) {
   }
 
   async function handleVerComprobante(id: number) {
-    try {
-      const url = await fetchFlotaServicioComprobanteUrl(id)
-      window.open(url, '_blank', 'noopener,noreferrer')
-    } catch {
-      toast('No se pudo abrir el comprobante', 'err')
-    }
+    await abrirAdjuntoFirmado(
+      () => fetchFlotaServicioComprobanteUrl(id),
+      () => toast('No se pudo abrir el comprobante', 'err'),
+    )
   }
 
   function handleBorrar(id: number) {

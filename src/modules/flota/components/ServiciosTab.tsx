@@ -6,6 +6,7 @@ import { Select } from '@/components/ui/Select'
 import { useFlotaServicios, useFlotaTiposServicio, fetchFlotaServicioComprobanteUrl } from '../hooks/useFlotaServicios'
 import { useFlotaVehiculos } from '../hooks/useFlotaVehiculos'
 import { useToast } from '@/components/ui/Toast'
+import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
 import type { FlotaServicio, FlotaTipoServicio, FlotaVehiculo } from '@/types/domain.types'
 
 function fmtFecha(iso: string): string {
@@ -54,12 +55,10 @@ export function ServiciosTab() {
   const totalCosto = filtrados.reduce((sum, s) => sum + (s.costo ?? 0), 0)
 
   async function handleVerComprobante(id: number) {
-    try {
-      const url = await fetchFlotaServicioComprobanteUrl(id)
-      window.open(url, '_blank', 'noopener,noreferrer')
-    } catch {
-      toast('No se pudo abrir el comprobante', 'err')
-    }
+    await abrirAdjuntoFirmado(
+      () => fetchFlotaServicioComprobanteUrl(id),
+      () => toast('No se pudo abrir el comprobante', 'err'),
+    )
   }
 
   const tieneFiltros = vehiculoId || tipoId || desde || hasta

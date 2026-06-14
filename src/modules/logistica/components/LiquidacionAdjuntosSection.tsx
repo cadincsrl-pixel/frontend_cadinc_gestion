@@ -7,6 +7,7 @@ import {
 } from '../hooks/useLiquidacionAdjuntos'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
+import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
 import type { LiquidacionAdjunto, LiquidacionAdjuntoTipo } from '@/types/domain.types'
 
 interface Props {
@@ -67,12 +68,10 @@ export function LiquidacionAdjuntosSection({ liqId }: Props) {
   }
 
   async function handleVer(adj: LiquidacionAdjunto) {
-    try {
-      const url = await fetchLiquidacionAdjSignedUrl(liqId, adj.id)
-      window.open(url, '_blank', 'noopener,noreferrer')
-    } catch {
-      toast('No se pudo generar el link', 'err')
-    }
+    await abrirAdjuntoFirmado(
+      () => fetchLiquidacionAdjSignedUrl(liqId, adj.id),
+      () => toast('No se pudo generar el link', 'err'),
+    )
   }
 
   function handleBorrar(adj: LiquidacionAdjunto) {

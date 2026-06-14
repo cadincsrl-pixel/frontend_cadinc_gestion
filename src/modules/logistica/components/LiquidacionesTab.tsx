@@ -20,6 +20,7 @@ import { generarPdfLiquidacion, type PdfLiquidacionArgs } from '@/lib/utils/liqu
 import { LiquidacionAdjuntosSection } from './LiquidacionAdjuntosSection'
 import { ModalSolicitudTransferencia } from './ModalSolicitudTransferencia'
 import { apiGet } from '@/lib/api/client'
+import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
 import type { Chofer, Tramo, Adelanto, Ruta } from '@/types/domain.types'
 import { exportLiquidacionExcel } from '@/lib/utils/liquidacion-export'
 import { toISO } from '@/lib/utils/dates'
@@ -615,12 +616,10 @@ export function LiquidacionesTab() {
   }
 
   async function verComprobanteAdel(id: number) {
-    try {
-      const url = await fetchAdelantoComprobanteUrl(id)
-      window.open(url, '_blank')
-    } catch {
-      toast('No se pudo abrir el comprobante', 'err')
-    }
+    await abrirAdjuntoFirmado(
+      () => fetchAdelantoComprobanteUrl(id),
+      () => toast('No se pudo abrir el comprobante', 'err'),
+    )
   }
 
   const preview = calcularPreview()
