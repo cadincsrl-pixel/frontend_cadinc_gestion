@@ -17,6 +17,8 @@ export const LOG_KEYS = {
   tramos:          ['logistica', 'tramos']          as const,
   viajes:          ['logistica', 'viajes']          as const,
   liquidaciones:   ['logistica', 'liquidaciones']   as const,
+  relevosPendientes: ['logistica', 'relevos-pendientes'] as const,
+  relevosLiquidados: ['logistica', 'relevos-liquidados'] as const,
   adelantos:       ['logistica', 'adelantos']       as const,
   tarifasCantera:  ['logistica', 'tarifas_cantera'] as const,
   empresas:        ['logistica', 'empresas']        as const,
@@ -339,6 +341,8 @@ export function useCreateLiquidacion() {
       qc.invalidateQueries({ queryKey: LOG_KEYS.adelantos })
       qc.invalidateQueries({ queryKey: LOG_KEYS.tramos })
       qc.invalidateQueries({ queryKey: LOG_KEYS.gastos })
+      qc.invalidateQueries({ queryKey: LOG_KEYS.relevosPendientes })
+      qc.invalidateQueries({ queryKey: LOG_KEYS.relevosLiquidados })
     },
   })
 }
@@ -361,6 +365,8 @@ export function useCerrarLiquidacion() {
       qc.invalidateQueries({ queryKey: LOG_KEYS.liquidaciones })
       qc.invalidateQueries({ queryKey: LOG_KEYS.tramos })
       qc.invalidateQueries({ queryKey: LOG_KEYS.gastos })
+      qc.invalidateQueries({ queryKey: LOG_KEYS.relevosPendientes })
+      qc.invalidateQueries({ queryKey: LOG_KEYS.relevosLiquidados })
     },
   })
 }
@@ -375,6 +381,8 @@ export function useReabrirLiquidacion() {
       qc.invalidateQueries({ queryKey: LOG_KEYS.tramos })
       qc.invalidateQueries({ queryKey: LOG_KEYS.adelantos })
       qc.invalidateQueries({ queryKey: LOG_KEYS.gastos })
+      qc.invalidateQueries({ queryKey: LOG_KEYS.relevosPendientes })
+      qc.invalidateQueries({ queryKey: LOG_KEYS.relevosLiquidados })
     },
   })
 }
@@ -394,6 +402,8 @@ export function useDeleteLiquidacion() {
       qc.invalidateQueries({ queryKey: LOG_KEYS.tramos })
       qc.invalidateQueries({ queryKey: LOG_KEYS.adelantos })
       qc.invalidateQueries({ queryKey: LOG_KEYS.gastos })
+      qc.invalidateQueries({ queryKey: LOG_KEYS.relevosPendientes })
+      qc.invalidateQueries({ queryKey: LOG_KEYS.relevosLiquidados })
     },
   })
 }

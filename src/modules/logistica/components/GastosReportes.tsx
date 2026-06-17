@@ -7,6 +7,7 @@ import {
   useRutas,
 } from '../hooks/useLogistica'
 import { calcularPerformance } from '@/lib/utils/performance'
+import { useRelevosLiquidados } from '../hooks/useTramoRelevo'
 import { Button } from '@/components/ui/Button'
 import { Input }  from '@/components/ui/Input'
 import type { Camion, Chofer } from '@/types/domain.types'
@@ -60,10 +61,12 @@ export function GastosReportes() {
   const { data: choferes = [] }  = useChoferes()
   const { data: liquidaciones = [] } = useLiquidaciones()
   const { data: rutas         = [] } = useRutas()
+  // Patas de relevo liquidadas → la MO del relevista se imputa al camión real.
+  const { data: tramoChoferes = [] } = useRelevosLiquidados()
 
   const performance = useMemo(
-    () => calcularPerformance(tramos, cobros, tarifas, desde, hasta, liquidaciones, choferes, rutas),
-    [tramos, cobros, tarifas, desde, hasta, liquidaciones, choferes, rutas],
+    () => calcularPerformance(tramos, cobros, tarifas, desde, hasta, liquidaciones, choferes, rutas, tramoChoferes),
+    [tramos, cobros, tarifas, desde, hasta, liquidaciones, choferes, rutas, tramoChoferes],
   )
 
   // Mapas para mergear gastos por entidad con performance.

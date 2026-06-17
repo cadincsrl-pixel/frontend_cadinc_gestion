@@ -140,17 +140,54 @@ export interface CobroAdjunto {
 
 // ── Relevo de chofer en un tramo (típicamente en Chivilcoy) ──
 export interface TramoChofer {
-  id:            number
-  tramo_id:      number
-  chofer_id:     number
-  orden:         1 | 2
-  km_cargado:    number
-  km_vacio:      number
-  jornales:      number
-  lugar_relevo:  string | null
-  obs:           string | null
-  created_at:    string
-  updated_at:    string
+  id:             number
+  tramo_id:       number
+  chofer_id:      number
+  orden:          1 | 2
+  km_cargado:     number
+  km_vacio:       number
+  jornales:       number
+  lugar_relevo:   string | null
+  obs:            string | null
+  liquidacion_id: number | null
+  created_at:     string
+  updated_at:     string
+}
+
+// Fila de relevo YA liquidada (liquidacion_id seteado), con el camión/tipo del
+// tramo embebido. La usa el reporte de gastos para imputar la MO del relevista
+// al camión real del viaje. La trae /api/logistica/tramos/relevos-liquidados.
+export interface RelevoLiquidado {
+  id:             number
+  liquidacion_id: number
+  chofer_id:      number
+  km_cargado:     number
+  km_vacio:       number
+  tramo: { camion_id: number; tipo: 'cargado' | 'vacio' } | null
+}
+
+// Fila de relevo pendiente de liquidar, con el tramo embebido (la trae el
+// endpoint /api/logistica/tramos/relevos-pendientes). Cada chofer del relevo
+// cobra su pata (km de su fila) + jornal, vía su propia liquidación.
+export interface RelevoPendiente {
+  id:          number
+  tramo_id:    number
+  chofer_id:   number
+  orden:       1 | 2
+  km_cargado:  number
+  km_vacio:    number
+  jornales:    number
+  tramo: {
+    id:             number
+    tipo:           'cargado' | 'vacio'
+    estado:         string
+    camion_id:      number
+    cantera_id:     number | null
+    deposito_id:    number | null
+    fecha_carga:    string | null
+    fecha_descarga: string | null
+    fecha_vacio:    string | null
+  } | null
 }
 
 export interface RelevoSugerencia {

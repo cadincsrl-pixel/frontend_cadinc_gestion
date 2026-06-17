@@ -8,6 +8,7 @@ import {
   useGastosReintegrosPendientes, useReintegrosPendientesTodos,
   uploadComprobanteAdelanto, fetchAdelantoComprobanteUrl,
 } from '../hooks/useLogistica'
+import { useRelevosPendientesTodos } from '../hooks/useTramoRelevo'
 import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
 import { Input }    from '@/components/ui/Input'
@@ -21,7 +22,7 @@ import { LiquidacionAdjuntosSection } from './LiquidacionAdjuntosSection'
 import { ModalSolicitudTransferencia } from './ModalSolicitudTransferencia'
 import { apiGet } from '@/lib/api/client'
 import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
-import type { Chofer, Tramo, Adelanto, Ruta } from '@/types/domain.types'
+import type { Chofer, Tramo, Adelanto, Ruta, RelevoPendiente } from '@/types/domain.types'
 import { exportLiquidacionExcel } from '@/lib/utils/liquidacion-export'
 import { toISO } from '@/lib/utils/dates'
 
@@ -89,6 +90,63 @@ function kmTramo(t: Tramo, rutas: Ruta[]): number {
   return ruta?.km_ida_vuelta ?? 0
 }
 
+// ── Helpers de relevos (Fase 2) ──
+// Fecha representativa del tramo embebido en una fila de relevo (igual criterio
+// que fechaTramo: cargado→fecha_carga, vacio→fecha_vacio).
+function fechaRelevo(r: RelevoPendiente): string | null {
+  if (!r.tramo) return null
+  return (r.tramo.tipo === 'vacio' ? r.tramo.fecha_vacio : r.tramo.fecha_carga) ?? null
+}
+
+// Km de la PATA del relevo (lo que manejó ese chofer), según el tipo del tramo.
+function kmRelevo(r: RelevoPendiente): number {
+  if (!r.tramo) return 0
+  return r.tramo.tipo === 'vacio' ? Number(r.km_vacio) : Number(r.km_cargado)
+}
+
+function relevoEnRango(r: RelevoPendiente, desde?: string, hasta?: string): boolean {
+  const f = fechaRelevo(r)
+  if (!f) return false
+  if (desde && f < desde) return false
+  if (hasta && f > hasta) return false
+  return true
+}
+
+// Rango de fechas combinando tramos propios + tramos de relevo (para encuadrar
+// el período por default al abrir el modal cuando el chofer solo tiene relevos).
+function rangoConRelevos(tramos: Tramo[], relevos: RelevoPendiente[]): { desde: string; hasta: string } {
+  const fechas: string[] = []
+  for (const t of tramos) {
+    const f = t.fecha_carga ?? t.fecha_vacio
+    const g = t.fecha_descarga ?? t.fecha_carga ?? t.fecha_vacio
+    if (f) fechas.push(f)
+    if (g) fechas.push(g)
+  }
+  for (const r of relevos) {
+    const f = fechaRelevo(r)
+    if (f) fechas.push(f)
+  }
+  if (!fechas.length) return { desde: '', hasta: '' }
+  return { desde: fechas.reduce((a, b) => a < b ? a : b), hasta: fechas.reduce((a, b) => a > b ? a : b) }
+}
+
+// Reparto del básico con relevos: parte de `baseDias` (días del rango), resta
+// los días cubiertos EXCLUSIVAMENTE por relevos (no los que ya tienen tramo
+// propio) y suma Σ jornales del relevo. Así cada chofer cobra su jornal del
+// relevo sin duplicar el día. Devuelve los días efectivos (>= 0).
+function diasConRelevos(baseDias: number, desde: string, hasta: string, ownDates: Set<string>, relevos: RelevoPendiente[]): number {
+  const restar = new Set<string>()
+  let jornales = 0
+  for (const r of relevos) {
+    jornales += Number(r.jornales ?? 0)
+    const f = fechaRelevo(r)
+    if (f && baseDias > 0 && (!desde || f >= desde) && (!hasta || f <= hasta) && !ownDates.has(f)) {
+      restar.add(f)
+    }
+  }
+  return Math.max(0, baseDias - restar.size + jornales)
+}
+
 export function LiquidacionesTab() {
   const toast = useToast()
   const { data: liquidaciones = [] } = useLiquidaciones()
@@ -99,6 +157,9 @@ export function LiquidacionesTab() {
   const { data: rutas         = [] } = useRutas()
   const { data: canteras      = [] } = useCanteras()
   const { data: depositos     = [] } = useDepositos()
+  // Filas de relevo pendientes de liquidar (todas) — Fase 2. Cada fila es la
+  // pata de un chofer en un tramo compartido; se liquida con su propio chofer.
+  const { data: relevosTodos  = [] } = useRelevosPendientesTodos()
 
   const { mutate: createLiq,   isPending: creating     } = useCreateLiquidacion()
   const { mutate: updateLiq,   isPending: updating     } = useUpdateLiquidacion()
@@ -115,6 +176,7 @@ export function LiquidacionesTab() {
   const [choferLiq,   setChoferLiq]   = useState<Chofer | null>(null)
   const [selAdelant,  setSelAdelant]  = useState<number[]>([])
   const [selTramos,   setSelTramos]   = useState<number[]>([])
+  const [selRelevos,  setSelRelevos]  = useState<number[]>([])
   const [selGastos,   setSelGastos]   = useState<number[]>([])
   const [modalAdel,   setModalAdel]   = useState(false)
   const [modalTransf, setModalTransf] = useState(false)
@@ -191,16 +253,25 @@ export function LiquidacionesTab() {
   // vuelve a tildar; el flujo típico es elegir período → ajustar selección.)
   useEffect(() => {
     if (!choferLiq) return
-    const visiblesIds = (tramos as Tramo[])
-      .filter(t => t.chofer_id === choferLiq.id && t.estado === 'completado' && !t.liquidacion_id)
+    const visiblesIds = tramosPendientes
+      .filter(t => t.chofer_id === choferLiq.id)
       .filter(t => tramoEnRango(t, watchDesde, watchHasta))
       .map(t => t.id)
     setSelTramos(visiblesIds)
+    const relevoIds = relevos
+      .filter(r => r.chofer_id === choferLiq.id && relevoEnRango(r, watchDesde, watchHasta))
+      .map(r => r.id)
+    setSelRelevos(relevoIds)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watchDesde, watchHasta, choferLiq?.id])
 
-  // Tramos completados aún no liquidados
-  const tramosPendientes    = (tramos as Tramo[]).filter(t => t.estado === 'completado' && !t.liquidacion_id)
+  // Tramos que tienen relevo cargado: se liquidan por pata vía tramo_choferes
+  // (cada chofer cobra lo suyo), no como tramo entero del titular.
+  const relevos = relevosTodos as RelevoPendiente[]
+  const tramosConRelevoIds = new Set(relevos.map(r => r.tramo_id))
+
+  // Tramos completados aún no liquidados, EXCLUYENDO los que tienen relevo.
+  const tramosPendientes    = (tramos as Tramo[]).filter(t => t.estado === 'completado' && !t.liquidacion_id && !tramosConRelevoIds.has(t.id))
   const adelantosPendientes = (adelantos as Adelanto[]).filter(a => !a.liquidacion_id)
   // Reintegros pendientes (gastos pagados por el chofer, aprobados, sin liquidar)
   // de todos los choferes — para sumarlos al saldo del listado.
@@ -212,18 +283,23 @@ export function LiquidacionesTab() {
 
   function resumenChofer(chofer: Chofer) {
     const mis_tramos      = tramosPendientes.filter(t => t.chofer_id === chofer.id)
+    const mis_relevos     = relevos.filter(r => r.chofer_id === chofer.id && r.tramo)
     const mis_adelantos   = adelantosPendientes.filter(a => a.chofer_id === chofer.id)
     const mis_reintegros  = reintegrosPendientes.filter(g => g.chofer_id === chofer.id)
-    const dias          = diasUnicos(mis_tramos)
     const sinBasico     = !chofer.basico_dia
+    // Básico: días del span de tramos propios, restando los días cubiertos sólo
+    // por relevos y sumando Σ jornales del relevo (cada chofer cobra su jornal,
+    // sin duplicar el día). Ver diasConRelevos.
+    const baseDias      = diasUnicos(mis_tramos)
+    const { desde: rDesde, hasta: rHasta } = rangoConRelevos(mis_tramos, mis_relevos)
+    const ownDates      = new Set(mis_tramos.map(fechaTramo).filter(Boolean) as string[])
+    const dias          = diasConRelevos(baseDias, rDesde, rHasta, ownDates, mis_relevos)
     const subtotal_bas  = dias * (chofer.basico_dia ?? 0)
-    // Separar km por tipo de tramo para aplicar tarifa diferencial.
-    const km_cargados = mis_tramos
-      .filter(t => t.tipo === 'cargado')
-      .reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
-    const km_vacios = mis_tramos
-      .filter(t => t.tipo === 'vacio')
-      .reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
+    // Km: tramos propios (km de ruta completa) + patas de relevo (km de la fila).
+    const km_cargados = mis_tramos.filter(t => t.tipo === 'cargado').reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
+      + mis_relevos.filter(r => r.tramo!.tipo === 'cargado').reduce((s, r) => s + kmRelevo(r), 0)
+    const km_vacios = mis_tramos.filter(t => t.tipo === 'vacio').reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
+      + mis_relevos.filter(r => r.tramo!.tipo === 'vacio').reduce((s, r) => s + kmRelevo(r), 0)
     const km_totales         = km_cargados + km_vacios
     const subtotal_km_cargado = km_cargados * (chofer.precio_km_cargado ?? 0)
     const subtotal_km_vacio   = km_vacios   * (chofer.precio_km_vacio ?? 0)
@@ -233,7 +309,7 @@ export function LiquidacionesTab() {
     const reintegros    = mis_reintegros.reduce((s, g) => s + Number(g.monto), 0)
     const saldo         = subtotal - descuentos + reintegros
     return {
-      mis_tramos, mis_adelantos, mis_reintegros, dias, sinBasico, subtotal_bas,
+      mis_tramos, mis_relevos, mis_adelantos, mis_reintegros, dias, sinBasico, subtotal_bas,
       km_cargados, km_vacios, km_totales,
       subtotal_km_cargado, subtotal_km_vacio, subtotal_km,
       subtotal, descuentos, reintegros, saldo,
@@ -242,11 +318,13 @@ export function LiquidacionesTab() {
 
   function abrirLiquidar(chofer: Chofer) {
     setChoferLiq(chofer)
-    const mis_tramos = tramosPendientes.filter(t => t.chofer_id === chofer.id)
+    const mis_tramos  = tramosPendientes.filter(t => t.chofer_id === chofer.id)
+    const mis_relevos = relevos.filter(r => r.chofer_id === chofer.id && r.tramo)
     setSelTramos(mis_tramos.map(t => t.id))
+    setSelRelevos(mis_relevos.map(r => r.id))
     setSelAdelant(adelantosPendientes.filter(a => a.chofer_id === chofer.id).map(a => a.id))
     setSelGastos([]) // se llena cuando el hook devuelve reintegros (useEffect abajo)
-    const { desde, hasta } = rangoTramos(mis_tramos)
+    const { desde, hasta } = rangoConRelevos(mis_tramos, mis_relevos)
     formLiq.reset({
       basico_dia:        chofer.basico_dia ?? 0,
       precio_km_cargado: chofer.precio_km_cargado ?? 0,
@@ -273,14 +351,23 @@ export function LiquidacionesTab() {
     const precioKmVacio    = parseFloat(watchKmVacio)   || 0
     const desde            = watchDesde ?? ''
     const hasta            = watchHasta ?? ''
-    const dias             = diasEntreFechas(desde, hasta)
     // Sólo tramos del chofer activo, dentro del rango Desde/Hasta y tildados.
     const tramosSelec      = tramosPendientes.filter(t =>
       selTramos.includes(t.id) && tramoEnRango(t, desde, hasta),
     )
+    // Patas de relevo del chofer, tildadas y en rango (Fase 2).
+    const relevosSelec     = relevos.filter(r =>
+      r.chofer_id === choferLiq.id && selRelevos.includes(r.id) && relevoEnRango(r, desde, hasta),
+    )
+    // Básico: días del rango menos días cubiertos sólo por relevos, más Σ jornales.
+    const baseDias         = diasEntreFechas(desde, hasta)
+    const ownDates         = new Set(tramosSelec.map(fechaTramo).filter(Boolean) as string[])
+    const dias             = diasConRelevos(baseDias, desde, hasta, ownDates, relevosSelec)
     const subtotal_bas     = dias * basico_dia
     const km_cargados      = tramosSelec.filter(t => t.tipo === 'cargado').reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
+      + relevosSelec.filter(r => r.tramo!.tipo === 'cargado').reduce((s, r) => s + kmRelevo(r), 0)
     const km_vacios        = tramosSelec.filter(t => t.tipo === 'vacio').reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
+      + relevosSelec.filter(r => r.tramo!.tipo === 'vacio').reduce((s, r) => s + kmRelevo(r), 0)
     const km_totales       = km_cargados + km_vacios
     const subtotal_km_cargado = km_cargados * precioKmCargado
     const subtotal_km_vacio   = km_vacios   * precioKmVacio
@@ -556,6 +643,7 @@ export function LiquidacionesTab() {
       total_neto:          neto,
       obs:                 data.obs,
       tramo_ids:           selTramos,
+      tramo_chofer_ids:    selRelevos,
       adelanto_ids:        selAdelant,
       gasto_ids:           selGastos,
     } as any, {
@@ -567,6 +655,7 @@ export function LiquidacionesTab() {
             setChoferLiq(null)
             setSelAdelant([])
             setSelTramos([])
+            setSelRelevos([])
             setSelGastos([])
           },
           onError: (e: any) => toast(`Borrador creado pero no se pudo cerrar: ${e?.message ?? 'error desconocido'}. Cerralo desde la card de saldo.`, 'err'),
@@ -575,6 +664,7 @@ export function LiquidacionesTab() {
       onError: (err: any) => {
         const code = err?.body?.error || err?.code
         if (code === 'TRAMO_INVALIDO')    toast('Alguno de los tramos no es válido (ya liquidado o no pertenece al chofer)', 'err')
+        else if (code === 'RELEVO_INVALIDO') toast('Alguna pata de relevo no es válida (ya liquidada o no pertenece al chofer)', 'err')
         else if (code === 'ADELANTO_INVALIDO') toast('Alguno de los adelantos no es válido', 'err')
         else if (code === 'GASTO_INVALIDO') toast('Alguno de los gastos a reintegrar no es válido (cambió de estado)', 'err')
         else toast(err?.message || 'Error al liquidar', 'err')
@@ -645,8 +735,8 @@ export function LiquidacionesTab() {
         </h2>
         <div className="flex flex-col gap-3">
           {choferesPendientes.map(chofer => {
-            const { mis_tramos, mis_adelantos, mis_reintegros, dias, sinBasico, subtotal_bas, km_cargados, km_vacios, km_totales, subtotal_km, subtotal, descuentos, reintegros, saldo } = resumenChofer(chofer)
-            const sinMovimientos = mis_tramos.length === 0 && mis_adelantos.length === 0 && mis_reintegros.length === 0
+            const { mis_tramos, mis_relevos, mis_adelantos, mis_reintegros, dias, sinBasico, subtotal_bas, km_cargados, km_vacios, km_totales, subtotal_km, subtotal, descuentos, reintegros, saldo } = resumenChofer(chofer)
+            const sinMovimientos = mis_tramos.length === 0 && mis_relevos.length === 0 && mis_adelantos.length === 0 && mis_reintegros.length === 0
             const borrador = (liquidaciones as any[]).find(l => l.chofer_id === chofer.id && l.estado === 'borrador')
 
             return (
@@ -679,6 +769,9 @@ export function LiquidacionesTab() {
                               <span className="text-gris-mid"> ({km_cargados.toLocaleString('es-AR')} cargados · {km_vacios.toLocaleString('es-AR')} vacíos)</span>
                             )}
                           </div>
+                        )}
+                        {mis_relevos.length > 0 && (
+                          <div className="text-azul-mid">🔄 {mis_relevos.length} relevo{mis_relevos.length !== 1 ? 's' : ''} · pata compartida con otro chofer</div>
                         )}
                         {mis_tramos.length > 0 && !sinBasico && (
                           <div className="text-gris-mid">
@@ -1178,6 +1271,46 @@ export function LiquidacionesTab() {
                       </label>
                     )
                   })}
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* Relevos del chofer (patas de tramos compartidos) — Fase 2 */}
+            {(() => {
+              const relevosDelChofer = relevos
+                .filter(r => r.chofer_id === choferLiq.id && r.tramo)
+                .filter(r => relevoEnRango(r, watchDesde, watchHasta))
+              if (relevosDelChofer.length === 0) return null
+              return (
+                <div>
+                  <div className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-2">
+                    🔄 Relevos a liquidar ({relevosDelChofer.length})
+                  </div>
+                  <div className="bg-azul-light/40 border border-azul/20 rounded-xl p-3 max-h-40 overflow-y-auto flex flex-col gap-1">
+                    {relevosDelChofer.map(r => {
+                      const t = r.tramo!
+                      const cantera  = (canteras  as any[]).find(c => c.id === t.cantera_id)
+                      const deposito = (depositos as any[]).find(d => d.id === t.deposito_id)
+                      const fecha = fechaRelevo(r)
+                      const km    = kmRelevo(r)
+                      return (
+                        <label key={r.id} className="flex items-center gap-2 cursor-pointer text-sm py-1 border-b border-azul/10 last:border-0">
+                          <input
+                            type="checkbox"
+                            checked={selRelevos.includes(r.id)}
+                            onChange={e => setSelRelevos(prev => e.target.checked ? [...prev, r.id] : prev.filter(x => x !== r.id))}
+                            className="accent-azul"
+                          />
+                          <span className="flex-1 min-w-0">
+                            {fecha ? fmtFecha(fecha) : '—'} ·{' '}
+                            <b>{cantera?.nombre ?? `#${t.cantera_id}`}</b>
+                            {deposito && <> → {deposito.nombre}</>}
+                            {' '}· <span className="text-azul-mid">pata: {km} km · {Number(r.jornales)} jornal{Number(r.jornales) !== 1 ? 'es' : ''}</span>
+                          </span>
+                        </label>
+                      )
+                    })}
                   </div>
                 </div>
               )

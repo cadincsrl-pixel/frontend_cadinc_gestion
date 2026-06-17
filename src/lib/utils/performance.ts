@@ -15,7 +15,7 @@
 //   3) Si no hay tarifa cargada → ingreso 0 + flag `sin_tarifa`.
 // - Tramos sin empresa/cantera registrados se excluyen.
 
-import type { Tramo, Cobro, TarifaEmpresaCantera, Liquidacion, Chofer, Ruta } from '@/types/domain.types'
+import type { Tramo, Cobro, TarifaEmpresaCantera, Liquidacion, Chofer, Ruta, RelevoLiquidado } from '@/types/domain.types'
 
 interface PerformanceFila {
   // id de la entidad agregada (camion_id o chofer_id)
@@ -108,6 +108,7 @@ export function calcularPerformance(
   liquidaciones: Liquidacion[] = [],
   choferes:      Chofer[]      = [],
   rutas:         Ruta[]        = [],
+  tramoChoferes: RelevoLiquidado[] = [],
 ): PerformanceResultado {
   // Mapa cobro_id → cobro para lookup O(1).
   const cobroPorId = new Map<number, Cobro>()
@@ -215,27 +216,43 @@ export function calcularPerformance(
     tramosPorLiquidacion.set(t.liquidacion_id, arr)
   }
 
-  // Reparte `monto` entre los camiones de `ref`, ponderando por km de cada
-  // tramo (fallback: cantidad de tramos si no hay km cargado). La suma de las
-  // partes == `monto`, así que no infla ni pierde costo.
-  function repartirPorCamion(monto: number, ref: Tramo[]): Map<number, number> {
+  // Patas de relevo liquidadas, agrupadas por liquidación. El tramo de un relevo
+  // tiene liquidacion_id NULL (el vínculo lo carga la fila tramo_choferes), así
+  // que sin esto la MO del relevista no caería en el camión real del viaje.
+  const relevosPorLiquidacion = new Map<number, Array<{ camion_id: number; km: number }>>()
+  for (const tc of tramoChoferes) {
+    if (tc.liquidacion_id == null || !tc.tramo) continue
+    const km = tc.tramo.tipo === 'vacio' ? Number(tc.km_vacio ?? 0) : Number(tc.km_cargado ?? 0)
+    const arr = relevosPorLiquidacion.get(tc.liquidacion_id) ?? []
+    arr.push({ camion_id: tc.tramo.camion_id, km })
+    relevosPorLiquidacion.set(tc.liquidacion_id, arr)
+  }
+
+  // Reparte `monto` entre camiones según `ref` (entradas {camion_id, km}),
+  // ponderando por km (fallback: cantidad de entradas si no hay km cargado).
+  // La suma de las partes == `monto`, así que no infla ni pierde costo.
+  function repartirPorCamion(monto: number, ref: Array<{ camion_id: number; km: number }>): Map<number, number> {
     const out = new Map<number, number>()
     if (ref.length === 0 || monto <= 0) return out
     const kmPorCamion = new Map<number, number>()
     let kmTotal = 0
-    for (const t of ref) {
-      const k = kmTramo(t)
-      kmPorCamion.set(t.camion_id, (kmPorCamion.get(t.camion_id) ?? 0) + k)
-      kmTotal += k
+    for (const e of ref) {
+      kmPorCamion.set(e.camion_id, (kmPorCamion.get(e.camion_id) ?? 0) + e.km)
+      kmTotal += e.km
     }
     if (kmTotal > 0) {
       for (const [cid, k] of kmPorCamion) out.set(cid, monto * (k / kmTotal))
     } else {
       const cnt = new Map<number, number>()
-      for (const t of ref) cnt.set(t.camion_id, (cnt.get(t.camion_id) ?? 0) + 1)
+      for (const e of ref) cnt.set(e.camion_id, (cnt.get(e.camion_id) ?? 0) + 1)
       for (const [cid, c] of cnt) out.set(cid, monto * (c / ref.length))
     }
     return out
+  }
+
+  // Entradas {camion_id, km} de tramos propios (km de la ruta completa).
+  function entradasTramos(ts: Tramo[]): Array<{ camion_id: number; km: number }> {
+    return ts.map(t => ({ camion_id: t.camion_id, km: kmTramo(t) }))
   }
 
   // ── Costo de mano de obra por liquidaciones cerradas en rango ──
@@ -254,8 +271,13 @@ export function calcularPerformance(
     fch.costo_mo_cerrado += costo
 
     // Por camión: repartir entre los camiones REALES de los tramos de esta
-    // liquidación. Si no hay tramos linkeados, fallback al camión preasignado.
-    const reparto = repartirPorCamion(costo, tramosPorLiquidacion.get(liq.id) ?? [])
+    // liquidación (propios + patas de relevo). Si no hay nada linkeado, fallback
+    // al camión preasignado.
+    const entradas = [
+      ...entradasTramos(tramosPorLiquidacion.get(liq.id) ?? []),
+      ...(relevosPorLiquidacion.get(liq.id) ?? []),
+    ]
+    const reparto = repartirPorCamion(costo, entradas)
     if (reparto.size > 0) {
       for (const [cid, parte] of reparto) {
         const fc = getOrInit(accCamion, cid)
@@ -355,7 +377,7 @@ export function calcularPerformance(
 
       // Por camión: repartir entre los camiones REALES de los tramos vivos.
       // Fallback al camión preasignado si no se pudo repartir.
-      const reparto = repartirPorCamion(costoParcial, tramosVivos)
+      const reparto = repartirPorCamion(costoParcial, entradasTramos(tramosVivos))
       if (reparto.size > 0) {
         for (const [cid, parte] of reparto) {
           const fc = getOrInit(accCamion, cid)

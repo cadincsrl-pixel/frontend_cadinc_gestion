@@ -1,7 +1,32 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api/client'
-import type { TramoChofer, RelevoSugerencia } from '@/types/domain.types'
+import type { TramoChofer, RelevoSugerencia, RelevoPendiente, RelevoLiquidado } from '@/types/domain.types'
 import { LOG_KEYS } from './useLogistica'
+
+// Patas de relevo ya liquidadas (para el reporte de gastos: MO al camión real).
+export function useRelevosLiquidados() {
+  return useQuery({
+    queryKey: LOG_KEYS.relevosLiquidados,
+    queryFn:  () => apiGet<RelevoLiquidado[]>(`/api/logistica/tramos/relevos-liquidados`),
+    staleTime: 60_000,
+  })
+}
+
+// Filas de relevo pendientes de liquidar. Sin chofer → todas (para el saldo
+// corriente de cada chofer); con chofer → las de ese chofer (para el modal).
+export function useRelevosPendientes(choferId: number | null) {
+  return useQuery({
+    queryKey: [...LOG_KEYS.relevosPendientes, choferId ?? 'todos'] as const,
+    queryFn:  () => apiGet<RelevoPendiente[]>(
+      `/api/logistica/tramos/relevos-pendientes${choferId ? `?chofer_id=${choferId}` : ''}`,
+    ),
+    staleTime: 30_000,
+  })
+}
+
+export function useRelevosPendientesTodos() {
+  return useRelevosPendientes(null)
+}
 
 export function useTramoRelevo(tramoId: number | null) {
   return useQuery({
@@ -39,6 +64,7 @@ export function useCrearRelevo() {
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ['logistica', 'tramo-relevo', vars.tramoId] })
       qc.invalidateQueries({ queryKey: LOG_KEYS.tramos })
+      qc.invalidateQueries({ queryKey: LOG_KEYS.relevosPendientes })
     },
   })
 }
@@ -59,6 +85,7 @@ export function useUpdateRelevo() {
       apiPatch<TramoChofer[]>(`/api/logistica/tramos/${tramoId}/relevo`, dto),
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ['logistica', 'tramo-relevo', vars.tramoId] })
+      qc.invalidateQueries({ queryKey: LOG_KEYS.relevosPendientes })
     },
   })
 }
@@ -71,6 +98,7 @@ export function useDeleteRelevo() {
     onSuccess: (_d, tramoId) => {
       qc.invalidateQueries({ queryKey: ['logistica', 'tramo-relevo', tramoId] })
       qc.invalidateQueries({ queryKey: LOG_KEYS.tramos })
+      qc.invalidateQueries({ queryKey: LOG_KEYS.relevosPendientes })
     },
   })
 }
