@@ -24,7 +24,7 @@ import { Button }   from '@/components/ui/Button'
 import { Input }    from '@/components/ui/Input'
 import { Combobox } from '@/components/ui/Combobox'
 import { useToast } from '@/components/ui/Toast'
-import type { SolicitudCompra, SolicitudCompraItem, SolicitudEstado, SolicitudProgreso, ItemEstado, Obra, Proveedor, StockMaterial } from '@/types/domain.types'
+import type { SolicitudCompra, SolicitudCompraItem, SolicitudEstado, SolicitudProgreso, ItemEstado, Obra, Proveedor, StockMaterial, RemitoEnvio } from '@/types/domain.types'
 
 const UNIDADES = [
   { value: 'unid', label: 'Unid.' },
@@ -209,6 +209,11 @@ export function SolicitudesTab() {
   const { mutate: revertirEnvio } = useRevertirEnvio()
   const { mutate: createRemito, isPending: enviandoRemito } = useCreateRemitoEnvio()
   const [selected, setSelected] = useState<Set<number>>(new Set())
+  // Último remito generado: se ofrece imprimir desde un modal con su propio
+  // botón, para que el window.open corra DENTRO del gesto del usuario. En
+  // móvil/PWA, abrir la ventana en el onSuccess async se bloquea silenciosamente
+  // y el remito no se abría, aunque el ítem ya quedaba 'enviado'.
+  const [ultimoRemito, setUltimoRemito] = useState<{ remito: RemitoEnvio; obraNom?: string } | null>(null)
   // Selección de items pendientes para compra en LOTE (mismo proveedor +
   // misma factura, precio individual por item). Map<solicitudId, Set<itemId>>
   // — la selección es por solicitud porque una factura típicamente cubre
@@ -587,7 +592,9 @@ export function SolicitudesTab() {
       onSuccess: (remito: any) => {
         toast(esDeposito ? 'Recibido e ingresado al depósito' : 'Remito generado e ítems enviados', 'ok')
         setSelected(new Set())
-        imprimirRemito(remito, obra?.nom)
+        // No imprimimos acá (estamos fuera del gesto del usuario → el popup se
+        // bloquea en móvil). Ofrecemos imprimir desde un modal con su botón.
+        setUltimoRemito({ remito, obraNom: obra?.nom })
       },
       onError: (e: any) => toast(e.message || 'Error', 'err'),
     })
@@ -1641,6 +1648,39 @@ export function SolicitudesTab() {
           </div>
         )}
       </Modal>
+
+      {/* Modal post-remito: ofrece imprimir. El window.open de imprimirRemito
+          corre DENTRO del gesto del usuario (click del botón), así no se bloquea
+          en móvil/PWA. Antes se imprimía en el onSuccess async → popup bloqueado
+          y el remito no se abría aunque el ítem ya quedaba 'enviado'. También
+          sirve para reimprimir si el usuario cerró la hoja por error. */}
+      {ultimoRemito && (
+        <Modal
+          open={!!ultimoRemito}
+          onClose={() => setUltimoRemito(null)}
+          title="✓ Remito generado"
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setUltimoRemito(null)}>Cerrar</Button>
+              <Button
+                variant="primary"
+                onClick={() => { imprimirRemito(ultimoRemito.remito, ultimoRemito.obraNom); setUltimoRemito(null) }}
+              >
+                🖨 Imprimir remito
+              </Button>
+            </>
+          }
+        >
+          <div className="flex flex-col gap-2">
+            <p className="text-sm text-carbon">
+              Remito <b>{ultimoRemito.remito.numero}</b> generado.
+            </p>
+            <p className="text-xs text-gris-dark">
+              Tocá <b>Imprimir remito</b> para abrir la hoja con las copias (original, duplicado y triplicado).
+            </p>
+          </div>
+        </Modal>
+      )}
     </>
   )
 }
