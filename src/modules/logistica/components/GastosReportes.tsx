@@ -204,6 +204,12 @@ export function GastosReportes() {
               </tbody>
             </table>
           )}
+        <p className="text-[11px] text-gris-dark mt-2 leading-snug">
+          ℹ La <b>mano de obra</b> no es una categoría de gasto — es un costo derivado de las
+          liquidaciones del chofer. Aparece en la columna <b>Mano obra</b> de «Performance por
+          camión/chofer», imputada al camión real de cada viaje (no se lista acá entre las
+          categorías de gastos).
+        </p>
       </Section>
 
       {/* Por camión */}
@@ -321,7 +327,7 @@ function PerformanceTable({ filas, label, getNombre, gastosPor, mono }: {
           <th className="text-right px-3 py-2">Tons</th>
           <th className="text-right px-3 py-2">Ingresos</th>
           <th className="text-right px-3 py-2">Gastos</th>
-          <th className="text-right px-3 py-2" title="Costo de mano de obra (subtotal básico + km de liquidaciones cerradas en rango)">Mano obra</th>
+          <th className="text-right px-3 py-2" title="Costo de mano de obra (subtotal básico + km de las liquidaciones del chofer). Se imputa al camión REAL de cada tramo de la liquidación, repartido por km — no a la preasignación de la ficha.">Mano obra</th>
           <th className="text-right px-3 py-2">Margen</th>
           <th className="text-right px-3 py-2">$/tn</th>
           <th className="text-left px-3 py-2">Notas</th>

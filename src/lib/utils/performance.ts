@@ -86,8 +86,15 @@ function tarifaVigentePara(
  *   por el trabajo del chofer; los adelantos ya están adelantados, los
  *   reintegros corresponden a gastos en `gastos_logistica`, así que esos
  *   no se suman acá para no doble-contar).
- * - Camión asignado: `chofer.camion_id` actual. Aproximación; si el chofer
- *   cambió de camión durante el período, el costo va al camión actual.
+ * - Atribución a camión: se reparte el costo entre los camiones que el chofer
+ *   EFECTIVAMENTE manejó según los tramos de esa liquidación
+ *   (`tramo.liquidacion_id`), ponderando por km de cada tramo (fallback:
+ *   cantidad de tramos). Usa el camión REAL del viaje, igual que los ingresos
+ *   — NO la preasignación estática `chofer.camion_id` (que no refleja la
+ *   rotación de camiones y desviaba el costo al camión equivocado o lo perdía
+ *   cuando el chofer no tenía camión asignado). Fallback a `chofer.camion_id`
+ *   solo si la liquidación no tiene tramos linkeados. El total por chofer y el
+ *   total general no cambian; solo cambia el reparto por camión.
  *
  * @param desde  ISO yyyy-mm-dd inclusive
  * @param hasta  ISO yyyy-mm-dd inclusive
@@ -186,10 +193,52 @@ export function calcularPerformance(
     totales.ingresos  += ingreso
   }
 
-  // ── Costo de mano de obra por liquidaciones cerradas en rango ──
+  // ── Helpers de atribución de MO al camión REAL del tramo ──
   const choferPorId = new Map<number, Chofer>()
   for (const c of choferes) choferPorId.set(c.id, c)
 
+  // km de UNA pata por ruta direccional cantera→depósito (el dato se carga
+  // one-way; cargado y vacío son tramos separados con su propia ruta).
+  const kmPorRuta = new Map<string, number>()
+  for (const r of rutas) kmPorRuta.set(`${r.cantera_id}->${r.deposito_id}`, r.km_ida_vuelta)
+  function kmTramo(t: Tramo): number {
+    if (!t.cantera_id || !t.deposito_id) return 0
+    return kmPorRuta.get(`${t.cantera_id}->${t.deposito_id}`) ?? 0
+  }
+
+  // Tramos agrupados por liquidación (para repartir la MO al camión real).
+  const tramosPorLiquidacion = new Map<number, Tramo[]>()
+  for (const t of tramos) {
+    if (t.liquidacion_id == null) continue
+    const arr = tramosPorLiquidacion.get(t.liquidacion_id) ?? []
+    arr.push(t)
+    tramosPorLiquidacion.set(t.liquidacion_id, arr)
+  }
+
+  // Reparte `monto` entre los camiones de `ref`, ponderando por km de cada
+  // tramo (fallback: cantidad de tramos si no hay km cargado). La suma de las
+  // partes == `monto`, así que no infla ni pierde costo.
+  function repartirPorCamion(monto: number, ref: Tramo[]): Map<number, number> {
+    const out = new Map<number, number>()
+    if (ref.length === 0 || monto <= 0) return out
+    const kmPorCamion = new Map<number, number>()
+    let kmTotal = 0
+    for (const t of ref) {
+      const k = kmTramo(t)
+      kmPorCamion.set(t.camion_id, (kmPorCamion.get(t.camion_id) ?? 0) + k)
+      kmTotal += k
+    }
+    if (kmTotal > 0) {
+      for (const [cid, k] of kmPorCamion) out.set(cid, monto * (k / kmTotal))
+    } else {
+      const cnt = new Map<number, number>()
+      for (const t of ref) cnt.set(t.camion_id, (cnt.get(t.camion_id) ?? 0) + 1)
+      for (const [cid, c] of cnt) out.set(cid, monto * (c / ref.length))
+    }
+    return out
+  }
+
+  // ── Costo de mano de obra por liquidaciones cerradas en rango ──
   for (const liq of liquidaciones) {
     if (liq.estado !== 'cerrada')   continue
     if (!liq.fecha_hasta)            continue
@@ -199,17 +248,27 @@ export function calcularPerformance(
     const costo = Number(liq.subtotal_basico ?? 0) + Number(liq.subtotal_km ?? 0)
     if (costo <= 0) continue
 
-    // Por chofer (siempre identificado).
+    // Por chofer (siempre identificado) — el total por chofer no cambia.
     const fch = getOrInit(accChofer, liq.chofer_id)
     fch.costo_mo         += costo
     fch.costo_mo_cerrado += costo
 
-    // Por camión: usamos el camión asignado actual del chofer.
-    const chofer = choferPorId.get(liq.chofer_id)
-    if (chofer?.camion_id != null) {
-      const fc = getOrInit(accCamion, chofer.camion_id)
-      fc.costo_mo         += costo
-      fc.costo_mo_cerrado += costo
+    // Por camión: repartir entre los camiones REALES de los tramos de esta
+    // liquidación. Si no hay tramos linkeados, fallback al camión preasignado.
+    const reparto = repartirPorCamion(costo, tramosPorLiquidacion.get(liq.id) ?? [])
+    if (reparto.size > 0) {
+      for (const [cid, parte] of reparto) {
+        const fc = getOrInit(accCamion, cid)
+        fc.costo_mo         += parte
+        fc.costo_mo_cerrado += parte
+      }
+    } else {
+      const chofer = choferPorId.get(liq.chofer_id)
+      if (chofer?.camion_id != null) {
+        const fc = getOrInit(accCamion, chofer.camion_id)
+        fc.costo_mo         += costo
+        fc.costo_mo_cerrado += costo
+      }
     }
     totales.costo_mo         += costo
     totales.costo_mo_cerrado += costo
@@ -228,22 +287,6 @@ export function calcularPerformance(
   // parcial se va a 0 — el total `costo_mo` queda igual (migración interna
   // de parcial → cerrado).
   if (rutas.length > 0 || choferes.length > 0) {
-    const kmPorRuta = new Map<string, number>()
-    for (const r of rutas) {
-      // Lookup DIRECCIONAL cantera→depósito. cantera_id/deposito_id salen de
-      // tablas distintas (canteras/depositos) con ids solapados; indexar la
-      // dirección inversa hacía colisionar pares ajenos. Solo el sentido real.
-      kmPorRuta.set(`${r.cantera_id}->${r.deposito_id}`, r.km_ida_vuelta)
-    }
-    function kmTramo(t: Tramo): number {
-      if (!t.cantera_id || !t.deposito_id) return 0
-      // km_ida_vuelta es la distancia de UNA pata (el dato se carga one-way
-      // por ruta direccional; cargado y vacío son tramos SEPARADOS con su
-      // propia ruta). Se cuenta completo por tramo, igual que la liquidación.
-      // (Antes dividía /2 asumiendo round-trip → subcontaba el costo a la mitad.)
-      return kmPorRuta.get(`${t.cantera_id}->${t.deposito_id}`) ?? 0
-    }
-
     // Agrupar tramos por chofer.
     const tramosPorChofer = new Map<number, Tramo[]>()
     for (const t of tramos) {
@@ -283,8 +326,10 @@ export function calcularPerformance(
         }
       }
 
-      // Días con tramos no cubiertos + km vivos.
+      // Días con tramos no cubiertos + km vivos (y los tramos vivos, para
+      // repartir el costo al camión real de cada uno).
       const diasVivos = new Set<string>()
+      const tramosVivos: Tramo[] = []
       let kmVivosCargado = 0
       let kmVivosVacio   = 0
       for (const t of tramosChofer) {
@@ -292,6 +337,7 @@ export function calcularPerformance(
         if (!fechaTramo) continue
         if (diasCubiertos.has(fechaTramo)) continue
         diasVivos.add(fechaTramo)
+        tramosVivos.push(t)
         const km = kmTramo(t)
         if (t.tipo === 'cargado') kmVivosCargado += km
         else                       kmVivosVacio   += km
@@ -307,7 +353,16 @@ export function calcularPerformance(
       fch.costo_mo         += costoParcial
       fch.costo_mo_parcial += costoParcial
 
-      if (chofer.camion_id != null) {
+      // Por camión: repartir entre los camiones REALES de los tramos vivos.
+      // Fallback al camión preasignado si no se pudo repartir.
+      const reparto = repartirPorCamion(costoParcial, tramosVivos)
+      if (reparto.size > 0) {
+        for (const [cid, parte] of reparto) {
+          const fc = getOrInit(accCamion, cid)
+          fc.costo_mo         += parte
+          fc.costo_mo_parcial += parte
+        }
+      } else if (chofer.camion_id != null) {
         const fc = getOrInit(accCamion, chofer.camion_id)
         fc.costo_mo         += costoParcial
         fc.costo_mo_parcial += costoParcial
