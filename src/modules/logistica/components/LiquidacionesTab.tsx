@@ -8,7 +8,7 @@ import {
   useGastosReintegrosPendientes, useReintegrosPendientesTodos,
   uploadComprobanteAdelanto, fetchAdelantoComprobanteUrl,
 } from '../hooks/useLogistica'
-import { useRelevosPendientesTodos } from '../hooks/useTramoRelevo'
+import { useRelevosPendientesTodos, useRelevosLiquidados } from '../hooks/useTramoRelevo'
 import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
 import { Input }    from '@/components/ui/Input'
@@ -22,7 +22,7 @@ import { LiquidacionAdjuntosSection } from './LiquidacionAdjuntosSection'
 import { ModalSolicitudTransferencia } from './ModalSolicitudTransferencia'
 import { apiGet } from '@/lib/api/client'
 import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
-import type { Chofer, Tramo, Adelanto, Ruta, RelevoPendiente } from '@/types/domain.types'
+import type { Chofer, Tramo, Adelanto, Ruta, RelevoPendiente, RelevoLiquidado } from '@/types/domain.types'
 import { exportLiquidacionExcel } from '@/lib/utils/liquidacion-export'
 import { toISO } from '@/lib/utils/dates'
 
@@ -46,14 +46,6 @@ function diasUnicos(tramos: Tramo[]): number {
   const desde = inicios.reduce((a, b) => a < b ? a : b)
   const hasta = fines.length ? fines.reduce((a, b) => a > b ? a : b) : desde
   return Math.round((new Date(hasta).getTime() - new Date(desde).getTime()) / 86_400_000) + 1
-}
-
-function rangoTramos(tramos: Tramo[]): { desde: string; hasta: string } {
-  const inicios = tramos.map(t => t.fecha_carga ?? t.fecha_vacio ?? '').filter(Boolean)
-  const fines   = tramos.map(t => t.fecha_descarga ?? t.fecha_carga ?? t.fecha_vacio ?? '').filter(Boolean)
-  const desde   = inicios.length ? inicios.reduce((a, b) => a < b ? a : b) : ''
-  const hasta   = fines.length   ? fines.reduce((a, b) => a > b ? a : b)   : ''
-  return { desde, hasta }
 }
 
 /** Días calendario entre dos fechas (inclusive) */
@@ -160,6 +152,9 @@ export function LiquidacionesTab() {
   // Filas de relevo pendientes de liquidar (todas) — Fase 2. Cada fila es la
   // pata de un chofer en un tramo compartido; se liquida con su propio chofer.
   const { data: relevosTodos  = [] } = useRelevosPendientesTodos()
+  // Patas de relevo YA liquidadas — para mostrarlas en el detalle/PDF/Excel de
+  // liquidaciones cerradas (el tramo vinculado se busca en `tramos`).
+  const { data: relevosLiq    = [] } = useRelevosLiquidados()
 
   const { mutate: createLiq,   isPending: creating     } = useCreateLiquidacion()
   const { mutate: updateLiq,   isPending: updating     } = useUpdateLiquidacion()
@@ -268,7 +263,34 @@ export function LiquidacionesTab() {
   // Tramos que tienen relevo cargado: se liquidan por pata vía tramo_choferes
   // (cada chofer cobra lo suyo), no como tramo entero del titular.
   const relevos = relevosTodos as RelevoPendiente[]
+  const relevosLiquidados = relevosLiq as RelevoLiquidado[]
   const tramosConRelevoIds = new Set(relevos.map(r => r.tramo_id))
+
+  // ── Patas de relevo normalizadas para el detalle (PDF/Excel/modal) ──
+  const canteraNom  = (id: number | null | undefined) => (canteras  as { id: number; nombre: string }[]).find(c => c.id === id)?.nombre ?? null
+  const depositoNom = (id: number | null | undefined) => (depositos as { id: number; nombre: string }[]).find(d => d.id === id)?.nombre ?? null
+  type LegRow = { fecha: string | null; tipo: 'cargado' | 'vacio'; cantera: string | null; deposito: string | null; km: number }
+
+  // En curso: a partir de filas RelevoPendiente (tramo embebido). km = pata.
+  function legsDeRelevos(rs: RelevoPendiente[]): LegRow[] {
+    return rs.filter(r => r.tramo).map(r => {
+      const t = r.tramo!
+      return { fecha: fechaRelevo(r), tipo: t.tipo, cantera: canteraNom(t.cantera_id), deposito: depositoNom(t.deposito_id), km: kmRelevo(r) }
+    })
+  }
+  // Cerrada: patas ya liquidadas de una liquidación (tramo real buscado en `tramos`).
+  function legsRelevoLiquidados(liqId: number): LegRow[] {
+    return relevosLiquidados.filter(r => r.liquidacion_id === liqId).map(r => {
+      const t = (tramos as Tramo[]).find(x => x.id === r.tramo_id)
+      const tipo: 'cargado' | 'vacio' = t?.tipo ?? r.tramo?.tipo ?? 'cargado'
+      const fecha = t ? ((tipo === 'vacio' ? t.fecha_vacio : t.fecha_carga) ?? null) : null
+      const km = tipo === 'vacio' ? Number(r.km_vacio) : Number(r.km_cargado)
+      return { fecha, tipo, cantera: t ? canteraNom(t.cantera_id) : null, deposito: t ? depositoNom(t.deposito_id) : null, km }
+    })
+  }
+  // LegRow → fila de PDF (marca esRelevo) · suma de km de patas por tipo.
+  const legToPdf = (l: LegRow) => ({ fecha: l.fecha, tipo: l.tipo, cantera: l.cantera, deposito: l.deposito, km: l.km, toneladas: null as number | null, remito: null as string | null, esRelevo: true })
+  const kmLegs = (legs: LegRow[], tipo: 'cargado' | 'vacio') => legs.filter(l => l.tipo === tipo).reduce((s, l) => s + l.km, 0)
 
   // Tramos completados aún no liquidados, EXCLUYENDO los que tienen relevo.
   const tramosPendientes    = (tramos as Tramo[]).filter(t => t.estado === 'completado' && !t.liquidacion_id && !tramosConRelevoIds.has(t.id))
@@ -409,6 +431,10 @@ export function LiquidacionesTab() {
     const tramosDelChofer = tramosPendientes
       .filter(t => t.chofer_id === choferLiq.id && selTramos.includes(t.id))
       .filter(t => tramoEnRango(t, data.desde, data.hasta))
+    // Patas de relevo del chofer (km ya incluido en preview.km_*; acá solo se listan).
+    const relevoLegs = legsDeRelevos(relevos.filter(r =>
+      r.chofer_id === choferLiq.id && selRelevos.includes(r.id) && relevoEnRango(r, data.desde, data.hasta),
+    ))
     const camion = (camiones as any[]).find(c => c.id === choferLiq.camion_id)
     const args: PdfLiquidacionArgs = {
       chofer_nombre:       choferLiq.nombre,
@@ -428,19 +454,22 @@ export function LiquidacionesTab() {
       total_adelantos:     preview.descuentos,
       total_reintegros:    preview.reintegros,
       total_neto:          preview.neto,
-      tramos: tramosDelChofer.map(t => {
-        const cantera  = (canteras  as any[]).find(c => c.id === t.cantera_id)
-        const deposito = (depositos as any[]).find(d => d.id === t.deposito_id)
-        return {
-          fecha:      t.fecha_carga ?? t.fecha_vacio ?? null,
-          tipo:       t.tipo === 'vacio' ? 'vacio' : 'cargado',
-          cantera:    cantera?.nombre ?? null,
-          deposito:   deposito?.nombre ?? null,
-          km:         kmTramo(t, rutas as Ruta[]),
-          toneladas:  t.toneladas_descarga ?? t.toneladas_carga ?? null,
-          remito:     t.remito_carga ?? t.remito_descarga ?? null,
-        }
-      }),
+      tramos: [
+        ...tramosDelChofer.map(t => {
+          const cantera  = (canteras  as any[]).find(c => c.id === t.cantera_id)
+          const deposito = (depositos as any[]).find(d => d.id === t.deposito_id)
+          return {
+            fecha:      t.fecha_carga ?? t.fecha_vacio ?? null,
+            tipo:       (t.tipo === 'vacio' ? 'vacio' : 'cargado') as 'cargado' | 'vacio',
+            cantera:    cantera?.nombre ?? null,
+            deposito:   deposito?.nombre ?? null,
+            km:         kmTramo(t, rutas as Ruta[]),
+            toneladas:  t.toneladas_descarga ?? t.toneladas_carga ?? null,
+            remito:     t.remito_carga ?? t.remito_descarga ?? null,
+          }
+        }),
+        ...relevoLegs.map(legToPdf),
+      ],
       adelantos: adelantosPendientes
         .filter(a => a.chofer_id === choferLiq.id && selAdelant.includes(a.id))
         .map(a => ({
@@ -560,9 +589,12 @@ export function LiquidacionesTab() {
     const liqTramos = (tramos as Tramo[]).filter(t => t.liquidacion_id === liq.id)
     const liqAdel   = (adelantos as Adelanto[]).filter(a => a.liquidacion_id === liq.id)
     const gastos    = await fetchGastosLiquidacion(liq.id)
+    const relevoLegs = legsRelevoLiquidados(liq.id)
 
-    const km_cargados = liqTramos.filter(t => t.tipo === 'cargado').reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
-    const km_vacios   = liqTramos.filter(t => t.tipo === 'vacio').reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
+    // km de tramos propios + km de patas de relevo, para que el desglose cuadre
+    // con el subtotal_km persistido (que incluye los relevos).
+    const km_cargados = liqTramos.filter(t => t.tipo === 'cargado').reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0) + kmLegs(relevoLegs, 'cargado')
+    const km_vacios   = liqTramos.filter(t => t.tipo === 'vacio').reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0) + kmLegs(relevoLegs, 'vacio')
 
     const args: PdfLiquidacionArgs = {
       chofer_nombre:       chofer.nombre,
@@ -582,19 +614,22 @@ export function LiquidacionesTab() {
       total_adelantos:     liq.total_adelantos ?? 0,
       total_reintegros:    liq.total_reintegros ?? 0,
       total_neto:          liq.total_neto,
-      tramos: liqTramos.map(t => {
-        const cantera  = (canteras  as any[]).find(c => c.id === t.cantera_id)
-        const deposito = (depositos as any[]).find(d => d.id === t.deposito_id)
-        return {
-          fecha:      t.fecha_carga ?? t.fecha_vacio ?? null,
-          tipo:       t.tipo === 'vacio' ? 'vacio' : 'cargado',
-          cantera:    cantera?.nombre ?? null,
-          deposito:   deposito?.nombre ?? null,
-          km:         kmTramo(t, rutas as Ruta[]),
-          toneladas:  t.toneladas_descarga ?? t.toneladas_carga ?? null,
-          remito:     t.remito_carga ?? t.remito_descarga ?? null,
-        }
-      }),
+      tramos: [
+        ...liqTramos.map(t => {
+          const cantera  = (canteras  as any[]).find(c => c.id === t.cantera_id)
+          const deposito = (depositos as any[]).find(d => d.id === t.deposito_id)
+          return {
+            fecha:      t.fecha_carga ?? t.fecha_vacio ?? null,
+            tipo:       (t.tipo === 'vacio' ? 'vacio' : 'cargado') as 'cargado' | 'vacio',
+            cantera:    cantera?.nombre ?? null,
+            deposito:   deposito?.nombre ?? null,
+            km:         kmTramo(t, rutas as Ruta[]),
+            toneladas:  t.toneladas_descarga ?? t.toneladas_carga ?? null,
+            remito:     t.remito_carga ?? t.remito_descarga ?? null,
+          }
+        }),
+        ...relevoLegs.map(legToPdf),
+      ],
       adelantos: liqAdel.map(a => ({
         fecha:       a.fecha,
         descripcion: a.descripcion ?? '',
@@ -850,32 +885,26 @@ export function LiquidacionesTab() {
                     <Button variant="primary" size="sm" onClick={() => abrirLiquidar(chofer)}>
                       💰 Liquidar
                     </Button>
-                    {mis_tramos.length > 0 && (() => {
-                      const { desde, hasta } = rangoTramos(mis_tramos)
-                      // Básico por días del RANGO (igual que el PDF y la
-                      // liquidación que se guarda), no por días únicos con tramos.
-                      // Si no, el Excel daba un básico distinto al PDF parcial.
-                      const diasRango = diasEntreFechas(desde, hasta)
-                      const subtotalBasRango = diasRango * (chofer.basico_dia ?? 0)
-                      // Desglose km cargado/vacío para que el Excel muestre la
-                      // cuenta detallada y no sólo el agregado.
-                      const km_cargados = mis_tramos.filter(t => t.tipo === 'cargado').reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
-                      const km_vacios   = mis_tramos.filter(t => t.tipo === 'vacio'  ).reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
+                    {(mis_tramos.length > 0 || mis_relevos.length > 0) && (() => {
+                      const { desde, hasta } = rangoConRelevos(mis_tramos, mis_relevos)
                       const precio_km_cargado = chofer.precio_km_cargado ?? 0
                       const precio_km_vacio   = chofer.precio_km_vacio   ?? 0
+                      // dias, subtotal_bas, km_cargados/vacios y subtotal_km vienen de
+                      // resumenChofer → ya incluyen las patas de relevo (km + jornal).
                       const exportData = {
                         nombreChofer: chofer.nombre,
-                        desde, hasta, dias: diasRango,
+                        desde, hasta, dias,
                         basico_dia:   chofer.basico_dia ?? 0,
-                        subtotal_bas: subtotalBasRango, km_totales, subtotal_km, descuentos,
+                        subtotal_bas, km_totales, subtotal_km, descuentos,
                         km_cargados, km_vacios,
                         precio_km_cargado, precio_km_vacio,
                         subtotal_km_cargado: km_cargados * precio_km_cargado,
                         subtotal_km_vacio:   km_vacios   * precio_km_vacio,
-                        // Reintegros contados UNA vez (para el fallback si falla el
-                        // endpoint; en el camino normal se recomputa con resp.total).
-                        neto: subtotalBasRango + subtotal_km - descuentos + reintegros,
+                        // Reintegros contados UNA vez (fallback; en el camino normal se
+                        // recomputa con resp.total del endpoint).
+                        neto: subtotal_bas + subtotal_km - descuentos + reintegros,
                         tramos:       mis_tramos,
+                        relevos:      legsDeRelevos(mis_relevos),
                         adelantos:    mis_adelantos,
                         canteras:     canteras as any[],
                         depositos:    depositos as any[],
@@ -955,11 +984,11 @@ export function LiquidacionesTab() {
                     {(() => {
                       const liqTramos  = (tramos   as Tramo[]).filter(t => t.liquidacion_id === liq.id)
                       const liqAdel    = (adelantos as Adelanto[]).filter(a => a.liquidacion_id === liq.id)
-                      // Desglose km cargado/vacío para el Excel. Usa precios del
-                      // chofer (no quedaron snapshot en la liquidación — mismo
-                      // criterio que el PDF cerrado).
-                      const km_cargados = liqTramos.filter(t => t.tipo === 'cargado').reduce((s: number, t: Tramo) => s + kmTramo(t, rutas as Ruta[]), 0)
-                      const km_vacios   = liqTramos.filter(t => t.tipo === 'vacio'  ).reduce((s: number, t: Tramo) => s + kmTramo(t, rutas as Ruta[]), 0)
+                      const relevoLegs = legsRelevoLiquidados(liq.id)
+                      // Desglose km cargado/vacío + patas de relevo, para cuadrar con
+                      // el subtotal_km persistido (que incluye relevos).
+                      const km_cargados = liqTramos.filter(t => t.tipo === 'cargado').reduce((s: number, t: Tramo) => s + kmTramo(t, rutas as Ruta[]), 0) + kmLegs(relevoLegs, 'cargado')
+                      const km_vacios   = liqTramos.filter(t => t.tipo === 'vacio'  ).reduce((s: number, t: Tramo) => s + kmTramo(t, rutas as Ruta[]), 0) + kmLegs(relevoLegs, 'vacio')
                       const precio_km_cargado = chofer?.precio_km_cargado ?? 0
                       const precio_km_vacio   = chofer?.precio_km_vacio   ?? 0
                       const exportData = {
@@ -978,6 +1007,7 @@ export function LiquidacionesTab() {
                         descuentos:   liq.total_adelantos,
                         neto:         liq.total_neto,
                         tramos:       liqTramos,
+                        relevos:      relevoLegs,
                         adelantos:    liqAdel,
                         canteras:     canteras as any[],
                         depositos:    depositos as any[],
@@ -1425,11 +1455,12 @@ export function LiquidacionesTab() {
         const camion     = chofer ? (camiones as any[]).find(c => c.id === chofer.camion_id) : null
         const liqTramos  = (tramos as Tramo[]).filter(t => t.liquidacion_id === detalleLiq.id)
         const liqAdel    = (adelantos as Adelanto[]).filter(a => a.liquidacion_id === detalleLiq.id)
+        const relevoLegs = legsRelevoLiquidados(detalleLiq.id)
         const esBorrador = detalleLiq.estado === 'borrador'
 
-        // Cálculos derivados para mostrar el desglose completo.
-        const km_cargados = liqTramos.filter(t => t.tipo === 'cargado').reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
-        const km_vacios   = liqTramos.filter(t => t.tipo === 'vacio').reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
+        // Cálculos derivados para mostrar el desglose completo (con patas de relevo).
+        const km_cargados = liqTramos.filter(t => t.tipo === 'cargado').reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0) + kmLegs(relevoLegs, 'cargado')
+        const km_vacios   = liqTramos.filter(t => t.tipo === 'vacio').reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0) + kmLegs(relevoLegs, 'vacio')
         const km_totales  = km_cargados + km_vacios
         const sub_km_cargado = detalleLiq.subtotal_km_cargado ?? (km_cargados * (chofer?.precio_km_cargado ?? 0))
         const sub_km_vacio   = detalleLiq.subtotal_km_vacio   ?? (km_vacios   * (chofer?.precio_km_vacio   ?? 0))
@@ -1532,6 +1563,7 @@ export function LiquidacionesTab() {
                         descuentos:   detalleLiq.total_adelantos,
                         neto:         detalleLiq.total_neto,
                         tramos:       liqTramosLocal,
+                        relevos:      relevoLegs,
                         adelantos:    liqAdel,
                         canteras:     canteras as any[],
                         depositos:    depositos as any[],
@@ -1555,11 +1587,11 @@ export function LiquidacionesTab() {
                 </div>
               )}
 
-              {/* Tramos con detalle completo */}
-              {liqTramos.length > 0 && (
+              {/* Tramos con detalle completo (+ patas de relevo) */}
+              {(liqTramos.length > 0 || relevoLegs.length > 0) && (
                 <div>
                   <div className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-2">
-                    Tramos incluidos ({liqTramos.length}) · {fmtN(km_totales)} km totales
+                    Tramos incluidos ({liqTramos.length + relevoLegs.length}) · {fmtN(km_totales)} km totales
                   </div>
                   <div className="bg-gris rounded-xl divide-y divide-gris-mid max-h-56 overflow-y-auto">
                     {liqTramos.map(t => {
@@ -1593,6 +1625,25 @@ export function LiquidacionesTab() {
                         </div>
                       )
                     })}
+                    {relevoLegs.map((l, i) => (
+                      <div key={`rl-${i}`} className="flex items-center justify-between gap-3 px-3 py-2 text-xs">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide bg-azul-light text-azul-mid">
+                              🔄 {l.tipo === 'cargado' ? 'Cargado' : 'Vacío'} · relevo
+                            </span>
+                            <span className="text-gris-dark">{l.fecha ? fmtFecha(l.fecha) : '—'}</span>
+                          </div>
+                          <div className="font-semibold text-carbon mt-0.5">
+                            {l.cantera ?? '—'} → {l.deposito ?? '—'}
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0 font-mono">
+                          <div>{l.km > 0 ? `${fmtN(l.km)} km` : '—'}</div>
+                          <div className="text-gris-dark text-[11px]">pata</div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}

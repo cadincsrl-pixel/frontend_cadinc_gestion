@@ -58,6 +58,16 @@ export interface LiqExportGasto {
   monto:       number
 }
 
+// Pata de un tramo relevado (km parcial del chofer). Ya viene pre-resuelta
+// (nombres + km de la pata) porque el km no es el de la ruta completa.
+export interface LiqExportRelevo {
+  fecha:    string | null
+  tipo:     'cargado' | 'vacio'
+  cantera:  string | null
+  deposito: string | null
+  km:       number
+}
+
 export interface LiqExportData {
   nombreChofer: string
   desde:        string
@@ -79,6 +89,8 @@ export interface LiqExportData {
   reintegros?:  number
   neto:         number
   tramos:       Tramo[]
+  // Patas de relevo a listar en la tabla de tramos (km de la pata, ya resuelto).
+  relevos?:     LiqExportRelevo[]
   adelantos:    Adelanto[]
   // Gastos pagados por el chofer en el período (reintegros).
   gastos?:      LiqExportGasto[]
@@ -228,8 +240,32 @@ export async function exportLiquidacionExcel(d: LiqExportData) {
     row++
   })
 
+  // Patas de relevo (km parcial del chofer en tramos compartidos).
+  ;(d.relevos ?? []).forEach((rl, i) => {
+    const idx = d.tramos.length + i
+    const r = ws.getRow(row)
+    r.getCell(1).value = parseFecha(rl.fecha)
+    r.getCell(1).numFmt = FMT_FECHA
+    r.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' }
+    r.getCell(2).value = (rl.tipo === 'vacio' ? 'Vacío' : 'Cargado') + ' · relevo'
+    r.getCell(2).alignment = { horizontal: 'center', vertical: 'middle' }
+    r.getCell(2).font = { color: { argb: rl.tipo === 'vacio' ? C_AZUL_HEADER : C_NARANJA }, bold: true, italic: true }
+    r.getCell(3).value = rl.cantera  ?? '—'
+    r.getCell(4).value = rl.deposito ?? '—'
+    if (rl.km) {
+      r.getCell(5).value  = rl.km
+      r.getCell(5).numFmt = FMT_KM
+      totalKm += rl.km
+    }
+    r.getCell(5).alignment = { horizontal: 'right', vertical: 'middle' }
+    r.getCell(7).value = 'Relevo'
+    r.getCell(7).alignment = { horizontal: 'center', vertical: 'middle' }
+    setDataRowBorders(r, idx % 2 === 1)
+    row++
+  })
+
   // Subtotal km
-  if (d.tramos.length > 0) {
+  if (d.tramos.length > 0 || (d.relevos?.length ?? 0) > 0) {
     const r = ws.getRow(row)
     ws.mergeCells(`A${row}:D${row}`)
     r.getCell(1).value = 'Total km recorridos'

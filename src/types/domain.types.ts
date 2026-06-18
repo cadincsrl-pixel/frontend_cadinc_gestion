@@ -159,6 +159,7 @@ export interface TramoChofer {
 // al camión real del viaje. La trae /api/logistica/tramos/relevos-liquidados.
 export interface RelevoLiquidado {
   id:             number
+  tramo_id:       number
   liquidacion_id: number
   chofer_id:      number
   km_cargado:     number
