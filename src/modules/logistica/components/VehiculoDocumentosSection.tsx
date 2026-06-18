@@ -10,8 +10,12 @@ import {
   calcularEstadoVencimiento,
 } from '../hooks/useVehiculoDocumentos'
 import { useToast } from '@/components/ui/Toast'
+import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
 import { usePermisos } from '@/hooks/usePermisos'
 import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
+import { toISO } from '@/lib/utils/dates'
 import type { VehiculoDocumento, VehiculoDocTipo, VehiculoEntidad } from '@/types/domain.types'
 
 interface Props {
@@ -74,13 +78,15 @@ export function VehiculoDocumentosSection({ entidad, id }: Props) {
   const { mutate: updateDoc } = useUpdateVehiculoDocumento()
   const { mutate: deleteDoc } = useDeleteVehiculoDocumento()
 
-  const fileInputs = useRef<Record<VehiculoDocTipo, HTMLInputElement | null>>(
-    Object.fromEntries(TIPOS.map(t => [t.key, null])) as any,
-  )
   const [pendingTipo, setPendingTipo] = useState<VehiculoDocTipo | null>(null)
-  const [pendingVence, setPendingVence] = useState<Record<VehiculoDocTipo, string>>(
-    Object.fromEntries(TIPOS.map(t => [t.key, ''])) as any,
-  )
+  // Modal de carga: tipo a cargar + archivo elegido + fecha de vencimiento.
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const [uploadTipo,  setUploadTipo]  = useState<VehiculoDocTipo | null>(null)
+  const [uploadFile,  setUploadFile]  = useState<File | null>(null)
+  const [uploadVence, setUploadVence] = useState('')
+  // Modal de edición del vencimiento de un documento ya cargado.
+  const [editDoc,   setEditDoc]   = useState<VehiculoDocumento | null>(null)
+  const [editVence, setEditVence] = useState('')
   // Tipos cuyo "anteriores (archivados)" está desplegado.
   const [verAnteriores, setVerAnteriores] = useState<Set<VehiculoDocTipo>>(new Set())
   function toggleAnteriores(tipo: VehiculoDocTipo) {
@@ -91,7 +97,13 @@ export function VehiculoDocumentosSection({ entidad, id }: Props) {
     })
   }
 
-  function handleFileChange(tipo: VehiculoDocTipo, e: React.ChangeEvent<HTMLInputElement>) {
+  function abrirUpload(tipo: VehiculoDocTipo) {
+    setUploadTipo(tipo)
+    setUploadFile(null)
+    setUploadVence('')
+  }
+
+  function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
@@ -99,21 +111,27 @@ export function VehiculoDocumentosSection({ entidad, id }: Props) {
       toast('Archivo demasiado grande (máx 10 MB)', 'err')
       return
     }
-    const tipoCfg = TIPOS.find(t => t.key === tipo)!
-    const venceVal = pendingVence[tipo]?.trim() || null
-    if (tipoCfg.venceObligatorio && !venceVal) {
-      toast(`Cargá la fecha de vencimiento de ${tipoCfg.label} antes de subir`, 'err')
+    setUploadFile(file)
+  }
+
+  function confirmarUpload() {
+    if (!uploadTipo || !uploadFile) return
+    const cfg = TIPOS.find(t => t.key === uploadTipo)!
+    const venceVal = uploadVence.trim() || null
+    if (cfg.venceObligatorio && !venceVal) {
+      toast(`Cargá la fecha de vencimiento de ${cfg.label} antes de subir`, 'err')
       return
     }
-
-    setPendingTipo(tipo)
+    setPendingTipo(uploadTipo)
     uploadDoc(
-      { entidad, id, file, tipo, vence_el: venceVal },
+      { entidad, id, file: uploadFile, tipo: uploadTipo, vence_el: venceVal },
       {
         onSuccess: () => {
-          toast(`✓ ${file.name} subido`, 'ok')
+          toast(`✓ ${cfg.label} cargado`, 'ok')
           setPendingTipo(null)
-          setPendingVence(prev => ({ ...prev, [tipo]: '' }))
+          setUploadTipo(null)
+          setUploadFile(null)
+          setUploadVence('')
         },
         onError: (err) => {
           const msg = err instanceof Error ? err.message : 'Error al subir'
@@ -142,19 +160,18 @@ export function VehiculoDocumentosSection({ entidad, id }: Props) {
     )
   }
 
-  function handleEditarVence(doc: VehiculoDocumento) {
-    const cur = doc.vence_el ?? ''
-    const nueva = prompt(`Nueva fecha de vencimiento (YYYY-MM-DD) para ${doc.nombre_archivo}:`, cur)
-    if (nueva === null) return
-    const trimmed = nueva.trim()
-    if (trimmed && !/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-      toast('Formato inválido. Usá YYYY-MM-DD', 'err')
-      return
-    }
+  function abrirEditVence(doc: VehiculoDocumento) {
+    setEditDoc(doc)
+    setEditVence(doc.vence_el ?? '')
+  }
+
+  function guardarVence() {
+    if (!editDoc) return
+    // <input type="date"> entrega siempre YYYY-MM-DD o '' → no hace falta validar formato.
     updateDoc(
-      { entidad, id, docId: doc.id, vence_el: trimmed || null },
+      { entidad, id, docId: editDoc.id, vence_el: editVence.trim() || null },
       {
-        onSuccess: () => toast('✓ Vencimiento actualizado', 'ok'),
+        onSuccess: () => { toast('✓ Vencimiento actualizado', 'ok'); setEditDoc(null) },
         onError:   () => toast('Error al actualizar', 'err'),
       }
     )
@@ -197,7 +214,7 @@ export function VehiculoDocumentosSection({ entidad, id }: Props) {
         </button>
         {puedeEditar && (venceObligatorio || doc.vence_el) && (
           <button
-            onClick={() => handleEditarVence(doc)}
+            onClick={() => abrirEditVence(doc)}
             className="text-[11px] font-bold px-2 py-1 rounded bg-naranja-light text-naranja-dark hover:bg-naranja hover:text-white transition-colors"
             title="Editar fecha de vencimiento"
           >
@@ -259,31 +276,14 @@ export function VehiculoDocumentosSection({ entidad, id }: Props) {
               </div>
 
               {puedeCrear && (
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {venceObligatorio && (
-                    <input
-                      type="date"
-                      value={pendingVence[key] ?? ''}
-                      onChange={e => setPendingVence(prev => ({ ...prev, [key]: e.target.value }))}
-                      className="text-[11px] px-1.5 py-1 border-[1.5px] border-gris-mid rounded outline-none focus:border-naranja"
-                      title="Fecha de vencimiento"
-                    />
-                  )}
-                  <button
-                    onClick={() => fileInputs.current[key]?.click()}
-                    disabled={uploading && pendingTipo === key}
-                    className="text-[11px] font-bold px-2.5 py-1 rounded bg-azul text-white hover:bg-azul-mid transition-colors disabled:opacity-50"
-                  >
-                    {uploading && pendingTipo === key ? '⏳ Subiendo…' : '＋ Subir'}
-                  </button>
-                  <input
-                    ref={el => { fileInputs.current[key] = el }}
-                    type="file"
-                    accept={ACCEPT}
-                    className="hidden"
-                    onChange={e => handleFileChange(key, e)}
-                  />
-                </div>
+                <button
+                  onClick={() => abrirUpload(key)}
+                  disabled={uploading && pendingTipo === key}
+                  className="self-start text-[11px] font-bold px-2.5 py-1 rounded bg-azul text-white hover:bg-azul-mid transition-colors disabled:opacity-50"
+                  title={venceObligatorio ? 'Cargar archivo + fecha de vencimiento' : 'Cargar archivo'}
+                >
+                  {uploading && pendingTipo === key ? '⏳ Subiendo…' : '＋ Cargar'}
+                </button>
               )}
 
               {vigentes.length === 0 && archivados.length === 0 ? (
@@ -313,6 +313,90 @@ export function VehiculoDocumentosSection({ entidad, id }: Props) {
             </div>
           ))}
         </div>
+      )}
+
+      {/* ── Modal de carga: archivo + fecha de vencimiento juntos ── */}
+      {uploadTipo && (() => {
+        const cfg = TIPOS.find(t => t.key === uploadTipo)!
+        const venceVal = uploadVence.trim()
+        const vencida  = !!venceVal && venceVal < toISO(new Date())
+        return (
+          <Modal
+            open
+            onClose={() => { if (!uploading) setUploadTipo(null) }}
+            title={`${cfg.icon} Cargar ${cfg.label}`}
+            footer={
+              <>
+                <Button variant="secondary" onClick={() => setUploadTipo(null)} disabled={uploading}>Cancelar</Button>
+                <Button variant="primary" loading={uploading} disabled={!uploadFile} onClick={confirmarUpload}>
+                  ✓ Subir documento
+                </Button>
+              </>
+            }
+          >
+            <div className="flex flex-col gap-4">
+              {/* Archivo */}
+              <div>
+                <div className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-1.5">Archivo</div>
+                {uploadFile ? (
+                  <div className="flex items-center gap-2 bg-gris/40 rounded-lg px-3 py-2">
+                    <span className="text-lg">{uploadFile.type === 'application/pdf' ? '📕' : '🖼'}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold text-carbon truncate" title={uploadFile.name}>{uploadFile.name}</div>
+                      <div className="text-[11px] text-gris-dark">{fmtSize(uploadFile.size)}</div>
+                    </div>
+                    <button onClick={() => fileInputRef.current?.click()} className="text-[11px] font-bold text-azul hover:underline shrink-0">
+                      Cambiar
+                    </button>
+                  </div>
+                ) : (
+                  <Button variant="secondary" onClick={() => fileInputRef.current?.click()}>📎 Elegir archivo</Button>
+                )}
+                <input ref={fileInputRef} type="file" accept={ACCEPT} className="hidden" onChange={onPickFile} />
+                <p className="text-[11px] text-gris-dark mt-1">Imagen o PDF, hasta 10 MB.</p>
+              </div>
+
+              {/* Vencimiento */}
+              <div>
+                <Input
+                  label={`Fecha de vencimiento${cfg.venceObligatorio ? ' *' : ' (opcional)'}`}
+                  type="date"
+                  value={uploadVence}
+                  onChange={e => setUploadVence(e.target.value)}
+                />
+                {cfg.venceObligatorio && !venceVal && (
+                  <p className="text-[11px] text-naranja-dark mt-1">
+                    Obligatoria: con esta fecha el sistema avisa cuando la {cfg.label} esté por vencer.
+                  </p>
+                )}
+                {vencida && (
+                  <p className="text-[11px] text-rojo mt-1">⚠ Esa fecha ya pasó — el documento quedará marcado como vencido.</p>
+                )}
+              </div>
+            </div>
+          </Modal>
+        )
+      })()}
+
+      {/* ── Modal de edición del vencimiento ── */}
+      {editDoc && (
+        <Modal
+          open
+          onClose={() => setEditDoc(null)}
+          title="📅 Fecha de vencimiento"
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setEditDoc(null)}>Cancelar</Button>
+              <Button variant="primary" onClick={guardarVence}>Guardar</Button>
+            </>
+          }
+        >
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-carbon truncate" title={editDoc.nombre_archivo}>📄 {editDoc.nombre_archivo}</p>
+            <Input label="Vence el" type="date" value={editVence} onChange={e => setEditVence(e.target.value)} />
+            <p className="text-[11px] text-gris-dark">Dejá la fecha vacía para quitar el vencimiento.</p>
+          </div>
+        </Modal>
       )}
     </div>
   )
