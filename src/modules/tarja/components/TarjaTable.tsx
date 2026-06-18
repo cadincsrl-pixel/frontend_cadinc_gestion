@@ -6,6 +6,7 @@ import { useHorasSemana, useUpsertHora } from '../hooks/useHoras'
 import { useHsExtras, useUpsertHsExtra } from '../hooks/useHsExtras'
 import { useQuitarDeSemana } from '../hooks/useAsignaciones'
 import { useCatObraSemana, useSetCatObra } from '../hooks/useCatObra'
+import { useObras } from '../hooks/useObras'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useSessionStore } from '@/store/session.store'
@@ -61,6 +62,8 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
   const { mutateAsync: upsertHsExtra } = useUpsertHsExtra()
   const { mutate: quitarDeSemana } = useQuitarDeSemana()
   const perfiles = usePerfilesMap()
+  // Para mostrar el NOMBRE de la obra (no el código) en el aviso de conflicto.
+  const { data: obras = [] } = useObras('tarja')
 
   // sem_key para esta semana = viernes (días[0] es viernes por getSemDays(semActual))
   const semKey = desde
@@ -147,6 +150,14 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
   // (ruidoso: marcaba operarios que sí trabajan en varias obras pero
   // en distintos días, lo cual no es problema).
   const multiObra = useMemo(() => new Set(conflictoDia.keys()), [conflictoDia])
+
+  // cod → nombre de obra, para el aviso de conflicto (el usuario quiere ver el
+  // nombre de la obra, no el código ni el centro de costo).
+  const obraNombre = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const o of obras) m.set(o.cod, o.nom)
+    return m
+  }, [obras])
 
   // Totales usando la categoría efectiva (catObra override) de cada trabajador
   const { totalHs, totalCosto } = (() => {
@@ -406,7 +417,7 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                     const otrasObrasMismoDia = itemsDelDia
                       ? itemsDelDia
                           .filter(it => it.obra_cod !== obraCod)
-                          .map(it => `${it.obra_cod}: ${it.horas}hs`)
+                          .map(it => `${obraNombre.get(it.obra_cod) ?? it.obra_cod}: ${it.horas}hs`)
                       : []
                     const enConflicto = otrasObrasMismoDia.length > 0
                     // Capataces solo pueden tocar la celda de hoy. El resto
