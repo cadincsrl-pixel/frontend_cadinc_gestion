@@ -21,6 +21,11 @@ import { useUpsertHora } from '@/modules/tarja/hooks/useHoras'
 import { usePermisos } from '@/hooks/usePermisos'
 import type { Hora, Tarifa, Personal, Categoria, TarjaHsExtra } from '@/types/domain.types'
 
+// Redondea horas a 2 decimales para matar el epsilon de punto flotante al sumar
+// (ej. 39.900000000006 → 39.9). Las horas se cargan en incrementos de 0.25/0.5,
+// así que 2 decimales no pierden precisión real.
+const redHs = (n: number) => Math.round(n * 100) / 100
+
 export function HorasTrabajadorPage() {
   const router = useRouter()
   const toast = useToast()
@@ -208,7 +213,7 @@ export function HorasTrabajadorPage() {
         days.forEach(d => {
           const ds = toISO(d)
           const h = getH(o.cod, ds, leg)
-          horasPorDia[ds] = h
+          horasPorDia[ds] = redHs(h)
           tHs += h
         })
 
@@ -216,7 +221,7 @@ export function HorasTrabajadorPage() {
         const hsExtras = todasHsExtras.find(
           e => e.obra_cod === o.cod && e.leg === leg && e.sem_key === semKey,
         )?.hs ?? 0
-        const tHsConExtras = tHs + hsExtras
+        const tHsConExtras = redHs(tHs + hsExtras)
 
         // Omitir filas vacías salvo filtro específico de obra
         if (tHsConExtras === 0 && !filtroObra) return
@@ -283,7 +288,7 @@ export function HorasTrabajadorPage() {
       out.push({
         p,
         obrasAnt,
-        totalHsAnt: obrasAnt.reduce((s, o) => s + o.hs, 0),
+        totalHsAnt: redHs(obrasAnt.reduce((s, o) => s + o.hs, 0)),
       })
     })
     return out.sort((a, b) => a.p.nom.localeCompare(b.p.nom))
@@ -302,8 +307,8 @@ export function HorasTrabajadorPage() {
   }, [filasFiltradas])
 
   // Totales
-  const totHs = filasFiltradas.reduce((s, f) => s + f.totalHs, 0)
-  const totHsExtras = filasFiltradas.reduce((s, f) => s + f.hsExtras, 0)
+  const totHs = redHs(filasFiltradas.reduce((s, f) => s + f.totalHs, 0))
+  const totHsExtras = redHs(filasFiltradas.reduce((s, f) => s + f.hsExtras, 0))
   const totCosto = filasFiltradas.reduce((s, f) => s + f.totalCosto, 0)
   const uniqueLegs = new Set(filasFiltradas.map(f => f.leg)).size
 
@@ -323,13 +328,13 @@ export function HorasTrabajadorPage() {
       const legRows = filasFiltradas.slice(i, j)
       legRows.forEach(r => result.push({ type: 'fila', data: r }))
       if (legRows.length > 1) {
-        const hsExtras  = legRows.reduce((s, r) => s + r.hsExtras,  0)
-        const totalHs   = legRows.reduce((s, r) => s + r.totalHs,   0)
+        const hsExtras  = redHs(legRows.reduce((s, r) => s + r.hsExtras,  0))
+        const totalHs   = redHs(legRows.reduce((s, r) => s + r.totalHs,   0))
         const totalCosto = legRows.reduce((s, r) => s + r.totalCosto, 0)
         const horasPorDia: Record<string, number> = {}
         days.forEach(d => {
           const ds = toISO(d)
-          horasPorDia[ds] = legRows.reduce((s, r) => s + (r.horasPorDia[ds] ?? 0), 0)
+          horasPorDia[ds] = redHs(legRows.reduce((s, r) => s + (r.horasPorDia[ds] ?? 0), 0))
         })
         result.push({ type: 'subtotal', leg, p: legRows[0]!.p, obraCount: legRows.length, hsExtras, totalHs, totalCosto, horasPorDia })
       }
@@ -838,9 +843,9 @@ export function HorasTrabajadorPage() {
                       </td>
                       {days.map((d, i) => {
                         const ds = toISO(d)
-                        const totalDia = filasFiltradas.reduce(
+                        const totalDia = redHs(filasFiltradas.reduce(
                           (s, f) => s + (f.horasPorDia[ds] ?? 0), 0
-                        )
+                        ))
                         return (
                           <td key={i} className="bg-azul text-white font-mono text-sm font-bold text-center px-2 py-2.5">
                             {totalDia > 0 ? totalDia : '—'}
