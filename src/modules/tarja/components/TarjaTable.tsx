@@ -531,6 +531,7 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                         key={`extra-${p.leg}-${semKey}-${hsExtraLeg}`}
                         defaultValue={hsExtraLeg || ''}
                         readOnly={!puedeEditar || readonly}
+                        data-tarja-extra-leg={p.leg}
                         title="Horas extras de la semana"
                         // Evitar cambios accidentales con la rueda del mouse.
                         onWheel={e => (e.currentTarget as HTMLInputElement).blur()}
@@ -538,10 +539,20 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                           ? e => handleExtraChange(p.leg, e.target.value, hsExtraLeg, e.target)
                           : undefined}
                         onKeyDown={puedeEditar && !readonly ? e => {
-                          // Solo blur: el onBlur hace el guardado UNA vez. (Antes
-                          // llamábamos al handler acá y además en el blur → el
-                          // confirm de valor alto aparecía dos veces.)
-                          if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                          // Navegación como en horas comunes: Enter / ↓ van a la
+                          // celda de hs extras del trabajador siguiente, ↑ al
+                          // anterior. Movemos el foco y el onBlur del campo actual
+                          // guarda UNA sola vez (no llamamos al handler acá, para
+                          // no duplicar el aviso de valor alto).
+                          if (e.key !== 'Enter' && e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+                          e.preventDefault()
+                          const all = Array.from(document.querySelectorAll<HTMLInputElement>(
+                            'input[data-tarja-extra-leg]',
+                          ))
+                          const here = all.findIndex(x => x.dataset.tarjaExtraLeg === p.leg)
+                          const target = all[here + (e.key === 'ArrowUp' ? -1 : 1)]
+                          if (target) { target.focus(); target.select() }
+                          else (e.target as HTMLInputElement).blur()
                         } : undefined}
                         className={`
                             w-14 h-8 border-[1.5px] rounded-md
