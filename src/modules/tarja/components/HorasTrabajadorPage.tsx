@@ -26,6 +26,9 @@ import type { Hora, Tarifa, Personal, Categoria, TarjaHsExtra } from '@/types/do
 // así que 2 decimales no pierden precisión real.
 const redHs = (n: number) => Math.round(n * 100) / 100
 
+// Umbral del aviso de "valor alto" al cargar hs extras (sin tope duro).
+const ALERTA_HS_EXTRA = 200
+
 export function HorasTrabajadorPage() {
   const router = useRouter()
   const toast = useToast()
@@ -381,6 +384,10 @@ export function HorasTrabajadorPage() {
     const hs = raw === '' ? 0 : parseFloat(raw)
     if (isNaN(hs) || hs < 0) return
     if (hs === antes) return
+    // Sin tope duro, pero avisamos al cargar un valor inusualmente alto.
+    // (El input es controlado: al cancelar, editingCell ya es null y vuelve al valor guardado.)
+    if (hs > ALERTA_HS_EXTRA &&
+        !confirm(`¿Cargar ${hs} hs extras? Es un valor muy alto — confirmá que no es un error.`)) return
     try {
       await upsertHsExtra({ obra_cod: obraCod, leg, sem_key: semKey, hs })
       toast('✓ Hs extras guardadas', 'ok')

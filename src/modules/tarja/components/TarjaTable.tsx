@@ -17,6 +17,10 @@ import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api/client'
 import type { Personal, Categoria, Hora, Tarifa } from '@/types/domain.types'
 
+// Umbral para el aviso de "valor alto" al cargar hs extras. Por encima de esto se
+// pide confirmación (no hay tope duro; antes el máximo bloqueaba en 200).
+const ALERTA_HS_EXTRA = 200
+
 interface Props {
   obraCod: string
   personal: Personal[]
@@ -193,13 +197,19 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
   )
 
   const handleExtraChange = useCallback(
-    (leg: string, val: string, antes: number) => {
+    (leg: string, val: string, antes: number, el?: HTMLInputElement) => {
       const raw = val.trim()
       const hs = raw === '' ? 0 : parseFloat(raw)
       if (isNaN(hs) || hs < 0) return
       // Evitar mutación si el valor no cambió — un Tab-walk por la grilla
       // sin tocar nada no debería generar mutations innecesarias al backend.
       if (hs === antes) return
+      // Sin tope duro, pero avisamos al cargar un valor inusualmente alto.
+      if (hs > ALERTA_HS_EXTRA &&
+          !confirm(`¿Cargar ${hs} hs extras? Es un valor muy alto — confirmá que no es un error.`)) {
+        if (el) el.value = String(antes || '')  // revertir el campo (no controlado)
+        return
+      }
       // Optimistic update + toast de error via el hook
       upsertHsExtra({ obra_cod: obraCod, leg, sem_key: semKey, hs }).catch(() => {
         // el toast ya se dispara desde el hook
@@ -518,7 +528,6 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                         type="number"
                         min={0}
                         step={0.5}
-                        max={200}
                         key={`extra-${p.leg}-${semKey}-${hsExtraLeg}`}
                         defaultValue={hsExtraLeg || ''}
                         readOnly={!puedeEditar || readonly}
@@ -526,11 +535,11 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                         // Evitar cambios accidentales con la rueda del mouse.
                         onWheel={e => (e.currentTarget as HTMLInputElement).blur()}
                         onBlur={puedeEditar && !readonly
-                          ? e => handleExtraChange(p.leg, e.target.value, hsExtraLeg)
+                          ? e => handleExtraChange(p.leg, e.target.value, hsExtraLeg, e.target)
                           : undefined}
                         onKeyDown={puedeEditar && !readonly ? e => {
                           if (e.key === 'Enter') {
-                            handleExtraChange(p.leg, (e.target as HTMLInputElement).value, hsExtraLeg)
+                            handleExtraChange(p.leg, (e.target as HTMLInputElement).value, hsExtraLeg, e.target as HTMLInputElement)
                             ;(e.target as HTMLInputElement).blur()
                           }
                         } : undefined}
