@@ -538,10 +538,10 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                           ? e => handleExtraChange(p.leg, e.target.value, hsExtraLeg, e.target)
                           : undefined}
                         onKeyDown={puedeEditar && !readonly ? e => {
-                          if (e.key === 'Enter') {
-                            handleExtraChange(p.leg, (e.target as HTMLInputElement).value, hsExtraLeg, e.target as HTMLInputElement)
-                            ;(e.target as HTMLInputElement).blur()
-                          }
+                          // Solo blur: el onBlur hace el guardado UNA vez. (Antes
+                          // llamábamos al handler acá y además en el blur → el
+                          // confirm de valor alto aparecía dos veces.)
+                          if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
                         } : undefined}
                         className={`
                             w-14 h-8 border-[1.5px] rounded-md
