@@ -144,7 +144,7 @@ export function RentabilidadTab() {
           <table className="w-full border-collapse">
             <thead>
               <tr>
-                {['#', 'Viaje', 'Tarifa $/t', 'Viajes/mes', 'Chofer $/mes', 'Margen $/viaje', 'Margen %', 'Margen $/mes', 'Diagnóstico', ''].map(h => (
+                {['#', 'Viaje', 'Tarifa $/t', 'Viajes/mes', 'Chofer $/mes', 'Margen $/viaje', 'Margen % s/ing.', 'Margen $/mes', 'Diagnóstico', ''].map(h => (
                   <th key={h} className="bg-gris/40 text-xs font-bold px-3 py-2 text-left uppercase tracking-wide text-gris-dark">{h}</th>
                 ))}
               </tr>
@@ -377,12 +377,12 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
     if (mode === 'create') {
       create(dto, {
         onSuccess: () => { toast('✓ Viaje creado', 'ok'); onClose() },
-        onError:   () => toast('Error al crear', 'err'),
+        onError:   (e: any) => toast(e?.message || 'Error al crear', 'err'),
       })
     } else if (viaje) {
       update({ id: viaje.id, dto }, {
         onSuccess: () => { toast('✓ Viaje actualizado', 'ok'); onClose() },
-        onError:   () => toast('Error al actualizar', 'err'),
+        onError:   (e: any) => toast(e?.message || 'Error al actualizar', 'err'),
       })
     }
   }
@@ -476,9 +476,19 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
             </div>
           </div>
 
+          <p className="text-[10px] text-gris-dark leading-snug px-1">
+            ℹ Margen operativo, <b>neto de IVA</b> y <b>antes</b> de Impuesto a las Ganancias, IIBB y estructura general (solo incluye el overhead). No es la ganancia final.
+          </p>
+
+          {((Number(watched.dias_calendario) || 0) * (Number(watched.viajes_por_mes) || 0)) > 30 && (
+            <p className="text-[10px] text-naranja-dark leading-snug px-1">
+              ⚠ Días × viajes/mes = {(Number(watched.dias_calendario) || 0) * (Number(watched.viajes_por_mes) || 0)} supera los ~30 días del mes: el equipo no puede hacer tantos viajes y los costos fijos quedan diluidos (margen optimista).
+            </p>
+          )}
+
           <div className="bg-white rounded-lg p-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-gris-dark">Cobra el chofer / mes</span>
+              <span className="text-xs text-gris-dark">Cobra el chofer / mes <span className="text-[9px]">(ya descontado del margen)</span></span>
               <span className="font-mono text-sm font-bold text-azul">
                 {fmtARS((resultado.pago_chofer + resultado.jornal_chofer) * (Number(watched.viajes_por_mes) || 0))}
               </span>
@@ -494,8 +504,16 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
           </div>
 
           <div className="bg-white rounded-lg p-3">
-            <Badge variant={diagnosticoVariant[resultado.diagnostico]} label={diagnosticoLabel(resultado.diagnostico)} />
-            <details className="mt-2 text-[11px] text-gris-dark">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge variant={diagnosticoVariant[resultado.diagnostico]} label={diagnosticoLabel(resultado.diagnostico)} />
+              <span
+                className="text-[10px] text-gris-dark cursor-help"
+                title="Umbrales sobre el % de margen (sobre ingreso): Pérdida <0% · Muy bajo <5% · Bajo 5–10% · Saludable 10–20% · Alto ≥20%"
+              >
+                ⓘ umbrales
+              </span>
+            </div>
+            <details open className="mt-2 text-[11px] text-gris-dark">
               <summary className="cursor-pointer hover:text-azul">Desglose de costos</summary>
               <table className="w-full mt-2 text-[11px]">
                 <tbody>
@@ -592,7 +610,7 @@ function ParametrosCard({ paramsRow, open, onToggle, readOnly }: ParametrosCardP
   function onSave(dto: RentabilidadParametros) {
     update(dto, {
       onSuccess: () => toast('✓ Parámetros actualizados', 'ok'),
-      onError:   () => toast('Error al guardar', 'err'),
+      onError:   (e: any) => toast(e?.message || 'Error al guardar', 'err'),
     })
   }
 
@@ -650,7 +668,7 @@ function ParametrosCard({ paramsRow, open, onToggle, readOnly }: ParametrosCardP
               <Input label="Patente + tasas + VTV (ARS/año)" type="number" disabled={readOnly} {...form.register('patente_anual',     { valueAsNumber: true })} />
               <Input label="Gomería (ARS/mes)"           type="number" disabled={readOnly} {...form.register('gomeria_mensual',         { valueAsNumber: true })} />
               <Input label="Lavadero (ARS/mes)"          type="number" disabled={readOnly} {...form.register('lavadero_mensual',        { valueAsNumber: true })} />
-              <Input label="Overhead (ej 0.01 = 1%)"     type="number" step="0.001" disabled={readOnly} {...form.register('overhead_pct',  { valueAsNumber: true })} />
+              <Input label="Overhead / estructura (ej 0.01 = 1%)" hint="% sobre costos (directos+fijos). Aproxima gastos generales fuera de la flota; no incluye Ganancias." type="number" step="0.001" disabled={readOnly} {...form.register('overhead_pct',  { valueAsNumber: true })} />
             </div>
           </fieldset>
 

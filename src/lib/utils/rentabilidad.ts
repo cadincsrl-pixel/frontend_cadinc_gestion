@@ -100,9 +100,10 @@ export function calcularRentabilidad(
   v: RentabilidadViajeInput,
   p: RentabilidadParametros,
 ): RentabilidadResultado {
-  // El Excel divide todo el cálculo entre cero cuando viajes_por_mes = 0.
-  // Replicamos: sin viajes/mes no podemos prorratear los fijos mensuales.
-  if (v.viajes_por_mes <= 0) {
+  // Sin viajes/mes no podemos prorratear los fijos mensuales. Sin tipo de
+  // cambio (>0) las amortizaciones en USD colapsarían a 0 e inflarían el margen
+  // en silencio → mejor marcar 'sin_datos' que mostrar un margen falso.
+  if (v.viajes_por_mes <= 0 || p.tipo_cambio_usd_ars <= 0) {
     return { ...RESULTADO_VACIO, diagnostico: 'sin_datos' }
   }
 
@@ -113,6 +114,8 @@ export function calcularRentabilidad(
   const combustible_neto      = v.consumo_camion > 0
     ? km_total / v.consumo_camion * v.precio_gasoil / ivaPlus1
     : 0
+  // Sueldo / jornal / cargas del chofer: NO se netean de IVA (costo laboral, no
+  // lleva IVA — ya son netos). Las cargas sociales son un fijo mensual prorrateado.
   const pago_chofer           = v.modalidad_pago === 'pct_jornal'
     ? v.tarifa_neta_por_ton * v.toneladas * v.pct_sobre_tarifa
     : km_total * v.chofer_por_km
@@ -131,17 +134,23 @@ export function calcularRentabilidad(
     gomeria_prorr + lavadero_prorr
 
   // ── Costos FIJOS prorrateados al viaje ──────────────────────────────
+  // Amortizaciones: el valor del tractor/batea y el residual se cargan SIN IVA,
+  // así que NO se netean. El tractor se clampea a >=0 por si el residual quedó
+  // cargado mayor que el valor (typo) → evita una amortización negativa que
+  // bajaría el costo e inflaría el margen.
   const amortizacion_tractor  = p.vida_util_tractor_km > 0
-    ? (p.valor_tractor_usd - p.valor_residual_tractor_usd) / ivaPlus1 / p.vida_util_tractor_km * km_total * p.tipo_cambio_usd_ars
+    ? Math.max(0, (p.valor_tractor_usd - p.valor_residual_tractor_usd) / p.vida_util_tractor_km * km_total * p.tipo_cambio_usd_ars)
     : 0
   const amortizacion_batea    = p.vida_util_batea_anios > 0
-    ? p.valor_semirremolque_usd / ivaPlus1 / p.vida_util_batea_anios / (v.viajes_por_mes * 12) * p.tipo_cambio_usd_ars
+    ? p.valor_semirremolque_usd / p.vida_util_batea_anios / (v.viajes_por_mes * 12) * p.tipo_cambio_usd_ars
     : 0
   const service               = p.frecuencia_service_km > 0
     ? km_total / p.frecuencia_service_km * p.costo_service / ivaPlus1
     : 0
   const seguros_prorr         = p.seguros_mensual / ivaPlus1 / v.viajes_por_mes
-  const patente_prorr         = p.patente_anual   / ivaPlus1 / (v.viajes_por_mes * 12)
+  // Patente + tasas: son tributos SIN IVA → no se netean (la VTV sí lleva IVA
+  // pero es una fracción menor del rubro).
+  const patente_prorr         = p.patente_anual / (v.viajes_por_mes * 12)
 
   const costos_fijos =
     amortizacion_tractor + amortizacion_batea + service +
