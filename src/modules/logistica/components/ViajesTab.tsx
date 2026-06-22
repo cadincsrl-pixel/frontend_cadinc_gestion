@@ -770,12 +770,21 @@ export function ViajesTab() {
   function handleEdit(data: TramoFormValues) {
     if (!editando) return
     if (!confirmarSiRemitoNoCoincide(data.remito_carga, data.remito_descarga)) return
+    // Un cargado se considera completado cuando tiene la descarga registrada
+    // (fecha de descarga). Editar y completar la descarga acá debe cerrarlo,
+    // igual que el botón "registrar descarga" (antes quedaba en `en_curso`).
+    // Para vacíos no tocamos el estado.
+    const tieneDescarga = !!data.fecha_descarga?.trim()
+    const estadoEdit = editando.tipo === 'cargado'
+      ? (tieneDescarga ? 'completado' as const : 'en_curso' as const)
+      : undefined
     updateTramo(
       {
         id: editando.id,
         dto: {
           chofer_id:          Number(data.chofer_id),
           camion_id:          Number(data.camion_id),
+          estado:             estadoEdit,
           empresa_id:         data.empresa_id  ? Number(data.empresa_id)  : null,
           cantera_id:         data.cantera_id  ? Number(data.cantera_id)  : null,
           deposito_id:        data.deposito_id ? Number(data.deposito_id) : null,
