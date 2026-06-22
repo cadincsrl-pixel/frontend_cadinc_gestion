@@ -19,6 +19,7 @@ import { usePermisos } from '@/hooks/usePermisos'
 import { uploadRemitoImg } from '@/lib/utils/upload'
 import { toISO } from '@/lib/utils/dates'
 import { useTramosEnRuta } from '../hooks/useEnRuta'
+import { useTramoRelevo } from '../hooks/useTramoRelevo'
 import { RelevoSection } from './RelevoSection'
 import { ModalSolicitudTurno } from './ModalSolicitudTurno'
 import type { Tramo, TramoTipo, Cantera, Deposito, Ruta } from '@/types/domain.types'
@@ -191,6 +192,10 @@ export function ViajesTab() {
   // saber chofer/camión/depósito de origen del vacío.
   const [proximaCarga,  setProximaCarga]  = useState<Tramo | null>(null)
   const [canteraVuelta, setCanteraVuelta] = useState<string>('')
+  // Override manual del chofer de la vuelta vacía. Por default el vacío lo
+  // maneja quien quedó con el camión en destino (ver `choferVueltaSugerido`);
+  // null = usar la sugerencia. Se resetea al abrir/cerrar el modal.
+  const [choferVueltaOverride, setChoferVueltaOverride] = useState<string | null>(null)
   const [filtChofer,    setFiltChofer]    = useState('')
   const [filtTipo,      setFiltTipo]      = useState('cargado')
   const [filtEstado,    setFiltEstado]    = useState('en_curso')
@@ -608,6 +613,7 @@ export function ViajesTab() {
           // en el mes en curso.
           const sug = canteraSugeridaPara(tramoOriginal.camion_id)
           setCanteraVuelta(sug != null ? String(sug) : '')
+          setChoferVueltaOverride(null)
           setProximaCarga(tramoOriginal)
         },
         onError:   () => toast('Error al registrar descarga', 'err'),
@@ -637,6 +643,29 @@ export function ViajesTab() {
     return best?.id ?? null
   }
 
+  // Relevo del tramo que se acaba de descargar (si lo hubo). Sirve para que
+  // la vuelta vacía la maneje por default quien quedó con el camión.
+  const { data: relevoProxima = [] } = useTramoRelevo(proximaCarga?.id ?? null)
+
+  // Chofer sugerido para el vacío de vuelta: si el cargado tuvo relevo, el
+  // chofer de mayor `orden` (el relevista que hizo la descarga y quedó con el
+  // camión en destino); si no, el titular del cargado.
+  const choferVueltaSugerido = useMemo<number | null>(() => {
+    if (!proximaCarga) return null
+    if (relevoProxima.length > 0) {
+      const ultimo = [...relevoProxima].sort((a, b) => b.orden - a.orden)[0]
+      return ultimo?.chofer_id ?? proximaCarga.chofer_id
+    }
+    return proximaCarga.chofer_id
+  }, [proximaCarga, relevoProxima])
+
+  // Valor efectivo del chofer de la vuelta: override manual si lo hubo, si no
+  // la sugerencia relevo-aware.
+  const choferVueltaId = choferVueltaOverride != null && choferVueltaOverride !== ''
+    ? Number(choferVueltaOverride)
+    : choferVueltaSugerido
+  const vueltaPorRelevo = relevoProxima.length > 0 && choferVueltaOverride == null
+
   async function handleCrearVacioVuelta() {
     if (!proximaCarga) return
     const canteraIdNum = canteraVuelta ? Number(canteraVuelta) : null
@@ -647,7 +676,7 @@ export function ViajesTab() {
     }
     try {
       await createTramoAsync({
-        chofer_id:   proximaCarga.chofer_id,
+        chofer_id:   choferVueltaId ?? proximaCarga.chofer_id,
         camion_id:   proximaCarga.camion_id,
         tipo:        'vacio',
         empresa_id:  null,
@@ -662,6 +691,7 @@ export function ViajesTab() {
       toast('✓ Tramo vacío creado · seguimiento activo', 'ok')
       setProximaCarga(null)
       setCanteraVuelta('')
+      setChoferVueltaOverride(null)
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Error al crear el vacío', 'err')
     }
@@ -1292,11 +1322,11 @@ export function ViajesTab() {
           seguimiento GPS hasta el próximo origen. */}
       <Modal
         open={!!proximaCarga}
-        onClose={() => { setProximaCarga(null); setCanteraVuelta('') }}
+        onClose={() => { setProximaCarga(null); setCanteraVuelta(''); setChoferVueltaOverride(null) }}
         title="🚚 ¿A DÓNDE VUELVE A CARGAR?"
         footer={
           <>
-            <Button variant="secondary" onClick={() => { setProximaCarga(null); setCanteraVuelta('') }}>
+            <Button variant="secondary" onClick={() => { setProximaCarga(null); setCanteraVuelta(''); setChoferVueltaOverride(null) }}>
               Después
             </Button>
             <Button variant="primary" loading={creating} onClick={handleCrearVacioVuelta}>
@@ -1321,6 +1351,20 @@ export function ViajesTab() {
               </div>
             )
           })()}
+          <div>
+            <Combobox
+              label="Chofer de la vuelta"
+              placeholder="Elegí chofer"
+              value={choferVueltaId != null ? String(choferVueltaId) : ''}
+              onChange={(v: string) => setChoferVueltaOverride(v)}
+              options={choferes.map(c => ({ value: String(c.id), label: c.nombre }))}
+            />
+            {vueltaPorRelevo && (
+              <p className="text-[11px] text-verde-dark mt-1">
+                ↩ Asignado automáticamente al relevista que quedó con el camión en destino. Cambialo si volvió otro.
+              </p>
+            )}
+          </div>
           <Combobox
             label="Próxima cantera"
             placeholder="Elegí cantera"
