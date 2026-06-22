@@ -555,6 +555,7 @@ function FacturacionSection() {
   const { data: tramos       = [] } = useTramos()
   const { data: todasTarifas = [] } = useTarifasEmpresa()
   const { data: canteras     = [] } = useCanteras()
+  const { data: depositos    = [] } = useDepositos()
   const { data: choferes     = [] } = useChoferes()
   const { data: cobros       = [] } = useCobros()
   const { mutate: createCobro, isPending: creando } = useCreateCobro()
@@ -622,8 +623,16 @@ function FacturacionSection() {
     })
   }
 
+  // Lugares operativos (no facturables, p.ej. CHIVILCOY): un cargado nunca
+  // debería originarse/entregar ahí, pero si quedó alguno viejo lo excluimos
+  // del listado de cobro para que no aparezca en $0.
+  const canterasOperativas  = new Set(canteras.filter(c => c.operativo).map(c => c.id))
+  const depositosOperativos = new Set(depositos.filter(d => d.operativo).map(d => d.id))
+
   const tramosPendientes = (tramos as Tramo[]).filter(
     t => t.tipo === 'cargado' && t.estado === 'completado' && !t.cobro_id
+      && !(t.cantera_id != null && canterasOperativas.has(t.cantera_id))
+      && !(t.deposito_id != null && depositosOperativos.has(t.deposito_id))
   )
 
   function calcDesglose(tramosArr: Tramo[], empresaId: number) {
@@ -1394,6 +1403,7 @@ function RemitosSection() {
   const { data: tramos       = [] } = useTramos()
   const { data: todasTarifas = [] } = useTarifasEmpresa()
   const { data: canteras     = [] } = useCanteras()
+  const { data: depositos    = [] } = useDepositos()
   const { data: choferes     = [] } = useChoferes()
   const { data: camiones     = [] } = useCamiones()
   const { data: cobros       = [] } = useCobros()
@@ -1432,8 +1442,17 @@ function RemitosSection() {
     return { t, ton, tarifa, subtotal: ton * tarifa, fecha, cantera, empresa, remito }
   }
 
+  // Excluir lugares operativos (no facturables, p.ej. CHIVILCOY) del listado
+  // y la exportación: un cargado nunca debería tocarlos, pero si quedó alguno
+  // viejo no debe aparecer en $0 ni colarse en el Excel/ZIP de remitos.
+  const canterasOperativas  = new Set(canteras.filter(c => c.operativo).map(c => c.id))
+  const depositosOperativos = new Set(depositos.filter(d => d.operativo).map(d => d.id))
+  const esLugarOperativo = (t: Tramo) =>
+    (t.cantera_id != null && canterasOperativas.has(t.cantera_id)) ||
+    (t.deposito_id != null && depositosOperativos.has(t.deposito_id))
+
   const tramosBase = (tramos as Tramo[]).filter(t =>
-    t.tipo === 'cargado' && t.estado === 'completado' &&
+    t.tipo === 'cargado' && t.estado === 'completado' && !esLugarOperativo(t) &&
     (!empresaId || t.empresa_id === Number(empresaId)) &&
     (!fechaDesde || (t.fecha_descarga ?? t.fecha_carga ?? '') >= fechaDesde) &&
     (!fechaHasta || (t.fecha_descarga ?? t.fecha_carga ?? '') <= fechaHasta)
@@ -1442,7 +1461,7 @@ function RemitosSection() {
   // Para el Excel: solo tramos que ya tienen fecha_descarga y filtrados por ese rango
   function exportarExcel() {
     const filtrados = (tramos as Tramo[])
-      .filter(t => t.tipo === 'cargado' && t.estado === 'completado' && t.fecha_descarga)
+      .filter(t => t.tipo === 'cargado' && t.estado === 'completado' && t.fecha_descarga && !esLugarOperativo(t))
       .filter(t => !empresaId  || t.empresa_id === Number(empresaId))
       .filter(t => !fechaDesde || (t.fecha_descarga ?? '') >= fechaDesde)
       .filter(t => !fechaHasta || (t.fecha_descarga ?? '') <= fechaHasta)

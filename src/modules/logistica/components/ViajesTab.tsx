@@ -132,22 +132,30 @@ export function ViajesTab() {
       ? (canterasPorEmpresa.get(empresaId) ?? new Set<number>())
       : null
     return (canteras as any[])
-      .filter((c: any) => allowed === null || allowed.has(c.id) || c.id === selectedId)
+      // canteraOptions solo se usa para tramos CARGADO → excluir lugares
+      // operativos (no facturables, p.ej. CHIVILCOY); preservamos el
+      // seleccionado para no romper la edición de tramos viejos.
+      .filter((c: any) => (allowed === null || allowed.has(c.id) || c.id === selectedId) && (!c.operativo || c.id === selectedId))
       .map((c: any) => ({ value: String(c.id), label: c.nombre, sub: c.localidad ?? undefined }))
   }
   // Mostramos TODOS los depósitos (antes filtrábamos a los que ya tenían ruta,
   // lo que bloqueaba pares nuevos). Si hay cantera elegida, los agrupamos por
   // "con km" vs "sin km todavía"; el km faltante se carga inline bajo el grid
   // (RutaFaltanteInline), sin tener que ir a Lugares.
-  function depositoOptions(canteraIdRaw: string | undefined) {
+  function depositoOptions(canteraIdRaw: string | undefined, selectedIdRaw?: string | undefined) {
     const canteraId = canteraIdRaw ? Number(canteraIdRaw) : null
+    const selectedId = selectedIdRaw ? Number(selectedIdRaw) : null
     const conRuta = canteraId != null ? depositosPorCantera.get(canteraId) : null
-    return (depositos as Deposito[]).map(d => ({
-      value: String(d.id),
-      label: d.nombre,
-      sub:   d.localidad ?? undefined,
-      group: conRuta ? (conRuta.has(d.id) ? 'Con km cargado' : 'Sin km todavía') : undefined,
-    }))
+    // depositoOptions solo se usa para tramos CARGADO → excluir lugares
+    // operativos (no facturables); preservamos el seleccionado para edición.
+    return (depositos as Deposito[])
+      .filter(d => !d.operativo || d.id === selectedId)
+      .map(d => ({
+        value: String(d.id),
+        label: d.nombre,
+        sub:   d.localidad ?? undefined,
+        group: conRuta ? (conRuta.has(d.id) ? 'Con km cargado' : 'Sin km todavía') : undefined,
+      }))
   }
   // Para tramos vacíos: depósito de origen → cantera de destino. Mismo set
   // de rutas pero indexado por depósito.
@@ -1212,7 +1220,7 @@ export function ViajesTab() {
                 <Combobox
                   label="Depósito (destino)"
                   placeholder="Buscar depósito..."
-                  options={depositoOptions(formNuevo.watch('cantera_id'))}
+                  options={depositoOptions(formNuevo.watch('cantera_id'), formNuevo.watch('deposito_id'))}
                   value={String(formNuevo.watch('deposito_id') ?? '')}
                   onChange={(v: string) => formNuevo.setValue('deposito_id', v)}
                 />
@@ -1436,7 +1444,7 @@ export function ViajesTab() {
               placeholder="Buscar depósito..."
               options={
                 editando?.tipo === 'cargado'
-                  ? depositoOptions(formEdit.watch('cantera_id'))
+                  ? depositoOptions(formEdit.watch('cantera_id'), formEdit.watch('deposito_id'))
                   : (depositos as any[]).map((d: any) => ({ value: String(d.id), label: d.nombre }))
               }
               value={String(formEdit.watch('deposito_id') ?? '')}

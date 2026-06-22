@@ -202,12 +202,12 @@ export function LugaresTab() {
   }
 
   function openEditCantera(c: Cantera) {
-    formEditCant.reset({ nombre: c.nombre, localidad: c.localidad ?? '', maps_url: c.maps_url ?? '', obs: c.obs ?? '', lat: c.lat ?? null, lng: c.lng ?? null })
+    formEditCant.reset({ nombre: c.nombre, localidad: c.localidad ?? '', maps_url: c.maps_url ?? '', obs: c.obs ?? '', lat: c.lat ?? null, lng: c.lng ?? null, operativo: c.operativo ?? false })
     setEditCantera(c)
   }
 
   function openEditDeposito(d: Deposito) {
-    formEditDep.reset({ nombre: d.nombre, localidad: d.localidad ?? '', maps_url: d.maps_url ?? '', obs: d.obs ?? '' , lat: d.lat ?? null, lng: d.lng ?? null })
+    formEditDep.reset({ nombre: d.nombre, localidad: d.localidad ?? '', maps_url: d.maps_url ?? '', obs: d.obs ?? '' , lat: d.lat ?? null, lng: d.lng ?? null, operativo: d.operativo ?? false })
     setEditDeposito(d)
   }
 
@@ -223,6 +223,7 @@ export function LugaresTab() {
             <div key={c.id} className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-gris last:border-0">
               <div className="flex items-center gap-2 flex-wrap min-w-0 flex-1">
                 <span className="font-bold text-sm text-carbon">{c.nombre}</span>
+                {c.operativo && <span className="text-[10px] font-bold uppercase tracking-wide text-naranja-dark bg-naranja-light border border-naranja/30 rounded px-1.5 py-0.5" title="Lugar operativo (mantenimiento/relevos). No facturable: no puede ser origen de un tramo cargado.">⚙ Operativo</span>}
                 {c.localidad && <span className="text-xs text-gris-dark">({c.localidad})</span>}
                 {c.maps_url && (
                   <a href={c.maps_url} target="_blank" rel="noopener noreferrer"
@@ -248,6 +249,7 @@ export function LugaresTab() {
             <div key={d.id} className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-gris last:border-0">
               <div className="flex items-center gap-2 flex-wrap min-w-0 flex-1">
                 <span className="font-bold text-sm text-carbon">{d.nombre}</span>
+                {d.operativo && <span className="text-[10px] font-bold uppercase tracking-wide text-naranja-dark bg-naranja-light border border-naranja/30 rounded px-1.5 py-0.5" title="Lugar operativo (mantenimiento/relevos). No facturable: no puede ser destino de un tramo cargado.">⚙ Operativo</span>}
                 {d.localidad && <span className="text-xs text-gris-dark">({d.localidad})</span>}
                 {d.maps_url && (
                   <a href={d.maps_url} target="_blank" rel="noopener noreferrer"
@@ -443,6 +445,13 @@ export function LugaresTab() {
           <Input label="Localidad" placeholder="Opcional" {...formCantera.register('localidad')} />
           <MapsUrlInput register={formCantera.register} watch={formCantera.watch} setValue={formCantera.setValue} />
           <Input label="Observaciones" placeholder="Opcional" {...formCantera.register('obs')} />
+          <label className="flex items-start gap-2 text-sm bg-naranja-light/40 border border-naranja/30 rounded-lg p-3 cursor-pointer">
+            <input type="checkbox" className="accent-naranja mt-0.5" {...formCantera.register('operativo')} />
+            <span className="flex-1">
+              <span className="font-bold text-carbon">Lugar operativo (no facturable)</span>
+              <span className="block text-[11px] text-gris-dark">Mantenimiento, relevos/intercambios o parking. No se ofrece como origen al crear tramos cargados ni se factura.</span>
+            </span>
+          </label>
         </div>
       </Modal>
 
@@ -455,6 +464,13 @@ export function LugaresTab() {
           <Input label="Localidad" {...formEditCant.register('localidad')} />
           <MapsUrlInput register={formEditCant.register} watch={formEditCant.watch} setValue={formEditCant.setValue} />
           <Input label="Observaciones" {...formEditCant.register('obs')} />
+          <label className="flex items-start gap-2 text-sm bg-naranja-light/40 border border-naranja/30 rounded-lg p-3 cursor-pointer">
+            <input type="checkbox" className="accent-naranja mt-0.5" {...formEditCant.register('operativo')} />
+            <span className="flex-1">
+              <span className="font-bold text-carbon">Lugar operativo (no facturable)</span>
+              <span className="block text-[11px] text-gris-dark">Mantenimiento, relevos/intercambios o parking. No se ofrece como origen al crear tramos cargados ni se factura.</span>
+            </span>
+          </label>
         </div>
       </Modal>
 
@@ -467,6 +483,13 @@ export function LugaresTab() {
           <Input label="Localidad" placeholder="Opcional" {...formDeposito.register('localidad')} />
           <MapsUrlInput register={formDeposito.register} watch={formDeposito.watch} setValue={formDeposito.setValue} />
           <Input label="Observaciones" placeholder="Opcional" {...formDeposito.register('obs')} />
+          <label className="flex items-start gap-2 text-sm bg-naranja-light/40 border border-naranja/30 rounded-lg p-3 cursor-pointer">
+            <input type="checkbox" className="accent-naranja mt-0.5" {...formDeposito.register('operativo')} />
+            <span className="flex-1">
+              <span className="font-bold text-carbon">Lugar operativo (no facturable)</span>
+              <span className="block text-[11px] text-gris-dark">Mantenimiento, relevos/intercambios o parking. No se ofrece como destino al crear tramos cargados ni se factura.</span>
+            </span>
+          </label>
         </div>
       </Modal>
 
@@ -479,6 +502,13 @@ export function LugaresTab() {
           <Input label="Localidad" {...formEditDep.register('localidad')} />
           <MapsUrlInput register={formEditDep.register} watch={formEditDep.watch} setValue={formEditDep.setValue} />
           <Input label="Observaciones" {...formEditDep.register('obs')} />
+          <label className="flex items-start gap-2 text-sm bg-naranja-light/40 border border-naranja/30 rounded-lg p-3 cursor-pointer">
+            <input type="checkbox" className="accent-naranja mt-0.5" {...formEditDep.register('operativo')} />
+            <span className="flex-1">
+              <span className="font-bold text-carbon">Lugar operativo (no facturable)</span>
+              <span className="block text-[11px] text-gris-dark">Mantenimiento, relevos/intercambios o parking. No se ofrece como destino al crear tramos cargados ni se factura.</span>
+            </span>
+          </label>
         </div>
       </Modal>
 

@@ -646,6 +646,9 @@ export interface Cantera {
   obs: string | null
   lat: number | null
   lng: number | null
+  // Lugar operativo (mantenimiento/relevos/parking): no facturable, no puede
+  // ser origen/destino de un tramo cargado.
+  operativo: boolean
 }
 
 export interface Deposito {
@@ -656,6 +659,7 @@ export interface Deposito {
   obs: string | null
   lat: number | null
   lng: number | null
+  operativo: boolean
 }
 
 export interface Ruta {
