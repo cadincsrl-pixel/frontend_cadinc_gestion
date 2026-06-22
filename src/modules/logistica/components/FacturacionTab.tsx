@@ -667,6 +667,19 @@ function FacturacionSection() {
     const modalTramos = tramosPendientes.filter(t => t.empresa_id === empresaCobro.id && selectedIds.has(t.id))
     if (modalTramos.length === 0) { toast('Seleccioná al menos un remito', 'err'); return }
     const desglose    = calcDesglose(modalTramos, empresaCobro.id)
+    // Guard anti-subfacturación: un remito sin tarifa para su cantera/fecha
+    // entra al cobro en $0 y no se ve. Avisar antes de registrar.
+    const sinTarifa = desglose.filter(d => d.tarifa === 0)
+    if (sinTarifa.length > 0) {
+      const lista = sinTarifa
+        .map(d => `· ${d.cantera?.nombre ?? 'cantera ?'} — remito ${d.t.remito_descarga ?? d.t.remito_carga ?? `#${d.t.id}`}`)
+        .join('\n')
+      const ok = confirm(
+        `⚠ ${sinTarifa.length} remito(s) no tienen tarifa cargada y se cobrarían en $0:\n${lista}\n\n` +
+        `Cargá la tarifa de esa cantera (o desmarcá esos remitos) para no subfacturar.\n\n¿Registrar el cobro igual?`,
+      )
+      if (!ok) return
+    }
     const ton_totales = desglose.reduce((s, d) => s + d.ton, 0)
     const total       = desglose.reduce((s, d) => s + d.subtotal, 0)
     // El periodo del cobro es el rango real de fechas de los tramos
@@ -755,10 +768,17 @@ function FacturacionSection() {
                             return acc
                           }, {})
                         ).map(([nombre, v]) => (
-                          <div key={nombre} className="text-gris-mid">
-                            {nombre}: {fmtTon(v.ton)} × ${v.tarifa}/tn = {fmtM(v.subtotal)}
+                          <div key={nombre} className={v.tarifa > 0 ? 'text-gris-mid' : 'text-rojo font-semibold'}>
+                            {v.tarifa > 0
+                              ? <>{nombre}: {fmtTon(v.ton)} × ${v.tarifa}/tn = {fmtM(v.subtotal)}</>
+                              : <>{nombre}: {fmtTon(v.ton)} · ⚠ Sin tarifa cargada</>}
                           </div>
                         ))}
+                        {desglose.some(d => d.tarifa === 0) && (
+                          <div className="text-rojo font-semibold mt-1">
+                            ⚠ {desglose.filter(d => d.tarifa === 0).length} remito(s) sin tarifa — no suman al total. Cargá la tarifa de la cantera.
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -824,9 +844,11 @@ function FacturacionSection() {
                             </div>
                             <div className="text-right shrink-0 font-mono min-w-0">
                               <div>{fmtTon(d.ton)}</div>
-                              <div className="text-gris-dark text-[11px]">×${d.tarifa.toLocaleString('es-AR')}</div>
+                              {d.tarifa > 0
+                                ? <div className="text-gris-dark text-[11px]">×${d.tarifa.toLocaleString('es-AR')}</div>
+                                : <div className="text-rojo text-[11px] font-semibold">⚠ Sin tarifa</div>}
                             </div>
-                            <div className="font-mono font-bold text-verde shrink-0 w-auto sm:w-20 text-right">{fmtM(d.subtotal)}</div>
+                            <div className="font-mono font-bold text-verde shrink-0 w-auto sm:w-20 text-right">{d.tarifa > 0 ? fmtM(d.subtotal) : '—'}</div>
                             <button
                               onClick={(e) => { e.stopPropagation(); abrirEditarTramo(d.t) }}
                               title="Editar toneladas / nº remito"
@@ -1281,11 +1303,13 @@ function FacturacionSection() {
                         <div className="text-xs font-semibold text-carbon">{remito}</div>
                         <div className="text-[11px] text-gris-dark">
                           {fechaStr} · {d.cantera?.nombre ?? '—'} · {fmtTon(d.ton)}
-                          {d.tarifa > 0 && <> · ${d.tarifa}/tn</>}
+                          {d.tarifa > 0
+                            ? <> · ${d.tarifa}/tn</>
+                            : <span className="text-rojo font-semibold"> · ⚠ Sin tarifa</span>}
                         </div>
                       </div>
-                      <div className={`text-xs font-mono font-bold shrink-0 ${checked ? 'text-verde' : 'text-gris-dark line-through'}`}>
-                        {fmtM(d.subtotal)}
+                      <div className={`text-xs font-mono font-bold shrink-0 ${d.tarifa <= 0 ? 'text-rojo' : checked ? 'text-verde' : 'text-gris-dark line-through'}`}>
+                        {d.tarifa > 0 ? fmtM(d.subtotal) : 'Sin tarifa'}
                       </div>
                     </label>
                   )
