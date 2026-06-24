@@ -1173,6 +1173,18 @@ export interface MaterialACuentaCliente extends AuditFields {
   pagado_por:       PagadoPor
 }
 
+export type MedioCobro = 'efectivo' | 'transferencia' | 'cheque' | 'otro'
+
+/** Pago del cliente a cuenta de una obra (contra materiales_a_cuenta_cliente). */
+export interface CuentaClienteCobro extends AuditFields {
+  id:       number
+  obra_cod: string
+  fecha:    string
+  monto:    number
+  medio:    MedioCobro
+  obs:      string | null
+}
+
 // ── Stock en Depósito ──
 export interface StockRubro {
   id:     number

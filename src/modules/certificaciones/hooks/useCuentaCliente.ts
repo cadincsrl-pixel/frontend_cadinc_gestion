@@ -7,8 +7,8 @@
 // si se llama sin él, la query falla con 400.
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { apiGet, apiPatch } from '@/lib/api/client'
-import type { MaterialACuentaCliente } from '@/types/domain.types'
+import { apiGet, apiPatch, apiPost, apiDelete } from '@/lib/api/client'
+import type { MaterialACuentaCliente, CuentaClienteCobro, MedioCobro } from '@/types/domain.types'
 
 /** Fila de MCC con joins que devuelve el backend. */
 export interface CuentaClienteRow extends MaterialACuentaCliente {
@@ -51,5 +51,58 @@ export function useGuardarPreciosMCC() {
     },
     // Refetch de todas las variantes de la lista (la key es ['cuenta-cliente', obra]).
     onSuccess: () => qc.invalidateQueries({ queryKey: ['cuenta-cliente'] }),
+  })
+}
+
+// ── Cobros (pagos del cliente a cuenta de la obra) ───────────────────────
+
+const COBROS_KEY = (obra?: string) => ['cuenta-cliente-cobros', obra ?? 'all'] as const
+
+export interface CrearCobroInput {
+  obra_cod: string
+  fecha:    string
+  monto:    number
+  medio:    MedioCobro
+  obs?:     string | null
+}
+export interface EditarCobroInput {
+  id:     number
+  fecha?: string
+  monto?: number
+  medio?: MedioCobro
+  obs?:   string | null
+}
+
+export function useCobrosCliente(obra_cod?: string) {
+  return useQuery({
+    queryKey: COBROS_KEY(obra_cod),
+    queryFn: () =>
+      apiGet<CuentaClienteCobro[]>(`/api/cuenta-cliente/cobros?obra_cod=${encodeURIComponent(obra_cod!)}`),
+    enabled: !!obra_cod,
+  })
+}
+
+export function useCrearCobroCliente() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: CrearCobroInput) => apiPost<CuentaClienteCobro>('/api/cuenta-cliente/cobros', dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cuenta-cliente-cobros'] }),
+  })
+}
+
+export function useEditarCobroCliente() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...dto }: EditarCobroInput) =>
+      apiPatch<CuentaClienteCobro>(`/api/cuenta-cliente/cobros/${id}`, dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cuenta-cliente-cobros'] }),
+  })
+}
+
+export function useEliminarCobroCliente() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiDelete<{ success: boolean }>(`/api/cuenta-cliente/cobros/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cuenta-cliente-cobros'] }),
   })
 }

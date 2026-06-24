@@ -4,13 +4,20 @@ import { useMemo, useState } from 'react'
 import { Combobox } from '@/components/ui/Combobox'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
+import { Input } from '@/components/ui/Input'
+import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
+import { toISO } from '@/lib/utils/dates'
 import { useObras } from '@/modules/tarja/hooks/useObras'
-import { useCuentaCliente, useGuardarPreciosMCC, type CuentaClienteRow } from '../hooks/useCuentaCliente'
+import {
+  useCuentaCliente, useGuardarPreciosMCC,
+  useCobrosCliente, useCrearCobroCliente, useEditarCobroCliente, useEliminarCobroCliente,
+  type CuentaClienteRow,
+} from '../hooks/useCuentaCliente'
 import { exportarCuentaCliente } from '../utils/cuentaClienteExport'
 import { EMPRESA } from '@/lib/config/empresa'
-import type { Obra } from '@/types/domain.types'
+import type { Obra, CuentaClienteCobro, MedioCobro } from '@/types/domain.types'
 
 type FiltroPagador = 'todos' | 'cadinc' | 'cliente'
 
@@ -27,10 +34,20 @@ export function CuentaClienteTab() {
   const [obraSel, setObraSel] = useState<string>('')
   const [pagadorSel, setPagadorSel] = useState<FiltroPagador>('todos')
   const [exporting, setExporting] = useState(false)
-  const { resolverItems } = usePermisos('certificaciones')
+  const { resolverItems, puedeCrear, puedeEditar, puedeEliminar } = usePermisos('certificaciones')
   const { mutate: guardarPrecios, isPending: guardandoPrecios } = useGuardarPreciosMCC()
   const [modalPrecios, setModalPrecios] = useState(false)
   const [precios, setPrecios] = useState<Record<number, string>>({})
+  // Cobros (pagos del cliente) de la obra elegida.
+  const { data: cobros = [] } = useCobrosCliente(obraSel || undefined)
+  const { mutate: crearCobro,   isPending: creandoCobro }  = useCrearCobroCliente()
+  const { mutate: editarCobro,  isPending: editandoCobroPend } = useEditarCobroCliente()
+  const { mutate: eliminarCobro } = useEliminarCobroCliente()
+  const [modalCobro, setModalCobro] = useState(false)
+  const [editandoCobro, setEditandoCobro] = useState<CuentaClienteCobro | null>(null)
+  const [cobroForm, setCobroForm] = useState<{ fecha: string; monto: string; medio: MedioCobro; obs: string }>(
+    { fecha: toISO(new Date()), monto: '', medio: 'efectivo', obs: '' },
+  )
 
   // Si el user no eligió obra, llama al endpoint sin obra_cod → backend
   // devuelve todas las obras permitidas (o 400 si es scope global).
@@ -111,6 +128,42 @@ export function CuentaClienteTab() {
     })
   }
 
+  // ── Cobros (pagos del cliente) ───────────────────────────────────
+  function abrirNuevoCobro() {
+    setEditandoCobro(null)
+    setCobroForm({ fecha: toISO(new Date()), monto: '', medio: 'efectivo', obs: '' })
+    setModalCobro(true)
+  }
+
+  function abrirEditarCobro(c: CuentaClienteCobro) {
+    setEditandoCobro(c)
+    setCobroForm({ fecha: c.fecha, monto: String(c.monto), medio: c.medio, obs: c.obs ?? '' })
+    setModalCobro(true)
+  }
+
+  function guardarCobro() {
+    const monto = Number(cobroForm.monto)
+    if (!cobroForm.fecha) { toast('Elegí la fecha del pago', 'err'); return }
+    if (!Number.isFinite(monto) || monto <= 0) { toast('El monto debe ser mayor a 0', 'err'); return }
+    const cbs = {
+      onSuccess: () => { toast('✓ Pago guardado', 'ok'); setModalCobro(false) },
+      onError:   () => toast('Error al guardar el pago', 'err'),
+    }
+    if (editandoCobro) {
+      editarCobro({ id: editandoCobro.id, fecha: cobroForm.fecha, monto, medio: cobroForm.medio, obs: cobroForm.obs || null }, cbs)
+    } else {
+      crearCobro({ obra_cod: obraSel, fecha: cobroForm.fecha, monto, medio: cobroForm.medio, obs: cobroForm.obs || null }, cbs)
+    }
+  }
+
+  function eliminarCobroHandler(c: CuentaClienteCobro) {
+    if (!confirm(`¿Eliminar el pago de ${fmt$(Number(c.monto))} del ${fmtF(c.fecha)}?`)) return
+    eliminarCobro(c.id, {
+      onSuccess: () => toast('✓ Pago eliminado', 'ok'),
+      onError:   () => toast('Error al eliminar', 'err'),
+    })
+  }
+
   // KPIs calculados desde la lista sin filtrar (los chips muestran totales
   // por categoría independientes del filtro activo, para que el user vea
   // cuánta plata representa cada bucket).
@@ -131,6 +184,11 @@ export function CuentaClienteTab() {
   const sinPrecioCount = rows.filter(r => Number(r.precio_unit) === 0).length
   const obraNombre     = obrasMap.get(obraSel)?.nom ?? obraSel
 
+  // Saldo de la obra elegida: adeudado (lo que CADINC adelantó) − Σ pagos.
+  const pagadoCliente = cobros.reduce((s, c) => s + Number(c.monto ?? 0), 0)
+  const saldoCliente  = kpis.debeCadinc - pagadoCliente
+  const guardandoCobro = creandoCobro || editandoCobroPend
+
   return (
     <div className="flex flex-col gap-4">
 
@@ -142,7 +200,7 @@ export function CuentaClienteTab() {
               placeholder="— Todas mis obras —"
               options={obraOptions}
               value={obraSel}
-              onChange={setObraSel}
+              onChange={(v) => { setObraSel(v); setModalCobro(false); setModalPrecios(false) }}
             />
           </div>
           <div className="flex gap-1 bg-gris rounded-xl p-1">
@@ -189,27 +247,91 @@ export function CuentaClienteTab() {
         </div>
       </div>
 
-      {/* KPIs */}
+      {/* KPIs — con obra elegida muestro el saldo (adeudado − pagado); sin
+          obra, los totales agregados de siempre (no hay cobros por-obra acá). */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <Kpi
-          label="Debe el cliente"
-          sub={`${EMPRESA.nombre} adelantó — pendiente de cobrar`}
-          value={fmt$(kpis.debeCadinc)}
-          accent="azul"
-        />
-        <Kpi
-          label="Pagó directo el cliente"
-          sub="Sin deuda — solo rendición"
-          value={fmt$(kpis.pagoCliente)}
-          accent="verde"
-        />
-        <Kpi
-          label="Total materiales"
-          sub={`${rows.length} ${rows.length !== 1 ? 'ítems' : 'ítem'}`}
-          value={fmt$(kpis.total)}
-          accent="naranja"
-        />
+        {obraSel ? (
+          <>
+            <Kpi
+              label="Adeudado"
+              sub={sinPrecioCount > 0
+                ? `⚠ ${sinPrecioCount} ítem${sinPrecioCount !== 1 ? 's' : ''} sin precio (falta tasar)`
+                : `${EMPRESA.nombre} adelantó en materiales`}
+              value={fmt$(kpis.debeCadinc)}
+              accent="azul"
+            />
+            <Kpi
+              label="Pagado"
+              sub={`${cobros.length} pago${cobros.length !== 1 ? 's' : ''} del cliente`}
+              value={fmt$(pagadoCliente)}
+              accent="verde"
+            />
+            <Kpi
+              label="Saldo"
+              sub={sinPrecioCount > 0
+                ? `⚠ Provisorio — faltan ${sinPrecioCount} sin precio`
+                : saldoCliente > 0 ? 'Pendiente de cobro' : saldoCliente < 0 ? 'A favor del cliente' : 'Saldado'}
+              value={fmt$(saldoCliente)}
+              accent="naranja"
+            />
+          </>
+        ) : (
+          <>
+            <Kpi
+              label="Debe el cliente"
+              sub={`${EMPRESA.nombre} adelantó — pendiente de cobrar`}
+              value={fmt$(kpis.debeCadinc)}
+              accent="azul"
+            />
+            <Kpi
+              label="Pagó directo el cliente"
+              sub="Sin deuda — solo rendición"
+              value={fmt$(kpis.pagoCliente)}
+              accent="verde"
+            />
+            <Kpi
+              label="Total materiales"
+              sub={`${rows.length} ${rows.length !== 1 ? 'ítems' : 'ítem'}`}
+              value={fmt$(kpis.total)}
+              accent="naranja"
+            />
+          </>
+        )}
       </div>
+
+      {/* Pagos del cliente (solo con obra elegida) */}
+      {obraSel && (
+        <div className="bg-white rounded-card shadow-card p-4">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <h3 className="text-xs font-bold text-gris-dark uppercase tracking-wider">Pagos del cliente</h3>
+            {puedeCrear && (
+              <Button variant="primary" size="sm" onClick={abrirNuevoCobro}>💲 Registrar pago</Button>
+            )}
+          </div>
+          {cobros.length === 0 ? (
+            <p className="text-xs text-gris-mid italic">Sin pagos registrados para esta obra.</p>
+          ) : (
+            <div className="divide-y divide-gris">
+              {cobros.map(c => (
+                <div key={c.id} className="flex items-center gap-3 py-2 text-sm">
+                  <span className="font-mono text-xs text-gris-dark w-[72px] shrink-0">{fmtF(c.fecha)}</span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-azul-light text-azul capitalize shrink-0">{c.medio}</span>
+                  <span className="flex-1 text-gris-dark truncate min-w-0">{c.obs}</span>
+                  <span className="font-mono font-bold text-verde shrink-0">{fmt$(Number(c.monto))}</span>
+                  {puedeEditar && (
+                    <button onClick={() => abrirEditarCobro(c)} title="Editar pago"
+                      className="text-xs px-2 py-1 rounded hover:bg-gris transition-colors text-gris-dark shrink-0">✏️</button>
+                  )}
+                  {puedeEliminar && (
+                    <button onClick={() => eliminarCobroHandler(c)} title="Eliminar pago"
+                      className="text-xs px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors shrink-0">✕</button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Tabla */}
       {isLoading ? (
@@ -330,6 +452,47 @@ export function CuentaClienteTab() {
               </table>
             </div>
           </div>
+        </div>
+      </Modal>
+
+      {/* Modal: registrar / editar pago del cliente */}
+      <Modal
+        open={modalCobro}
+        onClose={() => setModalCobro(false)}
+        title={editandoCobro ? '✏️ EDITAR PAGO' : '💲 REGISTRAR PAGO DEL CLIENTE'}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setModalCobro(false)}>Cancelar</Button>
+            <Button variant="primary" loading={guardandoCobro} onClick={guardarCobro}>✓ Guardar</Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3">
+          <div className="text-xs text-gris-dark">Obra: <span className="font-bold text-carbon">{obraNombre}</span></div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Input
+              label="Fecha" type="date" value={cobroForm.fecha}
+              onChange={e => setCobroForm(f => ({ ...f, fecha: e.target.value }))}
+            />
+            <Input
+              label="Monto ($)" type="number" min="0" step="1" placeholder="0" value={cobroForm.monto}
+              onChange={e => setCobroForm(f => ({ ...f, monto: e.target.value }))}
+            />
+          </div>
+          <Select
+            label="Medio de pago" value={cobroForm.medio}
+            onChange={e => setCobroForm(f => ({ ...f, medio: e.target.value as MedioCobro }))}
+            options={[
+              { value: 'efectivo', label: 'Efectivo' },
+              { value: 'transferencia', label: 'Transferencia' },
+              { value: 'cheque', label: 'Cheque' },
+              { value: 'otro', label: 'Otro' },
+            ]}
+          />
+          <Input
+            label="Nota (opcional)" placeholder="Referencia, comprobante..." value={cobroForm.obs}
+            onChange={e => setCobroForm(f => ({ ...f, obs: e.target.value }))}
+          />
         </div>
       </Modal>
     </div>
