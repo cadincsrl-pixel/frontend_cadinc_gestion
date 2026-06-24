@@ -673,6 +673,11 @@ export interface LugarOperativo {
   cantera_id:  number
   deposito_id: number
   obs:         string | null
+  // Geo del par cantera+depósito (sincronizada), aplanada por el backend.
+  localidad:   string | null
+  maps_url:    string | null
+  lat:         number | null
+  lng:         number | null
 }
 
 export interface Ruta {

@@ -71,28 +71,40 @@ export function LugaresTab() {
   const formEditCant   = useForm<any>()
   const formEditDep    = useForm<any>()
   const formEditRuta   = useForm<any>()
-  const formLugarOp    = useForm<{ nombre: string; obs: string }>()
+  const formLugarOp    = useForm<{ nombre: string; localidad: string; maps_url: string; lat: number | null; lng: number | null; obs: string }>()
 
   // ── Lugares operativos ──
   function openNewLugarOp() {
-    formLugarOp.reset({ nombre: '', obs: '' })
+    formLugarOp.reset({ nombre: '', localidad: '', maps_url: '', lat: null, lng: null, obs: '' })
     setEditLugarOp(null)
     setModalLugarOp(true)
   }
   function openEditLugarOp(l: LugarOperativo) {
-    formLugarOp.reset({ nombre: l.nombre, obs: l.obs ?? '' })
+    formLugarOp.reset({
+      nombre: l.nombre, localidad: l.localidad ?? '', maps_url: l.maps_url ?? '',
+      lat: l.lat ?? null, lng: l.lng ?? null, obs: l.obs ?? '',
+    })
     setEditLugarOp(l)
     setModalLugarOp(true)
   }
-  function handleSaveLugarOp(data: { nombre: string; obs: string }) {
+  function handleSaveLugarOp(data: { nombre: string; localidad: string; maps_url: string; lat: number | null; lng: number | null; obs: string }) {
     const nombre = (data.nombre ?? '').trim()
     if (!nombre) { toast('Poné un nombre', 'err'); return }
+    const payload = {
+      nombre,
+      localidad: data.localidad || '',
+      maps_url:  data.maps_url || '',
+      // valueAsNumber deja NaN cuando el input está vacío → null.
+      lat: Number.isFinite(data.lat as number) ? (data.lat as number) : null,
+      lng: Number.isFinite(data.lng as number) ? (data.lng as number) : null,
+      obs: data.obs || null,
+    }
     const cbs = {
       onSuccess: () => { toast(editLugarOp ? '✓ Lugar actualizado' : '✓ Lugar operativo creado', 'ok'); setModalLugarOp(false) },
       onError:   () => toast('Error al guardar', 'err'),
     }
-    if (editLugarOp) actualizarLugarOp({ id: editLugarOp.id, nombre, obs: data.obs || null }, cbs)
-    else             crearLugarOp({ nombre, obs: data.obs || null }, cbs)
+    if (editLugarOp) actualizarLugarOp({ id: editLugarOp.id, ...payload }, cbs)
+    else             crearLugarOp(payload, cbs)
   }
   function handleDeleteLugarOp(l: LugarOperativo) {
     if (!confirm(`¿Eliminar el lugar operativo "${l.nombre}"? Se borran su cantera y su depósito (solo si no tienen tramos asociados).`)) return
@@ -327,6 +339,12 @@ export function LugaresTab() {
               <div className="flex items-center gap-2 flex-wrap min-w-0 flex-1">
                 <span className="font-bold text-sm text-carbon">{l.nombre}</span>
                 <span className="text-[10px] font-bold uppercase tracking-wide text-naranja-dark bg-naranja-light border border-naranja/30 rounded px-1.5 py-0.5">⚙ Operativo</span>
+                {l.localidad && <span className="text-xs text-gris-dark">({l.localidad})</span>}
+                {l.maps_url && (
+                  <a href={l.maps_url} target="_blank" rel="noopener noreferrer"
+                    className="text-xs font-bold text-azul hover:text-naranja transition-colors flex items-center gap-0.5"
+                    title="Ver en Google Maps">📍 Maps</a>
+                )}
                 {l.obs && <span className="text-xs text-gris-dark truncate">{l.obs}</span>}
               </div>
               <div className="flex items-center gap-1 shrink-0">
@@ -594,6 +612,8 @@ export function LugaresTab() {
             Punto físico no facturable (mantenimiento, relevos, estacionamiento). Al guardar se crea —y se mantiene— como una <b>cantera</b> y un <b>depósito</b> con este nombre, marcados como operativos. Lo usás en tramos vacíos; nunca aparece como origen/destino de un cargado.
           </div>
           <Input label="Nombre" placeholder="Estacionamiento San Luis" {...formLugarOp.register('nombre')} />
+          <Input label="Localidad" placeholder="Opcional" {...formLugarOp.register('localidad')} />
+          <MapsUrlInput register={formLugarOp.register} watch={formLugarOp.watch} setValue={formLugarOp.setValue} />
           <Input label="Observaciones" placeholder="Opcional" {...formLugarOp.register('obs')} />
         </div>
       </Modal>

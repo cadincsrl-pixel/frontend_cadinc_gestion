@@ -189,10 +189,19 @@ function invalidarLugares(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: LOG_KEYS.depositos })
 }
 
+interface LugarOperativoInput {
+  nombre:     string
+  localidad?: string
+  maps_url?:  string
+  lat?:       number | null
+  lng?:       number | null
+  obs?:       string | null
+}
+
 export function useCrearLugarOperativo() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (dto: { nombre: string; obs?: string | null }) =>
+    mutationFn: (dto: LugarOperativoInput) =>
       apiPost<LugarOperativo>('/api/logistica/lugares/operativos', dto),
     onSuccess: () => invalidarLugares(qc),
   })
@@ -201,7 +210,7 @@ export function useCrearLugarOperativo() {
 export function useActualizarLugarOperativo() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, ...dto }: { id: number; nombre?: string; obs?: string | null }) =>
+    mutationFn: ({ id, ...dto }: { id: number } & Partial<LugarOperativoInput>) =>
       apiPatch<LugarOperativo>(`/api/logistica/lugares/operativos/${id}`, dto),
     onSuccess: () => invalidarLugares(qc),
   })
