@@ -49,8 +49,22 @@ export function useGuardarPreciosMCC() {
       )
       return { total: items.length, fallidos: res.filter(r => r.status === 'rejected').length }
     },
-    // Refetch de todas las variantes de la lista (la key es ['cuenta-cliente', obra]).
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['cuenta-cliente'] }),
+    // Refetch de la lista (key ['cuenta-cliente', obra]) y del conteo de pendientes.
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cuenta-cliente'] })
+      qc.invalidateQueries({ queryKey: ['cuenta-cliente-pendientes'] })
+    },
+  })
+}
+
+/** Conteo de materiales sin precio (a tasar) por obra, en las obras del usuario. */
+export interface PendientePrecio { obra_cod: string; sin_precio: number }
+
+export function usePendientesDePrecio() {
+  return useQuery({
+    queryKey: ['cuenta-cliente-pendientes'],
+    queryFn: () => apiGet<PendientePrecio[]>('/api/cuenta-cliente/pendientes-precio'),
+    staleTime: 60_000,
   })
 }
 

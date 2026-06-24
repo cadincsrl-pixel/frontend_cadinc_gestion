@@ -11,7 +11,7 @@ import { usePermisos } from '@/hooks/usePermisos'
 import { toISO } from '@/lib/utils/dates'
 import { useObras } from '@/modules/tarja/hooks/useObras'
 import {
-  useCuentaCliente, useGuardarPreciosMCC,
+  useCuentaCliente, useGuardarPreciosMCC, usePendientesDePrecio,
   useCobrosCliente, useCrearCobroCliente, useEditarCobroCliente, useEliminarCobroCliente,
   type CuentaClienteRow,
 } from '../hooks/useCuentaCliente'
@@ -33,7 +33,10 @@ export function CuentaClienteTab() {
   const { data: obras = [] } = useObras('certificaciones')
   const [obraSel, setObraSel] = useState<string>('')
   const [pagadorSel, setPagadorSel] = useState<FiltroPagador>('todos')
+  const [soloSinPrecio, setSoloSinPrecio] = useState(false)
   const [exporting, setExporting] = useState(false)
+  // Pendientes de tasar (materiales sin precio) en todas las obras del usuario.
+  const { data: pendientes = [] } = usePendientesDePrecio()
   const { resolverItems, puedeCrear, puedeEditar, puedeEliminar } = usePermisos('certificaciones')
   const { mutate: guardarPrecios, isPending: guardandoPrecios } = useGuardarPreciosMCC()
   const [modalPrecios, setModalPrecios] = useState(false)
@@ -60,11 +63,15 @@ export function CuentaClienteTab() {
   ]
   const obrasMap = useMemo(() => new Map((obras as Obra[]).map(o => [o.cod, o])), [obras])
 
-  // Filtrado por pagador (client-side).
+  // Filtrado client-side: por pagador y/o "solo sin precio" (a tasar).
   const filtered = useMemo(() => {
-    if (pagadorSel === 'todos') return rows
-    return rows.filter(r => r.pagado_por === pagadorSel)
-  }, [rows, pagadorSel])
+    let r = rows
+    if (pagadorSel !== 'todos') r = r.filter(x => x.pagado_por === pagadorSel)
+    if (soloSinPrecio)          r = r.filter(x => Number(x.precio_unit) === 0)
+    return r
+  }, [rows, pagadorSel, soloSinPrecio])
+
+  const pendientesTotal = pendientes.reduce((s, p) => s + p.sin_precio, 0)
 
   // Export Excel: respeta el filtro de pagador activo. Si exportás "Pagó
   // directo", el XLSX solo trae esas filas. Si exportás "Todos", trae todo.
@@ -192,6 +199,35 @@ export function CuentaClienteTab() {
   return (
     <div className="flex flex-col gap-4">
 
+      {/* Pendientes de tasar (global) — nudge para los que ponen precios.
+          Click en una obra la selecciona y activa el filtro "sin precio". */}
+      {pendientesTotal > 0 && (
+        <div className="bg-naranja-light border border-naranja/40 rounded-card p-3 flex items-start gap-3 flex-wrap">
+          <div className="flex-1 min-w-[200px]">
+            <div className="text-sm font-bold text-naranja-dark">
+              ⚠ {pendientesTotal} material{pendientesTotal !== 1 ? 'es' : ''} sin precio
+            </div>
+            <div className="text-[11px] text-gris-dark">
+              En {pendientes.length} obra{pendientes.length !== 1 ? 's' : ''} — falta tasar para poder facturar al cliente.
+            </div>
+          </div>
+          <div className="flex gap-1.5 flex-wrap">
+            {pendientes.slice(0, 6).map(p => (
+              <button
+                key={p.obra_cod}
+                onClick={() => { setObraSel(p.obra_cod); setSoloSinPrecio(true); setModalCobro(false); setModalPrecios(false) }}
+                className="text-[11px] font-bold px-2 py-1 rounded-lg bg-white border border-naranja/40 text-naranja-dark hover:bg-naranja-light/60 transition-colors"
+              >
+                {obrasMap.get(p.obra_cod)?.nom ?? p.obra_cod} <span className="font-mono">({p.sin_precio})</span>
+              </button>
+            ))}
+            {pendientes.length > 6 && (
+              <span className="text-[11px] text-gris-dark self-center">+{pendientes.length - 6} más</span>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Header: filtro obra + segmented pagador + export */}
       <div className="flex items-center gap-3 flex-wrap justify-between">
         <div className="flex items-center gap-3 flex-wrap flex-1 min-w-0">
@@ -227,6 +263,16 @@ export function CuentaClienteTab() {
               )
             })}
           </div>
+          <button
+            type="button"
+            onClick={() => setSoloSinPrecio(v => !v)}
+            title="Mostrar solo materiales sin precio (a tasar)"
+            className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${
+              soloSinPrecio ? 'bg-naranja text-white shadow-sm' : 'bg-gris text-gris-dark hover:text-carbon hover:bg-white'
+            }`}
+          >
+            ⚠ Sin precio
+          </button>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <Button
@@ -364,9 +410,11 @@ export function CuentaClienteTab() {
               <tbody>
                 {filtered.length === 0 ? (
                   <tr><td colSpan={10} className="text-center py-8 text-gris-dark text-sm italic">
-                    {pagadorSel === 'todos'
-                      ? 'No hay materiales a cuenta del cliente en esta selección.'
-                      : `Sin ítems con pagador "${pagadorSel === 'cadinc' ? EMPRESA.nombre : 'Cliente'}".`}
+                    {soloSinPrecio
+                      ? '✓ No hay materiales sin precio en esta selección — todo tasado.'
+                      : pagadorSel === 'todos'
+                        ? 'No hay materiales a cuenta del cliente en esta selección.'
+                        : `Sin ítems con pagador "${pagadorSel === 'cadinc' ? EMPRESA.nombre : 'Cliente'}".`}
                   </td></tr>
                 ) : filtered.map(r => <Row key={r.id} r={r} obrasMap={obrasMap} />)}
               </tbody>

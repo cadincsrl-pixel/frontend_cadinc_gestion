@@ -407,12 +407,18 @@ export function SolicitudesTab() {
   }
   function handleComprar(data: any) {
     if (!modalComprar?.id) return
+    const proveedorId = Number(data.proveedor_id)
+    const precio = Number(data.precio_unit)
+    if (!proveedorId) { toast('Elegí un proveedor', 'err'); return }
+    // Compra siempre con precio (la factura lo tiene). El despacho de depósito
+    // sí puede quedar a tasar; esto es solo para compras.
+    if (!Number.isFinite(precio) || precio <= 0) { toast('Cargá un precio unitario mayor a 0', 'err'); return }
     const cantComprada = Number(data.cantidad_comprada)
     comprarItem({
       itemId: modalComprar.id,
       dto: {
-        proveedor_id:        Number(data.proveedor_id),
-        precio_unit:         Number(data.precio_unit),
+        proveedor_id:        proveedorId,
+        precio_unit:         precio,
         factura_id:          data.factura_id ? Number(data.factura_id) : null,
         queda_en_proveedor:  !!data.queda_en_proveedor,
         pagado_por:          data.pagado_por === 'cliente' ? 'cliente' : 'cadinc',
