@@ -3,9 +3,11 @@
 import { useMemo, useState } from 'react'
 import { Combobox } from '@/components/ui/Combobox'
 import { Button } from '@/components/ui/Button'
+import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
+import { usePermisos } from '@/hooks/usePermisos'
 import { useObras } from '@/modules/tarja/hooks/useObras'
-import { useCuentaCliente, type CuentaClienteRow } from '../hooks/useCuentaCliente'
+import { useCuentaCliente, useGuardarPreciosMCC, type CuentaClienteRow } from '../hooks/useCuentaCliente'
 import { exportarCuentaCliente } from '../utils/cuentaClienteExport'
 import { EMPRESA } from '@/lib/config/empresa'
 import type { Obra } from '@/types/domain.types'
@@ -25,6 +27,10 @@ export function CuentaClienteTab() {
   const [obraSel, setObraSel] = useState<string>('')
   const [pagadorSel, setPagadorSel] = useState<FiltroPagador>('todos')
   const [exporting, setExporting] = useState(false)
+  const { resolverItems } = usePermisos('certificaciones')
+  const { mutate: guardarPrecios, isPending: guardandoPrecios } = useGuardarPreciosMCC()
+  const [modalPrecios, setModalPrecios] = useState(false)
+  const [precios, setPrecios] = useState<Record<number, string>>({})
 
   // Si el user no eligió obra, llama al endpoint sin obra_cod → backend
   // devuelve todas las obras permitidas (o 400 si es scope global).
@@ -65,6 +71,46 @@ export function CuentaClienteTab() {
     }
   }
 
+  // ── Carga masiva de precios (modal) ──────────────────────────────
+  // Precio unitario efectivo tipeado para una fila (vacío → 0; inválido → 0).
+  function precioVal(r: CuentaClienteRow): number {
+    const raw = precios[r.item_id] ?? ''
+    const v = raw === '' ? 0 : Number(raw)
+    return Number.isFinite(v) && v >= 0 ? v : 0
+  }
+
+  function abrirModalPrecios() {
+    const init: Record<number, string> = {}
+    // Pre-cargo con el precio actual; los que están en 0 quedan vacíos para
+    // tipear cómodo. Solo los materiales de la obra elegida (rows).
+    for (const r of rows) init[r.item_id] = Number(r.precio_unit) > 0 ? String(r.precio_unit) : ''
+    setPrecios(init)
+    setModalPrecios(true)
+  }
+
+  function guardarPreciosModal() {
+    const cambios = rows
+      .filter(r => precioVal(r) !== Number(r.precio_unit))
+      .map(r => ({ itemId: r.item_id, precio_unit: precioVal(r) }))
+    if (cambios.length === 0) { toast('No cambiaste ningún precio', 'err'); return }
+    // Guardita: bajar a $0 un material que tenía precio le saca plata facturable.
+    const aCero = rows.filter(r => Number(r.precio_unit) > 0 && precioVal(r) === 0).length
+    if (aCero > 0 && !confirm(`Vas a dejar en $0 ${aCero} material(es) que tenían precio cargado.\n¿Continuar?`)) return
+    guardarPrecios(cambios, {
+      onSuccess: ({ total, fallidos }) => {
+        if (fallidos > 0) {
+          // No cerramos: el refetch ya repintó los que sí pasaron y el user
+          // conserva lo tipeado para reintentar solo los que fallaron.
+          toast(`Guardados ${total - fallidos}/${total} — ${fallidos} fallaron`, 'err')
+          return
+        }
+        toast(`✓ ${total} precio${total !== 1 ? 's' : ''} guardado${total !== 1 ? 's' : ''}`, 'ok')
+        setModalPrecios(false)
+      },
+      onError: () => toast('Error al guardar precios', 'err'),
+    })
+  }
+
   // KPIs calculados desde la lista sin filtrar (los chips muestran totales
   // por categoría independientes del filtro activo, para que el user vea
   // cuánta plata representa cada bucket).
@@ -78,6 +124,12 @@ export function CuentaClienteTab() {
     }
     return { debeCadinc, pagoCliente, total: debeCadinc + pagoCliente }
   }, [rows])
+
+  // Derivados del modal de precios (baratos; `rows` es chico).
+  const cambiosCount   = rows.filter(r => precioVal(r) !== Number(r.precio_unit)).length
+  const totalModal     = rows.reduce((s, r) => s + Number(r.cantidad) * precioVal(r), 0)
+  const sinPrecioCount = rows.filter(r => Number(r.precio_unit) === 0).length
+  const obraNombre     = obrasMap.get(obraSel)?.nom ?? obraSel
 
   return (
     <div className="flex flex-col gap-4">
@@ -118,9 +170,23 @@ export function CuentaClienteTab() {
             })}
           </div>
         </div>
-        <Button variant="secondary" size="sm" onClick={handleExport} loading={exporting} disabled={filtered.length === 0}>
-          📊 Exportar Excel
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="primary" size="sm"
+            onClick={abrirModalPrecios}
+            disabled={!resolverItems || !obraSel || rows.length === 0}
+            title={
+              !resolverItems ? 'No tenés permiso para cargar precios'
+              : !obraSel      ? 'Elegí una obra para cargar precios'
+              : undefined
+            }
+          >
+            💲 Cargar precios
+          </Button>
+          <Button variant="secondary" size="sm" onClick={handleExport} loading={exporting} disabled={filtered.length === 0}>
+            📊 Exportar Excel
+          </Button>
+        </div>
       </div>
 
       {/* KPIs */}
@@ -197,6 +263,75 @@ export function CuentaClienteTab() {
           </div>
         </div>
       )}
+
+      {/* Modal: carga masiva de precios de la obra seleccionada. Reusa el
+          PATCH del ítem, que recalcula la fila de MCC (total = cant × precio). */}
+      <Modal
+        open={modalPrecios}
+        onClose={() => setModalPrecios(false)}
+        title={`💲 Cargar precios — ${obraNombre}`}
+        width="max-w-3xl"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setModalPrecios(false)}>Cancelar</Button>
+            <Button variant="primary" loading={guardandoPrecios} disabled={cambiosCount === 0} onClick={guardarPreciosModal}>
+              ✓ Guardar precios ({cambiosCount})
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3">
+          <div className="text-xs text-gris-dark">
+            {rows.length} material{rows.length !== 1 ? 'es' : ''} ·{' '}
+            <span className="font-bold text-naranja-dark">{sinPrecioCount} sin precio</span>. Cargá el precio unitario; el total se calcula solo y es lo que se factura al cliente.
+          </div>
+          <div className="border border-gris rounded-lg overflow-hidden">
+            <div className="max-h-[55vh] overflow-y-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gris sticky top-0">
+                  <tr>
+                    <th className="text-left px-3 py-2 text-[11px] font-bold text-gris-dark uppercase tracking-wider">Material</th>
+                    <th className="text-right px-3 py-2 text-[11px] font-bold text-gris-dark uppercase tracking-wider">Cant.</th>
+                    <th className="text-right px-3 py-2 text-[11px] font-bold text-gris-dark uppercase tracking-wider">Precio unit.</th>
+                    <th className="text-right px-3 py-2 text-[11px] font-bold text-gris-dark uppercase tracking-wider">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map(r => {
+                    const val = precioVal(r)
+                    const total = Number(r.cantidad) * val
+                    const sinPrecio = Number(r.precio_unit) === 0
+                    return (
+                      <tr key={r.id} className={`border-t border-gris ${sinPrecio ? 'bg-naranja-light/20' : ''}`}>
+                        <td className="px-3 py-2">{r.descripcion}</td>
+                        <td className="px-3 py-2 text-right font-mono text-xs whitespace-nowrap">
+                          {Number(r.cantidad).toLocaleString('es-AR')} <span className="text-gris-dark">{r.unidad}</span>
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <input
+                            type="number" min="0" step="1" inputMode="decimal"
+                            value={precios[r.item_id] ?? ''}
+                            onChange={e => setPrecios(p => ({ ...p, [r.item_id]: e.target.value }))}
+                            placeholder="0"
+                            className="w-28 px-2 py-1 border-[1.5px] border-gris-mid rounded-lg text-right font-mono text-sm outline-none focus:border-naranja"
+                          />
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono text-sm font-bold">{total > 0 ? fmt$(total) : '—'}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+                <tfoot className="bg-gris/50 sticky bottom-0">
+                  <tr>
+                    <td colSpan={3} className="px-3 py-2 text-right text-xs font-bold text-gris-dark uppercase tracking-wider">Total obra</td>
+                    <td className="px-3 py-2 text-right font-mono font-bold text-sm text-azul">{fmt$(totalModal)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }
