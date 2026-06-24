@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiDelete, apiPatch } from '@/lib/api/client'
 import type {
-  Chofer, Camion, Batea, Cantera, Deposito, Ruta,
+  Chofer, Camion, Batea, Cantera, Deposito, Ruta, LugarOperativo,
   Tramo, Viaje, Liquidacion, Adelanto, TarifaCantera,
   EmpresaTransportista, TarifaEmpresaCantera, Cobro,
 } from '@/types/domain.types'
@@ -14,6 +14,7 @@ export const LOG_KEYS = {
   canteras:        ['logistica', 'canteras']        as const,
   depositos:       ['logistica', 'depositos']       as const,
   rutas:           ['logistica', 'rutas']           as const,
+  lugaresOperativos: ['logistica', 'lugares_operativos'] as const,
   tramos:          ['logistica', 'tramos']          as const,
   viajes:          ['logistica', 'viajes']          as const,
   liquidaciones:   ['logistica', 'liquidaciones']   as const,
@@ -169,6 +170,49 @@ export function useCreateRuta() {
     mutationFn: (dto: { cantera_id: number; deposito_id: number; km_ida_vuelta: number; obs?: string }) =>
       apiPost<Ruta>('/api/logistica/lugares/rutas', dto),
     onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.rutas }),
+  })
+}
+
+// ── Lugares operativos (par cantera+depósito gestionado como un concepto) ──
+export function useLugaresOperativos() {
+  return useQuery({
+    queryKey: LOG_KEYS.lugaresOperativos,
+    queryFn:  () => apiGet<LugarOperativo[]>('/api/logistica/lugares/operativos'),
+  })
+}
+
+// Crear/editar/borrar tocan también canteras y depósitos (el par), así que
+// invalidamos las tres listas.
+function invalidarLugares(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: LOG_KEYS.lugaresOperativos })
+  qc.invalidateQueries({ queryKey: LOG_KEYS.canteras })
+  qc.invalidateQueries({ queryKey: LOG_KEYS.depositos })
+}
+
+export function useCrearLugarOperativo() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: { nombre: string; obs?: string | null }) =>
+      apiPost<LugarOperativo>('/api/logistica/lugares/operativos', dto),
+    onSuccess: () => invalidarLugares(qc),
+  })
+}
+
+export function useActualizarLugarOperativo() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...dto }: { id: number; nombre?: string; obs?: string | null }) =>
+      apiPatch<LugarOperativo>(`/api/logistica/lugares/operativos/${id}`, dto),
+    onSuccess: () => invalidarLugares(qc),
+  })
+}
+
+export function useEliminarLugarOperativo() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) =>
+      apiDelete<{ success: boolean }>(`/api/logistica/lugares/operativos/${id}`),
+    onSuccess: () => invalidarLugares(qc),
   })
 }
 

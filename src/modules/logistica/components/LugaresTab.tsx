@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import {
   useCanteras, useDepositos, useRutas,
+  useLugaresOperativos, useCrearLugarOperativo, useActualizarLugarOperativo, useEliminarLugarOperativo,
 } from '../hooks/useLogistica'
 import { apiPost, apiPatch, apiDelete } from '@/lib/api/client'
 import { useQueryClient } from '@tanstack/react-query'
@@ -16,7 +17,7 @@ import { useForm } from 'react-hook-form'
 import { intInputProps } from '@/lib/utils/inputs'
 import { useGeocode } from '../hooks/useEnRuta'
 import { Combobox } from '@/components/ui/Combobox'
-import type { Cantera, Deposito, Ruta } from '@/types/domain.types'
+import type { Cantera, Deposito, Ruta, LugarOperativo } from '@/types/domain.types'
 
 export function LugaresTab() {
   const toast = useToast()
@@ -24,14 +25,25 @@ export function LugaresTab() {
   const { data: canteras  = [] } = useCanteras()
   const { data: depositos = [] } = useDepositos()
   const { data: rutas     = [] } = useRutas()
+  const { data: lugaresOp = [] } = useLugaresOperativos()
+  const { mutate: crearLugarOp,      isPending: creandoLugarOp }  = useCrearLugarOperativo()
+  const { mutate: actualizarLugarOp, isPending: editandoLugarOp } = useActualizarLugarOperativo()
+  const { mutate: eliminarLugarOp } = useEliminarLugarOperativo()
 
   const [modalCantera,  setModalCantera]  = useState(false)
   const [modalDeposito, setModalDeposito] = useState(false)
   const [modalRuta,     setModalRuta]     = useState(false)
+  const [modalLugarOp,  setModalLugarOp]  = useState(false)
   const [editCantera,   setEditCantera]   = useState<Cantera | null>(null)
   const [editDeposito,  setEditDeposito]  = useState<Deposito | null>(null)
   const [editRuta,      setEditRuta]      = useState<{ id: number; cantera: string; deposito: string } | null>(null)
+  const [editLugarOp,   setEditLugarOp]   = useState<LugarOperativo | null>(null)
   const [loading, setLoading] = useState(false)
+
+  // Canteras/depósitos que son parte de un lugar operativo → se gestionan en su
+  // propia sección, no en las listas de canteras/depósitos.
+  const pairedCanteraIds  = useMemo(() => new Set((lugaresOp as LugarOperativo[]).map(l => l.cantera_id)), [lugaresOp])
+  const pairedDepositoIds = useMemo(() => new Set((lugaresOp as LugarOperativo[]).map(l => l.deposito_id)), [lugaresOp])
 
   // Selector doble + matriz de cobertura de rutas (reemplaza la lista plana).
   const [selCant,  setSelCant]  = useState('')  // cantera_id (string) elegida en el selector
@@ -59,6 +71,39 @@ export function LugaresTab() {
   const formEditCant   = useForm<any>()
   const formEditDep    = useForm<any>()
   const formEditRuta   = useForm<any>()
+  const formLugarOp    = useForm<{ nombre: string; obs: string }>()
+
+  // ── Lugares operativos ──
+  function openNewLugarOp() {
+    formLugarOp.reset({ nombre: '', obs: '' })
+    setEditLugarOp(null)
+    setModalLugarOp(true)
+  }
+  function openEditLugarOp(l: LugarOperativo) {
+    formLugarOp.reset({ nombre: l.nombre, obs: l.obs ?? '' })
+    setEditLugarOp(l)
+    setModalLugarOp(true)
+  }
+  function handleSaveLugarOp(data: { nombre: string; obs: string }) {
+    const nombre = (data.nombre ?? '').trim()
+    if (!nombre) { toast('Poné un nombre', 'err'); return }
+    const cbs = {
+      onSuccess: () => { toast(editLugarOp ? '✓ Lugar actualizado' : '✓ Lugar operativo creado', 'ok'); setModalLugarOp(false) },
+      onError:   () => toast('Error al guardar', 'err'),
+    }
+    if (editLugarOp) actualizarLugarOp({ id: editLugarOp.id, nombre, obs: data.obs || null }, cbs)
+    else             crearLugarOp({ nombre, obs: data.obs || null }, cbs)
+  }
+  function handleDeleteLugarOp(l: LugarOperativo) {
+    if (!confirm(`¿Eliminar el lugar operativo "${l.nombre}"? Se borran su cantera y su depósito (solo si no tienen tramos asociados).`)) return
+    eliminarLugarOp(l.id, {
+      onSuccess: () => toast('✓ Lugar eliminado', 'ok'),
+      onError:   (e: any) => {
+        const code = e?.body?.error || e?.code
+        toast(code === 'EN_USO' ? 'No se puede eliminar: hay tramos que usan este lugar' : (e?.message || 'Error al eliminar'), 'err')
+      },
+    })
+  }
 
   async function handleCreateCantera(data: any) {
     setLoading(true)
@@ -217,7 +262,7 @@ export function LugaresTab() {
       {/* Canteras */}
       <Section title="⛏ Canteras" onAdd={() => setModalCantera(true)} addLabel="＋ Cantera">
         <SimpleList
-          items={canteras as Cantera[]}
+          items={(canteras as Cantera[]).filter(c => !pairedCanteraIds.has(c.id))}
           emptyMsg="No hay canteras registradas."
           renderItem={c => (
             <div key={c.id} className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-gris last:border-0">
@@ -243,7 +288,7 @@ export function LugaresTab() {
       {/* Depósitos */}
       <Section title="🏭 Depósitos" onAdd={() => setModalDeposito(true)} addLabel="＋ Depósito">
         <SimpleList
-          items={depositos as Deposito[]}
+          items={(depositos as Deposito[]).filter(d => !pairedDepositoIds.has(d.id))}
           emptyMsg="No hay depósitos registrados."
           renderItem={d => (
             <div key={d.id} className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-gris last:border-0">
@@ -261,6 +306,33 @@ export function LugaresTab() {
                 )}
               </div>
               <button onClick={() => openEditDeposito(d)} className="text-xs px-2 py-1 rounded hover:bg-gris transition-colors text-gris-dark shrink-0">✏️</button>
+            </div>
+          )}
+        />
+      </Section>
+
+      {/* Lugares operativos — punto físico (mantenimiento/relevos/estacionamiento)
+          que se gestiona como un concepto y por detrás es el par cantera+depósito
+          (ambos operativo). No facturable: no puede ser origen/destino de cargados,
+          sí de vacíos. */}
+      <Section title="🅿️ Lugares operativos" onAdd={openNewLugarOp} addLabel="＋ Lugar operativo">
+        <div className="px-4 py-2 text-[11px] text-gris-dark border-b border-gris bg-naranja-light/30">
+          Puntos físicos no facturables (mantenimiento, relevos, estacionamiento). Se usan en tramos vacíos; nunca como origen/destino de un cargado.
+        </div>
+        <SimpleList
+          items={lugaresOp as LugarOperativo[]}
+          emptyMsg="No hay lugares operativos."
+          renderItem={l => (
+            <div key={l.id} className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-gris last:border-0">
+              <div className="flex items-center gap-2 flex-wrap min-w-0 flex-1">
+                <span className="font-bold text-sm text-carbon">{l.nombre}</span>
+                <span className="text-[10px] font-bold uppercase tracking-wide text-naranja-dark bg-naranja-light border border-naranja/30 rounded px-1.5 py-0.5">⚙ Operativo</span>
+                {l.obs && <span className="text-xs text-gris-dark truncate">{l.obs}</span>}
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <button onClick={() => openEditLugarOp(l)} title="Editar" className="text-xs px-2 py-1 rounded hover:bg-gris transition-colors text-gris-dark">✏️</button>
+                <button onClick={() => handleDeleteLugarOp(l)} title="Eliminar" className="text-xs px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors">✕</button>
+              </div>
             </div>
           )}
         />
@@ -509,6 +581,20 @@ export function LugaresTab() {
               <span className="block text-[11px] text-gris-dark">Mantenimiento, relevos/intercambios o parking. No se ofrece como destino al crear tramos cargados ni se factura.</span>
             </span>
           </label>
+        </div>
+      </Modal>
+
+      {/* Modal nuevo/editar lugar operativo */}
+      <Modal open={modalLugarOp} onClose={() => setModalLugarOp(false)}
+        title={editLugarOp ? '✏️ EDITAR LUGAR OPERATIVO' : '🅿️ NUEVO LUGAR OPERATIVO'}
+        footer={<><Button variant="secondary" onClick={() => setModalLugarOp(false)}>Cancelar</Button><Button variant="primary" loading={creandoLugarOp || editandoLugarOp} onClick={formLugarOp.handleSubmit(handleSaveLugarOp)}>✓ Guardar</Button></>}
+      >
+        <div className="flex flex-col gap-4">
+          <div className="bg-naranja-light/40 border border-naranja/30 rounded-lg p-3 text-[11px] text-gris-dark">
+            Punto físico no facturable (mantenimiento, relevos, estacionamiento). Al guardar se crea —y se mantiene— como una <b>cantera</b> y un <b>depósito</b> con este nombre, marcados como operativos. Lo usás en tramos vacíos; nunca aparece como origen/destino de un cargado.
+          </div>
+          <Input label="Nombre" placeholder="Estacionamiento San Luis" {...formLugarOp.register('nombre')} />
+          <Input label="Observaciones" placeholder="Opcional" {...formLugarOp.register('obs')} />
         </div>
       </Modal>
 

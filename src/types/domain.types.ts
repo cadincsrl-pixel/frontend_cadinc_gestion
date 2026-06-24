@@ -662,6 +662,19 @@ export interface Deposito {
   operativo: boolean
 }
 
+/**
+ * Lugar operativo (mantenimiento/relevos/estacionamiento, p.ej. CHIVILCOY).
+ * Gestionado como un concepto único; por detrás es el par cantera+depósito
+ * (ambos `operativo`) al que apunta.
+ */
+export interface LugarOperativo {
+  id:          number
+  nombre:      string
+  cantera_id:  number
+  deposito_id: number
+  obs:         string | null
+}
+
 export interface Ruta {
   id: number
   cantera_id: number
