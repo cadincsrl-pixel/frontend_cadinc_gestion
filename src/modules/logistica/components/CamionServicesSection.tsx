@@ -322,7 +322,7 @@ interface ModalProps {
 interface ServiceFormValues {
   fecha:      string
   km_service: number | string
-  km_proximo: number | string
+  intervalo:  number | string  // cada cuántos km el próximo service (no el km absoluto)
   obs:        string
 }
 
@@ -336,23 +336,25 @@ function RegistrarServiceModal({ camionId, kmActuales, onClose }: ModalProps) {
     defaultValues: {
       fecha:      toISO(new Date()),
       km_service: kmActuales,
-      km_proximo: '',
+      intervalo:  10000,
       obs:        '',
     },
   })
 
   async function onSubmit(values: ServiceFormValues) {
     const km_service = Number(values.km_service)
-    const km_proximo = Number(values.km_proximo)
+    const intervalo  = Number(values.intervalo)
 
     if (!Number.isFinite(km_service) || km_service < 0) {
       toast('Km del service inválido', 'err')
       return
     }
-    if (!Number.isFinite(km_proximo) || km_proximo <= km_service) {
-      toast('El próximo service debe ser mayor que el actual', 'err')
+    if (!Number.isFinite(intervalo) || intervalo <= 0) {
+      toast('El intervalo del próximo service debe ser mayor a 0', 'err')
       return
     }
+    // El backend sigue guardando el km absoluto del próximo service.
+    const km_proximo = km_service + intervalo
 
     let comprobante_path: string | null = null
     try {
@@ -431,13 +433,37 @@ function RegistrarServiceModal({ camionId, kmActuales, onClose }: ModalProps) {
             {...form.register('km_service')}
           />
         </div>
-        <Input
-          label="🎯 Próximo service a los km"
-          type="number"
-          placeholder={`${kmActuales + 10000}`}
-          hint="Debe ser mayor que los km del service"
-          {...form.register('km_proximo')}
-        />
+        <div className="flex flex-col gap-1.5">
+          <Input
+            label="🎯 Próximo service en (km)"
+            type="number"
+            placeholder="10000"
+            hint="Cada cuántos km hacer el próximo (10.000, 15.000, 30.000… o el número que quieras)"
+            {...form.register('intervalo')}
+          />
+          <div className="flex gap-1.5 flex-wrap">
+            {[10000, 15000, 30000].map(k => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => form.setValue('intervalo', k, { shouldDirty: true })}
+                className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-gris text-gris-dark hover:bg-azul-light hover:text-azul transition-colors"
+              >
+                {k.toLocaleString('es-AR')} km
+              </button>
+            ))}
+          </div>
+          {(() => {
+            const kmS  = Number(form.watch('km_service'))
+            const intv = Number(form.watch('intervalo'))
+            if (!Number.isFinite(kmS) || !Number.isFinite(intv) || intv <= 0) return null
+            return (
+              <p className="text-[11px] text-gris-dark">
+                Próximo service a los <b className="font-mono text-carbon">{(kmS + intv).toLocaleString('es-AR')} km</b>
+              </p>
+            )
+          })()}
+        </div>
         <Input
           label="📝 Observaciones"
           placeholder="Cambio de aceite, filtros…"
