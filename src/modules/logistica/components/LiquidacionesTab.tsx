@@ -1280,6 +1280,10 @@ export function LiquidacionesTab() {
                     const deposito = (depositos as any[]).find(d => d.id === t.deposito_id)
                     const fecha    = t.fecha_carga ?? t.fecha_vacio ?? ''
                     const km       = kmTramo(t, rutas as Ruta[])
+                    // Origen → destino según tipo: cargado = cantera→depósito; vacío = depósito→cantera.
+                    const esVacio  = t.tipo === 'vacio'
+                    const origen   = esVacio ? (deposito?.nombre ?? `#${t.deposito_id}`) : (cantera?.nombre ?? `#${t.cantera_id}`)
+                    const destino  = esVacio ? (cantera?.nombre ?? null) : (deposito?.nombre ?? null)
                     return (
                       <label key={t.id} className="flex items-center gap-2 cursor-pointer text-sm py-1 border-b border-gris-mid last:border-0">
                         <input
@@ -1290,8 +1294,8 @@ export function LiquidacionesTab() {
                         />
                         <span className="flex-1 min-w-0">
                           {fecha ? fmtFecha(fecha) : '—'} ·{' '}
-                          <b>{cantera?.nombre ?? `#${t.cantera_id}`}</b>
-                          {deposito && <> → {deposito.nombre}</>}
+                          <b>{origen}</b>
+                          {destino && <> → {destino}</>}
                           {km > 0 && <> · {km} km</>}
                           {t.cantera_id && t.deposito_id && km === 0 && (
                             <span className="ml-1 text-[10px] font-bold uppercase tracking-wide bg-amarillo/20 text-amber-700 px-1.5 py-0.5 rounded" title="No hay ruta cargada para este par cantera→depósito: el tramo aporta 0 km al liquidar.">⚠ sin ruta</span>
@@ -1324,6 +1328,9 @@ export function LiquidacionesTab() {
                       const deposito = (depositos as any[]).find(d => d.id === t.deposito_id)
                       const fecha = fechaRelevo(r)
                       const km    = kmRelevo(r)
+                      const esVacio = t.tipo === 'vacio'
+                      const origen  = esVacio ? (deposito?.nombre ?? `#${t.deposito_id}`) : (cantera?.nombre ?? `#${t.cantera_id}`)
+                      const destino = esVacio ? (cantera?.nombre ?? null) : (deposito?.nombre ?? null)
                       return (
                         <label key={r.id} className="flex items-center gap-2 cursor-pointer text-sm py-1 border-b border-azul/10 last:border-0">
                           <input
@@ -1334,8 +1341,8 @@ export function LiquidacionesTab() {
                           />
                           <span className="flex-1 min-w-0">
                             {fecha ? fmtFecha(fecha) : '—'} ·{' '}
-                            <b>{cantera?.nombre ?? `#${t.cantera_id}`}</b>
-                            {deposito && <> → {deposito.nombre}</>}
+                            <b>{origen}</b>
+                            {destino && <> → {destino}</>}
                             {' '}· <span className="text-azul-mid">pata: {km} km · {Number(r.jornales)} jornal{Number(r.jornales) !== 1 ? 'es' : ''}</span>
                           </span>
                         </label>
@@ -1610,7 +1617,9 @@ export function LiquidacionesTab() {
                               <span className="text-gris-dark">{fecha ? fmtFecha(fecha) : '—'}</span>
                             </div>
                             <div className="font-semibold text-carbon mt-0.5">
-                              {cantera?.nombre ?? '—'} → {deposito?.nombre ?? '—'}
+                              {t.tipo === 'vacio'
+                                ? <>{deposito?.nombre ?? '—'} → {cantera?.nombre ?? '—'}</>
+                                : <>{cantera?.nombre ?? '—'} → {deposito?.nombre ?? '—'}</>}
                             </div>
                             {(t.remito_carga || t.remito_descarga) && (
                               <div className="text-[11px] text-gris-mid mt-0.5">
@@ -1635,7 +1644,9 @@ export function LiquidacionesTab() {
                             <span className="text-gris-dark">{l.fecha ? fmtFecha(l.fecha) : '—'}</span>
                           </div>
                           <div className="font-semibold text-carbon mt-0.5">
-                            {l.cantera ?? '—'} → {l.deposito ?? '—'}
+                            {l.tipo === 'vacio'
+                              ? <>{l.deposito ?? '—'} → {l.cantera ?? '—'}</>
+                              : <>{l.cantera ?? '—'} → {l.deposito ?? '—'}</>}
                           </div>
                         </div>
                         <div className="text-right shrink-0 font-mono">
