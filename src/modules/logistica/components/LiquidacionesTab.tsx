@@ -1298,7 +1298,7 @@ export function LiquidacionesTab() {
                           {destino && <> → {destino}</>}
                           {km > 0 && <> · {km} km</>}
                           {t.cantera_id && t.deposito_id && km === 0 && (
-                            <span className="ml-1 text-[10px] font-bold uppercase tracking-wide bg-amarillo/20 text-amber-700 px-1.5 py-0.5 rounded" title="No hay ruta cargada para este par cantera→depósito: el tramo aporta 0 km al liquidar.">⚠ sin ruta</span>
+                            <span className="ml-1 text-[10px] font-bold uppercase tracking-wide bg-amarillo/20 text-amber-700 px-1.5 py-0.5 rounded" title="No hay ruta cargada para este par punto de carga→depósito: el tramo aporta 0 km al liquidar.">⚠ sin ruta</span>
                           )}
                           {t.toneladas_carga && <> · {t.toneladas_carga} t</>}
                         </span>

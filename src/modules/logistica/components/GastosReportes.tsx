@@ -365,7 +365,7 @@ function PerformanceTable({ filas, label, getNombre, gastosPor, mono }: {
                     </span>
                   )}
                   {f.sin_tarifa > 0 && (
-                    <span title="Tramos sin tarifa cargada — ingreso = 0. Cargar la tarifa empresa-cantera correspondiente." className="text-[10px] bg-rojo-light text-rojo px-1.5 py-0.5 rounded font-bold">
+                    <span title="Tramos sin tarifa cargada — ingreso = 0. Cargar la tarifa empresa-punto de carga correspondiente." className="text-[10px] bg-rojo-light text-rojo px-1.5 py-0.5 rounded font-bold">
                       ⚠ {f.sin_tarifa} sin tarifa
                     </span>
                   )}

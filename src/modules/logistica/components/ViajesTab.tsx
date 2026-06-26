@@ -677,7 +677,7 @@ export function ViajesTab() {
   async function handleCrearVacioVuelta() {
     if (!proximaCarga) return
     const canteraIdNum = canteraVuelta ? Number(canteraVuelta) : null
-    if (!canteraIdNum) { toast('Elegí una cantera', 'err'); return }
+    if (!canteraIdNum) { toast('Elegí un punto de carga', 'err'); return }
     if (proximaCarga.deposito_id == null) {
       toast('El tramo no tiene depósito asignado', 'err')
       return
@@ -1134,7 +1134,7 @@ export function ViajesTab() {
           <Select
             label="Tipo de tramo"
             options={[
-              { value: 'cargado', label: '🚛 Cargado (cantera → depósito)' },
+              { value: 'cargado', label: '🚛 Cargado (punto de carga → depósito)' },
               { value: 'vacio',   label: '🔲 Vacío (regreso sin carga)'    },
             ]}
             {...formNuevo.register('tipo')}
@@ -1205,8 +1205,8 @@ export function ViajesTab() {
             <>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Combobox
-                  label="Cantera (origen)"
-                  placeholder="Buscar cantera..."
+                  label="Punto de carga (origen)"
+                  placeholder="Buscar punto de carga..."
                   options={canteraOptions(formNuevo.watch('empresa_id'), formNuevo.watch('cantera_id'))}
                   value={String(formNuevo.watch('cantera_id') ?? '')}
                   onChange={(v: string) => {
@@ -1243,7 +1243,7 @@ export function ViajesTab() {
                 createRuta={createRuta}
               />
               <div className="bg-gris rounded-xl p-3 flex flex-col gap-3">
-                <div className="text-xs font-bold text-gris-dark uppercase tracking-wider">⛏ Carga en cantera</div>
+                <div className="text-xs font-bold text-gris-dark uppercase tracking-wider">⛏ Carga en punto de carga</div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <Input label="Fecha carga" type="date" {...formNuevo.register('fecha_carga')} />
                   <Input label="Toneladas" type="number" step="0.01" min="0" placeholder="0.00" {...formNuevo.register('toneladas_carga')} />
@@ -1269,7 +1269,7 @@ export function ViajesTab() {
                   onChange={(v: string) => formNuevo.setValue('deposito_id', v)}
                 />
                 <Combobox
-                  label="Cantera (destino)"
+                  label="Punto de carga (destino)"
                   placeholder="A dónde va..."
                   options={canteraOptionsPorDeposito(formNuevo.watch('deposito_id'), formNuevo.watch('cantera_id'))}
                   value={String(formNuevo.watch('cantera_id') ?? '')}
@@ -1383,14 +1383,14 @@ export function ViajesTab() {
             )}
           </div>
           <Combobox
-            label="Próxima cantera"
-            placeholder="Elegí cantera"
+            label="Próximo punto de carga"
+            placeholder="Elegí punto de carga"
             value={canteraVuelta}
             onChange={(v: string) => setCanteraVuelta(v)}
             options={(canteras as any[]).map(c => ({ value: String(c.id), label: c.nombre }))}
           />
           <p className="text-[11px] text-gris-mid">
-            Sugerencia automática: la cantera donde más cargó este camión en el mes en curso. Editá si vuelve a otro lugar.
+            Sugerencia automática: el punto de carga donde más cargó este camión en el mes en curso. Editá si vuelve a otro lugar.
           </p>
         </div>
       </Modal>
@@ -1438,8 +1438,8 @@ export function ViajesTab() {
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Combobox
-              label={editando?.tipo === 'cargado' ? 'Cantera (origen)' : 'Cantera (destino)'}
-              placeholder="Buscar cantera..."
+              label={editando?.tipo === 'cargado' ? 'Punto de carga (origen)' : 'Punto de carga (destino)'}
+              placeholder="Buscar punto de carga..."
               options={
                 editando?.tipo === 'cargado'
                   ? canteraOptions(formEdit.watch('empresa_id'), formEdit.watch('cantera_id'))

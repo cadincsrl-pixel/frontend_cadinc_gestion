@@ -23,7 +23,7 @@ const TAB_TITLES: Record<string, { icon: string; label: string; sub: string }> =
   liquidaciones: { icon: '💰', label: 'Liquidaciones', sub: 'Pago por días trabajados + km'         },
   choferes:      { icon: '👷', label: 'Choferes',      sub: 'Personal de conducción'                },
   camiones:      { icon: '🚚', label: 'Camiones y bateas', sub: 'Flota de camiones y semirremolques'  },
-  lugares:       { icon: '🗺️', label: 'Rutas',         sub: 'Rutas · Canteras · Depósitos'           },
+  lugares:       { icon: '🗺️', label: 'Rutas',         sub: 'Rutas · Puntos de carga · Depósitos'    },
   facturacion:   { icon: '🧾', label: 'Facturación',   sub: 'Cobros a empresas transportistas'         },
   gastos:        { icon: '💸', label: 'Gastos',        sub: 'Combustible · Gomería · Peajes · Viáticos' },
   rentabilidad:  { icon: '📈', label: 'Rentabilidad',  sub: 'Simulador de margen por viaje'             },

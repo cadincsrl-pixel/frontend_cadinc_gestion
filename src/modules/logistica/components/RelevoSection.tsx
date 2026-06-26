@@ -227,10 +227,10 @@ function ModalCrearRelevo({ tramo, open, onClose }: { tramo: Tramo; open: boolea
       }
     }
     if (sug.motivo === 'CHIVILCOY_NO_CARGADO') {
-      return { tono: 'warn', msg: 'Chivilcoy no está cargado en Lugares. Cargalo (cantera o depósito) para que el sistema sugiera km automáticamente.' }
+      return { tono: 'warn', msg: 'Chivilcoy no está cargado en Lugares. Cargalo (punto de carga o depósito) para que el sistema sugiera km automáticamente.' }
     }
     if (sug.motivo === 'CHIVILCOY_SIN_RUTA_RELEVANTE') {
-      return { tono: 'warn', msg: 'Falta cargar la ruta entre Chivilcoy y la cantera/depósito de este tramo. Cargá los km manualmente o agregá la ruta en Lugares.' }
+      return { tono: 'warn', msg: 'Falta cargar la ruta entre Chivilcoy y el punto de carga/depósito de este tramo. Cargá los km manualmente o agregá la ruta en Lugares.' }
     }
     if (sug.motivo === 'RUTA_PRINCIPAL_SIN_KM') {
       return { tono: 'warn', msg: 'La ruta principal no tiene km cargados. Cargá los km manualmente.' }

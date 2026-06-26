@@ -107,7 +107,7 @@ export function LugaresTab() {
     else             crearLugarOp(payload, cbs)
   }
   function handleDeleteLugarOp(l: LugarOperativo) {
-    if (!confirm(`¿Eliminar el lugar operativo "${l.nombre}"? Se borran su cantera y su depósito (solo si no tienen tramos asociados).`)) return
+    if (!confirm(`¿Eliminar el lugar operativo "${l.nombre}"? Se borran su punto de carga y su depósito (solo si no tienen tramos asociados).`)) return
     eliminarLugarOp(l.id, {
       onSuccess: () => toast('✓ Lugar eliminado', 'ok'),
       onError:   (e: any) => {
@@ -122,7 +122,7 @@ export function LugaresTab() {
     try {
       await apiPost('/api/logistica/lugares/canteras', data)
       qc.invalidateQueries({ queryKey: LOG_KEYS.canteras })
-      toast('✓ Cantera agregada', 'ok')
+      toast('✓ Punto de carga agregado', 'ok')
       setModalCantera(false)
       formCantera.reset()
     } catch { toast('Error al agregar', 'err') }
@@ -135,7 +135,7 @@ export function LugaresTab() {
     try {
       await apiPatch(`/api/logistica/lugares/canteras/${editCantera.id}`, data)
       qc.invalidateQueries({ queryKey: LOG_KEYS.canteras })
-      toast('✓ Cantera actualizada', 'ok')
+      toast('✓ Punto de carga actualizado', 'ok')
       setEditCantera(null)
     } catch { toast('Error al actualizar', 'err') }
     setLoading(false)
@@ -184,7 +184,7 @@ export function LugaresTab() {
       // texto. Mensaje claro en vez del genérico "Error al agregar".
       const detalle = `${err?.message ?? ''} ${(err?.body as any)?.error ?? ''}`.toLowerCase()
       const esDuplicado = detalle.includes('duplicate key') || detalle.includes('unique constraint')
-      toast(esDuplicado ? 'Ya existe una ruta para ese par cantera/depósito' : 'Error al agregar', 'err')
+      toast(esDuplicado ? 'Ya existe una ruta para ese par punto de carga/depósito' : 'Error al agregar', 'err')
     }
     setLoading(false)
   }
@@ -205,7 +205,7 @@ export function LugaresTab() {
       const e = err as { message?: string; body?: { error?: string } }
       const detalle = `${e?.message ?? ''} ${e?.body?.error ?? ''}`.toLowerCase()
       const esDuplicado = detalle.includes('duplicate key') || detalle.includes('unique constraint')
-      toast(esDuplicado ? 'Ya existe una ruta para ese par cantera/depósito' : 'Error al agregar', 'err')
+      toast(esDuplicado ? 'Ya existe una ruta para ese par punto de carga/depósito' : 'Error al agregar', 'err')
     }
     setLoading(false)
   }
@@ -253,7 +253,7 @@ export function LugaresTab() {
     })
     setEditRuta({
       id:       r.id,
-      cantera:  r.canteras?.nombre ?? `Cantera #${r.cantera_id}`,
+      cantera:  r.canteras?.nombre ?? `Punto de carga #${r.cantera_id}`,
       deposito: r.depositos?.nombre ?? `Depósito #${r.deposito_id}`,
     })
   }
@@ -272,10 +272,10 @@ export function LugaresTab() {
     <div className="flex flex-col gap-6">
 
       {/* Canteras */}
-      <Section title="⛏ Canteras" onAdd={() => setModalCantera(true)} addLabel="＋ Cantera">
+      <Section title="⛏ Puntos de carga" onAdd={() => setModalCantera(true)} addLabel="＋ Punto de carga">
         <SimpleList
           items={(canteras as Cantera[]).filter(c => !pairedCanteraIds.has(c.id))}
-          emptyMsg="No hay canteras registradas."
+          emptyMsg="No hay puntos de carga registrados."
           renderItem={c => (
             <div key={c.id} className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-gris last:border-0">
               <div className="flex items-center gap-2 flex-wrap min-w-0 flex-1">
@@ -383,8 +383,8 @@ export function LugaresTab() {
         <div className="bg-white rounded-card shadow-card p-4 mb-3">
           <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] gap-3 items-end">
             <Combobox
-              label="Cantera (origen)"
-              placeholder="Buscar cantera…"
+              label="Punto de carga (origen)"
+              placeholder="Buscar punto de carga…"
               value={selCant}
               onChange={v => { setSelCant(v); setKmInline('') }}
               options={(canteras as Cantera[]).map(c => ({
@@ -465,7 +465,7 @@ export function LugaresTab() {
                 <thead>
                   <tr>
                     <th className="sticky left-0 z-10 bg-white px-3 py-2 text-left text-[10px] font-bold text-gris-dark uppercase tracking-wider border-b border-r border-gris">
-                      Cantera ╲ Depósito
+                      Punto de carga ╲ Depósito
                     </th>
                     {(depositos as Deposito[]).map(d => (
                       <th key={d.id} title={d.nombre}
@@ -520,18 +520,18 @@ export function LugaresTab() {
             </div>
           ) : (
             <p className="text-center py-6 text-gris-dark text-sm">
-              Cargá al menos una cantera y un depósito para ver la matriz.
+              Cargá al menos un punto de carga y un depósito para ver la matriz.
             </p>
           )}
         </div>
       </div>
 
       {/* Modal nueva cantera */}
-      <Modal open={modalCantera} onClose={() => setModalCantera(false)} title="⛏ NUEVA CANTERA"
+      <Modal open={modalCantera} onClose={() => setModalCantera(false)} title="⛏ NUEVO PUNTO DE CARGA"
         footer={<><Button variant="secondary" onClick={() => setModalCantera(false)}>Cancelar</Button><Button variant="primary" loading={loading} onClick={formCantera.handleSubmit(handleCreateCantera)}>✓ Guardar</Button></>}
       >
         <div className="flex flex-col gap-4">
-          <Input label="Nombre" placeholder="Cantera del Norte" {...formCantera.register('nombre')} />
+          <Input label="Nombre" placeholder="Punto de carga del Norte" {...formCantera.register('nombre')} />
           <Input label="Localidad" placeholder="Opcional" {...formCantera.register('localidad')} />
           <MapsUrlInput register={formCantera.register} watch={formCantera.watch} setValue={formCantera.setValue} />
           <Input label="Observaciones" placeholder="Opcional" {...formCantera.register('obs')} />
@@ -546,7 +546,7 @@ export function LugaresTab() {
       </Modal>
 
       {/* Modal editar cantera */}
-      <Modal open={!!editCantera} onClose={() => setEditCantera(null)} title="✏️ EDITAR CANTERA"
+      <Modal open={!!editCantera} onClose={() => setEditCantera(null)} title="✏️ EDITAR PUNTO DE CARGA"
         footer={<><Button variant="secondary" onClick={() => setEditCantera(null)}>Cancelar</Button><Button variant="primary" loading={loading} onClick={formEditCant.handleSubmit(handleUpdateCantera)}>✓ Guardar</Button></>}
       >
         <div className="flex flex-col gap-4">
@@ -609,7 +609,7 @@ export function LugaresTab() {
       >
         <div className="flex flex-col gap-4">
           <div className="bg-naranja-light/40 border border-naranja/30 rounded-lg p-3 text-[11px] text-gris-dark">
-            Punto físico no facturable (mantenimiento, relevos, estacionamiento). Al guardar se crea —y se mantiene— como una <b>cantera</b> y un <b>depósito</b> con este nombre, marcados como operativos. Lo usás en tramos vacíos; nunca aparece como origen/destino de un cargado.
+            Punto físico no facturable (mantenimiento, relevos, estacionamiento). Al guardar se crea —y se mantiene— como un <b>punto de carga</b> y un <b>depósito</b> con este nombre, marcados como operativos. Lo usás en tramos vacíos; nunca aparece como origen/destino de un cargado.
           </div>
           <Input label="Nombre" placeholder="Estacionamiento San Luis" {...formLugarOp.register('nombre')} />
           <Input label="Localidad" placeholder="Opcional" {...formLugarOp.register('localidad')} />
@@ -624,7 +624,7 @@ export function LugaresTab() {
       >
         <div className="flex flex-col gap-4">
           <Select
-            label="Cantera (origen)"
+            label="Punto de carga (origen)"
             placeholder="Elegí"
             options={(canteras as Cantera[]).map(c => ({ value: c.id, label: c.nombre }))}
             {...formRuta.register('cantera_id')}

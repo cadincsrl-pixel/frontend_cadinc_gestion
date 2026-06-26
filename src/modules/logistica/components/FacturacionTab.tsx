@@ -110,7 +110,7 @@ function EmpresasSection({
         <div className="flex items-center justify-between px-5 py-4 border-b border-gris">
           <div>
             <h2 className="font-bold text-azul text-base">Empresas transportistas</h2>
-            <p className="text-xs text-gris-dark mt-0.5">Tus clientes — hacé clic en una para ver su tarifa por cantera</p>
+            <p className="text-xs text-gris-dark mt-0.5">Tus clientes — hacé clic en una para ver su tarifa por punto de carga</p>
           </div>
           {puedeCrear && (
             <Button variant="primary" size="sm" onClick={() => setModalNueva(true)}>＋ Nueva empresa</Button>
@@ -329,7 +329,7 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
   }
 
   const canteraOptions = [
-    { value: '', label: 'Seleccionar cantera…' },
+    { value: '', label: 'Seleccionar punto de carga…' },
     ...canteras.map(c => ({ value: c.id, label: c.nombre + (c.localidad ? ` — ${c.localidad}` : '') })),
   ]
 
@@ -344,7 +344,7 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
         <div className="flex items-center justify-between px-5 py-4 border-b border-gris">
           <div>
             <h2 className="font-bold text-azul text-base">Tarifas — {empresa.nombre}</h2>
-            <p className="text-xs text-gris-dark mt-0.5">Historial de $/ton por cantera (y depósito, si paga según destino) · cada entrega usa la tarifa vigente en su fecha de descarga</p>
+            <p className="text-xs text-gris-dark mt-0.5">Historial de $/ton por punto de carga (y depósito, si paga según destino) · cada entrega usa la tarifa vigente en su fecha de descarga</p>
           </div>
           {puedeCrear && (
             <Button variant="primary" size="sm" onClick={() => setModal(true)}>＋ Nueva tarifa</Button>
@@ -434,11 +434,11 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
       <Modal open={modal} onClose={() => { setModal(false); setPisarPosteriores(false) }} title="💲 NUEVA TARIFA"
         footer={<><Button variant="secondary" onClick={() => { setModal(false); setPisarPosteriores(false) }}>Cancelar</Button><Button variant="primary" loading={saving} onClick={form.handleSubmit(handleSubmit)}>✓ Guardar</Button></>}>
         <div className="flex flex-col gap-4">
-          <Select label="Cantera" options={canteraOptions} {...form.register('cantera_id')} />
+          <Select label="Punto de carga" options={canteraOptions} {...form.register('cantera_id')} />
           <div>
             <Select label="Depósito de descarga" options={depositoOptions} {...form.register('deposito_id')} />
             <p className="text-[11px] text-gris-dark mt-1">
-              Dejá &quot;Todas las descargas&quot; salvo que esta cantera pague distinto según el depósito de destino. La tarifa específica gana sobre la general.
+              Dejá &quot;Todas las descargas&quot; salvo que este punto de carga pague distinto según el depósito de destino. La tarifa específica gana sobre la general.
             </p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -505,7 +505,7 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
                 </>
               )}
               <p className="text-[11px] text-gris-dark mt-1">
-                Empresa, cantera y depósito no son editables. Si la combinación cambió, eliminá esta tarifa y creá una nueva.
+                Empresa, punto de carga y depósito no son editables. Si la combinación cambió, eliminá esta tarifa y creá una nueva.
               </p>
             </div>
           )}
@@ -681,11 +681,11 @@ function FacturacionSection() {
     const sinTarifa = desglose.filter(d => d.tarifa === 0)
     if (sinTarifa.length > 0) {
       const lista = sinTarifa
-        .map(d => `· ${d.cantera?.nombre ?? 'cantera ?'} — remito ${d.t.remito_descarga ?? d.t.remito_carga ?? `#${d.t.id}`}`)
+        .map(d => `· ${d.cantera?.nombre ?? 'punto de carga ?'} — remito ${d.t.remito_descarga ?? d.t.remito_carga ?? `#${d.t.id}`}`)
         .join('\n')
       const ok = confirm(
         `⚠ ${sinTarifa.length} remito(s) no tienen tarifa cargada y se cobrarían en $0:\n${lista}\n\n` +
-        `Cargá la tarifa de esa cantera (o desmarcá esos remitos) para no subfacturar.\n\n¿Registrar el cobro igual?`,
+        `Cargá la tarifa de ese punto de carga (o desmarcá esos remitos) para no subfacturar.\n\n¿Registrar el cobro igual?`,
       )
       if (!ok) return
     }
@@ -769,7 +769,7 @@ function FacturacionSection() {
                         </div>
                         {Object.entries(
                           desglose.reduce<Record<string, { ton: number; tarifa: number; subtotal: number }>>((acc, d) => {
-                            const nombre = d.cantera?.nombre ?? `Cantera ${d.t.cantera_id ?? '?'}`
+                            const nombre = d.cantera?.nombre ?? `Punto de carga ${d.t.cantera_id ?? '?'}`
                             if (!acc[nombre]) acc[nombre] = { ton: 0, tarifa: d.tarifa, subtotal: 0 }
                             acc[nombre].ton      += d.ton
                             acc[nombre].subtotal += d.subtotal
@@ -785,7 +785,7 @@ function FacturacionSection() {
                         ))}
                         {desglose.some(d => d.tarifa === 0) && (
                           <div className="text-rojo font-semibold mt-1">
-                            ⚠ {desglose.filter(d => d.tarifa === 0).length} remito(s) sin tarifa — no suman al total. Cargá la tarifa de la cantera.
+                            ⚠ {desglose.filter(d => d.tarifa === 0).length} remito(s) sin tarifa — no suman al total. Cargá la tarifa del punto de carga.
                           </div>
                         )}
                       </div>
@@ -848,7 +848,7 @@ function FacturacionSection() {
                                 {chofer && <span className="ml-1">· 👷 {chofer.nombre}</span>}
                               </div>
                               <div className="font-semibold text-carbon truncate">
-                                {d.cantera?.nombre ?? `Cantera ${d.t.cantera_id ?? '?'}`}
+                                {d.cantera?.nombre ?? `Punto de carga ${d.t.cantera_id ?? '?'}`}
                               </div>
                             </div>
                             <div className="text-right shrink-0 font-mono min-w-0">
@@ -1285,7 +1285,7 @@ function FacturacionSection() {
               </div>
               {/* Buscador de remitos del modal */}
               <Input
-                placeholder="🔍 Buscar remito, cantera o fecha..."
+                placeholder="🔍 Buscar remito, punto de carga o fecha..."
                 value={busquedaRemito}
                 onChange={e => setBusquedaRemito(e.target.value)}
                 className="mb-2"
@@ -1471,7 +1471,7 @@ function RemitosSection() {
     if (filtrados.length === 0) { toast('Sin remitos que exportar con los filtros actuales', 'warn'); return }
 
     const rows: (string | number)[][] = [[
-      'Fecha descarga', 'Empresa', 'Chofer', 'Patente', 'Cantera',
+      'Fecha descarga', 'Empresa', 'Chofer', 'Patente', 'Punto de carga',
       'Tn carga', 'Tn descarga', 'Remito carga', 'Remito descarga',
       '$/tn', 'Subtotal',
     ]]
