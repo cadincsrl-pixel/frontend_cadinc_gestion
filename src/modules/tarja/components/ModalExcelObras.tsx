@@ -139,17 +139,23 @@ export function ModalExcelObras({
       semOk(c.sem_key)
     ).length
 
-    // Costo operarios aproximado (tarifa global) — incluye hs extras
-    const costoHoras = horasFilt.reduce((sum, h) => {
-      const sk = toISO(getViernes(new Date(h.fecha + 'T12:00:00')))
-      const vh = getVHConCatObraLocal(h.obra_cod, h.leg, sk)
-      return sum + h.horas * vh
-    }, 0)
-    const costoExtras = hsExtrasFilt.reduce((sum, x) => {
-      const vh = getVHConCatObraLocal(x.obra_cod, x.leg, x.sem_key)
-      return sum + x.hs * vh
-    }, 0)
-    const costoOp = costoHoras + costoExtras
+    // Costo operarios CANÓNICO (§5.11): se agrupa por (obra, leg, semana) y cada
+    // grupo se redondea a miles antes de sumar — igual que el Excel exportado
+    // (collectData) y la vista de tarja. Antes era una suma plana horas×VH sin
+    // redondeo per-leg, por eso no cuadraba con el total del export.
+    const costoPorLegSem = new Map<string, number>()
+    for (const h of horasFilt) {
+      const sk  = toISO(getViernes(new Date(h.fecha + 'T12:00:00')))
+      const vh  = getVHConCatObraLocal(h.obra_cod, h.leg, sk)
+      const key = `${h.obra_cod}|${h.leg}|${sk}`
+      costoPorLegSem.set(key, (costoPorLegSem.get(key) ?? 0) + h.horas * vh)
+    }
+    for (const x of hsExtrasFilt) {
+      const vh  = getVHConCatObraLocal(x.obra_cod, x.leg, x.sem_key)
+      const key = `${x.obra_cod}|${x.leg}|${x.sem_key}`
+      costoPorLegSem.set(key, (costoPorLegSem.get(key) ?? 0) + x.hs * vh)
+    }
+    const costoOp = [...costoPorLegSem.values()].reduce((s, v) => s + Math.round(v / 1000) * 1000, 0)
 
     return { totalHs, totalCertif, costoOp, operarios, contratNum, semanas, cerradas, obrasCount: obrasTarget.length }
   }, [obrasSelec, filtroSem.desde, filtroSem.hasta, horas, certificaciones, cierres, personal, categorias, tarifas, obras, todasCatObra, todasHsExtras])
