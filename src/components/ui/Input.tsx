@@ -17,6 +17,10 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         )}
         <input
           ref={ref}
+          // Default: sin autofill del navegador (es un ERP, los campos son datos
+          // de negocio, no credenciales). Overridable: si un input necesita
+          // autocompletar, pasale `autoComplete="..."` y pisa este default.
+          autoComplete="off"
           className={`
             w-full px-3 py-2 border-[1.5px] rounded-lg
             font-sans text-sm text-carbon bg-blanco

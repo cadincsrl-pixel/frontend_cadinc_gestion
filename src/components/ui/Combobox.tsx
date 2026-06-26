@@ -186,6 +186,16 @@ export function Combobox({
           onChange={handleInputChange}
           onFocus={() => { setOpen(true); setQuery('') }}
           placeholder={placeholder}
+          // Es un buscador, no un campo de formulario real: cortamos el autofill
+          // del navegador y de los gestores de contraseñas (1Password/LastPass),
+          // que ofrecían rellenarlo "como si fuera usuario/contraseña".
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          data-1p-ignore
+          data-lpignore="true"
+          name="search"
           className={`
             w-full pl-9 pr-3 py-2 border-[1.5px] rounded-lg text-sm outline-none transition-colors
             placeholder:text-gris-mid
