@@ -106,6 +106,7 @@ export function HerrTrazabilidad() {
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gris-dark text-sm pointer-events-none">🔍</span>
               <input
                 type="text"
+                autoComplete="off"
                 placeholder="Código, nombre o marca..."
                 value={busqueda}
                 onChange={e => setBusqueda(e.target.value)}

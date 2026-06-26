@@ -791,6 +791,7 @@ export function UsuariosTab() {
             </label>
             <input
               type="text"
+              autoComplete="off"
               value={confirmAdminText}
               onChange={e => setConfirmAdminText(e.target.value)}
               autoFocus

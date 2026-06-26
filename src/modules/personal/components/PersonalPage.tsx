@@ -351,6 +351,7 @@ export function PersonalPage() {
           <div className="flex flex-wrap gap-2 items-center">
             <input
               type="text"
+              autoComplete="off"
               placeholder="Buscar por nombre, legajo o DNI..."
               value={busqueda}
               onChange={e => setBusqueda(e.target.value)}
@@ -556,6 +557,7 @@ export function PersonalPage() {
         <>
           <input
             type="text"
+            autoComplete="off"
             placeholder="Buscar por nombre o especialidad..."
             value={busquedaC}
             onChange={e => setBusquedaC(e.target.value)}

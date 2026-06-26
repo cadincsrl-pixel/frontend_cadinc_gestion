@@ -65,6 +65,7 @@ export function HoraInput({ label, value, onChange, disabled }: Props) {
       </label>
       <input
         type="text"
+        autoComplete="off"
         inputMode="numeric"
         placeholder="hh:mm"
         maxLength={5}

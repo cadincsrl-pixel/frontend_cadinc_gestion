@@ -1212,7 +1212,7 @@ export function SolicitudesTab() {
                       {lineas.length > 1 && <button onClick={() => setLineas(p => p.filter(x => x._id !== l._id))} className="text-gris-mid hover:text-rojo text-lg font-bold mt-1">✕</button>}
                     </div>
                     {!l.material_id && (
-                      <input type="text" placeholder="O escribir descripción libre..." value={l.descripcion}
+                      <input type="text" autoComplete="off" placeholder="O escribir descripción libre..." value={l.descripcion}
                         onChange={e => setLineas(p => p.map(x => x._id === l._id ? { ...x, descripcion: e.target.value } : x))}
                         className="w-full mt-2 px-2 py-1.5 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja" />
                     )}
@@ -1223,7 +1223,7 @@ export function SolicitudesTab() {
                         className="w-20 px-1 py-1.5 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white">
                         {UNIDADES.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
                       </select>
-                      <input type="text" placeholder="Obs..." value={l.obs} onChange={e => setLineas(p => p.map(x => x._id === l._id ? { ...x, obs: e.target.value } : x))}
+                      <input type="text" autoComplete="off" placeholder="Obs..." value={l.obs} onChange={e => setLineas(p => p.map(x => x._id === l._id ? { ...x, obs: e.target.value } : x))}
                         className="flex-1 px-2 py-1.5 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja" />
                     </div>
                   </div>
@@ -1631,7 +1631,7 @@ export function SolicitudesTab() {
                         }} className="text-gris-mid hover:text-rojo text-lg font-bold mt-1">✕</button>
                       </div>
                       {!l.material_id && (
-                        <input type="text" placeholder="O escribir descripción libre..." value={l.descripcion}
+                        <input type="text" autoComplete="off" placeholder="O escribir descripción libre..." value={l.descripcion}
                           onChange={e => setLineasEdit(p => p.map(x => x._id === l._id ? { ...x, descripcion: e.target.value } : x))}
                           className="w-full mt-2 px-2 py-1.5 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja" />
                       )}
@@ -1642,7 +1642,7 @@ export function SolicitudesTab() {
                           className="w-20 px-1 py-1.5 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white">
                           {UNIDADES.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
                         </select>
-                        <input type="text" placeholder="Obs..." value={l.obs} onChange={e => setLineasEdit(p => p.map(x => x._id === l._id ? { ...x, obs: e.target.value } : x))}
+                        <input type="text" autoComplete="off" placeholder="Obs..." value={l.obs} onChange={e => setLineasEdit(p => p.map(x => x._id === l._id ? { ...x, obs: e.target.value } : x))}
                           className="flex-1 px-2 py-1.5 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja" />
                       </div>
                     </div>

@@ -136,6 +136,7 @@ export function HerrPorObra() {
         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gris-dark text-sm">🔍</span>
         <input
           type="text"
+          autoComplete="off"
           value={busqueda}
           onChange={e => setBusqueda(e.target.value)}
           placeholder="Buscar por obra, herramienta, marca, modelo o responsable..."

@@ -256,6 +256,7 @@ export function MovimientoLoteModal({ onClose, onSuccess }: Props) {
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gris-dark text-sm pointer-events-none">🔍</span>
             <input
               type="text"
+              autoComplete="off"
               placeholder="Buscar por código, nombre, marca, serie u obra..."
               value={busqueda}
               onChange={e => setBusqueda(e.target.value)}
@@ -482,6 +483,7 @@ export function MovimientoLoteModal({ onClose, onSuccess }: Props) {
                 <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Observaciones</label>
                 <input
                   type="text"
+                  autoComplete="off"
                   value={obs}
                   onChange={e => setObs(e.target.value)}
                   placeholder="Opcional — aplica a todos los movimientos"

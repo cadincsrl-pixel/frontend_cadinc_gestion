@@ -673,6 +673,7 @@ export function ResumenHistoricoPage() {
                 <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gris-mid text-xs pointer-events-none">🔍</span>
                 <input
                   type="text"
+                  autoComplete="off"
                   value={filtroNombre}
                   onChange={e => setFiltroNombre(e.target.value)}
                   placeholder="Buscar obra..."

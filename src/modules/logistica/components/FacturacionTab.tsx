@@ -944,6 +944,7 @@ function FacturacionSection() {
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gris-dark text-xs">🔍</span>
                   <input
                     type="text"
+                    autoComplete="off"
                     value={busquedaCobro}
                     onChange={e => setBusquedaCobro(e.target.value)}
                     placeholder="Buscar empresa..."

@@ -320,6 +320,7 @@ export function ModalRecibos({
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gris-dark text-sm">🔍</span>
             <input
               type="text"
+              autoComplete="off"
               value={busquedaObra}
               onChange={e => setBusquedaObra(e.target.value)}
               placeholder="Buscar obra por nombre o código..."
@@ -379,6 +380,7 @@ export function ModalRecibos({
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gris-dark text-sm">🔍</span>
               <input
                 type="text"
+                autoComplete="off"
                 value={busquedaOp}
                 onChange={e => setBusquedaOp(e.target.value)}
                 placeholder="Buscar operario..."

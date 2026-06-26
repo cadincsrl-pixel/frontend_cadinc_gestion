@@ -225,6 +225,7 @@ export function ObrasArchivadasPage() {
       {obras.length > 0 && (
         <input
           type="text"
+          autoComplete="off"
           placeholder="Buscar por nombre o código..."
           value={busqueda}
           onChange={e => setBusqueda(e.target.value)}

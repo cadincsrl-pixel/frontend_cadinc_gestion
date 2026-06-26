@@ -465,6 +465,7 @@ export function RopaPage() {
       <div className="flex gap-3 flex-wrap items-center">
         <input
           type="text"
+          autoComplete="off"
           placeholder="Buscar trabajador..."
           value={busqueda}
           onChange={e => { setBusqueda(e.target.value); setPage(1) }}

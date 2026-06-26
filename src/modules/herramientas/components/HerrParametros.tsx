@@ -214,6 +214,7 @@ function TiposTab() {
             </label>
             <input
               type="text"
+              autoComplete="off"
               value={nom}
               onChange={e => setNom(e.target.value)}
               placeholder="Ej: Eléctrica"
@@ -226,6 +227,7 @@ function TiposTab() {
             </label>
             <input
               type="text"
+              autoComplete="off"
               value={icono}
               onChange={e => setIcono(e.target.value)}
               placeholder="⚡"
@@ -369,6 +371,7 @@ function MovTiposTab() {
             <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Nombre</label>
             <input
               type="text"
+              autoComplete="off"
               value={nom}
               onChange={e => setNom(e.target.value)}
               className="px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja transition-colors"
@@ -378,6 +381,7 @@ function MovTiposTab() {
             <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Ícono (emoji)</label>
             <input
               type="text"
+              autoComplete="off"
               value={icono}
               onChange={e => setIcono(e.target.value)}
               className="px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja transition-colors w-24"
@@ -636,6 +640,7 @@ function MarcasTab() {
           <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Nombre *</label>
           <input
             type="text"
+            autoComplete="off"
             autoFocus
             value={marcaForm.nom}
             onChange={e => setMarcaForm(f => ({ ...f, nom: e.target.value }))}
@@ -668,6 +673,7 @@ function MarcasTab() {
           <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Nombre *</label>
           <input
             type="text"
+            autoComplete="off"
             autoFocus
             value={modeloForm.nom}
             onChange={e => setModeloForm(f => ({ ...f, nom: e.target.value }))}
