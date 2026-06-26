@@ -5,6 +5,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
+import { Combobox } from '@/components/ui/Combobox'
 import { useToast } from '@/components/ui/Toast'
 import { toISO } from '@/lib/utils/dates'
 import {
@@ -99,10 +100,11 @@ export function NuevaCargaModal({ open, onClose, onRemito }: {
   const omSel = maquinas.find(om => om.maquina_id === Number(maquinaId)) ?? null
   const guardando = creating || updating || emitiendo
 
-  const opcionesObra = [
-    { value: '', label: 'Seleccionar obra…' },
-    ...obras.map(o => ({ value: String(o.id), label: o.estado === 'cerrada' ? `${o.nombre} (cerrada)` : o.nombre })),
-  ]
+  // Sin opción vacía: el Combobox usa su `placeholder` para el estado sin elegir.
+  const opcionesObra = obras.map(o => ({
+    value: String(o.id),
+    label: o.estado === 'cerrada' ? `${o.nombre} (cerrada)` : o.nombre,
+  }))
   const opcionesMaquina = [
     { value: '', label: loadingMaquinas ? 'Cargando…' : maquinas.length === 0 ? (obraId ? 'La obra no tiene máquinas asignadas' : 'Elegí una obra primero') : 'Seleccionar máquina…' },
     ...maquinas.map(om => ({
@@ -170,8 +172,8 @@ export function NuevaCargaModal({ open, onClose, onRemito }: {
       <div className="flex flex-col gap-3">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="sm:col-span-2">
-            <Select label="Obra" options={opcionesObra} value={obraId}
-              onChange={e => { setObraId(e.target.value); setMaquinaId('') }} />
+            <Combobox label="Obra" placeholder="Buscar obra…" options={opcionesObra} value={obraId}
+              onChange={v => { setObraId(v); setMaquinaId('') }} />
           </div>
           <Input label="Fecha" type="date" value={fecha} onChange={e => setFecha(e.target.value)} />
         </div>
