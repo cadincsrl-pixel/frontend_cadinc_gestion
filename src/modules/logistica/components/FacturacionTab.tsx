@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import * as XLSX from 'xlsx'
 import JSZip from 'jszip'
-import { useForm } from 'react-hook-form'
+import { useForm, Controller } from 'react-hook-form'
 import {
   useEmpresas, useCreateEmpresa, useUpdateEmpresa, useDeleteEmpresa,
   useTarifasEmpresa, useUpsertTarifaEmpresa, useUpdateTarifaEmpresa, useDeleteTarifaEmpresa,
@@ -15,6 +15,7 @@ import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input }  from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
+import { Combobox } from '@/components/ui/Combobox'
 import { Badge }  from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
 import { useForm as useRHF } from 'react-hook-form'
@@ -328,14 +329,14 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
     })
   }
 
-  const canteraOptions = [
-    { value: '', label: 'Seleccionar punto de carga…' },
-    ...canteras.map(c => ({ value: c.id, label: c.nombre + (c.localidad ? ` — ${c.localidad}` : '') })),
-  ]
+  const canteraOptions = canteras.map(c => ({
+    value: String(c.id),
+    label: c.nombre + (c.localidad ? ` — ${c.localidad}` : ''),
+  }))
 
   const depositoOptions = [
     { value: '', label: 'Todas las descargas (tarifa general)' },
-    ...depositos.map(d => ({ value: d.id, label: d.nombre + (d.localidad ? ` — ${d.localidad}` : '') })),
+    ...depositos.map(d => ({ value: String(d.id), label: d.nombre + (d.localidad ? ` — ${d.localidad}` : '') })),
   ]
 
   return (
@@ -434,9 +435,25 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
       <Modal open={modal} onClose={() => { setModal(false); setPisarPosteriores(false) }} title="💲 NUEVA TARIFA"
         footer={<><Button variant="secondary" onClick={() => { setModal(false); setPisarPosteriores(false) }}>Cancelar</Button><Button variant="primary" loading={saving} onClick={form.handleSubmit(handleSubmit)}>✓ Guardar</Button></>}>
         <div className="flex flex-col gap-4">
-          <Select label="Punto de carga" options={canteraOptions} {...form.register('cantera_id')} />
+          <Controller
+            name="cantera_id"
+            control={form.control}
+            defaultValue=""
+            render={({ field }) => (
+              <Combobox label="Punto de carga" placeholder="Buscar punto de carga…"
+                options={canteraOptions} value={field.value ?? ''} onChange={field.onChange} />
+            )}
+          />
           <div>
-            <Select label="Depósito de descarga" options={depositoOptions} {...form.register('deposito_id')} />
+            <Controller
+              name="deposito_id"
+              control={form.control}
+              defaultValue=""
+              render={({ field }) => (
+                <Combobox label="Depósito de descarga" placeholder="Buscar depósito…"
+                  options={depositoOptions} value={field.value ?? ''} onChange={field.onChange} />
+              )}
+            />
             <p className="text-[11px] text-gris-dark mt-1">
               Dejá &quot;Todas las descargas&quot; salvo que este punto de carga pague distinto según el depósito de destino. La tarifa específica gana sobre la general.
             </p>
