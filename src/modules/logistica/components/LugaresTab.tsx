@@ -17,6 +17,7 @@ import { useForm } from 'react-hook-form'
 import { intInputProps } from '@/lib/utils/inputs'
 import { useGeocode } from '../hooks/useEnRuta'
 import { Combobox } from '@/components/ui/Combobox'
+import { matchesSearch } from '@/lib/utils/text'
 import type { Cantera, Deposito, Ruta, LugarOperativo } from '@/types/domain.types'
 
 export function LugaresTab() {
@@ -50,6 +51,8 @@ export function LugaresTab() {
   const [selDep,   setSelDep]   = useState('')  // deposito_id (string) elegido en el selector
   const [kmInline, setKmInline] = useState('')  // km tipeado para carga inline desde el selector
   const [soloFaltantes, setSoloFaltantes] = useState(false)  // resaltar faltantes en la matriz
+  const [buscarCant, setBuscarCant] = useState('')  // filtro de filas (puntos de carga) en la matriz
+  const [buscarDep,  setBuscarDep]  = useState('')  // filtro de columnas (depósitos) en la matriz
 
   // Lookup O(1) del par (cantera_id, deposito_id) → ruta. Lo usan el selector
   // doble y cada celda de la matriz. Las 56 combinaciones (7×8) son pocas.
@@ -64,6 +67,18 @@ export function LugaresTab() {
     : null
 
   const faltantes = canteras.length * depositos.length - rutas.length
+
+  // Matriz filtrable: las filas (puntos de carga) y columnas (depósitos) se
+  // recortan por nombre/localidad según los buscadores. No tocan los datos,
+  // solo lo que se ve en la grilla.
+  const canterasMatriz = useMemo(
+    () => (canteras as Cantera[]).filter(c => matchesSearch(`${c.nombre} ${c.localidad ?? ''}`, buscarCant)),
+    [canteras, buscarCant],
+  )
+  const depositosMatriz = useMemo(
+    () => (depositos as Deposito[]).filter(d => matchesSearch(`${d.nombre} ${d.localidad ?? ''}`, buscarDep)),
+    [depositos, buscarDep],
+  )
 
   const formCantera    = useForm<any>()
   const formDeposito   = useForm<any>()
@@ -458,8 +473,28 @@ export function LugaresTab() {
             <span className="block text-[11px] text-gris-dark mt-0.5">
               Tocá una celda con km para editar, o una vacía (＋) para cargarla.
             </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+              <Input
+                placeholder="🔍 Filtrar puntos de carga (filas)…"
+                value={buscarCant}
+                onChange={e => setBuscarCant(e.target.value)}
+              />
+              <Input
+                placeholder="🔍 Filtrar depósitos (columnas)…"
+                value={buscarDep}
+                onChange={e => setBuscarDep(e.target.value)}
+              />
+            </div>
           </div>
-          {canteras.length > 0 && depositos.length > 0 ? (
+          {canteras.length === 0 || depositos.length === 0 ? (
+            <p className="text-center py-6 text-gris-dark text-sm">
+              Cargá al menos un punto de carga y un depósito para ver la matriz.
+            </p>
+          ) : canterasMatriz.length === 0 || depositosMatriz.length === 0 ? (
+            <p className="text-center py-6 text-gris-dark text-sm">
+              Sin resultados para el filtro.
+            </p>
+          ) : (
             <div className="overflow-x-auto">
               <table className="border-collapse text-sm">
                 <thead>
@@ -467,7 +502,7 @@ export function LugaresTab() {
                     <th className="sticky left-0 z-10 bg-white px-3 py-2 text-left text-[10px] font-bold text-gris-dark uppercase tracking-wider border-b border-r border-gris">
                       Punto de carga ╲ Depósito
                     </th>
-                    {(depositos as Deposito[]).map(d => (
+                    {depositosMatriz.map(d => (
                       <th key={d.id} title={d.nombre}
                         className="px-2 py-2 text-center text-[10px] font-bold text-gris-dark border-b border-gris min-w-[60px] max-w-[88px]">
                         <span className="block truncate">{d.nombre}</span>
@@ -476,13 +511,13 @@ export function LugaresTab() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(canteras as Cantera[]).map(c => (
+                  {canterasMatriz.map(c => (
                     <tr key={c.id}>
                       <th title={c.nombre}
                         className="sticky left-0 z-10 bg-white px-3 py-2 text-left font-bold text-carbon text-xs border-b border-r border-gris whitespace-nowrap">
                         {c.nombre}
                       </th>
-                      {(depositos as Deposito[]).map(d => {
+                      {depositosMatriz.map(d => {
                         const r = rutaPorPar.get(`${c.id}-${d.id}`)
                         const isSel = String(c.id) === selCant && String(d.id) === selDep
                         return (
@@ -518,10 +553,6 @@ export function LugaresTab() {
                 </tbody>
               </table>
             </div>
-          ) : (
-            <p className="text-center py-6 text-gris-dark text-sm">
-              Cargá al menos un punto de carga y un depósito para ver la matriz.
-            </p>
           )}
         </div>
       </div>
