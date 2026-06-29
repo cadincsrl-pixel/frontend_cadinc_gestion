@@ -16,7 +16,7 @@ import { useFlotaNotificacionesDocs } from '../hooks/useFlotaNotificaciones'
 import { intInputProps } from '@/lib/utils/inputs'
 import { useFlotaSyncTodos, mensajeAmigableErrorSync } from '../hooks/useFlotaGpsSync'
 import { VehiculoDetalleModal } from './VehiculoDetalleModal'
-import type { FlotaVehiculo, FlotaVehiculoTipo, FlotaVehiculoEstado } from '@/types/domain.types'
+import type { FlotaVehiculo, FlotaVehiculoTipo, FlotaVehiculoEstado, FlotaServicioEstadoRow } from '@/types/domain.types'
 
 const TIPO_OPTIONS: { value: FlotaVehiculoTipo; label: string }[] = [
   { value: 'auto',       label: 'Auto' },
@@ -61,6 +61,25 @@ function diasHasta(iso: string): number {
   return Math.round((target.getTime() - hoy.getTime()) / 86_400_000)
 }
 
+// Display de "km restantes para el próximo service" a partir del estado que
+// devuelve la vista del backend (v_flota_servicio_estado). El umbral de
+// "próximo" / "vencido" lo decide el server; acá sólo formateamos + coloreamos.
+function infoProxService(e: FlotaServicioEstadoRow | undefined): {
+  text: string; cls: string; chipCls: string; tooltip?: string
+} | null {
+  if (!e || e.estado === 'sin_service' || e.km_restantes == null) return null
+  const km = Math.round(e.km_restantes)
+  const tip: string[] = []
+  if (e.km_proximo != null)        tip.push(`Próximo a los ${fmtKm(e.km_proximo)}`)
+  if (e.km_ultimo_service != null) tip.push(`Último: ${fmtKm(e.km_ultimo_service)}${e.fecha_ultimo_service ? ` (${fmtFechaCorta(e.fecha_ultimo_service)})` : ''}`)
+  const tooltip = tip.join(' · ') || undefined
+  if (e.estado === 'vencido')
+    return { text: `🔴 Pasado ${fmtKm(Math.abs(km))}`, cls: 'text-rojo font-bold', chipCls: 'bg-rojo-light text-rojo font-bold', tooltip }
+  if (e.estado === 'proximo')
+    return { text: `⚠ Faltan ${fmtKm(km)}`, cls: 'text-[#7A5000] font-bold', chipCls: 'bg-amarillo-light text-[#7A5000] font-bold', tooltip }
+  return { text: `Faltan ${fmtKm(km)}`, cls: 'text-verde font-semibold', chipCls: 'text-verde', tooltip }
+}
+
 export function VehiculosTab() {
   const toast = useToast()
   const { puedeCrear, puedeEditar } = usePermisos('flota')
@@ -95,14 +114,22 @@ export function VehiculosTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
 
-  // Map vehiculo_id → último service (km y fecha), para mostrar al lado de
-  // los km actuales del vehículo en la tabla y la card mobile.
+  // Map vehiculo_id → estado de service (km restantes, próximo, etc.), para
+  // mostrar "km restantes p/ próximo service" en la tabla y la card mobile.
   const estadoPorVehiculo = useMemo(() => {
-    const m = new Map<number, { km: number | null; fecha: string | null }>()
-    for (const e of estadoServicios) {
-      m.set(e.vehiculo_id, { km: e.km_ultimo_service, fecha: e.fecha_ultimo_service })
-    }
+    const m = new Map<number, FlotaServicioEstadoRow>()
+    for (const e of estadoServicios) m.set(e.vehiculo_id, e)
     return m
+  }, [estadoServicios])
+
+  // Alertas de service: vehículos con service vencido o próximo, ordenados por
+  // urgencia (los más pasados/cercanos primero). Se muestran en un banner.
+  const alertasService = useMemo(() => {
+    const vencidos = estadoServicios.filter(e => e.estado === 'vencido')
+      .sort((a, b) => (a.km_restantes ?? 0) - (b.km_restantes ?? 0))
+    const proximos = estadoServicios.filter(e => e.estado === 'proximo')
+      .sort((a, b) => (a.km_restantes ?? 0) - (b.km_restantes ?? 0))
+    return { vencidos, proximos }
   }, [estadoServicios])
 
   // Map vehiculo_id → fecha de vencimiento de su VTV (último doc tipo='vtv').
@@ -211,13 +238,51 @@ export function VehiculosTab() {
         </div>
       </div>
 
+      {/* Alertas de service: vencidos / próximos */}
+      {(alertasService.vencidos.length > 0 || alertasService.proximos.length > 0) && (
+        <div className="bg-white rounded-card shadow-card overflow-hidden border-l-[5px] border-amarillo">
+          <div className="px-4 py-3 bg-amarillo-light/60 border-b border-amarillo/30">
+            <h2 className="font-bold text-[#7A5500] text-base">🔧 Services a controlar</h2>
+            <p className="text-[11px] text-[#7A5500]/80 mt-0.5">
+              {alertasService.vencidos.length} vencido{alertasService.vencidos.length !== 1 ? 's' : ''} ·
+              {' '}{alertasService.proximos.length} próximo{alertasService.proximos.length !== 1 ? 's' : ''}
+            </p>
+          </div>
+          <div className="p-3 flex flex-col gap-2">
+            {[...alertasService.vencidos, ...alertasService.proximos].map(e => {
+              const info = infoProxService(e)
+              if (!info) return null
+              const vencido = e.estado === 'vencido'
+              return (
+                <button
+                  key={e.vehiculo_id}
+                  onClick={() => setDetalleId(e.vehiculo_id)}
+                  className={`bg-white rounded-lg shadow-sm border-l-4 ${vencido ? 'border-rojo' : 'border-naranja'} px-3 py-2 text-left flex items-center gap-3 flex-wrap hover:bg-gris/30 transition-colors w-full`}
+                >
+                  <span className="font-mono font-bold text-sm text-carbon shrink-0">{e.patente}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-semibold text-azul">Próximo service</div>
+                    <div className="text-[11px] text-gris-dark font-mono">
+                      {fmtKm(e.km_actuales)} actuales{e.km_proximo != null ? ` · próx. a los ${fmtKm(e.km_proximo)}` : ''}
+                    </div>
+                  </div>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wide ${vencido ? 'bg-rojo text-white' : 'bg-naranja text-white'}`}>
+                    {vencido ? `Pasado ${fmtKm(Math.abs(Math.round(e.km_restantes ?? 0)))}` : `Faltan ${fmtKm(Math.round(e.km_restantes ?? 0))}`}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Tabla — desktop/tablet */}
       <div className="hidden md:block bg-white rounded-card shadow-card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full border-collapse min-w-[700px]">
             <thead>
               <tr>
-                {['Patente', 'Alias MQ', 'Marca / modelo', 'Año', 'Km actuales', 'Km último service', 'VTV (vence)', 'Estado'].map(h => (
+                {['Patente', 'Alias MQ', 'Marca / modelo', 'Año', 'Km actuales', 'Próx. service', 'VTV (vence)', 'Estado'].map(h => (
                   <th key={h} className="bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide">
                     {h}
                   </th>
@@ -257,13 +322,13 @@ export function VehiculosTab() {
                   </td>
                   <td className="px-4 py-3 text-xs text-gris-dark">{v.anio ?? '—'}</td>
                   <td className="px-4 py-3 font-mono text-xs text-gris-dark">{fmtKm(v.km_actuales)}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-gris-dark">
+                  <td className="px-4 py-3 font-mono text-xs">
                     {(() => {
-                      const e = estadoPorVehiculo.get(v.id)
-                      if (!e || e.km == null) return <span className="text-gris-mid">—</span>
+                      const info = infoProxService(estadoPorVehiculo.get(v.id))
+                      if (!info) return <span className="text-gris-mid">—</span>
                       return (
-                        <span title={e.fecha ? `Último service: ${e.fecha}` : undefined}>
-                          {fmtKm(e.km)}
+                        <span className={`px-2 py-0.5 rounded ${info.chipCls}`} title={info.tooltip}>
+                          {info.text}
                         </span>
                       )
                     })()}
@@ -347,9 +412,9 @@ export function VehiculosTab() {
             <div className="text-[11px] text-gris-dark mt-2 font-mono flex flex-wrap gap-x-3 gap-y-0.5">
               <span>{fmtKm(v.km_actuales)} actuales</span>
               {(() => {
-                const e = estadoPorVehiculo.get(v.id)
-                if (!e || e.km == null) return null
-                return <span title={e.fecha ? `Último service: ${e.fecha}` : undefined}>🔧 {fmtKm(e.km)} último service</span>
+                const info = infoProxService(estadoPorVehiculo.get(v.id))
+                if (!info) return null
+                return <span className={info.cls} title={info.tooltip}>🔧 {info.text} p/ service</span>
               })()}
               {(() => {
                 const vence = vtvPorVehiculo.get(v.id)
