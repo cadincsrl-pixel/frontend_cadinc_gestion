@@ -21,6 +21,12 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           // de negocio, no credenciales). Overridable: si un input necesita
           // autocompletar, pasale `autoComplete="..."` y pisa este default.
           autoComplete="off"
+          // Cortamos a los gestores de contraseñas (1Password/LastPass), que
+          // igual ignoran autoComplete=off y ofrecen rellenar campos como
+          // Alias/CBU "como si fueran usuario/contraseña". El login usa <input>
+          // crudos, así que no se ve afectado por este default.
+          data-1p-ignore
+          data-lpignore="true"
           className={`
             w-full px-3 py-2 border-[1.5px] rounded-lg
             font-sans text-sm text-carbon bg-blanco
