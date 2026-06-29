@@ -29,7 +29,7 @@ interface FormData {
   tipo_libre:    string
   fecha:         string
   km_service:    string
-  km_proximo:    string
+  intervalo:     string  // cada cuántos km el próximo service (no el km absoluto)
   fecha_proximo: string
   descripcion:   string
   costo:         string
@@ -81,7 +81,7 @@ export function VehiculoServiciosSection({ vehiculo }: Props) {
       tipo_libre:    '',
       fecha:         toISO(new Date()),
       km_service:    String(vehiculo.km_actuales || 0),
-      km_proximo:    '',
+      intervalo:     '10000',
       fecha_proximo: '',
       descripcion:   '',
       costo:         '',
@@ -95,7 +95,7 @@ export function VehiculoServiciosSection({ vehiculo }: Props) {
       tipo_libre:    '',
       fecha:         toISO(new Date()),
       km_service:    String(vehiculo.km_actuales || 0),
-      km_proximo:    '',
+      intervalo:     '10000',
       fecha_proximo: '',
       descripcion:   '',
       costo:         '',
@@ -112,7 +112,9 @@ export function VehiculoServiciosSection({ vehiculo }: Props) {
       tipo_libre:    s.tipo_libre ?? '',
       fecha:         s.fecha,
       km_service:    String(s.km_service ?? 0),
-      km_proximo:    s.km_proximo != null ? String(s.km_proximo) : '',
+      // El form usa "intervalo" (cada cuántos km); reconstruimos desde el
+      // km absoluto guardado: intervalo = km_proximo − km_service.
+      intervalo:     s.km_proximo != null ? String(s.km_proximo - (s.km_service ?? 0)) : '',
       fecha_proximo: s.fecha_proximo ?? '',
       descripcion:   s.descripcion ?? '',
       costo:         s.costo != null ? String(s.costo) : '',
@@ -136,12 +138,17 @@ export function VehiculoServiciosSection({ vehiculo }: Props) {
       toast('Elegí un tipo del catálogo o escribí uno libre', 'err')
       return
     }
+    const km_service = Number(data.km_service) || 0
+    const intervalo  = data.intervalo ? Number(data.intervalo) : 0
+    // El backend guarda el km absoluto del próximo service. Si no hay
+    // intervalo válido (ej. un arreglo puntual), queda sin próximo.
+    const km_proximo = Number.isFinite(intervalo) && intervalo > 0 ? km_service + intervalo : null
     const dtoComun = {
       tipo_id,
       tipo_libre,
       fecha:         data.fecha,
-      km_service:    Number(data.km_service) || 0,
-      km_proximo:    data.km_proximo    ? Number(data.km_proximo)    : null,
+      km_service,
+      km_proximo,
       fecha_proximo: data.fecha_proximo || null,
       descripcion:   data.descripcion.trim() || null,
       costo:         data.costo ? Number(data.costo) : null,
@@ -234,8 +241,38 @@ export function VehiculoServiciosSection({ vehiculo }: Props) {
             <Input label="Costo ($)"  type="number" step="100" {...form.register('costo')} />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Input label="Km próximo (opcional)"    {...intInputProps} placeholder={form.watch('km_service') ? String(Number(form.watch('km_service')) + 10000) : ''} {...form.register('km_proximo')} />
-            <Input label="Fecha próximo (opcional)" type="date"   {...form.register('fecha_proximo')} />
+            <div className="flex flex-col gap-1.5">
+              <Input
+                label="🎯 Próximo service en (km)"
+                {...intInputProps}
+                placeholder="10000"
+                hint="Cada cuántos km hacer el próximo (dejá vacío si no aplica)"
+                {...form.register('intervalo')}
+              />
+              <div className="flex gap-1.5 flex-wrap">
+                {[10000, 15000, 30000].map(k => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => form.setValue('intervalo', String(k), { shouldDirty: true })}
+                    className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-gris text-gris-dark hover:bg-azul-light hover:text-azul transition-colors"
+                  >
+                    {k.toLocaleString('es-AR')} km
+                  </button>
+                ))}
+              </div>
+              {(() => {
+                const kmS  = Number(form.watch('km_service'))
+                const intv = Number(form.watch('intervalo'))
+                if (!Number.isFinite(kmS) || !Number.isFinite(intv) || intv <= 0) return null
+                return (
+                  <p className="text-[11px] text-gris-dark">
+                    Próximo service a los <b className="font-mono text-carbon">{(kmS + intv).toLocaleString('es-AR')} km</b>
+                  </p>
+                )
+              })()}
+            </div>
+            <Input label="Fecha próximo (opcional)" type="date" {...form.register('fecha_proximo')} />
           </div>
           <Input label="Proveedor / taller" placeholder="Toyota Buenos Aires" {...form.register('proveedor')} />
           <Input label="Descripción" placeholder="Detalle del trabajo" {...form.register('descripcion')} />
