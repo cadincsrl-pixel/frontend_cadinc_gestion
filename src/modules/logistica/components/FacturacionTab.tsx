@@ -105,6 +105,12 @@ function EmpresasSection({
     setEditando(e)
   }
 
+  const empresaOptions = empresas.map(e => ({
+    value: String(e.id),
+    label: e.nombre,
+    sub: `${e.cuit || '—'}${e.tel ? ` · ${e.tel}` : ''}`,
+  }))
+
   return (
     <>
       <div className="bg-white rounded-card shadow-card">
@@ -117,37 +123,39 @@ function EmpresasSection({
             <Button variant="primary" size="sm" onClick={() => setModalNueva(true)}>＋ Nueva empresa</Button>
           )}
         </div>
-        <div className="divide-y divide-gris">
-          {empresas.length === 0 && (
-            <p className="text-center py-8 text-sm text-gris-dark">No hay empresas registradas.</p>
+        <div className="px-5 py-4 flex flex-col gap-3">
+          {empresas.length === 0 ? (
+            <p className="text-center py-4 text-sm text-gris-dark">No hay empresas registradas.</p>
+          ) : (
+            <Combobox
+              placeholder="Buscar empresa…"
+              options={empresaOptions}
+              value={empresaSeleccionada ? String(empresaSeleccionada.id) : ''}
+              onChange={v => onSelectEmpresa(empresas.find(e => String(e.id) === v) ?? null)}
+            />
           )}
-          {empresas.map(e => (
-            <div
-              key={e.id}
-              onClick={() => onSelectEmpresa(empresaSeleccionada?.id === e.id ? null : e)}
-              className={`flex items-center justify-between px-5 py-3 cursor-pointer transition-colors ${
-                empresaSeleccionada?.id === e.id ? 'bg-azul-light' : 'hover:bg-gris/40'
-              }`}
-            >
+
+          {empresaSeleccionada && (
+            <div className="flex items-center justify-between bg-azul-light rounded-card px-4 py-3">
               <div>
-                <div className="font-bold text-sm text-carbon">{e.nombre}</div>
-                <div className="text-xs text-gris-dark">{e.cuit || '—'}{e.tel ? ` · ${e.tel}` : ''}</div>
+                <div className="font-bold text-sm text-carbon">{empresaSeleccionada.nombre}</div>
+                <div className="text-xs text-gris-dark">{empresaSeleccionada.cuit || '—'}{empresaSeleccionada.tel ? ` · ${empresaSeleccionada.tel}` : ''}</div>
               </div>
               <div className="flex items-center gap-2">
                 <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
-                  e.estado === 'activa' ? 'bg-verde-light text-verde' : 'bg-gris text-gris-dark'
-                }`}>{e.estado}</span>
+                  empresaSeleccionada.estado === 'activa' ? 'bg-verde-light text-verde' : 'bg-gris text-gris-dark'
+                }`}>{empresaSeleccionada.estado}</span>
                 {puedeEditar && (
-                  <button onClick={ev => { ev.stopPropagation(); openEdit(e) }}
+                  <button onClick={() => openEdit(empresaSeleccionada)}
                     className="text-xs px-2 py-1 rounded hover:bg-gris transition-colors">✏️</button>
                 )}
                 {puedeEliminar && (
-                  <button onClick={ev => { ev.stopPropagation(); if (confirm(`¿Eliminar ${e.nombre}?`)) remove(e.id, { onSuccess: () => toast('✓ Eliminada', 'ok'), onError: () => toast('No se puede eliminar: la empresa tiene cobros o viajes asociados', 'err') }) }}
+                  <button onClick={() => { if (confirm(`¿Eliminar ${empresaSeleccionada.nombre}?`)) remove(empresaSeleccionada.id, { onSuccess: () => { toast('✓ Eliminada', 'ok'); onSelectEmpresa(null) }, onError: () => toast('No se puede eliminar: la empresa tiene cobros o viajes asociados', 'err') }) }}
                     className="text-xs px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors">✕</button>
                 )}
               </div>
             </div>
-          ))}
+          )}
         </div>
       </div>
 
