@@ -150,11 +150,15 @@ export function ViajesTab() {
     // operativos (no facturables); preservamos el seleccionado para edición.
     return (depositos as Deposito[])
       .filter(d => !d.operativo || d.id === selectedId)
+      // Una vez elegido el punto de carga, mostramos SOLO los depósitos que
+      // tienen km (ruta) cargado desde ese punto de carga. Antes de elegirlo
+      // (conRuta == null) no podemos filtrar, así que se ven todos. El
+      // seleccionado se preserva siempre (edición).
+      .filter(d => conRuta == null || conRuta.has(d.id) || d.id === selectedId)
       .map(d => ({
         value: String(d.id),
         label: d.nombre,
         sub:   d.localidad ?? undefined,
-        group: conRuta ? (conRuta.has(d.id) ? 'Con km cargado' : 'Sin km todavía') : undefined,
       }))
   }
   // Para tramos vacíos: depósito de origen → cantera de destino. Mismo set
