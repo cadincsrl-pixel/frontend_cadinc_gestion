@@ -6,6 +6,7 @@ import { useForm } from 'react-hook-form'
 import {
   useSolicitudes, useCreateSolicitud, useUpdateSolicitud, useDeleteSolicitud,
   useComprarItem, useDespacharItem, useEnviarItem, useRechazarItem, useRevertirItem, useRevertirEnvio,
+  useEditarItem,
 } from '../hooks/useSolicitudes'
 import { useProveedores, useCreateProveedor } from '../hooks/useProveedores'
 import { useFacturasCompra, useCreateFactura } from '../hooks/useFacturasCompra'
@@ -207,7 +208,20 @@ export function SolicitudesTab() {
   const { mutate: rechazarItem } = useRechazarItem()
   const { mutate: revertirItem } = useRevertirItem()
   const { mutate: revertirEnvio } = useRevertirEnvio()
+  const { mutate: editarPrecioItem, isPending: guardandoPrecio } = useEditarItem()
   const { mutate: createRemito, isPending: enviandoRemito } = useCreateRemitoEnvio()
+  // Carga de precio inline para un ítem ya enviado que quedó sin precio.
+  // El input es string local; el handler valida y castea a number.
+  const [precioItemId, setPrecioItemId] = useState<number | null>(null)
+  const [precioDraft, setPrecioDraft] = useState('')
+  function guardarPrecioItem(itemId: number) {
+    const p = Number(precioDraft)
+    if (!Number.isFinite(p) || p <= 0) { toast('Ingresá un precio válido', 'err'); return }
+    editarPrecioItem({ itemId, dto: { precio_unit: p } }, {
+      onSuccess: () => { toast('✓ Precio cargado', 'ok'); setPrecioItemId(null); setPrecioDraft('') },
+      onError: () => toast('Error al cargar el precio', 'err'),
+    })
+  }
   const [selected, setSelected] = useState<Set<number>>(new Set())
   // Último remito generado: se ofrece imprimir desde un modal con su propio
   // botón, para que el window.open corra DENTRO del gesto del usuario. En
@@ -822,6 +836,11 @@ export function SolicitudesTab() {
                               </td>
                               <td className="px-4 py-2.5">
                                 <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${cfg.bg} ${cfg.text}`}>{cfg.label}</span>
+                                {item.estado === 'enviado' && (!item.precio_unit || Number(item.precio_unit) === 0) && !obra?.es_deposito && (
+                                  <div className="mt-1">
+                                    <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-amarillo-light text-[#7A5500]">⚠ sin precio</span>
+                                  </div>
+                                )}
                               </td>
                               <td className="px-4 py-2.5 text-xs text-gris-dark break-words">
                                 {item.proveedores && <div>Prov: <strong>{item.proveedores.nombre}</strong></div>}
@@ -872,6 +891,26 @@ export function SolicitudesTab() {
                                       )}
                                       {item.estado === 'rechazado' && (
                                         <button disabled={!resolverItems} onClick={() => handleRevertir(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-amarillo-light text-[#7A5500] hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Reactivar</button>
+                                      )}
+                                      {item.estado === 'enviado' && !obra?.es_deposito && (
+                                        precioItemId === item.id ? (
+                                          <>
+                                            <input
+                                              type="number"
+                                              inputMode="decimal"
+                                              autoFocus
+                                              value={precioDraft}
+                                              onChange={e => setPrecioDraft(e.target.value)}
+                                              onKeyDown={e => { if (e.key === 'Enter') guardarPrecioItem(item.id!) }}
+                                              placeholder="$/unid"
+                                              className="w-24 px-2 py-1.5 border-[1.5px] border-gris-mid rounded text-xs outline-none bg-white font-semibold focus:border-naranja min-h-[36px]"
+                                            />
+                                            <button disabled={guardandoPrecio} onClick={() => guardarPrecioItem(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✓</button>
+                                            <button onClick={() => { setPrecioItemId(null); setPrecioDraft('') }} className="text-xs font-bold px-3 py-1.5 rounded text-gris-dark hover:text-rojo hover:bg-rojo-light min-h-[36px]">✕</button>
+                                          </>
+                                        ) : (
+                                          <button disabled={!resolverItems} onClick={() => { setPrecioItemId(item.id!); setPrecioDraft(!item.precio_unit || Number(item.precio_unit) === 0 ? '' : String(item.precio_unit)) }} className={`text-xs font-bold px-3 py-1.5 rounded min-h-[36px] hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed ${!item.precio_unit || Number(item.precio_unit) === 0 ? 'bg-amarillo-light text-[#7A5500]' : 'bg-azul-light text-azul'}`}>{!item.precio_unit || Number(item.precio_unit) === 0 ? '💲 Cargar precio' : '✏️ Editar precio'}</button>
+                                        )
                                       )}
                                       {item.estado === 'enviado' && (
                                         <button disabled={!resolverItems} onClick={() => handleRevertirEnvio(item.id!)} title="Deshacer el envío (vuelve a comprado/depósito, borra el remito)" className="text-xs font-bold px-3 py-1.5 rounded text-gris-dark hover:text-rojo hover:bg-rojo-light min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">↩ Deshacer envío</button>
@@ -1081,7 +1120,12 @@ export function SolicitudesTab() {
                                 )}
                               </div>
                             </div>
-                            <span className={`shrink-0 inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${cfg.bg} ${cfg.text}`}>{cfg.label}</span>
+                            <div className="shrink-0 flex flex-col items-end gap-1">
+                              <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${cfg.bg} ${cfg.text}`}>{cfg.label}</span>
+                              {item.estado === 'enviado' && (!item.precio_unit || Number(item.precio_unit) === 0) && !obra?.es_deposito && (
+                                <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-amarillo-light text-[#7A5500]">⚠ sin precio</span>
+                              )}
+                            </div>
                           </div>
 
                           {/* Info extra */}
@@ -1141,6 +1185,28 @@ export function SolicitudesTab() {
                               )}
                               {item.estado === 'rechazado' && (
                                 <button disabled={!resolverItems} onClick={() => handleRevertir(item.id!)} className="w-full text-xs font-bold px-3 py-1.5 rounded bg-amarillo-light text-[#7A5500] hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Reactivar</button>
+                              )}
+                              {item.estado === 'enviado' && !obra?.es_deposito && (
+                                <div className="mb-2">
+                                  {precioItemId === item.id ? (
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        type="number"
+                                        inputMode="decimal"
+                                        autoFocus
+                                        value={precioDraft}
+                                        onChange={e => setPrecioDraft(e.target.value)}
+                                        onKeyDown={e => { if (e.key === 'Enter') guardarPrecioItem(item.id!) }}
+                                        placeholder="$/unid"
+                                        className="w-24 px-2 py-1.5 border-[1.5px] border-gris-mid rounded text-xs outline-none bg-white font-semibold focus:border-naranja min-h-[36px]"
+                                      />
+                                      <button disabled={guardandoPrecio} onClick={() => guardarPrecioItem(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✓</button>
+                                      <button onClick={() => { setPrecioItemId(null); setPrecioDraft('') }} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo min-h-[36px]">✕</button>
+                                    </div>
+                                  ) : (
+                                    <button disabled={!resolverItems} onClick={() => { setPrecioItemId(item.id!); setPrecioDraft(!item.precio_unit || Number(item.precio_unit) === 0 ? '' : String(item.precio_unit)) }} className={`w-full text-xs font-bold px-3 py-1.5 rounded min-h-[36px] hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed ${!item.precio_unit || Number(item.precio_unit) === 0 ? 'bg-amarillo-light text-[#7A5500]' : 'bg-azul-light text-azul'}`}>{!item.precio_unit || Number(item.precio_unit) === 0 ? '💲 Cargar precio' : '✏️ Editar precio'}</button>
+                                  )}
+                                </div>
                               )}
                               {item.estado === 'enviado' && (
                                 <button disabled={!resolverItems} onClick={() => handleRevertirEnvio(item.id!)} className="w-full text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">↩ Deshacer envío</button>

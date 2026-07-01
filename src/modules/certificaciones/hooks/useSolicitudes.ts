@@ -117,6 +117,12 @@ export function useEditarItem() {
   return useMutation({
     mutationFn: ({ itemId, dto }: { itemId: number; dto: any }) =>
       apiPatch(`/api/solicitudes/items/${itemId}`, dto),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['solicitudes'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['solicitudes'] })
+      // Editar precio/proveedor de un ítem recalcula su fila en la cuenta del
+      // cliente (MCC) → refrescar esas vistas también.
+      qc.invalidateQueries({ queryKey: ['cuenta-cliente'] })
+      qc.invalidateQueries({ queryKey: ['cuenta-cliente-pendientes'] })
+    },
   })
 }
