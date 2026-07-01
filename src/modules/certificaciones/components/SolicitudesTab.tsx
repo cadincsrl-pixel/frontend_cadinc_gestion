@@ -676,13 +676,20 @@ export function SolicitudesTab() {
             const obra = obrasMap.get(s.obra_cod)
             const isExp = expanded.has(s.id)
             const items = s.items ?? []
-            // En los tabs por-ítem mostramos SOLO los ítems de ese tab (lista
-            // limpia). Si el filtro dejara la card vacía (caso terminal), no la
-            // vaciamos: mostramos todos los ítems.
+            // En los tabs de trabajo ("Por comprar" / "Por enviar") mostramos el
+            // PEDIDO COMPLETO para no perder la foto: primero los ítems foco de
+            // este tab y después los ya resueltos / no-foco (atenuados).
+            const tabTrabajo = categoriaSel === 'por-comprar' || categoriaSel === 'por-enviar'
             const itemsFiltrados = items.filter(it => itemEnCategoria(it.estado, categoriaSel))
-            const itemsVisibles = !esTabPorItem(categoriaSel) || itemsFiltrados.length === 0
+            const itemsVisibles = !esTabPorItem(categoriaSel)
               ? items
-              : itemsFiltrados
+              : tabTrabajo
+                ? [...items].sort((a, b) => Number(itemEnCategoria(b.estado, categoriaSel)) - Number(itemEnCategoria(a.estado, categoriaSel)))
+                : (itemsFiltrados.length === 0 ? items : itemsFiltrados)
+            // Avance de resolución del pedido (chip en el header, solo tabs de trabajo)
+            const totalItems = items.length
+            const resueltosCount = items.filter(it => it.estado !== 'pendiente' && it.estado !== 'rechazado').length
+            const faltanCount = items.filter(it => it.estado === 'pendiente').length
 
             return (
               <div key={s.id} className="bg-white rounded-card shadow-card overflow-hidden">
@@ -707,6 +714,11 @@ export function SolicitudesTab() {
                       )}
                       {s.prioridad === 'urgente' && (
                         <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-rojo text-white uppercase">Urgente</span>
+                      )}
+                      {tabTrabajo && totalItems > 0 && (
+                        <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold ${faltanCount > 0 ? 'bg-amarillo-light text-[#7A5500]' : 'bg-verde-light text-verde'}`}>
+                          {faltanCount === 0 && '✓ '}{resueltosCount}/{totalItems} resueltos
+                        </span>
                       )}
                     </div>
                     <div className="text-[11px] text-gris-dark mt-0.5 flex items-center gap-1.5 flex-wrap">
@@ -769,8 +781,10 @@ export function SolicitudesTab() {
                         {itemsVisibles.map((item, i) => {
                           const cfg = ITEM_ESTADO_CFG[item.estado]
                           const stk = item.material_id ? stockMap.get(item.material_id) : null
+                          const esFoco = itemEnCategoria(item.estado, categoriaSel)
+                          const atenuar = tabTrabajo && !esFoco
                           return (
-                            <tr key={item.id ?? i} className="border-t border-gris bg-gris/20 align-top">
+                            <tr key={item.id ?? i} className={`border-t border-gris align-top ${atenuar ? 'bg-gris/40 opacity-60' : 'bg-gris/20'}`}>
                               <td className="px-2 py-2.5 text-xs text-gris-mid text-center">{i + 1}</td>
                               <td className="px-4 py-2.5">
                                 <div className="text-sm font-medium text-carbon">{item.descripcion}</div>
@@ -953,10 +967,17 @@ export function SolicitudesTab() {
             const isExp = expanded.has(s.id)
             const items = s.items ?? []
             const itemsSeleccionados = items.filter(it => selected.has(it.id!) && (it.estado === 'comprado' || it.estado === 'de_deposito' || it.estado === 'retirado'))
+            // En los tabs de trabajo mostramos el pedido completo (foco primero).
+            const tabTrabajo = categoriaSel === 'por-comprar' || categoriaSel === 'por-enviar'
             const itemsFiltrados = items.filter(it => itemEnCategoria(it.estado, categoriaSel))
-            const itemsVisibles = !esTabPorItem(categoriaSel) || itemsFiltrados.length === 0
+            const itemsVisibles = !esTabPorItem(categoriaSel)
               ? items
-              : itemsFiltrados
+              : tabTrabajo
+                ? [...items].sort((a, b) => Number(itemEnCategoria(b.estado, categoriaSel)) - Number(itemEnCategoria(a.estado, categoriaSel)))
+                : (itemsFiltrados.length === 0 ? items : itemsFiltrados)
+            const totalItems = items.length
+            const resueltosCount = items.filter(it => it.estado !== 'pendiente' && it.estado !== 'rechazado').length
+            const faltanCount = items.filter(it => it.estado === 'pendiente').length
             return (
               <div key={s.id} className="bg-white rounded-card shadow-sm border border-gris-mid p-3">
                 {/* Resumen */}
@@ -970,6 +991,11 @@ export function SolicitudesTab() {
                         <span className="text-sm font-bold text-carbon">{obra?.nom ?? s.obra_cod}</span>
                         {s.prioridad === 'urgente' && (
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rojo text-white uppercase">Urgente</span>
+                        )}
+                        {tabTrabajo && totalItems > 0 && (
+                          <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold ${faltanCount > 0 ? 'bg-amarillo-light text-[#7A5500]' : 'bg-verde-light text-verde'}`}>
+                            {faltanCount === 0 && '✓ '}{resueltosCount}/{totalItems} resueltos
+                          </span>
                         )}
                       </div>
                       <div className="flex items-center gap-2 flex-wrap mt-0.5 text-[11px] text-gris-dark font-mono">
@@ -1040,8 +1066,10 @@ export function SolicitudesTab() {
                     {itemsVisibles.map((item, i) => {
                       const cfg = ITEM_ESTADO_CFG[item.estado]
                       const stk = item.material_id ? stockMap.get(item.material_id) : null
+                      const esFoco = itemEnCategoria(item.estado, categoriaSel)
+                      const atenuar = tabTrabajo && !esFoco
                       return (
-                        <div key={item.id ?? i} className="bg-gris/30 rounded-lg p-3">
+                        <div key={item.id ?? i} className={`rounded-lg p-3 ${atenuar ? 'bg-gris/50 opacity-60' : 'bg-gris/30'}`}>
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex-1 min-w-0">
                               <div className="text-xs text-gris-mid">#{i + 1}</div>
