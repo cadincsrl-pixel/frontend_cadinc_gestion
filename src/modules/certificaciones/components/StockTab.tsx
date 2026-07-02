@@ -343,6 +343,7 @@ export function StockTab() {
     let omitidos = 0
     let ambiguos = 0
     let noEncontrados = 0
+    let sinCambios = 0
 
     for (const row of rows) {
       const nombreRaw = row['Material'] ?? row['material'] ?? row['nombre']
@@ -365,29 +366,42 @@ export function StockTab() {
 
       if (!mat) { noEncontrados++; continue }
 
+      // El backend aplica el ajuste como DELTA al aprobar (stock_actual +
+      // cantidad), no como valor absoluto. La planilla trae el stock CONTADO
+      // (absoluto), así que el delta = contado − sistema. Sin esto, aprobar
+      // duplicaba el stock (50 sistema + 50 planilla = 100).
+      const delta = stockNuevo - mat.stock_actual
+      if (delta === 0) { sinCambios++; continue }
+
       tareas.push(
         createMovAsync({
           material_id: mat.id,
           tipo: 'ajuste',
-          cantidad: stockNuevo,
+          cantidad: delta,
           motivo: 'ajuste_inventario',
-          obs: 'Importación masiva desde Excel',
+          // sub_motivo es obligatorio para ajustes (backend zod). Un recuento
+          // masivo corrige errores de carga acumulados.
+          sub_motivo: 'error_carga',
+          obs: `Importación masiva desde Excel (contado: ${stockNuevo}, sistema: ${mat.stock_actual})`,
         }).then(() => undefined)
       )
     }
 
     const resultados = await Promise.allSettled(tareas)
-    const actualizados = resultados.filter(r => r.status === 'fulfilled').length
-    const fallidos = resultados.length - actualizados
+    const enviados = resultados.filter(r => r.status === 'fulfilled').length
+    const fallidos = resultados.length - enviados
     const errores = fallidos + ambiguos + noEncontrados
 
-    const partes: string[] = [`${actualizados} actualizados`]
+    // Los ajustes quedan PENDIENTES de aprobación — el stock NO cambia hasta
+    // que un aprobador los revise en "Ajustes pendientes".
+    const partes: string[] = [`${enviados} ajuste${enviados === 1 ? '' : 's'} a aprobación`]
+    if (sinCambios) partes.push(`${sinCambios} sin cambios`)
     if (fallidos) partes.push(`${fallidos} con error`)
     if (noEncontrados) partes.push(`${noEncontrados} no encontrados`)
     if (ambiguos) partes.push(`${ambiguos} ambiguos (agregá columna "Rubro")`)
     if (omitidos) partes.push(`${omitidos} omitidos`)
 
-    toast(`Importación: ${partes.join(', ')}`, actualizados > 0 && errores === 0 ? 'ok' : actualizados > 0 ? 'warn' : 'err')
+    toast(`Importación: ${partes.join(', ')}`, enviados > 0 && errores === 0 ? 'ok' : enviados > 0 ? 'warn' : 'err')
   }
 
   return (
@@ -624,7 +638,10 @@ export function StockTab() {
                 <select {...formEntrada.register('tipo')} className="w-full px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white font-semibold focus:border-naranja">
                   <option value="entrada">+ Entrada</option>
                   <option value="salida">- Salida</option>
-                  {puedeAjustar && <option value="ajuste">↔ Ajuste (setear stock)</option>}
+                  {/* Los ajustes van por "↔ Diferencia" (DeclararAjusteModal), que
+                      pide sub_motivo y aplica el delta con aprobación. La opción
+                      "setear stock" de acá estaba rota (400 por falta de sub_motivo)
+                      y su semántica "absoluta" contradecía el delta del backend. */}
                 </select>
               </div>
               <div>
@@ -633,7 +650,8 @@ export function StockTab() {
                   <option value="compra">Compra</option>
                   <option value="despacho_obra">Despacho a obra</option>
                   <option value="devolucion">Devolución</option>
-                  <option value="ajuste_inventario">Ajuste inventario</option>
+                  {/* "Ajuste inventario" se declara por "↔ Diferencia", no como
+                      motivo de un movimiento de entrada/salida. */}
                 </select>
               </div>
             </div>

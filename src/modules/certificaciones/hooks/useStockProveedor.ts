@@ -130,7 +130,10 @@ export function useCrearRemitoRetiro() {
       qc.invalidateQueries({ queryKey: STOCK_PROV_KEY })
       qc.invalidateQueries({ queryKey: REMITOS_RR_KEY })
       qc.invalidateQueries({ queryKey: ['solicitudes'] })
-      qc.invalidateQueries({ queryKey: ['materiales'] })
+      // El retiro inserta/actualiza la cuenta del cliente (MCC). La key era
+      // ['materiales'] (muerta: CuentaClienteTab usa ['cuenta-cliente']).
+      qc.invalidateQueries({ queryKey: ['cuenta-cliente'] })
+      qc.invalidateQueries({ queryKey: ['cuenta-cliente-pendientes'] })
     },
   })
 }

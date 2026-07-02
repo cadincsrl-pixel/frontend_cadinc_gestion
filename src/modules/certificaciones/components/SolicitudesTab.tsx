@@ -1113,12 +1113,27 @@ export function SolicitudesTab() {
                             <div className="flex-1 min-w-0">
                               <div className="text-xs text-gris-mid">#{i + 1}</div>
                               <div className="text-sm font-medium text-carbon">{item.descripcion}</div>
-                              <div className="text-[11px] text-gris-dark font-mono mt-0.5">
-                                {item.cantidad} {UNIDADES.find(u => u.value === item.unidad)?.label ?? item.unidad}
-                                {item.precio_unit != null && (
-                                  <span className="ml-2">× {fmtM(item.precio_unit)} = <strong>{fmtM(item.cantidad * item.precio_unit)}</strong></span>
-                                )}
-                              </div>
+                              {(() => {
+                                const unidLabel = UNIDADES.find(u => u.value === item.unidad)?.label ?? item.unidad
+                                const cantEfectiva = item.cantidad_comprada ?? item.cantidad
+                                const difiere = item.cantidad_comprada != null && item.cantidad_comprada !== item.cantidad
+                                return (
+                                  <div className="text-[11px] text-gris-dark font-mono mt-0.5">
+                                    {difiere ? (
+                                      <span title={`Solicitado: ${item.cantidad} ${unidLabel}`}>
+                                        <span className="line-through text-gris-mid">{item.cantidad}</span>
+                                        {' → '}
+                                        <strong className="text-naranja-dark">{cantEfectiva}</strong> {unidLabel}
+                                      </span>
+                                    ) : (
+                                      <>{item.cantidad} {unidLabel}</>
+                                    )}
+                                    {item.precio_unit != null && (
+                                      <span className="ml-2">× {fmtM(item.precio_unit)} = <strong>{fmtM(cantEfectiva * item.precio_unit)}</strong></span>
+                                    )}
+                                  </div>
+                                )
+                              })()}
                             </div>
                             <div className="shrink-0 flex flex-col items-end gap-1">
                               <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${cfg.bg} ${cfg.text}`}>{cfg.label}</span>
@@ -1224,8 +1239,9 @@ export function SolicitudesTab() {
                           {itemsSeleccionados.length} ítem{itemsSeleccionados.length > 1 ? 's' : ''} seleccionado{itemsSeleccionados.length > 1 ? 's' : ''}
                         </span>
                         <button
+                          disabled={enviandoRemito}
                           onClick={() => enviarConRemito(s, itemsSeleccionados.map(it => it.id!))}
-                          className="w-full text-xs font-bold px-3 py-2 rounded-lg bg-verde text-white hover:opacity-90 min-h-[40px]"
+                          className="w-full text-xs font-bold px-3 py-2 rounded-lg bg-verde text-white hover:opacity-90 min-h-[40px] disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           📄 Enviar seleccionados + Generar remito
                         </button>

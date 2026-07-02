@@ -16,6 +16,9 @@ export function useCreateRemitoEnvio() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['remitos-envio'] })
       qc.invalidateQueries({ queryKey: ['solicitudes'] })
+      // Enviar a una obra depósito ingresa stock (compra recibida) → refrescar.
+      qc.invalidateQueries({ queryKey: ['stock', 'materiales'] })
+      qc.invalidateQueries({ queryKey: ['stock', 'movimientos'] })
     },
   })
 }
