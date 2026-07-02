@@ -180,6 +180,8 @@ La **fórmula correcta** usa `costoLegConCatObra` (en `src/lib/utils/costos.ts`)
 - `ResumenHistoricoPage`.
 Los 4 lugares deben dar el mismo número. La función vieja `calcularTotalesSemana` (que usa `costoLeg` sin cat_obra) **ya no se usa**.
 
+**Precio global versionado (2026-07-02)**: el `vh` global por categoría está versionado en `categoria_tarifas (cat_id, vh, desde)` — espejo de `tarifas` por obra. `categorias.vh` es solo **cache de la última versión** (para labels/selects). En cualquier cálculo con fecha (semanas pasadas, recibos, exports) **NUNCA usar `cat.vh` directo**: usar `getVHGlobalEnFecha(cat, fechaRef)` de `costos.ts`. Motivo: el 2026-06-26 un aumento global (UPDATE in-place, modelo viejo) recalculó retroactivamente los costos de todas las semanas ya pagadas; los valores históricos se recuperaron por extrapolación del Excel de pagos (migración `20260702_categoria_tarifas.sql`).
+
 ## 6. Convenciones de código (frontend)
 
 - **Feature-based folders**: `src/modules/<feature>/{components,hooks,store}`. Sin `services/` (los hooks de React Query encapsulan API).
