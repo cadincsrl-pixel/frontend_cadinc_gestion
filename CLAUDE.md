@@ -158,7 +158,7 @@ Caso histórico: 2026-05-20 — Candela (jefe_obra, 1705 filas en sus obras) no 
 Cuando se compra un material y queda físicamente en el galpón del proveedor (no llega a CADINC ni a la obra todavía), se marca como `en_proveedor`:
 - **RPC `resolver_item_en_proveedor`**: setea estado, agrega entrada en `stock_proveedor_movimientos`. NO inserta en MCC.
 - **RPC `retirar_de_proveedor(p_proveedor_id, p_obra_cod, p_fecha, p_comprobante_*, p_items, p_user_id)`**: crea `remitos_retiro_proveedor` (numerado RR-NNNN auto), inserta movimientos de salida (parciales OK), y **recién ahí** inserta/actualiza MCC con la cantidad acumulada retirada. Comprobante (foto/PDF) en bucket `remitos-retiro-proveedor` con dedup sha256.
-- Vista materializada: `v_stock_proveedor` (cantidad pendiente por item = entradas − salidas).
+- Vista `v_stock_proveedor` (VIEW normal con `security_invoker`, no materializada; cantidad pendiente por item = entradas − salidas).
 
 ### 5.9 Notificaciones (campana del topbar)
 Hook `src/hooks/useNotificaciones.ts` calcula 4 secciones in-memory (sin tabla persistente):
@@ -236,7 +236,7 @@ Los 4 lugares deben dar el mismo número. La función vieja `calcularTotalesSema
 - **`useForm<any>` pendientes de tipado**: ViajesTab, PersonalPage, ChoferesTab, BateasTab, RentabilidadTab, modal adelantos.
 - **~80 tablas con RLS permisiva**: es decisión consciente, pero documentar antes de cualquier cambio.
 - **Login de herramientas separado** (`/herramientas/login`): coexiste con `/login`, razón no documentada.
-- **Falta índice** en `stock_movimientos.material_id` y `.solicitud_item_id`. Considerarlo si el volumen crece.
+- ~~**Falta índice** en `stock_movimientos.material_id` y `.solicitud_item_id`~~ **RESUELTO** — creados en `20260424_perf_indices.sql` (verificado en DB viva 2026-07-01: `stock_movimientos_material_id_idx`, `stock_movimientos_solicitud_item_id_idx` parcial, `solicitud_compra_item_solicitud_estado_idx`).
 - **`npm audit` en el backend**: 3 vulnerabilidades (2 moderate, 1 high) detectadas al clonar. Evaluar con contexto, no correr `audit fix` a ciegas.
 - **Auto-archivado sin auditoría**: el endpoint `/api/obras/auto-archivar` no genera `audit_log` (filtro explícito en `audit.ts`). Si se necesita rastreo, agregar.
 - **Sub-tabs Camiones/Bateas sin URL propia**: `CamionesYBateasTab.tsx` maneja sub-state local, no se puede deep-linkear al modal de un vehículo (la campana de notificaciones lleva al tab pero no abre el modal).
