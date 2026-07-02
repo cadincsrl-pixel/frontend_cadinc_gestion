@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { useQueries } from '@tanstack/react-query'
+import { useQueries, useQuery } from '@tanstack/react-query'
 import { useObras }      from '@/modules/tarja/hooks/useObras'
 import { usePersonal }   from '@/modules/tarja/hooks/usePersonal'
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
@@ -10,12 +10,39 @@ import { useHsExtras, useHsExtrasAll } from '@/modules/tarja/hooks/useHsExtras'
 import { useTarifasObra } from '@/modules/tarja/hooks/useTarifas'
 import { useCertificacionesObra, useContratistas } from '@/modules/tarja/hooks/useContratistas'
 import { Combobox } from '@/components/ui/Combobox'
-import { calcularTotalesSemana } from '@/lib/utils/costos'
+import { costoLegConCatObra, fmtMonto, type CatObraEntry } from '@/lib/utils/costos'
 import { getSemDays, getSemLabel, getViernes, toISO } from '@/lib/utils/dates'
 import { horasApi } from '@/lib/api/horas.api'
-import type { Obra, Certificacion, Contratista } from '@/types/domain.types'
+import { apiGet } from '@/lib/api/client'
+import type { Obra, Certificacion, Contratista, Personal, Categoria, Tarifa, Hora, TarjaHsExtra } from '@/types/domain.types'
 
-function fmtM(n: number) { return '$' + Math.round(n).toLocaleString('es-AR', { maximumFractionDigits: 0 }) }
+// Formato canónico de tarja: redondea al millar (igual que el chip "Costo
+// semana", el footer de TarjaTable, cierres y el resumen histórico — §5.11).
+const fmtM = fmtMonto
+
+// Costo de operarios de la semana con el criterio CANÓNICO (§5.11):
+// costoLegConCatObra (respeta overrides de cat_obra) + redondeo per-leg al
+// millar, sumado. Igual que TarjaObraPage/CierresSection/ResumenHistorico,
+// así los números coinciden en todos lados.
+function costoOperariosSemana(
+  horas: Hora[], hsExtras: TarjaHsExtra[], personalObra: Personal[],
+  categorias: Categoria[], tarifas: Tarifa[], catObra: CatObraEntry[],
+  obraCod: string, dias: Date[],
+): number {
+  return personalObra.reduce((s, p) =>
+    s + Math.round(
+      costoLegConCatObra(horas, hsExtras, personalObra, categorias, tarifas, catObra, obraCod, p.leg, dias) / 1000,
+    ) * 1000, 0)
+}
+
+// Todas las categorías por obra (una query cacheada, compartida por todas las
+// filas y el total vía la misma queryKey). Mismo endpoint que ResumenHistorico.
+function useCatObraAll() {
+  return useQuery({
+    queryKey: ['cat-obra', 'all'],
+    queryFn: () => apiGet<CatObraEntry[]>('/api/cat-obra/all'),
+  })
+}
 
 // Genera las últimas N viernes
 function ultimasSemanas(n: number): Date[] {
@@ -43,6 +70,7 @@ function FilaSemana({
   const { data: categorias = [] } = useCategorias()
   const { data: tarifas    = [] } = useTarifasObra(obraCod)
   const { data: certs      = [] } = useCertificacionesObra(obraCod)
+  const { data: catObra    = [] } = useCatObraAll()
 
   const dias   = getSemDays(vie)
   const desde  = toISO(dias[0]!)
@@ -57,8 +85,9 @@ function FilaSemana({
     || (hsExtras as any[]).some((e: any) => e.leg === p.leg)
   )
 
-  const { totalCosto } = calcularTotalesSemana(
-    horas as any[], personalObra as any[], categorias as any[], tarifas as any[], obraCod, dias, hsExtras as any[]
+  const totalCosto = costoOperariosSemana(
+    horas as Hora[], hsExtras as TarjaHsExtra[], personalObra as Personal[],
+    categorias as Categoria[], tarifas as Tarifa[], catObra as CatObraEntry[], obraCod, dias,
   )
 
   // Certificaciones de la semana, opcionalmente filtradas a un contratista.
@@ -126,6 +155,7 @@ function TotalesObra({ obraCod, contratSel }: { obraCod: string; contratSel: str
   const { data: categorias = [] } = useCategorias()
   const { data: tarifas    = [] } = useTarifasObra(obraCod)
   const { data: certs      = [] } = useCertificacionesObra(obraCod)
+  const { data: catObra    = [] } = useCatObraAll()
   // Todas las hs extras (una sola query). Filtramos por obra abajo.
   const { data: hsExtrasAll = [] } = useHsExtrasAll()
   const hsExtrasObra = (hsExtrasAll as any[]).filter(e => e.obra_cod === obraCod)
@@ -156,8 +186,9 @@ function TotalesObra({ obraCod, contratSel }: { obraCod: string; contratSel: str
       horas.some((h: any) => h.leg === p.leg)
       || hsExtrasObra.some(e => e.leg === p.leg && e.sem_key === semKey)
     )
-    const { totalCosto } = calcularTotalesSemana(
-      horas, personalObra, categorias as any[], tarifas as any[], obraCod, dias, hsExtrasObra,
+    const totalCosto = costoOperariosSemana(
+      horas as Hora[], hsExtrasObra as TarjaHsExtra[], personalObra as Personal[],
+      categorias as Categoria[], tarifas as Tarifa[], catObra as CatObraEntry[], obraCod, dias,
     )
     const costoCont = (certs as Certificacion[])
       .filter(c => c.sem_key === semKey)
