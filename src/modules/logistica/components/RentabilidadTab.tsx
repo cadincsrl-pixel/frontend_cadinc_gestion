@@ -437,8 +437,8 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
             <div className="text-[11px] font-bold uppercase tracking-wider text-gris-dark mb-2">👷 Chofer</div>
             <Select label="Modalidad de pago" options={MODALIDAD_OPTIONS} disabled={readOnly} {...form.register('modalidad_pago')} />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-              <Input label="Pago por km (ARS/km)"   type="number" disabled={readOnly || isPctMode} {...form.register('chofer_por_km',  { valueAsNumber: true })} />
-              <Input label="Jornal por día (ARS)"   type="number" disabled={readOnly} {...form.register('chofer_por_dia', { valueAsNumber: true })} />
+              <Input label="Pago por km (ARS/km, sin IVA)"   type="number" disabled={readOnly || isPctMode} {...form.register('chofer_por_km',  { valueAsNumber: true })} />
+              <Input label="Jornal por día (ARS, sin IVA)"   type="number" disabled={readOnly} {...form.register('chofer_por_dia', { valueAsNumber: true })} />
             </div>
             {isPctMode && (
               <div className="mt-3">
@@ -641,10 +641,10 @@ function ParametrosCard({ paramsRow, open, onToggle, readOnly }: ParametrosCardP
           <fieldset className="border border-gris rounded-lg p-3">
             <legend className="text-[11px] font-bold uppercase tracking-wider text-gris-dark px-1">Equipo</legend>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Input label="Valor tractor (USD)"           type="number" disabled={readOnly} {...form.register('valor_tractor_usd',          { valueAsNumber: true })} />
-              <Input label="Valor residual tractor (USD)"  type="number" disabled={readOnly} {...form.register('valor_residual_tractor_usd', { valueAsNumber: true })} />
+              <Input label="Valor tractor (USD, sin IVA)"           type="number" disabled={readOnly} {...form.register('valor_tractor_usd',          { valueAsNumber: true })} />
+              <Input label="Valor residual tractor (USD, sin IVA)"  type="number" disabled={readOnly} {...form.register('valor_residual_tractor_usd', { valueAsNumber: true })} />
               <Input label="Vida útil tractor (km)"        {...intInputProps} disabled={readOnly} {...form.register('vida_util_tractor_km',       { valueAsNumber: true })} />
-              <Input label="Valor batea (USD)"             type="number" disabled={readOnly} {...form.register('valor_semirremolque_usd',    { valueAsNumber: true })} />
+              <Input label="Valor batea (USD, sin IVA)"             type="number" disabled={readOnly} {...form.register('valor_semirremolque_usd',    { valueAsNumber: true })} />
               <Input label="Vida útil batea (años)"        type="number" disabled={readOnly} {...form.register('vida_util_batea_anios',      { valueAsNumber: true })} />
             </div>
           </fieldset>
@@ -652,9 +652,9 @@ function ParametrosCard({ paramsRow, open, onToggle, readOnly }: ParametrosCardP
           <fieldset className="border border-gris rounded-lg p-3">
             <legend className="text-[11px] font-bold uppercase tracking-wider text-gris-dark px-1">Mantenimiento + neumáticos</legend>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Input label="Costo service (ARS)"         type="number" disabled={readOnly} {...form.register('costo_service',          { valueAsNumber: true })} />
+              <Input label="Costo service (ARS, con IVA)"         type="number" disabled={readOnly} {...form.register('costo_service',          { valueAsNumber: true })} />
               <Input label="Frecuencia service (km)"     {...intInputProps} disabled={readOnly} {...form.register('frecuencia_service_km',  { valueAsNumber: true })} />
-              <Input label="Costo cubierta (ARS)"        type="number" disabled={readOnly} {...form.register('costo_cubierta',         { valueAsNumber: true })} />
+              <Input label="Costo cubierta (ARS, con IVA)"        type="number" disabled={readOnly} {...form.register('costo_cubierta',         { valueAsNumber: true })} />
               <Input label="Cubiertas por equipo"        type="number" disabled={readOnly} {...form.register('cubiertas_por_equipo',   { valueAsNumber: true })} />
               <Input label="Vida útil neumáticos (km)"   {...intInputProps} disabled={readOnly} {...form.register('vida_util_neumaticos_km',{ valueAsNumber: true })} />
             </div>
@@ -663,11 +663,11 @@ function ParametrosCard({ paramsRow, open, onToggle, readOnly }: ParametrosCardP
           <fieldset className="border border-gris rounded-lg p-3">
             <legend className="text-[11px] font-bold uppercase tracking-wider text-gris-dark px-1">Personal y gastos fijos</legend>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Input label="Cargas sociales (ARS/mes)"   type="number" disabled={readOnly} {...form.register('cargas_sociales_mensual', { valueAsNumber: true })} />
-              <Input label="Seguros (ARS/mes)"           type="number" disabled={readOnly} {...form.register('seguros_mensual',         { valueAsNumber: true })} />
-              <Input label="Patente + tasas + VTV (ARS/año)" type="number" disabled={readOnly} {...form.register('patente_anual',     { valueAsNumber: true })} />
-              <Input label="Gomería (ARS/mes)"           type="number" disabled={readOnly} {...form.register('gomeria_mensual',         { valueAsNumber: true })} />
-              <Input label="Lavadero (ARS/mes)"          type="number" disabled={readOnly} {...form.register('lavadero_mensual',        { valueAsNumber: true })} />
+              <Input label="Cargas sociales (ARS/mes, sin IVA)"   type="number" disabled={readOnly} {...form.register('cargas_sociales_mensual', { valueAsNumber: true })} />
+              <Input label="Seguros (ARS/mes, con IVA)"           type="number" disabled={readOnly} {...form.register('seguros_mensual',         { valueAsNumber: true })} />
+              <Input label="Patente + tasas + VTV (ARS/año, sin IVA)" type="number" disabled={readOnly} {...form.register('patente_anual',     { valueAsNumber: true })} />
+              <Input label="Gomería (ARS/mes, con IVA)"           type="number" disabled={readOnly} {...form.register('gomeria_mensual',         { valueAsNumber: true })} />
+              <Input label="Lavadero (ARS/mes, con IVA)"          type="number" disabled={readOnly} {...form.register('lavadero_mensual',        { valueAsNumber: true })} />
               <Input label="Overhead / estructura (ej 0.01 = 1%)" hint="% sobre costos (directos+fijos). Aproxima gastos generales fuera de la flota; no incluye Ganancias." type="number" step="0.001" disabled={readOnly} {...form.register('overhead_pct',  { valueAsNumber: true })} />
             </div>
           </fieldset>
