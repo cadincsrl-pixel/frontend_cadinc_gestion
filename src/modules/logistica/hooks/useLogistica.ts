@@ -464,7 +464,7 @@ export function useDeleteLiquidacion() {
 export function useCreateAdelanto() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (dto: { chofer_id: number; fecha: string; monto: number; descripcion?: string; comprobante_path?: string | null }) =>
+    mutationFn: (dto: { chofer_id: number; fecha: string; monto: number; descripcion?: string; forma_pago?: 'transferencia' | 'efectivo'; comprobante_path?: string | null }) =>
       apiPost<Adelanto>('/api/logistica/liquidaciones/adelantos', dto),
     onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.adelantos }),
   })
@@ -473,7 +473,7 @@ export function useCreateAdelanto() {
 export function useUpdateAdelanto() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, dto }: { id: number; dto: { fecha?: string; monto?: number; descripcion?: string; comprobante_path?: string | null } }) =>
+    mutationFn: ({ id, dto }: { id: number; dto: { fecha?: string; monto?: number; descripcion?: string; forma_pago?: 'transferencia' | 'efectivo'; comprobante_path?: string | null } }) =>
       apiPatch<Adelanto>(`/api/logistica/liquidaciones/adelantos/${id}`, dto),
     onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.adelantos }),
   })

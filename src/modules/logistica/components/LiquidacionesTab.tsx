@@ -18,6 +18,7 @@ import { Badge }    from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
 import { useForm }  from 'react-hook-form'
 import { generarPdfLiquidacion, type PdfLiquidacionArgs } from '@/lib/utils/liquidacion-pdf'
+import { generarReciboAdelanto } from '@/lib/utils/recibo-adelanto-pdf'
 import { LiquidacionAdjuntosSection } from './LiquidacionAdjuntosSection'
 import { ModalSolicitudTransferencia } from './ModalSolicitudTransferencia'
 import { apiGet } from '@/lib/api/client'
@@ -719,6 +720,7 @@ export function LiquidacionesTab() {
         fecha:       data.fecha,
         monto:       Number(data.monto),
         descripcion: data.descripcion,
+        forma_pago:  data.forma_pago === 'transferencia' ? 'transferencia' : 'efectivo',
         ...(comprobante_path ? { comprobante_path } : {}),
       }, {
         onSuccess: () => {
@@ -747,6 +749,28 @@ export function LiquidacionesTab() {
     )
   }
 
+  // Genera el recibo PDF de un adelanto para que el chofer lo firme. Se usa
+  // desde el modal (con valores del form, antes de guardar) y desde la fila
+  // (con el adelanto ya guardado → lleva N° A-{id}).
+  function imprimirReciboAdel(a: {
+    id?: number; chofer_id: number | null; fecha?: string; monto?: number
+    descripcion?: string | null; forma_pago: 'transferencia' | 'efectivo'
+  }) {
+    const ch = (choferes as Chofer[]).find(c => c.id === Number(a.chofer_id))
+    if (!ch) { toast('Elegí un chofer para el recibo', 'err'); return }
+    const monto = Number(a.monto)
+    if (!Number.isFinite(monto) || monto <= 0) { toast('Cargá el monto para el recibo', 'err'); return }
+    generarReciboAdelanto({
+      numero:        a.id ? `A-${a.id}` : null,
+      fecha:         a.fecha || toISO(new Date()),
+      chofer_nombre: ch.nombre,
+      chofer_cuil:   ch.cuil,
+      monto,
+      descripcion:   a.descripcion ?? null,
+      forma_pago:    a.forma_pago,
+    })
+  }
+
   const preview = calcularPreview()
 
   return (
@@ -756,7 +780,7 @@ export function LiquidacionesTab() {
           🏦 Solicitud de transferencia
         </Button>
         <Button variant="secondary" size="sm" onClick={() => {
-          formAdel.setValue('fecha', toISO(new Date()))
+          formAdel.reset({ fecha: toISO(new Date()), forma_pago: 'efectivo', chofer_id: '', monto: '', descripcion: '' })
           setModalAdel(true)
         }}>
           💵 Registrar adelanto
@@ -1165,8 +1189,18 @@ export function LiquidacionesTab() {
                                   <div className="text-[10px] text-gris-mid">Liquidado en N° {a.liquidacion_id}</div>
                                 )}
                               </div>
-                              <div className="font-mono font-bold text-rojo shrink-0">{fmtM(a.monto)}</div>
+                              <div className="shrink-0 text-right">
+                                <div className="font-mono font-bold text-rojo">{fmtM(a.monto)}</div>
+                                <div className="text-[10px] text-gris-mid">{a.forma_pago === 'transferencia' ? '🏦 Transf.' : '💵 Efectivo'}</div>
+                              </div>
                               <div className="flex gap-1 shrink-0">
+                                {a.forma_pago === 'efectivo' && (
+                                  <button
+                                    onClick={() => imprimirReciboAdel(a)}
+                                    title="Imprimir recibo para firmar"
+                                    className="text-xs font-bold px-2 py-1 rounded hover:bg-azul-light text-gris-dark hover:text-azul transition-colors"
+                                  >🖨</button>
+                                )}
                                 {a.comprobante_url && (
                                   <button
                                     onClick={() => verComprobanteAdel(a.id)}
@@ -1177,7 +1211,7 @@ export function LiquidacionesTab() {
                                 {!a.liquidacion_id && (
                                   <>
                                     <button
-                                      onClick={() => { setEditandoAdel(a); formEditAdel.reset({ fecha: a.fecha, monto: a.monto, descripcion: a.descripcion ?? '' }); setArchivoEditAdel(null); setRemoverCompEdit(false) }}
+                                      onClick={() => { setEditandoAdel(a); formEditAdel.reset({ fecha: a.fecha, monto: a.monto, descripcion: a.descripcion ?? '', forma_pago: a.forma_pago ?? 'efectivo' }); setArchivoEditAdel(null); setRemoverCompEdit(false) }}
                                       className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors"
                                     >✏️</button>
                                     <button
@@ -1784,7 +1818,7 @@ export function LiquidacionesTab() {
                 }
                 updateAdel({
                   id: editandoAdel.id,
-                  dto: { fecha: data.fecha, monto: Number(data.monto), descripcion: data.descripcion, ...comprobantePatch },
+                  dto: { fecha: data.fecha, monto: Number(data.monto), descripcion: data.descripcion, forma_pago: data.forma_pago === 'transferencia' ? 'transferencia' : 'efectivo', ...comprobantePatch },
                 }, {
                   onSuccess: () => {
                     toast('✓ Adelanto actualizado', 'ok')
@@ -1811,6 +1845,43 @@ export function LiquidacionesTab() {
           <Input label="Fecha" type="date" {...formEditAdel.register('fecha')} />
           <Input label="Monto ($)" type="number" step="100" {...formEditAdel.register('monto')} />
           <Input label="Descripción" placeholder="Ej: Adelanto semana del 10/3" {...formEditAdel.register('descripcion')} />
+
+          {/* Forma de pago */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-bold text-gris-dark uppercase tracking-wider">Forma de pago</label>
+            <div className="grid grid-cols-2 gap-2">
+              {(['efectivo', 'transferencia'] as const).map(fp => {
+                const activo = (formEditAdel.watch('forma_pago') ?? 'efectivo') === fp
+                return (
+                  <button
+                    key={fp}
+                    type="button"
+                    onClick={() => formEditAdel.setValue('forma_pago', fp)}
+                    className={`px-3 py-2 rounded-lg text-sm font-bold border-[1.5px] transition-colors ${activo ? 'border-azul bg-azul-light text-azul' : 'border-gris-mid bg-white text-gris-dark hover:border-azul'}`}
+                  >
+                    {fp === 'efectivo' ? '💵 Efectivo' : '🏦 Transferencia'}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {editandoAdel && (formEditAdel.watch('forma_pago') ?? 'efectivo') === 'efectivo' && (
+            <button
+              type="button"
+              onClick={() => imprimirReciboAdel({
+                id:          editandoAdel.id,
+                chofer_id:   editandoAdel.chofer_id,
+                fecha:       formEditAdel.watch('fecha'),
+                monto:       Number(formEditAdel.watch('monto')),
+                descripcion: formEditAdel.watch('descripcion'),
+                forma_pago:  'efectivo',
+              })}
+              className="text-sm font-bold text-azul hover:underline text-left"
+            >
+              🖨 Imprimir recibo para firmar
+            </button>
+          )}
 
           <div className="flex flex-col gap-1">
             <label className="text-xs font-bold text-gris-dark uppercase tracking-wider">Comprobante</label>
@@ -1874,6 +1945,46 @@ export function LiquidacionesTab() {
           </div>
           <Input label="Monto ($)" type="number" step="100" placeholder="0" {...formAdel.register('monto')} />
           <Input label="Descripción" placeholder="Ej: Adelanto semana del 10/3" {...formAdel.register('descripcion')} />
+
+          {/* Forma de pago: efectivo (con recibo para firmar) o transferencia. */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-bold text-gris-dark uppercase tracking-wider">Forma de pago</label>
+            <div className="grid grid-cols-2 gap-2">
+              {(['efectivo', 'transferencia'] as const).map(fp => {
+                const activo = (formAdel.watch('forma_pago') ?? 'efectivo') === fp
+                return (
+                  <button
+                    key={fp}
+                    type="button"
+                    onClick={() => formAdel.setValue('forma_pago', fp)}
+                    className={`px-3 py-2 rounded-lg text-sm font-bold border-[1.5px] transition-colors ${activo ? 'border-azul bg-azul-light text-azul' : 'border-gris-mid bg-white text-gris-dark hover:border-azul'}`}
+                  >
+                    {fp === 'efectivo' ? '💵 Efectivo' : '🏦 Transferencia'}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Recibo para firmar: solo tiene sentido en efectivo. */}
+          {(formAdel.watch('forma_pago') ?? 'efectivo') === 'efectivo' && (
+            <div className="flex flex-col gap-1 bg-azul-light/40 rounded-lg p-3">
+              <button
+                type="button"
+                onClick={() => imprimirReciboAdel({
+                  chofer_id:   formAdel.watch('chofer_id'),
+                  fecha:       formAdel.watch('fecha'),
+                  monto:       Number(formAdel.watch('monto')),
+                  descripcion: formAdel.watch('descripcion'),
+                  forma_pago:  'efectivo',
+                })}
+                className="text-sm font-bold text-azul hover:underline text-left"
+              >
+                🖨 Imprimir recibo para firmar
+              </button>
+              <p className="text-[11px] text-gris-mid italic">El chofer firma el recibo impreso; después escaneá y subilo abajo como comprobante.</p>
+            </div>
+          )}
 
           <div className="flex flex-col gap-1">
             <label className="text-xs font-bold text-gris-dark uppercase tracking-wider">

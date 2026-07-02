@@ -799,6 +799,7 @@ export interface Adelanto {
   fecha: string
   monto: number
   descripcion: string | null
+  forma_pago: 'transferencia' | 'efectivo'
   liquidacion_id: number | null
   comprobante_url:  string | null
   comprobante_hash: string | null
