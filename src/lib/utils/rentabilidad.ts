@@ -81,6 +81,11 @@ export interface RentabilidadResultado {
   ingreso:                   number
   margen:                    number
   margen_pct:                number
+  // Margen SIN descontar los costos fijos (amortizaciones, service, seguros,
+  // patente). = ingreso − directos − overhead = margen + costos_fijos. Es lo
+  // que deja el viaje para cubrir los fijos de la flota + la ganancia.
+  margen_sin_fijos:          number
+  margen_sin_fijos_pct:      number
   margen_mensual:            number
   margen_anual_usd:          number
   diagnostico:               Diagnostico
@@ -93,7 +98,8 @@ const RESULTADO_VACIO: Omit<RentabilidadResultado, 'diagnostico'> = {
   amortizacion_tractor: 0, amortizacion_batea: 0, service: 0,
   seguros_prorr: 0, patente_prorr: 0, costos_fijos: 0,
   overhead: 0, costo_total: 0, ingreso: 0, margen: 0,
-  margen_pct: 0, margen_mensual: 0, margen_anual_usd: 0,
+  margen_pct: 0, margen_sin_fijos: 0, margen_sin_fijos_pct: 0,
+  margen_mensual: 0, margen_anual_usd: 0,
 }
 
 export function calcularRentabilidad(
@@ -163,6 +169,11 @@ export function calcularRentabilidad(
   const margen       = ingreso - costo_total
   const margen_pct   = ingreso > 0 ? margen / ingreso : 0
 
+  // Margen sin descontar los costos fijos (= margen + costos_fijos). No resta
+  // amortizaciones/service/seguros/patente; sí resta directos y overhead.
+  const margen_sin_fijos     = margen + costos_fijos
+  const margen_sin_fijos_pct = ingreso > 0 ? margen_sin_fijos / ingreso : 0
+
   const margen_mensual    = margen * v.viajes_por_mes
   const margen_anual_usd  = p.tipo_cambio_usd_ars > 0
     ? margen_mensual * 12 / p.tipo_cambio_usd_ars
@@ -182,6 +193,7 @@ export function calcularRentabilidad(
     amortizacion_tractor, amortizacion_batea, service,
     seguros_prorr, patente_prorr, costos_fijos,
     overhead, costo_total, ingreso, margen, margen_pct,
+    margen_sin_fijos, margen_sin_fijos_pct,
     margen_mensual, margen_anual_usd, diagnostico,
   }
 }

@@ -144,8 +144,8 @@ export function RentabilidadTab() {
           <table className="w-full border-collapse">
             <thead>
               <tr>
-                {['#', 'Viaje', 'Tarifa $/t', 'Viajes/mes', 'Chofer $/mes', 'Margen $/viaje', 'Margen % s/ing.', 'Margen $/mes', 'Diagnóstico', ''].map(h => (
-                  <th key={h} className="bg-gris/40 text-xs font-bold px-3 py-2 text-left uppercase tracking-wide text-gris-dark">{h}</th>
+                {['#', 'Viaje', 'Tarifa $/t', 'Viajes/mes', 'Chofer $/mes', 'Margen $/viaje', 'Margen s/fijos', 'Margen % s/ing.', 'Margen $/mes', 'Diagnóstico', ''].map(h => (
+                  <th key={h} className="bg-gris/40 text-xs font-bold px-3 py-2 text-left uppercase tracking-wide text-gris-dark" title={h === 'Margen s/fijos' ? 'Margen sin descontar costos fijos (ingreso − directos − overhead)' : undefined}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -162,6 +162,7 @@ export function RentabilidadTab() {
 <td className="px-3 py-2 font-mono text-xs">{fmtNum(Number(viaje.viajes_por_mes))}</td>
                   <td className="px-3 py-2 font-mono text-xs">{fmtARS((r.pago_chofer + r.jornal_chofer) * Number(viaje.viajes_por_mes))}</td>
                   <td className="px-3 py-2 font-mono text-xs font-bold">{fmtARS(r.margen)}</td>
+                  <td className="px-3 py-2 font-mono text-xs">{fmtARS(r.margen_sin_fijos)}</td>
                   <td className="px-3 py-2 font-mono text-xs">{fmtPct(r.margen_pct)}</td>
                   <td className="px-3 py-2 font-mono text-xs font-bold text-verde">{fmtARS(r.margen_mensual)}</td>
                   <td className="px-3 py-2">
@@ -205,6 +206,10 @@ export function RentabilidadTab() {
                   <div>
                     <div className="text-[10px] text-gris-dark uppercase tracking-wide">Margen</div>
                     <div className="font-mono font-bold">{fmtARS(r.margen)} <span className="text-gris-dark">({fmtPct(r.margen_pct)})</span></div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-gris-dark uppercase tracking-wide">Margen s/fijos</div>
+                    <div className="font-mono font-bold">{fmtARS(r.margen_sin_fijos)} <span className="text-gris-dark">({fmtPct(r.margen_sin_fijos_pct)})</span></div>
                   </div>
                   <div>
                     <div className="text-[10px] text-gris-dark uppercase tracking-wide">Margen / mes</div>
@@ -473,6 +478,17 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
             <div className="flex items-center justify-between mt-0.5">
               <span className="text-[11px] text-gris-dark">% sobre ingreso</span>
               <span className="font-mono text-xs">{fmtPct(resultado.margen_pct)}</span>
+            </div>
+            <div className="flex items-center justify-between mt-1.5 pt-1.5 border-t border-gris/60">
+              <span
+                className="text-[11px] text-gris-dark cursor-help"
+                title="Ingreso − costos directos − overhead. NO descuenta los costos fijos (amortizaciones, service, seguros, patente): es lo que deja el viaje para cubrir esos fijos de la flota y la ganancia."
+              >
+                Margen s/ costos fijos <span className="text-[9px]">ⓘ</span>
+              </span>
+              <span className={`font-mono text-xs font-bold ${resultado.margen_sin_fijos >= 0 ? 'text-verde' : 'text-rojo'}`}>
+                {fmtARS(resultado.margen_sin_fijos)} <span className="text-gris-dark font-normal">({fmtPct(resultado.margen_sin_fijos_pct)})</span>
+              </span>
             </div>
           </div>
 
