@@ -161,17 +161,26 @@ export function ViajesTab() {
         sub:   d.localidad ?? undefined,
       }))
   }
-  // Para tramos vacíos: depósito de origen → cantera de destino. Mismo set
-  // de rutas pero indexado por depósito.
+  // Destino de un tramo VACÍO (reposicionamiento). A diferencia del cargado,
+  // un vacío puede ir a CUALQUIER punto — incluidos lugares operativos sin
+  // ruta previa (ej. Chivilcoy → Yerba Buena). Por eso NO filtramos por ruta:
+  // mostramos todas las canteras y ponemos primero las que ya tienen km desde
+  // el origen (sugerencia). Si falta el km, RutaFaltanteInline lo deja cargar
+  // (se necesita al liquidar). Antes esto filtraba duro por ruta y dejaba el
+  // dropdown vacío para pares nuevos → no se podía crear el tramo.
   function canteraOptionsPorDeposito(depositoIdRaw: string | undefined, selectedIdRaw: string | undefined) {
     const depositoId = depositoIdRaw ? Number(depositoIdRaw) : null
     const selectedId = selectedIdRaw ? Number(selectedIdRaw) : null
-    const allowed: Set<number> | null = depositoId != null
-      ? (canterasPorDeposito.get(depositoId) ?? new Set<number>())
-      : null
+    const conRuta = depositoId != null ? (canterasPorDeposito.get(depositoId) ?? new Set<number>()) : null
     return (canteras as any[])
-      .filter((c: any) => allowed === null || allowed.has(c.id) || c.id === selectedId)
-      .map((c: any) => ({ value: String(c.id), label: c.nombre, sub: c.localidad ?? undefined }))
+      .map((c: any) => ({
+        value: String(c.id),
+        label: c.nombre,
+        sub:   c.localidad ?? undefined,
+        _prio: (conRuta?.has(c.id) || c.id === selectedId) ? 0 : 1,
+      }))
+      .sort((a, b) => a._prio - b._prio)
+      .map(({ _prio, ...o }) => o)
   }
   // Distancia + ETA al destino para tramos cargados en curso (Google Maps).
   // El hook devuelve [] si el endpoint falla — no rompe el render.
@@ -1266,14 +1275,14 @@ export function ViajesTab() {
             <>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Combobox
-                  label="Depósito (origen)"
+                  label="Origen"
                   placeholder="Desde dónde sale..."
                   options={(depositos as any[]).map((d: any) => ({ value: String(d.id), label: d.nombre, sub: d.localidad ?? undefined }))}
                   value={String(formNuevo.watch('deposito_id') ?? '')}
                   onChange={(v: string) => formNuevo.setValue('deposito_id', v)}
                 />
                 <Combobox
-                  label="Punto de carga (destino)"
+                  label="Destino"
                   placeholder="A dónde va..."
                   options={canteraOptionsPorDeposito(formNuevo.watch('deposito_id'), formNuevo.watch('cantera_id'))}
                   value={String(formNuevo.watch('cantera_id') ?? '')}
@@ -1442,8 +1451,8 @@ export function ViajesTab() {
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Combobox
-              label={editando?.tipo === 'cargado' ? 'Punto de carga (origen)' : 'Punto de carga (destino)'}
-              placeholder="Buscar punto de carga..."
+              label={editando?.tipo === 'cargado' ? 'Punto de carga (origen)' : 'Destino'}
+              placeholder={editando?.tipo === 'cargado' ? 'Buscar punto de carga...' : 'A dónde va...'}
               options={
                 editando?.tipo === 'cargado'
                   ? canteraOptions(formEdit.watch('empresa_id'), formEdit.watch('cantera_id'))
@@ -1453,12 +1462,12 @@ export function ViajesTab() {
               onChange={(v: string) => formEdit.setValue('cantera_id', v)}
             />
             <Combobox
-              label={editando?.tipo === 'cargado' ? 'Depósito (destino)' : 'Depósito (origen)'}
-              placeholder="Buscar depósito..."
+              label={editando?.tipo === 'cargado' ? 'Depósito (destino)' : 'Origen'}
+              placeholder={editando?.tipo === 'cargado' ? 'Buscar depósito...' : 'Desde dónde sale...'}
               options={
                 editando?.tipo === 'cargado'
                   ? depositoOptions(formEdit.watch('cantera_id'), formEdit.watch('deposito_id'))
-                  : (depositos as any[]).map((d: any) => ({ value: String(d.id), label: d.nombre }))
+                  : (depositos as any[]).map((d: any) => ({ value: String(d.id), label: d.nombre, sub: d.localidad ?? undefined }))
               }
               value={String(formEdit.watch('deposito_id') ?? '')}
               onChange={(v: string) => formEdit.setValue('deposito_id', v)}
