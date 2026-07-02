@@ -239,10 +239,20 @@ export interface ChoferDocumento {
 }
 
 // ── Categorías ──
+// `vh` es cache del precio de la ÚLTIMA versión del historial. El precio
+// vigente a una fecha se resuelve con getVHGlobalEnFecha (costos.ts) sobre
+// `categoria_tarifas` (versionado por `desde`, mismo esquema que Tarifa).
+export interface CategoriaTarifa {
+  id: number
+  vh: number
+  desde: string
+}
+
 export interface Categoria {
   id: number
   nom: string
   vh: number
+  categoria_tarifas?: CategoriaTarifa[]
 }
 
 export interface CreateCategoriaDto {
@@ -253,6 +263,7 @@ export interface CreateCategoriaDto {
 export interface UpdateCategoriaDto {
   nom?: string
   vh?: number
+  desde?: string   // vigencia del nuevo precio (YYYY-MM-DD, viernes de semana)
 }
 
 // ── Horas ──

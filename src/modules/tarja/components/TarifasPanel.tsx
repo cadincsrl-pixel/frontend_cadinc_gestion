@@ -236,6 +236,13 @@ export function TarifasPanel({ obraCod, readonly = false }: Props) {
                         Ya existe precio para esta semana: ${tarifaEnSemSel.vh.toLocaleString('es-AR')}/h — se sobreescribirá.
                       </p>
                     )}
+
+                    {/* Aviso al elegir una semana pasada (cambio retroactivo) */}
+                    {state.viernes < viernesActual && (
+                      <p className="text-[10px] text-rojo font-bold mt-1">
+                        ⚠ Semana anterior a la actual: recalcula costos ya cerrados/pagados desde esa semana.
+                      </p>
+                    )}
                   </div>
 
                   {/* Historial */}

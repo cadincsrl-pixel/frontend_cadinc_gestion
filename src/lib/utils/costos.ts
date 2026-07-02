@@ -35,6 +35,23 @@ export function getTarifaEnFecha(
   return vigente ? vigente.vh : hist[0]!.vh
 }
 
+// Precio global de una categoría vigente a una fecha dada.
+// Espejo de getTarifaEnFecha pero sobre el historial global
+// (categoria_tarifas): la versión más reciente con desde <= fechaRef;
+// si todas son futuras, la más antigua (retroactivo). Sin historial
+// cargado, cae al vh actual de la categoría (cache de la última versión).
+export function getVHGlobalEnFecha(cat: Categoria | undefined, fechaRef: string): number {
+  if (!cat) return 0
+  const hist = [...(cat.categoria_tarifas ?? [])].sort((a, b) => a.desde.localeCompare(b.desde))
+  if (!hist.length) return cat.vh ?? 0
+  let vh: number | null = null
+  for (const t of hist) {
+    if (t.desde <= fechaRef) vh = t.vh
+    else break
+  }
+  return vh ?? hist[0]!.vh
+}
+
 // Valor hora de un trabajador en una obra en una fecha
 // catIdOverride: si se pasa, usa esa categoría en lugar de buscarla en personal (para respetar overrides de cat_obra)
 export function getVHenFecha(
@@ -64,12 +81,11 @@ export function getVHenFecha(
     }
   }
 
-  // Tarifa de obra primero, fallback a global
+  // Tarifa de obra primero, fallback a global vigente en esa fecha
   const tarifaObra = getTarifaEnFecha(tarifas, obraCod, catId, dateStr)
   if (tarifaObra !== null) return tarifaObra
 
-  const cat = categorias.find(c => c.id === catId)
-  return cat?.vh ?? 0
+  return getVHGlobalEnFecha(categorias.find(c => c.id === catId), dateStr)
 }
 
 // Total de horas de un trabajador en una lista de días.
@@ -232,7 +248,7 @@ export function getVHConCatObra(
     }
     if (vh === null) vh = tarifaObraAll[0]!.vh
   } else {
-    vh = categorias.find(c => c.id === catId)?.vh ?? 0
+    vh = getVHGlobalEnFecha(categorias.find(c => c.id === catId), fechaRef)
   }
   return vh ?? 0
 }

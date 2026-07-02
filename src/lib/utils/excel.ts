@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx'
 import type { Obra, Certificacion, Contratista, Categoria, Personal, Hora, Tarifa, Prestamo, TarjaHsExtra } from '@/types/domain.types'
 import { getSemDays, toISO, getSemLabel, getViernesCobro, getViernes, DIAS } from './dates'
-import { totalHsLeg, getHsExtrasLeg, getVHConCatObra } from './costos'
+import { totalHsLeg, getHsExtrasLeg, getVHConCatObra, getVHGlobalEnFecha } from './costos'
 import { calcularResumenSemana } from './resumen-semana'
 
 // ══════════════════════════════════════════════════
@@ -177,7 +177,7 @@ export function exportarCSVTarja(
     const cat = categorias.find(c => c.id === p.cat_id)
     const vh = tarifas
       .filter(t => t.obra_cod === obraCod && t.cat_id === p.cat_id && t.desde <= toISO(semActual))
-      .sort((a, b) => b.desde.localeCompare(a.desde))[0]?.vh ?? cat?.vh ?? 0
+      .sort((a, b) => b.desde.localeCompare(a.desde))[0]?.vh ?? getVHGlobalEnFecha(cat, toISO(semActual))
 
     let totalHs = 0, totalCosto = 0
     const hsDia = days.map(d => {

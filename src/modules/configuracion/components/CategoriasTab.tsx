@@ -9,14 +9,22 @@ import { useToast } from '@/components/ui/Toast'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
-import type { Categoria } from '@/types/domain.types'
+import { toISO, getViernes } from '@/lib/utils/dates'
+import type { Categoria, UpdateCategoriaDto } from '@/types/domain.types'
 
-const schema = z.object({
+const schemaNuevo = z.object({
   nom: z.string().min(1, 'El nombre es requerido'),
   vh: z.coerce.number().min(0, 'El valor hora no puede ser negativo'),
 })
 
-type FormData = z.infer<typeof schema>
+// Editar exige además la vigencia: el precio global está versionado por
+// fecha (categoria_tarifas) — editarlo NO pisa el pasado.
+const schemaEdit = schemaNuevo.extend({
+  desde: z.string().min(1, 'Indicá desde cuándo rige'),
+})
+
+type FormNuevoData = z.infer<typeof schemaNuevo>
+type FormEditData = z.infer<typeof schemaEdit>
 
 export function CategoriasTab() {
   const toast = useToast()
@@ -28,10 +36,12 @@ export function CategoriasTab() {
   const [modalNuevo, setModalNuevo] = useState(false)
   const [editando, setEditando] = useState<Categoria | null>(null)
 
-  const formNuevo = useForm<FormData>({ resolver: zodResolver(schema) as any })
-  const formEdit = useForm<FormData>({ resolver: zodResolver(schema) as any })
+  const viernesActual = toISO(getViernes(new Date()))
+  const formNuevo = useForm<FormNuevoData>({ resolver: zodResolver(schemaNuevo) as any })
+  const formEdit = useForm<FormEditData>({ resolver: zodResolver(schemaEdit) as any })
+  const desdeEdit = formEdit.watch('desde')
 
-  function handleCreate(data: FormData) {
+  function handleCreate(data: FormNuevoData) {
     create(data, {
       onSuccess: () => {
         toast('✓ Categoría creada', 'ok')
@@ -42,10 +52,16 @@ export function CategoriasTab() {
     })
   }
 
-  function handleUpdate(data: FormData) {
+  function handleUpdate(data: FormEditData) {
     if (!editando) return
+    // Renombrar no versiona precio: solo un vh distinto crea versión nueva.
+    const dto: UpdateCategoriaDto = { nom: data.nom }
+    if (data.vh !== editando.vh) {
+      dto.vh = data.vh
+      dto.desde = data.desde
+    }
     update(
-      { id: editando.id, dto: data },
+      { id: editando.id, dto },
       {
         onSuccess: () => {
           toast('✓ Categoría actualizada', 'ok')
@@ -65,7 +81,7 @@ export function CategoriasTab() {
   }
 
   function openEdit(cat: Categoria) {
-    formEdit.reset({ nom: cat.nom, vh: cat.vh })
+    formEdit.reset({ nom: cat.nom, vh: cat.vh, desde: viernesActual })
     setEditando(cat)
   }
 
@@ -224,7 +240,38 @@ export function CategoriasTab() {
           </>
         }
       >
-        <CatForm form={formEdit} errors={formEdit.formState.errors} />
+        <div className="flex flex-col gap-4">
+          <CatForm form={formEdit} errors={formEdit.formState.errors} />
+          <Input
+            label="Nuevo precio vigente desde"
+            type="date"
+            hint="Convención semanal: el viernes de la semana desde la que rige. Solo aplica si cambiás el valor hora."
+            error={formEdit.formState.errors.desde?.message}
+            {...formEdit.register('desde')}
+          />
+          {desdeEdit && desdeEdit < viernesActual && (
+            <p className="text-xs font-bold text-rojo bg-rojo-light rounded-lg px-3 py-2">
+              ⚠ Fecha anterior a la semana actual: se recalculan costos de semanas
+              ya cerradas/pagadas desde esa fecha. Los reportes históricos van a cambiar.
+            </p>
+          )}
+          {(editando?.categoria_tarifas?.length ?? 0) > 0 && (
+            <div className="text-xs text-gris-dark">
+              <div className="font-bold uppercase tracking-wide text-[10px] mb-1">
+                Historial de precios
+              </div>
+              {[...(editando!.categoria_tarifas ?? [])]
+                .sort((a, b) => b.desde.localeCompare(a.desde))
+                .slice(0, 6)
+                .map(t => (
+                  <div key={t.id} className="flex justify-between py-0.5 border-b border-gris last:border-0">
+                    <span>desde {t.desde}</span>
+                    <span className="font-mono font-bold">${t.vh.toLocaleString('es-AR')}</span>
+                  </div>
+                ))}
+            </div>
+          )}
+        </div>
       </Modal>
     </>
   )
