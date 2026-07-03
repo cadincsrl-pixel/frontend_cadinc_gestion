@@ -2,11 +2,15 @@
 // Corré con: npx tsx scripts/validate-rentabilidad.ts
 //
 // Los casos base salieron del Excel YTL_Simulador_Rentabilidad.xlsx, pero los
-// valores esperados se ACTUALIZARON el 2026-06-20 al corregir el tratamiento de
-// IVA: la patente (tributo sin IVA) y las amortizaciones de tractor/batea
-// (cargadas sin IVA) ya NO se netean por 1.21. Por eso difieren del Excel
-// original, que arrastraba ese error. Si esto falla, hubo drift en la fórmula
-// respecto de esta baseline corregida.
+// valores esperados se ACTUALIZARON:
+//  - 2026-06-20: corrección de IVA (patente + amortizaciones tractor/batea, sin
+//    IVA, ya NO se netean por 1.21).
+//  - 2026-07-02: los días por viaje ahora se DERIVAN (30 / viajes_por_mes) en
+//    vez de cargarse a mano — el chofer cobra el mes completo (~30 jornales)
+//    prorrateado entre los viajes. Antes cada caso traía un `dias_calendario`
+//    manual (la duración real del viaje); al derivarlo, el jornal por viaje
+//    sube y el margen baja. Baseline recomputada para el modelo nuevo.
+// Si esto falla, hubo drift en la fórmula respecto de esta baseline corregida.
 
 import {
   calcularRentabilidad,
@@ -44,52 +48,52 @@ interface Caso {
 const casos: Caso[] = [
   {
     nombre: 'cristamine 35t',
-    viaje: { km_ida:1200, km_vuelta:1200, toneladas:35, dias_calendario:3, viajes_por_mes:8,
+    viaje: { km_ida:1200, km_vuelta:1200, toneladas:35, viajes_por_mes:8,
              tarifa_neta_por_ton:81260, precio_gasoil:2060, consumo_camion:3, peajes_total:30000,
              chofer_por_km:130, chofer_por_dia:28000, modalidad_pago:'km_jornal', pct_sobre_tarifa:0 },
-    esperado: { margen: 449293.05, margen_pct: 0.1580, margen_mensual: 3594344.38, margen_anual_usd: 31030.31 },
+    esperado: { margen: 428083.05, margen_pct: 0.1505, margen_mensual: 3424664.38, margen_anual_usd: 29565.45 },
   },
   {
     nombre: 'cereal',
-    viaje: { km_ida:60, km_vuelta:60, toneladas:31, dias_calendario:1, viajes_por_mes:20,
+    viaje: { km_ida:60, km_vuelta:60, toneladas:31, viajes_por_mes:20,
              tarifa_neta_por_ton:18000, precio_gasoil:2200, consumo_camion:3, peajes_total:0,
              chofer_por_km:130, chofer_por_dia:28000, modalidad_pago:'pct_jornal', pct_sobre_tarifa:0.15 },
-    esperado: { margen: 287233.52, margen_pct: 0.5148, margen_mensual: 5744670.45, margen_anual_usd: 49594.28 },
+    esperado: { margen: 273093.52, margen_pct: 0.4894, margen_mensual: 5461870.45, margen_anual_usd: 47152.84 },
   },
   {
     nombre: 'lajitas',
-    viaje: { km_ida:380, km_vuelta:380, toneladas:31, dias_calendario:1, viajes_por_mes:12,
+    viaje: { km_ida:380, km_vuelta:380, toneladas:31, viajes_por_mes:12,
              tarifa_neta_por_ton:53000, precio_gasoil:2200, consumo_camion:3, peajes_total:0,
              chofer_por_km:130, chofer_por_dia:28000, modalidad_pago:'pct_jornal', pct_sobre_tarifa:0.15 },
-    esperado: { margen: 657644.49, margen_pct: 0.4003, margen_mensual: 7891733.92, margen_anual_usd: 68130.08 },
+    esperado: { margen: 615224.49, margen_pct: 0.3745, margen_mensual: 7382693.92, margen_anual_usd: 63735.49 },
   },
   {
     nombre: 'diamante',
-    viaje: { km_ida:1362, km_vuelta:1362, toneladas:31, dias_calendario:3, viajes_por_mes:8,
+    viaje: { km_ida:1362, km_vuelta:1362, toneladas:31, viajes_por_mes:8,
              tarifa_neta_por_ton:92200, precio_gasoil:2060, consumo_camion:3, peajes_total:30000,
              chofer_por_km:130, chofer_por_dia:28000, modalidad_pago:'km_jornal', pct_sobre_tarifa:0 },
-    esperado: { margen: 176059.37, margen_pct: 0.0616, margen_mensual: 1408474.98, margen_anual_usd: 12159.50 },
+    esperado: { margen: 154849.37, margen_pct: 0.0542, margen_mensual: 1238794.98, margen_anual_usd: 10694.63 },
   },
   {
     nombre: 'cristamine 31t',
-    viaje: { km_ida:1200, km_vuelta:1200, toneladas:31, dias_calendario:3, viajes_por_mes:8,
+    viaje: { km_ida:1200, km_vuelta:1200, toneladas:31, viajes_por_mes:8,
              tarifa_neta_por_ton:81260, precio_gasoil:2060, consumo_camion:3, peajes_total:30000,
              chofer_por_km:130, chofer_por_dia:28000, modalidad_pago:'km_jornal', pct_sobre_tarifa:0 },
-    esperado: { margen: 124253.05, margen_pct: 0.0493, margen_mensual: 994024.38, margen_anual_usd: 8581.51 },
+    esperado: { margen: 103043.05, margen_pct: 0.0409, margen_mensual: 824344.38, margen_anual_usd: 7116.64 },
   },
   {
     nombre: 'diamante 35t',
-    viaje: { km_ida:1362, km_vuelta:1362, toneladas:35, dias_calendario:3, viajes_por_mes:8,
+    viaje: { km_ida:1362, km_vuelta:1362, toneladas:35, viajes_por_mes:8,
              tarifa_neta_por_ton:92200, precio_gasoil:2060, consumo_camion:3, peajes_total:30000,
              chofer_por_km:130, chofer_por_dia:28000, modalidad_pago:'km_jornal', pct_sobre_tarifa:0 },
-    esperado: { margen: 544859.37, margen_pct: 0.1688, margen_mensual: 4358874.98, margen_anual_usd: 37630.58 },
+    esperado: { margen: 523649.37, margen_pct: 0.1623, margen_mensual: 4189194.98, margen_anual_usd: 36165.71 },
   },
   {
     nombre: 'vuelta yeso diamante',
-    viaje: { km_ida:1500, km_vuelta:1500, toneladas:31, dias_calendario:3, viajes_por_mes:7,
+    viaje: { km_ida:1500, km_vuelta:1500, toneladas:31, viajes_por_mes:7,
              tarifa_neta_por_ton:139467, precio_gasoil:2060, consumo_camion:3, peajes_total:30000,
              chofer_por_km:130, chofer_por_dia:28000, modalidad_pago:'km_jornal', pct_sobre_tarifa:0 },
-    esperado: { margen: 1374209.50, margen_pct: 0.3178, margen_mensual: 9619466.51, margen_anual_usd: 83045.75 },
+    esperado: { margen: 1337849.50, margen_pct: 0.3094, margen_mensual: 9364946.51, margen_anual_usd: 80848.46 },
   },
 ]
 

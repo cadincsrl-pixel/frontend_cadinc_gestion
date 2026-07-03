@@ -17,6 +17,7 @@ import { intInputProps } from '@/lib/utils/inputs'
 import {
   calcularRentabilidad,
   diagnosticoLabel,
+  DIAS_MES,
   type RentabilidadParametros,
   type RentabilidadViajeInput,
   type Diagnostico,
@@ -261,7 +262,6 @@ function viajeToInput(v: ViajeRow): RentabilidadViajeInput {
     km_ida:              Number(v.km_ida),
     km_vuelta:           Number(v.km_vuelta),
     toneladas:           Number(v.toneladas),
-    dias_calendario:     Number(v.dias_calendario),
     viajes_por_mes:      Number(v.viajes_por_mes),
     tarifa_neta_por_ton: Number(v.tarifa_neta_por_ton),
     precio_gasoil:       Number(v.precio_gasoil),
@@ -317,7 +317,6 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
           km_ida: Number(viaje.km_ida),
           km_vuelta: Number(viaje.km_vuelta),
           toneladas: Number(viaje.toneladas),
-          dias_calendario: Number(viaje.dias_calendario),
           viajes_por_mes: Number(viaje.viajes_por_mes),
           tarifa_neta_por_ton: Number(viaje.tarifa_neta_por_ton),
           precio_gasoil: Number(viaje.precio_gasoil),
@@ -331,7 +330,7 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
         }
       : {
           nombre: '',
-          km_ida: 0, km_vuelta: 0, toneladas: 35, dias_calendario: 0, viajes_por_mes: 0,
+          km_ida: 0, km_vuelta: 0, toneladas: 35, viajes_por_mes: 0,
           tarifa_neta_por_ton: 0, precio_gasoil: 2200, consumo_camion: 3, peajes_total: 0,
           chofer_por_km: 140, chofer_por_dia: 30000, modalidad_pago: 'km_jornal', pct_sobre_tarifa: 0,
           obs: '',
@@ -346,7 +345,6 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
       km_ida:              Number(watched.km_ida) || 0,
       km_vuelta:           Number(watched.km_vuelta) || 0,
       toneladas:           Number(watched.toneladas) || 0,
-      dias_calendario:     Number(watched.dias_calendario) || 0,
       viajes_por_mes:      Number(watched.viajes_por_mes) || 0,
       tarifa_neta_por_ton: (Number(watched.tarifa_neta_por_ton) || 0) * (1 + sensibilidad),
       precio_gasoil:       Number(watched.precio_gasoil) || 0,
@@ -364,13 +362,16 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
     if (!data.nombre?.trim()) { toast('Falta el nombre del viaje', 'err'); return }
     // valueAsNumber produce NaN al vaciar un input; defaulteamos a 0 (igual que la preview en vivo)
     // para no mandar NaN → JSON.stringify lo serializa como null y el zod del backend tira 400 generico.
+    const vpm = Number(data.viajes_por_mes) || 0
     const dto: ViajeUpsertDto = {
       ...data,
       km_ida:              Number(data.km_ida) || 0,
       km_vuelta:           Number(data.km_vuelta) || 0,
       toneladas:           Number(data.toneladas) || 0,
-      dias_calendario:     Number(data.dias_calendario) || 0,
-      viajes_por_mes:      Number(data.viajes_por_mes) || 0,
+      // Derivado: días por viaje = días del mes / viajes por mes. Ya no se
+      // carga a mano; se persiste el valor calculado para mantener la columna.
+      dias_calendario:     vpm > 0 ? DIAS_MES / vpm : 0,
+      viajes_por_mes:      vpm,
       tarifa_neta_por_ton: Number(data.tarifa_neta_por_ton) || 0,
       precio_gasoil:       Number(data.precio_gasoil) || 0,
       consumo_camion:      Number(data.consumo_camion) || 0,
@@ -423,8 +424,16 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Input label="Toneladas"        type="number" step="0.1" disabled={readOnly} {...form.register('toneladas',       { valueAsNumber: true })} />
-            <Input label="Días calendario"  type="number" disabled={readOnly} {...form.register('dias_calendario', { valueAsNumber: true })} />
             <Input label="Viajes / mes"     type="number" disabled={readOnly} {...form.register('viajes_por_mes',  { valueAsNumber: true })} />
+            {/* Días por viaje: derivado (días del mes ÷ viajes/mes), no se carga a mano. */}
+            <Input
+              label="Días por viaje (auto)"
+              type="text"
+              disabled
+              readOnly
+              value={resultado.dias_por_viaje > 0 ? `${fmtNum(resultado.dias_por_viaje)} d` : '—'}
+              hint={`${DIAS_MES} días ÷ viajes/mes`}
+            />
           </div>
           <Input label="Tarifa por tonelada (NETA, sin IVA) ARS/t" type="number" disabled={readOnly} {...form.register('tarifa_neta_por_ton', { valueAsNumber: true })} />
 
@@ -496,11 +505,6 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
             ℹ Margen operativo, <b>neto de IVA</b> y <b>antes</b> de Impuesto a las Ganancias, IIBB y estructura general (solo incluye el overhead). No es la ganancia final.
           </p>
 
-          {((Number(watched.dias_calendario) || 0) * (Number(watched.viajes_por_mes) || 0)) > 30 && (
-            <p className="text-[10px] text-naranja-dark leading-snug px-1">
-              ⚠ Días × viajes/mes = {(Number(watched.dias_calendario) || 0) * (Number(watched.viajes_por_mes) || 0)} supera los ~30 días del mes: el equipo no puede hacer tantos viajes y los costos fijos quedan diluidos (margen optimista).
-            </p>
-          )}
 
           <div className="bg-white rounded-lg p-3">
             <div className="flex items-center justify-between">

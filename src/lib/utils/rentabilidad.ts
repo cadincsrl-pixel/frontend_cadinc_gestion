@@ -12,6 +12,11 @@
 
 export type ModalidadPago = 'km_jornal' | 'pct_jornal'
 
+// Días del mes usados para prorratear. Los días por viaje se derivan como
+// DIAS_MES / viajes_por_mes (el chofer cobra ~30 jornales al mes sin importar
+// cuántos viajes haga; por viaje, el jornal se diluye según la cantidad).
+export const DIAS_MES = 30
+
 export interface RentabilidadParametros {
   alicuota_iva:                number   // 0.21
   tipo_cambio_usd_ars:         number
@@ -37,7 +42,6 @@ export interface RentabilidadViajeInput {
   km_ida:               number
   km_vuelta:            number
   toneladas:            number
-  dias_calendario:      number
   viajes_por_mes:       number
   tarifa_neta_por_ton:  number
   precio_gasoil:        number
@@ -58,6 +62,8 @@ export type Diagnostico =
   | 'alto'
 
 export interface RentabilidadResultado {
+  // Días por viaje derivados = DIAS_MES / viajes_por_mes.
+  dias_por_viaje:            number
   // Desglose de costos directos
   combustible_neto:          number
   pago_chofer:               number
@@ -92,6 +98,7 @@ export interface RentabilidadResultado {
 }
 
 const RESULTADO_VACIO: Omit<RentabilidadResultado, 'diagnostico'> = {
+  dias_por_viaje: 0,
   combustible_neto: 0, pago_chofer: 0, jornal_chofer: 0,
   cargas_sociales_prorr: 0, peajes_neto: 0, neumaticos_prorr: 0,
   gomeria_prorr: 0, lavadero_prorr: 0, costos_directos: 0,
@@ -125,7 +132,11 @@ export function calcularRentabilidad(
   const pago_chofer           = v.modalidad_pago === 'pct_jornal'
     ? v.tarifa_neta_por_ton * v.toneladas * v.pct_sobre_tarifa
     : km_total * v.chofer_por_km
-  const jornal_chofer         = v.dias_calendario * v.chofer_por_dia
+  // Días por viaje = días del mes / viajes por mes (v.viajes_por_mes > 0 acá,
+  // garantizado por el early-return de arriba). El jornal por viaje es el
+  // jornal mensual (~30 días) prorrateado entre los viajes del mes.
+  const dias_por_viaje        = DIAS_MES / v.viajes_por_mes
+  const jornal_chofer         = dias_por_viaje * v.chofer_por_dia
   const cargas_sociales_prorr = p.cargas_sociales_mensual / v.viajes_por_mes
   const peajes_neto           = v.peajes_total / ivaPlus1
   const neumaticos_prorr      = p.vida_util_neumaticos_km > 0
@@ -187,6 +198,7 @@ export function calcularRentabilidad(
   else                         diagnostico = 'alto'
 
   return {
+    dias_por_viaje,
     combustible_neto, pago_chofer, jornal_chofer,
     cargas_sociales_prorr, peajes_neto, neumaticos_prorr,
     gomeria_prorr, lavadero_prorr, costos_directos,
