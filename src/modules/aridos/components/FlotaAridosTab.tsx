@@ -13,7 +13,7 @@ import {
   useCanterasAridos, useCreateCanteraArido, useUpdateCanteraArido, useDeleteCanteraArido,
   useUnidades, useCreateUnidad, useUpdateUnidad, useDeleteUnidad,
   useCostosCantera, useCreateCostoCantera, useDeleteCostoCantera,
-  useGpsCatalogo,
+  useGpsCatalogo, useMateriales,
 } from '../hooks/useAridos'
 import type { CanteraArido, UnidadFlota } from '../types'
 
@@ -179,11 +179,12 @@ function ListaPreciosCanteraModal({ cantera, onClose }: { cantera: CanteraArido 
   const toast = useToast()
   const { puedeCrear, puedeEliminar } = usePermisos('aridos')
   const { data: costos = [] } = useCostosCantera()
+  const { data: materiales = [] } = useMateriales()
   const { mutate: crear, isPending } = useCreateCostoCantera()
   const { mutate: borrar } = useDeleteCostoCantera()
 
-  const form = useForm<{ concepto: string; zona: string; costo: string; unidad: 'm3' | 'viaje' | 'hora'; vigente_desde: string }>({
-    defaultValues: { concepto: '', zona: '', costo: '', unidad: 'm3', vigente_desde: toISO(new Date()) },
+  const form = useForm<{ concepto: string; material_id: string; zona: string; costo: string; unidad: 'm3' | 'viaje' | 'hora'; vigente_desde: string }>({
+    defaultValues: { concepto: '', material_id: '', zona: '', costo: '', unidad: 'm3', vigente_desde: toISO(new Date()) },
   })
 
   const propios = useMemo(
@@ -219,7 +220,7 @@ function ListaPreciosCanteraModal({ cantera, onClose }: { cantera: CanteraArido 
     return '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 0 })
   }
 
-  function onSubmit(data: { concepto: string; zona: string; costo: string; unidad: 'm3' | 'viaje' | 'hora'; vigente_desde: string }) {
+  function onSubmit(data: { concepto: string; material_id: string; zona: string; costo: string; unidad: 'm3' | 'viaje' | 'hora'; vigente_desde: string }) {
     if (!cantera) return
     if (!data.concepto.trim()) { toast('Poné el concepto (ej: Arena)', 'err'); return }
     if (!data.costo || Number(data.costo) <= 0) { toast('Precio inválido', 'err'); return }
@@ -227,13 +228,14 @@ function ListaPreciosCanteraModal({ cantera, onClose }: { cantera: CanteraArido 
       cantera_id:    cantera.id,
       concepto:      data.concepto.trim(),
       zona:          data.zona.trim() || null,
+      material_id:   data.material_id ? Number(data.material_id) : null,
       costo:         Number(data.costo),
       unidad:        data.unidad,
       vigente_desde: data.vigente_desde,
     }, {
       onSuccess: () => {
         toast('✓ Precio guardado', 'ok')
-        form.reset({ concepto: '', zona: data.zona, costo: '', vigente_desde: data.vigente_desde })
+        form.reset({ concepto: '', material_id: '', zona: data.zona, costo: '', unidad: data.unidad, vigente_desde: data.vigente_desde })
       },
       onError: (err: unknown) => toast(mensajeError(err, 'Error al guardar'), 'err'),
     })
@@ -257,6 +259,11 @@ function ListaPreciosCanteraModal({ cantera, onClose }: { cantera: CanteraArido 
                 <datalist id="conceptos-cantera">
                   {Array.from(new Set(propios.map(c => c.concepto ?? ''))).map(c => <option key={c} value={c} />)}
                 </datalist>
+              </div>
+              <div className="sm:col-span-2">
+                <Select label="Material (autocompleta el costo en la venta)" placeholder="Sin vincular"
+                  options={materiales.map(m => ({ value: String(m.id), label: m.nombre }))}
+                  {...form.register('material_id')} />
               </div>
               <div className="sm:col-span-2">
                 <Input label="Zona (opcional)" placeholder="Ej: Capital, Yerba Buena..." list="zonas-cantera" {...form.register('zona')} />
@@ -291,7 +298,12 @@ function ListaPreciosCanteraModal({ cantera, onClose }: { cantera: CanteraArido 
                   const vigente = historial[0]!
                   return (
                     <div key={concepto} className="px-3 py-1.5 flex items-center justify-between gap-3 bg-white">
-                      <span className="text-sm text-carbon">{concepto}</span>
+                      <span className="text-sm text-carbon">
+                        {concepto}
+                        {vigente.aridos_materiales?.nombre
+                          ? <span className="ml-2 text-[10px] font-semibold text-verde bg-verde/10 px-1.5 py-0.5 rounded" title="Vinculado: autocompleta el costo en la venta">↔ {vigente.aridos_materiales.nombre}</span>
+                          : <span className="ml-2 text-[10px] text-gris-mid" title="Sin material vinculado: no autocompleta en la venta">sin vincular</span>}
+                      </span>
                       <div className="flex items-center gap-2">
                         <span className="font-mono font-bold text-sm text-carbon">{fmtM(Number(vigente.costo))}<span className="font-sans font-normal text-[10px] text-gris-dark">/{vigente.unidad === 'm3' ? 'm³' : vigente.unidad}</span></span>
                         <span className="text-[10px] text-gris-dark">desde {fmtDate(vigente.vigente_desde)}</span>

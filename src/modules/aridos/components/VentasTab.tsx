@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -13,10 +13,10 @@ import {
   useMovimientos, useCreateMovimiento, useUpdateMovimiento, useDeleteMovimiento,
   useClientesAridos, useMateriales, usePreciosCliente, useStockAridos, useMunicipios,
   useCanterasAridos, useUnidades, useUnidadEta, useEmitirRemitoVenta,
-  usePreciosGlobal,
+  usePreciosGlobal, useCostosCantera,
 } from '../hooks/useAridos'
 import { RemitoVentaModal } from './RemitoVentaModal'
-import type { MovimientoArido, PrecioCliente, PrecioGlobal, MunicipioArido, UnidadEta } from '../types'
+import type { MovimientoArido, PrecioCliente, PrecioGlobal, MunicipioArido, UnidadEta, CostoCantera } from '../types'
 
 interface VentaForm {
   fecha:       string
@@ -26,6 +26,9 @@ interface VentaForm {
   cantidad:    string
   origen:      'cantera' | 'deposito' | 'obra'
   cantera_id:  string
+  // Zona de la lista de precios de la cantera (solo UI, para elegir el costo
+  // cuando el material tiene precio en más de una zona). No se persiste.
+  costo_zona:  string
   modo_precio: 'lista' | 'especial'
   precio_unit: string
   entrega_direccion: string
@@ -39,7 +42,7 @@ interface VentaForm {
 
 const DEFAULTS: VentaForm = {
   fecha: '', hora: '', cliente_id: '', material_id: '', cantidad: '', origen: 'cantera',
-  cantera_id: '', modo_precio: 'lista', precio_unit: '', entrega_direccion: '', municipio_id: '',
+  cantera_id: '', costo_zona: '', modo_precio: 'lista', precio_unit: '', entrega_direccion: '', municipio_id: '',
   unidad_id: '', costo_total: '', flete_obs: '', remito: '', obs: '',
 }
 
@@ -112,6 +115,7 @@ export function VentasTab() {
   const { data: municipios = [] } = useMunicipios()
   const { data: stock = [] }      = useStockAridos()
   const { data: canteras = [] }   = useCanterasAridos()
+  const { data: costosCantera = [] } = useCostosCantera()
   const { data: unidades = [] }   = useUnidades()
   const { mutate: crear, isPending: creando }       = useCreateMovimiento()
   const { mutate: actualizar, isPending: editando } = useUpdateMovimiento()
@@ -141,6 +145,8 @@ export function VentasTab() {
   const wOrigen    = watch('origen')
   const wModo      = watch('modo_precio')
   const wMunicipio = watch('municipio_id')
+  const wCantera   = watch('cantera_id')
+  const wCostoZona = watch('costo_zona')
 
   const materialSel = materiales.find(m => m.id === Number(wMaterial))
   const esViaje     = materialSel?.unidad === 'viaje'
@@ -169,6 +175,52 @@ export function VentasTab() {
     setValue('precio_unit', r ? String(r.final) : '')
   }
 
+  // ── Costo de retiro: autocompletado desde la lista de precios de la cantera ──
+  // Matchea por cantera + material VINCULADO en la lista (material_id) vigente a
+  // la fecha. Si hay precio en más de una zona, el user elige con el select.
+  // Tipear el costo a mano corta el autocompletado hasta cambiar cantera/material.
+  const costoManualRef = useRef(false)
+
+  const costosMatch = useMemo(() => {
+    if (wOrigen !== 'cantera' || !wCantera || !wMaterial || !wFecha) return []
+    const candidatos = costosCantera.filter(c =>
+      c.cantera_id === Number(wCantera) &&
+      c.material_id === Number(wMaterial) &&
+      c.vigente_desde <= wFecha &&
+      c.unidad !== 'hora')
+    // Vigente por zona (el historial guarda versiones viejas del mismo concepto)
+    const porZona = new Map<string, CostoCantera>()
+    for (const c of candidatos) {
+      const key = c.zona ?? ''
+      const prev = porZona.get(key)
+      if (!prev || c.vigente_desde > prev.vigente_desde) porZona.set(key, c)
+    }
+    return Array.from(porZona.values()).sort((a, b) => (a.zona ?? '').localeCompare(b.zona ?? ''))
+  }, [costosCantera, wOrigen, wCantera, wMaterial, wFecha])
+
+  const costoSel = costosMatch.length === 1
+    ? costosMatch[0]!
+    : costosMatch.find(c => (c.zona ?? '') === wCostoZona) ?? null
+
+  const costoCalculado = costoSel == null ? null
+    : costoSel.unidad === 'viaje' ? Number(costoSel.costo)
+    : (Number(wCantidad) || 0) > 0 ? Math.round(Number(costoSel.costo) * Number(wCantidad) * 100) / 100
+    : null
+
+  // Preseleccionar la primera zona cuando hay varias y la elegida no aplica.
+  useEffect(() => {
+    if (costosMatch.length > 1 && !costosMatch.some(c => (c.zona ?? '') === wCostoZona)) {
+      setValue('costo_zona', costosMatch[0]!.zona ?? '')
+    }
+  }, [costosMatch, wCostoZona, setValue])
+
+  // Autocompletar SOLO en ventas nuevas: al editar una venta vieja no se pisa
+  // el costo histórico (mismo criterio que el precio de venta).
+  useEffect(() => {
+    if (editId != null || costoManualRef.current || wOrigen !== 'cantera') return
+    setValue('costo_total', costoCalculado != null ? String(costoCalculado) : '')
+  }, [costoCalculado, wOrigen, editId, setValue])
+
   // El escombro (unidad viaje) sale de la obra del cliente; los m³ de
   // cantera o depósito. Al cambiar el material se corrige el origen.
   function onMaterialChange(materialId: string) {
@@ -179,6 +231,7 @@ export function VentasTab() {
     } else if (watch('origen') === 'obra') {
       setValue('origen', 'cantera')
     }
+    costoManualRef.current = false
     recalc({ material: materialId }, { force: true })
   }
 
@@ -199,6 +252,7 @@ export function VentasTab() {
   function abrirNueva() {
     setEditId(null)
     setEditMov(null)
+    costoManualRef.current = false
     reset({ ...DEFAULTS, fecha: toISO(new Date()), hora: horaActual() })
     setModalOpen(true)
   }
@@ -206,6 +260,7 @@ export function VentasTab() {
   function abrirEditar(v: MovimientoArido) {
     setEditId(v.id)
     setEditMov(v)
+    costoManualRef.current = true
     reset({
       fecha:       v.fecha,
       hora:        v.hora ? v.hora.slice(0, 5) : '',
@@ -214,6 +269,7 @@ export function VentasTab() {
       cantidad:    String(v.cantidad),
       origen:      v.origen ?? 'cantera',
       cantera_id:  v.cantera_id ? String(v.cantera_id) : '',
+      costo_zona:  '',
       modo_precio: v.precio_especial ? 'especial' : 'lista',
       precio_unit: v.precio_unit != null ? String(v.precio_unit) : '',
       entrega_direccion: v.entrega_direccion ?? '',
@@ -526,7 +582,8 @@ export function VentasTab() {
                 { value: 'deposito', label: 'Depósito propio' },
               ]} {...register('origen')} />
               {wOrigen === 'cantera' ? (
-                <Select label="Cantera (proveedor)" options={canteraOptions} {...register('cantera_id')} />
+                <Select label="Cantera (proveedor)" options={canteraOptions}
+                  {...register('cantera_id', { onChange: () => { costoManualRef.current = false } })} />
               ) : (
                 <div className="flex items-end pb-2">
                   <span className="text-xs text-gris-dark">
@@ -559,10 +616,37 @@ export function VentasTab() {
 
           {wOrigen === 'cantera' && !esViaje && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-              <Input label="Costo cantera ($ total del viaje)" type="number" step="0.01" placeholder="Lo que cobra la cantera" {...register('costo_total')} />
-              <p className="sm:col-span-2 text-[11px] text-gris-dark pb-2">
-                Es lo que la cantera te cobra por este retiro — carga la deuda en su cuenta corriente. La lista de precios está en Canteras y unidades → 💲 Precios.
-              </p>
+              <Input label="Costo cantera ($ total del viaje)" type="number" step="0.01" placeholder="Lo que cobra la cantera"
+                {...register('costo_total', { onChange: () => { costoManualRef.current = true } })} />
+              {costosMatch.length > 1 && (
+                <Select label="Zona (lista de la cantera)"
+                  options={costosMatch.map(c => ({ value: c.zona ?? '', label: c.zona || '(sin zona)' }))}
+                  {...register('costo_zona')} />
+              )}
+              <div className={`text-[11px] text-gris-dark pb-2 ${costosMatch.length > 1 ? '' : 'sm:col-span-2'}`}>
+                {costoSel && costoCalculado != null ? (
+                  <>
+                    Lista{costoSel.concepto ? ` (${costoSel.concepto})` : ''}: <b className="font-mono">{fmtM(Number(costoSel.costo))}</b>/{costoSel.unidad === 'm3' ? 'm³' : 'viaje'}
+                    {costoSel.unidad === 'm3' && <> × {fmtCant(Number(wCantidad))} m³ = <b className="font-mono">{fmtM(costoCalculado)}</b></>}
+                    {' '}(desde {fmtDate(costoSel.vigente_desde)}). Se puede pisar a mano.
+                    {editId != null && Number(watch('costo_total')) !== costoCalculado && (
+                      <button type="button" className="ml-1 text-azul font-semibold hover:underline"
+                        onClick={() => setValue('costo_total', String(costoCalculado))}>
+                        Usar lista
+                      </button>
+                    )}
+                  </>
+                ) : costoSel ? (
+                  <>Lista: <b className="font-mono">{fmtM(Number(costoSel.costo))}</b>/m³ — poné la cantidad para calcular el total.</>
+                ) : (
+                  <>
+                    Es lo que la cantera te cobra por este retiro — carga la deuda en su cuenta corriente.{' '}
+                    {wCantera && wMaterial
+                      ? <span className="text-[#7A5500] font-semibold">Este material no tiene precio vinculado en la lista de esta cantera — vinculalo en Canteras y unidades → 💲 Precios (campo Material).</span>
+                      : 'La lista de precios está en Canteras y unidades → 💲 Precios.'}
+                  </>
+                )}
+              </div>
             </div>
           )}
 
