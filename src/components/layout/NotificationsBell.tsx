@@ -85,7 +85,7 @@ export function NotificationsBell() {
       if (!seenRef.current.has(s.id)) {
         seenRef.current.add(s.id)
         if (warmRef.current) {
-          toast(`🛒 Nuevo pedido por comprar: ${s.obra_cod} · ${s.nPendientes} ítem${s.nPendientes !== 1 ? 's' : ''}`, 'warn')
+          toast(`🛒 Nuevo pedido por comprar: ${s.obra_nom ?? s.obra_cod} · ${s.nPendientes} ítem${s.nPendientes !== 1 ? 's' : ''}`, 'warn')
         }
       }
     }
@@ -492,12 +492,15 @@ function SolicitudRow({ item, onClick }: { item: SolicitudPorComprarItem; onClic
       className="w-full text-left px-3 py-2 hover:bg-gris/40 transition-colors"
     >
       <div className="font-bold text-sm text-azul">
-        🛒 {item.obra_cod}
+        🛒 {item.obra_nom ?? item.obra_cod}
         <span className="ml-2 text-xs font-semibold text-[#7A5500]">
           {item.nPendientes} ítem{item.nPendientes !== 1 ? 's' : ''} por comprar
         </span>
       </div>
-      <div className="text-xs text-gris-dark mt-0.5">Cargado el {fechaFmt}</div>
+      <div className="text-xs text-gris-dark mt-0.5">
+        {item.obra_nom && <span className="font-mono">{item.obra_cod} · </span>}
+        Cargado el {fechaFmt}
+      </div>
     </button>
   )
 }

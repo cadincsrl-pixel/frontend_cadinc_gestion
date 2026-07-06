@@ -3,10 +3,12 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api/client'
+import { obrasApi } from '@/lib/api/obras.api'
 import { usePersonal } from '@/modules/tarja/hooks/usePersonal'
+import { OBRAS_KEY } from '@/modules/tarja/hooks/useObras'
 import { useSessionStore } from '@/store/session.store'
 import { usePermisos } from '@/hooks/usePermisos'
-import type { Personal, SolicitudCompra } from '@/types/domain.types'
+import type { Obra, Personal, SolicitudCompra } from '@/types/domain.types'
 
 // Cumpleañero precalculado, listo para renderizar.
 export interface CumpleanieroItem {
@@ -57,6 +59,9 @@ export interface ServiceCamionItem {
 export interface SolicitudPorComprarItem {
   id:          number
   obra_cod:    string
+  // Nombre de la obra resuelto vía /api/obras. Null si la obra no está en el
+  // scope del user o todavía no cargó la lista — la UI cae a obra_cod.
+  obra_nom:    string | null
   fecha:       string
   nPendientes: number
 }
@@ -241,6 +246,16 @@ export function useNotificaciones(): NotificacionesResult {
     staleTime: 30 * 1000,
     refetchInterval: 60 * 1000,
   })
+  // Obras para resolver obra_cod → nombre en los pedidos por comprar (el código
+  // solo, tipo "CC-009", se lee como centro de costo). Misma queryKey que
+  // useObras('certificaciones') para compartir caché con el módulo.
+  const { data: obras = [] } = useQuery({
+    queryKey: [...OBRAS_KEY, 'modulo', 'certificaciones'],
+    queryFn:  () => obrasApi.getAll('certificaciones'),
+    enabled:  tieneCertificaciones && resolverItems,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  })
 
   return useMemo(() => {
     const hoyDate = new Date()
@@ -365,11 +380,13 @@ export function useNotificaciones(): NotificacionesResult {
     }))
 
     // ── Solicitudes con ítems por comprar (progreso 'pendiente') ──
+    const nomPorCod = new Map((obras as Obra[]).map(o => [o.cod, o.nom]))
     const solicitudesPorComprar: SolicitudPorComprarItem[] = (solicitudes as SolicitudCompra[])
       .filter(s => s.progreso === 'pendiente')
       .map(s => ({
         id:          s.id,
         obra_cod:    s.obra_cod,
+        obra_nom:    nomPorCod.get(s.obra_cod) ?? null,
         fecha:       s.fecha,
         nPendientes: (s.items ?? []).filter(i => i.estado === 'pendiente').length,
       }))
@@ -397,7 +414,7 @@ export function useNotificaciones(): NotificacionesResult {
         segurosVencidos.length +
         solicitudesPorComprar.length,
     }
-  }, [personal, docsVenc, docsChofer, servicesNotif, gastosPend, segurosNotif, solicitudes, tieneTarja])
+  }, [personal, docsVenc, docsChofer, servicesNotif, gastosPend, segurosNotif, solicitudes, obras, tieneTarja])
 }
 
 // Helper para mostrar "hoy", "mañana", "en 3 días" en la lista de próximos.
