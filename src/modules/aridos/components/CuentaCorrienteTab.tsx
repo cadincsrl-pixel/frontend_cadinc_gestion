@@ -16,7 +16,7 @@ import {
   useMovimientos,
 } from '../hooks/useAridos'
 import type { CuentaCorrienteArido, CobroArido, CuentaCorrienteCantera, PagoCantera, MovimientoArido } from '../types'
-import { descargarCuentaClientePdf } from '../utils/cuenta-pdf'
+import { descargarCuentaClientePdf, descargarCuentaCanteraPdf } from '../utils/cuenta-pdf'
 
 interface CobroForm {
   fecha: string
@@ -205,6 +205,25 @@ function CanteraRow({ cuenta, expandido, onToggle, onPagar, puedeCrear }: {
   onPagar: () => void
   puedeCrear: boolean
 }) {
+  const toast = useToast()
+  const [generandoPdf, setGenerandoPdf] = useState(false)
+
+  // Trae retiros + pagos de la cantera y arma el PDF del detalle de deuda.
+  async function handlePdf() {
+    setGenerandoPdf(true)
+    try {
+      const [retiros, pagos] = await Promise.all([
+        apiGet<MovimientoArido[]>(`/api/aridos/movimientos?cantera_id=${cuenta.id}`),
+        apiGet<PagoCantera[]>(`/api/aridos/pagos-cantera?cantera_id=${cuenta.id}`),
+      ])
+      descargarCuentaCanteraPdf(cuenta, retiros, pagos)
+    } catch {
+      toast('No se pudo generar el PDF', 'err')
+    } finally {
+      setGenerandoPdf(false)
+    }
+  }
+
   return (
     <>
       <tr className="border-b border-gris last:border-0 hover:bg-gris/40 transition-colors cursor-pointer" onClick={onToggle}>
@@ -223,17 +242,49 @@ function CanteraRow({ cuenta, expandido, onToggle, onPagar, puedeCrear }: {
           {fmtM(cuenta.saldo)}
         </td>
         <td className="px-4 py-3 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
+          <Button variant="ghost" size="sm" loading={generandoPdf} onClick={handlePdf} title="Descargar detalle de deuda en PDF">📄 PDF</Button>
           <Button variant="primary" size="sm" disabled={!puedeCrear} onClick={onPagar}>💸 Registrar pago</Button>
         </td>
       </tr>
       {expandido && (
         <tr className="border-b border-gris last:border-0 bg-gris/20">
           <td colSpan={6} className="px-6 py-3">
-            <PagosDeLaCantera canteraId={cuenta.id} />
+            <div className="flex flex-col gap-3">
+              <RetirosDeLaCantera canteraId={cuenta.id} />
+              <PagosDeLaCantera canteraId={cuenta.id} />
+            </div>
           </td>
         </tr>
       )}
     </>
+  )
+}
+
+// Retiros que arman la deuda: ventas directas de cantera + acopios con la
+// cantera. Los que no tienen costo cargado se marcan (no suman a la deuda).
+function RetirosDeLaCantera({ canteraId }: { canteraId: number }) {
+  const { data: retiros = [], isLoading } = useMovimientos({ cantera_id: canteraId })
+
+  if (isLoading) return <p className="text-xs text-gris-dark">Cargando retiros...</p>
+  if (retiros.length === 0) return <p className="text-xs text-gris-dark italic">Sin retiros de esta cantera.</p>
+
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="text-[10px] font-bold uppercase tracking-wide text-gris-dark mb-1">Retiros (arman la deuda)</p>
+      {retiros.map(r => (
+        <div key={r.id} className="flex items-center justify-between gap-2 text-xs bg-white rounded px-3 py-1.5">
+          <span className="text-carbon truncate">
+            {fmtDate(r.fecha)} · <b>{r.tipo === 'acopio' ? '📦 Acopio' : '🛒 Venta'}</b>
+            {' '}· {r.aridos_materiales?.nombre ?? '—'} · {Number(r.cantidad).toLocaleString('es-AR', { maximumFractionDigits: 2 })} {r.aridos_materiales?.unidad === 'viaje' ? 'viaje(s)' : 'm³'}
+            {r.aridos_clientes?.nombre && <span className="text-gris-dark"> · {r.aridos_clientes.nombre}</span>}
+            {(r.remito_numero || r.remito) && <span className="text-gris-dark font-mono"> · {r.remito_numero ?? r.remito}</span>}
+          </span>
+          {r.costo_total != null
+            ? <span className="font-mono font-bold text-rojo shrink-0">{fmtM(Number(r.costo_total))}</span>
+            : <span className="text-[10px] font-bold text-[#7A5500] bg-amarillo-light px-1.5 py-0.5 rounded shrink-0" title="Editalo en Ventas/Acopios y completá el costo">⚠ sin costo</span>}
+        </div>
+      ))}
+    </div>
   )
 }
 

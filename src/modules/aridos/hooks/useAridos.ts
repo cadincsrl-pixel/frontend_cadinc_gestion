@@ -30,6 +30,7 @@ export const CTACTE_KEY     = ['aridos', 'cuenta-corriente'] as const
 export interface MovimientosFiltro {
   tipo?:        'venta' | 'acopio' | 'ajuste'
   cliente_id?:  number
+  cantera_id?:  number
   material_id?: number
   fecha_desde?: string
   fecha_hasta?: string
@@ -188,6 +189,7 @@ export function useMovimientos(filtro: MovimientosFiltro = {}, enabled = true) {
   const params = new URLSearchParams()
   if (filtro.tipo)        params.set('tipo', filtro.tipo)
   if (filtro.cliente_id)  params.set('cliente_id', String(filtro.cliente_id))
+  if (filtro.cantera_id)  params.set('cantera_id', String(filtro.cantera_id))
   if (filtro.material_id) params.set('material_id', String(filtro.material_id))
   if (filtro.fecha_desde) params.set('fecha_desde', filtro.fecha_desde)
   if (filtro.fecha_hasta) params.set('fecha_hasta', filtro.fecha_hasta)

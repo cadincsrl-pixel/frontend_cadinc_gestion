@@ -180,17 +180,34 @@ function ListaPreciosCanteraModal({ cantera, onClose }: { cantera: CanteraArido 
   const { puedeCrear, puedeEliminar } = usePermisos('aridos')
   const { data: costos = [] } = useCostosCantera()
   const { data: materiales = [] } = useMateriales()
-  const { mutate: crear, isPending } = useCreateCostoCantera()
+  const { mutateAsync: crearAsync } = useCreateCostoCantera()
   const { mutate: borrar } = useDeleteCostoCantera()
 
-  const form = useForm<{ concepto: string; material_id: string; zona: string; costo: string; unidad: 'm3' | 'viaje' | 'hora'; vigente_desde: string }>({
-    defaultValues: { concepto: '', material_id: '', zona: '', costo: '', unidad: 'm3', vigente_desde: toISO(new Date()) },
-  })
+  // Carga por grilla: la lista de materiales que vendemos, y se tipea el
+  // precio solo en los que esta cantera vende. El vínculo material↔precio
+  // sale solo (concepto = nombre del material), sin paso de "vincular".
+  const [zonaCarga, setZonaCarga] = useState('')
+  const [vigenteDesde, setVigenteDesde] = useState(toISO(new Date()))
+  const [preciosDraft, setPreciosDraft] = useState<Record<number, string>>({})
+  // Servicio / otro concepto sin material (ej: hora de máquina).
+  const [svcConcepto, setSvcConcepto] = useState('')
+  const [svcPrecio, setSvcPrecio] = useState('')
+  const [svcUnidad, setSvcUnidad] = useState<'viaje' | 'hora'>('hora')
+  const [guardando, setGuardando] = useState(false)
+
+  const materialesActivos = useMemo(() => materiales.filter(m => m.activo), [materiales])
 
   const propios = useMemo(
     () => (cantera ? costos.filter(c => c.cantera_id === cantera.id) : []),
     [costos, cantera],
   )
+
+  // Precio vigente de un material en la zona tipeada (referencia en la grilla).
+  function precioVigente(materialId: number) {
+    return propios
+      .filter(c => c.material_id === materialId && (c.zona ?? '') === zonaCarga.trim())
+      .sort((a, b) => b.vigente_desde.localeCompare(a.vigente_desde))[0]
+  }
 
   // Zonas existentes de la cantera (para agrupar y sugerir en el alta)
   const zonas = useMemo(() => {
@@ -220,25 +237,47 @@ function ListaPreciosCanteraModal({ cantera, onClose }: { cantera: CanteraArido 
     return '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 0 })
   }
 
-  function onSubmit(data: { concepto: string; material_id: string; zona: string; costo: string; unidad: 'm3' | 'viaje' | 'hora'; vigente_desde: string }) {
+  async function guardarPrecios() {
     if (!cantera) return
-    if (!data.concepto.trim()) { toast('Poné el concepto (ej: Arena)', 'err'); return }
-    if (!data.costo || Number(data.costo) <= 0) { toast('Precio inválido', 'err'); return }
-    crear({
-      cantera_id:    cantera.id,
-      concepto:      data.concepto.trim(),
-      zona:          data.zona.trim() || null,
-      material_id:   data.material_id ? Number(data.material_id) : null,
-      costo:         Number(data.costo),
-      unidad:        data.unidad,
-      vigente_desde: data.vigente_desde,
-    }, {
-      onSuccess: () => {
-        toast('✓ Precio guardado', 'ok')
-        form.reset({ concepto: '', material_id: '', zona: data.zona, costo: '', unidad: data.unidad, vigente_desde: data.vigente_desde })
-      },
-      onError: (err: unknown) => toast(mensajeError(err, 'Error al guardar'), 'err'),
-    })
+    const filas = materialesActivos
+      .map(m => ({ m, val: (preciosDraft[m.id] ?? '').trim() }))
+      .filter(x => x.val !== '')
+    if (filas.some(x => !(Number(x.val) > 0))) { toast('Hay precios inválidos (deben ser mayores a 0)', 'err'); return }
+    const conServicio = svcConcepto.trim() !== '' && Number(svcPrecio) > 0
+    if (filas.length === 0 && !conServicio) { toast('Cargá al menos un precio', 'err'); return }
+    setGuardando(true)
+    try {
+      for (const { m, val } of filas) {
+        await crearAsync({
+          cantera_id:    cantera.id,
+          concepto:      m.nombre,
+          zona:          zonaCarga.trim() || null,
+          material_id:   m.id,
+          costo:         Number(val),
+          unidad:        m.unidad,
+          vigente_desde: vigenteDesde,
+        })
+      }
+      if (conServicio) {
+        await crearAsync({
+          cantera_id:    cantera.id,
+          concepto:      svcConcepto.trim(),
+          zona:          zonaCarga.trim() || null,
+          costo:         Number(svcPrecio),
+          unidad:        svcUnidad,
+          vigente_desde: vigenteDesde,
+        })
+      }
+      const n = filas.length + (conServicio ? 1 : 0)
+      toast(`✓ ${n} precio${n !== 1 ? 's' : ''} guardado${n !== 1 ? 's' : ''}`, 'ok')
+      setPreciosDraft({})
+      setSvcConcepto('')
+      setSvcPrecio('')
+    } catch (err: unknown) {
+      toast(mensajeError(err, 'Error al guardar'), 'err')
+    } finally {
+      setGuardando(false)
+    }
   }
 
   return (
@@ -252,35 +291,55 @@ function ListaPreciosCanteraModal({ cantera, onClose }: { cantera: CanteraArido 
       <div className="flex flex-col gap-4">
         {puedeCrear && (
           <div className="bg-gris/30 rounded-card p-3">
-            <p className="text-xs font-bold text-gris-dark uppercase mb-2">Nuevo precio (para actualizar uno, cargalo de nuevo con la fecha desde la que rige)</p>
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
-              <div className="sm:col-span-2">
-                <Input label="Concepto" placeholder="Ej: Arena" list="conceptos-cantera" {...form.register('concepto')} />
-                <datalist id="conceptos-cantera">
-                  {Array.from(new Set(propios.map(c => c.concepto ?? ''))).map(c => <option key={c} value={c} />)}
-                </datalist>
-              </div>
-              <div className="sm:col-span-2">
-                <Select label="Material (autocompleta el costo en la venta)" placeholder="Sin vincular"
-                  options={materiales.map(m => ({ value: String(m.id), label: m.nombre }))}
-                  {...form.register('material_id')} />
-              </div>
-              <div className="sm:col-span-2">
-                <Input label="Zona (opcional)" placeholder="Ej: Capital, Yerba Buena..." list="zonas-cantera" {...form.register('zona')} />
+            <p className="text-xs font-bold text-gris-dark uppercase mb-2">Cargar precios — tipeá solo en los materiales que esta cantera vende (para actualizar uno, cargalo de nuevo con la fecha desde la que rige)</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+              <div>
+                <Input label="Zona (opcional)" placeholder="Ej: Capital, Yerba Buena..." list="zonas-cantera" value={zonaCarga} onChange={e => setZonaCarga(e.target.value)} />
                 <datalist id="zonas-cantera">
                   {zonas.filter(Boolean).map(z => <option key={z} value={z} />)}
                 </datalist>
               </div>
-              <Input label="Precio ($)" type="number" step="0.01" placeholder="0" {...form.register('costo')} />
-              <Select label="Por" options={[
-                { value: 'm3', label: 'm³' },
-                { value: 'viaje', label: 'viaje' },
-                { value: 'hora', label: 'hora' },
-              ]} {...form.register('unidad')} />
-              <Input label="Vigente desde" type="date" {...form.register('vigente_desde')} />
+              <Input label="Vigente desde" type="date" value={vigenteDesde} onChange={e => setVigenteDesde(e.target.value)} />
             </div>
+
+            <div className="divide-y divide-gris border border-gris rounded-card overflow-hidden bg-white mb-2">
+              {materialesActivos.map(m => {
+                const ref = precioVigente(m.id)
+                return (
+                  <div key={m.id} className="px-3 py-1.5 flex items-center gap-3">
+                    <span className="text-sm text-carbon flex-1">
+                      {m.nombre}
+                      <span className="text-[10px] text-gris-dark ml-1">/{m.unidad === 'm3' ? 'm³' : 'viaje'}</span>
+                    </span>
+                    {ref && (
+                      <span className="text-[11px] text-gris-dark font-mono shrink-0" title={`Vigente desde ${fmtDate(ref.vigente_desde)}`}>
+                        hoy {fmtM(Number(ref.costo))}
+                      </span>
+                    )}
+                    <input
+                      type="number" step="0.01" placeholder="$"
+                      className="w-28 px-2 py-1 border-[1.5px] border-gris-mid rounded-lg text-sm font-mono text-right outline-none focus:border-naranja bg-blanco"
+                      value={preciosDraft[m.id] ?? ''}
+                      onChange={e => setPreciosDraft(p => ({ ...p, [m.id]: e.target.value }))}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 items-end">
+              <div className="col-span-2">
+                <Input label="Servicio / otro concepto (opcional)" placeholder="Ej: Hora de máquina" value={svcConcepto} onChange={e => setSvcConcepto(e.target.value)} />
+              </div>
+              <Input label="Precio ($)" type="number" step="0.01" placeholder="0" value={svcPrecio} onChange={e => setSvcPrecio(e.target.value)} />
+              <Select label="Por" options={[
+                { value: 'hora', label: 'hora' },
+                { value: 'viaje', label: 'viaje' },
+              ]} value={svcUnidad} onChange={e => setSvcUnidad(e.target.value as 'viaje' | 'hora')} />
+            </div>
+
             <div className="flex justify-end mt-2">
-              <Button variant="primary" size="sm" loading={isPending} onClick={form.handleSubmit(onSubmit)}>✓ Agregar</Button>
+              <Button variant="primary" size="sm" loading={guardando} onClick={guardarPrecios}>✓ Guardar precios</Button>
             </div>
           </div>
         )}

@@ -150,6 +150,9 @@ export function VentasTab() {
 
   const materialSel = materiales.find(m => m.id === Number(wMaterial))
   const esViaje     = materialSel?.unidad === 'viaje'
+  // Flete punto A → punto B: servicio de transporte, sin stock ni cantera.
+  // El precio se carga a mano según cliente/distancia (siempre "especial").
+  const esFlete     = esViaje && (materialSel?.nombre ?? '').toLowerCase().includes('flete')
   const unidadLabel = esViaje ? 'viaje(s)' : 'm³'
 
   const lista = precioConRecargo(precios, preciosGlobal, municipios, wCliente, wMaterial, wFecha, wMunicipio)
@@ -232,6 +235,12 @@ export function VentasTab() {
       setValue('origen', 'cantera')
     }
     costoManualRef.current = false
+    // El flete no tiene precio de lista: pasa solo a "especial" (a mano).
+    if (mat?.unidad === 'viaje' && mat.nombre.toLowerCase().includes('flete')) {
+      setValue('modo_precio', 'especial')
+      recalc({ material: materialId, modo: 'especial' }, { force: true })
+      return
+    }
     recalc({ material: materialId }, { force: true })
   }
 
@@ -598,19 +607,19 @@ export function VentasTab() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="flex items-end pb-2">
                 <span className="text-xs font-bold text-[#7A5500] bg-amarillo-light px-2 py-1 rounded">
-                  🚧 Retiro: obra del cliente → depósito
+                  {esFlete ? '🚚 Flete: punto A → punto B' : '🚧 Retiro: obra del cliente → depósito'}
                 </span>
               </div>
               <div className="sm:col-span-2">
-                <Select label="Municipio (de la obra)" options={municipioOptions}
+                <Select label={esFlete ? 'Municipio (si aplica)' : 'Municipio (de la obra)'} options={municipioOptions}
                   {...register('municipio_id', { onChange: e => recalc({ municipio: e.target.value }) })} />
               </div>
             </div>
           )}
 
           <Input
-            label={esViaje ? 'Dirección de retiro (obra del cliente)' : 'Dirección de entrega'}
-            placeholder={esViaje ? 'Ej: Obra Av. Aconquija 1500, Yerba Buena' : 'Ej: Av. Roca 2300, San Miguel de Tucumán'}
+            label={esFlete ? 'Recorrido (punto A → punto B)' : esViaje ? 'Dirección de retiro (obra del cliente)' : 'Dirección de entrega'}
+            placeholder={esFlete ? 'Ej: Cantera Campero → Obra Av. Aconquija 1500' : esViaje ? 'Ej: Obra Av. Aconquija 1500, Yerba Buena' : 'Ej: Av. Roca 2300, San Miguel de Tucumán'}
             {...register('entrega_direccion')}
           />
 
@@ -668,7 +677,9 @@ export function VentasTab() {
           </div>
 
           <div className="bg-gris/30 rounded-card px-3 py-2 text-xs text-gris-dark">
-            {lista
+            {esFlete
+              ? <>🚚 Flete punto a punto: el precio se carga <b>a mano</b> según el cliente y la distancia del recorrido.</>
+              : lista
               ? wModo === 'especial'
                 // En especial el recargo de municipio NO se aplica solo: el
                 // precio de lista va como referencia para no confundir.
@@ -679,7 +690,7 @@ export function VentasTab() {
                 : 'Elegí cliente y material para ver el precio de lista.'}
           </div>
 
-          {wModo === 'lista' && !lista && wCliente && wMaterial && (
+          {!esFlete && wModo === 'lista' && !lista && wCliente && wMaterial && (
             <div className="bg-amarillo-light border border-[#7A5500]/30 rounded-card px-3 py-2 text-xs text-[#7A5500] font-semibold">
               ⚠ No hay precio de lista: cambiá a &quot;Precio especial&quot; para cargar el valor a mano, o precargalo en la ficha del cliente.
             </div>
