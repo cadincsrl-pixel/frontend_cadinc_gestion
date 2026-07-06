@@ -2,9 +2,17 @@
 
 export type UnidadArido = 'm3' | 'viaje'
 export type TipoMovimiento = 'venta' | 'acopio' | 'ajuste'
-// 'obra' = retiro de escombro: sale de la obra del cliente hacia el depósito
+// 'obra' = servicio sin stock: retiro de escombro (obra del cliente → depósito)
+// o flete punto a punto. Se distinguen por el nombre del material (esMaterialFlete).
 export type OrigenVenta = 'cantera' | 'deposito' | 'obra'
 export type MedioCobro = 'efectivo' | 'transferencia' | 'cheque' | 'otro'
+
+// El "Flete" (servicio punto A → punto B) se detecta por nombre de material —
+// no hay flag en la tabla. Si se renombra el material, tiene que seguir
+// diciendo "flete" para que la venta y los remitos lo traten como tal.
+export function esMaterialFlete(nombre: string | null | undefined): boolean {
+  return (nombre ?? '').toLowerCase().includes('flete')
+}
 
 export interface MunicipioArido {
   id: number

@@ -16,6 +16,7 @@ import {
   usePreciosGlobal, useCostosCantera,
 } from '../hooks/useAridos'
 import { RemitoVentaModal } from './RemitoVentaModal'
+import { esMaterialFlete } from '../types'
 import type { MovimientoArido, PrecioCliente, PrecioGlobal, MunicipioArido, UnidadEta, CostoCantera } from '../types'
 
 interface VentaForm {
@@ -152,7 +153,7 @@ export function VentasTab() {
   const esViaje     = materialSel?.unidad === 'viaje'
   // Flete punto A → punto B: servicio de transporte, sin stock ni cantera.
   // El precio se carga a mano según cliente/distancia (siempre "especial").
-  const esFlete     = esViaje && (materialSel?.nombre ?? '').toLowerCase().includes('flete')
+  const esFlete     = esViaje && esMaterialFlete(materialSel?.nombre)
   const unidadLabel = esViaje ? 'viaje(s)' : 'm³'
 
   const lista = precioConRecargo(precios, preciosGlobal, municipios, wCliente, wMaterial, wFecha, wMunicipio)
@@ -236,7 +237,7 @@ export function VentasTab() {
     }
     costoManualRef.current = false
     // El flete no tiene precio de lista: pasa solo a "especial" (a mano).
-    if (mat?.unidad === 'viaje' && mat.nombre.toLowerCase().includes('flete')) {
+    if (mat?.unidad === 'viaje' && esMaterialFlete(mat.nombre)) {
       setValue('modo_precio', 'especial')
       recalc({ material: materialId, modo: 'especial' }, { force: true })
       return
@@ -425,7 +426,9 @@ export function VentasTab() {
                       {v.origen === 'deposito'
                         ? <span className="font-bold text-azul-mid">Depósito</span>
                         : v.origen === 'obra'
-                          ? <span className="font-bold text-[#7A5500]">Obra (escombro)</span>
+                          ? esMaterialFlete(v.aridos_materiales?.nombre)
+                            ? <span className="font-bold text-naranja">🚚 Flete</span>
+                            : <span className="font-bold text-[#7A5500]">Obra (escombro)</span>
                           : <span>{v.aridos_canteras?.nombre ?? 'Cantera'}</span>}
                     </td>
                     <td className="px-3 py-2.5 text-xs text-gris-dark max-w-[180px]">
@@ -501,7 +504,7 @@ export function VentasTab() {
                 <span>{v.aridos_materiales?.nombre ?? '—'}</span>
                 <span className="font-mono">· {fmtCant(Number(v.cantidad))} {v.aridos_materiales?.unidad === 'viaje' ? 'viaje(s)' : 'm³'}</span>
                 <span className="text-gris-dark">·{' '}
-                  {v.origen === 'deposito' ? 'Depósito' : v.origen === 'obra' ? 'Obra (escombro)' : (v.aridos_canteras?.nombre ?? 'Cantera')}
+                  {v.origen === 'deposito' ? 'Depósito' : v.origen === 'obra' ? (esMaterialFlete(v.aridos_materiales?.nombre) ? '🚚 Flete' : 'Obra (escombro)') : (v.aridos_canteras?.nombre ?? 'Cantera')}
                 </span>
               </div>
 

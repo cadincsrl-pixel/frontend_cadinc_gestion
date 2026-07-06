@@ -4,6 +4,7 @@
 // comprobante con importes.
 
 import { EMPRESA } from '@/lib/config/empresa'
+import { esMaterialFlete } from '../types'
 import type { MovimientoArido } from '../types'
 
 function esc(s: string | null | undefined): string {
@@ -27,8 +28,18 @@ function fmtCant(n: number): string {
 
 function origenLegible(v: MovimientoArido): string {
   if (v.origen === 'deposito') return 'Depósito propio'
-  if (v.origen === 'obra')     return 'Retiro en obra del cliente'
+  if (v.origen === 'obra') {
+    return esMaterialFlete(v.aridos_materiales?.nombre) ? 'Flete punto a punto' : 'Retiro en obra del cliente'
+  }
   return v.aridos_canteras?.nombre ? `Cantera ${v.aridos_canteras.nombre}` : 'Cantera'
+}
+
+// Label de la línea de dirección: para el flete es el recorrido A → B.
+function direccionLabel(v: MovimientoArido): string {
+  if (v.origen === 'obra') {
+    return esMaterialFlete(v.aridos_materiales?.nombre) ? 'Recorrido' : 'Retiro en'
+  }
+  return 'Entrega en'
 }
 
 function unidadLinea(v: MovimientoArido): string | null {
@@ -49,7 +60,7 @@ export function textoRemitoVenta(v: MovimientoArido, conPrecios: boolean): strin
     `Origen: ${origenLegible(v)}`,
   ]
   if (v.entrega_direccion) {
-    lineas.push(`${v.origen === 'obra' ? 'Retiro en' : 'Entrega en'}: ${v.entrega_direccion}${v.aridos_municipios ? ` (${v.aridos_municipios.nombre})` : ''}`)
+    lineas.push(`${direccionLabel(v)}: ${v.entrega_direccion}${v.aridos_municipios ? ` (${v.aridos_municipios.nombre})` : ''}`)
   }
   const uni = unidadLinea(v)
   if (uni) lineas.push(`Transporte: ${uni}`)
@@ -92,7 +103,7 @@ export function imprimirRemitoVenta(v: MovimientoArido, conPrecios: boolean) {
         ${fila('Material', esc(v.aridos_materiales?.nombre) || '—')}
         ${fila('Cantidad', `<b>${fmtCant(Number(v.cantidad))} ${unidadMedida}</b>`)}
         ${fila('Origen', esc(origenLegible(v)))}
-        ${v.entrega_direccion ? fila(v.origen === 'obra' ? 'Retiro en' : 'Entrega en', `${esc(v.entrega_direccion)}${v.aridos_municipios ? ` (${esc(v.aridos_municipios.nombre)})` : ''}`) : ''}
+        ${v.entrega_direccion ? fila(direccionLabel(v), `${esc(v.entrega_direccion)}${v.aridos_municipios ? ` (${esc(v.aridos_municipios.nombre)})` : ''}`) : ''}
         ${uni ? fila('Transporte', esc(uni)) : ''}
         ${v.remito ? fila('Remito papel N°', esc(v.remito)) : ''}
         ${conPrecios && v.precio_unit != null ? fila('Precio unitario', fmtM(Number(v.precio_unit))) : ''}
