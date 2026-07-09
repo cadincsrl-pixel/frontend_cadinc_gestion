@@ -583,25 +583,29 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
   )
 }
 
-// ─── Cobro de varias facturas juntas (empresas con facturación) ───────────────
-// Cuando la empresa paga varias facturas con una sola transferencia: se
-// seleccionan las facturas pendientes, se sube UN comprobante (se adjunta a
-// cada cobro) y se marcan todas cobradas con la fecha del pago.
+// ─── Confirmar pago de facturas/cobros pendientes ─────────────────────────────
+// Cuando la empresa paga una o varias facturas (o liquidaciones) con una sola
+// transferencia: se seleccionan los pendientes, se sube UN comprobante (se
+// adjunta a cada cobro) y se marcan todos cobrados con la fecha del pago.
 function ModalCobrarFacturas({
   empresa,
   cobrosPendientes,
   tramos,
+  preseleccionIds,
   onClose,
 }: {
   empresa: EmpresaTransportista
   cobrosPendientes: Cobro[]
   tramos: Tramo[]
+  // Ids a pretildar (llegada desde una fila puntual); ausente = todos.
+  preseleccionIds?: number[]
   onClose: () => void
 }) {
   const toast = useToast()
+  const esFact = empresa.modalidad_cobro === 'facturacion'
   const { mutateAsync: marcarCobradoAsync } = useMarcarCobrado()
   const { mutateAsync: uploadAdjunto } = useUploadCobroAdjunto()
-  const [seleccion, setSeleccion]     = useState<Set<number>>(new Set(cobrosPendientes.map(c => c.id)))
+  const [seleccion, setSeleccion]     = useState<Set<number>>(new Set(preseleccionIds ?? cobrosPendientes.map(c => c.id)))
   const [fechaCobro, setFechaCobro]   = useState(toISO(new Date()))
   const [comprobante, setComprobante] = useState<File | null>(null)
   const [procesando, setProcesando]   = useState(false)
@@ -631,7 +635,7 @@ function ModalCobrarFacturas({
   }
 
   async function handleSubmit() {
-    if (seleccionados.length === 0) { toast('Seleccioná al menos una factura', 'err'); return }
+    if (seleccionados.length === 0) { toast(esFact ? 'Seleccioná al menos una factura' : 'Seleccioná al menos un cobro', 'err'); return }
     if (!comprobante) { toast('Adjuntá el comprobante del pago', 'err'); return }
     setProcesando(true)
     let ok = 0
@@ -655,26 +659,31 @@ function ModalCobrarFacturas({
     }
     setProcesando(false)
     if (fallidas.length === 0) {
-      toast(`✓ ${ok} factura${ok !== 1 ? 's' : ''} cobrada${ok !== 1 ? 's' : ''}`, 'ok')
+      toast(esFact
+        ? `✓ ${ok} factura${ok !== 1 ? 's' : ''} cobrada${ok !== 1 ? 's' : ''}`
+        : `✓ ${ok} cobro${ok !== 1 ? 's' : ''} confirmado${ok !== 1 ? 's' : ''}`, 'ok')
       onClose()
     } else {
       // Las que se cobraron quedan cobradas; las fallidas siguen pendientes
       // y se pueden reintentar desde el mismo modal (queda abierto).
-      toast(`✓ ${ok} cobrada${ok !== 1 ? 's' : ''} · ⚠ Fallaron: ${fallidas.join(', ')} — reintentá`, 'err')
+      toast(`✓ ${ok} de ${seleccionados.length} · ⚠ Fallaron: ${fallidas.join(', ')} — reintentá`, 'err')
     }
   }
 
   return (
     <Modal
       open
-      onClose={onClose}
-      title="💰 REGISTRAR COBRO DE FACTURAS"
+      // Mientras se procesan las marcas no se puede cerrar (ni backdrop ni
+      // Cancelar): el loop de upload+marcar seguiría corriendo de fondo y el
+      // user creería que canceló.
+      onClose={procesando ? () => undefined : onClose}
+      title={esFact ? '💰 REGISTRAR COBRO DE FACTURAS' : '💰 CONFIRMAR PAGO DE COBROS'}
       width="max-w-lg"
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button variant="secondary" onClick={onClose} disabled={procesando}>Cancelar</Button>
           <Button variant="primary" loading={procesando} onClick={handleSubmit}>
-            ✓ Marcar cobradas ({seleccionados.length})
+            {esFact ? `✓ Marcar cobradas (${seleccionados.length})` : `✓ Marcar cobrados (${seleccionados.length})`}
           </Button>
         </>
       }
@@ -683,20 +692,24 @@ function ModalCobrarFacturas({
         <div className="bg-azul-light rounded-xl px-4 py-3">
           <div className="font-bold text-azul">{empresa.nombre}</div>
           <div className="text-xs text-azul-mid mt-0.5">
-            Seleccioná las facturas que la empresa pagó juntas — el comprobante se adjunta a todas
+            {esFact
+              ? 'Seleccioná las facturas que la empresa pagó juntas — el comprobante se adjunta a todas'
+              : 'Seleccioná los cobros que la empresa pagó — el comprobante se adjunta a todos'}
           </div>
         </div>
 
         <div>
           <span className="text-xs font-bold text-gris-dark uppercase tracking-wider">
-            Facturas pendientes de cobro
+            {esFact ? 'Facturas pendientes de cobro' : 'Cobros pendientes de pago'}
           </span>
           <div className="bg-gris rounded-xl divide-y divide-gris-mid max-h-60 overflow-y-auto mt-2">
             {cobrosPendientes.map(c => {
               const checked = seleccion.has(c.id)
-              // Una factura = un viaje: los datos del remito salen del tramo
-              // vinculado (tramos.cobro_id).
-              const tramo  = tramos.find(t => t.cobro_id === c.id)
+              // Facturación: una factura = un viaje → remito y fechas salen
+              // del tramo vinculado. Líquido producto: el cobro agrupa varios
+              // remitos → se muestra el período y la cantidad.
+              const tramosDelCobro = tramos.filter(t => t.cobro_id === c.id)
+              const tramo  = c.factura_nro ? tramosDelCobro[0] : undefined
               const remito = tramo ? (tramo.remito_descarga ?? tramo.remito_carga) : null
               return (
                 <label
@@ -710,9 +723,19 @@ function ModalCobrarFacturas({
                       {remito && <span className="font-mono font-normal text-gris-dark"> · Remito {remito}</span>}
                     </div>
                     <div className="text-[11px] text-gris-dark">
-                      {tramo?.fecha_carga && <>carga {fmtFecha(tramo.fecha_carga)} · </>}
-                      {tramo?.fecha_descarga && <>descarga {fmtFecha(tramo.fecha_descarga)} · </>}
-                      {fmtTon(c.toneladas_totales)}
+                      {c.factura_nro ? (
+                        <>
+                          {tramo?.fecha_carga && <>carga {fmtFecha(tramo.fecha_carga)} · </>}
+                          {tramo?.fecha_descarga && <>descarga {fmtFecha(tramo.fecha_descarga)} · </>}
+                          {fmtTon(c.toneladas_totales)}
+                        </>
+                      ) : (
+                        <>
+                          {fmtFecha(c.fecha_desde)} → {fmtFecha(c.fecha_hasta)}
+                          {tramosDelCobro.length > 0 && <> · {tramosDelCobro.length} remito{tramosDelCobro.length !== 1 ? 's' : ''}</>}
+                          {' · '}{fmtTon(c.toneladas_totales)}
+                        </>
+                      )}
                     </div>
                   </div>
                   <div className={`text-xs font-mono font-bold shrink-0 ${checked ? 'text-verde' : 'text-gris-dark line-through'}`}>
@@ -768,7 +791,9 @@ function ModalCobrarFacturas({
           </div>
         </div>
         <p className="text-[11px] text-gris-mid italic">
-          El comprobante es obligatorio: se adjunta a cada factura seleccionada y todas pasan a cobradas.
+          {esFact
+            ? 'El comprobante es obligatorio: se adjunta a cada factura seleccionada y todas pasan a cobradas.'
+            : 'El comprobante es obligatorio: se adjunta a cada cobro seleccionado y todos pasan a cobrados.'}
         </p>
       </div>
     </Modal>
@@ -800,8 +825,14 @@ function FacturacionSection() {
   const [cobroCreado,  setCobroCreado]  = useState<{ id: number; total: number; ton: number } | null>(null)
   // Cobro abierto para revisar/editar adjuntos después de creado.
   const [cobroDetalle, setCobroDetalle] = useState<Cobro | null>(null)
-  // Empresa (facturación) con el modal de "cobrar varias facturas juntas" abierto.
+  // Empresa con el modal de "confirmar pago de facturas/cobros" abierto.
   const [cobroFacturasEmpresa, setCobroFacturasEmpresa] = useState<EmpresaTransportista | null>(null)
+  // Ids a pretildar en ese modal (cuando se llega desde una fila puntual del
+  // historial); null = pretildar todos los pendientes de la empresa.
+  const [preseleccionCobro, setPreseleccionCobro] = useState<number[] | null>(null)
+  // Cobro con el "✓ Cobrar" inline en vuelo — bloquea los demás botones de la
+  // lista mientras tanto (evita dobles marcas y modales pisados).
+  const [marcandoId, setMarcandoId] = useState<number | null>(null)
   // Empresa expandida en "Saldo corriente" para ver remitos individuales.
   const [saldoExpandida, setSaldoExpandida] = useState<number | null>(null)
   // Tramo abierto para editar toneladas/remito de descarga (ajuste fino
@@ -1054,10 +1085,14 @@ function FacturacionSection() {
             const { mis_tramos, desglose, ton_totales, total } = resumenEmpresa(empresa)
             const sinMovimientos = mis_tramos.length === 0
             const esFact = empresa.modalidad_cobro === 'facturacion'
-            // Facturas ya emitidas esperando el pago de la empresa.
-            const facturasPorCobrar = esFact
-              ? (cobros as Cobro[]).filter(c => c.empresa_id === empresa.id && c.estado === 'pendiente')
-              : []
+            // Pipeline de deuda de la empresa (facturado/liquidado ≠ pagado):
+            //   1. sin facturar / sin liquidar  → `total` (tramos sin cobro_id, a tarifa)
+            //   2. facturas/cobros pendientes   → `totalPorCobrar` (cobros estado pendiente)
+            //   deuda real = 1 + 2 — es el número grande de la derecha.
+            const porCobrar = (cobros as Cobro[]).filter(c => c.empresa_id === empresa.id && c.estado === 'pendiente')
+            const totalPorCobrar = porCobrar.reduce((s, c) => s + c.total, 0)
+            const totalDebe = total + totalPorCobrar
+            const alDia = sinMovimientos && porCobrar.length === 0
             return (
               <div key={empresa.id} className="bg-white rounded-card shadow-card p-4">
                 <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -1067,68 +1102,79 @@ function FacturacionSection() {
                       {esFact && (
                         <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-azul-light text-azul-mid">🧾 Facturación</span>
                       )}
-                      {esFact && !sinMovimientos && (
-                        <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-naranja text-white">
-                          ⚠ {mis_tramos.length} viaje{mis_tramos.length !== 1 ? 's' : ''} sin facturar
-                        </span>
-                      )}
-                      {facturasPorCobrar.length > 0 && (
-                        <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amarillo-light text-[#7A5500] border border-amarillo/40">
-                          💰 {facturasPorCobrar.length} factura{facturasPorCobrar.length !== 1 ? 's' : ''} por cobrar
-                        </span>
-                      )}
                     </div>
-                    {sinMovimientos ? (
-                      <p className="text-xs text-gris-mid mt-1 italic">
-                        {esFact ? 'Sin viajes pendientes de facturar' : 'Sin remitos pendientes de cobrar'}
-                      </p>
+                    {alDia ? (
+                      <p className="text-xs text-gris-mid mt-1 italic">✓ Al día — sin deuda pendiente</p>
                     ) : (
-                      <div className="text-xs text-gris-dark mt-1 space-y-0.5">
-                        <div>
-                          {mis_tramos.length} remito{mis_tramos.length !== 1 ? 's' : ''} ·{' '}
-                          <span className="font-semibold text-carbon">{fmtTon(ton_totales)} entregadas</span>
-                        </div>
-                        {Object.entries(
-                          desglose.reduce<Record<string, { ton: number; tarifa: number; subtotal: number }>>((acc, d) => {
-                            const nombre = d.cantera?.nombre ?? `Punto de carga ${d.t.cantera_id ?? '?'}`
-                            if (!acc[nombre]) acc[nombre] = { ton: 0, tarifa: d.tarifa, subtotal: 0 }
-                            acc[nombre].ton      += d.ton
-                            acc[nombre].subtotal += d.subtotal
-                            acc[nombre].tarifa    = d.tarifa
-                            return acc
-                          }, {})
-                        ).map(([nombre, v]) => (
-                          <div key={nombre} className={v.tarifa > 0 ? 'text-gris-mid' : 'text-rojo font-semibold'}>
-                            {v.tarifa > 0
-                              ? <>{nombre}: {fmtTon(v.ton)} × ${v.tarifa}/tn = {fmtM(v.subtotal)}</>
-                              : <>{nombre}: {fmtTon(v.ton)} · ⚠ Sin tarifa cargada</>}
-                          </div>
-                        ))}
-                        {desglose.some(d => d.tarifa === 0) && (
-                          <div className="text-rojo font-semibold mt-1">
-                            ⚠ {desglose.filter(d => d.tarifa === 0).length} remito(s) sin tarifa — no suman al total. Cargá la tarifa del punto de carga.
+                      <div className="text-xs mt-2 space-y-1">
+                        {/* Paso 1: viajes/remitos que todavía no tienen factura/cobro */}
+                        {!sinMovimientos && (
+                          <>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className={`font-semibold ${esFact ? 'text-naranja-dark' : 'text-carbon'}`}>
+                                {esFact
+                                  ? <>⚠ Sin facturar: {mis_tramos.length} viaje{mis_tramos.length !== 1 ? 's' : ''}</>
+                                  : <>⏳ Sin liquidar: {mis_tramos.length} remito{mis_tramos.length !== 1 ? 's' : ''}</>}
+                                {' · '}{fmtTon(ton_totales)}
+                              </span>
+                              <span className="font-mono font-bold text-carbon">{fmtM(total)}</span>
+                            </div>
+                            <div className="pl-4 space-y-0.5 text-gris-dark">
+                              {Object.entries(
+                                desglose.reduce<Record<string, { ton: number; tarifa: number; subtotal: number }>>((acc, d) => {
+                                  const nombre = d.cantera?.nombre ?? `Punto de carga ${d.t.cantera_id ?? '?'}`
+                                  if (!acc[nombre]) acc[nombre] = { ton: 0, tarifa: d.tarifa, subtotal: 0 }
+                                  acc[nombre].ton      += d.ton
+                                  acc[nombre].subtotal += d.subtotal
+                                  acc[nombre].tarifa    = d.tarifa
+                                  return acc
+                                }, {})
+                              ).map(([nombre, v]) => (
+                                <div key={nombre} className={v.tarifa > 0 ? 'text-gris-mid' : 'text-rojo font-semibold'}>
+                                  {v.tarifa > 0
+                                    ? <>{nombre}: {fmtTon(v.ton)} × ${v.tarifa}/tn = {fmtM(v.subtotal)}</>
+                                    : <>{nombre}: {fmtTon(v.ton)} · ⚠ Sin tarifa cargada</>}
+                                </div>
+                              ))}
+                              {desglose.some(d => d.tarifa === 0) && (
+                                <div className="text-rojo font-semibold mt-1">
+                                  ⚠ {desglose.filter(d => d.tarifa === 0).length} remito(s) sin tarifa — no suman al total. Cargá la tarifa del punto de carga.
+                                </div>
+                              )}
+                            </div>
+                          </>
+                        )}
+                        {/* Paso 2: facturado/liquidado esperando el pago */}
+                        {porCobrar.length > 0 && (
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold text-[#7A5500]">
+                              🧾 {esFact
+                                ? <>Facturado por cobrar: {porCobrar.length} factura{porCobrar.length !== 1 ? 's' : ''}</>
+                                : <>Liquidado por cobrar: {porCobrar.length} cobro{porCobrar.length !== 1 ? 's' : ''}</>}
+                            </span>
+                            <span className="font-mono font-bold text-carbon">{fmtM(totalPorCobrar)}</span>
                           </div>
                         )}
                       </div>
                     )}
                   </div>
-                  {!sinMovimientos && (
+                  {!alDia && (
                     <div className="text-right shrink-0">
-                      <div className="font-mono font-bold text-xl text-verde">{fmtM(total)}</div>
-                      <div className="text-[11px] text-gris-dark">a cobrar</div>
+                      <div className="font-mono font-bold text-xl text-verde">{fmtM(totalDebe)}</div>
+                      <div className="text-[11px] text-gris-dark">nos debe</div>
                     </div>
                   )}
                 </div>
-                {(!sinMovimientos || facturasPorCobrar.length > 0) && (
+                {!alDia && (
                   <div className="mt-3 pt-3 border-t border-gris flex flex-wrap gap-2 items-center">
                     {!sinMovimientos && (
                       <Button variant="primary" size="sm" onClick={() => abrirCobrar(empresa)}>
                         {esFact ? '🧾 Cargar factura' : '💰 Registrar cobro'}
                       </Button>
                     )}
-                    {facturasPorCobrar.length > 0 && (
-                      <Button variant="secondary" size="sm" onClick={() => setCobroFacturasEmpresa(empresa)}>
-                        💰 Cobrar facturas ({facturasPorCobrar.length})
+                    {porCobrar.length > 0 && (
+                      <Button variant="secondary" size="sm" onClick={() => { setPreseleccionCobro(null); setCobroFacturasEmpresa(empresa) }}>
+                        {esFact ? `💰 Registrar cobro (${porCobrar.length})` : `💰 Confirmar pago (${porCobrar.length})`}
                       </Button>
                     )}
                     {!sinMovimientos && (
@@ -1257,7 +1303,7 @@ function FacturacionSection() {
               {/* Chips de estado */}
               <div className="flex gap-1.5 flex-wrap">
                 {([
-                  { key: 'pendientes' as const, label: `⚠ Pendientes (${countPendGlob})`, color: 'bg-naranja text-white border-naranja', alt: 'border-naranja text-naranja-dark' },
+                  { key: 'pendientes' as const, label: `🧾 Por cobrar (${countPendGlob})`, color: 'bg-naranja text-white border-naranja', alt: 'border-naranja text-naranja-dark' },
                   { key: 'cobrados'   as const, label: `✓ Cobrados (${countCobrGlob})`,   color: 'bg-verde text-white border-verde',     alt: 'border-verde text-verde' },
                   { key: 'todos'      as const, label: `Todos (${todos.length})`,         color: 'bg-azul text-white border-azul',       alt: 'border-azul text-azul-mid' },
                 ]).map(opt => {
@@ -1332,7 +1378,7 @@ function FacturacionSection() {
 
               {/* Resumen */}
               <div className="flex items-center gap-3 flex-wrap text-[11px] text-gris-dark">
-                <span><strong className="text-naranja-dark">{pendientesVis.length}</strong> pendiente{pendientesVis.length !== 1 ? 's' : ''} · <span className="font-mono font-bold text-naranja-dark">{fmtM(totalAdeudado)}</span> adeudado</span>
+                <span><strong className="text-naranja-dark">{pendientesVis.length}</strong> por cobrar · <span className="font-mono font-bold text-naranja-dark">{fmtM(totalAdeudado)}</span> adeudado</span>
                 <span className="text-gris-mid">·</span>
                 <span><strong className="text-verde">{cobradosVis.length}</strong> cobrado{cobradosVis.length !== 1 ? 's' : ''} · <span className="font-mono font-bold text-verde">{fmtM(totalCobrado)}</span></span>
               </div>
@@ -1372,13 +1418,28 @@ function FacturacionSection() {
                         <Button
                           variant="primary"
                           size="sm"
+                          loading={marcandoId === c.id}
+                          disabled={marcandoId != null && marcandoId !== c.id}
                           onClick={ev => {
                             ev.stopPropagation()
+                            if (marcandoId != null) return
+                            setMarcandoId(c.id)
                             marcarCobrado({ id: c.id }, {
+                              onSettled: () => setMarcandoId(null),
                               onSuccess: () => toast('✓ Marcado como cobrado', 'ok'),
                               onError:   (err: any) => {
                                 if (err?.body?.error === 'FALTA_COMPROBANTE_PAGO') {
-                                  toast('Subí el comprobante de pago antes de marcar cobrado', 'err')
+                                  // Sin comprobante todavía: en vez de rebotar,
+                                  // abrir el flujo de cobro con esta fila
+                                  // pretildada para adjuntarlo ahí mismo.
+                                  const emp = (empresas as EmpresaTransportista[]).find(e => e.id === c.empresa_id)
+                                  if (emp) {
+                                    toast('Falta el comprobante del pago — adjuntalo acá', 'err')
+                                    setPreseleccionCobro([c.id])
+                                    setCobroFacturasEmpresa(emp)
+                                  } else {
+                                    toast('Subí el comprobante de pago antes de marcar cobrado', 'err')
+                                  }
                                 } else {
                                   toast(err?.message || 'Error al marcar cobrado', 'err')
                                 }
@@ -1398,15 +1459,20 @@ function FacturacionSection() {
         )
       })()}
 
-      {/* Modal cobrar varias facturas juntas (facturación) */}
+      {/* Modal confirmar pago de facturas/cobros pendientes. El key fuerza
+          remount si cambia la empresa o la preselección con el modal ya
+          abierto (p.ej. dos rebotes FALTA_COMPROBANTE seguidos desde el
+          historial) — sin él, la selección inicial quedaría stale. */}
       {cobroFacturasEmpresa && (
         <ModalCobrarFacturas
+          key={`${cobroFacturasEmpresa.id}:${preseleccionCobro?.join(',') ?? 'all'}`}
           empresa={cobroFacturasEmpresa}
           cobrosPendientes={(cobros as Cobro[]).filter(
             c => c.empresa_id === cobroFacturasEmpresa.id && c.estado === 'pendiente'
           )}
           tramos={tramos as Tramo[]}
-          onClose={() => setCobroFacturasEmpresa(null)}
+          preseleccionIds={preseleccionCobro ?? undefined}
+          onClose={() => { setCobroFacturasEmpresa(null); setPreseleccionCobro(null) }}
         />
       )}
 
@@ -1542,7 +1608,7 @@ function FacturacionSection() {
                           <div key={t.id} className="px-3 py-2 text-xs flex items-center justify-between gap-2">
                             <div className="flex-1 min-w-0">
                               <div className="font-semibold text-carbon truncate">
-                                {cantera?.nombre ?? '—'} {t.remito_carga ? `· #${t.remito_carga}` : ''}
+                                {cantera?.nombre ?? '—'} {(t.remito_descarga ?? t.remito_carga) ? `· #${t.remito_descarga ?? t.remito_carga}` : ''}
                               </div>
                               <div className="text-gris-dark text-[11px]">
                                 {fecha ? fmtFecha(fecha) : '—'}
