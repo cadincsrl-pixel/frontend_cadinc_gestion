@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import * as XLSX from 'xlsx'
 import JSZip from 'jszip'
@@ -21,6 +21,7 @@ import { useToast } from '@/components/ui/Toast'
 import { useForm as useRHF } from 'react-hook-form'
 import { usePermisos } from '@/hooks/usePermisos'
 import { CobroAdjuntosSection } from './CobroAdjuntosSection'
+import { useUploadCobroAdjunto } from '../hooks/useCobroAdjuntos'
 import type { EmpresaTransportista, TarifaEmpresaCantera, Tramo, Cobro } from '@/types/domain.types'
 import { toISO } from '@/lib/utils/dates'
 
@@ -620,6 +621,12 @@ function FacturacionSection() {
   const [busquedaRemito, setBusquedaRemito] = useState('')
   const [cobroDesde, setCobroDesde] = useState('')
   const [cobroHasta, setCobroHasta] = useState('')
+  // Archivo de factura elegido en el form (solo modo facturación): se sube
+  // automáticamente después de crear el cobro, todo en un solo paso.
+  const [facturaFile, setFacturaFile] = useState<File | null>(null)
+  const [subiendoFactura, setSubiendoFactura] = useState(false)
+  const facturaFileRef = useRef<HTMLInputElement | null>(null)
+  const { mutateAsync: uploadAdjunto } = useUploadCobroAdjunto()
   const form = useForm<any>()
   const formEditTramo = useForm<any>()
   const { mutate: updateTramo, isPending: updatingTramo } = useUpdateTramo()
@@ -630,6 +637,18 @@ function FacturacionSection() {
     setCobroCreado(null)
     setSelectedIds(new Set())
     setBusquedaRemito('')
+    setFacturaFile(null)
+  }
+
+  function handleFacturaFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    if (file.size > 10 * 1024 * 1024) {
+      toast('Archivo demasiado grande (máx 10 MB)', 'err')
+      return
+    }
+    setFacturaFile(file)
   }
 
   function abrirEditarTramo(t: Tramo) {
@@ -697,6 +716,18 @@ function FacturacionSection() {
     setSelectedIds(empresa.modalidad_cobro === 'facturacion' ? new Set() : new Set(mis_tramos.map(t => t.id)))
     form.reset({ fecha: toISO(new Date()), obs: '', factura_nro: '' })
     setBusquedaRemito('')
+    setFacturaFile(null)
+    setModalCobro(true)
+  }
+
+  // Carga rápida: facturar UN viaje puntual desde la lista expandida de
+  // remitos — abre el modal con ese viaje ya seleccionado.
+  function abrirFacturarViaje(empresa: EmpresaTransportista, tramoId: number) {
+    setEmpresaCobro(empresa)
+    setSelectedIds(new Set([tramoId]))
+    form.reset({ fecha: toISO(new Date()), obs: '', factura_nro: '' })
+    setBusquedaRemito('')
+    setFacturaFile(null)
     setModalCobro(true)
   }
 
@@ -765,10 +796,27 @@ function FacturacionSection() {
       ...(esFact ? { factura_nro: data.factura_nro.trim(), factura_fecha: data.fecha } : {}),
       tramo_ids:         modalTramos.map(t => t.id),
     }, {
-      onSuccess: (creado) => {
-        toast(esFact
-          ? '✓ Factura registrada — ahora podés adjuntar el PDF de la factura'
-          : '✓ Cobro registrado — ahora podés adjuntar liquidación y comprobante', 'ok')
+      onSuccess: async (creado) => {
+        // Si eligieron el archivo en el form, se sube acá mismo y el modal se
+        // cierra — carga en un solo paso. Si la subida falla, el cobro ya
+        // existe: se cae al modo adjuntos para reintentar sin duplicar nada.
+        if (esFact && facturaFile) {
+          setSubiendoFactura(true)
+          try {
+            await uploadAdjunto({ cobroId: creado.id, file: facturaFile, tipo: 'factura' })
+            toast('✓ Factura registrada con su PDF adjunto', 'ok')
+            cerrarModalCobro()
+            return
+          } catch {
+            toast('Factura registrada, pero falló la subida del archivo — reintentá desde acá', 'err')
+          } finally {
+            setSubiendoFactura(false)
+          }
+        } else {
+          toast(esFact
+            ? '✓ Factura registrada — ahora podés adjuntar el PDF de la factura'
+            : '✓ Cobro registrado — ahora podés adjuntar liquidación y comprobante', 'ok')
+        }
         setCobroCreado({ id: creado.id, total, ton: ton_totales })
       },
       onError: (err: any) => {
@@ -928,6 +976,13 @@ function FacturacionSection() {
                                 : <div className="text-rojo text-[11px] font-semibold">⚠ Sin tarifa</div>}
                             </div>
                             <div className="font-mono font-bold text-verde shrink-0 w-auto sm:w-20 text-right">{d.tarifa > 0 ? fmtM(d.subtotal) : '—'}</div>
+                            {esFact && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); abrirFacturarViaje(empresa, d.t.id) }}
+                                title="Cargar la factura de este viaje"
+                                className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-azul text-white hover:bg-azul-mid transition-colors shrink-0"
+                              >🧾 Facturar</button>
+                            )}
                             <button
                               onClick={(e) => { e.stopPropagation(); abrirEditarTramo(d.t) }}
                               title="Editar toneladas / nº remito"
@@ -1319,7 +1374,7 @@ function FacturacionSection() {
           ) : (
             <>
               <Button variant="secondary" onClick={cerrarModalCobro}>Cancelar</Button>
-              <Button variant="primary" loading={creando} onClick={form.handleSubmit(handleCobrar)}>
+              <Button variant="primary" loading={creando || subiendoFactura} onClick={form.handleSubmit(handleCobrar)}>
                 {empresaCobro?.modalidad_cobro === 'facturacion' ? '✓ Registrar factura' : '✓ Guardar cobro'}
               </Button>
             </>
@@ -1437,6 +1492,43 @@ function FacturacionSection() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Input label="Nº de factura" placeholder="0003-00001234" {...form.register('factura_nro')} />
                 <Input label="Fecha de emisión" type="date" required {...form.register('fecha', { required: true })} />
+                <div className="sm:col-span-2">
+                  <label className="block text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1">
+                    🧾 PDF / foto de la factura
+                  </label>
+                  {facturaFile ? (
+                    <div className="flex items-center gap-2 bg-verde-light/60 border border-verde/40 rounded-lg px-3 py-2">
+                      <span className="text-base">{facturaFile.type === 'application/pdf' ? '📕' : '🖼'}</span>
+                      <span className="flex-1 min-w-0 text-xs font-semibold text-carbon truncate" title={facturaFile.name}>
+                        {facturaFile.name}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setFacturaFile(null)}
+                        title="Quitar archivo"
+                        className="text-xs px-2 py-1 rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors"
+                      >✕</button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => facturaFileRef.current?.click()}
+                      className="w-full border-[1.5px] border-dashed border-gris-mid rounded-lg px-3 py-2.5 text-xs font-bold text-gris-dark hover:border-azul hover:text-azul hover:bg-azul-light/40 transition-colors"
+                    >
+                      ＋ Adjuntar factura (PDF o foto)
+                    </button>
+                  )}
+                  <input
+                    ref={facturaFileRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
+                    className="hidden"
+                    onChange={handleFacturaFile}
+                  />
+                  <p className="text-[10px] text-gris-mid mt-1">
+                    Se sube al registrar, todo en un paso. Si no la tenés a mano, registrá igual y adjuntala después.
+                  </p>
+                </div>
                 <div className="sm:col-span-2">
                   <Input label="Observaciones" placeholder="Referencia..." {...form.register('obs')} />
                 </div>
