@@ -61,6 +61,14 @@ function EmpresaForm({ form }: { form: any }) {
         <Input label="Teléfono" placeholder="299-XXX-XXXX" {...form.register('tel')} />
       </div>
       <Input label="Email" placeholder="contacto@empresa.com" {...form.register('email')} />
+      <Select
+        label="Modalidad de cobro"
+        options={[
+          { value: 'liquido_producto', label: '🤝 Líquido producto — la empresa emite la liquidación' },
+          { value: 'facturacion',      label: '🧾 Facturación — emitimos una factura por cada viaje' },
+        ]}
+        {...form.register('modalidad_cobro')}
+      />
       <Input label="Observaciones" placeholder="Notas..." {...form.register('obs')} />
     </div>
   )
@@ -82,7 +90,7 @@ function EmpresasSection({
 
   const [modalNueva, setModalNueva] = useState(false)
   const [editando,   setEditando]   = useState<EmpresaTransportista | null>(null)
-  const formNueva = useForm<any>()
+  const formNueva = useForm<any>({ defaultValues: { modalidad_cobro: 'liquido_producto' } })
   const formEdit  = useForm<any>()
 
   function handleCreate(data: any) {
@@ -101,7 +109,7 @@ function EmpresasSection({
   }
 
   function openEdit(e: EmpresaTransportista) {
-    formEdit.reset({ nombre: e.nombre, cuit: e.cuit ?? '', tel: e.tel ?? '', email: e.email ?? '', obs: e.obs ?? '', estado: e.estado })
+    formEdit.reset({ nombre: e.nombre, cuit: e.cuit ?? '', tel: e.tel ?? '', email: e.email ?? '', obs: e.obs ?? '', estado: e.estado, modalidad_cobro: e.modalidad_cobro ?? 'liquido_producto' })
     setEditando(e)
   }
 
@@ -142,6 +150,9 @@ function EmpresasSection({
                 <div className="text-xs text-gris-dark">{empresaSeleccionada.cuit || '—'}{empresaSeleccionada.tel ? ` · ${empresaSeleccionada.tel}` : ''}</div>
               </div>
               <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-azul-light text-azul-mid">
+                  {empresaSeleccionada.modalidad_cobro === 'facturacion' ? '🧾 Facturación' : '🤝 Líq. producto'}
+                </span>
                 <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
                   empresaSeleccionada.estado === 'activa' ? 'bg-verde-light text-verde' : 'bg-gris text-gris-dark'
                 }`}>{empresaSeleccionada.estado}</span>
@@ -681,13 +692,20 @@ function FacturacionSection() {
   function abrirCobrar(empresa: EmpresaTransportista) {
     setEmpresaCobro(empresa)
     const mis_tramos = tramosPendientes.filter(t => t.empresa_id === empresa.id)
-    setSelectedIds(new Set(mis_tramos.map(t => t.id)))
-    form.reset({ fecha: toISO(new Date()), obs: '' })
+    // Facturación: una factura corresponde a UN viaje — arranca sin selección
+    // para que el user elija cuál. Líquido producto: preselecciona todos.
+    setSelectedIds(empresa.modalidad_cobro === 'facturacion' ? new Set() : new Set(mis_tramos.map(t => t.id)))
+    form.reset({ fecha: toISO(new Date()), obs: '', factura_nro: '' })
     setBusquedaRemito('')
     setModalCobro(true)
   }
 
   function toggleTramo(id: number) {
+    // Facturación: selección exclusiva (una factura = un viaje).
+    if (empresaCobro?.modalidad_cobro === 'facturacion') {
+      setSelectedIds(prev => (prev.has(id) ? new Set() : new Set([id])))
+      return
+    }
     setSelectedIds(prev => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
@@ -698,8 +716,11 @@ function FacturacionSection() {
 
   function handleCobrar(data: any) {
     if (!empresaCobro) return
+    const esFact = empresaCobro.modalidad_cobro === 'facturacion'
     const modalTramos = tramosPendientes.filter(t => t.empresa_id === empresaCobro.id && selectedIds.has(t.id))
-    if (modalTramos.length === 0) { toast('Seleccioná al menos un remito', 'err'); return }
+    if (modalTramos.length === 0) { toast(esFact ? 'Seleccioná el viaje a facturar' : 'Seleccioná al menos un remito', 'err'); return }
+    if (esFact && modalTramos.length !== 1) { toast('Una factura corresponde a UN viaje — seleccioná uno solo', 'err'); return }
+    if (esFact && !(data.factura_nro ?? '').trim()) { toast('Cargá el nº de la factura emitida', 'err'); return }
     const desglose    = calcDesglose(modalTramos, empresaCobro.id)
     // Guard anti-subfacturación: un remito sin tarifa para su cantera/fecha
     // entra al cobro en $0 y no se ve. Avisar antes de registrar.
@@ -725,12 +746,15 @@ function FacturacionSection() {
       .filter(Boolean) as string[]
     const fecha_desde = fechasSel.length ? fechasSel.reduce((a, b) => (a < b ? a : b)) : data.fecha
     const fecha_hasta = fechasSel.length ? fechasSel.reduce((a, b) => (a > b ? a : b)) : data.fecha
-    // La fecha del input no tiene columna propia en `cobros`; la dejamos
-    // anotada en obs para no perderla (el periodo viaja en fecha_desde/hasta).
-    const obsConFecha = [
-      data.fecha ? `Cobrado el ${fmtFecha(data.fecha)}` : '',
-      (data.obs ?? '').trim(),
-    ].filter(Boolean).join(' · ')
+    // Facturación: la fecha del input es la emisión de la factura y viaja en
+    // factura_fecha. Líquido producto: no tiene columna propia, va anotada en
+    // obs para no perderla (el periodo viaja en fecha_desde/hasta).
+    const obsConFecha = esFact
+      ? (data.obs ?? '').trim()
+      : [
+          data.fecha ? `Cobrado el ${fmtFecha(data.fecha)}` : '',
+          (data.obs ?? '').trim(),
+        ].filter(Boolean).join(' · ')
     createCobro({
       empresa_id:        empresaCobro.id,
       fecha_desde,
@@ -738,13 +762,21 @@ function FacturacionSection() {
       toneladas_totales: ton_totales,
       total,
       obs:               obsConFecha,
+      ...(esFact ? { factura_nro: data.factura_nro.trim(), factura_fecha: data.fecha } : {}),
       tramo_ids:         modalTramos.map(t => t.id),
     }, {
       onSuccess: (creado) => {
-        toast('✓ Cobro registrado — ahora podés adjuntar liquidación y comprobante', 'ok')
+        toast(esFact
+          ? '✓ Factura registrada — ahora podés adjuntar el PDF de la factura'
+          : '✓ Cobro registrado — ahora podés adjuntar liquidación y comprobante', 'ok')
         setCobroCreado({ id: creado.id, total, ton: ton_totales })
       },
-      onError: () => toast('Error al registrar', 'err'),
+      onError: (err: any) => {
+        const code = err?.body?.error
+        if (code === 'FALTA_FACTURA')         toast('Cargá nº y fecha de la factura', 'err')
+        else if (code === 'FACTURA_UN_VIAJE') toast('Una factura corresponde a un solo viaje', 'err')
+        else toast('Error al registrar', 'err')
+      },
     })
   }
 
@@ -779,13 +811,26 @@ function FacturacionSection() {
           {empresasActivas.map(empresa => {
             const { mis_tramos, desglose, ton_totales, total } = resumenEmpresa(empresa)
             const sinMovimientos = mis_tramos.length === 0
+            const esFact = empresa.modalidad_cobro === 'facturacion'
             return (
               <div key={empresa.id} className="bg-white rounded-card shadow-card p-4">
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div className="flex-1 min-w-0">
-                    <div className="font-bold text-azul">{empresa.nombre}</div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-azul">{empresa.nombre}</span>
+                      {esFact && (
+                        <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-azul-light text-azul-mid">🧾 Facturación</span>
+                      )}
+                      {esFact && !sinMovimientos && (
+                        <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-naranja text-white">
+                          ⚠ {mis_tramos.length} viaje{mis_tramos.length !== 1 ? 's' : ''} sin facturar
+                        </span>
+                      )}
+                    </div>
                     {sinMovimientos ? (
-                      <p className="text-xs text-gris-mid mt-1 italic">Sin remitos pendientes de cobrar</p>
+                      <p className="text-xs text-gris-mid mt-1 italic">
+                        {esFact ? 'Sin viajes pendientes de facturar' : 'Sin remitos pendientes de cobrar'}
+                      </p>
                     ) : (
                       <div className="text-xs text-gris-dark mt-1 space-y-0.5">
                         <div>
@@ -826,7 +871,7 @@ function FacturacionSection() {
                 {!sinMovimientos && (
                   <div className="mt-3 pt-3 border-t border-gris flex flex-wrap gap-2 items-center">
                     <Button variant="primary" size="sm" onClick={() => abrirCobrar(empresa)}>
-                      💰 Registrar cobro
+                      {esFact ? '🧾 Cargar factura' : '💰 Registrar cobro'}
                     </Button>
                     <button
                       onClick={() => setSaldoExpandida(saldoExpandida === empresa.id ? null : empresa.id)}
@@ -911,7 +956,9 @@ function FacturacionSection() {
         const filtrados = todos.filter(c => {
           if (filtroEstadoCobro === 'pendientes' && c.estado !== 'pendiente') return false
           if (filtroEstadoCobro === 'cobrados'   && c.estado !== 'cobrado')   return false
-          if (q && !(c.empresas_transportistas?.nombre ?? '').toLowerCase().includes(q)) return false
+          if (q
+            && !(c.empresas_transportistas?.nombre ?? '').toLowerCase().includes(q)
+            && !(c.factura_nro ?? '').toLowerCase().includes(q)) return false
           if (cobroDesde && c.fecha_desde < cobroDesde) return false
           if (cobroHasta && c.fecha_hasta > cobroHasta) return false
           return true
@@ -972,7 +1019,7 @@ function FacturacionSection() {
                     autoComplete="off"
                     value={busquedaCobro}
                     onChange={e => setBusquedaCobro(e.target.value)}
-                    placeholder="Buscar empresa..."
+                    placeholder="Buscar empresa o nº factura..."
                     className="w-full pl-8 pr-3 py-1.5 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white focus:border-naranja"
                   />
                   {busquedaCobro && (
@@ -1048,6 +1095,7 @@ function FacturacionSection() {
                         </div>
                         <div className="text-[11px] text-gris-dark">
                           {fmtFecha(c.fecha_desde)} → {fmtFecha(c.fecha_hasta)} · {fmtTon(c.toneladas_totales)}
+                          {c.factura_nro && <span className="ml-1 font-mono font-bold text-azul-mid">· 🧾 {c.factura_nro}</span>}
                         </div>
                       </div>
                       <div className="font-mono font-bold text-base shrink-0 text-right">
@@ -1146,6 +1194,11 @@ function FacturacionSection() {
         {cobroDetalle && (() => {
           // Tramos asociados a este cobro (vía tramos.cobro_id).
           const tramosCobro = (tramos as Tramo[]).filter(t => t.cobro_id === cobroDetalle.id)
+          // Modalidad de la empresa del cobro: define qué slots de adjuntos
+          // mostrar (liquidación vs factura emitida).
+          const modalidadDetalle = (empresas as EmpresaTransportista[]).find(e => e.id === cobroDetalle.empresa_id)?.modalidad_cobro
+            ?? cobroDetalle.empresas_transportistas?.modalidad_cobro
+            ?? 'liquido_producto'
           // Importe individual por remito = ton × tarifa vigente a la fecha del
           // tramo — el mismo cálculo (calcDesglose) con el que se armó el total
           // del cobro. La suma debería dar cobroDetalle.total; si difiere (tarifa
@@ -1168,6 +1221,12 @@ function FacturacionSection() {
                 <div className="text-xs text-gris-dark">
                   {fmtFecha(cobroDetalle.fecha_desde)} → {fmtFecha(cobroDetalle.fecha_hasta)}
                 </div>
+                {cobroDetalle.factura_nro && (
+                  <div className="text-xs font-semibold text-azul-mid mt-1">
+                    🧾 Factura <span className="font-mono">{cobroDetalle.factura_nro}</span>
+                    {cobroDetalle.factura_fecha && <> · emitida el {fmtFecha(cobroDetalle.factura_fecha)}</>}
+                  </div>
+                )}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
                   <div>
                     <div className="text-[10px] text-gris-dark uppercase tracking-wide font-bold">Toneladas</div>
@@ -1235,9 +1294,9 @@ function FacturacionSection() {
                 )}
               </div>
 
-              {/* Adjuntos: liquidación líquido producto + comprobante de pago */}
+              {/* Adjuntos: liquidación líquido producto (o factura emitida) + comprobante de pago */}
               <div className="border-t border-gris-mid pt-4">
-                <CobroAdjuntosSection cobroId={cobroDetalle.id} />
+                <CobroAdjuntosSection cobroId={cobroDetalle.id} modalidad={modalidadDetalle} />
               </div>
             </div>
           )
@@ -1248,7 +1307,11 @@ function FacturacionSection() {
       <Modal
         open={modalCobro}
         onClose={cerrarModalCobro}
-        title={cobroCreado ? '💰 ADJUNTAR DOCUMENTOS DEL COBRO' : '💰 REGISTRAR COBRO'}
+        title={
+          empresaCobro?.modalidad_cobro === 'facturacion'
+            ? (cobroCreado ? '🧾 ADJUNTAR FACTURA' : '🧾 CARGAR FACTURA')
+            : (cobroCreado ? '💰 ADJUNTAR DOCUMENTOS DEL COBRO' : '💰 REGISTRAR COBRO')
+        }
         width={cobroCreado ? 'max-w-2xl' : 'max-w-lg'}
         footer={
           cobroCreado ? (
@@ -1257,42 +1320,53 @@ function FacturacionSection() {
             <>
               <Button variant="secondary" onClick={cerrarModalCobro}>Cancelar</Button>
               <Button variant="primary" loading={creando} onClick={form.handleSubmit(handleCobrar)}>
-                ✓ Guardar cobro
+                {empresaCobro?.modalidad_cobro === 'facturacion' ? '✓ Registrar factura' : '✓ Guardar cobro'}
               </Button>
             </>
           )
         }>
         {/* ── Modo adjuntos: cobro ya creado ── */}
-        {cobroCreado && empresaCobro && (
-          <div className="flex flex-col gap-4">
-            <div className="bg-verde-light border border-verde/30 rounded-xl px-4 py-3">
-              <div className="font-bold text-verde">✓ Cobro registrado — {empresaCobro.nombre}</div>
-              <div className="text-xs text-verde mt-0.5">
-                {fmtTon(cobroCreado.ton)} · <span className="font-mono font-bold">{fmtM(cobroCreado.total)}</span>
+        {cobroCreado && empresaCobro && (() => {
+          const esFact = empresaCobro.modalidad_cobro === 'facturacion'
+          return (
+            <div className="flex flex-col gap-4">
+              <div className="bg-verde-light border border-verde/30 rounded-xl px-4 py-3">
+                <div className="font-bold text-verde">
+                  ✓ {esFact ? 'Factura registrada' : 'Cobro registrado'} — {empresaCobro.nombre}
+                </div>
+                <div className="text-xs text-verde mt-0.5">
+                  {fmtTon(cobroCreado.ton)} · <span className="font-mono font-bold">{fmtM(cobroCreado.total)}</span>
+                </div>
+                <div className="text-[11px] text-gris-dark mt-2">
+                  {esFact
+                    ? 'Subí ahora el PDF de la factura emitida. El comprobante de cobro lo adjuntás cuando la empresa pague (es requisito para marcar cobrado).'
+                    : 'Subí ahora la liquidación del líquido producto y el comprobante de cobro. Si no los tenés disponibles, podés cerrar y agregarlos después editando el cobro.'}
+                </div>
               </div>
-              <div className="text-[11px] text-gris-dark mt-2">
-                Subí ahora la liquidación del líquido producto y el comprobante de cobro. Si no los tenés
-                disponibles, podés cerrar y agregarlos después editando el cobro.
-              </div>
+              <CobroAdjuntosSection cobroId={cobroCreado.id} modalidad={empresaCobro.modalidad_cobro} />
             </div>
-            <CobroAdjuntosSection cobroId={cobroCreado.id} />
-          </div>
-        )}
+          )
+        })()}
 
         {/* ── Modo registro: cobro nuevo ── */}
         {!cobroCreado && empresaCobro && (
           <div className="flex flex-col gap-4">
             <div className="bg-azul-light rounded-xl px-4 py-3">
               <div className="font-bold text-azul">{empresaCobro.nombre}</div>
-              <div className="text-xs text-azul-mid mt-0.5">Seleccioná los remitos a incluir en este cobro</div>
+              <div className="text-xs text-azul-mid mt-0.5">
+                {empresaCobro.modalidad_cobro === 'facturacion'
+                  ? 'Seleccioná el viaje facturado — una factura por viaje'
+                  : 'Seleccioná los remitos a incluir en este cobro'}
+              </div>
             </div>
 
-            {/* Lista de remitos con checkboxes */}
+            {/* Lista de remitos con checkboxes (selección exclusiva si es facturación) */}
             <div>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold text-gris-dark uppercase tracking-wider">
-                  Remitos pendientes
+                  {empresaCobro.modalidad_cobro === 'facturacion' ? 'Viajes sin facturar' : 'Remitos pendientes'}
                 </span>
+                {empresaCobro.modalidad_cobro !== 'facturacion' && (
                 <div className="flex gap-3 text-xs">
                   <button className="text-azul hover:underline"
                     onClick={() => setSelectedIds(prev => new Set([...prev, ...modalDesgloseFiltrado.map(d => d.t.id)]))}>
@@ -1307,6 +1381,7 @@ function FacturacionSection() {
                     {busquedaRemito ? 'Ninguno (filtrados)' : 'Ninguno'}
                   </button>
                 </div>
+                )}
               </div>
               {/* Buscador de remitos del modal */}
               <Input
@@ -1358,10 +1433,20 @@ function FacturacionSection() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Input label="Fecha de cobro" type="date" required {...form.register('fecha', { required: true })} />
-              <Input label="Observaciones" placeholder="Nº factura, referencia..." {...form.register('obs')} />
-            </div>
+            {empresaCobro.modalidad_cobro === 'facturacion' ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Input label="Nº de factura" placeholder="0003-00001234" {...form.register('factura_nro')} />
+                <Input label="Fecha de emisión" type="date" required {...form.register('fecha', { required: true })} />
+                <div className="sm:col-span-2">
+                  <Input label="Observaciones" placeholder="Referencia..." {...form.register('obs')} />
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Input label="Fecha de cobro" type="date" required {...form.register('fecha', { required: true })} />
+                <Input label="Observaciones" placeholder="Nº factura, referencia..." {...form.register('obs')} />
+              </div>
+            )}
           </div>
         )}
       </Modal>

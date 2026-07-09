@@ -121,8 +121,8 @@ export interface PersonalDocumento {
   updated_by:     string | null
 }
 
-// ── Adjuntos del cobro (liquidación líquido producto + comprobante) ──
-export type CobroAdjuntoTipo = 'liquidacion' | 'comprobante'
+// ── Adjuntos del cobro (liquidación líquido producto / factura emitida + comprobante) ──
+export type CobroAdjuntoTipo = 'liquidacion' | 'comprobante' | 'factura'
 
 export interface CobroAdjunto {
   id:             number
@@ -817,6 +817,10 @@ export interface TarifaCantera {
 
 export type EmpresaEstado = 'activa' | 'inactiva'
 
+// 'liquido_producto': la empresa emite la liquidación y marcamos qué remitos
+// pagó. 'facturacion': CADINC emite una factura por cada viaje.
+export type EmpresaModalidadCobro = 'liquido_producto' | 'facturacion'
+
 export interface EmpresaTransportista extends AuditFields {
   id: number
   nombre: string
@@ -825,6 +829,7 @@ export interface EmpresaTransportista extends AuditFields {
   email: string | null
   obs: string | null
   estado: EmpresaEstado
+  modalidad_cobro: EmpresaModalidadCobro
 }
 
 export interface TarifaEmpresaCantera {
@@ -853,8 +858,12 @@ export interface Cobro {
   total: number
   estado: CobroEstado
   obs: string | null
+  // Factura emitida por CADINC — solo en cobros de empresas con
+  // modalidad_cobro='facturacion' (una factura por viaje).
+  factura_nro: string | null
+  factura_fecha: string | null
   created_at: string
-  empresas_transportistas?: { nombre: string }
+  empresas_transportistas?: { nombre: string; modalidad_cobro?: EmpresaModalidadCobro }
 }
 
 export type Accion = 'lectura' | 'creacion' | 'actualizacion' | 'eliminacion'

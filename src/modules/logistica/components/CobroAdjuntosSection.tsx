@@ -8,14 +8,18 @@ import {
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
-import type { CobroAdjunto, CobroAdjuntoTipo } from '@/types/domain.types'
+import type { CobroAdjunto, CobroAdjuntoTipo, EmpresaModalidadCobro } from '@/types/domain.types'
 
 interface Props {
   cobroId: number
+  // Define qué slots de adjuntos se muestran: liquidación (líquido producto)
+  // o factura emitida (facturación por viaje). Default: líquido producto.
+  modalidad?: EmpresaModalidadCobro
 }
 
-const TIPOS: { key: CobroAdjuntoTipo; label: string; icon: string }[] = [
+const TODOS_TIPOS: { key: CobroAdjuntoTipo; label: string; icon: string }[] = [
   { key: 'liquidacion',  label: 'Liquidación líquido producto', icon: '🧾' },
+  { key: 'factura',      label: 'Factura emitida',               icon: '🧾' },
   { key: 'comprobante',  label: 'Comprobante de cobro',          icon: '💰' },
 ]
 
@@ -32,7 +36,7 @@ function fmtFecha(iso: string): string {
   return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`
 }
 
-export function CobroAdjuntosSection({ cobroId }: Props) {
+export function CobroAdjuntosSection({ cobroId, modalidad = 'liquido_producto' }: Props) {
   const toast = useToast()
   const { puedeCrear, puedeEliminar } = usePermisos('logistica')
 
@@ -41,7 +45,7 @@ export function CobroAdjuntosSection({ cobroId }: Props) {
   const { mutate: deleteAdj } = useDeleteCobroAdjunto()
 
   const fileInputs = useRef<Record<CobroAdjuntoTipo, HTMLInputElement | null>>({
-    liquidacion: null, comprobante: null,
+    liquidacion: null, comprobante: null, factura: null,
   })
   const [pendingTipo, setPendingTipo] = useState<CobroAdjuntoTipo | null>(null)
 
@@ -85,10 +89,18 @@ export function CobroAdjuntosSection({ cobroId }: Props) {
     )
   }
 
-  const porTipo = TIPOS.map(t => ({
-    ...t,
-    items: adjuntos.filter(a => a.tipo === t.key),
-  }))
+  // Slots según modalidad, más cualquier tipo fuera de ella que ya tenga
+  // archivos (p.ej. un cobro viejo con liquidación de una empresa que
+  // después pasó a facturación — que no quede oculto).
+  const slotsBase: CobroAdjuntoTipo[] = modalidad === 'facturacion'
+    ? ['factura', 'comprobante']
+    : ['liquidacion', 'comprobante']
+  const porTipo = TODOS_TIPOS
+    .filter(t => slotsBase.includes(t.key) || adjuntos.some(a => a.tipo === t.key))
+    .map(t => ({
+      ...t,
+      items: adjuntos.filter(a => a.tipo === t.key),
+    }))
 
   return (
     <div className="flex flex-col gap-3">

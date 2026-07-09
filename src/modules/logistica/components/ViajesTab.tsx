@@ -960,6 +960,21 @@ export function ViajesTab() {
                       <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${esCargado ? 'bg-naranja-light text-naranja-dark' : 'bg-azul-light text-azul-mid'}`}>
                         {esCargado ? '🚛 Cargado' : '🔲 Vacío'}
                       </span>
+                      {/* Estado de facturación — solo empresas con modalidad
+                          'facturacion' (una factura por viaje). Se excluyen
+                          lugares operativos (no facturables), igual que en el
+                          tab Facturación. */}
+                      {esCargado && empresa?.modalidad_cobro === 'facturacion' && (
+                        tramo.cobro_id ? (
+                          <span className="text-[10px] font-bold bg-verde text-white px-2 py-0.5 rounded-full uppercase tracking-wide">
+                            🧾 Facturado
+                          </span>
+                        ) : (tramo.estado === 'completado' && !cantera?.operativo && !deposito?.operativo) ? (
+                          <span className="text-[10px] font-bold bg-naranja text-white px-2 py-0.5 rounded-full uppercase tracking-wide">
+                            ⚠ Sin facturar
+                          </span>
+                        ) : null
+                      )}
                       {esRepetido && (
                         <span className="text-[10px] font-bold bg-[#8B3510] text-white px-2 py-0.5 rounded-full uppercase tracking-wide">
                           ⚠ Repetido
