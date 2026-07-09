@@ -835,6 +835,8 @@ function FacturacionSection() {
   const [marcandoId, setMarcandoId] = useState<number | null>(null)
   // Empresa expandida en "Saldo corriente" para ver remitos individuales.
   const [saldoExpandida, setSaldoExpandida] = useState<number | null>(null)
+  // Empresa expandida para ver el detalle de facturas/cobros por cobrar.
+  const [facturasExpandida, setFacturasExpandida] = useState<number | null>(null)
   // Tramo abierto para editar toneladas/remito de descarga (ajuste fino
   // cuando la empresa transportista paga distinto a lo del remito).
   const [editandoTramo, setEditandoTramo] = useState<Tramo | null>(null)
@@ -1187,6 +1189,66 @@ function FacturacionSection() {
                           : `▼ Ver remitos (${mis_tramos.length})`}
                       </button>
                     )}
+                    {porCobrar.length > 0 && (
+                      <button
+                        onClick={() => setFacturasExpandida(facturasExpandida === empresa.id ? null : empresa.id)}
+                        className="text-xs text-azul hover:underline"
+                      >
+                        {facturasExpandida === empresa.id
+                          ? (esFact ? '▲ Ocultar facturas' : '▲ Ocultar cobros')
+                          : (esFact ? `▼ Ver facturas (${porCobrar.length})` : `▼ Ver cobros (${porCobrar.length})`)}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Detalle de facturas/cobros por cobrar — espejo del "Ver
+                    remitos": cada fila muestra remito, fechas de carga y
+                    descarga, toneladas y monto; el click abre el detalle del
+                    cobro (con adjuntos). */}
+                {facturasExpandida === empresa.id && porCobrar.length > 0 && (
+                  <div className="mt-3 bg-gris/30 rounded-card divide-y divide-gris-mid">
+                    {porCobrar.map(c => {
+                      const tramosDelCobro = (tramos as Tramo[]).filter(t => t.cobro_id === c.id)
+                      const t0 = c.factura_nro ? tramosDelCobro[0] : undefined
+                      const remito = t0 ? (t0.remito_descarga ?? t0.remito_carga) : null
+                      return (
+                        <div
+                          key={c.id}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => setCobroDetalle(c)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setCobroDetalle(c) }
+                          }}
+                          title={esFact ? 'Ver detalle de la factura' : 'Ver detalle del cobro'}
+                          className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-xs cursor-pointer hover:bg-azul-light/40 transition-colors"
+                        >
+                          <div className="flex-1 min-w-0 basis-full sm:basis-auto">
+                            <div className="font-semibold text-carbon">
+                              🧾 {c.factura_nro ?? `Cobro #${c.id}`}
+                              {c.factura_fecha && <span className="font-normal text-gris-dark"> · emitida {fmtDate(c.factura_fecha)}</span>}
+                            </div>
+                            <div className="text-gris-dark text-[11px]">
+                              {c.factura_nro && t0 ? (
+                                <>
+                                  {remito && <>Remito <span className="font-mono">{remito}</span></>}
+                                  {t0.fecha_carga && <> · carga {fmtDate(t0.fecha_carga)}</>}
+                                  {t0.fecha_descarga && <> · descarga {fmtDate(t0.fecha_descarga)}</>}
+                                </>
+                              ) : (
+                                <>
+                                  {fmtDate(c.fecha_desde)} → {fmtDate(c.fecha_hasta)}
+                                  {tramosDelCobro.length > 0 && <> · {tramosDelCobro.length} remito{tramosDelCobro.length !== 1 ? 's' : ''}</>}
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0 font-mono">{fmtTon(c.toneladas_totales)}</div>
+                          <div className="font-mono font-bold text-[#7A5500] shrink-0 w-auto sm:w-24 text-right">{fmtM(c.total)}</div>
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
 
