@@ -394,21 +394,23 @@ function CuentaRow({ cuenta, expandido, onToggle, onCobrar, puedeCrear }: {
   puedeCrear: boolean
 }) {
   const toast = useToast()
-  const [generandoPdf, setGenerandoPdf] = useState(false)
+  const [generandoPdf, setGenerandoPdf] = useState<'deuda' | 'historico' | null>(null)
 
   // Trae ventas + cobros del cliente y arma el PDF del detalle.
-  async function handlePdf() {
-    setGenerandoPdf(true)
+  // 'deuda' = solo ventas adeudadas (para mandarle al cliente);
+  // 'historico' = todas las ventas + cobros.
+  async function handlePdf(modo: 'deuda' | 'historico') {
+    setGenerandoPdf(modo)
     try {
       const [ventas, cobros] = await Promise.all([
         apiGet<MovimientoArido[]>(`/api/aridos/movimientos?tipo=venta&cliente_id=${cuenta.id}`),
         apiGet<CobroArido[]>(`/api/aridos/cobros?cliente_id=${cuenta.id}`),
       ])
-      descargarCuentaClientePdf(cuenta, ventas, cobros)
+      descargarCuentaClientePdf(cuenta, ventas, cobros, modo)
     } catch {
       toast('No se pudo generar el PDF', 'err')
     } finally {
-      setGenerandoPdf(false)
+      setGenerandoPdf(null)
     }
   }
 
@@ -425,7 +427,8 @@ function CuentaRow({ cuenta, expandido, onToggle, onCobrar, puedeCrear }: {
           {fmtM(cuenta.saldo)}
         </td>
         <td className="px-4 py-3 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
-          <Button variant="ghost" size="sm" loading={generandoPdf} onClick={handlePdf} title="Descargar detalle de cuenta en PDF">📄 PDF</Button>
+          <Button variant="ghost" size="sm" loading={generandoPdf === 'deuda'} onClick={() => handlePdf('deuda')} title="PDF con SOLO las ventas adeudadas — para mandarle al cliente">📄 Deuda</Button>
+          <Button variant="ghost" size="sm" loading={generandoPdf === 'historico'} onClick={() => handlePdf('historico')} title="PDF histórico completo: todas las ventas y cobros">📄 Histórico</Button>
           <Button variant="primary" size="sm" disabled={!puedeCrear} onClick={onCobrar}>💰 Registrar cobro</Button>
         </td>
       </tr>

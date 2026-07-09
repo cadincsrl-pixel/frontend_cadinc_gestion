@@ -206,16 +206,18 @@ function ClienteCard({
 }) {
   const toast = useToast()
   const [abierto, setAbierto] = useState(false)
-  const [descargando, setDescargando] = useState(false)
+  const [descargando, setDescargando] = useState<'deuda' | 'historico' | null>(null)
   const esSinCliente = cliente.cliente_id == null
   const { color: saldoColor, label: saldoLabel } = saldoUI(cliente.saldo)
 
   // PDF de detalle: estado COMPLETO de la cuenta (sin filtro de fechas),
   // para que resumen, remitos y cobros del documento cierren entre sí.
-  async function handlePdf(e: MouseEvent) {
+  // 'deuda' = solo remitos adeudados (para mandarle al cliente);
+  // 'historico' = todos los remitos + cobros.
+  async function handlePdf(e: MouseEvent, modo: 'deuda' | 'historico') {
     e.stopPropagation()
     if (cliente.cliente_id == null || descargando) return
-    setDescargando(true)
+    setDescargando(modo)
     try {
       const [cuentas, remitos, cobros] = await Promise.all([
         apiGet<CuentaCorrienteCliente[]>(`/api/alquiler/cuenta-corriente?cliente_id=${cliente.cliente_id}`),
@@ -223,11 +225,11 @@ function ClienteCard({
         apiGet<Cobro[]>(`/api/alquiler/cobros?cliente_id=${cliente.cliente_id}`),
       ])
       const cuentaCompleta = cuentas.find(c => c.cliente_id === cliente.cliente_id) ?? cliente
-      descargarCuentaClientePdf(cuentaCompleta, remitos, cobros)
+      descargarCuentaClientePdf(cuentaCompleta, remitos, cobros, modo)
     } catch {
       toast('No se pudo generar el PDF', 'err')
     } finally {
-      setDescargando(false)
+      setDescargando(null)
     }
   }
 
@@ -278,15 +280,26 @@ function ClienteCard({
             </div>
           </div>
           {!esSinCliente && (
-            <button
-              type="button"
-              onClick={handlePdf}
-              disabled={descargando}
-              title="Descargar detalle de cuenta (PDF)"
-              className="text-sm font-bold px-2.5 py-1.5 rounded-lg border border-gris-mid hover:bg-azul-light hover:border-azul transition-colors disabled:opacity-50"
-            >
-              {descargando ? '…' : '📄 PDF'}
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={e => handlePdf(e, 'deuda')}
+                disabled={!!descargando}
+                title="PDF con SOLO los remitos adeudados — para mandarle al cliente"
+                className="text-sm font-bold px-2.5 py-1.5 rounded-lg border border-gris-mid hover:bg-azul-light hover:border-azul transition-colors disabled:opacity-50"
+              >
+                {descargando === 'deuda' ? '…' : '📄 Deuda'}
+              </button>
+              <button
+                type="button"
+                onClick={e => handlePdf(e, 'historico')}
+                disabled={!!descargando}
+                title="PDF histórico completo: todos los remitos y cobros"
+                className="text-sm font-bold px-2.5 py-1.5 rounded-lg border border-gris-mid hover:bg-azul-light hover:border-azul transition-colors disabled:opacity-50"
+              >
+                {descargando === 'historico' ? '…' : '📄 Histórico'}
+              </button>
+            </div>
           )}
         </div>
       </div>

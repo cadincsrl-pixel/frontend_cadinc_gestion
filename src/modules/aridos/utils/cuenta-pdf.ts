@@ -31,26 +31,44 @@ const MEDIO_LABEL: Record<string, string> = {
   efectivo: 'Efectivo', transferencia: 'Transferencia', cheque: 'Cheque', otro: 'Otro',
 }
 
+// modo 'historico': todas las ventas (con columna Estado) + cobros — el PDF de siempre.
+// modo 'deuda': SOLO las ventas adeudadas (cobro_id null), sin historial de
+// cobros — pensado para mandarle al cliente lo que debe. Ojo: la imputación
+// venta→cobro es opcional, así que si hay cobros sin imputar la suma de
+// adeudadas puede diferir del saldo real; el PDF lo avisa.
 export function descargarCuentaClientePdf(
   cuenta: CuentaCorrienteArido,
   ventas: MovimientoArido[],
   cobros: CobroArido[],
+  modo: 'deuda' | 'historico' = 'historico',
 ) {
+  const esDeuda = modo === 'deuda'
+  const items = esDeuda ? ventas.filter(v => v.cobro_id == null) : ventas
   const hoy = new Date()
   const emision = `${String(hoy.getDate()).padStart(2, '0')}/${String(hoy.getMonth() + 1).padStart(2, '0')}/${hoy.getFullYear()}`
 
-  const filasVentas: Content[][] = ventas.map(v => ([
-    { text: `${fmtFecha(v.fecha)}${v.hora ? ` ${v.hora.slice(0, 5)}` : ''}`, fontSize: 8 },
-    { text: v.aridos_materiales?.nombre ?? '—', fontSize: 8 },
-    { text: `${fmtCant(Number(v.cantidad))} ${v.aridos_materiales?.unidad === 'viaje' ? 'viaje(s)' : 'm³'}`, fontSize: 8, alignment: 'right' },
-    { text: v.entrega_direccion ?? '—', fontSize: 7, color: '#666' },
-    { text: v.remito_numero ?? v.remito ?? '—', fontSize: 8 },
-    { text: v.precio_unit != null ? fmtM(Number(v.precio_unit)) : '—', fontSize: 8, alignment: 'right' },
-    { text: v.importe != null ? fmtM(Number(v.importe)) : '—', fontSize: 8, alignment: 'right', bold: true },
-    v.cobro_id != null
-      ? { text: 'Pagado', fontSize: 7, alignment: 'center', color: '#2F855A', bold: true }
-      : { text: 'Adeudado', fontSize: 7, alignment: 'center', color: '#C53030' },
-  ]))
+  const filasVentas: Content[][] = items.map(v => {
+    const fila: Content[] = [
+      { text: `${fmtFecha(v.fecha)}${v.hora ? ` ${v.hora.slice(0, 5)}` : ''}`, fontSize: 8 },
+      { text: v.aridos_materiales?.nombre ?? '—', fontSize: 8 },
+      { text: `${fmtCant(Number(v.cantidad))} ${v.aridos_materiales?.unidad === 'viaje' ? 'viaje(s)' : 'm³'}`, fontSize: 8, alignment: 'right' },
+      { text: v.entrega_direccion ?? '—', fontSize: 7, color: '#666' },
+      { text: v.remito_numero ?? v.remito ?? '—', fontSize: 8 },
+      { text: v.precio_unit != null ? fmtM(Number(v.precio_unit)) : '—', fontSize: 8, alignment: 'right' },
+      { text: v.importe != null ? fmtM(Number(v.importe)) : '—', fontSize: 8, alignment: 'right', bold: true },
+    ]
+    // En modo deuda todas las filas son adeudadas: la columna Estado sobra.
+    if (!esDeuda) {
+      fila.push(v.cobro_id != null
+        ? { text: 'Pagado', fontSize: 7, alignment: 'center', color: '#2F855A', bold: true }
+        : { text: 'Adeudado', fontSize: 7, alignment: 'center', color: '#C53030' })
+    }
+    return fila
+  })
+
+  const totalAdeudado = items.reduce((s, v) => s + (v.importe != null ? Number(v.importe) : 0), 0)
+  const sinPrecio     = items.filter(v => v.importe == null).length
+  const difiereDelSaldo = esDeuda && Math.abs(totalAdeudado - cuenta.saldo) > 1
 
   const filasCobros: Content[][] = cobros.map(c => ([
     { text: fmtFecha(c.fecha), fontSize: 8 },
@@ -74,11 +92,14 @@ export function descargarCuentaClientePdf(
           { text: `Emitido: ${emision}`, fontSize: 9, alignment: 'right', color: '#666' },
         ],
       },
-      { text: 'Detalle de cuenta corriente — Áridos', fontSize: 10, color: '#666', margin: [0, 2, 0, 12] },
+      { text: esDeuda ? 'Detalle de deuda — Áridos' : 'Detalle de cuenta corriente — Áridos', fontSize: 10, color: '#666', margin: [0, 2, 0, 12] },
       {
         text: cuenta.nombre, fontSize: 14, bold: true, color: NARANJA,
       },
       cuenta.cuit ? { text: `CUIT: ${cuenta.cuit}`, fontSize: 9, color: '#666', margin: [0, 1, 0, 0] } : null,
+      esDeuda
+        ? { text: `Ventas adeudadas al ${emision}`, fontSize: 8, italics: true, color: '#999', margin: [0, 1, 0, 0] }
+        : { text: 'Histórico completo — incluye todas las ventas y cobros', fontSize: 8, italics: true, color: '#999', margin: [0, 1, 0, 0] },
 
       // Resumen
       {
@@ -95,16 +116,19 @@ export function descargarCuentaClientePdf(
       },
 
       // Ventas
-      { text: `Ventas (${ventas.length})`, fontSize: 11, bold: true, color: AZUL, margin: [0, 0, 0, 6] },
-      ventas.length === 0
-        ? { text: 'Sin ventas registradas.', fontSize: 9, italics: true, color: '#666', margin: [0, 0, 0, 12] }
+      { text: esDeuda ? `Ventas adeudadas (${items.length})` : `Ventas (${items.length})`, fontSize: 11, bold: true, color: AZUL, margin: [0, 0, 0, 6] },
+      items.length === 0
+        ? { text: esDeuda ? 'Sin ventas adeudadas. ✔' : 'Sin ventas registradas.', fontSize: 9, italics: true, color: '#666', margin: [0, 0, 0, 12] }
         : {
-            margin: [0, 0, 0, 16] as [number, number, number, number],
+            margin: [0, 0, 0, esDeuda ? 6 : 16] as [number, number, number, number],
             table: {
               headerRows: 1,
-              widths: [58, '*', 46, '*', 42, 48, 54, 42],
+              widths: esDeuda ? [58, '*', 46, '*', 42, 48, 54] : [58, '*', 46, '*', 42, 48, 54, 42],
               body: [
-                ['Fecha', 'Material', 'Cant.', 'Entrega', 'Remito', 'Precio', 'Importe', 'Estado'].map(h => ({
+                (esDeuda
+                  ? ['Fecha', 'Material', 'Cant.', 'Entrega', 'Remito', 'Precio', 'Importe']
+                  : ['Fecha', 'Material', 'Cant.', 'Entrega', 'Remito', 'Precio', 'Importe', 'Estado']
+                ).map(h => ({
                   text: h, fontSize: 8, bold: true, color: 'white', fillColor: AZUL,
                 })),
                 ...filasVentas,
@@ -113,27 +137,41 @@ export function descargarCuentaClientePdf(
             layout: { hLineColor: () => '#ddd', vLineColor: () => '#fff', paddingTop: () => 3, paddingBottom: () => 3 },
           },
 
-      // Cobros
-      { text: `Cobros (${cobros.length})`, fontSize: 11, bold: true, color: AZUL, margin: [0, 0, 0, 6] },
-      cobros.length === 0
-        ? { text: 'Sin cobros registrados.', fontSize: 9, italics: true, color: '#666' }
-        : {
-            table: {
-              headerRows: 1,
-              widths: [70, 90, '*', 70],
-              body: [
-                ['Fecha', 'Medio', 'Observaciones', 'Monto'].map(h => ({
-                  text: h, fontSize: 8, bold: true, color: 'white', fillColor: AZUL,
-                })),
-                ...filasCobros,
-              ],
-            },
-            layout: { hLineColor: () => '#ddd', vLineColor: () => '#fff', paddingTop: () => 3, paddingBottom: () => 3 },
-          },
+      // Total y avisos del modo deuda
+      esDeuda && items.length > 0
+        ? { text: `Total adeudado: ${fmtM(totalAdeudado)}`, fontSize: 11, bold: true, color: '#C53030', alignment: 'right', margin: [0, 0, 0, 10] }
+        : null,
+      esDeuda && sinPrecio > 0
+        ? { text: `⚠ ${sinPrecio} venta${sinPrecio !== 1 ? 's' : ''} sin precio cargado — la deuda real puede ser mayor.`, fontSize: 9, color: '#C05621', bold: true, margin: [0, 0, 0, 6] }
+        : null,
+      difiereDelSaldo
+        ? { text: `⚠ La suma de las ventas adeudadas (${fmtM(totalAdeudado)}) difiere del saldo de cuenta (${fmtM(cuenta.saldo)}): hay cobros sin imputar a ventas puntuales. El saldo de cuenta es el válido.`, fontSize: 9, color: '#C05621', margin: [0, 0, 0, 6] }
+        : null,
+
+      // Cobros (solo en histórico: el PDF de deuda es para mandar al cliente)
+      ...(esDeuda ? [] : [
+        { text: `Cobros (${cobros.length})`, fontSize: 11, bold: true, color: AZUL, margin: [0, 0, 0, 6] } as Content,
+        cobros.length === 0
+          ? { text: 'Sin cobros registrados.', fontSize: 9, italics: true, color: '#666' } as Content
+          : {
+              table: {
+                headerRows: 1,
+                widths: [70, 90, '*', 70],
+                body: [
+                  ['Fecha', 'Medio', 'Observaciones', 'Monto'].map(h => ({
+                    text: h, fontSize: 8, bold: true, color: 'white', fillColor: AZUL,
+                  })),
+                  ...filasCobros,
+                ],
+              },
+              layout: { hLineColor: () => '#ddd', vLineColor: () => '#fff', paddingTop: () => 3, paddingBottom: () => 3 },
+            } as Content,
+      ]),
     ].filter(Boolean) as Content[],
   }
 
-  const nombreArchivo = `cuenta-${cuenta.nombre.replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase()}-${hoy.toISOString().slice(0, 10)}.pdf`
+  const prefijo = esDeuda ? 'deuda' : 'cuenta'
+  const nombreArchivo = `${prefijo}-${cuenta.nombre.replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase()}-${hoy.toISOString().slice(0, 10)}.pdf`
   pdfMake.createPdf(doc).download(nombreArchivo)
 }
 
