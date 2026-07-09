@@ -590,10 +590,12 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
 function ModalCobrarFacturas({
   empresa,
   cobrosPendientes,
+  tramos,
   onClose,
 }: {
   empresa: EmpresaTransportista
   cobrosPendientes: Cobro[]
+  tramos: Tramo[]
   onClose: () => void
 }) {
   const toast = useToast()
@@ -692,6 +694,10 @@ function ModalCobrarFacturas({
           <div className="bg-gris rounded-xl divide-y divide-gris-mid max-h-60 overflow-y-auto mt-2">
             {cobrosPendientes.map(c => {
               const checked = seleccion.has(c.id)
+              // Una factura = un viaje: los datos del remito salen del tramo
+              // vinculado (tramos.cobro_id).
+              const tramo  = tramos.find(t => t.cobro_id === c.id)
+              const remito = tramo ? (tramo.remito_descarga ?? tramo.remito_carga) : null
               return (
                 <label
                   key={c.id}
@@ -701,9 +707,12 @@ function ModalCobrarFacturas({
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-semibold text-carbon">
                       🧾 {c.factura_nro ?? `Cobro #${c.id}`}
+                      {remito && <span className="font-mono font-normal text-gris-dark"> · Remito {remito}</span>}
                     </div>
                     <div className="text-[11px] text-gris-dark">
-                      {c.factura_fecha ? `emitida ${fmtFecha(c.factura_fecha)} · ` : ''}{fmtTon(c.toneladas_totales)}
+                      {tramo?.fecha_carga && <>carga {fmtFecha(tramo.fecha_carga)} · </>}
+                      {tramo?.fecha_descarga && <>descarga {fmtFecha(tramo.fecha_descarga)} · </>}
+                      {fmtTon(c.toneladas_totales)}
                     </div>
                   </div>
                   <div className={`text-xs font-mono font-bold shrink-0 ${checked ? 'text-verde' : 'text-gris-dark line-through'}`}>
@@ -1396,6 +1405,7 @@ function FacturacionSection() {
           cobrosPendientes={(cobros as Cobro[]).filter(
             c => c.empresa_id === cobroFacturasEmpresa.id && c.estado === 'pendiente'
           )}
+          tramos={tramos as Tramo[]}
           onClose={() => setCobroFacturasEmpresa(null)}
         />
       )}
