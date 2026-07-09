@@ -630,7 +630,9 @@ export function useCreateCobro() {
 export function useMarcarCobrado() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id: number) => apiPatch<Cobro>(`/api/logistica/cobros/${id}/cobrar`, {}),
+    // fecha_cobro opcional: el backend la anota en obs ("Cobrado el DD/MM/YYYY").
+    mutationFn: ({ id, fecha_cobro }: { id: number; fecha_cobro?: string }) =>
+      apiPatch<Cobro>(`/api/logistica/cobros/${id}/cobrar`, fecha_cobro ? { fecha_cobro } : {}),
     onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.cobros }),
   })
 }
