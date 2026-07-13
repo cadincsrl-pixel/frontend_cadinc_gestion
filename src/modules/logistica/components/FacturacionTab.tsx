@@ -1069,6 +1069,12 @@ function FacturacionSection() {
   }
 
   const empresasActivas = (empresas as EmpresaTransportista[]).filter(e => e.estado === 'activa')
+  // En "Saldo corriente" solo mostramos empresas con deuda: viajes sin
+  // facturar/liquidar o cobros pendientes. Las que están al día no aportan.
+  const empresasConSaldo = empresasActivas.filter(empresa =>
+    tramosPendientes.some(t => t.empresa_id === empresa.id) ||
+    (cobros as Cobro[]).some(c => c.empresa_id === empresa.id && c.estado === 'pendiente')
+  )
 
   // Datos para el modal
   const modalTodosTramos = empresaCobro
@@ -1096,7 +1102,7 @@ function FacturacionSection() {
       <div>
         <h2 className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-3">Saldo corriente por empresa</h2>
         <div className="flex flex-col gap-3">
-          {empresasActivas.map(empresa => {
+          {empresasConSaldo.map(empresa => {
             const { mis_tramos, desglose, ton_totales, total } = resumenEmpresa(empresa)
             const sinMovimientos = mis_tramos.length === 0
             const esFact = empresa.modalidad_cobro === 'facturacion'
@@ -1329,9 +1335,11 @@ function FacturacionSection() {
               </div>
             )
           })}
-          {empresasActivas.length === 0 && (
+          {empresasConSaldo.length === 0 && (
             <div className="bg-white rounded-card shadow-card p-6 text-center text-sm text-gris-dark">
-              No hay empresas activas. Agregalas en la sección de arriba.
+              {empresasActivas.length === 0
+                ? 'No hay empresas activas. Agregalas en la sección de arriba.'
+                : '✓ Ninguna empresa tiene saldo pendiente — está todo cobrado.'}
             </div>
           )}
         </div>
