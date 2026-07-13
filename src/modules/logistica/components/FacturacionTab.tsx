@@ -47,6 +47,19 @@ function fmtFecha(s: string) {
   const [y, m, d] = s.split('-')
   return `${d}/${m}/${y}`
 }
+// DD/MM (sin año) para las sublíneas compactas del historial.
+function fmtFechaCorta(s: string | null | undefined) {
+  if (!s) return '—'
+  const [, m, d] = s.split('-')
+  return d && m ? `${d}/${m}` : '—'
+}
+// La fecha real del cobro no tiene columna: viaja en obs como
+// "Cobrado el DD/MM/YYYY". La extraemos para mostrarla en el historial.
+function fechaCobroDeObs(obs: string | null | undefined): string | null {
+  if (!obs) return null
+  const m = obs.match(/Cobrado el (\d{2}\/\d{2}\/\d{4})/)
+  return m ? m[1] : null
+}
 
 // ─── Sección empresas ─────────────────────────────────────────────────────────
 
@@ -1327,13 +1340,24 @@ function FacturacionSection() {
       {/* Historial cobros — vista compacta con filtros */}
       {cobros.length > 0 && (() => {
         const todos = cobros as Cobro[]
+        // Índice cobro_id → remitos de sus tramos (para mostrar y buscar).
+        const remitosPorCobro = new Map<number, string[]>()
+        for (const t of tramos as Tramo[]) {
+          if (t.cobro_id == null) continue
+          const rem = t.remito_descarga ?? t.remito_carga
+          if (!rem) continue
+          const arr = remitosPorCobro.get(t.cobro_id) ?? []
+          arr.push(rem)
+          remitosPorCobro.set(t.cobro_id, arr)
+        }
         const q = busquedaCobro.trim().toLowerCase()
         const filtrados = todos.filter(c => {
           if (filtroEstadoCobro === 'pendientes' && c.estado !== 'pendiente') return false
           if (filtroEstadoCobro === 'cobrados'   && c.estado !== 'cobrado')   return false
           if (q
             && !(c.empresas_transportistas?.nombre ?? '').toLowerCase().includes(q)
-            && !(c.factura_nro ?? '').toLowerCase().includes(q)) return false
+            && !(c.factura_nro ?? '').toLowerCase().includes(q)
+            && !(remitosPorCobro.get(c.id) ?? []).some(r => r.toLowerCase().includes(q))) return false
           if (cobroDesde && c.fecha_desde < cobroDesde) return false
           if (cobroHasta && c.fecha_hasta > cobroHasta) return false
           return true
@@ -1394,7 +1418,7 @@ function FacturacionSection() {
                     autoComplete="off"
                     value={busquedaCobro}
                     onChange={e => setBusquedaCobro(e.target.value)}
-                    placeholder="Buscar empresa o nº factura..."
+                    placeholder="Buscar empresa, nº factura o remito..."
                     className="w-full pl-8 pr-3 py-1.5 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white focus:border-naranja"
                   />
                   {busquedaCobro && (
@@ -1455,6 +1479,19 @@ function FacturacionSection() {
               <div className="divide-y divide-gris">
                 {ordenados.map(c => {
                   const cobrado = c.estado === 'cobrado'
+                  const esFactCobro = !!c.factura_nro
+                  // Datos del viaje (facturación: 1 factura = 1 viaje).
+                  const remitos = remitosPorCobro.get(c.id) ?? []
+                  const tramosDelCobro = (tramos as Tramo[]).filter(t => t.cobro_id === c.id)
+                  const t0 = esFactCobro ? tramosDelCobro[0] : undefined
+                  // Estado documental: qué adjuntos tiene (no borrados).
+                  const adjs = (c.cobros_adjuntos ?? []).filter(a => a.deleted_at == null)
+                  const tieneComprobante = adjs.some(a => a.tipo === 'comprobante')
+                  const tieneDocPrincipal = esFactCobro
+                    ? adjs.some(a => a.tipo === 'factura')
+                    : adjs.some(a => a.tipo === 'liquidacion')
+                  const fechaCobro = cobrado ? fechaCobroDeObs(c.obs) : null
+                  const faltaComprobante = !cobrado && !tieneComprobante
                   return (
                     <div
                       key={c.id}
@@ -1465,12 +1502,43 @@ function FacturacionSection() {
                         {cobrado ? '✓' : '⚠'}
                       </span>
                       <div className="flex-1 min-w-0">
-                        <div className="font-bold text-sm text-azul truncate">
-                          {c.empresas_transportistas?.nombre ?? '—'}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-sm text-azul truncate">
+                            {c.empresas_transportistas?.nombre ?? '—'}
+                          </span>
+                          {esFactCobro && (
+                            <span className="font-mono text-[11px] font-bold text-azul-mid">🧾 {c.factura_nro}</span>
+                          )}
                         </div>
+                        {/* Datos del viaje/período */}
                         <div className="text-[11px] text-gris-dark">
-                          {fmtFecha(c.fecha_desde)} → {fmtFecha(c.fecha_hasta)} · {fmtTon(c.toneladas_totales)}
-                          {c.factura_nro && <span className="ml-1 font-mono font-bold text-azul-mid">· 🧾 {c.factura_nro}</span>}
+                          {esFactCobro && t0 ? (
+                            <>
+                              {(t0.remito_descarga ?? t0.remito_carga) && <>Remito <span className="font-mono">{t0.remito_descarga ?? t0.remito_carga}</span> · </>}
+                              {t0.fecha_carga && <>carga {fmtFechaCorta(t0.fecha_carga)} · </>}
+                              {t0.fecha_descarga && <>descarga {fmtFechaCorta(t0.fecha_descarga)} · </>}
+                              {fmtTon(c.toneladas_totales)}
+                              {c.factura_fecha && <> · emitida {fmtFechaCorta(c.factura_fecha)}</>}
+                            </>
+                          ) : (
+                            <>
+                              {fmtFecha(c.fecha_desde)} → {fmtFecha(c.fecha_hasta)}
+                              {remitos.length > 0 && <> · {remitos.length} remito{remitos.length !== 1 ? 's' : ''}</>}
+                              {' · '}{fmtTon(c.toneladas_totales)}
+                            </>
+                          )}
+                        </div>
+                        {/* Estado documental + fecha de cobro */}
+                        <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${tieneDocPrincipal ? 'bg-verde-light text-verde' : 'bg-gris text-gris-dark line-through'}`}>
+                            {esFactCobro ? '📕 Factura' : '🧾 Liquidación'}
+                          </span>
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${tieneComprobante ? 'bg-verde-light text-verde' : faltaComprobante ? 'bg-naranja-light text-naranja-dark' : 'bg-gris text-gris-dark line-through'}`}>
+                            💰 Comprobante
+                          </span>
+                          {fechaCobro && (
+                            <span className="text-[10px] text-verde font-semibold">· cobrado el {fechaCobro}</span>
+                          )}
                         </div>
                       </div>
                       <div className="font-mono font-bold text-base shrink-0 text-right">
@@ -1509,7 +1577,7 @@ function FacturacionSection() {
                             })
                           }}
                         >
-                          ✓ Cobrar
+                          {faltaComprobante ? '💰 Cobrar' : '✓ Cobrar'}
                         </Button>
                       )}
                     </div>
