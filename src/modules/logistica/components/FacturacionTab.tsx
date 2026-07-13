@@ -1550,11 +1550,15 @@ function FacturacionSection() {
                           size="sm"
                           loading={marcandoId === c.id}
                           disabled={marcandoId != null && marcandoId !== c.id}
+                          title={faltaComprobante ? 'Falta el comprobante del pago — se pide al cobrar' : 'Marcar como cobrado (con fecha de hoy)'}
                           onClick={ev => {
                             ev.stopPropagation()
                             if (marcandoId != null) return
                             setMarcandoId(c.id)
-                            marcarCobrado({ id: c.id }, {
+                            // Cobro rápido = pagado hoy; la fecha queda anotada
+                            // en obs (igual que el modal). Para otra fecha, el
+                            // modal de cobro deja elegirla.
+                            marcarCobrado({ id: c.id, fecha_cobro: toISO(new Date()) }, {
                               onSettled: () => setMarcandoId(null),
                               onSuccess: () => toast('✓ Marcado como cobrado', 'ok'),
                               onError:   (err: any) => {
