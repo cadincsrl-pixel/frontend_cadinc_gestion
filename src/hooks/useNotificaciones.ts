@@ -114,6 +114,8 @@ interface NotificacionesResult {
   segurosPorVencer:    SeguroMaquinaItem[]
   // Solicitudes de compra con ítems por comprar (para compras/depósito).
   solicitudesPorComprar: SolicitudPorComprarItem[]
+  // La lista de obras ya cargó: recién ahí el aviso puede mostrar el nombre.
+  pedidosNombresListos: boolean
   // total de notificaciones "urgentes" (badge rojo).
   totalUrgente:        number
 }
@@ -238,7 +240,7 @@ export function useNotificaciones(): NotificacionesResult {
   // Solicitudes de compra (comparte caché con el tab de certificaciones).
   // refetchInterval: poll para que el aviso de "nuevo pedido" llegue solo,
   // mientras el encargado tiene la app abierta.
-  const { data: solicitudes = [] } = useQuery({
+  const solicitudesQuery = useQuery({
     queryKey: ['solicitudes', 'all'],
     queryFn:  () => apiGet<SolicitudCompra[]>('/api/solicitudes'),
     enabled:  tieneCertificaciones && resolverItems,
@@ -246,16 +248,23 @@ export function useNotificaciones(): NotificacionesResult {
     staleTime: 30 * 1000,
     refetchInterval: 60 * 1000,
   })
+  const solicitudes = solicitudesQuery.data ?? []
   // Obras para resolver obra_cod → nombre en los pedidos por comprar (el código
   // solo, tipo "CC-009", se lee como centro de costo). Misma queryKey que
   // useObras('certificaciones') para compartir caché con el módulo.
-  const { data: obras = [] } = useQuery({
+  const obrasQuery = useQuery({
     queryKey: [...OBRAS_KEY, 'modulo', 'certificaciones'],
     queryFn:  () => obrasApi.getAll('certificaciones'),
     enabled:  tieneCertificaciones && resolverItems,
     retry: false,
     staleTime: 5 * 60 * 1000,
   })
+  const obras = obrasQuery.data ?? []
+  // Ambas fuentes de los pedidos (solicitudes + obras) ya cargaron: recién ahí
+  // los nombres se pueden resolver y el warmup del aviso puede activarse sin
+  // riesgo de spamear los pedidos existentes ni caer al código. Requiere las
+  // DOS (no importa el orden en que resuelvan).
+  const pedidosNombresListos = obrasQuery.isSuccess && solicitudesQuery.isSuccess
 
   return useMemo(() => {
     const hoyDate = new Date()
@@ -390,6 +399,8 @@ export function useNotificaciones(): NotificacionesResult {
         fecha:       s.fecha,
         nPendientes: (s.items ?? []).filter(i => i.estado === 'pendiente').length,
       }))
+      // Solo pedidos con ítems realmente por comprar (evita avisos "0 ítems").
+      .filter(x => x.nPendientes > 0)
       .sort((a, b) => b.fecha.localeCompare(a.fecha) || b.id - a.id)
 
     return {
@@ -405,6 +416,7 @@ export function useNotificaciones(): NotificacionesResult {
       segurosVencidos,
       segurosPorVencer,
       solicitudesPorComprar,
+      pedidosNombresListos,
       totalUrgente:
         hoy.length +
         papelesVencidos.length +
@@ -414,7 +426,7 @@ export function useNotificaciones(): NotificacionesResult {
         segurosVencidos.length +
         solicitudesPorComprar.length,
     }
-  }, [personal, docsVenc, docsChofer, servicesNotif, gastosPend, segurosNotif, solicitudes, obras, tieneTarja])
+  }, [personal, docsVenc, docsChofer, servicesNotif, gastosPend, segurosNotif, solicitudes, obras, tieneTarja, pedidosNombresListos])
 }
 
 // Helper para mostrar "hoy", "mañana", "en 3 días" en la lista de próximos.

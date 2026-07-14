@@ -72,15 +72,14 @@ export function NotificationsBell() {
   const solicitudesAll = resolverItems ? notifs.solicitudesPorComprar : []
 
   // Aviso (toast) cuando entra un pedido nuevo mientras la app está abierta.
-  // Warmup de 4s: los pedidos ya existentes al cargar se registran sin avisar;
-  // recién después se avisan los nuevos (los que aparecen por el poll de 60s).
+  // El warmup NO usa un timer: espera a que la lista de obras haya cargado
+  // (pedidosNombresListos). En la primera pasada con datos listos, los pedidos
+  // ya existentes se registran SIN avisar; de ahí en más los nuevos avisan —
+  // y con las obras ya cargadas, el toast muestra el NOMBRE, no el código.
   const seenRef = useRef<Set<number>>(new Set())
   const warmRef = useRef(false)
   useEffect(() => {
-    const t = setTimeout(() => { warmRef.current = true }, 4000)
-    return () => clearTimeout(t)
-  }, [])
-  useEffect(() => {
+    if (!notifs.pedidosNombresListos) return
     for (const s of solicitudesAll) {
       if (!seenRef.current.has(s.id)) {
         seenRef.current.add(s.id)
@@ -89,7 +88,8 @@ export function NotificationsBell() {
         }
       }
     }
-  }, [solicitudesAll, toast])
+    warmRef.current = true
+  }, [solicitudesAll, notifs.pedidosNombresListos, toast])
 
   // Filtro por módulo: cada tipo de aviso aparece SOLO en su módulo (la campana
   // refleja el módulo donde estás). Sin módulo identificado (home) → todo.
