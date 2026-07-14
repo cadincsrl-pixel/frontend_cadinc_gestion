@@ -861,6 +861,15 @@ function FacturacionSection() {
   const [busquedaRemito, setBusquedaRemito] = useState('')
   const [cobroDesde, setCobroDesde] = useState('')
   const [cobroHasta, setCobroHasta] = useState('')
+  // Empresas expandidas en el historial (acordeón). Vacío = todo colapsado.
+  const [histExpandidas, setHistExpandidas] = useState<Set<number>>(new Set())
+  function toggleHistEmp(id: number) {
+    setHistExpandidas(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
   // Archivo de factura elegido en el form (solo modo facturación): se sube
   // automáticamente después de crear el cobro, todo en un solo paso.
   const [facturaFile, setFacturaFile] = useState<File | null>(null)
@@ -1399,6 +1408,31 @@ function FacturacionSection() {
           else { idxGrupo.set(k, grupos.length); grupos.push({ key: k, cobros: [c] }) }
         }
 
+        // Segunda capa: agrupar los grupos-de-pago por EMPRESA para el
+        // acordeón del historial (cada empresa se despliega/colapsa). Un pago
+        // es siempre de una sola empresa, así que basta el 1er cobro.
+        type EmpHist = { empresaId: number; nombre: string; grupos: typeof grupos; nPend: number; nCobr: number; total: number }
+        const empresasHist: EmpHist[] = []
+        const idxEmp = new Map<number, number>()
+        for (const g of grupos) {
+          const c0 = g.cobros[0]!
+          let i = idxEmp.get(c0.empresa_id)
+          if (i === undefined) {
+            i = empresasHist.length
+            idxEmp.set(c0.empresa_id, i)
+            empresasHist.push({ empresaId: c0.empresa_id, nombre: c0.empresas_transportistas?.nombre ?? '—', grupos: [], nPend: 0, nCobr: 0, total: 0 })
+          }
+          const e = empresasHist[i]!
+          e.grupos.push(g)
+          for (const c of g.cobros) {
+            e.total += c.total
+            if (c.estado === 'pendiente') e.nPend++; else e.nCobr++
+          }
+        }
+        // Con búsqueda activa se expanden todas (para ver las coincidencias).
+        const hayBusqueda = q.length > 0
+        const todasExpandidas = empresasHist.length > 0 && empresasHist.every(e => hayBusqueda || histExpandidas.has(e.empresaId))
+
         return (
           <div className="bg-white rounded-card shadow-card overflow-hidden">
             {/* Header con filtros */}
@@ -1493,6 +1527,14 @@ function FacturacionSection() {
                 <span><strong className="text-naranja-dark">{pendientesVis.length}</strong> por cobrar · <span className="font-mono font-bold text-naranja-dark">{fmtM(totalAdeudado)}</span> adeudado</span>
                 <span className="text-gris-mid">·</span>
                 <span><strong className="text-verde">{cobradosVis.length}</strong> cobrado{cobradosVis.length !== 1 ? 's' : ''} · <span className="font-mono font-bold text-verde">{fmtM(totalCobrado)}</span></span>
+                {!hayBusqueda && empresasHist.length > 1 && (
+                  <button
+                    onClick={() => setHistExpandidas(todasExpandidas ? new Set() : new Set(empresasHist.map(e => e.empresaId)))}
+                    className="ml-auto text-azul hover:underline font-semibold"
+                  >
+                    {todasExpandidas ? '▲ Colapsar todo' : '▼ Expandir todo'}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1503,7 +1545,32 @@ function FacturacionSection() {
               </div>
             ) : (
               <div className="divide-y divide-gris">
-                {grupos.map(g => {
+                {empresasHist.map(emp => {
+                  const abierta = hayBusqueda || histExpandidas.has(emp.empresaId)
+                  return (
+                    <div key={emp.empresaId}>
+                      {/* Encabezado de empresa — clic para desplegar/colapsar */}
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => toggleHistEmp(emp.empresaId)}
+                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleHistEmp(emp.empresaId) } }}
+                        className="px-4 py-2.5 flex items-center gap-3 cursor-pointer hover:bg-gris/40 transition-colors"
+                      >
+                        <span className="text-gris-dark shrink-0 text-sm select-none">{abierta ? '▾' : '▸'}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-bold text-sm text-azul truncate">{emp.nombre}</div>
+                          <div className="text-[11px] text-gris-dark">
+                            {emp.nPend > 0 && <span className="text-naranja-dark font-semibold">{emp.nPend} por cobrar</span>}
+                            {emp.nPend > 0 && emp.nCobr > 0 && ' · '}
+                            {emp.nCobr > 0 && <span className="text-verde font-semibold">{emp.nCobr} cobrado{emp.nCobr !== 1 ? 's' : ''}</span>}
+                          </div>
+                        </div>
+                        <div className="font-mono font-bold text-sm shrink-0 text-right text-carbon">{fmtM(emp.total)}</div>
+                      </div>
+                      {abierta && (
+                      <div className="divide-y divide-gris/70 bg-gris/10 border-l-4 border-gris-mid">
+                {emp.grupos.map(g => {
                   // Pago de varias facturas juntas (mismo comprobante): un
                   // bloque con encabezado + las facturas como sub-filas.
                   if (g.cobros.length > 1) {
@@ -1662,6 +1729,11 @@ function FacturacionSection() {
                         >
                           {faltaComprobante ? '💰 Cobrar' : '✓ Cobrar'}
                         </Button>
+                      )}
+                    </div>
+                  )
+                })}
+                      </div>
                       )}
                     </div>
                   )
