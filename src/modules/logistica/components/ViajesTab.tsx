@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import {
   useTramos, useChoferes, useCamiones, useCanteras, useDepositos, useRutas, useEmpresas,
@@ -234,6 +234,10 @@ export function ViajesTab() {
   // re-abrir si el user navega adentro de la pestaña.
   const searchParams = useSearchParams()
   const router = useRouter()
+  // Si el deep link trae ?volver=<tab>, al cerrar el modal volvemos a ese tab
+  // (típicamente 'facturacion'): el user vino de ahí y no debería quedar
+  // varado en Tramos al cerrar el modal.
+  const volverRef = useRef<string | null>(null)
   useEffect(() => {
     const tramoIdRaw = searchParams.get('tramo')
     if (!tramoIdRaw) return
@@ -241,13 +245,27 @@ export function ViajesTab() {
     if (!Number.isFinite(tramoId)) return
     const t = (tramos as Tramo[]).find(t => t.id === tramoId)
     if (!t) return
+    volverRef.current = searchParams.get('volver')
     openEdit(t)
-    // Quitamos solo el query param 'tramo', preservando 'tab=viajes' u otros.
+    // Quitamos los query params de navegación, preservando 'tab=viajes'.
     const sp = new URLSearchParams(searchParams.toString())
     sp.delete('tramo')
+    sp.delete('volver')
     router.replace(`/logistica?${sp.toString()}`)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tramos])
+
+  // Cierre del modal de edición: si el user llegó desde otro tab (deep link
+  // con ?volver=), lo devolvemos ahí; si abrió el modal desde Tramos, se
+  // queda en Tramos.
+  function cerrarEdicion() {
+    setEditando(null)
+    if (volverRef.current) {
+      const dest = volverRef.current
+      volverRef.current = null
+      router.push(`/logistica?tab=${dest}`)
+    }
+  }
 
   async function handleUpload(form: { setValue: (k: any, v: any) => void }, field: string, file: File | undefined) {
     if (!file) return
@@ -814,7 +832,7 @@ export function ViajesTab() {
         },
       },
       {
-        onSuccess: () => { toast('✓ Tramo actualizado', 'ok'); setEditando(null) },
+        onSuccess: () => { toast('✓ Tramo actualizado', 'ok'); cerrarEdicion() },
         onError:   () => toast('Error al actualizar', 'err'),
       }
     )
@@ -1426,11 +1444,11 @@ export function ViajesTab() {
       {/* Modal editar tramo */}
       <Modal
         open={!!editando}
-        onClose={() => setEditando(null)}
+        onClose={cerrarEdicion}
         title="✏️ EDITAR TRAMO"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setEditando(null)}>Cancelar</Button>
+            <Button variant="secondary" onClick={cerrarEdicion}>Cancelar</Button>
             <Button variant="primary" loading={updating} onClick={formEdit.handleSubmit(handleEdit)}>✓ Guardar</Button>
           </>
         }

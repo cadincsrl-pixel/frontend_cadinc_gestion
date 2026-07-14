@@ -1297,14 +1297,14 @@ function FacturacionSection() {
                             key={d.t.id}
                             role="link"
                             tabIndex={0}
-                            onClick={() => router.push(`/logistica?tab=viajes&tramo=${d.t.id}`)}
+                            onClick={() => router.push(`/logistica?tab=viajes&tramo=${d.t.id}&volver=facturacion`)}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter' || e.key === ' ') {
                                 e.preventDefault()
-                                router.push(`/logistica?tab=viajes&tramo=${d.t.id}`)
+                                router.push(`/logistica?tab=viajes&tramo=${d.t.id}&volver=facturacion`)
                               }
                             }}
-                            title="Abrir tramo en la pestaña Viajes"
+                            title="Abrir tramo en Viajes (al cerrar volvés acá)"
                             className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-xs cursor-pointer hover:bg-azul-light/40 transition-colors"
                           >
                             <div className="flex-1 min-w-0 basis-full sm:basis-auto">
