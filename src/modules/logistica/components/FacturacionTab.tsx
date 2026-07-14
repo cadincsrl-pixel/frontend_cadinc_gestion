@@ -1381,6 +1381,24 @@ function FacturacionSection() {
         const countCobrGlob = todos.filter(c => c.estado === 'cobrado').length
         const hayFiltrosFecha = !!(cobroDesde || cobroHasta)
 
+        // Agrupar facturas pagadas con el MISMO comprobante (mismo hash =
+        // mismo pago) en un solo bloque, para no desglosar un pago único en N
+        // filas. Los pendientes o cobros sin comprobante compartido quedan
+        // como grupos de 1 (se renderizan como fila individual).
+        const claveDePago = (c: Cobro) => {
+          if (c.estado !== 'cobrado') return `solo:${c.id}`
+          const comp = (c.cobros_adjuntos ?? []).find(a => a.tipo === 'comprobante' && a.deleted_at == null && a.hash_sha256)
+          return comp ? `pago:${c.empresa_id}:${comp.hash_sha256}` : `solo:${c.id}`
+        }
+        const grupos: { key: string; cobros: Cobro[] }[] = []
+        const idxGrupo = new Map<string, number>()
+        for (const c of ordenados) {
+          const k = claveDePago(c)
+          const i = idxGrupo.get(k)
+          if (i !== undefined) grupos[i]!.cobros.push(c)
+          else { idxGrupo.set(k, grupos.length); grupos.push({ key: k, cobros: [c] }) }
+        }
+
         return (
           <div className="bg-white rounded-card shadow-card overflow-hidden">
             {/* Header con filtros */}
@@ -1485,7 +1503,60 @@ function FacturacionSection() {
               </div>
             ) : (
               <div className="divide-y divide-gris">
-                {ordenados.map(c => {
+                {grupos.map(g => {
+                  // Pago de varias facturas juntas (mismo comprobante): un
+                  // bloque con encabezado + las facturas como sub-filas.
+                  if (g.cobros.length > 1) {
+                    const cs = g.cobros
+                    const empresaNom = cs[0]!.empresas_transportistas?.nombre ?? '—'
+                    const totalGrupo = cs.reduce((s, c) => s + c.total, 0)
+                    const tonGrupo   = cs.reduce((s, c) => s + c.toneladas_totales, 0)
+                    const fechaCobroG = fechaCobroDeObs(cs[0]!.obs)
+                    return (
+                      <div key={g.key} className="border-l-4 border-verde">
+                        <div className="px-4 py-2.5 flex items-center gap-3 flex-wrap bg-verde-light/40">
+                          <span className="text-verde text-sm shrink-0">✓</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-sm text-azul truncate">{empresaNom}</span>
+                              <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-verde text-white">💰 Pago de {cs.length} facturas</span>
+                            </div>
+                            <div className="text-[11px] text-gris-dark">
+                              {fechaCobroG ? `Cobrado el ${fechaCobroG}` : 'Cobrado'} · un solo comprobante · {fmtTon(tonGrupo)}
+                            </div>
+                          </div>
+                          <div className="font-mono font-bold text-base shrink-0 text-right text-verde">{fmtM(totalGrupo)}</div>
+                        </div>
+                        <div className="divide-y divide-gris/50">
+                          {cs.map(c => {
+                            const tramosDelCobro = (tramos as Tramo[]).filter(t => t.cobro_id === c.id)
+                            const t0 = tramosDelCobro[0]
+                            const remito = t0 ? (t0.remito_descarga ?? t0.remito_carga) : null
+                            return (
+                              <div
+                                key={c.id}
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => setCobroDetalle(c)}
+                                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setCobroDetalle(c) } }}
+                                className="px-4 py-2 pl-11 flex items-center gap-3 flex-wrap cursor-pointer hover:bg-gris/40 transition-colors text-xs"
+                              >
+                                <div className="flex-1 min-w-0">
+                                  <span className="font-mono font-bold text-azul-mid">🧾 {c.factura_nro ?? `#${c.id}`}</span>
+                                  {remito && <span className="text-gris-dark"> · Remito <span className="font-mono">{remito}</span></span>}
+                                  {t0?.fecha_carga && <span className="text-gris-dark"> · carga {fmtFechaCorta(t0.fecha_carga)}</span>}
+                                  {t0?.fecha_descarga && <span className="text-gris-dark"> · descarga {fmtFechaCorta(t0.fecha_descarga)}</span>}
+                                  <span className="text-gris-dark"> · {fmtTon(c.toneladas_totales)}</span>
+                                </div>
+                                <div className="font-mono font-bold text-verde shrink-0">{fmtM(c.total)}</div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )
+                  }
+                  const c = g.cobros[0]!
                   const cobrado = c.estado === 'cobrado'
                   const esFactCobro = !!c.factura_nro
                   // Datos del viaje (facturación: 1 factura = 1 viaje).

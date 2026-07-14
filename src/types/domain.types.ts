@@ -865,9 +865,10 @@ export interface Cobro {
   created_at: string
   updated_at?: string | null
   empresas_transportistas?: { nombre: string; modalidad_cobro?: EmpresaModalidadCobro }
-  // Tipos de adjuntos del cobro (embebidos por el backend) — para mostrar
-  // qué documentos tiene sin una query por fila.
-  cobros_adjuntos?: { tipo: CobroAdjuntoTipo; deleted_at: string | null }[]
+  // Adjuntos del cobro (embebidos por el backend) — para mostrar qué
+  // documentos tiene sin una query por fila, y agrupar en el historial las
+  // facturas pagadas con el mismo comprobante (mismo hash = mismo pago).
+  cobros_adjuntos?: { tipo: CobroAdjuntoTipo; deleted_at: string | null; hash_sha256?: string | null }[]
 }
 
 export type Accion = 'lectura' | 'creacion' | 'actualizacion' | 'eliminacion'
