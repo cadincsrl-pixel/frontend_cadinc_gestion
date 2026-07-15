@@ -22,7 +22,7 @@ const TAB_TITLES: Record<string, { icon: string; label: string; sub: string }> =
   'en-ruta':     { icon: '🛰', label: 'En ruta',       sub: 'Camiones cargados con distancia y ETA al destino' },
   liquidaciones: { icon: '💰', label: 'Liquidaciones', sub: 'Pago por días trabajados + km'         },
   choferes:      { icon: '👷', label: 'Choferes',      sub: 'Personal de conducción'                },
-  camiones:      { icon: '🚚', label: 'Camiones y bateas', sub: 'Flota de camiones y semirremolques'  },
+  camiones:      { icon: '🚚', label: 'Camiones y remolques', sub: 'Flota de camiones y remolques'  },
   lugares:       { icon: '🗺️', label: 'Rutas',         sub: 'Rutas · Puntos de carga · Depósitos'    },
   facturacion:   { icon: '🧾', label: 'Facturación',   sub: 'Cobros a empresas transportistas'         },
   gastos:        { icon: '💸', label: 'Gastos',        sub: 'Combustible · Gomería · Peajes · Viáticos' },

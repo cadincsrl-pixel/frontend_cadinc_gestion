@@ -13,7 +13,7 @@ export function CamionesYBateasTab() {
     <div className="flex flex-col gap-4">
       {/* Sub-tabs */}
       <div className="flex gap-1 border-b border-gris pb-0">
-        {([['camiones', '🚚 Camiones'], ['bateas', '🛻 Bateas']] as const).map(([k, label]) => (
+        {([['camiones', '🚚 Camiones'], ['bateas', '🛻 Remolques']] as const).map(([k, label]) => (
           <button
             key={k}
             onClick={() => setSub(k)}

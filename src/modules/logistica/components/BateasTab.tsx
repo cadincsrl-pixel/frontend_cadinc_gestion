@@ -20,26 +20,24 @@ const ESTADO_OPTIONS = [
   { value: 'inactivo',       label: 'Inactivo'       },
 ]
 
-// Categoría de remolque (aparte de `tipo`, que describe la forma).
-const CATEGORIA_OPTIONS = [
-  { value: 'batea',         label: 'Batea'         },
-  { value: 'acoplado',      label: 'Acoplado'      },
-  { value: 'semirremolque', label: 'Semirremolque' },
-]
+// Tipo de remolque — vocabulario real de la flota (unificado 2026-07-15).
+const TIPO_LABEL: Record<string, string> = {
+  batea:           'Batea',
+  acoplado:        'Acoplado',
+  semirremolque:   'Semirremolque',
+  sider:           'Sider',
+  tanque_cisterna: 'Tanque cisterna',
+  otro:            'Otro',
+}
 
 const TIPO_OPTIONS = [
-  { value: '',          label: 'Sin especificar' },
-  { value: 'volcadora', label: 'Volcadora'       },
-  { value: 'plana',     label: 'Plana'           },
-  { value: 'tanque',    label: 'Tanque'          },
-  { value: 'gondola',   label: 'Góndola'         },
-  { value: 'otro',      label: 'Otro'            },
+  { value: '',                label: 'Sin especificar' },
+  ...Object.entries(TIPO_LABEL).map(([value, label]) => ({ value, label })),
 ]
 
 interface FormValues {
   patente?:      string
   tipo?:         string
-  categoria?:    string
   marca?:        string
   modelo?:       string
   anio?:         string
@@ -60,20 +58,19 @@ export function BateasTab() {
 
   const [modalNuevo, setModalNuevo] = useState(false)
   const [editando,   setEditando]   = useState<Batea | null>(null)
-  // Filtro por categoría de remolque.
-  const [filtroCategoria, setFiltroCategoria] = useState<'' | 'batea' | 'acoplado' | 'semirremolque'>('')
-  const formNuevo = useForm<FormValues>({ defaultValues: { estado: 'activo', categoria: 'batea' } })
+  // Filtro por tipo de remolque.
+  const [filtroTipo, setFiltroTipo] = useState<string>('')
+  const formNuevo = useForm<FormValues>({ defaultValues: { estado: 'activo', tipo: 'batea' } })
   const formEdit  = useForm<FormValues>()
 
-  const bateasFiltradas = filtroCategoria
-    ? bateas.filter(b => (b.categoria ?? 'batea') === filtroCategoria)
+  const bateasFiltradas = filtroTipo
+    ? bateas.filter(b => (b.tipo ?? 'otro') === filtroTipo)
     : bateas
 
   function parseDto(data: FormValues): any {
     return {
       patente:      data.patente!.trim(),
       tipo:         data.tipo || null,
-      categoria:    data.categoria || 'batea',
       marca:        data.marca || null,
       modelo:       data.modelo || null,
       anio:         data.anio ? Number(data.anio) : null,
@@ -88,7 +85,7 @@ export function BateasTab() {
   function handleCreate(data: FormValues) {
     if (!data.patente?.trim()) { toast('La patente es obligatoria', 'err'); return }
     create(parseDto(data), {
-      onSuccess: () => { toast('✓ Batea agregada', 'ok'); setModalNuevo(false); formNuevo.reset({ estado: 'activo' }) },
+      onSuccess: () => { toast('✓ Remolque agregado', 'ok'); setModalNuevo(false); formNuevo.reset({ estado: 'activo' }) },
       onError:   () => toast('Error al agregar', 'err'),
     })
   }
@@ -96,15 +93,15 @@ export function BateasTab() {
   function handleUpdate(data: FormValues) {
     if (!editando) return
     update({ id: editando.id, dto: parseDto(data) }, {
-      onSuccess: () => { toast('✓ Batea actualizada', 'ok'); setEditando(null) },
+      onSuccess: () => { toast('✓ Remolque actualizado', 'ok'); setEditando(null) },
       onError:   () => toast('Error al actualizar', 'err'),
     })
   }
 
   function handleDelete(b: Batea) {
-    if (!confirm(`¿Eliminar la batea ${b.patente}?`)) return
+    if (!confirm(`¿Eliminar el remolque ${b.patente}?`)) return
     remove(b.id, {
-      onSuccess: () => toast('✓ Batea eliminada', 'ok'),
+      onSuccess: () => toast('✓ Remolque eliminado', 'ok'),
       onError:   () => toast('Error al eliminar', 'err'),
     })
   }
@@ -113,7 +110,6 @@ export function BateasTab() {
     formEdit.reset({
       patente:      b.patente,
       tipo:         b.tipo ?? '',
-      categoria:    b.categoria ?? 'batea',
       marca:        b.marca ?? '',
       modelo:       b.modelo ?? '',
       anio:         b.anio != null ? String(b.anio) : '',
@@ -132,7 +128,6 @@ export function BateasTab() {
         <Input label="Patente" placeholder="AA-123-BB" disabled={disabled} {...form.register('patente')} />
         <Select label="Tipo" options={TIPO_OPTIONS} disabled={disabled} {...form.register('tipo')} />
       </div>
-      <Select label="Categoría de remolque" options={CATEGORIA_OPTIONS} disabled={disabled} {...form.register('categoria')} />
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Input label="Marca" placeholder="Helvética" disabled={disabled} {...form.register('marca')} />
         <Input label="Modelo" disabled={disabled} {...form.register('modelo')} />
@@ -151,20 +146,20 @@ export function BateasTab() {
   return (
     <>
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        {/* Filtro por categoría de remolque */}
+        {/* Filtro por tipo de remolque — solo los tipos presentes en la flota */}
         <div className="flex gap-1.5 flex-wrap">
-          {([
-            { key: '' as const,              label: `Todas (${bateas.length})` },
-            { key: 'batea' as const,         label: `Bateas (${bateas.filter(b => (b.categoria ?? 'batea') === 'batea').length})` },
-            { key: 'acoplado' as const,      label: `Acoplados (${bateas.filter(b => b.categoria === 'acoplado').length})` },
-            { key: 'semirremolque' as const, label: `Semirremolques (${bateas.filter(b => b.categoria === 'semirremolque').length})` },
-          ]).map(opt => (
+          {[
+            { key: '', label: `Todos (${bateas.length})` },
+            ...Object.entries(TIPO_LABEL)
+              .map(([key, label]) => ({ key, label: `${label}s (${bateas.filter(b => (b.tipo ?? 'otro') === key).length})` }))
+              .filter(opt => !opt.label.endsWith('(0)')),
+          ].map(opt => (
             <button
               key={opt.key}
               type="button"
-              onClick={() => setFiltroCategoria(opt.key)}
+              onClick={() => setFiltroTipo(opt.key)}
               className={`text-xs font-bold px-3 py-1.5 rounded-full border-[1.5px] transition-colors ${
-                filtroCategoria === opt.key ? 'bg-azul text-white border-azul' : 'bg-white border-azul text-azul-mid hover:bg-gris/40'
+                filtroTipo === opt.key ? 'bg-azul text-white border-azul' : 'bg-white border-azul text-azul-mid hover:bg-gris/40'
               }`}
             >
               {opt.label}
@@ -172,7 +167,7 @@ export function BateasTab() {
           ))}
         </div>
         {puedeCrear && (
-          <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)}>＋ Nueva batea</Button>
+          <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)}>＋ Nuevo remolque</Button>
         )}
       </div>
 
@@ -191,7 +186,7 @@ export function BateasTab() {
           </thead>
           <tbody>
             {bateasFiltradas.length === 0 ? (
-              <tr><td colSpan={8} className="text-center py-8 text-gris-dark text-sm">No hay bateas registradas.</td></tr>
+              <tr><td colSpan={8} className="text-center py-8 text-gris-dark text-sm">No hay remolques registrados.</td></tr>
             ) : bateasFiltradas.map(b => (
               <tr
                 key={b.id}
@@ -199,7 +194,7 @@ export function BateasTab() {
                 onClick={() => openEdit(b)}
               >
                 <td className="px-4 py-3 font-mono text-sm font-bold text-carbon">{b.patente}</td>
-                <td className="px-4 py-3 text-xs text-gris-dark capitalize">{b.tipo ?? '—'}</td>
+                <td className="px-4 py-3 text-xs text-gris-dark">{b.tipo ? (TIPO_LABEL[b.tipo] ?? b.tipo) : '—'}</td>
                 <td className="px-4 py-3 text-xs text-gris-dark">
                   {b.marca || b.modelo ? `${b.marca ?? ''} ${b.modelo ?? ''}`.trim() : '—'}
                 </td>
@@ -231,7 +226,7 @@ export function BateasTab() {
       <div className="md:hidden flex flex-col gap-2 mt-3">
         {bateasFiltradas.length === 0 ? (
           <div className="bg-white rounded-card shadow-card p-6 text-center text-gris-dark text-sm">
-            No hay bateas registradas.
+            No hay remolques registrados.
           </div>
         ) : bateasFiltradas.map(b => {
           const marcaModelo = b.marca || b.modelo ? `${b.marca ?? ''} ${b.modelo ?? ''}`.trim() : ''
@@ -240,7 +235,7 @@ export function BateasTab() {
             b.capacidad_tn != null ? `${b.capacidad_tn}tn` : null,
           ].filter(Boolean).join(' · ')
           const subtitulo = [
-            b.tipo ? <span key="t" className="capitalize">{b.tipo}</span> : null,
+            b.tipo ? <span key="t">{TIPO_LABEL[b.tipo] ?? b.tipo}</span> : null,
             marcaModelo || null,
             b.anio ?? null,
           ].filter(Boolean)
@@ -291,7 +286,7 @@ export function BateasTab() {
         })}
       </div>
 
-      <Modal open={modalNuevo} onClose={() => setModalNuevo(false)} title="🛻 NUEVA BATEA"
+      <Modal open={modalNuevo} onClose={() => setModalNuevo(false)} title="🛻 NUEVO REMOLQUE"
         footer={
           <>
             <Button variant="secondary" onClick={() => setModalNuevo(false)}>Cancelar</Button>
@@ -305,7 +300,7 @@ export function BateasTab() {
       <Modal
         open={!!editando}
         onClose={() => setEditando(null)}
-        title={puedeEditar ? '✏️ EDITAR BATEA' : '🛻 DETALLE BATEA'}
+        title={puedeEditar ? '✏️ EDITAR REMOLQUE' : '🛻 DETALLE REMOLQUE'}
         width="max-w-3xl"
         footer={
           puedeEditar ? (

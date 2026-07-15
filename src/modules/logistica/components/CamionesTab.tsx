@@ -158,14 +158,14 @@ export function CamionesTab() {
         <table className="w-full border-collapse">
           <thead>
             <tr>
-              {['Patente', 'Modelo', 'Chofer', 'Año', 'Km actuales', 'Faltan p/ service', 'Estado', ''].map(h => (
+              {['Patente', 'Modelo', 'Tipo', 'Chofer', 'Año', 'Km actuales', 'Faltan p/ service', 'Estado', ''].map(h => (
                 <th key={h} className="bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {camionesFiltrados.length === 0 ? (
-              <tr><td colSpan={8} className="text-center py-8 text-gris-dark text-sm">No hay camiones registrados.</td></tr>
+              <tr><td colSpan={9} className="text-center py-8 text-gris-dark text-sm">No hay camiones registrados.</td></tr>
             ) : camionesFiltrados.map(c => {
               const est = estadoPorCamion.get(c.id)
               const km = est?.km_actuales ?? c.km_actuales ?? 0
@@ -177,8 +177,13 @@ export function CamionesTab() {
                 className="border-b border-gris last:border-0 hover:bg-gris/40 transition-colors cursor-pointer"
                 onClick={() => openEdit(c)}
               >
-                <td className="px-4 py-3 font-mono font-bold text-sm">{c.patente}{c.categoria === 'chasis' && <span className="ml-2 text-[10px] font-sans font-bold bg-naranja-light text-naranja-dark px-1.5 py-0.5 rounded">🚚 chasis</span>}</td>
+                <td className="px-4 py-3 font-mono font-bold text-sm">{c.patente}</td>
                 <td className="px-4 py-3 text-sm text-carbon">{c.modelo || '—'}</td>
+                <td className="px-4 py-3 text-xs">
+                  {c.categoria === 'chasis'
+                    ? <span className="font-bold bg-naranja-light text-naranja-dark px-1.5 py-0.5 rounded">🚚 Chasis</span>
+                    : <span className="text-gris-dark">🛻 Tractor</span>}
+                </td>
                 <td
                   className="px-4 py-3 text-sm text-carbon"
                   title={chofs.length > 1 ? `También: ${chofs.slice(1).map(x => x.nombre).join(', ')}` : undefined}

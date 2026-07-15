@@ -33,7 +33,7 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
     { key: 'liquidaciones', label: 'Liquidaciones',     icon: '💰', meta: 'Saldo y pago a choferes' },
     { key: 'facturacion',   label: 'Facturación',       icon: '🧾', meta: 'Cobros a empresas' },
     { key: 'choferes',      label: 'Choferes',          icon: '👷', meta: 'Personal de conducción' },
-    { key: 'camiones',      label: 'Camiones y bateas', icon: '🚚', meta: 'Flota de camiones y semirremolques' },
+    { key: 'camiones',      label: 'Camiones y remolques', icon: '🚚', meta: 'Flota de camiones y remolques' },
     { key: 'lugares',       label: 'Rutas',             icon: '🗺️', meta: 'Rutas · Canteras · Depósitos' },
     { key: 'gastos',        label: 'Gastos',            icon: '💸', meta: 'Combustible · Gomería · Peajes' },
     { key: 'rentabilidad',  label: 'Rentabilidad',      icon: '📈', meta: 'Simulador de margen por viaje' },

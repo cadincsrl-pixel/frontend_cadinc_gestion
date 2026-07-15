@@ -205,7 +205,7 @@ export function ModalExportOnboarding({ open, onClose }: Props) {
 
           {/* Camiones + Bateas */}
           <Seccion
-            titulo="🚚🛻 Camiones y bateas"
+            titulo="🚚🛻 Camiones y remolques"
             count={selCamiones.size + selBateas.size}
             total={camionesActivos.length + bateasActivas.length}
             onTodos={() => {

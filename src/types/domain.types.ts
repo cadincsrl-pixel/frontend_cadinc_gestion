@@ -437,17 +437,15 @@ export interface CamionServiceEstado {
   km_restantes: number | null
 }
 
-// ── Bateas (remolques) ──
-export type BateaTipo = 'volcadora' | 'plana' | 'tanque' | 'gondola' | 'otro'
+// ── Remolques (tabla `bateas` — la UI dice "remolques") ──
+// Tipo de remolque, vocabulario real de la flota (unificado 2026-07-15).
+export type BateaTipo = 'batea' | 'acoplado' | 'semirremolque' | 'sider' | 'tanque_cisterna' | 'otro'
 export type BateaEstado = 'activo' | 'mantenimiento' | 'inactivo'
-// Categoría de remolque (aparte de `tipo`, que describe la forma).
-export type BateaCategoria = 'batea' | 'acoplado' | 'semirremolque'
 
 export interface Batea extends AuditFields {
   id:           number
   patente:      string
   tipo:         BateaTipo | null
-  categoria:    BateaCategoria
   marca:        string | null
   modelo:       string | null
   anio:         number | null
