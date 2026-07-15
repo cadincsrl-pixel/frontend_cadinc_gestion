@@ -25,11 +25,21 @@ export function AuditoriaTab() {
   const perfiles = usePerfilesMap()
   const [filtroModulo, setFiltroModulo] = useState('')
   const [filtroUser, setFiltroUser] = useState('')
+  const [filtroDesde, setFiltroDesde] = useState('')
+  const [filtroHasta, setFiltroHasta] = useState('')
 
   const { data: logs = [], isLoading } = useAuditLog({
     modulo: filtroModulo || undefined,
     user_id: filtroUser || undefined,
+    // Los límites de día en hora argentina (-03): sin esto, "hasta" cortaría
+    // a la medianoche UTC (21:00 ART) y perdería la tarde-noche del día.
+    desde: filtroDesde ? `${filtroDesde}T00:00:00-03:00` : undefined,
+    hasta: filtroHasta ? `${filtroHasta}T23:59:59-03:00` : undefined,
   })
+
+  // El endpoint trae como máximo 500 filas: si llegaron exactamente 500,
+  // casi seguro hay más — avisar para que el user acote con fechas.
+  const tocaElTope = (logs as AuditLogEntry[]).length === 500
 
   const modulos = [...new Set((logs as AuditLogEntry[]).map(l => l.modulo))].sort()
   const usuarios = [...new Map((logs as AuditLogEntry[]).filter(l => l.user_id).map(l => [l.user_id, perfiles.get(l.user_id!) ?? l.user_nombre ?? '…'])).entries()]
@@ -48,7 +58,28 @@ export function AuditoriaTab() {
           <option value="">Todos los usuarios</option>
           {usuarios.map(([id, nom]) => <option key={id} value={id!}>{nom}</option>)}
         </select>
+        <div>
+          <label className="block text-[10px] font-bold text-gris-dark uppercase tracking-wider mb-0.5">Desde</label>
+          <input type="date" value={filtroDesde} onChange={e => setFiltroDesde(e.target.value)}
+            className="px-2 py-1.5 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white focus:border-naranja" />
+        </div>
+        <div>
+          <label className="block text-[10px] font-bold text-gris-dark uppercase tracking-wider mb-0.5">Hasta</label>
+          <input type="date" value={filtroHasta} onChange={e => setFiltroHasta(e.target.value)}
+            className="px-2 py-1.5 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white focus:border-naranja" />
+        </div>
+        {(filtroDesde || filtroHasta) && (
+          <button onClick={() => { setFiltroDesde(''); setFiltroHasta('') }}
+            className="text-[11px] text-gris-dark hover:text-rojo self-end pb-2">
+            ✕ Limpiar fechas
+          </button>
+        )}
         <span className="text-xs text-gris-dark">{(logs as AuditLogEntry[]).length} registros</span>
+        {tocaElTope && (
+          <span className="text-xs font-semibold bg-amarillo-light text-[#7A5500] px-2 py-1 rounded">
+            ⚠ Mostrando los 500 más recientes — acotá con fechas para ver anteriores
+          </span>
+        )}
       </div>
 
       {/* Tabla */}
