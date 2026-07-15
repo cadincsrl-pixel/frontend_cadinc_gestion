@@ -361,12 +361,17 @@ export interface Chofer extends AuditFields {
   obs: string | null
 }
 
+// tractor = arrastra batea/semirremolque; chasis = caja fija. Discrimina la
+// tarifa por tipo de unidad en facturación (chasis paga distinto).
+export type CamionCategoria = 'tractor' | 'chasis'
+
 export interface Camion extends AuditFields {
   id: number
   patente: string
   modelo: string | null
   anio: number | null
   estado: CamionEstado
+  categoria: CamionCategoria
   km_actuales: number
   obs: string | null
   // GPS Mobile Quest (todos opcionales: solo se llenan si hay mapeo)
@@ -432,14 +437,17 @@ export interface CamionServiceEstado {
   km_restantes: number | null
 }
 
-// ── Bateas (semirremolques) ──
+// ── Bateas (remolques) ──
 export type BateaTipo = 'volcadora' | 'plana' | 'tanque' | 'gondola' | 'otro'
 export type BateaEstado = 'activo' | 'mantenimiento' | 'inactivo'
+// Categoría de remolque (aparte de `tipo`, que describe la forma).
+export type BateaCategoria = 'batea' | 'acoplado' | 'semirremolque'
 
 export interface Batea extends AuditFields {
   id:           number
   patente:      string
   tipo:         BateaTipo | null
+  categoria:    BateaCategoria
   marca:        string | null
   modelo:       string | null
   anio:         number | null
@@ -837,6 +845,7 @@ export interface TarifaEmpresaCantera {
   empresa_id: number
   cantera_id: number
   deposito_id: number | null   // null = tarifa general; set = específica para descargas en ese depósito
+  tipo_unidad: 'batea' | 'chasis' | null  // null = cualquier unidad; set = según el camión del viaje
   valor_ton: number
   vigente_desde: string
   obs: string | null

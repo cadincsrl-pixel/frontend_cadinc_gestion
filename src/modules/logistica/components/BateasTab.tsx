@@ -20,6 +20,13 @@ const ESTADO_OPTIONS = [
   { value: 'inactivo',       label: 'Inactivo'       },
 ]
 
+// Categoría de remolque (aparte de `tipo`, que describe la forma).
+const CATEGORIA_OPTIONS = [
+  { value: 'batea',         label: 'Batea'         },
+  { value: 'acoplado',      label: 'Acoplado'      },
+  { value: 'semirremolque', label: 'Semirremolque' },
+]
+
 const TIPO_OPTIONS = [
   { value: '',          label: 'Sin especificar' },
   { value: 'volcadora', label: 'Volcadora'       },
@@ -32,6 +39,7 @@ const TIPO_OPTIONS = [
 interface FormValues {
   patente?:      string
   tipo?:         string
+  categoria?:    string
   marca?:        string
   modelo?:       string
   anio?:         string
@@ -52,13 +60,20 @@ export function BateasTab() {
 
   const [modalNuevo, setModalNuevo] = useState(false)
   const [editando,   setEditando]   = useState<Batea | null>(null)
-  const formNuevo = useForm<FormValues>({ defaultValues: { estado: 'activo' } })
+  // Filtro por categoría de remolque.
+  const [filtroCategoria, setFiltroCategoria] = useState<'' | 'batea' | 'acoplado' | 'semirremolque'>('')
+  const formNuevo = useForm<FormValues>({ defaultValues: { estado: 'activo', categoria: 'batea' } })
   const formEdit  = useForm<FormValues>()
+
+  const bateasFiltradas = filtroCategoria
+    ? bateas.filter(b => (b.categoria ?? 'batea') === filtroCategoria)
+    : bateas
 
   function parseDto(data: FormValues): any {
     return {
       patente:      data.patente!.trim(),
       tipo:         data.tipo || null,
+      categoria:    data.categoria || 'batea',
       marca:        data.marca || null,
       modelo:       data.modelo || null,
       anio:         data.anio ? Number(data.anio) : null,
@@ -98,6 +113,7 @@ export function BateasTab() {
     formEdit.reset({
       patente:      b.patente,
       tipo:         b.tipo ?? '',
+      categoria:    b.categoria ?? 'batea',
       marca:        b.marca ?? '',
       modelo:       b.modelo ?? '',
       anio:         b.anio != null ? String(b.anio) : '',
@@ -116,6 +132,7 @@ export function BateasTab() {
         <Input label="Patente" placeholder="AA-123-BB" disabled={disabled} {...form.register('patente')} />
         <Select label="Tipo" options={TIPO_OPTIONS} disabled={disabled} {...form.register('tipo')} />
       </div>
+      <Select label="Categoría de remolque" options={CATEGORIA_OPTIONS} disabled={disabled} {...form.register('categoria')} />
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Input label="Marca" placeholder="Helvética" disabled={disabled} {...form.register('marca')} />
         <Input label="Modelo" disabled={disabled} {...form.register('modelo')} />
@@ -133,7 +150,27 @@ export function BateasTab() {
 
   return (
     <>
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        {/* Filtro por categoría de remolque */}
+        <div className="flex gap-1.5 flex-wrap">
+          {([
+            { key: '' as const,              label: `Todas (${bateas.length})` },
+            { key: 'batea' as const,         label: `Bateas (${bateas.filter(b => (b.categoria ?? 'batea') === 'batea').length})` },
+            { key: 'acoplado' as const,      label: `Acoplados (${bateas.filter(b => b.categoria === 'acoplado').length})` },
+            { key: 'semirremolque' as const, label: `Semirremolques (${bateas.filter(b => b.categoria === 'semirremolque').length})` },
+          ]).map(opt => (
+            <button
+              key={opt.key}
+              type="button"
+              onClick={() => setFiltroCategoria(opt.key)}
+              className={`text-xs font-bold px-3 py-1.5 rounded-full border-[1.5px] transition-colors ${
+                filtroCategoria === opt.key ? 'bg-azul text-white border-azul' : 'bg-white border-azul text-azul-mid hover:bg-gris/40'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
         {puedeCrear && (
           <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)}>＋ Nueva batea</Button>
         )}
@@ -153,9 +190,9 @@ export function BateasTab() {
             </tr>
           </thead>
           <tbody>
-            {bateas.length === 0 ? (
+            {bateasFiltradas.length === 0 ? (
               <tr><td colSpan={8} className="text-center py-8 text-gris-dark text-sm">No hay bateas registradas.</td></tr>
-            ) : bateas.map(b => (
+            ) : bateasFiltradas.map(b => (
               <tr
                 key={b.id}
                 className="border-b border-gris last:border-0 hover:bg-gris/40 transition-colors cursor-pointer"
@@ -192,11 +229,11 @@ export function BateasTab() {
 
       {/* Cards — mobile */}
       <div className="md:hidden flex flex-col gap-2 mt-3">
-        {bateas.length === 0 ? (
+        {bateasFiltradas.length === 0 ? (
           <div className="bg-white rounded-card shadow-card p-6 text-center text-gris-dark text-sm">
             No hay bateas registradas.
           </div>
-        ) : bateas.map(b => {
+        ) : bateasFiltradas.map(b => {
           const marcaModelo = b.marca || b.modelo ? `${b.marca ?? ''} ${b.modelo ?? ''}`.trim() : ''
           const capacidad = [
             b.capacidad_m3 != null ? `${b.capacidad_m3}m³` : null,

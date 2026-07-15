@@ -22,7 +22,7 @@ import { useForm as useRHF } from 'react-hook-form'
 import { usePermisos } from '@/hooks/usePermisos'
 import { CobroAdjuntosSection } from './CobroAdjuntosSection'
 import { useUploadCobroAdjunto } from '../hooks/useCobroAdjuntos'
-import type { EmpresaTransportista, TarifaEmpresaCantera, Tramo, Cobro } from '@/types/domain.types'
+import type { EmpresaTransportista, TarifaEmpresaCantera, Tramo, Cobro, Camion } from '@/types/domain.types'
 import { toISO } from '@/lib/utils/dates'
 
 function fmtM(n: number) {
@@ -213,15 +213,31 @@ function tarifaParaFecha(
   canteraId: number | null,
   depositoId: number | null,
   fecha: string | null,
+  // Unidad del viaje según el camión (chasis paga distinto en algunas
+  // empresas). Escalera de prioridad: depósito+unidad > depósito > unidad
+  // > general. Las tarifas sin tipo_unidad valen para cualquier unidad.
+  tipoUnidad?: 'batea' | 'chasis',
 ): number {
   if (!canteraId || !fecha) return 0
   const base = tarifas.filter(t =>
     t.empresa_id === empresaId && t.cantera_id === canteraId && t.vigente_desde <= fecha
   )
-  const especificas = depositoId != null ? base.filter(t => t.deposito_id === depositoId) : []
-  const pool = especificas.length > 0 ? especificas : base.filter(t => t.deposito_id == null)
+  const pools = [
+    depositoId != null && tipoUnidad ? base.filter(t => t.deposito_id === depositoId && t.tipo_unidad === tipoUnidad) : [],
+    depositoId != null ? base.filter(t => t.deposito_id === depositoId && t.tipo_unidad == null) : [],
+    tipoUnidad ? base.filter(t => t.deposito_id == null && t.tipo_unidad === tipoUnidad) : [],
+    base.filter(t => t.deposito_id == null && t.tipo_unidad == null),
+  ]
+  const pool = pools.find(p => p.length > 0) ?? []
   const vigente = pool.sort((a, b) => b.vigente_desde.localeCompare(a.vigente_desde))[0]
   return vigente?.valor_ton ?? 0
+}
+
+// Unidad del viaje según la categoría del camión: chasis → 'chasis';
+// tractor (o camión desconocido) → 'batea'.
+function unidadDelCamion(camiones: Camion[], camionId: number | null | undefined): 'batea' | 'chasis' {
+  if (camionId == null) return 'batea'
+  return camiones.find(c => c.id === camionId)?.categoria === 'chasis' ? 'chasis' : 'batea'
 }
 
 function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
@@ -236,21 +252,33 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
 
   const tarifas = todasTarifas.filter(t => t.empresa_id === empresa.id)
 
-  // Agrupar por cantera × depósito (null = tarifa general de la cantera),
-  // historial ordenado por vigente_desde desc (la primera es la vigente).
-  // La general va primero, después las específicas por depósito.
+  // Agrupar por cantera × depósito × unidad (null = general), historial
+  // ordenado por vigente_desde desc (la primera es la vigente). La general
+  // va primero, después las específicas por depósito; dentro del mismo
+  // depósito, "todas las unidades" antes que batea/chasis.
   const grupos = canteras
     .flatMap(c => {
       const deCantera = tarifas.filter(t => t.cantera_id === c.id)
-      const depIds = Array.from(new Set(deCantera.map(t => t.deposito_id ?? null)))
-        .sort((a, b) => (a === null ? -1 : b === null ? 1 : a - b))
-      return depIds.map(depId => ({
-        key:      `${c.id}|${depId ?? 'gral'}`,
+      const combos = Array.from(new Set(deCantera.map(t => `${t.deposito_id ?? ''}|${t.tipo_unidad ?? ''}`)))
+        .map(combo => {
+          const [depRaw, uniRaw] = combo.split('|')
+          return {
+            depId:  depRaw === '' ? null : Number(depRaw),
+            unidad: (uniRaw === '' ? null : uniRaw) as 'batea' | 'chasis' | null,
+          }
+        })
+        .sort((a, b) =>
+          (a.depId === null ? -1 : b.depId === null ? 1 : a.depId - b.depId) ||
+          (a.unidad === null ? -1 : b.unidad === null ? 1 : a.unidad.localeCompare(b.unidad)),
+        )
+      return combos.map(({ depId, unidad }) => ({
+        key:      `${c.id}|${depId ?? 'gral'}|${unidad ?? 'todas'}`,
         cantera:  c,
         deposito: depId === null ? null : depositos.find(d => d.id === depId) ?? null,
         depositoId: depId,
+        tipoUnidad: unidad,
         historial: deCantera
-          .filter(t => (t.deposito_id ?? null) === depId)
+          .filter(t => (t.deposito_id ?? null) === depId && (t.tipo_unidad ?? null) === unidad)
           .sort((a, b) => b.vigente_desde.localeCompare(a.vigente_desde)),
       }))
     })
@@ -267,10 +295,10 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
   // (excluyendo opcionalmente una propia, para el caso editar). Sirve
   // para avisar que la nueva tarifa no va a afectar tramos posteriores
   // a menos que se "pisen" (eliminen).
-  function tarifasPosteriores(canteraId: number | null, depositoId: number | null, fecha: string, excluirId?: number): TarifaEmpresaCantera[] {
+  function tarifasPosteriores(canteraId: number | null, depositoId: number | null, tipoUnidad: 'batea' | 'chasis' | null, fecha: string, excluirId?: number): TarifaEmpresaCantera[] {
     if (!canteraId || !fecha) return []
     return tarifas
-      .filter(t => t.cantera_id === canteraId && (t.deposito_id ?? null) === depositoId)
+      .filter(t => t.cantera_id === canteraId && (t.deposito_id ?? null) === depositoId && (t.tipo_unidad ?? null) === tipoUnidad)
       .filter(t => excluirId == null || t.id !== excluirId)
       .filter(t => t.vigente_desde > fecha)
       .sort((a, b) => a.vigente_desde.localeCompare(b.vigente_desde))
@@ -278,16 +306,18 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
 
   const watchCantera  = form.watch('cantera_id')
   const watchDeposito = form.watch('deposito_id')
+  const watchUnidad   = form.watch('tipo_unidad')
   const watchFecha    = form.watch('vigente_desde')
   const posterioresNueva = tarifasPosteriores(
     watchCantera ? Number(watchCantera) : null,
     watchDeposito ? Number(watchDeposito) : null,
+    watchUnidad ? (watchUnidad as 'batea' | 'chasis') : null,
     watchFecha,
   )
 
   const watchEditFecha = formEdit.watch('vigente_desde')
   const posterioresEdit = editando
-    ? tarifasPosteriores(editando.cantera_id, editando.deposito_id ?? null, watchEditFecha, editando.id)
+    ? tarifasPosteriores(editando.cantera_id, editando.deposito_id ?? null, editando.tipo_unidad ?? null, watchEditFecha, editando.id)
     : []
 
   function abrirEditar(t: TarifaEmpresaCantera) {
@@ -335,6 +365,7 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
       empresa_id:    empresa.id,
       cantera_id:    Number(data.cantera_id),
       deposito_id:   data.deposito_id ? Number(data.deposito_id) : null,
+      tipo_unidad:   data.tipo_unidad ? (data.tipo_unidad as 'batea' | 'chasis') : null,
       valor_ton:     Number(data.valor_ton),
       vigente_desde: data.vigente_desde,
       obs:           data.obs ?? '',
@@ -389,7 +420,7 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
           <p className="text-center py-6 text-sm text-gris-dark">Sin tarifas. Agregá una con el botón de arriba.</p>
         ) : (
           <div className="divide-y divide-gris">
-            {grupos.map(({ key, cantera, deposito, depositoId, historial }) => {
+            {grupos.map(({ key, cantera, deposito, depositoId, tipoUnidad, historial }) => {
               const vigente  = historial[0]
               const pasadas  = historial.slice(1)
               const expanded = expandida === key
@@ -404,6 +435,11 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
                       {depositoId != null && (
                         <span className="text-xs font-bold text-azul-mid ml-2 bg-azul/5 px-1.5 py-0.5 rounded" title="Tarifa específica para descargas en este depósito">
                           → {deposito?.nombre ?? `depósito #${depositoId}`}
+                        </span>
+                      )}
+                      {tipoUnidad != null && (
+                        <span className="text-xs font-bold text-naranja-dark ml-2 bg-naranja-light px-1.5 py-0.5 rounded" title="Tarifa específica para esta unidad — los viajes de la otra unidad usan la general">
+                          {tipoUnidad === 'chasis' ? '🚚 Chasis' : '🛻 Batea'}
                         </span>
                       )}
                     </div>
@@ -489,6 +525,20 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
             />
             <p className="text-[11px] text-gris-dark mt-1">
               Dejá &quot;Todas las descargas&quot; salvo que este punto de carga pague distinto según el depósito de destino. La tarifa específica gana sobre la general.
+            </p>
+          </div>
+          <div>
+            <Select
+              label="Unidad"
+              options={[
+                { value: '',       label: 'Todas las unidades (tarifa general)' },
+                { value: 'batea',  label: '🛻 Batea (tractor con semirremolque)' },
+                { value: 'chasis', label: '🚚 Chasis' },
+              ]}
+              {...form.register('tipo_unidad')}
+            />
+            <p className="text-[11px] text-gris-dark mt-1">
+              Solo si la empresa paga distinto según la unidad (ej. chasis). La unidad del viaje sale de la categoría del camión.
             </p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -824,6 +874,7 @@ function FacturacionSection() {
   const { data: canteras     = [] } = useCanteras()
   const { data: depositos    = [] } = useDepositos()
   const { data: choferes     = [] } = useChoferes()
+  const { data: camiones     = [] } = useCamiones()
   const { data: cobros       = [] } = useCobros()
   const { mutate: createCobro, isPending: creando } = useCreateCobro()
   const { mutate: marcarCobrado } = useMarcarCobrado()
@@ -943,9 +994,10 @@ function FacturacionSection() {
     return tramosArr.map(t => {
       const ton     = t.toneladas_descarga ?? t.toneladas_carga ?? 0
       const fecha   = t.fecha_descarga ?? t.fecha_carga
-      const tarifa  = tarifaParaFecha(todasTarifas as TarifaEmpresaCantera[], empresaId, t.cantera_id, t.deposito_id, fecha)
+      const unidad  = unidadDelCamion(camiones as Camion[], t.camion_id)
+      const tarifa  = tarifaParaFecha(todasTarifas as TarifaEmpresaCantera[], empresaId, t.cantera_id, t.deposito_id, fecha, unidad)
       const cantera = canteras.find(c => c.id === t.cantera_id)
-      return { t, ton, tarifa, subtotal: ton * tarifa, fecha, cantera }
+      return { t, ton, tarifa, unidad, subtotal: ton * tarifa, fecha, cantera }
     })
   }
 
@@ -1152,7 +1204,10 @@ function FacturacionSection() {
                             <div className="pl-4 space-y-0.5 text-gris-dark">
                               {Object.entries(
                                 desglose.reduce<Record<string, { ton: number; tarifa: number; subtotal: number }>>((acc, d) => {
-                                  const nombre = d.cantera?.nombre ?? `Punto de carga ${d.t.cantera_id ?? '?'}`
+                                  // Los viajes de chasis van en línea aparte:
+                                  // misma cantera pero tarifa distinta.
+                                  const nombre = (d.cantera?.nombre ?? `Punto de carga ${d.t.cantera_id ?? '?'}`)
+                                    + (d.unidad === 'chasis' ? ' 🚚 chasis' : '')
                                   if (!acc[nombre]) acc[nombre] = { ton: 0, tarifa: d.tarifa, subtotal: 0 }
                                   acc[nombre].ton      += d.ton
                                   acc[nombre].subtotal += d.subtotal
@@ -2213,7 +2268,8 @@ function RemitosSection() {
     const empId   = t.empresa_id ?? 0
     const ton     = t.toneladas_descarga ?? t.toneladas_carga ?? 0
     const fecha   = t.fecha_descarga ?? t.fecha_carga
-    const tarifa  = tarifaParaFecha(todasTarifas as TarifaEmpresaCantera[], empId, t.cantera_id, t.deposito_id, fecha ?? null)
+    const unidad  = unidadDelCamion(camiones as Camion[], t.camion_id)
+    const tarifa  = tarifaParaFecha(todasTarifas as TarifaEmpresaCantera[], empId, t.cantera_id, t.deposito_id, fecha ?? null, unidad)
     const cantera = canteras.find(c => c.id === t.cantera_id)
     const empresa = (empresas as EmpresaTransportista[]).find(e => e.id === empId)
     const remito  = t.remito_descarga ?? t.remito_carga

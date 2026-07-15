@@ -24,6 +24,13 @@ const ESTADO_OPTIONS = [
   { value: 'inactivo',      label: 'Inactivo'         },
 ]
 
+// tractor = arrastra batea/semirremolque; chasis = caja fija (discrimina la
+// tarifa por unidad en facturación).
+const CATEGORIA_OPTIONS = [
+  { value: 'tractor', label: '🛻 Tractor (con batea)' },
+  { value: 'chasis',  label: '🚚 Chasis' },
+]
+
 export function CamionesTab() {
   const toast = useToast()
   const { puedeCrear, puedeEditar } = usePermisos('logistica')
@@ -67,8 +74,14 @@ export function CamionesTab() {
 
   const [modalNuevo, setModalNuevo] = useState(false)
   const [editando,   setEditando]   = useState<Camion | null>(null)
-  const formNuevo = useForm<any>()
+  // Filtro por categoría de unidad (tractor/chasis).
+  const [filtroCategoria, setFiltroCategoria] = useState<'' | 'tractor' | 'chasis'>('')
+  const formNuevo = useForm<any>({ defaultValues: { categoria: 'tractor' } })
   const formEdit  = useForm<any>()
+
+  const camionesFiltrados = filtroCategoria
+    ? camiones.filter(c => (c.categoria ?? 'tractor') === filtroCategoria)
+    : camiones
 
   function handleCreate(data: any) {
     create({ ...data, anio: data.anio ? Number(data.anio) : undefined }, {
@@ -86,7 +99,7 @@ export function CamionesTab() {
   }
 
   function openEdit(c: Camion) {
-    formEdit.reset({ patente: c.patente, modelo: c.modelo ?? '', anio: c.anio ?? '', estado: c.estado, obs: c.obs ?? '' })
+    formEdit.reset({ patente: c.patente, modelo: c.modelo ?? '', anio: c.anio ?? '', estado: c.estado, categoria: c.categoria ?? 'tractor', obs: c.obs ?? '' })
     setEditando(c)
   }
 
@@ -100,21 +113,43 @@ export function CamionesTab() {
         <Input label="Año" type="number" placeholder="2020" disabled={disabled} {...form.register('anio')} />
         <Select label="Estado" options={ESTADO_OPTIONS} disabled={disabled} {...form.register('estado')} />
       </div>
+      <Select label="Categoría" options={CATEGORIA_OPTIONS} disabled={disabled} {...form.register('categoria')} />
       <Input label="Observaciones" placeholder="Notas..." disabled={disabled} {...form.register('obs')} />
     </div>
   )
 
   return (
     <>
-      <div className="flex justify-end gap-2">
-        {puedeEditar && (
-          <Button variant="secondary" size="sm" loading={syncingTodos} onClick={handleSyncTodos}>
-            🛰 Sincronizar GPS
-          </Button>
-        )}
-        {puedeCrear && (
-          <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)}>＋ Nuevo camión</Button>
-        )}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        {/* Filtro por categoría de unidad */}
+        <div className="flex gap-1.5 flex-wrap">
+          {([
+            { key: '' as const,        label: `Todos (${camiones.length})` },
+            { key: 'tractor' as const, label: `🛻 Tractores (${camiones.filter(c => (c.categoria ?? 'tractor') === 'tractor').length})` },
+            { key: 'chasis' as const,  label: `🚚 Chasis (${camiones.filter(c => c.categoria === 'chasis').length})` },
+          ]).map(opt => (
+            <button
+              key={opt.key}
+              type="button"
+              onClick={() => setFiltroCategoria(opt.key)}
+              className={`text-xs font-bold px-3 py-1.5 rounded-full border-[1.5px] transition-colors ${
+                filtroCategoria === opt.key ? 'bg-azul text-white border-azul' : 'bg-white border-azul text-azul-mid hover:bg-gris/40'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          {puedeEditar && (
+            <Button variant="secondary" size="sm" loading={syncingTodos} onClick={handleSyncTodos}>
+              🛰 Sincronizar GPS
+            </Button>
+          )}
+          {puedeCrear && (
+            <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)}>＋ Nuevo camión</Button>
+          )}
+        </div>
       </div>
 
       {/* Tabla — desktop/tablet */}
@@ -129,9 +164,9 @@ export function CamionesTab() {
             </tr>
           </thead>
           <tbody>
-            {camiones.length === 0 ? (
+            {camionesFiltrados.length === 0 ? (
               <tr><td colSpan={8} className="text-center py-8 text-gris-dark text-sm">No hay camiones registrados.</td></tr>
-            ) : camiones.map(c => {
+            ) : camionesFiltrados.map(c => {
               const est = estadoPorCamion.get(c.id)
               const km = est?.km_actuales ?? c.km_actuales ?? 0
               const chofs = choferesPorCamion.get(c.id) ?? []
@@ -142,7 +177,7 @@ export function CamionesTab() {
                 className="border-b border-gris last:border-0 hover:bg-gris/40 transition-colors cursor-pointer"
                 onClick={() => openEdit(c)}
               >
-                <td className="px-4 py-3 font-mono font-bold text-sm">{c.patente}</td>
+                <td className="px-4 py-3 font-mono font-bold text-sm">{c.patente}{c.categoria === 'chasis' && <span className="ml-2 text-[10px] font-sans font-bold bg-naranja-light text-naranja-dark px-1.5 py-0.5 rounded">🚚 chasis</span>}</td>
                 <td className="px-4 py-3 text-sm text-carbon">{c.modelo || '—'}</td>
                 <td
                   className="px-4 py-3 text-sm text-carbon"
@@ -187,11 +222,11 @@ export function CamionesTab() {
 
       {/* Cards — mobile */}
       <div className="md:hidden flex flex-col gap-2">
-        {camiones.length === 0 ? (
+        {camionesFiltrados.length === 0 ? (
           <div className="bg-white rounded-card shadow-card p-6 text-center text-gris-dark text-sm">
             No hay camiones registrados.
           </div>
-        ) : camiones.map(c => {
+        ) : camionesFiltrados.map(c => {
           const est = estadoPorCamion.get(c.id)
           const km = est?.km_actuales ?? c.km_actuales ?? 0
           const chofs = choferesPorCamion.get(c.id) ?? []
