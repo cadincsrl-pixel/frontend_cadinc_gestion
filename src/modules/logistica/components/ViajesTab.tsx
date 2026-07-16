@@ -833,7 +833,18 @@ export function ViajesTab() {
       },
       {
         onSuccess: () => { toast('✓ Tramo actualizado', 'ok'); cerrarEdicion() },
-        onError:   () => toast('Error al actualizar', 'err'),
+        onError:   (err: unknown) => {
+          // El backend bloquea editar tramos ya facturados/liquidados: sus
+          // toneladas/km están snapshoteados en el cobro o la liquidación.
+          const code = (err as { body?: { error?: string } })?.body?.error
+          if (code === 'TRAMO_COBRADO') {
+            toast('No se puede editar: el viaje ya está facturado. Eliminá o revertí el cobro en Facturación y volvé a intentar.', 'err')
+          } else if (code === 'TRAMO_LIQUIDADO') {
+            toast('No se puede editar: el viaje ya está liquidado al chofer.', 'err')
+          } else {
+            toast('Error al actualizar', 'err')
+          }
+        },
       }
     )
   }
