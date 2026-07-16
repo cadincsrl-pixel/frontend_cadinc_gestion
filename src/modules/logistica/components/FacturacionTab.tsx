@@ -1945,10 +1945,27 @@ function FacturacionSection() {
                         const tarifa = d?.tarifa ?? 0
                         const subtotal = d?.subtotal ?? 0
                         return (
-                          <div key={t.id} className="px-3 py-2 text-xs flex items-center justify-between gap-2">
+                          // Fila clickeable: abre el tramo en la pestaña
+                          // Viajes (con vuelta a Facturación al cerrar) para
+                          // ver el remito completo o corregir algo.
+                          <div
+                            key={t.id}
+                            role="link"
+                            tabIndex={0}
+                            onClick={() => router.push(`/logistica?tab=viajes&tramo=${t.id}&volver=facturacion`)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault()
+                                router.push(`/logistica?tab=viajes&tramo=${t.id}&volver=facturacion`)
+                              }
+                            }}
+                            title="Abrir el tramo en Viajes (al cerrar volvés acá)"
+                            className="px-3 py-2 text-xs flex items-center justify-between gap-2 cursor-pointer hover:bg-azul-light/40 transition-colors"
+                          >
                             <div className="flex-1 min-w-0">
                               <div className="font-semibold text-carbon truncate">
                                 {cantera?.nombre ?? '—'} {(t.remito_descarga ?? t.remito_carga) ? `· #${t.remito_descarga ?? t.remito_carga}` : ''}
+                                <span className="ml-1 text-azul-mid font-normal">↗</span>
                               </div>
                               <div className="text-gris-dark text-[11px]">
                                 {fecha ? fmtFecha(fecha) : '—'}
