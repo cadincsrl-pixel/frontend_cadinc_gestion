@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiDelete, apiPatch } from '@/lib/api/client'
 import type {
   Chofer, Camion, Batea, Cantera, Deposito, Ruta, LugarOperativo,
-  Tramo, Viaje, Liquidacion, Adelanto, TarifaCantera,
+  Tramo, Viaje, Liquidacion, Adelanto, Estadia, TarifaCantera,
   EmpresaTransportista, TarifaEmpresaCantera, Cobro,
 } from '@/types/domain.types'
 
@@ -21,6 +21,7 @@ export const LOG_KEYS = {
   relevosPendientes: ['logistica', 'relevos-pendientes'] as const,
   relevosLiquidados: ['logistica', 'relevos-liquidados'] as const,
   adelantos:       ['logistica', 'adelantos']       as const,
+  estadias:        ['logistica', 'estadias']        as const,
   tarifasCantera:  ['logistica', 'tarifas_cantera'] as const,
   empresas:        ['logistica', 'empresas']        as const,
   tarifasEmpresa:  ['logistica', 'tarifas_empresa'] as const,
@@ -392,6 +393,7 @@ export function useCreateLiquidacion() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: LOG_KEYS.liquidaciones })
       qc.invalidateQueries({ queryKey: LOG_KEYS.adelantos })
+      qc.invalidateQueries({ queryKey: LOG_KEYS.estadias })
       qc.invalidateQueries({ queryKey: LOG_KEYS.tramos })
       qc.invalidateQueries({ queryKey: LOG_KEYS.gastos })
       qc.invalidateQueries({ queryKey: LOG_KEYS.relevosPendientes })
@@ -433,6 +435,7 @@ export function useReabrirLiquidacion() {
       qc.invalidateQueries({ queryKey: LOG_KEYS.liquidaciones })
       qc.invalidateQueries({ queryKey: LOG_KEYS.tramos })
       qc.invalidateQueries({ queryKey: LOG_KEYS.adelantos })
+      qc.invalidateQueries({ queryKey: LOG_KEYS.estadias })
       qc.invalidateQueries({ queryKey: LOG_KEYS.gastos })
       qc.invalidateQueries({ queryKey: LOG_KEYS.relevosPendientes })
       qc.invalidateQueries({ queryKey: LOG_KEYS.relevosLiquidados })
@@ -454,6 +457,7 @@ export function useDeleteLiquidacion() {
       qc.invalidateQueries({ queryKey: LOG_KEYS.liquidaciones })
       qc.invalidateQueries({ queryKey: LOG_KEYS.tramos })
       qc.invalidateQueries({ queryKey: LOG_KEYS.adelantos })
+      qc.invalidateQueries({ queryKey: LOG_KEYS.estadias })
       qc.invalidateQueries({ queryKey: LOG_KEYS.gastos })
       qc.invalidateQueries({ queryKey: LOG_KEYS.relevosPendientes })
       qc.invalidateQueries({ queryKey: LOG_KEYS.relevosLiquidados })
@@ -484,6 +488,40 @@ export function useDeleteAdelanto() {
   return useMutation({
     mutationFn: (id: number) => apiDelete(`/api/logistica/liquidaciones/adelantos/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.adelantos }),
+  })
+}
+
+// ── Estadías (días de espera pagados por día) ──
+export function useEstadias() {
+  return useQuery({
+    queryKey: LOG_KEYS.estadias,
+    queryFn:  () => apiGet<Estadia[]>('/api/logistica/liquidaciones/estadias'),
+  })
+}
+
+export function useCreateEstadia() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: { chofer_id: number; fecha_desde: string; fecha_hasta: string; dias: number; monto_dia: number; total: number; obs?: string }) =>
+      apiPost<Estadia>('/api/logistica/liquidaciones/estadias', dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.estadias }),
+  })
+}
+
+export function useUpdateEstadia() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: number; dto: { fecha_desde?: string; fecha_hasta?: string; dias?: number; monto_dia?: number; total?: number; obs?: string } }) =>
+      apiPatch<Estadia>(`/api/logistica/liquidaciones/estadias/${id}`, dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.estadias }),
+  })
+}
+
+export function useDeleteEstadia() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiDelete(`/api/logistica/liquidaciones/estadias/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.estadias }),
   })
 }
 

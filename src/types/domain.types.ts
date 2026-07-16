@@ -793,6 +793,8 @@ export interface Liquidacion {
   subtotal_km_vacio:   number | null
   total_adelantos: number
   total_reintegros: number | null
+  // Estadías: días de espera para cargar/descargar pagados por día (suman).
+  total_estadias: number | null
   total_neto: number
   estado: LiqEstado
   obs: string | null
@@ -809,6 +811,20 @@ export interface Adelanto {
   liquidacion_id: number | null
   comprobante_url:  string | null
   comprobante_hash: string | null
+}
+
+// Estadía: días extra que el chofer perdió esperando para cargar/descargar,
+// pagados por día aparte del básico. NULL en liquidacion_id = pendiente.
+export interface Estadia {
+  id: number
+  chofer_id: number
+  fecha_desde: string
+  fecha_hasta: string
+  dias: number
+  monto_dia: number
+  total: number
+  obs: string | null
+  liquidacion_id: number | null
 }
 
 export interface TarifaCantera {

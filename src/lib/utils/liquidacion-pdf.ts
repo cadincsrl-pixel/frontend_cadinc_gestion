@@ -37,6 +37,16 @@ export interface PdfLiquidacionGasto {
   monto:       number
 }
 
+// Estadía: días de espera para cargar/descargar, pagados por día (SUMAN).
+export interface PdfLiquidacionEstadia {
+  fecha_desde: string
+  fecha_hasta: string
+  dias:        number
+  monto_dia:   number
+  total:       number
+  obs:         string | null
+}
+
 export interface PdfLiquidacionArgs {
   chofer_nombre:   string
   chofer_cuil:     string | null
@@ -54,10 +64,12 @@ export interface PdfLiquidacionArgs {
   subtotal_km:        number
   total_adelantos:    number
   total_reintegros:   number
+  total_estadias?:    number
   total_neto:         number
   tramos:    PdfLiquidacionTramo[]
   adelantos: PdfLiquidacionAdelanto[]
   gastos:    PdfLiquidacionGasto[]
+  estadias?: PdfLiquidacionEstadia[]
   estado:           'borrador' | 'cerrada'
   numero_liquidacion: number | null
   observaciones:    string | null
@@ -179,6 +191,41 @@ export function generarPdfLiquidacion(args: PdfLiquidacionArgs): void {
     },
   ]
 
+  // ── Tabla de estadías (días de espera, pagados por día) ─────────
+  const estadiasArr = args.estadias ?? []
+  const estadiasBlock: Content[] = estadiasArr.length === 0 ? [] : [
+    { text: 'Estadías (días de espera)', style: 'sectionTitle', margin: [0, 12, 0, 4] },
+    {
+      style: 'table',
+      table: {
+        headerRows: 1,
+        widths: [110, 40, 70, '*', 70],
+        body: [
+          [
+            { text: 'Período',     style: 'tableHeaderGreen' },
+            { text: 'Días',        style: 'tableHeaderGreen', alignment: 'right' },
+            { text: '$/día',       style: 'tableHeaderGreen', alignment: 'right' },
+            { text: 'Observación', style: 'tableHeaderGreen' },
+            { text: 'Total',       style: 'tableHeaderGreen', alignment: 'right' },
+          ],
+          ...estadiasArr.map(e => [
+            { text: `${fmtFecha(e.fecha_desde)} → ${fmtFecha(e.fecha_hasta)}` },
+            { text: fmtN(e.dias), alignment: 'right' as const },
+            { text: fmtM(e.monto_dia), alignment: 'right' as const },
+            { text: e.obs || '—' },
+            { text: fmtM(e.total), alignment: 'right' as const },
+          ]),
+        ],
+      },
+      layout: {
+        fillColor: (rowIdx) => rowIdx === 0 ? '#E5F4E5' : null,
+        hLineWidth: () => 0.3,
+        vLineWidth: () => 0,
+        hLineColor: () => '#D0D5DD',
+      },
+    },
+  ]
+
   // ── Totales ─────────────────────────────────────────────────────
   const totalesRows: Array<[string, string]> = []
   totalesRows.push([
@@ -202,6 +249,9 @@ export function generarPdfLiquidacion(args: PdfLiquidacionArgs): void {
   }
   if (args.total_reintegros > 0) {
     totalesRows.push(['+ Reintegros (gastos chofer)', '+ ' + fmtM(args.total_reintegros)])
+  }
+  if ((args.total_estadias ?? 0) > 0) {
+    totalesRows.push(['+ Estadías (días de espera)', '+ ' + fmtM(args.total_estadias!)])
   }
 
   // ── Document definition ────────────────────────────────────────
@@ -256,6 +306,9 @@ export function generarPdfLiquidacion(args: PdfLiquidacionArgs): void {
 
       // Gastos
       ...gastosBlock,
+
+      // Estadías
+      ...estadiasBlock,
 
       // Totales
       { text: 'Totales', style: 'sectionTitle', margin: [0, 16, 0, 6] },

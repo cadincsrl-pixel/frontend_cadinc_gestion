@@ -5,6 +5,7 @@ import {
   useLiquidaciones, useAdelantos, useChoferes, useCamiones, useTramos, useRutas, useCanteras, useDepositos,
   useCreateLiquidacion, useUpdateLiquidacion, useCerrarLiquidacion, useReabrirLiquidacion, useDeleteLiquidacion,
   useCreateAdelanto, useUpdateAdelanto, useDeleteAdelanto, useUpdateChofer,
+  useEstadias, useCreateEstadia, useDeleteEstadia,
   useGastosReintegrosPendientes, useReintegrosPendientesTodos,
   uploadComprobanteAdelanto, fetchAdelantoComprobanteUrl,
 } from '../hooks/useLogistica'
@@ -23,7 +24,7 @@ import { LiquidacionAdjuntosSection } from './LiquidacionAdjuntosSection'
 import { ModalSolicitudTransferencia } from './ModalSolicitudTransferencia'
 import { apiGet } from '@/lib/api/client'
 import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
-import type { Chofer, Tramo, Adelanto, Ruta, RelevoPendiente, RelevoLiquidado } from '@/types/domain.types'
+import type { Chofer, Tramo, Adelanto, Estadia, Ruta, RelevoPendiente, RelevoLiquidado } from '@/types/domain.types'
 import { exportLiquidacionExcel } from '@/lib/utils/liquidacion-export'
 import { toISO } from '@/lib/utils/dates'
 
@@ -144,6 +145,7 @@ export function LiquidacionesTab() {
   const toast = useToast()
   const { data: liquidaciones = [] } = useLiquidaciones()
   const { data: adelantos     = [] } = useAdelantos()
+  const { data: estadias      = [] } = useEstadias()
   const { data: choferes      = [] } = useChoferes()
   const { data: camiones      = [] } = useCamiones()
   const { data: tramos        = [] } = useTramos()
@@ -166,6 +168,8 @@ export function LiquidacionesTab() {
   const { mutate: createAdel,  isPending: creatingAdel } = useCreateAdelanto()
   const { mutate: updateAdel,  isPending: updatingAdel } = useUpdateAdelanto()
   const { mutate: deleteAdel  } = useDeleteAdelanto()
+  const { mutate: createEst,   isPending: creatingEst  } = useCreateEstadia()
+  const { mutate: deleteEst   } = useDeleteEstadia()
   const { mutate: updateChofer, isPending: savingTarifas } = useUpdateChofer()
 
   const [modalLiq,    setModalLiq]    = useState(false)
@@ -174,7 +178,9 @@ export function LiquidacionesTab() {
   const [selTramos,   setSelTramos]   = useState<number[]>([])
   const [selRelevos,  setSelRelevos]  = useState<number[]>([])
   const [selGastos,   setSelGastos]   = useState<number[]>([])
+  const [selEstadias, setSelEstadias] = useState<number[]>([])
   const [modalAdel,   setModalAdel]   = useState(false)
+  const [modalEst,    setModalEst]    = useState(false)
   const [modalTransf, setModalTransf] = useState(false)
   const [editandoAdel, setEditandoAdel] = useState<Adelanto | null>(null)
   const [detalleLiq,  setDetalleLiq]  = useState<any | null>(null)
@@ -207,6 +213,7 @@ export function LiquidacionesTab() {
   const [subiendoComp, setSubiendoComp] = useState(false)
 
   const formAdel    = useForm<any>()
+  const formEst     = useForm<any>()
   const formEditAdel = useForm<any>()
   const formLiq     = useForm<any>()
   const formDetalle = useForm<any>()
@@ -296,6 +303,9 @@ export function LiquidacionesTab() {
   // Tramos completados aún no liquidados, EXCLUYENDO los que tienen relevo.
   const tramosPendientes    = (tramos as Tramo[]).filter(t => t.estado === 'completado' && !t.liquidacion_id && !tramosConRelevoIds.has(t.id))
   const adelantosPendientes = (adelantos as Adelanto[]).filter(a => !a.liquidacion_id)
+  // Estadías (días de espera para cargar/descargar, pagados por día): mismo
+  // ciclo que los adelantos — pendientes hasta que una liquidación las incluye.
+  const estadiasPendientes  = (estadias as Estadia[]).filter(e => !e.liquidacion_id)
   // Reintegros pendientes (gastos pagados por el chofer, aprobados, sin liquidar)
   // de todos los choferes — para sumarlos al saldo del listado.
   const { data: reintegrosTodos } = useReintegrosPendientesTodos()
@@ -309,6 +319,7 @@ export function LiquidacionesTab() {
     const mis_relevos     = relevos.filter(r => r.chofer_id === chofer.id && r.tramo)
     const mis_adelantos   = adelantosPendientes.filter(a => a.chofer_id === chofer.id)
     const mis_reintegros  = reintegrosPendientes.filter(g => g.chofer_id === chofer.id)
+    const mis_estadias    = estadiasPendientes.filter(e => e.chofer_id === chofer.id)
     const sinBasico     = !chofer.basico_dia
     // Básico: días del span de tramos propios, restando los días cubiertos sólo
     // por relevos y sumando Σ jornales del relevo (cada chofer cobra su jornal,
@@ -330,12 +341,13 @@ export function LiquidacionesTab() {
     const subtotal      = subtotal_bas + subtotal_km
     const descuentos    = mis_adelantos.reduce((s, a) => s + a.monto, 0)
     const reintegros    = mis_reintegros.reduce((s, g) => s + Number(g.monto), 0)
-    const saldo         = subtotal - descuentos + reintegros
+    const total_estadias = mis_estadias.reduce((s, e) => s + Number(e.total), 0)
+    const saldo         = subtotal - descuentos + reintegros + total_estadias
     return {
-      mis_tramos, mis_relevos, mis_adelantos, mis_reintegros, dias, sinBasico, subtotal_bas,
+      mis_tramos, mis_relevos, mis_adelantos, mis_reintegros, mis_estadias, dias, sinBasico, subtotal_bas,
       km_cargados, km_vacios, km_totales,
       subtotal_km_cargado, subtotal_km_vacio, subtotal_km,
-      subtotal, descuentos, reintegros, saldo,
+      subtotal, descuentos, reintegros, total_estadias, saldo,
     }
   }
 
@@ -346,6 +358,7 @@ export function LiquidacionesTab() {
     setSelTramos(mis_tramos.map(t => t.id))
     setSelRelevos(mis_relevos.map(r => r.id))
     setSelAdelant(adelantosPendientes.filter(a => a.chofer_id === chofer.id).map(a => a.id))
+    setSelEstadias(estadiasPendientes.filter(e => e.chofer_id === chofer.id).map(e => e.id))
     setSelGastos([]) // se llena cuando el hook devuelve reintegros (useEffect abajo)
     const { desde, hasta } = rangoConRelevos(mis_tramos, mis_relevos)
     formLiq.reset({
@@ -364,7 +377,7 @@ export function LiquidacionesTab() {
       dias: 0, basico_dia: 0, subtotal_bas: 0,
       km_cargados: 0, km_vacios: 0, km_totales: 0,
       subtotal_km_cargado: 0, subtotal_km_vacio: 0, subtotal_km: 0,
-      descuentos: 0, reintegros: 0,
+      descuentos: 0, reintegros: 0, total_estadias: 0,
       precio_km_cargado: 0, precio_km_vacio: 0, precio_km: 0,
       neto: 0,
     }
@@ -397,17 +410,18 @@ export function LiquidacionesTab() {
     const subtotal_km      = subtotal_km_cargado + subtotal_km_vacio
     const descuentos       = adelantosPendientes.filter(a => selAdelant.includes(a.id)).reduce((s, a) => s + a.monto, 0)
     const reintegros       = gastosReintegro.filter(g => selGastos.includes(g.id)).reduce((s, g) => s + Number(g.monto), 0)
+    const total_estadias   = estadiasPendientes.filter(e => selEstadias.includes(e.id)).reduce((s, e) => s + Number(e.total), 0)
     // precio_km "promedio" para back-compat con la columna existente.
     const precio_km        = km_totales > 0 ? subtotal_km / km_totales : precioKmCargado
     return {
       dias, basico_dia, subtotal_bas,
       km_cargados, km_vacios, km_totales,
       subtotal_km_cargado, subtotal_km_vacio, subtotal_km,
-      descuentos, reintegros,
+      descuentos, reintegros, total_estadias,
       precio_km_cargado: precioKmCargado,
       precio_km_vacio:   precioKmVacio,
       precio_km,
-      neto: subtotal_bas + subtotal_km - descuentos + reintegros,
+      neto: subtotal_bas + subtotal_km - descuentos + reintegros + total_estadias,
     }
   }
 
@@ -454,6 +468,7 @@ export function LiquidacionesTab() {
       subtotal_km:         preview.subtotal_km,
       total_adelantos:     preview.descuentos,
       total_reintegros:    preview.reintegros,
+      total_estadias:      preview.total_estadias,
       total_neto:          preview.neto,
       tramos: [
         ...tramosDelChofer.map(t => {
@@ -486,6 +501,16 @@ export function LiquidacionesTab() {
           proveedor:   g.proveedor ?? null,
           descripcion: g.descripcion ?? null,
           monto:       Number(g.monto),
+        })),
+      estadias: estadiasPendientes
+        .filter(e => e.chofer_id === choferLiq.id && selEstadias.includes(e.id))
+        .map(e => ({
+          fecha_desde: e.fecha_desde,
+          fecha_hasta: e.fecha_hasta,
+          dias:        e.dias,
+          monto_dia:   Number(e.monto_dia),
+          total:       Number(e.total),
+          obs:         e.obs ?? null,
         })),
       estado:             'borrador',
       numero_liquidacion: null,
@@ -567,11 +592,11 @@ export function LiquidacionesTab() {
           descripcion: g.descripcion ?? null,
           monto:       Number(g.monto),
         })),
-        // Neto = básico + km − adelantos + reintegros, contando los reintegros
-        // UNA sola vez. OJO: exportData.neto (= saldo de resumenChofer) YA
-        // incluía reintegros, así que sumar resp.total los duplicaba (el Excel
+        // Neto = básico + km − adelantos + reintegros + estadías, contando los
+        // reintegros UNA sola vez. OJO: exportData.neto (= saldo de resumenChofer)
+        // YA incluía reintegros, así que sumar resp.total los duplicaba (el Excel
         // daba más que el PDF parcial). Recomputamos desde los subtotales.
-        neto: (exportData.subtotal_bas ?? 0) + (exportData.subtotal_km ?? 0) - (exportData.descuentos ?? 0) + resp.total,
+        neto: (exportData.subtotal_bas ?? 0) + (exportData.subtotal_km ?? 0) - (exportData.descuentos ?? 0) + resp.total + (exportData.total_estadias ?? 0),
       })
     } catch (err) {
       console.warn('[liquidacion] no se pudieron traer reintegros pendientes:', err)
@@ -589,6 +614,7 @@ export function LiquidacionesTab() {
     const camion = (camiones as any[]).find(c => c.id === chofer.camion_id)
     const liqTramos = (tramos as Tramo[]).filter(t => t.liquidacion_id === liq.id)
     const liqAdel   = (adelantos as Adelanto[]).filter(a => a.liquidacion_id === liq.id)
+    const liqEst    = (estadias as Estadia[]).filter(e => e.liquidacion_id === liq.id)
     const gastos    = await fetchGastosLiquidacion(liq.id)
     const relevoLegs = legsRelevoLiquidados(liq.id)
 
@@ -614,6 +640,7 @@ export function LiquidacionesTab() {
       subtotal_km:         liq.subtotal_km ?? 0,
       total_adelantos:     liq.total_adelantos ?? 0,
       total_reintegros:    liq.total_reintegros ?? 0,
+      total_estadias:      liq.total_estadias ?? 0,
       total_neto:          liq.total_neto,
       tramos: [
         ...liqTramos.map(t => {
@@ -643,6 +670,14 @@ export function LiquidacionesTab() {
         descripcion: g.descripcion ?? null,
         monto:       Number(g.monto),
       })),
+      estadias: liqEst.map(e => ({
+        fecha_desde: e.fecha_desde,
+        fecha_hasta: e.fecha_hasta,
+        dias:        e.dias,
+        monto_dia:   Number(e.monto_dia),
+        total:       Number(e.total),
+        obs:         e.obs ?? null,
+      })),
       estado:             liq.estado === 'cerrada' ? 'cerrada' : 'borrador',
       numero_liquidacion: liq.id,
       observaciones:      liq.obs ?? null,
@@ -660,7 +695,7 @@ export function LiquidacionesTab() {
     const {
       dias, basico_dia, subtotal_bas,
       km_totales, subtotal_km, subtotal_km_cargado, subtotal_km_vacio,
-      descuentos, reintegros, precio_km, neto,
+      descuentos, reintegros, total_estadias, precio_km, neto,
     } = calcularPreview()
     createLiq({
       chofer_id:           choferLiq.id,
@@ -676,12 +711,14 @@ export function LiquidacionesTab() {
       subtotal_km_vacio,
       total_adelantos:     descuentos,
       total_reintegros:    reintegros,
+      total_estadias,
       total_neto:          neto,
       obs:                 data.obs,
       tramo_ids:           selTramos,
       tramo_chofer_ids:    selRelevos,
       adelanto_ids:        selAdelant,
       gasto_ids:           selGastos,
+      estadia_ids:         selEstadias,
     } as any, {
       onSuccess: (nueva: any) => {
         cerrarLiq(nueva.id, {
@@ -693,6 +730,7 @@ export function LiquidacionesTab() {
             setSelTramos([])
             setSelRelevos([])
             setSelGastos([])
+            setSelEstadias([])
           },
           onError: (e: any) => toast(`Borrador creado pero no se pudo cerrar: ${e?.message ?? 'error desconocido'}. Cerralo desde la card de saldo.`, 'err'),
         })
@@ -703,6 +741,7 @@ export function LiquidacionesTab() {
         else if (code === 'RELEVO_INVALIDO') toast('Alguna pata de relevo no es válida (ya liquidada o no pertenece al chofer)', 'err')
         else if (code === 'ADELANTO_INVALIDO') toast('Alguno de los adelantos no es válido', 'err')
         else if (code === 'GASTO_INVALIDO') toast('Alguno de los gastos a reintegrar no es válido (cambió de estado)', 'err')
+        else if (code === 'ESTADIA_INVALIDA') toast('Alguna de las estadías no es válida (ya liquidada o no pertenece al chofer)', 'err')
         else toast(err?.message || 'Error al liquidar', 'err')
       },
     })
@@ -740,6 +779,34 @@ export function LiquidacionesTab() {
     } finally {
       setSubiendoComp(false)
     }
+  }
+
+  // Crea una estadía: fechas + $/día tipeado cada vez. Días y total se
+  // calculan acá (días corridos desde→hasta inclusive × monto por día).
+  function handleCreateEst(data: any) {
+    const choferId = Number(data.chofer_id)
+    if (!choferId) { toast('Elegí un chofer', 'err'); return }
+    if (!data.fecha_desde || !data.fecha_hasta) { toast('Cargá las fechas de la estadía', 'err'); return }
+    if (data.fecha_desde > data.fecha_hasta) { toast('La fecha "desde" no puede ser posterior a "hasta"', 'err'); return }
+    const montoDia = Number(data.monto_dia)
+    if (!Number.isFinite(montoDia) || montoDia <= 0) { toast('Cargá el monto por día', 'err'); return }
+    const dias = diasEntreFechas(data.fecha_desde, data.fecha_hasta)
+    createEst({
+      chofer_id:   choferId,
+      fecha_desde: data.fecha_desde,
+      fecha_hasta: data.fecha_hasta,
+      dias,
+      monto_dia:   montoDia,
+      total:       dias * montoDia,
+      obs:         data.obs || '',
+    }, {
+      onSuccess: () => {
+        toast('✓ Estadía registrada', 'ok')
+        setModalEst(false)
+        formEst.reset()
+      },
+      onError: () => toast('Error al registrar la estadía', 'err'),
+    })
   }
 
   async function verComprobanteAdel(id: number) {
@@ -785,6 +852,12 @@ export function LiquidacionesTab() {
         }}>
           💵 Registrar adelanto
         </Button>
+        <Button variant="secondary" size="sm" onClick={() => {
+          formEst.reset({ chofer_id: '', fecha_desde: toISO(new Date()), fecha_hasta: toISO(new Date()), monto_dia: '', obs: '' })
+          setModalEst(true)
+        }}>
+          🕐 Registrar estadía
+        </Button>
       </div>
 
       {/* ── Saldo corriente por chofer ── */}
@@ -794,8 +867,8 @@ export function LiquidacionesTab() {
         </h2>
         <div className="flex flex-col gap-3">
           {choferesPendientes.map(chofer => {
-            const { mis_tramos, mis_relevos, mis_adelantos, mis_reintegros, dias, sinBasico, subtotal_bas, km_cargados, km_vacios, km_totales, subtotal_km, subtotal, descuentos, reintegros, saldo } = resumenChofer(chofer)
-            const sinMovimientos = mis_tramos.length === 0 && mis_relevos.length === 0 && mis_adelantos.length === 0 && mis_reintegros.length === 0
+            const { mis_tramos, mis_relevos, mis_adelantos, mis_reintegros, mis_estadias, dias, sinBasico, subtotal_bas, km_cargados, km_vacios, km_totales, subtotal_km, subtotal, descuentos, reintegros, total_estadias, saldo } = resumenChofer(chofer)
+            const sinMovimientos = mis_tramos.length === 0 && mis_relevos.length === 0 && mis_adelantos.length === 0 && mis_reintegros.length === 0 && mis_estadias.length === 0
             const borrador = (liquidaciones as any[]).find(l => l.chofer_id === chofer.id && l.estado === 'borrador')
 
             return (
@@ -814,7 +887,7 @@ export function LiquidacionesTab() {
                     </div>
 
                     {sinMovimientos ? (
-                      <p className="text-xs text-gris-mid mt-1 italic">Sin tramos, adelantos ni gastos pendientes</p>
+                      <p className="text-xs text-gris-mid mt-1 italic">Sin tramos, adelantos, estadías ni gastos pendientes</p>
                     ) : (
                       <div className="text-xs text-gris-dark mt-1 space-y-0.5">
                         {mis_tramos.length > 0 && (
@@ -838,6 +911,7 @@ export function LiquidacionesTab() {
                             {subtotal_km > 0 && ` + ${fmtM(subtotal_km)} km`}
                             {descuentos > 0 && ` − ${fmtM(descuentos)} adelantos`}
                             {reintegros > 0 && ` + ${fmtM(reintegros)} gastos`}
+                            {total_estadias > 0 && ` + ${fmtM(total_estadias)} estadías`}
                           </div>
                         )}
                         {mis_adelantos.length > 0 && sinBasico && (
@@ -845,6 +919,9 @@ export function LiquidacionesTab() {
                         )}
                         {mis_reintegros.length > 0 && sinBasico && (
                           <div>{mis_reintegros.length} gasto{mis_reintegros.length !== 1 ? 's' : ''} pagado{mis_reintegros.length !== 1 ? 's' : ''} por el chofer · {fmtM(reintegros)}</div>
+                        )}
+                        {mis_estadias.length > 0 && sinBasico && (
+                          <div>🕐 {mis_estadias.length} estadía{mis_estadias.length !== 1 ? 's' : ''} · {fmtM(total_estadias)}</div>
                         )}
                       </div>
                     )}
@@ -869,6 +946,7 @@ export function LiquidacionesTab() {
                             {fmtM(subtotal)} haberes
                             {descuentos > 0 ? ` − ${fmtM(descuentos)}` : ''}
                             {reintegros > 0 ? ` + ${fmtM(reintegros)}` : ''}
+                            {total_estadias > 0 ? ` + ${fmtM(total_estadias)}` : ''}
                           </div>
                         </>
                       )}
@@ -926,10 +1004,12 @@ export function LiquidacionesTab() {
                         subtotal_km_vacio:   km_vacios   * precio_km_vacio,
                         // Reintegros contados UNA vez (fallback; en el camino normal se
                         // recomputa con resp.total del endpoint).
-                        neto: subtotal_bas + subtotal_km - descuentos + reintegros,
+                        neto: subtotal_bas + subtotal_km - descuentos + reintegros + total_estadias,
                         tramos:       mis_tramos,
                         relevos:      legsDeRelevos(mis_relevos),
                         adelantos:    mis_adelantos,
+                        estadias:     mis_estadias,
+                        total_estadias,
                         canteras:     canteras as any[],
                         depositos:    depositos as any[],
                         rutas:        rutas as Ruta[],
@@ -1008,6 +1088,7 @@ export function LiquidacionesTab() {
                     {(() => {
                       const liqTramos  = (tramos   as Tramo[]).filter(t => t.liquidacion_id === liq.id)
                       const liqAdel    = (adelantos as Adelanto[]).filter(a => a.liquidacion_id === liq.id)
+                      const liqEst     = (estadias as Estadia[]).filter(e => e.liquidacion_id === liq.id)
                       const relevoLegs = legsRelevoLiquidados(liq.id)
                       // Desglose km cargado/vacío + patas de relevo, para cuadrar con
                       // el subtotal_km persistido (que incluye relevos).
@@ -1033,6 +1114,8 @@ export function LiquidacionesTab() {
                         tramos:       liqTramos,
                         relevos:      relevoLegs,
                         adelantos:    liqAdel,
+                        estadias:     liqEst,
+                        total_estadias: liq.total_estadias ?? 0,
                         canteras:     canteras as any[],
                         depositos:    depositos as any[],
                         rutas:        rutas as Ruta[],
@@ -1241,6 +1324,43 @@ export function LiquidacionesTab() {
         )
       })()}
 
+      {/* ── Estadías (días de espera pagados por día) ── */}
+      {(estadias as Estadia[]).length > 0 && (
+        <div>
+          <h2 className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-2">🕐 Estadías</h2>
+          <div className="bg-white rounded-card shadow-card divide-y divide-gris">
+            {[...(estadias as Estadia[])]
+              .sort((a, b) => b.fecha_desde.localeCompare(a.fecha_desde))
+              .map(e => {
+                const ch = (choferes as Chofer[]).find(c => c.id === e.chofer_id)
+                return (
+                  <div key={e.id} className="flex items-center justify-between gap-3 px-4 py-2 text-sm hover:bg-gris/20 transition-colors">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-azul">{ch?.nombre ?? `#${e.chofer_id}`}</span>
+                        {e.liquidacion_id
+                          ? <span className="text-[10px] text-gris-mid">Liquidada en N° {e.liquidacion_id}</span>
+                          : <span className="text-[10px] font-bold uppercase tracking-wide bg-amarillo/20 text-amber-700 px-1.5 py-0.5 rounded">Pendiente</span>}
+                      </div>
+                      <div className="text-xs text-gris-dark mt-0.5">
+                        {fmtFecha(e.fecha_desde)} → {fmtFecha(e.fecha_hasta)} · {e.dias} día{e.dias !== 1 ? 's' : ''} × {fmtM(Number(e.monto_dia))}
+                        {e.obs && <span className="text-gris-mid"> · {e.obs}</span>}
+                      </div>
+                    </div>
+                    <div className="font-mono font-bold text-verde shrink-0">{fmtM(Number(e.total))}</div>
+                    {!e.liquidacion_id && (
+                      <button
+                        onClick={() => { if (confirm('¿Eliminar estadía?')) deleteEst(e.id, { onSuccess: () => toast('✓ Estadía eliminada', 'ok'), onError: () => toast('Error al eliminar', 'err') }) }}
+                        className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors shrink-0"
+                      >✕</button>
+                    )}
+                  </div>
+                )
+              })}
+          </div>
+        </div>
+      )}
+
       {/* ── Modal liquidar ── */}
       <Modal open={modalLiq} onClose={() => setModalLiq(false)} title="💰 LIQUIDAR CHOFER" width="max-w-xl"
         footer={
@@ -1436,6 +1556,32 @@ export function LiquidacionesTab() {
               </div>
             )}
 
+            {/* Estadías (días de espera) — SUMAN al neto */}
+            {estadiasPendientes.filter(e => e.chofer_id === choferLiq.id).length > 0 && (
+              <div>
+                <div className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-2">
+                  🕐 Estadías a pagar
+                </div>
+                <div className="bg-verde-light/40 border border-verde/20 rounded-xl p-3 max-h-32 overflow-y-auto flex flex-col gap-1">
+                  {estadiasPendientes.filter(e => e.chofer_id === choferLiq.id).map(e => (
+                    <label key={e.id} className="flex items-center gap-2 cursor-pointer text-sm py-1 border-b border-verde/10 last:border-0">
+                      <input
+                        type="checkbox"
+                        checked={selEstadias.includes(e.id)}
+                        onChange={ev => setSelEstadias(prev => ev.target.checked ? [...prev, e.id] : prev.filter(x => x !== e.id))}
+                        className="accent-verde"
+                      />
+                      <span className="flex-1 min-w-0 truncate">
+                        {fmtFecha(e.fecha_desde)} → {fmtFecha(e.fecha_hasta)} · {e.dias} día{e.dias !== 1 ? 's' : ''} × {fmtM(Number(e.monto_dia))}
+                        {e.obs && <span className="text-gris-mid"> · {e.obs}</span>}
+                      </span>
+                      <b className="font-mono text-verde">{fmtM(Number(e.total))}</b>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Resumen */}
             <div className="bg-azul-light rounded-xl p-4">
               <div className="font-display text-lg tracking-wider text-azul mb-3">RESUMEN</div>
@@ -1478,6 +1624,12 @@ export function LiquidacionesTab() {
                     <span className="font-mono font-bold text-naranja-dark">+ {fmtM(preview.reintegros)}</span>
                   </>
                 )}
+                {preview.total_estadias > 0 && (
+                  <>
+                    <span className="text-gris-dark">🕐 Estadías:</span>
+                    <span className="font-mono font-bold text-verde">+ {fmtM(preview.total_estadias)}</span>
+                  </>
+                )}
                 <span className="font-bold text-azul border-t border-azul/20 pt-1.5">TOTAL NETO:</span>
                 <span className={`font-mono font-bold text-lg border-t border-azul/20 pt-1.5 ${preview.neto >= 0 ? 'text-verde' : 'text-rojo'}`}>
                   {fmtM(preview.neto)}
@@ -1496,6 +1648,7 @@ export function LiquidacionesTab() {
         const camion     = chofer ? (camiones as any[]).find(c => c.id === chofer.camion_id) : null
         const liqTramos  = (tramos as Tramo[]).filter(t => t.liquidacion_id === detalleLiq.id)
         const liqAdel    = (adelantos as Adelanto[]).filter(a => a.liquidacion_id === detalleLiq.id)
+        const liqEst     = (estadias as Estadia[]).filter(e => e.liquidacion_id === detalleLiq.id)
         const relevoLegs = legsRelevoLiquidados(detalleLiq.id)
         const esBorrador = detalleLiq.estado === 'borrador'
 
@@ -1606,6 +1759,8 @@ export function LiquidacionesTab() {
                         tramos:       liqTramosLocal,
                         relevos:      relevoLegs,
                         adelantos:    liqAdel,
+                        estadias:     liqEst,
+                        total_estadias: detalleLiq.total_estadias ?? 0,
                         canteras:     canteras as any[],
                         depositos:    depositos as any[],
                         rutas:        rutas as Ruta[],
@@ -1710,6 +1865,26 @@ export function LiquidacionesTab() {
                 </div>
               )}
 
+              {/* Estadías pagadas en esta liquidación */}
+              {liqEst.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-2">
+                    🕐 Estadías pagadas ({liqEst.length})
+                  </div>
+                  <div className="bg-gris rounded-xl divide-y divide-gris-mid max-h-32 overflow-y-auto">
+                    {liqEst.map((e: Estadia) => (
+                      <div key={e.id} className="flex justify-between text-xs px-3 py-2">
+                        <span className="text-gris-dark">
+                          {fmtFecha(e.fecha_desde)} → {fmtFecha(e.fecha_hasta)} · {e.dias} día{e.dias !== 1 ? 's' : ''} × {fmtM(Number(e.monto_dia))}
+                          {e.obs && ` · ${e.obs}`}
+                        </span>
+                        <span className="font-mono font-semibold text-verde shrink-0">+ {fmtM(Number(e.total))}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Gastos del chofer (reintegros) — fetch on-demand */}
               <div>
                 <div className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-2">
@@ -1772,6 +1947,12 @@ export function LiquidacionesTab() {
                     <>
                       <span className="text-gris-dark">+ Reintegros (gastos chofer):</span>
                       <span className="font-mono font-bold text-right text-verde">+ {fmtM(detalleLiq.total_reintegros)}</span>
+                    </>
+                  )}
+                  {(detalleLiq.total_estadias ?? 0) > 0 && (
+                    <>
+                      <span className="text-gris-dark">+ Estadías:</span>
+                      <span className="font-mono font-bold text-right text-verde">+ {fmtM(detalleLiq.total_estadias)}</span>
                     </>
                   )}
 
@@ -2014,6 +2195,7 @@ export function LiquidacionesTab() {
         const puedeOk   = numeroOk && motivoOk
         const liqTramosCount = (tramos as Tramo[]).filter(t => t.liquidacion_id === confirmDelLiq.id).length
         const liqAdelCount   = (adelantos as Adelanto[]).filter(a => a.liquidacion_id === confirmDelLiq.id).length
+        const liqEstCount    = (estadias as Estadia[]).filter(e => e.liquidacion_id === confirmDelLiq.id).length
         return (
           <Modal
             open
@@ -2054,6 +2236,9 @@ export function LiquidacionesTab() {
                 <ul className="text-xs mt-2 space-y-0.5 ml-4 list-disc">
                   <li>Los <b>{liqTramosCount} tramo{liqTramosCount !== 1 ? 's' : ''}</b> volverán al saldo corriente.</li>
                   <li>Los <b>{liqAdelCount} adelanto{liqAdelCount !== 1 ? 's' : ''}</b> quedarán pendientes de descontar.</li>
+                  {liqEstCount > 0 && (
+                    <li>Las <b>{liqEstCount} estadía{liqEstCount !== 1 ? 's' : ''}</b> quedarán pendientes de pagar.</li>
+                  )}
                   <li>Los <b>gastos del chofer</b> volverán a estar disponibles para reintegrar.</li>
                 </ul>
               </div>
@@ -2094,6 +2279,62 @@ export function LiquidacionesTab() {
           </Modal>
         )
       })()}
+
+      {/* ── Modal registrar estadía ── */}
+      <Modal
+        open={modalEst}
+        onClose={() => setModalEst(false)}
+        title="🕐 REGISTRAR ESTADÍA"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setModalEst(false)}>Cancelar</Button>
+            <Button variant="primary" loading={creatingEst} onClick={formEst.handleSubmit(handleCreateEst)}>
+              ✓ Guardar
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          <Combobox
+            label="Chofer"
+            placeholder="Buscar chofer..."
+            options={(choferes as Chofer[]).filter(c => c.estado !== 'inactivo').map(c => ({ value: String(c.id), label: c.nombre }))}
+            value={String(formEst.watch('chofer_id') ?? '')}
+            onChange={(v: string) => formEst.setValue('chofer_id', v)}
+          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Input label="Desde" type="date" {...formEst.register('fecha_desde')} />
+            <Input label="Hasta" type="date" {...formEst.register('fecha_hasta')} />
+          </div>
+          <Input label="Monto por día ($)" type="number" step="1000" placeholder="0" {...formEst.register('monto_dia')} />
+          <Input label="Observación" placeholder="Ej: espera para descargar en TPR" {...formEst.register('obs')} />
+
+          {/* Preview del total: días corridos (desde→hasta inclusive) × $/día */}
+          {(() => {
+            const desde = formEst.watch('fecha_desde')
+            const hasta = formEst.watch('fecha_hasta')
+            const montoDia = Number(formEst.watch('monto_dia'))
+            if (!desde || !hasta) return null
+            if (desde > hasta) {
+              return <p className="text-xs text-rojo">⚠ La fecha "desde" es posterior a "hasta".</p>
+            }
+            const dias = diasEntreFechas(desde, hasta)
+            return (
+              <div className="bg-verde-light/60 rounded-xl px-4 py-3 text-sm flex items-center justify-between gap-3">
+                <span className="text-gris-dark">
+                  {dias} día{dias !== 1 ? 's' : ''}{montoDia > 0 && <> × {fmtM(montoDia)}</>}
+                </span>
+                {montoDia > 0 && (
+                  <span className="font-mono font-bold text-verde text-lg">{fmtM(dias * montoDia)}</span>
+                )}
+              </div>
+            )
+          })()}
+          <p className="text-[11px] text-gris-mid italic">
+            La estadía queda pendiente y se suma al liquidar el período del chofer.
+          </p>
+        </div>
+      </Modal>
 
       <ModalSolicitudTransferencia open={modalTransf} onClose={() => setModalTransf(false)} />
     </>

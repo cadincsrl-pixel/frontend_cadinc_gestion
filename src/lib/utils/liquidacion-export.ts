@@ -8,7 +8,7 @@
  */
 import ExcelJS from 'exceljs'
 import { EMPRESA } from '@/lib/config/empresa'
-import type { Tramo, Adelanto, Ruta } from '@/types/domain.types'
+import type { Tramo, Adelanto, Estadia, Ruta } from '@/types/domain.types'
 
 // ── Paleta (ARGB) alineada al theme Tailwind del front ─────────────
 const C_AZUL          = 'FF1F3A66'
@@ -94,6 +94,9 @@ export interface LiqExportData {
   adelantos:    Adelanto[]
   // Gastos pagados por el chofer en el período (reintegros).
   gastos?:      LiqExportGasto[]
+  // Estadías (días de espera pagados por día) — SUMAN al neto.
+  estadias?:        Estadia[]
+  total_estadias?:  number
   canteras:     { id: number; nombre: string }[]
   depositos:    { id: number; nombre: string }[]
   rutas:        Ruta[]
@@ -386,6 +389,43 @@ export async function exportLiquidacionExcel(d: LiqExportData) {
     r.getCell(1).value = 'Total reintegros'
     r.getCell(1).alignment = { horizontal: 'right', vertical: 'middle', indent: 1 }
     r.getCell(7).value  = d.reintegros ?? 0
+    r.getCell(7).numFmt = FMT_MONTO
+    r.getCell(7).alignment = { horizontal: 'right', vertical: 'middle' }
+    setSubtotalRow(r)
+    row += 2
+  }
+
+  // ── ESTADÍAS (días de espera pagados por día) ──
+  if (d.estadias && d.estadias.length > 0) {
+    setSectionHeader(ws, row, '🕐 ESTADÍAS (días de espera)', C_VERDE); row++
+    setTableHeader(ws, row, ['Desde', 'Hasta', 'Días', '$/día', 'Observación', null, 'Total']); row++
+    d.estadias.forEach((e, idx) => {
+      const r = ws.getRow(row)
+      r.getCell(1).value  = parseFecha(e.fecha_desde)
+      r.getCell(1).numFmt = FMT_FECHA
+      r.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' }
+      r.getCell(2).value  = parseFecha(e.fecha_hasta)
+      r.getCell(2).numFmt = FMT_FECHA
+      r.getCell(2).alignment = { horizontal: 'center', vertical: 'middle' }
+      r.getCell(3).value  = e.dias
+      r.getCell(3).numFmt = FMT_DIAS
+      r.getCell(3).alignment = { horizontal: 'right', vertical: 'middle' }
+      r.getCell(4).value  = Number(e.monto_dia)
+      r.getCell(4).numFmt = FMT_MONTO
+      r.getCell(4).alignment = { horizontal: 'right', vertical: 'middle' }
+      r.getCell(5).value = e.obs || '—'
+      ws.mergeCells(`E${row}:F${row}`)
+      r.getCell(7).value  = Number(e.total)
+      r.getCell(7).numFmt = FMT_MONTO
+      r.getCell(7).alignment = { horizontal: 'right', vertical: 'middle' }
+      setDataRowBorders(r, idx % 2 === 1)
+      row++
+    })
+    const r = ws.getRow(row)
+    ws.mergeCells(`A${row}:F${row}`)
+    r.getCell(1).value = 'Total estadías'
+    r.getCell(1).alignment = { horizontal: 'right', vertical: 'middle', indent: 1 }
+    r.getCell(7).value  = d.total_estadias ?? d.estadias.reduce((s, e) => s + Number(e.total), 0)
     r.getCell(7).numFmt = FMT_MONTO
     r.getCell(7).alignment = { horizontal: 'right', vertical: 'middle' }
     setSubtotalRow(r)
