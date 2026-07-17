@@ -129,8 +129,8 @@ export function CuentaCorrienteTab() {
                 key={c.cliente_id ?? 'sin-cliente'}
                 cliente={c}
                 filtroFechas={filtroFechas}
-                puedeCrear={permisos.puedeCrear}
-                puedeEliminar={permisos.puedeEliminar}
+                puedeCrear={permisos.puedeCrear && permisos.gestionarCobros}
+                puedeEliminar={permisos.puedeEliminar && permisos.gestionarCobros}
                 onRegistrarCobro={() =>
                   c.cliente_id != null &&
                   setCobroPara({ id: c.cliente_id, nombre: c.cliente_nombre })

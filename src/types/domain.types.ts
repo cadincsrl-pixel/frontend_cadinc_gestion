@@ -911,6 +911,8 @@ export type ModuloPermisos = { [K in Accion]?: boolean } & {
   //   manuales de stock pendientes (doble control para evitar tapado de
   //   faltantes). Independiente de actualizacion (que permite CREAR el
   //   ajuste pendiente).
+  // - alquiler.gestionar_cobros: cargar/editar cobros de clientes sin ser
+  //   admin (eliminar cobros sigue admin-only).
   //
   // Flags eliminadas en Permisos v3 (2026-05-18):
   // - vista_completa: reemplazada por `obras_scope` global del profile.
@@ -921,6 +923,7 @@ export type ModuloPermisos = { [K in Accion]?: boolean } & {
   forzar_despacho?:        boolean
   administrar_obras?:      boolean
   aprobar_ajustes_stock?:  boolean
+  gestionar_cobros?:       boolean
 }
 export type Permisos = Record<string, ModuloPermisos>
 

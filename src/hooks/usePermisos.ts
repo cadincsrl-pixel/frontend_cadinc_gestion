@@ -20,7 +20,7 @@ export function usePermisos(modulo: string) {
 
   // Capacidad: true = el user la tiene. Admin siempre true (bypass).
   // Capacidades v3: ver_costos, ver_pii, resolver_items, forzar_despacho,
-  // aprobar_ajustes_stock, administrar_obras.
+  // aprobar_ajustes_stock, administrar_obras, gestionar_cobros (alquiler).
   const flagCapacidad = (key: string, defaultValue: boolean = false): boolean => {
     if (profile?.rol === 'admin') return true
     return rawFlag(key, defaultValue)
@@ -42,6 +42,7 @@ export function usePermisos(modulo: string) {
     resolverItems:        flagCapacidad('resolver_items', false),
     forzarDespacho:       flagCapacidad('forzar_despacho', false),
     aprobarAjustesStock:  flagCapacidad('aprobar_ajustes_stock', false),
+    gestionarCobros:      flagCapacidad('gestionar_cobros', false),
     puedeAdministrarObras: flagCapacidad('administrar_obras', false),
     esCapataz,
     esJefeObra,
