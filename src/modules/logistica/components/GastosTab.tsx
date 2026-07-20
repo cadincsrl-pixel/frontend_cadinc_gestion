@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form'
 import { intInputProps } from '@/lib/utils/inputs'
 import {
   useGastos, useGastosCategorias, useCreateGasto, useUpdateGasto, useDeleteGasto,
-  useAprobarGasto, useRechazarGasto, useMarcarGastoPagado,
+  useAprobarGasto, useAprobarGastoLote, useRechazarGasto, useMarcarGastoPagado,
   useGastoComprobanteUrl, uploadComprobanteGasto,
   useChoferes, useCamiones,
   type Gasto, type GastosFilters,
@@ -88,6 +88,7 @@ export function GastosTab() {
   const { mutate: updateGasto, isPending: updating } = useUpdateGasto()
   const { mutate: deleteGasto }                      = useDeleteGasto()
   const { mutate: aprobarGasto, isPending: aprobando } = useAprobarGasto()
+  const { mutate: aprobarLote, isPending: aprobandoLote } = useAprobarGastoLote()
   const { mutate: rechazarGasto }                    = useRechazarGasto()
   const { mutate: marcarPagado, isPending: marcandoPagado } = useMarcarGastoPagado()
 
@@ -97,6 +98,9 @@ export function GastosTab() {
   const [modalImport, setModalImport] = useState(false)
   const [editando,    setEditando]    = useState<Gasto | null>(null)
   const [verDetalle,  setVerDetalle]  = useState<Gasto | null>(null)
+  // Selección para aprobación múltiple. Solo aplica a gastos pendientes que
+  // este usuario puede aprobar (no los creó él — misma regla que el backend).
+  const [seleccion, setSeleccion] = useState<Set<number>>(new Set())
 
   // El toggle de reportes solo se expone a usuarios con actualizacion —
   // agregaciones de costos son información gerencial, no operativa.
@@ -311,6 +315,51 @@ export function GastosTab() {
     })
   }
 
+  // ── Aprobación múltiple ─────────────────────────────────────
+  // Gastos que ESTE usuario puede aprobar: pendientes que no creó él (misma
+  // regla que valida el backend). Solo se ofrece a quien puede crear (el POST
+  // de aprobación pide permiso de creación).
+  const aprobables = useMemo(
+    () => gastos.filter(g => g.estado === 'pendiente' && g.created_by !== userId),
+    [gastos, userId],
+  )
+  const aprobablesIds = useMemo(() => new Set(aprobables.map(g => g.id)), [aprobables])
+  // Podar la selección a lo que sigue siendo aprobable tras cada refetch/filtro
+  // (un gasto que se aprobó/rechazó/cambió de página no debe quedar tildado).
+  useEffect(() => {
+    setSeleccion(prev => {
+      const next = new Set([...prev].filter(id => aprobablesIds.has(id)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [aprobablesIds])
+
+  function toggleSeleccion(id: number) {
+    setSeleccion(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+  function toggleTodos() {
+    setSeleccion(prev => prev.size === aprobables.length ? new Set() : new Set(aprobables.map(g => g.id)))
+  }
+
+  function handleAprobarSeleccionados() {
+    const ids = [...seleccion]
+    if (ids.length === 0) return
+    aprobarLote(ids, {
+      onSuccess: (res) => {
+        const nOk = res.aprobados.length
+        const nSalt = res.saltados.length
+        if (nOk > 0 && nSalt === 0)      toast(`✓ ${nOk} gasto${nOk !== 1 ? 's' : ''} aprobado${nOk !== 1 ? 's' : ''}`, 'ok')
+        else if (nOk > 0 && nSalt > 0)   toast(`✓ ${nOk} aprobado${nOk !== 1 ? 's' : ''} · ${nSalt} salteado${nSalt !== 1 ? 's' : ''} (ya no pendientes o creados por vos)`, 'ok')
+        else                             toast(`No se aprobó ninguno: ${nSalt} salteado${nSalt !== 1 ? 's' : ''} (ya no pendientes o creados por vos)`, 'err')
+        setSeleccion(new Set())
+      },
+      onError: (err: any) => toast(err?.message || 'Error al aprobar los gastos', 'err'),
+    })
+  }
+
   function handleRechazar(g: Gasto) {
     const motivo = prompt('Motivo del rechazo (mínimo 3 caracteres):')?.trim()
     if (!motivo || motivo.length < 3) return
@@ -436,6 +485,38 @@ export function GastosTab() {
         )}
       </div>
 
+      {/* Barra de aprobación múltiple — solo si hay pendientes aprobables */}
+      {puedeCrear && aprobables.length > 0 && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-card p-3 flex flex-wrap items-center gap-3 text-sm">
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={seleccion.size === aprobables.length}
+              ref={el => { if (el) el.indeterminate = seleccion.size > 0 && seleccion.size < aprobables.length }}
+              onChange={toggleTodos}
+              className="w-4 h-4 accent-emerald-600 cursor-pointer"
+            />
+            <span className="font-semibold text-emerald-900">
+              Seleccionar pendientes por aprobar ({aprobables.length})
+            </span>
+          </label>
+          {seleccion.size > 0 && (
+            <span className="text-gris-dark">{seleccion.size} seleccionado{seleccion.size !== 1 ? 's' : ''}</span>
+          )}
+          <div className="ml-auto">
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={seleccion.size === 0}
+              loading={aprobandoLote}
+              onClick={handleAprobarSeleccionados}
+            >
+              ✓ Aprobar seleccionados{seleccion.size > 0 ? ` (${seleccion.size})` : ''}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Listado */}
       <div className="bg-white rounded-card shadow-card overflow-hidden">
         {isLoading ? (
@@ -444,12 +525,33 @@ export function GastosTab() {
           <div className="p-6 text-center text-gris-dark">No hay gastos que coincidan con el filtro.</div>
         ) : (
           <div className="divide-y divide-gris">
-            {gastos.map(g => (
-              <button
+            {gastos.map(g => {
+              const esAprobable  = g.estado === 'pendiente' && g.created_by !== userId
+              const esPropioPend = g.estado === 'pendiente' && g.created_by === userId
+              return (
+              <div
                 key={g.id}
-                onClick={() => setVerDetalle(g)}
-                className="w-full text-left p-3 hover:bg-gris-light transition flex items-center gap-3"
+                className={`p-3 transition flex items-center gap-3 ${seleccion.has(g.id) ? 'bg-emerald-50' : 'hover:bg-gris-light'}`}
               >
+                {puedeCrear && (
+                  <div className="shrink-0 w-5 flex justify-center">
+                    {esAprobable ? (
+                      <input
+                        type="checkbox"
+                        checked={seleccion.has(g.id)}
+                        onChange={() => toggleSeleccion(g.id)}
+                        title="Seleccionar para aprobar"
+                        className="w-4 h-4 accent-emerald-600 cursor-pointer"
+                      />
+                    ) : esPropioPend ? (
+                      <span title="No podés aprobar un gasto que vos mismo creaste" className="text-gris-mid text-xs cursor-help">🔒</span>
+                    ) : null}
+                  </div>
+                )}
+                <button
+                  onClick={() => setVerDetalle(g)}
+                  className="flex-1 min-w-0 text-left flex items-center gap-3"
+                >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-semibold">{g.categoria?.nombre ?? `Categoría ${g.categoria_id}`}</span>
@@ -480,8 +582,10 @@ export function GastosTab() {
                     {g.chofer_id && choferes.find(c => c.id === g.chofer_id)?.nombre}
                   </div>
                 </div>
-              </button>
-            ))}
+                </button>
+              </div>
+              )
+            })}
           </div>
         )}
         {gastosResp?.hasMore && (

@@ -808,6 +808,20 @@ export function useAprobarGasto() {
   })
 }
 
+// Aprobación múltiple: manda una lista de ids y el backend valida cada uno
+// (pendiente + no auto-aprobar). Devuelve { aprobados, saltados } para el
+// resumen en pantalla.
+export function useAprobarGastoLote() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (ids: number[]) =>
+      apiPost<{ aprobados: number[]; saltados: { id: number; code: string }[] }>(
+        '/api/logistica/gastos/aprobar-lote', { ids },
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.gastos }),
+  })
+}
+
 export function useRechazarGasto() {
   const qc = useQueryClient()
   return useMutation({
