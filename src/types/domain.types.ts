@@ -1208,6 +1208,9 @@ export interface ItemEvento {
 export interface SolicitudCompra extends AuditFields {
   id:           number
   obra_cod:     string
+  // Nombre de la obra resuelto en el backend (embed obra_cod→obras.cod). Puede
+  // ser null si la obra fue borrada; el consumidor cae a obra_cod.
+  obra_nom:     string | null
   solicitante:  string | null
   fecha:        string
   estado:       SolicitudEstado

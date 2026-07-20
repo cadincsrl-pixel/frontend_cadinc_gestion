@@ -260,11 +260,11 @@ export function useNotificaciones(): NotificacionesResult {
     staleTime: 5 * 60 * 1000,
   })
   const obras = obrasQuery.data ?? []
-  // Ambas fuentes de los pedidos (solicitudes + obras) ya cargaron: recién ahí
-  // los nombres se pueden resolver y el warmup del aviso puede activarse sin
-  // riesgo de spamear los pedidos existentes ni caer al código. Requiere las
-  // DOS (no importa el orden en que resuelvan).
-  const pedidosNombresListos = obrasQuery.isSuccess && solicitudesQuery.isSuccess
+  // El nombre de la obra ahora viene embebido en cada solicitud desde el
+  // backend, así que alcanza con que las solicitudes hayan cargado: el warmup
+  // del aviso puede activarse sin caer al código ni depender de la lista de
+  // obras (que puede venir scopeada/vacía para compras o stale).
+  const pedidosNombresListos = solicitudesQuery.isSuccess
 
   return useMemo(() => {
     const hoyDate = new Date()
@@ -395,7 +395,9 @@ export function useNotificaciones(): NotificacionesResult {
       .map(s => ({
         id:          s.id,
         obra_cod:    s.obra_cod,
-        obra_nom:    nomPorCod.get(s.obra_cod) ?? null,
+        // El backend ya resuelve el nombre (embed obra_cod→obras.cod); el mapa
+        // de obras queda como fallback por si un pedido viejo no lo trae.
+        obra_nom:    s.obra_nom ?? nomPorCod.get(s.obra_cod) ?? null,
         fecha:       s.fecha,
         nPendientes: (s.items ?? []).filter(i => i.estado === 'pendiente').length,
       }))
