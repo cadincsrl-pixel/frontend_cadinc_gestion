@@ -304,10 +304,20 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
       .sort((a, b) => a.vigente_desde.localeCompare(b.vigente_desde))
   }
 
+  // Las tarifas se GUARDAN como valor final (c/IVA) — así las consumen los
+  // cobros, el saldo y los PDFs. Pero los transportistas pasan la NETA, así
+  // que el form pide neta y el sistema calcula el final solo (IVA 21%).
+  const IVA = 1.21
+  const netaAFinal = (neta: number) => Math.round(neta * IVA * 100) / 100
+  // Prefill de edición con 4 decimales: el roundtrip neta→final devuelve el
+  // valor original exacto (los finales guardados tienen ≤2 decimales).
+  const finalANeta = (final: number) => Number((final / IVA).toFixed(4))
+
   const watchCantera  = form.watch('cantera_id')
   const watchDeposito = form.watch('deposito_id')
   const watchUnidad   = form.watch('tipo_unidad')
   const watchFecha    = form.watch('vigente_desde')
+  const watchNeta     = form.watch('valor_ton_neta')
   const posterioresNueva = tarifasPosteriores(
     watchCantera ? Number(watchCantera) : null,
     watchDeposito ? Number(watchDeposito) : null,
@@ -316,15 +326,16 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
   )
 
   const watchEditFecha = formEdit.watch('vigente_desde')
+  const watchEditNeta  = formEdit.watch('valor_ton_neta')
   const posterioresEdit = editando
     ? tarifasPosteriores(editando.cantera_id, editando.deposito_id ?? null, editando.tipo_unidad ?? null, watchEditFecha, editando.id)
     : []
 
   function abrirEditar(t: TarifaEmpresaCantera) {
     formEdit.reset({
-      valor_ton:     t.valor_ton,
-      vigente_desde: t.vigente_desde,
-      obs:           (t as any).obs ?? '',
+      valor_ton_neta: finalANeta(Number(t.valor_ton)),
+      vigente_desde:  t.vigente_desde,
+      obs:            (t as any).obs ?? '',
     })
     setEditando(t)
   }
@@ -335,7 +346,7 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
     actualizar({
       id: editando.id,
       dto: {
-        valor_ton:     Number(data.valor_ton),
+        valor_ton:     netaAFinal(Number(data.valor_ton_neta)),
         vigente_desde: data.vigente_desde,
         obs:           data.obs ?? '',
       },
@@ -366,7 +377,7 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
       cantera_id:    Number(data.cantera_id),
       deposito_id:   data.deposito_id ? Number(data.deposito_id) : null,
       tipo_unidad:   data.tipo_unidad ? (data.tipo_unidad as 'batea' | 'chasis') : null,
-      valor_ton:     Number(data.valor_ton),
+      valor_ton:     netaAFinal(Number(data.valor_ton_neta)),
       vigente_desde: data.vigente_desde,
       obs:           data.obs ?? '',
     }, {
@@ -446,9 +457,11 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
                     <div className="flex items-center gap-3">
                       <div className="text-right">
                         <div className="font-mono font-bold text-verde">
-                          ${Number(vigente.valor_ton).toLocaleString('es-AR', { minimumFractionDigits: 2 })}/ton
+                          ${Number(vigente.valor_ton).toLocaleString('es-AR', { minimumFractionDigits: 2 })}/ton <span className="text-[10px] font-sans font-normal">c/IVA</span>
                         </div>
-                        <div className="text-[11px] text-gris-dark">desde {fmtDate(vigente.vigente_desde)}</div>
+                        <div className="text-[11px] text-gris-dark">
+                          neta ${finalANeta(Number(vigente.valor_ton)).toLocaleString('es-AR', { minimumFractionDigits: 2 })} · desde {fmtDate(vigente.vigente_desde)}
+                        </div>
                       </div>
                       {pasadas.length > 0 && (
                         <button
@@ -481,7 +494,7 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
                         <div key={t.id} className="flex items-center justify-between text-xs text-gris-dark py-0.5">
                           <span>desde {fmtDate(t.vigente_desde)}</span>
                           <div className="flex items-center gap-2">
-                            <span className="font-mono">${Number(t.valor_ton).toLocaleString('es-AR', { minimumFractionDigits: 2 })}/ton</span>
+                            <span className="font-mono">${Number(t.valor_ton).toLocaleString('es-AR', { minimumFractionDigits: 2 })}/ton <span className="text-[10px]">c/IVA</span></span>
                             {puedeCrear && (
                               <button onClick={() => abrirEditar(t)} title="Editar" className="px-2 py-1 -my-1 rounded hover:text-azul hover:bg-white/60">✏️</button>
                             )}
@@ -542,7 +555,14 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
             </p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Input label="$/ton" type="number" step="0.01" placeholder="0.00" {...form.register('valor_ton')} />
+            <div>
+              <Input label="$/ton NETA (sin IVA)" type="number" step="0.01" placeholder="0.00" {...form.register('valor_ton_neta')} />
+              {Number(watchNeta) > 0 && (
+                <p className="text-[11px] text-verde font-bold mt-1 px-1">
+                  Final c/IVA (21%): ${netaAFinal(Number(watchNeta)).toLocaleString('es-AR', { minimumFractionDigits: 2 })}/ton
+                </p>
+              )}
+            </div>
             <Input label="Vigente desde" type="date" {...form.register('vigente_desde')} />
           </div>
           <Input label="Observaciones" placeholder="Notas..." {...form.register('obs')} />
@@ -610,7 +630,14 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
             </div>
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Input label="$/ton" type="number" step="0.01" {...formEdit.register('valor_ton')} />
+            <div>
+              <Input label="$/ton NETA (sin IVA)" type="number" step="0.01" {...formEdit.register('valor_ton_neta')} />
+              {Number(watchEditNeta) > 0 && (
+                <p className="text-[11px] text-verde font-bold mt-1 px-1">
+                  Final c/IVA (21%): ${netaAFinal(Number(watchEditNeta)).toLocaleString('es-AR', { minimumFractionDigits: 2 })}/ton
+                </p>
+              )}
+            </div>
             <Input label="Vigente desde" type="date" {...formEdit.register('vigente_desde')} />
           </div>
           <Input label="Observaciones" placeholder="Notas..." {...formEdit.register('obs')} />
