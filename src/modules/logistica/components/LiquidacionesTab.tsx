@@ -27,6 +27,11 @@ import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
 import type { Chofer, Tramo, Adelanto, Estadia, Ruta, RelevoPendiente, RelevoLiquidado } from '@/types/domain.types'
 import { exportLiquidacionExcel } from '@/lib/utils/liquidacion-export'
 import { toISO } from '@/lib/utils/dates'
+import {
+  diasUnicos, diasEntreFechas, fechaTramo, tramoEnRango, kmTramo,
+  fechaRelevo, kmRelevo, relevoEnRango, rangoConRelevos, diasConRelevos,
+  calcularTotalesLiquidacion,
+} from '../utils/liquidacion-math'
 
 function fmtM(n: number) {
   return '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 0 })
@@ -40,106 +45,9 @@ function fmtFecha(s: string) {
   return `${d}/${m}/${y}`
 }
 
-/** Fechas únicas de tramos completados */
-function diasUnicos(tramos: Tramo[]): number {
-  const inicios = tramos.map(t => t.fecha_carga ?? t.fecha_vacio ?? '').filter(Boolean)
-  const fines   = tramos.map(t => t.fecha_descarga ?? t.fecha_carga ?? t.fecha_vacio ?? '').filter(Boolean)
-  if (!inicios.length) return 0
-  const desde = inicios.reduce((a, b) => a < b ? a : b)
-  const hasta = fines.length ? fines.reduce((a, b) => a > b ? a : b) : desde
-  return Math.round((new Date(hasta).getTime() - new Date(desde).getTime()) / 86_400_000) + 1
-}
-
-/** Días calendario entre dos fechas (inclusive) */
-function diasEntreFechas(desde: string, hasta: string): number {
-  if (!desde || !hasta) return 0
-  return Math.round((new Date(hasta).getTime() - new Date(desde).getTime()) / 86_400_000) + 1
-}
-
-/** Km de un tramo según la tabla de rutas (lookup direccional cantera→depósito) */
-// Devuelve la fecha "representativa" de un tramo según su tipo:
-// cargado → fecha_carga, vacio → fecha_vacio. Para filtros de rango.
-function fechaTramo(t: Tramo): string | null {
-  return (t.tipo === 'vacio' ? t.fecha_vacio : t.fecha_carga) ?? null
-}
-
-function tramoEnRango(t: Tramo, desde?: string, hasta?: string): boolean {
-  const f = fechaTramo(t)
-  if (!f) return false
-  if (desde && f < desde) return false
-  if (hasta && f > hasta) return false
-  return true
-}
-
-// Lookup DIRECCIONAL cantera→depósito. cantera_id y deposito_id salen de
-// tablas DISTINTAS (canteras/depositos) con ids solapados, así que el match
-// invertido (cantera↔depósito) podía devolver la ruta de OTRO par por
-// colisión de ids (ej. tramo DELTA ARENAS→MASUR agarraba YESO→BASE NEXA).
-// Cada tramo apunta a su ruta del sentido real — igual que ViajesTab.
-function kmTramo(t: Tramo, rutas: Ruta[]): number {
-  if (!t.cantera_id || !t.deposito_id) return 0
-  const ruta = rutas.find(r =>
-    r.cantera_id === t.cantera_id && r.deposito_id === t.deposito_id
-  )
-  return ruta?.km_ida_vuelta ?? 0
-}
-
-// ── Helpers de relevos (Fase 2) ──
-// Fecha representativa del tramo embebido en una fila de relevo (igual criterio
-// que fechaTramo: cargado→fecha_carga, vacio→fecha_vacio).
-function fechaRelevo(r: RelevoPendiente): string | null {
-  if (!r.tramo) return null
-  return (r.tramo.tipo === 'vacio' ? r.tramo.fecha_vacio : r.tramo.fecha_carga) ?? null
-}
-
-// Km de la PATA del relevo (lo que manejó ese chofer), según el tipo del tramo.
-function kmRelevo(r: RelevoPendiente): number {
-  if (!r.tramo) return 0
-  return r.tramo.tipo === 'vacio' ? Number(r.km_vacio) : Number(r.km_cargado)
-}
-
-function relevoEnRango(r: RelevoPendiente, desde?: string, hasta?: string): boolean {
-  const f = fechaRelevo(r)
-  if (!f) return false
-  if (desde && f < desde) return false
-  if (hasta && f > hasta) return false
-  return true
-}
-
-// Rango de fechas combinando tramos propios + tramos de relevo (para encuadrar
-// el período por default al abrir el modal cuando el chofer solo tiene relevos).
-function rangoConRelevos(tramos: Tramo[], relevos: RelevoPendiente[]): { desde: string; hasta: string } {
-  const fechas: string[] = []
-  for (const t of tramos) {
-    const f = t.fecha_carga ?? t.fecha_vacio
-    const g = t.fecha_descarga ?? t.fecha_carga ?? t.fecha_vacio
-    if (f) fechas.push(f)
-    if (g) fechas.push(g)
-  }
-  for (const r of relevos) {
-    const f = fechaRelevo(r)
-    if (f) fechas.push(f)
-  }
-  if (!fechas.length) return { desde: '', hasta: '' }
-  return { desde: fechas.reduce((a, b) => a < b ? a : b), hasta: fechas.reduce((a, b) => a > b ? a : b) }
-}
-
-// Reparto del básico con relevos: parte de `baseDias` (días del rango), resta
-// los días cubiertos EXCLUSIVAMENTE por relevos (no los que ya tienen tramo
-// propio) y suma Σ jornales del relevo. Así cada chofer cobra su jornal del
-// relevo sin duplicar el día. Devuelve los días efectivos (>= 0).
-function diasConRelevos(baseDias: number, desde: string, hasta: string, ownDates: Set<string>, relevos: RelevoPendiente[]): number {
-  const restar = new Set<string>()
-  let jornales = 0
-  for (const r of relevos) {
-    jornales += Number(r.jornales ?? 0)
-    const f = fechaRelevo(r)
-    if (f && baseDias > 0 && (!desde || f >= desde) && (!hasta || f <= hasta) && !ownDates.has(f)) {
-      restar.add(f)
-    }
-  }
-  return Math.max(0, baseDias - restar.size + jornales)
-}
+// Los helpers de fechas/km/relevos y la fórmula del neto viven en
+// ../utils/liquidacion-math (módulo puro, testeado en
+// src/__tests__/liquidacion-math.test.ts).
 
 export function LiquidacionesTab() {
   const toast = useToast()
@@ -334,15 +242,22 @@ export function LiquidacionesTab() {
       + mis_relevos.filter(r => r.tramo!.tipo === 'cargado').reduce((s, r) => s + kmRelevo(r), 0)
     const km_vacios = mis_tramos.filter(t => t.tipo === 'vacio').reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
       + mis_relevos.filter(r => r.tramo!.tipo === 'vacio').reduce((s, r) => s + kmRelevo(r), 0)
-    const km_totales         = km_cargados + km_vacios
-    const subtotal_km_cargado = km_cargados * (chofer.precio_km_cargado ?? 0)
-    const subtotal_km_vacio   = km_vacios   * (chofer.precio_km_vacio ?? 0)
-    const subtotal_km   = subtotal_km_cargado + subtotal_km_vacio
-    const subtotal      = subtotal_bas + subtotal_km
     const descuentos    = mis_adelantos.reduce((s, a) => s + a.monto, 0)
     const reintegros    = mis_reintegros.reduce((s, g) => s + Number(g.monto), 0)
     const total_estadias = mis_estadias.reduce((s, e) => s + Number(e.total), 0)
-    const saldo         = subtotal - descuentos + reintegros + total_estadias
+    // Fórmula canónica compartida con calcularPreview (y testeada).
+    const tot = calcularTotalesLiquidacion({
+      dias, basico_dia: chofer.basico_dia ?? 0,
+      km_cargados, precio_km_cargado: chofer.precio_km_cargado ?? 0,
+      km_vacios,   precio_km_vacio:   chofer.precio_km_vacio ?? 0,
+      descuentos, reintegros, total_estadias,
+    })
+    const km_totales          = tot.km_totales
+    const subtotal_km_cargado = tot.subtotal_km_cargado
+    const subtotal_km_vacio   = tot.subtotal_km_vacio
+    const subtotal_km         = tot.subtotal_km
+    const subtotal            = subtotal_bas + subtotal_km
+    const saldo               = tot.neto
     return {
       mis_tramos, mis_relevos, mis_adelantos, mis_reintegros, mis_estadias, dias, sinBasico, subtotal_bas,
       km_cargados, km_vacios, km_totales,
@@ -404,24 +319,27 @@ export function LiquidacionesTab() {
       + relevosSelec.filter(r => r.tramo!.tipo === 'cargado').reduce((s, r) => s + kmRelevo(r), 0)
     const km_vacios        = tramosSelec.filter(t => t.tipo === 'vacio').reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0)
       + relevosSelec.filter(r => r.tramo!.tipo === 'vacio').reduce((s, r) => s + kmRelevo(r), 0)
-    const km_totales       = km_cargados + km_vacios
-    const subtotal_km_cargado = km_cargados * precioKmCargado
-    const subtotal_km_vacio   = km_vacios   * precioKmVacio
-    const subtotal_km      = subtotal_km_cargado + subtotal_km_vacio
     const descuentos       = adelantosPendientes.filter(a => selAdelant.includes(a.id)).reduce((s, a) => s + a.monto, 0)
     const reintegros       = gastosReintegro.filter(g => selGastos.includes(g.id)).reduce((s, g) => s + Number(g.monto), 0)
     const total_estadias   = estadiasPendientes.filter(e => selEstadias.includes(e.id)).reduce((s, e) => s + Number(e.total), 0)
-    // precio_km "promedio" para back-compat con la columna existente.
-    const precio_km        = km_totales > 0 ? subtotal_km / km_totales : precioKmCargado
+    // Fórmula canónica compartida con resumenChofer (y testeada).
+    const tot = calcularTotalesLiquidacion({
+      dias, basico_dia,
+      km_cargados, precio_km_cargado: precioKmCargado,
+      km_vacios,   precio_km_vacio:   precioKmVacio,
+      descuentos, reintegros, total_estadias,
+    })
     return {
       dias, basico_dia, subtotal_bas,
-      km_cargados, km_vacios, km_totales,
-      subtotal_km_cargado, subtotal_km_vacio, subtotal_km,
+      km_cargados, km_vacios, km_totales: tot.km_totales,
+      subtotal_km_cargado: tot.subtotal_km_cargado,
+      subtotal_km_vacio:   tot.subtotal_km_vacio,
+      subtotal_km:         tot.subtotal_km,
       descuentos, reintegros, total_estadias,
       precio_km_cargado: precioKmCargado,
       precio_km_vacio:   precioKmVacio,
-      precio_km,
-      neto: subtotal_bas + subtotal_km - descuentos + reintegros + total_estadias,
+      precio_km: tot.precio_km,
+      neto: tot.neto,
     }
   }
 

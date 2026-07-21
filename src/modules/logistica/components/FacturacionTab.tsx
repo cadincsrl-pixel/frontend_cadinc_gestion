@@ -24,6 +24,7 @@ import { CobroAdjuntosSection } from './CobroAdjuntosSection'
 import { useUploadCobroAdjunto } from '../hooks/useCobroAdjuntos'
 import type { EmpresaTransportista, TarifaEmpresaCantera, Tramo, Cobro, Camion } from '@/types/domain.types'
 import { toISO } from '@/lib/utils/dates'
+import { tarifaParaFecha, unidadDelCamion, netaAFinal, finalANeta } from '../utils/tarifas'
 
 function fmtM(n: number) {
   return '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 0 })
@@ -203,42 +204,8 @@ function fmtDate(s: string) {
   return `${d}/${m}/${y}`
 }
 
-// Resuelve la tarifa $/ton de un tramo: si existe una tarifa específica para
-// el depósito de descarga (empresa+cantera+depósito), gana sobre la general
-// (empresa+cantera con deposito_id null). En ambos casos se toma la de
-// `vigente_desde` más reciente que no supere la fecha de descarga.
-function tarifaParaFecha(
-  tarifas: TarifaEmpresaCantera[],
-  empresaId: number,
-  canteraId: number | null,
-  depositoId: number | null,
-  fecha: string | null,
-  // Unidad del viaje según el camión (chasis paga distinto en algunas
-  // empresas). Escalera de prioridad: depósito+unidad > depósito > unidad
-  // > general. Las tarifas sin tipo_unidad valen para cualquier unidad.
-  tipoUnidad?: 'batea' | 'chasis',
-): number {
-  if (!canteraId || !fecha) return 0
-  const base = tarifas.filter(t =>
-    t.empresa_id === empresaId && t.cantera_id === canteraId && t.vigente_desde <= fecha
-  )
-  const pools = [
-    depositoId != null && tipoUnidad ? base.filter(t => t.deposito_id === depositoId && t.tipo_unidad === tipoUnidad) : [],
-    depositoId != null ? base.filter(t => t.deposito_id === depositoId && t.tipo_unidad == null) : [],
-    tipoUnidad ? base.filter(t => t.deposito_id == null && t.tipo_unidad === tipoUnidad) : [],
-    base.filter(t => t.deposito_id == null && t.tipo_unidad == null),
-  ]
-  const pool = pools.find(p => p.length > 0) ?? []
-  const vigente = pool.sort((a, b) => b.vigente_desde.localeCompare(a.vigente_desde))[0]
-  return vigente?.valor_ton ?? 0
-}
-
-// Unidad del viaje según la categoría del camión: chasis → 'chasis';
-// tractor (o camión desconocido) → 'batea'.
-function unidadDelCamion(camiones: Camion[], camionId: number | null | undefined): 'batea' | 'chasis' {
-  if (camionId == null) return 'batea'
-  return camiones.find(c => c.id === camionId)?.categoria === 'chasis' ? 'chasis' : 'batea'
-}
+// tarifaParaFecha / unidadDelCamion / netaAFinal / finalANeta viven en
+// ../utils/tarifas (módulo puro, testeado en src/__tests__/tarifas.test.ts).
 
 function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
   const toast = useToast()
@@ -303,15 +270,6 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
       .filter(t => t.vigente_desde > fecha)
       .sort((a, b) => a.vigente_desde.localeCompare(b.vigente_desde))
   }
-
-  // Las tarifas se GUARDAN como valor final (c/IVA) — así las consumen los
-  // cobros, el saldo y los PDFs. Pero los transportistas pasan la NETA, así
-  // que el form pide neta y el sistema calcula el final solo (IVA 21%).
-  const IVA = 1.21
-  const netaAFinal = (neta: number) => Math.round(neta * IVA * 100) / 100
-  // Prefill de edición con 4 decimales: el roundtrip neta→final devuelve el
-  // valor original exacto (los finales guardados tienen ≤2 decimales).
-  const finalANeta = (final: number) => Number((final / IVA).toFixed(4))
 
   const watchCantera  = form.watch('cantera_id')
   const watchDeposito = form.watch('deposito_id')
