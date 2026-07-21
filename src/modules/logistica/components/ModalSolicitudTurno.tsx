@@ -206,12 +206,15 @@ export function ModalSolicitudTurno({ open, onClose }: Props) {
             Choferes * (uno o más)
           </label>
           <div className="flex items-center gap-2 flex-wrap">
-            <Input
-              placeholder="🔍 Buscar por nombre o CUIL..."
-              value={busqueda}
-              onChange={e => setBusqueda(e.target.value)}
-              className="flex-1 min-w-[160px]"
-            />
+            {/* Wrapper: el className del Input cae en el <input> interno (que
+                ya es w-full) — flex-1/min-w deben ir en un contenedor. */}
+            <div className="flex-1 min-w-[160px]">
+              <Input
+                placeholder="🔍 Buscar por nombre o CUIL..."
+                value={busqueda}
+                onChange={e => setBusqueda(e.target.value)}
+              />
+            </div>
             <span className="text-[11px] text-gris-dark font-bold">
               {busqueda
                 ? `${filtrados.length} de ${choferesActivos.length}`
@@ -300,7 +303,7 @@ export function ModalSolicitudTurno({ open, onClose }: Props) {
         </div>
 
         {/* Botones de export. */}
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           <Button variant="primary" size="sm" onClick={handleCopiar} disabled={!texto}>
             📋 Copiar
           </Button>

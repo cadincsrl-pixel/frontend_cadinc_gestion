@@ -207,7 +207,7 @@ export function VehiculoDocumentosSection({ entidad, id }: Props) {
         </div>
         <button
           onClick={() => handleVer(doc)}
-          className="text-[11px] font-bold px-2 py-1 rounded bg-azul-light text-azul hover:bg-azul hover:text-white transition-colors"
+          className="text-sm font-bold px-2.5 py-1.5 min-w-[36px] rounded bg-azul-light text-azul hover:bg-azul hover:text-white transition-colors"
           title="Ver / descargar"
         >
           👁
@@ -215,7 +215,7 @@ export function VehiculoDocumentosSection({ entidad, id }: Props) {
         {puedeEditar && (venceObligatorio || doc.vence_el) && (
           <button
             onClick={() => abrirEditVence(doc)}
-            className="text-[11px] font-bold px-2 py-1 rounded bg-naranja-light text-naranja-dark hover:bg-naranja hover:text-white transition-colors"
+            className="text-sm font-bold px-2.5 py-1.5 min-w-[36px] rounded bg-naranja-light text-naranja-dark hover:bg-naranja hover:text-white transition-colors"
             title="Editar fecha de vencimiento"
           >
             📅
@@ -224,7 +224,7 @@ export function VehiculoDocumentosSection({ entidad, id }: Props) {
         {puedeEliminar && (
           <button
             onClick={() => handleBorrar(doc)}
-            className="text-[11px] font-bold px-2 py-1 rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors"
+            className="text-sm font-bold px-2.5 py-1.5 min-w-[36px] rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors"
             title="Eliminar"
           >
             ✕

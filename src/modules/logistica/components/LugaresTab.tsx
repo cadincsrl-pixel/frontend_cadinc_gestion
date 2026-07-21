@@ -514,8 +514,8 @@ export function LugaresTab() {
                   {canterasMatriz.map(c => (
                     <tr key={c.id}>
                       <th title={c.nombre}
-                        className="sticky left-0 z-10 bg-white px-3 py-2 text-left font-bold text-carbon text-xs border-b border-r border-gris whitespace-nowrap">
-                        {c.nombre}
+                        className="sticky left-0 z-10 bg-white px-3 py-2 text-left font-bold text-carbon text-xs border-b border-r border-gris max-w-[140px]">
+                        <span className="block truncate">{c.nombre}</span>
                       </th>
                       {depositosMatriz.map(d => {
                         const r = rutaPorPar.get(`${c.id}-${d.id}`)

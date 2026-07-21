@@ -389,7 +389,7 @@ function Kpi({ label, value, accent }: { label: ReactNode; value: string; accent
   return (
     <div className={`bg-white rounded-card shadow-card p-3 border-l-[4px] ${accentCls}`}>
       <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">{label}</div>
-      <div className="font-mono font-bold text-xl mt-1">{value}</div>
+      <div className="font-mono font-bold text-base sm:text-xl mt-1 break-words">{value}</div>
     </div>
   )
 }

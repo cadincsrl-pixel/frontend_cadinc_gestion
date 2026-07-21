@@ -136,7 +136,7 @@ function EmpresasSection({
   return (
     <>
       <div className="bg-white rounded-card shadow-card">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gris">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-4 border-b border-gris">
           <div>
             <h2 className="font-bold text-azul text-base">Empresas transportistas</h2>
             <p className="text-xs text-gris-dark mt-0.5">Tus clientes — hacé clic en una para ver su tarifa por punto de carga</p>
@@ -158,12 +158,12 @@ function EmpresasSection({
           )}
 
           {empresaSeleccionada && (
-            <div className="flex items-center justify-between bg-azul-light rounded-card px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-y-2 bg-azul-light rounded-card px-4 py-3">
               <div>
                 <div className="font-bold text-sm text-carbon">{empresaSeleccionada.nombre}</div>
                 <div className="text-xs text-gris-dark">{empresaSeleccionada.cuit || '—'}{empresaSeleccionada.tel ? ` · ${empresaSeleccionada.tel}` : ''}</div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-azul-light text-azul-mid">
                   {empresaSeleccionada.modalidad_cobro === 'facturacion' ? '🧾 Facturación' : '🤝 Líq. producto'}
                 </span>
@@ -406,7 +406,7 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
   return (
     <>
       <div className="bg-white rounded-card shadow-card">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gris">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-4 border-b border-gris">
           <div>
             <h2 className="font-bold text-azul text-base">Tarifas — {empresa.nombre}</h2>
             <p className="text-xs text-gris-dark mt-0.5">Historial de $/ton por punto de carga (y depósito, si paga según destino) · cada entrega usa la tarifa vigente en su fecha de descarga</p>
@@ -483,11 +483,11 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
                           <div className="flex items-center gap-2">
                             <span className="font-mono">${Number(t.valor_ton).toLocaleString('es-AR', { minimumFractionDigits: 2 })}/ton</span>
                             {puedeCrear && (
-                              <button onClick={() => abrirEditar(t)} title="Editar" className="hover:text-azul">✏️</button>
+                              <button onClick={() => abrirEditar(t)} title="Editar" className="px-2 py-1 -my-1 rounded hover:text-azul hover:bg-white/60">✏️</button>
                             )}
                             {puedeEliminar && (
                               <button onClick={() => { if (confirm('¿Eliminar?')) remove(t.id, { onSuccess: () => toast('✓ Eliminada', 'ok') }) }}
-                                className="hover:text-rojo">✕</button>
+                                className="px-2 py-1 -my-1 rounded hover:text-rojo hover:bg-white/60">✕</button>
                             )}
                           </div>
                         </div>
@@ -2623,11 +2623,16 @@ function RemitosSection() {
             <span className="text-xs text-gris-dark">· {adeudados.length} tramo{adeudados.length !== 1 ? 's' : ''}</span>
             <span className="ml-auto font-mono font-bold text-naranja">{fmtM(totalAdeudado)}</span>
           </button>
-          <div id="panel-adeudados" className={`overflow-hidden transition-all duration-200 ${adeudadosAbierto ? 'max-h-[200vh]' : 'max-h-0'}`}>
-            <div className="bg-gris">
-              {renderListaRemitos(adeudados, 'Sin remitos adeudados')}
+          {/* Render condicional en vez de max-h animado: 200vh clipeaba las
+              filas que excedían esa altura (en el cel entran ~28 y el resto
+              quedaba inaccesible, sin scroll). */}
+          {adeudadosAbierto && (
+            <div id="panel-adeudados">
+              <div className="bg-gris">
+                {renderListaRemitos(adeudados, 'Sin remitos adeudados')}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Cobrados */}
@@ -2644,11 +2649,13 @@ function RemitosSection() {
             <span className="text-xs text-gris-dark">· {cobrados.length} tramo{cobrados.length !== 1 ? 's' : ''}</span>
             <span className="ml-auto font-mono font-bold text-verde">{fmtM(totalCobrado)}</span>
           </button>
-          <div id="panel-cobrados" className={`overflow-hidden transition-all duration-200 ${cobradosAbierto ? 'max-h-[200vh]' : 'max-h-0'}`}>
-            <div className="bg-gris">
-              {renderListaRemitos(cobrados, 'Sin remitos cobrados')}
+          {cobradosAbierto && (
+            <div id="panel-cobrados">
+              <div className="bg-gris">
+                {renderListaRemitos(cobrados, 'Sin remitos cobrados')}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 

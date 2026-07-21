@@ -1920,7 +1920,7 @@ export function LiquidacionesTab() {
 
               {/* Resumen detallado con desglose por tipo de km */}
               <div className="bg-azul-light rounded-xl p-4">
-                <div className="grid grid-cols-2 gap-y-1.5 text-sm">
+                <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1.5 text-xs sm:text-sm">
                   <span className="text-gris-dark">Días trabajados ({detalleLiq.dias_trabajados}) × {fmtM(detalleLiq.basico_dia)}:</span>
                   <span className="font-mono font-bold text-right">{fmtM(detalleLiq.subtotal_basico)}</span>
 

@@ -1701,7 +1701,7 @@ function RemitoImgField({ label, url, uploading, onPick, onClear }: {
           <a href={url} target="_blank" rel="noreferrer" className="text-xs text-azul hover:underline flex-1 truncate">
             🖼 Ver remito subido
           </a>
-          <button type="button" onClick={onClear} className="text-xs text-gris-dark hover:text-rojo px-1" title="Quitar">✕</button>
+          <button type="button" onClick={onClear} className="text-xs text-gris-dark hover:text-rojo px-2 py-1.5 min-h-[36px] min-w-[36px] shrink-0" title="Quitar">✕</button>
         </div>
       ) : (
         <input

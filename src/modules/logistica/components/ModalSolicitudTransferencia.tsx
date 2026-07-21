@@ -200,12 +200,15 @@ export function ModalSolicitudTransferencia({ open, onClose }: Props) {
             Choferes y montos *
           </label>
           <div className="flex items-center gap-2 flex-wrap">
-            <Input
-              placeholder="🔍 Buscar por nombre o CUIL..."
-              value={busqueda}
-              onChange={e => setBusqueda(e.target.value)}
-              className="flex-1 min-w-[160px]"
-            />
+            {/* Wrapper: el className del Input cae en el <input> interno (que
+                ya es w-full) — flex-1/min-w deben ir en un contenedor. */}
+            <div className="flex-1 min-w-[160px]">
+              <Input
+                placeholder="🔍 Buscar por nombre o CUIL..."
+                value={busqueda}
+                onChange={e => setBusqueda(e.target.value)}
+              />
+            </div>
             {cantSelec > 0 && (
               <button
                 type="button"
@@ -242,15 +245,16 @@ export function ModalSolicitudTransferencia({ open, onClose }: Props) {
                         </div>
                       </label>
                       {checked && (
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          placeholder="Monto"
-                          value={montos[id] ?? ''}
-                          onChange={e => setMonto(id, e.target.value)}
-                          className="w-28"
-                        />
+                        <div className="w-28 shrink-0">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="Monto"
+                            value={montos[id] ?? ''}
+                            onChange={e => setMonto(id, e.target.value)}
+                          />
+                        </div>
                       )}
                     </div>
                   </div>
@@ -291,7 +295,7 @@ export function ModalSolicitudTransferencia({ open, onClose }: Props) {
         </div>
 
         {/* Botones de export. */}
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           <Button variant="primary" size="sm" onClick={handleCopiar} disabled={!texto}>
             📋 Copiar
           </Button>

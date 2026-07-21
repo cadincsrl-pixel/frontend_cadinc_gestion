@@ -9,6 +9,9 @@ import {
   fetchChoferDocSignedUrl,
   calcularEstadoVencimiento,
 } from '../hooks/useChoferDocumentos'
+import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
@@ -87,6 +90,10 @@ export function ChoferDocumentosSection({ choferId }: Props) {
   )
   // Tipos cuyo "anteriores (archivados)" está desplegado.
   const [verAnteriores, setVerAnteriores] = useState<Set<ChoferDocTipo>>(new Set())
+  // Modal de edición del vencimiento (antes era un prompt() de texto libre —
+  // inusable desde el cel: sin date picker y con formato ISO a mano).
+  const [editDoc,  setEditDoc]  = useState<ChoferDocumento | null>(null)
+  const [editVence, setEditVence] = useState('')
   function toggleAnteriores(tipo: ChoferDocTipo) {
     setVerAnteriores(prev => {
       const next = new Set(prev)
@@ -148,19 +155,18 @@ export function ChoferDocumentosSection({ choferId }: Props) {
     )
   }
 
-  function handleEditarVence(doc: ChoferDocumento) {
-    const cur = doc.vence_el ?? ''
-    const nueva = prompt(`Nueva fecha de vencimiento (YYYY-MM-DD) para ${doc.nombre_archivo}:`, cur)
-    if (nueva === null) return                  // cancelado
-    const trimmed = nueva.trim()
-    if (trimmed && !/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-      toast('Formato inválido. Usá YYYY-MM-DD', 'err')
-      return
-    }
+  function abrirEditVence(doc: ChoferDocumento) {
+    setEditDoc(doc)
+    setEditVence(doc.vence_el ?? '')
+  }
+
+  function guardarVence() {
+    if (!editDoc) return
+    // <input type="date"> entrega siempre YYYY-MM-DD o '' → no hace falta validar formato.
     updateDoc(
-      { choferId, id: doc.id, vence_el: trimmed || null },
+      { choferId, id: editDoc.id, vence_el: editVence.trim() || null },
       {
-        onSuccess: () => toast('✓ Vencimiento actualizado', 'ok'),
+        onSuccess: () => { toast('✓ Vencimiento actualizado', 'ok'); setEditDoc(null) },
         onError:   () => toast('Error al actualizar', 'err'),
       }
     )
@@ -196,15 +202,15 @@ export function ChoferDocumentosSection({ choferId }: Props) {
         </div>
         <button
           onClick={() => handleVer(doc)}
-          className="text-[11px] font-bold px-2 py-1 rounded bg-azul-light text-azul hover:bg-azul hover:text-white transition-colors"
+          className="text-sm font-bold px-2.5 py-1.5 min-w-[36px] rounded bg-azul-light text-azul hover:bg-azul hover:text-white transition-colors"
           title="Ver / descargar"
         >
           👁
         </button>
         {puedeEditar && (venceObligatorio || doc.vence_el) && (
           <button
-            onClick={() => handleEditarVence(doc)}
-            className="text-[11px] font-bold px-2 py-1 rounded bg-naranja-light text-naranja-dark hover:bg-naranja hover:text-white transition-colors"
+            onClick={() => abrirEditVence(doc)}
+            className="text-sm font-bold px-2.5 py-1.5 min-w-[36px] rounded bg-naranja-light text-naranja-dark hover:bg-naranja hover:text-white transition-colors"
             title="Editar fecha de vencimiento"
           >
             📅
@@ -213,7 +219,7 @@ export function ChoferDocumentosSection({ choferId }: Props) {
         {puedeEliminar && (
           <button
             onClick={() => handleBorrar(doc)}
-            className="text-[11px] font-bold px-2 py-1 rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors"
+            className="text-sm font-bold px-2.5 py-1.5 min-w-[36px] rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors"
             title="Eliminar"
           >
             ✕
@@ -322,6 +328,27 @@ export function ChoferDocumentosSection({ choferId }: Props) {
             </div>
           ))}
         </div>
+      )}
+
+      {/* ── Modal de edición del vencimiento (patrón VehiculoDocumentosSection) ── */}
+      {editDoc && (
+        <Modal
+          open
+          onClose={() => setEditDoc(null)}
+          title="📅 Fecha de vencimiento"
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setEditDoc(null)}>Cancelar</Button>
+              <Button variant="primary" onClick={guardarVence}>Guardar</Button>
+            </>
+          }
+        >
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-carbon truncate" title={editDoc.nombre_archivo}>📄 {editDoc.nombre_archivo}</p>
+            <Input label="Vence el" type="date" value={editVence} onChange={e => setEditVence(e.target.value)} />
+            <p className="text-[11px] text-gris-dark">Dejá la fecha vacía para quitar el vencimiento.</p>
+          </div>
+        </Modal>
       )}
     </div>
   )
