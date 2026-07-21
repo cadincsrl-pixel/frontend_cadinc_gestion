@@ -118,7 +118,7 @@ export function imprimirRemito(remito: RemitoEnvio, obraNom?: string) {
   `).join('')
 
   const copiaHtml = (tipo: string) => `
-    <div style="border:1px solid #ccc;padding:8px;height:calc(33.33vh - 14px);box-sizing:border-box;overflow:hidden;position:relative">
+    <div style="border:1px solid #ccc;padding:8px;min-height:calc(33.33vh - 14px);box-sizing:border-box;position:relative;page-break-inside:avoid">
       <!-- Header -->
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid #E8621A;padding-bottom:4px;margin-bottom:6px">
         <div>

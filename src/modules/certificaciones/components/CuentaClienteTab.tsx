@@ -337,7 +337,7 @@ export function CuentaClienteTab() {
               onChange={(v) => { setObraSel(v); setModalCobro(false); setModalPrecios(false) }}
             />
           </div>
-          <div className="flex gap-1 bg-gris rounded-xl p-1">
+          <div className="flex gap-1 bg-gris rounded-xl p-1 overflow-x-auto max-w-full">
             {([
               ['todos',   'Todos',           rows.length],
               ['cadinc',  'Debe el cliente', rows.filter(r => r.pagado_por !== 'cliente').length],
@@ -372,7 +372,7 @@ export function CuentaClienteTab() {
             ⚠ Sin precio
           </button>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="primary" size="sm"
             onClick={abrirModalPrecios}
@@ -469,7 +469,7 @@ export function CuentaClienteTab() {
               {cobros.map(c => {
                 const nItems = rows.filter(r => r.cobro_id === c.id).length
                 return (
-                <div key={c.id} className="flex items-center gap-3 py-2 text-sm">
+                <div key={c.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
                   <span className="font-mono text-xs text-gris-dark w-[72px] shrink-0">{fmtF(c.fecha)}</span>
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-azul-light text-azul capitalize shrink-0">{c.medio}</span>
                   {nItems > 0 && (
@@ -482,19 +482,19 @@ export function CuentaClienteTab() {
                       a cuenta
                     </span>
                   )}
-                  <span className="flex-1 text-gris-dark truncate min-w-0">{c.obs}</span>
+                  <span className="basis-full order-last sm:basis-auto sm:order-none sm:flex-1 text-gris-dark truncate min-w-0">{c.obs}</span>
                   {c.comprobante_url && (
                     <button onClick={() => verComprobanteCobro(c.id)} title="Ver comprobante"
-                      className="text-xs px-2 py-1 rounded hover:bg-azul-light text-gris-dark hover:text-azul transition-colors shrink-0">📎</button>
+                      className="text-sm p-2 min-w-[36px] min-h-[36px] flex items-center justify-center rounded hover:bg-azul-light text-gris-dark hover:text-azul transition-colors shrink-0">📎</button>
                   )}
                   <span className="font-mono font-bold text-verde shrink-0">{fmt$(Number(c.monto))}</span>
                   {puedeEditar && (
                     <button onClick={() => abrirEditarCobro(c)} title="Editar pago"
-                      className="text-xs px-2 py-1 rounded hover:bg-gris transition-colors text-gris-dark shrink-0">✏️</button>
+                      className="text-sm p-2 min-w-[36px] min-h-[36px] flex items-center justify-center rounded hover:bg-gris transition-colors text-gris-dark shrink-0">✏️</button>
                   )}
                   {puedeEliminar && (
                     <button onClick={() => eliminarCobroHandler(c)} title="Eliminar pago"
-                      className="text-xs px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors shrink-0">✕</button>
+                      className="text-sm p-2 min-w-[36px] min-h-[36px] flex items-center justify-center rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors shrink-0">✕</button>
                   )}
                 </div>
                 )
@@ -583,8 +583,10 @@ export function CuentaClienteTab() {
             {rows.length > rowsEditables.length && ' Los items ya cobrados no se pueden retasar.'}
           </div>
           <div className="border border-gris rounded-lg overflow-hidden">
-            <div className="max-h-[55vh] overflow-y-auto">
-              <table className="w-full text-sm">
+            {/* overflow-auto (ambos ejes): a 390px las columnas de precio quedaban
+                clipeadas sin scroll horizontal y no se podian tipear los precios. */}
+            <div className="max-h-[55vh] overflow-auto">
+              <table className="w-full min-w-[480px] text-sm">
                 <thead className="bg-gris sticky top-0">
                   <tr>
                     <th className="text-left px-3 py-2 text-[11px] font-bold text-gris-dark uppercase tracking-wider">Material</th>

@@ -432,8 +432,8 @@ export function StockTab() {
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gris-dark text-sm">🔍</span>
             <input type="text" autoComplete="off" value={busqueda} onChange={e => setBusqueda(e.target.value)}
               placeholder="Buscar material o proveedor..."
-              className="w-full pl-9 pr-8 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white focus:border-naranja" />
-            {busqueda && <button onClick={() => setBusqueda('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gris-dark hover:text-carbon text-sm">✕</button>}
+              className="w-full pl-9 pr-10 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white focus:border-naranja" />
+            {busqueda && <button onClick={() => setBusqueda('')} className="absolute right-1 top-1/2 -translate-y-1/2 p-2 text-gris-dark hover:text-carbon text-sm flex items-center justify-center">✕</button>}
           </div>
           <div className="flex flex-wrap gap-2 text-xs">
             <span className="bg-azul-light text-azul px-2 py-1 rounded font-bold">{totalItems} materiales</span>

@@ -411,17 +411,21 @@ function ModalRetiro({ proveedorId, proveedorNombre, obraCodSugerida, stockDelPr
               {itemsDeObra.map(it => {
                 const sel = seleccionados[it.item_id]!
                 return (
-                  <div key={it.item_id} className="flex items-center gap-3 px-3 py-2 hover:bg-gris/30">
+                  <div key={it.item_id} className="flex flex-wrap items-center gap-2 px-3 py-2 hover:bg-gris/30">
                     <input
                       type="checkbox"
                       checked={sel.incluido}
                       onChange={(e) => setSeleccionados(s => ({ ...s, [it.item_id]: { ...s[it.item_id]!, incluido: e.target.checked } }))}
+                      className="w-5 h-5 shrink-0 accent-naranja"
                     />
-                    <div className="flex-1 min-w-0">
+                    {/* En mobile la descripción toma el ancho completo (arriba) y
+                        cantidad+unidad quedan en la fila de abajo — antes quedaban
+                        ~90px para el nombre y no se distinguia el material. */}
+                    <div className="basis-[calc(100%-2rem)] sm:basis-auto sm:flex-1 min-w-0">
                       <div className="text-sm font-bold text-carbon truncate">{it.descripcion}</div>
                       <div className="text-[11px] text-gris-dark">Pendiente: <span className="font-mono font-bold">{fmtNum(it.pendiente)} {it.unidad}</span></div>
                     </div>
-                    <div className="w-32">
+                    <div className="w-32 ml-auto sm:ml-0">
                       <input
                         type="number"
                         step="0.01"
@@ -453,7 +457,7 @@ function ModalRetiro({ proveedorId, proveedorNombre, obraCodSugerida, stockDelPr
           {archivo && (
             <div className="text-xs text-gris-dark mt-1 flex items-center gap-2">
               <span>📎 {archivo.name} · {(archivo.size / 1024).toFixed(0)} KB</span>
-              <button type="button" onClick={() => setArchivo(null)} className="text-rojo hover:underline">Quitar</button>
+              <button type="button" onClick={() => setArchivo(null)} className="text-rojo hover:underline py-2 px-2 -my-2 min-h-[36px] inline-flex items-center">Quitar</button>
             </div>
           )}
           <p className="text-[11px] text-gris-mid italic">Foto del remito real del proveedor. Máx 10 MB.</p>
@@ -526,7 +530,7 @@ function ModalDetalleItem({ item, onClose }: { item: StockProveedorRow; onClose:
                       {m.remito_retiro_id && (
                         <button
                           onClick={() => verRemito(m.remito_retiro_id)}
-                          className="text-xs font-bold px-2 py-0.5 rounded hover:bg-azul-light text-azul"
+                          className="text-sm font-bold px-3 py-2 min-h-[40px] min-w-[40px] rounded hover:bg-azul-light text-azul"
                         >👁</button>
                       )}
                     </td>

@@ -43,7 +43,7 @@ export function CertificacionesPage() {
 
       {/* Header */}
       <div className="bg-white rounded-card shadow-card p-4 border-l-[5px] border-naranja">
-        <h1 className="font-display text-[2rem] tracking-wider text-azul leading-none">
+        <h1 className="font-display text-2xl sm:text-[2rem] tracking-wider text-azul leading-tight sm:leading-none">
           {info.icon} {info.label.toUpperCase()}
         </h1>
         <p className="text-sm text-gris-dark mt-1">{info.sub}</p>

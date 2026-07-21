@@ -583,7 +583,7 @@ export function MaterialesTab() {
             {adjunto ? (
               <div className="flex items-center gap-2 bg-azul-light rounded-xl px-3 py-2">
                 <span className="text-sm font-medium text-azul flex-1 truncate">📎 {adjunto.nombre}</span>
-                <button onClick={() => setAdjunto(null)} className="text-gris-dark hover:text-rojo text-xs font-bold">✕</button>
+                <button onClick={() => setAdjunto(null)} className="shrink-0 w-9 h-9 -my-1.5 flex items-center justify-center rounded-lg text-gris-dark hover:text-rojo hover:bg-white text-sm font-bold">✕</button>
               </div>
             ) : (
               <Button variant="secondary" size="sm" loading={uploading} onClick={() => fileRef.current?.click()}>
@@ -668,7 +668,7 @@ export function MaterialesTab() {
                       {lineas.length > 1 && (
                         <button
                           onClick={() => removeLinea(l.id)}
-                          className="text-gris-mid hover:text-rojo text-lg font-bold px-2"
+                          className="text-gris-mid hover:text-rojo text-lg font-bold px-2 min-h-[44px] min-w-[40px] flex items-center justify-center shrink-0"
                           aria-label="Eliminar línea"
                         >✕</button>
                       )}
@@ -684,7 +684,7 @@ export function MaterialesTab() {
 
             <button
               onClick={() => setLineas(prev => [...prev, newLinea()])}
-              className="mt-2 text-xs font-bold text-azul hover:text-naranja transition-colors flex items-center gap-1"
+              className="mt-2 w-full sm:w-auto min-h-[40px] px-3 py-2 rounded-lg border border-dashed border-azul/50 text-xs font-bold text-azul hover:text-naranja hover:border-naranja transition-colors flex items-center justify-center gap-1"
             >
               ＋ Agregar línea
             </button>

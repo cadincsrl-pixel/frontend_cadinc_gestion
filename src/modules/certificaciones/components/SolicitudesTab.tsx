@@ -1177,7 +1177,7 @@ export function SolicitudesTab() {
 
                           {/* Historial (siempre disponible, read-only) */}
                           {item.id != null && (
-                            <button onClick={() => setModalHistorial(item)} className="mt-2 text-[11px] font-bold text-gris-dark hover:text-azul">
+                            <button onClick={() => setModalHistorial(item)} className="mt-1 min-h-[36px] px-2 py-1.5 -ml-2 inline-flex items-center rounded text-[11px] font-bold text-gris-dark hover:text-azul">
                               🕑 Ver historial
                             </button>
                           )}
@@ -1331,7 +1331,7 @@ export function SolicitudesTab() {
                           Stock: {matVinculado.stock_actual}
                         </div>
                       )}
-                      {lineas.length > 1 && <button onClick={() => setLineas(p => p.filter(x => x._id !== l._id))} className="text-gris-mid hover:text-rojo text-lg font-bold mt-1">✕</button>}
+                      {lineas.length > 1 && <button onClick={() => setLineas(p => p.filter(x => x._id !== l._id))} className="shrink-0 w-9 h-9 flex items-center justify-center rounded-lg text-gris-mid hover:text-rojo hover:bg-rojo-light text-lg font-bold">✕</button>}
                     </div>
                     {!l.material_id && (
                       <input type="text" autoComplete="off" placeholder="O escribir descripción libre..." value={l.descripcion}
@@ -1352,7 +1352,7 @@ export function SolicitudesTab() {
                 )
               })}
             </div>
-            <button onClick={() => setLineas(p => [...p, newLinea()])} className="mt-2 text-xs font-bold text-azul hover:text-naranja transition-colors">+ Agregar material</button>
+            <button onClick={() => setLineas(p => [...p, newLinea()])} className="mt-2 w-full sm:w-auto min-h-[40px] px-3 py-2 rounded-lg border border-dashed border-azul/50 text-xs font-bold text-azul hover:text-naranja hover:border-naranja transition-colors">+ Agregar material</button>
           </div>
         </div>
       </Modal>
@@ -1493,8 +1493,10 @@ export function SolicitudesTab() {
             </div>
             <div>
               <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1 block">Precios por ítem</label>
-              <div className="border border-gris-mid rounded-xl overflow-hidden">
-                <table className="w-full text-sm">
+              {/* overflow-x-auto (no hidden): a 390px las columnas de precio
+                  quedaban clipeadas sin scroll y no se podía comprar desde el cel. */}
+              <div className="border border-gris-mid rounded-xl overflow-x-auto">
+                <table className="w-full min-w-[480px] text-sm">
                   <thead className="bg-gris">
                     <tr>
                       <th className="text-left px-3 py-2 text-[11px] font-bold text-gris-dark uppercase">Ítem</th>
@@ -1658,7 +1660,7 @@ export function SolicitudesTab() {
             {adjunto ? (
               <div className="flex items-center gap-2 bg-azul-light rounded-xl px-3 py-2">
                 <span className="text-sm font-medium text-azul flex-1 truncate">📎 {adjunto.nombre}</span>
-                <button onClick={() => setAdjunto(null)} className="text-gris-dark hover:text-rojo text-xs font-bold">✕</button>
+                <button onClick={() => setAdjunto(null)} className="shrink-0 w-9 h-9 -my-1.5 flex items-center justify-center rounded-lg text-gris-dark hover:text-rojo hover:bg-white text-sm font-bold">✕</button>
               </div>
             ) : (
               <Button variant="secondary" size="sm" loading={uploading} onClick={() => fileRef.current?.click()}>📎 Adjuntar</Button>
@@ -1750,7 +1752,7 @@ export function SolicitudesTab() {
                         <button onClick={() => {
                           if (l.itemId) setItemsAEliminar(p => [...p, l.itemId!])
                           setLineasEdit(p => p.filter(x => x._id !== l._id))
-                        }} className="text-gris-mid hover:text-rojo text-lg font-bold mt-1">✕</button>
+                        }} className="shrink-0 w-9 h-9 flex items-center justify-center rounded-lg text-gris-mid hover:text-rojo hover:bg-rojo-light text-lg font-bold">✕</button>
                       </div>
                       {!l.material_id && (
                         <input type="text" autoComplete="off" placeholder="O escribir descripción libre..." value={l.descripcion}
@@ -1771,7 +1773,7 @@ export function SolicitudesTab() {
                   )
                 })}
               </div>
-              <button onClick={() => setLineasEdit(p => [...p, { ...newLinea(), estado: 'pendiente' }])} className="mt-2 text-xs font-bold text-azul hover:text-naranja transition-colors">+ Agregar material</button>
+              <button onClick={() => setLineasEdit(p => [...p, { ...newLinea(), estado: 'pendiente' }])} className="mt-2 w-full sm:w-auto min-h-[40px] px-3 py-2 rounded-lg border border-dashed border-azul/50 text-xs font-bold text-azul hover:text-naranja hover:border-naranja transition-colors">+ Agregar material</button>
             </div>
           </div>
         )}

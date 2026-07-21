@@ -185,15 +185,19 @@ export function DeclararAjusteModal({ material, onClose, onSuccess }: Props) {
             >
               +
             </button>
-            <Input
-              type="number"
-              min="0"
-              step="any"
-              value={cantidadAbs}
-              onChange={e => setCantidadAbs(e.target.value)}
-              placeholder="Cantidad"
-              className="flex-1 rounded-l-none rounded-r-lg"
-            />
+            {/* Wrapper con flex-1: el className del Input cae en el <input>
+                interno (que ya es w-full) — el ancho debe ir en un contenedor. */}
+            <div className="flex-1 min-w-0">
+              <Input
+                type="number"
+                min="0"
+                step="any"
+                value={cantidadAbs}
+                onChange={e => setCantidadAbs(e.target.value)}
+                placeholder="Cantidad"
+                className="rounded-l-none rounded-r-lg"
+              />
+            </div>
           </div>
           {cantidadNum > 0 && (
             <div className="text-xs text-gris-dark">
@@ -243,7 +247,7 @@ export function DeclararAjusteModal({ material, onClose, onSuccess }: Props) {
                 <button
                   type="button"
                   onClick={() => { setArchivo(null); if (fileInputRef.current) fileInputRef.current.value = '' }}
-                  className="text-rojo font-bold hover:underline ml-2"
+                  className="text-rojo font-bold hover:underline ml-2 px-3 py-2 -my-2 shrink-0"
                 >
                   ✕ Quitar
                 </button>

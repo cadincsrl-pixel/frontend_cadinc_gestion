@@ -182,9 +182,11 @@ export function AdicionalesTab() {
                     <span className="text-gris-mid text-xs">Sin adjunto</span>
                   )}
                 </td>
-                <td className="px-4 py-3 flex gap-1 justify-end">
-                  <button onClick={() => openEdit(a)} className="text-xs px-2 py-1 rounded hover:bg-gris transition-colors">✏️</button>
-                  <button onClick={() => { if (confirm('¿Eliminar adicional?')) remove(a.id, { onSuccess: () => toast('✓ Eliminado', 'ok'), onError: () => toast('Error', 'err') }) }} className="text-xs px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors">✕</button>
+                <td className="px-4 py-3">
+                  <div className="flex gap-2 justify-end">
+                    <button onClick={() => openEdit(a)} className="text-sm p-2 min-w-[40px] min-h-[40px] rounded hover:bg-gris transition-colors">✏️</button>
+                    <button onClick={() => { if (confirm('¿Eliminar adicional?')) remove(a.id, { onSuccess: () => toast('✓ Eliminado', 'ok'), onError: () => toast('Error', 'err') }) }} className="text-sm p-2 min-w-[40px] min-h-[40px] rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors">✕</button>
+                  </div>
                 </td>
               </tr>
             ))}
