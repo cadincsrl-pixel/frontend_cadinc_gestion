@@ -411,7 +411,19 @@ export function SolicitudesTab() {
   }
   function eliminar(id: number) {
     if (!confirm('¿Eliminar esta solicitud?')) return
-    removeSol(id, { onSuccess: () => toast('Eliminada', 'ok'), onError: (e: any) => toast(e.message || 'Error', 'err') })
+    removeSol(id, {
+      onSuccess: () => toast('Eliminada', 'ok'),
+      onError: (e: any) => {
+        const code = e?.body?.error || e?.code
+        if (code === 'SOLICITUD_TIENE_COBROS') {
+          toast('Tiene materiales ya cobrados al cliente. Eliminá primero el pago en Cuenta del cliente.', 'err')
+        } else if (code === 'SOLICITUD_TIENE_REMITOS') {
+          toast('Tiene remitos de envío emitidos: no se puede eliminar.', 'err')
+        } else {
+          toast(e.message || 'Error', 'err')
+        }
+      },
+    })
   }
 
   // ── Acciones sobre ítems ──

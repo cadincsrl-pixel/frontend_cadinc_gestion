@@ -12,7 +12,7 @@ import ExcelJS from 'exceljs'
 import { toISO } from '@/lib/utils/dates'
 import { EMPRESA } from '@/lib/config/empresa'
 import type { CuentaClienteRow } from '../hooks/useCuentaCliente'
-import type { Obra } from '@/types/domain.types'
+import type { Obra, CuentaClienteCobro } from '@/types/domain.types'
 
 const FMT_MONEDA = '"$"#,##0;[Red]"-$"#,##0;"—"'
 const FMT_FECHA  = 'dd/mm/yyyy'
@@ -26,14 +26,22 @@ const C_BLANCO      = 'FFFFFFFF'
 const C_CARBON      = 'FF1C1C1E'
 
 interface ExportOpts {
+  // Filas para la hoja Detalle (respetan el filtro de pagador/sin-precio activo).
   rows:        CuentaClienteRow[]
+  // Filas SIN filtrar para la hoja Resumen: el Saldo se calcula siempre sobre
+  // la cuenta completa — restar pagos completos de una deuda filtrada daba
+  // saldos negativos falsos (hallazgo del review 2026-07-21).
+  rowsResumen: CuentaClienteRow[]
   obrasMap:    Map<string, Obra>
   obraFiltro:  string  // '' si "todas las obras"
   pagadorFiltro: 'todos' | 'cadinc' | 'cliente'
+  // Pagos del cliente (scopeados igual que rowsResumen): alimentan las
+  // columnas "Pagos recibidos" y "Saldo" del Resumen.
+  cobros:      CuentaClienteCobro[]
 }
 
 export async function exportarCuentaCliente(opts: ExportOpts): Promise<void> {
-  const { rows, obrasMap, obraFiltro, pagadorFiltro } = opts
+  const { rows, rowsResumen, obrasMap, obraFiltro, pagadorFiltro, cobros } = opts
   const generadoEn = new Date()
 
   const wb = new ExcelJS.Workbook()
@@ -41,7 +49,7 @@ export async function exportarCuentaCliente(opts: ExportOpts): Promise<void> {
   wb.created  = generadoEn
   wb.modified = generadoEn
 
-  buildResumenSheet(wb, rows, obrasMap, generadoEn, pagadorFiltro)
+  buildResumenSheet(wb, rowsResumen, cobros, obrasMap, generadoEn, pagadorFiltro)
   buildDetalleSheet(wb, rows, obrasMap)
 
   const buffer = await wb.xlsx.writeBuffer()
@@ -61,15 +69,17 @@ export async function exportarCuentaCliente(opts: ExportOpts): Promise<void> {
 function buildResumenSheet(
   wb: ExcelJS.Workbook,
   rows: CuentaClienteRow[],
+  cobros: CuentaClienteCobro[],
   obrasMap: Map<string, Obra>,
   generadoEn: Date,
   pagadorFiltro: 'todos' | 'cadinc' | 'cliente',
 ): void {
   const ws = wb.addWorksheet('Resumen')
-  setColWidths(ws, [12, 30, 18, 18, 18])
+  setColWidths(ws, [12, 30, 18, 18, 18, 18])
+  const NCOLS = 6
 
   // Título
-  ws.mergeCells(1, 1, 1, 5)
+  ws.mergeCells(1, 1, 1, NCOLS)
   const t = ws.getCell(1, 1)
   t.value = 'CUENTA DEL CLIENTE — Materiales a cuenta'
   t.font = { name: 'Calibri', size: 14, bold: true, color: { argb: C_BLANCO } }
@@ -77,19 +87,21 @@ function buildResumenSheet(
   t.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C_AZUL } }
   ws.getRow(1).height = 26
 
-  // Subtítulo
-  ws.mergeCells(2, 1, 2, 5)
+  // Subtítulo (con warning de items sin tasar: valen $0 en "Adeudado")
+  ws.mergeCells(2, 1, 2, NCOLS)
   const s = ws.getCell(2, 1)
   const filtroTxt = pagadorFiltro === 'todos' ? 'todos los pagadores'
                   : pagadorFiltro === 'cadinc' ? `solo deuda (${EMPRESA.nombre} adelantó)`
                   : 'solo pagado directo por cliente'
-  s.value = `Generado: ${fmtFechaCorta(generadoEn)}  ·  Filtro: ${filtroTxt}`
-  s.font = { name: 'Calibri', size: 10, italic: true, color: { argb: C_CARBON } }
+  const sinTasar = rows.filter(r => Number(r.precio_unit) === 0).length
+  const warnTxt = sinTasar > 0 ? `  ·  ⚠ ${sinTasar} ítem${sinTasar !== 1 ? 's' : ''} sin tasar (a $0) — la deuda real puede ser mayor` : ''
+  s.value = `Generado: ${fmtFechaCorta(generadoEn)}  ·  Filtro: ${filtroTxt}${warnTxt}`
+  s.font = { name: 'Calibri', size: 10, italic: true, color: { argb: sinTasar > 0 ? 'FFC05621' : C_CARBON } }
   s.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 }
   s.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C_AZUL_LIGHT } }
 
   // Header
-  const headers = ['Cód obra', 'Obra', 'Debe el cliente', 'Pagó directo', 'Total']
+  const headers = ['Cód obra', 'Obra', 'Adeudado', 'Pagos recibidos', 'Saldo', 'Pagó directo']
   const headerRow = ws.getRow(3)
   headers.forEach((h, i) => {
     const c = headerRow.getCell(i + 1)
@@ -100,14 +112,19 @@ function buildResumenSheet(
   })
   headerRow.height = 20
 
-  // Agrupar por obra
-  const byObra = new Map<string, { debeCadinc: number; pagoCliente: number }>()
+  // Agrupar por obra (materiales + pagos)
+  const byObra = new Map<string, { debeCadinc: number; pagoCliente: number; pagos: number }>()
   for (const r of rows) {
-    const acc = byObra.get(r.obra_cod) ?? { debeCadinc: 0, pagoCliente: 0 }
+    const acc = byObra.get(r.obra_cod) ?? { debeCadinc: 0, pagoCliente: 0, pagos: 0 }
     const total = Number(r.precio_total ?? 0)
     if (r.pagado_por === 'cliente') acc.pagoCliente += total
     else                            acc.debeCadinc  += total
     byObra.set(r.obra_cod, acc)
+  }
+  for (const c of cobros) {
+    const acc = byObra.get(c.obra_cod) ?? { debeCadinc: 0, pagoCliente: 0, pagos: 0 }
+    acc.pagos += Number(c.monto ?? 0)
+    byObra.set(c.obra_cod, acc)
   }
 
   let row = 4
@@ -126,11 +143,13 @@ function buildResumenSheet(
     r.getCell(2).value = nom
     r.getCell(3).value = v.debeCadinc
     r.getCell(3).numFmt = FMT_MONEDA
-    r.getCell(4).value = v.pagoCliente
+    r.getCell(4).value = v.pagos
     r.getCell(4).numFmt = FMT_MONEDA
-    r.getCell(5).value = { formula: `C${row}+D${row}`, result: v.debeCadinc + v.pagoCliente }
+    r.getCell(5).value = { formula: `C${row}-D${row}`, result: v.debeCadinc - v.pagos }
     r.getCell(5).numFmt = FMT_MONEDA
-    for (let c = 1; c <= 5; c++) {
+    r.getCell(6).value = v.pagoCliente
+    r.getCell(6).numFmt = FMT_MONEDA
+    for (let c = 1; c <= NCOLS; c++) {
       r.getCell(c).border = {
         top:    { style: 'hair', color: { argb: C_GRIS_BORDE } },
         bottom: { style: 'hair', color: { argb: C_GRIS_BORDE } },
@@ -147,14 +166,14 @@ function buildResumenSheet(
     const tr = ws.getRow(row)
     tr.getCell(2).value = 'TOTAL GENERAL'
     tr.getCell(2).alignment = { horizontal: 'left', vertical: 'middle', indent: 1 }
-    for (const col of [3, 4, 5]) {
-      const letter = ['', 'A', 'B', 'C', 'D', 'E'][col]!
+    for (const col of [3, 4, 5, 6]) {
+      const letter = ['', 'A', 'B', 'C', 'D', 'E', 'F'][col]!
       const range = `${letter}${firstDataRow}:${letter}${lastDataRow}`
       const cell = tr.getCell(col)
       cell.value  = { formula: `SUM(${range})`, result: sumColumn(byObra, col) }
       cell.numFmt = FMT_MONEDA
     }
-    for (let c = 1; c <= 5; c++) {
+    for (let c = 1; c <= NCOLS; c++) {
       tr.getCell(c).font = { name: 'Calibri', size: 11, bold: true, color: { argb: C_CARBON } }
       tr.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C_GRIS_MEDIUM } }
       tr.getCell(c).border = {
@@ -168,12 +187,13 @@ function buildResumenSheet(
   ws.views = [{ state: 'frozen', xSplit: 0, ySplit: 3 }]
 }
 
-function sumColumn(byObra: Map<string, { debeCadinc: number; pagoCliente: number }>, col: number): number {
+function sumColumn(byObra: Map<string, { debeCadinc: number; pagoCliente: number; pagos: number }>, col: number): number {
   let total = 0
   for (const v of byObra.values()) {
     if (col === 3) total += v.debeCadinc
-    else if (col === 4) total += v.pagoCliente
-    else if (col === 5) total += v.debeCadinc + v.pagoCliente
+    else if (col === 4) total += v.pagos
+    else if (col === 5) total += v.debeCadinc - v.pagos
+    else if (col === 6) total += v.pagoCliente
   }
   return total
 }
@@ -186,10 +206,10 @@ function buildDetalleSheet(
   obrasMap: Map<string, Obra>,
 ): void {
   const ws = wb.addWorksheet('Detalle')
-  setColWidths(ws, [12, 12, 28, 32, 10, 8, 24, 14, 14, 12, 14, 18])
+  setColWidths(ws, [12, 12, 28, 32, 10, 8, 24, 14, 14, 12, 14, 18, 14])
 
   // Título + subtítulo
-  ws.mergeCells(1, 1, 1, 12)
+  ws.mergeCells(1, 1, 1, 13)
   const t = ws.getCell(1, 1)
   t.value = 'DETALLE — Materiales a cuenta del cliente'
   t.font = { name: 'Calibri', size: 14, bold: true, color: { argb: C_BLANCO } }
@@ -197,7 +217,7 @@ function buildDetalleSheet(
   t.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C_AZUL } }
   ws.getRow(1).height = 26
 
-  ws.mergeCells(2, 1, 2, 12)
+  ws.mergeCells(2, 1, 2, 13)
   const s = ws.getCell(2, 1)
   s.value = `${rows.length} fila${rows.length !== 1 ? 's' : ''}`
   s.font = { name: 'Calibri', size: 10, italic: true, color: { argb: C_CARBON } }
@@ -207,7 +227,7 @@ function buildDetalleSheet(
   // Header
   const headers = [
     'Fecha', 'Cód obra', 'Obra', 'Descripción', 'Cant.', 'Unid.',
-    'Proveedor', 'Origen', 'Pagador', 'P. unit.', 'Total', 'Factura',
+    'Proveedor', 'Origen', 'Pagador', 'P. unit.', 'Total', 'Factura', 'Estado pago',
   ]
   const headerRow = ws.getRow(3)
   headers.forEach((h, i) => {
@@ -241,6 +261,9 @@ function buildDetalleSheet(
     tr.getCell(11).value  = Number(r.precio_total ?? 0)
     tr.getCell(11).numFmt = FMT_MONEDA
     tr.getCell(12).value = r.facturas_compra?.numero ?? ''
+    // Estado del pago: solo aplica a deuda (pagado_por != cliente).
+    tr.getCell(13).value = r.pagado_por === 'cliente' ? '—' : (r.cobro_id != null ? 'Pagado' : 'Adeudado')
+    tr.getCell(13).alignment = { horizontal: 'center', vertical: 'middle' }
     row++
   }
   const lastDataRow = row - 1
@@ -252,7 +275,7 @@ function buildDetalleSheet(
     tr.getCell(10).alignment = { horizontal: 'right', vertical: 'middle' }
     tr.getCell(11).value = { formula: `SUM(K${firstDataRow}:K${lastDataRow})`, result: rows.reduce((s, r) => s + Number(r.precio_total ?? 0), 0) }
     tr.getCell(11).numFmt = FMT_MONEDA
-    for (let c = 1; c <= 12; c++) {
+    for (let c = 1; c <= 13; c++) {
       tr.getCell(c).font = { name: 'Calibri', size: 11, bold: true, color: { argb: C_CARBON } }
       tr.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C_GRIS_MEDIUM } }
       tr.getCell(c).border = {
@@ -264,7 +287,7 @@ function buildDetalleSheet(
 
   ws.views = [{ state: 'frozen', xSplit: 0, ySplit: 3 }]
   if (lastDataRow >= firstDataRow) {
-    ws.autoFilter = { from: { row: 3, column: 1 }, to: { row: lastDataRow, column: 12 } }
+    ws.autoFilter = { from: { row: 3, column: 1 }, to: { row: lastDataRow, column: 13 } }
   }
 }
 

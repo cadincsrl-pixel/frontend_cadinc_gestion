@@ -14,6 +14,9 @@ import type { MaterialACuentaCliente, CuentaClienteCobro, MedioCobro } from '@/t
 export interface CuentaClienteRow extends MaterialACuentaCliente {
   proveedores?:     { nombre: string } | null
   facturas_compra?: { numero: string | null; adjunto_url: string | null; fecha: string | null } | null
+  /** Estado del item de la solicitud — un 'en_proveedor' con retiros
+   *  pendientes puede crecer su total, por eso no es imputable a un pago. */
+  item?:            { estado: string } | null
 }
 
 const KEYS = {
@@ -78,6 +81,10 @@ export interface CrearCobroInput {
   monto:    number
   medio:    MedioCobro
   obs?:     string | null
+  /** Filas de MCC que este pago cubre (vacío = pago a cuenta sin imputar). */
+  item_ids?: number[]
+  /** Path del comprobante ya subido con la signed URL. */
+  comprobante_path?: string | null
 }
 export interface EditarCobroInput {
   id:     number
@@ -87,20 +94,31 @@ export interface EditarCobroInput {
   obs?:   string | null
 }
 
+// Sin obra_cod trae los cobros de TODAS las obras del user (scope) — para que
+// los KPIs de "todas mis obras" incluyan los pagos. Para scope global (admin)
+// el backend responde 400 igual que el listado de MCC; retry off para no
+// spamear.
 export function useCobrosCliente(obra_cod?: string) {
   return useQuery({
     queryKey: COBROS_KEY(obra_cod),
     queryFn: () =>
-      apiGet<CuentaClienteCobro[]>(`/api/cuenta-cliente/cobros?obra_cod=${encodeURIComponent(obra_cod!)}`),
-    enabled: !!obra_cod,
+      apiGet<CuentaClienteCobro[]>(
+        `/api/cuenta-cliente/cobros${obra_cod ? `?obra_cod=${encodeURIComponent(obra_cod)}` : ''}`,
+      ),
+    retry: false,
   })
 }
 
+// La imputación toca filas de MCC (cobro_id/monto_cobrado): las mutaciones de
+// cobros invalidan TAMBIÉN la lista de cuenta-cliente, no solo los cobros.
 export function useCrearCobroCliente() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (dto: CrearCobroInput) => apiPost<CuentaClienteCobro>('/api/cuenta-cliente/cobros', dto),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['cuenta-cliente-cobros'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cuenta-cliente-cobros'] })
+      qc.invalidateQueries({ queryKey: ['cuenta-cliente'] })
+    },
   })
 }
 
@@ -117,6 +135,33 @@ export function useEliminarCobroCliente() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: number) => apiDelete<{ success: boolean }>(`/api/cuenta-cliente/cobros/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['cuenta-cliente-cobros'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cuenta-cliente-cobros'] })
+      qc.invalidateQueries({ queryKey: ['cuenta-cliente'] })
+    },
   })
+}
+
+// ── Comprobante del cobro (bucket privado cobros-docs, signed URL 2 pasos) ──
+
+export async function uploadComprobanteCobro(file: File): Promise<string> {
+  const TIPOS_OK = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'] as const
+  if (!(TIPOS_OK as readonly string[]).includes(file.type)) {
+    throw new Error('Tipo de archivo no soportado (jpg, png, webp o pdf)')
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    throw new Error('El archivo supera 10 MB')
+  }
+  const { path, signedUrl } = await apiPost<{ path: string; signedUrl: string; token: string; expiresIn: number }>(
+    '/api/cuenta-cliente/cobros/upload-comprobante',
+    { content_type: file.type },
+  )
+  const res = await fetch(signedUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file })
+  if (!res.ok) throw new Error(`Falló la subida (${res.status})`)
+  return path
+}
+
+export async function fetchCobroComprobanteUrl(id: number): Promise<string> {
+  const { url } = await apiGet<{ url: string }>(`/api/cuenta-cliente/cobros/${id}/comprobante-url`)
+  return url
 }

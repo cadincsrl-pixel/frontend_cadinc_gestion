@@ -1244,6 +1244,13 @@ export interface MaterialACuentaCliente extends AuditFields {
    * Heredado de `solicitud_compra_item.pagado_por` al insertar el MCC.
    */
   pagado_por:       PagadoPor
+  /**
+   * Imputación de pagos (2026-07-21): id del cobro que pagó este item
+   * (null = adeudado) y el monto congelado al momento de imputar — si el
+   * item se retasa después, la rendición histórica no cambia.
+   */
+  cobro_id:         number | null
+  monto_cobrado:    number | null
 }
 
 export type MedioCobro = 'efectivo' | 'transferencia' | 'cheque' | 'otro'
@@ -1256,6 +1263,8 @@ export interface CuentaClienteCobro extends AuditFields {
   monto:    number
   medio:    MedioCobro
   obs:      string | null
+  /** Path del comprobante en el bucket privado cobros-docs (se firma on-demand). */
+  comprobante_url:  string | null
 }
 
 // ── Stock en Depósito ──
