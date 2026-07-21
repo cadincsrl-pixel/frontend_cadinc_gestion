@@ -400,11 +400,13 @@ describe('costoLegConCatObra — la fórmula CANÓNICA del costo semanal', () =>
   })
 
   it('SEMANA EN CURSO: un aumento a mitad de semana revaloriza TODA la semana', () => {
-    // OJO: si la semana a calcular es la actual, fechaRef = HOY (no el
-    // viernes). Con "hoy" = martes 2026-07-21 y un aumento que rige desde el
-    // lunes 2026-07-20, las 9 hs del VIERNES 17 (anteriores al aumento)
-    // también se pagan al vh nuevo. La semana en curso siempre se valoriza
-    // al precio vigente hoy; recién al quedar en el pasado se ancla al viernes.
+    // REGLA DE NEGOCIO CONFIRMADA por Franco (2026-07-21): "si cambiamos
+    // precio en la semana en curso se debe actualizar toda esa semana".
+    // Si la semana a calcular es la actual, fechaRef = HOY (no el viernes):
+    // con "hoy" = martes 2026-07-21 y un aumento que rige desde el lunes
+    // 2026-07-20, las 9 hs del VIERNES 17 (anteriores al aumento) también se
+    // pagan al vh nuevo. La semana en curso siempre se valoriza al precio
+    // vigente hoy; recién al quedar en el pasado se ancla al viernes.
     const tarifasOb200 = [
       mkTarifa('OB-200', 1, 7800, '2026-06-26'),
       mkTarifa('OB-200', 1, 8400, '2026-07-20'), // aumento del lunes
