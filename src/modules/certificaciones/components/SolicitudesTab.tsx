@@ -343,6 +343,11 @@ export function SolicitudesTab() {
     if (!obraNueva) { toast('Seleccioná una obra', 'err'); return }
     const items = lineas.filter(l => l.descripcion.trim()).map(l => ({ descripcion: l.descripcion, cantidad: l.cantidad, unidad: l.unidad, obs: l.obs || null, material_id: l.material_id }))
     if (!items.length) { toast('Agregá al menos un material', 'err'); return }
+    // Cantidad obligatoria: dejar el campo vacío guardaba 0 en silencio y el
+    // pedido viajaba con "0 unidades" hasta el remito (dato real: 73 items
+    // en 0 cargados así hasta 2026-07-22).
+    const sinCantidad = items.find(i => !Number.isFinite(i.cantidad) || i.cantidad <= 0)
+    if (sinCantidad) { toast(`Cargá la cantidad de "${sinCantidad.descripcion}"`, 'err'); return }
     create({ obra_cod: obraNueva, prioridad: cab.prioridad, obs: cab.obs || null, entrega_tentativa: cab.entrega_tentativa || null, items }, {
       onSuccess: () => { toast('Solicitud creada', 'ok'); setModalNuevo(false) },
       onError: () => toast('Error al crear solicitud', 'err'),
@@ -383,6 +388,10 @@ export function SolicitudesTab() {
         obs: l.obs || null,
         material_id: l.material_id,
       }))
+
+    // Misma validación que al crear: sin cantidad no hay pedido.
+    const sinCantidadEdit = itemsToSend.find(i => !Number.isFinite(i.cantidad) || i.cantidad <= 0)
+    if (sinCantidadEdit) { toast(`Cargá la cantidad de "${sinCantidadEdit.descripcion}"`, 'err'); return }
 
     updateSol({
       id: modalEditar.id,
