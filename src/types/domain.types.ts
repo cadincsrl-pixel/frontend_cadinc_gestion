@@ -1169,6 +1169,9 @@ export interface SolicitudCompraItem {
   cantidad:         number
   /** Cantidad realmente comprada si difiere de la solicitada. `null` = se compró lo solicitado. */
   cantidad_comprada?: number | null
+  /** Acumulado enviado (envíos parciales 2026-07-22). El item pasa a 'enviado'
+   *  recién cuando cubre la cantidad efectiva; mientras, sigue "por enviar". */
+  cantidad_enviada?: number
   unidad:           string
   obs?:             string | null
   estado:           ItemEstado

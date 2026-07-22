@@ -118,7 +118,7 @@ export function imprimirRemito(remito: RemitoEnvio, obraNom?: string) {
   `).join('')
 
   const copiaHtml = (tipo: string) => `
-    <div style="border:1px solid #ccc;padding:8px;min-height:calc(33.33vh - 14px);box-sizing:border-box;position:relative;page-break-inside:avoid">
+    <div style="border:1px solid #ccc;padding:8px;min-height:calc(33.33vh - 14px);box-sizing:border-box;display:flex;flex-direction:column;page-break-inside:avoid">
       <!-- Header -->
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid #E8621A;padding-bottom:4px;margin-bottom:6px">
         <div>
@@ -153,8 +153,9 @@ export function imprimirRemito(remito: RemitoEnvio, obraNom?: string) {
           <td style="padding:2px 4px;text-align:right;font-weight:bold;font-size:9px;color:#E8621A">${fmtM(total)}</td>
         </tr></tfoot>` : ''}
       </table>
-      <!-- Firmas -->
-      <div style="display:flex;gap:20px;position:absolute;bottom:8px;left:8px;right:8px">
+      <!-- Firmas: en flujo normal con margin-top:auto — con muchos renglones
+           bajan con el contenido en vez de pisarlo (antes eran absolute). -->
+      <div style="display:flex;gap:20px;margin-top:auto;padding-top:10px">
         <div style="flex:1;text-align:center;border-top:1px solid #000;padding-top:2px;font-size:7px">ENTREGÓ</div>
         <div style="flex:1;text-align:center;border-top:1px solid #000;padding-top:2px;font-size:7px">RECIBIÓ</div>
         <div style="flex:1;text-align:center;border-top:1px solid #000;padding-top:2px;font-size:7px">TRANSPORTE</div>
@@ -170,7 +171,7 @@ export function imprimirRemito(remito: RemitoEnvio, obraNom?: string) {
       @page { margin: 8mm; size: A4; }
       body { font-family: Arial, sans-serif; color: #000; margin: 0; padding: 0; }
     </style>
-    </head><body style="display:flex;flex-direction:column;height:100vh;gap:4px">
+    </head><body style="display:flex;flex-direction:column;gap:4px">
     ${copiaHtml('ORIGINAL')}
     ${copiaHtml('DUPLICADO')}
     ${copiaHtml('TRIPLICADO')}

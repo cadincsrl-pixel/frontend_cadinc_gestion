@@ -228,6 +228,10 @@ export function SolicitudesTab() {
   // móvil/PWA, abrir la ventana en el onSuccess async se bloquea silenciosamente
   // y el remito no se abría, aunque el ítem ya quedaba 'enviado'.
   const [ultimoRemito, setUltimoRemito] = useState<{ remito: RemitoEnvio; obraNom?: string } | null>(null)
+  // Modal de armado de remito con cantidades editables (envíos parciales):
+  // lo que se manda de menos queda pendiente para otro remito.
+  const [modalEnvio, setModalEnvio] = useState<{ solicitud: SolicitudCompra; items: SolicitudCompraItem[] } | null>(null)
+  const [cantEnvio, setCantEnvio] = useState<Record<number, string>>({})
   // Selección de items pendientes para compra en LOTE (mismo proveedor +
   // misma factura, precio individual por item). Map<solicitudId, Set<itemId>>
   // — la selección es por solicitud porque una factura típicamente cubre
@@ -592,22 +596,43 @@ export function SolicitudesTab() {
     setSelected(prev => { const n = new Set(prev); n.has(itemId) ? n.delete(itemId) : n.add(itemId); return n })
   }
 
+  // Abre el modal de armado de remito con cantidades editables. Cada item
+  // arranca con su PENDIENTE de envío (efectiva − ya enviada): si Sosa manda
+  // de menos, se baja el número y el resto queda pendiente para otro remito.
   function enviarConRemito(solicitud: SolicitudCompra, itemIds: number[]) {
     const items = (solicitud.items ?? []).filter(it => itemIds.includes(it.id!))
     if (!items.length) return
+    const init: Record<number, string> = {}
+    for (const it of items) {
+      const efectiva  = Number(it.cantidad_comprada ?? it.cantidad)
+      const pendiente = efectiva - Number(it.cantidad_enviada ?? 0)
+      init[it.id!] = String(pendiente)
+    }
+    setCantEnvio(init)
+    setModalEnvio({ solicitud, items })
+  }
 
-    const n = items.length
+  function confirmarEnvio() {
+    if (!modalEnvio) return
+    const { solicitud, items } = modalEnvio
     const obra = obrasMap.get(solicitud.obra_cod)
     const esDeposito = obra?.es_deposito === true
-    const msgConfirm = esDeposito
-      ? `¿Recibir ${n > 1 ? `${n} ítems` : 'el ítem'} en el depósito? Ingresan al stock y se genera el comprobante.`
-      : `¿Generar remito y marcar como enviado${n > 1 ? ` ${n} ítems` : ''}? Esta acción crea el remito de envío a la obra.`
-    if (!confirm(msgConfirm)) return
-    const remitoItems = items.map(it => ({
+
+    const envios: { item: SolicitudCompraItem; cantidad: number }[] = []
+    for (const it of items) {
+      const efectiva  = Number(it.cantidad_comprada ?? it.cantidad)
+      const pendiente = efectiva - Number(it.cantidad_enviada ?? 0)
+      const v = Number(cantEnvio[it.id!])
+      if (!Number.isFinite(v) || v < 0) { toast(`Cantidad inválida en "${it.descripcion}"`, 'err'); return }
+      if (v > pendiente + 0.001) { toast(`"${it.descripcion}": querés enviar ${v} pero quedan ${pendiente} pendientes`, 'err'); return }
+      if (v > 0) envios.push({ item: it, cantidad: v })
+    }
+    if (!envios.length) { toast('Poné cantidad a enviar en al menos un material', 'err'); return }
+
+    const remitoItems = envios.map(({ item: it, cantidad }) => ({
       item_id: it.id,
       descripcion: it.descripcion,
-      // Cantidad efectiva: la comprada si difiere de la solicitada.
-      cantidad: it.cantidad_comprada ?? it.cantidad,
+      cantidad,
       unidad: it.unidad,
       precio_unit: it.precio_unit ?? null,
       origen: (it.estado === 'comprado' || it.estado === 'retirado') ? 'proveedor' : 'deposito',
@@ -619,11 +644,22 @@ export function SolicitudesTab() {
       solicitud_id: solicitud.id,
       origen: remitoItems.some(r => r.origen === 'proveedor') ? 'mixto' : 'deposito',
       items: remitoItems,
-      enviar_items: itemIds,
+      enviar_items: envios.map(e => ({ item_id: e.item.id!, cantidad: e.cantidad })),
     }, {
       onSuccess: (remito: any) => {
-        toast(esDeposito ? 'Recibido e ingresado al depósito' : 'Remito generado e ítems enviados', 'ok')
+        const parciales = envios.filter(e => {
+          const efectiva  = Number(e.item.cantidad_comprada ?? e.item.cantidad)
+          const pendiente = efectiva - Number(e.item.cantidad_enviada ?? 0)
+          return e.cantidad < pendiente - 0.001
+        }).length
+        toast(
+          esDeposito ? 'Recibido e ingresado al depósito'
+          : parciales > 0 ? `Remito generado · ${parciales} ítem${parciales !== 1 ? 's' : ''} con envío parcial (el resto queda pendiente)`
+          : 'Remito generado e ítems enviados',
+          'ok',
+        )
         setSelected(new Set())
+        setModalEnvio(null)
         // No imprimimos acá (estamos fuera del gesto del usuario → el popup se
         // bloquea en móvil). Ofrecemos imprimir desde un modal con su botón.
         setUltimoRemito({ remito, obraNom: obra?.nom })
@@ -830,6 +866,11 @@ export function SolicitudesTab() {
                                         <>{item.cantidad} {unidLabel}</>
                                       )}
                                       {item.precio_unit != null && <span className="ml-2">× {fmtM(item.precio_unit)} = <strong>{fmtM(cantEfectiva * item.precio_unit)}</strong></span>}
+                                      {Number(item.cantidad_enviada ?? 0) > 0 && item.estado !== 'enviado' && (
+                                        <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-azul-light text-azul font-sans" title="Envío parcial — el resto queda pendiente de enviar">
+                                          📤 {Number(item.cantidad_enviada)}/{cantEfectiva} enviados
+                                        </span>
+                                      )}
                                     </div>
                                   )
                                 })()}
@@ -1142,6 +1183,11 @@ export function SolicitudesTab() {
                                     )}
                                     {item.precio_unit != null && (
                                       <span className="ml-2">× {fmtM(item.precio_unit)} = <strong>{fmtM(cantEfectiva * item.precio_unit)}</strong></span>
+                                    )}
+                                    {Number(item.cantidad_enviada ?? 0) > 0 && item.estado !== 'enviado' && (
+                                      <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-azul-light text-azul font-sans" title="Envío parcial — el resto queda pendiente de enviar">
+                                        📤 {Number(item.cantidad_enviada)}/{cantEfectiva} enviados
+                                      </span>
                                     )}
                                   </div>
                                 )
@@ -1778,6 +1824,73 @@ export function SolicitudesTab() {
           </div>
         )}
       </Modal>
+
+      {/* Modal de armado de remito: cantidades editables por item (envíos
+          parciales). Lo que se manda de menos queda pendiente para otro remito. */}
+      {modalEnvio && (() => {
+        const obraEnv = obrasMap.get(modalEnvio.solicitud.obra_cod)
+        const esDep = obraEnv?.es_deposito === true
+        return (
+          <Modal
+            open
+            onClose={() => setModalEnvio(null)}
+            title={esDep ? '📦 RECIBIR EN DEPÓSITO' : '📦 ARMAR REMITO DE ENVÍO'}
+            width="max-w-2xl"
+            footer={
+              <>
+                <Button variant="secondary" onClick={() => setModalEnvio(null)}>Cancelar</Button>
+                <Button variant="primary" loading={enviandoRemito} onClick={confirmarEnvio}>
+                  {esDep ? '✓ Recibir e ingresar al stock' : '✓ Generar remito'}
+                </Button>
+              </>
+            }
+          >
+            <div className="flex flex-col gap-3">
+              <div className="text-xs text-gris-dark">
+                Obra: <span className="font-bold text-carbon">{obraEnv?.nom ?? modalEnvio.solicitud.obra_cod}</span>
+                {' · '}Ajustá la cantidad si se manda de menos: <b>el resto queda pendiente</b> y el ítem sigue en "por enviar" para otro remito.
+              </div>
+              <div className="border border-gris rounded-lg divide-y divide-gris">
+                {modalEnvio.items.map(it => {
+                  const efectiva  = Number(it.cantidad_comprada ?? it.cantidad)
+                  const yaEnviada = Number(it.cantidad_enviada ?? 0)
+                  const pendiente = efectiva - yaEnviada
+                  const v = Number(cantEnvio[it.id!])
+                  const excede = Number.isFinite(v) && v > pendiente + 0.001
+                  return (
+                    <div key={it.id} className="flex flex-wrap items-center gap-2 px-3 py-2">
+                      <div className="basis-full sm:basis-auto sm:flex-1 min-w-0">
+                        <div className="text-sm font-medium text-carbon truncate">{it.descripcion}</div>
+                        <div className="text-[11px] text-gris-dark font-mono">
+                          Pendiente: <b>{pendiente}</b> {it.unidad}
+                          {yaEnviada > 0 && <span className="text-azul"> · ya enviados {yaEnviada}/{efectiva}</span>}
+                        </div>
+                      </div>
+                      <div className="w-28 ml-auto sm:ml-0">
+                        <input
+                          type="number" min="0" step="any" inputMode="decimal"
+                          value={cantEnvio[it.id!] ?? ''}
+                          onChange={e => setCantEnvio(p => ({ ...p, [it.id!]: e.target.value }))}
+                          className={`w-full px-2 py-1.5 text-sm font-mono text-right border-[1.5px] rounded-lg outline-none focus:border-naranja ${excede ? 'border-rojo bg-rojo-light/30' : 'border-gris-mid'}`}
+                        />
+                      </div>
+                      <span className="text-xs text-gris-dark w-10">{it.unidad}</span>
+                      {excede && (
+                        <span className="basis-full text-[11px] text-rojo">Máximo pendiente: {pendiente}</span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+              <p className="text-[11px] text-gris-mid italic">
+                {esDep
+                  ? 'Las cantidades recibidas ingresan al stock del depósito; lo no recibido queda pendiente.'
+                  : 'El remito sale con las cantidades que pongas acá. Cantidad 0 = ese material no va en este remito.'}
+              </p>
+            </div>
+          </Modal>
+        )
+      })()}
 
       {/* Modal post-remito: ofrece imprimir. El window.open de imprimirRemito
           corre DENTRO del gesto del usuario (click del botón), así no se bloquea
