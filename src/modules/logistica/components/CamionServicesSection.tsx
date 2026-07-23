@@ -14,6 +14,7 @@ import {
   useCamionServices,
   useCamionServiceEstadoTodos,
   useCreateCamionService,
+  useUpdateCamionService,
   useDeleteCamionService,
   uploadComprobanteService,
   fetchServiceComprobanteUrl,
@@ -76,6 +77,9 @@ export function CamionServicesSection({ camionId }: Props) {
   const [kmDraft, setKmDraft] = useState('')
   const [verHistorial, setVerHistorial] = useState(false)
   const [modalRegistrar, setModalRegistrar] = useState(false)
+  // Editar un service ya cargado (corregir datos o subirle el comprobante
+  // que faltó al registrarlo).
+  const [editService, setEditService] = useState<CamionService | null>(null)
 
   function startEditKm() {
     setKmDraft(String(camion?.km_actuales ?? estado?.km_actuales ?? 0))
@@ -211,9 +215,19 @@ export function CamionServicesSection({ camionId }: Props) {
                     type="button"
                     onClick={() => handleVerComprobante(historial[0].id)}
                     title="Ver comprobante"
-                    className="text-[11px] font-bold px-2 py-1 rounded bg-azul-light text-azul hover:bg-azul hover:text-white transition-colors"
+                    className="text-sm font-bold px-2.5 py-1.5 min-w-[36px] rounded bg-azul-light text-azul hover:bg-azul hover:text-white transition-colors"
                   >
                     👁
+                  </button>
+                )}
+                {historial[0] && !historial[0].comprobante_url && puedeEditar && (
+                  <button
+                    type="button"
+                    onClick={() => setEditService(historial[0])}
+                    title="Este service no tiene comprobante — subirlo"
+                    className="text-[11px] font-bold px-2 py-1 rounded bg-amarillo-light text-[#7A5500] hover:bg-amarillo hover:text-carbon transition-colors"
+                  >
+                    📎 Subir comprobante
                   </button>
                 )}
               </>
@@ -279,9 +293,19 @@ export function CamionServicesSection({ camionId }: Props) {
                       type="button"
                       onClick={() => handleVerComprobante(s.id)}
                       title="Ver comprobante"
-                      className="text-[11px] font-bold px-2 py-1 rounded bg-azul-light text-azul hover:bg-azul hover:text-white transition-colors"
+                      className="text-sm font-bold px-2.5 py-1.5 min-w-[36px] rounded bg-azul-light text-azul hover:bg-azul hover:text-white transition-colors"
                     >
                       👁
+                    </button>
+                  )}
+                  {puedeEditar && (
+                    <button
+                      type="button"
+                      onClick={() => setEditService(s)}
+                      title={s.comprobante_url ? 'Editar service' : 'Editar service / subir comprobante'}
+                      className="text-sm font-bold px-2.5 py-1.5 min-w-[36px] rounded bg-gris text-gris-dark hover:bg-azul-light hover:text-azul transition-colors"
+                    >
+                      ✏️
                     </button>
                   )}
                   {puedeEliminar && (
@@ -306,6 +330,14 @@ export function CamionServicesSection({ camionId }: Props) {
           camionId={camionId}
           kmActuales={camion?.km_actuales ?? estado?.km_actuales ?? 0}
           onClose={() => setModalRegistrar(false)}
+        />
+      )}
+
+      {editService && (
+        <EditarServiceModal
+          service={editService}
+          camionId={camionId}
+          onClose={() => setEditService(null)}
         />
       )}
     </div>
@@ -495,6 +527,152 @@ function RegistrarServiceModal({ camionId, kmActuales, onClose }: ModalProps) {
           <p className="text-[11px] text-gris-mid italic">
             Foto o PDF de la factura del service. Máx 10 MB.
           </p>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// ── Modal: editar un service ya cargado ────────────────────────────────
+// Caso principal: subirle el comprobante a un service que se registró sin
+// (pedido del user 2026-07-23). También corrige fecha/km/obs. El PATCH del
+// backend maneja el reemplazo del comprobante con dedup sha256 y borra el
+// archivo viejo del bucket.
+function EditarServiceModal({ service, camionId, onClose }: {
+  service:  CamionService
+  camionId: number
+  onClose:  () => void
+}) {
+  const toast = useToast()
+  const { mutate: updateService, isPending: saving } = useUpdateCamionService()
+  const [archivo, setArchivo] = useState<File | null>(null)
+  const [removerComp, setRemoverComp] = useState(false)
+  const [subiendo, setSubiendo] = useState(false)
+
+  const form = useForm<ServiceFormValues>({
+    defaultValues: {
+      fecha:      service.fecha,
+      km_service: service.km_service,
+      // El form trabaja con el intervalo (cada cuántos km), no el absoluto.
+      intervalo:  Math.max(0, Number(service.km_proximo ?? 0) - Number(service.km_service ?? 0)) || 10000,
+      obs:        service.obs ?? '',
+    },
+  })
+
+  async function verActual() {
+    await abrirAdjuntoFirmado(
+      () => fetchServiceComprobanteUrl(service.id),
+      () => toast('No se pudo abrir el comprobante', 'err'),
+    )
+  }
+
+  async function onSubmit(values: ServiceFormValues) {
+    const km_service = Number(values.km_service)
+    const intervalo  = Number(values.intervalo)
+    if (!Number.isFinite(km_service) || km_service < 0) { toast('Km del service inválido', 'err'); return }
+    if (!Number.isFinite(intervalo) || intervalo <= 0) { toast('El intervalo del próximo service debe ser mayor a 0', 'err'); return }
+
+    let comprobantePatch: { comprobante_path: string | null } | Record<string, never> = {}
+    try {
+      if (archivo) {
+        setSubiendo(true)
+        const path = await uploadComprobanteService(camionId, archivo)
+        comprobantePatch = { comprobante_path: path }
+      } else if (removerComp) {
+        comprobantePatch = { comprobante_path: null }
+      }
+    } catch (e: any) {
+      toast(e?.message || 'Error al subir el comprobante', 'err')
+      setSubiendo(false)
+      return
+    } finally {
+      setSubiendo(false)
+    }
+
+    updateService(
+      {
+        id: service.id,
+        dto: {
+          fecha:      values.fecha || undefined,
+          km_service,
+          km_proximo: km_service + intervalo,
+          obs:        values.obs?.trim() || null,
+          ...comprobantePatch,
+        },
+      },
+      {
+        onSuccess: () => { toast('✓ Service actualizado', 'ok'); onClose() },
+        onError: (err: any) => {
+          const code = err?.body?.error
+          if (code === 'COMPROBANTE_DUPLICADO') toast('Ese comprobante ya está cargado en otro service', 'err')
+          else toast(err?.message || 'Error al actualizar el service', 'err')
+        },
+      },
+    )
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`✏️ EDITAR SERVICE — ${fmtFecha(service.fecha)}`}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button variant="primary" loading={saving || subiendo} onClick={form.handleSubmit(onSubmit)}>
+            {subiendo ? '⬆ Subiendo…' : '✓ Guardar'}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Input label="📅 Fecha" type="date" {...form.register('fecha')} />
+          <Input label="🛣️ Km al hacer el service" type="number" placeholder="0" {...form.register('km_service')} />
+        </div>
+        <Input
+          label="🎯 Próximo service en (km)"
+          type="number"
+          placeholder="10000"
+          hint="Cada cuántos km hacer el próximo"
+          {...form.register('intervalo')}
+        />
+        <Input label="Observaciones" placeholder="Notas..." {...form.register('obs')} />
+
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-bold text-gris-dark uppercase tracking-wider">Comprobante</label>
+          {service.comprobante_url && !removerComp && !archivo && (
+            <div className="flex items-center gap-2 text-xs text-gris-dark">
+              <button type="button" onClick={verActual} className="font-bold text-azul hover:underline">
+                👁 Ver comprobante actual
+              </button>
+              <button type="button" onClick={() => setRemoverComp(true)} className="text-rojo hover:underline">
+                Quitar
+              </button>
+            </div>
+          )}
+          {!service.comprobante_url && !archivo && (
+            <p className="text-[11px] text-[#7A5500] font-bold">⚠ Este service no tiene comprobante — subilo acá.</p>
+          )}
+          {removerComp && (
+            <div className="flex items-center gap-2 text-xs text-rojo">
+              <span>⚠ Se eliminará el comprobante al guardar.</span>
+              <button type="button" onClick={() => setRemoverComp(false)} className="text-azul hover:underline">Cancelar</button>
+            </div>
+          )}
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp,application/pdf"
+            onChange={e => { setArchivo(e.target.files?.[0] ?? null); setRemoverComp(false) }}
+            className="text-xs file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:bg-azul-light file:text-azul file:font-bold hover:file:bg-azul hover:file:text-white file:cursor-pointer"
+          />
+          {archivo && (
+            <div className="flex items-center gap-2 text-xs text-gris-dark mt-1">
+              <span>📎 {archivo.name} · {(archivo.size / 1024).toFixed(0)} KB</span>
+              <button type="button" onClick={() => setArchivo(null)} className="text-rojo hover:underline">Quitar</button>
+            </div>
+          )}
+          <p className="text-[11px] text-gris-mid italic">Subir uno nuevo reemplaza el actual. Máx 10 MB.</p>
         </div>
       </div>
     </Modal>
