@@ -567,7 +567,7 @@ export function RopaPage() {
                                   ? `${cat.nombre}: entregado ${fmtFecha(ult.fecha_entrega)} (${meses}m) · ${vencido ? 'venció' : 'vence'} ${fmtFecha(vence!)}`
                                   : `${cat.nombre}: sin entregas`}
                                 className={`
-                                  inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold border
+                                  inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-bold border
                                   ${vencido
                                     ? ult ? 'bg-rojo-light border-rojo/30 text-rojo' : 'bg-gris border-gris-mid text-gris-dark'
                                     : 'bg-verde-light border-verde/30 text-verde'
@@ -576,12 +576,12 @@ export function RopaPage() {
                               >
                                 <span>{cat.icono ?? '📦'}</span>
                                 {ult ? (
-                                  <>
-                                    {fmtCorta(ult.fecha_entrega)}
-                                    <span className="font-semibold opacity-75">
-                                      · {vencido ? 'venció' : 'vence'} {fmtCorta(vence!)}
-                                    </span>
-                                  </>
+                                  <span className="grid grid-cols-[auto_auto] gap-x-1.5 leading-tight text-left items-baseline">
+                                    <span className="font-semibold opacity-70 uppercase text-[9px] tracking-wide">Entrega</span>
+                                    <span className="whitespace-nowrap">{fmtCorta(ult.fecha_entrega)}</span>
+                                    <span className="font-semibold opacity-70 uppercase text-[9px] tracking-wide">{vencido ? 'Venció' : 'Vence'}</span>
+                                    <span className="whitespace-nowrap">{fmtCorta(vence!)}</span>
+                                  </span>
                                 ) : '—'}
                               </span>
                             )
