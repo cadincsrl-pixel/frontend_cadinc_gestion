@@ -1,6 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   useCanteras, useDepositos, useRutas,
   useLugaresOperativos, useCrearLugarOperativo, useActualizarLugarOperativo, useEliminarLugarOperativo,
@@ -11,7 +12,6 @@ import { LOG_KEYS } from '../hooks/useLogistica'
 import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input }  from '@/components/ui/Input'
-import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 import { useForm } from 'react-hook-form'
 import { intInputProps } from '@/lib/utils/inputs'
@@ -23,10 +23,12 @@ import type { Cantera, Deposito, Ruta, LugarOperativo } from '@/types/domain.typ
 export function LugaresTab() {
   const toast = useToast()
   const qc = useQueryClient()
-  const { data: canteras  = [] } = useCanteras()
-  const { data: depositos = [] } = useDepositos()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const { data: canteras  = [], isSuccess: canterasListas  } = useCanteras()
+  const { data: depositos = [], isSuccess: depositosListos } = useDepositos()
   const { data: rutas     = [] } = useRutas()
-  const { data: lugaresOp = [] } = useLugaresOperativos()
+  const { data: lugaresOp = [], isSuccess: lugaresOpListos } = useLugaresOperativos()
   const { mutate: crearLugarOp,      isPending: creandoLugarOp }  = useCrearLugarOperativo()
   const { mutate: actualizarLugarOp, isPending: editandoLugarOp } = useActualizarLugarOperativo()
   const { mutate: eliminarLugarOp } = useEliminarLugarOperativo()
@@ -45,6 +47,20 @@ export function LugaresTab() {
   // propia sección, no en las listas de canteras/depósitos.
   const pairedCanteraIds  = useMemo(() => new Set((lugaresOp as LugarOperativo[]).map(l => l.cantera_id)), [lugaresOp])
   const pairedDepositoIds = useMemo(() => new Set((lugaresOp as LugarOperativo[]).map(l => l.deposito_id)), [lugaresOp])
+
+  // Buscadores de las listas de puntos de carga y depósitos (por nombre/localidad).
+  const [buscarListaCant, setBuscarListaCant] = useState('')
+  const [buscarListaDep,  setBuscarListaDep]  = useState('')
+  const canterasLista = useMemo(
+    () => (canteras as Cantera[]).filter(c =>
+      !pairedCanteraIds.has(c.id) && matchesSearch(`${c.nombre} ${c.localidad ?? ''}`, buscarListaCant)),
+    [canteras, pairedCanteraIds, buscarListaCant],
+  )
+  const depositosLista = useMemo(
+    () => (depositos as Deposito[]).filter(d =>
+      !pairedDepositoIds.has(d.id) && matchesSearch(`${d.nombre} ${d.localidad ?? ''}`, buscarListaDep)),
+    [depositos, pairedDepositoIds, buscarListaDep],
+  )
 
   // Selector doble + matriz de cobertura de rutas (reemplaza la lista plana).
   const [selCant,  setSelCant]  = useState('')  // cantera_id (string) elegida en el selector
@@ -79,6 +95,38 @@ export function LugaresTab() {
     () => (depositos as Deposito[]).filter(d => matchesSearch(`${d.nombre} ${d.localidad ?? ''}`, buscarDep)),
     [depositos, buscarDep],
   )
+
+  // Deep-link desde otras vistas (ej. origen/destino de un tramo en Viajes):
+  // ?cantera=ID / ?deposito=ID abre el modal del lugar apenas cargan los datos.
+  // Si el lugar es parte de un lugar operativo se abre ese modal (ahí se
+  // gestiona). Limpiamos el param para que cerrar el modal no lo reabra.
+  useEffect(() => {
+    if (!canterasListas || !depositosListos || !lugaresOpListos) return
+    const canteraParam  = searchParams.get('cantera')
+    const depositoParam = searchParams.get('deposito')
+    if (!canteraParam && !depositoParam) return
+
+    if (canteraParam) {
+      const op = (lugaresOp as LugarOperativo[]).find(l => String(l.cantera_id) === canteraParam)
+      const c  = (canteras as Cantera[]).find(x => String(x.id) === canteraParam)
+      if (op) openEditLugarOp(op)
+      else if (c) openEditCantera(c)
+    } else if (depositoParam) {
+      const op = (lugaresOp as LugarOperativo[]).find(l => String(l.deposito_id) === depositoParam)
+      const d  = (depositos as Deposito[]).find(x => String(x.id) === depositoParam)
+      if (op) openEditLugarOp(op)
+      else if (d) openEditDeposito(d)
+    }
+    // Limpiar solo los params consumidos, preservando tab y futuros params
+    // (mismo patrón que el deep-link ?tramo= de ViajesTab).
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete('cantera')
+    params.delete('deposito')
+    router.replace(`/logistica?${params.toString()}`, { scroll: false })
+    // openEdit* se recrean en cada render; con el param limpiado el efecto
+    // re-entra y sale por el guard, así que alcanza con estas deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, canterasListas, depositosListos, lugaresOpListos, canteras, depositos, lugaresOp, router])
 
   const formCantera    = useForm<any>()
   const formDeposito   = useForm<any>()
@@ -181,11 +229,14 @@ export function LugaresTab() {
   }
 
   async function handleCreateRuta(data: any) {
+    const canteraId  = Number(data.cantera_id)
+    const depositoId = Number(data.deposito_id)
+    if (!canteraId || !depositoId) { toast('Elegí punto de carga y depósito', 'err'); return }
     setLoading(true)
     try {
       await apiPost('/api/logistica/lugares/rutas', {
-        cantera_id:    Number(data.cantera_id),
-        deposito_id:   Number(data.deposito_id),
+        cantera_id:    canteraId,
+        deposito_id:   depositoId,
         km_ida_vuelta: Number(data.km_ida_vuelta),
         obs: data.obs,
       })
@@ -288,9 +339,16 @@ export function LugaresTab() {
 
       {/* Canteras */}
       <Section title="⛏ Puntos de carga" onAdd={() => setModalCantera(true)} addLabel="＋ Punto de carga">
+        <div className="px-4 py-2 border-b border-gris bg-gris/30">
+          <Input
+            placeholder="🔍 Buscar punto de carga…"
+            value={buscarListaCant}
+            onChange={e => setBuscarListaCant(e.target.value)}
+          />
+        </div>
         <SimpleList
-          items={(canteras as Cantera[]).filter(c => !pairedCanteraIds.has(c.id))}
-          emptyMsg="No hay puntos de carga registrados."
+          items={canterasLista}
+          emptyMsg={buscarListaCant ? 'Sin resultados para la búsqueda.' : 'No hay puntos de carga registrados.'}
           renderItem={c => (
             <div key={c.id} className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-gris last:border-0">
               <div className="flex items-center gap-2 flex-wrap min-w-0 flex-1">
@@ -314,9 +372,16 @@ export function LugaresTab() {
 
       {/* Depósitos */}
       <Section title="🏭 Depósitos" onAdd={() => setModalDeposito(true)} addLabel="＋ Depósito">
+        <div className="px-4 py-2 border-b border-gris bg-gris/30">
+          <Input
+            placeholder="🔍 Buscar depósito…"
+            value={buscarListaDep}
+            onChange={e => setBuscarListaDep(e.target.value)}
+          />
+        </div>
         <SimpleList
-          items={(depositos as Deposito[]).filter(d => !pairedDepositoIds.has(d.id))}
-          emptyMsg="No hay depósitos registrados."
+          items={depositosLista}
+          emptyMsg={buscarListaDep ? 'Sin resultados para la búsqueda.' : 'No hay depósitos registrados.'}
           renderItem={d => (
             <div key={d.id} className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-gris last:border-0">
               <div className="flex items-center gap-2 flex-wrap min-w-0 flex-1">
@@ -654,17 +719,25 @@ export function LugaresTab() {
         footer={<><Button variant="secondary" onClick={() => setModalRuta(false)}>Cancelar</Button><Button variant="primary" loading={loading} onClick={formRuta.handleSubmit(handleCreateRuta)}>✓ Guardar</Button></>}
       >
         <div className="flex flex-col gap-4">
-          <Select
+          {/* Combobox no funciona con register (es controlado) → watch/setValue.
+              openNuevaRutaPar precarga ids numéricos, por eso el String(). */}
+          <Combobox
             label="Punto de carga (origen)"
-            placeholder="Elegí"
-            options={(canteras as Cantera[]).map(c => ({ value: c.id, label: c.nombre }))}
-            {...formRuta.register('cantera_id')}
+            placeholder="Buscar punto de carga…"
+            value={String(formRuta.watch('cantera_id') ?? '')}
+            onChange={v => formRuta.setValue('cantera_id', v)}
+            options={(canteras as Cantera[]).map(c => ({
+              value: String(c.id), label: c.nombre, sub: c.localidad ?? undefined,
+            }))}
           />
-          <Select
+          <Combobox
             label="Depósito (destino)"
-            placeholder="Elegí"
-            options={(depositos as Deposito[]).map(d => ({ value: d.id, label: d.nombre }))}
-            {...formRuta.register('deposito_id')}
+            placeholder="Buscar depósito…"
+            value={String(formRuta.watch('deposito_id') ?? '')}
+            onChange={v => formRuta.setValue('deposito_id', v)}
+            options={(depositos as Deposito[]).map(d => ({
+              value: String(d.id), label: d.nombre, sub: d.localidad ?? undefined,
+            }))}
           />
           <Input
             label="Km del trayecto (un sentido)"

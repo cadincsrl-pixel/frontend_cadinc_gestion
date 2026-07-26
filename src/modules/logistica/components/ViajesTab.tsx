@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
+import Link from 'next/link'
 import {
   useTramos, useChoferes, useCamiones, useCanteras, useDepositos, useRutas, useEmpresas,
   useTarifasEmpresa, useCreateRuta,
@@ -16,6 +17,7 @@ import { Badge }    from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
 import { useForm }  from 'react-hook-form'
 import { usePermisos } from '@/hooks/usePermisos'
+import { useTabPermitido } from '@/hooks/useTabsPermitidos'
 import { uploadRemitoImg } from '@/lib/utils/upload'
 import { toISO } from '@/lib/utils/dates'
 import { useTramosEnRuta } from '../hooks/useEnRuta'
@@ -56,6 +58,9 @@ export function ViajesTab() {
   // Permisos: deshabilitar (no ocultar — CLAUDE.md §6) los botones según
   // capacidad. El backend valida igual; esto evita clicks que rebotan 403.
   const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('logistica')
+  // Origen/destino de la card linkean al tab Rutas (abre el modal del lugar).
+  // Si el usuario no tiene ese tab permitido, se muestran como texto plano.
+  const puedeVerLugares = useTabPermitido('logistica', 'lugares')
   const { data: tramos    = [] } = useTramos()
   const { data: choferes  = [] } = useChoferes()
   const { data: camiones  = [] } = useCamiones()
@@ -1024,10 +1029,19 @@ export function ViajesTab() {
                     )}
                     {cantera && deposito && (
                       <div className="text-xs text-gris-dark mt-0.5">
-                        {esCargado
-                          ? `⛏ ${cantera.nombre} → 🏭 ${deposito.nombre}`
-                          : `🏭 ${deposito.nombre} → ⛏ ${cantera.nombre}`
-                        }
+                        {esCargado ? (
+                          <>
+                            <LugarLink habilitado={puedeVerLugares} tipo="cantera" id={cantera.id}>⛏ {cantera.nombre}</LugarLink>
+                            {' → '}
+                            <LugarLink habilitado={puedeVerLugares} tipo="deposito" id={deposito.id}>🏭 {deposito.nombre}</LugarLink>
+                          </>
+                        ) : (
+                          <>
+                            <LugarLink habilitado={puedeVerLugares} tipo="deposito" id={deposito.id}>🏭 {deposito.nombre}</LugarLink>
+                            {' → '}
+                            <LugarLink habilitado={puedeVerLugares} tipo="cantera" id={cantera.id}>⛏ {cantera.nombre}</LugarLink>
+                          </>
+                        )}
                         {km && <span className="ml-2 font-mono">({Math.round(km).toLocaleString('es-AR')} km)</span>}
                       </div>
                     )}
@@ -1597,6 +1611,23 @@ export function ViajesTab() {
         </div>
       </Modal>
     </>
+  )
+}
+
+// Nombre de un lugar (origen/destino de la card) como link al tab Rutas con
+// ?cantera=/?deposito= — LugaresTab lee el param y abre el modal del lugar.
+function LugarLink({ habilitado, tipo, id, children }: {
+  habilitado: boolean; tipo: 'cantera' | 'deposito'; id: number; children: React.ReactNode
+}) {
+  if (!habilitado) return <span>{children}</span>
+  return (
+    <Link
+      href={`/logistica?tab=lugares&${tipo}=${id}`}
+      title="Ver / editar lugar"
+      className="text-azul underline decoration-dotted decoration-gris-mid underline-offset-2 hover:decoration-solid hover:decoration-azul transition-colors"
+    >
+      {children}
+    </Link>
   )
 }
 
