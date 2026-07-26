@@ -25,7 +25,7 @@ export function ResumenHistoricoPage() {
   const router = useRouter()
 
   // ── Tabs ──
-  const [tab, setTab] = useState<'semana' | 'historico'>('semana')
+  const [tab, setTab] = useState<'semana' | 'anterior' | 'historico'>('semana')
   const [vistaObras, setVistaObras] = useState<'activas' | 'archivadas' | 'todas'>('activas')
   const [prestamosDetalleAbierto, setPrestamosDetalleAbierto] = useState(false)
   const [contratistasDetalleAbierto, setContratistasDetalleAbierto] = useState(false)
@@ -152,11 +152,24 @@ export function ResumenHistoricoPage() {
   const semActualDays = getSemDays(semConGracia)
   const enGracia      = semActualKey !== toISO(getViernes(new Date()))
 
+  // ── Acceso rápido: última semana cerrada (la anterior a la vigente) ──
+  // El tab "Última semana cerrada" reutiliza la vista de semana con la semana
+  // previa. En días de gracia (vie/sáb) la vista actual ya muestra la semana
+  // recién cerrada, así que este tab retrocede una más.
+  const verSemAnterior = tab === 'anterior'
+  const semAnterior = useMemo(() => {
+    const ant = new Date(semConGracia)
+    ant.setDate(ant.getDate() - 7)
+    return ant
+  }, [semConGracia])
+  const semVista     = verSemAnterior ? semAnterior : semConGracia
+  const semVistaKey  = toISO(semVista)
+
   // ── RESUMEN SEMANA ACTUAL ──
   const resumenSemActual = useMemo(() => {
     const r = calcularResumenSemana({
       obras: obrasFiltradas,
-      semana: semConGracia,
+      semana: semVista,
       horas: todasHoras,
       hsExtras: todasHsExtras,
       personal,
@@ -173,7 +186,7 @@ export function ResumenHistoricoPage() {
       totalContrat: r.totalCostoContrat,
       trabajadores: r.totalPersonal,
     }
-  }, [obrasFiltradas, todasHoras, todasHsExtras, personal, categorias, todasTarifas, todasCerts, todasCatObra, todosPrestamos, semConGracia])
+  }, [obrasFiltradas, todasHoras, todasHsExtras, personal, categorias, todasTarifas, todasCerts, todasCatObra, todosPrestamos, semVista])
 
   // ── RESUMEN HISTÓRICO ──
   const resumenHistorico = useMemo(() => {
@@ -359,7 +372,7 @@ export function ResumenHistoricoPage() {
 
       {/* ══ TABS ══ */}
       <div className="flex gap-1 border-b border-gris pb-0">
-        {([['semana', '📅 Semana actual'], ['historico', '📊 Histórico']] as const).map(([t, label]) => (
+        {([['semana', '📅 Semana actual'], ['anterior', '⏮ Última semana cerrada'], ['historico', '📊 Histórico']] as const).map(([t, label]) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -375,15 +388,20 @@ export function ResumenHistoricoPage() {
       </div>
 
       {/* ══ RESUMEN GENERAL — SEMANA ACTUAL ══ */}
-      {tab === 'semana' && <div className="bg-white rounded-card shadow-card p-3 sm:p-4 border-l-[5px] border-naranja">
+      {(tab === 'semana' || tab === 'anterior') && <div className="bg-white rounded-card shadow-card p-3 sm:p-4 border-l-[5px] border-naranja">
         <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
           <div className="min-w-0">
             <h1 className="font-display text-2xl sm:text-[1.8rem] tracking-wider text-azul leading-none">
               📊 RESUMEN GENERAL
             </h1>
-            <p className="text-xs sm:text-sm text-gris-dark mt-1 flex flex-wrap items-center gap-x-1 gap-y-1">
-              <span>{enGracia ? 'Semana cerrada · ' : 'Vista semana actual · '}{getSemLabel(semConGracia)}</span>
-              {enGracia && (
+            <p className="text-xs sm:text-sm text-gris-dark mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1">
+              <span>
+                {verSemAnterior
+                  ? 'Última semana cerrada · '
+                  : enGracia ? 'Semana cerrada · ' : 'Vista semana actual · '}
+                {getSemLabel(semVista)}
+              </span>
+              {enGracia && !verSemAnterior && (
                 <span className="text-[11px] font-bold text-naranja bg-naranja-light px-2 py-0.5 rounded-full">
                   cierre reciente
                 </span>
@@ -396,7 +414,7 @@ export function ResumenHistoricoPage() {
             <Chip value={fmtHs(resumenSemActual.totalHs)} label="Horas" />
             <Chip value={fmtMonto(resumenSemActual.totalCosto)} label="Operarios" variant="green" />
             {(() => {
-              const certsSem = todasCerts.filter(c => c.sem_key === semActualKey)
+              const certsSem = todasCerts.filter(c => c.sem_key === semVistaKey)
               if (resumenSemActual.totalContrat === 0 || certsSem.length === 0) {
                 return <Chip value={fmtMonto(resumenSemActual.totalContrat)} label="Contratistas" />
               }
@@ -426,7 +444,7 @@ export function ResumenHistoricoPage() {
                       <div className="absolute right-0 top-full mt-2 w-72 sm:w-80 max-w-[calc(100vw-1.5rem)] bg-white rounded-card shadow-card border border-gris z-50 overflow-hidden">
                         <div className="bg-[#EEE8FF] text-[#5A2D82] px-3 py-2 text-xs font-bold uppercase tracking-wider flex items-center justify-between gap-2">
                           <span>Detalle de contratistas</span>
-                          <span className="text-[10px] opacity-70">{getSemLabel(semConGracia)}</span>
+                          <span className="text-[10px] opacity-70">{getSemLabel(semVista)}</span>
                         </div>
                         <div className="max-h-[360px] overflow-y-auto text-left divide-y divide-gris">
                           {certsSem.map(c => {
@@ -462,7 +480,7 @@ export function ResumenHistoricoPage() {
               )
             })()}
             {(() => {
-              const prestamosSem = todosPrestamos.filter(p => p.sem_key === semActualKey)
+              const prestamosSem = todosPrestamos.filter(p => p.sem_key === semVistaKey)
               const otorgados  = prestamosSem.filter(p => p.tipo === 'otorgado')
               const descuentos = prestamosSem.filter(p => p.tipo === 'descontado')
               const totalOtorgados  = otorgados.reduce((s, p) => s + p.monto, 0)
@@ -496,7 +514,7 @@ export function ResumenHistoricoPage() {
                           <div className="absolute right-0 top-full mt-2 w-72 sm:w-80 max-w-[calc(100vw-1.5rem)] bg-white rounded-card shadow-card border border-gris z-50 overflow-hidden">
                             <div className="bg-naranja-light text-naranja-dark px-3 py-2 text-xs font-bold uppercase tracking-wider flex items-center justify-between gap-2">
                               <span>Detalle de la semana</span>
-                              <span className="text-[10px] opacity-70">{getSemLabel(semConGracia)}</span>
+                              <span className="text-[10px] opacity-70">{getSemLabel(semVista)}</span>
                             </div>
                             <div className="max-h-[360px] overflow-y-auto text-left">
                               {otorgados.length > 0 && (
@@ -579,7 +597,7 @@ export function ResumenHistoricoPage() {
         {/* Cards por obra */}
         {resumenSemActual.cards.length === 0 ? (
           <p className="text-gris-dark text-sm text-center py-4">
-            No hay actividad esta semana.
+            {verSemAnterior ? 'No hay actividad en la última semana cerrada.' : 'No hay actividad esta semana.'}
           </p>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">

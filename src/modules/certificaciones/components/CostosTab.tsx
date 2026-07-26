@@ -218,7 +218,7 @@ export function CostosTab() {
   // /modules/certificaciones (legacy). Usa el scope de tarja.
   const { data: obras = [] }           = useObras('tarja')
   const { data: obrasArchivadas = [] } = useObrasArchivadas('tarja')
-  const [vistaObras, setVistaObras] = useState<'activas' | 'archivadas' | 'todas'>('activas')
+  const [vistaObras, setVistaObras] = useState<'activas' | 'archivadas' | 'todas'>('todas')
   const [ccSel,      setCcSel]      = useState('')
   const [obraSel,    setObraSel]    = useState('')
   const [contratSel, setContratSel] = useState('')
