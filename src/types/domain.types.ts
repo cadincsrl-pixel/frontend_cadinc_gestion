@@ -801,14 +801,29 @@ export interface Liquidacion {
   created_at: string
 }
 
+// Respuesta del endpoint PATCH /api/logistica/liquidaciones/:id/cerrar:
+// la liquidación cerrada + el adelanto automático generado cuando el neto
+// dio negativo (null si el neto fue >= 0).
+export interface CerrarLiquidacionResp extends Liquidacion {
+  adelanto_saldo: { id: number; monto: number } | null
+}
+
+// 'saldo' NO es una entrega de dinero: lo crea el sistema al cerrar una
+// liquidación con neto negativo (la deuda del chofer pasa a la próxima).
+// Sólo el backend puede generarlo; la UI ofrece efectivo/transferencia.
+export type AdelantoFormaPago = 'transferencia' | 'efectivo' | 'saldo'
+
 export interface Adelanto {
   id: number
   chofer_id: number
   fecha: string
   monto: number
   descripcion: string | null
-  forma_pago: 'transferencia' | 'efectivo'
+  forma_pago: AdelantoFormaPago
+  /** Liquidación en la que este adelanto FUE DESCONTADO (null = pendiente). */
   liquidacion_id: number | null
+  /** Liquidación de cuyo cierre negativo NACIÓ este adelanto (null = adelanto normal). */
+  liquidacion_origen_id: number | null
   comprobante_url:  string | null
   comprobante_hash: string | null
 }

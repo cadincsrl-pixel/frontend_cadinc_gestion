@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiDelete, apiPatch } from '@/lib/api/client'
 import type {
   Chofer, Camion, Batea, Cantera, Deposito, Ruta, LugarOperativo,
-  Tramo, Viaje, Liquidacion, Adelanto, Estadia, TarifaCantera,
+  Tramo, Viaje, Liquidacion, CerrarLiquidacionResp, Adelanto, Estadia, TarifaCantera,
   EmpresaTransportista, TarifaEmpresaCantera, Cobro,
 } from '@/types/domain.types'
 
@@ -415,11 +415,14 @@ export function useCerrarLiquidacion() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: number) =>
-      apiPatch<Liquidacion>(`/api/logistica/liquidaciones/${id}/cerrar`, {}),
+      apiPatch<CerrarLiquidacionResp>(`/api/logistica/liquidaciones/${id}/cerrar`, {}),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: LOG_KEYS.liquidaciones })
       qc.invalidateQueries({ queryKey: LOG_KEYS.tramos })
       qc.invalidateQueries({ queryKey: LOG_KEYS.gastos })
+      // Cerrar en negativo genera un adelanto automático: sin esto, la deuda
+      // nueva no aparecería en "Adelantos pendientes" hasta recargar.
+      qc.invalidateQueries({ queryKey: LOG_KEYS.adelantos })
       qc.invalidateQueries({ queryKey: LOG_KEYS.relevosPendientes })
       qc.invalidateQueries({ queryKey: LOG_KEYS.relevosLiquidados })
     },

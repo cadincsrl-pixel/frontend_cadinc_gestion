@@ -6,6 +6,7 @@ import pdfMake from 'pdfmake/build/pdfmake'
 import pdfFonts from 'pdfmake/build/vfs_fonts'
 import type { TDocumentDefinitions } from 'pdfmake/interfaces'
 import { EMPRESA } from '@/lib/config/empresa'
+import type { AdelantoFormaPago } from '@/types/domain.types'
 
 ;(pdfMake as any).vfs = (pdfFonts as any)?.vfs ?? (pdfFonts as any)?.pdfMake?.vfs ?? pdfFonts
 
@@ -16,7 +17,9 @@ export interface ReciboAdelantoArgs {
   chofer_cuil?:   string | null
   monto:          number
   descripcion?:   string | null
-  forma_pago:     'transferencia' | 'efectivo'
+  // 'saldo' no debería llegar acá (no hubo entrega de dinero que firmar), pero
+  // se contempla el label para no mentir si alguien lo fuerza.
+  forma_pago:     AdelantoFormaPago
 }
 
 // ── Monto en letras (pesos argentinos) ──────────────────────────────
@@ -82,7 +85,10 @@ function fmtMonto(n: number): string {
 }
 
 export function generarReciboAdelanto(args: ReciboAdelantoArgs): void {
-  const formaLabel = args.forma_pago === 'efectivo' ? 'Efectivo' : 'Transferencia'
+  const formaLabel =
+    args.forma_pago === 'efectivo' ? 'Efectivo' :
+    args.forma_pago === 'saldo'    ? 'Saldo de liquidación anterior (sin entrega de dinero)' :
+    'Transferencia'
 
   const docDef: TDocumentDefinitions = {
     pageSize: 'A4',

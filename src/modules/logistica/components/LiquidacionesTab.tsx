@@ -24,7 +24,7 @@ import { LiquidacionAdjuntosSection } from './LiquidacionAdjuntosSection'
 import { ModalSolicitudTransferencia } from './ModalSolicitudTransferencia'
 import { apiGet } from '@/lib/api/client'
 import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
-import type { Chofer, Tramo, Adelanto, Estadia, Ruta, RelevoPendiente, RelevoLiquidado } from '@/types/domain.types'
+import type { Chofer, Tramo, Adelanto, AdelantoFormaPago, Estadia, Ruta, RelevoPendiente, RelevoLiquidado, CerrarLiquidacionResp } from '@/types/domain.types'
 import { exportLiquidacionExcel } from '@/lib/utils/liquidacion-export'
 import { toISO } from '@/lib/utils/dates'
 import {
@@ -48,6 +48,66 @@ function fmtFecha(s: string) {
 // Los helpers de fechas/km/relevos y la fórmula del neto viven en
 // ../utils/liquidacion-math (módulo puro, testeado en
 // src/__tests__/liquidacion-math.test.ts).
+
+// Aviso previo al cierre cuando el neto da NEGATIVO: al cerrar, el backend
+// crea un adelanto automático por ese importe (deuda del chofer) para que la
+// próxima liquidación lo descuente. Devuelve false si el usuario cancela.
+// El neto que se pasa acá tiene que ser EXACTAMENTE el que se va a persistir.
+function confirmarNetoNegativo(neto: number): boolean {
+  if (neto >= 0) return true
+  const deuda = fmtM(Math.abs(neto))
+  return window.confirm(
+    `⚠ El total neto da NEGATIVO: ${fmtM(neto)}\n\n` +
+    `El chofer recibió ${deuda} más de lo que generó en este período.\n\n` +
+    `Si cerrás la liquidación, el sistema va a crear automáticamente un ADELANTO ` +
+    `de ${deuda} con la fecha de hoy, y se lo va a descontar solo en la próxima ` +
+    `liquidación del chofer.\n\n` +
+    `¿Cerrar igual?`,
+  )
+}
+
+// Toast de cierre: menciona el adelanto automático si el backend lo creó.
+function mensajeCierre(resp: CerrarLiquidacionResp | undefined | null): string {
+  const ad = resp?.adelanto_saldo
+  if (!ad) return '✓ Liquidación cerrada'
+  return `✓ Liquidación cerrada · adelanto de ${fmtM(Number(ad.monto))} creado para la próxima`
+}
+
+// Mensaje de error de cerrar/reabrir/eliminar/borrar adelanto. Los casos 409
+// nuevos giran alrededor del adelanto automático que deja un cierre en negativo.
+// El backend manda { error: <código>, detail: <id de la liquidación involucrada> }.
+function msgErrorLiq(err: unknown, fallback: string): string {
+  const e = err as { body?: { error?: string; detail?: unknown }; message?: string } | null | undefined
+  const code = e?.body?.error ?? e?.message
+  const otra = e?.body?.detail ?? '—'
+  switch (code) {
+    // La deuda que dejó esta liquidación ya se descontó en otra liquidación
+    // CERRADA: hay que deshacer esa primero (aparece en el Historial).
+    case 'SALDO_NEGATIVO_YA_LIQUIDADO':
+      return `No se puede: la deuda que dejó esta liquidación ya se descontó en la liquidación N° ${otra}. `
+        + `Buscá la N° ${otra} en el Historial, reabrila, y recién ahí volvé a intentar.`
+    // Mismo caso, pero la que consumió la deuda quedó en BORRADOR: no se puede
+    // reabrir (ya está abierta) ni aparece en el Historial. Se elimina desde
+    // la card del chofer en "Saldo corriente por chofer".
+    case 'SALDO_NEGATIVO_EN_BORRADOR':
+      return `No se puede: la deuda que dejó esta liquidación ya la tomó un borrador (liquidación N° ${otra}) del mismo chofer. `
+        + `Ese borrador no está en el Historial: eliminalo desde la tarjeta del chofer en "Saldo corriente por chofer" y volvé a intentar.`
+    // Intento de borrar a mano el adelanto automático de un cierre en negativo.
+    case 'ADELANTO_DE_SALDO':
+      return `Este adelanto no se borra a mano: es la deuda que dejó la liquidación N° ${otra} al cerrar en negativo. `
+        + `Para anularla, reabrí la liquidación N° ${otra} — el adelanto se borra solo.`
+  }
+  return e?.message || fallback
+}
+
+// Datos del form del modal de detalle (useForm<any> heredado; al menos acá
+// tipamos lo que realmente se lee).
+interface DetalleFormData {
+  basico_dia?:  string | number
+  fecha_desde?: string
+  fecha_hasta?: string
+  obs?:         string
+}
 
 export function LiquidacionesTab() {
   const toast = useToast()
@@ -622,6 +682,9 @@ export function LiquidacionesTab() {
       km_totales, subtotal_km, subtotal_km_cargado, subtotal_km_vacio,
       descuentos, reintegros, total_estadias, precio_km, neto,
     } = calcularPreview()
+    // El neto del preview es el mismo que se persiste como total_neto abajo,
+    // así que el importe del aviso coincide con el del adelanto automático.
+    if (!confirmarNetoNegativo(neto)) return
     createLiq({
       chofer_id:           choferLiq.id,
       fecha_desde:         data.desde,
@@ -647,8 +710,8 @@ export function LiquidacionesTab() {
     } as any, {
       onSuccess: (nueva: any) => {
         cerrarLiq(nueva.id, {
-          onSuccess: (cerrada: any) => {
-            toast('✓ Liquidación cerrada', 'ok')
+          onSuccess: (cerrada) => {
+            toast(mensajeCierre(cerrada), 'ok')
             setModalLiq(false)
             setChoferLiq(null)
             setSelAdelant([])
@@ -756,8 +819,11 @@ export function LiquidacionesTab() {
   // (con el adelanto ya guardado → lleva N° A-{id}).
   function imprimirReciboAdel(a: {
     id?: number; chofer_id: number | null; fecha?: string; monto?: number
-    descripcion?: string | null; forma_pago: 'transferencia' | 'efectivo'
+    descripcion?: string | null; forma_pago: AdelantoFormaPago
   }) {
+    // Los adelantos de saldo (cierre negativo) no se entregan en mano: no hay
+    // nada que el chofer pueda firmar. El botón ni se muestra; esto es el cinturón.
+    if (a.forma_pago === 'saldo') { toast('Un adelanto por saldo negativo no lleva recibo (no hubo entrega de dinero)', 'err'); return }
     const ch = (choferes as Chofer[]).find(c => c.id === Number(a.chofer_id))
     if (!ch) { toast('Elegí un chofer para el recibo', 'err'); return }
     const monto = Number(a.monto)
@@ -898,16 +964,19 @@ export function LiquidacionesTab() {
                       <span className="font-bold text-carbon">{fmtM(borrador.total_neto)}</span>
                     </div>
                     <div className="flex gap-2">
-                      <Button variant="primary" size="sm" onClick={() => cerrarLiq(borrador.id, {
-                        onSuccess: () => toast('✓ Liquidación cerrada', 'ok'),
-                        onError:   (e: any) => toast(`Error al cerrar: ${e?.message ?? 'desconocido'}`, 'err'),
-                      })}>
+                      <Button variant="primary" size="sm" onClick={() => {
+                        if (!confirmarNetoNegativo(Number(borrador.total_neto))) return
+                        cerrarLiq(borrador.id, {
+                          onSuccess: (resp) => toast(mensajeCierre(resp), 'ok'),
+                          onError:   (e: unknown) => toast(msgErrorLiq(e, 'Error al cerrar'), 'err'),
+                        })
+                      }}>
                         💰 Liquidar
                       </Button>
                       <Button variant="ghost" size="sm" onClick={() => {
                         if (confirm('¿Eliminar borrador?')) deleteLiq(borrador.id, {
                           onSuccess: () => toast('✓ Eliminado', 'ok'),
-                          onError:   (e: any) => toast(`Error al eliminar: ${e?.message ?? 'desconocido'}`, 'err'),
+                          onError:   (e: unknown) => toast(msgErrorLiq(e, 'Error al eliminar'), 'err'),
                         })
                       }}>
                         🗑
@@ -1016,7 +1085,13 @@ export function LiquidacionesTab() {
                       🔍 Ver detalle
                     </Button>
                     {liq.estado === 'borrador' && (
-                      <Button variant="primary" size="sm" onClick={() => cerrarLiq(liq.id, { onSuccess: () => toast('✓ Cerrada', 'ok') })}>
+                      <Button variant="primary" size="sm" onClick={() => {
+                        if (!confirmarNetoNegativo(Number(liq.total_neto))) return
+                        cerrarLiq(liq.id, {
+                          onSuccess: (resp) => toast(mensajeCierre(resp), 'ok'),
+                          onError:   (e: unknown) => toast(msgErrorLiq(e, 'Error al cerrar'), 'err'),
+                        })
+                      }}>
                         ✓ Cerrar
                       </Button>
                     )}
@@ -1209,10 +1284,23 @@ export function LiquidacionesTab() {
                               </div>
                               <div className="shrink-0 text-right">
                                 <div className="font-mono font-bold text-rojo">{fmtM(a.monto)}</div>
-                                <div className="text-[10px] text-gris-mid">{a.forma_pago === 'transferencia' ? '🏦 Transf.' : '💵 Efectivo'}</div>
+                                {/* Adelanto automático por cierre en negativo: no hubo
+                                    entrega de dinero, así que no se muestra forma de pago. */}
+                                {a.liquidacion_origen_id ? (
+                                  <div
+                                    className="text-[10px] font-bold text-naranja-dark"
+                                    title={`Generado automáticamente por el saldo negativo de la liquidación N° ${a.liquidacion_origen_id}`}
+                                  >
+                                    ↩ Saldo liq. N° {a.liquidacion_origen_id}
+                                  </div>
+                                ) : (
+                                  <div className="text-[10px] text-gris-mid">{a.forma_pago === 'transferencia' ? '🏦 Transf.' : '💵 Efectivo'}</div>
+                                )}
                               </div>
                               <div className="flex gap-1 shrink-0">
-                                {a.forma_pago === 'efectivo' && (
+                                {/* Sin recibo para firmar en los adelantos de saldo:
+                                    el chofer nunca recibió esa plata en mano. */}
+                                {a.forma_pago === 'efectivo' && !a.liquidacion_origen_id && (
                                   <button
                                     onClick={() => imprimirReciboAdel(a)}
                                     title="Imprimir recibo para firmar"
@@ -1232,10 +1320,15 @@ export function LiquidacionesTab() {
                                       onClick={() => { setEditandoAdel(a); formEditAdel.reset({ fecha: a.fecha, monto: a.monto, descripcion: a.descripcion ?? '', forma_pago: a.forma_pago ?? 'efectivo' }); setArchivoEditAdel(null); setRemoverCompEdit(false) }}
                                       className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors"
                                     >✏️</button>
-                                    <button
-                                      onClick={() => { if (confirm('¿Eliminar adelanto?')) deleteAdel(a.id, { onSuccess: () => toast('✓ Adelanto eliminado', 'ok'), onError: () => toast('Error al eliminar', 'err') }) }}
-                                      className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors"
-                                    >✕</button>
+                                    {/* El adelanto de saldo NO se borra a mano: es la deuda que
+                                        dejó una liquidación al cerrar en negativo. Se anula
+                                        reabriendo esa liquidación (la RPC lo borra sola). */}
+                                    {!a.liquidacion_origen_id && (
+                                      <button
+                                        onClick={() => { if (confirm('¿Eliminar adelanto?')) deleteAdel(a.id, { onSuccess: () => toast('✓ Adelanto eliminado', 'ok'), onError: (err: unknown) => toast(msgErrorLiq(err, 'Error al eliminar'), 'err') }) }}
+                                        className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors"
+                                      >✕</button>
+                                    )}
                                   </>
                                 )}
                               </div>
@@ -1457,7 +1550,12 @@ export function LiquidacionesTab() {
                         onChange={e => setSelAdelant(prev => e.target.checked ? [...prev, a.id] : prev.filter(x => x !== a.id))}
                         className="accent-azul"
                       />
-                      <span>{fmtFecha(a.fecha)} · {a.descripcion || 'Adelanto'} · <b>{fmtM(a.monto)}</b></span>
+                      <span>
+                        {fmtFecha(a.fecha)} · {a.descripcion || 'Adelanto'} · <b>{fmtM(a.monto)}</b>
+                        {a.liquidacion_origen_id != null && (
+                          <span className="ml-1 text-[10px] font-bold text-naranja-dark">↩ saldo liq. N° {a.liquidacion_origen_id}</span>
+                        )}
+                      </span>
                     </label>
                   ))}
                 </div>
@@ -1594,33 +1692,73 @@ export function LiquidacionesTab() {
         const sub_km_cargado = detalleLiq.subtotal_km_cargado ?? (km_cargados * (chofer?.precio_km_cargado ?? 0))
         const sub_km_vacio   = detalleLiq.subtotal_km_vacio   ?? (km_vacios   * (chofer?.precio_km_vacio   ?? 0))
 
-        function guardarLiqDto(data: any, onSuccess: () => void) {
-          const basicoDia = parseFloat(data.basico_dia) || 0
+        // Totales del borrador con la fórmula canónica (calcularTotalesLiquidacion).
+        // Antes acá se recalculaba total_neto como (días × básico) − adelantos,
+        // perdiendo km, reintegros y estadías: cualquier borrador editado desde
+        // este modal quedaba con el neto corrompido.
+        function totalesDetalle(data: DetalleFormData) {
+          const basicoDia = Number(data.basico_dia) || 0
           const dias      = detalleLiq.dias_trabajados
-          const subtotal  = dias * basicoDia
-          const desc      = liqAdel.reduce((s: number, a: Adelanto) => s + a.monto, 0)
+          // Fallbacks a los totales persistidos: liqAdel/liqEst salen de queries
+          // globales y detalleGastos se carga on-demand — si todavía no llegaron
+          // (o el fetch falló), es preferible conservar lo guardado a poner 0.
+          const descuentos = liqAdel.length > 0
+            ? liqAdel.reduce((s: number, a: Adelanto) => s + Number(a.monto), 0)
+            : Number(detalleLiq.total_adelantos ?? 0)
+          const total_estadias = liqEst.length > 0
+            ? liqEst.reduce((s: number, e: Estadia) => s + Number(e.total), 0)
+            : Number(detalleLiq.total_estadias ?? 0)
+          const reintegros = detalleGastos.length > 0
+            ? detalleGastos.reduce((s: number, g: { monto: number | string }) => s + Number(g.monto), 0)
+            : Number(detalleLiq.total_reintegros ?? 0)
+          // Precios efectivos = los que dan los subtotales de km que muestra el
+          // modal (persistidos si existen; si no, el $/km actual del chofer).
+          // Así el neto guardado cuadra con el desglose que ve el usuario aunque
+          // la tarifa del chofer haya cambiado después de crear el borrador.
+          const precioKmCargadoEf = km_cargados > 0 ? sub_km_cargado / km_cargados : (chofer?.precio_km_cargado ?? 0)
+          const precioKmVacioEf   = km_vacios   > 0 ? sub_km_vacio   / km_vacios   : (chofer?.precio_km_vacio   ?? 0)
+          const tot = calcularTotalesLiquidacion({
+            dias, basico_dia: basicoDia,
+            km_cargados, precio_km_cargado: precioKmCargadoEf,
+            km_vacios,   precio_km_vacio:   precioKmVacioEf,
+            descuentos, reintegros, total_estadias,
+          })
+          return { basicoDia, descuentos, tot }
+        }
+
+        function guardarLiqDto(data: DetalleFormData, onSuccess: () => void) {
+          const { basicoDia, descuentos, tot } = totalesDetalle(data)
           updateLiq({
             id: detalleLiq.id,
             dto: {
               basico_dia:      basicoDia,
               fecha_desde:     data.fecha_desde,
               fecha_hasta:     data.fecha_hasta,
-              subtotal_basico: subtotal,
-              total_neto:      subtotal - desc,
+              subtotal_basico: tot.subtotal_bas,
+              total_adelantos: descuentos,
+              total_neto:      tot.neto,
               obs:             data.obs,
             },
+            // UpdateLiquidacionSchema del backend sólo acepta fecha_desde,
+            // fecha_hasta, basico_dia, dias_trabajados, subtotal_basico,
+            // total_adelantos, total_neto y obs: los subtotales de km, los
+            // reintegros y las estadías entran en el neto pero no se pueden
+            // re-persistir desde acá (no cambian al editar básico/fechas).
           }, { onSuccess, onError: () => toast('Error al actualizar', 'err') })
         }
 
-        function handleGuardar(data: any) {
+        function handleGuardar(data: DetalleFormData) {
           guardarLiqDto(data, () => { toast('✓ Liquidación actualizada', 'ok'); setDetalleLiq(null) })
         }
 
-        const handleLiquidarDetalle = formDetalle.handleSubmit((data: any) =>
+        const handleLiquidarDetalle = formDetalle.handleSubmit((data: DetalleFormData) => {
+          // Mismo neto que se va a guardar (y que va a generar el adelanto).
+          if (!confirmarNetoNegativo(totalesDetalle(data).tot.neto)) return
           guardarLiqDto(data, () => cerrarLiq(detalleLiq.id, {
-            onSuccess: () => { toast('✓ Liquidación cerrada', 'ok'); setDetalleLiq(null) },
+            onSuccess: (resp) => { toast(mensajeCierre(resp), 'ok'); setDetalleLiq(null) },
+            onError:   (e: unknown) => toast(msgErrorLiq(e, 'Error al cerrar'), 'err'),
           }))
-        )
+        })
 
         return (
           <Modal
@@ -1636,7 +1774,7 @@ export function LiquidacionesTab() {
                     if (!confirm('¿Reabrir la liquidación? Volverá a estado borrador y los tramos/adelantos quedarán disponibles para editar.')) return
                     reabrirLiq(detalleLiq.id, {
                       onSuccess: () => { toast('✓ Liquidación reabierta', 'ok'); setDetalleLiq(null) },
-                      onError:   (err: any) => toast(err?.message || 'Error al reabrir', 'err'),
+                      onError:   (err: unknown) => toast(msgErrorLiq(err, 'Error al reabrir'), 'err'),
                     })
                   }}>
                     🔓 Reabrir
@@ -1792,7 +1930,12 @@ export function LiquidacionesTab() {
                   <div className="bg-gris rounded-xl divide-y divide-gris-mid max-h-32 overflow-y-auto">
                     {liqAdel.map((a: Adelanto) => (
                       <div key={a.id} className="flex justify-between text-xs px-3 py-2">
-                        <span className="text-gris-dark">{fmtFecha(a.fecha)} · {a.descripcion || 'Adelanto'}</span>
+                        <span className="text-gris-dark">
+                          {fmtFecha(a.fecha)} · {a.descripcion || 'Adelanto'}
+                          {a.liquidacion_origen_id != null && (
+                            <span className="ml-1 text-[10px] font-bold text-naranja-dark">↩ saldo liq. N° {a.liquidacion_origen_id}</span>
+                          )}
+                        </span>
                         <span className="font-mono font-semibold text-rojo shrink-0">− {fmtM(a.monto)}</span>
                       </div>
                     ))}
@@ -1932,9 +2075,22 @@ export function LiquidacionesTab() {
                 } else if (removerCompEdit) {
                   comprobantePatch = { comprobante_path: null }
                 }
+                // Un adelanto de saldo (cierre negativo) sólo admite editar
+                // descripción y comprobante: fecha/monto son la deuda misma y
+                // forma_pago='saldo' se degradaría a "efectivo" (sería mentira).
+                // El backend igual los ignora; acá ni los mandamos.
+                const esSaldoAdel = editandoAdel.liquidacion_origen_id != null
                 updateAdel({
                   id: editandoAdel.id,
-                  dto: { fecha: data.fecha, monto: Number(data.monto), descripcion: data.descripcion, forma_pago: data.forma_pago === 'transferencia' ? 'transferencia' : 'efectivo', ...comprobantePatch },
+                  dto: {
+                    ...(esSaldoAdel ? {} : {
+                      fecha: data.fecha,
+                      monto: Number(data.monto),
+                      forma_pago: data.forma_pago === 'transferencia' ? 'transferencia' as const : 'efectivo' as const,
+                    }),
+                    descripcion: data.descripcion,
+                    ...comprobantePatch,
+                  },
                 }, {
                   onSuccess: () => {
                     toast('✓ Adelanto actualizado', 'ok')
@@ -1945,7 +2101,7 @@ export function LiquidacionesTab() {
                   onError: (err: any) => {
                     const code = err?.body?.error
                     if (code === 'COMPROBANTE_DUPLICADO') toast('Ese comprobante ya está cargado en otro adelanto', 'err')
-                    else toast('Error al actualizar', 'err')
+                    else toast(msgErrorLiq(err, 'Error al actualizar'), 'err')
                   },
                 })
               } catch (e: any) {
@@ -1958,31 +2114,61 @@ export function LiquidacionesTab() {
         }
       >
         <div className="flex flex-col gap-4">
-          <Input label="Fecha" type="date" {...formEditAdel.register('fecha')} />
-          <Input label="Monto ($)" type="number" step="100" {...formEditAdel.register('monto')} />
+          {/* Adelanto nacido de un cierre en negativo: fecha y monto son la deuda
+              misma, no se editan (el único camino para cambiarla es reabrir la
+              liquidación de origen). Sí se puede editar descripción/comprobante. */}
+          {editandoAdel?.liquidacion_origen_id != null && (
+            <div className="bg-naranja-light/40 border border-naranja/20 rounded-xl px-3 py-2 text-xs text-naranja-dark leading-relaxed">
+              ↩ <b>Saldo de la liquidación N° {editandoAdel.liquidacion_origen_id}</b> — este adelanto lo creó el
+              sistema porque esa liquidación cerró en negativo. No hubo entrega de dinero, así que no lleva forma de
+              pago ni recibo, y <b>la fecha y el monto no se pueden cambiar</b>: tienen que coincidir con la deuda.
+              Lo único editable es la descripción.
+              <div className="mt-1">
+                ¿El monto está mal o querés anular la deuda? Reabrí la liquidación N° {editandoAdel.liquidacion_origen_id} —
+                al reabrirla este adelanto se borra solo.
+              </div>
+            </div>
+          )}
+
+          <Input
+            label="Fecha"
+            type="date"
+            disabled={editandoAdel?.liquidacion_origen_id != null}
+            {...formEditAdel.register('fecha')}
+          />
+          <Input
+            label="Monto ($)"
+            type="number"
+            step="100"
+            disabled={editandoAdel?.liquidacion_origen_id != null}
+            {...formEditAdel.register('monto')}
+          />
           <Input label="Descripción" placeholder="Ej: Adelanto semana del 10/3" {...formEditAdel.register('descripcion')} />
 
-          {/* Forma de pago */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-bold text-gris-dark uppercase tracking-wider">Forma de pago</label>
-            <div className="grid grid-cols-2 gap-2">
-              {(['efectivo', 'transferencia'] as const).map(fp => {
-                const activo = (formEditAdel.watch('forma_pago') ?? 'efectivo') === fp
-                return (
-                  <button
-                    key={fp}
-                    type="button"
-                    onClick={() => formEditAdel.setValue('forma_pago', fp)}
-                    className={`px-3 py-2 rounded-lg text-sm font-bold border-[1.5px] transition-colors ${activo ? 'border-azul bg-azul-light text-azul' : 'border-gris-mid bg-white text-gris-dark hover:border-azul'}`}
-                  >
-                    {fp === 'efectivo' ? '💵 Efectivo' : '🏦 Transferencia'}
-                  </button>
-                )
-              })}
+          {/* Forma de pago — no aplica a los adelantos generados por un cierre
+              en negativo: ahí nunca hubo entrega de dinero al chofer. */}
+          {editandoAdel != null && editandoAdel.liquidacion_origen_id == null && (
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-bold text-gris-dark uppercase tracking-wider">Forma de pago</label>
+              <div className="grid grid-cols-2 gap-2">
+                {(['efectivo', 'transferencia'] as const).map(fp => {
+                  const activo = (formEditAdel.watch('forma_pago') ?? 'efectivo') === fp
+                  return (
+                    <button
+                      key={fp}
+                      type="button"
+                      onClick={() => formEditAdel.setValue('forma_pago', fp)}
+                      className={`px-3 py-2 rounded-lg text-sm font-bold border-[1.5px] transition-colors ${activo ? 'border-azul bg-azul-light text-azul' : 'border-gris-mid bg-white text-gris-dark hover:border-azul'}`}
+                    >
+                      {fp === 'efectivo' ? '💵 Efectivo' : '🏦 Transferencia'}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
-          </div>
+          )}
 
-          {editandoAdel && (formEditAdel.watch('forma_pago') ?? 'efectivo') === 'efectivo' && (
+          {editandoAdel && !editandoAdel.liquidacion_origen_id && (formEditAdel.watch('forma_pago') ?? 'efectivo') === 'efectivo' && (
             <button
               type="button"
               onClick={() => imprimirReciboAdel({
@@ -1999,6 +2185,11 @@ export function LiquidacionesTab() {
             </button>
           )}
 
+          {/* Un adelanto de saldo no admite comprobante: no hubo entrega de
+              dinero que respaldar, y además reabrir la liquidación de origen lo
+              borra por SQL desde la RPC, sin pasar por el backend que limpia el
+              bucket — el archivo quedaría huérfano para siempre. */}
+          {editandoAdel?.liquidacion_origen_id == null && (
           <div className="flex flex-col gap-1">
             <label className="text-xs font-bold text-gris-dark uppercase tracking-wider">Comprobante</label>
             {editandoAdel?.comprobante_url && !removerCompEdit && !archivoEditAdel && (
@@ -2031,6 +2222,7 @@ export function LiquidacionesTab() {
             )}
             <p className="text-[11px] text-gris-mid italic">Subir uno nuevo lo reemplaza. Máx 10 MB.</p>
           </div>
+          )}
         </div>
       </Modal>
 
@@ -2152,7 +2344,7 @@ export function LiquidacionesTab() {
                           setConfirmDelLiq(null)
                           setDetalleLiq(null)
                         },
-                        onError: (err: any) => toast(err?.message ?? 'Error al eliminar', 'err'),
+                        onError: (err: unknown) => toast(msgErrorLiq(err, 'Error al eliminar'), 'err'),
                       },
                     )
                   }}
