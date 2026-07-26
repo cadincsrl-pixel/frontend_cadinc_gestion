@@ -55,17 +55,18 @@ export function useDeleteRopaCategoria() {
 
 // ── Entregas ──
 
-/** Entregas solo para las legs de la página actual (optimización servidor) */
-export function useRopaEntregasPorLegs(legs: string[]) {
+/**
+ * Última entrega por (leg, categoría) para un set de legajos.
+ * Va por RPC agregada (migración 20260726) y no por .in('leg', ...) crudo:
+ * ropa_entregas crece sin techo y el cap de 1000 rows de PostgREST truncaría
+ * en silencio (CLAUDE.md §5.7). La RPC devuelve a lo sumo una fila por par.
+ */
+export function useRopaUltimasEntregas(legs: string[]) {
   return useQuery({
-    queryKey: [...KEY_ENTREGAS, 'legs', legs],
+    queryKey: [...KEY_ENTREGAS, 'ultimas', legs],
     queryFn: async () => {
       if (!legs.length) return [] as RopaEntrega[]
-      const { data, error } = await sb()
-        .from('ropa_entregas')
-        .select('*')
-        .in('leg', legs)
-        .order('fecha_entrega', { ascending: false })
+      const { data, error } = await sb().rpc('ropa_ultimas_entregas', { p_legs: legs })
       if (error) throw new Error(error.message)
       return (data ?? []) as RopaEntrega[]
     },
