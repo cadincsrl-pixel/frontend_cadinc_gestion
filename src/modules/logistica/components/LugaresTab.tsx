@@ -1,7 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useMemo, useState } from 'react'
 import {
   useCanteras, useDepositos, useRutas,
   useLugaresOperativos, useCrearLugarOperativo, useActualizarLugarOperativo, useEliminarLugarOperativo,
@@ -23,12 +22,10 @@ import type { Cantera, Deposito, Ruta, LugarOperativo } from '@/types/domain.typ
 export function LugaresTab() {
   const toast = useToast()
   const qc = useQueryClient()
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const { data: canteras  = [], isSuccess: canterasListas  } = useCanteras()
-  const { data: depositos = [], isSuccess: depositosListos } = useDepositos()
+  const { data: canteras  = [] } = useCanteras()
+  const { data: depositos = [] } = useDepositos()
   const { data: rutas     = [] } = useRutas()
-  const { data: lugaresOp = [], isSuccess: lugaresOpListos } = useLugaresOperativos()
+  const { data: lugaresOp = [] } = useLugaresOperativos()
   const { mutate: crearLugarOp,      isPending: creandoLugarOp }  = useCrearLugarOperativo()
   const { mutate: actualizarLugarOp, isPending: editandoLugarOp } = useActualizarLugarOperativo()
   const { mutate: eliminarLugarOp } = useEliminarLugarOperativo()
@@ -95,38 +92,6 @@ export function LugaresTab() {
     () => (depositos as Deposito[]).filter(d => matchesSearch(`${d.nombre} ${d.localidad ?? ''}`, buscarDep)),
     [depositos, buscarDep],
   )
-
-  // Deep-link desde otras vistas (ej. origen/destino de un tramo en Viajes):
-  // ?cantera=ID / ?deposito=ID abre el modal del lugar apenas cargan los datos.
-  // Si el lugar es parte de un lugar operativo se abre ese modal (ahí se
-  // gestiona). Limpiamos el param para que cerrar el modal no lo reabra.
-  useEffect(() => {
-    if (!canterasListas || !depositosListos || !lugaresOpListos) return
-    const canteraParam  = searchParams.get('cantera')
-    const depositoParam = searchParams.get('deposito')
-    if (!canteraParam && !depositoParam) return
-
-    if (canteraParam) {
-      const op = (lugaresOp as LugarOperativo[]).find(l => String(l.cantera_id) === canteraParam)
-      const c  = (canteras as Cantera[]).find(x => String(x.id) === canteraParam)
-      if (op) openEditLugarOp(op)
-      else if (c) openEditCantera(c)
-    } else if (depositoParam) {
-      const op = (lugaresOp as LugarOperativo[]).find(l => String(l.deposito_id) === depositoParam)
-      const d  = (depositos as Deposito[]).find(x => String(x.id) === depositoParam)
-      if (op) openEditLugarOp(op)
-      else if (d) openEditDeposito(d)
-    }
-    // Limpiar solo los params consumidos, preservando tab y futuros params
-    // (mismo patrón que el deep-link ?tramo= de ViajesTab).
-    const params = new URLSearchParams(searchParams.toString())
-    params.delete('cantera')
-    params.delete('deposito')
-    router.replace(`/logistica?${params.toString()}`, { scroll: false })
-    // openEdit* se recrean en cada render; con el param limpiado el efecto
-    // re-entra y sale por el guard, así que alcanza con estas deps.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, canterasListas, depositosListos, lugaresOpListos, canteras, depositos, lugaresOp, router])
 
   const formCantera    = useForm<any>()
   const formDeposito   = useForm<any>()
