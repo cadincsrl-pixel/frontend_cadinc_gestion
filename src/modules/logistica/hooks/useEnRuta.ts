@@ -46,6 +46,18 @@ export function useGeocode() {
   })
 }
 
+// Extrae lat/lng del pin de un link de Google Maps (resuelve shortlinks
+// en el backend). Fuente 'pin' = marcador exacto; 'aprox' = centro del mapa.
+export function useResolverMapsUrl() {
+  return useMutation({
+    mutationFn: (url: string) =>
+      apiPost<{ lat: number; lng: number; fuente: 'pin' | 'aprox' }>(
+        '/api/logistica/maps/resolver-url',
+        { url },
+      ),
+  })
+}
+
 // Forzar recálculo: invalida la query para que vuelva a pedir.
 export function useRefrescarEnRuta() {
   const qc = useQueryClient()
