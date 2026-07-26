@@ -58,6 +58,15 @@ export function useResolverMapsUrl() {
   })
 }
 
+// Km sugerido cantera→depósito vía Google Distance Matrix (backend).
+// Es una sugerencia editable — el usuario la verifica con el link del trayecto.
+export function useSugerirKm() {
+  return useMutation({
+    mutationFn: (dto: { cantera_id: number; deposito_id: number }) =>
+      apiPost<{ km: number; duracion_s: number }>('/api/logistica/maps/sugerir-km', dto),
+  })
+}
+
 // Forzar recálculo: invalida la query para que vuelva a pedir.
 export function useRefrescarEnRuta() {
   const qc = useQueryClient()

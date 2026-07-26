@@ -14,7 +14,7 @@ import { Input }  from '@/components/ui/Input'
 import { useToast } from '@/components/ui/Toast'
 import { useForm } from 'react-hook-form'
 import { intInputProps } from '@/lib/utils/inputs'
-import { useGeocode, useResolverMapsUrl } from '../hooks/useEnRuta'
+import { useGeocode, useResolverMapsUrl, useSugerirKm } from '../hooks/useEnRuta'
 import { Combobox } from '@/components/ui/Combobox'
 import { matchesSearch } from '@/lib/utils/text'
 import type { Cantera, Deposito, Ruta, LugarOperativo } from '@/types/domain.types'
@@ -300,6 +300,33 @@ export function LugaresTab() {
     return `https://www.google.com/maps/dir/${c.lat},${c.lng}/${d.lat},${d.lng}/`
   }
 
+  // Pide a Google el km por carretera del par y lo aplica como sugerencia
+  // editable en el input correspondiente. El user lo controla con el link
+  // "Ver ruta en Google Maps" antes de guardar.
+  const { mutate: sugerirKmMutate, isPending: sugiriendo } = useSugerirKm()
+  function pedirSugerencia(canteraId: number, depositoId: number, aplicar: (km: number) => void) {
+    if (!canteraId || !depositoId) { toast('Elegí punto de carga y depósito', 'err'); return }
+    sugerirKmMutate({ cantera_id: canteraId, deposito_id: depositoId }, {
+      onSuccess: (r) => {
+        aplicar(r.km)
+        const h = Math.floor(r.duracion_s / 3600)
+        const m = Math.round((r.duracion_s % 3600) / 60)
+        toast(`✨ Google sugiere ${r.km.toLocaleString('es-AR')} km (~${h}h ${m}m). Verificalo con el link antes de guardar.`, 'ok')
+      },
+      onError: (err: any) => {
+        const code = err?.body?.error
+        if (code === 'SIN_COORDENADAS') {
+          const lugares = (err?.body?.detail?.lugares ?? []).join(', ')
+          toast(`Falta cargar coordenadas de: ${lugares || 'algún lugar'} (botón 🔍 Buscar al editarlo)`, 'err')
+        } else if (code === 'GOOGLE_API_KEY_MISSING') {
+          toast('Falta configurar GOOGLE_MAPS_API_KEY en el backend', 'err')
+        } else {
+          toast('No pude calcular la distancia', 'err')
+        }
+      },
+    })
+  }
+
   function openEditCantera(c: Cantera) {
     formEditCant.reset({ nombre: c.nombre, localidad: c.localidad ?? '', maps_url: c.maps_url ?? '', obs: c.obs ?? '', lat: c.lat ?? null, lng: c.lng ?? null, operativo: c.operativo ?? false })
     setEditCantera(c)
@@ -483,7 +510,9 @@ export function LugaresTab() {
               ) : (
                 <div className="bg-rojo-light/50 rounded-card px-4 py-3">
                   <p className="text-sm font-bold text-rojo-dark mb-2">⚠ Falta cargar esta ruta — agregá el km</p>
-                  <div className="mb-2">
+                  <div className="mb-2 flex items-center gap-2 flex-wrap">
+                    <SugerirKmBtn loading={sugiriendo} onClick={() =>
+                      pedirSugerencia(Number(selCant), Number(selDep), km => setKmInline(String(km)))} />
                     <RutaMapsLink url={rutaMapsUrl(selCant, selDep)} />
                   </div>
                   <div className="flex items-end gap-2 flex-wrap">
@@ -722,7 +751,14 @@ export function LugaresTab() {
             }))}
           />
           {formRuta.watch('cantera_id') && formRuta.watch('deposito_id') && (
-            <RutaMapsLink url={rutaMapsUrl(formRuta.watch('cantera_id'), formRuta.watch('deposito_id'))} />
+            <div className="flex items-center gap-2 flex-wrap">
+              <SugerirKmBtn loading={sugiriendo} onClick={() =>
+                pedirSugerencia(
+                  Number(formRuta.watch('cantera_id')), Number(formRuta.watch('deposito_id')),
+                  km => formRuta.setValue('km_ida_vuelta', String(km)),
+                )} />
+              <RutaMapsLink url={rutaMapsUrl(formRuta.watch('cantera_id'), formRuta.watch('deposito_id'))} />
+            </div>
           )}
           <Input
             label="Km del trayecto (un sentido)"
@@ -759,7 +795,12 @@ export function LugaresTab() {
                   Para cambiar el origen o destino, eliminá esta ruta y creá una nueva.
                 </p>
               </div>
-              <RutaMapsLink url={rutaMapsUrl(editRuta.cantera_id, editRuta.deposito_id)} />
+              <div className="flex items-center gap-2 flex-wrap">
+                <SugerirKmBtn loading={sugiriendo} onClick={() =>
+                  pedirSugerencia(editRuta.cantera_id, editRuta.deposito_id,
+                    km => formEditRuta.setValue('km_ida_vuelta', String(km)))} />
+                <RutaMapsLink url={rutaMapsUrl(editRuta.cantera_id, editRuta.deposito_id)} />
+              </div>
             </div>
           )}
           <Input
@@ -928,6 +969,22 @@ function RutaMapsLink({ url }: { url: string | null }) {
     >
       🗺 Ver ruta en Google Maps
     </a>
+  )
+}
+
+// Botón "Sugerir km": trae la distancia por carretera calculada por Google
+// y la aplica como sugerencia editable.
+function SugerirKmBtn({ loading, onClick }: { loading: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={loading}
+      title="Traer el km por carretera calculado por Google (sugerencia editable — verificala con el link)"
+      className="inline-flex items-center gap-1 self-start px-3 py-2 rounded-lg bg-verde-light text-verde text-xs font-bold hover:bg-verde hover:text-white transition-colors disabled:opacity-50"
+    >
+      {loading ? '⏳' : '✨'} Sugerir km
+    </button>
   )
 }
 
