@@ -28,7 +28,7 @@ import type { Chofer, Tramo, Adelanto, Estadia, Ruta, RelevoPendiente, RelevoLiq
 import { exportLiquidacionExcel } from '@/lib/utils/liquidacion-export'
 import { toISO } from '@/lib/utils/dates'
 import {
-  diasUnicos, diasEntreFechas, fechaTramo, tramoEnRango, kmTramo,
+  diasEntreFechas, fechaTramo, tramoEnRango, kmTramo,
   fechaRelevo, kmRelevo, relevoEnRango, rangoConRelevos, diasConRelevos,
   calcularTotalesLiquidacion,
 } from '../utils/liquidacion-math'
@@ -142,14 +142,18 @@ export function LiquidacionesTab() {
   const gastosReintegro = reintegrosResp?.items ?? []
 
   // Pre-tildar todos los reintegros cuando el listado cambia (chofer nuevo
-  // o refetch por cambio de fecha). Si el user destildó alguno manualmente,
-  // este efecto lo vuelve a tildar — trade-off a favor del flujo típico
-  // "todos los reintegros van en esta liquidación".
+  // o refetch por cambio de fecha) Y al reabrir el modal. Si el user destildó
+  // alguno manualmente, este efecto lo vuelve a tildar — trade-off a favor del
+  // flujo típico "todos los reintegros van en esta liquidación".
+  // `modalLiq` en las deps es clave: al reabrir el modal del MISMO chofer,
+  // abrirLiquidar vacía selGastos pero ni el chofer ni la lista cambian, así
+  // que sin esto quedaban todos destildados y el neto perdía los reintegros
+  // (caso Zelarayán 2026-07-26: faltaban $100.990 en el preview).
   const reintegroIdsKey = gastosReintegro.map(g => g.id).join(',')
   useEffect(() => {
-    if (choferLiq) setSelGastos(gastosReintegro.map(g => g.id))
+    if (choferLiq && modalLiq) setSelGastos(gastosReintegro.map(g => g.id))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reintegroIdsKey, choferLiq?.id])
+  }, [reintegroIdsKey, choferLiq?.id, modalLiq])
 
   // Al cambiar el rango Desde/Hasta, la selección de tramos = TODOS los
   // pendientes del chofer que caen dentro del rango.
@@ -229,11 +233,14 @@ export function LiquidacionesTab() {
     const mis_reintegros  = reintegrosPendientes.filter(g => g.chofer_id === chofer.id)
     const mis_estadias    = estadiasPendientes.filter(e => e.chofer_id === chofer.id)
     const sinBasico     = !chofer.basico_dia
-    // Básico: días del span de tramos propios, restando los días cubiertos sólo
-    // por relevos y sumando Σ jornales del relevo (cada chofer cobra su jornal,
-    // sin duplicar el día). Ver diasConRelevos.
-    const baseDias      = diasUnicos(mis_tramos)
+    // Básico: días del rango completo (tramos propios + relevos), restando los
+    // días cubiertos sólo por relevos y sumando Σ jornales del relevo (cada
+    // chofer cobra su jornal, sin duplicar el día). Ver diasConRelevos.
+    // OJO: la base debe salir del MISMO rango que usa calcularPreview
+    // (rangoConRelevos); usar el span de tramos propios acá daba 1 día menos
+    // cuando el relevo caía fuera de ese span (caso Zelarayán 2026-07-26).
     const { desde: rDesde, hasta: rHasta } = rangoConRelevos(mis_tramos, mis_relevos)
+    const baseDias      = diasEntreFechas(rDesde, rHasta)
     const ownDates      = new Set(mis_tramos.map(fechaTramo).filter(Boolean) as string[])
     const dias          = diasConRelevos(baseDias, rDesde, rHasta, ownDates, mis_relevos)
     const subtotal_bas  = dias * (chofer.basico_dia ?? 0)
