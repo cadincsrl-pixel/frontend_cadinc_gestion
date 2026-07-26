@@ -36,7 +36,7 @@ export function LugaresTab() {
   const [modalLugarOp,  setModalLugarOp]  = useState(false)
   const [editCantera,   setEditCantera]   = useState<Cantera | null>(null)
   const [editDeposito,  setEditDeposito]  = useState<Deposito | null>(null)
-  const [editRuta,      setEditRuta]      = useState<{ id: number; cantera: string; deposito: string } | null>(null)
+  const [editRuta,      setEditRuta]      = useState<{ id: number; cantera: string; deposito: string; cantera_id: number; deposito_id: number } | null>(null)
   const [editLugarOp,   setEditLugarOp]   = useState<LugarOperativo | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -283,10 +283,21 @@ export function LugaresTab() {
       obs:           r.obs ?? '',
     })
     setEditRuta({
-      id:       r.id,
-      cantera:  r.canteras?.nombre ?? `Punto de carga #${r.cantera_id}`,
-      deposito: r.depositos?.nombre ?? `Depósito #${r.deposito_id}`,
+      id:          r.id,
+      cantera:     r.canteras?.nombre ?? `Punto de carga #${r.cantera_id}`,
+      deposito:    r.depositos?.nombre ?? `Depósito #${r.deposito_id}`,
+      cantera_id:  r.cantera_id,
+      deposito_id: r.deposito_id,
     })
+  }
+
+  // Link a las direcciones de Google Maps entre un punto de carga y un
+  // depósito (por id). Requiere que ambos tengan lat/lng cargadas.
+  function rutaMapsUrl(canteraId?: number | string, depositoId?: number | string): string | null {
+    const c = (canteras as Cantera[]).find(x => x.id === Number(canteraId))
+    const d = (depositos as Deposito[]).find(x => x.id === Number(depositoId))
+    if (c?.lat == null || c?.lng == null || d?.lat == null || d?.lng == null) return null
+    return `https://www.google.com/maps/dir/${c.lat},${c.lng}/${d.lat},${d.lng}/`
   }
 
   function openEditCantera(c: Cantera) {
@@ -452,12 +463,15 @@ export function LugaresTab() {
             <div className="mt-3">
               {rutaSel ? (
                 <div className="flex items-center justify-between gap-3 bg-verde-light/40 rounded-card px-4 py-3">
-                  <div className="text-sm min-w-0">
-                    <span className="text-gris-dark">Distancia (un sentido): </span>
-                    <span className="font-mono font-bold text-verde text-lg">
-                      {Math.round(rutaSel.km_ida_vuelta).toLocaleString('es-AR')} km
-                    </span>
-                    {rutaSel.obs && <p className="text-[11px] text-gris-dark mt-0.5 truncate">{rutaSel.obs}</p>}
+                  <div className="text-sm min-w-0 flex flex-col gap-1.5">
+                    <div>
+                      <span className="text-gris-dark">Distancia (un sentido): </span>
+                      <span className="font-mono font-bold text-verde text-lg">
+                        {Math.round(rutaSel.km_ida_vuelta).toLocaleString('es-AR')} km
+                      </span>
+                      {rutaSel.obs && <p className="text-[11px] text-gris-dark mt-0.5 truncate">{rutaSel.obs}</p>}
+                    </div>
+                    <RutaMapsLink url={rutaMapsUrl(selCant, selDep)} />
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <button onClick={() => openEditRuta(rutaSel)} title="Editar km / observaciones"
@@ -469,6 +483,9 @@ export function LugaresTab() {
               ) : (
                 <div className="bg-rojo-light/50 rounded-card px-4 py-3">
                   <p className="text-sm font-bold text-rojo-dark mb-2">⚠ Falta cargar esta ruta — agregá el km</p>
+                  <div className="mb-2">
+                    <RutaMapsLink url={rutaMapsUrl(selCant, selDep)} />
+                  </div>
                   <div className="flex items-end gap-2 flex-wrap">
                     <div className="flex-1 min-w-[140px]">
                       <Input
@@ -704,6 +721,9 @@ export function LugaresTab() {
               value: String(d.id), label: d.nombre, sub: d.localidad ?? undefined,
             }))}
           />
+          {formRuta.watch('cantera_id') && formRuta.watch('deposito_id') && (
+            <RutaMapsLink url={rutaMapsUrl(formRuta.watch('cantera_id'), formRuta.watch('deposito_id'))} />
+          )}
           <Input
             label="Km del trayecto (un sentido)"
             {...intInputProps}
@@ -730,13 +750,16 @@ export function LugaresTab() {
       >
         <div className="flex flex-col gap-4">
           {editRuta && (
-            <div className="bg-gris/30 rounded-card p-3 text-sm">
-              <span className="font-bold">{editRuta.cantera}</span>
-              <span className="text-gris-dark mx-2">→</span>
-              <span className="font-bold">{editRuta.deposito}</span>
-              <p className="text-[11px] text-gris-dark mt-1">
-                Para cambiar el origen o destino, eliminá esta ruta y creá una nueva.
-              </p>
+            <div className="bg-gris/30 rounded-card p-3 text-sm flex flex-col gap-2">
+              <div>
+                <span className="font-bold">{editRuta.cantera}</span>
+                <span className="text-gris-dark mx-2">→</span>
+                <span className="font-bold">{editRuta.deposito}</span>
+                <p className="text-[11px] text-gris-dark mt-1">
+                  Para cambiar el origen o destino, eliminá esta ruta y creá una nueva.
+                </p>
+              </div>
+              <RutaMapsLink url={rutaMapsUrl(editRuta.cantera_id, editRuta.deposito_id)} />
             </div>
           )}
           <Input
@@ -883,6 +906,28 @@ function MapsUrlInput({ register, watch, setValue }: { register: any; watch: any
         </p>
       </div>
     </div>
+  )
+}
+
+// Link al trayecto en Google Maps (o ayuda si falta alguna coordenada).
+function RutaMapsLink({ url }: { url: string | null }) {
+  if (!url) {
+    return (
+      <p className="text-[11px] text-gris-dark">
+        🗺 Para ver la ruta en Maps, cargale coordenadas a ambos lugares (botón 🔍 Buscar al editar cada uno).
+      </p>
+    )
+  }
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      title="Abrir el trayecto entre los dos puntos en Google Maps"
+      className="inline-flex items-center gap-1 self-start px-3 py-2 rounded-lg bg-azul-light text-azul text-xs font-bold hover:bg-azul hover:text-white transition-colors"
+    >
+      🗺 Ver ruta en Google Maps
+    </a>
   )
 }
 
