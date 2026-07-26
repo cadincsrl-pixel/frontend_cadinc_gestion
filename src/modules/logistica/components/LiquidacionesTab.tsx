@@ -640,7 +640,7 @@ export function LiquidacionesTab() {
     } as any, {
       onSuccess: (nueva: any) => {
         cerrarLiq(nueva.id, {
-          onSuccess: () => {
+          onSuccess: (cerrada: any) => {
             toast('✓ Liquidación cerrada', 'ok')
             setModalLiq(false)
             setChoferLiq(null)
@@ -649,6 +649,16 @@ export function LiquidacionesTab() {
             setSelRelevos([])
             setSelGastos([])
             setSelEstadias([])
+            // Pasar directo al detalle de la liquidación recién cerrada para
+            // poder imprimir el PDF final sin buscarla en el historial.
+            const liqFinal = cerrada ?? { ...nueva, estado: 'cerrada' }
+            setDetalleLiq(liqFinal)
+            formDetalle.reset({
+              basico_dia:  liqFinal.basico_dia,
+              fecha_desde: liqFinal.fecha_desde,
+              fecha_hasta: liqFinal.fecha_hasta,
+              obs:         liqFinal.obs ?? '',
+            })
           },
           onError: (e: any) => toast(`Borrador creado pero no se pudo cerrar: ${e?.message ?? 'error desconocido'}. Cerralo desde la card de saldo.`, 'err'),
         })
