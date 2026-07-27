@@ -171,6 +171,15 @@ export function LiquidacionesTab() {
   const [filtHastaAdel,   setFiltHastaAdel]   = useState<string>('')
   const [filtSearchAdel,  setFiltSearchAdel]  = useState<string>('')
   const [expandedChoferes, setExpandedChoferes] = useState<Set<number>>(new Set())
+
+  // Mismos filtros + agrupación para "Estadías": antes era una lista plana con
+  // las pendientes y las ya liquidadas mezcladas, imposible de leer al crecer.
+  const [filtChoferEst,  setFiltChoferEst]  = useState<string>('')
+  const [filtEstadoEst,  setFiltEstadoEst]  = useState<'pendientes' | 'liquidadas' | 'todas'>('pendientes')
+  const [filtDesdeEst,   setFiltDesdeEst]   = useState<string>('')
+  const [filtHastaEst,   setFiltHastaEst]   = useState<string>('')
+  const [filtSearchEst,  setFiltSearchEst]  = useState<string>('')
+  const [expandedChoferesEst, setExpandedChoferesEst] = useState<Set<number>>(new Set())
   // Historial de liquidaciones cerradas: colapsado por default para no ocupar
   // tanto espacio (puede crecer mucho con el tiempo).
   const [historialAbierto, setHistorialAbierto] = useState(false)
@@ -1293,6 +1302,13 @@ export function LiquidacionesTab() {
                                   >
                                     ↩ Saldo liq. N° {a.liquidacion_origen_id}
                                   </div>
+                                ) : a.forma_pago === 'saldo' ? (
+                                  /* Ajuste sin entrega de dinero cargado a mano (sin
+                                     liquidacion_origen_id): sin esto caía en el else y
+                                     se mostraba como "Efectivo", que es falso. */
+                                  <div className="text-[10px] font-bold text-naranja-dark" title={a.descripcion ?? 'Ajuste sin entrega de dinero'}>
+                                    ↩ Ajuste
+                                  </div>
                                 ) : (
                                   <div className="text-[10px] text-gris-mid">{a.forma_pago === 'transferencia' ? '🏦 Transf.' : '💵 Efectivo'}</div>
                                 )}
@@ -1352,42 +1368,159 @@ export function LiquidacionesTab() {
         )
       })()}
 
-      {/* ── Estadías (días de espera pagados por día) ── */}
-      {(estadias as Estadia[]).length > 0 && (
-        <div>
-          <h2 className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-2">🕐 Estadías</h2>
-          <div className="bg-white rounded-card shadow-card divide-y divide-gris">
-            {[...(estadias as Estadia[])]
-              .sort((a, b) => b.fecha_desde.localeCompare(a.fecha_desde))
-              .map(e => {
-                const ch = (choferes as Chofer[]).find(c => c.id === e.chofer_id)
-                return (
-                  <div key={e.id} className="flex items-center justify-between gap-3 px-4 py-2 text-sm hover:bg-gris/20 transition-colors">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-bold text-azul">{ch?.nombre ?? `#${e.chofer_id}`}</span>
-                        {e.liquidacion_id
-                          ? <span className="text-[10px] text-gris-mid">Liquidada en N° {e.liquidacion_id}</span>
-                          : <span className="text-[10px] font-bold uppercase tracking-wide bg-amarillo/20 text-amber-700 px-1.5 py-0.5 rounded">Pendiente</span>}
-                      </div>
-                      <div className="text-xs text-gris-dark mt-0.5">
-                        {fmtFecha(e.fecha_desde)} → {fmtFecha(e.fecha_hasta)} · {e.dias} día{e.dias !== 1 ? 's' : ''} × {fmtM(Number(e.monto_dia))}
-                        {e.obs && <span className="text-gris-mid"> · {e.obs}</span>}
-                      </div>
-                    </div>
-                    <div className="font-mono font-bold text-verde shrink-0">{fmtM(Number(e.total))}</div>
-                    {!e.liquidacion_id && (
+      {/* ── Estadías: filtros + agrupado por chofer (mismo patrón que Adelantos) ── */}
+      {(estadias as Estadia[]).length > 0 && (() => {
+        const filtradas = (estadias as Estadia[]).filter(e => {
+          if (filtEstadoEst === 'pendientes' && e.liquidacion_id) return false
+          if (filtEstadoEst === 'liquidadas' && !e.liquidacion_id) return false
+          if (filtChoferEst && e.chofer_id !== Number(filtChoferEst)) return false
+          // Una estadía es un rango: se muestra si SOLAPA con el filtro, no si
+          // está contenida — si no, una que arranca antes del "desde" se perdería.
+          if (filtDesdeEst && e.fecha_hasta < filtDesdeEst) return false
+          if (filtHastaEst && e.fecha_desde > filtHastaEst) return false
+          if (filtSearchEst && !(e.obs ?? '').toLowerCase().includes(filtSearchEst.toLowerCase())) return false
+          return true
+        })
+
+        const grupos = new Map<number, Estadia[]>()
+        for (const e of filtradas) {
+          const arr = grupos.get(e.chofer_id) ?? []
+          arr.push(e)
+          grupos.set(e.chofer_id, arr)
+        }
+        const gruposOrdenados = [...grupos.entries()]
+          .map(([id, lista]) => ({
+            id,
+            chofer: (choferes as Chofer[]).find(c => c.id === id),
+            lista: lista.sort((x, y) => y.fecha_desde.localeCompare(x.fecha_desde)),
+          }))
+          .sort((a, b) => (a.chofer?.nombre ?? '').localeCompare(b.chofer?.nombre ?? ''))
+
+        // Con un solo grupo (filtro por chofer puesto) no tiene sentido pedir un click más.
+        const autoExpand = gruposOrdenados.length === 1 ? new Set([gruposOrdenados[0]!.id]) : null
+        const totalFiltrado = filtradas.reduce((s, e) => s + Number(e.total), 0)
+        const diasFiltrados = filtradas.reduce((s, e) => s + Number(e.dias), 0)
+        const hayFiltros = !!(filtChoferEst || filtDesdeEst || filtHastaEst || filtSearchEst) || filtEstadoEst !== 'pendientes'
+
+        function toggleChoferEst(id: number) {
+          setExpandedChoferesEst(prev => {
+            const next = new Set(prev)
+            if (next.has(id)) next.delete(id); else next.add(id)
+            return next
+          })
+        }
+
+        return (
+          <div>
+            <div className="flex items-baseline justify-between gap-2 flex-wrap mb-2">
+              <h2 className="text-xs font-bold text-gris-dark uppercase tracking-wider">🕐 Estadías</h2>
+              {filtradas.length > 0 && (
+                <span className="text-xs text-gris-dark">
+                  {filtradas.length} estadía{filtradas.length !== 1 ? 's' : ''} · {diasFiltrados} día{diasFiltrados !== 1 ? 's' : ''} ·{' '}
+                  <b className="font-mono text-verde">{fmtM(totalFiltrado)}</b>
+                </span>
+              )}
+            </div>
+
+            <div className="bg-white rounded-card shadow-card p-3 mb-3 flex flex-col gap-3">
+              <div className="flex flex-wrap gap-1">
+                {(['pendientes', 'liquidadas', 'todas'] as const).map(v => (
+                  <button
+                    key={v}
+                    onClick={() => setFiltEstadoEst(v)}
+                    className={`text-xs font-bold px-3 py-1.5 rounded transition-colors capitalize ${filtEstadoEst === v ? 'bg-azul text-white' : 'bg-gris text-gris-dark hover:bg-gris-mid'}`}
+                  >
+                    {v}
+                  </button>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-2 items-end">
+                <Select
+                  label="Chofer"
+                  value={filtChoferEst}
+                  onChange={e => setFiltChoferEst((e.target as HTMLSelectElement).value)}
+                  options={[
+                    { value: '', label: 'Todos' },
+                    ...((choferes as Chofer[]).filter(c => c.estado !== 'inactivo')
+                      .map(c => ({ value: String(c.id), label: c.nombre }))),
+                  ]}
+                />
+                <Input label="Desde" type="date" value={filtDesdeEst} onChange={e => setFiltDesdeEst(e.target.value)} />
+                <Input label="Hasta" type="date" value={filtHastaEst} onChange={e => setFiltHastaEst(e.target.value)} />
+                <Input label="Buscar" placeholder="Observaciones..." value={filtSearchEst} onChange={e => setFiltSearchEst(e.target.value)} />
+                {hayFiltros && (
+                  <button
+                    onClick={() => { setFiltChoferEst(''); setFiltDesdeEst(''); setFiltHastaEst(''); setFiltSearchEst(''); setFiltEstadoEst('pendientes') }}
+                    className="text-xs text-azul hover:underline self-end mb-1.5"
+                  >
+                    Limpiar filtros
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {gruposOrdenados.length === 0 ? (
+              <div className="bg-white rounded-card shadow-card p-6 text-center text-gris-dark text-sm">
+                No hay estadías con esos filtros.
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {gruposOrdenados.map(({ id, chofer, lista }) => {
+                  const expanded = autoExpand?.has(id) || expandedChoferesEst.has(id)
+                  const subtotal = lista.reduce((s, e) => s + Number(e.total), 0)
+                  const subDias  = lista.reduce((s, e) => s + Number(e.dias), 0)
+                  return (
+                    <div key={id} className="bg-white rounded-card shadow-card overflow-hidden">
                       <button
-                        onClick={() => { if (confirm('¿Eliminar estadía?')) deleteEst(e.id, { onSuccess: () => toast('✓ Estadía eliminada', 'ok'), onError: () => toast('Error al eliminar', 'err') }) }}
-                        className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors shrink-0"
-                      >✕</button>
-                    )}
-                  </div>
-                )
-              })}
+                        onClick={() => toggleChoferEst(id)}
+                        className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-gris/30 transition-colors text-left"
+                      >
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-gris-dark text-sm">{expanded ? '▼' : '▶'}</span>
+                          <span className="font-bold text-azul">{chofer?.nombre ?? `#${id}`}</span>
+                          <span className="text-xs text-gris-dark">
+                            {lista.length} estadía{lista.length !== 1 ? 's' : ''} · {subDias} día{subDias !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        <span className="font-mono font-bold text-verde">{fmtM(subtotal)}</span>
+                      </button>
+                      {expanded && (
+                        <div className="border-t border-gris divide-y divide-gris">
+                          {lista.map(e => (
+                            <div key={e.id} className="flex items-center justify-between gap-3 px-4 py-2 text-sm hover:bg-gris/20 transition-colors">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-xs text-gris-dark font-mono">
+                                    {fmtFecha(e.fecha_desde)} → {fmtFecha(e.fecha_hasta)}
+                                  </span>
+                                  {e.liquidacion_id
+                                    ? <span className="text-[10px] text-gris-mid">Liquidada en N° {e.liquidacion_id}</span>
+                                    : <span className="text-[10px] font-bold uppercase tracking-wide bg-amarillo/20 text-amber-700 px-1.5 py-0.5 rounded">Pendiente</span>}
+                                </div>
+                                <div className="text-xs text-gris-dark mt-0.5">
+                                  {e.dias} día{e.dias !== 1 ? 's' : ''} × {fmtM(Number(e.monto_dia))}
+                                  {e.obs && <span className="text-gris-mid"> · {e.obs}</span>}
+                                </div>
+                              </div>
+                              <div className="font-mono font-bold text-verde shrink-0">{fmtM(Number(e.total))}</div>
+                              {!e.liquidacion_id && (
+                                <button
+                                  onClick={() => { if (confirm('¿Eliminar estadía?')) deleteEst(e.id, { onSuccess: () => toast('✓ Estadía eliminada', 'ok'), onError: () => toast('Error al eliminar', 'err') }) }}
+                                  className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors shrink-0"
+                                >✕</button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* ── Modal liquidar ── */}
       <Modal open={modalLiq} onClose={() => setModalLiq(false)} title="💰 LIQUIDAR CHOFER" width="max-w-xl"
