@@ -31,6 +31,15 @@ const MEDIO_LABEL: Record<string, string> = {
   efectivo: 'Efectivo', transferencia: 'Transferencia', cheque: 'Cheque', otro: 'Otro',
 }
 
+// Viajes de una venta, para el PDF que ve el cliente: al cliente se le rinde
+// por viaje, no por metro cúbico. Los materiales que ya se venden por viaje
+// (flete, retiro de escombro) traen la cantidad de viajes en `cantidad`; el
+// resto se carga en m³ y cada venta es una entrega con su propio remito, o
+// sea un viaje.
+function viajesDeVenta(v: MovimientoArido): number {
+  return v.aridos_materiales?.unidad === 'viaje' ? Number(v.cantidad) : 1
+}
+
 // modo 'historico': todas las ventas (con columna Estado) + cobros — el PDF de siempre.
 // modo 'deuda': SOLO las ventas adeudadas (cobro_id null), sin historial de
 // cobros — pensado para mandarle al cliente lo que debe. Ojo: la imputación
@@ -51,10 +60,9 @@ export function descargarCuentaClientePdf(
     const fila: Content[] = [
       { text: `${fmtFecha(v.fecha)}${v.hora ? ` ${v.hora.slice(0, 5)}` : ''}`, fontSize: 8 },
       { text: v.aridos_materiales?.nombre ?? '—', fontSize: 8 },
-      { text: `${fmtCant(Number(v.cantidad))} ${v.aridos_materiales?.unidad === 'viaje' ? 'viaje(s)' : 'm³'}`, fontSize: 8, alignment: 'right' },
+      { text: fmtCant(viajesDeVenta(v)), fontSize: 8, alignment: 'center' },
       { text: v.entrega_direccion ?? '—', fontSize: 7, color: '#666' },
       { text: v.remito_numero ?? v.remito ?? '—', fontSize: 8 },
-      { text: v.precio_unit != null ? fmtM(Number(v.precio_unit)) : '—', fontSize: 8, alignment: 'right' },
       { text: v.importe != null ? fmtM(Number(v.importe)) : '—', fontSize: 8, alignment: 'right', bold: true },
     ]
     // En modo deuda todas las filas son adeudadas: la columna Estado sobra.
@@ -123,11 +131,11 @@ export function descargarCuentaClientePdf(
             margin: [0, 0, 0, esDeuda ? 6 : 16] as [number, number, number, number],
             table: {
               headerRows: 1,
-              widths: esDeuda ? [58, '*', 46, '*', 42, 48, 54] : [58, '*', 46, '*', 42, 48, 54, 42],
+              widths: esDeuda ? [58, '*', 38, '*', 42, 62] : [58, '*', 38, '*', 42, 62, 42],
               body: [
                 (esDeuda
-                  ? ['Fecha', 'Material', 'Cant.', 'Entrega', 'Remito', 'Precio', 'Importe']
-                  : ['Fecha', 'Material', 'Cant.', 'Entrega', 'Remito', 'Precio', 'Importe', 'Estado']
+                  ? ['Fecha', 'Material', 'Viajes', 'Entrega', 'Remito', 'Importe']
+                  : ['Fecha', 'Material', 'Viajes', 'Entrega', 'Remito', 'Importe', 'Estado']
                 ).map(h => ({
                   text: h, fontSize: 8, bold: true, color: 'white', fillColor: AZUL,
                 })),
