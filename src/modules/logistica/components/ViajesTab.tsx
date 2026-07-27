@@ -834,13 +834,18 @@ export function ViajesTab() {
       {
         onSuccess: () => { toast('✓ Tramo actualizado', 'ok'); cerrarEdicion() },
         onError:   (err: unknown) => {
-          // El backend bloquea editar tramos ya facturados/liquidados: sus
-          // toneladas/km están snapshoteados en el cobro o la liquidación.
-          const code = (err as { body?: { error?: string } })?.body?.error
+          // El backend bloquea POR CAMPO: los remitos y las observaciones se
+          // corrigen siempre, las toneladas sólo chocan con el cobro, y km/días
+          // con la liquidación. Su `message` ya dice qué campo frenó la edición,
+          // así que lo mostramos en vez de un texto genérico.
+          const body = (err as { body?: { error?: string; message?: string } })?.body
+          const code = body?.error
           if (code === 'TRAMO_COBRADO') {
-            toast('No se puede editar: el viaje ya está facturado. Eliminá o revertí el cobro en Facturación y volvé a intentar.', 'err')
+            toast(body?.message
+              ? `${body.message} Para cambiarlos, revertí el cobro en Facturación.`
+              : 'No se puede editar: el viaje ya está facturado. Eliminá o revertí el cobro en Facturación y volvé a intentar.', 'err')
           } else if (code === 'TRAMO_LIQUIDADO') {
-            toast('No se puede editar: el viaje ya está liquidado al chofer.', 'err')
+            toast(body?.message ?? 'No se puede editar: el viaje ya está liquidado al chofer.', 'err')
           } else {
             toast('Error al actualizar', 'err')
           }

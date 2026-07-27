@@ -1056,9 +1056,11 @@ function FacturacionSection() {
     } as any, {
       onSuccess: () => { toast('✓ Toneladas actualizadas', 'ok'); setEditandoTramo(null) },
       onError:   (err: any) => {
-        const code = err?.body?.error
-        if (code === 'TRAMO_LIQUIDADO')   toast('No se puede editar: tramo liquidado', 'err')
-        else if (code === 'TRAMO_COBRADO') toast('No se puede editar: tramo ya cobrado', 'err')
+        const code   = err?.body?.error
+        // El backend bloquea por campo y su `message` dice cuál frenó la edición.
+        const msgErr = err?.body?.message as string | undefined
+        if (code === 'TRAMO_LIQUIDADO')   toast(msgErr ?? 'No se puede editar: tramo liquidado', 'err')
+        else if (code === 'TRAMO_COBRADO') toast(msgErr ?? 'No se puede editar: tramo ya cobrado', 'err')
         else toast(err?.message || 'Error al actualizar', 'err')
       },
     })
