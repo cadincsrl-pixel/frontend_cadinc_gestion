@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import * as XLSX from 'xlsx'
 import JSZip from 'jszip'
@@ -659,14 +659,68 @@ function ModalCobrarFacturas({
   const [procesando, setProcesando]   = useState(false)
   const fileRef = useRef<HTMLInputElement | null>(null)
 
+  const [busqueda, setBusqueda] = useState('')
+
   const seleccionados = cobrosPendientes.filter(c => seleccion.has(c.id))
   const totalSel = seleccionados.reduce((s, c) => s + c.total, 0)
+
+  // Texto buscable por cobro: N° de factura, remitos de sus tramos, fechas e
+  // importe. Se arma una vez y no en cada tecla — con 17 facturas pendientes
+  // (caso Paramerica) recorrer todos los tramos por cada letra se nota.
+  const textoPorCobro = useMemo(() => {
+    const m = new Map<number, string>()
+    // fmtFecha revienta con null y las columnas de fecha son nullable en la DB:
+    // acá se indexan TODOS los cobros, así que un null tiraría abajo el modal
+    // entero (antes sólo se formateaba en una rama del render).
+    const fecha = (s: string | null | undefined) => (s ? `${fmtFecha(s)} ${s}` : '')
+    for (const c of cobrosPendientes) {
+      const suyos = tramos.filter(t => t.cobro_id === c.id)
+      const partes = [
+        c.factura_nro ?? `#${c.id}`,
+        ...suyos.flatMap(t => [t.remito_carga, t.remito_descarga]),
+        ...suyos.flatMap(t => [fecha(t.fecha_carga), fecha(t.fecha_descarga)]),
+        fecha(c.fecha_desde), fecha(c.fecha_hasta),
+        String(c.total),
+      ]
+      m.set(c.id, partes.filter(Boolean).join(' ').toLowerCase())
+    }
+    return m
+  }, [cobrosPendientes, tramos])
+
+  const visibles = useMemo(() => {
+    const q = busqueda.trim().toLowerCase()
+    if (!q) return cobrosPendientes
+    // Cada palabra tiene que aparecer en algún lado: "0024 12/07" filtra por
+    // factura Y fecha a la vez.
+    const palabras = q.split(/\s+/)
+    return cobrosPendientes.filter(c => {
+      const texto = textoPorCobro.get(c.id) ?? ''
+      return palabras.every(p => texto.includes(p))
+    })
+  }, [busqueda, cobrosPendientes, textoPorCobro])
+
+  // Seleccionadas que el filtro está tapando: si no se avisa, el usuario
+  // confirma un pago creyendo que manda sólo lo que ve en pantalla.
+  const ocultasSeleccionadas = seleccionados.filter(c => !visibles.some(v => v.id === c.id))
 
   function toggle(id: number) {
     setSeleccion(prev => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
+      return next
+    })
+  }
+
+  // Las acciones rápidas operan sobre lo VISIBLE: con el buscador puesto,
+  // "Todas" tilda sólo el resultado de la búsqueda y respeta lo de afuera.
+  function marcarVisibles(marcar: boolean) {
+    setSeleccion(prev => {
+      const next = new Set(prev)
+      for (const c of visibles) {
+        if (marcar) next.add(c.id)
+        else next.delete(c.id)
+      }
       return next
     })
   }
@@ -747,11 +801,50 @@ function ModalCobrarFacturas({
         </div>
 
         <div>
-          <span className="text-xs font-bold text-gris-dark uppercase tracking-wider">
-            {esFact ? 'Facturas pendientes de cobro' : 'Cobros pendientes de pago'}
-          </span>
+          <div className="flex items-baseline justify-between gap-2 flex-wrap">
+            <span className="text-xs font-bold text-gris-dark uppercase tracking-wider">
+              {esFact ? 'Facturas pendientes de cobro' : 'Cobros pendientes de pago'}
+            </span>
+            <div className="flex items-center gap-2 text-[11px] font-bold">
+              <button type="button" onClick={() => marcarVisibles(true)} className="text-azul hover:underline">
+                Tildar {busqueda ? 'lo filtrado' : 'todo'}
+              </button>
+              <span className="text-gris-mid">·</span>
+              <button type="button" onClick={() => marcarVisibles(false)} className="text-gris-dark hover:text-rojo hover:underline">
+                Destildar
+              </button>
+            </div>
+          </div>
+
+          {/* Con muchas pendientes (Paramerica tiene 17) encontrar las que entraron
+              en una orden de pago a puro scroll es inviable. */}
+          <div className="relative mt-2">
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gris-mid text-xs pointer-events-none">🔍</span>
+            <input
+              type="text"
+              autoComplete="off"
+              value={busqueda}
+              onChange={e => setBusqueda(e.target.value)}
+              placeholder={esFact ? 'Buscar por factura, remito, fecha o importe...' : 'Buscar por remito, fecha o importe...'}
+              className="w-full pl-8 pr-8 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white"
+            />
+            {busqueda && (
+              <button
+                type="button"
+                onClick={() => setBusqueda('')}
+                title="Limpiar búsqueda"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gris-mid hover:text-rojo text-xs font-bold"
+              >✕</button>
+            )}
+          </div>
+
           <div className="bg-gris rounded-xl divide-y divide-gris-mid max-h-60 overflow-y-auto mt-2">
-            {cobrosPendientes.map(c => {
+            {visibles.length === 0 && (
+              <div className="px-3 py-6 text-center text-xs text-gris-dark italic">
+                Ninguna coincide con “{busqueda}”.
+              </div>
+            )}
+            {visibles.map(c => {
               const checked = seleccion.has(c.id)
               // Facturación: una factura = un viaje → remito y fechas salen
               // del tramo vinculado. Líquido producto: el cobro agrupa varios
@@ -796,9 +889,17 @@ function ModalCobrarFacturas({
           <div className="flex justify-between items-center mt-2 px-1">
             <span className="text-xs text-gris-dark">
               {seleccionados.length} seleccionada{seleccionados.length !== 1 ? 's' : ''}
+              {busqueda && <> · mostrando {visibles.length} de {cobrosPendientes.length}</>}
             </span>
             <span className="font-mono font-bold text-verde">{fmtM(totalSel)}</span>
           </div>
+          {ocultasSeleccionadas.length > 0 && (
+            <div className="mt-1.5 text-[11px] font-bold text-naranja-dark bg-naranja-light rounded-lg px-2.5 py-1.5">
+              ⚠ Hay {ocultasSeleccionadas.length} seleccionada{ocultasSeleccionadas.length !== 1 ? 's' : ''} que el buscador
+              no está mostrando ({ocultasSeleccionadas.map(c => c.factura_nro ?? `#${c.id}`).join(', ')}).
+              También se van a marcar como cobradas.
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
