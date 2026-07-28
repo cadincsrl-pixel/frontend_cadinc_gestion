@@ -52,7 +52,11 @@ function mkTramo(over: Partial<Tramo> = {}): Tramo {
 }
 
 function mkRuta(over: Pick<Ruta, 'cantera_id' | 'deposito_id' | 'km_ida_vuelta'> & Partial<Ruta>): Ruta {
-  return { id: 1, obs: null, ...over }
+  return {
+    id: 1, obs: null,
+    verificada: true, verificada_en: null, verificada_por: null, origen_km: 'manual',
+    ...over,
+  }
 }
 
 function mkRelevo(over: Partial<RelevoPendiente> = {}, tramoOver: Partial<NonNullable<RelevoPendiente['tramo']>> = {}): RelevoPendiente {

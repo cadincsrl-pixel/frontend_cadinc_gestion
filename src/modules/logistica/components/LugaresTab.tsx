@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from 'react'
 import {
-  useCanteras, useDepositos, useRutas,
+  useCanteras, useDepositos, useRutas, useCompletarMatriz,
   useLugaresOperativos, useCrearLugarOperativo, useActualizarLugarOperativo, useEliminarLugarOperativo,
 } from '../hooks/useLogistica'
+import type { CompletarMatrizResp } from '../hooks/useLogistica'
 import { apiPost, apiPatch, apiDelete } from '@/lib/api/client'
 import { apiErrorCode, apiErrorDetail } from '@/lib/api/errors'
 import { useQueryClient } from '@tanstack/react-query'
@@ -19,6 +20,16 @@ import { useGeocode, useResolverMapsUrl, useSugerirKm } from '../hooks/useEnRuta
 import { Combobox } from '@/components/ui/Combobox'
 import { matchesSearch } from '@/lib/utils/text'
 import type { Cantera, Deposito, Ruta, LugarOperativo } from '@/types/domain.types'
+
+// Sin API key el backend responde 503: en local pasa siempre, así que conviene
+// que se entienda en vez de mostrar "Error".
+function msgCompletar(err: unknown): string {
+  const code = apiErrorCode(err)
+  if (code === 'GOOGLE_API_KEY_MISSING') {
+    return 'Google Maps no está configurado en este entorno (la clave vive solo en el servidor de producción).'
+  }
+  return 'No se pudo consultar Google. Probá de nuevo en un rato.'
+}
 
 export function LugaresTab() {
   const toast = useToast()
@@ -87,6 +98,10 @@ export function LugaresTab() {
   const [soloFaltantes, setSoloFaltantes] = useState(false)  // resaltar faltantes en la matriz
   const [buscarCant, setBuscarCant] = useState('')  // filtro de filas (puntos de carga) en la matriz
   const [buscarDep,  setBuscarDep]  = useState('')  // filtro de columnas (depósitos) en la matriz
+  const [soloSinVerificar, setSoloSinVerificar] = useState(false)  // resaltar las sugeridas por Google
+  // Preview de "completar faltantes": cuántas se van a calcular, antes de gastar.
+  const [previewMatriz, setPreviewMatriz] = useState<CompletarMatrizResp | null>(null)
+  const completando = useCompletarMatriz()
 
   // Lookup O(1) del par (cantera_id, deposito_id) → ruta. Lo usan el selector
   // doble y cada celda de la matriz. Las 56 combinaciones (7×8) son pocas.
@@ -101,6 +116,8 @@ export function LugaresTab() {
     : null
 
   const faltantes = canteras.length * depositos.length - rutas.length
+  const sinVerificarCount = (rutas as Ruta[]).filter(r => r.verificada === false).length
+  const verificadasCount  = rutas.length - sinVerificarCount
 
   // Matriz filtrable: las filas (puntos de carga) y columnas (depósitos) se
   // recortan por nombre/localidad según los buscadores. No tocan los datos,
@@ -612,14 +629,49 @@ export function LugaresTab() {
         {/* Matriz de cobertura: filas = canteras, columnas = depósitos. */}
         <div className="bg-white rounded-card shadow-card overflow-hidden">
           <div className="px-4 py-2.5 border-b border-gris bg-gris/30 text-sm">
-            <span className="font-bold text-verde">{rutas.length}</span>
-            <span className="text-gris-dark"> de </span>
-            <span className="font-bold">{canteras.length * depositos.length}</span>
-            <span className="text-gris-dark"> combinaciones con km</span>
-            {faltantes > 0 && <span className="ml-2 text-rojo font-bold">· faltan {faltantes}</span>}
+            <span className="font-bold text-verde">✓ {verificadasCount}</span>
+            <span className="text-gris-dark"> verificadas</span>
+            {sinVerificarCount > 0 && (
+              <span className="ml-2 font-bold text-[#8a5a00]">◐ {sinVerificarCount} sin verificar</span>
+            )}
+            {faltantes > 0 && <span className="ml-2 text-rojo font-bold">＋ {faltantes} sin cargar</span>}
+            <span className="text-gris-dark"> · de {canteras.length * depositos.length} combinaciones</span>
             <span className="block text-[11px] text-gris-dark mt-0.5">
               Tocá una celda con km para editar, o una vacía (＋) para cargarla.
+              {sinVerificarCount > 0 && ' Las ◐ ámbar las sugirió Google: revisalas contra el mapa y confirmalas.'}
             </span>
+
+            <div className="flex flex-wrap items-center gap-2 mt-2">
+              {/* Sin gate de permisos acá: el resto del tab tampoco lo tiene y
+                  el backend exige logistica.actualizacion para este endpoint. */}
+              {faltantes > 0 && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  loading={completando.isPending && !previewMatriz}
+                  onClick={() => completando.mutate(true, {
+                    onSuccess: (r) => setPreviewMatriz(r),
+                    onError:   (e) => toast(msgCompletar(e), 'err'),
+                  })}
+                >
+                  ✨ Completar faltantes con Google
+                </Button>
+              )}
+              {sinVerificarCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSoloSinVerificar(v => !v)}
+                  className={`text-xs font-bold px-3 py-1.5 rounded-full border-[1.5px] transition-colors ${
+                    soloSinVerificar
+                      ? 'bg-[#fff3d6] border-[#c98a00] text-[#8a5a00]'
+                      : 'bg-white border-gris-mid text-gris-dark hover:border-[#c98a00] hover:text-[#8a5a00]'
+                  }`}
+                >
+                  ◐ Solo sin verificar
+                </button>
+              )}
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
               <Input
                 placeholder="🔍 Filtrar puntos de carga (filas)…"
@@ -670,13 +722,23 @@ export function LugaresTab() {
                         return (
                           <td key={d.id} className="border-b border-gris p-0">
                             {r ? (
+                              // Tres estados, distinguibles sin depender del color:
+                              // ✓ verificada (verde) · ◐ sugerida por Google, sin
+                              // revisar (ámbar, con borde) · ＋ sin cargar (abajo).
                               <button
                                 onClick={() => openEditRuta(r)}
-                                title={`${c.nombre} → ${d.nombre} · ${Math.round(r.km_ida_vuelta).toLocaleString('es-AR')} km · editar`}
+                                title={r.verificada
+                                  ? `${c.nombre} → ${d.nombre} · ${Math.round(r.km_ida_vuelta).toLocaleString('es-AR')} km · verificado · editar`
+                                  : `${c.nombre} → ${d.nombre} · ${Math.round(r.km_ida_vuelta).toLocaleString('es-AR')} km SUGERIDO POR GOOGLE, sin verificar · tocá para revisarlo contra el mapa`}
                                 className={`w-full px-2 py-2.5 text-center font-mono text-xs font-bold transition-colors
-                                  ${soloFaltantes ? 'text-gris-mid hover:bg-gris/40' : 'text-verde hover:bg-verde-light/50'}
+                                  ${!r.verificada
+                                    ? 'bg-[#fff3d6] text-[#8a5a00] border-l-[3px] border-[#c98a00] hover:bg-[#ffe9b8]'
+                                    : soloFaltantes || soloSinVerificar
+                                      ? 'text-gris-mid hover:bg-gris/40'
+                                      : 'text-verde hover:bg-verde-light/50'}
                                   ${isSel ? 'ring-2 ring-azul ring-inset bg-azul-light/30' : ''}`}
                               >
+                                {!r.verificada && <span className="mr-0.5">◐</span>}
                                 {Math.round(r.km_ida_vuelta).toLocaleString('es-AR')}
                               </button>
                             ) : (
@@ -898,6 +960,73 @@ export function LugaresTab() {
         onCancel={() => setConfirmRenombre(null)}
         onConfirmar={() => confirmRenombre?.reintentar()}
       />
+
+      {/* Completar la matriz con Google: se muestra QUÉ se va a hacer antes de
+          gastar la cuota, y se insiste en que el km queda sin verificar porque
+          es el que se le paga al chofer. */}
+      {previewMatriz && (
+        <Modal
+          open
+          onClose={() => setPreviewMatriz(null)}
+          width="max-w-lg"
+          title="✨ COMPLETAR LA MATRIZ CON GOOGLE"
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setPreviewMatriz(null)}>Cancelar</Button>
+              <Button
+                variant="primary"
+                loading={completando.isPending}
+                disabled={previewMatriz.a_calcular === 0}
+                onClick={() => completando.mutate(false, {
+                  onSuccess: (r) => {
+                    setPreviewMatriz(null)
+                    const problemas = r.fallidas.length
+                    toast(
+                      problemas === 0
+                        ? `✓ ${r.creadas} ruta${r.creadas !== 1 ? 's' : ''} cargada${r.creadas !== 1 ? 's' : ''} sin verificar — revisalas en la matriz`
+                        : `⚠ ${r.creadas} cargada${r.creadas !== 1 ? 's' : ''} · ${problemas} sin poder calcular (${r.fallidas.slice(0, 2).map(f => f.par).join(', ')}${problemas > 2 ? '…' : ''})`,
+                      problemas === 0 ? 'ok' : 'warn',
+                    )
+                  },
+                  onError: (e) => toast(msgCompletar(e), 'err'),
+                })}
+              >
+                Calcular {previewMatriz.a_calcular} ruta{previewMatriz.a_calcular !== 1 ? 's' : ''}
+              </Button>
+            </>
+          }
+        >
+          <div className="flex flex-col gap-3 text-sm">
+            {previewMatriz.a_calcular === 0 ? (
+              <p className="text-carbon">No queda ningún par sin km. La matriz está completa.</p>
+            ) : (
+              <>
+                <p className="text-carbon">
+                  Se va a consultar a Google la distancia de{' '}
+                  <b>{previewMatriz.a_calcular} combinacion{previewMatriz.a_calcular !== 1 ? 'es' : ''}</b> que
+                  todavía no tienen km. Las que ya están cargadas <b>no se tocan</b>.
+                </p>
+                <div className="bg-[#fff3d6] border border-[#c98a00]/40 rounded-card p-3">
+                  <p className="font-bold text-[#8a5a00]">◐ Van a quedar SIN VERIFICAR</p>
+                  <p className="text-[#8a5a00] mt-1">
+                    Ese kilometraje es el que se le paga al chofer, así que hasta que lo revises contra
+                    el mapa la celda queda en ámbar y el modal de liquidar te avisa. Cuando lo confirmás,
+                    pasa a verde.
+                  </p>
+                </div>
+              </>
+            )}
+            {previewMatriz.sin_coordenadas.length > 0 && (
+              <div className="text-xs text-gris-dark">
+                <b>{previewMatriz.sin_coordenadas.length} combinación{previewMatriz.sin_coordenadas.length !== 1 ? 'es' : ''}</b>{' '}
+                se saltea{previewMatriz.sin_coordenadas.length !== 1 ? 'n' : ''} porque falta la ubicación de
+                algún lugar: {previewMatriz.sin_coordenadas.slice(0, 3).join(' · ')}
+                {previewMatriz.sin_coordenadas.length > 3 && ` y ${previewMatriz.sin_coordenadas.length - 3} más`}.
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }

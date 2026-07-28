@@ -703,6 +703,12 @@ export interface Ruta {
   deposito_id: number
   km_ida_vuelta: number
   obs: string | null
+  /** false = el km lo sugirió Google y nadie lo revisó todavía contra el mapa.
+   *  Se paga igual: la matriz lo marca y el modal de liquidar lo avisa. */
+  verificada: boolean
+  verificada_en:  string | null
+  verificada_por: string | null
+  origen_km: 'manual' | 'google'
   canteras?: { nombre: string }
   depositos?: { nombre: string }
 }

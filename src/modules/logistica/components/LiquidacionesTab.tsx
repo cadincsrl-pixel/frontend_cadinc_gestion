@@ -283,6 +283,14 @@ export function LiquidacionesTab() {
 
   // Tramos completados aún no liquidados, EXCLUYENDO los que tienen relevo.
   const tramosPendientes    = (tramos as Tramo[]).filter(t => t.estado === 'completado' && !t.liquidacion_id && !tramosConRelevoIds.has(t.id))
+
+  // ¿El km de este tramo sale de una ruta que sugirió Google y nadie verificó?
+  // Se paga igual — el aviso es para que se sepa antes de cerrar, no para frenar.
+  function rutaSinVerificar(t: Tramo): boolean {
+    if (!t.cantera_id || !t.deposito_id) return false
+    const r = (rutas as Ruta[]).find(x => x.cantera_id === t.cantera_id && x.deposito_id === t.deposito_id)
+    return r?.verificada === false
+  }
   const adelantosPendientes = (adelantos as Adelanto[]).filter(a => !a.liquidacion_id)
   // Estadías (días de espera para cargar/descargar, pagados por día): mismo
   // ciclo que los adelantos — pendientes hasta que una liquidación las incluye.
@@ -1614,6 +1622,11 @@ export function LiquidacionesTab() {
                           {km > 0 && <> · {km} km</>}
                           {t.cantera_id && t.deposito_id && km === 0 && (
                             <span className="ml-1 text-[10px] font-bold uppercase tracking-wide bg-amarillo/20 text-amber-700 px-1.5 py-0.5 rounded" title="No hay ruta cargada para este par punto de carga→depósito: el tramo aporta 0 km al liquidar.">⚠ sin ruta</span>
+                          )}
+                          {/* El km sale de una ruta que sugirió Google y nadie revisó:
+                              se paga igual, pero conviene saberlo ANTES de cerrar. */}
+                          {km > 0 && rutaSinVerificar(t) && (
+                            <span className="ml-1 text-[10px] font-bold uppercase tracking-wide bg-[#fff3d6] text-[#8a5a00] px-1.5 py-0.5 rounded" title="El km de esta ruta lo sugirió Google y todavía nadie lo verificó contra el mapa. Se puede liquidar igual; para confirmarlo, andá a Rutas → matriz.">◐ km sin verificar</span>
                           )}
                           {t.toneladas_carga && <> · {t.toneladas_carga} t</>}
                         </span>

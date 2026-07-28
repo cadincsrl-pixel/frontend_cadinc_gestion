@@ -174,6 +174,28 @@ export function useCreateRuta() {
   })
 }
 
+/** Resultado de completar la matriz. Con `preview` no se llamó a Google. */
+export type CompletarMatrizResp = {
+  preview:         boolean
+  a_calcular:      number
+  creadas:         number
+  fallidas:        Array<{ par: string; motivo: string }>
+  sin_coordenadas: string[]
+}
+
+// Llena los pares sin ruta con el km de Google, marcados como NO verificados.
+// `preview: true` sólo informa cuántos son, sin gastar cuota ni escribir.
+export function useCompletarMatriz() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (preview: boolean) =>
+      apiPost<CompletarMatrizResp>('/api/logistica/maps/completar-matriz', { preview }),
+    onSuccess: (_d, preview) => {
+      if (!preview) qc.invalidateQueries({ queryKey: LOG_KEYS.rutas })
+    },
+  })
+}
+
 // ── Lugares operativos (par cantera+depósito gestionado como un concepto) ──
 export function useLugaresOperativos() {
   return useQuery({
