@@ -106,8 +106,31 @@ function EmpresasSection({
 
   const [modalNueva, setModalNueva] = useState(false)
   const [editando,   setEditando]   = useState<EmpresaTransportista | null>(null)
+  // Listado colapsado por default: el buscador alcanza para el uso diario y la
+  // tabla crece con cada cliente nuevo.
+  const [verListado, setVerListado] = useState(false)
+  const [buscarEmp,  setBuscarEmp]  = useState('')
   const formNueva = useForm<any>({ defaultValues: { modalidad_cobro: 'liquido_producto' } })
   const formEdit  = useForm<any>()
+
+  // Viajes por empresa, para saber cuáles están realmente en uso. useTramos ya
+  // lo pide el resto de la pestaña: React Query lo comparte, no es un fetch más.
+  const { data: tramosEmp = [] } = useTramos()
+  const viajesPorEmpresa = useMemo(() => {
+    const m = new Map<number, number>()
+    for (const t of tramosEmp as Tramo[]) {
+      if (t.empresa_id != null) m.set(t.empresa_id, (m.get(t.empresa_id) ?? 0) + 1)
+    }
+    return m
+  }, [tramosEmp])
+
+  const empresasFiltradas = useMemo(() => {
+    const orden = [...empresas].sort((a, b) => a.nombre.localeCompare(b.nombre))
+    if (!buscarEmp.trim()) return orden
+    const q = buscarEmp.trim().toLowerCase()
+    return orden.filter(e =>
+      `${e.nombre} ${e.cuit ?? ''} ${e.tel ?? ''}`.toLowerCase().includes(q))
+  }, [empresas, buscarEmp])
 
   function handleCreate(data: any) {
     create(data, {
@@ -143,9 +166,21 @@ function EmpresasSection({
             <h2 className="font-bold text-azul text-base">Empresas transportistas</h2>
             <p className="text-xs text-gris-dark mt-0.5">Tus clientes — hacé clic en una para ver su tarifa por punto de carga</p>
           </div>
-          {puedeCrear && (
-            <Button variant="primary" size="sm" onClick={() => setModalNueva(true)}>＋ Nueva empresa</Button>
-          )}
+          <div className="flex items-center gap-2">
+            {empresas.length > 0 && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setVerListado(v => !v)}
+                title={verListado ? 'Ocultar el listado' : 'Ver todas las empresas en una tabla'}
+              >
+                {verListado ? '▲ Ocultar listado' : `📋 Ver listado (${empresas.length})`}
+              </Button>
+            )}
+            {puedeCrear && (
+              <Button variant="primary" size="sm" onClick={() => setModalNueva(true)}>＋ Nueva empresa</Button>
+            )}
+          </div>
         </div>
         <div className="px-5 py-4 flex flex-col gap-3">
           {empresas.length === 0 ? (
@@ -157,6 +192,68 @@ function EmpresasSection({
               value={empresaSeleccionada ? String(empresaSeleccionada.id) : ''}
               onChange={v => onSelectEmpresa(empresas.find(e => String(e.id) === v) ?? null)}
             />
+          )}
+
+          {verListado && (
+            <div className="border border-gris rounded-card overflow-hidden">
+              {empresas.length > 8 && (
+                <div className="px-3 py-2 border-b border-gris bg-gris/20">
+                  <input
+                    type="text"
+                    autoComplete="off"
+                    value={buscarEmp}
+                    onChange={e => setBuscarEmp(e.target.value)}
+                    placeholder="🔍 Filtrar por nombre, CUIT o teléfono…"
+                    className="w-full px-2 py-1.5 border-[1.5px] border-gris-mid rounded-md text-xs outline-none bg-white focus:border-naranja"
+                  />
+                </div>
+              )}
+              <div className="max-h-80 overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0">
+                    <tr className="bg-azul text-white">
+                      <th className="text-left px-3 py-2 font-bold uppercase tracking-wide">Empresa</th>
+                      <th className="text-left px-3 py-2 font-bold uppercase tracking-wide">CUIT</th>
+                      <th className="text-left px-3 py-2 font-bold uppercase tracking-wide">Cobro</th>
+                      <th className="text-right px-3 py-2 font-bold uppercase tracking-wide">Viajes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {empresasFiltradas.length === 0 ? (
+                      <tr><td colSpan={4} className="text-center py-4 text-gris-dark italic">Ninguna coincide con “{buscarEmp}”.</td></tr>
+                    ) : empresasFiltradas.map(e => {
+                      const viajes = viajesPorEmpresa.get(e.id) ?? 0
+                      const sel = empresaSeleccionada?.id === e.id
+                      return (
+                        <tr
+                          key={e.id}
+                          onClick={() => onSelectEmpresa(e)}
+                          className={`border-b border-gris last:border-0 cursor-pointer transition-colors ${sel ? 'bg-azul-light' : 'hover:bg-gris/30'}`}
+                          title="Ver sus tarifas"
+                        >
+                          <td className="px-3 py-2">
+                            <span className="font-bold text-carbon">{e.nombre}</span>
+                            {e.estado !== 'activa' && (
+                              <span className="ml-2 text-[10px] font-bold uppercase bg-gris text-gris-dark px-1.5 py-0.5 rounded-full">{e.estado}</span>
+                            )}
+                          </td>
+                          {/* Sin CUIT no se le puede facturar: se marca, no se deja en blanco. */}
+                          <td className={`px-3 py-2 font-mono ${e.cuit ? 'text-gris-dark' : 'text-rojo font-bold'}`}>
+                            {e.cuit || 'falta'}
+                          </td>
+                          <td className="px-3 py-2 text-gris-dark">
+                            {e.modalidad_cobro === 'facturacion' ? '🧾 Facturación' : '🤝 Líq. producto'}
+                          </td>
+                          <td className={`px-3 py-2 text-right font-mono ${viajes === 0 ? 'text-gris-mid' : 'text-carbon font-bold'}`}>
+                            {viajes || '—'}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
 
           {empresaSeleccionada && (
