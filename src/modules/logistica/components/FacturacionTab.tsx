@@ -704,6 +704,26 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
   // Salida recomendada del aviso: en vez de pisar el precio viejo, se abre
   // "Nueva tarifa" precargada con el mismo par y el valor tipeado. La fecha
   // arranca en hoy a propósito — es la que define desde cuándo rige.
+  // Abre "Nueva tarifa" ya apuntada a una ruta existente (cantera + depósito +
+  // unidad), con la fecha de HOY y el precio actual cargado para que sólo haya
+  // que pisar el número. Es el camino correcto cuando el precio cambia: agrega
+  // una versión en vez de reescribir la vigente, que es lo que descalzó las
+  // facturas de LARTIRIGOYEN el 27/07.
+  function abrirActualizarPrecio(t: TarifaEmpresaCantera) {
+    form.reset({
+      cantera_id:     String(t.cantera_id),
+      deposito_id:    t.deposito_id != null ? String(t.deposito_id) : '',
+      tipo_unidad:    t.tipo_unidad ?? '',
+      valor_ton_neta: finalANeta(Number(t.valor_ton)),
+      vigente_desde:  toISO(new Date()),
+      obs:            '',
+    })
+    setEditando(null)
+    setConfirmPisar(null)
+    setPisarPosteriores(false)
+    setModal(true)
+  }
+
   function irACrearVersionNueva() {
     if (!editando || !confirmPisar) return
     form.reset({
@@ -830,11 +850,24 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
                           {expanded ? '▲ ocultar' : `▼ ${pasadas.length} anterior${pasadas.length > 1 ? 'es' : ''}`}
                         </button>
                       )}
+                      {/* Acción principal: cargar el precio NUEVO como una versión
+                          más, con fecha de hoy. "Editar" queda al lado, chico y
+                          gris, para el caso raro de corregir la versión vigente. */}
+                      {puedeCrear && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => abrirActualizarPrecio(vigente)}
+                          title="Cargar un precio nuevo desde hoy — la tarifa actual queda en el historial"
+                        >
+                          $ Actualizar precio
+                        </Button>
+                      )}
                       {puedeCrear && (
                         <button
                           onClick={() => abrirEditar(vigente)}
-                          title="Editar tarifa"
-                          className="text-xs px-2 py-1 rounded hover:bg-gris transition-colors"
+                          title="Corregir esta versión (sólo si el precio o la fecha se cargaron mal). Para un aumento usá Actualizar precio."
+                          className="text-xs px-2 py-1 rounded text-gris-dark hover:bg-gris transition-colors"
                         >✏️</button>
                       )}
                       {puedeEliminar && (
@@ -923,7 +956,14 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
                 </p>
               )}
             </div>
-            <Input label="Vigente desde" type="date" {...form.register('vigente_desde')} />
+            <Input
+              label="Vigente desde"
+              type="date"
+              hint={watchFecha === toISO(new Date())
+                ? 'Hoy. Los viajes anteriores conservan el precio con el que se facturaron.'
+                : 'Ojo: con una fecha pasada, los viajes ya facturados desde ese día pasan a este precio.'}
+              {...form.register('vigente_desde')}
+            />
           </div>
           <Input label="Observaciones" placeholder="Notas..." {...form.register('obs')} />
 
