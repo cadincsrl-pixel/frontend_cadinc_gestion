@@ -6,6 +6,7 @@ import {
   useLugaresOperativos, useCrearLugarOperativo, useActualizarLugarOperativo, useEliminarLugarOperativo,
 } from '../hooks/useLogistica'
 import { apiPost, apiPatch, apiDelete } from '@/lib/api/client'
+import { apiErrorCode, apiErrorDetail } from '@/lib/api/errors'
 import { useQueryClient } from '@tanstack/react-query'
 import { LOG_KEYS } from '../hooks/useLogistica'
 import { Modal }  from '@/components/ui/Modal'
@@ -39,6 +40,26 @@ export function LugaresTab() {
   const [editRuta,      setEditRuta]      = useState<{ id: number; cantera: string; deposito: string; cantera_id: number; deposito_id: number } | null>(null)
   const [editLugarOp,   setEditLugarOp]   = useState<LugarOperativo | null>(null)
   const [loading, setLoading] = useState(false)
+
+  // Renombre frenado por el backend (409 LUGAR_CON_HISTORIAL): el lugar ya
+  // tiene viajes y renombrarlo reetiqueta el historial. `reintentar` reenvía el
+  // mismo patch con confirmar_renombre: true — así el aviso sirve igual para
+  // canteras, depósitos y lugares operativos, que guardan por vías distintas.
+  const [confirmRenombre, setConfirmRenombre] = useState<{
+    tipo:         TipoLugar
+    viajes:       number | null   // null = el backend no mandó la cuenta
+    nombreActual: string
+    nombreNuevo:  string
+    reintentar:   () => void
+  } | null>(null)
+
+  // Lee la cuenta de viajes del detail del 409. Tolerante de nombre porque el
+  // shape cruza repos; si no vino, el aviso se muestra sin número.
+  function viajesDelDetalle(err: unknown): number | null {
+    const d = apiErrorDetail(err)
+    const n = Number(d.viajes ?? d.tramos ?? d.cantidad)
+    return Number.isFinite(n) && n > 0 ? n : null
+  }
 
   // Canteras/depósitos que son parte de un lugar operativo → se gestionan en su
   // propia sección, no en las listas de canteras/depósitos.
@@ -115,7 +136,13 @@ export function LugaresTab() {
     setEditLugarOp(l)
     setModalLugarOp(true)
   }
-  function handleSaveLugarOp(data: { nombre: string; localidad: string; maps_url: string; lat: number | null; lng: number | null; obs: string }) {
+  // Guardar un lugar operativo renombra de una su punto de carga Y su depósito,
+  // así que también reetiqueta el historial → pasa por el mismo aviso que
+  // canteras/depósitos. `confirmar` reenvía el patch con confirmar_renombre.
+  function handleSaveLugarOp(
+    data: { nombre: string; localidad: string; maps_url: string; lat: number | null; lng: number | null; obs: string },
+    confirmar = false,
+  ) {
     const nombre = (data.nombre ?? '').trim()
     if (!nombre) { toast('Poné un nombre', 'err'); return }
     const payload = {
@@ -127,12 +154,29 @@ export function LugaresTab() {
       lng: Number.isFinite(data.lng as number) ? (data.lng as number) : null,
       obs: data.obs || null,
     }
+    const editando = editLugarOp
     const cbs = {
-      onSuccess: () => { toast(editLugarOp ? '✓ Lugar actualizado' : '✓ Lugar operativo creado', 'ok'); setModalLugarOp(false) },
-      onError:   () => toast('Error al guardar', 'err'),
+      onSuccess: () => {
+        toast(editando ? '✓ Lugar actualizado' : '✓ Lugar operativo creado', 'ok')
+        setModalLugarOp(false)
+        setConfirmRenombre(null)
+      },
+      onError: (err: unknown) => {
+        if (editando && apiErrorCode(err) === 'LUGAR_CON_HISTORIAL') {
+          setConfirmRenombre({
+            tipo:         'operativo',
+            viajes:       viajesDelDetalle(err),
+            nombreActual: editando.nombre,
+            nombreNuevo:  nombre,
+            reintentar:   () => handleSaveLugarOp(data, true),
+          })
+        } else {
+          toast('Error al guardar', 'err')
+        }
+      },
     }
-    if (editLugarOp) actualizarLugarOp({ id: editLugarOp.id, ...payload }, cbs)
-    else             crearLugarOp(payload, cbs)
+    if (editando) actualizarLugarOp({ id: editando.id, ...payload, ...(confirmar ? { confirmar_renombre: true } : {}) }, cbs)
+    else          crearLugarOp(payload, cbs)
   }
   function handleDeleteLugarOp(l: LugarOperativo) {
     if (!confirm(`¿Eliminar el lugar operativo "${l.nombre}"? Se borran su punto de carga y su depósito (solo si no tienen tramos asociados).`)) return
@@ -157,16 +201,50 @@ export function LugaresTab() {
     setLoading(false)
   }
 
-  async function handleUpdateCantera(data: any) {
-    if (!editCantera) return
+  // Guarda un punto de carga o depósito. `confirmar` reenvía el mismo patch con
+  // confirmar_renombre: true, después de que el usuario aceptó el aviso de que
+  // el renombre reetiqueta los viajes ya cargados.
+  async function guardarLugar(
+    tipo: 'cantera' | 'deposito',
+    id: number,
+    data: Record<string, unknown>,
+    nombreActual: string,
+    confirmar = false,
+  ) {
+    const esCantera = tipo === 'cantera'
     setLoading(true)
     try {
-      await apiPatch(`/api/logistica/lugares/canteras/${editCantera.id}`, data)
-      qc.invalidateQueries({ queryKey: LOG_KEYS.canteras })
-      toast('✓ Punto de carga actualizado', 'ok')
-      setEditCantera(null)
-    } catch { toast('Error al actualizar', 'err') }
+      await apiPatch(
+        `/api/logistica/lugares/${esCantera ? 'canteras' : 'depositos'}/${id}`,
+        confirmar ? { ...data, confirmar_renombre: true } : data,
+      )
+      qc.invalidateQueries({ queryKey: esCantera ? LOG_KEYS.canteras : LOG_KEYS.depositos })
+      // El nombre del lugar se muestra en cada tramo → refrescamos la lista.
+      qc.invalidateQueries({ queryKey: LOG_KEYS.tramos })
+      toast(esCantera ? '✓ Punto de carga actualizado' : '✓ Depósito actualizado', 'ok')
+      if (esCantera) setEditCantera(null); else setEditDeposito(null)
+      setConfirmRenombre(null)
+    } catch (err) {
+      if (apiErrorCode(err) === 'LUGAR_CON_HISTORIAL') {
+        // Del backend sólo necesitamos la cuenta de viajes; los dos nombres ya
+        // los tenemos acá.
+        setConfirmRenombre({
+          tipo,
+          viajes:       viajesDelDetalle(err),
+          nombreActual,
+          nombreNuevo:  String(data.nombre ?? '').trim(),
+          reintentar:   () => guardarLugar(tipo, id, data, nombreActual, true),
+        })
+      } else {
+        toast('Error al actualizar', 'err')
+      }
+    }
     setLoading(false)
+  }
+
+  function handleUpdateCantera(data: Record<string, unknown>) {
+    if (!editCantera) return
+    guardarLugar('cantera', editCantera.id, data, editCantera.nombre)
   }
 
   async function handleCreateDeposito(data: any) {
@@ -181,16 +259,9 @@ export function LugaresTab() {
     setLoading(false)
   }
 
-  async function handleUpdateDeposito(data: any) {
+  function handleUpdateDeposito(data: Record<string, unknown>) {
     if (!editDeposito) return
-    setLoading(true)
-    try {
-      await apiPatch(`/api/logistica/lugares/depositos/${editDeposito.id}`, data)
-      qc.invalidateQueries({ queryKey: LOG_KEYS.depositos })
-      toast('✓ Depósito actualizado', 'ok')
-      setEditDeposito(null)
-    } catch { toast('Error al actualizar', 'err') }
-    setLoading(false)
+    guardarLugar('deposito', editDeposito.id, data, editDeposito.nombre)
   }
 
   async function handleCreateRuta(data: any) {
@@ -712,7 +783,7 @@ export function LugaresTab() {
       {/* Modal nuevo/editar lugar operativo */}
       <Modal open={modalLugarOp} onClose={() => setModalLugarOp(false)}
         title={editLugarOp ? '✏️ EDITAR LUGAR OPERATIVO' : '🅿️ NUEVO LUGAR OPERATIVO'}
-        footer={<><Button variant="secondary" onClick={() => setModalLugarOp(false)}>Cancelar</Button><Button variant="primary" loading={creandoLugarOp || editandoLugarOp} onClick={formLugarOp.handleSubmit(handleSaveLugarOp)}>✓ Guardar</Button></>}
+        footer={<><Button variant="secondary" onClick={() => setModalLugarOp(false)}>Cancelar</Button><Button variant="primary" loading={creandoLugarOp || editandoLugarOp} onClick={formLugarOp.handleSubmit(d => handleSaveLugarOp(d))}>✓ Guardar</Button></>}
       >
         <div className="flex flex-col gap-4">
           <div className="bg-naranja-light/40 border border-naranja/30 rounded-lg p-3 text-[11px] text-gris-dark">
@@ -813,7 +884,116 @@ export function LugaresTab() {
           <Input label="Observaciones" placeholder="Opcional" {...formEditRuta.register('obs')} />
         </div>
       </Modal>
+
+      {/* Aviso de renombre con historial (409 LUGAR_CON_HISTORIAL). Va ÚLTIMO
+          entre los modales a propósito: Modal no usa portal y todos comparten
+          z-50, así que entre dos abiertos gana el que está más abajo en el DOM.
+          El modal de edición sigue abierto cuando salta el aviso (sólo se
+          cierra en onSuccess) — arriba en el JSX, este aviso quedaba tapado
+          justo para los lugares operativos, que es el único camino para
+          renombrar Chivilcoy y Yerba Buena. */}
+      <ConfirmRenombreLugar
+        info={confirmRenombre}
+        loading={confirmRenombre?.tipo === 'operativo' ? editandoLugarOp : loading}
+        onCancel={() => setConfirmRenombre(null)}
+        onConfirmar={() => confirmRenombre?.reintentar()}
+      />
     </div>
+  )
+}
+
+// Los tres caminos de renombre que la UI ofrece. `operativo` renombra de una el
+// punto de carga Y el depósito del par, y es el ÚNICO camino para los lugares
+// operativos: sus fichas sueltas están ocultas de las listas de arriba.
+type TipoLugar = 'cantera' | 'deposito' | 'operativo'
+
+const RENOMBRE_COPY: Record<TipoLugar, { titulo: string; botonCrear: string }> = {
+  cantera:   { titulo: '⚠ ESTE PUNTO DE CARGA YA TIENE VIAJES',   botonCrear: '＋ Punto de carga' },
+  deposito:  { titulo: '⚠ ESTE DEPÓSITO YA TIENE VIAJES',         botonCrear: '＋ Depósito' },
+  operativo: { titulo: '⚠ ESTE LUGAR OPERATIVO YA TIENE VIAJES',  botonCrear: '＋ Lugar operativo' },
+}
+
+// Confirmación de renombre de un lugar que ya tiene viajes.
+// Va como Modal y no como confirm() a propósito: el camino peligroso queda en un
+// botón rojo aparte y no se dispara apretando Enter, que es justo cómo se pisó
+// una cantera con 10 viajes el 27/07.
+function ConfirmRenombreLugar({ info, loading, onCancel, onConfirmar }: {
+  info: { tipo: TipoLugar; viajes: number | null; nombreActual: string; nombreNuevo: string } | null
+  loading: boolean
+  onCancel: () => void
+  onConfirmar: () => void
+}) {
+  if (!info) return null
+  const { titulo, botonCrear } = RENOMBRE_COPY[info.tipo]
+  const n = info.viajes
+  const cuantos = n != null ? `${n.toLocaleString('es-AR')} viaje${n === 1 ? '' : 's'}` : 'viajes'
+  const frase = n != null
+    ? `Hay ${cuantos} registrado${n === 1 ? '' : 's'} con “${info.nombreActual}”.`
+    : `Hay viajes registrados con “${info.nombreActual}”.`
+
+  // El backend arma los relevos de chofer buscando Chivilcoy POR NOMBRE
+  // (relevo.service.ts → findChivilcoy). Si el nombre nuevo no lo contiene,
+  // deja de encontrarlo. Sólo avisamos en ese caso puntual.
+  const rompeRelevos = /chivilcoy/i.test(info.nombreActual) && !/chivilcoy/i.test(info.nombreNuevo)
+
+  return (
+    <Modal
+      open
+      onClose={onCancel}
+      width="max-w-lg"
+      title={titulo}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onCancel}>Cancelar</Button>
+          <Button variant="danger" loading={loading} onClick={onConfirmar}>
+            Es el mismo lugar — renombrar igual
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3 text-sm">
+        <div className="bg-rojo-light border border-rojo/30 rounded-card p-3">
+          <p className="font-bold text-rojo">{frase}</p>
+          <p className="text-carbon mt-1">
+            Si le cambiás el nombre a <b>“{info.nombreNuevo}”</b>, esos viajes van a pasar a decir
+            “{info.nombreNuevo}” — también los que ya se facturaron o se liquidaron al chofer.
+            El nombre viejo no queda guardado en ningún lado.
+          </p>
+        </div>
+
+        {info.tipo === 'operativo' && (
+          <div className="bg-naranja-light border border-naranja/30 rounded-card p-3">
+            <p className="font-bold text-naranja-dark">Un lugar operativo son dos fichas, y se renombran las dos.</p>
+            <p className="text-carbon mt-1">
+              Por detrás, “{info.nombreActual}” es un <b>punto de carga</b> y un <b>depósito</b> con el
+              mismo nombre. Al guardar se les cambia el nombre a los dos de una — por eso el conteo de
+              arriba junta los viajes que salen de ahí y los que llegan ahí.
+            </p>
+          </div>
+        )}
+
+        {rompeRelevos && (
+          <div className="bg-amarillo-light border border-amarillo/40 rounded-card p-3">
+            <p className="font-bold text-[#7A5500]">Este lugar es el que usa el sistema para los relevos.</p>
+            <p className="text-carbon mt-1">
+              Los relevos de chofer se arman buscando el lugar por el nombre “Chivilcoy”. Si el nombre
+              nuevo no lo dice, los relevos van a dejar de calcularse solos. Avisá a sistemas antes de guardar.
+            </p>
+          </div>
+        )}
+
+        <div className="bg-verde-light border border-verde/30 rounded-card p-3">
+          <p className="font-bold text-verde">Si “{info.nombreNuevo}” es OTRO lugar, no lo renombres.</p>
+          <p className="text-carbon mt-1">
+            Cancelá y creá uno nuevo con el botón <b>{botonCrear}</b>. Así los viajes viejos siguen
+            apuntando al lugar del que salieron de verdad.
+          </p>
+        </div>
+        <p className="text-xs text-gris-dark">
+          Renombrá sólo si es el mismo lugar de siempre y le cambiaron el nombre, o estaba mal escrito.
+        </p>
+      </div>
+    </Modal>
   )
 }
 

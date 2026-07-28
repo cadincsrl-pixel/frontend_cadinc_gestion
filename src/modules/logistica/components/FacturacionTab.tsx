@@ -24,6 +24,7 @@ import { CobroAdjuntosSection } from './CobroAdjuntosSection'
 import { useUploadCobroAdjunto } from '../hooks/useCobroAdjuntos'
 import type { EmpresaTransportista, TarifaEmpresaCantera, Tramo, Cobro, Camion } from '@/types/domain.types'
 import { toISO } from '@/lib/utils/dates'
+import { apiErrorCode, apiErrorDetail } from '@/lib/api/errors'
 import { tarifaParaFecha, unidadDelCamion, netaAFinal, finalANeta } from '../utils/tarifas'
 
 function fmtM(n: number) {
@@ -207,6 +208,261 @@ function fmtDate(s: string) {
 // tarifaParaFecha / unidadDelCamion / netaAFinal / finalANeta viven en
 // ../utils/tarifas (módulo puro, testeado en src/__tests__/tarifas.test.ts).
 
+// Campos del modal "Editar tarifa" (el resto de la fila no es editable).
+type TarifaEditForm = {
+  valor_ton_neta: string | number
+  vigente_desde:  string
+  obs:            string
+}
+
+// $ con 2 decimales, como se muestran las tarifas en toda la pantalla.
+const fmtTarifa = (n: number) => '$' + n.toLocaleString('es-AR', { minimumFractionDigits: 2 })
+
+// Lo que el usuario necesita ver cuando el backend frena la operación con 409
+// TARIFA_YA_FACTURADA. `cambios` lista SÓLO los campos que cambian de valor: si
+// se movió la vigencia y no el precio, el aviso no tiene que hablar de precio.
+type AvisoTarifa = {
+  cantidad: number
+  nros:     string[]
+  cambios:  Array<{ campo: 'precio' | 'vigencia'; antes: string; despues: string }>
+}
+
+// Lee el detail del 409. Los nombres se buscan con tolerancia porque el shape
+// viaja entre los dos repos; si falta la cuenta, la deducimos de la lista, y si
+// faltan los valores el caller cae a los que ya tiene en pantalla.
+function detalleTarifaFacturada(err: unknown): {
+  cantidad: number; nros: string[]
+  valorActual: number | null; valorNuevo: number | null
+  vigenteActual: string | null; vigenteNuevo: string | null
+} {
+  const d = apiErrorDetail(err)
+  const lista = [d.facturas, d.facturas_nros, d.nros].find(v => Array.isArray(v)) as unknown[] | undefined
+  const nros  = (lista ?? []).map(v => String(v)).filter(Boolean)
+  const cont  = Number(d.cantidad ?? d.total ?? d.count)
+  const num   = (v: unknown) => { const n = Number(v); return v == null || v === '' || !Number.isFinite(n) ? null : n }
+  const fecha = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null)
+  return {
+    cantidad:      Number.isFinite(cont) && cont > 0 ? cont : nros.length,
+    nros,
+    valorActual:   num(d.valor_actual),
+    valorNuevo:    num(d.valor_nuevo),
+    vigenteActual: fecha(d.vigente_desde_actual),
+    vigenteNuevo:  fecha(d.vigente_desde_nuevo),
+  }
+}
+
+// "ya se emitieron 2 facturas: 1178, 1183" — el backend manda las primeras 5,
+// así que si hay más lo decimos en vez de mentir con la lista corta.
+function CajaFacturas({ aviso, children }: { aviso: AvisoTarifa; children: React.ReactNode }) {
+  const plural  = aviso.cantidad !== 1
+  const listado = aviso.nros.length > 0
+    ? aviso.nros.join(', ') + (aviso.cantidad > aviso.nros.length ? ` y ${aviso.cantidad - aviso.nros.length} más` : '')
+    : null
+  return (
+    <div className="bg-rojo-light border border-rojo/30 rounded-card p-3">
+      <p className="font-bold text-rojo">
+        Con esta tarifa ya se {plural ? 'emitieron' : 'emitió'} {aviso.cantidad.toLocaleString('es-AR')} factura{plural ? 's' : ''}
+        {listado ? `: ${listado}` : ''}.
+      </p>
+      <p className="text-carbon mt-1">{children}</p>
+    </div>
+  )
+}
+
+// Aviso previo a pisar una tarifa con la que ya se facturó. Es un Modal y no un
+// confirm() porque hay dos salidas distintas —crear una versión nueva (lo
+// correcto ante un aumento) o corregir el valor mal tipeado— y un confirm sólo
+// ofrece aceptar/cancelar.
+function ConfirmPisarTarifa({ aviso, loading, onCancel, onCrearVersion, onCorregir }: {
+  aviso:   AvisoTarifa
+  loading: boolean
+  onCancel:       () => void
+  onCrearVersion: () => void
+  onCorregir:     () => void
+}) {
+  // Si lo único que se movió es la vigencia, hablar de precio confunde: el
+  // usuario no tocó el precio y no entiende de qué le hablan.
+  const soloVigencia = aviso.cambios.length === 1 && aviso.cambios[0].campo === 'vigencia'
+  const precioAntes  = aviso.cambios.find(c => c.campo === 'precio')?.antes
+
+  return (
+    <Modal
+      open
+      onClose={onCancel}
+      width="max-w-lg"
+      title={soloVigencia ? '⚠ ESTA TARIFA YA SE USÓ PARA FACTURAR' : '⚠ CON ESTE PRECIO YA SE FACTURÓ'}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onCancel}>Cancelar</Button>
+          <Button variant="danger" loading={loading} onClick={onCorregir}>Corregir igual</Button>
+          <Button variant="primary" onClick={onCrearVersion}>✓ Crear versión nueva</Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3 text-sm">
+        <CajaFacturas aviso={aviso}>
+          {soloVigencia
+            ? 'Si le movés la fecha de vigencia, esas facturas pasan a quedar cubiertas por otro precio y dejan de coincidir con lo que muestra el sistema.'
+            : 'Si cambiás el precio, el valor con el que se facturó se pierde y esas facturas dejan de coincidir con lo que muestra el sistema.'}
+        </CajaFacturas>
+
+        <CambiosTarifa cambios={aviso.cambios} />
+
+        <div className="bg-verde-light border border-verde/30 rounded-card p-3">
+          <p className="font-bold text-verde">
+            {soloVigencia
+              ? 'Si a partir de otra fecha rige otro precio → Crear versión nueva'
+              : 'Si el precio cambió (aumento) → Crear versión nueva'}
+          </p>
+          <p className="text-carbon mt-1">
+            Se guarda el precio nuevo con la fecha desde la que rige y esta tarifa queda como
+            histórico{precioAntes ? `: las facturas ya emitidas siguen mostrando ${precioAntes}` : ': las facturas ya emitidas siguen cuadrando'}.
+          </p>
+        </div>
+
+        <div className="bg-amarillo-light border border-amarillo/40 rounded-card p-3">
+          <p className="font-bold text-[#7A5500]">
+            {soloVigencia
+              ? 'Si esta fecha se cargó mal → Corregir igual'
+              : 'Si este precio estaba mal tipeado → Corregir igual'}
+          </p>
+          <p className="text-carbon mt-1">
+            Sólo para arreglar un error de carga. {soloVigencia ? 'La fecha vieja' : 'El valor viejo'} se
+            pisa y no se puede recuperar.
+          </p>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// Sólo los campos que cambian de valor, uno por fila.
+function CambiosTarifa({ cambios }: { cambios: AvisoTarifa['cambios'] }) {
+  if (cambios.length === 0) return null
+  return (
+    <div className="bg-gris/40 rounded-card p-3 text-xs flex flex-col gap-1">
+      {cambios.map(c => (
+        <div key={c.campo} className="flex items-baseline gap-2 flex-wrap">
+          <span className="text-gris-dark w-24 shrink-0">
+            {c.campo === 'precio' ? '$/ton c/IVA' : 'Vigente desde'}
+          </span>
+          <span className="font-mono line-through text-gris-dark">{c.antes}</span>
+          <span className="text-gris-dark">→</span>
+          <span className="font-mono font-bold text-rojo">{c.despues}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// Borrado de una tarifa. Arranca como confirmación normal; si el backend
+// responde 409 (ya se facturó con ella) el MISMO modal se escala al aviso duro.
+// Borrar una tarifa facturada es peor que pisarla: las facturas quedan sin
+// precio que las explique y el desglose las muestra a $0/ton.
+function ConfirmBorrarTarifa({ ficha, aviso, loading, onCancel, onConfirmar }: {
+  ficha:   { titulo: string; detalle: string }
+  aviso:   AvisoTarifa | null
+  loading: boolean
+  onCancel:    () => void
+  onConfirmar: () => void
+}) {
+  if (!aviso) {
+    return (
+      <Modal
+        open
+        onClose={onCancel}
+        width="max-w-lg"
+        title="🗑 ELIMINAR TARIFA"
+        footer={
+          <>
+            <Button variant="secondary" onClick={onCancel}>Cancelar</Button>
+            <Button variant="danger" loading={loading} onClick={onConfirmar}>🗑 Eliminar</Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3 text-sm">
+          <div className="bg-gris/40 rounded-card p-3">
+            <p className="font-bold text-carbon">{ficha.titulo}</p>
+            <p className="font-mono text-xs text-gris-dark mt-0.5">{ficha.detalle}</p>
+          </div>
+          <p className="text-carbon">
+            Se borra esta versión del precio. Los viajes que se estaban facturando con ella pasan a
+            usar la versión anterior; si no hay ninguna anterior, quedan en $0/ton hasta que cargues otra.
+          </p>
+        </div>
+      </Modal>
+    )
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onCancel}
+      width="max-w-lg"
+      title="⚠ CON ESTA TARIFA YA SE FACTURÓ"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onCancel}>Cancelar</Button>
+          <Button variant="danger" loading={loading} onClick={onConfirmar}>Eliminar igual</Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3 text-sm">
+        <div className="bg-gris/40 rounded-card p-3">
+          <p className="font-bold text-carbon">{ficha.titulo}</p>
+          <p className="font-mono text-xs text-gris-dark mt-0.5">{ficha.detalle}</p>
+        </div>
+
+        <CajaFacturas aviso={aviso}>
+          Si la borrás, esas facturas se quedan sin el precio que las explica: el desglose las va a
+          mostrar a $0/ton. Es peor que dejarla como está.
+        </CajaFacturas>
+
+        <div className="bg-verde-light border border-verde/30 rounded-card p-3">
+          <p className="font-bold text-verde">Si el precio cambió, no la borres.</p>
+          <p className="text-carbon mt-1">
+            Cancelá y cargá una tarifa nueva con la fecha desde la que rige el precio nuevo
+            (<b>＋ Nueva tarifa</b>). Esta queda como histórico y las facturas viejas siguen cuadrando.
+          </p>
+        </div>
+
+        <div className="bg-amarillo-light border border-amarillo/40 rounded-card p-3">
+          <p className="font-bold text-[#7A5500]">Si esta tarifa nunca debió existir → Eliminar igual</p>
+          <p className="text-carbon mt-1">
+            El precio se borra y no se puede recuperar. Vas a tener que revisar a mano el desglose de
+            {aviso.cantidad === 1 ? ' esa factura' : ` esas ${aviso.cantidad} facturas`}.
+          </p>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// Dos tarifas de la misma serie con la MISMA `vigente_desde` y precios distintos:
+// cuál gana es indefinido (`tarifaParaFecha` ordena por vigente_desde y toma la
+// primera). Avisamos antes de crearla, que es cuando todavía se puede evitar.
+function AvisoMismaFecha({ tarifas, fecha }: { tarifas: TarifaEmpresaCantera[]; fecha: string }) {
+  if (tarifas.length === 0) return null
+  return (
+    <div className="bg-amarillo-light border border-[#7A5500]/30 rounded-card p-3 text-xs">
+      <div className="font-bold text-[#7A5500] mb-1">
+        ⚠ Ya hay {tarifas.length === 1 ? 'otra tarifa' : `otras ${tarifas.length} tarifas`} para esta
+        misma combinación que {tarifas.length === 1 ? 'rige' : 'rigen'} desde el {fmtDate(fecha)}
+      </div>
+      <div className="text-gris-dark mb-2 font-mono">
+        {tarifas.map(t => (
+          <div key={t.id}>• {fmtTarifa(Number(t.valor_ton))}/ton c/IVA</div>
+        ))}
+      </div>
+      <div className="text-carbon">
+        Si guardás con esta fecha van a quedar dos tarifas con la misma vigencia y precios distintos:
+        no está definido cuál usa el sistema para facturar. Poné otra fecha, o cancelá y corregí la
+        que ya está con el ✏️.
+      </div>
+    </div>
+  )
+}
+
 function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
   const toast = useToast()
   const { puedeCrear, puedeEliminar } = usePermisos('logistica')
@@ -215,7 +471,11 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
   const { data: depositos    = [] } = useDepositos()
   const { mutate: crear, isPending: saving } = useUpsertTarifaEmpresa()
   const { mutate: actualizar, isPending: actualizando } = useUpdateTarifaEmpresa()
-  const { mutate: remove } = useDeleteTarifaEmpresa()
+  // `removeAsync` para el borrado en lote: `mutate` con callbacks NO sirve en
+  // paralelo — MutationObserver.mutate pisa `mutateOptions` y desengancha el
+  // observer anterior, así que de N llamadas sólo vuelven los callbacks de la
+  // última y las otras N-1 promesas nunca resuelven (allSettled quedaba colgado).
+  const { mutate: remove, mutateAsync: removeAsync } = useDeleteTarifaEmpresa()
 
   const tarifas = todasTarifas.filter(t => t.empresa_id === empresa.id)
 
@@ -255,8 +515,23 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
   const [expandida, setExpandida] = useState<string | null>(null)
   const [editando, setEditando] = useState<TarifaEmpresaCantera | null>(null)
   const [pisarPosteriores, setPisarPosteriores] = useState(false)
+  // Edición frenada por el backend (409 TARIFA_YA_FACTURADA): con esta tarifa
+  // ya se emitieron facturas. Guardamos el form para poder reenviarlo si el
+  // usuario elige corregir igual.
+  const [confirmPisar, setConfirmPisar] = useState<{ data: TarifaEditForm; aviso: AvisoTarifa } | null>(null)
+  // Alta con vigencia retroactiva que repriecia cobros ya emitidos.
+  const [confirmCrear, setConfirmCrear] = useState<{ data: any; aviso: AvisoTarifa } | null>(null)
+  // Borrado en dos etapas: `aviso: null` es la confirmación normal; si el
+  // backend responde 409, se llena y el modal se escala al aviso duro.
+  const [confirmBorrar, setConfirmBorrar] = useState<{
+    id:     number
+    ficha:  { titulo: string; detalle: string }
+    aviso:  AvisoTarifa | null
+  } | null>(null)
+  const [borrando, setBorrando] = useState(false)
   const form = useForm<any>({ defaultValues: { vigente_desde: toISO(new Date()) } })
-  const formEdit = useForm<any>()
+  // El input number devuelve string y el reset carga un number → union.
+  const formEdit = useForm<TarifaEditForm>()
 
   // Detecta tarifas con `vigente_desde` posterior a la fecha cargada
   // (excluyendo opcionalmente una propia, para el caso editar). Sirve
@@ -271,34 +546,77 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
       .sort((a, b) => a.vigente_desde.localeCompare(b.vigente_desde))
   }
 
+  // Tarifas de la MISMA serie (cantera + depósito + unidad) con exactamente la
+  // misma `vigente_desde`. Dos filas con igual vigencia y precio distinto es un
+  // empate que `tarifaParaFecha` resuelve de forma indefinida.
+  function tarifasMismaFecha(canteraId: number | null, depositoId: number | null, tipoUnidad: 'batea' | 'chasis' | null, fecha: string, excluirId?: number): TarifaEmpresaCantera[] {
+    if (!canteraId || !fecha) return []
+    return tarifas
+      .filter(t => t.cantera_id === canteraId && (t.deposito_id ?? null) === depositoId && (t.tipo_unidad ?? null) === tipoUnidad)
+      .filter(t => excluirId == null || t.id !== excluirId)
+      .filter(t => t.vigente_desde === fecha)
+  }
+
   const watchCantera  = form.watch('cantera_id')
   const watchDeposito = form.watch('deposito_id')
   const watchUnidad   = form.watch('tipo_unidad')
   const watchFecha    = form.watch('vigente_desde')
   const watchNeta     = form.watch('valor_ton_neta')
-  const posterioresNueva = tarifasPosteriores(
+  const serieNueva: [number | null, number | null, 'batea' | 'chasis' | null] = [
     watchCantera ? Number(watchCantera) : null,
     watchDeposito ? Number(watchDeposito) : null,
     watchUnidad ? (watchUnidad as 'batea' | 'chasis') : null,
-    watchFecha,
-  )
+  ]
+  const posterioresNueva = tarifasPosteriores(...serieNueva, watchFecha)
+  const mismaFechaNueva  = tarifasMismaFecha(...serieNueva, watchFecha)
 
   const watchEditFecha = formEdit.watch('vigente_desde')
   const watchEditNeta  = formEdit.watch('valor_ton_neta')
   const posterioresEdit = editando
     ? tarifasPosteriores(editando.cantera_id, editando.deposito_id ?? null, editando.tipo_unidad ?? null, watchEditFecha, editando.id)
     : []
+  const mismaFechaEdit = editando
+    ? tarifasMismaFecha(editando.cantera_id, editando.deposito_id ?? null, editando.tipo_unidad ?? null, watchEditFecha, editando.id)
+    : []
 
   function abrirEditar(t: TarifaEmpresaCantera) {
     formEdit.reset({
       valor_ton_neta: finalANeta(Number(t.valor_ton)),
       vigente_desde:  t.vigente_desde,
-      obs:            (t as any).obs ?? '',
+      obs:            t.obs ?? '',
     })
     setEditando(t)
   }
 
-  function handleEditSubmit(data: any) {
+  // Borra las tarifas que el usuario pidió "reemplazar". Va por la misma vía
+  // que el ✕, así que el backend puede frenar alguna con 409 si ya se facturó
+  // con ella: contamos esos casos para decirlo en vez de dar todo por hecho.
+  async function reemplazarPosteriores(ids: number[]): Promise<{ ok: number; facturadas: number; otros: number }> {
+    const res = await Promise.allSettled(ids.map(id => removeAsync({ id })))
+    const rechazadas = res.filter(r => r.status === 'rejected') as PromiseRejectedResult[]
+    const facturadas = rechazadas.filter(r => apiErrorCode(r.reason) === 'TARIFA_YA_FACTURADA').length
+    return {
+      ok:         res.length - rechazadas.length,
+      facturadas,
+      otros:      rechazadas.length - facturadas,
+    }
+  }
+
+  // Resultado del "reemplazar posteriores" en una línea honesta: antes decía
+  // "N reemplazadas" aunque el backend hubiera rechazado todas.
+  function toastReemplazo(base: string, pedidas: number, r: { ok: number; facturadas: number; otros: number } | null) {
+    if (!r || pedidas === 0) { toast(base, 'ok'); return }
+    const partes = [`posteriores reemplazadas: ${r.ok} de ${pedidas}`]
+    if (r.facturadas > 0) partes.push(`${r.facturadas} quedó${r.facturadas !== 1 ? 'n' : ''} sin borrar porque con ella${r.facturadas !== 1 ? 's' : ''} ya se facturó`)
+    if (r.otros > 0)      partes.push(`${r.otros} falló${r.otros !== 1 ? 'n' : ''}`)
+    const hayProblemas = r.facturadas > 0 || r.otros > 0
+    toast(`${hayProblemas ? '⚠' : '✓'} ${base.replace(/^✓ /, '')} · ${partes.join(' · ')}`, hayProblemas ? 'warn' : 'ok')
+  }
+
+  // Guarda la edición de la tarifa. `confirmar` reenvía el mismo patch con
+  // confirmar_pisar_historico: true, después de que el usuario aceptó que se
+  // reescribe el precio con el que ya se facturó.
+  function guardarEdicionTarifa(data: TarifaEditForm, confirmar = false) {
     if (!editando) return
     const ids_a_pisar = pisarPosteriores ? posterioresEdit.map(t => t.id) : []
     actualizar({
@@ -307,28 +625,107 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
         valor_ton:     netaAFinal(Number(data.valor_ton_neta)),
         vigente_desde: data.vigente_desde,
         obs:           data.obs ?? '',
+        ...(confirmar ? { confirmar_pisar_historico: true } : {}),
       },
     }, {
       onSuccess: async () => {
-        if (ids_a_pisar.length > 0) {
-          await Promise.allSettled(ids_a_pisar.map(id =>
-            new Promise((res, rej) => remove(id, { onSuccess: () => res(null), onError: rej })),
-          ))
-        }
-        toast(
-          ids_a_pisar.length > 0
-            ? `✓ Tarifa actualizada · ${ids_a_pisar.length} posterior${ids_a_pisar.length !== 1 ? 'es' : ''} reemplazada${ids_a_pisar.length !== 1 ? 's' : ''}`
-            : '✓ Tarifa actualizada',
-          'ok',
-        )
+        const r = ids_a_pisar.length > 0 ? await reemplazarPosteriores(ids_a_pisar) : null
+        toastReemplazo('✓ Tarifa actualizada', ids_a_pisar.length, r)
         setEditando(null)
         setPisarPosteriores(false)
+        setConfirmPisar(null)
       },
-      onError:   () => toast('Error al actualizar', 'err'),
+      onError: (err) => {
+        if (apiErrorCode(err) === 'TARIFA_YA_FACTURADA') {
+          const d = detalleTarifaFacturada(err)
+          // Preferimos los valores del backend (los leyó de la fila real) y
+          // caemos a lo que hay en pantalla si el detail no los trajo.
+          const valorAntes   = d.valorActual   ?? Number(editando.valor_ton)
+          const valorDespues = d.valorNuevo    ?? netaAFinal(Number(data.valor_ton_neta))
+          const fechaAntes   = d.vigenteActual ?? editando.vigente_desde
+          const fechaDespues = d.vigenteNuevo  ?? data.vigente_desde
+          const cambios: AvisoTarifa['cambios'] = []
+          if (valorDespues !== valorAntes) {
+            cambios.push({ campo: 'precio', antes: fmtTarifa(valorAntes), despues: fmtTarifa(valorDespues) })
+          }
+          if (fechaDespues !== fechaAntes) {
+            cambios.push({ campo: 'vigencia', antes: fmtDate(fechaAntes), despues: fmtDate(fechaDespues) })
+          }
+          setConfirmPisar({ data, aviso: { cantidad: d.cantidad, nros: d.nros, cambios } })
+        } else {
+          toast('Error al actualizar', 'err')
+        }
+      },
     })
   }
 
-  function handleSubmit(data: any) {
+  function handleEditSubmit(data: TarifaEditForm) {
+    guardarEdicionTarifa(data)
+  }
+
+  // Abre el modal de borrado. La ficha es para que el usuario reconozca CUÁL
+  // tarifa está por borrar: desde el historial expandido todas se ven iguales.
+  function abrirBorrar(t: TarifaEmpresaCantera) {
+    const cantera  = canteras.find(c => c.id === t.cantera_id)?.nombre ?? `punto de carga #${t.cantera_id}`
+    const deposito = t.deposito_id != null
+      ? (depositos.find(d => d.id === t.deposito_id)?.nombre ?? `depósito #${t.deposito_id}`)
+      : null
+    const unidad = t.tipo_unidad === 'chasis' ? ' · 🚚 Chasis' : t.tipo_unidad === 'batea' ? ' · 🛻 Batea' : ''
+    setConfirmBorrar({
+      id: t.id,
+      ficha: {
+        titulo:  `${empresa.nombre} · ${cantera}${deposito ? ` → ${deposito}` : ''}${unidad}`,
+        detalle: `${fmtTarifa(Number(t.valor_ton))}/ton c/IVA · desde ${fmtDate(t.vigente_desde)}`,
+      },
+      aviso: null,
+    })
+  }
+
+  // `confirmar` sólo llega en la segunda pasada, cuando el usuario ya leyó el
+  // aviso de que con esta tarifa se emitieron facturas.
+  function borrarTarifa(confirmar = false) {
+    if (!confirmBorrar) return
+    setBorrando(true)
+    remove({ id: confirmBorrar.id, ...(confirmar ? { confirmar_pisar_historico: true } : {}) }, {
+      onSuccess: () => { toast('✓ Tarifa eliminada', 'ok'); setConfirmBorrar(null); setBorrando(false) },
+      onError: (err) => {
+        if (apiErrorCode(err) === 'TARIFA_YA_FACTURADA') {
+          const d = detalleTarifaFacturada(err)
+          setConfirmBorrar(prev => prev && { ...prev, aviso: { cantidad: d.cantidad, nros: d.nros, cambios: [] } })
+        } else {
+          toast('Error al eliminar', 'err')
+          setConfirmBorrar(null)
+        }
+        setBorrando(false)
+      },
+    })
+  }
+
+  // Salida recomendada del aviso: en vez de pisar el precio viejo, se abre
+  // "Nueva tarifa" precargada con el mismo par y el valor tipeado. La fecha
+  // arranca en hoy a propósito — es la que define desde cuándo rige.
+  function irACrearVersionNueva() {
+    if (!editando || !confirmPisar) return
+    form.reset({
+      cantera_id:     String(editando.cantera_id),
+      deposito_id:    editando.deposito_id != null ? String(editando.deposito_id) : '',
+      tipo_unidad:    editando.tipo_unidad ?? '',
+      valor_ton_neta: confirmPisar.data.valor_ton_neta,
+      vigente_desde:  toISO(new Date()),
+      obs:            '',
+    })
+    setConfirmPisar(null)
+    setEditando(null)
+    setPisarPosteriores(false)
+    setModal(true)
+    toast('Poné la fecha desde la que rige el precio nuevo y guardá', 'warn')
+  }
+
+  // Alta de tarifa. `confirmar` reenvía la misma alta con
+  // confirmar_pisar_historico: true. Hace falta porque una tarifa fechada hacia
+  // atrás gana la escalera y repriecia cobros ya emitidos — el mismo daño que
+  // editar, por la puerta que el propio aviso de edición recomienda.
+  function guardarTarifaNueva(data: any, confirmar = false) {
     const ids_a_pisar = pisarPosteriores ? posterioresNueva.map(t => t.id) : []
     crear({
       empresa_id:    empresa.id,
@@ -338,28 +735,32 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
       valor_ton:     netaAFinal(Number(data.valor_ton_neta)),
       vigente_desde: data.vigente_desde,
       obs:           data.obs ?? '',
+      ...(confirmar ? { confirmar_pisar_historico: true } : {}),
     }, {
       onSuccess: async () => {
         // Si pidió "pisar posteriores", eliminamos en paralelo (best-effort).
-        // Si una falla, igual la nueva ya quedó creada; el user puede
-        // borrar la posterior huérfana a mano.
-        if (ids_a_pisar.length > 0) {
-          await Promise.allSettled(ids_a_pisar.map(id =>
-            new Promise((res, rej) => remove(id, { onSuccess: () => res(null), onError: rej })),
-          ))
-        }
-        toast(
-          ids_a_pisar.length > 0
-            ? `✓ Tarifa guardada · ${ids_a_pisar.length} posterior${ids_a_pisar.length !== 1 ? 'es' : ''} reemplazada${ids_a_pisar.length !== 1 ? 's' : ''}`
-            : '✓ Tarifa guardada',
-          'ok',
-        )
+        // Si alguna falla, la nueva ya quedó creada igual; el toast dice cuáles
+        // quedaron sin borrar para que el user decida qué hacer.
+        const r = ids_a_pisar.length > 0 ? await reemplazarPosteriores(ids_a_pisar) : null
+        toastReemplazo('✓ Tarifa guardada', ids_a_pisar.length, r)
         setModal(false)
         setPisarPosteriores(false)
+        setConfirmCrear(null)
         form.reset({ vigente_desde: toISO(new Date()) })
       },
-      onError:   () => toast('Error al guardar', 'err'),
+      onError: (err) => {
+        if (apiErrorCode(err) === 'TARIFA_YA_FACTURADA') {
+          const d = detalleTarifaFacturada(err)
+          setConfirmCrear({ data, aviso: { cantidad: d.cantidad, nros: d.nros, cambios: [] } })
+        } else {
+          toast('Error al guardar', 'err')
+        }
+      },
     })
+  }
+
+  function handleSubmit(data: any) {
+    guardarTarifaNueva(data)
   }
 
   const canteraOptions = canteras.map(c => ({
@@ -438,7 +839,8 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
                       )}
                       {puedeEliminar && (
                         <button
-                          onClick={() => { if (confirm(`¿Eliminar tarifa de ${cantera.nombre}${deposito ? ` → ${deposito.nombre}` : ''}?`)) remove(vigente.id, { onSuccess: () => toast('✓ Eliminada', 'ok') }) }}
+                          onClick={() => abrirBorrar(vigente)}
+                          title="Eliminar tarifa"
                           className="text-xs px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors"
                         >✕</button>
                       )}
@@ -457,7 +859,7 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
                               <button onClick={() => abrirEditar(t)} title="Editar" className="px-2 py-1 -my-1 rounded hover:text-azul hover:bg-white/60">✏️</button>
                             )}
                             {puedeEliminar && (
-                              <button onClick={() => { if (confirm('¿Eliminar?')) remove(t.id, { onSuccess: () => toast('✓ Eliminada', 'ok') }) }}
+                              <button onClick={() => abrirBorrar(t)} title="Eliminar"
                                 className="px-2 py-1 -my-1 rounded hover:text-rojo hover:bg-white/60">✕</button>
                             )}
                           </div>
@@ -473,7 +875,7 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
       </div>
 
       <Modal open={modal} onClose={() => { setModal(false); setPisarPosteriores(false) }} title="💲 NUEVA TARIFA"
-        footer={<><Button variant="secondary" onClick={() => { setModal(false); setPisarPosteriores(false) }}>Cancelar</Button><Button variant="primary" loading={saving} onClick={form.handleSubmit(handleSubmit)}>✓ Guardar</Button></>}>
+        footer={<><Button variant="secondary" onClick={() => { setModal(false); setPisarPosteriores(false) }}>Cancelar</Button><Button variant="primary" loading={saving} onClick={form.handleSubmit(handleSubmit)}>{mismaFechaNueva.length > 0 ? 'Guardar igual' : '✓ Guardar'}</Button></>}>
         <div className="flex flex-col gap-4">
           <Controller
             name="cantera_id"
@@ -525,6 +927,8 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
           </div>
           <Input label="Observaciones" placeholder="Notas..." {...form.register('obs')} />
 
+          <AvisoMismaFecha tarifas={mismaFechaNueva} fecha={watchFecha} />
+
           {posterioresNueva.length > 0 && (
             <div className="bg-amarillo-light border border-[#7A5500]/30 rounded-card p-3 text-xs">
               <div className="font-bold text-[#7A5500] mb-1">
@@ -561,11 +965,11 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
           par empresa-cantera hay que eliminar y crear una nueva. */}
       <Modal
         open={!!editando}
-        onClose={() => { setEditando(null); setPisarPosteriores(false) }}
+        onClose={() => { setEditando(null); setPisarPosteriores(false); setConfirmPisar(null) }}
         title="✏️ EDITAR TARIFA"
         footer={
           <>
-            <Button variant="secondary" onClick={() => { setEditando(null); setPisarPosteriores(false) }}>Cancelar</Button>
+            <Button variant="secondary" onClick={() => { setEditando(null); setPisarPosteriores(false); setConfirmPisar(null) }}>Cancelar</Button>
             <Button variant="primary" loading={actualizando} onClick={formEdit.handleSubmit(handleEditSubmit)}>✓ Guardar</Button>
           </>
         }
@@ -600,6 +1004,8 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
           </div>
           <Input label="Observaciones" placeholder="Notas..." {...formEdit.register('obs')} />
 
+          <AvisoMismaFecha tarifas={mismaFechaEdit} fecha={watchEditFecha} />
+
           {posterioresEdit.length > 0 && (
             <div className="bg-amarillo-light border border-[#7A5500]/30 rounded-card p-3 text-xs">
               <div className="font-bold text-[#7A5500] mb-1">
@@ -627,6 +1033,69 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
           )}
         </div>
       </Modal>
+
+      {/* Aviso de tarifa ya facturada — se abre encima del modal de edición
+          cuando el backend devuelve 409 TARIFA_YA_FACTURADA. */}
+      {editando && confirmPisar && (
+        <ConfirmPisarTarifa
+          aviso={confirmPisar.aviso}
+          loading={actualizando}
+          onCancel={() => setConfirmPisar(null)}
+          onCrearVersion={irACrearVersionNueva}
+          onCorregir={() => guardarEdicionTarifa(confirmPisar.data, true)}
+        />
+      )}
+
+      {/* Borrado de tarifa: confirmación normal que se escala al aviso duro si
+          el backend devuelve 409 TARIFA_YA_FACTURADA. */}
+      {confirmBorrar && (
+        <ConfirmBorrarTarifa
+          ficha={confirmBorrar.ficha}
+          aviso={confirmBorrar.aviso}
+          loading={borrando}
+          onCancel={() => setConfirmBorrar(null)}
+          onConfirmar={() => borrarTarifa(confirmBorrar.aviso != null)}
+        />
+      )}
+
+      {/* Alta con vigencia retroactiva: la tarifa nueva le gana a la anterior
+          desde esa fecha y repriecia lo ya cobrado. Va último en el JSX para
+          quedar encima del modal de "Nueva tarifa", que sigue abierto. */}
+      {confirmCrear && (
+        <Modal
+          open
+          onClose={() => setConfirmCrear(null)}
+          width="max-w-lg"
+          title="⚠ ESTA FECHA PISA COBROS YA EMITIDOS"
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setConfirmCrear(null)}>Volver y cambiar la fecha</Button>
+              <Button variant="danger" loading={saving} onClick={() => guardarTarifaNueva(confirmCrear.data, true)}>
+                Guardar igual
+              </Button>
+            </>
+          }
+        >
+          <div className="flex flex-col gap-3 text-sm">
+            <p className="text-carbon">
+              Con la fecha <b>{fmtDate(confirmCrear.data.vigente_desde)}</b> esta tarifa pasa a ser la
+              vigente para viajes que <b>ya se cobraron</b> con otro precio:{' '}
+              <b>{confirmCrear.aviso.cantidad} cobro{confirmCrear.aviso.cantidad !== 1 ? 's' : ''}</b> cambiarían de importe.
+            </p>
+            {confirmCrear.aviso.nros.length > 0 && (
+              <div className="bg-gris/40 rounded-card p-3 font-mono text-xs text-gris-dark">
+                {confirmCrear.aviso.nros.join(' · ')}
+                {confirmCrear.aviso.cantidad > confirmCrear.aviso.nros.length &&
+                  ` y ${confirmCrear.aviso.cantidad - confirmCrear.aviso.nros.length} más`}
+              </div>
+            )}
+            <p className="text-carbon">
+              Si el precio nuevo empieza a regir <b>de acá en adelante</b>, volvé y poné la fecha del
+              cambio: así los viajes ya cobrados conservan el precio con el que se facturaron.
+            </p>
+          </div>
+        </Modal>
+      )}
     </>
   )
 }

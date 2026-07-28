@@ -183,11 +183,13 @@ export function useLugaresOperativos() {
 }
 
 // Crear/editar/borrar tocan también canteras y depósitos (el par), así que
-// invalidamos las tres listas.
+// invalidamos las tres listas. El nombre del lugar se muestra en cada tramo
+// (origen/destino) → los tramos también quedan desactualizados.
 function invalidarLugares(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: LOG_KEYS.lugaresOperativos })
   qc.invalidateQueries({ queryKey: LOG_KEYS.canteras })
   qc.invalidateQueries({ queryKey: LOG_KEYS.depositos })
+  qc.invalidateQueries({ queryKey: LOG_KEYS.tramos })
 }
 
 interface LugarOperativoInput {
@@ -211,7 +213,10 @@ export function useCrearLugarOperativo() {
 export function useActualizarLugarOperativo() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, ...dto }: { id: number } & Partial<LugarOperativoInput>) =>
+    // confirmar_renombre: renombrar el lugar reetiqueta los viajes que ya
+    // colgaban de su par cantera+depósito, así que el backend corta con 409
+    // LUGAR_CON_HISTORIAL. El flag es el "sí, dale" del usuario; no se persiste.
+    mutationFn: ({ id, ...dto }: { id: number; confirmar_renombre?: boolean } & Partial<LugarOperativoInput>) =>
       apiPatch<LugarOperativo>(`/api/logistica/lugares/operativos/${id}`, dto),
     onSuccess: () => invalidarLugares(qc),
   })
@@ -626,7 +631,9 @@ export function useTarifasEmpresa() {
 export function useUpsertTarifaEmpresa() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (dto: { empresa_id: number; cantera_id: number; deposito_id?: number | null; tipo_unidad?: 'batea' | 'chasis' | null; valor_ton: number; vigente_desde: string; obs?: string }) =>
+    // confirmar_pisar_historico: un alta con vigencia retroactiva repriecia lo
+    // ya cobrado, así que el backend también la frena con 409 en el POST.
+    mutationFn: (dto: { empresa_id: number; cantera_id: number; deposito_id?: number | null; tipo_unidad?: 'batea' | 'chasis' | null; valor_ton: number; vigente_desde: string; obs?: string; confirmar_pisar_historico?: boolean }) =>
       apiPost<TarifaEmpresaCantera>('/api/logistica/empresas/tarifas', dto),
     onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.tarifasEmpresa }),
   })
@@ -635,7 +642,10 @@ export function useUpsertTarifaEmpresa() {
 export function useUpdateTarifaEmpresa() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, dto }: { id: number; dto: { valor_ton?: number; vigente_desde?: string; obs?: string } }) =>
+    // confirmar_pisar_historico: el backend rechaza con 409 TARIFA_YA_FACTURADA
+    // si con esa tarifa ya se emitieron facturas; el flag es el "sí, dale" del
+    // usuario y no se persiste.
+    mutationFn: ({ id, dto }: { id: number; dto: { valor_ton?: number; vigente_desde?: string; obs?: string; confirmar_pisar_historico?: boolean } }) =>
       apiPatch<TarifaEmpresaCantera>(`/api/logistica/empresas/tarifas/${id}`, dto),
     onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.tarifasEmpresa }),
   })
@@ -644,7 +654,15 @@ export function useUpdateTarifaEmpresa() {
 export function useDeleteTarifaEmpresa() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id: number) => apiDelete(`/api/logistica/empresas/tarifas/${id}`),
+    // Borrar una tarifa con la que ya se facturó deja esas facturas sin precio
+    // que las explique (el desglose las muestra a $0/ton) → el backend corta con
+    // 409 TARIFA_YA_FACTURADA. `confirmar_pisar_historico` es el "sí, dale" del
+    // usuario; va en el body del DELETE y no se persiste.
+    mutationFn: ({ id, confirmar_pisar_historico }: { id: number; confirmar_pisar_historico?: boolean }) =>
+      apiDelete(
+        `/api/logistica/empresas/tarifas/${id}`,
+        confirmar_pisar_historico ? { confirmar_pisar_historico: true } : undefined,
+      ),
     onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.tarifasEmpresa }),
   })
 }
