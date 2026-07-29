@@ -92,6 +92,12 @@ function msgErrorLiq(err: unknown, fallback: string): string {
     case 'SALDO_NEGATIVO_EN_BORRADOR':
       return `No se puede: la deuda que dejó esta liquidación ya la tomó un borrador (liquidación N° ${otra}) del mismo chofer. `
         + `Ese borrador no está en el Historial: eliminalo desde la tarjeta del chofer en "Saldo corriente por chofer" y volvé a intentar.`
+    // Cerrar un borrador sin nada adentro dejaba una cáscara 'cerrada' con los
+    // subtotales intactos que los reportes contaban como plata real (pasó el
+    // 2026-07-26 con las liq 23 y 25: $10.538.550 de mano de obra fantasma).
+    case 'LIQUIDACION_VACIA':
+      return 'Esta liquidación no tiene ningún viaje, adelanto, gasto ni estadía adentro, así que no se puede cerrar. '
+        + 'Si querés descartarla, eliminá el borrador con el 🗑.'
     // Intento de borrar a mano el adelanto automático de un cierre en negativo.
     case 'ADELANTO_DE_SALDO':
       return `Este adelanto no se borra a mano: es la deuda que dejó la liquidación N° ${otra} al cerrar en negativo. `

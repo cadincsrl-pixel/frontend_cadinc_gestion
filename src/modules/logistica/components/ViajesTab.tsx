@@ -855,10 +855,34 @@ export function ViajesTab() {
   }
 
   function handleDelete(tramo: Tramo) {
+    // Cortamos acá antes de molestar al usuario con un confirm que el backend va
+    // a rechazar igual (candado en tramos.service.delete). Borrar el último
+    // tramo de una liquidación cerrada la dejaba como cáscara: subtotales
+    // intactos y nada adentro, y los reportes la seguían contando como plata
+    // real. Pasó el 2026-07-26 con las liq 23 y 25.
+    if (tramo.liquidacion_id) {
+      toast(
+        `Este tramo está liquidado (liquidación N° ${tramo.liquidacion_id}) y no se puede borrar. `
+        + 'Reabrí esa liquidación primero.',
+        'err',
+      )
+      return
+    }
+    if (tramo.cobro_id) {
+      toast(
+        `Este tramo está en un cobro facturado (N° ${tramo.cobro_id}) y no se puede borrar. `
+        + 'Deshacé el cobro primero.',
+        'err',
+      )
+      return
+    }
     if (!confirm(`¿Eliminar tramo #${tramo.id}?`)) return
     deleteTramo(tramo.id, {
       onSuccess: () => toast('✓ Tramo eliminado', 'ok'),
-      onError:   () => toast('Error al eliminar', 'err'),
+      onError:   (err: unknown) => {
+        const e = err as { body?: { message?: string }; message?: string } | null
+        toast(e?.body?.message || e?.message || 'Error al eliminar', 'err')
+      },
     })
   }
 
