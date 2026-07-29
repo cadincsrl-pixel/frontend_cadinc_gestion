@@ -362,6 +362,9 @@ export interface Chofer extends AuditFields {
   precio_km_cargado: number
   precio_km_vacio: number
   obs: string | null
+  // false = fletero externo, no está en la nómina de CADINC. Excluido de
+  // Gastos > Reportes (migración 20260729f).
+  es_propio?: boolean
 }
 
 // tractor = arrastra batea/semirremolque; chasis = caja fija. Discrimina la
@@ -387,6 +390,10 @@ export interface Camion extends AuditFields {
   gps_ultimo_sync_en:     string | null
   gps_ultimo_sync_estado: GpsSyncEstado | null
   gps_ultimo_sync_error:  string | null
+  // false = camión de un fletero: se le factura el viaje pero el equipo no es de
+  // CADINC y los gastos los pone él. Excluido de Gastos > Reportes
+  // (migración 20260729f).
+  es_propio?: boolean
 }
 
 // ── GPS Sync ──

@@ -77,7 +77,7 @@ export function CamionesTab() {
   const [editando,   setEditando]   = useState<Camion | null>(null)
   // Filtro por categoría de unidad (tractor/chasis).
   const [filtroCategoria, setFiltroCategoria] = useState<'' | 'tractor' | 'chasis'>('')
-  const formNuevo = useForm<any>({ defaultValues: { categoria: 'tractor' } })
+  const formNuevo = useForm<any>({ defaultValues: { categoria: 'tractor', es_propio: true } })
   const formEdit  = useForm<any>()
 
   const camionesFiltrados = filtroCategoria
@@ -100,7 +100,7 @@ export function CamionesTab() {
   }
 
   function openEdit(c: Camion) {
-    formEdit.reset({ patente: c.patente, modelo: c.modelo ?? '', anio: c.anio ?? '', estado: c.estado, categoria: c.categoria ?? 'tractor', obs: c.obs ?? '' })
+    formEdit.reset({ patente: c.patente, modelo: c.modelo ?? '', anio: c.anio ?? '', estado: c.estado, categoria: c.categoria ?? 'tractor', obs: c.obs ?? '', es_propio: c.es_propio ?? true })
     setEditando(c)
   }
 
@@ -116,6 +116,26 @@ export function CamionesTab() {
       </div>
       <Select label="Categoría" options={CATEGORIA_OPTIONS} disabled={disabled} {...form.register('categoria')} />
       <Input label="Observaciones" placeholder="Notas..." disabled={disabled} {...form.register('obs')} />
+
+      {/* Propio vs fletero. Definido con el dueño el 29/07: los reportes de
+          flota excluyen los de tercero, porque se les factura el viaje pero el
+          equipo no es de CADINC y los gastos los pone el fletero — mezclarlos
+          promedia dos negocios distintos. */}
+      <label className="flex items-start gap-2.5 text-sm cursor-pointer bg-gris/30 rounded-card px-3 py-2.5">
+        <input
+          type="checkbox"
+          disabled={disabled}
+          className="accent-azul w-4 h-4 mt-0.5 shrink-0"
+          {...form.register('es_propio')}
+        />
+        <span>
+          <b>Camión propio de CADINC</b>
+          <span className="block text-[11px] text-gris-dark mt-0.5">
+            Destildá si es de un fletero: se le factura el viaje pero el equipo no es de CADINC y los
+            gastos los pone él. Los de tercero no entran a Gastos &gt; Reportes.
+          </span>
+        </span>
+      </label>
     </div>
   )
 

@@ -48,7 +48,8 @@ export function ChoferesTab() {
       batea?:  { chofer_nombre: string; patente: string }
     }
   }>(null)
-  const formNuevo = useForm<any>()
+  // es_propio arranca tildado: lo normal es que el chofer sea de la empresa.
+  const formNuevo = useForm<any>({ defaultValues: { es_propio: true } })
   const formEdit  = useForm<any>()
 
   function defaultsFromChofer(chofer: Chofer) {
@@ -63,6 +64,7 @@ export function ChoferesTab() {
       camion_id:         chofer.camion_id ?? '',
       batea_id:          chofer.batea_id ?? '',
       obs:               chofer.obs ?? '',
+      es_propio:         chofer.es_propio ?? true,
     }
   }
 
@@ -231,6 +233,25 @@ export function ChoferesTab() {
         <Input label="CBU / CVU" placeholder="22 dígitos" autoComplete="off" inputMode="numeric" disabled={disabled} {...form.register('cbu')} />
       </div>
       <Input label="Observaciones" placeholder="Notas..." autoComplete="off" disabled={disabled} {...form.register('obs')} />
+
+      {/* Propio vs fletero. Definido con el dueño el 29/07: los reportes de
+          flota excluyen los de tercero, porque se les factura el viaje pero no
+          están en la nómina y sus gastos no son de CADINC. */}
+      <label className="flex items-start gap-2.5 text-sm cursor-pointer bg-gris/30 rounded-card px-3 py-2.5">
+        <input
+          type="checkbox"
+          disabled={disabled}
+          className="accent-azul w-4 h-4 mt-0.5 shrink-0"
+          {...form.register('es_propio')}
+        />
+        <span>
+          <b>Chofer de CADINC</b>
+          <span className="block text-[11px] text-gris-dark mt-0.5">
+            Destildá si es un fletero externo: se le factura el viaje pero no está en la nómina. Los
+            de tercero no entran a Gastos &gt; Reportes.
+          </span>
+        </span>
+      </label>
     </div>
   )
 

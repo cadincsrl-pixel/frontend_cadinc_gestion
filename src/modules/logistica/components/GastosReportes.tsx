@@ -10,7 +10,7 @@ import { calcularPerformance } from '@/lib/utils/performance'
 import { useRelevosLiquidados } from '../hooks/useTramoRelevo'
 import { Button } from '@/components/ui/Button'
 import { Input }  from '@/components/ui/Input'
-import type { Camion, Chofer } from '@/types/domain.types'
+import type { Camion, Chofer, Tramo, Liquidacion } from '@/types/domain.types'
 import { toISO } from '@/lib/utils/dates'
 
 const fmt$ = (n: number | string) => `$ ${Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -64,9 +64,47 @@ export function GastosReportes() {
   // Patas de relevo liquidadas → la MO del relevista se imputa al camión real.
   const { data: tramoChoferes = [] } = useRelevosLiquidados()
 
+  // ── Sólo flota propia ───────────────────────────────────────────
+  // CADINC le lleva la facturación a fleteros que no son de la empresa: cobra el
+  // flete y le paga al fletero, pero el camión no es suyo y el gasoil, las
+  // cubiertas y el service los pone él. Mezclarlos promedia dos negocios
+  // distintos: los 4 viajes de Roque entraban con margen del 100% porque su
+  // camión no tiene gastos ni él tiene liquidación. Decisión del dueño el
+  // 2026-07-29: fuera del reporte de flota.
+  // Los gastos ya vienen filtrados del backend; acá se filtra la otra mitad
+  // (ingresos y mano de obra), que se calcula en el navegador.
+  const tercerosIds = useMemo(() => ({
+    camiones: new Set((camiones as Camion[]).filter(c => c.es_propio === false).map(c => c.id)),
+    choferes: new Set((choferes as Chofer[]).filter(c => c.es_propio === false).map(c => c.id)),
+  }), [camiones, choferes])
+
+  const esDeTerceros = (camionId: number | null | undefined, choferId: number | null | undefined) =>
+    (camionId != null && tercerosIds.camiones.has(camionId))
+    || (choferId != null && tercerosIds.choferes.has(choferId))
+
+  const tramosPropios = useMemo(
+    () => (tramos as Tramo[]).filter(t => !esDeTerceros(t.camion_id, t.chofer_id)),
+    [tramos, tercerosIds],
+  )
+  const liquidacionesPropias = useMemo(
+    () => (liquidaciones as Liquidacion[]).filter(l => !tercerosIds.choferes.has(l.chofer_id)),
+    [liquidaciones, tercerosIds],
+  )
+
+  // Qué quedó afuera, para poder decirlo en pantalla: un número que baja sin
+  // explicación es peor que el número mal.
+  const excluido = useMemo(() => {
+    const enRango = (tramos as Tramo[]).filter(t =>
+      t.tipo === 'cargado' && t.estado === 'completado'
+      && t.fecha_descarga && t.fecha_descarga >= desde && t.fecha_descarga <= hasta
+      && esDeTerceros(t.camion_id, t.chofer_id))
+    const nombres = [...new Set(enRango.map(t => choferes.find((c: Chofer) => c.id === t.chofer_id)?.nombre).filter(Boolean))]
+    return { viajes: enRango.length, nombres: nombres as string[] }
+  }, [tramos, desde, hasta, tercerosIds, choferes])
+
   const performance = useMemo(
-    () => calcularPerformance(tramos, cobros, tarifas, desde, hasta, liquidaciones, choferes, rutas, tramoChoferes),
-    [tramos, cobros, tarifas, desde, hasta, liquidaciones, choferes, rutas, tramoChoferes],
+    () => calcularPerformance(tramosPropios, cobros, tarifas, desde, hasta, liquidacionesPropias, choferes, rutas, tramoChoferes),
+    [tramosPropios, cobros, tarifas, desde, hasta, liquidacionesPropias, choferes, rutas, tramoChoferes],
   )
 
   // Mapas para mergear gastos por entidad con performance.
@@ -116,6 +154,18 @@ export function GastosReportes() {
           <Button variant="secondary" size="sm" onClick={() => preset('anio')}>Año en curso</Button>
         </div>
       </div>
+
+      {/* Qué quedó afuera. Sin esto, un margen que sube no se puede explicar. */}
+      {excluido.viajes > 0 && (
+        <div className="bg-sky-50 border border-sky-200 rounded-card px-3 py-2 text-xs text-sky-900">
+          ℹ Este reporte muestra <b>sólo la flota propia</b>. Quedaron afuera {excluido.viajes} viaje
+          {excluido.viajes !== 1 ? 's' : ''} de fleteros
+          {excluido.nombres.length > 0 && <> ({excluido.nombres.join(', ')})</>}: se les factura el
+          viaje pero el camión no es de CADINC y los gastos los ponen ellos, así que mezclarlos
+          promedia dos negocios distintos. Para marcar un camión o un chofer como de tercero, hay un
+          tilde en su ficha.
+        </div>
+      )}
 
       {/* KPIs cruzados (facturación vs gastos) */}
       {lr ? (
