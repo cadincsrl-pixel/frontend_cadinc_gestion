@@ -255,9 +255,47 @@ export function calcularPerformance(
     return ts.map(t => ({ camion_id: t.camion_id, km: kmTramo(t) }))
   }
 
+  // ── Cáscaras duplicadas: liquidaciones 'cerradas' que quedaron vacías ──
+  // Cerrar un borrador sin nada vinculado deja una fila 'cerrada' con los
+  // subtotales intactos y 0 tramos / 0 adelantos / 0 gastos. Pasó el 2026-07-26:
+  // las liq 23 (Gonzalez) y 25 (Zelarayan) son gemelas de la 24 y la 29, y el
+  // reporte sumaba las dos → $10.538.550 de mano de obra fantasma en julio.
+  //
+  // Se descarta por (chofer, período) en vez de "toda cerrada sin tramos":
+  // así nunca se tira una liquidación única. Si el día que `tramos` llegue al
+  // cap de 1000 filas de PostgREST una liquidación legítima apareciera sin
+  // hijos, un filtro ciego le borraría el costo en silencio — que es peor que
+  // el problema que arregla.
+  const idsDescartados = new Set<number>()
+  {
+    const porChoferYPeriodo = new Map<string, Liquidacion[]>()
+    for (const liq of liquidaciones) {
+      if (liq.estado !== 'cerrada') continue
+      const k = `${liq.chofer_id}|${liq.fecha_desde}|${liq.fecha_hasta}`
+      const arr = porChoferYPeriodo.get(k) ?? []
+      arr.push(liq)
+      porChoferYPeriodo.set(k, arr)
+    }
+    const tieneHijos = (l: Liquidacion) =>
+      (tramosPorLiquidacion.get(l.id)?.length ?? 0) > 0 ||
+      (relevosPorLiquidacion.get(l.id)?.length ?? 0) > 0
+    for (const grupo of porChoferYPeriodo.values()) {
+      if (grupo.length < 2) continue
+      // Sólo se descartan las VACÍAS, y sólo si alguna hermana tiene hijos.
+      // Si las dos tienen tramos distintos adentro, las dos son plata real y
+      // se suman las dos (alguien partió el período en dos liquidaciones);
+      // descartar una ahí sería perder costo. Si ninguna tiene hijos no se
+      // toca ninguna: sin hijos no hay forma de saber cuál era la buena, y
+      // borrar a ciegas esconde el problema en vez de mostrarlo.
+      if (!grupo.some(tieneHijos)) continue
+      for (const l of grupo) if (!tieneHijos(l)) idsDescartados.add(l.id)
+    }
+  }
+
   // ── Costo de mano de obra por liquidaciones cerradas en rango ──
   for (const liq of liquidaciones) {
     if (liq.estado !== 'cerrada')   continue
+    if (idsDescartados.has(liq.id)) continue
     if (!liq.fecha_hasta)            continue
     if (liq.fecha_hasta < desde)    continue
     if (liq.fecha_hasta > hasta)    continue
@@ -325,6 +363,7 @@ export function calcularPerformance(
     const liqCerradasPorChofer = new Map<number, Liquidacion[]>()
     for (const liq of liquidaciones) {
       if (liq.estado !== 'cerrada') continue
+      if (idsDescartados.has(liq.id)) continue
       const arr = liqCerradasPorChofer.get(liq.chofer_id) ?? []
       arr.push(liq)
       liqCerradasPorChofer.set(liq.chofer_id, arr)
