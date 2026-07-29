@@ -106,132 +106,253 @@ function mkRuta(cantera_id: number, deposito_id: number, km: number): Ruta {
 const SIN_COBROS:  Cobro[] = []
 const SIN_TARIFAS: TarifaEmpresaCantera[] = []
 
-// ── El caso real de las cáscaras duplicadas ──────────────────────────────────
+// ── Escenario base: la liquidación REAL de Gonzalez (liq 24) ─────────────────
 //
-// Reproduce la situación exacta de producción al 2026-07-29:
-//   liq 24 — Gonzalez, 13/05→26/07, subtotal_basico 2.250.000 + km 5.574.680,
-//            con 1 tramo vinculado.
-//   liq 23 — la MISMA, idéntica en fechas y montos, con 0 tramos vinculados.
-// Un reporte de julio tomaba las dos y duplicaba $7.824.680.
+// Datos de producción al 2026-07-29:
+//   período 2026-05-13 → 2026-07-26 = 75 días de calendario
+//   subtotal_basico 2.250.000  (75 días × $30.000 — verificado en la DB)
+//   subtotal_km     5.574.680
+// Le colgamos 2 viajes de 100 km cada uno, uno en junio y otro en julio, para
+// que el prorrateo de km tenga de dónde agarrarse.
+
+const CHOFER  = 10
+const CAMION  = 3
+const RUTAS   = [mkRuta(5, 2, 100)]
+const CHOFERES = [mkChofer({ id: CHOFER, camion_id: CAMION })]
+
+const VIAJE_JUNIO = mkTramo({
+  id: 501, chofer_id: CHOFER, camion_id: CAMION,
+  cantera_id: 5, deposito_id: 2,
+  fecha_descarga: '2026-06-20', toneladas_descarga: 30,
+  liquidacion_id: 24,
+})
+const VIAJE_JULIO = mkTramo({
+  id: 502, chofer_id: CHOFER, camion_id: CAMION,
+  cantera_id: 5, deposito_id: 2,
+  fecha_descarga: '2026-07-20', toneladas_descarga: 30,
+  liquidacion_id: 24,
+})
+const TRAMOS = [VIAJE_JUNIO, VIAJE_JULIO]
+
+const LIQ_BUENA = mkLiq({
+  id: 24, chofer_id: CHOFER,
+  fecha_desde: '2026-05-13', fecha_hasta: '2026-07-26',
+  dias_trabajados: 75, basico_dia: 30_000,
+  subtotal_basico: 2_250_000, subtotal_km: 5_574_680,
+})
+
+function correr(desde: string, hasta: string, liqs: Liquidacion[] = [LIQ_BUENA], relevos: RelevoLiquidado[] = []) {
+  return calcularPerformance(
+    TRAMOS, SIN_COBROS, SIN_TARIFAS, desde, hasta,
+    liqs, CHOFERES, RUTAS, relevos,
+  )
+}
+
+describe('prorrateo de la mano de obra al rango', () => {
+  it('julio: básico por los 26 días del período que caen en julio + la mitad de los km', () => {
+    // Básico: el período solapa julio del 01 al 26 (fecha_hasta) = 26 días.
+    //         2.250.000 / 75 = $30.000/día × 26 = 780.000
+    // Km:     de los 2 viajes (200 km), 100 km caen en julio = la mitad.
+    //         5.574.680 × 100/200 = 2.787.340
+    // Total:  780.000 + 2.787.340 = 3.567.340
+    const r = correr('2026-07-01', '2026-07-31')
+    expect(r.totales.costo_mo_cerrado).toBeCloseTo(3_567_340, 6)
+  })
+
+  it('junio: 30 días de básico + la otra mitad de los km', () => {
+    // Básico: junio entero está dentro del período = 30 días × 30.000 = 900.000
+    // Km:     el viaje del 20/06 = 100 de 200 km → 2.787.340
+    // Total:  3.687.340
+    const r = correr('2026-06-01', '2026-06-30')
+    expect(r.totales.costo_mo_cerrado).toBeCloseTo(3_687_340, 6)
+  })
+
+  it('mayo: solo básico desde el 13 (19 días), sin km porque no hubo viajes', () => {
+    // Básico: 05-13 a 05-31 = 19 días × 30.000 = 570.000
+    // Km:     ningún viaje en mayo → 0
+    const r = correr('2026-05-01', '2026-05-31')
+    expect(r.totales.costo_mo_cerrado).toBeCloseTo(570_000, 6)
+  })
+
+  it('INVARIANTE: meses disjuntos suman exactamente el total de la liquidación', () => {
+    // Es la propiedad que hace confiable el prorrateo: no crea ni pierde plata.
+    // 570.000 + 3.687.340 + 3.567.340 = 7.824.680 = subtotal_basico + subtotal_km
+    const mayo  = correr('2026-05-01', '2026-05-31').totales.costo_mo_cerrado
+    const junio = correr('2026-06-01', '2026-06-30').totales.costo_mo_cerrado
+    const julio = correr('2026-07-01', '2026-07-31').totales.costo_mo_cerrado
+    expect(mayo + junio + julio).toBeCloseTo(2_250_000 + 5_574_680, 6)
+    expect(mayo + junio + julio).toBeCloseTo(7_824_680, 6)
+  })
+
+  it('el rango completo del período da el total entero', () => {
+    const r = correr('2026-05-13', '2026-07-26')
+    expect(r.totales.costo_mo_cerrado).toBeCloseTo(7_824_680, 6)
+  })
+
+  it('LA QUEJA DEL DUEÑO: en junio Gonzalez ya no aparece con mano de obra vacía', () => {
+    // Antes: su liquidación cierra el 26/07, así que un reporte de junio le
+    // mostraba 240 t facturadas y mano de obra "—", indistinguible de no haber
+    // trabajado. Ahora le imputa los $3.687.340 que corresponden a junio.
+    const r = correr('2026-06-01', '2026-06-30')
+    const fila = r.por_chofer.find(f => f.entidad_id === CHOFER)
+    expect(fila).toBeDefined()
+    expect(fila!.costo_mo).toBeGreaterThan(0)
+    expect(fila!.costo_mo).toBeCloseTo(3_687_340, 6)
+  })
+
+  it('un mes sin solape con el período no imputa nada', () => {
+    const r = correr('2026-08-01', '2026-08-31')
+    expect(r.totales.costo_mo_cerrado).toBe(0)
+  })
+
+  it('el costo se reparte al camión REAL de los viajes del rango', () => {
+    const r = correr('2026-07-01', '2026-07-31')
+    expect(r.por_camion.find(f => f.entidad_id === CAMION)?.costo_mo).toBeCloseTo(3_567_340, 6)
+  })
+
+  it('si la liquidación no tiene km cargados en sus rutas, el km cae al prorrateo por días', () => {
+    // Sin rutas → kmTramo = 0 para todos → no hay base de km.
+    // Se reparte el subtotal_km por días para no perder el monto:
+    //   2.250.000 × 26/75 = 780.000  (básico)
+    //   5.574.680 × 26/75 = 1.932.555,7333…  (km, prorrateado por días)
+    const r = calcularPerformance(
+      TRAMOS, SIN_COBROS, SIN_TARIFAS, '2026-07-01', '2026-07-31',
+      [LIQ_BUENA], CHOFERES, [], [],
+    )
+    expect(r.totales.costo_mo_cerrado).toBeCloseTo(780_000 + 5_574_680 * 26 / 75, 6)
+  })
+})
+
+// ── El caso real de las cáscaras duplicadas ──────────────────────────────────
 
 describe('cáscaras duplicadas de liquidación', () => {
-  const CHOFER_ID = 10
-  const tramoLiquidado = mkTramo({
-    id: 500, chofer_id: CHOFER_ID, camion_id: 3,
-    fecha_descarga: '2026-07-20', toneladas_descarga: 30,
-    liquidacion_id: 24,
-  })
-  const buena = mkLiq({
-    id: 24, chofer_id: CHOFER_ID,
+  const CASCARA = mkLiq({
+    id: 23, chofer_id: CHOFER,
     fecha_desde: '2026-05-13', fecha_hasta: '2026-07-26',
+    dias_trabajados: 75, basico_dia: 30_000,
     subtotal_basico: 2_250_000, subtotal_km: 5_574_680,
   })
-  const cascara = mkLiq({
-    id: 23, chofer_id: CHOFER_ID,
-    fecha_desde: '2026-05-13', fecha_hasta: '2026-07-26',
-    subtotal_basico: 2_250_000, subtotal_km: 5_574_680,
-  })
-  const choferes = [mkChofer({ id: CHOFER_ID, camion_id: 3 })]
 
-  function correr(liqs: Liquidacion[]) {
-    return calcularPerformance(
-      [tramoLiquidado], SIN_COBROS, SIN_TARIFAS,
-      '2026-07-01', '2026-07-31',
-      liqs, choferes, [], [],
-    )
-  }
-
-  it('sola, la liquidación buena imputa su costo una vez: 2.250.000 + 5.574.680 = 7.824.680', () => {
-    const r = correr([buena])
-    expect(r.totales.costo_mo).toBe(7_824_680)
-  })
-
-  it('con la cáscara al lado, NO duplica — sigue en 7.824.680 (antes daba 15.649.360)', () => {
-    const r = correr([buena, cascara])
-    expect(r.totales.costo_mo).toBe(7_824_680)
-    const fila = r.por_chofer.find(f => f.entidad_id === CHOFER_ID)
-    expect(fila?.costo_mo).toBe(7_824_680)
+  it('con la cáscara al lado, NO duplica el costo de julio', () => {
+    const sola = correr('2026-07-01', '2026-07-31', [LIQ_BUENA]).totales.costo_mo
+    const conCascara = correr('2026-07-01', '2026-07-31', [LIQ_BUENA, CASCARA]).totales.costo_mo
+    expect(conCascara).toBeCloseTo(sola, 6)
+    expect(conCascara).toBeCloseTo(3_567_340, 6)
   })
 
   it('descarta la cáscara aunque venga primero en el array (no depende del orden)', () => {
-    const r = correr([cascara, buena])
-    expect(r.totales.costo_mo).toBe(7_824_680)
+    const r = correr('2026-07-01', '2026-07-31', [CASCARA, LIQ_BUENA])
+    expect(r.totales.costo_mo).toBeCloseTo(3_567_340, 6)
   })
 
-  it('sobrevive la que tiene tramos, no la de id más alto: si la cáscara es la 29 y la buena la 25, gana la 25', () => {
-    const buena25 = mkLiq({
-      ...buena, id: 25,
-    })
-    const cascara29 = mkLiq({ ...cascara, id: 29 })
-    const tramoEn25 = mkTramo({ ...tramoLiquidado, liquidacion_id: 25 })
+  it('sobrevive la que tiene viajes, no la de id más alto', () => {
+    // Espejo del caso real de Zelarayan: la buena es la 29 (con tramos) y la
+    // cáscara la 25, pero acá lo invertimos a propósito — la buena es la de id
+    // MENOR — para probar que el criterio es "tiene hijos", no "id más alto".
+    const buenaBaja  = mkLiq({ ...LIQ_BUENA, id: 25 })
+    const cascaraAlta = mkLiq({ ...CASCARA, id: 29 })
+    const tramosEn25 = TRAMOS.map(t => ({ ...t, liquidacion_id: 25 }))
     const r = calcularPerformance(
-      [tramoEn25], SIN_COBROS, SIN_TARIFAS,
-      '2026-07-01', '2026-07-31',
-      [buena25, cascara29], choferes, [], [],
+      tramosEn25, SIN_COBROS, SIN_TARIFAS, '2026-07-01', '2026-07-31',
+      [buenaBaja, cascaraAlta], CHOFERES, RUTAS, [],
     )
-    // Una sola vez, y el reparto por camión cae en el camión REAL del tramo (3),
-    // que es lo que prueba que sobrevivió la 25 y no la 29 (sin hijos, iría al
-    // camión preasignado por fallback — que acá es el mismo, así que además
-    // verificamos el total).
-    expect(r.totales.costo_mo).toBe(7_824_680)
-    expect(r.por_camion.find(f => f.entidad_id === 3)?.costo_mo).toBe(7_824_680)
+    expect(r.totales.costo_mo).toBeCloseTo(3_567_340, 6)
   })
 
   it('NO descarta dos liquidaciones cerradas del mismo chofer con períodos DISTINTOS', () => {
-    // Caso legítimo: dos quincenas seguidas, las dos cerradas en el rango.
+    // Caso legítimo: dos quincenas seguidas.
     const q1 = mkLiq({
-      id: 40, chofer_id: CHOFER_ID,
+      id: 40, chofer_id: CHOFER,
       fecha_desde: '2026-07-01', fecha_hasta: '2026-07-15',
-      subtotal_basico: 500_000, subtotal_km: 0,
+      subtotal_basico: 450_000, subtotal_km: 0,   // 15 días × 30.000
     })
     const q2 = mkLiq({
-      id: 41, chofer_id: CHOFER_ID,
+      id: 41, chofer_id: CHOFER,
       fecha_desde: '2026-07-16', fecha_hasta: '2026-07-31',
-      subtotal_basico: 700_000, subtotal_km: 0,
+      subtotal_basico: 480_000, subtotal_km: 0,   // 16 días × 30.000
     })
     const r = calcularPerformance(
-      [tramoLiquidado], SIN_COBROS, SIN_TARIFAS,
-      '2026-07-01', '2026-07-31',
-      [q1, q2], choferes, [], [],
+      TRAMOS, SIN_COBROS, SIN_TARIFAS, '2026-07-01', '2026-07-31',
+      [q1, q2], CHOFERES, RUTAS, [],
     )
-    // 500.000 + 700.000 = 1.200.000 — ninguna se descarta.
-    expect(r.totales.costo_mo).toBe(1_200_000)
+    // Las dos caen enteras dentro de julio: 450.000 + 480.000 = 930.000
+    expect(r.totales.costo_mo_cerrado).toBeCloseTo(930_000, 6)
   })
 
   it('NO descarta dos liquidaciones del mismo período de choferes DISTINTOS', () => {
+    // Caso real de las liq 12 y 13 (Maldonado y Robles): mismo período, mismo
+    // monto exacto, y las dos legítimas.
     const a = mkLiq({
       id: 12, chofer_id: 10,
       fecha_desde: '2026-07-01', fecha_hasta: '2026-07-31',
-      subtotal_basico: 1_332_150, subtotal_km: 0,
+      subtotal_basico: 930_000, subtotal_km: 0,
     })
     const b = mkLiq({
       id: 13, chofer_id: 11,
       fecha_desde: '2026-07-01', fecha_hasta: '2026-07-31',
-      subtotal_basico: 1_332_150, subtotal_km: 0,
+      subtotal_basico: 930_000, subtotal_km: 0,
     })
     const r = calcularPerformance(
-      [tramoLiquidado], SIN_COBROS, SIN_TARIFAS,
-      '2026-07-01', '2026-07-31',
-      [a, b], [mkChofer({ id: 10 }), mkChofer({ id: 11 })], [], [],
+      TRAMOS, SIN_COBROS, SIN_TARIFAS, '2026-07-01', '2026-07-31',
+      [a, b], [mkChofer({ id: 10 }), mkChofer({ id: 11 })], RUTAS, [],
     )
-    // Es el caso real de las liq 12 y 13 (Maldonado y Robles, mismo período,
-    // mismo monto exacto): 1.332.150 × 2 = 2.664.300.
-    expect(r.totales.costo_mo).toBe(2_664_300)
+    expect(r.totales.costo_mo_cerrado).toBeCloseTo(1_860_000, 6)
   })
 
   it('una cáscara con relevos vinculados NO se descarta (los relevos cuentan como hijos)', () => {
     const relevo: RelevoLiquidado = {
-      id: 1, tramo_id: 500, liquidacion_id: 23, chofer_id: CHOFER_ID,
+      id: 1, tramo_id: 502, liquidacion_id: 23, chofer_id: CHOFER,
       km_cargado: 100, km_vacio: 0,
-      tramo: { camion_id: 3, tipo: 'cargado' },
+      tramo: { camion_id: CAMION, tipo: 'cargado' },
     }
+    const r = correr('2026-07-01', '2026-07-31', [LIQ_BUENA, CASCARA], [relevo])
+    // La 23 ya no está vacía: tiene una pata de relevo del 20/07 con 100 km, o
+    // sea 100% de sus km en el rango → 780.000 + 5.574.680 = 6.354.680.
+    // Más la 24 normal (3.567.340) = 9.922.020.
+    expect(r.totales.costo_mo_cerrado).toBeCloseTo(6_354_680 + 3_567_340, 6)
+  })
+})
+
+// ── El básico del "parcial" (trabajo sin liquidar) ───────────────────────────
+
+describe('parcial estimado: el básico se cuenta por día corrido', () => {
+  it('dos viajes al principio y al final del mes pagan los días del medio', () => {
+    // Es como se liquida de verdad: verificado en las 13 liquidaciones vivas,
+    // el básico se paga por día de calendario del período, no por día con
+    // viaje (Alderete cobró 64 días teniendo 28 con viajes).
+    const chofer = mkChofer({ id: 77, camion_id: CAMION, basico_dia: 30_000 })
+    const t1 = mkTramo({ id: 601, chofer_id: 77, camion_id: CAMION, cantera_id: 5, deposito_id: 2, fecha_descarga: '2026-07-01', toneladas_descarga: 30 })
+    const t2 = mkTramo({ id: 602, chofer_id: 77, camion_id: CAMION, cantera_id: 5, deposito_id: 2, fecha_descarga: '2026-07-10', toneladas_descarga: 30 })
     const r = calcularPerformance(
-      [tramoLiquidado], SIN_COBROS, SIN_TARIFAS,
-      '2026-07-01', '2026-07-31',
-      [buena, cascara], choferes, [], [relevo],
+      [t1, t2], SIN_COBROS, SIN_TARIFAS, '2026-07-01', '2026-07-31',
+      [], [chofer], RUTAS, [],
     )
-    // Las dos tienen hijos → las dos son "reales" y se suman. El filtro no
-    // adivina: sólo desempata cuando una está genuinamente vacía.
-    expect(r.totales.costo_mo).toBe(15_649_360)
+    // 01/07 al 10/07 = 10 días corridos × 30.000 = 300.000
+    // (antes contaba 2 días con viaje = 60.000)
+    // Km: precio_km 0 → no suma.
+    expect(r.totales.costo_mo_parcial).toBe(300_000)
+    expect(r.totales.tiene_parcial).toBe(true)
+  })
+
+  it('un solo día de viaje paga un solo día', () => {
+    const chofer = mkChofer({ id: 78, camion_id: CAMION, basico_dia: 30_000 })
+    const t1 = mkTramo({ id: 603, chofer_id: 78, camion_id: CAMION, cantera_id: 5, deposito_id: 2, fecha_descarga: '2026-07-05', toneladas_descarga: 30 })
+    const r = calcularPerformance(
+      [t1], SIN_COBROS, SIN_TARIFAS, '2026-07-01', '2026-07-31',
+      [], [chofer], RUTAS, [],
+    )
+    expect(r.totales.costo_mo_parcial).toBe(30_000)
+  })
+
+  it('los días ya cubiertos por una liquidación cerrada no se estiman de nuevo', () => {
+    // Anti doble-conteo: el trabajo de la liq 24 está prorrateado en el lado
+    // "cerrado", así que el parcial tiene que dar 0 para ese chofer.
+    const choferConLiq = mkChofer({ id: CHOFER, camion_id: CAMION, basico_dia: 30_000 })
+    const r = calcularPerformance(
+      TRAMOS, SIN_COBROS, SIN_TARIFAS, '2026-07-01', '2026-07-31',
+      [LIQ_BUENA], [choferConLiq], RUTAS, [],
+    )
+    expect(r.totales.costo_mo_parcial).toBe(0)
+    expect(r.totales.costo_mo).toBeCloseTo(3_567_340, 6)
   })
 })

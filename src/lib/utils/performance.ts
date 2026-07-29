@@ -16,6 +16,15 @@
 // - Tramos sin empresa/cantera registrados se excluyen.
 
 import type { Tramo, Cobro, TarifaEmpresaCantera, Liquidacion, Chofer, Ruta, RelevoLiquidado } from '@/types/domain.types'
+import { diasEntreFechas } from '@/modules/logistica/utils/liquidacion-math'
+
+// Una "unidad de trabajo" liquidada: un tramo propio del chofer o una pata de
+// relevo que cobró. Es la base del prorrateo de km y del reparto por camión.
+interface UnidadLiquidada {
+  fecha:     string | null
+  km:        number
+  camion_id: number
+}
 
 interface PerformanceFila {
   // id de la entidad agregada (camion_id o chofer_id)
@@ -81,11 +90,16 @@ function tarifaVigentePara(
  * pagados al chofer) para calcular el margen real.
  *
  * Política de costo MO:
- * - Solo liquidaciones con `estado='cerrada'` y `fecha_hasta` en el rango.
+ * - Solo liquidaciones con `estado='cerrada'`, y PRORRATEADAS al rango: el
+ *   básico por día de calendario del período, los km por los viajes que caen
+ *   dentro. Ya no se imputa el subtotal completo al mes de cierre — eso hacía
+ *   que el sueldo y los ingresos del mismo viaje cayeran en meses distintos.
  * - Costo bruto = `subtotal_basico + subtotal_km` (lo que la empresa eroga
  *   por el trabajo del chofer; los adelantos ya están adelantados, los
  *   reintegros corresponden a gastos en `gastos_logistica`, así que esos
- *   no se suman acá para no doble-contar).
+ *   no se suman acá para no doble-contar). Las estadías NO están incluidas
+ *   todavía: son plata que se le paga al chofer por su tiempo pero no figuran
+ *   ni en Gastos ni en Mano obra (pendiente de decisión).
  * - Atribución a camión: se reparte el costo entre los camiones que el chofer
  *   EFECTIVAMENTE manejó según los tramos de esa liquidación
  *   (`tramo.liquidacion_id`), ponderando por km de cada tramo (fallback:
@@ -207,25 +221,37 @@ export function calcularPerformance(
     return kmPorRuta.get(`${t.cantera_id}->${t.deposito_id}`) ?? 0
   }
 
-  // Tramos agrupados por liquidación (para repartir la MO al camión real).
-  const tramosPorLiquidacion = new Map<number, Tramo[]>()
-  for (const t of tramos) {
-    if (t.liquidacion_id == null) continue
-    const arr = tramosPorLiquidacion.get(t.liquidacion_id) ?? []
-    arr.push(t)
-    tramosPorLiquidacion.set(t.liquidacion_id, arr)
+  // Fecha "de trabajo" de un tramo: la del hecho que se pagó.
+  function fechaDeTramo(t: Tramo): string | null {
+    return (t.tipo === 'cargado' ? t.fecha_descarga : t.fecha_vacio) ?? null
   }
 
-  // Patas de relevo liquidadas, agrupadas por liquidación. El tramo de un relevo
-  // tiene liquidacion_id NULL (el vínculo lo carga la fila tramo_choferes), así
-  // que sin esto la MO del relevista no caería en el camión real del viaje.
-  const relevosPorLiquidacion = new Map<number, Array<{ camion_id: number; km: number }>>()
+  const tramoPorId = new Map<number, Tramo>()
+  for (const t of tramos) tramoPorId.set(t.id, t)
+
+  // Unidades de trabajo de cada liquidación: sus tramos propios + las patas de
+  // relevo que cobra. El tramo de un relevo tiene liquidacion_id NULL (el
+  // vínculo lo carga la fila tramo_choferes), así que sin esto ni la MO del
+  // relevista cae en el camión real ni sus km entran al prorrateo.
+  const unidadesPorLiquidacion = new Map<number, UnidadLiquidada[]>()
+  function agregarUnidad(liqId: number, u: UnidadLiquidada) {
+    const arr = unidadesPorLiquidacion.get(liqId) ?? []
+    arr.push(u)
+    unidadesPorLiquidacion.set(liqId, arr)
+  }
+  for (const t of tramos) {
+    if (t.liquidacion_id == null) continue
+    agregarUnidad(t.liquidacion_id, { fecha: fechaDeTramo(t), km: kmTramo(t), camion_id: t.camion_id })
+  }
   for (const tc of tramoChoferes) {
     if (tc.liquidacion_id == null || !tc.tramo) continue
     const km = tc.tramo.tipo === 'vacio' ? Number(tc.km_vacio ?? 0) : Number(tc.km_cargado ?? 0)
-    const arr = relevosPorLiquidacion.get(tc.liquidacion_id) ?? []
-    arr.push({ camion_id: tc.tramo.camion_id, km })
-    relevosPorLiquidacion.set(tc.liquidacion_id, arr)
+    const tramoDelRelevo = tramoPorId.get(tc.tramo_id)
+    agregarUnidad(tc.liquidacion_id, {
+      fecha: tramoDelRelevo ? fechaDeTramo(tramoDelRelevo) : null,
+      km,
+      camion_id: tc.tramo.camion_id,
+    })
   }
 
   // Reparte `monto` entre camiones según `ref` (entradas {camion_id, km}),
@@ -277,8 +303,7 @@ export function calcularPerformance(
       porChoferYPeriodo.set(k, arr)
     }
     const tieneHijos = (l: Liquidacion) =>
-      (tramosPorLiquidacion.get(l.id)?.length ?? 0) > 0 ||
-      (relevosPorLiquidacion.get(l.id)?.length ?? 0) > 0
+      (unidadesPorLiquidacion.get(l.id)?.length ?? 0) > 0
     for (const grupo of porChoferYPeriodo.values()) {
       if (grupo.length < 2) continue
       // Sólo se descartan las VACÍAS, y sólo si alguna hermana tiene hijos.
@@ -292,30 +317,70 @@ export function calcularPerformance(
     }
   }
 
-  // ── Costo de mano de obra por liquidaciones cerradas en rango ──
+  // ── Costo de mano de obra de liquidaciones cerradas, PRORRATEADO al rango ──
+  //
+  // Antes se imputaba el subtotal completo al mes en que la liquidación CERRÓ,
+  // mientras los ingresos se cuentan el día del viaje. Como las liquidaciones no
+  // son mensuales (la de Gonzalez va del 13/05 al 26/07, la de Alderete del
+  // 21/04 al 23/06 — 9 de 13 cruzan un borde de mes), casi ninguna fila del
+  // reporte era comparable: Alderete cargaba dos meses de sueldo contra un mes
+  // de ingresos, y Gonzalez aparecía con 240 t facturadas y mano de obra "—",
+  // indistinguible de no haber trabajado.
+  //
+  // Ahora cada componente se reparte por su propia base, y con los montos
+  // REALMENTE pagados (no recalculando con las tarifas de hoy, que no tienen
+  // historial y re-valuarían retroactivamente todos los meses ya cerrados):
+  //   · básico → por día de calendario del período que cae en el rango.
+  //     Verificado en las 13 liquidaciones vivas: dias_trabajados es siempre
+  //     (fecha_hasta − fecha_desde + 1) y dias × basico_dia == subtotal_basico
+  //     exacto. O sea que el básico se paga por día corrido, no por día con
+  //     viaje (Alderete cobró 64 días teniendo 28 con viajes).
+  //   · km → por los km de los viajes que caen en el rango. Ahí sí importa
+  //     dónde estuvo el camión, no el calendario.
+  //
+  // Prorratear sobre el subtotal ya pagado garantiza que la suma de rangos
+  // disjuntos da el total de la liquidación: no se crea ni se pierde plata.
   for (const liq of liquidaciones) {
     if (liq.estado !== 'cerrada')   continue
     if (idsDescartados.has(liq.id)) continue
-    if (!liq.fecha_hasta)            continue
-    if (liq.fecha_hasta < desde)    continue
-    if (liq.fecha_hasta > hasta)    continue
+    if (!liq.fecha_desde || !liq.fecha_hasta) continue
 
-    const costo = Number(liq.subtotal_basico ?? 0) + Number(liq.subtotal_km ?? 0)
+    const montoBasico = Number(liq.subtotal_basico ?? 0)
+    const montoKm     = Number(liq.subtotal_km ?? 0)
+    if (montoBasico <= 0 && montoKm <= 0) continue
+
+    // Básico: proporción de días de calendario del período dentro del rango.
+    const diasPeriodo   = diasEntreFechas(liq.fecha_desde, liq.fecha_hasta)
+    const solapeDesde   = liq.fecha_desde > desde ? liq.fecha_desde : desde
+    const solapeHasta   = liq.fecha_hasta < hasta ? liq.fecha_hasta : hasta
+    const diasEnRango   = solapeDesde <= solapeHasta ? diasEntreFechas(solapeDesde, solapeHasta) : 0
+    const basicoEnRango = diasPeriodo > 0 ? montoBasico * (diasEnRango / diasPeriodo) : 0
+
+    // Km: proporción de km de las unidades de trabajo dentro del rango. Si no
+    // hay km cargados (rutas sin km), cae al prorrateo por días para no perder
+    // el monto — mal repartido es mejor que desaparecido.
+    const unidades       = unidadesPorLiquidacion.get(liq.id) ?? []
+    const unidadesRango  = unidades.filter(u => u.fecha != null && u.fecha >= desde && u.fecha <= hasta)
+    const kmTodos        = unidades.reduce((s, u) => s + u.km, 0)
+    const kmDelRango     = unidadesRango.reduce((s, u) => s + u.km, 0)
+    const kmEnRango      = kmTodos > 0
+      ? montoKm * (kmDelRango / kmTodos)
+      : diasPeriodo > 0 ? montoKm * (diasEnRango / diasPeriodo) : 0
+
+    const costo = basicoEnRango + kmEnRango
     if (costo <= 0) continue
 
-    // Por chofer (siempre identificado) — el total por chofer no cambia.
+    // Por chofer (siempre identificado).
     const fch = getOrInit(accChofer, liq.chofer_id)
     fch.costo_mo         += costo
     fch.costo_mo_cerrado += costo
 
-    // Por camión: repartir entre los camiones REALES de los tramos de esta
-    // liquidación (propios + patas de relevo). Si no hay nada linkeado, fallback
-    // al camión preasignado.
-    const entradas = [
-      ...entradasTramos(tramosPorLiquidacion.get(liq.id) ?? []),
-      ...(relevosPorLiquidacion.get(liq.id) ?? []),
-    ]
-    const reparto = repartirPorCamion(costo, entradas)
+    // Por camión: repartir entre los camiones REALES de las unidades del rango.
+    // Si el período solapa pero no hubo viajes en el rango (el básico corre
+    // igual), se reparte por todas las unidades de la liquidación; si tampoco
+    // hay, fallback al camión preasignado.
+    const referencia = unidadesRango.length > 0 ? unidadesRango : unidades
+    const reparto = repartirPorCamion(costo, referencia)
     if (reparto.size > 0) {
       for (const [cid, parte] of reparto) {
         const fc = getOrInit(accCamion, cid)
@@ -404,8 +469,20 @@ export function calcularPerformance(
         else                       kmVivosVacio   += km
       }
 
+      // Básico del parcial: días CORRIDOS del tramo vivo más viejo al más nuevo
+      // (acotado al rango), no cantidad de días con viaje. Así estima con la
+      // misma regla con la que se va a pagar: verificado en las 13
+      // liquidaciones vivas, el básico se liquida por día de calendario del
+      // período (Alderete cobró 64 días con 28 días de viaje). Contar sólo los
+      // días con viaje subestimaba el costo — y hacía que la mitad "cerrada" y
+      // la mitad "estimada" de la misma columna usaran reglas distintas.
+      const fechasVivas = [...diasVivos].sort()
+      const diasBasico  = fechasVivas.length > 0
+        ? diasEntreFechas(fechasVivas[0], fechasVivas[fechasVivas.length - 1])
+        : 0
+
       const costoParcial =
-        diasVivos.size * basicoDia
+        diasBasico * basicoDia
         + kmVivosCargado * precioKmCargado
         + kmVivosVacio   * precioKmVacio
       if (costoParcial <= 0) continue
