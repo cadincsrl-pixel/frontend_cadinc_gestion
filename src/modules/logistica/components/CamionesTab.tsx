@@ -13,6 +13,7 @@ import { useForm } from 'react-hook-form'
 import { usePermisos } from '@/hooks/usePermisos'
 import { VehiculoDocumentosSection } from './VehiculoDocumentosSection'
 import { CamionServicesSection } from './CamionServicesSection'
+import { CamionCubiertasSection } from './CamionCubiertasSection'
 import { GpsCamionSection, GpsBadge } from './GpsCamionSection'
 import { useCamionServiceEstadoTodos } from '../hooks/useCamionServices'
 import { useSyncGpsTodos } from '../hooks/useGpsSync'
@@ -307,6 +308,12 @@ export function CamionesTab() {
           {editando && (
             <div className="border-t border-gris-mid pt-4">
               <CamionServicesSection camionId={editando.id} />
+            </div>
+          )}
+
+          {editando && (
+            <div className="border-t border-gris-mid pt-4">
+              <CamionCubiertasSection camionId={editando.id} />
             </div>
           )}
 

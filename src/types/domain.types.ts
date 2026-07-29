@@ -423,6 +423,20 @@ export interface CamionService {
   updated_by: string | null
 }
 
+/** Cubiertas puestas a un camión. Registro histórico en el legajo, sin alerta
+ *  ni costo: el gasto se carga aparte. La diferencia de `km_camion` entre un
+ *  registro y el anterior es la vida útil real del juego. */
+export interface CamionCubiertas {
+  id: number
+  camion_id: number
+  fecha: string
+  km_camion: number
+  cantidad: number
+  obs: string | null
+  created_at: string
+  updated_at: string
+}
+
 export type CamionServiceEstadoKey = 'sin_service' | 'al_dia' | 'proximo' | 'vencido'
 
 export interface CamionServiceEstado {
