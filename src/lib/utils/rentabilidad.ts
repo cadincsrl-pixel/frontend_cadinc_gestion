@@ -39,8 +39,9 @@ export interface RentabilidadParametros {
 }
 
 export interface RentabilidadViajeInput {
-  km_ida:               number
-  km_vuelta:            number
+  /** Km del viaje completo (ida + vuelta). Antes eran dos campos, pero siempre
+   *  se usó la suma y en la práctica la ida y la vuelta son el mismo número. */
+  km_total:             number
   toneladas:            number
   viajes_por_mes:       number
   tarifa_neta_por_ton:  number
@@ -120,7 +121,7 @@ export function calcularRentabilidad(
     return { ...RESULTADO_VACIO, diagnostico: 'sin_datos' }
   }
 
-  const km_total   = v.km_ida + v.km_vuelta
+  const km_total   = v.km_total
   const ivaPlus1   = 1 + p.alicuota_iva   // factor de neteo ARS con IVA → neto
 
   // ── Costos DIRECTOS por viaje ───────────────────────────────────────

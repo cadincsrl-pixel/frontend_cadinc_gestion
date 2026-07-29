@@ -57,8 +57,8 @@ export function useRentabilidadViajes() {
 
 export interface ViajeUpsertDto {
   nombre:               string
-  km_ida:               number
-  km_vuelta:            number
+  /** Km del viaje completo (ida + vuelta). */
+  km_total:             number
   toneladas:            number
   dias_calendario:      number
   viajes_por_mes:       number

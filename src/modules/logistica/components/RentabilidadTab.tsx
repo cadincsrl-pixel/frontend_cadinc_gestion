@@ -259,8 +259,7 @@ export function RentabilidadTab() {
 
 function viajeToInput(v: ViajeRow): RentabilidadViajeInput {
   return {
-    km_ida:              Number(v.km_ida),
-    km_vuelta:           Number(v.km_vuelta),
+    km_total:            Number(v.km_total),
     toneladas:           Number(v.toneladas),
     viajes_por_mes:      Number(v.viajes_por_mes),
     tarifa_neta_por_ton: Number(v.tarifa_neta_por_ton),
@@ -314,8 +313,7 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
     defaultValues: viaje
       ? {
           nombre: viaje.nombre,
-          km_ida: Number(viaje.km_ida),
-          km_vuelta: Number(viaje.km_vuelta),
+          km_total: Number(viaje.km_total),
           toneladas: Number(viaje.toneladas),
           viajes_por_mes: Number(viaje.viajes_por_mes),
           tarifa_neta_por_ton: Number(viaje.tarifa_neta_por_ton),
@@ -330,7 +328,7 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
         }
       : {
           nombre: '',
-          km_ida: 0, km_vuelta: 0, toneladas: 35, viajes_por_mes: 0,
+          km_total: 0, toneladas: 35, viajes_por_mes: 0,
           tarifa_neta_por_ton: 0, precio_gasoil: 2200, consumo_camion: 3, peajes_total: 0,
           chofer_por_km: 140, chofer_por_dia: 30000, modalidad_pago: 'km_jornal', pct_sobre_tarifa: 0,
           obs: '',
@@ -342,8 +340,7 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
   // Resultado en vivo (con sensibilidad aplicada a la tarifa).
   const resultado = useMemo(() => {
     const input: RentabilidadViajeInput = {
-      km_ida:              Number(watched.km_ida) || 0,
-      km_vuelta:           Number(watched.km_vuelta) || 0,
+      km_total:            Number(watched.km_total) || 0,
       toneladas:           Number(watched.toneladas) || 0,
       viajes_por_mes:      Number(watched.viajes_por_mes) || 0,
       tarifa_neta_por_ton: (Number(watched.tarifa_neta_por_ton) || 0) * (1 + sensibilidad),
@@ -365,8 +362,7 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
     const vpm = Number(data.viajes_por_mes) || 0
     const dto: ViajeUpsertDto = {
       ...data,
-      km_ida:              Number(data.km_ida) || 0,
-      km_vuelta:           Number(data.km_vuelta) || 0,
+      km_total:            Number(data.km_total) || 0,
       toneladas:           Number(data.toneladas) || 0,
       // Derivado: días por viaje = días del mes / viajes por mes. Ya no se
       // carga a mano; se persiste el valor calculado para mantener la columna.
@@ -418,10 +414,16 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
         <div className="flex flex-col gap-4">
           <Input label="Nombre del viaje" placeholder="Ej: cristamine 35t" disabled={readOnly} {...form.register('nombre')} />
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Input label="Km ida"    {...intInputProps} disabled={readOnly} {...form.register('km_ida',    { valueAsNumber: true })} />
-            <Input label="Km vuelta" {...intInputProps} disabled={readOnly} {...form.register('km_vuelta', { valueAsNumber: true })} />
-          </div>
+          {/* Un solo campo: ida y vuelta eran siempre el mismo número y el
+              cálculo usaba la suma. Se pide el total para no obligar a cargar
+              dos veces el mismo dato. */}
+          <Input
+            label="Km totales del viaje"
+            hint="Ida y vuelta sumadas. Si son 820 km hasta el destino, acá van 1.640."
+            {...intInputProps}
+            disabled={readOnly}
+            {...form.register('km_total', { valueAsNumber: true })}
+          />
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Input label="Toneladas"        type="number" step="0.1" disabled={readOnly} {...form.register('toneladas',       { valueAsNumber: true })} />
             <Input label="Viajes / mes"     type="number" disabled={readOnly} {...form.register('viajes_por_mes',  { valueAsNumber: true })} />
