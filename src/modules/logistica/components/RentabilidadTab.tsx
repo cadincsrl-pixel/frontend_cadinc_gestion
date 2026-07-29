@@ -41,6 +41,21 @@ const fmtPct = (n: number) =>
 const fmtNum = (n: number) =>
   n.toLocaleString('es-AR')
 
+// Km que el camión recorre por mes en ese viaje: los km del viaje completo por
+// la cantidad de viajes mensuales. Sirve para ver cuánto camión consume cada
+// ruta, más allá de lo que deje.
+const kmPorMes = (km_total: number, viajes_por_mes: number) => km_total * viajes_por_mes
+
+// Margen por kilómetro recorrido. Es la medida que permite comparar rutas de
+// distinta distancia: un viaje largo puede dejar más plata y rendir peor por km.
+// Da lo mismo calcularlo por viaje o por mes (los viajes/mes se cancelan).
+// null cuando no hay km cargados: dividir por cero mostraría ∞.
+const margenPorKm = (margen: number, km_total: number) =>
+  km_total > 0 ? margen / km_total : null
+
+const fmtARSKm = (n: number | null) =>
+  n == null ? '—' : '$' + n.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + '/km'
+
 const MODALIDAD_OPTIONS = [
   { value: 'km_jornal',  label: 'Por km + jornal' },
   { value: 'pct_jornal', label: '% sobre tarifa + jornal' },
@@ -145,8 +160,14 @@ export function RentabilidadTab() {
           <table className="w-full border-collapse">
             <thead>
               <tr>
-                {['#', 'Viaje', 'Tarifa $/t', 'Viajes/mes', 'Chofer $/mes', 'Margen $/viaje', 'Margen s/fijos', 'Margen % s/ing.', 'Margen $/mes', 'Diagnóstico', ''].map(h => (
-                  <th key={h} className="bg-gris/40 text-xs font-bold px-3 py-2 text-left uppercase tracking-wide text-gris-dark" title={h === 'Margen s/fijos' ? 'Margen sin descontar costos fijos (ingreso − directos − overhead)' : undefined}>{h}</th>
+                {['#', 'Viaje', 'Tarifa $/t', 'Viajes/mes', 'Km/mes', 'Chofer $/mes', 'Margen $/viaje', 'Margen $/km', 'Margen s/fijos', 'Margen % s/ing.', 'Margen $/mes', 'Diagnóstico', ''].map(h => (
+                  <th key={h} className="bg-gris/40 text-xs font-bold px-3 py-2 text-left uppercase tracking-wide text-gris-dark"
+                    title={
+                      h === 'Margen s/fijos' ? 'Margen sin descontar costos fijos (ingreso − directos − overhead)'
+                      : h === 'Km/mes'       ? 'Km que el camión recorre por mes en esta ruta: km del viaje completo × viajes por mes'
+                      : h === 'Margen $/km'  ? 'Cuánto deja cada kilómetro recorrido. Permite comparar rutas de distinta distancia: un viaje largo puede dejar más plata y rendir peor por km.'
+                      : undefined
+                    }>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -161,8 +182,10 @@ export function RentabilidadTab() {
                   <td className="px-3 py-2 font-bold text-sm text-carbon">{viaje.nombre}</td>
                   <td className="px-3 py-2 font-mono text-xs">{fmtARS(Number(viaje.tarifa_neta_por_ton))}</td>
 <td className="px-3 py-2 font-mono text-xs">{fmtNum(Number(viaje.viajes_por_mes))}</td>
+                  <td className="px-3 py-2 font-mono text-xs">{fmtNum(kmPorMes(Number(viaje.km_total), Number(viaje.viajes_por_mes)))}</td>
                   <td className="px-3 py-2 font-mono text-xs">{fmtARS((r.pago_chofer + r.jornal_chofer) * Number(viaje.viajes_por_mes))}</td>
                   <td className="px-3 py-2 font-mono text-xs font-bold">{fmtARS(r.margen)}</td>
+                  <td className="px-3 py-2 font-mono text-xs font-bold text-azul-mid">{fmtARSKm(margenPorKm(r.margen, Number(viaje.km_total)))}</td>
                   <td className="px-3 py-2 font-mono text-xs">{fmtARS(r.margen_sin_fijos)}</td>
                   <td className="px-3 py-2 font-mono text-xs">{fmtPct(r.margen_pct)}</td>
                   <td className="px-3 py-2 font-mono text-xs font-bold text-verde">{fmtARS(r.margen_mensual)}</td>
@@ -203,6 +226,14 @@ export function RentabilidadTab() {
                   <div>
                     <div className="text-[10px] text-gris-dark uppercase tracking-wide">Viajes/mes</div>
                     <div className="font-mono">{fmtNum(Number(viaje.viajes_por_mes))}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-gris-dark uppercase tracking-wide">Km / mes</div>
+                    <div className="font-mono">{fmtNum(kmPorMes(Number(viaje.km_total), Number(viaje.viajes_por_mes)))}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-gris-dark uppercase tracking-wide">Margen / km</div>
+                    <div className="font-mono font-bold text-azul-mid">{fmtARSKm(margenPorKm(r.margen, Number(viaje.km_total)))}</div>
                   </div>
                   <div>
                     <div className="text-[10px] text-gris-dark uppercase tracking-wide">Margen</div>
