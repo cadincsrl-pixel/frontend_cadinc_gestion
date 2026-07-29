@@ -17,6 +17,7 @@
 
 import type { Tramo, Cobro, TarifaEmpresaCantera, Liquidacion, Chofer, Ruta, RelevoLiquidado } from '@/types/domain.types'
 import { diasEntreFechas } from '@/modules/logistica/utils/liquidacion-math'
+import { basicoDiaEnFecha, precioKmEnFecha, type ChoferConHist } from './tarifas-chofer'
 
 // Una "unidad de trabajo" liquidada: un tramo propio del chofer o una pata de
 // relevo que cobró. Es la base del prorrateo de km y del reparto por camión.
@@ -209,8 +210,10 @@ export function calcularPerformance(
   }
 
   // ── Helpers de atribución de MO al camión REAL del tramo ──
-  const choferPorId = new Map<number, Chofer>()
-  for (const c of choferes) choferPorId.set(c.id, c)
+  // ChoferConHist: el endpoint embute el historial de tarifas, que es lo que
+  // hace falta para valuar el trabajo sin liquidar con la tarifa de SU fecha.
+  const choferPorId = new Map<number, ChoferConHist>()
+  for (const c of choferes) choferPorId.set(c.id, c as ChoferConHist)
 
   // km de UNA pata por ruta direccional cantera→depósito (el dato se carga
   // one-way; cargado y vacío son tramos separados con su propia ruta).
@@ -437,9 +440,12 @@ export function calcularPerformance(
     for (const [choferId, tramosChofer] of tramosPorChofer) {
       const chofer = choferPorId.get(choferId)
       if (!chofer) continue
-      const basicoDia       = Number(chofer.basico_dia ?? 0)
-      const precioKmCargado = Number(chofer.precio_km_cargado ?? 0)
-      const precioKmVacio   = Number(chofer.precio_km_vacio ?? 0)
+      // Tarifas VIGENTES en el trabajo que se está estimando, no las de hoy.
+      // Antes se usaba `chofer.basico_dia` directo, así que un aumento re-valuaba
+      // retroactivamente todo lo pendiente de liquidar (con un 20% se movían
+      // $1.168.584 solos). Es el mismo bug que tarja el 2026-06-26.
+      // Referencia: el tramo vivo más viejo del rango — es el trabajo que se está
+      // valuando. Se calcula abajo, después de saber cuáles quedaron vivos.
 
       // Set de días cubiertos por liq cerradas (ISO yyyy-mm-dd).
       const diasCubiertos = new Set<string>()
@@ -454,19 +460,19 @@ export function calcularPerformance(
 
       // Días con tramos no cubiertos + km vivos (y los tramos vivos, para
       // repartir el costo al camión real de cada uno).
+      // Los km se valúan tramo por tramo con la tarifa vigente EN SU fecha: si
+      // hubo un aumento en el medio del período, cada viaje queda con el precio
+      // que le corresponde.
       const diasVivos = new Set<string>()
       const tramosVivos: Tramo[] = []
-      let kmVivosCargado = 0
-      let kmVivosVacio   = 0
+      let montoKmVivos = 0
       for (const t of tramosChofer) {
         const fechaTramo = t.tipo === 'cargado' ? t.fecha_descarga : t.fecha_vacio
         if (!fechaTramo) continue
         if (diasCubiertos.has(fechaTramo)) continue
         diasVivos.add(fechaTramo)
         tramosVivos.push(t)
-        const km = kmTramo(t)
-        if (t.tipo === 'cargado') kmVivosCargado += km
-        else                       kmVivosVacio   += km
+        montoKmVivos += kmTramo(t) * precioKmEnFecha(chofer, fechaTramo, t.tipo)
       }
 
       // Básico del parcial: días CORRIDOS del tramo vivo más viejo al más nuevo
@@ -480,11 +486,12 @@ export function calcularPerformance(
       const diasBasico  = fechasVivas.length > 0
         ? diasEntreFechas(fechasVivas[0], fechasVivas[fechasVivas.length - 1])
         : 0
+      // Básico con la tarifa vigente al arranque del tramo vivo más viejo.
+      const basicoDia = fechasVivas.length > 0
+        ? basicoDiaEnFecha(chofer, fechasVivas[0]!)
+        : 0
 
-      const costoParcial =
-        diasBasico * basicoDia
-        + kmVivosCargado * precioKmCargado
-        + kmVivosVacio   * precioKmVacio
+      const costoParcial = diasBasico * basicoDia + montoKmVivos
       if (costoParcial <= 0) continue
 
       const fch = getOrInit(accChofer, choferId)

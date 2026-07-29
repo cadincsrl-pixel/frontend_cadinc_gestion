@@ -5,7 +5,7 @@ import {
   useLiquidaciones, useAdelantos, useChoferes, useCamiones, useTramos, useRutas, useCanteras, useDepositos,
   useCreateLiquidacion, useUpdateLiquidacion, useCerrarLiquidacion, useReabrirLiquidacion, useDeleteLiquidacion,
   useAnularLiquidacion,
-  useCreateAdelanto, useUpdateAdelanto, useDeleteAdelanto, useUpdateChofer,
+  useCreateAdelanto, useUpdateAdelanto, useDeleteAdelanto, useSetTarifasChofer,
   useEstadias, useCreateEstadia, useDeleteEstadia,
   useGastosReintegrosPendientes, useReintegrosPendientesTodos,
   uploadComprobanteAdelanto, fetchAdelantoComprobanteUrl,
@@ -25,6 +25,7 @@ import { LiquidacionAdjuntosSection } from './LiquidacionAdjuntosSection'
 import { ModalSolicitudTransferencia } from './ModalSolicitudTransferencia'
 import { apiGet } from '@/lib/api/client'
 import { usePermisos } from '@/hooks/usePermisos'
+import type { ChoferConHist } from '@/lib/utils/tarifas-chofer'
 import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
 import type { Chofer, Tramo, Adelanto, AdelantoFormaPago, Estadia, Ruta, RelevoPendiente, RelevoLiquidado, CerrarLiquidacionResp } from '@/types/domain.types'
 import { exportLiquidacionExcel } from '@/lib/utils/liquidacion-export'
@@ -164,7 +165,7 @@ export function LiquidacionesTab() {
   const { mutate: deleteAdel  } = useDeleteAdelanto()
   const { mutate: createEst,   isPending: creatingEst  } = useCreateEstadia()
   const { mutate: deleteEst   } = useDeleteEstadia()
-  const { mutate: updateChofer, isPending: savingTarifas } = useUpdateChofer()
+  const { mutate: setTarifasChofer, isPending: savingTarifas } = useSetTarifasChofer()
 
   const [modalLiq,    setModalLiq]    = useState(false)
   const [choferLiq,   setChoferLiq]   = useState<Chofer | null>(null)
@@ -395,6 +396,9 @@ export function LiquidacionesTab() {
       precio_km_vacio:   chofer.precio_km_vacio ?? 0,
       desde,
       hasta,
+      // Vigencia por defecto: hoy. Un aumento se aplica de acá en adelante; si
+      // hay que retrotraerlo, se cambia a mano y el sistema respeta la fecha.
+      tarifas_desde:     toISO(new Date()),
       obs:               '',
     })
     setModalLiq(true)
@@ -456,18 +460,31 @@ export function LiquidacionesTab() {
     }
   }
 
+  // Guarda una VERSIÓN de las tarifas vigente desde una fecha, no un pisado.
+  // Antes era un UPDATE in-place sobre la ficha del chofer, y el "parcial" de
+  // Gastos > Reportes valúa el trabajo sin liquidar con la tarifa actual: un
+  // aumento re-valuaba retroactivamente todo lo pendiente. Mismo bug que tarja
+  // el 2026-06-26.
   function handleGuardarTarifas(data: any) {
     if (!choferLiq) return
-    updateChofer({
+    const desde = String(data.tarifas_desde || '').trim()
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(desde)) {
+      toast('Poné desde qué fecha rigen estas tarifas', 'err'); return
+    }
+    setTarifasChofer({
       id: choferLiq.id,
       dto: {
+        desde,
         basico_dia:        parseFloat(data.basico_dia)        || 0,
         precio_km_cargado: parseFloat(data.precio_km_cargado) || 0,
         precio_km_vacio:   parseFloat(data.precio_km_vacio)   || 0,
       },
     }, {
-      onSuccess: () => { toast('✓ Tarifas guardadas', 'ok'); setModalLiq(false); setChoferLiq(null) },
-      onError:   () => toast('Error al guardar', 'err'),
+      onSuccess: () => {
+        toast(`✓ Tarifas vigentes desde ${fmtFecha(desde)}`, 'ok')
+        setModalLiq(false); setChoferLiq(null)
+      },
+      onError: () => toast('Error al guardar', 'err'),
     })
   }
 
@@ -1658,6 +1675,44 @@ export function LiquidacionesTab() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Input label="🚛 $/km cargado" type="number" step="1" {...formLiq.register('precio_km_cargado')} />
               <Input label="🔲 $/km vacío"   type="number" step="1" {...formLiq.register('precio_km_vacio')} />
+            </div>
+
+            {/* Vigencia de las tarifas. Sin esto, guardar un aumento pisaba las
+                tarifas y re-valuaba retroactivamente todo el trabajo del chofer
+                que todavía no estaba liquidado. */}
+            <div className="bg-gris/30 rounded-card p-3 flex flex-col gap-2">
+              <Input
+                label="Estas tarifas rigen desde"
+                type="date"
+                hint="Al guardar queda una versión con esta fecha. El trabajo anterior sigue valuado con la tarifa que tenía — no se recalcula hacia atrás."
+                {...formLiq.register('tarifas_desde')}
+              />
+              {(() => {
+                const hist = [
+                  ...((choferLiq as ChoferConHist).choferes_basico_hist ?? []).map(h => ({
+                    desde: h.desde, texto: `Básico ${fmtM(h.valor_dia)}/día`,
+                  })),
+                  ...((choferLiq as ChoferConHist).choferes_km_hist ?? []).map(h => ({
+                    desde: h.desde,
+                    texto: `${h.tipo === 'cargado' ? '🚛' : '🔲'} ${fmtM(h.valor_km)}/km ${h.tipo}`,
+                  })),
+                ].sort((a, b) => b.desde.localeCompare(a.desde))
+                if (hist.length === 0) return null
+                return (
+                  <details className="text-[11px]">
+                    <summary className="cursor-pointer text-gris-dark font-semibold">
+                      Historial de tarifas ({hist.length})
+                    </summary>
+                    <ul className="mt-1.5 flex flex-col gap-0.5 font-mono">
+                      {hist.map((h, i) => (
+                        <li key={i} className="text-gris-dark">
+                          {fmtFecha(h.desde)} · {h.texto}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )
+              })()}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Input label="Período desde" type="date" {...formLiq.register('desde')} />

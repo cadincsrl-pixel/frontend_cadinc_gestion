@@ -56,6 +56,26 @@ export function useUpdateChofer() {
   })
 }
 
+// Guarda una VERSIÓN de las tarifas del chofer vigente desde una fecha, en vez
+// de pisar las columnas. `choferes.basico_dia` y `precio_km_*` quedan como cache
+// de la última versión; los cálculos con fecha leen el historial embebido.
+// Antes era un UPDATE in-place y un aumento re-valuaba retroactivamente todo el
+// trabajo sin liquidar — mismo bug que tarja el 2026-06-26. Migración 20260729g.
+export function useSetTarifasChofer() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, dto }: {
+      id: number
+      dto: { desde: string; basico_dia?: number; precio_km_cargado?: number; precio_km_vacio?: number }
+    }) => apiPatch<Chofer>(`/api/logistica/choferes/${id}/tarifas`, dto),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: LOG_KEYS.choferes })
+      // El reporte valúa el trabajo sin liquidar con estas tarifas.
+      qc.invalidateQueries({ queryKey: LOG_KEYS.liquidaciones })
+    },
+  })
+}
+
 // Traspaso de camión/batea entre dos choferes en un solo paso (con opción de
 // intercambio). El backend resuelve la regla 1↔1 con el orden de updates.
 export function useTraspasoChofer() {

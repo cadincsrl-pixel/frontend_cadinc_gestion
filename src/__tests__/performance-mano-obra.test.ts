@@ -356,3 +356,90 @@ describe('parcial estimado: el básico se cuenta por día corrido', () => {
     expect(r.totales.costo_mo).toBeCloseTo(3_567_340, 6)
   })
 })
+
+// ── Tarifas versionadas: un aumento NO re-valúa el trabajo viejo ─────────────
+//
+// El bug que esto previene: el "parcial" valuaba con `chofer.basico_dia` y
+// `chofer.precio_km_*` ACTUALES, que se pisaban in-place al guardar un aumento.
+// O sea que subirle la tarifa a un chofer recalculaba hacia atrás todo su
+// trabajo pendiente de liquidar. Es exactamente lo que pasó en tarja el
+// 2026-06-26 y hubo que recuperar los históricos de un Excel.
+// Migración 20260729g: choferes_basico_hist + choferes_km_hist.
+
+describe('tarifas de chofer versionadas', () => {
+  const CH = 88
+  // Dos viajes de 100 km: uno en junio, otro en julio.
+  const vJunio = mkTramo({
+    id: 701, chofer_id: CH, camion_id: CAMION, cantera_id: 5, deposito_id: 2,
+    fecha_descarga: '2026-06-10', toneladas_descarga: 30,
+  })
+  const vJulio = mkTramo({
+    id: 702, chofer_id: CH, camion_id: CAMION, cantera_id: 5, deposito_id: 2,
+    fecha_descarga: '2026-07-10', toneladas_descarga: 30,
+  })
+
+  // Aumento del $/km cargado a partir del 1/7: de 150 a 180. El básico no cambia.
+  const choferConAumento = {
+    ...mkChofer({ id: CH, camion_id: CAMION, basico_dia: 30_000, precio_km_cargado: 180 }),
+    choferes_basico_hist: [{ valor_dia: 30_000, desde: '2026-04-01' }],
+    choferes_km_hist: [
+      { valor_km: 150, desde: '2026-04-01', tipo: 'cargado' as const },
+      { valor_km: 180, desde: '2026-07-01', tipo: 'cargado' as const },
+    ],
+  } as Chofer
+
+  it('el viaje de junio se paga a la tarifa VIEJA aunque hoy la tarifa sea otra', () => {
+    const r = calcularPerformance(
+      [vJunio], SIN_COBROS, SIN_TARIFAS, '2026-06-01', '2026-06-30',
+      [], [choferConAumento], RUTAS, [],
+    )
+    // 1 día de básico (30.000) + 100 km × 150 (tarifa vigente al 10/06) = 45.000
+    expect(r.totales.costo_mo_parcial).toBe(30_000 + 100 * 150)
+  })
+
+  it('el viaje de julio se paga a la tarifa NUEVA', () => {
+    const r = calcularPerformance(
+      [vJulio], SIN_COBROS, SIN_TARIFAS, '2026-07-01', '2026-07-31',
+      [], [choferConAumento], RUTAS, [],
+    )
+    // 1 día de básico + 100 km × 180 = 48.000
+    expect(r.totales.costo_mo_parcial).toBe(30_000 + 100 * 180)
+  })
+
+  it('en un rango que cruza el aumento, cada viaje lleva su propia tarifa', () => {
+    const r = calcularPerformance(
+      [vJunio, vJulio], SIN_COBROS, SIN_TARIFAS, '2026-06-01', '2026-07-31',
+      [], [choferConAumento], RUTAS, [],
+    )
+    // Básico: del 10/06 al 10/07 = 31 días corridos × 30.000 = 930.000
+    // Km: 100 × 150 (junio) + 100 × 180 (julio) = 33.000
+    expect(r.totales.costo_mo_parcial).toBe(31 * 30_000 + 100 * 150 + 100 * 180)
+  })
+
+  it('sin historial cargado cae al valor cacheado del chofer (no a cero)', () => {
+    // Un 0 silencioso haría desaparecer el costo en vez de mostrar el problema.
+    const sinHist = mkChofer({ id: 89, camion_id: CAMION, basico_dia: 30_000, precio_km_cargado: 150 })
+    const t = mkTramo({
+      id: 703, chofer_id: 89, camion_id: CAMION, cantera_id: 5, deposito_id: 2,
+      fecha_descarga: '2026-07-10', toneladas_descarga: 30,
+    })
+    const r = calcularPerformance(
+      [t], SIN_COBROS, SIN_TARIFAS, '2026-07-01', '2026-07-31',
+      [], [sinHist], RUTAS, [],
+    )
+    expect(r.totales.costo_mo_parcial).toBe(30_000 + 100 * 150)
+  })
+
+  it('una fecha anterior a todo el historial cae a la versión más vieja', () => {
+    const t = mkTramo({
+      id: 704, chofer_id: CH, camion_id: CAMION, cantera_id: 5, deposito_id: 2,
+      fecha_descarga: '2026-03-15', toneladas_descarga: 30,
+    })
+    const r = calcularPerformance(
+      [t], SIN_COBROS, SIN_TARIFAS, '2026-03-01', '2026-03-31',
+      [], [choferConAumento], RUTAS, [],
+    )
+    // Marzo es previo al 01/04: usa la versión más vieja (150), nunca 0.
+    expect(r.totales.costo_mo_parcial).toBe(30_000 + 100 * 150)
+  })
+})
