@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import {
   useLiquidaciones, useAdelantos, useChoferes, useCamiones, useTramos, useRutas, useCanteras, useDepositos,
   useCreateLiquidacion, useUpdateLiquidacion, useCerrarLiquidacion, useReabrirLiquidacion, useDeleteLiquidacion,
+  useAnularLiquidacion,
   useCreateAdelanto, useUpdateAdelanto, useDeleteAdelanto, useUpdateChofer,
   useEstadias, useCreateEstadia, useDeleteEstadia,
   useGastosReintegrosPendientes, useReintegrosPendientesTodos,
@@ -23,6 +24,7 @@ import { generarReciboAdelanto } from '@/lib/utils/recibo-adelanto-pdf'
 import { LiquidacionAdjuntosSection } from './LiquidacionAdjuntosSection'
 import { ModalSolicitudTransferencia } from './ModalSolicitudTransferencia'
 import { apiGet } from '@/lib/api/client'
+import { usePermisos } from '@/hooks/usePermisos'
 import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
 import type { Chofer, Tramo, Adelanto, AdelantoFormaPago, Estadia, Ruta, RelevoPendiente, RelevoLiquidado, CerrarLiquidacionResp } from '@/types/domain.types'
 import { exportLiquidacionExcel } from '@/lib/utils/liquidacion-export'
@@ -98,6 +100,20 @@ function msgErrorLiq(err: unknown, fallback: string): string {
     case 'LIQUIDACION_VACIA':
       return 'Esta liquidación no tiene ningún viaje, adelanto, gasto ni estadía adentro, así que no se puede cerrar. '
         + 'Si querés descartarla, eliminá el borrador con el 🗑.'
+    // ── Anulación (migración 20260729e) ──
+    // Tiene contenido: anularla dejaría esos viajes/adelantos/gastos marcados
+    // como liquidados contra una liquidación nula, fuera del saldo del chofer y
+    // fuera de cualquier reliquidación. El camino correcto es reabrir.
+    case 'LIQUIDACION_CON_CONTENIDO':
+      return 'Esta liquidación tiene viajes, adelantos o gastos adentro, así que no se anula: '
+        + 'reabrila (eso los libera) y después eliminá el borrador.'
+    case 'LIQUIDACION_CON_SALDO_ARRASTRADO':
+      return 'Esta liquidación dejó una deuda arrastrada al próximo período. Reabrila primero '
+        + '— la reapertura borra ese adelanto — y recién ahí anulala.'
+    case 'LIQUIDACION_NO_CERRADA':
+      return 'Sólo se anula una liquidación cerrada. Si es un borrador, eliminalo con el 🗑.'
+    case 'MOTIVO_REQUERIDO':
+      return 'Hace falta el motivo de la anulación.'
     // Intento de borrar a mano el adelanto automático de un cierre en negativo.
     case 'ADELANTO_DE_SALDO':
       return `Este adelanto no se borra a mano: es la deuda que dejó la liquidación N° ${otra} al cerrar en negativo. `
@@ -139,6 +155,10 @@ export function LiquidacionesTab() {
   const { mutate: reabrirLiq  } = useReabrirLiquidacion()
 
   const { mutate: deleteLiq   } = useDeleteLiquidacion()
+  const { mutate: anularLiqMut, isPending: anulando } = useAnularLiquidacion()
+  // Anular saca una liquidación de circulación: va con permiso de eliminación,
+  // no de actualización.
+  const { puedeEliminar } = usePermisos('logistica')
   const { mutate: createAdel,  isPending: creatingAdel } = useCreateAdelanto()
   const { mutate: updateAdel,  isPending: updatingAdel } = useUpdateAdelanto()
   const { mutate: deleteAdel  } = useDeleteAdelanto()
@@ -167,6 +187,9 @@ export function LiquidacionesTab() {
   // tipear el N° y un motivo (>=10 chars) para evitar eliminaciones
   // accidentales y dejar trazabilidad en audit_log.
   const [confirmDelLiq, setConfirmDelLiq] = useState<any | null>(null)
+  // Anulación de una liquidación cerrada que quedó vacía (cáscara).
+  const [anularLiq, setAnularLiq]       = useState<any | null>(null)
+  const [anularMotivo, setAnularMotivo] = useState('')
   const [confirmDelNumero, setConfirmDelNumero] = useState('')
   const [confirmDelMotivo, setConfirmDelMotivo] = useState('')
 
@@ -564,8 +587,23 @@ export function LiquidacionesTab() {
     }
   }
 
+  // Una liquidación anulada no emite comprobante por NINGÚN camino. El chequeo
+  // va acá y no en los botones porque hay dos puntos de entrada (el Historial y
+  // el modal de detalle), y emitir el comprobante de algo que se sacó de
+  // circulación es justo el riesgo que la anulación viene a cerrar: el PDF de
+  // la cáscara N° 23 decía "NETO A PAGAR $1.342.280" sin listar un solo viaje.
+  function bloqueadoPorAnulada(liq: any): boolean {
+    if (liq?.estado !== 'anulada') return false
+    toast(
+      `La liquidación N° ${liq.id} está anulada${liq.anulacion_motivo ? ` (${liq.anulacion_motivo})` : ''}: no emite comprobante.`,
+      'err',
+    )
+    return true
+  }
+
   // Excel de una liquidación cerrada con detalle de gastos del chofer.
   async function handleDescargarExcelCerrada(liq: any, exportData: any) {
+    if (bloqueadoPorAnulada(liq)) return
     const gastos = await fetchGastosLiquidacion(liq.id)
     exportLiquidacionExcel({
       ...exportData,
@@ -617,6 +655,7 @@ export function LiquidacionesTab() {
   // on-demand (en lugar de cargarlos siempre con useGastos) y arma el
   // PDF con el mismo generador que usa el "PDF parcial" del modal.
   async function handleDescargarPdfCerrada(liq: any) {
+    if (bloqueadoPorAnulada(liq)) return
     const chofer = (choferes as Chofer[]).find(c => c.id === liq.chofer_id)
     if (!chofer) { toast('Chofer no encontrado', 'err'); return }
     const camion = (camiones as any[]).find(c => c.id === chofer.camion_id)
@@ -1059,7 +1098,10 @@ export function LiquidacionesTab() {
 
       {/* ── Historial (colapsable para no ocupar tanto espacio) ── */}
       {(() => {
-        const cerradas = (liquidaciones as any[]).filter(l => l.estado === 'cerrada')
+        // Las anuladas siguen en el Historial a propósito: se anulan justamente
+        // para que quede rastro (su número ya salió impreso en recibos), así que
+        // esconderlas sería tirar la única razón para no borrarlas.
+        const cerradas = (liquidaciones as any[]).filter(l => l.estado === 'cerrada' || l.estado === 'anulada')
         if (cerradas.length === 0) return null
         return (
         <div>
@@ -1076,23 +1118,50 @@ export function LiquidacionesTab() {
           <div className="flex flex-col gap-3">
             {cerradas.map(liq => {
               const chofer = (choferes as Chofer[]).find(c => c.id === liq.chofer_id)
+              const anulada = liq.estado === 'anulada'
+              // ¿Es una cáscara? Cerrada sin nada adentro. Los gastos se piden
+              // por liquidación bajo demanda, así que no entran acá: si hubiera
+              // alguno, el backend rechaza la anulación con su mensaje.
+              const vacia =
+                (tramos    as Tramo[]).every(t => t.liquidacion_id !== liq.id) &&
+                (adelantos as Adelanto[]).every(a => a.liquidacion_id !== liq.id) &&
+                (estadias  as Estadia[]).every(e => e.liquidacion_id !== liq.id) &&
+                legsRelevoLiquidados(liq.id).length === 0
               return (
-                <div key={liq.id} className={`bg-white rounded-card shadow-card p-4 border-l-4 ${liq.estado === 'cerrada' ? 'border-verde' : 'border-amarillo'}`}>
+                <div key={liq.id} className={`bg-white rounded-card shadow-card p-4 border-l-4 ${anulada ? 'border-gris-mid opacity-70' : 'border-verde'}`}>
                   <div className="flex items-start justify-between gap-3 flex-wrap">
                     <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <Badge variant={liq.estado === 'cerrada' ? 'cerrado' : 'pendiente'} label={liq.estado === 'cerrada' ? 'Cerrada' : 'Borrador'} />
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <Badge
+                          variant={anulada ? 'inactivo' : 'cerrado'}
+                          label={anulada ? 'Anulada' : 'Cerrada'}
+                        />
+                        <span className="font-mono text-[11px] text-gris-dark">N° {liq.id}</span>
+                        {!anulada && vacia && (
+                          <span
+                            title="Cerrada pero sin ningún viaje, adelanto ni estadía adentro. Es una cáscara: los reportes la contaban como plata real."
+                            className="text-[10px] font-bold bg-rojo-light text-rojo px-1.5 py-0.5 rounded-full uppercase tracking-wide"
+                          >
+                            ⚠ vacía
+                          </span>
+                        )}
                       </div>
-                      <div className="font-bold text-azul">{chofer?.nombre ?? '—'}</div>
+                      <div className={`font-bold ${anulada ? 'text-gris-dark line-through' : 'text-azul'}`}>{chofer?.nombre ?? '—'}</div>
                       <div className="text-xs text-gris-dark mt-1">
                         {fmtFecha(liq.fecha_desde)} → {fmtFecha(liq.fecha_hasta)} &nbsp;·&nbsp;
                         {liq.dias_trabajados} días &nbsp;·&nbsp;
                         {fmtM(liq.basico_dia)}/día
                       </div>
+                      {anulada && (
+                        <div className="text-[11px] text-rojo mt-1.5 max-w-md">
+                          Anulada{liq.anulada_en ? ` el ${fmtFecha(String(liq.anulada_en).slice(0, 10))}` : ''}
+                          {liq.anulacion_motivo ? `: ${liq.anulacion_motivo}` : ''}
+                        </div>
+                      )}
                     </div>
                     <div className="text-right">
-                      <div className="font-mono font-bold text-lg text-verde">{fmtM(liq.total_neto)}</div>
-                      <div className="text-xs text-gris-dark">Total neto</div>
+                      <div className={`font-mono font-bold text-lg ${anulada ? 'text-gris-mid line-through' : 'text-verde'}`}>{fmtM(liq.total_neto)}</div>
+                      <div className="text-xs text-gris-dark">{anulada ? 'No cuenta' : 'Total neto'}</div>
                     </div>
                   </div>
                   <div className="flex gap-2 mt-3 flex-wrap">
@@ -1154,6 +1223,11 @@ export function LiquidacionesTab() {
                         rutas:        rutas as Ruta[],
                         estado:       liq.estado === 'cerrada' ? 'Cerrada' : 'Borrador',
                       }
+                      // Una anulada no tiene comprobante: emitir el PDF de algo
+                      // que se sacó de circulación es justamente el riesgo que
+                      // la anulación viene a cerrar (el PDF de la cáscara N° 23
+                      // decía "NETO A PAGAR $1.342.280" sin listar un viaje).
+                      if (anulada) return null
                       return (
                         <>
                           <Button variant="ghost" size="sm" onClick={() => handleDescargarExcelCerrada(liq, exportData)}>📊 Excel</Button>
@@ -1161,13 +1235,23 @@ export function LiquidacionesTab() {
                         </>
                       )
                     })()}
-                    <Button variant="ghost" size="sm" onClick={() => {
-                      setConfirmDelLiq(liq)
-                      setConfirmDelNumero('')
-                      setConfirmDelMotivo('')
-                    }}>
-                      🗑 Eliminar
-                    </Button>
+                    {!anulada && vacia && puedeEliminar && (
+                      <Button variant="secondary" size="sm" onClick={() => {
+                        setAnularLiq(liq)
+                        setAnularMotivo('')
+                      }}>
+                        ⃠ Anular
+                      </Button>
+                    )}
+                    {!anulada && (
+                      <Button variant="ghost" size="sm" onClick={() => {
+                        setConfirmDelLiq(liq)
+                        setConfirmDelNumero('')
+                        setConfirmDelMotivo('')
+                      }}>
+                        🗑 Eliminar
+                      </Button>
+                    )}
                   </div>
                 </div>
               )
@@ -2616,6 +2700,72 @@ export function LiquidacionesTab() {
       </Modal>
 
       <ModalSolicitudTransferencia open={modalTransf} onClose={() => setModalTransf(false)} />
+
+      {/* Anular una liquidación cerrada que quedó vacía. Va al FINAL del JSX a
+          propósito: Modal no usa portal y todos comparten z-50, así que el
+          último en el DOM es el que queda arriba. */}
+      <Modal
+        open={!!anularLiq}
+        onClose={() => setAnularLiq(null)}
+        width="max-w-lg"
+        title="⃠ ANULAR LIQUIDACIÓN"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setAnularLiq(null)}>Cancelar</Button>
+            <Button
+              variant="primary"
+              loading={anulando}
+              disabled={anularMotivo.trim().length < 5}
+              onClick={() => {
+                if (!anularLiq) return
+                anularLiqMut({ id: anularLiq.id, motivo: anularMotivo.trim() }, {
+                  onSuccess: () => {
+                    toast(`✓ Liquidación N° ${anularLiq.id} anulada`, 'ok')
+                    setAnularLiq(null)
+                  },
+                  onError: (e: unknown) => toast(msgErrorLiq(e, 'Error al anular'), 'err'),
+                })
+              }}
+            >
+              ⃠ Anular
+            </Button>
+          </>
+        }
+      >
+        {anularLiq && (
+          <div className="flex flex-col gap-4 text-sm">
+            <div className="bg-gris/40 rounded-card p-3">
+              <div className="font-bold text-carbon">
+                Liquidación N° {anularLiq.id} ·{' '}
+                {(choferes as Chofer[]).find(c => c.id === anularLiq.chofer_id)?.nombre ?? '—'}
+              </div>
+              <div className="text-xs text-gris-dark mt-1">
+                {fmtFecha(anularLiq.fecha_desde)} → {fmtFecha(anularLiq.fecha_hasta)} ·{' '}
+                neto {fmtM(anularLiq.total_neto)}
+              </div>
+            </div>
+
+            <p>
+              Esta liquidación está cerrada pero <b>no tiene ningún viaje, adelanto ni estadía
+              adentro</b>. Los reportes la cuentan como plata real: es lo que infló la mano de obra
+              de julio en $10.538.550.
+            </p>
+            <p className="text-gris-dark">
+              Anularla la saca de todos los cálculos y le quita el PDF, pero <b>no la borra</b>: su
+              número ya salió impreso en recibos, así que queda en el Historial marcada como anulada
+              con tu nombre, la fecha y el motivo.
+            </p>
+
+            <Input
+              label="Motivo"
+              placeholder="Ej: duplicada de la N° 24, quedó vacía al reliquidar"
+              hint="Mínimo 5 caracteres. Es lo que va a leer quien pregunte por esta liquidación dentro de un año."
+              value={anularMotivo}
+              onChange={e => setAnularMotivo(e.target.value)}
+            />
+          </div>
+        )}
+      </Modal>
     </>
   )
 }

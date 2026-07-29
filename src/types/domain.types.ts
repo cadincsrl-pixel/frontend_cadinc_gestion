@@ -342,7 +342,10 @@ export interface Certificacion extends AuditFields {
 export type ChoferEstado = 'activo' | 'descanso' | 'inactivo'
 export type CamionEstado = 'activo' | 'mantenimiento' | 'inactivo'
 export type ViajeEstado  = 'en_curso' | 'completado'
-export type LiqEstado    = 'borrador' | 'cerrada'
+// 'anulada' = liquidación cerrada que quedó sin contenido y se sacó de
+// circulación dejando rastro, en vez de borrarla (su número ya salió impreso en
+// recibos). No la cuenta ningún reporte ni tiene PDF. Migración 20260729e.
+export type LiqEstado    = 'borrador' | 'cerrada' | 'anulada'
 
 export interface Chofer extends AuditFields {
   id: number
@@ -819,6 +822,10 @@ export interface Liquidacion {
   estado: LiqEstado
   obs: string | null
   created_at: string
+  // Rastro de la anulación (solo con estado='anulada').
+  anulada_en?:       string | null
+  anulada_por?:      string | null
+  anulacion_motivo?: string | null
 }
 
 // Respuesta del endpoint PATCH /api/logistica/liquidaciones/:id/cerrar:

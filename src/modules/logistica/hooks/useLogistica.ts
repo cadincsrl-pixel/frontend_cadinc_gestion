@@ -473,6 +473,20 @@ export function useReabrirLiquidacion() {
   })
 }
 
+// Anula una liquidación cerrada y VACÍA: la saca de circulación dejando quién,
+// cuándo y por qué, en lugar de borrarla. El backend rechaza si tiene contenido
+// (esas se reabren) o si dejó una deuda arrastrada.
+export function useAnularLiquidacion() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, motivo }: { id: number; motivo: string }) =>
+      apiPatch<Liquidacion>(`/api/logistica/liquidaciones/${id}/anular`, { motivo }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: LOG_KEYS.liquidaciones })
+    },
+  })
+}
+
 export function useDeleteLiquidacion() {
   const qc = useQueryClient()
   return useMutation({
