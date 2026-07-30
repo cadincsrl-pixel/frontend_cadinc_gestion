@@ -664,3 +664,55 @@ describe('desglose de ingresos', () => {
     ).toBeCloseTo(r.totales.ingresos, 6)
   })
 })
+
+// ── Desglose del sueldo: básico / km / estadías ──────────────────────────────
+//
+// Pedido del dueño el 2026-07-30: "en un mes en particular, dónde puedo filtrar
+// lo que gasto en sueldos entre el básico y los km". El motor ya calculaba las
+// dos partes por separado; esto las expone.
+
+describe('desglose básico / km / estadías', () => {
+  it('INVARIANTE: basico + km + estadias == costo_mo, en cerrado', () => {
+    const r = correr('2026-07-01', '2026-07-31')
+    const t = r.totales
+    expect(t.costo_mo_basico + t.costo_mo_km + t.costo_estadias).toBeCloseTo(t.costo_mo, 6)
+    // Números a mano: básico julio = 2.250.000 × 26/75 = 780.000;
+    // km julio = 5.574.680 × 100/200 = 2.787.340.
+    expect(t.costo_mo_basico).toBeCloseTo(780_000, 6)
+    expect(t.costo_mo_km).toBeCloseTo(2_787_340, 6)
+  })
+
+  it('INVARIANTE: también con parcial y estadías mezclados', () => {
+    const chofer = mkChofer({ id: 91, camion_id: CAMION, basico_dia: 30_000, precio_km_cargado: 150 })
+    const viaje = mkTramo({
+      id: 901, chofer_id: 91, camion_id: CAMION, cantera_id: 5, deposito_id: 2,
+      fecha_descarga: '2026-07-05', toneladas_descarga: 30,
+    })
+    const est = mkEstadia({ id: 20, chofer_id: 91 })
+    const r = calcularPerformance(
+      [viaje], SIN_COBROS, SIN_TARIFAS, '2026-07-01', '2026-07-31',
+      [], [chofer], RUTAS, [], [est],
+    )
+    const t = r.totales
+    // básico 1 día × 30.000 · km 100 × 150 = 15.000 · estadías 200.000
+    expect(t.costo_mo_basico).toBe(30_000)
+    expect(t.costo_mo_km).toBe(15_000)
+    expect(t.costo_estadias).toBe(200_000)
+    expect(t.costo_mo_basico + t.costo_mo_km + t.costo_estadias).toBeCloseTo(t.costo_mo, 6)
+  })
+
+  it('el desglose por fila de chofer reconstruye su costo_mo', () => {
+    const r = correr('2026-07-01', '2026-07-31')
+    for (const f of r.por_chofer) {
+      expect(f.costo_mo_basico + f.costo_mo_km + f.costo_estadias).toBeCloseTo(f.costo_mo, 6)
+    }
+  })
+
+  it('la suma del desglose por camión reconstruye el desglose del total', () => {
+    const r = correr('2026-07-01', '2026-07-31')
+    const sumBasico = r.por_camion.reduce((s, f) => s + f.costo_mo_basico, 0)
+    const sumKm     = r.por_camion.reduce((s, f) => s + f.costo_mo_km, 0)
+    expect(sumBasico).toBeCloseTo(r.totales.costo_mo_basico, 6)
+    expect(sumKm).toBeCloseTo(r.totales.costo_mo_km, 6)
+  })
+})

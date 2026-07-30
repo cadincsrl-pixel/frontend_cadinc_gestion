@@ -48,6 +48,12 @@ interface PerformanceFila {
   // descargar, pagados por día). Se lleva aparte sólo para poder mostrarlo
   // desglosado: ya está sumado dentro de costo_mo y de cerrado/parcial.
   costo_estadias:    number
+  // Desglose del sueldo: básico (por día) y km (cargado+vacío). Junto con las
+  // estadías reconstruyen costo_mo exacto: basico + km + estadias = costo_mo.
+  // En las filas por camión el desglose va prorrateado con la misma proporción
+  // que el reparto del costo.
+  costo_mo_basico:   number
+  costo_mo_km:       number
   // Cuántos tramos se contaron sin tarifa cargada (ingreso = 0).
   sin_tarifa:        number
   // Cuántos tramos están sin cobrar todavía (ingreso teórico).
@@ -66,6 +72,9 @@ export interface PerformanceResultado {
     costo_mo_parcial:  number
     /** Parte de `costo_mo` que son estadías. Ya está incluida en costo_mo. */
     costo_estadias:    number
+    /** Desglose del sueldo: basico + km + estadias == costo_mo exacto. */
+    costo_mo_basico:   number
+    costo_mo_km:       number
     /** `true` si algún chofer tiene `costo_mo_parcial > 0` — la UI muestra un chip "parcial estimado". */
     tiene_parcial:     boolean
     // Desglose de `ingresos` por qué tan real es la plata (suman ingresos):
@@ -136,7 +145,7 @@ export function calcularPerformance(
   const totales = {
     viajes: 0, toneladas: 0, ingresos: 0,
     costo_mo: 0, costo_mo_cerrado: 0, costo_mo_parcial: 0,
-    costo_estadias: 0,
+    costo_estadias: 0, costo_mo_basico: 0, costo_mo_km: 0,
     tiene_parcial: false,
     ingresos_cobrado: 0, ingresos_por_cobrar: 0, ingresos_sin_facturar: 0,
   }
@@ -147,7 +156,7 @@ export function calcularPerformance(
       f = {
         entidad_id: id, viajes: 0, toneladas: 0, ingresos: 0,
         costo_mo: 0, costo_mo_cerrado: 0, costo_mo_parcial: 0,
-        costo_estadias: 0,
+        costo_estadias: 0, costo_mo_basico: 0, costo_mo_km: 0,
         sin_tarifa: 0, sin_cobrar: 0,
       }
       map.set(id, f)
@@ -396,6 +405,8 @@ export function calcularPerformance(
     const fch = getOrInit(accChofer, liq.chofer_id)
     fch.costo_mo         += costo
     fch.costo_mo_cerrado += costo
+    fch.costo_mo_basico  += basicoEnRango
+    fch.costo_mo_km      += kmEnRango
 
     // Por camión: repartir entre los camiones REALES de las unidades del rango.
     // Si el período solapa pero no hubo viajes en el rango (el básico corre
@@ -408,6 +419,10 @@ export function calcularPerformance(
         const fc = getOrInit(accCamion, cid)
         fc.costo_mo         += parte
         fc.costo_mo_cerrado += parte
+        // El desglose del camión lleva la misma proporción que su parte del
+        // costo, así la suma de camiones reconstruye el desglose del total.
+        fc.costo_mo_basico  += basicoEnRango * (parte / costo)
+        fc.costo_mo_km      += kmEnRango     * (parte / costo)
       }
     } else {
       const chofer = choferPorId.get(liq.chofer_id)
@@ -415,10 +430,14 @@ export function calcularPerformance(
         const fc = getOrInit(accCamion, chofer.camion_id)
         fc.costo_mo         += costo
         fc.costo_mo_cerrado += costo
+        fc.costo_mo_basico  += basicoEnRango
+        fc.costo_mo_km      += kmEnRango
       }
     }
     totales.costo_mo         += costo
     totales.costo_mo_cerrado += costo
+    totales.costo_mo_basico  += basicoEnRango
+    totales.costo_mo_km      += kmEnRango
   }
 
   // ── Parcial estimado para choferes con tramos en rango pero sin liq que cubra esos días ──
@@ -510,12 +529,15 @@ export function calcularPerformance(
         ? basicoDiaEnFecha(chofer, fechasVivas[0]!)
         : 0
 
-      const costoParcial = diasBasico * basicoDia + montoKmVivos
+      const basicoParcial = diasBasico * basicoDia
+      const costoParcial  = basicoParcial + montoKmVivos
       if (costoParcial <= 0) continue
 
       const fch = getOrInit(accChofer, choferId)
       fch.costo_mo         += costoParcial
       fch.costo_mo_parcial += costoParcial
+      fch.costo_mo_basico  += basicoParcial
+      fch.costo_mo_km      += montoKmVivos
 
       // Por camión: repartir entre los camiones REALES de los tramos vivos.
       // Fallback al camión preasignado si no se pudo repartir.
@@ -525,14 +547,20 @@ export function calcularPerformance(
           const fc = getOrInit(accCamion, cid)
           fc.costo_mo         += parte
           fc.costo_mo_parcial += parte
+          fc.costo_mo_basico  += basicoParcial * (parte / costoParcial)
+          fc.costo_mo_km      += montoKmVivos  * (parte / costoParcial)
         }
       } else if (chofer.camion_id != null) {
         const fc = getOrInit(accCamion, chofer.camion_id)
         fc.costo_mo         += costoParcial
         fc.costo_mo_parcial += costoParcial
+        fc.costo_mo_basico  += basicoParcial
+        fc.costo_mo_km      += montoKmVivos
       }
       totales.costo_mo         += costoParcial
       totales.costo_mo_parcial += costoParcial
+      totales.costo_mo_basico  += basicoParcial
+      totales.costo_mo_km      += montoKmVivos
       totales.tiene_parcial = true
     }
   }
