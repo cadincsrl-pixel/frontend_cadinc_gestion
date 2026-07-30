@@ -2143,6 +2143,15 @@ export function LiquidacionesTab() {
         }
 
         function guardarLiqDto(data: DetalleFormData, onSuccess: () => void) {
+          // Este editor recalcula con la fórmula de KM (totalesDetalle). Si la
+          // liquidación es a %, guardarla desde acá la pisaría con números de
+          // km — snapshot corrupto. El camino correcto para corregir una pct:
+          // reabrirla (libera los viajes) y volver a liquidar desde la tarjeta
+          // del chofer, que usa la matemática de comisión.
+          if (detalleLiq.modalidad === 'pct') {
+            toast('Las liquidaciones a % no se editan acá: reabrila (libera los viajes) y volvé a liquidar desde la tarjeta del chofer.', 'err')
+            return
+          }
           const { basicoDia, descuentos, tot } = totalesDetalle(data)
           updateLiq({
             id: detalleLiq.id,

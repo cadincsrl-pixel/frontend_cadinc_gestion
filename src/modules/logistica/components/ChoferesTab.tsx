@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useChoferes, useCreateChofer, useUpdateChofer, useDeleteChofer, useCamiones, useBateas } from '../hooks/useLogistica'
+import { useChoferes, useCreateChofer, useUpdateChofer, useDeleteChofer, useCamiones, useBateas, useTramos, useLiquidaciones } from '../hooks/useLogistica'
 import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input }  from '@/components/ui/Input'
@@ -27,6 +27,11 @@ export function ChoferesTab() {
   const { data: choferes = [] } = useChoferes()
   const { data: camiones = [] } = useCamiones()
   const { data: bateas   = [] } = useBateas()
+  // Para avisar al cambiar la modalidad de pago con trabajo sin liquidar:
+  // lo pendiente se valúa con la modalidad NUEVA, y eso casi nunca es lo que
+  // se quiere (el trabajo viejo se pactó con la modalidad vieja).
+  const { data: tramosTodos    = [] } = useTramos()
+  const { data: liquidaciones  = [] } = useLiquidaciones()
   const { mutate: create, isPending: creating } = useCreateChofer()
   const { mutate: update, isPending: updating } = useUpdateChofer()
   const { mutate: remove } = useDeleteChofer()
@@ -151,6 +156,27 @@ export function ChoferesTab() {
   function handleUpdate(data: any) {
     if (!editando) return
     const dto = normalizar(data)
+
+    // Cambio de modalidad con trabajo pendiente: avisar ANTES de guardar.
+    // Lo ya liquidado no cambia (la liquidación fotografía su modalidad), pero
+    // los viajes sin liquidar pasan a valuarse con la modalidad nueva.
+    const modalidadVieja = editando.modalidad_pago ?? 'km_jornal'
+    if (dto.modalidad_pago && dto.modalidad_pago !== modalidadVieja) {
+      const pendientes = (tramosTodos as any[]).filter(t =>
+        t.chofer_id === editando.id && !t.liquidacion_id && t.estado === 'completado').length
+      const tieneBorrador = (liquidaciones as any[]).some(l =>
+        l.chofer_id === editando.id && l.estado === 'borrador')
+      if (pendientes > 0 || tieneBorrador) {
+        const partes = []
+        if (pendientes > 0)  partes.push(`${pendientes} viaje${pendientes !== 1 ? 's' : ''} sin liquidar`)
+        if (tieneBorrador)   partes.push('un borrador de liquidación abierto')
+        if (!confirm(
+          `⚠ ${editando.nombre} tiene ${partes.join(' y ')}.\n\n` +
+          `Lo ya liquidado NO cambia, pero los viajes sin liquidar van a valuarse con la modalidad NUEVA.\n\n` +
+          `Lo prolijo es liquidar lo pendiente con la modalidad vieja ANTES de cambiar.\n\n¿Cambiar igual?`,
+        )) return
+      }
+    }
     const conflictos = detectarConflictos(dto, editando.id)
     if (conflictos.camion || conflictos.batea) {
       setPendienteReasig({ modo: 'editar', dto, nombreNuevo: editando.nombre, conflictos })
