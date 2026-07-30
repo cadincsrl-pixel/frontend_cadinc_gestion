@@ -15,7 +15,7 @@
 //   3) Si no hay tarifa cargada → ingreso 0 + flag `sin_tarifa`.
 // - Tramos sin empresa/cantera registrados se excluyen.
 
-import type { Tramo, Cobro, TarifaEmpresaCantera, Liquidacion, Chofer, Ruta, RelevoLiquidado } from '@/types/domain.types'
+import type { Tramo, Cobro, TarifaEmpresaCantera, Liquidacion, Chofer, Ruta, RelevoLiquidado, Estadia } from '@/types/domain.types'
 import { diasEntreFechas } from '@/modules/logistica/utils/liquidacion-math'
 import { basicoDiaEnFecha, precioKmEnFecha, type ChoferConHist } from './tarifas-chofer'
 
@@ -43,6 +43,10 @@ interface PerformanceFila {
   // Calculado como `(días vivos × chofer.basico_dia) + Σ (km × precio_km)`.
   // Cuando el chofer cierra la liquidación, este monto migra a `costo_mo_cerrado`.
   costo_mo_parcial:  number
+  // Parte de `costo_mo` que son estadías (días de espera para cargar o
+  // descargar, pagados por día). Se lleva aparte sólo para poder mostrarlo
+  // desglosado: ya está sumado dentro de costo_mo y de cerrado/parcial.
+  costo_estadias:    number
   // Cuántos tramos se contaron sin tarifa cargada (ingreso = 0).
   sin_tarifa:        number
   // Cuántos tramos están sin cobrar todavía (ingreso teórico).
@@ -59,6 +63,8 @@ export interface PerformanceResultado {
     costo_mo:          number
     costo_mo_cerrado:  number
     costo_mo_parcial:  number
+    /** Parte de `costo_mo` que son estadías. Ya está incluida en costo_mo. */
+    costo_estadias:    number
     /** `true` si algún chofer tiene `costo_mo_parcial > 0` — la UI muestra un chip "parcial estimado". */
     tiene_parcial:     boolean
   }
@@ -98,9 +104,12 @@ function tarifaVigentePara(
  * - Costo bruto = `subtotal_basico + subtotal_km` (lo que la empresa eroga
  *   por el trabajo del chofer; los adelantos ya están adelantados, los
  *   reintegros corresponden a gastos en `gastos_logistica`, así que esos
- *   no se suman acá para no doble-contar). Las estadías NO están incluidas
- *   todavía: son plata que se le paga al chofer por su tiempo pero no figuran
- *   ni en Gastos ni en Mano obra (pendiente de decisión).
+ *   no se suman acá para no doble-contar).
+ * - Las estadías SÍ cuentan como mano de obra (decisión del dueño el
+ *   2026-07-29): son días de espera para cargar o descargar que se le pagan al
+ *   chofer por su tiempo. No se prorratean desde `liquidacion.total_estadias`
+ *   sino desde cada fila de `estadias`, que tiene sus PROPIAS fechas — más
+ *   preciso, y una estadía que cruza un borde de mes se parte por sus días.
  * - Atribución a camión: se reparte el costo entre los camiones que el chofer
  *   EFECTIVAMENTE manejó según los tramos de esa liquidación
  *   (`tramo.liquidacion_id`), ponderando por km de cada tramo (fallback:
@@ -124,6 +133,7 @@ export function calcularPerformance(
   choferes:      Chofer[]      = [],
   rutas:         Ruta[]        = [],
   tramoChoferes: RelevoLiquidado[] = [],
+  estadias:      Estadia[]         = [],
 ): PerformanceResultado {
   // Mapa cobro_id → cobro para lookup O(1).
   const cobroPorId = new Map<number, Cobro>()
@@ -135,6 +145,7 @@ export function calcularPerformance(
   const totales = {
     viajes: 0, toneladas: 0, ingresos: 0,
     costo_mo: 0, costo_mo_cerrado: 0, costo_mo_parcial: 0,
+    costo_estadias: 0,
     tiene_parcial: false,
   }
 
@@ -144,6 +155,7 @@ export function calcularPerformance(
       f = {
         entidad_id: id, viajes: 0, toneladas: 0, ingresos: 0,
         costo_mo: 0, costo_mo_cerrado: 0, costo_mo_parcial: 0,
+        costo_estadias: 0,
         sin_tarifa: 0, sin_cobrar: 0,
       }
       map.set(id, f)
@@ -516,6 +528,73 @@ export function calcularPerformance(
       totales.costo_mo_parcial += costoParcial
       totales.tiene_parcial = true
     }
+  }
+
+  // ── Estadías: días de espera pagados al chofer ───────────────────────────────
+  // Cuentan como mano de obra (decisión del dueño el 2026-07-29): es plata que
+  // se le paga por su tiempo. Antes no figuraban en ninguna columna — ni en
+  // Gastos ni en Mano obra.
+  //
+  // Se atribuyen por SUS propias fechas, no prorrateando `total_estadias` de la
+  // liquidación: la fila de estadía tiene fecha_desde/fecha_hasta, así que una
+  // que cruza un borde de mes se parte por sus días y cada mes se lleva lo suyo.
+  // Verificado en los datos: `dias` es siempre (fecha_hasta − fecha_desde + 1) y
+  // `dias × monto_dia == total`, así que prorratear por día es exacto.
+  //
+  // Liquidada → cuenta como cerrado; sin liquidar → como parcial (igual que el
+  // resto, y migra sola cuando se cierre la liquidación).
+  for (const est of estadias) {
+    if (!est.fecha_desde || !est.fecha_hasta) continue
+    const solapeDesde = est.fecha_desde > desde ? est.fecha_desde : desde
+    const solapeHasta = est.fecha_hasta < hasta ? est.fecha_hasta : hasta
+    if (solapeDesde > solapeHasta) continue
+
+    const diasEnRango = diasEntreFechas(solapeDesde, solapeHasta)
+    const montoDia    = Number(est.monto_dia ?? 0)
+    const monto       = diasEnRango * montoDia
+    if (monto <= 0) continue
+
+    // Una estadía de una liquidación descartada (cáscara duplicada) no cuenta.
+    // Hoy no puede pasar —las cáscaras no tienen hijos— pero si alguna vez
+    // pasara, contarla resucitaría plata que ya se decidió ignorar.
+    if (est.liquidacion_id != null && idsDescartados.has(est.liquidacion_id)) continue
+
+    const cerrada = est.liquidacion_id != null
+    const fch = getOrInit(accChofer, est.chofer_id)
+    fch.costo_mo       += monto
+    fch.costo_estadias += monto
+    if (cerrada) fch.costo_mo_cerrado += monto
+    else         fch.costo_mo_parcial += monto
+
+    // Por camión: la estadía no tiene camión propio (el chofer esperó, el camión
+    // estaba con él). Se reparte entre los camiones que ese chofer manejó en el
+    // rango; si no manejó ninguno, al camión preasignado de su ficha.
+    const chofer = choferPorId.get(est.chofer_id)
+    const unidadesDelChofer = tramos
+      .filter(t => t.chofer_id === est.chofer_id)
+      .map(t => ({ camion_id: t.camion_id, km: kmTramo(t), fecha: fechaDeTramo(t) }))
+      .filter(u => u.fecha != null && u.fecha >= desde && u.fecha <= hasta)
+    const reparto = repartirPorCamion(monto, unidadesDelChofer)
+    if (reparto.size > 0) {
+      for (const [cid, parte] of reparto) {
+        const fc = getOrInit(accCamion, cid)
+        fc.costo_mo       += parte
+        fc.costo_estadias += parte
+        if (cerrada) fc.costo_mo_cerrado += parte
+        else         fc.costo_mo_parcial += parte
+      }
+    } else if (chofer?.camion_id != null) {
+      const fc = getOrInit(accCamion, chofer.camion_id)
+      fc.costo_mo       += monto
+      fc.costo_estadias += monto
+      if (cerrada) fc.costo_mo_cerrado += monto
+      else         fc.costo_mo_parcial += monto
+    }
+
+    totales.costo_mo       += monto
+    totales.costo_estadias += monto
+    if (cerrada) totales.costo_mo_cerrado += monto
+    else       { totales.costo_mo_parcial += monto; totales.tiene_parcial = true }
   }
 
   return {

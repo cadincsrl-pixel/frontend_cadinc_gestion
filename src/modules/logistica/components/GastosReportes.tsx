@@ -4,13 +4,13 @@ import { useState, useMemo, type ReactNode } from 'react'
 import {
   useGastosResumen, useGastosPorCamion, useGastosPorChofer, useGastosPorCategoria,
   useTramos, useCobros, useTarifasEmpresa, useCamiones, useChoferes, useLiquidaciones,
-  useRutas,
+  useRutas, useEstadias,
 } from '../hooks/useLogistica'
 import { calcularPerformance } from '@/lib/utils/performance'
 import { useRelevosLiquidados } from '../hooks/useTramoRelevo'
 import { Button } from '@/components/ui/Button'
 import { Input }  from '@/components/ui/Input'
-import type { Camion, Chofer, Tramo, Liquidacion } from '@/types/domain.types'
+import type { Camion, Chofer, Tramo, Liquidacion, Estadia } from '@/types/domain.types'
 import { toISO } from '@/lib/utils/dates'
 
 const fmt$ = (n: number | string) => `$ ${Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -63,6 +63,9 @@ export function GastosReportes() {
   const { data: rutas         = [] } = useRutas()
   // Patas de relevo liquidadas → la MO del relevista se imputa al camión real.
   const { data: tramoChoferes = [] } = useRelevosLiquidados()
+  // Estadías: días de espera pagados al chofer. Cuentan como mano de obra
+  // (decisión del dueño el 2026-07-29).
+  const { data: estadias      = [] } = useEstadias()
 
   // ── Sólo flota propia ───────────────────────────────────────────
   // CADINC le lleva la facturación a fleteros que no son de la empresa: cobra el
@@ -90,6 +93,10 @@ export function GastosReportes() {
     () => (liquidaciones as Liquidacion[]).filter(l => !tercerosIds.choferes.has(l.chofer_id)),
     [liquidaciones, tercerosIds],
   )
+  const estadiasPropias = useMemo(
+    () => (estadias as Estadia[]).filter(e => !tercerosIds.choferes.has(e.chofer_id)),
+    [estadias, tercerosIds],
+  )
 
   // Qué quedó afuera, para poder decirlo en pantalla: un número que baja sin
   // explicación es peor que el número mal.
@@ -103,8 +110,8 @@ export function GastosReportes() {
   }, [tramos, desde, hasta, tercerosIds, choferes])
 
   const performance = useMemo(
-    () => calcularPerformance(tramosPropios, cobros, tarifas, desde, hasta, liquidacionesPropias, choferes, rutas, tramoChoferes),
-    [tramosPropios, cobros, tarifas, desde, hasta, liquidacionesPropias, choferes, rutas, tramoChoferes],
+    () => calcularPerformance(tramosPropios, cobros, tarifas, desde, hasta, liquidacionesPropias, choferes, rutas, tramoChoferes, estadiasPropias),
+    [tramosPropios, cobros, tarifas, desde, hasta, liquidacionesPropias, choferes, rutas, tramoChoferes, estadiasPropias],
   )
 
   // Mapas para mergear gastos por entidad con performance.
@@ -177,8 +184,19 @@ export function GastosReportes() {
             <Kpi label="Gastos del período"      value={fmt$(gastosPeriodo)}      accent="azul" />
             <Kpi
               label={
-                <span className="inline-flex items-center gap-1.5">
+                <span className="inline-flex items-center gap-1.5 flex-wrap">
                   Costo mano de obra
+                  {/* Las estadías cuentan acá desde el 29/07. Se muestran aparte
+                      porque son el único componente que no sale de un viaje: son
+                      días de espera, y sin el chip el número sube sin explicación. */}
+                  {performance.totales.costo_estadias > 0 && (
+                    <span
+                      title={`Incluye ${fmt$(performance.totales.costo_estadias)} de estadías: días de espera para cargar o descargar que se le pagan al chofer por su tiempo.`}
+                      className="text-[9px] font-bold bg-sky-100 text-sky-800 px-1.5 py-0.5 rounded-full uppercase tracking-wide"
+                    >
+                      + estadías
+                    </span>
+                  )}
                   {performance.totales.tiene_parcial && (
                     <span
                       title={`Incluye ${fmt$(performance.totales.costo_mo_parcial)} estimados (días con tramos sin liquidación cerrada). Migra a "cerrado" cuando se cierre la liquidación del chofer.`}

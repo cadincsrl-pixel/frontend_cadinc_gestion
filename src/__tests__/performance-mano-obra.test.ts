@@ -16,7 +16,7 @@
 import { describe, it, expect } from 'vitest'
 import { calcularPerformance } from '@/lib/utils/performance'
 import type {
-  Tramo, Cobro, TarifaEmpresaCantera, Liquidacion, Chofer, Ruta, RelevoLiquidado,
+  Tramo, Cobro, TarifaEmpresaCantera, Liquidacion, Chofer, Ruta, RelevoLiquidado, Estadia,
 } from '@/types/domain.types'
 
 // ── Factories ────────────────────────────────────────────────────────────────
@@ -441,5 +441,107 @@ describe('tarifas de chofer versionadas', () => {
     )
     // Marzo es previo al 01/04: usa la versión más vieja (150), nunca 0.
     expect(r.totales.costo_mo_parcial).toBe(30_000 + 100 * 150)
+  })
+})
+
+// ── Estadías como mano de obra ───────────────────────────────────────────────
+//
+// Decisión del dueño el 2026-07-29: las estadías (días de espera para cargar o
+// descargar, pagados por día) son mano de obra. Antes no figuraban en NINGUNA
+// columna — ni en Gastos ni en Mano obra: $400.000 en el limbo.
+//
+// Se atribuyen por las fechas de la propia estadía, no prorrateando
+// `liquidacion.total_estadias`. Verificado en los datos reales: `dias` es
+// siempre (fecha_hasta − fecha_desde + 1) y `dias × monto_dia == total`.
+
+function mkEstadia(over: Partial<Estadia> & Pick<Estadia, 'id' | 'chofer_id'>): Estadia {
+  return {
+    fecha_desde: '2026-07-14',
+    fecha_hasta: '2026-07-17',
+    dias: 4,
+    monto_dia: 50_000,
+    total: 200_000,
+    obs: null,
+    liquidacion_id: null,
+    ...over,
+  }
+}
+
+describe('estadías', () => {
+  const CH = 55
+  const choferes55 = [mkChofer({ id: CH, camion_id: CAMION })]
+
+  it('CASO REAL (Robles, 14→17/07, sin liquidar): $200.000 al parcial', () => {
+    // 4 días × $50.000 = 200.000
+    const est = mkEstadia({ id: 4, chofer_id: CH })
+    const r = calcularPerformance(
+      [], SIN_COBROS, SIN_TARIFAS, '2026-07-01', '2026-07-31',
+      [], choferes55, RUTAS, [], [est],
+    )
+    expect(r.totales.costo_estadias).toBe(200_000)
+    expect(r.totales.costo_mo_parcial).toBe(200_000)
+    expect(r.totales.costo_mo).toBe(200_000)
+  })
+
+  it('CASO REAL (Zelarayan, liquidada en la 29): $200.000 al cerrado, no al parcial', () => {
+    const est = mkEstadia({ id: 3, chofer_id: CH, liquidacion_id: 29 })
+    const r = calcularPerformance(
+      [], SIN_COBROS, SIN_TARIFAS, '2026-07-01', '2026-07-31',
+      [], choferes55, RUTAS, [], [est],
+    )
+    expect(r.totales.costo_mo_cerrado).toBe(200_000)
+    expect(r.totales.costo_mo_parcial).toBe(0)
+  })
+
+  it('una estadía que cruza el borde de mes se parte por sus días', () => {
+    // 28/06 al 03/07 = 6 días × 50.000 = 300.000
+    //   junio: 28, 29, 30 = 3 días → 150.000
+    //   julio: 01, 02, 03 = 3 días → 150.000
+    const est = mkEstadia({
+      id: 9, chofer_id: CH,
+      fecha_desde: '2026-06-28', fecha_hasta: '2026-07-03',
+      dias: 6, total: 300_000,
+    })
+    const junio = calcularPerformance([], SIN_COBROS, SIN_TARIFAS, '2026-06-01', '2026-06-30', [], choferes55, RUTAS, [], [est])
+    const julio = calcularPerformance([], SIN_COBROS, SIN_TARIFAS, '2026-07-01', '2026-07-31', [], choferes55, RUTAS, [], [est])
+    expect(junio.totales.costo_estadias).toBe(150_000)
+    expect(julio.totales.costo_estadias).toBe(150_000)
+    // INVARIANTE: los meses disjuntos suman el total de la estadía.
+    expect(junio.totales.costo_estadias + julio.totales.costo_estadias).toBe(300_000)
+  })
+
+  it('una estadía fuera del rango no cuenta', () => {
+    const est = mkEstadia({ id: 10, chofer_id: CH })
+    const r = calcularPerformance(
+      [], SIN_COBROS, SIN_TARIFAS, '2026-08-01', '2026-08-31',
+      [], choferes55, RUTAS, [], [est],
+    )
+    expect(r.totales.costo_estadias).toBe(0)
+  })
+
+  it('sin viajes en el rango, la estadía va al camión preasignado del chofer', () => {
+    const est = mkEstadia({ id: 11, chofer_id: CH })
+    const r = calcularPerformance(
+      [], SIN_COBROS, SIN_TARIFAS, '2026-07-01', '2026-07-31',
+      [], choferes55, RUTAS, [], [est],
+    )
+    expect(r.por_camion.find(f => f.entidad_id === CAMION)?.costo_estadias).toBe(200_000)
+  })
+
+  it('la estadía se suma al costo de mano de obra, no lo reemplaza', () => {
+    // Un viaje sin liquidar (básico + km) MÁS la estadía.
+    const chofer = mkChofer({ id: 56, camion_id: CAMION, basico_dia: 30_000, precio_km_cargado: 150 })
+    const t = mkTramo({
+      id: 801, chofer_id: 56, camion_id: CAMION, cantera_id: 5, deposito_id: 2,
+      fecha_descarga: '2026-07-05', toneladas_descarga: 30,
+    })
+    const est = mkEstadia({ id: 12, chofer_id: 56 })
+    const r = calcularPerformance(
+      [t], SIN_COBROS, SIN_TARIFAS, '2026-07-01', '2026-07-31',
+      [], [chofer], RUTAS, [], [est],
+    )
+    // Viaje: 1 día × 30.000 + 100 km × 150 = 45.000. Estadía: 200.000.
+    expect(r.totales.costo_mo).toBe(45_000 + 200_000)
+    expect(r.totales.costo_estadias).toBe(200_000)
   })
 })
