@@ -17,6 +17,7 @@ import { usePermisos } from '@/hooks/usePermisos'
 import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
 import { toISO } from '@/lib/utils/dates'
 import type { VehiculoDocumento, VehiculoDocTipo, VehiculoEntidad } from '@/types/domain.types'
+import { partirVigentesYArchivados } from '../utils/docs-vigentes'
 
 interface Props {
   entidad: VehiculoEntidad
@@ -234,15 +235,15 @@ export function VehiculoDocumentosSection({ entidad, id }: Props) {
     )
   }
 
-  // Para tipos renovables (los que vencen, ej. RTO/póliza): el doc más nuevo es
-  // el VIGENTE y los anteriores quedan "archivados" (no muestran 'vencido', van
-  // a un desplegable). Para el resto se muestran todos como hasta ahora.
+  // Para tipos renovables (los que vencen): la RENOVACIÓN más nueva es la
+  // vigente — todos los archivos que comparten su vencimiento (frente + dorso
+  // son el mismo documento físico). Lo que vence distinto queda "archivado"
+  // (no muestra 'vencido', va a un desplegable). El resto se muestra entero.
   const porTipo = TIPOS.map(t => {
     const docsTipo = docs.filter(d => d.tipo === t.key)
     if (t.venceObligatorio && docsTipo.length > 1) {
-      const ord = [...docsTipo].sort((a, b) =>
-        (b.created_at ?? '').localeCompare(a.created_at ?? '') || (b.id - a.id))
-      return { ...t, vigentes: ord.slice(0, 1), archivados: ord.slice(1) }
+      const { vigentes, archivados } = partirVigentesYArchivados(docsTipo)
+      return { ...t, vigentes, archivados }
     }
     return { ...t, vigentes: docsTipo, archivados: [] as VehiculoDocumento[] }
   })
