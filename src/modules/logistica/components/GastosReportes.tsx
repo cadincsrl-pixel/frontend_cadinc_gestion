@@ -9,6 +9,7 @@ import {
 import { calcularPerformance } from '@/lib/utils/performance'
 import { useRelevosLiquidados } from '../hooks/useTramoRelevo'
 import { Button } from '@/components/ui/Button'
+import { InfoPopover } from '@/components/ui/InfoPopover'
 import { Input }  from '@/components/ui/Input'
 import type { Camion, Chofer, Tramo, Liquidacion, Estadia } from '@/types/domain.types'
 import { toISO } from '@/lib/utils/dates'
@@ -110,8 +111,10 @@ export function GastosReportes() {
   }, [tramos, desde, hasta, tercerosIds, choferes])
 
   const performance = useMemo(
-    () => calcularPerformance(tramosPropios, cobros, tarifas, desde, hasta, liquidacionesPropias, choferes, rutas, tramoChoferes, estadiasPropias),
-    [tramosPropios, cobros, tarifas, desde, hasta, liquidacionesPropias, choferes, rutas, tramoChoferes, estadiasPropias],
+    // `camiones` al final: el ingreso teórico resuelve chasis/batea con la misma
+    // escalera de tarifas que el modal de facturación.
+    () => calcularPerformance(tramosPropios, cobros, tarifas, desde, hasta, liquidacionesPropias, choferes, rutas, tramoChoferes, estadiasPropias, camiones as Camion[]),
+    [tramosPropios, cobros, tarifas, desde, hasta, liquidacionesPropias, choferes, rutas, tramoChoferes, estadiasPropias, camiones],
   )
 
   // Mapas para mergear gastos por entidad con performance.
@@ -180,8 +183,54 @@ export function GastosReportes() {
       ) : resumen && (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Kpi label="Facturación del período" value={fmt$(facturacionPeriodo)} accent="verde" />
-            <Kpi label="Gastos del período"      value={fmt$(gastosPeriodo)}      accent="azul" />
+            <Kpi
+              label="Facturación del período"
+              value={fmt$(facturacionPeriodo)}
+              accent="verde"
+              info={
+                <InfoPopover
+                  titulo="Facturación del período"
+                  incluye={[
+                    'Viajes descargados dentro del período, de la flota propia',
+                    'Facturas emitidas aunque todavía no se cobraron',
+                    'Viajes sin facturar, valuados a la tarifa vigente (la misma escalera que usa facturación)',
+                  ]}
+                  noIncluye={[
+                    'Fleteros de terceros',
+                    'Viajes descargados fuera del período, aunque se hayan cargado adentro',
+                  ]}
+                  iva="Con IVA incluido: las tarifas se guardan con el 21% adentro."
+                  ojo="No es plata cobrada — mirá el desglose de abajo."
+                />
+              }
+              sub={
+                <div className="mt-1.5 flex flex-col gap-0.5 text-[10px] font-mono text-gris-dark leading-tight">
+                  <span className="text-verde">✔ {fmt$(performance.totales.ingresos_cobrado)} cobrado</span>
+                  <span className="text-naranja-dark">⏳ {fmt$(performance.totales.ingresos_por_cobrar)} por cobrar</span>
+                  <span>◌ {fmt$(performance.totales.ingresos_sin_facturar)} sin facturar</span>
+                </div>
+              }
+            />
+            <Kpi
+              label="Gastos del período"
+              value={fmt$(gastosPeriodo)}
+              accent="azul"
+              info={
+                <InfoPopover
+                  titulo="Gastos del período"
+                  incluye={[
+                    'Gastos aprobados y pagados, por la fecha del gasto',
+                    'Los que pagó un chofer de su bolsillo (reintegrables), desde el día del gasto',
+                  ]}
+                  noIncluye={[
+                    'Pendientes de aprobación (van en el aviso amarillo)',
+                    'Rechazados y eliminados',
+                    'Sueldos de choferes — están en Mano de obra',
+                  ]}
+                  iva="Total pagado del comprobante: con IVA cuando hay factura."
+                />
+              }
+            />
             <Kpi
               label={
                 <span className="inline-flex items-center gap-1.5 flex-wrap">
@@ -209,11 +258,37 @@ export function GastosReportes() {
               }
               value={fmt$(costoMOPeriodo)}
               accent="azul"
+              info={
+                <InfoPopover
+                  titulo="Costo mano de obra"
+                  incluye={[
+                    'El sueldo prorrateado a los días de este período (no al mes en que cerró la liquidación)',
+                    'Los km de los viajes que caen en el período',
+                    'Estadías (días de espera), por sus fechas',
+                    'Una estimación del trabajo aún sin liquidar (chip naranja)',
+                  ]}
+                  noIncluye={[
+                    'Adelantos — son anticipos del mismo sueldo, no un costo aparte',
+                    'Reintegros de gastos — ya están en Gastos del período',
+                    'Cargas sociales o aguinaldo: el sistema no los registra',
+                  ]}
+                  iva="Sin IVA: es costo laboral."
+                  ojo="La suma por camión puede diferir de este total cuando un chofer no tiene viajes en el período ni camión asignado en su ficha."
+                />
+              }
             />
             <Kpi
               label="% Margen real"
               value={pctMargenReal == null ? '—' : `${pctMargenReal.toFixed(1)}%`}
               accent={pctMargenReal != null && pctMargenReal >= 0 ? 'verde' : 'naranja'}
+              info={
+                <InfoPopover
+                  titulo="% Margen real"
+                  incluye={['Margen real ÷ Facturación del período']}
+                  iva="La facturación lleva IVA y la mano de obra no: es un porcentaje de caja operativa, no un margen contable."
+                  ojo="No comparable con el simulador de Rentabilidad, que trabaja todo neto de IVA."
+                />
+              }
             />
           </div>
 
@@ -222,14 +297,52 @@ export function GastosReportes() {
               label="Margen bruto"
               value={fmt$(margenBruto)}
               accent={margenBruto >= 0 ? 'verde' : 'naranja'}
+              info={
+                <InfoPopover
+                  titulo="Margen bruto"
+                  incluye={['Facturación del período − Gastos del período']}
+                  noIncluye={['La mano de obra de los choferes — se resta recién en el Margen real']}
+                  iva="Los dos lados llevan IVA adentro: es plata que entra contra plata que sale, no margen contable."
+                />
+              }
             />
             <Kpi
               label="Margen real (− mano de obra)"
               value={fmt$(margenReal)}
               accent={margenReal >= 0 ? 'verde' : 'naranja'}
+              info={
+                <InfoPopover
+                  titulo="Margen real"
+                  incluye={['Margen bruto − Costo de mano de obra']}
+                  iva="Mezcla: facturación y gastos con IVA, mano de obra sin. Leelo como caja operativa."
+                  ojo="No comparable con el simulador de Rentabilidad, que trabaja todo neto de IVA."
+                />
+              }
             />
-            <Kpi label="Toneladas movidas" value={`${fmtInt(Math.round(performance.totales.toneladas))} t`} />
-            <Kpi label="Reintegros pendientes" value={fmt$(resumen.reintegros_pendientes)} accent="naranja" />
+            <Kpi
+              label="Toneladas movidas"
+              value={`${fmtInt(Math.round(performance.totales.toneladas))} t`}
+              info={
+                <InfoPopover
+                  titulo="Toneladas movidas"
+                  incluye={['Las toneladas de DESCARGA de los mismos viajes que la facturación (lo que paga el cliente)']}
+                  noIncluye={['Las de fleteros de terceros', 'La merma entre carga y descarga — no se muestra en ningún lado']}
+                />
+              }
+            />
+            <Kpi
+              label="Reintegros pendientes"
+              value={fmt$(resumen.reintegros_pendientes)}
+              accent="naranja"
+              info={
+                <InfoPopover
+                  titulo="Reintegros pendientes"
+                  incluye={['Gastos que un chofer pagó de su bolsillo, ya aprobados y todavía sin liquidar, con fecha en el período']}
+                  noIncluye={['Reintegros de fechas anteriores al período — al liquidar se pagan igual']}
+                  ojo="Es plata YA gastada que se le debe al chofer. También está dentro de Gastos del período: es un subconjunto marcado, no un monto aparte."
+                />
+              }
+            />
           </div>
 
           {resumen.pendientes_aprobacion > 0 && (
@@ -396,9 +509,39 @@ function PerformanceTable({ filas, label, getNombre, gastosPor, mono }: {
           <th className="text-left px-3 py-2">{label}</th>
           <th className="text-right px-3 py-2">Viajes</th>
           <th className="text-right px-3 py-2">Tons</th>
-          <th className="text-right px-3 py-2">Ingresos</th>
-          <th className="text-right px-3 py-2">Gastos</th>
-          <th className="text-right px-3 py-2" title="Costo de mano de obra (subtotal básico + km de las liquidaciones del chofer). Se imputa al camión REAL de cada tramo de la liquidación, repartido por km — no a la preasignación de la ficha.">Mano obra</th>
+          <th className="text-right px-3 py-2">
+            <span className="inline-flex items-center gap-1">Ingresos
+              <InfoPopover
+                titulo="Ingresos (por fila)"
+                incluye={['Mismo criterio que el KPI Facturación, agregado por el camión/chofer REAL de cada viaje']}
+                iva="Con IVA incluido."
+                ojo="El chip amarillo marca viajes valuados a tarifa (sin facturar); el rojo, viajes sin tarifa cargada que suman $0."
+              />
+            </span>
+          </th>
+          <th className="text-right px-3 py-2">
+            <span className="inline-flex items-center gap-1">Gastos
+              <InfoPopover
+                titulo="Gastos (por fila)"
+                incluye={['Gastos aprobados y pagados con este camión (o chofer) asignado']}
+                noIncluye={['Gastos sin camión/chofer asignado — están en el KPI general pero no en ninguna fila']}
+                iva="Total pagado del comprobante."
+                ojo="Un gasto con camión Y chofer aparece en las dos tablas: no sumes las tablas entre sí."
+              />
+            </span>
+          </th>
+          <th className="text-right px-3 py-2">
+            <span className="inline-flex items-center gap-1">Mano obra
+              <InfoPopover
+                titulo="Mano de obra (por fila)"
+                incluye={[
+                  'Sueldo + km + estadías prorrateados a este período',
+                  'Imputado al camión REAL de cada viaje, repartido por km — no a la preasignación de la ficha',
+                ]}
+                iva="Sin IVA: es costo laboral."
+              />
+            </span>
+          </th>
           <th className="text-right px-3 py-2">Margen</th>
           <th className="text-right px-3 py-2">$/tn</th>
           <th className="text-left px-3 py-2">Notas</th>
@@ -449,15 +592,25 @@ function PerformanceTable({ filas, label, getNombre, gastosPor, mono }: {
 
 // ── Subcomponentes ──────────────────────────────────────────────
 
-function Kpi({ label, value, accent }: { label: ReactNode; value: string; accent?: 'azul' | 'naranja' | 'verde' }) {
+function Kpi({ label, value, accent, info, sub }: {
+  label: ReactNode; value: string; accent?: 'azul' | 'naranja' | 'verde'
+  /** ⓘ con la definición del número: qué suma, qué no, IVA. */
+  info?: ReactNode
+  /** Sub-cifras debajo del valor (ej: desglose cobrado/por cobrar). */
+  sub?: ReactNode
+}) {
   const accentCls = accent === 'azul'    ? 'border-azul-light text-azul-mid'
                   : accent === 'naranja' ? 'border-naranja-light text-naranja-dark'
                   : accent === 'verde'   ? 'border-verde-light text-verde'
                   : 'border-gris-mid text-carbon'
   return (
     <div className={`bg-white rounded-card shadow-card p-3 border-l-[4px] ${accentCls}`}>
-      <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">{label}</div>
+      <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wider flex items-start justify-between gap-1.5">
+        <span>{label}</span>
+        {info}
+      </div>
       <div className="font-mono font-bold text-base sm:text-xl mt-1 break-words">{value}</div>
+      {sub}
     </div>
   )
 }

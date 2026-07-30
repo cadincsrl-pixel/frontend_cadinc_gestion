@@ -15,7 +15,8 @@
 //   3) Si no hay tarifa cargada → ingreso 0 + flag `sin_tarifa`.
 // - Tramos sin empresa/cantera registrados se excluyen.
 
-import type { Tramo, Cobro, TarifaEmpresaCantera, Liquidacion, Chofer, Ruta, RelevoLiquidado, Estadia } from '@/types/domain.types'
+import type { Tramo, Cobro, TarifaEmpresaCantera, Liquidacion, Chofer, Ruta, RelevoLiquidado, Estadia, Camion } from '@/types/domain.types'
+import { tarifaParaFecha, unidadDelCamion } from '@/modules/logistica/utils/tarifas'
 import { diasEntreFechas } from '@/modules/logistica/utils/liquidacion-math'
 import { basicoDiaEnFecha, precioKmEnFecha, type ChoferConHist } from './tarifas-chofer'
 
@@ -67,27 +68,14 @@ export interface PerformanceResultado {
     costo_estadias:    number
     /** `true` si algún chofer tiene `costo_mo_parcial > 0` — la UI muestra un chip "parcial estimado". */
     tiene_parcial:     boolean
+    // Desglose de `ingresos` por qué tan real es la plata (suman ingresos):
+    /** Viajes en cobros con estado 'cobrado' — plata que efectivamente entró. */
+    ingresos_cobrado:      number
+    /** Viajes ya facturados/en cobro pero con el cobro 'pendiente'. */
+    ingresos_por_cobrar:   number
+    /** Viajes sin cobro todavía, valuados a tarifa teórica (misma escalera que facturación). */
+    ingresos_sin_facturar: number
   }
-}
-
-/**
- * Tarifa $/ton vigente para (empresa, cantera) a una fecha.
- * Retorna 0 si no hay tarifa con `vigente_desde <= fecha`.
- */
-function tarifaVigentePara(
-  tarifas: TarifaEmpresaCantera[],
-  empresaId: number,
-  canteraId: number,
-  fecha: string,
-): number {
-  let mejor: TarifaEmpresaCantera | null = null
-  for (const t of tarifas) {
-    if (t.empresa_id !== empresaId) continue
-    if (t.cantera_id !== canteraId) continue
-    if (t.vigente_desde > fecha)    continue
-    if (!mejor || t.vigente_desde > mejor.vigente_desde) mejor = t
-  }
-  return mejor?.valor_ton ?? 0
 }
 
 /**
@@ -134,6 +122,9 @@ export function calcularPerformance(
   rutas:         Ruta[]        = [],
   tramoChoferes: RelevoLiquidado[] = [],
   estadias:      Estadia[]         = [],
+  // Para resolver el tipo de unidad (chasis/batea) del ingreso teórico. Sin
+  // esto, la escalera cae a 'batea' para todos.
+  camiones:      Camion[]          = [],
 ): PerformanceResultado {
   // Mapa cobro_id → cobro para lookup O(1).
   const cobroPorId = new Map<number, Cobro>()
@@ -147,6 +138,7 @@ export function calcularPerformance(
     costo_mo: 0, costo_mo_cerrado: 0, costo_mo_parcial: 0,
     costo_estadias: 0,
     tiene_parcial: false,
+    ingresos_cobrado: 0, ingresos_por_cobrar: 0, ingresos_sin_facturar: 0,
   }
 
   function getOrInit(map: Map<number, PerformanceFila>, id: number): PerformanceFila {
@@ -180,9 +172,11 @@ export function calcularPerformance(
     let sinTarifa = false
     let sinCobrar = false
 
+    let via: 'cobrado' | 'por_cobrar' | 'sin_facturar' = 'sin_facturar'
     if (t.cobro_id != null) {
       // Tiene cobro: prorrateo por toneladas.
       const cobro = cobroPorId.get(t.cobro_id)
+      via = cobro?.estado === 'cobrado' ? 'cobrado' : 'por_cobrar'
       if (cobro && cobro.toneladas_totales > 0) {
         ingreso = cobro.total * (ton / cobro.toneladas_totales)
       }
@@ -190,7 +184,17 @@ export function calcularPerformance(
       // Sin cobro: tarifa vigente.
       sinCobrar = true
       if (t.empresa_id != null && t.cantera_id != null) {
-        const tarifa = tarifaVigentePara(tarifas, t.empresa_id, t.cantera_id, t.fecha_descarga)
+        // La MISMA escalera de tarifas que usa el modal de facturación
+        // (depósito+unidad > depósito > unidad > general). Antes acá había una
+        // búsqueda naive por (empresa, cantera) que ignoraba el depósito y el
+        // tipo de camión: el 29/07 valuaba un tractor de Paramerica a la tarifa
+        // CHASIS (la más nueva) — $2.350.546 subvaluados en un solo viaje que
+        // después la facturación cobraba bien. El teórico tiene que anticipar
+        // lo que se va a facturar, no otra cosa.
+        const tarifa = tarifaParaFecha(
+          tarifas, t.empresa_id, t.cantera_id, t.deposito_id ?? null,
+          t.fecha_descarga, unidadDelCamion(camiones, t.camion_id),
+        )
         if (tarifa > 0) {
           ingreso = tarifa * ton
         } else {
@@ -219,6 +223,9 @@ export function calcularPerformance(
     totales.viajes    += 1
     totales.toneladas += ton
     totales.ingresos  += ingreso
+    if (via === 'cobrado')      totales.ingresos_cobrado      += ingreso
+    else if (via === 'por_cobrar') totales.ingresos_por_cobrar += ingreso
+    else                        totales.ingresos_sin_facturar += ingreso
   }
 
   // ── Helpers de atribución de MO al camión REAL del tramo ──

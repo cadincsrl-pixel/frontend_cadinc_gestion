@@ -16,7 +16,7 @@
 import { describe, it, expect } from 'vitest'
 import { calcularPerformance } from '@/lib/utils/performance'
 import type {
-  Tramo, Cobro, TarifaEmpresaCantera, Liquidacion, Chofer, Ruta, RelevoLiquidado, Estadia,
+  Tramo, Cobro, TarifaEmpresaCantera, Liquidacion, Chofer, Ruta, RelevoLiquidado, Estadia, Camion,
 } from '@/types/domain.types'
 
 // ── Factories ────────────────────────────────────────────────────────────────
@@ -543,5 +543,124 @@ describe('estadías', () => {
     // Viaje: 1 día × 30.000 + 100 km × 150 = 45.000. Estadía: 200.000.
     expect(r.totales.costo_mo).toBe(45_000 + 200_000)
     expect(r.totales.costo_estadias).toBe(200_000)
+  })
+})
+
+// ── El ingreso teórico usa la MISMA escalera de tarifas que facturación ──────
+//
+// Caso real del 2026-07-29: el tramo 296 de Paramerica (TRACTOR, 35,32 t,
+// cantera 10 → depósito 13) se valuaba a $102.850/t — la tarifa CHASIS, que era
+// la más nueva — en vez de los $169.400/t a los que después se facturaba:
+// $2.350.546 subvaluados en un solo viaje. La búsqueda vieja ignoraba el
+// depósito y el tipo de camión.
+
+describe('ingreso teórico con la escalera de facturación', () => {
+  const EMP = 7, CANT = 10, DEP = 13
+  const TARIFAS = [
+    // General (sin unidad): $169.400 desde el 26/06.
+    { id: 19, empresa_id: EMP, cantera_id: CANT, deposito_id: DEP, tipo_unidad: null,
+      valor_ton: 169_400, vigente_desde: '2026-06-26' },
+    // Chasis (más NUEVA): $102.850 desde el 29/06 — la trampa del caso real.
+    { id: 21, empresa_id: EMP, cantera_id: CANT, deposito_id: DEP, tipo_unidad: 'chasis',
+      valor_ton: 102_850, vigente_desde: '2026-06-29' },
+  ] as TarifaEmpresaCantera[]
+
+  const CAMIONES = [
+    { id: 3, patente: 'AH568GK', categoria: 'tractor' },
+    { id: 9, patente: 'CHASIS1', categoria: 'chasis' },
+  ] as Camion[]
+
+  function viaje(camionId: number) {
+    return mkTramo({
+      id: 296, chofer_id: 10, camion_id: camionId,
+      empresa_id: EMP, cantera_id: CANT, deposito_id: DEP,
+      fecha_descarga: '2026-07-27', toneladas_descarga: 35.32,
+    })
+  }
+
+  it('CASO REAL 296: un TRACTOR se valúa a la tarifa general, no a la chasis más nueva', () => {
+    const r = calcularPerformance(
+      [viaje(3)], SIN_COBROS, TARIFAS, '2026-07-01', '2026-07-31',
+      [], [], [], [], [], CAMIONES,
+    )
+    // 35,32 × 169.400 = 5.983.208 (antes daba 35,32 × 102.850 = 3.632.662)
+    expect(r.totales.ingresos).toBeCloseTo(35.32 * 169_400, 6)
+  })
+
+  it('un CHASIS sí se valúa a la tarifa chasis', () => {
+    const r = calcularPerformance(
+      [viaje(9)], SIN_COBROS, TARIFAS, '2026-07-01', '2026-07-31',
+      [], [], [], [], [], CAMIONES,
+    )
+    expect(r.totales.ingresos).toBeCloseTo(35.32 * 102_850, 6)
+  })
+
+  it('sin lista de camiones cae a batea (general), nunca a chasis', () => {
+    const r = calcularPerformance(
+      [viaje(3)], SIN_COBROS, TARIFAS, '2026-07-01', '2026-07-31',
+      [], [], [], [], [], [],
+    )
+    expect(r.totales.ingresos).toBeCloseTo(35.32 * 169_400, 6)
+  })
+
+  it('CASO REAL 275: la tarifa de OTRO depósito no se aplica', () => {
+    // Cantera 15: general $77.077 (01/07) y una específica del depósito 19 a
+    // $86.601,52 (20/07, más nueva). El viaje fue al depósito 18 → general.
+    const tarifas275 = [
+      { id: 25, empresa_id: 11, cantera_id: 15, deposito_id: null, tipo_unidad: null,
+        valor_ton: 77_077, vigente_desde: '2026-07-01' },
+      { id: 28, empresa_id: 11, cantera_id: 15, deposito_id: 19, tipo_unidad: null,
+        valor_ton: 86_601.52, vigente_desde: '2026-07-20' },
+    ] as TarifaEmpresaCantera[]
+    const t = mkTramo({
+      id: 275, chofer_id: 10, camion_id: 3,
+      empresa_id: 11, cantera_id: 15, deposito_id: 18,
+      fecha_descarga: '2026-07-20', toneladas_descarga: 25.96,
+    })
+    const r = calcularPerformance(
+      [t], SIN_COBROS, tarifas275, '2026-07-01', '2026-07-31',
+      [], [], [], [], [], CAMIONES,
+    )
+    expect(r.totales.ingresos).toBeCloseTo(25.96 * 77_077, 6)
+  })
+})
+
+// ── Desglose de ingresos: cobrado / por cobrar / sin facturar ────────────────
+
+describe('desglose de ingresos', () => {
+  const TARIFA = [{
+    id: 1, empresa_id: 7, cantera_id: 10, deposito_id: null, tipo_unidad: null,
+    valor_ton: 100_000, vigente_desde: '2026-07-01',
+  }] as TarifaEmpresaCantera[]
+
+  function tramoCon(id: number, cobroId: number | null) {
+    return mkTramo({
+      id, chofer_id: 10, camion_id: 3,
+      empresa_id: 7, cantera_id: 10,
+      fecha_descarga: '2026-07-10', toneladas_descarga: 10,
+      cobro_id: cobroId,
+    })
+  }
+  const COBROS = [
+    { id: 1, empresa_id: 7, fecha_desde: '2026-07-01', fecha_hasta: '2026-07-31',
+      toneladas_totales: 10, total: 1_210_000, estado: 'cobrado',
+      obs: null, factura_nro: null, factura_fecha: null, created_at: '' },
+    { id: 2, empresa_id: 7, fecha_desde: '2026-07-01', fecha_hasta: '2026-07-31',
+      toneladas_totales: 10, total: 1_210_000, estado: 'pendiente',
+      obs: null, factura_nro: null, factura_fecha: null, created_at: '' },
+  ] as Cobro[]
+
+  it('cada viaje cae en su bucket y los tres suman el total', () => {
+    const r = calcularPerformance(
+      [tramoCon(1, 1), tramoCon(2, 2), tramoCon(3, null)],
+      COBROS, TARIFA, '2026-07-01', '2026-07-31',
+      [], [], [], [], [], [],
+    )
+    expect(r.totales.ingresos_cobrado).toBe(1_210_000)       // cobro 1, cobrado
+    expect(r.totales.ingresos_por_cobrar).toBe(1_210_000)    // cobro 2, pendiente
+    expect(r.totales.ingresos_sin_facturar).toBe(1_000_000)  // 10 t × 100.000 teórico
+    expect(
+      r.totales.ingresos_cobrado + r.totales.ingresos_por_cobrar + r.totales.ingresos_sin_facturar,
+    ).toBeCloseTo(r.totales.ingresos, 6)
   })
 })
