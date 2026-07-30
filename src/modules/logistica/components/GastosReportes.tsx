@@ -9,7 +9,7 @@ import {
 import { calcularPerformance } from '@/lib/utils/performance'
 import { useRelevosLiquidados } from '../hooks/useTramoRelevo'
 import { useRentabilidadParametros } from '../hooks/useRentabilidad'
-import { amortizacionEquipos } from '@/lib/utils/amortizacion'
+import { amortizacionEquipos, cargasSocialesPeriodo } from '@/lib/utils/amortizacion'
 import { diasEntreFechas } from '@/modules/logistica/utils/liquidacion-math'
 import { Button } from '@/components/ui/Button'
 import { InfoPopover } from '@/components/ui/InfoPopover'
@@ -165,6 +165,18 @@ export function GastosReportes() {
     () => (camiones as Camion[]).filter(c => c.es_propio !== false && c.estado !== 'inactivo').length,
     [camiones],
   )
+  // Cargas sociales: por chofer propio en nómina activa. Es el único costo
+  // laboral que no entra ni por Gastos ni por Mano de obra.
+  const choferesPropiosActivos = useMemo(
+    () => (choferes as Chofer[]).filter(c => c.es_propio !== false && c.estado === 'activo').length,
+    [choferes],
+  )
+  const cargasSociales = useMemo(() => cargasSocialesPeriodo(
+    Number(paramsRentabilidad?.cargas_sociales_mensual ?? 0),
+    desde && hasta ? diasEntreFechas(desde, hasta) : 0,
+    choferesPropiosActivos,
+  ), [paramsRentabilidad, desde, hasta, choferesPropiosActivos])
+
   const amort = useMemo(() => amortizacionEquipos(
     paramsRentabilidad ? {
       valor_tractor_usd:          Number(paramsRentabilidad.valor_tractor_usd),
@@ -187,8 +199,9 @@ export function GastosReportes() {
   const margenReal         = margenBruto - costoMOPeriodo
   const pctMargen          = facturacionPeriodo > 0 ? (margenBruto / facturacionPeriodo) * 100 : null
   const pctMargenReal      = facturacionPeriodo > 0 ? (margenReal  / facturacionPeriodo) * 100 : null
-  const margenEconomico    = amort ? margenReal - amort.total : null
-  const pctMargenEconomico = amort && facturacionPeriodo > 0 ? ((margenReal - amort.total) / facturacionPeriodo) * 100 : null
+  const costosNoCargados   = amort ? amort.total + cargasSociales : null
+  const margenEconomico    = costosNoCargados != null ? margenReal - costosNoCargados : null
+  const pctMargenEconomico = margenEconomico != null && facturacionPeriodo > 0 ? (margenEconomico / facturacionPeriodo) * 100 : null
 
   return (
     <div className="flex flex-col gap-4">
@@ -365,7 +378,7 @@ export function GastosReportes() {
                   titulo="Margen real"
                   incluye={['Margen bruto − Costo de mano de obra']}
                   noIncluye={[
-                    'La amortización del camión y la batea (el desgaste del equipo): eso vive solo en el simulador de Rentabilidad — hoy son ~$5M/mes que este margen no descuenta',
+                    'La amortización de los equipos ni las cargas sociales (~$9M/mes hoy): eso lo descuenta el Margen económico, la tarjeta de al lado',
                   ]}
                   iva="Mezcla: facturación y gastos con IVA, mano de obra sin. Leelo como caja operativa."
                   ojo="No comparable con el simulador de Rentabilidad, que trabaja todo neto de IVA y amortiza los equipos."
@@ -380,9 +393,9 @@ export function GastosReportes() {
                 <InfoPopover
                   titulo="Margen económico"
                   incluye={[
-                    'Margen real − amortización de los equipos',
-                    'Tractores: por los km REALES del período (valor − residual, sobre la vida útil en km)',
-                    'Bateas: por los días del período (valor sobre la vida útil en años)',
+                    'Margen real − amortización de equipos − cargas sociales',
+                    'Tractores: por los km REALES del período · Bateas: por los días',
+                    'Cargas sociales: por chofer propio activo, prorrateadas por día — es el único costo laboral que no entra ni por Gastos ni por Mano de obra',
                   ]}
                   noIncluye={[
                     'Cubiertas, services, seguros y patente: ya están en Gastos como comprobantes reales — acá irían dos veces',
@@ -392,7 +405,8 @@ export function GastosReportes() {
                   extra={amort && (
                     <div className="text-[11px] font-mono text-gris-dark border-t border-gris-mid pt-1.5 mt-0.5">
                       🚛 {fmt$(amort.tractores)} tractores ({fmtInt(Math.round(kmPeriodo))} km)<br />
-                      🛻 {fmt$(amort.bateas)} bateas ({camionesPropios} equipos)
+                      🛻 {fmt$(amort.bateas)} bateas ({camionesPropios} equipos)<br />
+                      👥 {fmt$(cargasSociales)} cargas sociales ({choferesPropiosActivos} choferes)
                     </div>
                   )}
                 />
@@ -434,6 +448,22 @@ export function GastosReportes() {
               }
             />
           </div>
+
+          {/* Conceptos que deberían aparecer TODOS los meses. Si el período es
+              de un mes o más y no hay ni un gasto de seguro, el margen real
+              queda optimista en silencio — pedido del dueño 2026-07-30. */}
+          {(() => {
+            const dias = desde && hasta ? diasEntreFechas(desde, hasta) : 0
+            if (dias < 28) return null
+            const haySeguro = (porCat ?? []).some(c => c.codigo === 'seguro' && c.total > 0)
+            if (haySeguro) return null
+            return (
+              <div className="bg-amber-50 border border-amber-200 rounded-card p-3 text-sm text-amber-900">
+                ⚠ En este período no hay <b>ningún gasto de Seguro</b> cargado. Si la póliza del mes
+                no se cargó, el margen real queda optimista — cargala en Gastos con su comprobante.
+              </div>
+            )
+          })()}
 
           {resumen.pendientes_aprobacion > 0 && (
             <div className="bg-amber-50 border border-amber-200 rounded-card p-3 text-sm text-amber-900">

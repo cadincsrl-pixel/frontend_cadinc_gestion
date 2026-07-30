@@ -4,7 +4,7 @@
 // reserva para reponer los camiones — no ajustes el número sin entender.
 
 import { describe, it, expect } from 'vitest'
-import { amortizacionEquipos } from '@/lib/utils/amortizacion'
+import { amortizacionEquipos, cargasSocialesPeriodo } from '@/lib/utils/amortizacion'
 
 // Parámetros vigentes en rentabilidad_parametros (30/07/2026).
 const PARAMS = {
@@ -50,5 +50,25 @@ describe('amortizacionEquipos', () => {
 
   it('sin parámetros → null', () => {
     expect(amortizacionEquipos(null, 48_779, 31, 5)).toBeNull()
+  })
+})
+
+describe('cargasSocialesPeriodo', () => {
+  it('CASO REAL julio: $700.000/chofer × 6 choferes × 31 días', () => {
+    // 700.000 × 12 / 365 = 23.013,6986…/día por chofer
+    // × 31 días × 6 choferes = 4.280.547,945…
+    const v = cargasSocialesPeriodo(700_000, 31, 6)
+    expect(v).toBeCloseTo(700_000 * 12 / 365 * 31 * 6, 2)
+    expect(v).toBeGreaterThan(4_280_000)
+    expect(v).toBeLessThan(4_281_000)
+  })
+
+  it('un año completo devuelve exactamente 12 meses por chofer', () => {
+    expect(cargasSocialesPeriodo(700_000, 365, 1)).toBeCloseTo(8_400_000, 6)
+  })
+
+  it('sin parámetro o sin choferes → 0', () => {
+    expect(cargasSocialesPeriodo(0, 31, 6)).toBe(0)
+    expect(cargasSocialesPeriodo(700_000, 31, 0)).toBe(0)
   })
 })

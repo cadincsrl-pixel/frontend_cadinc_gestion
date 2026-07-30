@@ -47,6 +47,25 @@ export interface AmortizacionEquipos {
  * cambio en 0, vidas útiles en 0): mejor no mostrar el margen económico que
  * mostrar uno falso — el mismo criterio 'sin_datos' del simulador.
  */
+/**
+ * Cargas sociales del período: el ÚNICO costo laboral que no entra por ningún
+ * lado — no existe categoría de gasto y la mano de obra del reporte es lo
+ * pagado al chofer de bolsillo (básico + km + estadías), no lo aportado a
+ * AFIP/ART. Verificado el 2026-07-30: seguros, patente y lavadero SÍ se cargan
+ * como gastos reales, así que esos NO van como teóricos (doble conteo).
+ *
+ * `cargasMensual` es por chofer (parámetro del simulador); se prorratea por
+ * día de calendario y se multiplica por los choferes propios activos.
+ */
+export function cargasSocialesPeriodo(
+  cargasMensual: number,
+  diasPeriodo: number,
+  choferesActivos: number,
+): number {
+  if (!(cargasMensual > 0)) return 0
+  return cargasMensual * 12 / 365 * Math.max(0, diasPeriodo) * Math.max(0, choferesActivos)
+}
+
 export function amortizacionEquipos(
   params: ParametrosAmortizacion | null | undefined,
   kmPeriodo: number,
