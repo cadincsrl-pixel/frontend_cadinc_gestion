@@ -8,10 +8,13 @@ import {
 } from '../hooks/useLogistica'
 import { calcularPerformance } from '@/lib/utils/performance'
 import { useRelevosLiquidados } from '../hooks/useTramoRelevo'
+import { useRentabilidadParametros } from '../hooks/useRentabilidad'
+import { amortizacionEquipos } from '@/lib/utils/amortizacion'
+import { diasEntreFechas } from '@/modules/logistica/utils/liquidacion-math'
 import { Button } from '@/components/ui/Button'
 import { InfoPopover } from '@/components/ui/InfoPopover'
 import { Input }  from '@/components/ui/Input'
-import type { Camion, Chofer, Tramo, Liquidacion, Estadia } from '@/types/domain.types'
+import type { Camion, Chofer, Tramo, Liquidacion, Estadia, Ruta } from '@/types/domain.types'
 import { toISO } from '@/lib/utils/dates'
 
 const fmt$ = (n: number | string) => `$ ${Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -141,6 +144,41 @@ export function GastosReportes() {
     return m
   }, [choferes])
 
+  // ── Margen económico: margen real − amortización de equipos ──────
+  // Los parámetros salen del simulador de Rentabilidad; los km y días son los
+  // REALES del período. Cubiertas/services/seguros NO van acá: ya entran como
+  // gastos reales (meterlos sería doble conteo).
+  const { data: paramsRentabilidad } = useRentabilidadParametros()
+  const kmPeriodo = useMemo(() => {
+    const kmRuta = new Map<string, number>()
+    for (const r of rutas as Ruta[]) kmRuta.set(`${r.cantera_id}->${r.deposito_id}`, r.km_ida_vuelta)
+    return tramosPropios.reduce((s2, t) => {
+      if (t.estado !== 'completado') return s2
+      const f = (t.tipo === 'cargado' ? (t.fecha_descarga ?? t.fecha_carga) : t.fecha_vacio) ?? null
+      if (!f || f < desde || f > hasta) return s2
+      return s2 + (kmRuta.get(`${t.cantera_id}->${t.deposito_id}`) ?? 0)
+    }, 0)
+  }, [tramosPropios, rutas, desde, hasta])
+  // Equipos que amortizan: propios y no dados de baja. Uno en mantenimiento
+  // sigue amortizando (la batea se desgasta por tiempo, no por uso).
+  const camionesPropios = useMemo(
+    () => (camiones as Camion[]).filter(c => c.es_propio !== false && c.estado !== 'inactivo').length,
+    [camiones],
+  )
+  const amort = useMemo(() => amortizacionEquipos(
+    paramsRentabilidad ? {
+      valor_tractor_usd:          Number(paramsRentabilidad.valor_tractor_usd),
+      valor_residual_tractor_usd: Number(paramsRentabilidad.valor_residual_tractor_usd),
+      vida_util_tractor_km:       Number(paramsRentabilidad.vida_util_tractor_km),
+      valor_semirremolque_usd:    Number(paramsRentabilidad.valor_semirremolque_usd),
+      vida_util_batea_anios:      Number(paramsRentabilidad.vida_util_batea_anios),
+      tipo_cambio_usd_ars:        Number(paramsRentabilidad.tipo_cambio_usd_ars),
+    } : null,
+    kmPeriodo,
+    desde && hasta ? diasEntreFechas(desde, hasta) : 0,
+    camionesPropios,
+  ), [paramsRentabilidad, kmPeriodo, desde, hasta, camionesPropios])
+
   // KPIs cruzados: facturación, margen, % margen.
   const facturacionPeriodo = performance.totales.ingresos
   const gastosPeriodo      = resumen?.total ?? 0
@@ -149,6 +187,8 @@ export function GastosReportes() {
   const margenReal         = margenBruto - costoMOPeriodo
   const pctMargen          = facturacionPeriodo > 0 ? (margenBruto / facturacionPeriodo) * 100 : null
   const pctMargenReal      = facturacionPeriodo > 0 ? (margenReal  / facturacionPeriodo) * 100 : null
+  const margenEconomico    = amort ? margenReal - amort.total : null
+  const pctMargenEconomico = amort && facturacionPeriodo > 0 ? ((margenReal - amort.total) / facturacionPeriodo) * 100 : null
 
   return (
     <div className="flex flex-col gap-4">
@@ -302,7 +342,7 @@ export function GastosReportes() {
             />
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
             <Kpi
               label="Margen bruto"
               value={fmt$(margenBruto)}
@@ -330,6 +370,43 @@ export function GastosReportes() {
                   iva="Mezcla: facturación y gastos con IVA, mano de obra sin. Leelo como caja operativa."
                   ojo="No comparable con el simulador de Rentabilidad, que trabaja todo neto de IVA y amortiza los equipos."
                 />
+              }
+            />
+            <Kpi
+              label="Margen económico"
+              value={margenEconomico == null ? '—' : fmt$(margenEconomico)}
+              accent={margenEconomico != null && margenEconomico >= 0 ? 'verde' : 'naranja'}
+              info={
+                <InfoPopover
+                  titulo="Margen económico"
+                  incluye={[
+                    'Margen real − amortización de los equipos',
+                    'Tractores: por los km REALES del período (valor − residual, sobre la vida útil en km)',
+                    'Bateas: por los días del período (valor sobre la vida útil en años)',
+                  ]}
+                  noIncluye={[
+                    'Cubiertas, services, seguros y patente: ya están en Gastos como comprobantes reales — acá irían dos veces',
+                  ]}
+                  iva="La amortización se calcula sin IVA (valores USD × tipo de cambio), igual que en el simulador."
+                  ojo="Es un ESTIMADO: usa los parámetros del simulador de Rentabilidad (valores USD, vidas útiles, tipo de cambio). Si esos parámetros están viejos, este margen hereda el error."
+                  extra={amort && (
+                    <div className="text-[11px] font-mono text-gris-dark border-t border-gris-mid pt-1.5 mt-0.5">
+                      🚛 {fmt$(amort.tractores)} tractores ({fmtInt(Math.round(kmPeriodo))} km)<br />
+                      🛻 {fmt$(amort.bateas)} bateas ({camionesPropios} equipos)
+                    </div>
+                  )}
+                />
+              }
+              sub={
+                pctMargenEconomico != null ? (
+                  <div className="mt-1.5 text-[10px] font-mono text-gris-dark leading-tight">
+                    = {pctMargenEconomico.toFixed(1)}% de la facturación
+                  </div>
+                ) : (
+                  <div className="mt-1.5 text-[10px] text-gris-dark leading-tight">
+                    Faltan parámetros en Rentabilidad (tipo de cambio o vidas útiles).
+                  </div>
+                )
               }
             />
             <Kpi
