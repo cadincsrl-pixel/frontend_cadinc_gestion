@@ -18,6 +18,7 @@ import { useForm }  from 'react-hook-form'
 import { usePermisos } from '@/hooks/usePermisos'
 import { uploadRemitoImg } from '@/lib/utils/upload'
 import { toISO } from '@/lib/utils/dates'
+import { exportViajesExcel } from '../utils/viajes-export'
 import { useTramosEnRuta } from '../hooks/useEnRuta'
 import { useTramoRelevo } from '../hooks/useTramoRelevo'
 import { RelevoSection } from './RelevoSection'
@@ -218,6 +219,10 @@ export function ViajesTab() {
   // null = usar la sugerencia. Se resetea al abrir/cerrar el modal.
   const [choferVueltaOverride, setChoferVueltaOverride] = useState<string | null>(null)
   const [filtChofer,    setFiltChofer]    = useState('')
+  // Filtro multi de camiones (vacío = todos). Pedido del dueño 2026-07-30:
+  // "reporte de los viajes de determinado período de los camiones que yo
+  // seleccione" — los chips seleccionan, el export baja lo filtrado.
+  const [filtCamiones,  setFiltCamiones]  = useState<Set<number>>(new Set())
   const [filtTipo,      setFiltTipo]      = useState('cargado')
   const [filtEstado,    setFiltEstado]    = useState('en_curso')
   const [filtDesde,     setFiltDesde]     = useState('')
@@ -362,6 +367,7 @@ export function ViajesTab() {
 
   const filtered = tramos.filter((t: Tramo) => {
     if (filtChofer && String(t.chofer_id) !== filtChofer) return false
+    if (filtCamiones.size > 0 && !filtCamiones.has(t.camion_id)) return false
     if (filtTipo   && t.tipo   !== filtTipo)   return false
     if (filtEstado && t.estado !== filtEstado) return false
     if (filtDesde || filtHasta) {
@@ -938,6 +944,41 @@ export function ViajesTab() {
             />
           </div>
         </div>
+
+        {/* Camiones: chips multi-selección (ninguno tildado = todos) */}
+        <div className="flex flex-col gap-1 w-full sm:w-auto">
+          <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Camiones</label>
+          <div className="flex gap-1.5 flex-wrap">
+            {camiones.map(c => {
+              const activo = filtCamiones.has(c.id)
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setFiltCamiones(prev => {
+                    const next = new Set(prev)
+                    if (next.has(c.id)) next.delete(c.id); else next.add(c.id)
+                    return next
+                  })}
+                  className={`text-xs font-bold font-mono px-2.5 py-1.5 rounded-full border-[1.5px] transition-colors ${
+                    activo ? 'bg-azul text-white border-azul' : 'bg-white border-gris-mid text-gris-dark hover:border-azul'
+                  }`}
+                >
+                  {c.patente}
+                </button>
+              )
+            })}
+            {filtCamiones.size > 0 && (
+              <button
+                type="button"
+                onClick={() => setFiltCamiones(new Set())}
+                className="text-xs px-2 py-1.5 text-gris-dark hover:text-rojo"
+              >
+                ✕ Todos
+              </button>
+            )}
+          </div>
+        </div>
         <div className="flex items-center gap-2 flex-wrap sm:ml-auto">
           {(filtDesde || filtHasta) && (
             <button
@@ -949,6 +990,20 @@ export function ViajesTab() {
               ✕ Fechas
             </button>
           )}
+          <Button
+            variant="secondary" size="sm"
+            disabled={filtered.length === 0}
+            title="Baja a Excel exactamente lo que estás viendo: mismo período, mismos camiones, mismos filtros."
+            onClick={() => exportViajesExcel({
+              tramos: filtered,
+              choferes, camiones, canteras, depositos, empresas, rutas,
+              desde: filtDesde || undefined,
+              hasta: filtHasta || undefined,
+              camionesSel: [...filtCamiones].map(id => camiones.find(c => c.id === id)?.patente ?? `#${id}`),
+            })}
+          >
+            📊 Exportar
+          </Button>
           <Button variant="secondary" size="sm" disabled={!puedeCrear} onClick={() => setModalSolicitud(true)}>
             📋 Solicitud de turno
           </Button>
@@ -962,6 +1017,17 @@ export function ViajesTab() {
         open={modalSolicitud}
         onClose={() => setModalSolicitud(false)}
       />
+
+      {/* Resumen de lo filtrado: el reporte en pantalla. Toneladas = descarga
+          con fallback a carga (mismo criterio que Reportes); km = ruta. */}
+      {filtered.length > 0 && (
+        <div className="text-xs text-gris-dark font-mono px-1">
+          {filtered.filter(t => t.tipo === 'cargado').length} viajes cargados
+          {filtered.some(t => t.tipo === 'vacio') && <> · {filtered.filter(t => t.tipo === 'vacio').length} vacíos</>}
+          {' · '}{Math.round(filtered.reduce((s2, t) => s2 + Number(t.toneladas_descarga ?? t.toneladas_carga ?? 0), 0)).toLocaleString('es-AR')} t
+          {' · '}{Math.round(filtered.reduce((s2, t) => s2 + (getKm(t) ?? 0), 0)).toLocaleString('es-AR')} km
+        </div>
+      )}
 
       {/* Lista */}
       {filtered.length === 0 ? (
