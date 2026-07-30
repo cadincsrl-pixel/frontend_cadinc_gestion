@@ -228,6 +228,7 @@ export function GastosReportes() {
                     'Sueldos de choferes — están en Mano de obra',
                   ]}
                   iva="Total pagado del comprobante: con IVA cuando hay factura."
+                  ojo="Entran por fecha de pago: una compra grande (ej. 8 cubiertas en mayo) pega entera en su mes, sin prorratear."
                 />
               }
             />
@@ -323,8 +324,11 @@ export function GastosReportes() {
                 <InfoPopover
                   titulo="Margen real"
                   incluye={['Margen bruto − Costo de mano de obra']}
+                  noIncluye={[
+                    'La amortización del camión y la batea (el desgaste del equipo): eso vive solo en el simulador de Rentabilidad — hoy son ~$5M/mes que este margen no descuenta',
+                  ]}
                   iva="Mezcla: facturación y gastos con IVA, mano de obra sin. Leelo como caja operativa."
-                  ojo="No comparable con el simulador de Rentabilidad, que trabaja todo neto de IVA."
+                  ojo="No comparable con el simulador de Rentabilidad, que trabaja todo neto de IVA y amortiza los equipos."
                 />
               }
             />
