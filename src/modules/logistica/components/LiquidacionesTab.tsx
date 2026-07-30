@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import {
   useLiquidaciones, useAdelantos, useChoferes, useCamiones, useTramos, useRutas, useCanteras, useDepositos,
   useCreateLiquidacion, useUpdateLiquidacion, useCerrarLiquidacion, useReabrirLiquidacion, useDeleteLiquidacion,
-  useAnularLiquidacion,
+  useAnularLiquidacion, useTarifasEmpresa,
   useCreateAdelanto, useUpdateAdelanto, useDeleteAdelanto, useSetTarifasChofer,
   useEstadias, useCreateEstadia, useDeleteEstadia,
   useGastosReintegrosPendientes, useReintegrosPendientesTodos,
@@ -27,13 +27,13 @@ import { apiGet } from '@/lib/api/client'
 import { usePermisos } from '@/hooks/usePermisos'
 import type { ChoferConHist } from '@/lib/utils/tarifas-chofer'
 import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
-import type { Chofer, Tramo, Adelanto, AdelantoFormaPago, Estadia, Ruta, RelevoPendiente, RelevoLiquidado, CerrarLiquidacionResp } from '@/types/domain.types'
+import type { Chofer, Tramo, Adelanto, AdelantoFormaPago, Estadia, Ruta, RelevoPendiente, RelevoLiquidado, CerrarLiquidacionResp, TarifaEmpresaCantera, Camion } from '@/types/domain.types'
 import { exportLiquidacionExcel } from '@/lib/utils/liquidacion-export'
 import { toISO } from '@/lib/utils/dates'
 import {
   diasEntreFechas, fechaTramo, tramoEnRango, kmTramo,
   fechaRelevo, kmRelevo, relevoEnRango, rangoConRelevos, diasConRelevos,
-  calcularTotalesLiquidacion,
+  calcularTotalesLiquidacion, calcularBasePctViajes, calcularTotalesLiquidacionPct,
 } from '../utils/liquidacion-math'
 
 function fmtM(n: number) {
@@ -139,6 +139,9 @@ export function LiquidacionesTab() {
   const { data: estadias      = [] } = useEstadias()
   const { data: choferes      = [] } = useChoferes()
   const { data: camiones      = [] } = useCamiones()
+  // Tarifas empresa-cantera: la modalidad pct valúa los viajes con la MISMA
+  // escalera que facturación.
+  const { data: tarifasEmpresa = [] } = useTarifasEmpresa()
   const { data: tramos        = [] } = useTramos()
   const { data: rutas         = [] } = useRutas()
   const { data: canteras      = [] } = useCanteras()
@@ -229,6 +232,7 @@ export function LiquidacionesTab() {
   const watchDesde       = formLiq.watch('desde')
   const watchHasta       = formLiq.watch('hasta')
   const watchBasico      = formLiq.watch('basico_dia')
+  const watchPct         = formLiq.watch('pct_facturacion')
   const watchKmCargado   = formLiq.watch('precio_km_cargado')
   const watchKmVacio     = formLiq.watch('precio_km_vacio')
 
@@ -359,6 +363,27 @@ export function LiquidacionesTab() {
     const descuentos    = mis_adelantos.reduce((s, a) => s + a.monto, 0)
     const reintegros    = mis_reintegros.reduce((s, g) => s + Number(g.monto), 0)
     const total_estadias = mis_estadias.reduce((s, e) => s + Number(e.total), 0)
+    // ── Modalidad pct: el saldo pendiente es jornal + comisión, sin km ──
+    if ((chofer.modalidad_pago ?? 'km_jornal') === 'pct') {
+      const base = calcularBasePctViajes(mis_tramos, tarifasEmpresa as TarifaEmpresaCantera[], camiones as Camion[])
+      const totPct = calcularTotalesLiquidacionPct({
+        dias, jornal_dia: chofer.basico_dia ?? 0,
+        base_neta: base.base_neta, pct: chofer.pct_facturacion ?? 0,
+        descuentos, reintegros, total_estadias,
+      })
+      return {
+        mis_tramos, mis_relevos, mis_adelantos, mis_reintegros, mis_estadias, dias,
+        // En pct lo bloqueante es no tener % cargado (el jornal es opcional).
+        sinBasico: !(chofer.pct_facturacion ?? 0),
+        subtotal_bas: totPct.subtotal_bas,
+        km_cargados: 0, km_vacios: 0, km_totales: 0,
+        subtotal_km_cargado: 0, subtotal_km_vacio: 0, subtotal_km: 0,
+        subtotal: totPct.subtotal_bas + totPct.subtotal_pct,
+        descuentos, reintegros, total_estadias,
+        saldo: totPct.neto,
+      }
+    }
+
     // Fórmula canónica compartida con calcularPreview (y testeada).
     const tot = calcularTotalesLiquidacion({
       dias, basico_dia: chofer.basico_dia ?? 0,
@@ -382,8 +407,12 @@ export function LiquidacionesTab() {
 
   function abrirLiquidar(chofer: Chofer) {
     setChoferLiq(chofer)
+    const esPct = (chofer.modalidad_pago ?? 'km_jornal') === 'pct'
     const mis_tramos  = tramosPendientes.filter(t => t.chofer_id === chofer.id)
-    const mis_relevos = relevos.filter(r => r.chofer_id === chofer.id && r.tramo)
+    // Relevos + modalidad pct: sin regla definida todavía (¿el % se parte por
+    // pata?). Se dejan destildados y el submit los bloquea — mejor frenar que
+    // inventar un reparto.
+    const mis_relevos = esPct ? [] : relevos.filter(r => r.chofer_id === chofer.id && r.tramo)
     setSelTramos(mis_tramos.map(t => t.id))
     setSelRelevos(mis_relevos.map(r => r.id))
     setSelAdelant(adelantosPendientes.filter(a => a.chofer_id === chofer.id).map(a => a.id))
@@ -394,6 +423,7 @@ export function LiquidacionesTab() {
       basico_dia:        chofer.basico_dia ?? 0,
       precio_km_cargado: chofer.precio_km_cargado ?? 0,
       precio_km_vacio:   chofer.precio_km_vacio ?? 0,
+      pct_facturacion:   chofer.pct_facturacion ?? 0,
       desde,
       hasta,
       // Vigencia por defecto: hoy. Un aumento se aplica de acá en adelante; si
@@ -412,6 +442,8 @@ export function LiquidacionesTab() {
       descuentos: 0, reintegros: 0, total_estadias: 0,
       precio_km_cargado: 0, precio_km_vacio: 0, precio_km: 0,
       neto: 0,
+      modalidad: 'km_jornal' as 'km_jornal' | 'pct',
+      pct: 0, base_neta: 0, subtotal_pct: 0, sin_tarifa: [] as Tramo[],
     }
     if (!choferLiq) return empty
     const basico_dia       = parseFloat(watchBasico)    || 0
@@ -439,6 +471,26 @@ export function LiquidacionesTab() {
     const descuentos       = adelantosPendientes.filter(a => selAdelant.includes(a.id)).reduce((s, a) => s + a.monto, 0)
     const reintegros       = gastosReintegro.filter(g => selGastos.includes(g.id)).reduce((s, g) => s + Number(g.monto), 0)
     const total_estadias   = estadiasPendientes.filter(e => selEstadias.includes(e.id)).reduce((s, e) => s + Number(e.total), 0)
+
+    // ── Modalidad pct: % de la facturación neta de sus viajes ──
+    if ((choferLiq.modalidad_pago ?? 'km_jornal') === 'pct') {
+      const pct  = parseFloat(String(watchPct)) || 0
+      const base = calcularBasePctViajes(tramosSelec, tarifasEmpresa as TarifaEmpresaCantera[], camiones as Camion[])
+      const totPct = calcularTotalesLiquidacionPct({
+        dias, jornal_dia: basico_dia, base_neta: base.base_neta, pct,
+        descuentos, reintegros, total_estadias,
+      })
+      return {
+        ...empty,
+        dias, basico_dia, subtotal_bas: totPct.subtotal_bas,
+        descuentos, reintegros, total_estadias,
+        neto: totPct.neto,
+        modalidad: 'pct' as const,
+        pct, base_neta: base.base_neta, subtotal_pct: totPct.subtotal_pct,
+        sin_tarifa: base.sin_tarifa,
+      }
+    }
+
     // Fórmula canónica compartida con resumenChofer (y testeada).
     const tot = calcularTotalesLiquidacion({
       dias, basico_dia,
@@ -457,6 +509,8 @@ export function LiquidacionesTab() {
       precio_km_vacio:   precioKmVacio,
       precio_km: tot.precio_km,
       neto: tot.neto,
+      modalidad: 'km_jornal' as const,
+      pct: 0, base_neta: 0, subtotal_pct: 0, sin_tarifa: [] as Tramo[],
     }
   }
 
@@ -471,14 +525,23 @@ export function LiquidacionesTab() {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(desde)) {
       toast('Poné desde qué fecha rigen estas tarifas', 'err'); return
     }
+    const esPct = (choferLiq.modalidad_pago ?? 'km_jornal') === 'pct'
     setTarifasChofer({
       id: choferLiq.id,
-      dto: {
-        desde,
-        basico_dia:        parseFloat(data.basico_dia)        || 0,
-        precio_km_cargado: parseFloat(data.precio_km_cargado) || 0,
-        precio_km_vacio:   parseFloat(data.precio_km_vacio)   || 0,
-      },
+      // En pct los inputs de km están ocultos: versionar jornal + %. Mandar
+      // los km del form igual re-versionaría valores que el usuario no vio.
+      dto: esPct
+        ? {
+            desde,
+            basico_dia:      parseFloat(data.basico_dia)      || 0,
+            pct_facturacion: parseFloat(data.pct_facturacion) || 0,
+          }
+        : {
+            desde,
+            basico_dia:        parseFloat(data.basico_dia)        || 0,
+            precio_km_cargado: parseFloat(data.precio_km_cargado) || 0,
+            precio_km_vacio:   parseFloat(data.precio_km_vacio)   || 0,
+          },
     }, {
       onSuccess: () => {
         toast(`✓ Tarifas vigentes desde ${fmtFecha(desde)}`, 'ok')
@@ -514,6 +577,10 @@ export function LiquidacionesTab() {
       precio_km_vacio:     preview.precio_km_vacio,
       subtotal_basico:     preview.subtotal_bas,
       subtotal_km:         preview.subtotal_km,
+      modalidad:           preview.modalidad,
+      pct_aplicado:        preview.pct,
+      base_neta:           preview.base_neta,
+      subtotal_pct:        preview.subtotal_pct,
       total_adelantos:     preview.descuentos,
       total_reintegros:    preview.reintegros,
       total_estadias:      preview.total_estadias,
@@ -701,6 +768,10 @@ export function LiquidacionesTab() {
       precio_km_cargado:   chofer.precio_km_cargado ?? 0,
       precio_km_vacio:     chofer.precio_km_vacio ?? 0,
       subtotal_basico:     liq.subtotal_basico ?? 0,
+      modalidad:           liq.modalidad ?? 'km_jornal',
+      pct_aplicado:        liq.pct_aplicado ?? null,
+      base_neta:           liq.base_neta ?? null,
+      subtotal_pct:        liq.subtotal_pct ?? null,
       subtotal_km:         liq.subtotal_km ?? 0,
       total_adelantos:     liq.total_adelantos ?? 0,
       total_reintegros:    liq.total_reintegros ?? 0,
@@ -756,11 +827,25 @@ export function LiquidacionesTab() {
 
   function handleLiquidar(data: any) {
     if (!choferLiq) return
+    const p = calcularPreview()
     const {
       dias, basico_dia, subtotal_bas,
       km_totales, subtotal_km, subtotal_km_cargado, subtotal_km_vacio,
       descuentos, reintegros, total_estadias, precio_km, neto,
-    } = calcularPreview()
+    } = p
+
+    if (p.modalidad === 'pct') {
+      // Un viaje sin tarifa se pagaría $0 en silencio: se frena y se avisa qué
+      // falta. La tarifa se carga en Facturación y se reintenta.
+      if (p.sin_tarifa.length > 0) {
+        toast(`No se puede liquidar: ${p.sin_tarifa.length} viaje${p.sin_tarifa.length !== 1 ? 's' : ''} sin tarifa cargada para su empresa/cantera/depósito. Cargala en Facturación → tarifas y volvé.`, 'err')
+        return
+      }
+      if (selRelevos.length > 0) {
+        toast('Relevos con modalidad % todavía no están soportados — destildalos y liquidalos aparte.', 'err')
+        return
+      }
+    }
     // El neto del preview es el mismo que se persiste como total_neto abajo,
     // así que el importe del aviso coincide con el del adelanto automático.
     if (!confirmarNetoNegativo(neto)) return
@@ -781,6 +866,11 @@ export function LiquidacionesTab() {
       total_estadias,
       total_neto:          neto,
       obs:                 data.obs,
+      // Modalidad pct: los tres componentes viajan juntos (la RPC lo valida).
+      modalidad:           p.modalidad,
+      ...(p.modalidad === 'pct'
+        ? { pct_aplicado: p.pct, base_neta: p.base_neta, subtotal_pct: p.subtotal_pct }
+        : {}),
       tramo_ids:           selTramos,
       tramo_chofer_ids:    selRelevos,
       adelanto_ids:        selAdelant,
@@ -1222,6 +1312,10 @@ export function LiquidacionesTab() {
                         dias:         liq.dias_trabajados,
                         basico_dia:   liq.basico_dia,
                         subtotal_bas: liq.subtotal_basico ?? 0,
+                        modalidad:    liq.modalidad ?? 'km_jornal',
+                        pct_aplicado: liq.pct_aplicado ?? null,
+                        base_neta:    liq.base_neta ?? null,
+                        subtotal_pct: liq.subtotal_pct ?? null,
                         km_totales:   km_cargados + km_vacios,
                         subtotal_km:  liq.subtotal_km ?? 0,
                         km_cargados, km_vacios,
@@ -1672,10 +1766,19 @@ export function LiquidacionesTab() {
                 </p>
               )}
             </div>
+            {(choferLiq.modalidad_pago ?? 'km_jornal') === 'pct' ? (
+              <Input
+                label="💰 % de facturación neta"
+                type="number" step="0.5" min="0" max="100"
+                hint="Sobre el neto sin IVA de sus viajes (ton × tarifa neta). El básico de arriba actúa como jornal opcional: dejalo en 0 si el arreglo es solo %."
+                {...formLiq.register('pct_facturacion')}
+              />
+            ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Input label="🚛 $/km cargado" type="number" step="1" {...formLiq.register('precio_km_cargado')} />
               <Input label="🔲 $/km vacío"   type="number" step="1" {...formLiq.register('precio_km_vacio')} />
             </div>
+            )}
 
             {/* Vigencia de las tarifas. Sin esto, guardar un aumento pisaba las
                 tarifas y re-valuaba retroactivamente todo el trabajo del chofer
@@ -1906,14 +2009,36 @@ export function LiquidacionesTab() {
               </div>
             )}
 
+            {/* Viajes sin tarifa: en pct BLOQUEAN la liquidación (pagarlos en
+                $0 en silencio sería robarle al chofer). */}
+            {preview.modalidad === 'pct' && preview.sin_tarifa.length > 0 && (
+              <div className="bg-rojo-light/60 border border-rojo/40 rounded-xl px-4 py-3 text-sm text-rojo">
+                ⚠ {preview.sin_tarifa.length} viaje{preview.sin_tarifa.length !== 1 ? 's' : ''} sin tarifa
+                cargada para su empresa/cantera/depósito — no se puede calcular la comisión.
+                Cargá la tarifa en Facturación o destildá esos viajes.
+              </div>
+            )}
+
             {/* Resumen */}
             <div className="bg-azul-light rounded-xl p-4">
               <div className="font-display text-lg tracking-wider text-azul mb-3">RESUMEN</div>
               <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1.5 text-xs sm:text-sm">
                 <span className="text-gris-dark">Días trabajados:</span>
                 <span className="font-mono font-bold">{preview.dias} días</span>
-                <span className="text-gris-dark">Básico ({preview.dias} días):</span>
-                <span className="font-mono font-bold text-azul-mid">{fmtM(preview.subtotal_bas)}</span>
+                {(preview.modalidad !== 'pct' || preview.subtotal_bas > 0) && (
+                  <>
+                    <span className="text-gris-dark">{preview.modalidad === 'pct' ? 'Jornal' : 'Básico'} ({preview.dias} días):</span>
+                    <span className="font-mono font-bold text-azul-mid">{fmtM(preview.subtotal_bas)}</span>
+                  </>
+                )}
+                {preview.modalidad === 'pct' && (
+                  <>
+                    <span className="text-gris-dark">Facturación neta (s/IVA):</span>
+                    <span className="font-mono font-bold text-azul-mid">{fmtM(preview.base_neta)}</span>
+                    <span className="text-gris-dark">💰 Comisión {preview.pct}%:</span>
+                    <span className="font-mono font-bold text-azul-mid">{fmtM(preview.subtotal_pct)}</span>
+                  </>
+                )}
                 {preview.km_cargados > 0 && (
                   <>
                     <span className="text-gris-dark">🚛 Km cargados × {fmtM(preview.precio_km_cargado)}:</span>
@@ -2116,6 +2241,10 @@ export function LiquidacionesTab() {
                         dias:         detalleLiq.dias_trabajados,
                         basico_dia:   detalleLiq.basico_dia,
                         subtotal_bas: detalleLiq.subtotal_basico ?? 0,
+                        modalidad:    detalleLiq.modalidad ?? 'km_jornal',
+                        pct_aplicado: detalleLiq.pct_aplicado ?? null,
+                        base_neta:    detalleLiq.base_neta ?? null,
+                        subtotal_pct: detalleLiq.subtotal_pct ?? null,
                         km_totales:   km_totales,
                         subtotal_km:  detalleLiq.subtotal_km ?? 0,
                         descuentos:   detalleLiq.total_adelantos,
@@ -2290,8 +2419,18 @@ export function LiquidacionesTab() {
               {/* Resumen detallado con desglose por tipo de km */}
               <div className="bg-azul-light rounded-xl p-4">
                 <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1.5 text-xs sm:text-sm">
-                  <span className="text-gris-dark">Días trabajados ({detalleLiq.dias_trabajados}) × {fmtM(detalleLiq.basico_dia)}:</span>
-                  <span className="font-mono font-bold text-right">{fmtM(detalleLiq.subtotal_basico)}</span>
+                  {(detalleLiq.modalidad !== 'pct' || (detalleLiq.subtotal_basico ?? 0) > 0) && (
+                    <>
+                      <span className="text-gris-dark">{detalleLiq.modalidad === 'pct' ? 'Jornal' : 'Días trabajados'} ({detalleLiq.dias_trabajados}) × {fmtM(detalleLiq.basico_dia)}:</span>
+                      <span className="font-mono font-bold text-right">{fmtM(detalleLiq.subtotal_basico)}</span>
+                    </>
+                  )}
+                  {detalleLiq.modalidad === 'pct' && (
+                    <>
+                      <span className="text-gris-dark">💰 Comisión {Number(detalleLiq.pct_aplicado ?? 0)}% s/ facturación neta ({fmtM(Number(detalleLiq.base_neta ?? 0))}):</span>
+                      <span className="font-mono font-bold text-right">{fmtM(Number(detalleLiq.subtotal_pct ?? 0))}</span>
+                    </>
+                  )}
 
                   {km_cargados > 0 && (
                     <>

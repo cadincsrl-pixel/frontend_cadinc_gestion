@@ -73,6 +73,12 @@ export interface PdfLiquidacionArgs {
   estado:           'borrador' | 'cerrada'
   numero_liquidacion: number | null
   observaciones:    string | null
+  // Modalidad pct (2026-07-30): comisión sobre la facturación neta de los
+  // viajes. Si viene, el resumen muestra la línea de comisión en lugar de km.
+  modalidad?:       'km_jornal' | 'pct'
+  pct_aplicado?:    number | null
+  base_neta?:       number | null
+  subtotal_pct?:    number | null
 }
 
 const fmtFecha = (s: string | null | undefined): string => {
@@ -228,10 +234,25 @@ export function generarPdfLiquidacion(args: PdfLiquidacionArgs): void {
 
   // ── Totales ─────────────────────────────────────────────────────
   const totalesRows: Array<[string, string]> = []
+  if (args.modalidad === 'pct') {
+    // Jornal opcional: con basico_dia en 0 el arreglo es solo comisión y la
+    // línea de días no aparece (mostrar "20 días × $0 = $0" solo confunde).
+    if (args.subtotal_basico > 0) {
+      totalesRows.push([
+        `Jornal (${args.dias_trabajados} días × ${fmtM(args.basico_dia)}/día)`,
+        fmtM(args.subtotal_basico),
+      ])
+    }
+    totalesRows.push([
+      `Comisión ${args.pct_aplicado ?? 0}% s/ facturación neta (${fmtM(args.base_neta ?? 0)})`,
+      fmtM(args.subtotal_pct ?? 0),
+    ])
+  } else {
   totalesRows.push([
     `Días trabajados (${args.dias_trabajados}) × ${fmtM(args.basico_dia)}/día`,
     fmtM(args.subtotal_basico),
   ])
+  }
   if (args.km_cargados > 0) {
     totalesRows.push([
       `Km cargados (${fmtN(args.km_cargados)}) × ${fmtM(args.precio_km_cargado)}/km`,

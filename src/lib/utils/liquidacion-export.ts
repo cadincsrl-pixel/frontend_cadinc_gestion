@@ -84,6 +84,11 @@ export interface LiqExportData {
   precio_km_vacio?:     number
   subtotal_km_cargado?: number
   subtotal_km_vacio?:   number
+  // Modalidad pct: comisión sobre facturación neta (reemplaza las líneas de km).
+  modalidad?:    'km_jornal' | 'pct'
+  pct_aplicado?: number | null
+  base_neta?:    number | null
+  subtotal_pct?: number | null
   descuentos:   number
   // Reintegros = gastos del chofer que la empresa le devuelve.
   reintegros?:  number
@@ -286,9 +291,16 @@ export async function exportLiquidacionExcel(d: LiqExportData) {
 
   const haberes: Array<[string, number, string]> = [
     ['Días trabajados',                       d.dias,         FMT_DIAS],
-    ['Básico por día',                        d.basico_dia,   FMT_MONTO],
-    ['Subtotal básico',                       d.subtotal_bas, FMT_MONTO],
+    [d.modalidad === 'pct' ? 'Jornal por día (opcional)' : 'Básico por día', d.basico_dia, FMT_MONTO],
+    [d.modalidad === 'pct' ? 'Subtotal jornal'           : 'Subtotal básico', d.subtotal_bas, FMT_MONTO],
   ]
+  if (d.modalidad === 'pct') {
+    haberes.push([
+      `Comisión ${d.pct_aplicado ?? 0}% s/ facturación neta ($${Math.round(d.base_neta ?? 0).toLocaleString('es-AR')})`,
+      d.subtotal_pct ?? 0,
+      FMT_MONTO,
+    ])
+  }
   // Desglose por tipo: si tenemos los campos detallados los mostramos como
   // "X km × $Y/km = $Z" por separado para cargado y vacío. Si no, caemos al
   // total agregado (compat con callers antiguos).

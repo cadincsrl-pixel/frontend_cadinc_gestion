@@ -5,7 +5,9 @@
 // Fórmula canónica del neto:
 //   neto = días × básico/día + kmC × $/kmC + kmV × $/kmV − adelantos + reintegros + estadías
 
-import type { Tramo, Ruta, RelevoPendiente } from '@/types/domain.types'
+import type { Tramo, Ruta, RelevoPendiente, TarifaEmpresaCantera, Camion } from '@/types/domain.types'
+import { tarifaParaFecha, unidadDelCamion } from './tarifas'
+import { IVA } from '@/lib/utils/iva'
 
 /** Fechas únicas de tramos completados */
 export function diasUnicos(tramos: Tramo[]): number {
@@ -141,5 +143,84 @@ export function calcularTotalesLiquidacion(i: TotalesLiquidacionInput): TotalesL
   return {
     subtotal_bas, subtotal_km_cargado, subtotal_km_vacio, subtotal_km, km_totales, precio_km,
     neto: subtotal_bas + subtotal_km - i.descuentos + i.reintegros + i.total_estadias,
+  }
+}
+
+
+// ── Modalidad pct: % de la facturación neta de los viajes ────────────────────
+//
+// Pedido del dueño 2026-07-30. Decisiones que fijan la cuenta:
+//   · El % es sobre el NETO SIN IVA: ton × tarifa vigente (la MISMA escalera
+//     que usa facturación: depósito+unidad > depósito > unidad > general) ÷ 1,21.
+//   · Los tramos VACÍOS no pagan (no facturan): se vinculan a la liquidación
+//     para salir de "pendientes", pero suman $0.
+//   · Un viaje sin facturar se liquida igual, a tarifa vigente — sin esperar
+//     la factura del cliente.
+//   · El jornal diario es opcional (basico_dia del chofer; 0 = solo %).
+
+export interface BasePctResultado {
+  /** Σ (ton × tarifa neta) de los viajes cargados. */
+  base_neta:   number
+  /** Detalle por tramo para mostrar en el preview y el PDF. */
+  detalle:     Array<{ tramo_id: number; ton: number; tarifa_final: number; neto: number }>
+  /** Tramos cargados SIN tarifa para su empresa/cantera/depósito: bloquean la
+   *  liquidación — pagarlos en $0 en silencio sería robarle al chofer. */
+  sin_tarifa:  Tramo[]
+}
+
+export function calcularBasePctViajes(
+  tramos:   Tramo[],
+  tarifas:  TarifaEmpresaCantera[],
+  camiones: Pick<Camion, 'id' | 'categoria'>[],
+): BasePctResultado {
+  let base_neta = 0
+  const detalle: BasePctResultado['detalle'] = []
+  const sin_tarifa: Tramo[] = []
+
+  for (const t of tramos) {
+    if (t.tipo !== 'cargado') continue   // los vacíos no facturan → no pagan
+    const ton = Number(t.toneladas_descarga ?? t.toneladas_carga ?? 0)
+    if (ton <= 0) continue
+    const tarifa = t.empresa_id != null && t.cantera_id != null
+      ? tarifaParaFecha(
+          tarifas, t.empresa_id, t.cantera_id, t.deposito_id ?? null,
+          t.fecha_descarga ?? t.fecha_carga ?? null,
+          unidadDelCamion(camiones as Camion[], t.camion_id),
+        )
+      : 0
+    if (!(tarifa > 0)) { sin_tarifa.push(t); continue }
+    const neto = ton * tarifa / IVA
+    base_neta += neto
+    detalle.push({ tramo_id: t.id, ton, tarifa_final: tarifa, neto })
+  }
+
+  return { base_neta, detalle, sin_tarifa }
+}
+
+export interface TotalesPctInput {
+  dias:           number
+  /** Jornal diario opcional (0 = el arreglo es solo %). */
+  jornal_dia:     number
+  base_neta:      number
+  /** % de facturación (0–100). */
+  pct:            number
+  descuentos:     number   // adelantos
+  reintegros:     number   // gastos pagados por el chofer
+  total_estadias: number
+}
+
+export interface TotalesPct {
+  subtotal_bas: number
+  subtotal_pct: number
+  neto:         number
+}
+
+export function calcularTotalesLiquidacionPct(i: TotalesPctInput): TotalesPct {
+  const subtotal_bas = i.dias * i.jornal_dia
+  const subtotal_pct = i.base_neta * i.pct / 100
+  return {
+    subtotal_bas,
+    subtotal_pct,
+    neto: subtotal_bas + subtotal_pct - i.descuentos + i.reintegros + i.total_estadias,
   }
 }

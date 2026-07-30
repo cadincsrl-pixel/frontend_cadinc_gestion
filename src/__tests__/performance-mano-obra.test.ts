@@ -716,3 +716,116 @@ describe('desglose básico / km / estadías', () => {
     expect(sumKm).toBeCloseTo(r.totales.costo_mo_km, 6)
   })
 })
+
+// ── Modalidad pct en Reportes (2026-07-30) ───────────────────────────────────
+// El chofer a % sin liquidar se estima con su comisión (% × ton × tarifa neta,
+// solo cargados), no con km. Una liquidación pct cerrada prorratea su
+// subtotal_pct por los km cargados de sus viajes en el rango.
+
+describe('mano de obra de choferes a porcentaje', () => {
+  const TARIFA_PCT = [{
+    id: 50, empresa_id: 7, cantera_id: 5, deposito_id: null, tipo_unidad: null,
+    valor_ton: 121_000, vigente_desde: '2026-07-01',   // neta $100.000
+  }] as TarifaEmpresaCantera[]
+  const CAMIONES_P = [{ id: 3, patente: 'AA111AA', categoria: 'tractor' }] as Camion[]
+
+  const choferPct = {
+    ...mkChofer({ id: 60, camion_id: 3, basico_dia: 0 }),
+    modalidad_pago: 'pct' as const,
+    pct_facturacion: 10,
+    choferes_pct_hist: [{ pct: 10, desde: '2026-07-01' }],
+  } as Chofer
+
+  it('PARCIAL: comisión = % × ton × tarifa neta, solo viajes cargados', () => {
+    const cargado = mkTramo({
+      id: 950, chofer_id: 60, camion_id: 3, empresa_id: 7, cantera_id: 5, deposito_id: 2,
+      fecha_descarga: '2026-07-10', toneladas_descarga: 30,
+    })
+    const vacio = mkTramo({
+      id: 951, chofer_id: 60, camion_id: 3, tipo: 'vacio', fecha_vacio: '2026-07-11',
+      toneladas_carga: null, toneladas_descarga: null,
+    })
+    const r = calcularPerformance(
+      [cargado, vacio], SIN_COBROS, TARIFA_PCT, '2026-07-01', '2026-07-31',
+      [], [choferPct], RUTAS, [], [], CAMIONES_P,
+    )
+    // 30 t × $100.000 neta = 3.000.000 × 10% = 300.000. El vacío no paga.
+    // Jornal 0 → solo comisión.
+    expect(r.totales.costo_mo_parcial).toBeCloseTo(300_000, 6)
+    expect(r.totales.costo_mo_pct).toBeCloseTo(300_000, 6)
+    expect(r.totales.costo_mo_km).toBe(0)
+  })
+
+  it('PARCIAL: con jornal opcional suma días corridos × jornal + comisión', () => {
+    const conJornal = {
+      ...choferPct,
+      basico_dia: 20_000,
+      choferes_basico_hist: [{ valor_dia: 20_000, desde: '2026-07-01' }],
+    } as Chofer
+    const t1 = mkTramo({
+      id: 952, chofer_id: 60, camion_id: 3, empresa_id: 7, cantera_id: 5, deposito_id: 2,
+      fecha_descarga: '2026-07-10', toneladas_descarga: 30,
+    })
+    const t2 = mkTramo({
+      id: 953, chofer_id: 60, camion_id: 3, empresa_id: 7, cantera_id: 5, deposito_id: 2,
+      fecha_descarga: '2026-07-14', toneladas_descarga: 30,
+    })
+    const r = calcularPerformance(
+      [t1, t2], SIN_COBROS, TARIFA_PCT, '2026-07-01', '2026-07-31',
+      [], [conJornal], RUTAS, [], [], CAMIONES_P,
+    )
+    // Jornal: 10→14 = 5 días corridos × 20.000 = 100.000
+    // Comisión: 2 × 300.000 = 600.000
+    expect(r.totales.costo_mo_parcial).toBeCloseTo(700_000, 6)
+    expect(r.totales.costo_mo_basico).toBeCloseTo(100_000, 6)
+    expect(r.totales.costo_mo_pct).toBeCloseTo(600_000, 6)
+  })
+
+  it('CERRADA pct: el subtotal_pct se prorratea por los km cargados del rango', () => {
+    // Liquidación pct que cruza junio-julio con un viaje cargado en cada mes
+    // (mismos km) → mitad y mitad.
+    const vJun = mkTramo({
+      id: 960, chofer_id: 60, camion_id: 3, cantera_id: 5, deposito_id: 2,
+      fecha_descarga: '2026-06-20', toneladas_descarga: 30, liquidacion_id: 80,
+    })
+    const vJul = mkTramo({
+      id: 961, chofer_id: 60, camion_id: 3, cantera_id: 5, deposito_id: 2,
+      fecha_descarga: '2026-07-10', toneladas_descarga: 30, liquidacion_id: 80,
+    })
+    const liqPct = {
+      ...mkLiq({
+        id: 80, chofer_id: 60,
+        fecha_desde: '2026-06-15', fecha_hasta: '2026-07-15',
+        subtotal_basico: 0, subtotal_km: 0,
+      }),
+      modalidad: 'pct' as const, pct_aplicado: 10, base_neta: 6_000_000, subtotal_pct: 600_000,
+    } as Liquidacion
+    const julio = calcularPerformance(
+      [vJun, vJul], SIN_COBROS, TARIFA_PCT, '2026-07-01', '2026-07-31',
+      [liqPct], [choferPct], RUTAS, [], [], CAMIONES_P,
+    )
+    const junio = calcularPerformance(
+      [vJun, vJul], SIN_COBROS, TARIFA_PCT, '2026-06-01', '2026-06-30',
+      [liqPct], [choferPct], RUTAS, [], [], CAMIONES_P,
+    )
+    expect(julio.totales.costo_mo_cerrado).toBeCloseTo(300_000, 6)
+    expect(junio.totales.costo_mo_cerrado).toBeCloseTo(300_000, 6)
+    // INVARIANTE: los dos meses reconstruyen el subtotal_pct completo.
+    expect(julio.totales.costo_mo_cerrado + junio.totales.costo_mo_cerrado).toBeCloseTo(600_000, 6)
+  })
+
+  it('INVARIANTE con pct: basico + km + pct + estadias == costo_mo', () => {
+    const t1 = mkTramo({
+      id: 970, chofer_id: 60, camion_id: 3, empresa_id: 7, cantera_id: 5, deposito_id: 2,
+      fecha_descarga: '2026-07-10', toneladas_descarga: 30,
+    })
+    const est = mkEstadia({ id: 30, chofer_id: 60 })
+    const r = calcularPerformance(
+      [t1], SIN_COBROS, TARIFA_PCT, '2026-07-01', '2026-07-31',
+      [], [choferPct], RUTAS, [], [est], CAMIONES_P,
+    )
+    const t = r.totales
+    expect(t.costo_mo_basico + t.costo_mo_km + t.costo_mo_pct + t.costo_estadias)
+      .toBeCloseTo(t.costo_mo, 6)
+  })
+})

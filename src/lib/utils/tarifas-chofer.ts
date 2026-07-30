@@ -30,10 +30,17 @@ export interface ChoferKmHist {
   tipo:     'cargado' | 'vacio'
 }
 
+export interface ChoferPctHist {
+  id?:   number
+  pct:   number
+  desde: string
+}
+
 // El chofer que llega del endpoint trae el historial embebido.
 export type ChoferConHist = Chofer & {
   choferes_basico_hist?: ChoferBasicoHist[] | null
   choferes_km_hist?:     ChoferKmHist[] | null
+  choferes_pct_hist?:    ChoferPctHist[] | null
 }
 
 /**
@@ -74,6 +81,13 @@ export function precioKmEnFecha(
   const v = versionEnFecha(delTipo, fechaRef)
   if (v) return Number(v.valor_km)
   return Number((tipo === 'cargado' ? chofer.precio_km_cargado : chofer.precio_km_vacio) ?? 0)
+}
+
+/** % de facturación del chofer vigente a `fechaRef` (modalidad pct). */
+export function pctEnFecha(chofer: ChoferConHist | undefined, fechaRef: string): number {
+  if (!chofer) return 0
+  const v = versionEnFecha(chofer.choferes_pct_hist ?? [], fechaRef)
+  return Number(v?.pct ?? chofer.pct_facturacion ?? 0)
 }
 
 /**

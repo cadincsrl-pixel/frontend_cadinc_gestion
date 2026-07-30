@@ -429,3 +429,83 @@ describe('diasConRelevos', () => {
     expect(diasConRelevos(1, '', '', new Set(), relevos)).toBe(0)
   })
 })
+
+// ── Modalidad pct: % de la facturación neta (2026-07-30) ─────────────────────
+// Decisiones del dueño que CONGELAN esta cuenta: % sobre neto SIN IVA con la
+// escalera de facturación; vacíos no pagan; jornal opcional (0 = solo %);
+// viajes sin tarifa BLOQUEAN (no se pagan en $0 en silencio).
+
+import { calcularBasePctViajes, calcularTotalesLiquidacionPct } from '@/modules/logistica/utils/liquidacion-math'
+import type { TarifaEmpresaCantera, Camion } from '@/types/domain.types'
+
+const TARIFAS_PCT = [
+  // General: $169.400 final ($140.000 neta × 1,21)
+  { id: 1, empresa_id: 7, cantera_id: 10, deposito_id: null, tipo_unidad: null,
+    valor_ton: 169_400, vigente_desde: '2026-07-01' },
+  // Chasis: $102.850 final ($85.000 neta × 1,21)
+  { id: 2, empresa_id: 7, cantera_id: 10, deposito_id: null, tipo_unidad: 'chasis',
+    valor_ton: 102_850, vigente_desde: '2026-07-02' },
+] as TarifaEmpresaCantera[]
+
+const CAMIONES_PCT = [
+  { id: 3, patente: 'TRACTOR1', categoria: 'tractor' },
+  { id: 9, patente: 'CHASIS1',  categoria: 'chasis' },
+] as Camion[]
+
+describe('calcularBasePctViajes', () => {
+  it('la base es ton × tarifa NETA (÷1,21), con la escalera por tipo de camión', () => {
+    const tramos = [
+      mkTramo({ id: 1, camion_id: 3, empresa_id: 7, cantera_id: 10, fecha_descarga: '2026-07-10', toneladas_descarga: 30 }),
+      mkTramo({ id: 2, camion_id: 9, empresa_id: 7, cantera_id: 10, fecha_descarga: '2026-07-11', toneladas_descarga: 20 }),
+    ]
+    const r = calcularBasePctViajes(tramos, TARIFAS_PCT, CAMIONES_PCT)
+    // tractor: 30 × 169.400/1,21 = 30 × 140.000 = 4.200.000
+    // chasis:  20 × 102.850/1,21 = 20 ×  85.000 = 1.700.000
+    expect(r.base_neta).toBeCloseTo(5_900_000, 6)
+    expect(r.detalle).toHaveLength(2)
+    expect(r.sin_tarifa).toHaveLength(0)
+  })
+
+  it('los tramos VACÍOS no suman base (no facturan)', () => {
+    const tramos = [
+      mkTramo({ id: 1, camion_id: 3, empresa_id: 7, cantera_id: 10, fecha_descarga: '2026-07-10', toneladas_descarga: 30 }),
+      mkTramo({ id: 2, tipo: 'vacio', fecha_vacio: '2026-07-10', camion_id: 3, toneladas_carga: null, toneladas_descarga: null }),
+    ]
+    const r = calcularBasePctViajes(tramos, TARIFAS_PCT, CAMIONES_PCT)
+    expect(r.base_neta).toBeCloseTo(4_200_000, 6)
+    expect(r.detalle).toHaveLength(1)
+  })
+
+  it('un viaje cargado SIN tarifa va a sin_tarifa, nunca a la base en $0', () => {
+    const tramos = [
+      mkTramo({ id: 1, camion_id: 3, empresa_id: 99, cantera_id: 10, fecha_descarga: '2026-07-10', toneladas_descarga: 30 }),
+    ]
+    const r = calcularBasePctViajes(tramos, TARIFAS_PCT, CAMIONES_PCT)
+    expect(r.base_neta).toBe(0)
+    expect(r.sin_tarifa).toHaveLength(1)
+  })
+})
+
+describe('calcularTotalesLiquidacionPct', () => {
+  it('solo %: base 5.900.000 × 12% = 708.000, sin jornal', () => {
+    const t = calcularTotalesLiquidacionPct({
+      dias: 20, jornal_dia: 0, base_neta: 5_900_000, pct: 12,
+      descuentos: 100_000, reintegros: 20_000, total_estadias: 50_000,
+    })
+    expect(t.subtotal_bas).toBe(0)
+    expect(t.subtotal_pct).toBeCloseTo(708_000, 6)
+    // 0 + 708.000 − 100.000 + 20.000 + 50.000 = 678.000
+    expect(t.neto).toBeCloseTo(678_000, 6)
+  })
+
+  it('% + jornal: el arreglo mixto suma los dos componentes', () => {
+    const t = calcularTotalesLiquidacionPct({
+      dias: 20, jornal_dia: 15_000, base_neta: 5_900_000, pct: 10,
+      descuentos: 0, reintegros: 0, total_estadias: 0,
+    })
+    // 20 × 15.000 = 300.000 + 590.000 = 890.000
+    expect(t.subtotal_bas).toBe(300_000)
+    expect(t.subtotal_pct).toBeCloseTo(590_000, 6)
+    expect(t.neto).toBeCloseTo(890_000, 6)
+  })
+})

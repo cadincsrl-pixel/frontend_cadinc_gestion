@@ -66,7 +66,7 @@ export function useSetTarifasChofer() {
   return useMutation({
     mutationFn: ({ id, dto }: {
       id: number
-      dto: { desde: string; basico_dia?: number; precio_km_cargado?: number; precio_km_vacio?: number }
+      dto: { desde: string; basico_dia?: number; precio_km_cargado?: number; precio_km_vacio?: number; pct_facturacion?: number }
     }) => apiPatch<Chofer>(`/api/logistica/choferes/${id}/tarifas`, dto),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: LOG_KEYS.choferes })

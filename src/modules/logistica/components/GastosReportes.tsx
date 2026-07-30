@@ -380,6 +380,9 @@ export function GastosReportes() {
                 <div className="mt-1.5 flex flex-col gap-0.5 text-[10px] font-mono text-gris-dark leading-tight">
                   <span>👤 {fmt$(performance.totales.costo_mo_basico)} básico</span>
                   <span>🛣 {fmt$(performance.totales.costo_mo_km)} km</span>
+                  {performance.totales.costo_mo_pct > 0 && (
+                    <span>💰 {fmt$(performance.totales.costo_mo_pct)} comisión %</span>
+                  )}
                   {performance.totales.costo_estadias > 0 && (
                     <span>⏱ {fmt$(performance.totales.costo_estadias)} estadías</span>
                   )}
@@ -682,7 +685,7 @@ export function GastosReportes() {
 // margen mergeando ingresos (cruce de tramos+cobros+tarifas) con gastos
 // (que vienen del endpoint /reportes/por-camion|chofer).
 function PerformanceTable({ filas, label, getNombre, gastosPor, mono, factorIngresos = 1 }: {
-  filas:     Array<{ entidad_id: number; viajes: number; toneladas: number; ingresos: number; costo_mo: number; costo_mo_basico: number; costo_mo_km: number; costo_estadias: number; sin_tarifa: number; sin_cobrar: number }>
+  filas:     Array<{ entidad_id: number; viajes: number; toneladas: number; ingresos: number; costo_mo: number; costo_mo_basico: number; costo_mo_km: number; costo_mo_pct: number; costo_estadias: number; sin_tarifa: number; sin_cobrar: number }>
   label:     string
   getNombre: (id: number) => string
   /** Ya en la base del modo elegido (neto o con IVA). */
@@ -752,7 +755,7 @@ function PerformanceTable({ filas, label, getNombre, gastosPor, mono, factorIngr
               <td
                 className={`px-3 py-2 text-right font-mono ${f.costo_mo > 0 ? 'text-azul-mid' : 'text-gris-mid'}`}
                 title={f.costo_mo > 0
-                  ? `Básico ${fmt$(f.costo_mo_basico)} · Km ${fmt$(f.costo_mo_km)}${f.costo_estadias > 0 ? ` · Estadías ${fmt$(f.costo_estadias)}` : ''}`
+                  ? `Básico ${fmt$(f.costo_mo_basico)} · Km ${fmt$(f.costo_mo_km)}${f.costo_mo_pct > 0 ? ` · Comisión ${fmt$(f.costo_mo_pct)}` : ''}${f.costo_estadias > 0 ? ` · Estadías ${fmt$(f.costo_estadias)}` : ''}`
                   : undefined}
               >
                 {f.costo_mo > 0 ? fmt$(f.costo_mo) : '—'}

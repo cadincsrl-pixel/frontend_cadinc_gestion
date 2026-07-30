@@ -365,6 +365,12 @@ export interface Chofer extends AuditFields {
   // false = fletero externo, no está en la nómina de CADINC. Excluido de
   // Gastos > Reportes (migración 20260729f).
   es_propio?: boolean
+  // km_jornal (default): básico/día + km × tarifa. pct: % de la facturación
+  // neta de sus viajes + jornal opcional (basico_dia; 0 = solo %).
+  modalidad_pago?: 'km_jornal' | 'pct'
+  // Cache de la última versión de choferes_pct_hist — para cálculos con fecha
+  // usar el historial (tarifas-chofer.ts), nunca este campo.
+  pct_facturacion?: number
 }
 
 // tractor = arrastra batea/semirremolque; chasis = caja fija. Discrimina la
@@ -829,6 +835,12 @@ export interface Liquidacion {
   estado: LiqEstado
   obs: string | null
   created_at: string
+  // Snapshot de la modalidad al liquidar (migración 20260730b). En 'pct':
+  // subtotal_pct = base_neta × pct_aplicado/100 y los subtotales de km van null.
+  modalidad?: 'km_jornal' | 'pct'
+  pct_aplicado?: number | null
+  base_neta?: number | null
+  subtotal_pct?: number | null
   // Rastro de la anulación (solo con estado='anulada').
   anulada_en?:       string | null
   anulada_por?:      string | null

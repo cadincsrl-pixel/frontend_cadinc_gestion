@@ -65,6 +65,7 @@ export function ChoferesTab() {
       batea_id:          chofer.batea_id ?? '',
       obs:               chofer.obs ?? '',
       es_propio:         chofer.es_propio ?? true,
+      modalidad_pago:    chofer.modalidad_pago ?? 'km_jornal',
     }
   }
 
@@ -234,6 +235,24 @@ export function ChoferesTab() {
       </div>
       <Input label="Observaciones" placeholder="Notas..." autoComplete="off" disabled={disabled} {...form.register('obs')} />
 
+      {/* Modalidad de pago (2026-07-30): según el arreglo con cada chofer.
+          El % y el jornal se cargan/versionan desde Liquidaciones, como el
+          resto de las tarifas — acá solo se elige el régimen. */}
+      <div className="flex flex-col gap-1">
+        <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Modalidad de pago</label>
+        <select
+          disabled={disabled}
+          {...form.register('modalidad_pago')}
+          className="w-full px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white font-semibold focus:border-naranja disabled:opacity-60"
+        >
+          <option value="km_jornal">📏 Básico + km recorridos</option>
+          <option value="pct">💰 % de facturación de sus viajes</option>
+        </select>
+        <p className="text-[11px] text-gris-dark">
+          El porcentaje (y el jornal opcional) se cargan desde Liquidaciones → tarjeta del chofer, con fecha de vigencia.
+        </p>
+      </div>
+
       {/* Propio vs fletero. Definido con el dueño el 29/07: los reportes de
           flota excluyen los de tercero, porque se les factura el viaje pero no
           están en la nómina y sus gastos no son de CADINC. */}
@@ -263,8 +282,14 @@ export function ChoferesTab() {
           Pago vigente
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+          {chofer.modalidad_pago === 'pct' && (
+            <div>
+              <div className="text-[11px] text-gris-dark">💰 % facturación</div>
+              <div className="font-mono font-bold text-azul">{Number(chofer.pct_facturacion ?? 0)}%</div>
+            </div>
+          )}
           <div>
-            <div className="text-[11px] text-gris-dark">Básico/día</div>
+            <div className="text-[11px] text-gris-dark">{chofer.modalidad_pago === 'pct' ? 'Jornal/día (opcional)' : 'Básico/día'}</div>
             <div className="font-mono font-bold text-azul">{fmtMonto(chofer.basico_dia)}</div>
           </div>
           <div>
