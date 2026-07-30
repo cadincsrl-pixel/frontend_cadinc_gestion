@@ -14,6 +14,7 @@ import { useStockMateriales } from '../hooks/useStock'
 import { useCreateRemitoEnvio } from '../hooks/useRemitosEnvio'
 import { imprimirRemito } from './RemitoEnvioPrint'
 import { EMPRESA } from '@/lib/config/empresa'
+import { netaAFinal, finalANeta } from '@/lib/utils/iva'
 import { ItemHistorialModal } from './ItemHistorialModal'
 import { useObras } from '@/modules/tarja/hooks/useObras'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
@@ -269,6 +270,10 @@ export function SolicitudesTab() {
   // Modales de acciones sobre ítems
   const [modalComprar, setModalComprar] = useState<SolicitudCompraItem | null>(null)
   const [modalDespachar, setModalDespachar] = useState<SolicitudCompraItem | null>(null)
+  // ¿Los precios de la tabla del lote se cargan netos o finales? Se guarda
+  // SIEMPRE el final (convención de todo el sistema); si el usuario carga
+  // netos, la conversión (+21%) se aplica al confirmar y en los subtotales.
+  const [lotePreciosNetos, setLotePreciosNetos] = useState(false)
   const [modalComprarLote, setModalComprarLote] = useState<{
     solId: number
     items: SolicitudCompraItem[]
@@ -441,7 +446,7 @@ export function SolicitudesTab() {
 
   // ── Acciones sobre ítems ──
   function abrirComprar(item: SolicitudCompraItem) {
-    formComprar.reset({ proveedor_id: '', precio_unit: 0, factura_id: '', queda_en_proveedor: false, pagado_por: 'cadinc', cantidad_comprada: item.cantidad })
+    formComprar.reset({ proveedor_id: '', precio_unit: 0, precio_neto: 0, factura_id: '', queda_en_proveedor: false, pagado_por: 'cadinc', cantidad_comprada: item.cantidad })
     setModalComprar(item)
   }
   function handleComprar(data: any) {
@@ -477,6 +482,9 @@ export function SolicitudesTab() {
 
   // ── Compra LOTE: misma factura/proveedor para N items pendientes de una sol ──
   function abrirComprarLote(solId: number, items: SolicitudCompraItem[]) {
+    // El toggle arranca en "finales": el precio_ref del catálogo que se
+    // precarga abajo es final con IVA, y mezclarlo con modo neto lo inflaría.
+    setLotePreciosNetos(false)
     // Precarga precios con stock.precio_ref si está vinculado; si no, 0.
     // Cantidades arrancan con la solicitada (editable si se compró distinto).
     const precios: Record<string, number> = {}
@@ -512,7 +520,9 @@ export function SolicitudesTab() {
       : modalComprarLote.items
 
     for (const it of itemsActuales) {
-      const precio = Number(data.precios?.[String(it.id)] ?? 0)
+      const precioCargado = Number(data.precios?.[String(it.id)] ?? 0)
+      // Con el toggle en "netos", lo tipeado es sin IVA: se guarda el final.
+      const precio = lotePreciosNetos ? netaAFinal(precioCargado) : precioCargado
       if (!precio || precio <= 0) {
         fallidos.push({ desc: it.descripcion, error: 'precio inválido' })
         continue
@@ -1439,14 +1449,42 @@ export function SolicitudesTab() {
               </div>
               <Button variant="secondary" size="sm" onClick={() => { formProv.reset({ nombre: '', cuit: '', tel: '' }); setModalNuevoProveedor(true) }}>+ Nuevo</Button>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Input
-                label={`Cantidad comprada (${UNIDADES.find(u => u.value === modalComprar.unidad)?.label ?? modalComprar.unidad})`}
-                type="number" step="any" min="0"
-                hint={Number(formComprar.watch('cantidad_comprada')) !== modalComprar.cantidad ? `Difiere de lo solicitado (${modalComprar.cantidad})` : undefined}
-                {...formComprar.register('cantidad_comprada')}
-              />
-              <Input label="Precio unitario ($)" type="number" step="1" {...formComprar.register('precio_unit')} />
+            <Input
+              label={`Cantidad comprada (${UNIDADES.find(u => u.value === modalComprar.unidad)?.label ?? modalComprar.unidad})`}
+              type="number" step="any" min="0"
+              hint={Number(formComprar.watch('cantidad_comprada')) !== modalComprar.cantidad ? `Difiere de lo solicitado (${modalComprar.cantidad})` : undefined}
+              {...formComprar.register('cantidad_comprada')}
+            />
+            {/* Precio en dos casilleros enlazados: cargás cualquiera y el otro
+                se calcula solo (IVA 21%). SE GUARDA EL FINAL — es la convención
+                de todo el sistema (cobros, cuenta cliente, reportes: con IVA).
+                setValue no re-dispara onChange, así que no hay loop. */}
+            <div>
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label="P. unit. neto (sin IVA)"
+                  type="number" step="any" min="0"
+                  {...formComprar.register('precio_neto', {
+                    onChange: e => {
+                      const n = Number(e.target.value)
+                      formComprar.setValue('precio_unit', Number.isFinite(n) && n > 0 ? netaAFinal(n) : 0)
+                    },
+                  })}
+                />
+                <Input
+                  label="P. unit. FINAL (IVA incl.)"
+                  type="number" step="any" min="0"
+                  {...formComprar.register('precio_unit', {
+                    onChange: e => {
+                      const n = Number(e.target.value)
+                      formComprar.setValue('precio_neto', Number.isFinite(n) && n > 0 ? finalANeta(n) : 0)
+                    },
+                  })}
+                />
+              </div>
+              <p className="text-[11px] text-gris-dark mt-1 px-1">
+                Cargá cualquiera de los dos: el otro se calcula solo (IVA 21%). A la cuenta del cliente va el <b>final</b>.
+              </p>
             </div>
             <div className="flex items-end gap-2">
               <div className="flex-1">
@@ -1547,7 +1585,21 @@ export function SolicitudesTab() {
               }}>+ Factura</Button>
             </div>
             <div>
-              <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1 block">Precios por ítem</label>
+              <div className="flex items-center justify-between gap-2 flex-wrap mb-1">
+                <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider block">Precios por ítem</label>
+                {/* Se guarda SIEMPRE el final con IVA; el toggle solo define
+                    cómo se tipea. El subtotal muestra el final en ambos modos. */}
+                <div className="flex rounded-lg border-[1.5px] border-gris-mid overflow-hidden text-[11px] font-bold">
+                  <button type="button" onClick={() => setLotePreciosNetos(false)}
+                    className={`px-2.5 py-1 transition-colors ${!lotePreciosNetos ? 'bg-azul text-white' : 'bg-white text-gris-dark hover:bg-gris/40'}`}>
+                    Finales (IVA incl.)
+                  </button>
+                  <button type="button" onClick={() => setLotePreciosNetos(true)}
+                    className={`px-2.5 py-1 transition-colors ${lotePreciosNetos ? 'bg-azul text-white' : 'bg-white text-gris-dark hover:bg-gris/40'}`}>
+                    Netos (+21% solo)
+                  </button>
+                </div>
+              </div>
               {/* overflow-x-auto (no hidden): a 390px las columnas de precio
                   quedaban clipeadas sin scroll y no se podía comprar desde el cel. */}
               <div className="border border-gris-mid rounded-xl overflow-x-auto">
@@ -1556,13 +1608,14 @@ export function SolicitudesTab() {
                     <tr>
                       <th className="text-left px-3 py-2 text-[11px] font-bold text-gris-dark uppercase">Ítem</th>
                       <th className="text-right px-3 py-2 text-[11px] font-bold text-gris-dark uppercase w-[110px]">Cant. comprada</th>
-                      <th className="text-right px-3 py-2 text-[11px] font-bold text-gris-dark uppercase w-[120px]">Precio unit. ($)</th>
-                      <th className="text-right px-3 py-2 text-[11px] font-bold text-gris-dark uppercase w-[110px]">Subtotal</th>
+                      <th className="text-right px-3 py-2 text-[11px] font-bold text-gris-dark uppercase w-[120px]">{lotePreciosNetos ? 'P. unit. NETO ($)' : 'Precio unit. ($)'}</th>
+                      <th className="text-right px-3 py-2 text-[11px] font-bold text-gris-dark uppercase w-[110px]">Subtotal final</th>
                     </tr>
                   </thead>
                   <tbody>
                     {modalComprarLote.items.map(it => {
-                      const precio = Number(formComprarLote.watch(`precios.${it.id}`) ?? 0)
+                      const precioTipeado = Number(formComprarLote.watch(`precios.${it.id}`) ?? 0)
+                      const precio = lotePreciosNetos ? netaAFinal(precioTipeado) : precioTipeado
                       const cant   = Number(formComprarLote.watch(`cantidades.${it.id}`) ?? it.cantidad)
                       const subtotal = precio * cant
                       const difiere = cant !== it.cantidad
@@ -1605,7 +1658,10 @@ export function SolicitudesTab() {
                     <tr>
                       <td colSpan={3} className="px-3 py-2 text-right text-xs font-bold text-gris-dark uppercase">Total</td>
                       <td className="px-3 py-2 text-right font-mono text-sm font-bold text-azul">
-                        {fmtM(modalComprarLote.items.reduce((acc, it) => acc + (Number(formComprarLote.watch(`precios.${it.id}`) ?? 0) * Number(formComprarLote.watch(`cantidades.${it.id}`) ?? it.cantidad)), 0))}
+                        {fmtM(modalComprarLote.items.reduce((acc, it) => {
+                          const p = Number(formComprarLote.watch(`precios.${it.id}`) ?? 0)
+                          return acc + (lotePreciosNetos ? netaAFinal(p) : p) * Number(formComprarLote.watch(`cantidades.${it.id}`) ?? it.cantidad)
+                        }, 0))}
                       </td>
                     </tr>
                   </tfoot>

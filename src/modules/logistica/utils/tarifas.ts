@@ -7,17 +7,9 @@ import type { TarifaEmpresaCantera, Camion } from '@/types/domain.types'
 // Las tarifas se GUARDAN como valor final (c/IVA) — así las consumen los
 // cobros, el saldo y los PDFs. Pero los transportistas pasan la NETA, así
 // que el form pide neta y el sistema calcula el final solo (IVA 21%).
-export const IVA = 1.21
-
-export function netaAFinal(neta: number): number {
-  return Math.round(neta * IVA * 100) / 100
-}
-
-// Prefill de edición con 4 decimales: el roundtrip neta→final devuelve el
-// valor original exacto (los finales guardados tienen ≤2 decimales).
-export function finalANeta(final: number): number {
-  return Number((final / IVA).toFixed(4))
-}
+// Los helpers viven en lib/utils/iva (también los usa la compra de materiales
+// de certificaciones); se re-exportan para no romper los imports existentes.
+export { IVA, netaAFinal, finalANeta } from '@/lib/utils/iva'
 
 // Resuelve la tarifa $/ton de un tramo: si existe una tarifa específica para
 // el depósito de descarga (empresa+cantera+depósito), gana sobre la general
