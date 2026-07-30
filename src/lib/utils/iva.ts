@@ -21,3 +21,24 @@ export function netaAFinal(neta: number): number {
 export function finalANeta(final: number): number {
   return Number((final / IVA).toFixed(4))
 }
+
+/**
+ * Netea un desglose de gastos por categoría según la marca `lleva_iva` de cada
+ * una: las que llevan IVA se dividen por 1,21; las finales (monotributista,
+ * tributo, sin factura) quedan tal cual. Para el modo "Neto" de
+ * Gastos > Reportes.
+ *
+ * Una categoría que no está en el mapa se trata como CON IVA (el default de la
+ * columna): equivocarse para ese lado subestima el gasto neto y el margen — el
+ * error conservador.
+ */
+export function netearGastosPorCategoria(
+  porCategoria: Record<string, number>,
+  llevaIva: (codigo: string) => boolean,
+): number {
+  let total = 0
+  for (const [codigo, monto] of Object.entries(porCategoria)) {
+    total += llevaIva(codigo) ? Number(monto) / IVA : Number(monto)
+  }
+  return total
+}

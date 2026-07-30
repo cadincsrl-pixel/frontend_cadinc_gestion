@@ -3,6 +3,7 @@
 import { useState, useMemo, type ReactNode } from 'react'
 import {
   useGastosResumen, useGastosPorCamion, useGastosPorChofer, useGastosPorCategoria,
+  useGastosCategorias,
   useTramos, useCobros, useTarifasEmpresa, useCamiones, useChoferes, useLiquidaciones,
   useRutas, useEstadias,
 } from '../hooks/useLogistica'
@@ -10,6 +11,7 @@ import { calcularPerformance } from '@/lib/utils/performance'
 import { useRelevosLiquidados } from '../hooks/useTramoRelevo'
 import { useRentabilidadParametros } from '../hooks/useRentabilidad'
 import { amortizacionEquipos, cargasSocialesPeriodo } from '@/lib/utils/amortizacion'
+import { IVA, netearGastosPorCategoria } from '@/lib/utils/iva'
 import { diasEntreFechas } from '@/modules/logistica/utils/liquidacion-math'
 import { Button } from '@/components/ui/Button'
 import { InfoPopover } from '@/components/ui/InfoPopover'
@@ -48,6 +50,26 @@ export function GastosReportes() {
       setDesde(primerDiaAnio(t)); setHasta(isoHoy())
     }
   }
+
+  // ── Modo Neto de IVA (default) vs Con IVA (caja) ─────────────────
+  // El IVA de las ventas no es plata de CADINC: pasa hacia AFIP. El modo Neto
+  // pone todo en la misma base — la facturación se netea EXACTA (las tarifas
+  // se guardan neta × 1,21, verificado contra los cobros), los gastos según la
+  // marca lleva_iva de cada categoría (gomería/lavadero/patente/multa/viático
+  // son finales), y la mano de obra + teóricos ya eran netos. En modo caja se
+  // ve la plata que entra y sale, como siempre.
+  const [verNeto, setVerNeto] = useState(true)
+  const { data: categoriasCat = [] } = useGastosCategorias()
+  const llevaIva = useMemo(() => {
+    const m = new Map<string, boolean>()
+    for (const c of categoriasCat) m.set(c.codigo, c.lleva_iva !== false)
+    return (codigo: string) => m.get(codigo) ?? true
+  }, [categoriasCat])
+  // Facturación/ingresos: neteo exacto.
+  const F = (x: number) => (verNeto ? x / IVA : x)
+  // Gastos: neteo por categoría.
+  const G = (porCategoria: Record<string, number>, bruto: number) =>
+    verNeto ? netearGastosPorCategoria(porCategoria, llevaIva) : bruto
 
   const enabled = !!desde && !!hasta
   const { data: resumen,     isLoading: lr } = useGastosResumen(desde, hasta, enabled)
@@ -123,14 +145,16 @@ export function GastosReportes() {
   // Mapas para mergear gastos por entidad con performance.
   const gastosCamion = useMemo(() => {
     const m = new Map<number, number>()
-    for (const r of porCamion ?? []) m.set(r.camion_id, r.total)
+    for (const r of porCamion ?? []) m.set(r.camion_id, G(r.por_categoria ?? {}, r.total))
     return m
-  }, [porCamion])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [porCamion, verNeto, llevaIva])
   const gastosChofer = useMemo(() => {
     const m = new Map<number, number>()
-    for (const r of porChofer ?? []) m.set(r.chofer_id, r.total)
+    for (const r of porChofer ?? []) m.set(r.chofer_id, G(r.por_categoria ?? {}, r.total))
     return m
-  }, [porChofer])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [porChofer, verNeto, llevaIva])
 
   // Patente / nombre por id para mostrar en las filas.
   const camionPatente = useMemo(() => {
@@ -191,9 +215,16 @@ export function GastosReportes() {
     camionesPropios,
   ), [paramsRentabilidad, kmPeriodo, desde, hasta, camionesPropios])
 
-  // KPIs cruzados: facturación, margen, % margen.
-  const facturacionPeriodo = performance.totales.ingresos
-  const gastosPeriodo      = resumen?.total ?? 0
+  // KPIs cruzados: facturación, margen, % margen — todo en la base del modo
+  // elegido (Neto por default). La mano de obra y los teóricos no llevan IVA,
+  // así que en modo Neto TODO queda por fin en la misma base.
+  const facturacionPeriodo = F(performance.totales.ingresos)
+  const gastosPorCatRecord = useMemo(() => {
+    const r: Record<string, number> = {}
+    for (const c of porCat ?? []) r[c.codigo] = Number(c.total)
+    return r
+  }, [porCat])
+  const gastosPeriodo      = G(gastosPorCatRecord, resumen?.total ?? 0)
   const costoMOPeriodo     = performance.totales.costo_mo
   const margenBruto        = facturacionPeriodo - gastosPeriodo
   const margenReal         = margenBruto - costoMOPeriodo
@@ -215,6 +246,21 @@ export function GastosReportes() {
           <Button variant="secondary" size="sm" onClick={() => preset('mes_anterior')}>Mes anterior</Button>
           <Button variant="secondary" size="sm" onClick={() => preset('ult_30')}>Últimos 30 días</Button>
           <Button variant="secondary" size="sm" onClick={() => preset('anio')}>Año en curso</Button>
+        </div>
+        {/* Neto (default): todo en la misma base, el número económico.
+            Con IVA: plata que entra y sale (caja). */}
+        <div className="flex flex-col gap-1 sm:ml-auto">
+          <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Montos</label>
+          <div className="flex rounded-lg border-[1.5px] border-gris-mid overflow-hidden text-[11px] font-bold w-fit">
+            <button type="button" onClick={() => setVerNeto(true)}
+              className={`px-2.5 py-1.5 transition-colors ${verNeto ? 'bg-azul text-white' : 'bg-white text-gris-dark hover:bg-gris/40'}`}>
+              Neto de IVA
+            </button>
+            <button type="button" onClick={() => setVerNeto(false)}
+              className={`px-2.5 py-1.5 transition-colors ${!verNeto ? 'bg-azul text-white' : 'bg-white text-gris-dark hover:bg-gris/40'}`}>
+              Con IVA (caja)
+            </button>
+          </div>
         </div>
       </div>
 
@@ -252,15 +298,15 @@ export function GastosReportes() {
                     'Fleteros de terceros',
                     'Viajes descargados fuera del período, aunque se hayan cargado adentro',
                   ]}
-                  iva="Con IVA incluido: las tarifas se guardan con el 21% adentro."
+                  iva="Sigue el selector Montos: en Neto se divide por 1,21 (exacto — las tarifas se guardan neta × 1,21); en Con IVA es lo facturado."
                   ojo="No es plata cobrada — mirá el desglose de abajo."
                 />
               }
               sub={
                 <div className="mt-1.5 flex flex-col gap-0.5 text-[10px] font-mono text-gris-dark leading-tight">
-                  <span className="text-verde">✔ {fmt$(performance.totales.ingresos_cobrado)} cobrado</span>
-                  <span className="text-naranja-dark">⏳ {fmt$(performance.totales.ingresos_por_cobrar)} por cobrar</span>
-                  <span>◌ {fmt$(performance.totales.ingresos_sin_facturar)} sin facturar</span>
+                  <span className="text-verde">✔ {fmt$(F(performance.totales.ingresos_cobrado))} cobrado</span>
+                  <span className="text-naranja-dark">⏳ {fmt$(F(performance.totales.ingresos_por_cobrar))} por cobrar</span>
+                  <span>◌ {fmt$(F(performance.totales.ingresos_sin_facturar))} sin facturar</span>
                 </div>
               }
             />
@@ -280,7 +326,7 @@ export function GastosReportes() {
                     'Rechazados y eliminados',
                     'Sueldos de choferes — están en Mano de obra',
                   ]}
-                  iva="Total pagado del comprobante: con IVA cuando hay factura."
+                  iva="Sigue el selector Montos: en Neto, cada categoría se netea según su marca (gomería, lavadero, patente, multas y viáticos son finales y quedan tal cual)."
                   ojo="Entran por fecha de pago: una compra grande (ej. 8 cubiertas en mayo) pega entera en su mes, sin prorratear."
                 />
               }
@@ -348,8 +394,8 @@ export function GastosReportes() {
                 <InfoPopover
                   titulo="% Margen real"
                   incluye={['Margen real ÷ Facturación del período']}
-                  iva="La facturación lleva IVA y la mano de obra no: es un porcentaje de caja operativa, no un margen contable."
-                  ojo="No comparable con el simulador de Rentabilidad, que trabaja todo neto de IVA."
+                  iva="En modo Neto (default), numerador y denominador están en la misma base — este % ya es comparable con el simulador. En modo Con IVA es caja y mezcla bases."
+                  ojo={null}
                 />
               }
             />
@@ -365,7 +411,7 @@ export function GastosReportes() {
                   titulo="Margen bruto"
                   incluye={['Facturación del período − Gastos del período']}
                   noIncluye={['La mano de obra de los choferes — se resta recién en el Margen real']}
-                  iva="Los dos lados llevan IVA adentro: es plata que entra contra plata que sale, no margen contable."
+                  iva="Sigue el selector Montos. En Neto, los dos lados están sin IVA; en Con IVA es plata que entra contra plata que sale."
                 />
               }
             />
@@ -380,8 +426,8 @@ export function GastosReportes() {
                   noIncluye={[
                     'La amortización de los equipos ni las cargas sociales (~$9M/mes hoy): eso lo descuenta el Margen económico, la tarjeta de al lado',
                   ]}
-                  iva="Mezcla: facturación y gastos con IVA, mano de obra sin. Leelo como caja operativa."
-                  ojo="No comparable con el simulador de Rentabilidad, que trabaja todo neto de IVA y amortiza los equipos."
+                  iva="En modo Neto todo está en la misma base. En Con IVA, la facturación y los gastos llevan IVA y la mano de obra no — leelo como caja."
+                  ojo="La amortización y las cargas sociales las descuenta el Margen económico, la tarjeta de al lado."
                 />
               }
             />
@@ -471,7 +517,14 @@ export function GastosReportes() {
             </div>
           )}
 
-          {/* Breakdown del resumen */}
+          {/* Breakdown del resumen. SIEMPRE en montos cargados (con IVA según
+              el comprobante): son cortes operativos sin dimensión de categoría,
+              así que no se pueden netear por marca. */}
+          {verNeto && (
+            <p className="text-[11px] text-gris-mid -mb-1 px-1">
+              Las tres tarjetas de distribución muestran los montos tal como se cargaron (no se netean).
+            </p>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <DistribCard title="Por estado"       rows={resumen.por_estado}      total={resumen.total} />
             <DistribCard title="Por quién pagó"   rows={resumen.por_pagado_por}  total={resumen.total} />
@@ -495,16 +548,27 @@ export function GastosReportes() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gris">
-                {porCat!.map(r => (
+                {porCat!.map(r => {
+                  // En modo Neto cada fila se netea según su marca; el % se
+                  // recalcula sobre el total neteado para que la barra cierre.
+                  const monto = verNeto && llevaIva(r.codigo) ? Number(r.total) / IVA : Number(r.total)
+                  const pct = gastosPeriodo > 0 ? (monto / gastosPeriodo) * 100 : 0
+                  return (
                   <tr key={r.categoria_id}>
-                    <td className="px-3 py-2">{r.nombre}</td>
-                    <td className="px-3 py-2 text-right font-mono">{fmtInt(r.count)}</td>
-                    <td className="px-3 py-2 text-right font-mono font-bold">{fmt$(r.total)}</td>
                     <td className="px-3 py-2">
-                      <Bar pct={r.pct} />
+                      {r.nombre}
+                      {verNeto && !llevaIva(r.codigo) && (
+                        <span className="ml-1.5 text-[9px] font-bold text-gris-mid uppercase" title="Categoría final: el monto no lleva IVA recuperable (monotributista, tributo o sin factura). No se netea.">final</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono">{fmtInt(r.count)}</td>
+                    <td className="px-3 py-2 text-right font-mono font-bold">{fmt$(monto)}</td>
+                    <td className="px-3 py-2">
+                      <Bar pct={pct} />
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           )}
@@ -535,7 +599,7 @@ export function GastosReportes() {
                   <tr key={r.camion_id}>
                     <td className="px-3 py-2 font-mono font-bold">{r.patente}</td>
                     <td className="px-3 py-2 text-right font-mono">{fmtInt(r.count)}</td>
-                    <td className="px-3 py-2 text-right font-mono font-bold">{fmt$(r.total)}</td>
+                    <td className="px-3 py-2 text-right font-mono font-bold">{fmt$(gastosCamion.get(r.camion_id) ?? r.total)}</td>
                     <td className="px-3 py-2"><TopCategorias data={r.por_categoria} /></td>
                   </tr>
                 ))}
@@ -564,7 +628,7 @@ export function GastosReportes() {
                   <tr key={r.chofer_id}>
                     <td className="px-3 py-2">{r.nombre}</td>
                     <td className="px-3 py-2 text-right font-mono">{fmtInt(r.count)}</td>
-                    <td className="px-3 py-2 text-right font-mono font-bold">{fmt$(r.total)}</td>
+                    <td className="px-3 py-2 text-right font-mono font-bold">{fmt$(gastosChofer.get(r.chofer_id) ?? r.total)}</td>
                     <td className="px-3 py-2 text-right font-mono text-naranja-dark">
                       {r.reintegros_pendientes > 0 ? fmt$(r.reintegros_pendientes) : '—'}
                     </td>
@@ -589,6 +653,7 @@ export function GastosReportes() {
             getNombre={id => camionPatente.get(id) ?? `#${id}`}
             gastosPor={gastosCamion}
             mono
+            factorIngresos={verNeto ? 1 / IVA : 1}
           />
         )}
       </Section>
@@ -605,6 +670,7 @@ export function GastosReportes() {
             label="Chofer"
             getNombre={id => choferNombre.get(id) ?? `#${id}`}
             gastosPor={gastosChofer}
+            factorIngresos={verNeto ? 1 / IVA : 1}
           />
         )}
       </Section>
@@ -615,12 +681,15 @@ export function GastosReportes() {
 // Tabla compartida para Performance por camión y por chofer. Calcula el
 // margen mergeando ingresos (cruce de tramos+cobros+tarifas) con gastos
 // (que vienen del endpoint /reportes/por-camion|chofer).
-function PerformanceTable({ filas, label, getNombre, gastosPor, mono }: {
+function PerformanceTable({ filas, label, getNombre, gastosPor, mono, factorIngresos = 1 }: {
   filas:     Array<{ entidad_id: number; viajes: number; toneladas: number; ingresos: number; costo_mo: number; costo_mo_basico: number; costo_mo_km: number; costo_estadias: number; sin_tarifa: number; sin_cobrar: number }>
   label:     string
   getNombre: (id: number) => string
+  /** Ya en la base del modo elegido (neto o con IVA). */
   gastosPor: Map<number, number>
   mono?:     boolean
+  /** 1 en modo Con IVA; 1/1,21 en modo Neto (la facturación se netea exacta). */
+  factorIngresos?: number
 }) {
   return (
     <table className="w-full text-sm">
@@ -634,7 +703,7 @@ function PerformanceTable({ filas, label, getNombre, gastosPor, mono }: {
               <InfoPopover
                 titulo="Ingresos (por fila)"
                 incluye={['Mismo criterio que el KPI Facturación, agregado por el camión/chofer REAL de cada viaje']}
-                iva="Con IVA incluido."
+                iva="Sigue el selector Montos (neto exacto o con IVA)."
                 ojo="El chip amarillo marca viajes valuados a tarifa (sin facturar); el rojo, viajes sin tarifa cargada que suman $0."
               />
             </span>
@@ -645,7 +714,7 @@ function PerformanceTable({ filas, label, getNombre, gastosPor, mono }: {
                 titulo="Gastos (por fila)"
                 incluye={['Gastos aprobados y pagados con este camión (o chofer) asignado']}
                 noIncluye={['Gastos sin camión/chofer asignado — están en el KPI general pero no en ninguna fila']}
-                iva="Total pagado del comprobante."
+                iva="Sigue el selector Montos: en Neto, cada categoría según su marca."
                 ojo="Un gasto con camión Y chofer aparece en las dos tablas: no sumes las tablas entre sí."
               />
             </span>
@@ -669,15 +738,16 @@ function PerformanceTable({ filas, label, getNombre, gastosPor, mono }: {
       </thead>
       <tbody className="divide-y divide-gris">
         {filas.map(f => {
+          const ingresos = f.ingresos * factorIngresos
           const gasto  = gastosPor.get(f.entidad_id) ?? 0
-          const margen = f.ingresos - gasto - f.costo_mo
+          const margen = ingresos - gasto - f.costo_mo
           const dxTn   = f.toneladas > 0 ? margen / f.toneladas : null
           return (
             <tr key={f.entidad_id}>
               <td className={`px-3 py-2 ${mono ? 'font-mono font-bold' : 'font-semibold'}`}>{getNombre(f.entidad_id)}</td>
               <td className="px-3 py-2 text-right font-mono">{fmtInt(f.viajes)}</td>
               <td className="px-3 py-2 text-right font-mono">{fmtInt(Math.round(f.toneladas))} t</td>
-              <td className="px-3 py-2 text-right font-mono">{fmt$(f.ingresos)}</td>
+              <td className="px-3 py-2 text-right font-mono">{fmt$(ingresos)}</td>
               <td className="px-3 py-2 text-right font-mono">{fmt$(gasto)}</td>
               <td
                 className={`px-3 py-2 text-right font-mono ${f.costo_mo > 0 ? 'text-azul-mid' : 'text-gris-mid'}`}

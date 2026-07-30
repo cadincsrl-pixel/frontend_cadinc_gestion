@@ -775,6 +775,9 @@ export function useDeleteCobro() {
 export type GastoCategoria = {
   id: number; codigo: string; nombre: string; aplica_a: 'camion' | 'chofer' | 'ambos'
   activo: boolean; orden: number
+  // true = el monto incluye IVA 21% (neteable); false = final (monotributista,
+  // tributo o sin factura). Para el modo Neto de Reportes.
+  lleva_iva?: boolean
 }
 
 export type TipoCombustible = 'gasoil' | 'nafta' | 'nafta_super' | 'adblue'

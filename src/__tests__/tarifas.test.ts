@@ -282,3 +282,27 @@ describe('unidadDelCamion — qué unidad paga el viaje según el camión', () =
     expect(unidadDelCamion([], 2)).toBe('batea')
   })
 })
+
+// ── Neteo de gastos por categoría (modo Neto de Gastos > Reportes) ───────────
+import { netearGastosPorCategoria } from '@/lib/utils/iva'
+
+describe('netearGastosPorCategoria', () => {
+  const LLEVA: Record<string, boolean> = {
+    combustible: true, gomeria: false, lavadero: false, patente: false,
+  }
+  const llevaIva = (c: string) => LLEVA[c] ?? true
+
+  it('netea las categorías con IVA y deja finales las que no', () => {
+    // combustible 121.000 → 100.000 neto · gomería 50.000 queda igual
+    const neto = netearGastosPorCategoria({ combustible: 121_000, gomeria: 50_000 }, llevaIva)
+    expect(neto).toBeCloseTo(150_000, 6)
+  })
+
+  it('una categoría desconocida se trata como CON IVA (error conservador)', () => {
+    expect(netearGastosPorCategoria({ inventada: 121_000 }, llevaIva)).toBeCloseTo(100_000, 6)
+  })
+
+  it('vacío → 0', () => {
+    expect(netearGastosPorCategoria({}, llevaIva)).toBe(0)
+  })
+})
