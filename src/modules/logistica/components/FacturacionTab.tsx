@@ -1361,8 +1361,20 @@ function ModalCobrarFacturas({
         }
         await marcarCobradoAsync({ id: c.id, fecha_cobro: fechaCobro || undefined })
         ok++
-      } catch {
-        fallidas.push(c.factura_nro ? `Fact. ${c.factura_nro}` : `#${c.id}`)
+      } catch (err: any) {
+        // El motivo VA en el toast. Antes se tragaba y el usuario solo veía
+        // que la factura "seguía pendiente" sin forma de saber por qué
+        // (reporte del dueño 2026-07-31).
+        const code = err?.body?.error ?? err?.code ?? ''
+        const motivo =
+          code === 'MIME_NO_PERMITIDO'       ? 'tipo de archivo no permitido' :
+          code === 'TAMAÑO_INVALIDO'         ? 'archivo demasiado grande' :
+          code === 'FALTA_COMPROBANTE_PAGO'  ? 'el comprobante no llegó a registrarse' :
+          code === 'ARCHIVO_NO_SUBIDO'       ? 'falló la subida del archivo (¿se cortó internet?)' :
+          code === 'SIN_PERMISO'             ? 'tu usuario no tiene permiso' :
+          err?.message                       ? String(err.message).slice(0, 80) :
+          'error desconocido'
+        fallidas.push(`${c.factura_nro ? `Fact. ${c.factura_nro}` : `#${c.id}`} (${motivo})`)
       }
     }
     setProcesando(false)
