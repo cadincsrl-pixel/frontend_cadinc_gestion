@@ -103,9 +103,17 @@ export function buildResumenSheet(wb: ExcelJS.Workbook, data: ExportData): void 
   const descuentosRow = row
   writeKpiRow(ws, row, 'Descuentos (−)',          data.totalesObra.descuentos,         FMT_MONEDA)
   row++
-  // Neto = total costos + otorgados − descuentos. Referencia a otra fila por celda.
+  // Lo que efectivamente salió de caja por préstamos: otorgados − descuentos.
+  // Es el mismo "Préstamos neto" que muestra el Resumen General en pantalla.
+  const prestamosNetoRow = row
+  writeTotalRow(ws, row, 'Préstamos neto (sale de caja)', {
+    formula: `B${otorgadosRow}-B${descuentosRow}`,
+    result: data.totalesObra.prestamosOtorgados - data.totalesObra.descuentos,
+  }, FMT_MONEDA)
+  row++
+  // Neto = total costos + préstamos neto. Referencia a otra fila por celda.
   writeTotalRow(ws, row, 'Neto a pagar', {
-    formula: `B${costosTotalRow}+B${otorgadosRow}-B${descuentosRow}`,
+    formula: `B${costosTotalRow}+B${prestamosNetoRow}`,
     result: data.totalesObra.neto,
   }, FMT_MONEDA)
 
