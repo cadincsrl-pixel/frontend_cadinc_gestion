@@ -1902,7 +1902,7 @@ function FacturacionSection() {
                               <span className={`font-semibold ${esFact ? 'text-naranja-dark' : 'text-carbon'}`}>
                                 {esFact
                                   ? <>⚠ Sin facturar: {mis_tramos.length} viaje{mis_tramos.length !== 1 ? 's' : ''}</>
-                                  : <>⏳ Sin liquidar: {mis_tramos.length} remito{mis_tramos.length !== 1 ? 's' : ''}</>}
+                                  : <>⏳ Esperando liquidación de la empresa: {mis_tramos.length} viaje{mis_tramos.length !== 1 ? 's' : ''}</>}
                                 {' · '}{fmtTon(ton_totales)}
                               </span>
                               <span className="font-mono font-bold text-carbon">{fmtM(total)}</span>
@@ -1960,7 +1960,7 @@ function FacturacionSection() {
                   <div className="mt-3 pt-3 border-t border-gris flex flex-wrap gap-2 items-center">
                     {!sinMovimientos && (
                       <Button variant="primary" size="sm" onClick={() => abrirCobrar(empresa)}>
-                        {esFact ? '🧾 Cargar factura' : '💰 Registrar cobro'}
+                        {esFact ? '🧾 Cargar factura' : '🧾 Registrar liquidación'}
                       </Button>
                     )}
                     {porCobrar.length > 0 && (
@@ -2206,6 +2206,19 @@ function FacturacionSection() {
                   {ordenados.length} de {todos.length}
                 </div>
               </div>
+
+              {/* El Historial lista COBROS (facturas emitidas o liquidaciones
+                  recibidas). Los viajes que todavía no tienen su papel no están
+                  acá — sin este aviso, leer el Historial como "todo lo que me
+                  deben" engaña (reporte del dueño 2026-07-31: "las 2 de AG no
+                  aparecen en por cobrar"). */}
+              {tramosPendientes.length > 0 && (
+                <div className="text-[11px] bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 text-amber-900">
+                  ⚠ Además hay <b>{tramosPendientes.length} viaje{tramosPendientes.length !== 1 ? 's' : ''}</b> que
+                  todavía no {tramosPendientes.length !== 1 ? 'entraron' : 'entró'} acá: sin factura emitida o
+                  esperando la liquidación de la empresa. Están arriba, en <b>Saldo corriente</b>.
+                </div>
+              )}
 
               {/* Chips de estado */}
               <div className="flex gap-1.5 flex-wrap">
@@ -2718,7 +2731,7 @@ function FacturacionSection() {
         title={
           empresaCobro?.modalidad_cobro === 'facturacion'
             ? (cobroCreado ? '🧾 ADJUNTAR FACTURA' : '🧾 CARGAR FACTURA')
-            : (cobroCreado ? '💰 ADJUNTAR DOCUMENTOS DEL COBRO' : '💰 REGISTRAR COBRO')
+            : (cobroCreado ? '💰 ADJUNTAR DOCUMENTOS DEL COBRO' : '🧾 REGISTRAR LIQUIDACIÓN DE LA EMPRESA')
         }
         width={cobroCreado ? 'max-w-2xl' : 'max-w-lg'}
         footer={
