@@ -502,7 +502,7 @@ export function ResumenHistoricoPage() {
                           {fmtMonto(Math.abs(totalPrestamos))}
                         </div>
                         <div className="text-[10px] font-bold uppercase tracking-wide opacity-70 mt-0.5">
-                          {totalPrestamos > 0 ? 'Préstamos ▾' : 'Descuentos ▾'}
+                          {totalPrestamos > 0 ? 'Préstamos neto ▾' : 'Descuentos neto ▾'}
                         </div>
                       </button>
                       {prestamosDetalleAbierto && (
