@@ -276,6 +276,16 @@ describe('totalHsLeg y getHsExtrasLeg — suma de horas de la semana', () => {
     expect(totalHsLeg(HORAS, OBRA, '5555', FECHAS)).toBe(0)
   })
 
+  it('sin basura de coma flotante: 10.2 × 3 días da 30.6 exacto (no 30.599999999999998)', () => {
+    // Regresión 2026-07-31: el total en pantalla mostraba 30.599999999999998.
+    const decimales = [
+      mkHora(OBRA, '9102', '2026-05-18', 10.2),
+      mkHora(OBRA, '9102', '2026-05-19', 10.2),
+      mkHora(OBRA, '9102', '2026-05-20', 10.2),
+    ]
+    expect(totalHsLeg(decimales, OBRA, '9102', FECHAS)).toBe(30.6)
+  })
+
   it('lista de fechas vacía da 0 (aunque haya extras)', () => {
     expect(totalHsLeg(HORAS, OBRA, '1042', [], EXTRAS)).toBe(0)
   })

@@ -11,7 +11,7 @@ import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useSessionStore } from '@/store/session.store'
 import { getSemDays, toISO, esFinde, esJueves, esHoy, DIAS } from '@/lib/utils/dates'
-import { costoLeg, getVHenFecha, getTarifaEnFecha, fmtMonto, getHsExtrasLeg } from '@/lib/utils/costos'
+import { costoLeg, getVHenFecha, getTarifaEnFecha, fmtMonto, getHsExtrasLeg, redondearHs } from '@/lib/utils/costos'
 import { useToast } from '@/components/ui/Toast'
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api/client'
@@ -170,7 +170,7 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
       const catId = catObraMap[p.leg] ?? p.cat_id
       const hsDias = days.reduce((s, d) => s + (horasMap[p.leg]?.[toISO(d)] ?? 0), 0)
       const hsExtra = getHsExtrasLeg(hsExtrasData, obraCod, p.leg, semKey)
-      hs += hsDias + hsExtra
+      hs = redondearHs(hs + hsDias + hsExtra)
       const vh = getVHenFecha(personal, categorias, tarifas, obraCod, p.leg, desde, catId)
       const costoBase = costoLeg(horasData, personal, categorias, tarifas, obraCod, p.leg, days, catId)
       const costoExtra = hsExtra * vh
@@ -338,7 +338,7 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
               const catId = catEfectiva?.id ?? p.cat_id
               const hsDiasLeg = days.reduce((s, d) => s + getH(p.leg, toISO(d)), 0)
               const hsExtraLeg = getHsExtrasLeg(hsExtrasData, obraCod, p.leg, semKey)
-              const totalLeg = hsDiasLeg + hsExtraLeg
+              const totalLeg = redondearHs(hsDiasLeg + hsExtraLeg)
               const fechaRef = toISO(days[0]!)
               const vh = getVHenFecha(personal, categorias, tarifas, obraCod, p.leg, fechaRef, catId)
               const costoBase = costoLeg(horasData, personal, categorias, tarifas, obraCod, p.leg, days, catId)

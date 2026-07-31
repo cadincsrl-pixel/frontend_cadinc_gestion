@@ -12,7 +12,7 @@ import { useTarifasObra } from '@/modules/tarja/hooks/useTarifas'
 import { useContratistas } from '@/modules/tarja/hooks/useContratistas'
 import { useTarjaStore } from '@/modules/tarja/store/tarja.store'
 import { getSemDays, toISO, getViernes, getSemLabel } from '@/lib/utils/dates'
-import { costoLegConCatObra, totalHsLeg, fmtMonto, fmtHs, type CatObraEntry } from '@/lib/utils/costos'
+import { costoLegConCatObra, totalHsLeg, fmtMonto, fmtHs, redondearHs, type CatObraEntry } from '@/lib/utils/costos'
 import { exportarCSVTarja } from '@/lib/utils/excel'
 import { apiGet } from '@/lib/api/client'
 import { WeekNavigator } from './WeekNavigator'
@@ -276,9 +276,9 @@ export function TarjaObraPage({ obraCod }: Props) {
               {semanasConHoras.map(semKey => {
                 const semDate = new Date(semKey + 'T12:00:00')
                 const isSelected = toISO(semActual) === semKey
-                const hsSem = horasObra
+                const hsSem = redondearHs(horasObra
                   .filter(h => toISO(getViernes(new Date(h.fecha + 'T12:00:00'))) === semKey)
-                  .reduce((s, h) => s + h.horas, 0)
+                  .reduce((s, h) => s + h.horas, 0))
                 return (
                   <button
                     key={semKey}

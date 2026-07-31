@@ -91,6 +91,13 @@ export function getVHenFecha(
 // Total de horas de un trabajador en una lista de días.
 // Si se pasa hsExtras, incluye las hs extras de la semana correspondiente.
 // sem_key = viernes de la semana (convención del proyecto, §5.3 CLAUDE.md).
+// Suma de horas sin basura de coma flotante: 10.2+10.2+10.2 da
+// 30.599999999999998 en IEEE 754. Las horas se cargan con hasta 2 decimales,
+// así que redondear a centésimas es sin pérdida.
+export function redondearHs(n: number): number {
+  return Math.round(n * 100) / 100
+}
+
 export function totalHsLeg(
   horas: Hora[],
   obraCod: string,
@@ -98,14 +105,14 @@ export function totalHsLeg(
   fechas: string[],
   hsExtras?: TarjaHsExtra[]
 ): number {
-  const normales = fechas.reduce((sum, fecha) => {
+  const normales = redondearHs(fechas.reduce((sum, fecha) => {
     const h = horas.find(x => x.obra_cod === obraCod && x.leg === leg && x.fecha === fecha)
     return sum + (h?.horas ?? 0)
-  }, 0)
+  }, 0))
   if (!hsExtras || hsExtras.length === 0 || fechas.length === 0) return normales
   // Calcular sem_key desde el primer día (viernes de la semana).
   const semKey = toISO(getViernes(new Date(fechas[0]! + 'T00:00:00')))
-  return normales + getHsExtrasLeg(hsExtras, obraCod, leg, semKey)
+  return redondearHs(normales + getHsExtrasLeg(hsExtras, obraCod, leg, semKey))
 }
 
 // Costo total de un trabajador en una semana.
@@ -164,7 +171,7 @@ export function calcularTotalesSemana(
     totalCosto += costoLeg(horas, personal, categorias, tarifas, obraCod, p.leg, dias, undefined, hsExtras)
   }
 
-  return { totalHs, totalCosto }
+  return { totalHs: redondearHs(totalHs), totalCosto }
 }
 
 export function fmtMonto(n: number): string {
