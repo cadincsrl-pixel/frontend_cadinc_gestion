@@ -13,6 +13,7 @@ import { useFacturasCompra, useCreateFactura } from '../hooks/useFacturasCompra'
 import { useStockMateriales } from '../hooks/useStock'
 import { useCreateRemitoEnvio } from '../hooks/useRemitosEnvio'
 import { imprimirRemito } from './RemitoEnvioPrint'
+import { useRemitosEnvio } from '../hooks/useRemitosEnvio'
 import { EMPRESA } from '@/lib/config/empresa'
 import { netaAFinal, finalANeta } from '@/lib/utils/iva'
 import { ItemHistorialModal } from './ItemHistorialModal'
@@ -170,6 +171,11 @@ export function SolicitudesTab() {
   // valida igual; esto evita clicks que rebotan con error feo (CLAUDE.md §6).
   const { puedeCrear, puedeEditar, puedeEliminar, resolverItems } = usePermisos('certificaciones')
   const { data: obras = [] } = useObras('certificaciones')
+  // Historial de remitos emitidos (pedido del dueño 2026-07-31: hasta hoy no
+  // había forma de ver ni reimprimir un remito viejo — si se cerraba el modal
+  // post-generación, el número quedaba huérfano de papel).
+  const [modalRemitos, setModalRemitos] = useState(false)
+  const [buscaRemito, setBuscaRemito]   = useState('')
   const { data: proveedores = [] } = useProveedores()
   const { data: facturas = [] } = useFacturasCompra()
   const { data: stockMateriales = [] } = useStockMateriales()
@@ -733,6 +739,10 @@ export function SolicitudesTab() {
           <div className="flex-1 min-w-0 sm:max-w-xs">
             <Combobox placeholder="Filtrar por obra..." options={obraOptions} value={obraFiltro} onChange={setObraFiltro} />
           </div>
+          <Button variant="secondary" size="sm" onClick={() => setModalRemitos(true)} className="shrink-0">
+            <span className="sm:hidden">📄</span>
+            <span className="hidden sm:inline">📄 Remitos</span>
+          </Button>
           <Button variant="primary" size="sm" onClick={abrirNuevo} disabled={!puedeCrear} className="shrink-0">
             <span className="sm:hidden">+ Nueva</span>
             <span className="hidden sm:inline">+ Nueva solicitud</span>
@@ -1989,6 +1999,18 @@ export function SolicitudesTab() {
           </div>
         </Modal>
       )}
+
+      {/* Historial de remitos emitidos, con reimpresión. Al final del JSX a
+          propósito: Modal no usa portal y todos comparten z-50 — el último en
+          el DOM queda arriba. */}
+      {modalRemitos && (
+        <ModalRemitosEmitidos
+          onClose={() => { setModalRemitos(false); setBuscaRemito('') }}
+          busca={buscaRemito}
+          setBusca={setBuscaRemito}
+          obraNombre={(cod: string) => obrasMap.get(cod)?.nom}
+        />
+      )}
     </>
   )
 }
@@ -2094,5 +2116,90 @@ function CategoriaTabs({
         )}
       </div>
     </div>
+  )
+}
+
+
+// ── Historial de remitos emitidos ────────────────────────────────────────────
+// Hasta el 2026-07-31 no existía: el remito solo se podía imprimir en el modal
+// post-generación, y si se cerraba había que deshacer el envío y regenerar con
+// otro número. Esta lista usa el mismo generador (dos modos: triplicado en una
+// hoja hasta 15 renglones, multi-página con más).
+function ModalRemitosEmitidos({ onClose, busca, setBusca, obraNombre }: {
+  onClose:    () => void
+  busca:      string
+  setBusca:   (v: string) => void
+  obraNombre: (cod: string) => string | undefined
+}) {
+  const { data: remitos = [], isLoading } = useRemitosEnvio()
+
+  const filtrados = (() => {
+    const q = busca.trim().toLowerCase()
+    if (!q) return remitos
+    const palabras = q.split(/\s+/)
+    return remitos.filter(r => {
+      const texto = [
+        r.numero, r.obra_cod, obraNombre(r.obra_cod) ?? '', r.fecha,
+        ...r.items.map(i => i.descripcion),
+      ].join(' ').toLowerCase()
+      return palabras.every(p => texto.includes(p))
+    })
+  })()
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="📄 REMITOS EMITIDOS"
+      width="max-w-2xl"
+      footer={<Button variant="secondary" onClick={onClose}>Cerrar</Button>}
+    >
+      <div className="flex flex-col gap-3">
+        <input
+          type="text"
+          autoComplete="off"
+          value={busca}
+          onChange={e => setBusca(e.target.value)}
+          placeholder="Buscar por número, obra, fecha o material..."
+          className="w-full px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white"
+        />
+        {isLoading ? (
+          <p className="text-sm text-gris-dark italic py-4 text-center">Cargando remitos…</p>
+        ) : filtrados.length === 0 ? (
+          <p className="text-sm text-gris-dark italic py-4 text-center">
+            {busca ? 'Ningún remito coincide con la búsqueda.' : 'Todavía no hay remitos emitidos.'}
+          </p>
+        ) : (
+          <>
+            <p className="text-[11px] text-gris-dark">
+              {filtrados.length} remito{filtrados.length !== 1 ? 's' : ''}
+              {busca && remitos.length !== filtrados.length ? ` (de ${remitos.length})` : ''}
+            </p>
+            <div className="flex flex-col divide-y divide-gris border border-gris-mid rounded-xl overflow-hidden max-h-[55vh] overflow-y-auto">
+              {filtrados.map(r => (
+                <div key={r.id} className="flex items-center gap-3 px-3 py-2.5 bg-white">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono font-bold text-sm text-naranja">{r.numero}</span>
+                      <span className="text-xs text-gris-dark">{r.fecha?.split('-').reverse().join('/')}</span>
+                    </div>
+                    <div className="text-xs text-gris-dark truncate">
+                      {r.obra_cod}{obraNombre(r.obra_cod) ? ` — ${obraNombre(r.obra_cod)}` : ''}
+                      {' · '}{r.items.length} renglón{r.items.length !== 1 ? 'es' : ''}
+                    </div>
+                  </div>
+                  <Button
+                    variant="secondary" size="sm"
+                    onClick={() => imprimirRemito(r, obraNombre(r.obra_cod))}
+                  >
+                    🖨 Reimprimir
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </Modal>
   )
 }
