@@ -1,15 +1,16 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useCategorias, useCreateCategoria, useUpdateCategoria, useDeleteCategoria } from '@/modules/tarja/hooks/useCategorias'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { toISO, getViernes } from '@/lib/utils/dates'
+import { toISO, getViernes, getSemLabel } from '@/lib/utils/dates'
 import type { Categoria, UpdateCategoriaDto } from '@/types/domain.types'
 
 const schemaNuevo = z.object({
@@ -40,6 +41,21 @@ export function CategoriasTab() {
   const formNuevo = useForm<FormNuevoData>({ resolver: zodResolver(schemaNuevo) as any })
   const formEdit = useForm<FormEditData>({ resolver: zodResolver(schemaEdit) as any })
   const desdeEdit = formEdit.watch('desde')
+
+  // La vigencia se elige por SEMANA (siempre un viernes): un date libre permitía
+  // cargar un aumento "desde el jueves" que la semana en curso nunca tomaba,
+  // porque el costo se valúa con la tarifa vigente al viernes de cada semana.
+  const semanasVigencia = useMemo(() => {
+    return Array.from({ length: 24 }, (_, i) => {
+      const vie = getViernes(new Date())
+      vie.setDate(vie.getDate() + (2 - i) * 7)
+      const key = toISO(vie)
+      return {
+        value: key,
+        label: `Semana ${getSemLabel(vie)}${key === viernesActual ? ' ← Actual' : ''}`,
+      }
+    })
+  }, [viernesActual])
 
   function handleCreate(data: FormNuevoData) {
     create(data, {
@@ -242,13 +258,17 @@ export function CategoriasTab() {
       >
         <div className="flex flex-col gap-4">
           <CatForm form={formEdit} errors={formEdit.formState.errors} />
-          <Input
-            label="Nuevo precio vigente desde"
-            type="date"
-            hint="Convención semanal: el viernes de la semana desde la que rige. Solo aplica si cambiás el valor hora."
-            error={formEdit.formState.errors.desde?.message}
-            {...formEdit.register('desde')}
-          />
+          <div className="flex flex-col gap-1">
+            <Select
+              label="Nuevo precio rige desde la semana"
+              options={semanasVigencia}
+              error={formEdit.formState.errors.desde?.message}
+              {...formEdit.register('desde')}
+            />
+            <p className="text-[11px] text-gris-dark">
+              Las semanas van de viernes a jueves. Solo aplica si cambiás el valor hora.
+            </p>
+          </div>
           {desdeEdit && desdeEdit < viernesActual && (
             <p className="text-xs font-bold text-rojo bg-rojo-light rounded-lg px-3 py-2">
               ⚠ Fecha anterior a la semana actual: se recalculan costos de semanas
