@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -7,7 +8,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Button } from '@/components/ui/Button'
-import { useCreatePersonal } from '@/modules/tarja/hooks/usePersonal'
+import { useCreatePersonal, usePersonal } from '@/modules/tarja/hooks/usePersonal'
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
 import { useToast } from '@/components/ui/Toast'
 
@@ -32,14 +33,29 @@ interface Props {
   onClose: () => void
 }
 
+// Próximo legajo libre: el mayor legajo numérico + 1, respetando el padding
+// de la casa ("099", "100"…). Los legajos no numéricos no cuentan.
+export function proximoLegajo(legs: string[]): string {
+  const max = legs.reduce((m, l) => /^\d+$/.test(l) ? Math.max(m, parseInt(l, 10)) : m, 0)
+  return max === 0 ? '' : String(max + 1).padStart(3, '0')
+}
+
 export function ModalNuevoTrabajador({ open, onClose }: Props) {
   const toast = useToast()
   const { data: categorias = [] } = useCategorias()
+  const { data: personal = [] } = usePersonal()
   const { mutate: createPersonal, isPending } = useCreatePersonal()
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
+  const { register, handleSubmit, reset, setValue, getValues, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema) as any
   })
+
+  // Al abrir, sugerir el próximo legajo (editable por si hace falta otro número).
+  useEffect(() => {
+    if (!open || personal.length === 0) return
+    if (getValues('leg')) return
+    setValue('leg', proximoLegajo(personal.map(p => p.leg)))
+  }, [open, personal, setValue, getValues])
 
   function onSubmit(data: FormData) {
     createPersonal(data, {
@@ -79,6 +95,7 @@ export function ModalNuevoTrabajador({ open, onClose }: Props) {
           <Input
             label="Legajo"
             placeholder="001"
+            hint="Sugerido automático (el que sigue). Se puede cambiar."
             error={errors.leg?.message}
             {...register('leg')}
           />
