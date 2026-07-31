@@ -945,39 +945,16 @@ export function ViajesTab() {
           </div>
         </div>
 
-        {/* Camiones: chips multi-selección (ninguno tildado = todos) */}
-        <div className="flex flex-col gap-1 w-full sm:w-auto">
+        {/* Camiones: desplegable con checklist (pedido del dueño 2026-07-31 —
+            antes eran chips; con casillas se ve qué está tildado y el botón
+            no crece con la flota). Ninguno tildado = todos. */}
+        <div className="flex flex-col gap-1">
           <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Camiones</label>
-          <div className="flex gap-1.5 flex-wrap">
-            {camiones.map(c => {
-              const activo = filtCamiones.has(c.id)
-              return (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => setFiltCamiones(prev => {
-                    const next = new Set(prev)
-                    if (next.has(c.id)) next.delete(c.id); else next.add(c.id)
-                    return next
-                  })}
-                  className={`text-xs font-bold font-mono px-2.5 py-1.5 rounded-full border-[1.5px] transition-colors ${
-                    activo ? 'bg-azul text-white border-azul' : 'bg-white border-gris-mid text-gris-dark hover:border-azul'
-                  }`}
-                >
-                  {c.patente}
-                </button>
-              )
-            })}
-            {filtCamiones.size > 0 && (
-              <button
-                type="button"
-                onClick={() => setFiltCamiones(new Set())}
-                className="text-xs px-2 py-1.5 text-gris-dark hover:text-rojo"
-              >
-                ✕ Todos
-              </button>
-            )}
-          </div>
+          <FiltroCamiones
+            camiones={camiones}
+            seleccion={filtCamiones}
+            onChange={setFiltCamiones}
+          />
         </div>
         <div className="flex items-center gap-2 flex-wrap sm:ml-auto">
           {(filtDesde || filtHasta) && (
@@ -1851,4 +1828,90 @@ function fmtFecha(s: string) {
 
 function hoy() {
   return toISO(new Date())
+}
+
+
+// ── Desplegable con checklist de camiones ────────────────────────────────────
+// Estilo filtro de planilla: botón compacto con el resumen de la selección, y
+// al abrirlo la lista con casillas + acciones Todos/Ninguno. Cierra con click
+// afuera o Escape.
+function FiltroCamiones({ camiones, seleccion, onChange }: {
+  camiones:  { id: number; patente: string }[]
+  seleccion: Set<number>
+  onChange:  (next: Set<number>) => void
+}) {
+  const [abierto, setAbierto] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!abierto) return
+    function onDown(e: MouseEvent | TouchEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setAbierto(false)
+    }
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setAbierto(false) }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('touchstart', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('touchstart', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [abierto])
+
+  function toggle(id: number) {
+    const next = new Set(seleccion)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    onChange(next)
+  }
+
+  const resumen = seleccion.size === 0
+    ? 'Todos'
+    : seleccion.size <= 2
+      ? camiones.filter(c => seleccion.has(c.id)).map(c => c.patente).join(', ')
+      : `${seleccion.size} de ${camiones.length}`
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setAbierto(v => !v)}
+        className={`flex items-center gap-2 px-3 py-1.5 border-[1.5px] rounded-lg text-sm font-semibold bg-white transition-colors ${
+          seleccion.size > 0 ? 'border-azul text-azul' : 'border-gris-mid text-gris-dark hover:border-azul'
+        }`}
+      >
+        🚚 {resumen}
+        <span className="text-[10px] text-gris-mid">{abierto ? '▲' : '▼'}</span>
+      </button>
+
+      {abierto && (
+        <div className="absolute z-50 top-full mt-1 left-0 w-52 bg-white border-[1.5px] border-gris-mid rounded-xl shadow-lg overflow-hidden">
+          <div className="flex items-center justify-between px-3 py-1.5 border-b border-gris bg-gris-light/60 text-[11px] font-bold text-gris-dark">
+            <button type="button" className="hover:text-azul" onClick={() => onChange(new Set(camiones.map(c => c.id)))}>
+              ☑ Todos
+            </button>
+            <button type="button" className="hover:text-rojo" onClick={() => onChange(new Set())}>
+              ☐ Ninguno
+            </button>
+          </div>
+          <div className="max-h-60 overflow-y-auto">
+            {camiones.map(c => (
+              <label key={c.id} className="flex items-center gap-2.5 px-3 py-2 text-sm cursor-pointer hover:bg-gris/30">
+                <input
+                  type="checkbox"
+                  checked={seleccion.has(c.id)}
+                  onChange={() => toggle(c.id)}
+                  className="accent-azul w-4 h-4"
+                />
+                <span className="font-mono font-semibold">{c.patente}</span>
+              </label>
+            ))}
+          </div>
+          <div className="px-3 py-1.5 border-t border-gris text-[10px] text-gris-mid">
+            Sin tildar = se muestran todos.
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
