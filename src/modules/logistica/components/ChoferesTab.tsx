@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type ComponentProps } from 'react'
+import type { UseFormRegisterReturn } from 'react-hook-form'
 import { useChoferes, useCreateChofer, useUpdateChofer, useDeleteChofer, useCamiones, useBateas, useTramos, useLiquidaciones } from '../hooks/useLogistica'
 import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -254,10 +255,15 @@ export function ChoferesTab() {
         <Select label="Batea asignada"  options={bateaOptions}  disabled={disabled} {...form.register('batea_id')} />
       </div>
       {/* Datos bancarios para las solicitudes de transferencia (Liquidaciones).
-          Alias o CBU/CVU — alcanza con uno para poder transferir. */}
+          Alias o CBU/CVU — alcanza con uno para poder transferir.
+          readOnly-hasta-focus: Chrome IGNORA autoComplete="off" cuando su
+          heurística decide que "alias" es un usuario/mail, y metía el mail del
+          admin al habilitar la edición (pasó con Zelarayan/Robles el 31/07 —
+          quedó guardado cadincsrl@gmail.com como alias bancario). Un campo
+          readonly no se autocompleta; se desbloquea recién al tocarlo. */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Input label="Alias (transferencias)" placeholder="juan.perez.mp" autoComplete="off" disabled={disabled} {...form.register('alias')} />
-        <Input label="CBU / CVU" placeholder="22 dígitos" autoComplete="off" inputMode="numeric" disabled={disabled} {...form.register('cbu')} />
+        <InputSinAutofill label="Alias (transferencias)" placeholder="juan.perez.mp" disabled={disabled} registration={form.register('alias')} />
+        <InputSinAutofill label="CBU / CVU" placeholder="22 dígitos" inputMode="numeric" disabled={disabled} registration={form.register('cbu')} />
       </div>
       <Input label="Observaciones" placeholder="Notas..." autoComplete="off" disabled={disabled} {...form.register('obs')} />
 
@@ -562,5 +568,22 @@ export function ChoferesTab() {
         )}
       </Modal>
     </>
+  )
+}
+
+// Input blindado contra el autofill de Chrome: nace readOnly (Chrome no
+// autocompleta campos de solo lectura) y se desbloquea al recibir foco.
+// Para campos que la heurística de Chrome confunde con usuario/mail (alias,
+// CBU) donde autoComplete="off" no alcanza.
+function InputSinAutofill({ registration, ...props }: ComponentProps<typeof Input> & { registration: UseFormRegisterReturn }) {
+  const [bloqueado, setBloqueado] = useState(true)
+  return (
+    <Input
+      {...props}
+      {...registration}
+      autoComplete="off"
+      readOnly={bloqueado}
+      onFocus={() => setBloqueado(false)}
+    />
   )
 }
