@@ -489,7 +489,14 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
             </div>
             {isPctMode && (
               <div className="mt-3">
-                <Input label="% sobre tarifa (ej 0.15 = 15%)" type="number" step="0.01" disabled={readOnly} {...form.register('pct_sobre_tarifa', { valueAsNumber: true })} />
+                <Input
+                  label="% del chofer (15 = 15%)"
+                  type="number"
+                  step="0.5"
+                  hint="Mismo número que en la ficha del chofer. Se aplica sobre la tarifa NETA (sin IVA) × toneladas. Si va solo a %, poné el jornal en 0."
+                  disabled={readOnly}
+                  {...form.register('pct_sobre_tarifa', { valueAsNumber: true })}
+                />
               </div>
             )}
           </div>

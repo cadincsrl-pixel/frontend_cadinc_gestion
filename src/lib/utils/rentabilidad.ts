@@ -51,7 +51,9 @@ export interface RentabilidadViajeInput {
   chofer_por_km:        number
   chofer_por_dia:       number
   modalidad_pago:       ModalidadPago
-  pct_sobre_tarifa:     number   // ej 0.15
+  // Porcentaje como número entero (15 = 15%), misma convención que
+  // pct_facturacion en la ficha del chofer. Se aplica sobre la tarifa NETA.
+  pct_sobre_tarifa:     number   // ej 15
 }
 
 export type Diagnostico =
@@ -131,7 +133,7 @@ export function calcularRentabilidad(
   // Sueldo / jornal / cargas del chofer: NO se netean de IVA (costo laboral, no
   // lleva IVA — ya son netos). Las cargas sociales son un fijo mensual prorrateado.
   const pago_chofer           = v.modalidad_pago === 'pct_jornal'
-    ? v.tarifa_neta_por_ton * v.toneladas * v.pct_sobre_tarifa
+    ? v.tarifa_neta_por_ton * v.toneladas * v.pct_sobre_tarifa / 100
     : km_total * v.chofer_por_km
   // Días por viaje = días del mes / viajes por mes (v.viajes_por_mes > 0 acá,
   // garantizado por el early-return de arriba). El jornal por viaje es el
