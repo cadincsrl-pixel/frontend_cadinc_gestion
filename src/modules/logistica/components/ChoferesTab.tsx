@@ -584,6 +584,10 @@ function InputSinAutofill({ registration, ...props }: ComponentProps<typeof Inpu
       autoComplete="off"
       readOnly={bloqueado}
       onFocus={() => setBloqueado(false)}
+      // Los gestores de contraseñas (LastPass, 1Password) superponen su ícono
+      // en campos que creen de login; estos atributos les piden que lo ignoren.
+      data-lpignore="true"
+      data-1p-ignore="true"
     />
   )
 }
