@@ -133,14 +133,17 @@ export function GastosTab() {
     litros: '', odometro_km: '', tipo_combustible: 'gasoil',
     tanque_lleno: true, obs: '',
   }
-  const formNuevo = useForm<GastoForm>({
-    defaultValues: {
-      categoria_id: '', fecha: hoy(), monto: '', camion_id: '', chofer_id: '',
-      proveedor: '', metodo_pago: 'efectivo', pagado_por: 'empresa',
-      comprobante_nro: '', descripcion: '', obs: '',
-      carga_combustible: DEFAULT_CARGA,
-    },
-  })
+  // Estado limpio del form de alta. El modal de gasto nuevo SIEMPRE abre en
+  // blanco: quedaba precargado el gasto anterior (todo, si se canceló; camión/
+  // chofer/proveedor incluso después de guardar) y era fácil registrar un
+  // gasto con datos del anterior sin darse cuenta.
+  const GASTO_VACIO: GastoForm = {
+    categoria_id: '', fecha: hoy(), monto: '', camion_id: '', chofer_id: '',
+    proveedor: '', metodo_pago: 'efectivo', pagado_por: 'empresa',
+    comprobante_nro: '', descripcion: '', obs: '',
+    carga_combustible: DEFAULT_CARGA,
+  }
+  const formNuevo = useForm<GastoForm>({ defaultValues: GASTO_VACIO })
   const formEdit = useForm<GastoForm>({ defaultValues: formNuevo.getValues() })
 
   // Upload pendiente (path en bucket, asignable a comprobante_path del POST).
@@ -200,11 +203,7 @@ export function GastosTab() {
           }
         }
         setModalCreate(false)
-        formNuevo.reset({
-          ...formNuevo.getValues(),
-          categoria_id: '', monto: '', descripcion: '', obs: '', comprobante_nro: '',
-          carga_combustible: DEFAULT_CARGA,
-        })
+        formNuevo.reset({ ...GASTO_VACIO, fecha: hoy() })
         resetUpload()
       },
       onError: (err: any) => {
@@ -469,7 +468,7 @@ export function GastosTab() {
         {puedeCrear && (
           <div className="flex flex-wrap gap-2 justify-end">
             <Button variant="secondary" onClick={() => setModalImport(true)}>📥 Importar Excel</Button>
-            <Button variant="primary" onClick={() => { formNuevo.reset({ ...formNuevo.getValues(), fecha: hoy(), categoria_id: '', monto: '' }); resetUpload(); setModalCreate(true) }}>
+            <Button variant="primary" onClick={() => { formNuevo.reset({ ...GASTO_VACIO, fecha: hoy() }); resetUpload(); setModalCreate(true) }}>
               + Registrar gasto
             </Button>
           </div>
