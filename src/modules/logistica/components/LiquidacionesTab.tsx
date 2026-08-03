@@ -2358,14 +2358,23 @@ export function LiquidacionesTab() {
                   </div>
                   <div className="bg-gris rounded-xl divide-y divide-gris-mid max-h-32 overflow-y-auto">
                     {liqAdel.map((a: Adelanto) => (
-                      <div key={a.id} className="flex justify-between text-xs px-3 py-2">
+                      <div key={a.id} className="flex items-center justify-between gap-2 text-xs px-3 py-2">
                         <span className="text-gris-dark">
                           {fmtFecha(a.fecha)} · {a.descripcion || 'Adelanto'}
                           {a.liquidacion_origen_id != null && (
                             <span className="ml-1 text-[10px] font-bold text-naranja-dark">↩ saldo liq. N° {a.liquidacion_origen_id}</span>
                           )}
                         </span>
-                        <span className="font-mono font-semibold text-rojo shrink-0">− {fmtM(a.monto)}</span>
+                        <span className="flex items-center gap-1 shrink-0">
+                          {a.comprobante_url && (
+                            <button
+                              onClick={() => verComprobanteAdel(a.id)}
+                              title="Ver comprobante"
+                              className="font-bold px-1.5 py-0.5 rounded hover:bg-azul-light text-gris-dark hover:text-azul transition-colors"
+                            >👁</button>
+                          )}
+                          <span className="font-mono font-semibold text-rojo">− {fmtM(a.monto)}</span>
+                        </span>
                       </div>
                     ))}
                   </div>
