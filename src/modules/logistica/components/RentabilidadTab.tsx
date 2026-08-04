@@ -80,6 +80,7 @@ export function RentabilidadTab() {
   const [modalNuevo,  setModalNuevo]   = useState(false)
   const [editando,    setEditando]     = useState<ViajeRow | null>(null)
   const [paramsOpen,  setParamsOpen]   = useState(false)
+  const [infoColsOpen, setInfoColsOpen] = useState(false)
 
   if (loadingP || loadingV) {
     return <div className="p-6 text-sm text-gris-dark">Cargando…</div>
@@ -146,7 +147,17 @@ export function RentabilidadTab() {
       {/* ── Ranking ── */}
       <div className="bg-white rounded-card shadow-card overflow-hidden">
         <div className="bg-azul text-white px-4 py-2.5 flex items-center justify-between">
-          <h2 className="font-display text-base tracking-wider">RANKING</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="font-display text-base tracking-wider">RANKING</h2>
+            <button
+              type="button"
+              aria-label="Qué muestra cada columna"
+              onClick={() => setInfoColsOpen(true)}
+              className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-white/25 text-white text-[10px] font-bold leading-none hover:bg-white hover:text-azul transition-colors"
+            >
+              i
+            </button>
+          </div>
           {puedeCrear && (
             <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)}>＋ Nuevo viaje</Button>
           )}
@@ -268,6 +279,9 @@ export function RentabilidadTab() {
         readOnly={!puedeEditar}
       />
 
+      {infoColsOpen && (
+        <ModalInfoColumnas onClose={() => setInfoColsOpen(false)} />
+      )}
       {modalNuevo && (
         <ModalViaje
           mode="create"
@@ -285,6 +299,62 @@ export function RentabilidadTab() {
         />
       )}
     </div>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Glosario de columnas del ranking. Modal (no popover) a propósito: la tabla
+// scrollea horizontal y un popover por columna quedaría recortado por el
+// overflow. Las definiciones tienen que coincidir con calcularRentabilidad().
+// ────────────────────────────────────────────────────────────────────────
+const COLUMNAS_INFO: { col: string; detalle: string }[] = [
+  { col: 'Tarifa $/t',
+    detalle: 'Tarifa NETA (sin IVA) por tonelada que se le cobra al cliente. El ingreso del viaje es esta tarifa × toneladas.' },
+  { col: 'Viajes/mes',
+    detalle: 'Cuántas veces al mes el camión hace este viaje. Multiplica el margen mensual y prorratea los costos fijos mensuales (cargas sociales, seguros, patente, batea). También deriva los días por viaje (30 ÷ viajes/mes). Si está inflado, el margen mensual se infla y el costo por viaje se subestima.' },
+  { col: 'Km/mes',
+    detalle: 'Km del viaje completo (ida + vuelta) × viajes por mes. Cuánto camión consume esta ruta por mes.' },
+  { col: 'Chofer $/mes',
+    detalle: 'Lo que cobra el chofer en el mes por esta ruta: pago por km (o % sobre tarifa neta) + jornales, todo × viajes/mes. Ya está descontado del margen. No incluye cargas sociales — van como costo aparte.' },
+  { col: 'Margen $/viaje',
+    detalle: 'Ingreso − costo total de UN viaje. El costo suma directos (combustible, chofer, cargas sociales, peajes, neumáticos, gomería, lavadero) + fijos prorrateados (amortización de tractor y batea, service, seguros, patente) + overhead.' },
+  { col: 'Margen $/km',
+    detalle: 'Margen del viaje ÷ km totales. Permite comparar rutas de distinta distancia: un viaje largo puede dejar más plata total y rendir peor por km.' },
+  { col: 'Margen s/fijos',
+    detalle: 'Margen sin descontar los costos fijos (amortizaciones, service, seguros, patente). Es lo que el viaje deja en efectivo para cubrir esos fijos de la flota más la ganancia.' },
+  { col: 'Margen % s/ing.',
+    detalle: 'Margen ÷ ingreso del viaje. Es el porcentaje que usa el diagnóstico.' },
+  { col: 'Margen $/mes',
+    detalle: 'Margen por viaje × viajes por mes. Asume que el camión hace solo esta ruta todo el mes.' },
+  { col: 'Diagnóstico',
+    detalle: 'Semáforo según el margen % sobre ingreso: Pérdida <0% · Muy bajo <5% · Bajo 5–10% · Saludable 10–20% · Alto ≥20%.' },
+]
+
+function ModalInfoColumnas({ onClose }: { onClose: () => void }) {
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="ⓘ QUÉ MUESTRA CADA COLUMNA"
+      footer={<Button variant="secondary" onClick={onClose}>Cerrar</Button>}
+    >
+      <div className="flex flex-col gap-3">
+        <p className="text-xs text-gris-dark bg-azul-light rounded-lg px-3 py-2 leading-snug">
+          Todos los montos son <b>netos de IVA</b>: la tarifa se carga neta y los costos que vienen con IVA
+          (gasoil, peajes, cubiertas, service, seguros, gomería, lavadero) se netean dividiendo por 1,21.
+          El margen es <b>operativo</b>: antes de Ganancias, IIBB y costos financieros. No es plata en mano —
+          las amortizaciones son costo contable, no salida de caja.
+        </p>
+        <dl className="divide-y divide-gris">
+          {COLUMNAS_INFO.map(({ col, detalle }) => (
+            <div key={col} className="py-2">
+              <dt className="text-xs font-bold text-carbon">{col}</dt>
+              <dd className="text-[11px] text-gris-dark leading-snug mt-0.5">{detalle}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    </Modal>
   )
 }
 
