@@ -82,3 +82,91 @@ describe('htmlRemito', () => {
     expect(html.split('$250.000').length - 1).toBe(3)
   })
 })
+
+// ── Estado del pedido original en el remito (2026-08-05) ────────────────────
+import { armarEstadoPedido } from '@/modules/certificaciones/components/RemitoEnvioPrint'
+import type { SolicitudCompra } from '@/types/domain.types'
+
+function mkSolicitud(items: Partial<SolicitudCompra['items'][number]>[]): Pick<SolicitudCompra, 'id' | 'fecha' | 'items'> {
+  return {
+    id: 45,
+    fecha: '2026-07-28',
+    items: items.map((it, i) => ({
+      id: i + 1,
+      descripcion: `Mat ${i + 1}`,
+      cantidad: 50,
+      unidad: 'un',
+      estado: 'comprado',
+      ...it,
+    })) as SolicitudCompra['items'],
+  }
+}
+
+function mkRemitoCon(items: { item_id: number; cantidad: number }[]): RemitoEnvio {
+  return {
+    ...mkRemito(0),
+    items: items.map((it, i) => ({
+      id: i + 1, remito_id: 1, item_id: it.item_id, descripcion: `Mat ${it.item_id}`,
+      cantidad: it.cantidad, unidad: 'un', origen: 'deposito', proveedor: null, precio_unit: null,
+    })),
+  } as RemitoEnvio
+}
+
+describe('armarEstadoPedido — pedido / enviado / falta', () => {
+  it('al crear (cache viejo) suma este remito al acumulado', () => {
+    const sol = mkSolicitud([{ cantidad: 50, cantidad_enviada: 20 }, { cantidad: 10, cantidad_enviada: 0 }])
+    const est = armarEstadoPedido(sol, mkRemitoCon([{ item_id: 1, cantidad: 15 }]), { sumarEsteRemito: true })
+    expect(est.items[0]).toMatchObject({ pedida: 50, enviada: 35, falta: 15 })
+    expect(est.items[1]).toMatchObject({ pedida: 10, enviada: 0, falta: 10 })
+    expect(est.etiqueta).toBe('Pedido #45 · 28/07/2026')
+  })
+
+  it('al reimprimir (cache al día) NO vuelve a sumar este remito', () => {
+    const sol = mkSolicitud([{ cantidad: 50, cantidad_enviada: 35 }])
+    const est = armarEstadoPedido(sol, mkRemitoCon([{ item_id: 1, cantidad: 15 }]), { sumarEsteRemito: false })
+    expect(est.items[0]).toMatchObject({ enviada: 35, falta: 15 })
+  })
+
+  it('ítem legacy marcado enviado sin acumulado cuenta como completo', () => {
+    const sol = mkSolicitud([{ cantidad: 30, cantidad_enviada: 0, estado: 'enviado' }])
+    const est = armarEstadoPedido(sol, mkRemitoCon([]), { sumarEsteRemito: false })
+    expect(est.items[0]).toMatchObject({ enviada: 30, falta: 0 })
+  })
+
+  it('si se compró menos que lo pedido, la meta es la cantidad comprada', () => {
+    const sol = mkSolicitud([{ cantidad: 50, cantidad_comprada: 40, cantidad_enviada: 40 }])
+    const est = armarEstadoPedido(sol, mkRemitoCon([]), { sumarEsteRemito: false })
+    expect(est.items[0]).toMatchObject({ pedida: 40, enviada: 40, falta: 0 })
+  })
+
+  it('rechazados salen marcados y sin falta', () => {
+    const sol = mkSolicitud([{ estado: 'rechazado' }])
+    const est = armarEstadoPedido(sol, mkRemitoCon([]), { sumarEsteRemito: false })
+    expect(est.items[0]!.rechazado).toBe(true)
+    expect(est.items[0]!.falta).toBe(0)
+  })
+})
+
+describe('htmlRemito con estado del pedido', () => {
+  it('imprime la sección con pedido/enviado/falta y ✓ en los completos', () => {
+    const sol = mkSolicitud([
+      { cantidad: 50, cantidad_enviada: 35 },
+      { cantidad: 15, cantidad_enviada: 15, estado: 'enviado' },
+    ])
+    const est = armarEstadoPedido(sol, mkRemitoCon([]), { sumarEsteRemito: false })
+    const html = htmlRemito(mkRemito(2), 'Obra Test', est)
+    expect(html).toContain('ESTADO DEL PEDIDO ORIGINAL — Pedido #45')
+    expect(html).toContain('✓')
+    expect(html).toContain('>15</span>')  // falta 15 resaltado
+  })
+
+  it('los renglones del estado cuentan para pasar al formato largo', () => {
+    // 10 items del remito + 8 del estado (+2) = 20 > 15 → largo
+    const sol = mkSolicitud(Array.from({ length: 8 }, () => ({})))
+    const est = armarEstadoPedido(sol, mkRemitoCon([]), { sumarEsteRemito: false })
+    const html = htmlRemito(mkRemito(10), 'Obra', est)
+    expect(html).not.toContain('min-height:calc(33.33vh')
+    // Sin estado, 10 items solos siguen compactos.
+    expect(htmlRemito(mkRemito(10))).toContain('min-height:calc(33.33vh')
+  })
+})

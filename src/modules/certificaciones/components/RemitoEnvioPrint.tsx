@@ -1,7 +1,69 @@
 'use client'
 
 import { EMPRESA } from '@/lib/config/empresa'
-import type { RemitoEnvio } from '@/types/domain.types'
+import type { RemitoEnvio, SolicitudCompra } from '@/types/domain.types'
+
+// ── Estado del pedido original (pedido / enviado / falta) ───────────────────
+// Pedido del dueño (2026-08-05): el remito impreso tiene que mostrar el pedido
+// completo de la obra, lo que va en este envío y lo que falta mandar — así el
+// capataz sabe qué esperar sin llamar al depósito.
+
+export interface EstadoPedidoItem {
+  descripcion: string
+  unidad:      string
+  pedida:      number   // cantidad efectiva (si se compró menos, la comprada)
+  enviada:     number   // acumulado enviado
+  falta:       number   // max(0, pedida − enviada)
+  rechazado:   boolean
+}
+
+export interface EstadoPedido {
+  etiqueta: string      // "Pedido #45 · 28/07/2026"
+  items:    EstadoPedidoItem[]
+}
+
+/**
+ * Arma la tabla de estado del pedido para imprimir en el remito.
+ *
+ * `sumarEsteRemito`: al IMPRIMIR RECIÉN CREADO el remito, el cache de
+ * solicitudes todavía tiene el acumulado viejo (el backend ya lo actualizó,
+ * pero el refetch no llegó) → hay que sumarle lo de este remito. En las
+ * REIMPRESIONES el cache ya lo incluye → false, y la tabla sale con el estado
+ * de HOY (que para reclamar faltantes es lo que sirve).
+ */
+export function armarEstadoPedido(
+  solicitud: Pick<SolicitudCompra, 'id' | 'fecha' | 'items'>,
+  remito: RemitoEnvio,
+  opts: { sumarEsteRemito: boolean },
+): EstadoPedido {
+  const enEsteRemito = new Map<number, number>()
+  for (const ri of remito.items) {
+    if (ri.item_id != null) {
+      enEsteRemito.set(ri.item_id, (enEsteRemito.get(ri.item_id) ?? 0) + Number(ri.cantidad))
+    }
+  }
+
+  const items: EstadoPedidoItem[] = solicitud.items.map(it => {
+    const pedida    = Number(it.cantidad_comprada ?? it.cantidad)
+    const rechazado = it.estado === 'rechazado'
+    let enviada = Number(it.cantidad_enviada ?? 0)
+    if (opts.sumarEsteRemito && it.id != null) enviada += enEsteRemito.get(it.id) ?? 0
+    // Ítems marcados 'enviado' de antes de los envíos parciales (jul 2026)
+    // pueden no tener acumulado cargado: enviado completo es la verdad.
+    if (it.estado === 'enviado' && enviada < pedida) enviada = pedida
+    if (enviada > pedida) enviada = pedida
+    return {
+      descripcion: it.descripcion,
+      unidad:      it.unidad,
+      pedida,
+      enviada,
+      falta:       rechazado ? 0 : Math.max(0, pedida - enviada),
+      rechazado,
+    }
+  })
+
+  return { etiqueta: `Pedido #${solicitud.id} · ${fmtF(solicitud.fecha)}`, items }
+}
 
 function fmtF(s: string) { const [y,m,d] = s.split('-'); return `${d}/${m}/${y}` }
 function fmtM(n: number) { return '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 0 }) }
@@ -122,9 +184,12 @@ const MAX_RENGLONES_COMPACTO = 15
  * ~20 artículos el remito salía incompleto y nadie lo notaba hasta contar los
  * renglones contra el sistema (reportado el 2026-07-30).
  */
-export function htmlRemito(remito: RemitoEnvio, obraNom?: string): string {
+export function htmlRemito(remito: RemitoEnvio, obraNom?: string, estadoPedido?: EstadoPedido): string {
   const total = remito.items.reduce((s, it) => s + (it.precio_unit ?? 0) * it.cantidad, 0)
-  const compacto = remito.items.length <= MAX_RENGLONES_COMPACTO
+  // La tabla de estado del pedido también ocupa renglones: cuenta para decidir
+  // si el triplicado entra en una hoja (+2 por título y encabezado).
+  const renglones = remito.items.length + (estadoPedido ? estadoPedido.items.length + 2 : 0)
+  const compacto = renglones <= MAX_RENGLONES_COMPACTO
 
   // El modo largo usa cuerpos un punto más grandes: ya no hay que hacer entrar
   // tres copias en una hoja, y el remito se lee en el galpón, no en un monitor.
@@ -142,6 +207,35 @@ export function htmlRemito(remito: RemitoEnvio, obraNom?: string): string {
       <td style="padding:2px 4px;text-align:right;font-size:${fz.texto};font-weight:bold">${it.precio_unit ? fmtM(it.precio_unit * it.cantidad) : '—'}</td>
     </tr>
   `).join('')
+
+  // Estado del pedido original: pedido / enviado / falta por ítem. El capataz
+  // ve en el papel qué le mandaron y qué tiene que seguir esperando.
+  const estadoHtml = !estadoPedido ? '' : `
+      <div style="margin-top:6px">
+        <div style="font-size:${fz.chico};font-weight:bold;color:#1A365D;border-bottom:1px solid #1A365D;padding-bottom:1px;margin-bottom:2px">
+          ESTADO DEL PEDIDO ORIGINAL — ${estadoPedido.etiqueta}
+        </div>
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr style="background:#eef1f6;color:#1A365D">
+            <th style="padding:1px 4px;text-align:left;font-size:${fz.chico}">MATERIAL</th>
+            <th style="padding:1px 4px;text-align:center;font-size:${fz.chico}">PEDIDO</th>
+            <th style="padding:1px 4px;text-align:center;font-size:${fz.chico}">ENVIADO</th>
+            <th style="padding:1px 4px;text-align:center;font-size:${fz.chico}">FALTA</th>
+          </tr></thead>
+          <tbody>
+            ${estadoPedido.items.map(it => `
+            <tr style="border-bottom:1px solid #eee${it.rechazado ? ';color:#999' : ''}">
+              <td style="padding:1px 4px;font-size:${fz.chico}">${it.descripcion}</td>
+              <td style="padding:1px 4px;text-align:center;font-size:${fz.chico}">${it.pedida} ${it.unidad}</td>
+              <td style="padding:1px 4px;text-align:center;font-size:${fz.chico}">${it.rechazado ? '—' : it.enviada}</td>
+              <td style="padding:1px 4px;text-align:center;font-size:${fz.chico};font-weight:bold">
+                ${it.rechazado ? 'rechazado' : it.falta > 0 ? `<span style="color:#E8621A">${it.falta}</span>` : '✓'}
+              </td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+  `
 
   // Compacto: min-height de un tercio de hoja + prohibido partir (entra seguro
   // porque el modo sólo corre con pocos renglones). Largo: SIN min-height y SIN
@@ -187,6 +281,7 @@ export function htmlRemito(remito: RemitoEnvio, obraNom?: string): string {
           <td style="padding:2px 4px;text-align:right;font-weight:bold;font-size:${fz.total};color:#E8621A">${fmtM(total)}</td>
         </tr></tfoot>` : ''}
       </table>
+      ${estadoHtml}
       <!-- Firmas: en flujo normal (no absolute) — bajan con el contenido en vez
            de pisarlo. En compacto margin-top:auto las manda al pie del tercio;
            en largo van pegadas al final de la tabla, sin separarse solas de
@@ -221,10 +316,10 @@ export function htmlRemito(remito: RemitoEnvio, obraNom?: string): string {
  * Abre la ventana de impresión del remito. Hasta 15 renglones: triplicado en
  * una hoja. Más: una copia por hoja, con la tabla partida entre páginas.
  */
-export function imprimirRemito(remito: RemitoEnvio, obraNom?: string) {
+export function imprimirRemito(remito: RemitoEnvio, obraNom?: string, estadoPedido?: EstadoPedido) {
   const win = window.open('', '_blank')
   if (!win) return
-  win.document.write(htmlRemito(remito, obraNom))
+  win.document.write(htmlRemito(remito, obraNom, estadoPedido))
   win.document.close()
   win.print()
 }

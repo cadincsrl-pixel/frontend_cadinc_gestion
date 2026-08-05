@@ -12,7 +12,7 @@ import { useProveedores, useCreateProveedor } from '../hooks/useProveedores'
 import { useFacturasCompra, useCreateFactura } from '../hooks/useFacturasCompra'
 import { useStockMateriales } from '../hooks/useStock'
 import { useCreateRemitoEnvio } from '../hooks/useRemitosEnvio'
-import { imprimirRemito } from './RemitoEnvioPrint'
+import { imprimirRemito, armarEstadoPedido, type EstadoPedido } from './RemitoEnvioPrint'
 import { useRemitosEnvio } from '../hooks/useRemitosEnvio'
 import { EMPRESA } from '@/lib/config/empresa'
 import { netaAFinal, finalANeta } from '@/lib/utils/iva'
@@ -234,7 +234,7 @@ export function SolicitudesTab() {
   // botón, para que el window.open corra DENTRO del gesto del usuario. En
   // móvil/PWA, abrir la ventana en el onSuccess async se bloquea silenciosamente
   // y el remito no se abría, aunque el ítem ya quedaba 'enviado'.
-  const [ultimoRemito, setUltimoRemito] = useState<{ remito: RemitoEnvio; obraNom?: string } | null>(null)
+  const [ultimoRemito, setUltimoRemito] = useState<{ remito: RemitoEnvio; obraNom?: string; estado?: EstadoPedido } | null>(null)
   // Modal de armado de remito con cantidades editables (envíos parciales):
   // lo que se manda de menos queda pendiente para otro remito.
   const [modalEnvio, setModalEnvio] = useState<{ solicitud: SolicitudCompra; items: SolicitudCompraItem[] } | null>(null)
@@ -687,7 +687,12 @@ export function SolicitudesTab() {
         setModalEnvio(null)
         // No imprimimos acá (estamos fuera del gesto del usuario → el popup se
         // bloquea en móvil). Ofrecemos imprimir desde un modal con su botón.
-        setUltimoRemito({ remito, obraNom: obra?.nom })
+        setUltimoRemito({
+          remito,
+          obraNom: obra?.nom,
+          // Snapshot ANTES del refetch: el cache aún no incluye este remito.
+          estado: armarEstadoPedido(solicitud, remito, { sumarEsteRemito: true }),
+        })
       },
       onError: (e: any) => toast(e.message || 'Error', 'err'),
     })
@@ -1982,7 +1987,7 @@ export function SolicitudesTab() {
               <Button variant="secondary" onClick={() => setUltimoRemito(null)}>Cerrar</Button>
               <Button
                 variant="primary"
-                onClick={() => { imprimirRemito(ultimoRemito.remito, ultimoRemito.obraNom); setUltimoRemito(null) }}
+                onClick={() => { imprimirRemito(ultimoRemito.remito, ultimoRemito.obraNom, ultimoRemito.estado); setUltimoRemito(null) }}
               >
                 🖨 Imprimir remito
               </Button>
@@ -2132,6 +2137,15 @@ function ModalRemitosEmitidos({ onClose, busca, setBusca, obraNombre }: {
   obraNombre: (cod: string) => string | undefined
 }) {
   const { data: remitos = [], isLoading } = useRemitosEnvio()
+  // Lista SIN filtro de obra: el historial trae remitos de todas las obras y
+  // la solicitud de cada uno puede no estar en la lista filtrada del tab.
+  const { data: solicitudesTodas = [] } = useSolicitudes()
+
+  function reimprimir(r: RemitoEnvio) {
+    const sol = r.solicitud_id != null ? solicitudesTodas.find(s => s.id === r.solicitud_id) : undefined
+    // Reimpresión: el acumulado del cache ya incluye este remito → estado de HOY.
+    imprimirRemito(r, obraNombre(r.obra_cod), sol ? armarEstadoPedido(sol, r, { sumarEsteRemito: false }) : undefined)
+  }
 
   const filtrados = (() => {
     const q = busca.trim().toLowerCase()
@@ -2190,7 +2204,7 @@ function ModalRemitosEmitidos({ onClose, busca, setBusca, obraNombre }: {
                   </div>
                   <Button
                     variant="secondary" size="sm"
-                    onClick={() => imprimirRemito(r, obraNombre(r.obra_cod))}
+                    onClick={() => reimprimir(r)}
                   >
                     🖨 Reimprimir
                   </Button>
