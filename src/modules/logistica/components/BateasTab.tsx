@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useBateas, useCreateBatea, useUpdateBatea, useDeleteBatea } from '../hooks/useLogistica'
+import { estadoVencimiento } from '../utils/docs-vigentes'
 import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input }  from '@/components/ui/Input'
@@ -177,7 +178,7 @@ export function BateasTab() {
         <table className="w-full border-collapse">
           <thead>
             <tr>
-              {['Patente', 'Tipo', 'Marca/Modelo', 'Año', 'Capacidad', 'Titular', 'Estado', ''].map(h => (
+              {['Patente', 'Tipo', 'Marca/Modelo', 'Año', 'Capacidad', 'Titular', 'RTO vence', 'Estado', ''].map(h => (
                 <th key={h} className="bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide">
                   {h}
                 </th>
@@ -186,7 +187,7 @@ export function BateasTab() {
           </thead>
           <tbody>
             {bateasFiltradas.length === 0 ? (
-              <tr><td colSpan={8} className="text-center py-8 text-gris-dark text-sm">No hay remolques registrados.</td></tr>
+              <tr><td colSpan={9} className="text-center py-8 text-gris-dark text-sm">No hay remolques registrados.</td></tr>
             ) : bateasFiltradas.map(b => (
               <tr
                 key={b.id}
@@ -206,6 +207,7 @@ export function BateasTab() {
                   {b.capacidad_m3 == null && b.capacidad_tn == null && '—'}
                 </td>
                 <td className="px-4 py-3 text-xs text-gris-dark">{b.titular ?? '—'}</td>
+                <td className="px-4 py-3"><RtoChip venceEl={b.rto_vence_el} /></td>
                 <td className="px-4 py-3">
                   <Badge
                     variant={b.estado === 'activo' ? 'activo' : b.estado === 'inactivo' ? 'inactivo' : 'pendiente'}
@@ -265,6 +267,7 @@ export function BateasTab() {
                       {b.titular}
                     </div>
                   )}
+                  <div className="mt-1"><RtoChip venceEl={b.rto_vence_el} /></div>
                 </div>
                 <Badge
                   variant={b.estado === 'activo' ? 'activo' : b.estado === 'inactivo' ? 'inactivo' : 'pendiente'}
@@ -332,4 +335,29 @@ export function BateasTab() {
       </Modal>
     </>
   )
+}
+
+
+// Chip de vencimiento de RTO: rojo vencida, ámbar ≤30 días, gris normal.
+// La campana de notificaciones ya avisa estos vencimientos; esto los pone
+// de frente en el listado.
+function RtoChip({ venceEl }: { venceEl: string | null | undefined }) {
+  const { estado, dias } = estadoVencimiento(venceEl)
+  if (estado === 'sin_doc' || !venceEl) return <span className="text-xs text-gris-mid">— sin RTO</span>
+  const fecha = new Date(venceEl + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+  if (estado === 'vencido') {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-rojo-light text-rojo">
+        ⚠ VENCIDA {fecha}
+      </span>
+    )
+  }
+  if (estado === 'por_vencer') {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-naranja-light text-naranja-dark">
+        ⏳ {dias === 0 ? 'vence HOY' : dias === 1 ? 'vence mañana' : `vence en ${dias} días`} · {fecha}
+      </span>
+    )
+  }
+  return <span className="text-xs font-mono text-gris-dark">{fecha}</span>
 }

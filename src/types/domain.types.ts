@@ -484,6 +484,9 @@ export interface Batea extends AuditFields {
   titular:      string | null
   estado:       BateaEstado
   obs:          string | null
+  // Vencimiento de la RTO vigente (lo adjunta el backend en getAll; null si
+  // la batea no tiene RTO cargada en Documentos).
+  rto_vence_el?: string | null
 }
 
 // ── Documentos del vehículo (camión y batea, mismo schema) ──

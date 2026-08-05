@@ -29,3 +29,22 @@ export function partirVigentesYArchivados<T extends DocRenovable>(
     archivados: ord.filter(d => (d.vence_el ?? null) !== venceVigente),
   }
 }
+
+// ── Semáforo de vencimiento ──────────────────────────────────────────
+// Clasifica una fecha de vencimiento para pintar chips en listados:
+// vencido (rojo) / por_vencer a ≤30 días (ámbar) / ok / sin_doc.
+// `hoy` inyectable para tests; días negativos = hace cuántos venció.
+export type EstadoVencimiento = 'sin_doc' | 'vencido' | 'por_vencer' | 'ok'
+
+export function estadoVencimiento(
+  venceEl: string | null | undefined,
+  hoy: string = new Date().toISOString().slice(0, 10),
+): { estado: EstadoVencimiento; dias: number | null } {
+  if (!venceEl) return { estado: 'sin_doc', dias: null }
+  const dias = Math.round(
+    (new Date(venceEl + 'T00:00:00').getTime() - new Date(hoy + 'T00:00:00').getTime()) / 86_400_000,
+  )
+  if (dias < 0)   return { estado: 'vencido', dias }
+  if (dias <= 30) return { estado: 'por_vencer', dias }
+  return { estado: 'ok', dias }
+}

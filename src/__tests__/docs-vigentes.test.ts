@@ -55,3 +55,29 @@ describe('partirVigentesYArchivados', () => {
     expect(archivados).toHaveLength(0)
   })
 })
+
+import { estadoVencimiento } from '@/modules/logistica/utils/docs-vigentes'
+
+describe('estadoVencimiento — semáforo de RTO/documentos', () => {
+  const HOY = '2026-08-05'
+
+  it('sin fecha → sin_doc', () => {
+    expect(estadoVencimiento(null, HOY)).toEqual({ estado: 'sin_doc', dias: null })
+    expect(estadoVencimiento(undefined, HOY)).toEqual({ estado: 'sin_doc', dias: null })
+  })
+
+  it('fecha pasada → vencido con días negativos', () => {
+    expect(estadoVencimiento('2026-08-01', HOY)).toEqual({ estado: 'vencido', dias: -4 })
+  })
+
+  it('vence hoy y hasta 30 días → por_vencer', () => {
+    expect(estadoVencimiento('2026-08-05', HOY)).toEqual({ estado: 'por_vencer', dias: 0 })
+    expect(estadoVencimiento('2026-08-07', HOY)).toEqual({ estado: 'por_vencer', dias: 2 })
+    expect(estadoVencimiento('2026-09-04', HOY)).toEqual({ estado: 'por_vencer', dias: 30 })
+  })
+
+  it('a más de 30 días → ok', () => {
+    expect(estadoVencimiento('2026-09-05', HOY)).toEqual({ estado: 'ok', dias: 31 })
+    expect(estadoVencimiento('2027-06-30', HOY).estado).toBe('ok')
+  })
+})
