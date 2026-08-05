@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useBateas, useCreateBatea, useUpdateBatea, useDeleteBatea } from '../hooks/useLogistica'
+import { useBateas, useCreateBatea, useUpdateBatea, useDeleteBatea, useChoferes } from '../hooks/useLogistica'
 import { estadoVencimiento } from '../utils/docs-vigentes'
 import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -53,6 +53,16 @@ export function BateasTab() {
   const toast = useToast()
   const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('logistica')
   const { data: bateas = [] } = useBateas()
+  // Chofer actual de cada batea, por la asignación de la ficha del chofer
+  // (choferes.batea_id). Si dos choferes tuvieran la misma batea asignada
+  // (no debería), se muestran ambos.
+  const { data: choferes = [] } = useChoferes()
+  const choferPorBatea = new Map<number, string>()
+  for (const ch of choferes) {
+    if (ch.batea_id == null) continue
+    const prev = choferPorBatea.get(ch.batea_id)
+    choferPorBatea.set(ch.batea_id, prev ? `${prev} + ${ch.nombre}` : ch.nombre)
+  }
   const { mutate: create, isPending: creating } = useCreateBatea()
   const { mutate: update, isPending: updating } = useUpdateBatea()
   const { mutate: remove } = useDeleteBatea()
@@ -178,7 +188,7 @@ export function BateasTab() {
         <table className="w-full border-collapse">
           <thead>
             <tr>
-              {['Patente', 'Tipo', 'Marca/Modelo', 'Año', 'Capacidad', 'Titular', 'RTO vence', 'Estado', ''].map(h => (
+              {['Patente', 'Tipo', 'Marca/Modelo', 'Año', 'Capacidad', 'Titular', 'Chofer actual', 'RTO vence', 'Estado', ''].map(h => (
                 <th key={h} className="bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide">
                   {h}
                 </th>
@@ -187,7 +197,7 @@ export function BateasTab() {
           </thead>
           <tbody>
             {bateasFiltradas.length === 0 ? (
-              <tr><td colSpan={9} className="text-center py-8 text-gris-dark text-sm">No hay remolques registrados.</td></tr>
+              <tr><td colSpan={10} className="text-center py-8 text-gris-dark text-sm">No hay remolques registrados.</td></tr>
             ) : bateasFiltradas.map(b => (
               <tr
                 key={b.id}
@@ -207,6 +217,7 @@ export function BateasTab() {
                   {b.capacidad_m3 == null && b.capacidad_tn == null && '—'}
                 </td>
                 <td className="px-4 py-3 text-xs text-gris-dark">{b.titular ?? '—'}</td>
+                <td className="px-4 py-3 text-xs font-semibold text-carbon">{choferPorBatea.get(b.id) ?? '—'}</td>
                 <td className="px-4 py-3"><RtoChip venceEl={b.rto_vence_el} /></td>
                 <td className="px-4 py-3">
                   <Badge
@@ -266,6 +277,9 @@ export function BateasTab() {
                       {capacidad && b.titular && ' · '}
                       {b.titular}
                     </div>
+                  )}
+                  {choferPorBatea.get(b.id) && (
+                    <div className="text-xs text-carbon font-semibold mt-0.5">🧑‍✈️ {choferPorBatea.get(b.id)}</div>
                   )}
                   <div className="mt-1"><RtoChip venceEl={b.rto_vence_el} /></div>
                 </div>
