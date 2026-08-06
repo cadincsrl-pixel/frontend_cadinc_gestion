@@ -887,8 +887,12 @@ export function SolicitudesTab() {
                         {itemsVisibles.map((item, i) => {
                           const cfg = ITEM_ESTADO_CFG[item.estado]
                           const stk = item.material_id ? stockMap.get(item.material_id) : null
-                          const esFoco = itemEnCategoria(item.estado, categoriaSel)
-                          const atenuar = tabTrabajo && !esFoco
+                          // Atenuar SOLO lo terminado (enviado/rechazado). Antes se atenuaba
+                          // todo lo que no era del tab actual, y en "Por enviar" los
+                          // PENDIENTES salían apagados como si estuvieran deshabilitados —
+                          // un pendiente es trabajo vivo, tiene que verse a pleno
+                          // (reporte de Franco 2026-08-06).
+                          const atenuar = tabTrabajo && (item.estado === 'enviado' || item.estado === 'rechazado')
                           return (
                             <tr key={item.id ?? i} className={`border-t border-gris align-top ${atenuar ? 'bg-gris/40 opacity-60' : 'bg-gris/20'}`}>
                               <td className="px-2 py-2.5 text-xs text-gris-mid text-center">{i + 1}</td>
@@ -1202,8 +1206,8 @@ export function SolicitudesTab() {
                     {itemsVisibles.map((item, i) => {
                       const cfg = ITEM_ESTADO_CFG[item.estado]
                       const stk = item.material_id ? stockMap.get(item.material_id) : null
-                      const esFoco = itemEnCategoria(item.estado, categoriaSel)
-                      const atenuar = tabTrabajo && !esFoco
+                      // Misma regla que la tabla: atenuar solo terminados (ver arriba).
+                      const atenuar = tabTrabajo && (item.estado === 'enviado' || item.estado === 'rechazado')
                       return (
                         <div key={item.id ?? i} className={`rounded-lg p-3 ${atenuar ? 'bg-gris/50 opacity-60' : 'bg-gris/30'}`}>
                           <div className="flex items-start justify-between gap-2">
