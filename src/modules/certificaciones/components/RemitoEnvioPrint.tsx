@@ -32,17 +32,19 @@ export interface EstadoPedido {
   envios?:  EnvioHecho[]
 }
 
-// Historial de envíos del pedido: un renglón por remito con fecha y detalle.
-// `remitosDeLaSolicitud` puede o no incluir al remito actual (al imprimirlo
-// recién creado todavía no está en el listado) — se deduplica por número.
+// Historial de envíos ANTERIORES del pedido: un renglón por remito con fecha
+// y detalle. El remito actual se excluye — su contenido ya es la tabla
+// principal del papel y repetirlo abajo era ruido (pedido de Franco
+// 2026-08-06). `remitosDeLaSolicitud` puede o no incluirlo — se filtra por
+// número igual.
 export function armarEnvios(remito: RemitoEnvio, remitosDeLaSolicitud: RemitoEnvio[]): EnvioHecho[] {
-  const todos = [...remitosDeLaSolicitud.filter(r => r.numero !== remito.numero), remito]
-  return todos
+  return remitosDeLaSolicitud
+    .filter(r => r.numero !== remito.numero)
     .sort((a, b) => a.fecha.localeCompare(b.fecha) || a.numero.localeCompare(b.numero))
     .map(r => ({
       numero:  r.numero,
       fecha:   r.fecha,
-      esEste:  r.numero === remito.numero,
+      esEste:  false,
       detalle: r.items.map(it => `${it.descripcion}: ${it.cantidad} ${it.unidad}`).join(' · '),
     }))
 }
@@ -262,10 +264,10 @@ export function htmlRemito(remito: RemitoEnvio, obraNom?: string, estadoPedido?:
           </tbody>
         </table>
         ${estadoPedido.envios?.length ? `
-        <div style="font-size:${fz.chico};font-weight:bold;color:#1A365D;margin-top:3px">ENVÍOS DE ESTE PEDIDO</div>
+        <div style="font-size:${fz.chico};font-weight:bold;color:#1A365D;margin-top:3px">ENVÍOS ANTERIORES</div>
         ${estadoPedido.envios.map(e => `
-        <div style="font-size:${fz.chico};padding:1px 4px;border-bottom:1px solid #eee${e.esEste ? ';font-weight:bold' : ''}">
-          ${e.numero} · ${fmtF(e.fecha)}${e.esEste ? ' (este remito)' : ''} — ${e.detalle}
+        <div style="font-size:${fz.chico};padding:1px 4px;border-bottom:1px solid #eee">
+          ${e.numero} · ${fmtF(e.fecha)} — ${e.detalle}
         </div>`).join('')}
         ` : ''}
       </div>
