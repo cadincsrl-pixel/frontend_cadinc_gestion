@@ -117,6 +117,19 @@ export function useRevertirItem() {
   })
 }
 
+// Parte un ítem de_deposito con envío parcial cuyo faltante no está en
+// depósito: el original se cierra por lo enviado (devuelve el resto al stock)
+// y nace un ítem nuevo pendiente por el faltante, listo para Comprar.
+export function useComprarFaltante() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (itemId: number) =>
+      apiPost<{ nuevo_item_id: number; faltante: number; enviada: number }>(
+        `/api/solicitudes/items/${itemId}/comprar-faltante`, {}),
+    onSuccess: () => invalidarResolucionItem(qc),
+  })
+}
+
 // Deshace solo el envío: el item vuelve a comprado/de_deposito (no a
 // pendiente). Mantiene la compra. Borra/limpia el remito asociado.
 export function useRevertirEnvio() {

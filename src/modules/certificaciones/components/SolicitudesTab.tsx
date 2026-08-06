@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import {
   useSolicitudes, useCreateSolicitud, useUpdateSolicitud, useDeleteSolicitud,
-  useComprarItem, useDespacharItem, useEnviarItem, useRechazarItem, useRevertirItem, useRevertirEnvio,
+  useComprarItem, useDespacharItem, useEnviarItem, useRechazarItem, useRevertirItem, useRevertirEnvio, useComprarFaltante,
   useEditarItem,
 } from '../hooks/useSolicitudes'
 import { useProveedores, useCreateProveedor } from '../hooks/useProveedores'
@@ -217,6 +217,7 @@ export function SolicitudesTab() {
   const { mutate: rechazarItem } = useRechazarItem()
   const { mutate: revertirItem } = useRevertirItem()
   const { mutate: revertirEnvio } = useRevertirEnvio()
+  const { mutate: comprarFaltante } = useComprarFaltante()
   const { mutate: editarPrecioItem, isPending: guardandoPrecio } = useEditarItem()
   const { mutate: createRemito, isPending: enviandoRemito } = useCreateRemitoEnvio()
   // Carga de precio inline para un ítem ya enviado que quedó sin precio.
@@ -609,6 +610,29 @@ export function SolicitudesTab() {
     })
   }
 
+  // Parte un ítem de depósito con envío parcial: cierra el original por lo
+  // enviado y crea un renglón nuevo por el faltante para comprarlo.
+  function handleComprarFaltante(item: SolicitudCompraItem) {
+    const efectiva = Number(item.cantidad_comprada ?? item.cantidad)
+    const enviada  = Number(item.cantidad_enviada ?? 0)
+    const faltante = efectiva - enviada
+    if (!confirm(
+      `¿Comprar el faltante de "${item.descripcion}"?\n\n` +
+      `• El renglón original queda cerrado con las ${enviada} enviadas de depósito` +
+      ` (las ${faltante} descontadas de más vuelven al stock).\n` +
+      `• Se crea un renglón nuevo por ${faltante} ${item.unidad} en "Por comprar".`
+    )) return
+    comprarFaltante(item.id!, {
+      onSuccess: (r: any) => toast(`✓ Renglón partido: ${r?.faltante ?? faltante} ${item.unidad} pasaron a "Por comprar"`, 'ok'),
+      onError: (e: any) => {
+        const code = e?.body?.error || e?.code
+        if (code === 'ITEM_COBRADO')  toast('El material ya fue cobrado al cliente: liberá el cobro primero (Cuenta del cliente)', 'err')
+        else if (code === 'SIN_ENVIOS') toast('Este ítem no tiene envíos parciales: usá ↩ deshacer y resolvelo de nuevo como compra', 'err')
+        else toast(e.message || 'Error', 'err')
+      },
+    })
+  }
+
   // Deshace solo el envío: vuelve a comprado/de_deposito y borra el remito.
   function handleRevertirEnvio(itemId: number) {
     if (!confirm('¿Deshacer el envío? El ítem vuelve a "comprado/depósito" y se elimina el remito generado. La compra se mantiene.')) return
@@ -987,6 +1011,9 @@ export function SolicitudesTab() {
                                           <input type="checkbox" disabled={!resolverItems} checked={selected.has(item.id!)} onChange={() => toggleSelect(item.id!)}
                                             className="accent-verde w-4 h-4 disabled:opacity-40" title="Seleccionar para envío grupal" />
                                           <button disabled={!resolverItems || enviandoRemito} onClick={() => enviarUnoConRemito(s, item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">{obra?.es_deposito ? 'Recibir en depósito' : 'Enviar + Remito'}</button>
+                                          {item.estado === 'de_deposito' && Number(item.cantidad_enviada ?? 0) > 0 && Number(item.cantidad_enviada ?? 0) < Number(item.cantidad_comprada ?? item.cantidad) && (
+                                            <button disabled={!resolverItems} onClick={() => handleComprarFaltante(item)} title="El faltante no está en depósito: cerrar este renglón por lo enviado y crear uno nuevo para comprarlo" className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">🛒 Comprar faltante</button>
+                                          )}
                                           <button disabled={!resolverItems} onClick={() => handleRevertir(item.id!)} className="text-xs px-3 py-1.5 rounded text-gris-dark hover:text-rojo hover:bg-rojo-light min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">↩</button>
                                         </>
                                       )}
@@ -1300,6 +1327,9 @@ export function SolicitudesTab() {
                                   </label>
                                   <div className="grid grid-cols-2 gap-2">
                                     <button disabled={!resolverItems || enviandoRemito} onClick={() => enviarUnoConRemito(s, item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">{obra?.es_deposito ? 'Recibir en depósito' : 'Enviar + Remito'}</button>
+                                    {item.estado === 'de_deposito' && Number(item.cantidad_enviada ?? 0) > 0 && Number(item.cantidad_enviada ?? 0) < Number(item.cantidad_comprada ?? item.cantidad) && (
+                                      <button disabled={!resolverItems} onClick={() => handleComprarFaltante(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">🛒 Comprar faltante</button>
+                                    )}
                                     <button disabled={!resolverItems} onClick={() => handleRevertir(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">↩ Revertir</button>
                                   </div>
                                 </div>
