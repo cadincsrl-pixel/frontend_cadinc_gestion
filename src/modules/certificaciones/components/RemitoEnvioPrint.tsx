@@ -15,6 +15,8 @@ export interface EstadoPedidoItem {
   enviada:     number   // acumulado enviado
   falta:       number   // max(0, pedida − enviada)
   rechazado:   boolean
+  // Fecha del último envío que incluyó este renglón (null si nunca se envió).
+  ultimoEnvio: string | null
 }
 
 export interface EnvioHecho {
@@ -62,11 +64,25 @@ export function armarEstadoPedido(
   solicitud: Pick<SolicitudCompra, 'id' | 'fecha' | 'items'>,
   remito: RemitoEnvio,
   opts: { sumarEsteRemito: boolean },
+  // Remitos previos del pedido (opcional): con ellos se calcula la fecha del
+  // último envío de cada renglón. El remito actual cuenta siempre.
+  remitosPrevios: RemitoEnvio[] = [],
 ): EstadoPedido {
   const enEsteRemito = new Map<number, number>()
   for (const ri of remito.items) {
     if (ri.item_id != null) {
       enEsteRemito.set(ri.item_id, (enEsteRemito.get(ri.item_id) ?? 0) + Number(ri.cantidad))
+    }
+  }
+
+  // Último envío por ítem: la fecha más nueva entre todos los remitos del
+  // pedido que incluyeron ese renglón (dedup por número contra el actual).
+  const ultimoEnvioPorItem = new Map<number, string>()
+  for (const r of [remito, ...remitosPrevios.filter(r => r.numero !== remito.numero)]) {
+    for (const ri of r.items) {
+      if (ri.item_id == null) continue
+      const prev = ultimoEnvioPorItem.get(ri.item_id)
+      if (!prev || r.fecha > prev) ultimoEnvioPorItem.set(ri.item_id, r.fecha)
     }
   }
 
@@ -86,6 +102,9 @@ export function armarEstadoPedido(
       enviada,
       falta:       rechazado ? 0 : Math.max(0, pedida - enviada),
       rechazado,
+      // Fallback a fecha_envio del ítem (envíos completos viejos sin remito
+      // rastreable en la lista).
+      ultimoEnvio: (it.id != null ? ultimoEnvioPorItem.get(it.id) : null) ?? it.fecha_envio ?? null,
     }
   })
 
@@ -212,7 +231,9 @@ const MAX_RENGLONES_COMPACTO = 15
  * renglones contra el sistema (reportado el 2026-07-30).
  */
 export function htmlRemito(remito: RemitoEnvio, obraNom?: string, estadoPedido?: EstadoPedido): string {
-  const total = remito.items.reduce((s, it) => s + (it.precio_unit ?? 0) * it.cantidad, 0)
+  // SIN precios: el remito lo leen los operarios en la obra y no tienen por
+  // qué ver cuánto costó cada cosa (pedido de Franco 2026-08-06). Los precios
+  // viven en el sistema, no en el papel.
   // La tabla de estado del pedido también ocupa renglones: cuenta para decidir
   // si el triplicado entra en una hoja (+2 por título y encabezado).
   const renglones = remito.items.length
@@ -233,7 +254,6 @@ export function htmlRemito(remito: RemitoEnvio, obraNom?: string, estadoPedido?:
       <td style="padding:2px 4px;text-align:center;font-weight:bold;font-size:${fz.texto}">${it.cantidad}</td>
       <td style="padding:2px 4px;text-align:center;font-size:${fz.chico}">${it.unidad}</td>
       <td style="padding:2px 4px;font-size:${fz.chico}">${it.proveedor || (it.origen === 'deposito' ? 'Depósito' : it.origen)}</td>
-      <td style="padding:2px 4px;text-align:right;font-size:${fz.texto};font-weight:bold">${it.precio_unit ? fmtM(it.precio_unit * it.cantidad) : '—'}</td>
     </tr>
   `).join('')
 
@@ -250,6 +270,7 @@ export function htmlRemito(remito: RemitoEnvio, obraNom?: string, estadoPedido?:
             <th style="padding:1px 4px;text-align:center;font-size:${fz.chico}">PEDIDO</th>
             <th style="padding:1px 4px;text-align:center;font-size:${fz.chico}">ENVIADO</th>
             <th style="padding:1px 4px;text-align:center;font-size:${fz.chico}">FALTA</th>
+            <th style="padding:1px 4px;text-align:center;font-size:${fz.chico}">ÚLT. ENVÍO</th>
           </tr></thead>
           <tbody>
             ${estadoPedido.items.map(it => `
@@ -260,6 +281,7 @@ export function htmlRemito(remito: RemitoEnvio, obraNom?: string, estadoPedido?:
               <td style="padding:1px 4px;text-align:center;font-size:${fz.chico};font-weight:bold">
                 ${it.rechazado ? 'rechazado' : it.falta > 0 ? `<span style="color:#E8621A">${it.falta}</span>` : '✓'}
               </td>
+              <td style="padding:1px 4px;text-align:center;font-size:${fz.chico}">${it.ultimoEnvio ? fmtF(it.ultimoEnvio) : '—'}</td>
             </tr>`).join('')}
           </tbody>
         </table>
@@ -309,13 +331,8 @@ export function htmlRemito(remito: RemitoEnvio, obraNom?: string, estadoPedido?:
           <th style="padding:2px 4px;text-align:center;font-size:${fz.chico}">CANT.</th>
           <th style="padding:2px 4px;text-align:center;font-size:${fz.chico}">UNID.</th>
           <th style="padding:2px 4px;text-align:left;font-size:${fz.chico}">ORIGEN</th>
-          <th style="padding:2px 4px;text-align:right;font-size:${fz.chico}">TOTAL</th>
         </tr></thead>
         <tbody>${itemsHtml}</tbody>
-        ${total > 0 ? `<tfoot><tr style="border-top:1.5px solid #1A365D">
-          <td colspan="5" style="padding:2px 4px;text-align:right;font-weight:bold;font-size:${fz.texto}">TOTAL</td>
-          <td style="padding:2px 4px;text-align:right;font-weight:bold;font-size:${fz.total};color:#E8621A">${fmtM(total)}</td>
-        </tr></tfoot>` : ''}
       </table>
       ${estadoHtml}
       <!-- Firmas: en flujo normal (no absolute) — bajan con el contenido en vez

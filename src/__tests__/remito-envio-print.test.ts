@@ -76,10 +76,11 @@ describe('htmlRemito', () => {
     expect(htmlRemito(mkRemito(25))).toContain('body style=""')
   })
 
-  it('el total sale en las tres copias', () => {
+  it('las cantidades salen en las tres copias (sin precios desde 2026-08-06)', () => {
     const html = htmlRemito(mkRemito(25))
-    // 25 items × 10 un × $1.000 = $250.000
-    expect(html.split('$250.000').length - 1).toBe(3)
+    // El material 25 aparece una vez por copia; el total en $ ya no se imprime.
+    expect(html.split('Material de prueba 25').length - 1).toBe(3)
+    expect(html).not.toContain('$250.000')
   })
 })
 
@@ -206,5 +207,29 @@ describe('htmlRemito con historial de envíos', () => {
     expect(html).toContain('ENVÍOS ANTERIORES')
     expect(html).toContain('RE-0040 · 28/07/2026')
     expect(html).not.toContain('(este remito)')
+  })
+})
+
+// ── Sin precios + columna ÚLT. ENVÍO (2026-08-06) ───────────────────────────
+describe('htmlRemito sin precios y con último envío', () => {
+  it('el remito impreso NO muestra precios aunque los ítems los tengan', () => {
+    const html = htmlRemito(mkRemito(3))  // fixture con precio_unit 1000
+    expect(html).not.toContain('$')
+    expect(html).not.toContain('TOTAL')
+  })
+
+  it('la tabla de estado muestra la fecha del último envío por renglón', () => {
+    const sol = mkSolicitud([
+      { cantidad: 50, cantidad_enviada: 35 },   // enviado por remitos
+      { cantidad: 10, cantidad_enviada: 0 },    // nunca enviado
+    ])
+    const este = { ...mkRemitoCon([{ item_id: 1, cantidad: 15 }]), numero: 'RE-0042', fecha: '2026-08-05' } as RemitoEnvio
+    const previo = { ...mkRemitoCon([{ item_id: 1, cantidad: 20 }]), id: 9, numero: 'RE-0040', fecha: '2026-07-28' } as RemitoEnvio
+    const est = armarEstadoPedido(sol, este, { sumarEsteRemito: false }, [previo])
+    expect(est.items[0]!.ultimoEnvio).toBe('2026-08-05')  // el más nuevo gana
+    expect(est.items[1]!.ultimoEnvio).toBeNull()
+    const html = htmlRemito(este, 'Obra', est)
+    expect(html).toContain('ÚLT. ENVÍO')
+    expect(html).toContain('05/08/2026')
   })
 })

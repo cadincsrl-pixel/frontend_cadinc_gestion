@@ -740,7 +740,7 @@ export function SolicitudesTab() {
           obraNom: obra?.nom,
           // Snapshot ANTES del refetch: el cache aún no incluye este remito.
           estado: {
-            ...armarEstadoPedido(solicitud, remito, { sumarEsteRemito: true }),
+            ...armarEstadoPedido(solicitud, remito, { sumarEsteRemito: true }, remitosCache),
             envios: armarEnvios(remito, remitosCache),
           },
         })
@@ -2227,7 +2227,7 @@ function ModalRemitosEmitidos({ onClose, busca, setBusca, obraNombre }: {
     // con el historial de envíos del pedido fecha por fecha.
     const hermanos = r.solicitud_id != null ? remitos.filter(x => x.solicitud_id === r.solicitud_id) : []
     imprimirRemito(r, obraNombre(r.obra_cod), sol
-      ? { ...armarEstadoPedido(sol, r, { sumarEsteRemito: false }), envios: armarEnvios(r, hermanos) }
+      ? { ...armarEstadoPedido(sol, r, { sumarEsteRemito: false }, hermanos), envios: armarEnvios(r, hermanos) }
       : undefined)
   }
 
