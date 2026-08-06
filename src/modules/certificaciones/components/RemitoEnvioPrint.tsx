@@ -17,9 +17,34 @@ export interface EstadoPedidoItem {
   rechazado:   boolean
 }
 
+export interface EnvioHecho {
+  numero:  string
+  fecha:   string
+  esEste:  boolean      // el remito que se está imprimiendo
+  detalle: string       // "Cemento x50: 20 un · Hierro del 8: 15 barras"
+}
+
 export interface EstadoPedido {
   etiqueta: string      // "Pedido #45 · 28/07/2026"
   items:    EstadoPedidoItem[]
+  // Historial de envíos parciales del pedido, en orden cronológico. Opcional:
+  // si no hay datos de otros remitos, la tabla de estado sale igual.
+  envios?:  EnvioHecho[]
+}
+
+// Historial de envíos del pedido: un renglón por remito con fecha y detalle.
+// `remitosDeLaSolicitud` puede o no incluir al remito actual (al imprimirlo
+// recién creado todavía no está en el listado) — se deduplica por número.
+export function armarEnvios(remito: RemitoEnvio, remitosDeLaSolicitud: RemitoEnvio[]): EnvioHecho[] {
+  const todos = [...remitosDeLaSolicitud.filter(r => r.numero !== remito.numero), remito]
+  return todos
+    .sort((a, b) => a.fecha.localeCompare(b.fecha) || a.numero.localeCompare(b.numero))
+    .map(r => ({
+      numero:  r.numero,
+      fecha:   r.fecha,
+      esEste:  r.numero === remito.numero,
+      detalle: r.items.map(it => `${it.descripcion}: ${it.cantidad} ${it.unidad}`).join(' · '),
+    }))
 }
 
 /**
@@ -188,7 +213,9 @@ export function htmlRemito(remito: RemitoEnvio, obraNom?: string, estadoPedido?:
   const total = remito.items.reduce((s, it) => s + (it.precio_unit ?? 0) * it.cantidad, 0)
   // La tabla de estado del pedido también ocupa renglones: cuenta para decidir
   // si el triplicado entra en una hoja (+2 por título y encabezado).
-  const renglones = remito.items.length + (estadoPedido ? estadoPedido.items.length + 2 : 0)
+  const renglones = remito.items.length
+    + (estadoPedido ? estadoPedido.items.length + 2 : 0)
+    + (estadoPedido?.envios?.length ? estadoPedido.envios.length + 1 : 0)
   const compacto = renglones <= MAX_RENGLONES_COMPACTO
 
   // El modo largo usa cuerpos un punto más grandes: ya no hay que hacer entrar
@@ -234,6 +261,13 @@ export function htmlRemito(remito: RemitoEnvio, obraNom?: string, estadoPedido?:
             </tr>`).join('')}
           </tbody>
         </table>
+        ${estadoPedido.envios?.length ? `
+        <div style="font-size:${fz.chico};font-weight:bold;color:#1A365D;margin-top:3px">ENVÍOS DE ESTE PEDIDO</div>
+        ${estadoPedido.envios.map(e => `
+        <div style="font-size:${fz.chico};padding:1px 4px;border-bottom:1px solid #eee${e.esEste ? ';font-weight:bold' : ''}">
+          ${e.numero} · ${fmtF(e.fecha)}${e.esEste ? ' (este remito)' : ''} — ${e.detalle}
+        </div>`).join('')}
+        ` : ''}
       </div>
   `
 

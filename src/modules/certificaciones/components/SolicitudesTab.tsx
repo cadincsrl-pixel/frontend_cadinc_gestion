@@ -11,8 +11,9 @@ import {
 import { useProveedores, useCreateProveedor } from '../hooks/useProveedores'
 import { useFacturasCompra, useCreateFactura } from '../hooks/useFacturasCompra'
 import { useStockMateriales } from '../hooks/useStock'
+import { useQueryClient } from '@tanstack/react-query'
 import { useCreateRemitoEnvio } from '../hooks/useRemitosEnvio'
-import { imprimirRemito, armarEstadoPedido, type EstadoPedido } from './RemitoEnvioPrint'
+import { imprimirRemito, armarEstadoPedido, armarEnvios, type EstadoPedido } from './RemitoEnvioPrint'
 import { useRemitosEnvio } from '../hooks/useRemitosEnvio'
 import { EMPRESA } from '@/lib/config/empresa'
 import { netaAFinal, finalANeta } from '@/lib/utils/iva'
@@ -166,6 +167,7 @@ function isCategoriaValida(s: string | null): s is CategoriaSol {
 // ── Componente principal ──
 export function SolicitudesTab() {
   const toast = useToast()
+  const queryClient = useQueryClient()
   const perfiles = usePerfilesMap()
   // Permisos: deshabilitar (no ocultar) botones según capacidad. El backend
   // valida igual; esto evita clicks que rebotan con error feo (CLAUDE.md §6).
@@ -687,11 +689,19 @@ export function SolicitudesTab() {
         setModalEnvio(null)
         // No imprimimos acá (estamos fuera del gesto del usuario → el popup se
         // bloquea en móvil). Ofrecemos imprimir desde un modal con su botón.
+        // Historial de envíos previos del pedido: del cache de remitos si está
+        // cargado (lo llena el modal 📄 Remitos). Si no está, va este remito
+        // solo — la tabla de estado sale completa igual.
+        const remitosCache = (queryClient.getQueryData<RemitoEnvio[]>(['remitos-envio', 'all']) ?? [])
+          .filter(r => r.solicitud_id === solicitud.id)
         setUltimoRemito({
           remito,
           obraNom: obra?.nom,
           // Snapshot ANTES del refetch: el cache aún no incluye este remito.
-          estado: armarEstadoPedido(solicitud, remito, { sumarEsteRemito: true }),
+          estado: {
+            ...armarEstadoPedido(solicitud, remito, { sumarEsteRemito: true }),
+            envios: armarEnvios(remito, remitosCache),
+          },
         })
       },
       onError: (e: any) => toast(e.message || 'Error', 'err'),
@@ -2143,8 +2153,12 @@ function ModalRemitosEmitidos({ onClose, busca, setBusca, obraNombre }: {
 
   function reimprimir(r: RemitoEnvio) {
     const sol = r.solicitud_id != null ? solicitudesTodas.find(s => s.id === r.solicitud_id) : undefined
-    // Reimpresión: el acumulado del cache ya incluye este remito → estado de HOY.
-    imprimirRemito(r, obraNombre(r.obra_cod), sol ? armarEstadoPedido(sol, r, { sumarEsteRemito: false }) : undefined)
+    // Reimpresión: el acumulado del cache ya incluye este remito → estado de HOY,
+    // con el historial de envíos del pedido fecha por fecha.
+    const hermanos = r.solicitud_id != null ? remitos.filter(x => x.solicitud_id === r.solicitud_id) : []
+    imprimirRemito(r, obraNombre(r.obra_cod), sol
+      ? { ...armarEstadoPedido(sol, r, { sumarEsteRemito: false }), envios: armarEnvios(r, hermanos) }
+      : undefined)
   }
 
   const filtrados = (() => {

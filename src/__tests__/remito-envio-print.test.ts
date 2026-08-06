@@ -170,3 +170,43 @@ describe('htmlRemito con estado del pedido', () => {
     expect(htmlRemito(mkRemito(10))).toContain('min-height:calc(33.33vh')
   })
 })
+
+// ── Historial de envíos fecha por fecha (2026-08-06) ────────────────────────
+import { armarEnvios } from '@/modules/certificaciones/components/RemitoEnvioPrint'
+
+describe('armarEnvios — historial de envíos del pedido', () => {
+  const este = { ...mkRemitoCon([{ item_id: 1, cantidad: 15 }]), numero: 'RE-0042', fecha: '2026-08-05' } as RemitoEnvio
+  const previo = { ...mkRemitoCon([{ item_id: 1, cantidad: 20 }]), id: 9, numero: 'RE-0040', fecha: '2026-07-28' } as RemitoEnvio
+
+  it('ordena cronológico y marca el remito actual', () => {
+    const envios = armarEnvios(este, [previo])
+    expect(envios.map(e => e.numero)).toEqual(['RE-0040', 'RE-0042'])
+    expect(envios[0]!.esEste).toBe(false)
+    expect(envios[1]!.esEste).toBe(true)
+    expect(envios[0]!.detalle).toContain('Mat 1: 20 un')
+  })
+
+  it('no duplica el remito actual si ya está en el listado (reimpresión)', () => {
+    const envios = armarEnvios(este, [previo, este])
+    expect(envios).toHaveLength(2)
+  })
+
+  it('sin envíos previos queda solo este remito', () => {
+    const envios = armarEnvios(este, [])
+    expect(envios).toHaveLength(1)
+    expect(envios[0]!.esEste).toBe(true)
+  })
+})
+
+describe('htmlRemito con historial de envíos', () => {
+  it('imprime la sección ENVÍOS DE ESTE PEDIDO con fecha y detalle', () => {
+    const sol = mkSolicitud([{ cantidad: 50, cantidad_enviada: 35 }])
+    const este = { ...mkRemitoCon([{ item_id: 1, cantidad: 15 }]), numero: 'RE-0042', fecha: '2026-08-05' } as RemitoEnvio
+    const previo = { ...mkRemitoCon([{ item_id: 1, cantidad: 20 }]), id: 9, numero: 'RE-0040', fecha: '2026-07-28' } as RemitoEnvio
+    const estado = { ...armarEstadoPedido(sol, este, { sumarEsteRemito: false }), envios: armarEnvios(este, [previo]) }
+    const html = htmlRemito(este, 'Obra', estado)
+    expect(html).toContain('ENVÍOS DE ESTE PEDIDO')
+    expect(html).toContain('RE-0040 · 28/07/2026')
+    expect(html).toContain('(este remito)')
+  })
+})
