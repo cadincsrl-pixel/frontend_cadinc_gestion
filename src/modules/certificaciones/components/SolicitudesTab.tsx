@@ -647,6 +647,23 @@ export function SolicitudesTab() {
     setSelected(prev => { const n = new Set(prev); n.has(itemId) ? n.delete(itemId) : n.add(itemId); return n })
   }
 
+  // Tilda/destilda de una TODOS los ítems enviables del pedido
+  // (comprado/de_deposito/retirado). Si ya están todos tildados, los suelta.
+  function toggleSelectTodos(items: SolicitudCompraItem[]) {
+    const enviables = items.filter(it =>
+      it.id != null && (it.estado === 'comprado' || it.estado === 'de_deposito' || it.estado === 'retirado'))
+    if (enviables.length === 0) return
+    const todosTildados = enviables.every(it => selected.has(it.id!))
+    setSelected(prev => {
+      const n = new Set(prev)
+      for (const it of enviables) {
+        if (todosTildados) n.delete(it.id!)
+        else n.add(it.id!)
+      }
+      return n
+    })
+  }
+
   // Abre el modal de armado de remito con cantidades editables. Cada item
   // arranca con su PENDIENTE de envío (efectiva − ya enviada): si Sosa manda
   // de menos, se baja el número y el resto queda pendiente para otro remito.
@@ -904,7 +921,18 @@ export function SolicitudesTab() {
                           <th className="px-2 py-2 text-center text-[10px] font-bold text-gris-dark uppercase tracking-wide">Stock</th>
                           <th className="px-4 py-2 text-left text-[10px] font-bold text-gris-dark uppercase tracking-wide">Estado</th>
                           <th className="px-4 py-2 text-left text-[10px] font-bold text-gris-dark uppercase tracking-wide">Detalle</th>
-                          <th className="px-4 py-2 text-right text-[10px] font-bold text-gris-dark uppercase tracking-wide">Acciones</th>
+                          <th className="px-4 py-2 text-right text-[10px] font-bold text-gris-dark uppercase tracking-wide">
+                            {items.some(it => it.estado === 'comprado' || it.estado === 'de_deposito' || it.estado === 'retirado') && (
+                              <button
+                                onClick={() => toggleSelectTodos(items)}
+                                title="Tildar/destildar todos los ítems listos para enviar"
+                                className="mr-3 normal-case font-bold text-verde hover:underline"
+                              >
+                                ☑ todos
+                              </button>
+                            )}
+                            Acciones
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1230,6 +1258,14 @@ export function SolicitudesTab() {
                 {/* Detalle de ítems expandido */}
                 {isExp && (
                   <div className="mt-3 pt-3 border-t border-gris flex flex-col gap-2">
+                    {items.some(it => it.estado === 'comprado' || it.estado === 'de_deposito' || it.estado === 'retirado') && (
+                      <button
+                        onClick={() => toggleSelectTodos(items)}
+                        className="self-start text-[11px] font-bold text-verde px-2 py-1 rounded hover:bg-verde-light"
+                      >
+                        ☑ Seleccionar todos los enviables
+                      </button>
+                    )}
                     {itemsVisibles.map((item, i) => {
                       const cfg = ITEM_ESTADO_CFG[item.estado]
                       const stk = item.material_id ? stockMap.get(item.material_id) : null
