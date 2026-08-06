@@ -845,6 +845,8 @@ export interface Liquidacion {
   base_neta?: number | null
   subtotal_pct?: number | null
   // Rastro de la anulación (solo con estado='anulada').
+  // Cuándo se cerró (la setea cerrar_liquidacion; reabrir la limpia).
+  cerrada_en?:       string | null
   anulada_en?:       string | null
   anulada_por?:      string | null
   anulacion_motivo?: string | null
@@ -945,6 +947,8 @@ export interface Cobro {
   total: number
   estado: CobroEstado
   obs: string | null
+  // Fecha real del cobro (la carga el usuario al confirmar pago; 20260806).
+  cobrado_en?: string | null
   // Factura emitida por CADINC — solo en cobros de empresas con
   // modalidad_cobro='facturacion' (una factura por viaje).
   factura_nro: string | null

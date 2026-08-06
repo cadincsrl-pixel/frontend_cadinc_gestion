@@ -55,12 +55,16 @@ function fmtFechaCorta(s: string | null | undefined) {
   const [, m, d] = s.split('-')
   return d && m ? `${d}/${m}` : '—'
 }
-// La fecha real del cobro no tiene columna: viaja en obs como
-// "Cobrado el DD/MM/YYYY". La extraemos para mostrarla en el historial.
-function fechaCobroDeObs(obs: string | null | undefined): string | null {
-  if (!obs) return null
-  const m = obs.match(/Cobrado el (\d{2}\/\d{2}\/\d{4})/)
-  return m ? m[1] : null
+// Fecha real del cobro: la columna cobrado_en (20260806) es la fuente de
+// verdad; los cobros viejos sin backfill exacto caen a la nota de obs
+// "Cobrado el DD/MM/YYYY" que se usaba antes de que existiera la columna.
+function fechaCobroDe(c: Pick<Cobro, 'cobrado_en' | 'obs'>): string | null {
+  if (c.cobrado_en) {
+    const [y, m, d] = String(c.cobrado_en).slice(0, 10).split('-')
+    return `${d}/${m}/${y}`
+  }
+  const m = (c.obs ?? '').match(/Cobrado el (\d{2}\/\d{2}\/\d{4})/)
+  return m ? m[1]! : null
 }
 
 // ─── Sección empresas ─────────────────────────────────────────────────────────
@@ -2352,7 +2356,7 @@ function FacturacionSection() {
                     const empresaNom = cs[0]!.empresas_transportistas?.nombre ?? '—'
                     const totalGrupo = cs.reduce((s, c) => s + c.total, 0)
                     const tonGrupo   = cs.reduce((s, c) => s + c.toneladas_totales, 0)
-                    const fechaCobroG = fechaCobroDeObs(cs[0]!.obs)
+                    const fechaCobroG = fechaCobroDe(cs[0]!)
                     return (
                       <div key={g.key} className="border-l-4 border-verde">
                         <div className="px-4 py-2.5 flex items-center gap-3 flex-wrap bg-verde-light/40">
@@ -2410,7 +2414,7 @@ function FacturacionSection() {
                   const tieneDocPrincipal = esFactCobro
                     ? adjs.some(a => a.tipo === 'factura')
                     : adjs.some(a => a.tipo === 'liquidacion')
-                  const fechaCobro = cobrado ? fechaCobroDeObs(c.obs) : null
+                  const fechaCobro = cobrado ? fechaCobroDe(c) : null
                   const faltaComprobante = !cobrado && !tieneComprobante
                   return (
                     <div
@@ -2624,6 +2628,9 @@ function FacturacionSection() {
                 </div>
                 <div className="text-xs text-gris-dark">
                   {fmtFecha(cobroDetalle.fecha_desde)} → {fmtFecha(cobroDetalle.fecha_hasta)}
+                  {cobroDetalle.estado === 'cobrado' && fechaCobroDe(cobroDetalle) && (
+                    <span className="text-verde font-semibold"> · 💵 cobrado el {fechaCobroDe(cobroDetalle)}</span>
+                  )}
                 </div>
                 {cobroDetalle.factura_nro && (
                   <div className="text-xs font-semibold text-azul-mid mt-1">

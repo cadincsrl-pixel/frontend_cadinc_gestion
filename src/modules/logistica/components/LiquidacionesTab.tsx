@@ -1258,6 +1258,9 @@ export function LiquidacionesTab() {
                         {fmtFecha(liq.fecha_desde)} → {fmtFecha(liq.fecha_hasta)} &nbsp;·&nbsp;
                         {liq.dias_trabajados} días &nbsp;·&nbsp;
                         {fmtM(liq.basico_dia)}/día
+                        {!anulada && liq.cerrada_en && (
+                          <> &nbsp;·&nbsp; <span className="font-semibold text-carbon">💵 pagada el {fmtFecha(String(liq.cerrada_en).slice(0, 10))}</span></>
+                        )}
                       </div>
                       {anulada && (
                         <div className="text-[11px] text-rojo mt-1.5 max-w-md">
