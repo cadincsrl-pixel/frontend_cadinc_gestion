@@ -8,8 +8,10 @@
  *     consolidado de toda la obra esa semana.
  *   - Contratistas: 1 fila por (obra, semana, contratista). Detalle con
  *     nombre + especialidad + (opcional) descripción de la cert.
- *   - Préstamos otorgados: 1 fila por movimiento. Los descuentos NO van —
- *     entran a caja, no salen.
+ *   - Préstamos: UNA fila al final del bloque, como si fuese una obra más
+ *     (pedido de Franco 2026-08-07: copia el bloque entero y lo pega en la
+ *     caja). Monto = otorgados − descuentos del período (neto de caja);
+ *     puede ser negativo (semana donde solo se descontó = plata que vuelve).
  *
  * Una tabla larga con autofilter. Filtro por semana → lo que pagás ese
  * viernes; por obra → lo que se pagó a esa obra.
@@ -54,7 +56,7 @@ const COL = {
   MONTO:    8,
 } as const
 
-type SalidaConcepto = 'Operarios' | 'Contratista' | 'Préstamos otorgados' | 'Cobranza préstamos'
+type SalidaConcepto = 'Operarios' | 'Contratista' | 'Préstamos (neto)'
 
 interface SalidaCaja {
   obraNom:      string
@@ -109,19 +111,21 @@ export function buildSalidasCajaSheet(wb: ExcelJS.Workbook, datas: ExportData[])
     row++
   }
 
-  // Préstamos otorgados consolidados — al final, sin desglose por operario.
-  // Cuentan como salida de caja → entran al rango del TOTAL.
-  if (totalOtorgados > 0) {
+  // Préstamos: última fila del bloque, como una obra más (para que el
+  // copy-paste a la caja se lleve todo junto). Neto = otorgados − descuentos;
+  // negativo cuando la semana solo descontó (plata que VUELVE a caja).
+  const netoPrestamos = totalOtorgados - totalDescuentos
+  if (totalOtorgados !== 0 || totalDescuentos !== 0) {
     writeRow(ws, row, {
-      obraNom:      '',
-      obraCod:      '',
+      obraNom:      'PRÉSTAMOS',
+      obraCod:      '—',
       obraCC:       null,
       semKey:       '',
       periodoCorto: '',
       cobro:        null,
-      concepto:     'Préstamos otorgados',
-      detalle:      'Total del período',
-      monto:        totalOtorgados,
+      concepto:     'Préstamos (neto)',
+      detalle:      `Otorgados $${totalOtorgados.toLocaleString('es-AR')} − Descuentos $${totalDescuentos.toLocaleString('es-AR')}`,
+      monto:        netoPrestamos,
     })
     row++
   }
@@ -136,33 +140,15 @@ export function buildSalidasCajaSheet(wb: ExcelJS.Workbook, datas: ExportData[])
   const montoLetter = colLetter(COL.MONTO)
   const range = `${montoLetter}${firstDataRow}:${montoLetter}${lastDataRow}`
   const tc = totalRow.getCell(COL.MONTO)
-  const totalSalidas = salidas.reduce((s, x) => s + x.monto, 0) + totalOtorgados
+  // El TOTAL incluye la fila de préstamos en neto: es lo que efectivamente
+  // sale de caja en el período (coincide con el Resumen General en pantalla).
+  const totalSalidas = salidas.reduce((s, x) => s + x.monto, 0) + netoPrestamos
   tc.value  = { formula: sumRange(range), result: totalSalidas }
   tc.numFmt = FMT_MONEDA_CERO
   tc.alignment = { horizontal: 'right', vertical: 'middle' }
   applyTotalRow(ws, row, COL_COUNT)
   const totalRowIdx = row
   row++
-
-  // Cobranzas (descuentos) — quedan FUERA del TOTAL porque son entradas de
-  // caja, no salidas. Una fila gris informativa después del TOTAL.
-  if (totalDescuentos > 0) {
-    row++ // separador
-    writeRow(ws, row, {
-      obraNom:      '',
-      obraCod:      '',
-      obraCC:       null,
-      semKey:       '',
-      periodoCorto: '',
-      cobro:        null,
-      concepto:     'Cobranza préstamos',
-      detalle:      'Total del período (entrada a caja — no incluido en TOTAL)',
-      monto:        totalDescuentos,
-    })
-    const cobranzaCell = ws.getRow(row).getCell(COL.MONTO)
-    cobranzaCell.font = { name: 'Calibri', size: 10, italic: true }
-    row++
-  }
 
   freezeHeader(ws, HEADER_ROW)
   // Autofilter cubre solo el rango "salidas + préstamos otorgados + TOTAL".
