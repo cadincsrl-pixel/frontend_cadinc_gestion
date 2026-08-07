@@ -680,6 +680,56 @@ export function SolicitudesTab() {
     setModalEnvio({ solicitud, items })
   }
 
+  // Vista previa en BORRADOR del remito que se está armando: imprime el papel
+  // tal cual va a salir (con estado del pedido incluido) SIN generar nada —
+  // ni remito, ni envíos, ni número. Para revisar antes del definitivo
+  // (imprimían el definitivo y recién ahí veían los errores de carga).
+  function vistaPreviaRemito() {
+    if (!modalEnvio) return
+    const { solicitud, items } = modalEnvio
+    const envios: { item: SolicitudCompraItem; cantidad: number }[] = []
+    for (const it of items) {
+      const efectiva  = Number(it.cantidad_comprada ?? it.cantidad)
+      const pendiente = efectiva - Number(it.cantidad_enviada ?? 0)
+      const v = Number(cantEnvio[it.id!])
+      if (!Number.isFinite(v) || v < 0) { toast(`Cantidad inválida en "${it.descripcion}"`, 'err'); return }
+      if (v > pendiente + 0.001) { toast(`"${it.descripcion}": querés enviar ${v} pero quedan ${pendiente} pendientes`, 'err'); return }
+      if (v > 0) envios.push({ item: it, cantidad: v })
+    }
+    if (!envios.length) { toast('Poné cantidad a enviar en al menos un material', 'err'); return }
+
+    const hoy = new Date()
+    const fakeRemito: RemitoEnvio = {
+      id: 0,
+      numero: 'BORRADOR',
+      fecha: `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`,
+      obra_cod: solicitud.obra_cod,
+      solicitud_id: solicitud.id,
+      origen: envios.some(e => e.item.estado === 'comprado' || e.item.estado === 'retirado') ? 'mixto' : 'deposito',
+      obs: null,
+      created_at: '',
+      created_by: null,
+      items: envios.map(({ item: it, cantidad }, i) => ({
+        id: -(i + 1),
+        remito_id: 0,
+        item_id: it.id!,
+        descripcion: it.descripcion,
+        cantidad,
+        unidad: it.unidad,
+        precio_unit: null,
+        origen: (it.estado === 'comprado' || it.estado === 'retirado') ? 'proveedor' : 'deposito',
+        proveedor: it.proveedores?.nombre ?? null,
+      })),
+    }
+    const remitosCache = (queryClient.getQueryData<RemitoEnvio[]>(['remitos-envio', 'all']) ?? [])
+      .filter(r => r.solicitud_id === solicitud.id)
+    const obra = obrasMap.get(solicitud.obra_cod)
+    imprimirRemito(fakeRemito, obra?.nom, {
+      ...armarEstadoPedido(solicitud, fakeRemito, { sumarEsteRemito: true }, remitosCache),
+      envios: armarEnvios(fakeRemito, remitosCache),
+    }, { borrador: true })
+  }
+
   function confirmarEnvio() {
     if (!modalEnvio) return
     const { solicitud, items } = modalEnvio
@@ -1999,6 +2049,11 @@ export function SolicitudesTab() {
             footer={
               <>
                 <Button variant="secondary" onClick={() => setModalEnvio(null)}>Cancelar</Button>
+                {!esDep && (
+                  <Button variant="secondary" onClick={vistaPreviaRemito}>
+                    🖨 Vista previa (borrador)
+                  </Button>
+                )}
                 <Button variant="primary" loading={enviandoRemito} onClick={confirmarEnvio}>
                   {esDep ? '✓ Recibir e ingresar al stock' : '✓ Generar remito'}
                 </Button>

@@ -233,3 +233,23 @@ describe('htmlRemito sin precios y con último envío', () => {
     expect(html).toContain('05/08/2026')
   })
 })
+
+// ── Vista previa en borrador (2026-08-07) ───────────────────────────────────
+describe('htmlRemito en modo borrador', () => {
+  it('imprime UNA sola copia marcada BORRADOR con banner de sin validez', () => {
+    const html = htmlRemito(mkRemito(5), 'Obra', undefined, { borrador: true })
+    expect(html).toContain('BORRADOR — SIN VALIDEZ')
+    expect(html).not.toContain('ORIGINAL')
+    expect(html).not.toContain('DUPLICADO')
+    expect(html).not.toContain('TRIPLICADO')
+    // Una sola copia: sin triplicado compacto de tercios de hoja.
+    expect(html).not.toContain('min-height:calc(33.33vh')
+  })
+
+  it('el modo normal no cambia: tres copias sin banner', () => {
+    const html = htmlRemito(mkRemito(5))
+    expect(html).not.toContain('BORRADOR')
+    expect(html).toContain('ORIGINAL')
+    expect(html).toContain('TRIPLICADO')
+  })
+})

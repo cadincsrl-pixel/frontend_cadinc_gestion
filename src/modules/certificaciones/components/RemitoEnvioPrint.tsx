@@ -230,16 +230,26 @@ const MAX_RENGLONES_COMPACTO = 15
  * ~20 artículos el remito salía incompleto y nadie lo notaba hasta contar los
  * renglones contra el sistema (reportado el 2026-07-30).
  */
-export function htmlRemito(remito: RemitoEnvio, obraNom?: string, estadoPedido?: EstadoPedido): string {
+export function htmlRemito(
+  remito: RemitoEnvio,
+  obraNom?: string,
+  estadoPedido?: EstadoPedido,
+  opts?: { borrador?: boolean },
+): string {
   // SIN precios: el remito lo leen los operarios en la obra y no tienen por
   // qué ver cuánto costó cada cosa (pedido de Franco 2026-08-06). Los precios
   // viven en el sistema, no en el papel.
+  // BORRADOR (2026-08-07): vista previa ANTES de generar el remito definitivo
+  // — una sola copia, sin número, con banner "SIN VALIDEZ". No toca nada del
+  // sistema: es para revisar el papel antes de confirmar (imprimían el
+  // definitivo y recién ahí veían los errores de carga).
+  const borrador = opts?.borrador === true
   // La tabla de estado del pedido también ocupa renglones: cuenta para decidir
   // si el triplicado entra en una hoja (+2 por título y encabezado).
   const renglones = remito.items.length
     + (estadoPedido ? estadoPedido.items.length + 2 : 0)
     + (estadoPedido?.envios?.length ? estadoPedido.envios.length + 1 : 0)
-  const compacto = renglones <= MAX_RENGLONES_COMPACTO
+  const compacto = !borrador && renglones <= MAX_RENGLONES_COMPACTO
 
   // El modo largo usa cuerpos un punto más grandes: ya no hay que hacer entrar
   // tres copias en una hoja, y el remito se lee en el galpón, no en un monitor.
@@ -303,8 +313,14 @@ export function htmlRemito(remito: RemitoEnvio, obraNom?: string, estadoPedido?:
     ? 'border:1px solid #ccc;padding:8px;min-height:calc(33.33vh - 14px);box-sizing:border-box;display:flex;flex-direction:column;page-break-inside:avoid'
     : `border:1px solid #ccc;padding:12px;box-sizing:border-box${esUltima ? '' : ';page-break-after:always'}`
 
+  const bannerBorrador = borrador ? `
+      <div style="border:2px dashed #E8621A;color:#E8621A;font-weight:bold;text-align:center;padding:5px;margin-bottom:8px;font-size:13px;letter-spacing:1px">
+        BORRADOR — SIN VALIDEZ · Verificá cantidades y materiales; el remito definitivo se genera desde el sistema
+      </div>` : ''
+
   const copiaHtml = (tipo: string, esUltima: boolean) => `
     <div style="${estiloCopia(esUltima)}">
+      ${bannerBorrador}
       <!-- Header -->
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid #E8621A;padding-bottom:4px;margin-bottom:6px">
         <div>
@@ -358,9 +374,9 @@ export function htmlRemito(remito: RemitoEnvio, obraNom?: string, estadoPedido?:
       body { font-family: Arial, sans-serif; color: #000; margin: 0; padding: 0; }
     </style>
     </head><body style="${estiloBody}">
-    ${copiaHtml('ORIGINAL', false)}
-    ${copiaHtml('DUPLICADO', false)}
-    ${copiaHtml('TRIPLICADO', true)}
+    ${borrador
+      ? copiaHtml('BORRADOR', true)
+      : copiaHtml('ORIGINAL', false) + copiaHtml('DUPLICADO', false) + copiaHtml('TRIPLICADO', true)}
     </body></html>
   `
 }
@@ -369,10 +385,10 @@ export function htmlRemito(remito: RemitoEnvio, obraNom?: string, estadoPedido?:
  * Abre la ventana de impresión del remito. Hasta 15 renglones: triplicado en
  * una hoja. Más: una copia por hoja, con la tabla partida entre páginas.
  */
-export function imprimirRemito(remito: RemitoEnvio, obraNom?: string, estadoPedido?: EstadoPedido) {
+export function imprimirRemito(remito: RemitoEnvio, obraNom?: string, estadoPedido?: EstadoPedido, opts?: { borrador?: boolean }) {
   const win = window.open('', '_blank')
   if (!win) return
-  win.document.write(htmlRemito(remito, obraNom, estadoPedido))
+  win.document.write(htmlRemito(remito, obraNom, estadoPedido, opts))
   win.document.close()
   win.print()
 }
