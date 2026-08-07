@@ -822,10 +822,37 @@ export function HorasTrabajadorPage() {
                                   value={displayVal}
                                   readOnly={!puedeEditar}
                                   title="Horas extras de la semana"
+                                  data-htrab-row={`${f.leg}-${f.obra.cod}`}
+                                  data-htrab-day={7}
                                   onWheel={e => (e.currentTarget as HTMLInputElement).blur()}
                                   onChange={puedeEditar ? e => setEditingCell({ key: ek, val: e.target.value }) : undefined}
                                   onBlur={puedeEditar ? e => handleExtraBlur(f.leg, f.obra.cod, f.hsExtras, e.target.value) : undefined}
                                   onFocus={puedeEditar ? e => { setEditingCell({ key: ek, val: e.target.value }); e.target.select() } : undefined}
+                                  onKeyDown={puedeEditar ? e => {
+                                    // La columna de extras es el "día 7" de la grilla: mismas
+                                    // flechas que las horas comunes. El guardado lo hace el
+                                    // onBlur al mover el foco (no llamamos al handler acá para
+                                    // no guardar dos veces). ← vuelve al jueves; →/Enter/↑/↓
+                                    // navegan entre extras. preventDefault porque type=number
+                                    // usa ↑/↓ para incrementar.
+                                    const rowKey = `${f.leg}-${f.obra.cod}`
+                                    if (e.key === 'ArrowLeft') {
+                                      e.preventDefault()
+                                      const t = document.querySelector<HTMLInputElement>(
+                                        `input[data-htrab-row="${rowKey}"][data-htrab-day="6"]`
+                                      )
+                                      if (t) { t.focus(); t.select() }
+                                      return
+                                    }
+                                    if (e.key !== 'Enter' && e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+                                    e.preventDefault()
+                                    const all = Array.from(document.querySelectorAll<HTMLInputElement>(
+                                      'input[data-htrab-day="7"]'
+                                    ))
+                                    const here = all.findIndex(x => x.dataset.htrabRow === rowKey)
+                                    const t = all[here + (e.key === 'ArrowUp' ? -1 : 1)]
+                                    if (t) { t.focus(); t.select() }
+                                  } : undefined}
                                   className={`${cls} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none${!puedeEditar ? ' cursor-not-allowed opacity-60' : ''}`}
                                 />
                               )
