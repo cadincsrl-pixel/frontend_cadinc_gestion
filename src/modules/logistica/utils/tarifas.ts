@@ -25,10 +25,17 @@ export function tarifaParaFecha(
   // empresas). Escalera de prioridad: depósito+unidad > depósito > unidad
   // > general. Las tarifas sin tipo_unidad valen para cualquier unidad.
   tipoUnidad?: 'batea' | 'chasis',
+  // Variante elegida en el tramo (tramos.tarifa_variante). Match EXACTO antes
+  // de la escalera: tramo sin variante ↔ tarifas sin variante, tramo con
+  // "Tarifa 2" ↔ tarifas variante="Tarifa 2". Sin fallback a la base a
+  // propósito: variante inexistente para la ruta → $0 ("sin tarifa" visible),
+  // no se factura con otra en silencio.
+  variante?: string | null,
 ): number {
   if (!canteraId || !fecha) return 0
   const base = tarifas.filter(t =>
     t.empresa_id === empresaId && t.cantera_id === canteraId && t.vigente_desde <= fecha
+    && ((t.variante ?? null) === (variante ?? null))
   )
   const pools = [
     depositoId != null && tipoUnidad ? base.filter(t => t.deposito_id === depositoId && t.tipo_unidad === tipoUnidad) : [],

@@ -207,6 +207,7 @@ export function calcularPerformance(
         const tarifa = tarifaParaFecha(
           tarifas, t.empresa_id, t.cantera_id, t.deposito_id ?? null,
           t.fecha_descarga, unidadDelCamion(camiones, t.camion_id),
+          t.tarifa_variante ?? null,
         )
         if (tarifa > 0) {
           ingreso = tarifa * ton
@@ -542,6 +543,7 @@ export function calcularPerformance(
             const tarifa = tarifaParaFecha(
               tarifas, t.empresa_id, t.cantera_id, t.deposito_id ?? null,
               fechaTramo, unidadDelCamion(camiones, t.camion_id),
+              t.tarifa_variante ?? null,
             )
             if (ton > 0 && tarifa > 0) {
               montoPctVivos += ton * tarifa / IVA * pctEnFecha(chofer, fechaTramo) / 100

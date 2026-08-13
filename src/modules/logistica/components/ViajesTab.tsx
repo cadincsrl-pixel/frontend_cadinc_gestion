@@ -23,7 +23,8 @@ import { useTramosEnRuta } from '../hooks/useEnRuta'
 import { useTramoRelevo } from '../hooks/useTramoRelevo'
 import { RelevoSection } from './RelevoSection'
 import { ModalSolicitudTurno } from './ModalSolicitudTurno'
-import type { Tramo, TramoTipo, Cantera, Deposito, Ruta } from '@/types/domain.types'
+import type { Tramo, TramoTipo, Cantera, Deposito, Ruta, TarifaEmpresaCantera, Camion } from '@/types/domain.types'
+import { tarifaParaFecha, unidadDelCamion } from '../utils/tarifas'
 
 // Shape de los forms de este tab. Todos los campos en string porque los
 // inputs/selects del proyecto devuelven strings; los parseos a number/null
@@ -49,7 +50,64 @@ type TramoFormValues = {
   // tramo se crea `en_curso` (asumimos que se carga mientras está pasando).
   // Si el user lo carga retrospectivamente, lo tilda y va `completado`.
   vacio_completado?: boolean
+  // Variante de tarifa del viaje ('' = tarifa base/única). Solo aparece el
+  // selector cuando la ruta elegida tiene variantes cargadas en Facturación.
+  tarifa_variante?: string
   obs?: string
+}
+
+// Selector de variante de tarifa del viaje. Solo se renderiza si la
+// empresa+cantera elegidas tienen VARIANTES cargadas (Facturación → Tarifas):
+// con tarifa única no aparece y el tramo va con variante null como siempre.
+// Muestra el $/tn final que resolvería la facturación con el depósito, la
+// fecha y la unidad actuales del form, para elegir con el número a la vista.
+function SelectorVarianteTarifa({ tarifas, camiones, empresaId, canteraId, depositoId, camionId, fecha, value, onChange }: {
+  tarifas:    TarifaEmpresaCantera[]
+  camiones:   Camion[]
+  empresaId?: string
+  canteraId?: string
+  depositoId?: string
+  camionId?:  string
+  fecha?:     string
+  value:      string
+  onChange:   (v: string) => void
+}) {
+  const empId = empresaId ? Number(empresaId) : null
+  const canId = canteraId ? Number(canteraId) : null
+  if (!empId || !canId) return null
+
+  const serie = tarifas.filter(t => t.empresa_id === empId && t.cantera_id === canId)
+  const variantes = Array.from(new Set(serie.map(t => t.variante ?? '')))
+    .sort((a, b) => (a === '' ? -1 : b === '' ? 1 : a.localeCompare(b)))
+  if (!variantes.some(v => v !== '')) return null
+
+  const depId  = depositoId ? Number(depositoId) : null
+  const f      = fecha || toISO(new Date())
+  const unidad = unidadDelCamion(camiones, camionId ? Number(camionId) : null)
+  const options = variantes.map(v => {
+    const valor = tarifaParaFecha(serie, empId, canId, depId, f, unidad, v || null)
+    const etiqueta = v === '' ? 'Tarifa única / base' : v
+    return {
+      value: v,
+      label: valor > 0
+        ? `${etiqueta} — $${valor.toLocaleString('es-AR', { maximumFractionDigits: 2 })}/tn c/IVA`
+        : `${etiqueta} — ⚠ sin tarifa para esta ruta`,
+    }
+  })
+
+  return (
+    <div>
+      <Select
+        label="🏷 Variante de tarifa"
+        options={options}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+      />
+      <p className="text-[11px] text-gris-dark mt-1">
+        Esta ruta tiene más de una tarifa según el cliente final de la empresa. La variante define el $/tn del cobro y de la liquidación del chofer.
+      </p>
+    </div>
+  )
 }
 
 export function ViajesTab() {
@@ -561,6 +619,7 @@ export function ViajesTab() {
       dto.toneladas_carga      = data.toneladas_carga ? Number(data.toneladas_carga) : undefined
       dto.remito_carga         = data.remito_carga ?? ''
       dto.remito_carga_img_url = data.remito_carga_img_url || null
+      dto.tarifa_variante      = data.tarifa_variante || null
     } else {
       dto.fecha_vacio = data.fecha_vacio
       // Override del default del backend (vacio→completado). El caso común es
@@ -782,6 +841,7 @@ export function ViajesTab() {
       remito_descarga:         tramo.remito_descarga    ?? '',
       remito_descarga_img_url: tramo.remito_descarga_img_url ?? '',
       fecha_vacio:       tramo.fecha_vacio ?? '',
+      tarifa_variante:   tramo.tarifa_variante ?? '',
       obs:               tramo.obs ?? '',
     })
     setEditando(tramo)
@@ -834,6 +894,7 @@ export function ViajesTab() {
           remito_descarga:         data.remito_descarga     ?? '',
           remito_descarga_img_url: data.remito_descarga_img_url || null,
           fecha_vacio:        data.fecha_vacio         || undefined,
+          tarifa_variante:    data.tarifa_variante || null,
           obs:                data.obs ?? '',
         },
       },
@@ -1380,6 +1441,17 @@ export function ViajesTab() {
                 rutas={rutas as Ruta[]}
                 createRuta={createRuta}
               />
+              <SelectorVarianteTarifa
+                tarifas={tarifasEmp as TarifaEmpresaCantera[]}
+                camiones={camiones as Camion[]}
+                empresaId={formNuevo.watch('empresa_id')}
+                canteraId={formNuevo.watch('cantera_id')}
+                depositoId={formNuevo.watch('deposito_id')}
+                camionId={formNuevo.watch('camion_id')}
+                fecha={formNuevo.watch('fecha_carga')}
+                value={formNuevo.watch('tarifa_variante') ?? ''}
+                onChange={v => formNuevo.setValue('tarifa_variante', v)}
+              />
               <div className="bg-gris rounded-xl p-3 flex flex-col gap-3">
                 <div className="text-xs font-bold text-gris-dark uppercase tracking-wider">⛏ Carga en punto de carga</div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1606,6 +1678,19 @@ export function ViajesTab() {
             rutas={rutas as Ruta[]}
             createRuta={createRuta}
           />
+          {editando?.tipo === 'cargado' && (
+            <SelectorVarianteTarifa
+              tarifas={tarifasEmp as TarifaEmpresaCantera[]}
+              camiones={camiones as Camion[]}
+              empresaId={formEdit.watch('empresa_id')}
+              canteraId={formEdit.watch('cantera_id')}
+              depositoId={formEdit.watch('deposito_id')}
+              camionId={formEdit.watch('camion_id')}
+              fecha={formEdit.watch('fecha_descarga') || formEdit.watch('fecha_carga')}
+              value={formEdit.watch('tarifa_variante') ?? ''}
+              onChange={v => formEdit.setValue('tarifa_variante', v)}
+            />
+          )}
 
           {editando?.tipo === 'cargado' ? (
             <>

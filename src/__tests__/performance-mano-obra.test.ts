@@ -31,6 +31,7 @@ function mkTramo(over: Partial<Tramo> = {}): Tramo {
     empresa_id: null,
     cantera_id: null,
     deposito_id: null,
+    tarifa_variante: null,
     fecha_carga: null,
     toneladas_carga: null,
     remito_carga: null,

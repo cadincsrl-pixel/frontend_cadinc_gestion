@@ -21,6 +21,7 @@ function tarifa(t: {
   cantera_id: number
   deposito_id?: number | null
   tipo_unidad?: 'batea' | 'chasis' | null
+  variante?: string | null
   valor_ton: number
   vigente_desde: string
 }): TarifaEmpresaCantera {
@@ -30,6 +31,7 @@ function tarifa(t: {
     cantera_id: t.cantera_id,
     deposito_id: t.deposito_id ?? null,
     tipo_unidad: t.tipo_unidad ?? null,
+    variante: t.variante ?? null,
     valor_ton: t.valor_ton,
     vigente_desde: t.vigente_desde,
     obs: null,
@@ -245,6 +247,48 @@ describe('tarifaParaFecha — casos borde (ceros, nulls, listas vacías)', () =>
 
   it('empresa sin tarifas para esa cantera → 0 (no agarra tarifas de otra empresa)', () => {
     expect(tarifaParaFecha(conTarifa, 55, CANTERA_INGENIO, DEPO_LULES, '2026-06-15')).toBe(0)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (b2) tarifaParaFecha — variantes (misma ruta, precios distintos según el
+// cliente final de la empresa; el tramo elige con tramos.tarifa_variante)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('tarifaParaFecha — variantes de tarifa', () => {
+  const tarifas = [
+    tarifa({ empresa_id: EMPRESA, cantera_id: CANTERA_INGENIO, valor_ton: 169400, vigente_desde: '2026-05-01' }),
+    tarifa({ empresa_id: EMPRESA, cantera_id: CANTERA_INGENIO, variante: 'Tarifa 2', valor_ton: 152000, vigente_desde: '2026-05-01' }),
+    tarifa({ empresa_id: EMPRESA, cantera_id: CANTERA_INGENIO, variante: 'Tarifa 2', valor_ton: 160000, vigente_desde: '2026-07-01' }),
+  ]
+
+  it('tramo SIN variante → resuelve solo la base (ignora las variantes)', () => {
+    expect(tarifaParaFecha(tarifas, EMPRESA, CANTERA_INGENIO, null, '2026-06-15')).toBe(169400)
+    expect(tarifaParaFecha(tarifas, EMPRESA, CANTERA_INGENIO, null, '2026-06-15', undefined, null)).toBe(169400)
+  })
+
+  it('tramo con variante → resuelve solo esa variante, con su propio versionado', () => {
+    expect(tarifaParaFecha(tarifas, EMPRESA, CANTERA_INGENIO, null, '2026-06-15', undefined, 'Tarifa 2')).toBe(152000)
+    expect(tarifaParaFecha(tarifas, EMPRESA, CANTERA_INGENIO, null, '2026-07-10', undefined, 'Tarifa 2')).toBe(160000)
+  })
+
+  it('variante inexistente para la ruta → 0 (NO cae a la base en silencio)', () => {
+    expect(tarifaParaFecha(tarifas, EMPRESA, CANTERA_INGENIO, null, '2026-06-15', undefined, 'Tarifa 3')).toBe(0)
+  })
+
+  it('ruta que SOLO tiene variantes → un tramo sin variante da 0 (queda visible como sin tarifa)', () => {
+    const soloVariantes = tarifas.filter(t => t.variante != null)
+    expect(tarifaParaFecha(soloVariantes, EMPRESA, CANTERA_INGENIO, null, '2026-06-15')).toBe(0)
+  })
+
+  it('la variante convive con la escalera: depósito específico gana dentro de la misma variante', () => {
+    const conDeposito = [
+      ...tarifas,
+      tarifa({ empresa_id: EMPRESA, cantera_id: CANTERA_INGENIO, deposito_id: DEPO_LULES, variante: 'Tarifa 2', valor_ton: 158000, vigente_desde: '2026-05-01' }),
+    ]
+    expect(tarifaParaFecha(conDeposito, EMPRESA, CANTERA_INGENIO, DEPO_LULES, '2026-06-15', undefined, 'Tarifa 2')).toBe(158000)
+    // La específica por depósito de la variante NO contamina a la base:
+    expect(tarifaParaFecha(conDeposito, EMPRESA, CANTERA_INGENIO, DEPO_LULES, '2026-06-15')).toBe(169400)
   })
 })
 

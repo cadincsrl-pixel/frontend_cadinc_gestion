@@ -791,6 +791,9 @@ export interface Tramo {
   empresa_id:  number | null
   cantera_id:  number | null   // origen en cargado, destino en vacio
   deposito_id: number | null   // destino en cargado, origen en vacio
+  // Qué variante de tarifa factura este tramo (cuando la ruta tiene más de una
+  // en tarifas_empresa_cantera.variante). null = tarifa base/única.
+  tarifa_variante: string | null
 
   // Carga
   fecha_carga:          string | null
@@ -926,6 +929,7 @@ export interface TarifaEmpresaCantera {
   cantera_id: number
   deposito_id: number | null   // null = tarifa general; set = específica para descargas en ese depósito
   tipo_unidad: 'batea' | 'chasis' | null  // null = cualquier unidad; set = según el camión del viaje
+  variante: string | null      // null = tarifa única/base; set = variante para la misma ruta ("Tarifa 2", cliente final)
   valor_ton: number
   vigente_desde: string
   obs: string | null

@@ -9,7 +9,7 @@ import type { Tramo } from '@/types/domain.types'
 function mkTramo(over: Partial<Tramo> = {}): Tramo {
   return {
     id: 1, chofer_id: 2, camion_id: 3, tipo: 'cargado', estado: 'completado',
-    empresa_id: 7, cantera_id: 10, deposito_id: 13,
+    empresa_id: 7, cantera_id: 10, deposito_id: 13, tarifa_variante: null,
     fecha_carga: '2026-07-09', toneladas_carga: 30.5, remito_carga: 'RC-1',
     remito_carga_img_url: null,
     fecha_descarga: '2026-07-10', toneladas_descarga: 30.2, remito_descarga: 'RD-9',

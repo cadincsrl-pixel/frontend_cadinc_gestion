@@ -186,6 +186,9 @@ export function calcularBasePctViajes(
           tarifas, t.empresa_id, t.cantera_id, t.deposito_id ?? null,
           t.fecha_descarga ?? t.fecha_carga ?? null,
           unidadDelCamion(camiones as Camion[], t.camion_id),
+          // El chofer cobra el % sobre la MISMA variante que se le factura al
+          // cliente. Variante sin tarifa → el tramo cae en sin_tarifa (bloquea).
+          t.tarifa_variante ?? null,
         )
       : 0
     if (!(tarifa > 0)) { sin_tarifa.push(t); continue }

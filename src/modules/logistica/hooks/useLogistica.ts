@@ -689,7 +689,7 @@ export function useUpsertTarifaEmpresa() {
   return useMutation({
     // confirmar_pisar_historico: un alta con vigencia retroactiva repriecia lo
     // ya cobrado, así que el backend también la frena con 409 en el POST.
-    mutationFn: (dto: { empresa_id: number; cantera_id: number; deposito_id?: number | null; tipo_unidad?: 'batea' | 'chasis' | null; valor_ton: number; vigente_desde: string; obs?: string; confirmar_pisar_historico?: boolean }) =>
+    mutationFn: (dto: { empresa_id: number; cantera_id: number; deposito_id?: number | null; tipo_unidad?: 'batea' | 'chasis' | null; variante?: string | null; valor_ton: number; vigente_desde: string; obs?: string; confirmar_pisar_historico?: boolean }) =>
       apiPost<TarifaEmpresaCantera>('/api/logistica/empresas/tarifas', dto),
     onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.tarifasEmpresa }),
   })

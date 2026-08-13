@@ -31,6 +31,29 @@ function fmtM(n: number) {
   return '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 0 })
 }
 
+// Variantes de tarifa: la misma ruta puede tener precios distintos según el
+// cliente final de la empresa. Opciones fijas + "Otra…" con texto libre.
+// '' = tarifa única/base (sin variante, comportamiento de siempre).
+const VARIANTE_OTRA = '__otra'
+const VARIANTE_OPTIONS = [
+  { value: '',            label: 'Única (sin variante)' },
+  { value: 'Tarifa 1',    label: 'Tarifa 1' },
+  { value: 'Tarifa 2',    label: 'Tarifa 2' },
+  { value: 'Tarifa 3',    label: 'Tarifa 3' },
+  { value: VARIANTE_OTRA, label: 'Otra… (texto libre)' },
+]
+
+// Prefill del par variante_opcion/variante_libre a partir de una variante
+// persistida (para "Actualizar precio" / "crear versión nueva": la versión
+// nueva tiene que caer en la MISMA serie, no en la base).
+function varianteAForm(v: string | null | undefined): { variante_opcion: string; variante_libre: string } {
+  if (!v) return { variante_opcion: '', variante_libre: '' }
+  const esFija = VARIANTE_OPTIONS.some(o => o.value === v)
+  return esFija
+    ? { variante_opcion: v, variante_libre: '' }
+    : { variante_opcion: VARIANTE_OTRA, variante_libre: v }
+}
+
 // Adivina la extensión del archivo a partir de la URL (preferido) o el MIME.
 // Se usa al armar los nombres del ZIP de remitos.
 function guessExt(url: string, mime: string): string {
@@ -580,33 +603,37 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
 
   const tarifas = todasTarifas.filter(t => t.empresa_id === empresa.id)
 
-  // Agrupar por cantera × depósito × unidad (null = general), historial
-  // ordenado por vigente_desde desc (la primera es la vigente). La general
-  // va primero, después las específicas por depósito; dentro del mismo
-  // depósito, "todas las unidades" antes que batea/chasis.
+  // Agrupar por cantera × depósito × unidad × variante (null = general/base),
+  // historial ordenado por vigente_desde desc (la primera es la vigente). La
+  // general va primero, después las específicas por depósito; dentro del mismo
+  // depósito, "todas las unidades" antes que batea/chasis, y la base antes que
+  // las variantes.
   const grupos = canteras
     .flatMap(c => {
       const deCantera = tarifas.filter(t => t.cantera_id === c.id)
-      const combos = Array.from(new Set(deCantera.map(t => `${t.deposito_id ?? ''}|${t.tipo_unidad ?? ''}`)))
+      const combos = Array.from(new Set(deCantera.map(t => `${t.deposito_id ?? ''}|${t.tipo_unidad ?? ''}|${t.variante ?? ''}`)))
         .map(combo => {
-          const [depRaw, uniRaw] = combo.split('|')
+          const [depRaw, uniRaw, varRaw] = combo.split('|')
           return {
-            depId:  depRaw === '' ? null : Number(depRaw),
-            unidad: (uniRaw === '' ? null : uniRaw) as 'batea' | 'chasis' | null,
+            depId:    depRaw === '' ? null : Number(depRaw),
+            unidad:   (uniRaw === '' ? null : uniRaw) as 'batea' | 'chasis' | null,
+            variante: varRaw === '' ? null : varRaw,
           }
         })
         .sort((a, b) =>
           (a.depId === null ? -1 : b.depId === null ? 1 : a.depId - b.depId) ||
-          (a.unidad === null ? -1 : b.unidad === null ? 1 : a.unidad.localeCompare(b.unidad)),
+          (a.unidad === null ? -1 : b.unidad === null ? 1 : a.unidad.localeCompare(b.unidad)) ||
+          (a.variante === null ? -1 : b.variante === null ? 1 : a.variante.localeCompare(b.variante)),
         )
-      return combos.map(({ depId, unidad }) => ({
-        key:      `${c.id}|${depId ?? 'gral'}|${unidad ?? 'todas'}`,
+      return combos.map(({ depId, unidad, variante }) => ({
+        key:      `${c.id}|${depId ?? 'gral'}|${unidad ?? 'todas'}|${variante ?? 'base'}`,
         cantera:  c,
         deposito: depId === null ? null : depositos.find(d => d.id === depId) ?? null,
         depositoId: depId,
         tipoUnidad: unidad,
+        variante,
         historial: deCantera
-          .filter(t => (t.deposito_id ?? null) === depId && (t.tipo_unidad ?? null) === unidad)
+          .filter(t => (t.deposito_id ?? null) === depId && (t.tipo_unidad ?? null) === unidad && (t.variante ?? null) === variante)
           .sort((a, b) => b.vigente_desde.localeCompare(a.vigente_desde)),
       }))
     })
@@ -630,7 +657,7 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
     aviso:  AvisoTarifa | null
   } | null>(null)
   const [borrando, setBorrando] = useState(false)
-  const form = useForm<any>({ defaultValues: { vigente_desde: toISO(new Date()) } })
+  const form = useForm<any>({ defaultValues: { vigente_desde: toISO(new Date()), variante_opcion: '', variante_libre: '' } })
   // El input number devuelve string y el reset carga un number → union.
   const formEdit = useForm<TarifaEditForm>()
 
@@ -638,22 +665,22 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
   // (excluyendo opcionalmente una propia, para el caso editar). Sirve
   // para avisar que la nueva tarifa no va a afectar tramos posteriores
   // a menos que se "pisen" (eliminen).
-  function tarifasPosteriores(canteraId: number | null, depositoId: number | null, tipoUnidad: 'batea' | 'chasis' | null, fecha: string, excluirId?: number): TarifaEmpresaCantera[] {
+  function tarifasPosteriores(canteraId: number | null, depositoId: number | null, tipoUnidad: 'batea' | 'chasis' | null, variante: string | null, fecha: string, excluirId?: number): TarifaEmpresaCantera[] {
     if (!canteraId || !fecha) return []
     return tarifas
-      .filter(t => t.cantera_id === canteraId && (t.deposito_id ?? null) === depositoId && (t.tipo_unidad ?? null) === tipoUnidad)
+      .filter(t => t.cantera_id === canteraId && (t.deposito_id ?? null) === depositoId && (t.tipo_unidad ?? null) === tipoUnidad && (t.variante ?? null) === variante)
       .filter(t => excluirId == null || t.id !== excluirId)
       .filter(t => t.vigente_desde > fecha)
       .sort((a, b) => a.vigente_desde.localeCompare(b.vigente_desde))
   }
 
-  // Tarifas de la MISMA serie (cantera + depósito + unidad) con exactamente la
-  // misma `vigente_desde`. Dos filas con igual vigencia y precio distinto es un
-  // empate que `tarifaParaFecha` resuelve de forma indefinida.
-  function tarifasMismaFecha(canteraId: number | null, depositoId: number | null, tipoUnidad: 'batea' | 'chasis' | null, fecha: string, excluirId?: number): TarifaEmpresaCantera[] {
+  // Tarifas de la MISMA serie (cantera + depósito + unidad + variante) con
+  // exactamente la misma `vigente_desde`. Dos filas con igual vigencia y precio
+  // distinto es un empate que `tarifaParaFecha` resuelve de forma indefinida.
+  function tarifasMismaFecha(canteraId: number | null, depositoId: number | null, tipoUnidad: 'batea' | 'chasis' | null, variante: string | null, fecha: string, excluirId?: number): TarifaEmpresaCantera[] {
     if (!canteraId || !fecha) return []
     return tarifas
-      .filter(t => t.cantera_id === canteraId && (t.deposito_id ?? null) === depositoId && (t.tipo_unidad ?? null) === tipoUnidad)
+      .filter(t => t.cantera_id === canteraId && (t.deposito_id ?? null) === depositoId && (t.tipo_unidad ?? null) === tipoUnidad && (t.variante ?? null) === variante)
       .filter(t => excluirId == null || t.id !== excluirId)
       .filter(t => t.vigente_desde === fecha)
   }
@@ -663,10 +690,17 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
   const watchUnidad   = form.watch('tipo_unidad')
   const watchFecha    = form.watch('vigente_desde')
   const watchNeta     = form.watch('valor_ton_neta')
-  const serieNueva: [number | null, number | null, 'batea' | 'chasis' | null] = [
+  // Variante: opciones fijas Tarifa 1/2/3 + "Otra…" con texto libre.
+  const watchVarianteOpcion = form.watch('variante_opcion')
+  const watchVarianteLibre  = form.watch('variante_libre')
+  const varianteNueva: string | null = watchVarianteOpcion === VARIANTE_OTRA
+    ? (String(watchVarianteLibre ?? '').trim() || null)
+    : (watchVarianteOpcion || null)
+  const serieNueva: [number | null, number | null, 'batea' | 'chasis' | null, string | null] = [
     watchCantera ? Number(watchCantera) : null,
     watchDeposito ? Number(watchDeposito) : null,
     watchUnidad ? (watchUnidad as 'batea' | 'chasis') : null,
+    varianteNueva,
   ]
   const posterioresNueva = tarifasPosteriores(...serieNueva, watchFecha)
   const mismaFechaNueva  = tarifasMismaFecha(...serieNueva, watchFecha)
@@ -674,10 +708,10 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
   const watchEditFecha = formEdit.watch('vigente_desde')
   const watchEditNeta  = formEdit.watch('valor_ton_neta')
   const posterioresEdit = editando
-    ? tarifasPosteriores(editando.cantera_id, editando.deposito_id ?? null, editando.tipo_unidad ?? null, watchEditFecha, editando.id)
+    ? tarifasPosteriores(editando.cantera_id, editando.deposito_id ?? null, editando.tipo_unidad ?? null, editando.variante ?? null, watchEditFecha, editando.id)
     : []
   const mismaFechaEdit = editando
-    ? tarifasMismaFecha(editando.cantera_id, editando.deposito_id ?? null, editando.tipo_unidad ?? null, watchEditFecha, editando.id)
+    ? tarifasMismaFecha(editando.cantera_id, editando.deposito_id ?? null, editando.tipo_unidad ?? null, editando.variante ?? null, watchEditFecha, editando.id)
     : []
 
   function abrirEditar(t: TarifaEmpresaCantera) {
@@ -815,6 +849,7 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
       cantera_id:     String(t.cantera_id),
       deposito_id:    t.deposito_id != null ? String(t.deposito_id) : '',
       tipo_unidad:    t.tipo_unidad ?? '',
+      ...varianteAForm(t.variante),
       valor_ton_neta: finalANeta(Number(t.valor_ton)),
       vigente_desde:  toISO(new Date()),
       obs:            '',
@@ -831,6 +866,7 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
       cantera_id:     String(editando.cantera_id),
       deposito_id:    editando.deposito_id != null ? String(editando.deposito_id) : '',
       tipo_unidad:    editando.tipo_unidad ?? '',
+      ...varianteAForm(editando.variante),
       valor_ton_neta: confirmPisar.data.valor_ton_neta,
       vigente_desde:  toISO(new Date()),
       obs:            '',
@@ -853,6 +889,9 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
       cantera_id:    Number(data.cantera_id),
       deposito_id:   data.deposito_id ? Number(data.deposito_id) : null,
       tipo_unidad:   data.tipo_unidad ? (data.tipo_unidad as 'batea' | 'chasis') : null,
+      variante:      data.variante_opcion === VARIANTE_OTRA
+        ? (String(data.variante_libre ?? '').trim() || null)
+        : (data.variante_opcion || null),
       valor_ton:     netaAFinal(Number(data.valor_ton_neta)),
       vigente_desde: data.vigente_desde,
       obs:           data.obs ?? '',
@@ -867,7 +906,7 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
         setModal(false)
         setPisarPosteriores(false)
         setConfirmCrear(null)
-        form.reset({ vigente_desde: toISO(new Date()) })
+        form.reset({ vigente_desde: toISO(new Date()), variante_opcion: '', variante_libre: '' })
       },
       onError: (err) => {
         if (apiErrorCode(err) === 'TARIFA_YA_FACTURADA') {
@@ -911,7 +950,7 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
           <p className="text-center py-6 text-sm text-gris-dark">Sin tarifas. Agregá una con el botón de arriba.</p>
         ) : (
           <div className="divide-y divide-gris">
-            {grupos.map(({ key, cantera, deposito, depositoId, tipoUnidad, historial }) => {
+            {grupos.map(({ key, cantera, deposito, depositoId, tipoUnidad, variante, historial }) => {
               const vigente  = historial[0]
               const pasadas  = historial.slice(1)
               const expanded = expandida === key
@@ -931,6 +970,11 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
                       {tipoUnidad != null && (
                         <span className="text-xs font-bold text-naranja-dark ml-2 bg-naranja-light px-1.5 py-0.5 rounded" title="Tarifa específica para esta unidad — los viajes de la otra unidad usan la general">
                           {tipoUnidad === 'chasis' ? '🚚 Chasis' : '🛻 Batea'}
+                        </span>
+                      )}
+                      {variante != null && (
+                        <span className="text-xs font-bold text-verde ml-2 bg-verde-light px-1.5 py-0.5 rounded" title="Variante de tarifa para esta ruta: solo la usan los viajes cargados con esta variante">
+                          🏷 {variante}
                         </span>
                       )}
                     </div>
@@ -1046,6 +1090,21 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
             />
             <p className="text-[11px] text-gris-dark mt-1">
               Solo si la empresa paga distinto según la unidad (ej. chasis). La unidad del viaje sale de la categoría del camión.
+            </p>
+          </div>
+          <div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Select
+                label="Variante"
+                options={VARIANTE_OPTIONS}
+                {...form.register('variante_opcion')}
+              />
+              {watchVarianteOpcion === VARIANTE_OTRA && (
+                <Input label="Nombre de la variante" placeholder="Ej: p/ Arcor" maxLength={60} {...form.register('variante_libre')} />
+              )}
+            </div>
+            <p className="text-[11px] text-gris-dark mt-1">
+              Solo si la empresa paga esta misma ruta con más de un precio (según su cliente final). Al cargar el viaje se elige qué variante aplica.
             </p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1705,7 +1764,7 @@ function FacturacionSection() {
       const ton     = t.toneladas_descarga ?? t.toneladas_carga ?? 0
       const fecha   = t.fecha_descarga ?? t.fecha_carga
       const unidad  = unidadDelCamion(camiones as Camion[], t.camion_id)
-      const tarifa  = tarifaParaFecha(todasTarifas as TarifaEmpresaCantera[], empresaId, t.cantera_id, t.deposito_id, fecha, unidad)
+      const tarifa  = tarifaParaFecha(todasTarifas as TarifaEmpresaCantera[], empresaId, t.cantera_id, t.deposito_id, fecha, unidad, t.tarifa_variante ?? null)
       const cantera = canteras.find(c => c.id === t.cantera_id)
       return { t, ton, tarifa, unidad, subtotal: ton * tarifa, fecha, cantera }
     })
@@ -1914,10 +1973,12 @@ function FacturacionSection() {
                             <div className="pl-4 space-y-0.5 text-gris-dark">
                               {Object.entries(
                                 desglose.reduce<Record<string, { ton: number; tarifa: number; subtotal: number }>>((acc, d) => {
-                                  // Los viajes de chasis van en línea aparte:
-                                  // misma cantera pero tarifa distinta.
+                                  // Los viajes de chasis (y los de una variante
+                                  // de tarifa) van en línea aparte: misma
+                                  // cantera pero tarifa distinta.
                                   const nombre = (d.cantera?.nombre ?? `Punto de carga ${d.t.cantera_id ?? '?'}`)
                                     + (d.unidad === 'chasis' ? ' 🚚 chasis' : '')
+                                    + (d.t.tarifa_variante ? ` 🏷 ${d.t.tarifa_variante}` : '')
                                   if (!acc[nombre]) acc[nombre] = { ton: 0, tarifa: d.tarifa, subtotal: 0 }
                                   acc[nombre].ton      += d.ton
                                   acc[nombre].subtotal += d.subtotal
@@ -2841,6 +2902,7 @@ function FacturacionSection() {
                         <div className="text-xs font-semibold text-carbon">{remito}</div>
                         <div className="text-[11px] text-gris-dark">
                           {fechaStr} · {d.cantera?.nombre ?? '—'} · {fmtTon(d.ton)}
+                          {d.t.tarifa_variante && <> · 🏷 {d.t.tarifa_variante}</>}
                           {d.tarifa > 0
                             ? <> · ${d.tarifa}/tn</>
                             : <span className="text-rojo font-semibold"> · ⚠ Sin tarifa</span>}
@@ -3012,7 +3074,7 @@ function RemitosSection() {
     const ton     = t.toneladas_descarga ?? t.toneladas_carga ?? 0
     const fecha   = t.fecha_descarga ?? t.fecha_carga
     const unidad  = unidadDelCamion(camiones as Camion[], t.camion_id)
-    const tarifa  = tarifaParaFecha(todasTarifas as TarifaEmpresaCantera[], empId, t.cantera_id, t.deposito_id, fecha ?? null, unidad)
+    const tarifa  = tarifaParaFecha(todasTarifas as TarifaEmpresaCantera[], empId, t.cantera_id, t.deposito_id, fecha ?? null, unidad, t.tarifa_variante ?? null)
     const cantera = canteras.find(c => c.id === t.cantera_id)
     const empresa = (empresas as EmpresaTransportista[]).find(e => e.id === empId)
     const remito  = t.remito_descarga ?? t.remito_carga
