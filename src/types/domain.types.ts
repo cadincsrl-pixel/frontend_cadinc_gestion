@@ -326,6 +326,17 @@ export interface Contratista extends AuditFields {
   obs: string | null
 }
 
+// Asignación contratista×obra. `cotizacion` es el monto inicial acordado del
+// que se van descontando las certificaciones semanales (saldo adeudado).
+// El backend omite cotizacion/cotizacion_obs si el usuario tiene ver_costos=false.
+export interface AsigContratista extends AuditFields {
+  obra_cod: string
+  contrat_id: number
+  cotizacion?: number | null
+  cotizacion_obs?: string | null
+  contratistas: Contratista
+}
+
 // ── Certificaciones ──
 export type CertEstado = 'pendiente' | 'cerrado'
 

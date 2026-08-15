@@ -8,6 +8,7 @@ import {
   useAsignarContratista,
   useDesasignarContratista,
   useUpsertCertificacion,
+  useUpdateCotizacion,
   useCreateContratista,
   useUpdateContratista,
   useUploadDniContratista,
@@ -67,9 +68,14 @@ interface Props {
   readonly?: boolean
 }
 
+// Formato de montos en pesos (es-AR, sin decimales).
+function fmtMonto(n: number): string {
+  return '$' + Math.round(n).toLocaleString('es-AR')
+}
+
 export function ContratistasPanel({ obraCod, readonly = false }: Props) {
   const toast = useToast()
-  const { puedeCrear: puedeCrearPerm, puedeEditar: puedeEditarPerm, puedeEliminar: puedeEliminarPerm } = usePermisos('tarja')
+  const { puedeCrear: puedeCrearPerm, puedeEditar: puedeEditarPerm, puedeEliminar: puedeEliminarPerm, verCostos } = usePermisos('tarja')
   const puedeCrear   = puedeCrearPerm   && !readonly
   const puedeEditar  = puedeEditarPerm  && !readonly
   const puedeEliminar = puedeEliminarPerm && !readonly
@@ -83,6 +89,7 @@ export function ContratistasPanel({ obraCod, readonly = false }: Props) {
   const { mutate: asignar, isPending: asignando } = useAsignarContratista()
   const { mutate: desasignar } = useDesasignarContratista()
   const { mutate: upsertCert, isPending: guardandoCert } = useUpsertCertificacion()
+  const { mutate: updateCotiz, isPending: guardandoCotiz } = useUpdateCotizacion()
   const { mutate: createContrat, isPending: creando } = useCreateContratista()
   const { mutate: updateContrat, isPending: actualizando } = useUpdateContratista()
   const { mutate: uploadDni, isPending: subiendoDni } = useUploadDniContratista()
@@ -92,7 +99,10 @@ export function ContratistasPanel({ obraCod, readonly = false }: Props) {
   const [modalAsig, setModalAsig] = useState(false)
   const [modalContrat, setModalContrat] = useState(false)
   const [editId, setEditId] = useState<number | null>(null) // null = modo crear
-  const [modalCert, setModalCert] = useState<number | null>(null) // contrat_id
+  // Semana editable: desde el historial se pueden corregir semanas pasadas.
+  const [modalCert, setModalCert] = useState<{ contratId: number; semKey: string } | null>(null)
+  const [modalCotiz, setModalCotiz] = useState<number | null>(null) // contrat_id
+  const [histId, setHistId] = useState<number | null>(null) // contrat_id con historial abierto
   const [selContrat, setSelContrat] = useState('')
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
@@ -100,6 +110,7 @@ export function ContratistasPanel({ obraCod, readonly = false }: Props) {
     defaultValues: DEFAULTS,
   })
   const formCert = useForm<{ monto: number; desc: string; estado: 'pendiente' | 'cerrado' }>()
+  const formCotiz = useForm<{ cotizacion: number; cotizacion_obs: string }>()
 
   // Contratista en edición. Se deriva del array `todos`, que se refresca al
   // invalidar CONTRAT_KEY tras subir/quitar el DNI → así el bloque de
@@ -224,20 +235,20 @@ export function ContratistasPanel({ obraCod, readonly = false }: Props) {
     )
   }
 
-  function getCert(contratId: number) {
+  function getCert(contratId: number, sem: string = semKey) {
     return certificaciones.find(
-      c => c.contrat_id === contratId && c.sem_key === semKey
+      c => c.contrat_id === contratId && c.sem_key === sem
     )
   }
 
-  function handleOpenCert(contratId: number) {
-    const cert = getCert(contratId)
+  function handleOpenCert(contratId: number, sem: string = semKey) {
+    const cert = getCert(contratId, sem)
     formCert.reset({
       monto: cert?.monto ?? 0,
       desc: cert?.desc ?? '',
       estado: cert?.estado ?? 'pendiente',
     })
-    setModalCert(contratId)
+    setModalCert({ contratId, semKey: sem })
   }
 
   function handleSaveCert(data: { monto: number; desc: string; estado: 'pendiente' | 'cerrado' }) {
@@ -245,8 +256,8 @@ export function ContratistasPanel({ obraCod, readonly = false }: Props) {
     upsertCert(
       {
         obra_cod: obraCod,
-        contrat_id: modalCert,
-        sem_key: semKey,
+        contrat_id: modalCert.contratId,
+        sem_key: modalCert.semKey,
         monto: Number(data.monto),
         desc: data.desc,
         estado: data.estado,
@@ -258,10 +269,71 @@ export function ContratistasPanel({ obraCod, readonly = false }: Props) {
     )
   }
 
-  const contratistasConDatos = asignados.map(a => ({
-    ...a.contratistas,
-    cert: getCert(a.contrat_id),
-  }))
+  // ── Cotización inicial por contratista×obra ──
+  function handleOpenCotiz(contratId: number) {
+    const asig = asignados.find(a => a.contrat_id === contratId)
+    formCotiz.reset({
+      cotizacion:     asig?.cotizacion ?? 0,
+      cotizacion_obs: asig?.cotizacion_obs ?? '',
+    })
+    setModalCotiz(contratId)
+  }
+
+  function handleSaveCotiz(data: { cotizacion: number; cotizacion_obs: string }) {
+    if (modalCotiz === null) return
+    // valueAsNumber da NaN con input vacío; JSON serializa NaN como null y
+    // eso borraría la cotización sin querer. Para borrar está el botón explícito.
+    if (Number.isNaN(data.cotizacion) || data.cotizacion < 0) {
+      toast('Ingresá un monto válido', 'err')
+      return
+    }
+    updateCotiz(
+      {
+        obraCod,
+        contratId: modalCotiz,
+        dto: {
+          cotizacion:     Number(data.cotizacion),
+          cotizacion_obs: data.cotizacion_obs.trim() || null,
+        },
+      },
+      {
+        onSuccess: () => { toast('✓ Cotización guardada', 'ok'); setModalCotiz(null) },
+        onError: () => toast('Error al guardar la cotización', 'err'),
+      }
+    )
+  }
+
+  function handleBorrarCotiz() {
+    if (modalCotiz === null) return
+    if (!confirm('¿Borrar la cotización cargada? El historial de certificaciones no se toca.')) return
+    updateCotiz(
+      { obraCod, contratId: modalCotiz, dto: { cotizacion: null, cotizacion_obs: null } },
+      {
+        onSuccess: () => { toast('✓ Cotización borrada', 'ok'); setModalCotiz(null) },
+        onError: () => toast('Error al borrar la cotización', 'err'),
+      }
+    )
+  }
+
+  // Card por contratista con su resumen financiero: todas las certificaciones
+  // de la obra (todas las semanas) descuentan de la cotización inicial.
+  const contratistasConDatos = asignados.map(a => {
+    const certs = certificaciones
+      .filter(c => c.contrat_id === a.contrat_id)
+      .sort((x, y) => y.sem_key.localeCompare(x.sem_key))
+    const totalCertificado = certs.reduce((acc, c) => acc + Number(c.monto), 0)
+    const totalPendiente   = certs.reduce((acc, c) => acc + (c.estado === 'pendiente' ? Number(c.monto) : 0), 0)
+    const cotizacion = a.cotizacion == null ? null : Number(a.cotizacion)
+    return {
+      ...a.contratistas,
+      cert: getCert(a.contrat_id),
+      certs,
+      totalCertificado,
+      totalPendiente,
+      cotizacion,
+      saldo: cotizacion == null ? null : cotizacion - totalCertificado,
+    }
+  })
 
   return (
     <>
@@ -302,72 +374,163 @@ export function ContratistasPanel({ obraCod, readonly = false }: Props) {
               contratistasConDatos.map(c => (
                 <div
                   key={c.id}
-                  className="border border-gris-mid rounded-xl p-3 flex items-center justify-between gap-3 flex-wrap"
+                  className="border border-gris-mid rounded-xl p-3 flex flex-col gap-2.5"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-full bg-[#EEE8FF] flex items-center justify-center text-[#5A2D82] font-bold text-sm flex-shrink-0">
-                      {c.nom.charAt(0).toUpperCase()}
-                    </div>
-                    <div>
-                      <div className="font-bold text-sm text-carbon">{c.nom}</div>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        {c.especialidad && (
-                          <span className="text-[10px] font-bold bg-[#EEE8FF] text-[#5A2D82] px-2 py-0.5 rounded">
-                            {c.especialidad}
-                          </span>
-                        )}
-                        {c.tel && (
-                          <span className="text-xs text-gris-dark">{c.tel}</span>
-                        )}
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-[#EEE8FF] flex items-center justify-center text-[#5A2D82] font-bold text-sm flex-shrink-0">
+                        {c.nom.charAt(0).toUpperCase()}
                       </div>
+                      <div>
+                        <div className="font-bold text-sm text-carbon">{c.nom}</div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {c.especialidad && (
+                            <span className="text-[10px] font-bold bg-[#EEE8FF] text-[#5A2D82] px-2 py-0.5 rounded">
+                              {c.especialidad}
+                            </span>
+                          )}
+                          {c.tel && (
+                            <span className="text-xs text-gris-dark">{c.tel}</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* Certificación semana actual */}
+                      {c.cert ? (
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            variant={c.cert.estado === 'cerrado' ? 'cerrado' : 'pendiente'}
+                          />
+                          <span className="font-mono text-sm font-bold text-verde">
+                            ${c.cert.monto.toLocaleString('es-AR')}
+                          </span>
+                          {puedeEditar && (
+                            <button
+                              onClick={() => handleOpenCert(c.id)}
+                              className="text-xs font-bold px-2 py-1 rounded bg-gris text-gris-dark hover:bg-azul-light hover:text-azul transition-colors"
+                            >
+                              ✏️
+                            </button>
+                          )}
+                        </div>
+                      ) : puedeCrear ? (
+                        <button
+                          onClick={() => handleOpenCert(c.id)}
+                          className="text-xs font-bold px-3 py-1.5 rounded-lg bg-verde-light text-verde hover:bg-verde hover:text-white transition-colors"
+                        >
+                          ＋ Certificar semana
+                        </button>
+                      ) : null}
+                      {puedeEditar && (
+                        <button
+                          onClick={() => abrirEditarContrat(c)}
+                          title="Editar datos del contratista"
+                          className="text-xs font-bold px-2 py-1.5 rounded-lg text-gris-dark hover:bg-azul-light hover:text-azul transition-colors"
+                        >
+                          ✏️ Editar
+                        </button>
+                      )}
+                      {puedeEliminar && (
+                        <button
+                          onClick={() => handleDesasignar(c.id, c.nom)}
+                          className="text-xs font-bold px-2 py-1.5 rounded-lg text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors"
+                        >
+                          ✕
+                        </button>
+                      )}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {/* Certificación semana actual */}
-                    {c.cert ? (
-                      <div className="flex items-center gap-2">
-                        <Badge
-                          variant={c.cert.estado === 'cerrado' ? 'cerrado' : 'pendiente'}
-                        />
-                        <span className="font-mono text-sm font-bold text-verde">
-                          ${c.cert.monto.toLocaleString('es-AR')}
-                        </span>
-                        {puedeEditar && (
+                  {/* Resumen financiero: cotización − certificado = saldo adeudado.
+                      Oculto para usuarios sin ver_costos (el backend tampoco manda montos). */}
+                  {verCostos && (
+                    <div className="rounded-lg bg-gris/60 px-3 py-2 flex flex-col gap-1.5">
+                      <div className="flex items-center justify-between gap-x-4 gap-y-1 flex-wrap text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-gris-dark font-semibold">Cotización:</span>
+                          {c.cotizacion != null ? (
+                            <span className="font-mono font-bold text-carbon">{fmtMonto(c.cotizacion)}</span>
+                          ) : (
+                            <span className="text-gris-dark italic">sin cargar</span>
+                          )}
+                          {puedeEditar && (
+                            <button
+                              onClick={() => handleOpenCotiz(c.id)}
+                              title={c.cotizacion != null ? 'Editar cotización' : 'Cargar cotización inicial'}
+                              className="text-[11px] font-bold px-1.5 py-0.5 rounded text-azul hover:bg-azul-light transition-colors"
+                            >
+                              {c.cotizacion != null ? '✏️' : '＋ Cargar'}
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-gris-dark font-semibold">Certificado:</span>
+                          <span className="font-mono font-bold text-carbon">{fmtMonto(c.totalCertificado)}</span>
+                          {c.totalPendiente > 0 && (
+                            <span
+                              className="text-[10px] font-bold bg-naranja/15 text-naranja px-1.5 py-0.5 rounded"
+                              title="Certificado con estado pendiente (todavía sin pagar)"
+                            >
+                              {fmtMonto(c.totalPendiente)} pend.
+                            </span>
+                          )}
+                        </div>
+                        {c.saldo != null && (
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-gris-dark font-semibold">Saldo:</span>
+                            <span className={`font-mono font-bold ${c.saldo < 0 ? 'text-rojo' : c.saldo === 0 ? 'text-gris-dark' : 'text-verde'}`}>
+                              {c.saldo < 0 ? `Excedido ${fmtMonto(-c.saldo)}` : fmtMonto(c.saldo)}
+                            </span>
+                          </div>
+                        )}
+                        {c.certs.length > 0 && (
                           <button
-                            onClick={() => handleOpenCert(c.id)}
-                            className="text-xs font-bold px-2 py-1 rounded bg-gris text-gris-dark hover:bg-azul-light hover:text-azul transition-colors"
+                            onClick={() => setHistId(p => (p === c.id ? null : c.id))}
+                            className="text-[11px] font-bold text-azul hover:text-naranja transition-colors ml-auto"
                           >
-                            ✏️
+                            {histId === c.id ? '▾ Ocultar historial' : `▸ Historial (${c.certs.length})`}
                           </button>
                         )}
                       </div>
-                    ) : puedeCrear ? (
-                      <button
-                        onClick={() => handleOpenCert(c.id)}
-                        className="text-xs font-bold px-3 py-1.5 rounded-lg bg-verde-light text-verde hover:bg-verde hover:text-white transition-colors"
-                      >
-                        ＋ Certificar semana
-                      </button>
-                    ) : null}
-                    {puedeEditar && (
-                      <button
-                        onClick={() => abrirEditarContrat(c)}
-                        title="Editar datos del contratista"
-                        className="text-xs font-bold px-2 py-1.5 rounded-lg text-gris-dark hover:bg-azul-light hover:text-azul transition-colors"
-                      >
-                        ✏️ Editar
-                      </button>
-                    )}
-                    {puedeEliminar && (
-                      <button
-                        onClick={() => handleDesasignar(c.id, c.nom)}
-                        className="text-xs font-bold px-2 py-1.5 rounded-lg text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors"
-                      >
-                        ✕
-                      </button>
-                    )}
-                  </div>
+
+                      {/* Barra de avance certificado/cotización */}
+                      {c.cotizacion != null && c.cotizacion > 0 && (
+                        <div className="h-1.5 rounded-full bg-gris-mid/60 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${c.totalCertificado > c.cotizacion ? 'bg-rojo' : 'bg-verde'}`}
+                            style={{ width: `${Math.min(100, (c.totalCertificado / c.cotizacion) * 100)}%` }}
+                          />
+                        </div>
+                      )}
+
+                      {/* Historial de certificaciones semanales de esta obra */}
+                      {histId === c.id && (
+                        <div className="mt-1 flex flex-col divide-y divide-gris-mid/50">
+                          {c.certs.map(cert => (
+                            <div key={cert.sem_key} className="flex items-center gap-2 py-1.5 text-xs">
+                              <span className="font-mono text-gris-dark w-[84px] shrink-0">{cert.sem_key}</span>
+                              <Badge variant={cert.estado === 'cerrado' ? 'cerrado' : 'pendiente'} />
+                              <span className="text-gris-dark truncate flex-1" title={cert.desc || undefined}>
+                                {cert.desc || '—'}
+                              </span>
+                              <span className="font-mono font-bold text-carbon">{fmtMonto(Number(cert.monto))}</span>
+                              {puedeEditar && (
+                                <button
+                                  onClick={() => handleOpenCert(c.id, cert.sem_key)}
+                                  title="Corregir esta semana"
+                                  className="text-[11px] px-1 rounded text-gris-dark hover:bg-azul-light hover:text-azul transition-colors"
+                                >
+                                  ✏️
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))
             )}
@@ -530,9 +693,76 @@ export function ContratistasPanel({ obraCod, readonly = false }: Props) {
         </div>
       </Modal>
 
+      {/* Modal cotización inicial */}
+      {(() => {
+        const asigActual = modalCotiz !== null ? asignados.find(a => a.contrat_id === modalCotiz) : null
+        const nomActual  = modalCotiz !== null ? todos.find(t => t.id === modalCotiz)?.nom : null
+        return (
+          <Modal
+            open={modalCotiz !== null}
+            onClose={() => setModalCotiz(null)}
+            title="📋 COTIZACIÓN INICIAL"
+            footer={
+              <>
+                {asigActual?.cotizacion != null && puedeEditar && (
+                  <button
+                    onClick={handleBorrarCotiz}
+                    className="mr-auto text-xs font-bold text-rojo hover:underline"
+                  >
+                    Borrar cotización
+                  </button>
+                )}
+                <Button variant="secondary" onClick={() => setModalCotiz(null)}>Cancelar</Button>
+                <Button
+                  variant="primary"
+                  loading={guardandoCotiz}
+                  onClick={formCotiz.handleSubmit(handleSaveCotiz)}
+                >
+                  ✓ Guardar
+                </Button>
+              </>
+            }
+          >
+            <div className="flex flex-col gap-4">
+              <div className="bg-gris rounded-lg px-3 py-2 text-sm">
+                <span className="text-gris-dark font-semibold">Contratista: </span>
+                <span className="font-bold text-azul">{nomActual ?? '—'}</span>
+                <span className="text-gris-dark"> · obra </span>
+                <span className="font-mono font-bold text-azul">{obraCod}</span>
+              </div>
+              <p className="text-xs text-gris-dark">
+                Monto total acordado para el trabajo en esta obra. Cada certificación
+                semanal se descuenta de este monto y el saldo restante se ve en el panel.
+              </p>
+              <Input
+                label="Monto cotizado ($)"
+                type="number"
+                step="1000"
+                min="0"
+                placeholder="0"
+                {...formCotiz.register('cotizacion', { valueAsNumber: true })}
+              />
+              <Input
+                label="Observaciones"
+                placeholder="Alcance, condiciones, adicionales (opcional)"
+                {...formCotiz.register('cotizacion_obs')}
+              />
+              {asigActual && (
+                <AuditInfo
+                  createdBy={asigActual.created_by}
+                  updatedBy={asigActual.updated_by}
+                  createdAt={asigActual.created_at}
+                  updatedAt={asigActual.updated_at}
+                />
+              )}
+            </div>
+          </Modal>
+        )
+      })()}
+
       {/* Modal certificación */}
       {(() => {
-        const certActual = modalCert !== null ? getCert(modalCert) : null
+        const certActual = modalCert !== null ? getCert(modalCert.contratId, modalCert.semKey) : null
         return (
           <Modal
             open={modalCert !== null}
@@ -554,7 +784,12 @@ export function ContratistasPanel({ obraCod, readonly = false }: Props) {
             <div className="flex flex-col gap-4">
               <div className="bg-gris rounded-lg px-3 py-2 text-sm">
                 <span className="text-gris-dark font-semibold">Semana: </span>
-                <span className="font-mono font-bold text-azul">{semKey}</span>
+                <span className="font-mono font-bold text-azul">{modalCert?.semKey ?? semKey}</span>
+                {modalCert !== null && modalCert.semKey !== semKey && (
+                  <span className="ml-2 text-[10px] font-bold bg-naranja/15 text-naranja px-1.5 py-0.5 rounded">
+                    semana pasada
+                  </span>
+                )}
               </div>
               <Input
                 label="Monto ($)"

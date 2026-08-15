@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api/client'
-import type { Contratista, Certificacion } from '@/types/domain.types'
+import type { Contratista, Certificacion, AsigContratista } from '@/types/domain.types'
 
 export const CONTRAT_KEY = ['contratistas'] as const
 
@@ -14,7 +14,7 @@ export function useContratistas() {
 export function useContratistasObra(obraCod: string) {
   return useQuery({
     queryKey: [...CONTRAT_KEY, 'asig', obraCod],
-    queryFn:  () => apiGet<Array<{ contrat_id: number; contratistas: Contratista }>>(`/api/contratistas/asig/${encodeURIComponent(obraCod)}`),
+    queryFn:  () => apiGet<AsigContratista[]>(`/api/contratistas/asig/${encodeURIComponent(obraCod)}`),
     enabled:  !!obraCod,
   })
 }
@@ -50,6 +50,24 @@ export function useAsignarContratista() {
   return useMutation({
     mutationFn: (dto: { obra_cod: string; contrat_id: number }) =>
       apiPost('/api/contratistas/asig', dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: CONTRAT_KEY }),
+  })
+}
+
+// Cargar/editar la cotización inicial del contratista para la obra.
+// cotizacion: null borra la cotización.
+export function useUpdateCotizacion() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ obraCod, contratId, dto }: {
+      obraCod: string
+      contratId: number
+      dto: { cotizacion: number | null; cotizacion_obs?: string | null }
+    }) =>
+      apiPatch<AsigContratista>(
+        `/api/contratistas/asig/${encodeURIComponent(obraCod)}/${contratId}`,
+        dto,
+      ),
     onSuccess: () => qc.invalidateQueries({ queryKey: CONTRAT_KEY }),
   })
 }
