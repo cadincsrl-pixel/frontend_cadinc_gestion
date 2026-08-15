@@ -13,7 +13,10 @@ import {
   useUpdateContratista,
   useUploadDniContratista,
   useDeleteDniContratista,
+  useUploadCotizacionDoc,
+  useDeleteCotizacionDoc,
   fetchDniContratistaSignedUrl,
+  fetchCotizacionDocSignedUrl,
   validarArchivoDni,
 } from '../hooks/useContratistas'
 import { useTarjaStore } from '../store/tarja.store'
@@ -22,6 +25,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
+import { Combobox } from '@/components/ui/Combobox'
 import { Badge } from '@/components/ui/Badge'
 import { AuditInfo } from '@/components/ui/AuditInfo'
 import { useToast } from '@/components/ui/Toast'
@@ -94,6 +98,8 @@ export function ContratistasPanel({ obraCod, readonly = false }: Props) {
   const { mutate: updateContrat, isPending: actualizando } = useUpdateContratista()
   const { mutate: uploadDni, isPending: subiendoDni } = useUploadDniContratista()
   const { mutate: deleteDni, isPending: quitandoDni } = useDeleteDniContratista()
+  const { mutate: uploadCotizDoc, isPending: subiendoCotizDoc } = useUploadCotizacionDoc()
+  const { mutate: deleteCotizDoc, isPending: quitandoCotizDoc } = useDeleteCotizacionDoc()
 
   const [expanded, setExpanded] = useState(false)
   const [modalAsig, setModalAsig] = useState(false)
@@ -303,6 +309,45 @@ export function ContratistasPanel({ obraCod, readonly = false }: Props) {
     )
   }
 
+  // ── Adjunto de la cotización (presupuesto foto/PDF) ──
+  function handleSubirCotizDoc(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file || modalCotiz == null) return
+    try {
+      validarArchivoDni(file)
+    } catch (err: unknown) {
+      toast(mensajeError(err, 'Archivo no válido'), 'err')
+      return
+    }
+    uploadCotizDoc(
+      { obraCod, contratId: modalCotiz, file },
+      {
+        onSuccess: () => toast('✓ Presupuesto adjuntado', 'ok'),
+        onError: (err: unknown) => toast(mensajeError(err, 'Error al subir el adjunto'), 'err'),
+      },
+    )
+  }
+
+  async function handleVerCotizDoc(contratId: number) {
+    await abrirAdjuntoFirmado(
+      () => fetchCotizacionDocSignedUrl(obraCod, contratId),
+      (err) => toast(mensajeError(err, 'No se pudo abrir el adjunto'), 'err'),
+    )
+  }
+
+  function handleQuitarCotizDoc() {
+    if (modalCotiz == null) return
+    if (!confirm('¿Quitar el presupuesto adjunto?')) return
+    deleteCotizDoc(
+      { obraCod, contratId: modalCotiz },
+      {
+        onSuccess: () => toast('✓ Adjunto quitado', 'ok'),
+        onError: (err: unknown) => toast(mensajeError(err, 'No se pudo quitar el adjunto'), 'err'),
+      },
+    )
+  }
+
   function handleBorrarCotiz() {
     if (modalCotiz === null) return
     if (!confirm('¿Borrar la cotización cargada? El historial de certificaciones no se toca.')) return
@@ -331,6 +376,7 @@ export function ContratistasPanel({ obraCod, readonly = false }: Props) {
       totalCertificado,
       totalPendiente,
       cotizacion,
+      cotizacionDocNombre: a.cotizacion_doc_nombre ?? null,
       saldo: cotizacion == null ? null : cotizacion - totalCertificado,
     }
   })
@@ -455,6 +501,15 @@ export function ContratistasPanel({ obraCod, readonly = false }: Props) {
                           ) : (
                             <span className="text-gris-dark italic">sin cargar</span>
                           )}
+                          {c.cotizacionDocNombre && (
+                            <button
+                              onClick={() => handleVerCotizDoc(c.id)}
+                              title={`Ver presupuesto adjunto: ${c.cotizacionDocNombre}`}
+                              className="text-[11px] px-1 rounded text-gris-dark hover:bg-azul-light hover:text-azul transition-colors"
+                            >
+                              📎
+                            </button>
+                          )}
                           {puedeEditar && (
                             <button
                               onClick={() => handleOpenCotiz(c.id)}
@@ -558,15 +613,16 @@ export function ContratistasPanel({ obraCod, readonly = false }: Props) {
           </>
         }
       >
-        <div className="flex flex-col gap-4">
-          <Select
-            label="Seleccioná contratista"
-            placeholder="Elegí"
+        <div className="flex flex-col gap-4 min-h-[16rem]">
+          <Combobox
+            label="Buscá y seleccioná contratista"
+            placeholder="Escribí nombre o especialidad…"
             value={selContrat}
-            onChange={e => setSelContrat(e.target.value)}
+            onChange={setSelContrat}
             options={disponibles.map(c => ({
-              value: c.id,
-              label: `${c.nom}${c.especialidad ? ' — ' + c.especialidad : ''}`,
+              value: String(c.id),
+              label: c.nom,
+              sub:   [c.especialidad, c.tel].filter(Boolean).join(' · ') || undefined,
             }))}
           />
           {disponibles.length === 0 && (
@@ -747,6 +803,58 @@ export function ContratistasPanel({ obraCod, readonly = false }: Props) {
                 placeholder="Alcance, condiciones, adicionales (opcional)"
                 {...formCotiz.register('cotizacion_obs')}
               />
+
+              {/* Presupuesto adjunto (foto/PDF). Vive en la asignación, así que
+                  se puede adjuntar aunque el monto todavía no esté guardado. */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">
+                  Presupuesto (foto / PDF)
+                </label>
+                {asigActual?.cotizacion_doc_nombre ? (
+                  <div className="flex items-center justify-between gap-2 rounded-lg border-[1.5px] border-gris-mid px-3 py-2">
+                    <span className="text-sm text-carbon truncate" title={asigActual.cotizacion_doc_nombre}>
+                      📎 {asigActual.cotizacion_doc_nombre}
+                    </span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => modalCotiz != null && handleVerCotizDoc(modalCotiz)}
+                      >
+                        Ver
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={!puedeEditar || quitandoCotizDoc}
+                        onClick={handleQuitarCotizDoc}
+                      >
+                        {quitandoCotizDoc ? 'Quitando…' : 'Quitar'}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    <input
+                      type="file"
+                      accept="image/*,application/pdf"
+                      onChange={handleSubirCotizDoc}
+                      disabled={!puedeEditar || subiendoCotizDoc}
+                      className="text-xs text-gris-dark file:mr-3 file:rounded-lg file:border-0 file:bg-gris file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-carbon hover:file:bg-gris-mid disabled:opacity-60 disabled:cursor-not-allowed"
+                    />
+                    {subiendoCotizDoc && (
+                      <span className="text-xs text-gris-dark inline-flex items-center gap-2">
+                        <span className="w-3 h-3 border-2 border-naranja border-t-transparent rounded-full animate-spin" />
+                        Subiendo…
+                      </span>
+                    )}
+                    <span className="text-[11px] text-gris-mid">
+                      JPG, PNG, WEBP, HEIC o PDF · máx. 10 MB
+                    </span>
+                  </div>
+                )}
+              </div>
+
               {asigActual && (
                 <AuditInfo
                   createdBy={asigActual.created_by}

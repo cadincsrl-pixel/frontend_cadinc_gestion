@@ -196,3 +196,55 @@ export async function fetchDniContratistaSignedUrl(contratId: number): Promise<s
   )
   return data.url
 }
+
+// ──────────────── Adjunto de la cotización (presupuesto foto/PDF) ────────────────
+// Mismo flujo de 2 pasos que el DNI, pero sobre la asignación obra×contratista.
+// Reusa validarArchivoDni (mismos tipos/límite de archivo).
+
+export function useUploadCotizacionDoc() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ obraCod, contratId, file }: {
+      obraCod: string
+      contratId: number
+      file: File
+    }) => {
+      validarArchivoDni(file)
+      const base = `/api/contratistas/asig/${encodeURIComponent(obraCod)}/${contratId}/cotizacion-doc`
+      const up = await apiPost<DniUploadUrlResponse>(`${base}/upload-url`, {
+        nombre_archivo: file.name,
+        mime_type:      file.type,
+        size_bytes:     file.size,
+      })
+      const putRes = await fetch(up.signed_url, {
+        method: 'PUT', body: file, headers: { 'content-type': file.type },
+      })
+      if (!putRes.ok) throw new Error(`Error al subir archivo (${putRes.status})`)
+      return apiPost<AsigContratista>(base, {
+        storage_path:   up.path,
+        nombre_archivo: file.name,
+        mime_type:      file.type,
+        size_bytes:     file.size,
+      })
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: CONTRAT_KEY }),
+  })
+}
+
+export function useDeleteCotizacionDoc() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ obraCod, contratId }: { obraCod: string; contratId: number }) =>
+      apiDelete<AsigContratista>(
+        `/api/contratistas/asig/${encodeURIComponent(obraCod)}/${contratId}/cotizacion-doc`,
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: CONTRAT_KEY }),
+  })
+}
+
+export async function fetchCotizacionDocSignedUrl(obraCod: string, contratId: number): Promise<string> {
+  const data = await apiGet<{ url: string; nombre_archivo: string }>(
+    `/api/contratistas/asig/${encodeURIComponent(obraCod)}/${contratId}/cotizacion-doc/signed-url`,
+  )
+  return data.url
+}

@@ -334,6 +334,8 @@ export interface AsigContratista extends AuditFields {
   contrat_id: number
   cotizacion?: number | null
   cotizacion_obs?: string | null
+  cotizacion_doc_path?: string | null
+  cotizacion_doc_nombre?: string | null
   contratistas: Contratista
 }
 
