@@ -323,6 +323,10 @@ export interface Contratista extends AuditFields {
   dni: string | null
   dni_doc_path: string | null
   dni_doc_nombre: string | null
+  banco_cuenta: string | null
+  cbu: string | null
+  alias_cbu: string | null
+  titular_cuenta: string | null
   obs: string | null
 }
 

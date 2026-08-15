@@ -52,6 +52,12 @@ const schema = z.object({
   cuit:         z.string().trim().optional(),
   cuil:         z.string().trim().optional(),
   dni:          z.string().trim().optional(),
+  banco_cuenta:   z.string().trim().optional(),
+  cbu:            z.string().trim()
+    .refine(s => s === '' || /^\d{22}$/.test(s.replace(/[\s-]/g, '')), 'El CBU debe tener 22 dígitos')
+    .optional(),
+  alias_cbu:      z.string().trim().optional(),
+  titular_cuenta: z.string().trim().optional(),
   obs:          z.string().trim().optional(),
 })
 type FormData = z.infer<typeof schema>
@@ -64,6 +70,10 @@ const DEFAULTS: FormData = {
   cuit:         '',
   cuil:         '',
   dni:          '',
+  banco_cuenta:   '',
+  cbu:            '',
+  alias_cbu:      '',
+  titular_cuenta: '',
   obs:          '',
 }
 
@@ -166,6 +176,10 @@ export function ContratistasPanel({ obraCod, readonly = false }: Props) {
       cuit:         c.cuit ?? '',
       cuil:         c.cuil ?? '',
       dni:          c.dni ?? '',
+      banco_cuenta:   c.banco_cuenta ?? '',
+      cbu:            c.cbu ?? '',
+      alias_cbu:      c.alias_cbu ?? '',
+      titular_cuenta: c.titular_cuenta ?? '',
       obs:          c.obs ?? '',
     })
     setModalContrat(true)
@@ -180,6 +194,10 @@ export function ContratistasPanel({ obraCod, readonly = false }: Props) {
       cuit:         data.cuit?.trim() || null,
       cuil:         data.cuil?.trim() || null,
       dni:          data.dni?.trim() || null,
+      banco_cuenta:   data.banco_cuenta?.trim() || null,
+      cbu:            data.cbu?.replace(/[\s-]/g, '') || null,
+      alias_cbu:      data.alias_cbu?.trim() || null,
+      titular_cuenta: data.titular_cuenta?.trim() || null,
       obs:          data.obs?.trim() || null,
     }
     if (editId == null) {
@@ -686,6 +704,32 @@ export function ContratistasPanel({ obraCod, readonly = false }: Props) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input label="CUIT" placeholder="XX-XXXXXXXX-X" {...register('cuit')} />
             <Input label="CUIL" placeholder="XX-XXXXXXXX-X" {...register('cuil')} />
+          </div>
+
+          {/* Datos bancarios (para transferirle los pagos) */}
+          <div className="border-t border-gris-mid pt-3 flex flex-col gap-3">
+            <span className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">
+              🏦 Datos bancarios
+            </span>
+            <Input
+              label="Banco / cuenta"
+              placeholder="Ej: Caja de ahorro en pesos 245-029026/3"
+              {...register('banco_cuenta')}
+            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Input
+                label="CBU"
+                placeholder="22 dígitos"
+                error={errors.cbu?.message}
+                {...register('cbu')}
+              />
+              <Input label="Alias" placeholder="ej: materializar.2026" {...register('alias_cbu')} />
+            </div>
+            <Input
+              label="Titular de la cuenta"
+              placeholder="Nombre completo del titular"
+              {...register('titular_cuenta')}
+            />
           </div>
 
           {/* DNI documento adjunto — sólo en edición de contratista existente */}
