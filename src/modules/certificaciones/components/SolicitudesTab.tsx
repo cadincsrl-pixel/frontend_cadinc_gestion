@@ -13,7 +13,7 @@ import { useFacturasCompra, useCreateFactura } from '../hooks/useFacturasCompra'
 import { useStockMateriales } from '../hooks/useStock'
 import { useQueryClient } from '@tanstack/react-query'
 import { useCreateRemitoEnvio } from '../hooks/useRemitosEnvio'
-import { imprimirRemito, armarEstadoPedido, armarEnvios, type EstadoPedido } from './RemitoEnvioPrint'
+import { imprimirRemito, armarEstadoPedido, armarEnvios, useSoloEnvio, SoloEnvioCheck, type EstadoPedido } from './RemitoEnvioPrint'
 import { useRemitosEnvio } from '../hooks/useRemitosEnvio'
 import { EMPRESA } from '@/lib/config/empresa'
 import { netaAFinal, finalANeta } from '@/lib/utils/iva'
@@ -291,6 +291,8 @@ export function SolicitudesTab() {
   const [loteSubmitting, setLoteSubmitting] = useState(false)
   // Guarda desde qué modal se abrió el alta de proveedor, para asignarlo al form correcto.
   const [modalNuevoProveedor, setModalNuevoProveedor] = useState<null | 'comprar' | 'lote'>(null)
+  // Preferencia de impresión, compartida por borrador / post-remito / reimpresión.
+  const [soloEnvio, setSoloEnvio] = useSoloEnvio()
   const [modalNuevaFactura, setModalNuevaFactura] = useState(false)
   // Historial de transiciones de un ítem (timeline read-only).
   const [modalHistorial, setModalHistorial] = useState<SolicitudCompraItem | null>(null)
@@ -734,7 +736,7 @@ export function SolicitudesTab() {
     const remitosCache = (queryClient.getQueryData<RemitoEnvio[]>(['remitos-envio', 'all']) ?? [])
       .filter(r => r.solicitud_id === solicitud.id)
     const obra = obrasMap.get(solicitud.obra_cod)
-    imprimirRemito(fakeRemito, obra?.nom, {
+    imprimirRemito(fakeRemito, obra?.nom, soloEnvio ? undefined : {
       ...armarEstadoPedido(solicitud, fakeRemito, { sumarEsteRemito: true }, remitosCache),
       envios: armarEnvios(fakeRemito, remitosCache),
     }, { borrador: true })
@@ -2132,6 +2134,7 @@ export function SolicitudesTab() {
                   ? 'Las cantidades recibidas ingresan al stock del depósito; lo no recibido queda pendiente.'
                   : 'El remito sale con las cantidades que pongas acá. Cantidad 0 = ese material no va en este remito.'}
               </p>
+              {!esDep && <SoloEnvioCheck value={soloEnvio} onChange={setSoloEnvio} />}
             </div>
           </Modal>
         )
@@ -2152,7 +2155,7 @@ export function SolicitudesTab() {
               <Button variant="secondary" onClick={() => setUltimoRemito(null)}>Cerrar</Button>
               <Button
                 variant="primary"
-                onClick={() => { imprimirRemito(ultimoRemito.remito, ultimoRemito.obraNom, ultimoRemito.estado); setUltimoRemito(null) }}
+                onClick={() => { imprimirRemito(ultimoRemito.remito, ultimoRemito.obraNom, soloEnvio ? undefined : ultimoRemito.estado); setUltimoRemito(null) }}
               >
                 🖨 Imprimir remito
               </Button>
@@ -2166,6 +2169,7 @@ export function SolicitudesTab() {
             <p className="text-xs text-gris-dark">
               Tocá <b>Imprimir remito</b> para abrir la hoja con las copias (original, duplicado y triplicado).
             </p>
+            <SoloEnvioCheck value={soloEnvio} onChange={setSoloEnvio} />
           </div>
         </Modal>
       )}
@@ -2179,6 +2183,8 @@ export function SolicitudesTab() {
           busca={buscaRemito}
           setBusca={setBuscaRemito}
           obraNombre={(cod: string) => obrasMap.get(cod)?.nom}
+          soloEnvio={soloEnvio}
+          setSoloEnvio={setSoloEnvio}
         />
       )}
     </>
@@ -2295,11 +2301,13 @@ function CategoriaTabs({
 // post-generación, y si se cerraba había que deshacer el envío y regenerar con
 // otro número. Esta lista usa el mismo generador (dos modos: triplicado en una
 // hoja hasta 15 renglones, multi-página con más).
-function ModalRemitosEmitidos({ onClose, busca, setBusca, obraNombre }: {
-  onClose:    () => void
-  busca:      string
-  setBusca:   (v: string) => void
-  obraNombre: (cod: string) => string | undefined
+function ModalRemitosEmitidos({ onClose, busca, setBusca, obraNombre, soloEnvio, setSoloEnvio }: {
+  onClose:     () => void
+  busca:       string
+  setBusca:    (v: string) => void
+  obraNombre:  (cod: string) => string | undefined
+  soloEnvio:   boolean
+  setSoloEnvio: (v: boolean) => void
 }) {
   const { data: remitos = [], isLoading } = useRemitosEnvio()
   // Lista SIN filtro de obra: el historial trae remitos de todas las obras y
@@ -2311,7 +2319,7 @@ function ModalRemitosEmitidos({ onClose, busca, setBusca, obraNombre }: {
     // Reimpresión: el acumulado del cache ya incluye este remito → estado de HOY,
     // con el historial de envíos del pedido fecha por fecha.
     const hermanos = r.solicitud_id != null ? remitos.filter(x => x.solicitud_id === r.solicitud_id) : []
-    imprimirRemito(r, obraNombre(r.obra_cod), sol
+    imprimirRemito(r, obraNombre(r.obra_cod), sol && !soloEnvio
       ? { ...armarEstadoPedido(sol, r, { sumarEsteRemito: false }, hermanos), envios: armarEnvios(r, hermanos) }
       : undefined)
   }
@@ -2346,6 +2354,7 @@ function ModalRemitosEmitidos({ onClose, busca, setBusca, obraNombre }: {
           placeholder="Buscar por número, obra, fecha o material..."
           className="w-full px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white"
         />
+        <SoloEnvioCheck value={soloEnvio} onChange={setSoloEnvio} />
         {isLoading ? (
           <p className="text-sm text-gris-dark italic py-4 text-center">Cargando remitos…</p>
         ) : filtrados.length === 0 ? (

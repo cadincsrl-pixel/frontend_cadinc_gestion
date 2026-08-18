@@ -234,6 +234,45 @@ describe('htmlRemito sin precios y con último envío', () => {
   })
 })
 
+// ── Solo lo que se envía (2026-08-18) ───────────────────────────────────────
+// La opción "solo lo que se envía" no es un modo aparte del generador: es
+// simplemente NO pasarle estadoPedido. Estos tests congelan que en ese caso el
+// papel queda con los renglones del envío y nada del pedido original.
+describe('htmlRemito sin estado del pedido (solo lo que se envía)', () => {
+  const sol = mkSolicitud([{ cantidad: 50, cantidad_enviada: 35 }, { cantidad: 10, cantidad_enviada: 0 }])
+  const este = { ...mkRemitoCon([{ item_id: 1, cantidad: 15 }]), numero: 'RE-0042', fecha: '2026-08-05' } as RemitoEnvio
+  const previo = { ...mkRemitoCon([{ item_id: 1, cantidad: 20 }]), id: 9, numero: 'RE-0040', fecha: '2026-07-28' } as RemitoEnvio
+
+  it('omite la tabla del pedido original y el historial de envíos', () => {
+    const html = htmlRemito(este, 'Obra')
+    expect(html).not.toContain('ESTADO DEL PEDIDO ORIGINAL')
+    expect(html).not.toContain('ENVÍOS ANTERIORES')
+    expect(html).not.toContain('FALTA')
+    expect(html).not.toContain('RE-0040')
+  })
+
+  it('los renglones enviados siguen saliendo en las tres copias', () => {
+    const html = htmlRemito(este, 'Obra')
+    expect(html.split('Mat 1').length - 1).toBe(3)
+    expect(html).toContain('ORIGINAL')
+    expect(html).toContain('TRIPLICADO')
+  })
+
+  it('sin el estado, un remito al límite vuelve al formato compacto', () => {
+    // 10 del remito + 8 del estado (+2) = 20 → largo; sin estado, 10 → compacto.
+    const est = armarEstadoPedido(mkSolicitud(Array.from({ length: 8 }, () => ({}))), mkRemitoCon([]), { sumarEsteRemito: false })
+    expect(htmlRemito(mkRemito(10), 'Obra', est)).not.toContain('min-height:calc(33.33vh')
+    expect(htmlRemito(mkRemito(10), 'Obra', undefined)).toContain('min-height:calc(33.33vh')
+  })
+
+  it('con el estado presente el papel sigue mostrando todo (default sin tocar)', () => {
+    const estado = { ...armarEstadoPedido(sol, este, { sumarEsteRemito: false }, [previo]), envios: armarEnvios(este, [previo]) }
+    const html = htmlRemito(este, 'Obra', estado)
+    expect(html).toContain('ESTADO DEL PEDIDO ORIGINAL')
+    expect(html).toContain('ENVÍOS ANTERIORES')
+  })
+})
+
 // ── Vista previa en borrador (2026-08-07) ───────────────────────────────────
 describe('htmlRemito en modo borrador', () => {
   it('imprime UNA sola copia marcada BORRADOR con banner de sin validez', () => {

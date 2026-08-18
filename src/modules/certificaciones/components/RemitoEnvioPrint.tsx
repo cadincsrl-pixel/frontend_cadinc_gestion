@@ -1,7 +1,49 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { EMPRESA } from '@/lib/config/empresa'
 import type { RemitoEnvio, SolicitudCompra } from '@/types/domain.types'
+
+// ── Preferencia "solo lo que se envía" (2026-08-18) ─────────────────────────
+// El remito trae por defecto el estado del pedido completo (pedido/enviado/
+// falta) y el historial de envíos. Para entregas donde eso sobra —o donde el
+// papel no tiene que revelar el pedido entero— este flag imprime únicamente
+// los renglones de ESTE envío. Persistido: la elección se mantiene entre
+// visitas, como el orden de obras de la tarja.
+//
+// Técnicamente "solo envío" = no pasarle `estadoPedido` a htmlRemito. El hook
+// existe para que los tres puntos de impresión (borrador, post-generación y
+// reimpresión) compartan la misma preferencia en vez de tres checkboxes sueltos.
+const SOLO_ENVIO_KEY = 'remito:solo-envio'
+
+export function useSoloEnvio(): [boolean, (v: boolean) => void] {
+  const [soloEnvio, setSoloEnvio] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return window.localStorage.getItem(SOLO_ENVIO_KEY) === '1'
+  })
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(SOLO_ENVIO_KEY, soloEnvio ? '1' : '0')
+  }, [soloEnvio])
+  return [soloEnvio, setSoloEnvio]
+}
+
+export function SoloEnvioCheck({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="flex items-start gap-2 text-[11px] text-gris-dark cursor-pointer">
+      <input
+        type="checkbox"
+        checked={value}
+        onChange={e => onChange(e.target.checked)}
+        className="accent-verde w-4 h-4 mt-0.5 shrink-0"
+      />
+      <span>
+        Imprimir <b>solo lo que se envía</b>
+        <span className="text-gris-mid"> — sin la tabla del pedido completo ni el historial de envíos anteriores.</span>
+      </span>
+    </label>
+  )
+}
 
 // ── Estado del pedido original (pedido / enviado / falta) ───────────────────
 // Pedido del dueño (2026-08-05): el remito impreso tiene que mostrar el pedido
