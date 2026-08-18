@@ -289,7 +289,8 @@ export function SolicitudesTab() {
   } | null>(null)
   const [fallidosLote, setFallidosLote] = useState<Array<{ desc: string; error: string }>>([])
   const [loteSubmitting, setLoteSubmitting] = useState(false)
-  const [modalNuevoProveedor, setModalNuevoProveedor] = useState(false)
+  // Guarda desde qué modal se abrió el alta de proveedor, para asignarlo al form correcto.
+  const [modalNuevoProveedor, setModalNuevoProveedor] = useState<null | 'comprar' | 'lote'>(null)
   const [modalNuevaFactura, setModalNuevaFactura] = useState(false)
   // Historial de transiciones de un ítem (timeline read-only).
   const [modalHistorial, setModalHistorial] = useState<SolicitudCompraItem | null>(null)
@@ -314,6 +315,15 @@ export function SolicitudesTab() {
   const obraOptions = obrasActivas.map(o => ({ value: o.cod, label: `${o.cod} — ${o.nom}`, sub: o.resp ?? undefined }))
   const obrasMap = new Map((obras as Obra[]).map(o => [o.cod, o]))
   const provOptions = (proveedores as Proveedor[]).map(p => ({ value: String(p.id), label: p.nombre, sub: p.cuit ?? undefined }))
+
+  // Detección de proveedor duplicado en el alta inline. La DB tiene un índice único
+  // sobre lower(btrim(nombre)) (migración 20260818_proveedores_dedup); acá además
+  // colapsamos espacios internos para avisar antes de que el backend devuelva 409.
+  const normalizarNombre = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ')
+  const nombreProvNuevo = formProv.watch('nombre') ?? ''
+  const provDuplicado = nombreProvNuevo.trim()
+    ? (proveedores as Proveedor[]).find(p => normalizarNombre(p.nombre) === normalizarNombre(nombreProvNuevo))
+    : undefined
 
   // Contadores live por categoría — para los chips de cada tab.
   const counts = useMemo(() => {
@@ -804,12 +814,24 @@ export function SolicitudesTab() {
   }
 
   // ── Crear proveedor inline ──
+  function seleccionarProveedor(id: number) {
+    const form = modalNuevoProveedor === 'lote' ? formComprarLote : formComprar
+    form.setValue('proveedor_id', String(id))
+  }
+
   function handleCreateProv(data: any) {
+    // Si ya existe, no creamos otro: lo seleccionamos y listo.
+    if (provDuplicado) {
+      seleccionarProveedor(provDuplicado.id)
+      setModalNuevoProveedor(null)
+      toast(`"${provDuplicado.nombre}" ya existía — lo seleccionamos`, 'ok')
+      return
+    }
     createProveedor(data, {
       onSuccess: (p: any) => {
         toast('Proveedor creado', 'ok')
-        setModalNuevoProveedor(false)
-        formComprar.setValue('proveedor_id', String(p.id))
+        seleccionarProveedor(p.id)
+        setModalNuevoProveedor(null)
       },
       onError: (e: any) => toast(e.message || 'Error', 'err'),
     })
@@ -1592,7 +1614,7 @@ export function SolicitudesTab() {
               <div className="flex-1">
                 <Combobox label="Proveedor" placeholder="Buscar proveedor..." options={provOptions} value={formComprar.watch('proveedor_id')} onChange={v => formComprar.setValue('proveedor_id', v)} />
               </div>
-              <Button variant="secondary" size="sm" onClick={() => { formProv.reset({ nombre: '', cuit: '', tel: '' }); setModalNuevoProveedor(true) }}>+ Nuevo</Button>
+              <Button variant="secondary" size="sm" onClick={() => { formProv.reset({ nombre: '', cuit: '', tel: '' }); setModalNuevoProveedor('comprar') }}>+ Nuevo</Button>
             </div>
             <Input
               label={`Cantidad comprada (${UNIDADES.find(u => u.value === modalComprar.unidad)?.label ?? modalComprar.unidad})`}
@@ -1714,7 +1736,7 @@ export function SolicitudesTab() {
                   value={formComprarLote.watch('proveedor_id')}
                   onChange={v => formComprarLote.setValue('proveedor_id', v)} />
               </div>
-              <Button variant="secondary" size="sm" onClick={() => { formProv.reset({ nombre: '', cuit: '', tel: '' }); setModalNuevoProveedor(true) }}>+ Nuevo</Button>
+              <Button variant="secondary" size="sm" onClick={() => { formProv.reset({ nombre: '', cuit: '', tel: '' }); setModalNuevoProveedor('lote') }}>+ Nuevo</Button>
             </div>
             <div className="flex items-end gap-2">
               <div className="flex-1">
@@ -1881,13 +1903,21 @@ export function SolicitudesTab() {
       </Modal>
 
       {/* ── Modal nuevo proveedor ── */}
-      <Modal open={modalNuevoProveedor} onClose={() => setModalNuevoProveedor(false)} title="➕ NUEVO PROVEEDOR"
+      <Modal open={modalNuevoProveedor !== null} onClose={() => setModalNuevoProveedor(null)} title="➕ NUEVO PROVEEDOR"
         footer={<>
-          <Button variant="secondary" onClick={() => setModalNuevoProveedor(false)}>Cancelar</Button>
-          <Button variant="primary" loading={creandoProv} onClick={formProv.handleSubmit(handleCreateProv)}>Crear</Button>
+          <Button variant="secondary" onClick={() => setModalNuevoProveedor(null)}>Cancelar</Button>
+          <Button variant="primary" loading={creandoProv} onClick={formProv.handleSubmit(handleCreateProv)}>
+            {provDuplicado ? 'Usar el existente' : 'Crear'}
+          </Button>
         </>}>
         <div className="flex flex-col gap-3">
           <Input label="Nombre" {...formProv.register('nombre')} />
+          {provDuplicado && (
+            <div className="text-[12px] bg-amber-50 border border-amber-300 text-amber-900 rounded px-3 py-2">
+              ⚠ Ya existe <b>{provDuplicado.nombre}</b>
+              {provDuplicado.cuit ? ` (CUIT ${provDuplicado.cuit})` : ''}. Al confirmar se selecciona ese en vez de crear un duplicado.
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input label="CUIT" placeholder="XX-XXXXXXXX-X" {...formProv.register('cuit')} />
             <Input label="Teléfono" {...formProv.register('tel')} />
