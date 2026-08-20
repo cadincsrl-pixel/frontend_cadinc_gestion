@@ -3,12 +3,10 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api/client'
-import { obrasApi } from '@/lib/api/obras.api'
 import { usePersonal } from '@/modules/tarja/hooks/usePersonal'
-import { OBRAS_KEY } from '@/modules/tarja/hooks/useObras'
 import { useSessionStore } from '@/store/session.store'
 import { usePermisos } from '@/hooks/usePermisos'
-import type { Obra, Personal, SolicitudCompra } from '@/types/domain.types'
+import type { Personal } from '@/types/domain.types'
 
 // Cumpleañero precalculado, listo para renderizar.
 export interface CumpleanieroItem {
@@ -165,6 +163,16 @@ interface DocChoferVencimientoRow {
   vence_el: string
 }
 
+// Shape crudo de GET /api/solicitudes/pendientes (endpoint liviano dedicado
+// a la campana: solo solicitudes aprobadas con ítems por comprar).
+interface SolicitudPendienteRow {
+  id:           number
+  obra_cod:     string
+  obra_nom:     string | null
+  fecha:        string
+  n_pendientes: number
+}
+
 // Shape crudo del endpoint de notificaciones de seguros de alquiler.
 interface SeguroMaquinaRow {
   id:             number
@@ -237,34 +245,25 @@ export function useNotificaciones(): NotificacionesResult {
     retry: false,
     staleTime: 60 * 1000,
   })
-  // Solicitudes de compra (comparte caché con el tab de certificaciones).
-  // refetchInterval: poll para que el aviso de "nuevo pedido" llegue solo,
-  // mientras el encargado tiene la app abierta.
-  const solicitudesQuery = useQuery({
-    queryKey: ['solicitudes', 'all'],
-    queryFn:  () => apiGet<SolicitudCompra[]>('/api/solicitudes'),
+  // Solicitudes con ítems por comprar — endpoint liviano dedicado (un par de
+  // KB por respuesta). Antes se polleaba la lista completa de /api/solicitudes
+  // (~400 KB con items+proveedores) cada 60s, lo que agotó los 5 GB de
+  // bandwidth del plan Hobby de Render (agosto 2026). El refetchInterval de
+  // 5 min mantiene el aviso de "nuevo pedido" mientras la app está abierta;
+  // las mutations del módulo invalidan el prefijo ['solicitudes'], así que
+  // crear/resolver pedidos actualiza la campana al instante igual.
+  const pendientesQuery = useQuery({
+    queryKey: ['solicitudes', 'pendientes-notif'],
+    queryFn:  () => apiGet<SolicitudPendienteRow[]>('/api/solicitudes/pendientes'),
     enabled:  tieneCertificaciones && resolverItems,
     retry: false,
-    staleTime: 30 * 1000,
-    refetchInterval: 60 * 1000,
+    staleTime: 60 * 1000,
+    refetchInterval: 5 * 60 * 1000,
   })
-  const solicitudes = solicitudesQuery.data ?? []
-  // Obras para resolver obra_cod → nombre en los pedidos por comprar (el código
-  // solo, tipo "CC-009", se lee como centro de costo). Misma queryKey que
-  // useObras('certificaciones') para compartir caché con el módulo.
-  const obrasQuery = useQuery({
-    queryKey: [...OBRAS_KEY, 'modulo', 'certificaciones'],
-    queryFn:  () => obrasApi.getAll('certificaciones'),
-    enabled:  tieneCertificaciones && resolverItems,
-    retry: false,
-    staleTime: 5 * 60 * 1000,
-  })
-  const obras = obrasQuery.data ?? []
-  // El nombre de la obra ahora viene embebido en cada solicitud desde el
-  // backend, así que alcanza con que las solicitudes hayan cargado: el warmup
-  // del aviso puede activarse sin caer al código ni depender de la lista de
-  // obras (que puede venir scopeada/vacía para compras o stale).
-  const pedidosNombresListos = solicitudesQuery.isSuccess
+  const pendientes = pendientesQuery.data ?? []
+  // El nombre de la obra viene embebido desde el backend: alcanza con que la
+  // query haya cargado para que el warmup del aviso pueda activarse.
+  const pedidosNombresListos = pendientesQuery.isSuccess
 
   return useMemo(() => {
     const hoyDate = new Date()
@@ -388,22 +387,16 @@ export function useNotificaciones(): NotificacionesResult {
       patente:          g.camion?.patente ?? null,
     }))
 
-    // ── Solicitudes con ítems por comprar (progreso 'pendiente') ──
-    const nomPorCod = new Map((obras as Obra[]).map(o => [o.cod, o.nom]))
-    const solicitudesPorComprar: SolicitudPorComprarItem[] = (solicitudes as SolicitudCompra[])
-      .filter(s => s.progreso === 'pendiente')
-      .map(s => ({
-        id:          s.id,
-        obra_cod:    s.obra_cod,
-        // El backend ya resuelve el nombre (embed obra_cod→obras.cod); el mapa
-        // de obras queda como fallback por si un pedido viejo no lo trae.
-        obra_nom:    s.obra_nom ?? nomPorCod.get(s.obra_cod) ?? null,
-        fecha:       s.fecha,
-        nPendientes: (s.items ?? []).filter(i => i.estado === 'pendiente').length,
-      }))
-      // Solo pedidos con ítems realmente por comprar (evita avisos "0 ítems").
-      .filter(x => x.nPendientes > 0)
-      .sort((a, b) => b.fecha.localeCompare(a.fecha) || b.id - a.id)
+    // ── Solicitudes con ítems por comprar ──
+    // El backend ya filtra (aprobadas con ≥1 ítem pendiente, scope por obras
+    // del user) y ordena por fecha desc, id desc: acá solo se renombra.
+    const solicitudesPorComprar: SolicitudPorComprarItem[] = pendientes.map(s => ({
+      id:          s.id,
+      obra_cod:    s.obra_cod,
+      obra_nom:    s.obra_nom,
+      fecha:       s.fecha,
+      nPendientes: s.n_pendientes,
+    }))
 
     return {
       hoy,
@@ -428,7 +421,7 @@ export function useNotificaciones(): NotificacionesResult {
         segurosVencidos.length +
         solicitudesPorComprar.length,
     }
-  }, [personal, docsVenc, docsChofer, servicesNotif, gastosPend, segurosNotif, solicitudes, obras, tieneTarja, pedidosNombresListos])
+  }, [personal, docsVenc, docsChofer, servicesNotif, gastosPend, segurosNotif, pendientes, tieneTarja, pedidosNombresListos])
 }
 
 // Helper para mostrar "hoy", "mañana", "en 3 días" en la lista de próximos.
