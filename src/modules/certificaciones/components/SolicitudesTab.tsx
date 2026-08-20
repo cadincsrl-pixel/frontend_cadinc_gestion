@@ -6,9 +6,11 @@ import { useForm } from 'react-hook-form'
 import {
   useSolicitudes, useCreateSolicitud, useUpdateSolicitud, useDeleteSolicitud,
   useComprarItem, useDespacharItem, useEnviarItem, useRechazarItem, useRevertirItem, useRevertirEnvio, useComprarFaltante,
+  useResolverStockCliente,
   useEditarItem,
 } from '../hooks/useSolicitudes'
 import { useProveedores, useCreateProveedor } from '../hooks/useProveedores'
+import { useStockCliente } from '../hooks/useStockCliente'
 import { useFacturasCompra, useCreateFactura } from '../hooks/useFacturasCompra'
 import { useStockMateriales } from '../hooks/useStock'
 import { useQueryClient } from '@tanstack/react-query'
@@ -28,7 +30,7 @@ import { Button }   from '@/components/ui/Button'
 import { Input }    from '@/components/ui/Input'
 import { Combobox } from '@/components/ui/Combobox'
 import { useToast } from '@/components/ui/Toast'
-import type { SolicitudCompra, SolicitudCompraItem, SolicitudEstado, SolicitudProgreso, ItemEstado, Obra, Proveedor, StockMaterial, RemitoEnvio } from '@/types/domain.types'
+import type { SolicitudCompra, SolicitudCompraItem, SolicitudEstado, SolicitudProgreso, ItemEstado, Obra, Proveedor, StockMaterial, RemitoEnvio, StockClienteRow } from '@/types/domain.types'
 
 const UNIDADES = [
   { value: 'unid', label: 'Unid.' },
@@ -59,6 +61,7 @@ const ITEM_ESTADO_CFG: Record<ItemEstado, { label: string; bg: string; text: str
   de_deposito:  { label: 'De depósito',   bg: 'bg-naranja-light',  text: 'text-naranja'   },
   en_proveedor: { label: 'En proveedor',  bg: 'bg-azul-light',     text: 'text-azul-mid'  },
   retirado:     { label: 'Retirado',      bg: 'bg-verde-light',    text: 'text-verde'     },
+  de_stock_cliente: { label: 'Stock cliente', bg: 'bg-verde-light', text: 'text-azul-mid'  },
   enviado:      { label: 'Enviado',       bg: 'bg-verde-light',    text: 'text-verde'     },
   rechazado:    { label: 'Rechazado',     bg: 'bg-rojo-light',     text: 'text-rojo'      },
 }
@@ -120,6 +123,7 @@ const ITEM_CAT: Partial<Record<ItemEstado, CategoriaSol>> = {
   de_deposito:  'por-enviar',
   en_proveedor: 'por-enviar',   // comprado pero aún en el proveedor (falta retirar)
   retirado:     'por-enviar',
+  de_stock_cliente: 'por-enviar',  // material del cliente ya descontado del ledger, falta enviarlo
   enviado:      'enviadas',
 }
 function esTabPorItem(cat: CategoriaSol): boolean {
@@ -179,6 +183,9 @@ export function SolicitudesTab() {
   const [modalRemitos, setModalRemitos] = useState(false)
   const [buscaRemito, setBuscaRemito]   = useState('')
   const { data: proveedores = [] } = useProveedores()
+  // Ledger de stock de cliente: materiales con saldo, para ofrecer resolver
+  // pedidos con material que el cliente ya pagó (botón "Cliente").
+  const { data: stockCliente = [] } = useStockCliente()
   const { data: facturas = [] } = useFacturasCompra()
   const { data: stockMateriales = [] } = useStockMateriales()
   const { mutate: createProveedor, isPending: creandoProv } = useCreateProveedor()
@@ -213,6 +220,7 @@ export function SolicitudesTab() {
   const { mutate: removeSol } = useDeleteSolicitud()
   const { mutate: comprarItem, isPending: comprando } = useComprarItem()
   const { mutate: despacharItem, isPending: despachando } = useDespacharItem()
+  const { mutate: resolverStockCliente, isPending: resolviendoStockCliente } = useResolverStockCliente()
   const { mutate: enviarItem } = useEnviarItem()
   const { mutate: rechazarItem } = useRechazarItem()
   const { mutate: revertirItem } = useRevertirItem()
@@ -279,6 +287,8 @@ export function SolicitudesTab() {
   // Modales de acciones sobre ítems
   const [modalComprar, setModalComprar] = useState<SolicitudCompraItem | null>(null)
   const [modalDespachar, setModalDespachar] = useState<SolicitudCompraItem | null>(null)
+  // Resolución con material del cliente: ítem + obra para filtrar su ledger.
+  const [modalStockCliente, setModalStockCliente] = useState<{ item: SolicitudCompraItem; obraCod: string } | null>(null)
   // ¿Los precios de la tabla del lote se cargan netos o finales? Se guarda
   // SIEMPRE el final (convención de todo el sistema); si el usuario carga
   // netos, la conversión (+21%) se aplica al confirmar y en los subtotales.
@@ -587,6 +597,36 @@ export function SolicitudesTab() {
     }
   }
 
+  // Materiales del cliente con saldo, por obra (para el botón "Cliente").
+  const stockClientePorObra = useMemo(() => {
+    const map = new Map<string, StockClienteRow[]>()
+    for (const r of stockCliente as StockClienteRow[]) {
+      if (Number(r.saldo) <= 0) continue
+      if (!map.has(r.obra_cod)) map.set(r.obra_cod, [])
+      map.get(r.obra_cod)!.push(r)
+    }
+    return map
+  }, [stockCliente])
+
+  function handleResolverStockCliente(stockItemId: number) {
+    if (!modalStockCliente?.item.id) return
+    resolverStockCliente({ itemId: modalStockCliente.item.id, stockItemId }, {
+      onSuccess: () => {
+        toast('Cubierto con material del cliente — no se factura', 'ok')
+        setModalStockCliente(null)
+      },
+      onError: (e: Error) => {
+        const code = e?.message || ''
+        toast(
+          /SALDO_INSUFICIENTE/.test(code) ? 'El saldo del cliente no alcanza para este ítem'
+          : /OBRA_DISTINTA/.test(code)    ? 'Ese material pertenece a otra obra'
+          : code || 'Error al resolver con stock del cliente',
+          'err',
+        )
+      },
+    })
+  }
+
   function abrirDespachar(item: SolicitudCompraItem) {
     const mat = item.material_id ? stockMap.get(item.material_id) : null
     formDespachar.reset({ precio_unit: mat?.precio_ref ?? 0 })
@@ -663,7 +703,7 @@ export function SolicitudesTab() {
   // (comprado/de_deposito/retirado). Si ya están todos tildados, los suelta.
   function toggleSelectTodos(items: SolicitudCompraItem[]) {
     const enviables = items.filter(it =>
-      it.id != null && (it.estado === 'comprado' || it.estado === 'de_deposito' || it.estado === 'retirado'))
+      it.id != null && (it.estado === 'comprado' || it.estado === 'de_deposito' || it.estado === 'retirado' || it.estado === 'de_stock_cliente'))
     if (enviables.length === 0) return
     const todosTildados = enviables.every(it => selected.has(it.id!))
     setSelected(prev => {
@@ -996,7 +1036,7 @@ export function SolicitudesTab() {
                           <th className="px-4 py-2 text-left text-[10px] font-bold text-gris-dark uppercase tracking-wide">Estado</th>
                           <th className="px-4 py-2 text-left text-[10px] font-bold text-gris-dark uppercase tracking-wide">Detalle</th>
                           <th className="px-4 py-2 text-right text-[10px] font-bold text-gris-dark uppercase tracking-wide">
-                            {items.some(it => it.estado === 'comprado' || it.estado === 'de_deposito' || it.estado === 'retirado') && (
+                            {items.some(it => it.estado === 'comprado' || it.estado === 'de_deposito' || it.estado === 'retirado' || it.estado === 'de_stock_cliente') && (
                               <button
                                 onClick={() => toggleSelectTodos(items)}
                                 title="Tildar/destildar todos los ítems listos para enviar"
@@ -1105,10 +1145,13 @@ export function SolicitudesTab() {
                                           />
                                           <button disabled={!resolverItems} onClick={() => abrirComprar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Comprar</button>
                                           <button disabled={!resolverItems} onClick={() => abrirDespachar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-naranja-light text-naranja hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Depósito</button>
+                                          {stockClientePorObra.has(s.obra_cod) && (
+                                            <button disabled={!resolverItems} onClick={() => setModalStockCliente({ item, obraCod: s.obra_cod })} title="Cubrir con material que el cliente ya pagó y tiene en depósito (no se factura)" className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-azul-mid hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Cliente</button>
+                                          )}
                                           <button disabled={!resolverItems} onClick={() => handleRechazarItem(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
                                         </>
                                       )}
-                                      {(item.estado === 'comprado' || item.estado === 'de_deposito' || item.estado === 'retirado') && (
+                                      {(item.estado === 'comprado' || item.estado === 'de_deposito' || item.estado === 'retirado' || item.estado === 'de_stock_cliente') && (
                                         <>
                                           <input type="checkbox" disabled={!resolverItems} checked={selected.has(item.id!)} onChange={() => toggleSelect(item.id!)}
                                             className="accent-verde w-4 h-4 disabled:opacity-40" title="Seleccionar para envío grupal" />
@@ -1197,7 +1240,7 @@ export function SolicitudesTab() {
 
                     {/* Envío grupal */}
                     {(() => {
-                      const itemsSeleccionados = items.filter(it => selected.has(it.id!) && (it.estado === 'comprado' || it.estado === 'de_deposito' || it.estado === 'retirado'))
+                      const itemsSeleccionados = items.filter(it => selected.has(it.id!) && (it.estado === 'comprado' || it.estado === 'de_deposito' || it.estado === 'retirado' || it.estado === 'de_stock_cliente'))
                       if (itemsSeleccionados.length === 0) return null
                       return (
                         <div className="border-t border-gris bg-verde-light/30 px-4 py-2.5">
@@ -1235,7 +1278,7 @@ export function SolicitudesTab() {
             const obra = obrasMap.get(s.obra_cod)
             const isExp = expanded.has(s.id)
             const items = s.items ?? []
-            const itemsSeleccionados = items.filter(it => selected.has(it.id!) && (it.estado === 'comprado' || it.estado === 'de_deposito' || it.estado === 'retirado'))
+            const itemsSeleccionados = items.filter(it => selected.has(it.id!) && (it.estado === 'comprado' || it.estado === 'de_deposito' || it.estado === 'retirado' || it.estado === 'de_stock_cliente'))
             // En los tabs de trabajo mostramos el pedido completo (foco primero).
             const tabTrabajo = categoriaSel === 'por-comprar' || categoriaSel === 'por-enviar'
             const itemsFiltrados = items.filter(it => itemEnCategoria(it.estado, categoriaSel))
@@ -1332,7 +1375,7 @@ export function SolicitudesTab() {
                 {/* Detalle de ítems expandido */}
                 {isExp && (
                   <div className="mt-3 pt-3 border-t border-gris flex flex-col gap-2">
-                    {items.some(it => it.estado === 'comprado' || it.estado === 'de_deposito' || it.estado === 'retirado') && (
+                    {items.some(it => it.estado === 'comprado' || it.estado === 'de_deposito' || it.estado === 'retirado' || it.estado === 'de_stock_cliente') && (
                       <button
                         onClick={() => toggleSelectTodos(items)}
                         className="self-start text-[11px] font-bold text-verde px-2 py-1 rounded hover:bg-verde-light"
@@ -1417,13 +1460,16 @@ export function SolicitudesTab() {
                           {s.estado === 'aprobada' && (
                             <div className="mt-3">
                               {item.estado === 'pendiente' && (
-                                <div className="grid grid-cols-3 gap-2">
+                                <div className={`grid gap-2 ${stockClientePorObra.has(s.obra_cod) ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'}`}>
                                   <button disabled={!resolverItems} onClick={() => abrirComprar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Comprar</button>
                                   <button disabled={!resolverItems} onClick={() => abrirDespachar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-naranja-light text-naranja hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Depósito</button>
+                                  {stockClientePorObra.has(s.obra_cod) && (
+                                    <button disabled={!resolverItems} onClick={() => setModalStockCliente({ item, obraCod: s.obra_cod })} title="Cubrir con material que el cliente ya pagó y tiene en depósito (no se factura)" className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-azul-mid hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Cliente</button>
+                                  )}
                                   <button disabled={!resolverItems} onClick={() => handleRechazarItem(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
                                 </div>
                               )}
-                              {(item.estado === 'comprado' || item.estado === 'de_deposito' || item.estado === 'retirado') && (
+                              {(item.estado === 'comprado' || item.estado === 'de_deposito' || item.estado === 'retirado' || item.estado === 'de_stock_cliente') && (
                                 <div className="flex flex-col gap-2">
                                   <label className="flex items-center gap-2 text-[11px] text-gris-dark">
                                     <input
@@ -1903,6 +1949,58 @@ export function SolicitudesTab() {
           </div>
         )}
       </Modal>
+
+      {/* ── Modal resolver con stock del cliente ── */}
+      {modalStockCliente && (() => {
+        const candidatos = stockClientePorObra.get(modalStockCliente.obraCod) ?? []
+        const item = modalStockCliente.item
+        return (
+          <Modal
+            open
+            onClose={() => setModalStockCliente(null)}
+            title="🤝 CUBRIR CON MATERIAL DEL CLIENTE"
+            footer={<Button variant="secondary" onClick={() => setModalStockCliente(null)}>Cancelar</Button>}
+          >
+            <div className="flex flex-col gap-3">
+              <div className="bg-verde-light rounded-xl px-4 py-3">
+                <div className="font-bold text-sm text-azul-mid">{item.descripcion}</div>
+                <div className="text-xs text-gris-dark font-mono">Pedido: {item.cantidad} {item.unidad} · obra {modalStockCliente.obraCod}</div>
+              </div>
+              <p className="text-xs text-gris-dark">
+                Elegí de qué material del cliente descontar. <b>No se factura</b>:
+                el cliente ya lo pagó — solo se descuenta de su saldo en depósito.
+              </p>
+              {candidatos.length === 0 ? (
+                <p className="text-sm text-gris-dark italic">La obra no tiene material del cliente con saldo.</p>
+              ) : (
+                <div className="flex flex-col divide-y divide-gris border border-gris-mid rounded-xl overflow-hidden max-h-[45vh] overflow-y-auto">
+                  {candidatos.map(c => {
+                    const alcanza = Number(c.saldo) >= Number(item.cantidad)
+                    return (
+                      <div key={c.item_id} className="flex items-center gap-3 px-3 py-2.5 bg-white">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-carbon truncate">{c.descripcion}</div>
+                          <div className="text-[11px] text-gris-dark font-mono">
+                            Saldo: <b className={alcanza ? 'text-verde' : 'text-rojo'}>{Number(c.saldo).toLocaleString('es-AR')} {c.unidad}</b>
+                            {!alcanza && ' — no alcanza'}
+                          </div>
+                        </div>
+                        <Button
+                          variant="primary" size="sm"
+                          disabled={!alcanza || resolviendoStockCliente}
+                          onClick={() => handleResolverStockCliente(c.item_id)}
+                        >
+                          Usar
+                        </Button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </Modal>
+        )
+      })()}
 
       {/* ── Modal nuevo proveedor ── */}
       <Modal open={modalNuevoProveedor !== null} onClose={() => setModalNuevoProveedor(null)} title="➕ NUEVO PROVEEDOR"

@@ -20,6 +20,7 @@ const ACCION_CFG: Record<string, { label: string; icono: string; dot: string }> 
   despachado:      { label: 'Despachado de depósito', icono: '📦', dot: 'bg-naranja-light text-naranja-dark' },
   retirado:        { label: 'Retirado del proveedor', icono: '🚚', dot: 'bg-verde-light text-verde'        },
   retiro_parcial:  { label: 'Retiro parcial',         icono: '🚚', dot: 'bg-naranja-light text-naranja-dark' },
+  consumo_stock_cliente: { label: 'Cubierto con material del cliente', icono: '🤝', dot: 'bg-verde-light text-azul-mid' },
   enviado:         { label: 'Enviado a obra',         icono: '📤', dot: 'bg-verde-light text-verde'        },
   rechazado:       { label: 'Rechazado',              icono: '✕',  dot: 'bg-rojo-light text-rojo'          },
   revertido:       { label: 'Revertido',              icono: '↩',  dot: 'bg-amarillo-light text-[#7A5500]' },
@@ -34,6 +35,7 @@ const ESTADO_LABEL: Record<string, string> = {
   de_deposito:  'De depósito',
   en_proveedor: 'En proveedor',
   retirado:     'Retirado',
+  de_stock_cliente: 'Stock cliente',
   enviado:      'Enviado',
   rechazado:    'Rechazado',
 }

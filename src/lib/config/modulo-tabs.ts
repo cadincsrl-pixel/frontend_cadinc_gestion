@@ -49,6 +49,7 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
     { key: 'solicitudes',     label: 'Solicitudes',          icon: '🛒',  meta: 'Pedidos de compra y envío' },
     { key: 'stock',           label: 'Stock',                icon: '🏗️', meta: 'Stock en depósito' },
     { key: 'stock-proveedor', label: 'Stock en proveedores', icon: '🏭',  meta: 'Materiales comprados sin retirar' },
+    { key: 'stock-cliente',   label: 'Stock de clientes',    icon: '🤝',  meta: 'Material del cliente en depósito' },
     { key: 'materiales',      label: 'Materiales',           icon: '📦',  meta: 'A cuenta del cliente' },
     { key: 'cuenta-cliente',  label: 'Cuenta del cliente',   icon: '💳',  meta: 'Deuda y pagos directos' },
   ],

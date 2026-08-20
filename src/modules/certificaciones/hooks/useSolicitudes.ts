@@ -18,6 +18,8 @@ function invalidarResolucionItem(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ['stock', 'movimientos'] })
   qc.invalidateQueries({ queryKey: ['cuenta-cliente'] })
   qc.invalidateQueries({ queryKey: ['cuenta-cliente-pendientes'] })
+  // Revertir un ítem de_stock_cliente devuelve el consumo al ledger del cliente.
+  qc.invalidateQueries({ queryKey: ['stock-cliente'] })
 }
 
 export function useSolicitudes(obra_cod?: string) {
@@ -104,6 +106,20 @@ export function useRechazarItem() {
     mutationFn: (itemId: number) =>
       apiPost(`/api/solicitudes/items/${itemId}/rechazar`, {}),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['solicitudes'] }),
+  })
+}
+
+// Resuelve un ítem pendiente con material del CLIENTE administrado en el
+// depósito (ledger stock_cliente). No genera deuda en la cuenta del cliente.
+export function useResolverStockCliente() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ itemId, stockItemId }: { itemId: number; stockItemId: number }) =>
+      apiPost(`/api/solicitudes/items/${itemId}/stock-cliente`, { stock_item_id: stockItemId }),
+    onSuccess: () => {
+      invalidarResolucionItem(qc)
+      qc.invalidateQueries({ queryKey: ['stock-cliente'] })
+    },
   })
 }
 

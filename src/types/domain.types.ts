@@ -1238,6 +1238,7 @@ export type ItemEstado =
   | 'de_deposito'
   | 'en_proveedor'   // comprado pero queda en el galpón del proveedor
   | 'retirado'       // ya se retiró del proveedor (terminal o paso previo a 'enviado')
+  | 'de_stock_cliente' // cubierto con material del cliente administrado en depósito (sin MCC)
   | 'enviado'
   | 'rechazado'
 export type SolicitudProgreso = 'pendiente' | 'en_gestion' | 'enviada'
@@ -1464,4 +1465,35 @@ export interface CertAdicional extends AuditFields {
   adjunto_url:    string | null
   adjunto_nombre: string | null
   obs:            string | null
+}
+
+// ── Stock de cliente (material del cliente administrado en depósito) ──
+// Ledger stock_cliente_items + stock_cliente_movimientos (migración 20260820).
+// Espejo de stock-proveedor: material ajeno en el galpón de CADINC. Los
+// consumos NO facturan (el material ya es del cliente).
+export interface StockClienteRow {
+  item_id:            number
+  obra_cod:           string
+  descripcion:        string
+  unidad:             string
+  obs:                string | null
+  activo:             boolean
+  cantidad_entregada: number
+  cantidad_consumida: number
+  saldo:              number
+  ultima_entrega:     string | null
+  ultimo_consumo:     string | null
+}
+
+export interface StockClienteMovimiento {
+  id:                number
+  item_id:           number
+  tipo:              'entrada' | 'salida'
+  motivo:            'entrega_cliente' | 'consumo_obra' | 'ajuste' | 'devolucion'
+  cantidad:          number
+  solicitud_item_id: number | null
+  fecha:             string
+  obs:               string | null
+  created_at:        string
+  created_by:        string | null
 }
