@@ -16,6 +16,25 @@ export function useHerrConfig() {
   })
 }
 
+// Shape de GET /api/herramientas/responsables — datos mínimos (solo nombres)
+// para el combo de responsable de movimientos. Endpoint propio del módulo:
+// las fuentes completas (/api/usuarios, /api/personal, /api/contratistas)
+// están gateadas por admin/tarja y fallaban con 403 silencioso para un
+// operador que solo tiene herramientas.
+export interface HerrResponsables {
+  personal:     { leg: string; nom: string }[]
+  usuarios:     { id: string; nombre: string; rol: string; rol_base: string | null }[]
+  contratistas: { id: number; nom: string; especialidad: string | null }[]
+}
+
+export function useHerrResponsables() {
+  return useQuery({
+    queryKey: ['herramientas', 'responsables'],
+    queryFn:  () => apiGet<HerrResponsables>('/api/herramientas/responsables'),
+    staleTime: 5 * 60_000,
+  })
+}
+
 const MARCAS_KEY = ['herr-marcas']
 
 export function useHerrMarcas() {

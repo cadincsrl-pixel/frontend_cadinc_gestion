@@ -5,20 +5,18 @@ import {
   useHerramientas,
   useHerrConfig,
   useHerrMovimientosPaginated,
+  useHerrResponsables,
   useRegistrarMovimiento,
 } from '../hooks/useHerramientas'
 import { useObras } from '@/modules/tarja/hooks/useObras'
-import { usePersonal } from '@/modules/tarja/hooks/usePersonal'
-import { apiGet } from '@/lib/api/client'
 import { EMPRESA } from '@/lib/config/empresa'
-import { useQuery } from '@tanstack/react-query'
 import { useToast }   from '@/components/ui/Toast'
 import { Button }    from '@/components/ui/Button'
 import { Combobox }  from '@/components/ui/Combobox'
 import { Modal }     from '@/components/ui/Modal'
 import { usePermisos } from '@/hooks/usePermisos'
 import { MovimientoLoteModal } from './MovimientoLoteModal'
-import type { Herramienta, HerrMovTipo, Obra, Profile, Contratista } from '@/types/domain.types'
+import type { Herramienta, HerrMovTipo, Obra } from '@/types/domain.types'
 
 function fmtFecha(s: string) {
   const d = new Date(s)
@@ -93,17 +91,13 @@ export function HerrMovimientos() {
   const { data: herramientas = [] } = useHerramientas()
   const { data: config } = useHerrConfig()
   const { data: obras = [] } = useObras()
-  const { data: personal = [] } = usePersonal()
-  const { data: usuarios = [] } = useQuery({
-    queryKey: ['usuarios-activos'],
-    queryFn:  () => apiGet<Profile[]>('/api/usuarios'),
-    staleTime: 5 * 60_000,
-  })
-  const { data: contratistas = [] } = useQuery({
-    queryKey: ['contratistas'],
-    queryFn:  () => apiGet<Contratista[]>('/api/contratistas'),
-    staleTime: 5 * 60_000,
-  })
+  // Combo de responsable: endpoint propio del módulo (solo nombres). Las
+  // fuentes completas están gateadas por admin/tarja y para un operador de
+  // herramientas devolvían 403 silencioso → grupos vacíos.
+  const { data: resp } = useHerrResponsables()
+  const personal     = resp?.personal     ?? []
+  const usuarios     = resp?.usuarios     ?? []
+  const contratistas = resp?.contratistas ?? []
   const { mutate: registrar, isPending: registrando } = useRegistrarMovimiento()
 
   // Formulario
@@ -528,14 +522,13 @@ export function HerrMovimientos() {
                 sub:   `Leg. ${p.leg}`,
                 group: 'Operarios',
               })),
-              ...usuarios
-                .filter(u => u.activo !== false)
-                .map(u => ({
-                  value: `user:${u.id}`,
-                  label: u.nombre,
-                  sub:   u.rol_base ?? u.rol,
-                  group: 'Usuarios del sistema',
-                })),
+              // Solo usuarios activos — el endpoint ya filtra server-side.
+              ...usuarios.map(u => ({
+                value: `user:${u.id}`,
+                label: u.nombre,
+                sub:   u.rol_base ?? u.rol,
+                group: 'Usuarios del sistema',
+              })),
               ...contratistas.map(c => ({
                 value: `cont:${c.id}`,
                 label: c.nom,

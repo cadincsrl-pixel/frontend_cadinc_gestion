@@ -6,15 +6,13 @@ import { Button }   from '@/components/ui/Button'
 import { Combobox } from '@/components/ui/Combobox'
 import { useToast } from '@/components/ui/Toast'
 import { useObras } from '@/modules/tarja/hooks/useObras'
-import { usePersonal } from '@/modules/tarja/hooks/usePersonal'
-import { apiGet } from '@/lib/api/client'
-import { useQuery } from '@tanstack/react-query'
 import {
   useHerramientas,
   useHerrConfig,
+  useHerrResponsables,
   useRegistrarMovimientoLote,
 } from '../hooks/useHerramientas'
-import type { Obra, Profile, Contratista } from '@/types/domain.types'
+import type { Obra } from '@/types/domain.types'
 
 // Espejo de las matrices que usa HerrMovimientos para movimientos de a uno.
 const TRANSICIONES: Record<string, string[]> = {
@@ -49,17 +47,12 @@ export function MovimientoLoteModal({ onClose, onSuccess }: Props) {
   const { data: herramientas = [] } = useHerramientas()
   const { data: config }            = useHerrConfig()
   const { data: obras = [] }        = useObras()
-  const { data: personal = [] }     = usePersonal()
-  const { data: usuarios = [] } = useQuery({
-    queryKey: ['usuarios-activos'],
-    queryFn:  () => apiGet<Profile[]>('/api/usuarios'),
-    staleTime: 5 * 60_000,
-  })
-  const { data: contratistas = [] } = useQuery({
-    queryKey: ['contratistas'],
-    queryFn:  () => apiGet<Contratista[]>('/api/contratistas'),
-    staleTime: 5 * 60_000,
-  })
+  // Combo de responsable: endpoint propio del módulo (solo nombres) — las
+  // fuentes completas daban 403 silencioso para operadores sin admin/tarja.
+  const { data: resp } = useHerrResponsables()
+  const personal     = resp?.personal     ?? []
+  const usuarios     = resp?.usuarios     ?? []
+  const contratistas = resp?.contratistas ?? []
   const { mutate: registrar, isPending } = useRegistrarMovimientoLote()
 
   // Filtros del listado
@@ -459,14 +452,13 @@ export function MovimientoLoteModal({ onClose, onSuccess }: Props) {
                   sub:   `Leg. ${p.leg}`,
                   group: 'Operarios',
                 })),
-                ...usuarios
-                  .filter(u => u.activo !== false)
-                  .map(u => ({
-                    value: `user:${u.id}`,
-                    label: u.nombre,
-                    sub:   u.rol_base ?? u.rol,
-                    group: 'Usuarios del sistema',
-                  })),
+                // Solo usuarios activos — el endpoint ya filtra server-side.
+                ...usuarios.map(u => ({
+                  value: `user:${u.id}`,
+                  label: u.nombre,
+                  sub:   u.rol_base ?? u.rol,
+                  group: 'Usuarios del sistema',
+                })),
                 ...contratistas.map(c => ({
                   value: `cont:${c.id}`,
                   label: c.nom,
