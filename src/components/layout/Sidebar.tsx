@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useObras }        from '@/modules/tarja/hooks/useObras'
 import { useSessionStore } from '@/store/session.store'
 import { useTabsPermitidos } from '@/hooks/useTabsPermitidos'
+import { usePermisos } from '@/hooks/usePermisos'
 import { useNotificaciones } from '@/hooks/useNotificaciones'
 import { TABS_POR_MODULO } from '@/lib/config/modulo-tabs'
 
@@ -20,6 +21,8 @@ interface SidebarProps {
 const NAV_ITEMS_TARJA = [
   { href: '/tarja',            icon: '📋', label: 'Tarja',              meta: 'Control de horas',            exact: false, tabKey: 'tarja'            },
   { href: '/dashboard',        icon: '📊', label: 'Resumen General',    meta: 'Resumen general e histórico', exact: false, tabKey: 'dashboard'        },
+  // Gateado por el flag `tarja.costos_oficina` (no por tabs[]) — ver filtro abajo.
+  { href: '/costos-oficina',   icon: '🏢', label: 'Costos de oficina',  meta: 'Estructura por obra',         exact: false, tabKey: 'dashboard'        },
   { href: '/horas-trabajador', icon: '👤', label: 'Horas x Trabajador', meta: 'Historial individual',        exact: false, tabKey: 'horas-trabajador' },
   { href: '/tarja/prestamos',  icon: '💵', label: 'Préstamos',          meta: 'Préstamos y descuentos',      exact: false, tabKey: 'prestamos'        },
   { href: '/tarja/ropa',       icon: '👕', label: 'Ropa de trabajo',    meta: 'Control de entregas',         exact: false, tabKey: 'ropa'             },
@@ -119,6 +122,9 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
   const tarjaTabs = useTabsPermitidos('tarja')
   const herrTabs  = useTabsPermitidos('herramientas')
+  // Flag sensible: "Costos de oficina" no depende de tabs[] sino del flag
+  // (admin bypass incluido) — sueldos administrativos, opt-in explícito.
+  const { costosOficina } = usePermisos('tarja')
   const enHerramientas     = decodedPathname.startsWith('/herramientas')
   const enLogistica        = decodedPathname.startsWith('/logistica')
   const enCertificaciones  = decodedPathname.startsWith('/certificaciones')
@@ -238,7 +244,9 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               El filtro por tabs[] ya limita lo visible (capataz tiene
               tabs:['tarja'], capataz_supervisor tabs:['tarja','personal']). */}
           {!enHerramientas && !enLogistica && !enCertificaciones && !enCaja && !enAdmin && !enFlota && !enAlquiler && !enAridos && NAV_ITEMS_TARJA
-            .filter(item => tarjaTabs.includes(item.tabKey))
+            .filter(item => item.href === '/costos-oficina'
+              ? costosOficina
+              : tarjaTabs.includes(item.tabKey))
             .map(item => (
             <button
               key={item.href}
