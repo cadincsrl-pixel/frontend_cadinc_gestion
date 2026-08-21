@@ -1002,6 +1002,10 @@ export type ModuloPermisos = { [K in Accion]?: boolean } & {
   //   ajuste pendiente).
   // - alquiler.gestionar_cobros: cargar/editar cobros de clientes sin ser
   //   admin (eliminar cobros sigue admin-only).
+  // - tarja.costos_oficina: ve el tab "Costos oficina" del dashboard
+  //   (estructura administrativa prorrateada por obra). Dato sensible:
+  //   expone sueldos del personal administrativo. Opt-in explícito, no
+  //   viene en ningún preset. Solo tiene efecto en tarja.
   //
   // Flags eliminadas en Permisos v3 (2026-05-18):
   // - vista_completa: reemplazada por `obras_scope` global del profile.
@@ -1013,6 +1017,7 @@ export type ModuloPermisos = { [K in Accion]?: boolean } & {
   administrar_obras?:      boolean
   aprobar_ajustes_stock?:  boolean
   gestionar_cobros?:       boolean
+  costos_oficina?:         boolean
 }
 export type Permisos = Record<string, ModuloPermisos>
 
@@ -1499,4 +1504,59 @@ export interface StockClienteMovimiento {
   obs:               string | null
   created_at:        string
   created_by:        string | null
+}
+
+// ── Costos de oficina (estructura administrativa prorrateada) ──
+// Personal administrativo con sueldo mensual versionado (historial por
+// `desde`, espejo de categoria_tarifas) y asignación porcentual del costo
+// a destinos: obra concreta, logística o "general" (se prorratea entre
+// obras según su costo directo del mes). Endpoints en /api/oficina/*.
+// Dato sensible: gate con permiso tarja.costos_oficina en backend y UI.
+
+export interface OficinaSueldo {
+  id:            number
+  costo_mensual: number
+  desde:         string   // YYYY-MM-DD (vigencia de esta versión)
+}
+
+export interface OficinaPersona {
+  id:      number
+  nombre:  string
+  activo:  boolean
+  sueldos: OficinaSueldo[]   // historial completo de versiones
+}
+
+export type OficinaDestino = 'obra' | 'logistica' | 'general'
+
+export interface OficinaAsignacion {
+  destino:    OficinaDestino
+  obra_cod:   string | null   // solo cuando destino === 'obra'
+  porcentaje: number          // 0-100; el snapshot completo suma 100
+  monto?:     number          // presente en el resumen mensual
+}
+
+// Snapshot de asignaciones vigente desde una fecha. El GET de asignaciones
+// devuelve los snapshots agrupados por `desde`, más reciente primero.
+export interface OficinaAsignacionSnapshot {
+  desde: string
+  items: OficinaAsignacion[]
+}
+
+// Shape de GET /api/oficina/resumen?mes=YYYY-MM
+export interface OficinaResumenPersona {
+  id:             number
+  nombre:         string
+  activo:         boolean
+  costo_mensual:  number
+  snapshot_desde: string | null
+  asignaciones:   OficinaAsignacion[]   // con `monto` resuelto
+}
+
+export interface OficinaResumenMes {
+  mes:          string   // YYYY-MM
+  personas:     OficinaResumenPersona[]
+  porObra:      Array<{ obra_cod: string; monto: number }>
+  logistica:    number
+  general:      number
+  totalOficina: number
 }

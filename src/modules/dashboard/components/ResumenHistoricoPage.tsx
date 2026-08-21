@@ -20,12 +20,17 @@ import { Chip } from '@/components/ui/Chip'
 import type { Hora, Tarifa, Cierre, Certificacion, Contratista, TarjaHsExtra } from '@/types/domain.types'
 import { usePrestamos } from '@/modules/tarja/hooks/usePrestamos'
 import { useHsExtrasAll } from '@/modules/tarja/hooks/useHsExtras'
+import { usePermisos } from '@/hooks/usePermisos'
+import { CostosOficinaTab } from './CostosOficinaTab'
 
 export function ResumenHistoricoPage() {
   const router = useRouter()
+  // Flag sensible (sueldos administrativos): sin él, el tab no se muestra.
+  // El backend valida igual en /api/oficina/*.
+  const { costosOficina } = usePermisos('tarja')
 
   // ── Tabs ──
-  const [tab, setTab] = useState<'semana' | 'anterior' | 'historico'>('semana')
+  const [tab, setTab] = useState<'semana' | 'anterior' | 'historico' | 'oficina'>('semana')
   const [vistaObras, setVistaObras] = useState<'activas' | 'archivadas' | 'todas'>('activas')
   const [prestamosDetalleAbierto, setPrestamosDetalleAbierto] = useState(false)
   const [contratistasDetalleAbierto, setContratistasDetalleAbierto] = useState(false)
@@ -371,8 +376,13 @@ export function ResumenHistoricoPage() {
     <div className="p-4 md:p-6 flex flex-col gap-5">
 
       {/* ══ TABS ══ */}
-      <div className="flex gap-1 border-b border-gris pb-0">
-        {([['semana', '📅 Semana actual'], ['anterior', '⏮ Última semana cerrada'], ['historico', '📊 Histórico']] as const).map(([t, label]) => (
+      <div className="flex gap-1 border-b border-gris pb-0 flex-wrap">
+        {([
+          ['semana', '📅 Semana actual'],
+          ['anterior', '⏮ Última semana cerrada'],
+          ['historico', '📊 Histórico'],
+          ...(costosOficina ? [['oficina', '🏢 Costos oficina'] as const] : []),
+        ] as ReadonlyArray<readonly [typeof tab, string]>).map(([t, label]) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -984,6 +994,9 @@ export function ResumenHistoricoPage() {
           )}
         </div>
       </div>}
+
+      {/* ══ COSTOS DE OFICINA ══ */}
+      {tab === 'oficina' && costosOficina && <CostosOficinaTab />}
     </div>
   )
 }
