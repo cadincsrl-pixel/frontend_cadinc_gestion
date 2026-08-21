@@ -1,12 +1,13 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { InputMonto } from '@/components/ui/InputMonto'
 import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 import { toISO } from '@/lib/utils/dates'
@@ -54,7 +55,7 @@ export function RegistrarCobroModal({ open, onClose, clienteId, clienteNombre }:
   const toast = useToast()
   const { mutate: create, isPending } = useCreateCobro()
 
-  const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<FormData>({
+  const { register, control, handleSubmit, reset, setValue, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: { fecha: hoyISO(), monto: '', medio: 'efectivo', obs: '' },
   })
@@ -152,16 +153,16 @@ export function RegistrarCobroModal({ open, onClose, clienteId, clienteNombre }:
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input label="Fecha" type="date" error={errors.fecha?.message} {...register('fecha')} />
-          <Input
-            label="Monto ($)"
-            type="number"
-            inputMode="decimal"
-            min={0}
-            step="any"
-            placeholder="0"
-            error={errors.monto?.message}
-            {...register('monto')}
-          />
+          <Controller name="monto" control={control} render={({ field }) => (
+            <InputMonto
+              label="Monto ($)"
+              placeholder="0"
+              error={errors.monto?.message}
+              value={field.value}
+              onChange={field.onChange}
+              onBlur={field.onBlur}
+            />
+          )} />
         </div>
         <Select
           label="Medio"

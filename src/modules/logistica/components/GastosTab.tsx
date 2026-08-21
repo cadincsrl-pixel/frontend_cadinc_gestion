@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useEffect } from 'react'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { intInputProps } from '@/lib/utils/inputs'
 import {
   useGastos, useGastosCategorias, useCreateGasto, useUpdateGasto, useDeleteGasto,
@@ -17,6 +17,7 @@ import { Button }   from '@/components/ui/Button'
 import { Select }   from '@/components/ui/Select'
 import { Combobox } from '@/components/ui/Combobox'
 import { Input }    from '@/components/ui/Input'
+import { InputMonto } from '@/components/ui/InputMonto'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useSessionStore } from '@/store/session.store'
@@ -745,7 +746,9 @@ function GastoFormFields({
         <Input label="Fecha" type="date" {...form.register('fecha', { required: true })} />
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Input label="Monto" type="number" step="0.01" placeholder="0.00" {...form.register('monto', { required: true })} />
+        <Controller name="monto" control={form.control} rules={{ required: true }} render={({ field }) => (
+          <InputMonto label="Monto" placeholder="0,00" value={field.value} onChange={field.onChange} onBlur={field.onBlur} />
+        )} />
         <Select label="Pagó" {...form.register('pagado_por')}
           options={[{ value: 'empresa', label: '🏢 Empresa' }, { value: 'chofer', label: '🧑 Chofer' }]} />
       </div>

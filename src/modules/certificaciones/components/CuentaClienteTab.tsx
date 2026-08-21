@@ -5,6 +5,7 @@ import { Combobox } from '@/components/ui/Combobox'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
+import { InputMonto } from '@/components/ui/InputMonto'
 import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
@@ -607,13 +608,14 @@ export function CuentaClienteTab() {
                           {Number(r.cantidad).toLocaleString('es-AR')} <span className="text-gris-dark">{r.unidad}</span>
                         </td>
                         <td className="px-3 py-2 text-right">
-                          <input
-                            type="number" min="0" step="1" inputMode="decimal"
-                            value={precios[r.item_id] ?? ''}
-                            onChange={e => setPrecios(p => ({ ...p, [r.item_id]: e.target.value }))}
-                            placeholder="0"
-                            className="w-28 px-2 py-1 border-[1.5px] border-gris-mid rounded-lg text-right font-mono text-sm outline-none focus:border-naranja"
-                          />
+                          <div className="w-28 ml-auto">
+                            <InputMonto
+                              value={precios[r.item_id] ?? ''}
+                              onChange={raw => setPrecios(p => ({ ...p, [r.item_id]: raw }))}
+                              placeholder="0"
+                              className="text-right font-mono"
+                            />
+                          </div>
                         </td>
                         <td className="px-3 py-2 text-right font-mono text-sm font-bold">{total > 0 ? fmt$(total) : '—'}</td>
                       </tr>
@@ -696,9 +698,9 @@ export function CuentaClienteTab() {
               label="Fecha" type="date" value={cobroForm.fecha}
               onChange={e => setCobroForm(f => ({ ...f, fecha: e.target.value }))}
             />
-            <Input
-              label="Monto ($)" type="number" min="0" step="1" placeholder="0" value={cobroForm.monto}
-              onChange={e => setCobroForm(f => ({ ...f, monto: e.target.value }))}
+            <InputMonto
+              label="Monto ($)" placeholder="0" value={cobroForm.monto}
+              onChange={raw => setCobroForm(f => ({ ...f, monto: raw }))}
             />
           </div>
           <Select

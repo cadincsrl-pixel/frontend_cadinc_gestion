@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useRef } from 'react'
 import * as XLSX from 'xlsx'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import {
   useStockRubros, useStockMateriales, useStockMovimientos,
   useCreateStockMaterial, useUpdateStockMaterial, useDeleteStockMaterial,
@@ -13,6 +13,7 @@ import { usePermisos } from '@/hooks/usePermisos'
 import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input }  from '@/components/ui/Input'
+import { InputMonto } from '@/components/ui/InputMonto'
 import { Combobox } from '@/components/ui/Combobox'
 import { useToast } from '@/components/ui/Toast'
 import { DeclararAjusteModal } from './DeclararAjusteModal'
@@ -618,7 +619,9 @@ export function StockTab() {
               </select>
             </div>
             <Input label="Stock mínimo" type="number" step="1" {...formNuevo.register('stock_minimo')} />
-            <Input label="Precio ref. ($)" type="number" step="1" {...formNuevo.register('precio_ref')} />
+            <Controller name="precio_ref" control={formNuevo.control} render={({ field }) => (
+              <InputMonto label="Precio ref. ($)" value={field.value} onChange={field.onChange} />
+            )} />
           </div>
         </div>
       </Modal>
@@ -711,7 +714,9 @@ export function StockTab() {
               </select>
             </div>
             <Input label="Stock mínimo" type="number" step="1" {...formEditar.register('stock_minimo')} />
-            <Input label="Precio ref. ($)" type="number" step="1" {...formEditar.register('precio_ref')} />
+            <Controller name="precio_ref" control={formEditar.control} render={({ field }) => (
+              <InputMonto label="Precio ref. ($)" value={field.value} onChange={field.onChange} />
+            )} />
           </div>
         </div>
       </Modal>

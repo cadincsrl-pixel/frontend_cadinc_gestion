@@ -1,10 +1,11 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { InputMonto } from '@/components/ui/InputMonto'
 import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
@@ -134,7 +135,7 @@ export function VentasTab() {
   const [remitoVenta, setRemitoVenta] = useState<MovimientoArido | null>(null)
   const [remitoDe, setRemitoDe] = useState<number | null>(null)
 
-  const { register, handleSubmit, reset, watch, setValue, formState: { errors } } = useForm<VentaForm>({
+  const { register, control, handleSubmit, reset, watch, setValue, formState: { errors } } = useForm<VentaForm>({
     defaultValues: { ...DEFAULTS, fecha: toISO(new Date()), hora: horaActual() },
   })
 
@@ -628,8 +629,11 @@ export function VentasTab() {
 
           {wOrigen === 'cantera' && !esViaje && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-              <Input label="Costo cantera ($ total del viaje)" type="number" step="0.01" placeholder="Lo que cobra la cantera"
-                {...register('costo_total', { onChange: () => { costoManualRef.current = true } })} />
+              <Controller name="costo_total" control={control} render={({ field }) => (
+                <InputMonto label="Costo cantera ($ total del viaje)" placeholder="Lo que cobra la cantera"
+                  value={field.value} onBlur={field.onBlur}
+                  onChange={raw => { costoManualRef.current = true; field.onChange(raw) }} />
+              )} />
               {costosMatch.length > 1 && (
                 <Select label="Zona (lista de la cantera)"
                   options={costosMatch.map(c => ({ value: c.zona ?? '', label: c.zona || '(sin zona)' }))}
@@ -668,10 +672,14 @@ export function VentasTab() {
               { value: 'lista',    label: 'Precio de lista' },
               { value: 'especial', label: 'Precio especial (a mano)' },
             ]} {...register('modo_precio', { onChange: e => recalc({ modo: e.target.value }, { force: true }) })} />
-            <Input label="Precio unitario ($)" type="number" step="0.01" placeholder="0.00"
-              disabled={wModo === 'lista'}
-              error={errors.precio_unit?.message}
-              {...register('precio_unit', { required: 'Requerido', validate: v => Number(v) >= 0 || 'Inválido' })} />
+            <Controller name="precio_unit" control={control}
+              rules={{ required: 'Requerido', validate: v => Number(v) >= 0 || 'Inválido' }}
+              render={({ field }) => (
+                <InputMonto label="Precio unitario ($)" placeholder="0,00"
+                  disabled={wModo === 'lista'}
+                  error={errors.precio_unit?.message}
+                  value={field.value} onChange={field.onChange} onBlur={field.onBlur} />
+              )} />
             <div className="flex items-end pb-2">
               <span className="text-sm font-bold text-carbon">
                 Importe: <span className="font-mono text-verde">{fmtM(importe)}</span>

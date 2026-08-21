@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
+import { InputMonto } from '@/components/ui/InputMonto'
 import { Select } from '@/components/ui/Select'
 import { Combobox } from '@/components/ui/Combobox'
 import { useToast } from '@/components/ui/Toast'
@@ -160,15 +160,11 @@ export function ObraMaquinasSection({ obraId, puedeEditar }: Props) {
               value={maquinistaSel}
               onChange={setMaquinistaSel}
             />
-            <Input
+            <InputMonto
               label="$/hora (opcional)"
-              type="number"
-              min={0}
-              step="any"
-              inputMode="decimal"
               placeholder="Ej: 25000"
               value={precioSel}
-              onChange={e => setPrecioSel(e.target.value)}
+              onChange={setPrecioSel}
             />
           </div>
           <div className="flex justify-end">

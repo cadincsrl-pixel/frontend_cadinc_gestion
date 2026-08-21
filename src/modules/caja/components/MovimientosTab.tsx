@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import {
   useMovimientos, useConceptos, useCentrosCosto,
   useCreateMovimiento, useUpdateMovimiento, useDeleteMovimiento,
@@ -11,6 +11,7 @@ import { useObras } from '@/modules/tarja/hooks/useObras'
 import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
 import { Combobox } from '@/components/ui/Combobox'
+import { InputMonto } from '@/components/ui/InputMonto'
 import { useToast } from '@/components/ui/Toast'
 
 const PAGE_SIZE = 20
@@ -45,7 +46,9 @@ export function MovimientosTab() {
   const [fCC,        setFCC]        = useState('')
   const [fProveedor, setFProveedor] = useState('')
   const [fConcepto,  setFConcepto]  = useState('')
-  const montoRef = useRef<HTMLInputElement>(null)
+  // Ref al wrapper del InputMonto (no expone ref al <input>): el autofocus
+  // busca el input hijo.
+  const montoRef = useRef<HTMLDivElement>(null)
 
   const form = useForm<any>()
 
@@ -90,7 +93,7 @@ export function MovimientosTab() {
   function resetForNext() {
     setFCC(''); setFProveedor(''); setFConcepto('')
     form.reset({ fecha: form.getValues('fecha') })
-    setTimeout(() => montoRef.current?.focus(), 50)
+    setTimeout(() => montoRef.current?.querySelector('input')?.focus(), 50)
   }
 
   function openEdit(m: Movimiento) {
@@ -365,14 +368,17 @@ export function MovimientosTab() {
             </div>
 
             {/* Monto */}
-            <div className="flex flex-col gap-1 w-32">
-              <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Monto $</label>
-              <input
-                type="number" step="0.01" placeholder="0.00"
-                {...form.register('monto', { required: true })}
-                ref={(el) => { form.register('monto').ref(el); (montoRef as any).current = el }}
-                className="border border-gris rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-azul font-mono"
-              />
+            <div className="w-32" ref={montoRef}>
+              <Controller name="monto" control={form.control} rules={{ required: true }} render={({ field }) => (
+                <InputMonto
+                  label="Monto $"
+                  placeholder="0,00"
+                  className="font-mono"
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                />
+              )} />
             </div>
           </div>
 

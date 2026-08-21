@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { useAdicionales, useCreateAdicional, useUpdateAdicional, useDeleteAdicional } from '../hooks/useCertificaciones'
 import { useObras } from '@/modules/tarja/hooks/useObras'
 import { createClient } from '@/lib/supabase/client'
@@ -9,6 +9,7 @@ import { toISO } from '@/lib/utils/dates'
 import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input }  from '@/components/ui/Input'
+import { InputMonto } from '@/components/ui/InputMonto'
 import { Combobox } from '@/components/ui/Combobox'
 import { useToast } from '@/components/ui/Toast'
 import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
@@ -222,7 +223,9 @@ export function AdicionalesTab() {
           />
           <div className="grid grid-cols-2 gap-3">
             <Input label="Fecha" type="date" {...formNuevo.register('fecha')} />
-            <Input label="Monto ($)" type="number" step="1" {...formNuevo.register('monto')} />
+            <Controller name="monto" control={formNuevo.control} render={({ field }) => (
+              <InputMonto label="Monto ($)" value={field.value} onChange={field.onChange} />
+            )} />
           </div>
           <Input label="Descripción" placeholder="Ej: Reparación de encofrado..." {...formNuevo.register('descripcion')} />
           <Input label="Observaciones" placeholder="Notas opcionales..." {...formNuevo.register('obs')} />
@@ -263,7 +266,9 @@ export function AdicionalesTab() {
         <div className="flex flex-col gap-3">
           <div className="grid grid-cols-2 gap-3">
             <Input label="Fecha" type="date" {...formEdit.register('fecha')} />
-            <Input label="Monto ($)" type="number" step="1" {...formEdit.register('monto')} />
+            <Controller name="monto" control={formEdit.control} render={({ field }) => (
+              <InputMonto label="Monto ($)" value={field.value} onChange={field.onChange} />
+            )} />
           </div>
           <Input label="Descripción" {...formEdit.register('descripcion')} />
           <Input label="Observaciones" {...formEdit.register('obs')} />

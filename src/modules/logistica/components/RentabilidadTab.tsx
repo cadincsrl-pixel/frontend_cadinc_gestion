@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import {
   useRentabilidadParametros,
   useRentabilidadViajes,
@@ -25,6 +25,7 @@ import {
 import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input }  from '@/components/ui/Input'
+import { InputMonto } from '@/components/ui/InputMonto'
 import { Select } from '@/components/ui/Select'
 import { Badge }  from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
@@ -538,24 +539,47 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
               hint={`${DIAS_MES} días ÷ viajes/mes`}
             />
           </div>
-          <Input label="Tarifa por tonelada (NETA, sin IVA) ARS/t" type="number" disabled={readOnly} {...form.register('tarifa_neta_por_ton', { valueAsNumber: true })} />
+          {/* Los campos de $ usan InputMonto (miles es-AR). Emite string máquina;
+              se convierte a number acá para conservar el shape que tenía
+              valueAsNumber ('' si se vacía — el submit ya lo normaliza a 0). */}
+          <Controller name="tarifa_neta_por_ton" control={form.control} render={({ field }) => (
+            <InputMonto label="Tarifa por tonelada (NETA, sin IVA) ARS/t" disabled={readOnly}
+              value={field.value} onBlur={field.onBlur}
+              onChange={raw => field.onChange(raw === '' ? '' : Number(raw))} />
+          )} />
 
           <div className="bg-gris/30 rounded-lg p-3">
             <div className="text-[11px] font-bold uppercase tracking-wider text-gris-dark mb-2">⛽ Combustible (zona)</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Input label="Precio gasoil ARS/L (con IVA)" type="number" disabled={readOnly} {...form.register('precio_gasoil',  { valueAsNumber: true })} />
+              <Controller name="precio_gasoil" control={form.control} render={({ field }) => (
+                <InputMonto label="Precio gasoil ARS/L (con IVA)" disabled={readOnly}
+                  value={field.value} onBlur={field.onBlur}
+                  onChange={raw => field.onChange(raw === '' ? '' : Number(raw))} />
+              )} />
               <Input label="Consumo km/L"                  type="number" step="0.1" disabled={readOnly} {...form.register('consumo_camion', { valueAsNumber: true })} />
             </div>
           </div>
 
-          <Input label="Peajes ida + vuelta (con IVA)" type="number" disabled={readOnly} {...form.register('peajes_total', { valueAsNumber: true })} />
+          <Controller name="peajes_total" control={form.control} render={({ field }) => (
+            <InputMonto label="Peajes ida + vuelta (con IVA)" disabled={readOnly}
+              value={field.value} onBlur={field.onBlur}
+              onChange={raw => field.onChange(raw === '' ? '' : Number(raw))} />
+          )} />
 
           <div className="bg-gris/30 rounded-lg p-3">
             <div className="text-[11px] font-bold uppercase tracking-wider text-gris-dark mb-2">👷 Chofer</div>
             <Select label="Modalidad de pago" options={MODALIDAD_OPTIONS} disabled={readOnly} {...form.register('modalidad_pago')} />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-              <Input label="Pago por km (ARS/km, sin IVA)"   type="number" disabled={readOnly || isPctMode} {...form.register('chofer_por_km',  { valueAsNumber: true })} />
-              <Input label="Jornal por día (ARS, sin IVA)"   type="number" disabled={readOnly} {...form.register('chofer_por_dia', { valueAsNumber: true })} />
+              <Controller name="chofer_por_km" control={form.control} render={({ field }) => (
+                <InputMonto label="Pago por km (ARS/km, sin IVA)" disabled={readOnly || isPctMode}
+                  value={field.value} onBlur={field.onBlur}
+                  onChange={raw => field.onChange(raw === '' ? '' : Number(raw))} />
+              )} />
+              <Controller name="chofer_por_dia" control={form.control} render={({ field }) => (
+                <InputMonto label="Jornal por día (ARS, sin IVA)" disabled={readOnly}
+                  value={field.value} onBlur={field.onBlur}
+                  onChange={raw => field.onChange(raw === '' ? '' : Number(raw))} />
+              )} />
             </div>
             {isPctMode && (
               <div className="mt-3">
@@ -771,10 +795,25 @@ function ParametrosCard({ paramsRow, open, onToggle, readOnly }: ParametrosCardP
           <fieldset className="border border-gris rounded-lg p-3">
             <legend className="text-[11px] font-bold uppercase tracking-wider text-gris-dark px-1">Equipo</legend>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Input label="Valor tractor (USD, sin IVA)"           type="number" disabled={readOnly} {...form.register('valor_tractor_usd',          { valueAsNumber: true })} />
-              <Input label="Valor residual tractor (USD, sin IVA)"  type="number" disabled={readOnly} {...form.register('valor_residual_tractor_usd', { valueAsNumber: true })} />
+              {/* Campos de $ con InputMonto: emite string máquina, se convierte
+                  a number acá porque onSave manda el dto tal cual al backend
+                  (antes valueAsNumber garantizaba numbers). */}
+              <Controller name="valor_tractor_usd" control={form.control} render={({ field }) => (
+                <InputMonto label="Valor tractor (USD, sin IVA)" disabled={readOnly}
+                  value={field.value} onBlur={field.onBlur}
+                  onChange={raw => field.onChange(raw === '' ? '' : Number(raw))} />
+              )} />
+              <Controller name="valor_residual_tractor_usd" control={form.control} render={({ field }) => (
+                <InputMonto label="Valor residual tractor (USD, sin IVA)" disabled={readOnly}
+                  value={field.value} onBlur={field.onBlur}
+                  onChange={raw => field.onChange(raw === '' ? '' : Number(raw))} />
+              )} />
               <Input label="Vida útil tractor (km)"        {...intInputProps} disabled={readOnly} {...form.register('vida_util_tractor_km',       { valueAsNumber: true })} />
-              <Input label="Valor batea (USD, sin IVA)"             type="number" disabled={readOnly} {...form.register('valor_semirremolque_usd',    { valueAsNumber: true })} />
+              <Controller name="valor_semirremolque_usd" control={form.control} render={({ field }) => (
+                <InputMonto label="Valor batea (USD, sin IVA)" disabled={readOnly}
+                  value={field.value} onBlur={field.onBlur}
+                  onChange={raw => field.onChange(raw === '' ? '' : Number(raw))} />
+              )} />
               <Input label="Vida útil batea (años)"        type="number" disabled={readOnly} {...form.register('vida_util_batea_anios',      { valueAsNumber: true })} />
             </div>
           </fieldset>
@@ -782,9 +821,17 @@ function ParametrosCard({ paramsRow, open, onToggle, readOnly }: ParametrosCardP
           <fieldset className="border border-gris rounded-lg p-3">
             <legend className="text-[11px] font-bold uppercase tracking-wider text-gris-dark px-1">Mantenimiento + neumáticos</legend>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Input label="Costo service (ARS, con IVA)"         type="number" disabled={readOnly} {...form.register('costo_service',          { valueAsNumber: true })} />
+              <Controller name="costo_service" control={form.control} render={({ field }) => (
+                <InputMonto label="Costo service (ARS, con IVA)" disabled={readOnly}
+                  value={field.value} onBlur={field.onBlur}
+                  onChange={raw => field.onChange(raw === '' ? '' : Number(raw))} />
+              )} />
               <Input label="Frecuencia service (km)"     {...intInputProps} disabled={readOnly} {...form.register('frecuencia_service_km',  { valueAsNumber: true })} />
-              <Input label="Costo cubierta (ARS, con IVA)"        type="number" disabled={readOnly} {...form.register('costo_cubierta',         { valueAsNumber: true })} />
+              <Controller name="costo_cubierta" control={form.control} render={({ field }) => (
+                <InputMonto label="Costo cubierta (ARS, con IVA)" disabled={readOnly}
+                  value={field.value} onBlur={field.onBlur}
+                  onChange={raw => field.onChange(raw === '' ? '' : Number(raw))} />
+              )} />
               <Input label="Cubiertas por equipo"        type="number" disabled={readOnly} {...form.register('cubiertas_por_equipo',   { valueAsNumber: true })} />
               <Input label="Vida útil neumáticos (km)"   {...intInputProps} disabled={readOnly} {...form.register('vida_util_neumaticos_km',{ valueAsNumber: true })} />
             </div>
@@ -793,11 +840,31 @@ function ParametrosCard({ paramsRow, open, onToggle, readOnly }: ParametrosCardP
           <fieldset className="border border-gris rounded-lg p-3">
             <legend className="text-[11px] font-bold uppercase tracking-wider text-gris-dark px-1">Personal y gastos fijos</legend>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Input label="Cargas sociales (ARS/mes, sin IVA)"   type="number" disabled={readOnly} {...form.register('cargas_sociales_mensual', { valueAsNumber: true })} />
-              <Input label="Seguros (ARS/mes, con IVA)"           type="number" disabled={readOnly} {...form.register('seguros_mensual',         { valueAsNumber: true })} />
-              <Input label="Patente + tasas + VTV (ARS/año, sin IVA)" type="number" disabled={readOnly} {...form.register('patente_anual',     { valueAsNumber: true })} />
-              <Input label="Gomería (ARS/mes, con IVA)"           type="number" disabled={readOnly} {...form.register('gomeria_mensual',         { valueAsNumber: true })} />
-              <Input label="Lavadero (ARS/mes, con IVA)"          type="number" disabled={readOnly} {...form.register('lavadero_mensual',        { valueAsNumber: true })} />
+              <Controller name="cargas_sociales_mensual" control={form.control} render={({ field }) => (
+                <InputMonto label="Cargas sociales (ARS/mes, sin IVA)" disabled={readOnly}
+                  value={field.value} onBlur={field.onBlur}
+                  onChange={raw => field.onChange(raw === '' ? '' : Number(raw))} />
+              )} />
+              <Controller name="seguros_mensual" control={form.control} render={({ field }) => (
+                <InputMonto label="Seguros (ARS/mes, con IVA)" disabled={readOnly}
+                  value={field.value} onBlur={field.onBlur}
+                  onChange={raw => field.onChange(raw === '' ? '' : Number(raw))} />
+              )} />
+              <Controller name="patente_anual" control={form.control} render={({ field }) => (
+                <InputMonto label="Patente + tasas + VTV (ARS/año, sin IVA)" disabled={readOnly}
+                  value={field.value} onBlur={field.onBlur}
+                  onChange={raw => field.onChange(raw === '' ? '' : Number(raw))} />
+              )} />
+              <Controller name="gomeria_mensual" control={form.control} render={({ field }) => (
+                <InputMonto label="Gomería (ARS/mes, con IVA)" disabled={readOnly}
+                  value={field.value} onBlur={field.onBlur}
+                  onChange={raw => field.onChange(raw === '' ? '' : Number(raw))} />
+              )} />
+              <Controller name="lavadero_mensual" control={form.control} render={({ field }) => (
+                <InputMonto label="Lavadero (ARS/mes, con IVA)" disabled={readOnly}
+                  value={field.value} onBlur={field.onBlur}
+                  onChange={raw => field.onChange(raw === '' ? '' : Number(raw))} />
+              )} />
               <Input label="Overhead / estructura (ej 0.01 = 1%)" hint="% sobre costos (directos+fijos). Aproxima gastos generales fuera de la flota; no incluye Ganancias." type="number" step="0.001" disabled={readOnly} {...form.register('overhead_pct',  { valueAsNumber: true })} />
             </div>
           </fieldset>

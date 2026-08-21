@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
 import { Input }    from '@/components/ui/Input'
+import { InputMonto } from '@/components/ui/InputMonto'
 import { useToast } from '@/components/ui/Toast'
 import { useChoferes } from '../hooks/useLogistica'
 
@@ -246,13 +247,10 @@ export function ModalSolicitudTransferencia({ open, onClose }: Props) {
                       </label>
                       {checked && (
                         <div className="w-28 shrink-0">
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
+                          <InputMonto
                             placeholder="Monto"
                             value={montos[id] ?? ''}
-                            onChange={e => setMonto(id, e.target.value)}
+                            onChange={raw => setMonto(id, raw)}
                           />
                         </div>
                       )}

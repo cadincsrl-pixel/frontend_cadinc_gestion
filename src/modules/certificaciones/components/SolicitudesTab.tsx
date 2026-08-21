@@ -2,7 +2,7 @@
 
 import { useState, useRef, useMemo, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import {
   useSolicitudes, useCreateSolicitud, useUpdateSolicitud, useDeleteSolicitud,
   useComprarItem, useDespacharItem, useEnviarItem, useRechazarItem, useRevertirItem, useRevertirEnvio, useComprarFaltante,
@@ -28,6 +28,7 @@ import { toISO } from '@/lib/utils/dates'
 import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
 import { Input }    from '@/components/ui/Input'
+import { InputMonto } from '@/components/ui/InputMonto'
 import { Combobox } from '@/components/ui/Combobox'
 import { useToast } from '@/components/ui/Toast'
 import type { SolicitudCompra, SolicitudCompraItem, SolicitudEstado, SolicitudProgreso, ItemEstado, Obra, Proveedor, StockMaterial, RemitoEnvio, StockClienteRow } from '@/types/domain.types'
@@ -1676,26 +1677,29 @@ export function SolicitudesTab() {
                 setValue no re-dispara onChange, así que no hay loop. */}
             <div>
               <div className="grid grid-cols-2 gap-3">
-                <Input
-                  label="P. unit. neto (sin IVA)"
-                  type="number" step="any" min="0"
-                  {...formComprar.register('precio_neto', {
-                    onChange: e => {
-                      const n = Number(e.target.value)
+                <Controller name="precio_neto" control={formComprar.control} render={({ field }) => (
+                  <InputMonto
+                    label="P. unit. neto (sin IVA)"
+                    decimales={4}
+                    value={field.value}
+                    onChange={raw => {
+                      field.onChange(raw)
+                      const n = Number(raw)
                       formComprar.setValue('precio_unit', Number.isFinite(n) && n > 0 ? netaAFinal(n) : 0)
-                    },
-                  })}
-                />
-                <Input
-                  label="P. unit. FINAL (IVA incl.)"
-                  type="number" step="any" min="0"
-                  {...formComprar.register('precio_unit', {
-                    onChange: e => {
-                      const n = Number(e.target.value)
+                    }}
+                  />
+                )} />
+                <Controller name="precio_unit" control={formComprar.control} render={({ field }) => (
+                  <InputMonto
+                    label="P. unit. FINAL (IVA incl.)"
+                    value={field.value}
+                    onChange={raw => {
+                      field.onChange(raw)
+                      const n = Number(raw)
                       formComprar.setValue('precio_neto', Number.isFinite(n) && n > 0 ? finalANeta(n) : 0)
-                    },
-                  })}
-                />
+                    }}
+                  />
+                )} />
               </div>
               <p className="text-[11px] text-gris-dark mt-1 px-1">
                 Cargá cualquiera de los dos: el otro se calcula solo (IVA 21%). A la cuenta del cliente va el <b>final</b>.
@@ -1854,13 +1858,9 @@ export function SolicitudesTab() {
                             </div>
                           </td>
                           <td className="px-3 py-2">
-                            <input
-                              type="number"
-                              step="1"
-                              min="0"
-                              {...formComprarLote.register(`precios.${it.id}`, { valueAsNumber: true })}
-                              className="w-full px-2 py-1 border border-gris-mid rounded text-right font-mono text-sm outline-none focus:border-naranja"
-                            />
+                            <Controller name={`precios.${it.id}`} control={formComprarLote.control} render={({ field }) => (
+                              <InputMonto value={field.value} onChange={field.onChange} className="text-right font-mono" />
+                            )} />
                           </td>
                           <td className="px-3 py-2 text-right font-mono text-sm font-bold">
                             {subtotal > 0 ? fmtM(subtotal) : '—'}
@@ -1945,7 +1945,9 @@ export function SolicitudesTab() {
                 </>
               )
             })()}
-            <Input label="Precio unitario interno ($)" type="number" step="1" {...formDespachar.register('precio_unit')} />
+            <Controller name="precio_unit" control={formDespachar.control} render={({ field }) => (
+              <InputMonto label="Precio unitario interno ($)" value={field.value} onChange={field.onChange} />
+            )} />
           </div>
         )}
       </Modal>
@@ -2038,7 +2040,9 @@ export function SolicitudesTab() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input label="Fecha" type="date" {...formFact.register('fecha')} />
-            <Input label="Total ($)" type="number" step="1" {...formFact.register('total')} />
+            <Controller name="total" control={formFact.control} render={({ field }) => (
+              <InputMonto label="Total ($)" value={field.value} onChange={field.onChange} />
+            )} />
           </div>
           <div>
             <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-2">Adjunto (PDF / imagen)</div>

@@ -1,9 +1,10 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { InputMonto } from '@/components/ui/InputMonto'
 import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
@@ -188,7 +189,9 @@ export function VehiculoGastosSection({ vehiculo }: Props) {
             <Input label="Fecha" type="date" {...form.register('fecha', { required: true })} />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Input label="Monto ($)" type="number" step="0.01" min="0" {...form.register('monto', { required: true })} />
+            <Controller name="monto" control={form.control} rules={{ required: true }} render={({ field }) => (
+              <InputMonto label="Monto ($)" value={field.value} onChange={field.onChange} onBlur={field.onBlur} />
+            )} />
             <Input label="Proveedor (opcional)" placeholder="YPF, Renault, etc." {...form.register('proveedor')} />
           </div>
           <Input label="Descripción (opcional)" placeholder="Detalle del gasto" {...form.register('descripcion')} />

@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { InputMonto } from '@/components/ui/InputMonto'
 import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
@@ -316,12 +317,14 @@ function ListaPreciosCanteraModal({ cantera, onClose }: { cantera: CanteraArido 
                         hoy {fmtM(Number(ref.costo))}
                       </span>
                     )}
-                    <input
-                      type="number" step="0.01" placeholder="$"
-                      className="w-28 px-2 py-1 border-[1.5px] border-gris-mid rounded-lg text-sm font-mono text-right outline-none focus:border-naranja bg-blanco"
-                      value={preciosDraft[m.id] ?? ''}
-                      onChange={e => setPreciosDraft(p => ({ ...p, [m.id]: e.target.value }))}
-                    />
+                    <div className="w-28 shrink-0">
+                      <InputMonto
+                        placeholder="$"
+                        className="font-mono text-right"
+                        value={preciosDraft[m.id] ?? ''}
+                        onChange={raw => setPreciosDraft(p => ({ ...p, [m.id]: raw }))}
+                      />
+                    </div>
                   </div>
                 )
               })}
@@ -331,7 +334,7 @@ function ListaPreciosCanteraModal({ cantera, onClose }: { cantera: CanteraArido 
               <div className="col-span-2">
                 <Input label="Servicio / otro concepto (opcional)" placeholder="Ej: Hora de máquina" value={svcConcepto} onChange={e => setSvcConcepto(e.target.value)} />
               </div>
-              <Input label="Precio ($)" type="number" step="0.01" placeholder="0" value={svcPrecio} onChange={e => setSvcPrecio(e.target.value)} />
+              <InputMonto label="Precio ($)" placeholder="0" value={svcPrecio} onChange={setSvcPrecio} />
               <Select label="Por" options={[
                 { value: 'hora', label: 'hora' },
                 { value: 'viaje', label: 'viaje' },

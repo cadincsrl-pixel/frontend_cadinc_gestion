@@ -1,12 +1,13 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { InputMonto } from '@/components/ui/InputMonto'
 import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
@@ -369,7 +370,10 @@ export function ClientesAridosTab() {
                 <div className="sm:col-span-2">
                   <Select label="Material" options={materialOptions} error={formPrecio.formState.errors.material_id?.message} {...formPrecio.register('material_id')} />
                 </div>
-                <Input label="Precio" type="number" step="0.01" placeholder="0.00" error={formPrecio.formState.errors.precio?.message} {...formPrecio.register('precio')} />
+                <Controller name="precio" control={formPrecio.control} render={({ field }) => (
+                  <InputMonto label="Precio" placeholder="0,00" error={formPrecio.formState.errors.precio?.message}
+                    value={field.value} onChange={field.onChange} onBlur={field.onBlur} />
+                )} />
                 <Input label="Vigente desde" type="date" {...formPrecio.register('vigente_desde')} />
               </div>
               <div className="flex justify-end mt-2">
@@ -556,14 +560,16 @@ function PreciosGlobalCard() {
                       )}
                     </td>
                     <td className="px-4 py-2">
-                      <input
-                        type="number" step="0.01" placeholder={vig ? String(vig.precio) : '0.00'}
-                        value={drafts[mat.id] ?? ''}
-                        onChange={e => setDrafts(prev => ({ ...prev, [mat.id]: e.target.value }))}
-                        onKeyDown={e => { if (e.key === 'Enter') guardar(mat) }}
-                        disabled={!puedeCrear}
-                        className="w-32 border-[1.5px] border-gris-mid rounded px-2 py-1 text-sm font-mono outline-none focus:border-naranja disabled:opacity-50"
-                      />
+                      <div className="w-32">
+                        <InputMonto
+                          placeholder={vig ? String(vig.precio) : '0,00'}
+                          value={drafts[mat.id] ?? ''}
+                          onChange={raw => setDrafts(prev => ({ ...prev, [mat.id]: raw }))}
+                          onKeyDown={e => { if (e.key === 'Enter') guardar(mat) }}
+                          disabled={!puedeCrear}
+                          className="font-mono"
+                        />
+                      </div>
                     </td>
                     <td className="px-4 py-2">
                       {drafts[mat.id] && (

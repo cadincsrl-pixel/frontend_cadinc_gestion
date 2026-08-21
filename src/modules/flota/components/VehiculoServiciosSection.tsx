@@ -1,10 +1,11 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { intInputProps } from '@/lib/utils/inputs'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { InputMonto } from '@/components/ui/InputMonto'
 import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
@@ -238,7 +239,9 @@ export function VehiculoServiciosSection({ vehiculo }: Props) {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Input label="Fecha"      type="date"   {...form.register('fecha', { required: true })} />
             <Input label="Km service" {...intInputProps} {...form.register('km_service', { required: true })} />
-            <Input label="Costo ($)"  type="number" step="100" {...form.register('costo')} />
+            <Controller name="costo" control={form.control} render={({ field }) => (
+              <InputMonto label="Costo ($)" value={field.value} onChange={field.onChange} onBlur={field.onBlur} />
+            )} />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">

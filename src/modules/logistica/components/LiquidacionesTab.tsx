@@ -14,11 +14,12 @@ import { useRelevosPendientesTodos, useRelevosLiquidados } from '../hooks/useTra
 import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
 import { Input }    from '@/components/ui/Input'
+import { InputMonto } from '@/components/ui/InputMonto'
 import { Combobox } from '@/components/ui/Combobox'
 import { Select }   from '@/components/ui/Select'
 import { Badge }    from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
-import { useForm }  from 'react-hook-form'
+import { Controller, useForm }  from 'react-hook-form'
 import { generarPdfLiquidacion, type PdfLiquidacionArgs } from '@/lib/utils/liquidacion-pdf'
 import { generarReciboAdelanto } from '@/lib/utils/recibo-adelanto-pdf'
 import { LiquidacionAdjuntosSection } from './LiquidacionAdjuntosSection'
@@ -1762,7 +1763,9 @@ export function LiquidacionesTab() {
             </div>
 
             <div>
-              <Input label="Básico/día ($)" type="number" step="100" {...formLiq.register('basico_dia')} />
+              <Controller name="basico_dia" control={formLiq.control} render={({ field }) => (
+                <InputMonto label="Básico/día ($)" value={field.value} onChange={field.onChange} onBlur={field.onBlur} />
+              )} />
               {preview.dias > 0 && preview.basico_dia > 0 && (
                 <p className="text-[11px] text-gris-dark mt-1 px-1">
                   × {preview.dias} día{preview.dias !== 1 ? 's' : ''} = {fmtM(preview.subtotal_bas)}
@@ -1778,8 +1781,12 @@ export function LiquidacionesTab() {
               />
             ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Input label="🚛 $/km cargado" type="number" step="1" {...formLiq.register('precio_km_cargado')} />
-              <Input label="🔲 $/km vacío"   type="number" step="1" {...formLiq.register('precio_km_vacio')} />
+              <Controller name="precio_km_cargado" control={formLiq.control} render={({ field }) => (
+                <InputMonto label="🚛 $/km cargado" value={field.value} onChange={field.onChange} onBlur={field.onBlur} />
+              )} />
+              <Controller name="precio_km_vacio" control={formLiq.control} render={({ field }) => (
+                <InputMonto label="🔲 $/km vacío" value={field.value} onChange={field.onChange} onBlur={field.onBlur} />
+              )} />
             </div>
             )}
 
@@ -2282,7 +2289,9 @@ export function LiquidacionesTab() {
               {/* Si es borrador, fecha y básico son editables */}
               {esBorrador && (
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <Input label="Básico/día ($)" type="number" step="100" {...formDetalle.register('basico_dia')} />
+                  <Controller name="basico_dia" control={formDetalle.control} render={({ field }) => (
+                    <InputMonto label="Básico/día ($)" value={field.value} onChange={field.onChange} onBlur={field.onBlur} />
+                  )} />
                   <Input label="Período desde" type="date" {...formDetalle.register('fecha_desde')} />
                   <Input label="Período hasta"  type="date" {...formDetalle.register('fecha_hasta')} />
                 </div>
@@ -2587,13 +2596,13 @@ export function LiquidacionesTab() {
             disabled={editandoAdel?.liquidacion_origen_id != null}
             {...formEditAdel.register('fecha')}
           />
-          <Input
-            label="Monto ($)"
-            type="number"
-            step="100"
-            disabled={editandoAdel?.liquidacion_origen_id != null}
-            {...formEditAdel.register('monto')}
-          />
+          <Controller name="monto" control={formEditAdel.control} render={({ field }) => (
+            <InputMonto
+              label="Monto ($)"
+              disabled={editandoAdel?.liquidacion_origen_id != null}
+              value={field.value} onChange={field.onChange} onBlur={field.onBlur}
+            />
+          )} />
           <Input label="Descripción" placeholder="Ej: Adelanto semana del 10/3" {...formEditAdel.register('descripcion')} />
 
           {/* Forma de pago — no aplica a los adelantos generados por un cierre
@@ -2702,7 +2711,9 @@ export function LiquidacionesTab() {
             />
             <Input label="Fecha" type="date" {...formAdel.register('fecha')} />
           </div>
-          <Input label="Monto ($)" type="number" step="100" placeholder="0" {...formAdel.register('monto')} />
+          <Controller name="monto" control={formAdel.control} render={({ field }) => (
+            <InputMonto label="Monto ($)" placeholder="0" value={field.value} onChange={field.onChange} onBlur={field.onBlur} />
+          )} />
           <Input label="Descripción" placeholder="Ej: Adelanto semana del 10/3" {...formAdel.register('descripcion')} />
 
           {/* Forma de pago: efectivo (con recibo para firmar) o transferencia. */}
@@ -2884,7 +2895,9 @@ export function LiquidacionesTab() {
             <Input label="Desde" type="date" {...formEst.register('fecha_desde')} />
             <Input label="Hasta" type="date" {...formEst.register('fecha_hasta')} />
           </div>
-          <Input label="Monto por día ($)" type="number" step="1000" placeholder="0" {...formEst.register('monto_dia')} />
+          <Controller name="monto_dia" control={formEst.control} render={({ field }) => (
+            <InputMonto label="Monto por día ($)" placeholder="0" value={field.value} onChange={field.onChange} onBlur={field.onBlur} />
+          )} />
           <Input label="Observación" placeholder="Ej: espera para descargar en TPR" {...formEst.register('obs')} />
 
           {/* Preview del total: días corridos (desde→hasta inclusive) × $/día */}

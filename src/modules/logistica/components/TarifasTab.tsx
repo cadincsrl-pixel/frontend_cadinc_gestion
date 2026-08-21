@@ -6,7 +6,7 @@ import {
   useUpdateChofer,
 } from '../hooks/useLogistica'
 import { Button } from '@/components/ui/Button'
-import { Input }  from '@/components/ui/Input'
+import { InputMonto } from '@/components/ui/InputMonto'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 
@@ -88,34 +88,19 @@ export function TarifasTab() {
                 {editando === c.id ? (
                   <>
                     <td className="px-4 py-2">
-                      <input
-                        type="number"
-                        value={basicoDia}
-                        onChange={e => setBasicoDia(e.target.value)}
-                        className="border border-gris rounded px-2 py-1 text-sm font-mono w-28 focus:outline-none focus:border-azul"
-                        step="100"
-                        placeholder="0"
-                      />
+                      <div className="w-28">
+                        <InputMonto value={basicoDia} onChange={setBasicoDia} placeholder="0" className="font-mono" />
+                      </div>
                     </td>
                     <td className="px-4 py-2">
-                      <input
-                        type="number"
-                        value={precioKmCargado}
-                        onChange={e => setPrecioKmCargado(e.target.value)}
-                        className="border border-gris rounded px-2 py-1 text-sm font-mono w-24 focus:outline-none focus:border-azul"
-                        step="1"
-                        placeholder="0"
-                      />
+                      <div className="w-24">
+                        <InputMonto value={precioKmCargado} onChange={setPrecioKmCargado} placeholder="0" className="font-mono" />
+                      </div>
                     </td>
                     <td className="px-4 py-2">
-                      <input
-                        type="number"
-                        value={precioKmVacio}
-                        onChange={e => setPrecioKmVacio(e.target.value)}
-                        className="border border-gris rounded px-2 py-1 text-sm font-mono w-24 focus:outline-none focus:border-azul"
-                        step="1"
-                        placeholder="0"
-                      />
+                      <div className="w-24">
+                        <InputMonto value={precioKmVacio} onChange={setPrecioKmVacio} placeholder="0" className="font-mono" />
+                      </div>
                     </td>
                     <td className="px-4 py-2 flex gap-1 justify-end">
                       <Button variant="primary" size="sm" loading={updating} onClick={handleSave}>✓</Button>
@@ -183,31 +168,22 @@ export function TarifasTab() {
 
               {enEdicion && (
                 <div className="mt-3 pt-3 border-t border-gris flex flex-col gap-2" onClick={e => e.stopPropagation()}>
-                  <Input
+                  <InputMonto
                     label="Básico/día"
-                    type="number"
-                    inputMode="numeric"
                     value={basicoDia}
-                    onChange={e => setBasicoDia(e.target.value)}
-                    step="100"
+                    onChange={setBasicoDia}
                     placeholder="0"
                   />
-                  <Input
+                  <InputMonto
                     label="🚛 $/km cargado"
-                    type="number"
-                    inputMode="numeric"
                     value={precioKmCargado}
-                    onChange={e => setPrecioKmCargado(e.target.value)}
-                    step="1"
+                    onChange={setPrecioKmCargado}
                     placeholder="0"
                   />
-                  <Input
+                  <InputMonto
                     label="🔲 $/km vacío"
-                    type="number"
-                    inputMode="numeric"
                     value={precioKmVacio}
-                    onChange={e => setPrecioKmVacio(e.target.value)}
-                    step="1"
+                    onChange={setPrecioKmVacio}
                     placeholder="0"
                   />
                   <div className="flex gap-2 justify-end">

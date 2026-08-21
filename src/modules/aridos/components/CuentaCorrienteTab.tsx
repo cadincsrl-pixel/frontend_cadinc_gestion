@@ -1,10 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { InputMonto } from '@/components/ui/InputMonto'
 import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
@@ -324,7 +325,7 @@ function PagosDeLaCantera({ canteraId }: { canteraId: number }) {
 function RegistrarPagoCanteraModal({ cantera, onClose }: { cantera: CuentaCorrienteCantera | null; onClose: () => void }) {
   const toast = useToast()
   const { mutate: crear, isPending } = useCreatePagoCantera()
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<CobroForm>({
+  const { register, control, handleSubmit, reset, formState: { errors } } = useForm<CobroForm>({
     defaultValues: { fecha: toISO(new Date()), monto: '', medio: 'transferencia', obs: '' },
   })
 
@@ -371,8 +372,12 @@ function RegistrarPagoCanteraModal({ cantera, onClose }: { cantera: CuentaCorrie
         )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input label="Fecha" type="date" {...register('fecha', { required: true })} />
-          <Input label="Monto ($)" type="number" step="0.01" placeholder="0.00" error={errors.monto?.message}
-            {...register('monto', { required: 'Requerido', validate: v => Number(v) > 0 || 'Debe ser mayor a 0' })} />
+          <Controller name="monto" control={control}
+            rules={{ required: 'Requerido', validate: v => Number(v) > 0 || 'Debe ser mayor a 0' }}
+            render={({ field }) => (
+              <InputMonto label="Monto ($)" placeholder="0,00" error={errors.monto?.message}
+                value={field.value} onChange={field.onChange} onBlur={field.onBlur} />
+            )} />
         </div>
         <Select label="Medio de pago" options={[
           { value: 'transferencia', label: 'Transferencia' },
@@ -479,7 +484,7 @@ function CobrosDelCliente({ clienteId }: { clienteId: number }) {
 function RegistrarCobroModal({ cliente, onClose }: { cliente: CuentaCorrienteArido | null; onClose: () => void }) {
   const toast = useToast()
   const { mutate: crear, isPending } = useCreateCobroArido()
-  const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<CobroForm>({
+  const { register, control, handleSubmit, reset, setValue, formState: { errors } } = useForm<CobroForm>({
     defaultValues: { fecha: toISO(new Date()), monto: '', medio: 'transferencia', obs: '' },
   })
 
@@ -577,8 +582,12 @@ function RegistrarCobroModal({ cliente, onClose }: { cliente: CuentaCorrienteAri
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input label="Fecha" type="date" {...register('fecha', { required: true })} />
-          <Input label="Monto ($)" type="number" step="0.01" placeholder="0.00" error={errors.monto?.message}
-            {...register('monto', { required: 'Requerido', validate: v => Number(v) > 0 || 'Debe ser mayor a 0' })} />
+          <Controller name="monto" control={control}
+            rules={{ required: 'Requerido', validate: v => Number(v) > 0 || 'Debe ser mayor a 0' }}
+            render={({ field }) => (
+              <InputMonto label="Monto ($)" placeholder="0,00" error={errors.monto?.message}
+                value={field.value} onChange={field.onChange} onBlur={field.onBlur} />
+            )} />
         </div>
         <Select label="Medio de pago" options={[
           { value: 'transferencia', label: 'Transferencia' },

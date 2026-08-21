@@ -1,10 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { InputMonto } from '@/components/ui/InputMonto'
 import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
@@ -203,7 +204,9 @@ export function AcopiosTab() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Select label="Cantera de origen" options={canteraOptions} {...formAcopio.register('cantera_id')} />
             <Select label="Unidad (camión + chofer)" options={unidadOptions} {...formAcopio.register('unidad_id')} />
-            <Input label="Costo cantera ($ total)" type="number" step="0.01" placeholder="Lo que cobra la cantera" {...formAcopio.register('costo_total')} />
+            <Controller name="costo_total" control={formAcopio.control} render={({ field }) => (
+              <InputMonto label="Costo cantera ($ total)" placeholder="Lo que cobra la cantera" value={field.value} onChange={field.onChange} onBlur={field.onBlur} />
+            )} />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Input label="Flete externo" placeholder="Si no es unidad propia" {...formAcopio.register('flete_obs')} />

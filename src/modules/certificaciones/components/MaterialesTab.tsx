@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useMemo } from 'react'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { useMateriales, useCreateMaterial, useUpdateMaterial, useDeleteMaterial } from '../hooks/useCertificaciones'
 import { useStockMateriales } from '../hooks/useStock'
 import { useObras } from '@/modules/tarja/hooks/useObras'
@@ -10,6 +10,7 @@ import { toISO } from '@/lib/utils/dates'
 import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
 import { Input }    from '@/components/ui/Input'
+import { InputMonto } from '@/components/ui/InputMonto'
 import { Select }   from '@/components/ui/Select'
 import { Combobox } from '@/components/ui/Combobox'
 import { useToast } from '@/components/ui/Toast'
@@ -714,7 +715,9 @@ export function MaterialesTab() {
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <Input label="Cantidad" type="number" step="0.001" {...formEdit.register('cantidad')} />
             <Select label="Unidad" options={UNIDADES} {...formEdit.register('unidad')} />
-            <Input label="Precio unitario ($)" type="number" step="1" {...formEdit.register('precio_unit')} />
+            <Controller name="precio_unit" control={formEdit.control} render={({ field }) => (
+              <InputMonto label="Precio unitario ($)" value={field.value} onChange={field.onChange} />
+            )} />
           </div>
           <Input label="Observaciones" {...formEdit.register('obs')} />
         </div>

@@ -24,12 +24,13 @@ import { toISO } from '@/lib/utils/dates'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { InputMonto } from '@/components/ui/InputMonto'
 import { Select } from '@/components/ui/Select'
 import { Combobox } from '@/components/ui/Combobox'
 import { Badge } from '@/components/ui/Badge'
 import { AuditInfo } from '@/components/ui/AuditInfo'
 import { useToast } from '@/components/ui/Toast'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { usePermisos } from '@/hooks/usePermisos'
@@ -125,8 +126,10 @@ export function ContratistasPanel({ obraCod, readonly = false }: Props) {
     resolver: zodResolver(schema),
     defaultValues: DEFAULTS,
   })
-  const formCert = useForm<{ monto: number; desc: string; estado: 'pendiente' | 'cerrado' }>()
-  const formCotiz = useForm<{ cotizacion: number; cotizacion_obs: string }>()
+  // monto/cotizacion: number al precargar, string (formato máquina de
+  // InputMonto) cuando el usuario tipea — el submit hace Number() igual.
+  const formCert = useForm<{ monto: number | string; desc: string; estado: 'pendiente' | 'cerrado' }>()
+  const formCotiz = useForm<{ cotizacion: number | string; cotizacion_obs: string }>()
 
   // Contratista en edición. Se deriva del array `todos`, que se refresca al
   // invalidar CONTRAT_KEY tras subir/quitar el DNI → así el bloque de
@@ -275,7 +278,7 @@ export function ContratistasPanel({ obraCod, readonly = false }: Props) {
     setModalCert({ contratId, semKey: sem })
   }
 
-  function handleSaveCert(data: { monto: number; desc: string; estado: 'pendiente' | 'cerrado' }) {
+  function handleSaveCert(data: { monto: number | string; desc: string; estado: 'pendiente' | 'cerrado' }) {
     if (modalCert === null) return
     upsertCert(
       {
@@ -303,11 +306,12 @@ export function ContratistasPanel({ obraCod, readonly = false }: Props) {
     setModalCotiz(contratId)
   }
 
-  function handleSaveCotiz(data: { cotizacion: number; cotizacion_obs: string }) {
+  function handleSaveCotiz(data: { cotizacion: number | string; cotizacion_obs: string }) {
     if (modalCotiz === null) return
-    // valueAsNumber da NaN con input vacío; JSON serializa NaN como null y
-    // eso borraría la cotización sin querer. Para borrar está el botón explícito.
-    if (Number.isNaN(data.cotizacion) || data.cotizacion < 0) {
+    // Input vacío daría Number('') = 0 y borraría la cotización sin querer.
+    // Para borrar está el botón explícito.
+    const cotizacion = data.cotizacion === '' ? NaN : Number(data.cotizacion)
+    if (Number.isNaN(cotizacion) || cotizacion < 0) {
       toast('Ingresá un monto válido', 'err')
       return
     }
@@ -316,7 +320,7 @@ export function ContratistasPanel({ obraCod, readonly = false }: Props) {
         obraCod,
         contratId: modalCotiz,
         dto: {
-          cotizacion:     Number(data.cotizacion),
+          cotizacion,
           cotizacion_obs: data.cotizacion_obs.trim() || null,
         },
       },
@@ -834,14 +838,14 @@ export function ContratistasPanel({ obraCod, readonly = false }: Props) {
                 Monto total acordado para el trabajo en esta obra. Cada certificación
                 semanal se descuenta de este monto y el saldo restante se ve en el panel.
               </p>
-              <Input
-                label="Monto cotizado ($)"
-                type="number"
-                step="1000"
-                min="0"
-                placeholder="0"
-                {...formCotiz.register('cotizacion', { valueAsNumber: true })}
-              />
+              <Controller name="cotizacion" control={formCotiz.control} render={({ field }) => (
+                <InputMonto
+                  label="Monto cotizado ($)"
+                  placeholder="0"
+                  value={field.value}
+                  onChange={field.onChange}
+                />
+              )} />
               <Input
                 label="Observaciones"
                 placeholder="Alcance, condiciones, adicionales (opcional)"
@@ -943,13 +947,14 @@ export function ContratistasPanel({ obraCod, readonly = false }: Props) {
                   </span>
                 )}
               </div>
-              <Input
-                label="Monto ($)"
-                type="number"
-                step="100"
-                placeholder="0"
-                {...formCert.register('monto')}
-              />
+              <Controller name="monto" control={formCert.control} render={({ field }) => (
+                <InputMonto
+                  label="Monto ($)"
+                  placeholder="0"
+                  value={field.value}
+                  onChange={field.onChange}
+                />
+              )} />
               <Input
                 label="Descripción"
                 placeholder="Ej: Instalación eléctrica piso 2"

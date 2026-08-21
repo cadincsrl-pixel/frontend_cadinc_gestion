@@ -11,12 +11,13 @@
  */
 
 import { useEffect, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { InputMonto } from '@/components/ui/InputMonto'
 import { Badge } from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
 import { toISO } from '@/lib/utils/dates'
@@ -27,7 +28,7 @@ import {
 import { OficinaAsignacionesEditor } from './OficinaAsignacionesEditor'
 import type { OficinaPersona, OficinaAsignacion } from '@/types/domain.types'
 
-// ── Schemas tipados (montos como string de <input type="number">) ──
+// ── Schemas tipados (montos como string en formato máquina de InputMonto) ──
 
 const montoValido = (v: string) => {
   const n = Number(v)
@@ -87,7 +88,7 @@ function ModalAlta({ open, onClose }: { open: boolean; onClose: () => void }) {
   const toast = useToast()
   const { mutate: crear, isPending } = useCreateOficinaPersona()
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<AltaForm>({
+  const { register, control, handleSubmit, reset, formState: { errors } } = useForm<AltaForm>({
     resolver: zodResolver(altaSchema),
     defaultValues: { nombre: '', costo_mensual: '', desde: '' },
   })
@@ -132,16 +133,16 @@ function ModalAlta({ open, onClose }: { open: boolean; onClose: () => void }) {
       <div className="flex flex-col gap-3">
         <Input label="Nombre" placeholder="Ej: María González" error={errors.nombre?.message} {...register('nombre')} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Input
-            label="Sueldo mensual ($)"
-            type="number"
-            inputMode="decimal"
-            min={0}
-            step="any"
-            placeholder="0"
-            error={errors.costo_mensual?.message}
-            {...register('costo_mensual')}
-          />
+          <Controller name="costo_mensual" control={control} render={({ field }) => (
+            <InputMonto
+              label="Sueldo mensual ($)"
+              placeholder="0"
+              error={errors.costo_mensual?.message}
+              value={field.value}
+              onChange={field.onChange}
+              onBlur={field.onBlur}
+            />
+          )} />
           <Input
             label="Vigente desde"
             type="date"
@@ -306,15 +307,15 @@ function ModalEdicion({ open, onClose, persona }: {
               </p>
               <div className="flex items-start gap-2 flex-wrap">
                 <div className="w-36">
-                  <Input
-                    type="number"
-                    inputMode="decimal"
-                    min={0}
-                    step="any"
-                    placeholder="Sueldo $"
-                    error={sueldoForm.formState.errors.costo_mensual?.message}
-                    {...sueldoForm.register('costo_mensual')}
-                  />
+                  <Controller name="costo_mensual" control={sueldoForm.control} render={({ field }) => (
+                    <InputMonto
+                      placeholder="Sueldo $"
+                      error={sueldoForm.formState.errors.costo_mensual?.message}
+                      value={field.value}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                    />
+                  )} />
                 </div>
                 <div className="w-40">
                   <Input

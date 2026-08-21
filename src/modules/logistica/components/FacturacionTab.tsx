@@ -14,6 +14,7 @@ import {
 import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input }  from '@/components/ui/Input'
+import { InputMonto } from '@/components/ui/InputMonto'
 import { Select } from '@/components/ui/Select'
 import { Combobox } from '@/components/ui/Combobox'
 import { Badge }  from '@/components/ui/Badge'
@@ -1109,7 +1110,9 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <Input label="$/ton NETA (sin IVA)" type="number" step="0.01" placeholder="0.00" {...form.register('valor_ton_neta')} />
+              <Controller name="valor_ton_neta" control={form.control} render={({ field }) => (
+                <InputMonto label="$/ton NETA (sin IVA)" placeholder="0,00" value={field.value} onChange={field.onChange} onBlur={field.onBlur} />
+              )} />
               {Number(watchNeta) > 0 && (
                 <p className="text-[11px] text-verde font-bold mt-1 px-1">
                   Final c/IVA (21%): ${netaAFinal(Number(watchNeta)).toLocaleString('es-AR', { minimumFractionDigits: 2 })}/ton
@@ -1193,7 +1196,12 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <Input label="$/ton NETA (sin IVA)" type="number" step="0.01" {...formEdit.register('valor_ton_neta')} />
+              {/* 4 decimales: el prefill de edición viene de finalANeta con 4
+                  decimales para que el roundtrip neta→final devuelva el valor
+                  original exacto — no truncar a 2. */}
+              <Controller name="valor_ton_neta" control={formEdit.control} render={({ field }) => (
+                <InputMonto label="$/ton NETA (sin IVA)" decimales={4} value={field.value} onChange={field.onChange} onBlur={field.onBlur} />
+              )} />
               {Number(watchEditNeta) > 0 && (
                 <p className="text-[11px] text-verde font-bold mt-1 px-1">
                   Final c/IVA (21%): ${netaAFinal(Number(watchEditNeta)).toLocaleString('es-AR', { minimumFractionDigits: 2 })}/ton

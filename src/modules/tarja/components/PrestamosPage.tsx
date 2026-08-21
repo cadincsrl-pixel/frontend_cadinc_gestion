@@ -8,6 +8,7 @@ import { Combobox }   from '@/components/ui/Combobox'
 import { Button }     from '@/components/ui/Button'
 import { Modal }      from '@/components/ui/Modal'
 import { Input }      from '@/components/ui/Input'
+import { InputMonto } from '@/components/ui/InputMonto'
 import { Pagination } from '@/components/ui/Pagination'
 import { useToast }   from '@/components/ui/Toast'
 import { usePermisos }    from '@/hooks/usePermisos'
@@ -116,12 +117,11 @@ function ModalForm({ open, tipo, legInicial = '', onClose }: ModalFormProps) {
             ))}
           </select>
         </div>
-        <Input
+        <InputMonto
           label="Monto ($)"
-          type="number"
           placeholder="0"
           value={monto}
-          onChange={e => setMonto(e.target.value)}
+          onChange={setMonto}
         />
         <Input
           label="Concepto (opcional)"
