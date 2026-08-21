@@ -66,7 +66,7 @@ function defaultsFrom(v: FlotaVehiculo): FormData {
     color:                v.color ?? '',
     vin:                  v.vin ?? '',
     titular:              v.titular ?? '',
-    km_actuales:          String(v.km_actuales ?? 0),
+    km_actuales:          String(Math.round(v.km_actuales ?? 0)),
     estado:               v.estado,
     mobilquest_device_id: v.mobilquest_device_id ?? '',
     obs:                  v.obs ?? '',

@@ -80,7 +80,7 @@ export function VehiculoServiciosSection({ vehiculo }: Props) {
       tipo_id:       '',
       tipo_libre:    '',
       fecha:         toISO(new Date()),
-      km_service:    String(vehiculo.km_actuales || 0),
+      km_service:    String(Math.round(vehiculo.km_actuales || 0)),
       intervalo:     '10000',
       fecha_proximo: '',
       descripcion:   '',
@@ -94,7 +94,7 @@ export function VehiculoServiciosSection({ vehiculo }: Props) {
       tipo_id:       '',
       tipo_libre:    '',
       fecha:         toISO(new Date()),
-      km_service:    String(vehiculo.km_actuales || 0),
+      km_service:    String(Math.round(vehiculo.km_actuales || 0)),
       intervalo:     '10000',
       fecha_proximo: '',
       descripcion:   '',
@@ -111,10 +111,10 @@ export function VehiculoServiciosSection({ vehiculo }: Props) {
       tipo_id:       s.tipo_id != null ? String(s.tipo_id) : '',
       tipo_libre:    s.tipo_libre ?? '',
       fecha:         s.fecha,
-      km_service:    String(s.km_service ?? 0),
+      km_service:    String(Math.round(s.km_service ?? 0)),
       // El form usa "intervalo" (cada cuántos km); reconstruimos desde el
       // km absoluto guardado: intervalo = km_proximo − km_service.
-      intervalo:     s.km_proximo != null ? String(s.km_proximo - (s.km_service ?? 0)) : '',
+      intervalo:     s.km_proximo != null ? String(Math.round(s.km_proximo - (s.km_service ?? 0))) : '',
       fecha_proximo: s.fecha_proximo ?? '',
       descripcion:   s.descripcion ?? '',
       costo:         s.costo != null ? String(s.costo) : '',
@@ -138,7 +138,7 @@ export function VehiculoServiciosSection({ vehiculo }: Props) {
       toast('Elegí un tipo del catálogo o escribí uno libre', 'err')
       return
     }
-    const km_service = Number(data.km_service) || 0
+    const km_service = Math.round(Number(data.km_service)) || 0
     const intervalo  = data.intervalo ? Number(data.intervalo) : 0
     // El backend guarda el km absoluto del próximo service. Si no hay
     // intervalo válido (ej. un arreglo puntual), queda sin próximo.
