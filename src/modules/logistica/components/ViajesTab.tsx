@@ -1123,7 +1123,7 @@ export function ViajesTab() {
                         {esCargado ? '🚛 Cargado' : '🔲 Vacío'}
                       </span>
                       {/* Estado de facturación — solo empresas con modalidad
-                          'facturacion' (una factura por viaje). Se excluyen
+                          'facturacion'. Se excluyen
                           lugares operativos (no facturables), igual que en el
                           tab Facturación. */}
                       {esCargado && empresa?.modalidad_cobro === 'facturacion' && (

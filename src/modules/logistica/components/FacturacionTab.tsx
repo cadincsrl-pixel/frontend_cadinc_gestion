@@ -108,7 +108,7 @@ function EmpresaForm({ form }: { form: any }) {
         label="Modalidad de cobro"
         options={[
           { value: 'liquido_producto', label: '🤝 Líquido producto — la empresa emite la liquidación' },
-          { value: 'facturacion',      label: '🧾 Facturación — emitimos una factura por cada viaje' },
+          { value: 'facturacion',      label: '🧾 Facturación — emitimos factura por uno o varios viajes' },
         ]}
         {...form.register('modalidad_cobro')}
       />
@@ -1527,11 +1527,11 @@ function ModalCobrarFacturas({
             )}
             {visibles.map(c => {
               const checked = seleccion.has(c.id)
-              // Facturación: una factura = un viaje → remito y fechas salen
-              // del tramo vinculado. Líquido producto: el cobro agrupa varios
-              // remitos → se muestra el período y la cantidad.
+              // Factura de UN viaje → remito y fechas salen del tramo
+              // vinculado. Factura de varios viajes o líquido producto →
+              // se muestra el período y la cantidad de remitos.
               const tramosDelCobro = tramos.filter(t => t.cobro_id === c.id)
-              const tramo  = c.factura_nro ? tramosDelCobro[0] : undefined
+              const tramo  = c.factura_nro && tramosDelCobro.length === 1 ? tramosDelCobro[0] : undefined
               const remito = tramo ? (tramo.remito_descarga ?? tramo.remito_carga) : null
               return (
                 <label
@@ -1545,10 +1545,10 @@ function ModalCobrarFacturas({
                       {remito && <span className="font-mono font-normal text-gris-dark"> · Remito {remito}</span>}
                     </div>
                     <div className="text-[11px] text-gris-dark">
-                      {c.factura_nro ? (
+                      {tramo ? (
                         <>
-                          {tramo?.fecha_carga && <>carga {fmtFecha(tramo.fecha_carga)} · </>}
-                          {tramo?.fecha_descarga && <>descarga {fmtFecha(tramo.fecha_descarga)} · </>}
+                          {tramo.fecha_carga && <>carga {fmtFecha(tramo.fecha_carga)} · </>}
+                          {tramo.fecha_descarga && <>descarga {fmtFecha(tramo.fecha_descarga)} · </>}
                           {fmtTon(c.toneladas_totales)}
                         </>
                       ) : (
@@ -1781,8 +1781,8 @@ function FacturacionSection() {
   function abrirCobrar(empresa: EmpresaTransportista) {
     setEmpresaCobro(empresa)
     const mis_tramos = tramosPendientes.filter(t => t.empresa_id === empresa.id)
-    // Facturación: una factura corresponde a UN viaje — arranca sin selección
-    // para que el user elija cuál. Líquido producto: preselecciona todos.
+    // Facturación: arranca sin selección para que el user elija qué viajes
+    // cubre esta factura (uno o varios). Líquido producto: preselecciona todos.
     setSelectedIds(empresa.modalidad_cobro === 'facturacion' ? new Set() : new Set(mis_tramos.map(t => t.id)))
     form.reset({ fecha: toISO(new Date()), obs: '', factura_nro: '' })
     setBusquedaRemito('')
@@ -1802,11 +1802,6 @@ function FacturacionSection() {
   }
 
   function toggleTramo(id: number) {
-    // Facturación: selección exclusiva (una factura = un viaje).
-    if (empresaCobro?.modalidad_cobro === 'facturacion') {
-      setSelectedIds(prev => (prev.has(id) ? new Set() : new Set([id])))
-      return
-    }
     setSelectedIds(prev => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
@@ -1819,8 +1814,7 @@ function FacturacionSection() {
     if (!empresaCobro) return
     const esFact = empresaCobro.modalidad_cobro === 'facturacion'
     const modalTramos = tramosPendientes.filter(t => t.empresa_id === empresaCobro.id && selectedIds.has(t.id))
-    if (modalTramos.length === 0) { toast(esFact ? 'Seleccioná el viaje a facturar' : 'Seleccioná al menos un remito', 'err'); return }
-    if (esFact && modalTramos.length !== 1) { toast('Una factura corresponde a UN viaje — seleccioná uno solo', 'err'); return }
+    if (modalTramos.length === 0) { toast(esFact ? 'Seleccioná al menos un viaje a facturar' : 'Seleccioná al menos un remito', 'err'); return }
     if (esFact && !(data.factura_nro ?? '').trim()) { toast('Cargá el nº de la factura emitida', 'err'); return }
     const desglose    = calcDesglose(modalTramos, empresaCobro.id)
     // Guard anti-subfacturación: un remito sin tarifa para su cantera/fecha
@@ -1892,7 +1886,7 @@ function FacturacionSection() {
       onError: (err: any) => {
         const code = err?.body?.error
         if (code === 'FALTA_FACTURA')         toast('Cargá nº y fecha de la factura', 'err')
-        else if (code === 'FACTURA_UN_VIAJE') toast('Una factura corresponde a un solo viaje', 'err')
+        else if (code === 'FACTURA_SIN_VIAJES') toast('Seleccioná al menos un viaje a facturar', 'err')
         else toast('Error al registrar', 'err')
       },
     })
@@ -2064,7 +2058,8 @@ function FacturacionSection() {
                   <div className="mt-3 bg-gris/30 rounded-card divide-y divide-gris-mid">
                     {porCobrar.map(c => {
                       const tramosDelCobro = (tramos as Tramo[]).filter(t => t.cobro_id === c.id)
-                      const t0 = c.factura_nro ? tramosDelCobro[0] : undefined
+                      // Factura de varios viajes → cae al render de período + cantidad.
+                      const t0 = c.factura_nro && tramosDelCobro.length === 1 ? tramosDelCobro[0] : undefined
                       const remito = t0 ? (t0.remito_descarga ?? t0.remito_carga) : null
                       return (
                         <div
@@ -2436,7 +2431,7 @@ function FacturacionSection() {
                         <div className="divide-y divide-gris/50">
                           {cs.map(c => {
                             const tramosDelCobro = (tramos as Tramo[]).filter(t => t.cobro_id === c.id)
-                            const t0 = tramosDelCobro[0]
+                            const t0 = tramosDelCobro.length === 1 ? tramosDelCobro[0] : undefined
                             const remito = t0 ? (t0.remito_descarga ?? t0.remito_carga) : null
                             return (
                               <div
@@ -2452,6 +2447,9 @@ function FacturacionSection() {
                                   {remito && <span className="text-gris-dark"> · Remito <span className="font-mono">{remito}</span></span>}
                                   {t0?.fecha_carga && <span className="text-gris-dark"> · carga {fmtFechaCorta(t0.fecha_carga)}</span>}
                                   {t0?.fecha_descarga && <span className="text-gris-dark"> · descarga {fmtFechaCorta(t0.fecha_descarga)}</span>}
+                                  {!t0 && tramosDelCobro.length > 1 && (
+                                    <span className="text-gris-dark"> · {tramosDelCobro.length} remitos · {fmtFechaCorta(c.fecha_desde)} → {fmtFechaCorta(c.fecha_hasta)}</span>
+                                  )}
                                   <span className="text-gris-dark"> · {fmtTon(c.toneladas_totales)}</span>
                                 </div>
                                 <div className="font-mono font-bold text-verde shrink-0">{fmtM(c.total)}</div>
@@ -2465,10 +2463,11 @@ function FacturacionSection() {
                   const c = g.cobros[0]!
                   const cobrado = c.estado === 'cobrado'
                   const esFactCobro = !!c.factura_nro
-                  // Datos del viaje (facturación: 1 factura = 1 viaje).
+                  // Datos del viaje. Factura de un solo viaje → detalle del
+                  // tramo; varios viajes → cae al render de período + remitos.
                   const remitos = remitosPorCobro.get(c.id) ?? []
                   const tramosDelCobro = (tramos as Tramo[]).filter(t => t.cobro_id === c.id)
-                  const t0 = esFactCobro ? tramosDelCobro[0] : undefined
+                  const t0 = esFactCobro && tramosDelCobro.length === 1 ? tramosDelCobro[0] : undefined
                   // Estado documental: qué adjuntos tiene (no borrados).
                   const adjs = (c.cobros_adjuntos ?? []).filter(a => a.deleted_at == null)
                   const tieneComprobante = adjs.some(a => a.tipo === 'comprobante')
@@ -2510,6 +2509,7 @@ function FacturacionSection() {
                               {fmtFecha(c.fecha_desde)} → {fmtFecha(c.fecha_hasta)}
                               {remitos.length > 0 && <> · {remitos.length} remito{remitos.length !== 1 ? 's' : ''}</>}
                               {' · '}{fmtTon(c.toneladas_totales)}
+                              {esFactCobro && c.factura_fecha && <> · emitida {fmtFechaCorta(c.factura_fecha)}</>}
                             </>
                           )}
                         </div>
@@ -2844,18 +2844,17 @@ function FacturacionSection() {
               <div className="font-bold text-azul">{empresaCobro.nombre}</div>
               <div className="text-xs text-azul-mid mt-0.5">
                 {empresaCobro.modalidad_cobro === 'facturacion'
-                  ? 'Seleccioná el viaje facturado — una factura por viaje'
+                  ? 'Seleccioná el o los viajes que cubre esta factura'
                   : 'Seleccioná los remitos a incluir en este cobro'}
               </div>
             </div>
 
-            {/* Lista de remitos con checkboxes (selección exclusiva si es facturación) */}
+            {/* Lista de remitos con checkboxes (multi-selección en ambas modalidades) */}
             <div>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold text-gris-dark uppercase tracking-wider">
                   {empresaCobro.modalidad_cobro === 'facturacion' ? 'Viajes sin facturar' : 'Remitos pendientes'}
                 </span>
-                {empresaCobro.modalidad_cobro !== 'facturacion' && (
                 <div className="flex gap-3 text-xs">
                   <button className="text-azul hover:underline"
                     onClick={() => setSelectedIds(prev => new Set([...prev, ...modalDesgloseFiltrado.map(d => d.t.id)]))}>
@@ -2870,7 +2869,6 @@ function FacturacionSection() {
                     {busquedaRemito ? 'Ninguno (filtrados)' : 'Ninguno'}
                   </button>
                 </div>
-                )}
               </div>
               {/* Buscador de remitos del modal */}
               <Input
