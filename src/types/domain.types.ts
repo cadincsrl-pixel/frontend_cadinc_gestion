@@ -417,6 +417,9 @@ export interface Camion extends AuditFields {
   // CADINC y los gastos los pone él. Excluido de Gastos > Reportes
   // (migración 20260729f).
   es_propio?: boolean
+  // Vencimiento de la RTO vigente (lo adjunta el backend en getAll; null si
+  // el camión no tiene RTO cargada en Documentos). Espejo de Batea.
+  rto_vence_el?: string | null
 }
 
 // ── GPS Sync ──

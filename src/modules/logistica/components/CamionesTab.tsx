@@ -8,6 +8,7 @@ import { Input }  from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Badge }  from '@/components/ui/Badge'
 import { AuditInfo } from '@/components/ui/AuditInfo'
+import { RtoChip } from './RtoChip'
 import { useToast } from '@/components/ui/Toast'
 import { useForm } from 'react-hook-form'
 import { usePermisos } from '@/hooks/usePermisos'
@@ -179,14 +180,14 @@ export function CamionesTab() {
         <table className="w-full border-collapse">
           <thead>
             <tr>
-              {['Patente', 'Modelo', 'Tipo', 'Chofer', 'Año', 'Km actuales', 'Faltan p/ service', 'Estado', ''].map(h => (
+              {['Patente', 'Modelo', 'Tipo', 'Chofer', 'Año', 'Km actuales', 'Faltan p/ service', 'RTO vence', 'Estado', ''].map(h => (
                 <th key={h} className="bg-azul text-white text-xs font-bold px-4 py-3 text-left uppercase tracking-wide">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {camionesFiltrados.length === 0 ? (
-              <tr><td colSpan={9} className="text-center py-8 text-gris-dark text-sm">No hay camiones registrados.</td></tr>
+              <tr><td colSpan={10} className="text-center py-8 text-gris-dark text-sm">No hay camiones registrados.</td></tr>
             ) : camionesFiltrados.map(c => {
               const est = estadoPorCamion.get(c.id)
               const km = est?.km_actuales ?? c.km_actuales ?? 0
@@ -225,6 +226,7 @@ export function CamionesTab() {
                 <td className="px-4 py-3 font-mono text-xs">
                   <KmFaltantes estado={est} />
                 </td>
+                <td className="px-4 py-3"><RtoChip venceEl={c.rto_vence_el} /></td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <Badge
@@ -279,6 +281,7 @@ export function CamionesTab() {
                   <span>📏 {km > 0 ? `${Math.round(km).toLocaleString('es-AR')} km` : '—'}</span>
                   <KmFaltantes estado={est} />
                 </div>
+                <div className="mt-1"><RtoChip venceEl={c.rto_vence_el} /></div>
               </div>
               <div className="flex flex-col items-end gap-1 shrink-0">
                 <Badge
