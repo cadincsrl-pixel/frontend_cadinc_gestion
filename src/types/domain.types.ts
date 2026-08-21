@@ -1195,11 +1195,14 @@ export interface UpsertHsExtrasLoteDto {
 }
 
 // ── Préstamos ──
+// 'incobrable' (2026-08-20): baja de saldo por renuncia u otra causa. Salda
+// como un descuento pero NO cuenta como plata recuperada ni descuento de
+// semana — los cierres y exports que filtran tipo='descontado' lo excluyen.
 export interface Prestamo {
   id:         number
   leg:        string
   sem_key:    string
-  tipo:       'otorgado' | 'descontado'
+  tipo:       'otorgado' | 'descontado' | 'incobrable'
   monto:      number
   concepto:   string | null
   created_by: string | null

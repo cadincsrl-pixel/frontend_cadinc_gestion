@@ -131,7 +131,7 @@ export interface ContratistaRow {
 export interface PrestamoRow {
   leg:            string
   nom:            string
-  tipo:           'Otorgado' | 'Descontado'
+  tipo:           'Otorgado' | 'Descontado' | 'Incobrable'
   monto:          number
   concepto:       string
   semKey:         string

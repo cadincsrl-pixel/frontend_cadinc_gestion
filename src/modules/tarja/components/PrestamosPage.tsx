@@ -140,18 +140,23 @@ interface CardOperarioProps {
   nombre:     string
   movs:       Prestamo[]
   saldo:      number
+  /** Total dado de baja como incobrable (histórico del operario). */
+  incobrable: number
   puedeCrear: boolean
   perfiles:   Map<string, string>
   onNuevo:    (tipo: 'otorgado' | 'descontado', leg: string) => void
+  onIncobrable: (leg: string, saldo: number) => void
   onDelete:   (id: number) => void
 }
 
-function CardOperario({ leg, nombre, movs, saldo, puedeCrear, perfiles, onNuevo, onDelete }: CardOperarioProps) {
+function CardOperario({ leg, nombre, movs, saldo, incobrable, puedeCrear, perfiles, onNuevo, onIncobrable, onDelete }: CardOperarioProps) {
   const [expandido, setExpandido] = useState(false)
 
   const movsOrdenados = [...movs].sort((a, b) => a.created_at.localeCompare(b.created_at))
 
   const saldado = saldo <= 0
+  // Saldado a fuerza de incobrable ≠ saldado de verdad: se muestra distinto.
+  const porIncobrable = saldado && incobrable > 0
 
   let acum = 0
   const detalle = movsOrdenados.map(m => {
@@ -160,7 +165,7 @@ function CardOperario({ leg, nombre, movs, saldo, puedeCrear, perfiles, onNuevo,
   })
 
   return (
-    <div className={`bg-white rounded-card shadow-card border-l-4 ${saldado ? 'border-verde' : 'border-naranja'}`}>
+    <div className={`bg-white rounded-card shadow-card border-l-4 ${porIncobrable ? 'border-gris-mid' : saldado ? 'border-verde' : 'border-naranja'}`}>
       <div className="flex items-center justify-between gap-3 p-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
@@ -169,8 +174,8 @@ function CardOperario({ leg, nombre, movs, saldo, puedeCrear, perfiles, onNuevo,
               Leg. {leg}
             </span>
           </div>
-          <div className={`font-mono font-bold text-lg mt-0.5 ${saldado ? 'text-verde' : 'text-naranja-dark'}`}>
-            {saldado ? '✓ Saldado' : `Debe ${fmtM(saldo)}`}
+          <div className={`font-mono font-bold text-lg mt-0.5 ${porIncobrable ? 'text-gris-dark' : saldado ? 'text-verde' : 'text-naranja-dark'}`}>
+            {porIncobrable ? `✕ Incobrable (${fmtM(incobrable)})` : saldado ? '✓ Saldado' : `Debe ${fmtM(saldo)}`}
           </div>
         </div>
 
@@ -189,6 +194,15 @@ function CardOperario({ leg, nombre, movs, saldo, puedeCrear, perfiles, onNuevo,
               >
                 ↩ Descontar
               </button>
+              {saldo > 0 && (
+                <button
+                  onClick={() => onIncobrable(leg, saldo)}
+                  title="Dar de baja la deuda sin registrarla como recupero (ej: renuncia)"
+                  className="text-xs font-bold px-2.5 py-1.5 rounded-lg bg-gris text-gris-dark hover:bg-carbon hover:text-white transition-colors"
+                >
+                  ✕ Incobrable
+                </button>
+              )}
             </>
           )}
           <button
@@ -204,7 +218,8 @@ function CardOperario({ leg, nombre, movs, saldo, puedeCrear, perfiles, onNuevo,
         <div className="border-t border-gris-mid mx-4 mb-4">
           <div className="flex flex-col gap-0 mt-3">
             {detalle.map((m, idx) => {
-              const esOtorgado = m.tipo === 'otorgado'
+              const esOtorgado   = m.tipo === 'otorgado'
+              const esIncobrable = m.tipo === 'incobrable'
               return (
                 <div
                   key={m.id}
@@ -216,9 +231,9 @@ function CardOperario({ leg, nombre, movs, saldo, puedeCrear, perfiles, onNuevo,
                   <div className="flex items-center gap-2 flex-1 min-w-0">
                     <span className={`
                       text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0
-                      ${esOtorgado ? 'bg-naranja text-white' : 'bg-rojo-light text-rojo'}
+                      ${esOtorgado ? 'bg-naranja text-white' : esIncobrable ? 'bg-carbon text-white' : 'bg-rojo-light text-rojo'}
                     `}>
-                      {esOtorgado ? '💵' : '↩'}
+                      {esOtorgado ? '💵' : esIncobrable ? '✕' : '↩'}
                     </span>
                     <div className="min-w-0">
                       <div className="text-xs text-gris-dark">
@@ -236,7 +251,7 @@ function CardOperario({ leg, nombre, movs, saldo, puedeCrear, perfiles, onNuevo,
                   </div>
                   <div className="flex items-center gap-3 flex-shrink-0">
                     <div className="text-right">
-                      <div className={`font-mono font-bold text-sm ${esOtorgado ? 'text-naranja-dark' : 'text-rojo'}`}>
+                      <div className={`font-mono font-bold text-sm ${esOtorgado ? 'text-naranja-dark' : esIncobrable ? 'text-gris-dark line-through' : 'text-rojo'}`}>
                         {esOtorgado ? '+' : '−'}{fmtM(m.monto)}
                       </div>
                       <div className={`font-mono text-[11px] ${m.acumulado > 0 ? 'text-gris-dark' : 'text-verde'}`}>
@@ -260,13 +275,13 @@ function CardOperario({ leg, nombre, movs, saldo, puedeCrear, perfiles, onNuevo,
 
           <div className={`
             mt-3 rounded-lg px-3 py-2 flex items-center justify-between
-            ${saldado ? 'bg-verde-light' : 'bg-naranja-light'}
+            ${porIncobrable ? 'bg-gris' : saldado ? 'bg-verde-light' : 'bg-naranja-light'}
           `}>
-            <span className={`text-xs font-bold uppercase tracking-wide ${saldado ? 'text-verde' : 'text-naranja-dark'}`}>
+            <span className={`text-xs font-bold uppercase tracking-wide ${porIncobrable ? 'text-gris-dark' : saldado ? 'text-verde' : 'text-naranja-dark'}`}>
               Saldo total
             </span>
-            <span className={`font-mono font-bold text-base ${saldado ? 'text-verde' : 'text-naranja-dark'}`}>
-              {saldado ? '✓ Saldado' : fmtM(saldo)}
+            <span className={`font-mono font-bold text-base ${porIncobrable ? 'text-gris-dark' : saldado ? 'text-verde' : 'text-naranja-dark'}`}>
+              {porIncobrable ? `✕ Incobrable (${fmtM(incobrable)})` : saldado ? '✓ Saldado' : fmtM(saldo)}
             </span>
           </div>
         </div>
@@ -284,6 +299,7 @@ export function PrestamosPage() {
   const { data: ligero = [], isLoading: loadingLigero } = usePrestamosLigero()
   const { data: personal = [] } = usePersonal()
   const { mutate: remove }      = useDeletePrestamo()
+  const { mutate: create }      = useCreatePrestamo()
   const perfiles = usePerfilesMap()
 
   const [modalConfig, setModalConfig] = useState<{ tipo: 'otorgado' | 'descontado'; leg: string } | null>(null)
@@ -302,17 +318,19 @@ export function PrestamosPage() {
     return m
   }, [personal])
 
-  // Agrupar saldos por operario usando datos ligeros
+  // Agrupar saldos por operario usando datos ligeros. El incobrable salda
+  // (resta) pero se acumula aparte: es pérdida, no recupero.
   const operariosSaldos = useMemo(() => {
-    const map = new Map<string, { otorgado: number; descontado: number }>()
+    const map = new Map<string, { otorgado: number; descontado: number; incobrable: number }>()
     ligero.forEach(r => {
-      if (!map.has(r.leg)) map.set(r.leg, { otorgado: 0, descontado: 0 })
+      if (!map.has(r.leg)) map.set(r.leg, { otorgado: 0, descontado: 0, incobrable: 0 })
       const entry = map.get(r.leg)!
-      if (r.tipo === 'otorgado') entry.otorgado += r.monto
-      else entry.descontado += r.monto
+      if (r.tipo === 'otorgado')        entry.otorgado   += r.monto
+      else if (r.tipo === 'incobrable') entry.incobrable += r.monto
+      else                              entry.descontado += r.monto
     })
     return [...map.entries()]
-      .map(([leg, { otorgado, descontado }]) => ({ leg, saldo: otorgado - descontado }))
+      .map(([leg, { otorgado, descontado, incobrable }]) => ({ leg, saldo: otorgado - descontado - incobrable, incobrable }))
       .sort((a, b) => b.saldo - a.saldo)
   }, [ligero])
 
@@ -323,6 +341,7 @@ export function PrestamosPage() {
 
   const totalDeuda = operariosSaldos.filter(o => o.saldo > 0).reduce((s, o) => s + o.saldo, 0)
   const conDeuda   = operariosSaldos.filter(o => o.saldo > 0).length
+  const totalIncobrables = operariosSaldos.reduce((s, o) => s + o.incobrable, 0)
 
   // Operarios de la página actual
   const pageItems = useMemo(() => {
@@ -350,6 +369,20 @@ export function PrestamosPage() {
     setPage(1)
   }
 
+  // Da de baja el saldo completo de un operario como incobrable (renuncia u
+  // otra causa). Un solo movimiento por el saldo restante, semana actual.
+  function handleIncobrable(leg: string, saldo: number) {
+    const nombre = nombreMap.get(leg) ?? leg
+    if (!confirm(`¿Dar por INCOBRABLE la deuda de ${nombre} (${fmtM(saldo)})?\n\nEl saldo queda en $0 y el monto se registra como pérdida (no como plata recuperada). Se puede deshacer eliminando el movimiento.`)) return
+    create(
+      { leg, sem_key: semKeyHoy(), tipo: 'incobrable', monto: saldo, concepto: 'Dado por incobrable' },
+      {
+        onSuccess: () => toast('✕ Deuda dada por incobrable', 'ok'),
+        onError:   (e) => toast(e.message ?? 'Error al registrar', 'err'),
+      }
+    )
+  }
+
   function handleDelete(id: number) {
     if (!confirm('¿Eliminar este movimiento?')) return
     remove(id, {
@@ -369,6 +402,9 @@ export function PrestamosPage() {
             {conDeuda > 0
               ? `${conDeuda} operario${conDeuda !== 1 ? 's' : ''} con deuda · Total: ${fmtM(totalDeuda)}`
               : 'Sin deudas pendientes'}
+            {totalIncobrables > 0 && (
+              <span className="text-gris-dark"> · perdido por incobrables: <b className="text-rojo">{fmtM(totalIncobrables)}</b></span>
+            )}
           </p>
         </div>
         {puedeCrear && (
@@ -401,16 +437,18 @@ export function PrestamosPage() {
       ) : (
         <>
           <div className={`flex flex-col gap-3 transition-opacity ${loadingMovs ? 'opacity-60' : ''}`}>
-            {pageItems.map(({ leg, saldo }) => (
+            {pageItems.map(({ leg, saldo, incobrable }) => (
               <CardOperario
                 key={leg}
                 leg={leg}
                 nombre={nombreMap.get(leg) ?? leg}
                 movs={movsMap.get(leg) ?? []}
                 saldo={saldo}
+                incobrable={incobrable}
                 puedeCrear={!!puedeCrear}
                 perfiles={perfiles}
                 onNuevo={(tipo, l) => setModalConfig({ tipo, leg: l })}
+                onIncobrable={handleIncobrable}
                 onDelete={handleDelete}
               />
             ))}

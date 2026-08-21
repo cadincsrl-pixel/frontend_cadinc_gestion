@@ -374,7 +374,7 @@ export function collectData(input: ExportInput): ExportData {
     return {
       leg:            raw.leg,
       nom:            nombre,
-      tipo:           raw.tipo === 'otorgado' ? 'Otorgado' : 'Descontado',
+      tipo:           raw.tipo === 'otorgado' ? 'Otorgado' : raw.tipo === 'incobrable' ? 'Incobrable' : 'Descontado',
       monto:          raw.monto,
       concepto:       raw.concepto ?? '',
       semKey:         raw.sem_key,

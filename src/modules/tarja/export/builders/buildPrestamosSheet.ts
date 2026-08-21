@@ -116,18 +116,24 @@ export function buildPrestamosSheet(wb: ExcelJS.Workbook, data: ExportData): voi
   const tipoRange  = `$${colLetter(PRESTAMOS_COL.TIPO)}$${firstDataRow}:$${colLetter(PRESTAMOS_COL.TIPO)}$${lastDataRow}`
   const montoRange = `$${colLetter(PRESTAMOS_COL.MONTO)}$${firstDataRow}:$${colLetter(PRESTAMOS_COL.MONTO)}$${lastDataRow}`
 
+  // Totales calculados desde las filas del sheet (no de totalesObra: esos
+  // excluyen incobrables a propósito — son flujos de plata de la semana).
+  const totOtorgado   = data.prestamos.filter(p => p.tipo === 'Otorgado').reduce((s, p) => s + p.monto, 0)
+  const totDescontado = data.prestamos.filter(p => p.tipo === 'Descontado').reduce((s, p) => s + p.monto, 0)
+  const totIncobrable = data.prestamos.filter(p => p.tipo === 'Incobrable').reduce((s, p) => s + p.monto, 0)
+
   const tc = totalRow.getCell(PRESTAMOS_COL.MONTO)
   tc.value  = {
     formula: sumRange(`${colLetter(PRESTAMOS_COL.MONTO)}${firstDataRow}:${colLetter(PRESTAMOS_COL.MONTO)}${lastDataRow}`),
-    result:  data.totalesObra.prestamosOtorgados + data.totalesObra.descuentos,
+    result:  totOtorgado + totDescontado + totIncobrable,
   }
   tc.numFmt = FMT_MONEDA_CERO
   tc.alignment = { horizontal: 'right', vertical: 'middle' }
 
-  // Saldo final neto = otorgados − descontados (con SUMIFS por tipo).
-  const saldoFormula = `${sumifs(montoRange, [{ range: tipoRange, criteria: 'Otorgado' }])}-${sumifs(montoRange, [{ range: tipoRange, criteria: 'Descontado' }])}`
+  // Saldo final neto = otorgados − descontados − incobrables (SUMIFS por tipo).
+  const saldoFormula = `${sumifs(montoRange, [{ range: tipoRange, criteria: 'Otorgado' }])}-${sumifs(montoRange, [{ range: tipoRange, criteria: 'Descontado' }])}-${sumifs(montoRange, [{ range: tipoRange, criteria: 'Incobrable' }])}`
   const sc = totalRow.getCell(PRESTAMOS_COL.SALDO)
-  sc.value  = { formula: saldoFormula, result: data.totalesObra.prestamosOtorgados - data.totalesObra.descuentos }
+  sc.value  = { formula: saldoFormula, result: totOtorgado - totDescontado - totIncobrable }
   sc.numFmt = FMT_MONEDA_CERO
   sc.alignment = { horizontal: 'right', vertical: 'middle' }
 

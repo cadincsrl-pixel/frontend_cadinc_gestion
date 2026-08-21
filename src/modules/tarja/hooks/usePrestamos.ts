@@ -63,7 +63,7 @@ export function useCreatePrestamo() {
     mutationFn: (dto: {
       leg:      string
       sem_key:  string
-      tipo:     'otorgado' | 'descontado'
+      tipo:     'otorgado' | 'descontado' | 'incobrable'
       monto:    number
       concepto?: string | null
     }) => apiPost<Prestamo>('/api/prestamos', dto),
