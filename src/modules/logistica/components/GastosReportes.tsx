@@ -594,7 +594,7 @@ export function GastosReportes() {
                   <th className="text-left px-3 py-2">Camión</th>
                   <th className="text-right px-3 py-2">Cant.</th>
                   <th className="text-right px-3 py-2">Total</th>
-                  <th className="text-left px-3 py-2">Top categorías</th>
+                  <th className="text-left px-3 py-2">Rubros</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gris">
@@ -623,7 +623,7 @@ export function GastosReportes() {
                   <th className="text-right px-3 py-2">Cant.</th>
                   <th className="text-right px-3 py-2">Total</th>
                   <th className="text-right px-3 py-2">Reintegros pend.</th>
-                  <th className="text-left px-3 py-2">Top categorías</th>
+                  <th className="text-left px-3 py-2">Rubros</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gris">
@@ -854,12 +854,14 @@ function Bar({ pct }: { pct: number }) {
   )
 }
 
+// Desglose COMPLETO por rubro (antes mostraba solo el top 3 y los rubros
+// menores quedaban invisibles aunque sumaran al total — pedido 2026-08-23).
 function TopCategorias({ data }: { data: Record<string, number> }) {
-  const top = Object.entries(data).sort(([,a],[,b]) => b - a).slice(0, 3)
-  if (top.length === 0) return <span className="text-gris-mid italic text-xs">—</span>
+  const todas = Object.entries(data).sort(([,a],[,b]) => b - a)
+  if (todas.length === 0) return <span className="text-gris-mid italic text-xs">—</span>
   return (
     <div className="flex gap-1.5 flex-wrap">
-      {top.map(([cat, monto]) => (
+      {todas.map(([cat, monto]) => (
         <span key={cat} className="text-[10px] bg-gris-light text-gris-dark px-1.5 py-0.5 rounded-full font-mono">
           {cat}: {fmt$(monto)}
         </span>
