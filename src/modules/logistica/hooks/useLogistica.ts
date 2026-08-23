@@ -778,6 +778,9 @@ export type GastoCategoria = {
   // true = el monto incluye IVA 21% (neteable); false = final (monotributista,
   // tributo o sin factura). Para el modo Neto de Reportes.
   lleva_iva?: boolean
+  // false = no admite gastos con fecha futura (peaje, gomería: hechos
+  // consumados). El form topea el date input; el backend valida igual.
+  permite_fecha_futura?: boolean
 }
 
 export type TipoCombustible = 'gasoil' | 'nafta' | 'nafta_super' | 'adblue'

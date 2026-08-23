@@ -218,6 +218,8 @@ export function GastosTab() {
         } else if (code === 'LITROS_EXCEDE_TANQUE') {
           const d = err?.body?.detail
           toast(`Litros (${d?.litros}) superan la capacidad del tanque (${d?.capacidad_tanque}L)`, 'err')
+        } else if (code === 'FECHA_FUTURA_NO_PERMITIDA') {
+          toast(`${err?.body?.detail?.categoria ?? 'Esta categoría'} no se puede cargar con fecha futura`, 'err')
         } else {
           toast(err?.message || 'Error al registrar gasto', 'err')
         }
@@ -286,6 +288,7 @@ export function GastosTab() {
         if (code === 'GASTO_NO_EDITABLE') toast('Gasto aprobado: no se pueden editar campos financieros', 'err')
         else if (code === 'GASTO_EN_LIQUIDACION') toast('Gasto en liquidación: no editable', 'err')
         else if (code === 'COMPROBANTE_DUPLICADO') toast('Este comprobante ya está cargado en otro gasto', 'err')
+        else if (code === 'FECHA_FUTURA_NO_PERMITIDA') toast(`${err?.body?.detail?.categoria ?? 'Esta categoría'} no se puede cargar con fecha futura`, 'err')
         else toast(err?.message || 'Error al actualizar', 'err')
       },
     })
@@ -696,7 +699,7 @@ function GastoFormFields({
   form, categorias, choferes, camiones, uploadFile, uploadPath, uploading, onPickFile, onClearFile,
 }: {
   form: any
-  categorias: { id: number; codigo?: string; nombre: string; aplica_a: string }[]
+  categorias: { id: number; codigo?: string; nombre: string; aplica_a: string; permite_fecha_futura?: boolean }[]
   choferes:   { id: number; nombre: string; camion_id?: number | null }[]
   camiones:   { id: number; patente: string }[]
   uploadFile: File | null
@@ -724,6 +727,9 @@ function GastoFormFields({
   const categoriaIdWatched = form.watch('categoria_id')
   const categoriaSel   = categorias.find(c => c.id === Number(categoriaIdWatched))
   const esCombustible  = categoriaSel?.codigo === 'combustible'
+  // Peaje/gomería no se cargan adelantados (flag data-driven en la
+  // categoría; el backend valida igual con FECHA_FUTURA_NO_PERMITIDA).
+  const sinFechaFutura = categoriaSel?.permite_fecha_futura === false
 
   // Al salir de combustible, resetear campos del sub-objeto para no
   // enviar metadata fantasma al backend (que la rechazaría con 400).
@@ -743,7 +749,13 @@ function GastoFormFields({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Select label="Categoría" {...form.register('categoria_id', { required: true })}
           options={[{ value: '', label: '— Elegí —' }, ...categorias.map(c => ({ value: String(c.id), label: c.nombre }))]} />
-        <Input label="Fecha" type="date" {...form.register('fecha', { required: true })} />
+        <Input
+          label="Fecha"
+          type="date"
+          max={sinFechaFutura ? hoy() : undefined}
+          hint={sinFechaFutura ? `${categoriaSel?.nombre ?? 'Esta categoría'} no admite fecha futura` : undefined}
+          {...form.register('fecha', { required: true })}
+        />
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Controller name="monto" control={form.control} rules={{ required: true }} render={({ field }) => (
