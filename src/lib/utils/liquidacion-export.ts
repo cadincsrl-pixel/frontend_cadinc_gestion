@@ -295,8 +295,10 @@ export async function exportLiquidacionExcel(d: LiqExportData) {
     [d.modalidad === 'pct' ? 'Subtotal jornal'           : 'Subtotal básico', d.subtotal_bas, FMT_MONTO],
   ]
   if (d.modalidad === 'pct') {
+    // pct_aplicado es el efectivo PONDERADO (Σ comisiones por tramo / base
+    // neta): puede tener decimales si el % del chofer cambió en el período.
     haberes.push([
-      `Comisión ${d.pct_aplicado ?? 0}% s/ facturación neta ($${Math.round(d.base_neta ?? 0).toLocaleString('es-AR')})`,
+      `Comisión ${(d.pct_aplicado ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })}% s/ facturación neta ($${Math.round(d.base_neta ?? 0).toLocaleString('es-AR')})`,
       d.subtotal_pct ?? 0,
       FMT_MONTO,
     ])
@@ -328,7 +330,9 @@ export async function exportLiquidacionExcel(d: LiqExportData) {
   } else if (tieneDesglose) {
     haberes.push(['Subtotal km (cargado + vacío)', d.subtotal_km, FMT_MONTO])
   }
-  haberes.push(['Total haberes',              d.subtotal_bas + d.subtotal_km, FMT_MONTO])
+  // subtotal_pct sólo viene seteado en modalidad pct; sin él, el "Total
+  // haberes" de un chofer a % mostraba únicamente el jornal (u $0).
+  haberes.push(['Total haberes',              d.subtotal_bas + d.subtotal_km + (d.subtotal_pct ?? 0), FMT_MONTO])
 
   haberes.forEach(([label, value, fmt], idx) => {
     const r = ws.getRow(row)

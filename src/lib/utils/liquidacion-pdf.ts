@@ -243,8 +243,10 @@ export function generarPdfLiquidacion(args: PdfLiquidacionArgs): void {
         fmtM(args.subtotal_basico),
       ])
     }
+    // pct_aplicado es el efectivo ponderado: puede traer decimales si el %
+    // versionado del chofer cambió en el medio del período.
     totalesRows.push([
-      `Comisión ${args.pct_aplicado ?? 0}% s/ facturación neta (${fmtM(args.base_neta ?? 0)})`,
+      `Comisión ${(args.pct_aplicado ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })}% s/ facturación neta (${fmtM(args.base_neta ?? 0)})`,
       fmtM(args.subtotal_pct ?? 0),
     ])
   } else {

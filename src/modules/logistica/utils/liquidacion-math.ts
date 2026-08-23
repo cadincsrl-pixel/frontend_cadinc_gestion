@@ -161,30 +161,43 @@ export function calcularTotalesLiquidacion(i: TotalesLiquidacionInput): TotalesL
 export interface BasePctResultado {
   /** Σ (ton × tarifa neta) de los viajes cargados. */
   base_neta:   number
+  /** Σ comisiones por tramo, cada una con el % vigente A LA FECHA de ese tramo
+   *  (solo si el caller pasó `pctDe`; sin callback queda en 0). */
+  subtotal_pct: number
   /** Detalle por tramo para mostrar en el preview y el PDF. */
-  detalle:     Array<{ tramo_id: number; ton: number; tarifa_final: number; neto: number }>
+  detalle:     Array<{ tramo_id: number; fecha: string | null; ton: number; tarifa_final: number; neto: number; pct: number; comision: number }>
   /** Tramos cargados SIN tarifa para su empresa/cantera/depósito: bloquean la
    *  liquidación — pagarlos en $0 en silencio sería robarle al chofer. */
   sin_tarifa:  Tramo[]
+  /** Tramos cargados con toneladas ≤ 0: no suman comisión, pero se AVISAN —
+   *  antes se salteaban en silencio y el chofer perdía el viaje sin enterarse. */
+  sin_toneladas: Tramo[]
 }
 
 export function calcularBasePctViajes(
   tramos:   Tramo[],
   tarifas:  TarifaEmpresaCantera[],
   camiones: Pick<Camion, 'id' | 'categoria'>[],
+  /** % vigente a la fecha del tramo (hist versionado — pisa al cache, misma
+   *  regla que categoria_tarifas y que el reporte de performance). El caller
+   *  resuelve el fallback para fecha null. Sin callback → comisiones en 0. */
+  pctDe?:   (fecha: string | null) => number,
 ): BasePctResultado {
   let base_neta = 0
+  let subtotal_pct = 0
   const detalle: BasePctResultado['detalle'] = []
   const sin_tarifa: Tramo[] = []
+  const sin_toneladas: Tramo[] = []
 
   for (const t of tramos) {
     if (t.tipo !== 'cargado') continue   // los vacíos no facturan → no pagan
     const ton = Number(t.toneladas_descarga ?? t.toneladas_carga ?? 0)
-    if (ton <= 0) continue
+    if (ton <= 0) { sin_toneladas.push(t); continue }
+    const fecha  = t.fecha_descarga ?? t.fecha_carga ?? null
     const tarifa = t.empresa_id != null && t.cantera_id != null
       ? tarifaParaFecha(
           tarifas, t.empresa_id, t.cantera_id, t.deposito_id ?? null,
-          t.fecha_descarga ?? t.fecha_carga ?? null,
+          fecha,
           unidadDelCamion(camiones as Camion[], t.camion_id),
           // El chofer cobra el % sobre la MISMA variante que se le factura al
           // cliente. Variante sin tarifa → el tramo cae en sin_tarifa (bloquea).
@@ -192,21 +205,34 @@ export function calcularBasePctViajes(
         )
       : 0
     if (!(tarifa > 0)) { sin_tarifa.push(t); continue }
-    const neto = ton * tarifa / IVA
-    base_neta += neto
-    detalle.push({ tramo_id: t.id, ton, tarifa_final: tarifa, neto })
+    const neto     = ton * tarifa / IVA   // ÚNICA división por IVA de todo el flujo pct
+    const pct      = pctDe ? pctDe(fecha) : 0
+    const comision = neto * pct / 100
+    base_neta    += neto
+    subtotal_pct += comision
+    detalle.push({ tramo_id: t.id, fecha, ton, tarifa_final: tarifa, neto, pct, comision })
   }
 
-  return { base_neta, detalle, sin_tarifa }
+  return { base_neta, subtotal_pct, detalle, sin_tarifa, sin_toneladas }
+}
+
+/**
+ * % efectivo ponderado a persistir en `pct_aplicado`: mantiene el invariante
+ * subtotal_pct ≈ base_neta × pct_aplicado / 100 aunque el % haya cambiado en
+ * el medio del período (cada tramo cobró el suyo). Con base 0 no hay ponderación
+ * posible → cae al % vigente al fin del período (lo pasa el caller).
+ */
+export function pctAplicadoEfectivo(subtotal_pct: number, base_neta: number, pctFallback: number): number {
+  return base_neta > 0 ? (subtotal_pct / base_neta) * 100 : pctFallback
 }
 
 export interface TotalesPctInput {
   dias:           number
   /** Jornal diario opcional (0 = el arreglo es solo %). */
   jornal_dia:     number
-  base_neta:      number
-  /** % de facturación (0–100). */
-  pct:            number
+  /** Σ comisiones por tramo (cada una con el % vigente a SU fecha), ya
+   *  calculado por calcularBasePctViajes — acá no se re-aplica ningún %. */
+  subtotal_pct:   number
   descuentos:     number   // adelantos
   reintegros:     number   // gastos pagados por el chofer
   total_estadias: number
@@ -220,10 +246,9 @@ export interface TotalesPct {
 
 export function calcularTotalesLiquidacionPct(i: TotalesPctInput): TotalesPct {
   const subtotal_bas = i.dias * i.jornal_dia
-  const subtotal_pct = i.base_neta * i.pct / 100
   return {
     subtotal_bas,
-    subtotal_pct,
-    neto: subtotal_bas + subtotal_pct - i.descuentos + i.reintegros + i.total_estadias,
+    subtotal_pct: i.subtotal_pct,
+    neto: subtotal_bas + i.subtotal_pct - i.descuentos + i.reintegros + i.total_estadias,
   }
 }

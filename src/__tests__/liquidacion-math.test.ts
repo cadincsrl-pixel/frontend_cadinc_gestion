@@ -436,7 +436,7 @@ describe('diasConRelevos', () => {
 // escalera de facturación; vacíos no pagan; jornal opcional (0 = solo %);
 // viajes sin tarifa BLOQUEAN (no se pagan en $0 en silencio).
 
-import { calcularBasePctViajes, calcularTotalesLiquidacionPct } from '@/modules/logistica/utils/liquidacion-math'
+import { calcularBasePctViajes, calcularTotalesLiquidacionPct, pctAplicadoEfectivo } from '@/modules/logistica/utils/liquidacion-math'
 import type { TarifaEmpresaCantera, Camion } from '@/types/domain.types'
 
 const TARIFAS_PCT = [
@@ -485,12 +485,83 @@ describe('calcularBasePctViajes', () => {
     expect(r.base_neta).toBe(0)
     expect(r.sin_tarifa).toHaveLength(1)
   })
+
+  it('tramo cargado con toneladas ≤ 0 va a sin_toneladas (advertencia visible), no se saltea en silencio ni suma $', () => {
+    const tramos = [
+      mkTramo({ id: 1, camion_id: 3, empresa_id: 7, cantera_id: 10, fecha_descarga: '2026-07-10', toneladas_descarga: 30 }),
+      // Sin toneladas de carga ni descarga: comisión $0, pero tiene que AVISAR.
+      mkTramo({ id: 2, camion_id: 3, empresa_id: 7, cantera_id: 10, fecha_descarga: '2026-07-11', toneladas_carga: null, toneladas_descarga: null }),
+      // Toneladas 0 explícitas: mismo caso.
+      mkTramo({ id: 3, camion_id: 3, empresa_id: 7, cantera_id: 10, fecha_descarga: '2026-07-12', toneladas_descarga: 0 }),
+    ]
+    const r = calcularBasePctViajes(tramos, TARIFAS_PCT, CAMIONES_PCT)
+    // Solo el tramo 1 suma: 30 × 140.000 = 4.200.000. El monto NO cambia.
+    expect(r.base_neta).toBeCloseTo(4_200_000, 6)
+    expect(r.detalle).toHaveLength(1)
+    expect(r.sin_toneladas.map(t => t.id)).toEqual([2, 3])
+    expect(r.sin_tarifa).toHaveLength(0)
+  })
+
+  it('los vacíos NO cuentan como sin_toneladas (no facturan, no es advertencia)', () => {
+    const tramos = [
+      mkTramo({ id: 1, tipo: 'vacio', fecha_vacio: '2026-07-10', camion_id: 3, toneladas_carga: null, toneladas_descarga: null }),
+    ]
+    const r = calcularBasePctViajes(tramos, TARIFAS_PCT, CAMIONES_PCT)
+    expect(r.sin_toneladas).toHaveLength(0)
+  })
+
+  it('% POR TRAMO: cada viaje se comisiona con el % vigente a SU fecha (hist versionado), no con el cache', () => {
+    // Aumento del 10% al 12% vigente desde el 11/07: el viaje del 10 cobra 10%,
+    // el del 11 cobra 12% — misma filosofía que categoria_tarifas.
+    const pctDe = (fecha: string | null) => (fecha != null && fecha >= '2026-07-11' ? 12 : 10)
+    const tramos = [
+      mkTramo({ id: 1, camion_id: 3, empresa_id: 7, cantera_id: 10, fecha_descarga: '2026-07-10', toneladas_descarga: 30 }),
+      mkTramo({ id: 2, camion_id: 9, empresa_id: 7, cantera_id: 10, fecha_descarga: '2026-07-11', toneladas_descarga: 20 }),
+    ]
+    const r = calcularBasePctViajes(tramos, TARIFAS_PCT, CAMIONES_PCT, pctDe)
+    // tramo 1 (tractor): 30 × 169.400/1,21 = 4.200.000 → × 10% = 420.000
+    // tramo 2 (chasis):  20 × 102.850/1,21 = 1.700.000 → × 12% = 204.000
+    expect(r.base_neta).toBeCloseTo(5_900_000, 6)
+    expect(r.subtotal_pct).toBeCloseTo(624_000, 6)
+    expect(r.detalle.map(d => d.pct)).toEqual([10, 12])
+    expect(r.detalle[0]!.comision).toBeCloseTo(420_000, 6)
+    expect(r.detalle[1]!.comision).toBeCloseTo(204_000, 6)
+  })
+
+  it('sin callback de % las comisiones quedan en 0 pero la base se calcula igual (compat con callers que solo miran la base)', () => {
+    const tramos = [
+      mkTramo({ id: 1, camion_id: 3, empresa_id: 7, cantera_id: 10, fecha_descarga: '2026-07-10', toneladas_descarga: 30 }),
+    ]
+    const r = calcularBasePctViajes(tramos, TARIFAS_PCT, CAMIONES_PCT)
+    expect(r.base_neta).toBeCloseTo(4_200_000, 6)
+    expect(r.subtotal_pct).toBe(0)
+  })
+})
+
+describe('pctAplicadoEfectivo', () => {
+  it('% efectivo ponderado: mantiene el invariante subtotal_pct = base × pct/100 con % mixto en el período', () => {
+    // Del test de arriba: 624.000 de comisión sobre 5.900.000 de base.
+    // 624.000 / 5.900.000 × 100 = 10,576271186440678%
+    const pct = pctAplicadoEfectivo(624_000, 5_900_000, 12)
+    expect(pct).toBeCloseTo(10.576271186440678, 10)
+    // Invariante que congela el schema: base × pct/100 reconstruye el subtotal.
+    expect(5_900_000 * pct / 100).toBeCloseTo(624_000, 6)
+  })
+
+  it('si TODOS los tramos comparten % (caso común), el ponderado ES ese % — idéntico al comportamiento anterior con cache == hist', () => {
+    // base 5.900.000 × 12% = 708.000 → efectivo 12 exacto
+    expect(pctAplicadoEfectivo(708_000, 5_900_000, 99)).toBeCloseTo(12, 10)
+  })
+
+  it('base 0 → cae al % vigente al fin del período (no NaN ni división por cero)', () => {
+    expect(pctAplicadoEfectivo(0, 0, 12)).toBe(12)
+  })
 })
 
 describe('calcularTotalesLiquidacionPct', () => {
-  it('solo %: base 5.900.000 × 12% = 708.000, sin jornal', () => {
+  it('solo %: Σ comisiones 708.000 (base 5.900.000 al 12%), sin jornal', () => {
     const t = calcularTotalesLiquidacionPct({
-      dias: 20, jornal_dia: 0, base_neta: 5_900_000, pct: 12,
+      dias: 20, jornal_dia: 0, subtotal_pct: 708_000,
       descuentos: 100_000, reintegros: 20_000, total_estadias: 50_000,
     })
     expect(t.subtotal_bas).toBe(0)
@@ -501,12 +572,23 @@ describe('calcularTotalesLiquidacionPct', () => {
 
   it('% + jornal: el arreglo mixto suma los dos componentes', () => {
     const t = calcularTotalesLiquidacionPct({
-      dias: 20, jornal_dia: 15_000, base_neta: 5_900_000, pct: 10,
+      dias: 20, jornal_dia: 15_000, subtotal_pct: 590_000,
       descuentos: 0, reintegros: 0, total_estadias: 0,
     })
     // 20 × 15.000 = 300.000 + 590.000 = 890.000
     expect(t.subtotal_bas).toBe(300_000)
     expect(t.subtotal_pct).toBeCloseTo(590_000, 6)
     expect(t.neto).toBeCloseTo(890_000, 6)
+  })
+
+  it('% mixto punta a punta: subtotal_pct por tramo + jornal − adelantos (números del caso de % versionado)', () => {
+    // Σ comisiones por tramo del test de % mixto: 420.000 + 204.000 = 624.000
+    // neto = 10 × 15.000 + 624.000 − 200.000 + 0 + 0 = 574.000
+    const t = calcularTotalesLiquidacionPct({
+      dias: 10, jornal_dia: 15_000, subtotal_pct: 624_000,
+      descuentos: 200_000, reintegros: 0, total_estadias: 0,
+    })
+    expect(t.subtotal_bas).toBe(150_000)
+    expect(t.neto).toBeCloseTo(574_000, 6)
   })
 })

@@ -26,7 +26,7 @@ import { LiquidacionAdjuntosSection } from './LiquidacionAdjuntosSection'
 import { ModalSolicitudTransferencia } from './ModalSolicitudTransferencia'
 import { apiGet } from '@/lib/api/client'
 import { usePermisos } from '@/hooks/usePermisos'
-import type { ChoferConHist } from '@/lib/utils/tarifas-chofer'
+import { pctEnFecha, type ChoferConHist } from '@/lib/utils/tarifas-chofer'
 import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
 import type { Chofer, Tramo, Adelanto, AdelantoFormaPago, Estadia, Ruta, RelevoPendiente, RelevoLiquidado, CerrarLiquidacionResp, TarifaEmpresaCantera, Camion } from '@/types/domain.types'
 import { exportLiquidacionExcel } from '@/lib/utils/liquidacion-export'
@@ -35,6 +35,7 @@ import {
   diasEntreFechas, fechaTramo, tramoEnRango, kmTramo,
   fechaRelevo, kmRelevo, relevoEnRango, rangoConRelevos, diasConRelevos,
   calcularTotalesLiquidacion, calcularBasePctViajes, calcularTotalesLiquidacionPct,
+  pctAplicadoEfectivo,
 } from '../utils/liquidacion-math'
 
 function fmtM(n: number) {
@@ -43,6 +44,11 @@ function fmtM(n: number) {
 
 function fmtN(n: number) {
   return n.toLocaleString('es-AR', { maximumFractionDigits: 0 })
+}
+// % con hasta 2 decimales: el pct_aplicado ahora es el efectivo PONDERADO
+// (Σ comisiones / base neta) y puede no ser redondo si el % cambió en el período.
+function fmtPct(n: number) {
+  return n.toLocaleString('es-AR', { maximumFractionDigits: 2 })
 }
 function fmtFecha(s: string) {
   const [y, m, d] = s.split('-')
@@ -233,7 +239,9 @@ export function LiquidacionesTab() {
   const watchDesde       = formLiq.watch('desde')
   const watchHasta       = formLiq.watch('hasta')
   const watchBasico      = formLiq.watch('basico_dia')
-  const watchPct         = formLiq.watch('pct_facturacion')
+  // OJO: el input de % del form NO entra al cálculo — la comisión usa el %
+  // vigente a la fecha de cada tramo (choferes_pct_hist). El input solo sirve
+  // para versionar un % nuevo con "Guardar" (handleGuardarTarifas).
   const watchKmCargado   = formLiq.watch('precio_km_cargado')
   const watchKmVacio     = formLiq.watch('precio_km_vacio')
 
@@ -366,22 +374,31 @@ export function LiquidacionesTab() {
     const total_estadias = mis_estadias.reduce((s, e) => s + Number(e.total), 0)
     // ── Modalidad pct: el saldo pendiente es jornal + comisión, sin km ──
     if ((chofer.modalidad_pago ?? 'km_jornal') === 'pct') {
-      const base = calcularBasePctViajes(mis_tramos, tarifasEmpresa as TarifaEmpresaCantera[], camiones as Camion[])
+      // El % de cada viaje es el VIGENTE a su fecha (choferes_pct_hist pisa al
+      // cache — misma regla que categoria_tarifas y que el reporte de
+      // performance). Fallback para tramos sin fecha / base 0: % vigente al
+      // fin del período (o a hoy si no hay rango).
+      const finPeriodo = rHasta || toISO(new Date())
+      const pctDe = (f: string | null) => pctEnFecha(chofer as ChoferConHist, f ?? finPeriodo)
+      const base = calcularBasePctViajes(mis_tramos, tarifasEmpresa as TarifaEmpresaCantera[], camiones as Camion[], pctDe)
+      const pct_aplicado = pctAplicadoEfectivo(base.subtotal_pct, base.base_neta, pctDe(finPeriodo))
       const totPct = calcularTotalesLiquidacionPct({
         dias, jornal_dia: chofer.basico_dia ?? 0,
-        base_neta: base.base_neta, pct: chofer.pct_facturacion ?? 0,
+        subtotal_pct: base.subtotal_pct,
         descuentos, reintegros, total_estadias,
       })
       return {
         mis_tramos, mis_relevos, mis_adelantos, mis_reintegros, mis_estadias, dias,
         // En pct lo bloqueante es no tener % cargado (el jornal es opcional).
-        sinBasico: !(chofer.pct_facturacion ?? 0),
+        sinBasico: !pctDe(finPeriodo),
         subtotal_bas: totPct.subtotal_bas,
         km_cargados: 0, km_vacios: 0, km_totales: 0,
         subtotal_km_cargado: 0, subtotal_km_vacio: 0, subtotal_km: 0,
         subtotal: totPct.subtotal_bas + totPct.subtotal_pct,
         descuentos, reintegros, total_estadias,
         saldo: totPct.neto,
+        modalidad: 'pct' as const,
+        pct_aplicado, base_neta: base.base_neta, subtotal_pct: totPct.subtotal_pct,
       }
     }
 
@@ -403,6 +420,8 @@ export function LiquidacionesTab() {
       km_cargados, km_vacios, km_totales,
       subtotal_km_cargado, subtotal_km_vacio, subtotal_km,
       subtotal, descuentos, reintegros, total_estadias, saldo,
+      modalidad: 'km_jornal' as const,
+      pct_aplicado: null as number | null, base_neta: 0, subtotal_pct: 0,
     }
   }
 
@@ -444,7 +463,8 @@ export function LiquidacionesTab() {
       precio_km_cargado: 0, precio_km_vacio: 0, precio_km: 0,
       neto: 0,
       modalidad: 'km_jornal' as 'km_jornal' | 'pct',
-      pct: 0, base_neta: 0, subtotal_pct: 0, sin_tarifa: [] as Tramo[],
+      pct: 0, base_neta: 0, subtotal_pct: 0,
+      sin_tarifa: [] as Tramo[], sin_toneladas: [] as Tramo[],
     }
     if (!choferLiq) return empty
     const basico_dia       = parseFloat(watchBasico)    || 0
@@ -475,10 +495,16 @@ export function LiquidacionesTab() {
 
     // ── Modalidad pct: % de la facturación neta de sus viajes ──
     if ((choferLiq.modalidad_pago ?? 'km_jornal') === 'pct') {
-      const pct  = parseFloat(String(watchPct)) || 0
-      const base = calcularBasePctViajes(tramosSelec, tarifasEmpresa as TarifaEmpresaCantera[], camiones as Camion[])
+      // La comisión de cada viaje usa el % VIGENTE a su fecha (historial
+      // versionado, no el cache ni el input del form — el input solo versiona
+      // un % nuevo vía "Guardar"). `pct` acá abajo es el efectivo ponderado
+      // que se muestra y se persiste como pct_aplicado.
+      const finPeriodo = hasta || toISO(new Date())
+      const pctDe = (f: string | null) => pctEnFecha(choferLiq as ChoferConHist, f ?? finPeriodo)
+      const base = calcularBasePctViajes(tramosSelec, tarifasEmpresa as TarifaEmpresaCantera[], camiones as Camion[], pctDe)
+      const pct  = pctAplicadoEfectivo(base.subtotal_pct, base.base_neta, pctDe(finPeriodo))
       const totPct = calcularTotalesLiquidacionPct({
-        dias, jornal_dia: basico_dia, base_neta: base.base_neta, pct,
+        dias, jornal_dia: basico_dia, subtotal_pct: base.subtotal_pct,
         descuentos, reintegros, total_estadias,
       })
       return {
@@ -489,6 +515,7 @@ export function LiquidacionesTab() {
         modalidad: 'pct' as const,
         pct, base_neta: base.base_neta, subtotal_pct: totPct.subtotal_pct,
         sin_tarifa: base.sin_tarifa,
+        sin_toneladas: base.sin_toneladas,
       }
     }
 
@@ -511,7 +538,8 @@ export function LiquidacionesTab() {
       precio_km: tot.precio_km,
       neto: tot.neto,
       modalidad: 'km_jornal' as const,
-      pct: 0, base_neta: 0, subtotal_pct: 0, sin_tarifa: [] as Tramo[],
+      pct: 0, base_neta: 0, subtotal_pct: 0,
+      sin_tarifa: [] as Tramo[], sin_toneladas: [] as Tramo[],
     }
   }
 
@@ -723,11 +751,14 @@ export function LiquidacionesTab() {
           descripcion: g.descripcion ?? null,
           monto:       Number(g.monto),
         })),
-        // Neto = básico + km − adelantos + reintegros + estadías, contando los
-        // reintegros UNA sola vez. OJO: exportData.neto (= saldo de resumenChofer)
-        // YA incluía reintegros, así que sumar resp.total los duplicaba (el Excel
-        // daba más que el PDF parcial). Recomputamos desde los subtotales.
-        neto: (exportData.subtotal_bas ?? 0) + (exportData.subtotal_km ?? 0) - (exportData.descuentos ?? 0) + resp.total + (exportData.total_estadias ?? 0),
+        // Neto = básico + km + comisión pct − adelantos + reintegros + estadías,
+        // contando los reintegros UNA sola vez. OJO: exportData.neto (= saldo de
+        // resumenChofer) YA incluía reintegros, así que sumar resp.total los
+        // duplicaba (el Excel daba más que el PDF parcial). Recomputamos desde
+        // los subtotales. subtotal_pct es 0 en km_jornal, así que la fórmula
+        // sirve para ambas modalidades (antes lo omitía y un chofer pct con
+        // jornal 0 exportaba 0 − adelantos + reintegros).
+        neto: (exportData.subtotal_bas ?? 0) + (exportData.subtotal_km ?? 0) + (exportData.subtotal_pct ?? 0) - (exportData.descuentos ?? 0) + resp.total + (exportData.total_estadias ?? 0),
       })
     } catch (err) {
       console.warn('[liquidacion] no se pudieron traer reintegros pendientes:', err)
@@ -1038,7 +1069,7 @@ export function LiquidacionesTab() {
         </h2>
         <div className="flex flex-col gap-3">
           {choferesPendientes.map(chofer => {
-            const { mis_tramos, mis_relevos, mis_adelantos, mis_reintegros, mis_estadias, dias, sinBasico, subtotal_bas, km_cargados, km_vacios, km_totales, subtotal_km, subtotal, descuentos, reintegros, total_estadias, saldo } = resumenChofer(chofer)
+            const { mis_tramos, mis_relevos, mis_adelantos, mis_reintegros, mis_estadias, dias, sinBasico, subtotal_bas, km_cargados, km_vacios, km_totales, subtotal_km, subtotal, descuentos, reintegros, total_estadias, saldo, modalidad, pct_aplicado, base_neta, subtotal_pct } = resumenChofer(chofer)
             const sinMovimientos = mis_tramos.length === 0 && mis_relevos.length === 0 && mis_adelantos.length === 0 && mis_reintegros.length === 0 && mis_estadias.length === 0
             const borrador = (liquidaciones as any[]).find(l => l.chofer_id === chofer.id && l.estado === 'borrador')
 
@@ -1176,9 +1207,16 @@ export function LiquidacionesTab() {
                         precio_km_cargado, precio_km_vacio,
                         subtotal_km_cargado: km_cargados * precio_km_cargado,
                         subtotal_km_vacio:   km_vacios   * precio_km_vacio,
+                        // Modalidad pct: sin estos campos el Excel renderizaba las
+                        // labels de km_jornal y el neto omitía la comisión (un pct
+                        // con jornal 0 exportaba 0 − adelantos + reintegros).
+                        // Mismos campos que el Excel de cerradas (~exportData del
+                        // Historial); en km_jornal van vacíos/0 y no cambian nada.
+                        modalidad, pct_aplicado, base_neta, subtotal_pct,
                         // Reintegros contados UNA vez (fallback; en el camino normal se
-                        // recomputa con resp.total del endpoint).
-                        neto: subtotal_bas + subtotal_km - descuentos + reintegros + total_estadias,
+                        // recomputa con resp.total del endpoint). subtotal_pct es 0 en
+                        // km_jornal.
+                        neto: subtotal_bas + subtotal_km + subtotal_pct - descuentos + reintegros + total_estadias,
                         tramos:       mis_tramos,
                         relevos:      legsDeRelevos(mis_relevos),
                         adelantos:    mis_adelantos,
@@ -1776,7 +1814,7 @@ export function LiquidacionesTab() {
               <Input
                 label="💰 % de facturación neta"
                 type="number" step="0.5" min="0" max="100"
-                hint="Sobre el neto sin IVA de sus viajes (ton × tarifa neta). El básico de arriba actúa como jornal opcional: dejalo en 0 si el arreglo es solo %."
+                hint="Cada viaje se comisiona con el % vigente A SU FECHA (historial versionado). Este input NO cambia el cálculo de abajo: sirve para versionar un % nuevo con «Guardar» desde la fecha de vigencia. El básico de arriba actúa como jornal opcional: dejalo en 0 si el arreglo es solo %."
                 {...formLiq.register('pct_facturacion')}
               />
             ) : (
@@ -1808,6 +1846,12 @@ export function LiquidacionesTab() {
                   ...((choferLiq as ChoferConHist).choferes_km_hist ?? []).map(h => ({
                     desde: h.desde,
                     texto: `${h.tipo === 'cargado' ? '🚛' : '🔲'} ${fmtM(h.valor_km)}/km ${h.tipo}`,
+                  })),
+                  // El % versionado es el que manda en la comisión de cada viaje
+                  // (vigente a la fecha del tramo): mostrarlo acá permite verificar
+                  // qué % le tocó a cada período.
+                  ...((choferLiq as ChoferConHist).choferes_pct_hist ?? []).map(h => ({
+                    desde: h.desde, texto: `💰 ${fmtPct(Number(h.pct))}% facturación`,
                   })),
                 ].sort((a, b) => b.desde.localeCompare(a.desde))
                 if (hist.length === 0) return null
@@ -2029,6 +2073,17 @@ export function LiquidacionesTab() {
               </div>
             )}
 
+            {/* Viajes cargados sin toneladas: comisión $0. NO bloquean (puede
+                ser legítimo), pero antes se salteaban en silencio y el chofer
+                perdía el viaje sin que nadie lo viera. */}
+            {preview.modalidad === 'pct' && preview.sin_toneladas.length > 0 && (
+              <div className="bg-amarillo/20 border border-amber-500/40 rounded-xl px-4 py-3 text-sm text-amber-700">
+                ⚠ {preview.sin_toneladas.length} viaje{preview.sin_toneladas.length !== 1 ? 's' : ''} cargado{preview.sin_toneladas.length !== 1 ? 's' : ''} sin
+                toneladas → comisión $0. Si corresponde pagarlo{preview.sin_toneladas.length !== 1 ? 's' : ''}, cargá las
+                toneladas de descarga en Viajes antes de liquidar.
+              </div>
+            )}
+
             {/* Resumen */}
             <div className="bg-azul-light rounded-xl p-4">
               <div className="font-display text-lg tracking-wider text-azul mb-3">RESUMEN</div>
@@ -2045,7 +2100,7 @@ export function LiquidacionesTab() {
                   <>
                     <span className="text-gris-dark">Facturación neta (s/IVA):</span>
                     <span className="font-mono font-bold text-azul-mid">{fmtM(preview.base_neta)}</span>
-                    <span className="text-gris-dark">💰 Comisión {preview.pct}%:</span>
+                    <span className="text-gris-dark">💰 Comisión {fmtPct(preview.pct)}%:</span>
                     <span className="font-mono font-bold text-azul-mid">{fmtM(preview.subtotal_pct)}</span>
                   </>
                 )}
@@ -2457,7 +2512,7 @@ export function LiquidacionesTab() {
                   )}
                   {detalleLiq.modalidad === 'pct' && (
                     <>
-                      <span className="text-gris-dark">💰 Comisión {Number(detalleLiq.pct_aplicado ?? 0)}% s/ facturación neta ({fmtM(Number(detalleLiq.base_neta ?? 0))}):</span>
+                      <span className="text-gris-dark">💰 Comisión {fmtPct(Number(detalleLiq.pct_aplicado ?? 0))}% s/ facturación neta ({fmtM(Number(detalleLiq.base_neta ?? 0))}):</span>
                       <span className="font-mono font-bold text-right">{fmtM(Number(detalleLiq.subtotal_pct ?? 0))}</span>
                     </>
                   )}
