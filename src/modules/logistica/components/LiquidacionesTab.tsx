@@ -223,6 +223,11 @@ export function LiquidacionesTab() {
   // Historial de liquidaciones cerradas: colapsado por default para no ocupar
   // tanto espacio (puede crecer mucho con el tiempo).
   const [historialAbierto, setHistorialAbierto] = useState(false)
+  // Buscador del Historial: por chofer, N° o importe, + rango de fechas del
+  // período liquidado (mismo patrón que el buscador de cobros en Facturación).
+  const [busquedaHist, setBusquedaHist] = useState('')
+  const [histDesde, setHistDesde] = useState('')
+  const [histHasta, setHistHasta] = useState('')
   // Comprobante (foto/PDF) para el adelanto que se está creando/editando.
   const [archivoAdel, setArchivoAdel] = useState<File | null>(null)
   const [archivoEditAdel, setArchivoEditAdel] = useState<File | null>(null)
@@ -1249,6 +1254,19 @@ export function LiquidacionesTab() {
         // esconderlas sería tirar la única razón para no borrarlas.
         const cerradas = (liquidaciones as any[]).filter(l => l.estado === 'cerrada' || l.estado === 'anulada')
         if (cerradas.length === 0) return null
+        // Texto buscable por liquidación: chofer, N° e importe (con y sin
+        // separadores, así "147470" y "147.470" encuentran lo mismo).
+        const q = busquedaHist.trim().toLowerCase().replace(/\./g, '')
+        const visibles = cerradas.filter(liq => {
+          if (histDesde && String(liq.fecha_hasta) < histDesde) return false
+          if (histHasta && String(liq.fecha_desde) > histHasta) return false
+          if (!q) return true
+          const chofer = (choferes as Chofer[]).find(c => c.id === liq.chofer_id)
+          const texto = `${chofer?.nombre ?? ''} n° ${liq.id} ${liq.id} ${Math.round(Number(liq.total_neto ?? 0))}`
+            .toLowerCase().replace(/\./g, '')
+          return texto.includes(q)
+        })
+        const hayFiltro = q !== '' || histDesde !== '' || histHasta !== ''
         return (
         <div>
           <button
@@ -1262,7 +1280,46 @@ export function LiquidacionesTab() {
           </button>
           {historialAbierto && (
           <div className="flex flex-col gap-3">
-            {cerradas.map(liq => {
+            {/* Buscador + rango de fechas del período liquidado */}
+            <div className="flex items-end gap-2 flex-wrap">
+              <div className="relative flex-1 min-w-[220px]">
+                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gris-mid text-xs pointer-events-none">🔍</span>
+                <input
+                  type="text"
+                  autoComplete="off"
+                  value={busquedaHist}
+                  onChange={e => setBusquedaHist(e.target.value)}
+                  placeholder="Buscar por chofer, N° o importe..."
+                  className="w-full pl-8 pr-8 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white"
+                />
+                {busquedaHist && (
+                  <button
+                    type="button"
+                    onClick={() => setBusquedaHist('')}
+                    title="Limpiar búsqueda"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gris-mid hover:text-rojo text-xs font-bold"
+                  >✕</button>
+                )}
+              </div>
+              <Input label="Desde" type="date" value={histDesde} onChange={e => setHistDesde(e.target.value)} className="!py-2" />
+              <Input label="Hasta" type="date" value={histHasta} onChange={e => setHistHasta(e.target.value)} className="!py-2" />
+              {hayFiltro && (
+                <span className="text-xs text-gris-dark pb-2.5">
+                  mostrando {visibles.length} de {cerradas.length}
+                  <button
+                    type="button"
+                    onClick={() => { setBusquedaHist(''); setHistDesde(''); setHistHasta('') }}
+                    className="ml-2 text-azul hover:underline font-semibold"
+                  >limpiar</button>
+                </span>
+              )}
+            </div>
+            {visibles.length === 0 && (
+              <div className="bg-white rounded-card shadow-card p-5 text-sm text-gris-dark italic text-center">
+                Ninguna liquidación coincide con el filtro.
+              </div>
+            )}
+            {visibles.map(liq => {
               const chofer = (choferes as Chofer[]).find(c => c.id === liq.chofer_id)
               const anulada = liq.estado === 'anulada'
               // ¿Es una cáscara? Cerrada sin nada adentro. Los gastos se piden
