@@ -1,11 +1,13 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { useForm, useFieldArray } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 import {
   useStockCliente,
   useMovimientosStockCliente,
-  useEntradaStockCliente,
+  useEntradaLoteStockCliente,
   useSalidaStockCliente,
 } from '../hooks/useStockCliente'
 import { useObras } from '@/modules/tarja/hooks/useObras'
@@ -33,14 +35,41 @@ const MOTIVO_LABEL: Record<StockClienteMovimiento['motivo'], string> = {
   devolucion:      'Devolución',
 }
 
-interface EntradaForm {
-  obra_cod:    string
-  descripcion: string
-  unidad:      string
-  cantidad:    number | string
-  fecha:       string
-  obs:         string
-}
+// ── Form tipado de entrega en lote (RHF + zod, sin useForm<any>) ──
+// `cantidad` viaja como string (los <input type="number"> de RHF devuelven
+// string) y se convierte a number recién al armar el DTO — el zod valida que
+// sea un número > 0. Espejo client-side del EntradaLoteStockClienteSchema
+// del backend, con mensajes legibles en vez de códigos.
+const itemLoteSchema = z.object({
+  descripcion: z.string().trim().min(1, 'Falta la descripción'),
+  unidad:      z.string(),
+  cantidad:    z.string().refine(v => Number.isFinite(Number(v)) && Number(v) > 0, 'Cantidad inválida'),
+})
+
+const entradaLoteSchema = z.object({
+  obra_cod: z.string().min(1, 'Elegí la obra'),
+  fecha:    z.string(),
+  obs:      z.string(),
+  items:    z.array(itemLoteSchema).min(1, 'Cargá al menos un material'),
+}).superRefine((val, ctx) => {
+  const vistos = new Set<string>()
+  val.items.forEach((it, i) => {
+    const key = it.descripcion.trim().toLowerCase()
+    if (!key) return
+    if (vistos.has(key)) {
+      ctx.addIssue({
+        code:    'custom',
+        message: 'Este material está repetido en el lote',
+        path:    ['items', i, 'descripcion'],
+      })
+    }
+    vistos.add(key)
+  })
+})
+
+type EntradaLoteForm = z.infer<typeof entradaLoteSchema>
+
+const ITEM_VACIO = { descripcion: '', unidad: 'unid', cantidad: '' }
 
 interface SalidaForm {
   cantidad: number | string
@@ -68,11 +97,16 @@ export function StockClienteTab() {
     obra_cod: obraFiltro || undefined,
     incluir_agotados: incluirAgotados,
   })
-  const { mutate: registrarEntrada, isPending: entrando } = useEntradaStockCliente()
-  const { mutate: registrarSalida,  isPending: saliendo } = useSalidaStockCliente()
+  const { mutate: registrarLote,   isPending: entrando } = useEntradaLoteStockCliente()
+  const { mutate: registrarSalida, isPending: saliendo } = useSalidaStockCliente()
 
-  const formEntrada = useForm<EntradaForm>({
-    defaultValues: { obra_cod: '', descripcion: '', unidad: 'unid', cantidad: '', fecha: toISO(new Date()), obs: '' },
+  const formEntrada = useForm<EntradaLoteForm>({
+    resolver: zodResolver(entradaLoteSchema),
+    defaultValues: { obra_cod: '', fecha: toISO(new Date()), obs: '', items: [{ ...ITEM_VACIO }] },
+  })
+  const { fields: filas, append: agregarFila, remove: quitarFila } = useFieldArray({
+    control: formEntrada.control,
+    name:    'items',
   })
   const formSalida = useForm<SalidaForm>({
     defaultValues: { cantidad: '', motivo: 'consumo_obra', fecha: toISO(new Date()), obs: '' },
@@ -94,21 +128,44 @@ export function StockClienteTab() {
     return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b))
   }, [rows])
 
-  function handleEntrada(data: EntradaForm) {
-    const cantidad = Number(data.cantidad)
-    if (!data.obra_cod)             { toast('Elegí la obra', 'err'); return }
-    if (!data.descripcion.trim())   { toast('Poné la descripción del material', 'err'); return }
-    if (!Number.isFinite(cantidad) || cantidad <= 0) { toast('Cantidad inválida', 'err'); return }
-    registrarEntrada({
-      obra_cod:    data.obra_cod,
-      descripcion: data.descripcion.trim(),
-      unidad:      data.unidad.trim() || 'unid',
-      cantidad,
-      fecha:       data.fecha || undefined,
-      obs:         data.obs || undefined,
+  function handleEntrada(data: EntradaLoteForm) {
+    registrarLote({
+      obra_cod: data.obra_cod,
+      fecha:    data.fecha || undefined,
+      obs:      data.obs.trim() || undefined,
+      items: data.items.map(it => ({
+        descripcion: it.descripcion.trim(),
+        unidad:      it.unidad.trim() || 'unid',
+        cantidad:    Number(it.cantidad),
+      })),
     }, {
-      onSuccess: () => { toast('Entrega registrada', 'ok'); setModalEntrada(false) },
-      onError:   (e: Error) => toast(e.message || 'Error al registrar la entrega', 'err'),
+      onSuccess: (res) => {
+        const n = res.items.length
+        toast(n === 1 ? '✓ 1 material registrado' : `✓ ${n} materiales registrados`, 'ok')
+        setModalEntrada(false)
+      },
+      onError: (e: Error) => {
+        // El loop del backend es secuencial no-atómico: si falla a mitad,
+        // el detail dice qué entró y qué no. Sacamos del form las filas YA
+        // registradas (procesa en orden, son las primeras N) para que
+        // reintentar no las sume por segunda vez; el modal queda abierto
+        // solo con la fallida y las que no llegaron a procesarse.
+        const body = (e as Error & { body?: { error?: string; detail?: { item_fallido?: string; registrados?: number; total?: number } } }).body
+        if (body?.error === 'ENTRADA_LOTE_PARCIAL' && body.detail) {
+          const d = body.detail
+          const registrados = d.registrados ?? 0
+          if (registrados > 0) {
+            quitarFila(Array.from({ length: registrados }, (_, i) => i))
+          }
+          toast(`Se registraron ${d.registrados} de ${d.total} materiales. Quedaron en el form "${d.item_fallido}" y los no procesados — corregí y reintentá.`, 'err')
+          return
+        }
+        if (body?.error === 'MATERIAL_DUPLICADO') {
+          toast('Hay materiales repetidos en el lote', 'err')
+          return
+        }
+        toast(e.message || 'Error al registrar la entrega', 'err')
+      },
     })
   }
 
@@ -159,7 +216,7 @@ export function StockClienteTab() {
             variant="primary" size="sm"
             disabled={!puedeCrear}
             onClick={() => {
-              formEntrada.reset({ obra_cod: obraFiltro || '', descripcion: '', unidad: 'unid', cantidad: '', fecha: toISO(new Date()), obs: '' })
+              formEntrada.reset({ obra_cod: obraFiltro || '', fecha: toISO(new Date()), obs: '', items: [{ ...ITEM_VACIO }] })
               setModalEntrada(true)
             }}
           >
@@ -255,31 +312,96 @@ export function StockClienteTab() {
         generan deuda (el material ya lo pagó el cliente).
       </p>
 
-      {/* ── Modal entrada (entrega del cliente) ── */}
+      {/* ── Modal entrada (entrega del cliente, lote de materiales) ── */}
       <Modal
         open={modalEntrada}
         onClose={() => setModalEntrada(false)}
         title="➕ ENTREGA DEL CLIENTE"
+        width="max-w-2xl"
         footer={<>
           <Button variant="secondary" onClick={() => setModalEntrada(false)}>Cancelar</Button>
-          <Button variant="primary" loading={entrando} onClick={formEntrada.handleSubmit(handleEntrada)}>✓ Registrar</Button>
+          <Button variant="primary" loading={entrando} onClick={formEntrada.handleSubmit(handleEntrada)}>
+            ✓ Registrar{filas.length > 1 ? ` (${filas.length} materiales)` : ''}
+          </Button>
         </>}
       >
-        <div className="flex flex-col gap-3">
-          <Combobox
-            label="Obra (dueña del material)"
-            placeholder="Buscar obra..."
-            options={obraOptions.filter(o => o.value !== '')}
-            value={formEntrada.watch('obra_cod')}
-            onChange={v => formEntrada.setValue('obra_cod', v)}
-          />
-          <Input label="Material" placeholder="Ej: Cemento x50kg" {...formEntrada.register('descripcion')} />
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <Input label="Cantidad" type="number" min="0" step="any" inputMode="decimal" {...formEntrada.register('cantidad')} />
-            <Input label="Unidad" placeholder="unid / bolsas / m3" {...formEntrada.register('unidad')} />
+        <div className="flex flex-col gap-4">
+          {/* Cabecera: aplica a todos los materiales del lote */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <Combobox
+                label="Obra (dueña del material)"
+                placeholder="Buscar obra..."
+                options={obraOptions.filter(o => o.value !== '')}
+                value={formEntrada.watch('obra_cod')}
+                onChange={v => formEntrada.setValue('obra_cod', v, { shouldValidate: formEntrada.formState.isSubmitted })}
+              />
+              {formEntrada.formState.errors.obra_cod && (
+                <span className="text-xs text-rojo font-semibold">{formEntrada.formState.errors.obra_cod.message}</span>
+              )}
+            </div>
             <Input label="Fecha" type="date" {...formEntrada.register('fecha')} />
           </div>
-          <Input label="Observaciones (opcional)" placeholder="Remito del corralón, transporte, etc." {...formEntrada.register('obs')} />
+          <Input
+            label="Observaciones (opcional)"
+            placeholder="Nº de factura / remito, transporte..."
+            {...formEntrada.register('obs')}
+          />
+
+          {/* Filas dinámicas de materiales */}
+          <div>
+            <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-2">Materiales entregados</div>
+
+            {/* Header de columnas — solo desktop */}
+            <div className="hidden sm:flex gap-2 mb-1 pr-10">
+              <span className="flex-1 text-[10px] font-bold text-gris-dark uppercase tracking-wide">Material</span>
+              <span className="w-24 text-[10px] font-bold text-gris-dark uppercase tracking-wide text-right">Cantidad</span>
+              <span className="w-24 text-[10px] font-bold text-gris-dark uppercase tracking-wide">Unidad</span>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              {filas.map((fila, i) => (
+                <div key={fila.id} className="flex flex-wrap sm:flex-nowrap gap-2 items-start">
+                  <div className="w-full sm:w-auto sm:flex-1">
+                    <Input
+                      placeholder="Ej: Cemento x50kg"
+                      error={formEntrada.formState.errors.items?.[i]?.descripcion?.message}
+                      {...formEntrada.register(`items.${i}.descripcion`)}
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0 sm:flex-none sm:w-24">
+                    <Input
+                      type="number" min="0" step="any" inputMode="decimal"
+                      placeholder="Cant."
+                      className="text-right"
+                      error={formEntrada.formState.errors.items?.[i]?.cantidad?.message}
+                      {...formEntrada.register(`items.${i}.cantidad`)}
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0 sm:flex-none sm:w-24">
+                    <Input placeholder="unid" {...formEntrada.register(`items.${i}.unidad`)} />
+                  </div>
+                  <button
+                    type="button"
+                    disabled={filas.length === 1}
+                    onClick={() => quitarFila(i)}
+                    className="shrink-0 min-h-[38px] min-w-[32px] flex items-center justify-center text-gris-mid hover:text-rojo text-lg font-bold disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:text-gris-mid"
+                    aria-label="Quitar material"
+                    title={filas.length === 1 ? 'El lote necesita al menos un material' : 'Quitar material'}
+                  >✕</button>
+                </div>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => agregarFila({ ...ITEM_VACIO })}
+              className="mt-2 w-full sm:w-auto min-h-[40px] px-3 py-2 rounded-lg border border-dashed border-azul/50 text-xs font-bold text-azul hover:text-naranja hover:border-naranja transition-colors flex items-center justify-center gap-1"
+            >
+              ＋ Agregar material
+            </button>
+          </div>
+
           <p className="text-[11px] text-gris-mid italic">
             Material comprado y pagado por el cliente que queda en el depósito de
             CADINC. Si ya existe un material con el mismo nombre para la obra, la

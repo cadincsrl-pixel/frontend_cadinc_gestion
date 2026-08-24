@@ -47,6 +47,35 @@ export function useEntradaStockCliente() {
   })
 }
 
+interface EntradaLoteDto {
+  obra_cod: string
+  fecha?:   string
+  obs?:     string
+  items: {
+    descripcion: string
+    unidad:      string
+    cantidad:    number
+  }[]
+}
+
+interface EntradaLoteResult {
+  obra_cod: string
+  fecha:    string | null
+  items: { item_id: number; descripcion: string; cantidad: number }[]
+}
+
+// Entrega del cliente en lote: varios materiales de una misma factura/remito.
+// La cabecera (obra, fecha, obs) aplica a todos los movimientos. Invalida en
+// onSettled (no onSuccess): el loop del backend es no-atómico, así que un
+// error parcial (ENTRADA_LOTE_PARCIAL) también dejó entradas registradas.
+export function useEntradaLoteStockCliente() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: EntradaLoteDto) => apiPost<EntradaLoteResult>('/api/stock-cliente/entrada-lote', dto),
+    onSettled: () => qc.invalidateQueries({ queryKey: STOCK_CLIENTE_KEY }),
+  })
+}
+
 interface SalidaDto {
   item_id:  number
   cantidad: number
