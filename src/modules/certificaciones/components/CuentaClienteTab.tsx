@@ -44,6 +44,10 @@ export function CuentaClienteTab() {
   const { resolverItems, puedeCrear, puedeEditar, puedeEliminar } = usePermisos('certificaciones')
   const { mutate: guardarPrecios, isPending: guardandoPrecios } = useGuardarPreciosMCC()
   const [modalPrecios, setModalPrecios] = useState(false)
+  // Filtro del modal de precios: mostrar solo los materiales que todavía no
+  // tienen precio persistido (a tasar). Se filtra por el precio GUARDADO, no
+  // por lo tipeado — así la fila no desaparece mientras se carga el valor.
+  const [modalSoloSinPrecio, setModalSoloSinPrecio] = useState(false)
   const [precios, setPrecios] = useState<Record<number, string>>({})
   // Cobros (pagos del cliente) de la obra elegida.
   const { data: cobros = [] } = useCobrosCliente(obraSel || undefined)
@@ -123,6 +127,7 @@ export function CuentaClienteTab() {
     // tipear cómodo. Solo los materiales de la obra elegida (sin los cobrados).
     for (const r of rowsEditables) init[r.item_id] = Number(r.precio_unit) > 0 ? String(r.precio_unit) : ''
     setPrecios(init)
+    setModalSoloSinPrecio(false)
     setModalPrecios(true)
   }
 
@@ -578,10 +583,23 @@ export function CuentaClienteTab() {
         }
       >
         <div className="flex flex-col gap-3">
-          <div className="text-xs text-gris-dark">
-            {rowsEditables.length} material{rowsEditables.length !== 1 ? 'es' : ''} ·{' '}
-            <span className="font-bold text-naranja-dark">{sinPrecioCount} sin precio</span>. Cargá el precio unitario; el total se calcula solo y es lo que se factura al cliente.
-            {rows.length > rowsEditables.length && ' Los items ya cobrados no se pueden retasar.'}
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div className="text-xs text-gris-dark">
+              {rowsEditables.length} material{rowsEditables.length !== 1 ? 'es' : ''} ·{' '}
+              <span className="font-bold text-naranja-dark">{sinPrecioCount} sin precio</span>. Cargá el precio unitario; el total se calcula solo y es lo que se factura al cliente.
+              {rows.length > rowsEditables.length && ' Los items ya cobrados no se pueden retasar.'}
+            </div>
+            {sinPrecioCount > 0 && (
+              <label className="flex items-center gap-1.5 text-xs font-semibold text-gris-dark cursor-pointer shrink-0">
+                <input
+                  type="checkbox"
+                  className="accent-naranja"
+                  checked={modalSoloSinPrecio}
+                  onChange={e => setModalSoloSinPrecio(e.target.checked)}
+                />
+                Solo sin precio ({sinPrecioCount})
+              </label>
+            )}
           </div>
           <div className="border border-gris rounded-lg overflow-hidden">
             {/* overflow-auto (ambos ejes): a 390px las columnas de precio quedaban
@@ -597,7 +615,7 @@ export function CuentaClienteTab() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rowsEditables.map(r => {
+                  {(modalSoloSinPrecio ? rowsEditables.filter(r => Number(r.precio_unit) === 0) : rowsEditables).map(r => {
                     const val = precioVal(r)
                     const total = Number(r.cantidad) * val
                     const sinPrecio = Number(r.precio_unit) === 0
