@@ -56,6 +56,19 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
   // Fecha de hoy en horario Argentina (YYYY-MM-DD). Para capataces el único
   // día editable es éste — el resto queda read-only aunque sea de la semana
   // actual. La validación dura está en el backend (horas.routes.ts).
+  // `tick` fuerza recomputarla cuando la pestaña vuelve a foco: un capataz
+  // que deja la tarja abierta de un día para otro veía "hoy" viejo y celdas
+  // editables que el backend después rechaza (incidente 2026-08-21/24).
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const refrescar = () => setTick(t => t + 1)
+    document.addEventListener('visibilitychange', refrescar)
+    window.addEventListener('focus', refrescar)
+    return () => {
+      document.removeEventListener('visibilitychange', refrescar)
+      window.removeEventListener('focus', refrescar)
+    }
+  }, [])
   const hoyISO = toISO(new Date())
   const desde = toISO(days[0]!)
   const hasta = toISO(days[6]!)
@@ -190,10 +203,36 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
       }
       upsertHora(
         { obra_cod: obraCod, fecha, leg, horas },
-        { onError: () => toast('Error al guardar la hora', 'err') }
+        {
+          onError: (err: unknown) => {
+            // La celda es un input no-controlado: sin esto, ante un guardado
+            // fallido (red de obra, sesión vencida, 403 de capataz) quedaba
+            // MOSTRANDO el valor tipeado como si hubiera entrado — el usuario
+            // se iba convencido y al recargar "se borraban" las horas
+            // (incidente Candela 2026-08-21/24). Revertimos al valor real y
+            // mostramos el motivo específico si el backend lo dio.
+            const i = days.findIndex(d => toISO(d) === fecha)
+            const el = document.querySelector<HTMLInputElement>(
+              `input[data-tarja-leg="${leg}"][data-tarja-day="${i}"]`
+            )
+            if (el) el.value = antes ? String(antes) : ''
+            // Sacamos el undo que empujamos arriba: el cambio nunca entró.
+            if (antes !== horas && undoStack.current.length > 0) {
+              undoStack.current.pop()
+              setUndoCount(undoStack.current.length)
+            }
+            const detail = (err as { body?: { detail?: string; error?: string } })?.body
+            toast(
+              detail?.error === 'FECHA_FUERA_DE_RANGO'
+                ? (detail.detail ?? 'Como capataz solo podés cargar horas del día actual.')
+                : '⚠ La hora NO se guardó — revisá la conexión y volvé a cargarla',
+              'err',
+            )
+          },
+        }
       )
     },
-    [obraCod, upsertHora, toast]
+    [obraCod, upsertHora, toast, days]
   )
 
   const handleExtraChange = useCallback(
