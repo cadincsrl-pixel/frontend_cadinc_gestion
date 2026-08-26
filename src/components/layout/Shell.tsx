@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Topbar } from './Topbar'
 import { Sidebar } from './Sidebar'
 import { SimulacionBanner } from './SimulacionBanner'
+import { AsistenteChat } from '@/components/asistente/AsistenteChat'
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -32,6 +33,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
+      {/* Asistente IA — flotante, solo visible con flag tarja.asistente_ia */}
+      <AsistenteChat />
     </div>
   )
 }

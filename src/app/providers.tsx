@@ -49,7 +49,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <ToastProvider>
         {children}
       </ToastProvider>
-      <ReactQueryDevtools initialIsOpen={false} />
+      {/* bottom-left: la esquina inferior derecha la ocupa el botón del asistente IA */}
+      <ReactQueryDevtools initialIsOpen={false} buttonPosition="bottom-left" />
     </QueryClientProvider>
   )
 }

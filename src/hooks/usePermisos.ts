@@ -45,6 +45,7 @@ export function usePermisos(modulo: string) {
     gestionarCobros:      flagCapacidad('gestionar_cobros', false),
     puedeAdministrarObras: flagCapacidad('administrar_obras', false),
     costosOficina:        flagCapacidad('costos_oficina', false),
+    asistenteIa:          flagCapacidad('asistente_ia', false),
     esCapataz,
     esJefeObra,
     esAdmin:         profile?.rol === 'admin',

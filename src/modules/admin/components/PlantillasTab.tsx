@@ -26,6 +26,7 @@ const FLAGS = [
   { key: 'forzar_despacho',  label: 'Forzar despacho' },
   { key: 'gestionar_cobros', label: 'Gestionar cobros (alquiler)' },
   { key: 'costos_oficina',   label: '🏢 Costos de oficina (ver y administrar)' },
+  { key: 'asistente_ia',     label: '🤖 Asistente IA' },
 ] as const
 
 type ModPerm = ModuloPermisos & { obras_scope?: string }

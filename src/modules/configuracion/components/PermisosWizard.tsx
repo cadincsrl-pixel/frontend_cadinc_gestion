@@ -48,7 +48,7 @@ const MODULOS_CON_OBRAS_SCOPE: ReadonlySet<string> = new Set([
 // en modo Personalizado. Se muestran SIEMPRE (es modo experto) pero algunos
 // solo afectan a ciertos módulos en el código del frontend; los `title` lo
 // documentan.
-type FlagBoolean = 'ver_pii' | 'ver_costos' | 'administrar_obras' | 'resolver_items' | 'forzar_despacho' | 'aprobar_ajustes_stock' | 'gestionar_cobros' | 'costos_oficina'
+type FlagBoolean = 'ver_pii' | 'ver_costos' | 'administrar_obras' | 'resolver_items' | 'forzar_despacho' | 'aprobar_ajustes_stock' | 'gestionar_cobros' | 'costos_oficina' | 'asistente_ia'
 const FLAGS_BOOLEAN: { key: FlagBoolean; label: string; help: string; modulos?: string[] }[] = [
   {
     key: 'ver_pii',
@@ -88,6 +88,12 @@ const FLAGS_BOOLEAN: { key: FlagBoolean; label: string; help: string; modulos?: 
     key: 'costos_oficina',
     label: '🏢 Costos de oficina (ver y administrar)',
     help: 'Habilita el tab "Costos oficina" del dashboard: da acceso a los sueldos del personal administrativo y a su prorrateo por obra, incluida la carga de personas, sueldos y asignaciones. Dato sensible — otorgar solo a quien deba ver esos montos. Solo tiene efecto en tarja.',
+    modulos: ['tarja'],
+  },
+  {
+    key: 'asistente_ia',
+    label: '🤖 Asistente IA',
+    help: 'Habilita el chat de consultas sobre los datos del ERP. El asistente responde SOLO con datos que el usuario ya puede ver: cada consulta valida sus permisos y sus obras permitidas (no es un bypass). Consume créditos de API en cada pregunta. Solo tiene efecto en tarja.',
     modulos: ['tarja'],
   },
 ]

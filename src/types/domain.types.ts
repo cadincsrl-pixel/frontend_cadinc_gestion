@@ -1009,6 +1009,12 @@ export type ModuloPermisos = { [K in Accion]?: boolean } & {
   //   (estructura administrativa prorrateada por obra). Dato sensible:
   //   expone sueldos del personal administrativo. Opt-in explícito, no
   //   viene en ningún preset. Solo tiene efecto en tarja.
+  // - tarja.asistente_ia: habilita el chat "Asistente IA" (consultas de solo
+  //   lectura sobre datos del ERP vía Claude API). El asistente NO es un
+  //   bypass de permisos: cada herramienta valida los permisos del usuario
+  //   que pregunta y scopea por sus obras permitidas. Consume créditos de
+  //   API. Opt-in explícito, no viene en ningún preset. Solo tiene efecto
+  //   en tarja (admin bypass como el resto de las flags).
   //
   // Flags eliminadas en Permisos v3 (2026-05-18):
   // - vista_completa: reemplazada por `obras_scope` global del profile.
@@ -1021,6 +1027,7 @@ export type ModuloPermisos = { [K in Accion]?: boolean } & {
   aprobar_ajustes_stock?:  boolean
   gestionar_cobros?:       boolean
   costos_oficina?:         boolean
+  asistente_ia?:           boolean
 }
 export type Permisos = Record<string, ModuloPermisos>
 
