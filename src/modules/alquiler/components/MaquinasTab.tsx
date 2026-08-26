@@ -67,7 +67,9 @@ function estadoBadgeLabel(e: MaquinaEstado): string {
 
 export function MaquinasTab() {
   const toast = useToast()
-  const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('alquiler')
+  // gestionarDocs: cargar/renovar seguro y póliza sin ser admin (el backend
+  // limita al no-admin con flag a los campos de seguro en el PATCH).
+  const { puedeCrear, puedeEditar, puedeEliminar, esAdmin, gestionarDocs } = usePermisos('alquiler')
   const { data: maquinas = [], isLoading, isError, refetch } = useMaquinas()
   const { mutate: create, isPending: creating } = useCreateMaquina()
   const { mutate: update, isPending: updating } = useUpdateMaquina()
@@ -320,25 +322,30 @@ export function MaquinasTab() {
         }
       >
         <div className="flex flex-col gap-3">
-          <Input label="Nombre" placeholder="Ej: Hidrogrúa Palfinger" error={errors.nombre?.message} {...register('nombre')} />
+          {/* Ficha de la máquina: admin-only en el backend. Los campos de
+              seguro sí se habilitan con el flag gestionar_docs. */}
+          <Input label="Nombre" placeholder="Ej: Hidrogrúa Palfinger" disabled={!esAdmin} error={errors.nombre?.message} {...register('nombre')} />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Select label="Tipo" options={MAQUINA_TIPO_OPTIONS} error={errors.tipo?.message} {...register('tipo')} />
-            <Select label="Estado" options={MAQUINA_ESTADO_OPTIONS} error={errors.estado?.message} {...register('estado')} />
+            <Select label="Tipo" options={MAQUINA_TIPO_OPTIONS} disabled={!esAdmin} error={errors.tipo?.message} {...register('tipo')} />
+            <Select label="Estado" options={MAQUINA_ESTADO_OPTIONS} disabled={!esAdmin} error={errors.estado?.message} {...register('estado')} />
           </div>
           <Input
             label="Identificación (patente / nº interno)"
             placeholder="Opcional"
+            disabled={!esAdmin}
             {...register('identificacion')}
           />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input
               label="Seguro"
               placeholder="Compañía / nº de póliza (opcional)"
+              disabled={!gestionarDocs}
               {...register('seguro')}
             />
             <Input
               label="Vencimiento del seguro"
               type="date"
+              disabled={!gestionarDocs}
               {...register('seguro_vence')}
             />
           </div>
@@ -359,10 +366,27 @@ export function MaquinasTab() {
                 </span>
                 <div className="flex items-center gap-1 shrink-0">
                   <Button variant="ghost" size="sm" onClick={handleVerPoliza}>Ver</Button>
+                  {/* Renovación: re-subir pisa la póliza anterior (POST), no
+                      requiere permiso de eliminación como "Quitar". */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*,application/pdf"
+                    onChange={handleSubirPoliza}
+                    className="hidden"
+                  />
                   <Button
                     variant="ghost"
                     size="sm"
-                    disabled={!puedeEditar || quitandoPoliza}
+                    disabled={!gestionarDocs || subiendoPoliza}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {subiendoPoliza ? 'Subiendo…' : 'Reemplazar'}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={!gestionarDocs || !puedeEliminar || quitandoPoliza}
                     onClick={handleQuitarPoliza}
                   >
                     {quitandoPoliza ? 'Quitando…' : 'Quitar'}
@@ -376,7 +400,7 @@ export function MaquinasTab() {
                   type="file"
                   accept="image/*,application/pdf"
                   onChange={handleSubirPoliza}
-                  disabled={!puedeEditar || subiendoPoliza}
+                  disabled={!gestionarDocs || subiendoPoliza}
                   className="text-xs text-gris-dark file:mr-3 file:rounded-lg file:border-0 file:bg-gris file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-carbon hover:file:bg-gris-mid disabled:opacity-60 disabled:cursor-not-allowed"
                 />
                 {subiendoPoliza && (

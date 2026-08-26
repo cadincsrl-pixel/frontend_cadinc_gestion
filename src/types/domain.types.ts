@@ -1026,6 +1026,11 @@ export type ModuloPermisos = { [K in Accion]?: boolean } & {
   administrar_obras?:      boolean
   aprobar_ajustes_stock?:  boolean
   gestionar_cobros?:       boolean
+  // - alquiler.gestionar_docs: gestionar documentación de máquinas (póliza de
+  //   seguro, aseguradora, vencimiento) sin ser admin. En updateMaquina el
+  //   backend limita al no-admin con este flag a los campos de seguro; el
+  //   resto del ABM de flota sigue admin-only. Solo tiene efecto en alquiler.
+  gestionar_docs?:         boolean
   costos_oficina?:         boolean
   asistente_ia?:           boolean
 }

@@ -48,7 +48,7 @@ const MODULOS_CON_OBRAS_SCOPE: ReadonlySet<string> = new Set([
 // en modo Personalizado. Se muestran SIEMPRE (es modo experto) pero algunos
 // solo afectan a ciertos módulos en el código del frontend; los `title` lo
 // documentan.
-type FlagBoolean = 'ver_pii' | 'ver_costos' | 'administrar_obras' | 'resolver_items' | 'forzar_despacho' | 'aprobar_ajustes_stock' | 'gestionar_cobros' | 'costos_oficina' | 'asistente_ia'
+type FlagBoolean = 'ver_pii' | 'ver_costos' | 'administrar_obras' | 'resolver_items' | 'forzar_despacho' | 'aprobar_ajustes_stock' | 'gestionar_cobros' | 'gestionar_docs' | 'costos_oficina' | 'asistente_ia'
 const FLAGS_BOOLEAN: { key: FlagBoolean; label: string; help: string; modulos?: string[] }[] = [
   {
     key: 'ver_pii',
@@ -82,6 +82,12 @@ const FLAGS_BOOLEAN: { key: FlagBoolean; label: string; help: string; modulos?: 
     key: 'gestionar_cobros',
     label: 'Gestionar cobros',
     help: 'Cargar y editar cobros de clientes sin ser admin (eliminar cobros sigue siendo admin-only). Solo tiene efecto en alquiler.',
+    modulos: ['alquiler'],
+  },
+  {
+    key: 'gestionar_docs',
+    label: '📄 Documentación de máquinas',
+    help: 'Cargar y renovar la póliza de seguro, aseguradora y vencimiento de las máquinas de alquiler sin ser admin. No habilita el resto del ABM de flota (crear/editar/borrar máquinas sigue admin-only). Quitar la póliza requiere además permiso de eliminación en el módulo. Solo tiene efecto en alquiler.',
     modulos: ['alquiler'],
   },
   {

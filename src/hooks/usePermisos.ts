@@ -43,6 +43,7 @@ export function usePermisos(modulo: string) {
     forzarDespacho:       flagCapacidad('forzar_despacho', false),
     aprobarAjustesStock:  flagCapacidad('aprobar_ajustes_stock', false),
     gestionarCobros:      flagCapacidad('gestionar_cobros', false),
+    gestionarDocs:        flagCapacidad('gestionar_docs', false),
     puedeAdministrarObras: flagCapacidad('administrar_obras', false),
     costosOficina:        flagCapacidad('costos_oficina', false),
     asistenteIa:          flagCapacidad('asistente_ia', false),
