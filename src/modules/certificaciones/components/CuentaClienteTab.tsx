@@ -48,6 +48,8 @@ export function CuentaClienteTab() {
   // tienen precio persistido (a tasar). Se filtra por el precio GUARDADO, no
   // por lo tipeado — así la fila no desaparece mientras se carga el valor.
   const [modalSoloSinPrecio, setModalSoloSinPrecio] = useState(false)
+  // Buscador del modal de precios (por descripción del material).
+  const [modalBusqueda, setModalBusqueda] = useState('')
   const [precios, setPrecios] = useState<Record<number, string>>({})
   // Cobros (pagos del cliente) de la obra elegida.
   const { data: cobros = [] } = useCobrosCliente(obraSel || undefined)
@@ -128,6 +130,7 @@ export function CuentaClienteTab() {
     for (const r of rowsEditables) init[r.item_id] = Number(r.precio_unit) > 0 ? String(r.precio_unit) : ''
     setPrecios(init)
     setModalSoloSinPrecio(false)
+    setModalBusqueda('')
     setModalPrecios(true)
   }
 
@@ -276,6 +279,13 @@ export function CuentaClienteTab() {
   const cambiosCount   = rowsEditables.filter(r => precioVal(r) !== Number(r.precio_unit)).length
   const totalModal     = rowsEditables.reduce((s, r) => s + Number(r.cantidad) * precioVal(r), 0)
   const sinPrecioCount = rows.filter(r => Number(r.precio_unit) === 0).length
+  // Filas visibles en la tabla del modal: filtro "sin precio" ∧ buscador.
+  // Igual que con el checkbox, el guardado cuenta TODOS los cambios tipeados
+  // aunque queden fuera del filtro (cambiosCount va sobre rowsEditables).
+  const qModal = modalBusqueda.trim().toLowerCase()
+  const rowsModalVisibles = rowsEditables
+    .filter(r => !modalSoloSinPrecio || Number(r.precio_unit) === 0)
+    .filter(r => !qModal || r.descripcion.toLowerCase().includes(qModal))
   const obraNombre     = obrasMap.get(obraSel)?.nom ?? obraSel
 
   // Saldo: adeudado (lo que CADINC adelantó) − Σ pagos. Con obra elegida son
@@ -601,6 +611,25 @@ export function CuentaClienteTab() {
               </label>
             )}
           </div>
+          <div className="relative">
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gris-mid text-xs pointer-events-none">🔍</span>
+            <input
+              type="text"
+              autoComplete="off"
+              value={modalBusqueda}
+              onChange={e => setModalBusqueda(e.target.value)}
+              placeholder="Buscar material..."
+              className="w-full pl-8 pr-8 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white"
+            />
+            {modalBusqueda && (
+              <button
+                type="button"
+                onClick={() => setModalBusqueda('')}
+                title="Limpiar búsqueda"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gris-mid hover:text-rojo text-xs font-bold"
+              >✕</button>
+            )}
+          </div>
           <div className="border border-gris rounded-lg overflow-hidden">
             {/* overflow-auto (ambos ejes): a 390px las columnas de precio quedaban
                 clipeadas sin scroll horizontal y no se podian tipear los precios. */}
@@ -615,7 +644,14 @@ export function CuentaClienteTab() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(modalSoloSinPrecio ? rowsEditables.filter(r => Number(r.precio_unit) === 0) : rowsEditables).map(r => {
+                  {rowsModalVisibles.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="px-3 py-6 text-center text-sm text-gris-dark italic">
+                        {qModal ? `Sin resultados para "${modalBusqueda.trim()}"` : 'Sin materiales para mostrar'}
+                      </td>
+                    </tr>
+                  )}
+                  {rowsModalVisibles.map(r => {
                     const val = precioVal(r)
                     const total = Number(r.cantidad) * val
                     const sinPrecio = Number(r.precio_unit) === 0
