@@ -38,6 +38,8 @@ export function CuentaClienteTab() {
   const [obraSel, setObraSel] = useState<string>('')
   const [pagadorSel, setPagadorSel] = useState<FiltroPagador>('todos')
   const [soloSinPrecio, setSoloSinPrecio] = useState(false)
+  // Buscador del listado (por descripción del material o proveedor).
+  const [busquedaMaterial, setBusquedaMaterial] = useState('')
   const [exporting, setExporting] = useState(false)
   // Pendientes de tasar (materiales sin precio) en todas las obras del usuario.
   const { data: pendientes = [] } = usePendientesDePrecio()
@@ -77,13 +79,21 @@ export function CuentaClienteTab() {
   ]
   const obrasMap = useMemo(() => new Map((obras as Obra[]).map(o => [o.cod, o])), [obras])
 
-  // Filtrado client-side: por pagador y/o "solo sin precio" (a tasar).
+  // Filtrado client-side: por pagador, "solo sin precio" (a tasar) y buscador.
+  // El buscador también recorta el export Excel (mismo criterio que pagador).
   const filtered = useMemo(() => {
     let r = rows
     if (pagadorSel !== 'todos') r = r.filter(x => x.pagado_por === pagadorSel)
     if (soloSinPrecio)          r = r.filter(x => Number(x.precio_unit) === 0)
+    const q = busquedaMaterial.trim().toLowerCase()
+    if (q) {
+      r = r.filter(x =>
+        x.descripcion.toLowerCase().includes(q) ||
+        (x.proveedores?.nombre ?? '').toLowerCase().includes(q),
+      )
+    }
     return r
-  }, [rows, pagadorSel, soloSinPrecio])
+  }, [rows, pagadorSel, soloSinPrecio, busquedaMaterial])
 
   const pendientesTotal = pendientes.reduce((s, p) => s + p.sin_precio, 0)
 
@@ -387,6 +397,25 @@ export function CuentaClienteTab() {
           >
             ⚠ Sin precio
           </button>
+          <div className="relative min-w-[190px] flex-1 max-w-xs">
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gris-mid text-xs pointer-events-none">🔍</span>
+            <input
+              type="text"
+              autoComplete="off"
+              value={busquedaMaterial}
+              onChange={e => setBusquedaMaterial(e.target.value)}
+              placeholder="Buscar material o proveedor..."
+              className="w-full pl-8 pr-8 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white"
+            />
+            {busquedaMaterial && (
+              <button
+                type="button"
+                onClick={() => setBusquedaMaterial('')}
+                title="Limpiar búsqueda"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gris-mid hover:text-rojo text-xs font-bold"
+              >✕</button>
+            )}
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button
@@ -552,7 +581,9 @@ export function CuentaClienteTab() {
               <tbody>
                 {filtered.length === 0 ? (
                   <tr><td colSpan={11} className="text-center py-8 text-gris-dark text-sm italic">
-                    {soloSinPrecio
+                    {busquedaMaterial.trim()
+                      ? `Sin resultados para "${busquedaMaterial.trim()}" en esta selección.`
+                      : soloSinPrecio
                       ? '✓ No hay materiales sin precio en esta selección — todo tasado.'
                       : pagadorSel === 'todos'
                         ? 'No hay materiales a cuenta del cliente en esta selección.'
