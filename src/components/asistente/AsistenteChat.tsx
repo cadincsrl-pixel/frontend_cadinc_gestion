@@ -20,6 +20,7 @@ const MENSAJE_BIENVENIDA =
   '• Costos de una obra o de una semana de tarja\n' +
   '• Gastos de flota (combustible, peajes, viáticos)\n' +
   '• Viajes y tramos de logística\n' +
+  '• Facturación a empresas transportistas\n' +
   '• Saldos de choferes y liquidaciones\n' +
   '• Stock en depósito o en proveedores\n\n' +
   'Las consultas con datos pueden tardar hasta 30 segundos.'
