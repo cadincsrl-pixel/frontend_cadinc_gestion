@@ -16,6 +16,7 @@ import { Badge }    from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
 import { useForm }  from 'react-hook-form'
 import { usePermisos } from '@/hooks/usePermisos'
+import { DiferenciaToneladas } from './DiferenciaToneladas'
 import { uploadRemitoImg } from '@/lib/utils/upload'
 import { toISO } from '@/lib/utils/dates'
 import { exportViajesExcel } from '../utils/viajes-export'
@@ -696,6 +697,7 @@ export function ViajesTab() {
   function handleRegistrarDescarga(data: TramoFormValues) {
     if (!descargaTramo) return
     if (!confirmarSiRemitoNoCoincide(descargaTramo.remito_carga, data.remito_descarga)) return
+    if (!confirmarSiToneladasSospechosas(descargaTramo.toneladas_carga, data.toneladas_descarga)) return
     const tramoOriginal = descargaTramo
     regDescarga(
       {
@@ -850,6 +852,34 @@ export function ViajesTab() {
   // Compara nº de remito carga vs descarga (trim + uppercase). Si difieren
   // y ambos están cargados, muestra confirm. Devuelve true si se puede
   // proceder, false si el usuario canceló.
+  // Confirmación al guardar si la diferencia carga/descarga huele a typo:
+  // descarga MAYOR que la carga, o merma superior al 10%. Las mermas chicas
+  // no molestan (el hint en vivo ya muestra la diferencia siempre).
+  function confirmarSiToneladasSospechosas(carga?: number | string | null, descarga?: number | string | null): boolean {
+    const c = Number(carga)
+    const d = descarga == null || descarga === '' ? NaN : Number(descarga)
+    if (!Number.isFinite(c) || c <= 0 || !Number.isFinite(d) || d <= 0) return true
+    const dif = d - c
+    const fmt = (n: number) => n.toLocaleString('es-AR', { maximumFractionDigits: 2 })
+    if (dif > 0.005) {
+      return confirm(
+        `⚠ ATENCIÓN — la descarga es MAYOR que la carga:\n\n` +
+        `  Cargadas:    ${fmt(c)} tn\n` +
+        `  Descargadas: ${fmt(d)} tn (+${fmt(dif)} tn)\n\n` +
+        `Casi seguro hay un error de tipeo.\n\n¿Querés guardar igual?`,
+      )
+    }
+    if (Math.abs(dif) / c > 0.10) {
+      return confirm(
+        `⚠ ATENCIÓN — diferencia grande entre carga y descarga:\n\n` +
+        `  Cargadas:    ${fmt(c)} tn\n` +
+        `  Descargadas: ${fmt(d)} tn (−${fmt(Math.abs(dif))} tn, −${fmt(Math.abs(dif) / c * 100)}%)\n\n` +
+        `¿Querés guardar igual?`,
+      )
+    }
+    return true
+  }
+
   function confirmarSiRemitoNoCoincide(remitoCarga?: string | null, remitoDescarga?: string | null): boolean {
     const a = (remitoCarga ?? '').trim()
     const b = (remitoDescarga ?? '').trim()
@@ -867,6 +897,7 @@ export function ViajesTab() {
   function handleEdit(data: TramoFormValues) {
     if (!editando) return
     if (!confirmarSiRemitoNoCoincide(data.remito_carga, data.remito_descarga)) return
+    if (!confirmarSiToneladasSospechosas(data.toneladas_carga, data.toneladas_descarga)) return
     // Un cargado se considera completado cuando tiene la descarga registrada
     // (fecha de descarga). Editar y completar la descarga acá debe cerrarlo,
     // igual que el botón "registrar descarga" (antes quedaba en `en_curso`).
@@ -1534,6 +1565,14 @@ export function ViajesTab() {
             <Input label="Toneladas" type="number" step="0.01" min="0" placeholder="0.00" {...formDescarga.register('toneladas_descarga')} />
             <Input label="Nº Remito" placeholder="R-00456" {...formDescarga.register('remito_descarga')} />
           </div>
+          {descargaTramo?.toneladas_carga != null && (
+            <p className="text-xs text-gris-dark -mt-2">
+              ⛏ Cargadas: <b className="font-mono">{Number(descargaTramo.toneladas_carga).toLocaleString('es-AR', { maximumFractionDigits: 2 })} tn</b>
+            </p>
+          )}
+          <div className="-mt-3">
+            <DiferenciaToneladas carga={descargaTramo?.toneladas_carga} descarga={formDescarga.watch('toneladas_descarga')} />
+          </div>
           <RemitoImgField
             label="Remito de descarga (imagen o PDF)"
             url={formDescarga.watch('remito_descarga_img_url') ?? ''}
@@ -1716,6 +1755,7 @@ export function ViajesTab() {
                   <Input label="Toneladas" type="number" step="0.01" min="0" {...formEdit.register('toneladas_descarga')} />
                   <Input label="Nº Remito" {...formEdit.register('remito_descarga')} />
                 </div>
+                <DiferenciaToneladas carga={formEdit.watch('toneladas_carga')} descarga={formEdit.watch('toneladas_descarga')} />
                 <RemitoImgField
                   label="Remito de descarga (imagen o PDF)"
                   url={formEdit.watch('remito_descarga_img_url') ?? ''}

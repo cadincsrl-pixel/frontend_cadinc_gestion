@@ -21,6 +21,7 @@ import { Badge }  from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
 import { useForm as useRHF } from 'react-hook-form'
 import { usePermisos } from '@/hooks/usePermisos'
+import { DiferenciaToneladas } from './DiferenciaToneladas'
 import { CobroAdjuntosSection } from './CobroAdjuntosSection'
 import { useUploadCobroAdjunto } from '../hooks/useCobroAdjuntos'
 import type { EmpresaTransportista, TarifaEmpresaCantera, Tramo, Cobro, Camion } from '@/types/domain.types'
@@ -3022,6 +3023,10 @@ function FacturacionSection() {
                 placeholder="0.00"
                 hint="Lo que la empresa registró/paga, no lo del remito original."
                 {...formEditTramo.register('toneladas_descarga')}
+              />
+              <DiferenciaToneladas
+                carga={editandoTramo.toneladas_carga}
+                descarga={formEditTramo.watch('toneladas_descarga')}
               />
               <Input
                 label="Nº de remito (opcional)"
