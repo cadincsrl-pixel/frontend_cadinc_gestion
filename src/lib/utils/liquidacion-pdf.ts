@@ -21,6 +21,15 @@ export interface PdfLiquidacionTramo {
   remito:      string | null
   // true = pata de un tramo relevado (km parcial de ese chofer), no tramo entero.
   esRelevo?:   boolean
+  // Modalidad pct: detalle económico del tramo (del `detalle` de
+  // calcularBasePctViajes). neto = facturación sin IVA del viaje, pct = %
+  // vigente a la fecha de ESE tramo, comision = neto × pct/100. Con estos
+  // campos presentes la tabla del PDF muestra la plata por viaje en lugar
+  // de los km — así el chofer controla que estén todos sus viajes y cuánto
+  // cobra por cada uno. Los vacíos no facturan y van sin detalle.
+  neto?:       number | null
+  pct?:        number | null
+  comision?:   number | null
 }
 
 export interface PdfLiquidacionAdelanto {
@@ -99,7 +108,92 @@ export function generarPdfLiquidacion(args: PdfLiquidacionArgs): void {
     : 'LIQUIDACIÓN — VISTA PREVIA'
 
   // ── Tabla de tramos ─────────────────────────────────────────────
-  const tramosTable: Content = args.tramos.length === 0 ? { text: '' } : {
+  // Modalidad pct CON detalle por tramo: al chofer le importa la plata de
+  // cada viaje, no los km — columnas Facturación / % / Comisión en lugar de
+  // Tipo / Km, con fila de totales que cierra contra el resumen. Si el
+  // detalle no vino (liquidación cerrada cuyo recálculo no cuadró con el
+  // snapshot), se cae a la tabla clásica para no imprimir números falsos.
+  const esPctConDetalle = args.modalidad === 'pct' && args.tramos.some(t => t.comision != null)
+
+  const tramosLayout = {
+    fillColor: (rowIdx: number) => rowIdx === 0 ? '#1B4F8C' : (rowIdx % 2 === 0 ? '#F5F7FA' : null),
+    hLineWidth: () => 0.3,
+    vLineWidth: () => 0,
+    hLineColor: () => '#D0D5DD',
+  }
+
+  const rutaDe = (t: PdfLiquidacionTramo) => t.tipo === 'cargado'
+    ? `${t.cantera ?? '—'} → ${t.deposito ?? '—'}`
+    : `${t.deposito ?? '—'} → ${t.cantera ?? '—'}`
+
+  // Cargado propio que quedó fuera del detalle (sin tarifa o sin toneladas):
+  // se marca con ✱ y se explica al pie — no genera comisión ni entra al TOTAL.
+  const esCargadoSinDetalle = (t: PdfLiquidacionTramo) =>
+    t.tipo === 'cargado' && !t.esRelevo && t.comision == null
+
+  let tramosTable: Content
+  if (args.tramos.length === 0) {
+    tramosTable = { text: '' }
+  } else if (esPctConDetalle) {
+    // Totales de la tabla desde sus propias filas (autoconsistencia): deben
+    // coincidir con base_neta / subtotal_pct del resumen.
+    const conDetalle   = args.tramos.filter(t => t.comision != null)
+    const totalTon     = conDetalle.reduce((s, t) => s + (t.toneladas ?? 0), 0)
+    const totalNeto    = conDetalle.reduce((s, t) => s + (t.neto ?? 0), 0)
+    const totalCom     = conDetalle.reduce((s, t) => s + (t.comision ?? 0), 0)
+    const fmtPct = (p: number | null | undefined) =>
+      p != null ? p.toLocaleString('es-AR', { maximumFractionDigits: 2 }) + '%' : '—'
+
+    tramosTable = {
+      style: 'table',
+      table: {
+        headerRows: 1,
+        widths: [50, '*', 35, 62, 30, 62, 48],
+        body: [
+          [
+            { text: 'Fecha',      style: 'tableHeader' },
+            { text: 'Origen → Destino', style: 'tableHeader' },
+            { text: 'Ton',        style: 'tableHeader', alignment: 'right' },
+            { text: 'Neto viaje', style: 'tableHeader', alignment: 'right' },
+            { text: '%',          style: 'tableHeader', alignment: 'right' },
+            { text: 'Comisión',   style: 'tableHeader', alignment: 'right' },
+            { text: 'Remito',     style: 'tableHeader' },
+          ],
+          ...args.tramos.map(t => {
+            const prefijo = t.esRelevo ? 'Relevo · ' : t.tipo === 'vacio' ? 'Vacío · ' : ''
+            const italica = t.tipo === 'vacio' || !!t.esRelevo
+            return [
+              { text: fmtFecha(t.fecha) },
+              { text: prefijo + rutaDe(t) + (esCargadoSinDetalle(t) ? ' ✱' : ''), italics: italica },
+              { text: t.toneladas != null ? fmtN(t.toneladas, 2) : '—', alignment: 'right' as const },
+              { text: t.neto     != null ? fmtM(t.neto)     : '—', alignment: 'right' as const },
+              { text: fmtPct(t.pct), alignment: 'right' as const },
+              { text: t.comision != null ? fmtM(t.comision) : '—', alignment: 'right' as const, bold: t.comision != null },
+              { text: t.esRelevo ? 'Relevo' : (t.remito ?? '—') },
+            ]
+          }),
+          [
+            { text: '' },
+            { text: `TOTAL (${conDetalle.length} viaje${conDetalle.length !== 1 ? 's' : ''})`, bold: true },
+            { text: fmtN(totalTon, 2), alignment: 'right' as const, bold: true },
+            { text: fmtM(totalNeto), alignment: 'right' as const, bold: true },
+            { text: '' },
+            { text: fmtM(totalCom), alignment: 'right' as const, bold: true },
+            { text: '' },
+          ],
+        ],
+      },
+      // La última fila (TOTAL) con fondo propio, fuera del zebra por paridad.
+      layout: {
+        ...tramosLayout,
+        fillColor: (rowIdx: number, node: { table: { body: unknown[] } }) =>
+          rowIdx === 0 ? '#1B4F8C'
+          : rowIdx === node.table.body.length - 1 ? '#DCE6F2'
+          : (rowIdx % 2 === 0 ? '#F5F7FA' : null),
+      },
+    }
+  } else {
+    tramosTable = {
     style: 'table',
     table: {
       headerRows: 1,
@@ -116,21 +210,30 @@ export function generarPdfLiquidacion(args: PdfLiquidacionArgs): void {
         ...args.tramos.map(t => [
           { text: fmtFecha(t.fecha) },
           { text: (t.tipo === 'cargado' ? 'Cargado' : 'Vacío') + (t.esRelevo ? ' · relevo' : ''), italics: !!t.esRelevo },
-          { text: t.tipo === 'cargado'
-              ? `${t.cantera ?? '—'} → ${t.deposito ?? '—'}`
-              : `${t.deposito ?? '—'} → ${t.cantera ?? '—'}`, italics: !!t.esRelevo },
+          { text: rutaDe(t), italics: !!t.esRelevo },
           { text: fmtN(t.km), alignment: 'right' as const },
           { text: t.toneladas != null ? fmtN(t.toneladas, 2) : '—', alignment: 'right' as const },
           { text: t.esRelevo ? 'Relevo' : (t.remito ?? '—') },
         ]),
       ],
     },
-    layout: {
-      fillColor: (rowIdx) => rowIdx === 0 ? '#1B4F8C' : (rowIdx % 2 === 0 ? '#F5F7FA' : null),
-      hLineWidth: () => 0.3,
-      vLineWidth: () => 0,
-      hLineColor: () => '#D0D5DD',
-    },
+    layout: tramosLayout,
+    }
+  }
+
+  // Aclaraciones bajo la tabla pct: la comisión es sobre el NETO sin IVA,
+  // los vacíos se listan pero no facturan, y los ✱ explican por qué un
+  // cargado quedó sin comisión (fuera del TOTAL).
+  const notaVacios: Content = !esPctConDetalle ? { text: '' } : {
+    stack: [
+      { text: '"Neto viaje" = toneladas × tarifa vigente SIN IVA. La comisión de cada viaje se calcula sobre ese neto, con el % vigente a su fecha.', style: 'meta', margin: [0, 2, 0, 0] },
+      ...(args.tramos.some(t => t.tipo === 'vacio')
+        ? [{ text: 'Los tramos vacíos no facturan y no generan comisión (se listan como registro del viaje).', style: 'meta', margin: [0, 1, 0, 0] } as Content]
+        : []),
+      ...(args.tramos.some(esCargadoSinDetalle)
+        ? [{ text: '✱ Viaje sin tarifa o sin toneladas cargadas: no genera comisión y NO está incluido en la fila TOTAL.', style: 'meta', margin: [0, 1, 0, 0] } as Content]
+        : []),
+    ],
   }
 
   // ── Tabla de adelantos ──────────────────────────────────────────
@@ -255,13 +358,17 @@ export function generarPdfLiquidacion(args: PdfLiquidacionArgs): void {
     fmtM(args.subtotal_basico),
   ])
   }
-  if (args.km_cargados > 0) {
+  // En modalidad pct los km NO integran el neto (la plata es jornal +
+  // comisión): sin este gate, una liquidación pct cerrada imprimía líneas
+  // "Km cargados × $/km" con el precio-km ACTUAL cacheado del chofer — un
+  // importe que no suma al NETO A PAGAR.
+  if (args.modalidad !== 'pct' && args.km_cargados > 0) {
     totalesRows.push([
       `Km cargados (${fmtN(args.km_cargados)}) × ${fmtM(args.precio_km_cargado)}/km`,
       fmtM(args.km_cargados * args.precio_km_cargado),
     ])
   }
-  if (args.km_vacios > 0) {
+  if (args.modalidad !== 'pct' && args.km_vacios > 0) {
     totalesRows.push([
       `Km vacíos (${fmtN(args.km_vacios)}) × ${fmtM(args.precio_km_vacio)}/km`,
       fmtM(args.km_vacios * args.precio_km_vacio),
@@ -320,9 +427,10 @@ export function generarPdfLiquidacion(args: PdfLiquidacionArgs): void {
 
       // Tramos
       args.tramos.length > 0
-        ? { text: 'Tramos', style: 'sectionTitle', margin: [0, 16, 0, 4] }
+        ? { text: esPctConDetalle ? 'Viajes y comisión' : 'Tramos', style: 'sectionTitle', margin: [0, 16, 0, 4] }
         : { text: '' },
       tramosTable,
+      notaVacios,
 
       // Adelantos
       ...adelantosBlock,

@@ -35,7 +35,7 @@ import {
   diasEntreFechas, fechaTramo, tramoEnRango, kmTramo,
   fechaRelevo, kmRelevo, relevoEnRango, rangoConRelevos, diasConRelevos,
   calcularTotalesLiquidacion, calcularBasePctViajes, calcularTotalesLiquidacionPct,
-  pctAplicadoEfectivo,
+  pctAplicadoEfectivo, type BasePctResultado,
 } from '../utils/liquidacion-math'
 
 function fmtM(n: number) {
@@ -290,9 +290,14 @@ export function LiquidacionesTab() {
       .filter(t => tramoEnRango(t, watchDesde, watchHasta))
       .map(t => t.id)
     setSelTramos(visiblesIds)
-    const relevoIds = relevos
-      .filter(r => r.chofer_id === choferLiq.id && relevoEnRango(r, watchDesde, watchHasta))
-      .map(r => r.id)
+    // Modalidad pct: los relevos no tienen regla de reparto todavía y el
+    // cierre los bloquea — no re-tildarlos acá (pisaba el init vacío de
+    // abrirLiquidar y el PDF de vista previa los listaba como filas fantasma).
+    const relevoIds = (choferLiq.modalidad_pago ?? 'km_jornal') === 'pct'
+      ? []
+      : relevos
+          .filter(r => r.chofer_id === choferLiq.id && relevoEnRango(r, watchDesde, watchHasta))
+          .map(r => r.id)
     setSelRelevos(relevoIds)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watchDesde, watchHasta, choferLiq?.id])
@@ -470,6 +475,9 @@ export function LiquidacionesTab() {
       modalidad: 'km_jornal' as 'km_jornal' | 'pct',
       pct: 0, base_neta: 0, subtotal_pct: 0,
       sin_tarifa: [] as Tramo[], sin_toneladas: [] as Tramo[],
+      // Detalle económico por tramo (modalidad pct) — lo consume el PDF para
+      // mostrar la comisión de cada viaje.
+      detallePct: [] as BasePctResultado['detalle'],
     }
     if (!choferLiq) return empty
     const basico_dia       = parseFloat(watchBasico)    || 0
@@ -521,6 +529,7 @@ export function LiquidacionesTab() {
         pct, base_neta: base.base_neta, subtotal_pct: totPct.subtotal_pct,
         sin_tarifa: base.sin_tarifa,
         sin_toneladas: base.sin_toneladas,
+        detallePct: base.detalle,
       }
     }
 
@@ -545,6 +554,7 @@ export function LiquidacionesTab() {
       modalidad: 'km_jornal' as const,
       pct: 0, base_neta: 0, subtotal_pct: 0,
       sin_tarifa: [] as Tramo[], sin_toneladas: [] as Tramo[],
+      detallePct: [] as BasePctResultado['detalle'],
     }
   }
 
@@ -591,6 +601,8 @@ export function LiquidacionesTab() {
     const tramosDelChofer = tramosPendientes
       .filter(t => t.chofer_id === choferLiq.id && selTramos.includes(t.id))
       .filter(t => tramoEnRango(t, data.desde, data.hasta))
+    // Modalidad pct: comisión por tramo para la tabla del PDF.
+    const detallePorTramo = new Map(preview.detallePct.map(d => [d.tramo_id, d]))
     // Patas de relevo del chofer (km ya incluido en preview.km_*; acá solo se listan).
     const relevoLegs = legsDeRelevos(relevos.filter(r =>
       r.chofer_id === choferLiq.id && selRelevos.includes(r.id) && relevoEnRango(r, data.desde, data.hasta),
@@ -623,14 +635,21 @@ export function LiquidacionesTab() {
         ...tramosDelChofer.map(t => {
           const cantera  = (canteras  as any[]).find(c => c.id === t.cantera_id)
           const deposito = (depositos as any[]).find(d => d.id === t.deposito_id)
+          const det = detallePorTramo.get(t.id)
           return {
-            fecha:      t.fecha_carga ?? t.fecha_vacio ?? null,
+            // Con detalle pct, la fila muestra LA MISMA fecha con la que se
+            // resolvieron tarifa y % (descarga ?? carga) — si el % versionado
+            // cambió entre carga y descarga, fecha y % impresos coinciden.
+            fecha:      det?.fecha ?? t.fecha_carga ?? t.fecha_vacio ?? null,
             tipo:       (t.tipo === 'vacio' ? 'vacio' : 'cargado') as 'cargado' | 'vacio',
             cantera:    cantera?.nombre ?? null,
             deposito:   deposito?.nombre ?? null,
             km:         kmTramo(t, rutas as Ruta[]),
             toneladas:  t.toneladas_descarga ?? t.toneladas_carga ?? null,
             remito:     t.remito_carga ?? t.remito_descarga ?? null,
+            neto:       det?.neto ?? null,
+            pct:        det?.pct ?? null,
+            comision:   det?.comision ?? null,
           }
         }),
         ...relevoLegs.map(legToPdf),
@@ -791,6 +810,31 @@ export function LiquidacionesTab() {
     const km_cargados = liqTramos.filter(t => t.tipo === 'cargado').reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0) + kmLegs(relevoLegs, 'cargado')
     const km_vacios   = liqTramos.filter(t => t.tipo === 'vacio').reduce((s, t) => s + kmTramo(t, rutas as Ruta[]), 0) + kmLegs(relevoLegs, 'vacio')
 
+    // Modalidad pct: el detalle por tramo NO está persistido (solo los
+    // agregados base_neta/subtotal_pct de la fila). Se re-deriva con las
+    // tablas versionadas (tarifas_empresa_cantera + choferes_pct_hist) y se
+    // VALIDA contra el snapshot con la misma tolerancia de $1 que el backend:
+    // si no cuadra (tarifa o % corregidos retroactivamente después del
+    // cierre), NO se muestra el desglose — imprimir números que no suman lo
+    // firmado sería peor que no mostrarlos. El PDF cae a la tabla clásica.
+    let detallePorTramo = new Map<number, BasePctResultado['detalle'][number]>()
+    if ((liq.modalidad ?? 'km_jornal') === 'pct') {
+      const finPeriodo = liq.fecha_hasta || toISO(new Date())
+      const pctDe = (f: string | null) => pctEnFecha(chofer as ChoferConHist, f ?? finPeriodo)
+      const base = calcularBasePctViajes(liqTramos, tarifasEmpresa as TarifaEmpresaCantera[], camiones as Camion[], pctDe)
+      const cuadra =
+        Math.abs(base.base_neta   - Number(liq.base_neta   ?? 0)) <= 1 &&
+        Math.abs(base.subtotal_pct - Number(liq.subtotal_pct ?? 0)) <= 1
+      if (cuadra) {
+        detallePorTramo = new Map(base.detalle.map(d => [d.tramo_id, d]))
+      } else {
+        console.warn('[pdf-liquidacion-cerrada] detalle pct re-derivado no cuadra con el snapshot — se omite el desglose por tramo', {
+          liq: liq.id, base_neta_calc: base.base_neta, base_neta_snap: liq.base_neta,
+          subtotal_pct_calc: base.subtotal_pct, subtotal_pct_snap: liq.subtotal_pct,
+        })
+      }
+    }
+
     const args: PdfLiquidacionArgs = {
       chofer_nombre:       chofer.nombre,
       chofer_cuil:         chofer.cuil ?? null,
@@ -818,14 +862,19 @@ export function LiquidacionesTab() {
         ...liqTramos.map(t => {
           const cantera  = (canteras  as any[]).find(c => c.id === t.cantera_id)
           const deposito = (depositos as any[]).find(d => d.id === t.deposito_id)
+          const det = detallePorTramo.get(t.id)
           return {
-            fecha:      t.fecha_carga ?? t.fecha_vacio ?? null,
+            // Misma fecha con la que se resolvieron tarifa y % (ver preview).
+            fecha:      det?.fecha ?? t.fecha_carga ?? t.fecha_vacio ?? null,
             tipo:       (t.tipo === 'vacio' ? 'vacio' : 'cargado') as 'cargado' | 'vacio',
             cantera:    cantera?.nombre ?? null,
             deposito:   deposito?.nombre ?? null,
             km:         kmTramo(t, rutas as Ruta[]),
             toneladas:  t.toneladas_descarga ?? t.toneladas_carga ?? null,
             remito:     t.remito_carga ?? t.remito_descarga ?? null,
+            neto:       det?.neto ?? null,
+            pct:        det?.pct ?? null,
+            comision:   det?.comision ?? null,
           }
         }),
         ...relevoLegs.map(legToPdf),
