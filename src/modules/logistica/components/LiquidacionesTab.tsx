@@ -1990,6 +1990,21 @@ export function LiquidacionesTab() {
               const totalDelChofer = tramosPendientes.filter(t => t.chofer_id === choferLiq.id).length
               const ocultosPorRango = totalDelChofer - tramosDelChofer.length
               if (totalDelChofer === 0) return null
+              // Modalidad pct: detalle económico por viaje (mismo cálculo que
+              // el PDF) para TODOS los tramos en rango, tildados o no — así
+              // se ve cuánto aporta cada uno antes de decidir la selección.
+              const esPctModal = (choferLiq.modalidad_pago ?? 'km_jornal') === 'pct'
+              let detalleModal = new Map<number, BasePctResultado['detalle'][number]>()
+              let sinTarifaIds = new Set<number>()
+              let sinTonIds    = new Set<number>()
+              if (esPctModal) {
+                const finPeriodo = watchHasta || toISO(new Date())
+                const pctDe = (f: string | null) => pctEnFecha(choferLiq as ChoferConHist, f ?? finPeriodo)
+                const base = calcularBasePctViajes(tramosDelChofer, tarifasEmpresa as TarifaEmpresaCantera[], camiones as Camion[], pctDe)
+                detalleModal = new Map(base.detalle.map(d => [d.tramo_id, d]))
+                sinTarifaIds = new Set(base.sin_tarifa.map(t => t.id))
+                sinTonIds    = new Set(base.sin_toneladas.map(t => t.id))
+              }
               return (
                 <div>
                   <div className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-2 flex items-center justify-between">
@@ -2009,7 +2024,10 @@ export function LiquidacionesTab() {
                     {tramosDelChofer.map(t => {
                     const cantera  = (canteras as any[]).find(c => c.id === t.cantera_id)
                     const deposito = (depositos as any[]).find(d => d.id === t.deposito_id)
-                    const fecha    = t.fecha_carga ?? t.fecha_vacio ?? ''
+                    const det      = detalleModal.get(t.id)
+                    // En pct, misma fecha con la que se resolvieron tarifa y %
+                    // (descarga ?? carga) — igual que la fila del PDF.
+                    const fecha    = det?.fecha ?? t.fecha_carga ?? t.fecha_vacio ?? ''
                     const km       = kmTramo(t, rutas as Ruta[])
                     // Origen → destino según tipo: cargado = cantera→depósito; vacío = depósito→cantera.
                     const esVacio  = t.tipo === 'vacio'
@@ -2027,17 +2045,41 @@ export function LiquidacionesTab() {
                           {fecha ? fmtFecha(fecha) : '—'} ·{' '}
                           <b>{origen}</b>
                           {destino && <> → {destino}</>}
-                          {km > 0 && <> · {km} km</>}
-                          {t.cantera_id && t.deposito_id && km === 0 && (
+                          {/* En pct al chofer le importa la plata del viaje, no los km. */}
+                          {!esPctModal && km > 0 && <> · {km} km</>}
+                          {!esPctModal && t.cantera_id && t.deposito_id && km === 0 && (
                             <span className="ml-1 text-[10px] font-bold uppercase tracking-wide bg-amarillo/20 text-amber-700 px-1.5 py-0.5 rounded" title="No hay ruta cargada para este par punto de carga→depósito: el tramo aporta 0 km al liquidar.">⚠ sin ruta</span>
                           )}
                           {/* El km sale de una ruta que sugirió Google y nadie revisó:
                               se paga igual, pero conviene saberlo ANTES de cerrar. */}
-                          {km > 0 && rutaSinVerificar(t) && (
+                          {!esPctModal && km > 0 && rutaSinVerificar(t) && (
                             <span className="ml-1 text-[10px] font-bold uppercase tracking-wide bg-[#fff3d6] text-[#8a5a00] px-1.5 py-0.5 rounded" title="El km de esta ruta lo sugirió Google y todavía nadie lo verificó contra el mapa. Se puede liquidar igual; para confirmarlo, andá a Rutas → matriz.">◐ km sin verificar</span>
                           )}
-                          {t.toneladas_carga && <> · {t.toneladas_carga} t</>}
+                          {esPctModal
+                            ? (det ? <> · {det.ton.toLocaleString('es-AR', { maximumFractionDigits: 2 })} t</> : (!esVacio && t.toneladas_carga ? <> · {t.toneladas_carga} t</> : null))
+                            : (t.toneladas_carga ? <> · {t.toneladas_carga} t</> : null)}
+                          {esPctModal && sinTarifaIds.has(t.id) && (
+                            <span className="ml-1 text-[10px] font-bold uppercase tracking-wide bg-rojo/10 text-rojo px-1.5 py-0.5 rounded" title="No hay tarifa cargada para esta empresa/cantera/depósito (o su variante): el viaje no puede comisionar y BLOQUEA la liquidación. Cargala en Facturación → Tarifas.">⚠ sin tarifa</span>
+                          )}
+                          {esPctModal && sinTonIds.has(t.id) && (
+                            <span className="ml-1 text-[10px] font-bold uppercase tracking-wide bg-amarillo/20 text-amber-700 px-1.5 py-0.5 rounded" title="El viaje no tiene toneladas cargadas: comisiona $0. Completá las toneladas de descarga en Viajes.">⚠ sin toneladas</span>
+                          )}
                         </span>
+                        {/* Detalle económico del viaje (modalidad pct): neto → % → comisión. */}
+                        {esPctModal && (
+                          <span className="text-right shrink-0 leading-tight">
+                            {det ? (
+                              <>
+                                <span className="block font-mono font-bold text-verde">{fmtM(det.comision)}</span>
+                                <span className="block text-[10px] text-gris-dark font-mono">
+                                  {det.pct.toLocaleString('es-AR', { maximumFractionDigits: 2 })}% de {fmtM(det.neto)}
+                                </span>
+                              </>
+                            ) : (
+                              <span className="block text-[10px] text-gris-mid italic">{esVacio ? 'no factura' : 'sin comisión'}</span>
+                            )}
+                          </span>
+                        )}
                       </label>
                     )
                   })}
