@@ -289,6 +289,9 @@ export interface UpsertHorasLoteDto {
     leg: string
     horas: number
   }>
+  // true = placeholders (0hs): solo inserta filas nuevas, nunca pisa una
+  // existente (backend: upsert con ignoreDuplicates).
+  solo_nuevas?: boolean
 }
 
 // ── Tarifas ──

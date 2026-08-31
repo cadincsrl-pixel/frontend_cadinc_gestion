@@ -5,6 +5,17 @@ export const MESES = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
 ] as const
 
+// "Hoy" en hora ARGENTINA, sin depender del reloj/huso del dispositivo.
+// Usar en todo chequeo que el backend valide contra su fechaHoyArgentina()
+// (regla "capataz solo carga hoy"): un celular mal configurado en UTC ya está
+// en "mañana" después de las 21:00 ART y el backend rechazaría el lote entero.
+export function hoyArgentinaISO(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Argentina/Buenos_Aires',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date())
+}
+
 export function toISO(d: Date): string {
   // TZ-safe: usa componentes locales del navegador (Argentina UTC-3 en prod),
   // no UTC. Antes hacía .toISOString().slice(0,10) y después de las 21:00 local

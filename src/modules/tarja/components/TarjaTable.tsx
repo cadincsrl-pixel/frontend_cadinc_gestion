@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTarjaStore } from '../store/tarja.store'
-import { useHorasSemana, useUpsertHora } from '../hooks/useHoras'
+import { useHorasSemana, useUpsertHora, useUpsertHorasLote } from '../hooks/useHoras'
 import { useHsExtras, useUpsertHsExtra } from '../hooks/useHsExtras'
 import { useQuitarDeSemana } from '../hooks/useAsignaciones'
 import { useCatObraSemana, useSetCatObra } from '../hooks/useCatObra'
@@ -76,6 +76,7 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
   const { data: horasData = [], isLoading } = useHorasSemana(obraCod, desde, hasta)
   const { data: hsExtrasData = [] } = useHsExtras(obraCod, desde, hasta)
   const { mutate: upsertHora } = useUpsertHora()
+  const { mutate: upsertHoraLote } = useUpsertHorasLote()
   const { mutateAsync: upsertHsExtra } = useUpsertHsExtra()
   const { mutate: quitarDeSemana } = useQuitarDeSemana()
   const perfiles = usePerfilesMap()
@@ -196,10 +197,36 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
     (leg: string, fecha: string, val: string, antes: number) => {
       const horas = val === '' ? 0 : parseFloat(val)
       if (isNaN(horas) || horas < 0) return
-      if (antes !== horas) {
-        undoStack.current.push({ leg, fecha, antes })
-        if (undoStack.current.length > 50) undoStack.current.shift()
-        setUndoCount(undoStack.current.length)
+      // Sin cambio real → sin PUT. Antes, tocar una celda y salir sin tipear
+      // (gesto común en celular) mandaba horas=0 igual, y como el upsert
+      // individual BORRA la fila cuando llega 0, un trabajador cuya única
+      // fila de la semana era ese placeholder desaparecía de la tarja.
+      if (antes === horas) return
+      undoStack.current.push({ leg, fecha, antes })
+      if (undoStack.current.length > 50) undoStack.current.shift()
+      setUndoCount(undoStack.current.length)
+      // Poner en 0 la ÚNICA fila del trabajador en la semana lo haría
+      // desaparecer (el upsert individual borra la fila en 0). En ese caso
+      // va por /lote, que upsertea el 0 CONSERVANDO la fila-ancla.
+      if (horas === 0 && horasData.filter(h => h.leg === leg).length <= 1) {
+        upsertHoraLote(
+          { obra_cod: obraCod, horas: [{ fecha, leg, horas: 0 }] },
+          {
+            onError: () => {
+              const i = days.findIndex(d => toISO(d) === fecha)
+              const el = document.querySelector<HTMLInputElement>(
+                `input[data-tarja-leg="${leg}"][data-tarja-day="${i}"]`
+              )
+              if (el) el.value = antes ? String(antes) : ''
+              if (undoStack.current.length > 0) {
+                undoStack.current.pop()
+                setUndoCount(undoStack.current.length)
+              }
+              toast('⚠ La hora NO se guardó — revisá la conexión y volvé a cargarla', 'err')
+            },
+          },
+        )
+        return
       }
       upsertHora(
         { obra_cod: obraCod, fecha, leg, horas },
@@ -232,7 +259,7 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
         }
       )
     },
-    [obraCod, upsertHora, toast, days]
+    [obraCod, upsertHora, upsertHoraLote, horasData, toast, days]
   )
 
   const handleExtraChange = useCallback(

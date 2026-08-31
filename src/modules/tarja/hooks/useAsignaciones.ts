@@ -2,8 +2,16 @@ import { useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api/client'
 import type { Personal, Hora } from '@/types/domain.types'
-import { getSemDays, toISO } from '@/lib/utils/dates'
+import { getSemDays, toISO, hoyArgentinaISO } from '@/lib/utils/dates'
 import { useToast } from '@/components/ui/Toast'
+import { usePermisos } from '@/hooks/usePermisos'
+
+// Fallos ESPERADOS de la copia de semana — no ameritan toast de error.
+const COPIA_ERRORES_BENIGNOS = [
+  'No hay trabajadores en la semana anterior',
+  'Todos los trabajadores de la semana anterior ya están en esta semana',
+  'Hoy no cae dentro de esta semana',
+]
 
 export const PERSONAL_SEMANA_KEY = ['personal-semana'] as const
 
@@ -49,7 +57,7 @@ export function useAgregarASemana() {
     mutationFn: async ({ obraCod, leg, semActual }: { obraCod: string; leg: string; semActual: Date }) => {
       const days = getSemDays(semActual)
       const horas = days.map(d => ({ fecha: toISO(d), leg, horas: 0 }))
-      return apiPut('/api/horas/lote', { obra_cod: obraCod, horas })
+      return apiPut('/api/horas/lote', { obra_cod: obraCod, horas, solo_nuevas: true })
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: PERSONAL_SEMANA_KEY })
@@ -72,7 +80,7 @@ export function useAgregarVariosASemana() {
       const horas = legs.flatMap(leg =>
         days.map(d => ({ fecha: toISO(d), leg, horas: 0 }))
       )
-      return apiPut('/api/horas/lote', { obra_cod: obraCod, horas })
+      return apiPut('/api/horas/lote', { obra_cod: obraCod, horas, solo_nuevas: true })
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: PERSONAL_SEMANA_KEY })
@@ -102,6 +110,13 @@ export function useQuitarDeSemana() {
 // ── Copiar semana anterior (trae los legs de la semana previa e inserta 0hs) ──
 export function useCopiarSemanaAnterior() {
   const qc = useQueryClient()
+  // Capataces: el backend rechaza el lote ENTERO si alguna fila no es de HOY
+  // (regla "capataz solo carga hoy"). Por eso su copia inserta placeholders
+  // solo con fecha de hoy — alcanza para que los trabajadores aparezcan.
+  // Incidente CC NORTE 2026-08-29: el capataz abrió primero la semana nueva,
+  // la copia de 7 días le falló en silencio, y la semana quedó con solo los
+  // 4 trabajadores que tocó ese día ("se borraron todos los trabajadores").
+  const { esCapataz } = usePermisos('tarja')
   return useMutation({
     mutationFn: async ({ obraCod, semActual }: { obraCod: string; semActual: Date }) => {
       // Semana anterior = retroceder 7 días
@@ -131,11 +146,26 @@ export function useCopiarSemanaAnterior() {
       const legsNuevos = legsAnteriores.filter(l => !legsActuales.has(l))
       if (!legsNuevos.length) throw new Error('Todos los trabajadores de la semana anterior ya están en esta semana')
 
-      // Insertar 0hs para cada uno
+      // Capataz → solo la fila de hoy; resto de roles → los 7 días.
+      // "Hoy" en hora ARGENTINA (igual que la validación del backend), no el
+      // reloj del dispositivo: un celular en otro huso elegiría una fecha que
+      // el backend rechaza y la copia volvería a fallar.
+      const hoyISO = hoyArgentinaISO()
+      const diasAInsertar = esCapataz
+        ? daysActual.filter(d => toISO(d) === hoyISO)
+        : daysActual
+      if (!diasAInsertar.length) {
+        // Capataz mirando una semana que no incluye hoy: no hay nada que
+        // pueda escribir (la regla del backend lo rechazaría igual).
+        throw new Error('Hoy no cae dentro de esta semana')
+      }
+
+      // Insertar 0hs para cada uno. solo_nuevas: los placeholders jamás
+      // pisan una fila existente (cierra la carrera con la carga de celdas).
       const horas = legsNuevos.flatMap(leg =>
-        daysActual.map(d => ({ fecha: toISO(d), leg, horas: 0 }))
+        diasAInsertar.map(d => ({ fecha: toISO(d), leg, horas: 0 }))
       )
-      return apiPut('/api/horas/lote', { obra_cod: obraCod, horas })
+      return apiPut('/api/horas/lote', { obra_cod: obraCod, horas, solo_nuevas: true })
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: PERSONAL_SEMANA_KEY })
@@ -165,9 +195,11 @@ export function useCopiarSemanaAnterior() {
 //   - Una sola vez por (obra, semana). Track local con useRef para
 //     evitar disparos duplicados si la semana anterior también está
 //     vacía o si todos los workers ya están.
-//   - Errores se tragan en silencio (la semana puede no tener anterior
-//     con datos, o haber sido vaciada a propósito). Sí mostramos toast
-//     en éxito.
+//   - Errores ESPERADOS en silencio (semana anterior vacía, todos ya
+//     copiados, capataz fuera de su día). Cualquier OTRO fallo se avisa
+//     con toast: un rechazo silencioso del backend dejaba la semana sin
+//     poblar y parecía que "se borraron los trabajadores" (CC NORTE,
+//     2026-08-29).
 export function useAutoTraerSemanaAnterior({
   obraCod, semActual, vaciaEnDB, isLoading, enabled,
 }: {
@@ -197,11 +229,13 @@ export function useAutoTraerSemanaAnterior({
         onSuccess: () => {
           toast('✓ Trabajadores traídos de la semana anterior', 'ok')
         },
-        onError: () => {
-          // Silencio. Casos esperados:
-          //  - "No hay trabajadores en la semana anterior" (semana origen vacía)
-          //  - "Todos los trabajadores de la semana anterior ya están..."
-          //    (race con otro user que ya disparó la copia).
+        onError: (err) => {
+          const msg = err instanceof Error ? err.message : String(err)
+          // Casos esperados en silencio (semana origen vacía, ya copiados,
+          // capataz fuera de su día). El resto se AVISA: si la copia falla
+          // callada, la semana queda sin poblar y parece un borrado.
+          if (COPIA_ERRORES_BENIGNOS.some(b => msg.includes(b))) return
+          toast(`⚠ No se pudieron traer los trabajadores de la semana anterior: ${msg}`, 'err')
         },
       },
     )

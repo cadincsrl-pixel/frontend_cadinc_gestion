@@ -99,7 +99,10 @@ export function TarjaObraPage({ obraCod }: Props) {
     semActual,
     vaciaEnDB: horasData.length === 0,
     isLoading: loadingPersonal || loadingObra || loadingHoras,
-    enabled: puedeCrear && !soloLectura && !obra?.archivada,
+    // puedeEditar además de puedeCrear: el PUT /horas/lote exige
+    // 'actualizacion' — con solo 'creacion' el backend rechaza la copia y
+    // el toast de error saltaría en cada semana vacía sin solución posible.
+    enabled: puedeCrear && puedeEditar && !soloLectura && !obra?.archivada,
   })
   const { data: hsExtrasData = [] } = useHsExtras(obraCod, desde, hasta)
   const { mutate: upsertLote } = useUpsertHorasLote()
