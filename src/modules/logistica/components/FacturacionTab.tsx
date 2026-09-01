@@ -1644,6 +1644,10 @@ function ModalCobrarFacturas({
 function FacturacionSection() {
   const toast = useToast()
   const router = useRouter()
+  // anularCobros: flag fino para borrar cobros pendientes sin eliminación
+  // del módulo entero (el backend valida igual; acá solo se deshabilita).
+  const { puedeEliminar: puedeEliminarModulo, anularCobros } = usePermisos('logistica')
+  const puedeAnularCobro = puedeEliminarModulo || anularCobros
   const { data: empresas     = [] } = useEmpresas()
   const { data: tramos       = [] } = useTramos()
   const { data: todasTarifas = [] } = useTarifasEmpresa()
@@ -2619,6 +2623,12 @@ function FacturacionSection() {
           <>
             <Button
               variant="ghost"
+              disabled={!puedeAnularCobro || cobroDetalle?.estado === 'cobrado'}
+              title={
+                !puedeAnularCobro ? 'Necesitás el permiso "Anular cobros" (o eliminación de logística)'
+                : cobroDetalle?.estado === 'cobrado' ? 'Un cobro ya cobrado no se puede eliminar — primero revertilo a pendiente'
+                : undefined
+              }
               onClick={() => {
                 if (!cobroDetalle) return
                 if (!confirm('¿Eliminar cobro? Los remitos asociados volverán a estar pendientes de cobro.')) return
