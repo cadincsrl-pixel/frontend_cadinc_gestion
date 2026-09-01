@@ -91,6 +91,31 @@ export function NotificationsBell() {
     warmRef.current = true
   }, [solicitudesAll, notifs.pedidosNombresListos, toast])
 
+  // Aviso proactivo de vehículos con papeles vencidos: un toast al abrir la
+  // app (esté donde esté el user), máximo UNA vez por día por navegador —
+  // "cada tanto", sin depender de que alguien abra la campana. El detalle
+  // completo sigue viviendo en la campana (Logística → Camiones).
+  const avisoVencidosRef = useRef(false)
+  useEffect(() => {
+    if (avisoVencidosRef.current) return
+    const vencidos = notifs.papelesVencidos
+    if (vencidos.length === 0) return
+    avisoVencidosRef.current = true
+    const hoyKey = new Date().toISOString().slice(0, 10)
+    try {
+      if (localStorage.getItem('aviso-papeles-vencidos') === hoyKey) return
+      localStorage.setItem('aviso-papeles-vencidos', hoyKey)
+    } catch { /* storage bloqueado (modo privado): mostrar igual */ }
+    const detalle = vencidos.slice(0, 3)
+      .map(d => `${d.entidad_patente} · ${fmtDocTipo(d.tipo)}`)
+      .join(', ')
+    const extra = vencidos.length > 3 ? ` y ${vencidos.length - 3} más` : ''
+    toast(
+      `🚛 ${vencidos.length} papel${vencidos.length !== 1 ? 'es' : ''} vencido${vencidos.length !== 1 ? 's' : ''} en vehículos: ${detalle}${extra} — ver campana o Logística → Camiones`,
+      'warn',
+    )
+  }, [notifs.papelesVencidos, toast])
+
   // Filtro por módulo: cada tipo de aviso aparece SOLO en su módulo (la campana
   // refleja el módulo donde estás). Sin módulo identificado (home) → todo.
   const showCumple    = (modulo === null || modulo === 'tarja') && verPii
