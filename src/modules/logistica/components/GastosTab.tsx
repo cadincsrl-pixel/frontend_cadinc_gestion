@@ -52,6 +52,16 @@ const METODO_EMOJI: Record<Gasto['metodo_pago'], string> = {
   otro:           '⋯',
 }
 
+// Rango por defecto de la lista: del 1ro del mes en curso hasta hoy. Se arma
+// con el reloj LOCAL (no UTC): `toISOString()` a la tarde en Argentina (UTC-3)
+// devolvía el día siguiente y ensanchaba el rango un día.
+function rangoMesEnCurso(): { desde: string; hasta: string } {
+  const hoy = new Date()
+  const iso = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return { desde: iso(new Date(hoy.getFullYear(), hoy.getMonth(), 1)), hasta: iso(hoy) }
+}
+
 export function GastosTab() {
   const toast = useToast()
   const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('logistica')
@@ -61,15 +71,32 @@ export function GastosTab() {
   // ── Filtros ─────────────────────────────────────────────────
   // Default: mes en curso (1ro del mes actual hasta hoy). El user puede
   // limpiar las fechas a mano si quiere ver el histórico completo.
-  const [filters, setFilters] = useState<GastosFilters>(() => {
-    const hoy = new Date()
-    const primerDia = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
-    const iso = (d: Date) => d.toISOString().slice(0, 10)
-    return { limit: 100, offset: 0, desde: iso(primerDia), hasta: iso(hoy) }
-  })
+  const [filters, setFilters] = useState<GastosFilters>(
+    () => ({ limit: 100, offset: 0, ...rangoMesEnCurso() }),
+  )
   function setFilter<K extends keyof GastosFilters>(k: K, v: GastosFilters[K]) {
     setFilters(f => ({ ...f, [k]: v, offset: 0 }))
   }
+
+  // Los pendientes hay que verlos TODOS, sin importar la fecha: un gasto
+  // cargado con fecha retroactiva (o del mes pasado, como pasa siempre a
+  // principio de mes) quedaba escondido detrás del rango por defecto y nadie
+  // se enteraba de que tenía algo para aprobar. Por eso elegir "Pendiente"
+  // limpia las fechas; al salir de pendiente se restaura el mes en curso,
+  // salvo que el user haya puesto un rango propio mientras tanto.
+  function setEstadoFiltro(v: string) {
+    const estado = (v || undefined) as GastosFilters['estado']
+    setFilters(f => {
+      if (estado === 'pendiente') {
+        return { ...f, estado, desde: undefined, hasta: undefined, offset: 0 }
+      }
+      if (f.estado === 'pendiente' && !f.desde && !f.hasta) {
+        return { ...f, estado, ...rangoMesEnCurso(), offset: 0 }
+      }
+      return { ...f, estado, offset: 0 }
+    })
+  }
+  const sinFiltroFecha = filters.estado === 'pendiente' && !filters.desde && !filters.hasta
 
   // ── Data ────────────────────────────────────────────────────
   const { data: gastosResp, isLoading } = useGastos(filters)
@@ -449,7 +476,7 @@ export function GastosTab() {
             <Select
               label="Estado"
               value={filters.estado ?? ''}
-              onChange={e => setFilter('estado', (e.target.value || undefined) as any)}
+              onChange={e => setEstadoFiltro(e.target.value)}
               options={[
                 { value: '',          label: 'Todos' },
                 { value: 'pendiente', label: 'Pendiente' },
@@ -482,6 +509,11 @@ export function GastosTab() {
       {/* Totales */}
       <div className="bg-white rounded-card shadow-card p-3 flex flex-wrap gap-4 items-center text-sm">
         <span className="text-gris-dark">Mostrando <b>{gastos.length}</b> de <b>{gastosResp?.total ?? 0}</b></span>
+        {sinFiltroFecha && (
+          <span className="text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200 rounded px-2 py-0.5">
+            📅 Todos los pendientes, sin filtro de fecha
+          </span>
+        )}
         <span>Total filtrado: <b className="font-mono">{fmt$(totalFiltrado)}</b></span>
         {totalReintegrosP > 0 && (
           <span className="text-naranja-dark">🔁 Reintegros pendientes: <b className="font-mono">{fmt$(totalReintegrosP)}</b></span>
