@@ -36,3 +36,28 @@ export function matchesSearch(haystack: string | null | undefined, query: string
   const target = normalizeText(haystack)
   return tokens.every(t => target.includes(t))
 }
+
+/**
+ * Qué proporción de los tokens del query aparece en el texto (0 a 1).
+ *
+ * `matchesSearch` es todo-o-nada, y esa es exactamente la forma en que la
+ * búsqueda del catálogo le falla al usuario: alcanza con que agregue UN dato
+ * que el catálogo no tiene para que la lista quede vacía y se vaya al texto
+ * libre. Casos reales del pedido de Hipódromo del 2026-09-02:
+ *
+ *   "arena m3"                     → "Arena gruesa" no dice "m3"      → 0 resultados
+ *   "puerta placa oblak 0.80x2.05" → el catálogo no sabe de marcas    → 0 resultados
+ *
+ * En los dos casos el material estaba cargado. Con el score, "arena m3"
+ * puntúa 0.5 contra "Arena gruesa" y la fila aparece igual.
+ *
+ * No reemplaza a `matchesSearch`: la coincidencia exacta sigue primero y esto
+ * es el segundo intento (ver `Combobox`).
+ */
+export function searchScore(haystack: string | null | undefined, query: string): number {
+  const tokens = normalizeText(query).split(' ').filter(Boolean)
+  if (tokens.length === 0) return 1
+  const target = normalizeText(haystack)
+  const hits = tokens.filter(t => target.includes(t)).length
+  return hits / tokens.length
+}

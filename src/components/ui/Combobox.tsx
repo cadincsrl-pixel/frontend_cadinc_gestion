@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
-import { matchesSearch, normalizeText } from '@/lib/utils/text'
+import { useState, useRef, useEffect, useMemo } from 'react'
+import { matchesSearch, normalizeText, searchScore } from '@/lib/utils/text'
 
 export interface ComboboxOption {
   value: string
@@ -27,6 +27,11 @@ export interface ComboboxOption {
    * separar los términos ("chapa acanalada" no es una palabra suelta).
    */
   search?: string | string[]
+}
+
+/** Todo el texto contra el que se busca una option: label + sub + sinónimos. */
+function textoBuscable(o: ComboboxOption): string {
+  return `${o.label} ${o.sub ?? ''} ${searchTerms(o).join(' ')}`
 }
 
 /** Los términos de búsqueda de una option, siempre como array. */
@@ -132,9 +137,36 @@ export function Combobox({
   // query debe aparecer en label, sub o search (ver matchesSearch).
   // Concatenamos los tres para que un token pueda matchear en cualquiera.
   // `search` es invisible: lleva los sinónimos (ver ComboboxOption.search).
-  const filtered = query.trim()
-    ? options.filter(o => matchesSearch(`${o.label} ${o.sub ?? ''} ${searchTerms(o).join(' ')}`, query))
+  // Coincidencia exacta: TODOS los tokens del query tienen que aparecer.
+  const exactas = query.trim()
+    ? options.filter(o => matchesSearch(textoBuscable(o), query))
     : options
+
+  // Segundo intento. Si la exacta no trajo nada, en vez de dejar la lista
+  // vacía (que es lo que empuja al usuario al texto libre) mostramos las que
+  // matchean PARTE del query, ordenadas por cuánto matchean.
+  //
+  // El caso que motivó esto: en el pedido de Hipódromo del 2026-09-02 alguien
+  // escribió "arena m3" y "puerta placa oblak 0.80x2.05". Los dos materiales
+  // estaban en el catálogo, pero como agregaron la unidad y la marca —dos
+  // cosas que el catálogo no guarda— la lista quedó vacía y terminaron en
+  // texto libre. Con esto "arena m3" puntúa 0.5 y la fila aparece.
+  //
+  // El umbral de 0.4 y el tope de 8 son para no devolver ruido: con un query
+  // de una sola palabra el score es 0 o 1, así que esto solo entra a jugar
+  // cuando el usuario escribió varias.
+  const parciales = useMemo(() => {
+    if (!query.trim() || exactas.length > 0) return []
+    return options
+      .map(o => ({ o, score: searchScore(textoBuscable(o), query) }))
+      .filter(x => x.score >= 0.4)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 8)
+      .map(x => x.o)
+  }, [options, query, exactas.length])
+
+  const filtered = exactas.length > 0 ? exactas : parciales
+  const mostrandoParciales = exactas.length === 0 && parciales.length > 0
 
   // Cerrar al clickear fuera
   useEffect(() => {
@@ -254,6 +286,14 @@ export function Combobox({
             </div>
           ) : (
             <>
+              {/* Aviso obligatorio: si no decimos que son parciales, el usuario
+                  cree que el catálogo le está ofreciendo lo que pidió y elige
+                  una medida o un modelo que no es. Peor que la lista vacía. */}
+              {mostrandoParciales && (
+                <div className="px-4 py-2 text-[11px] text-gris-dark bg-gris/60 border-b border-gris-mid sticky top-0">
+                  Nada coincide exacto. Lo más parecido:
+                </div>
+              )}
               {renderOptions(filtered, value, handleSelect)}
               {showCreate && (
                 <button
