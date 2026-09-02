@@ -10,10 +10,17 @@ export function useStockRubros() {
   })
 }
 
+/** Espejo de `CreateRubroSchema` del backend. */
+export interface CreateStockRubroDto {
+  nombre: string
+  icono?: string
+  orden?: number
+}
+
 export function useCreateRubro() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (dto: any) => apiPost<StockRubro>('/api/stock/rubros', dto),
+    mutationFn: (dto: CreateStockRubroDto) => apiPost<StockRubro>('/api/stock/rubros', dto),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['stock', 'rubros'] }),
   })
 }
@@ -29,10 +36,101 @@ export function useStockMateriales(rubro_id?: number) {
   })
 }
 
+/**
+ * Campos del material que acepta el backend (`CreateMaterialSchema` /
+ * `UpdateMaterialSchema` de `stock.schema.ts`).
+ *
+ * `alias` = cómo se pide el material EN OBRA ("t1", "alargue", "plástico
+ * negro"). El backend lo normaliza (minúsculas, sin tildes) antes de guardar,
+ * y **reemplaza** la lista entera: para agregar uno hay que mandar los que ya
+ * tenía más el nuevo, nunca solo el nuevo.
+ */
+export interface StockMaterialFields {
+  rubro_id:      number
+  nombre:        string
+  unidad?:       string
+  stock_minimo?: number
+  precio_ref?:   number
+  proveedor_id?: number | null
+  obs?:          string
+  alias?:        string[]
+}
+
+/**
+ * `forzar: true` saltea el chequeo anti-duplicados del backend. Es el "no, es
+ * otro material" del usuario después de ver el modal "¿No será este?".
+ */
+export type CreateStockMaterialDto = StockMaterialFields & { forzar?: boolean }
+
+export type UpdateStockMaterialDto = Partial<StockMaterialFields>
+
+/** Material del catálogo que el backend ofrece como "¿no será este?". */
+export interface MaterialCandidato {
+  id:     number
+  nombre: string
+  unidad: string | null
+  /** Similitud de trigramas contra el nombre tipeado (0..1). */
+  sim:    number
+  /** true si el nombre tipeado ya es EXACTAMENTE uno de sus sinónimos. */
+  por_alias: boolean
+}
+
+export type MaterialConflictoCode = 'MATERIAL_PARECIDO' | 'MATERIAL_DUPLICADO'
+
+export interface MaterialConflicto {
+  /**
+   * `MATERIAL_PARECIDO` → se puede reintentar el mismo body con `forzar: true`.
+   * `MATERIAL_DUPLICADO` → nombre idéntico, no hay reintento posible.
+   */
+  code:       MaterialConflictoCode
+  mensaje:    string
+  candidatos: MaterialCandidato[]
+}
+
+function asRecord(v: unknown): Record<string, unknown> | null {
+  return v !== null && typeof v === 'object' ? (v as Record<string, unknown>) : null
+}
+
+/**
+ * Reconoce los 409 del candado anti-duplicados en el error de `apiPost`/
+ * `apiPatch` (un `HttpError` con `.status` y `.body`). Devuelve `null` para
+ * cualquier otro error, así el caller cae al toast genérico.
+ *
+ * No hace `instanceof HttpError` porque la clase no se exporta desde
+ * `lib/api/client.ts`; alcanza con el shape.
+ */
+export function parseMaterialConflicto(e: unknown): MaterialConflicto | null {
+  const err = asRecord(e)
+  if (!err || err.status !== 409) return null
+  const body = asRecord(err.body)
+  if (!body) return null
+  const code = body.code
+  if (code !== 'MATERIAL_PARECIDO' && code !== 'MATERIAL_DUPLICADO') return null
+
+  const crudos = Array.isArray(body.candidatos) ? body.candidatos : []
+  const candidatos = crudos.flatMap<MaterialCandidato>(c => {
+    const r = asRecord(c)
+    if (!r || typeof r.id !== 'number' || typeof r.nombre !== 'string') return []
+    return [{
+      id:        r.id,
+      nombre:    r.nombre,
+      unidad:    typeof r.unidad === 'string' ? r.unidad : null,
+      sim:       typeof r.sim === 'number' ? r.sim : 0,
+      por_alias: r.por_alias === true,
+    }]
+  })
+
+  const mensaje = typeof body.error === 'string'
+    ? body.error
+    : e instanceof Error ? e.message : 'Ya hay un material parecido en el catálogo.'
+
+  return { code, mensaje, candidatos }
+}
+
 export function useCreateStockMaterial() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (dto: any) => apiPost<StockMaterial>('/api/stock/materiales', dto),
+    mutationFn: (dto: CreateStockMaterialDto) => apiPost<StockMaterial>('/api/stock/materiales', dto),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['stock', 'materiales'] }),
   })
 }
@@ -40,7 +138,7 @@ export function useCreateStockMaterial() {
 export function useUpdateStockMaterial() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, dto }: { id: number; dto: any }) =>
+    mutationFn: ({ id, dto }: { id: number; dto: UpdateStockMaterialDto }) =>
       apiPatch<StockMaterial>(`/api/stock/materiales/${id}`, dto),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['stock', 'materiales'] }),
   })

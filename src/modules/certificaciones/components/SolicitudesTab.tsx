@@ -29,7 +29,7 @@ import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
 import { Input }    from '@/components/ui/Input'
 import { InputMonto } from '@/components/ui/InputMonto'
-import { Combobox } from '@/components/ui/Combobox'
+import { Combobox, type ComboboxOption } from '@/components/ui/Combobox'
 import { useToast } from '@/components/ui/Toast'
 import type { SolicitudCompra, SolicitudCompraItem, SolicitudEstado, SolicitudProgreso, ItemEstado, Obra, Proveedor, StockMaterial, RemitoEnvio, StockClienteRow } from '@/types/domain.types'
 
@@ -192,6 +192,45 @@ export function SolicitudesTab() {
   const { mutate: createProveedor, isPending: creandoProv } = useCreateProveedor()
   const { mutate: createFactura, isPending: creandoFact } = useCreateFactura()
   const stockMap = new Map((stockMateriales as StockMaterial[]).map(m => [m.id, m]))
+
+  // Opciones del selector de material del catálogo. Se arma UNA vez por
+  // render de la pantalla (antes se rearmaba por cada línea del pedido:
+  // ~700 materiales × N líneas).
+  //
+  // Tres cosas que empujan al operario a usar el catálogo en vez del texto
+  // libre (hoy el 97% de los ítems se carga libre):
+  //  · `search` = alias del material. La obra pide "lija 150" y el catálogo
+  //    guarda "Lija al agua N°150"; los alias cruzan los dos vocabularios
+  //    sin mostrarse en la UI.
+  //  · `sub` = rubro, y el stock SOLO si hay. Antes decía "Stock: 0" en 684
+  //    de 718 materiales (el stock del catálogo está mal cargado): el
+  //    operario leía "no hay" y se iba al input de texto libre de abajo.
+  //  · `group` = rubro, para no dar una lista plana de 718 ítems.
+  const stockOptions: ComboboxOption[] = useMemo(() => {
+    const mats = [...(stockMateriales as StockMaterial[])]
+    // Ordenamos por rubro y después por nombre: el Combobox agrupa por orden
+    // de primera aparición, así los rubros salen alfabéticos y estables.
+    mats.sort((a, b) => {
+      const ra = a.stock_rubros?.nombre ?? 'Sin rubro'
+      const rb = b.stock_rubros?.nombre ?? 'Sin rubro'
+      return ra.localeCompare(rb, 'es') || a.nombre.localeCompare(b.nombre, 'es')
+    })
+    return mats.map(m => {
+      const rubro = m.stock_rubros?.nombre ?? 'Sin rubro'
+      const hayStock = (m.stock_actual ?? 0) > 0
+      return {
+        value:  String(m.id),
+        label:  m.nombre,
+        // OJO: el rubro va SOLO en `group`. Si entra en `sub` contamina la
+        // búsqueda (Combobox filtra sobre label+sub+search): tipear "pintura"
+        // devolvía las 76 filas del rubro en vez de los 4 materiales que la
+        // tienen en el nombre. Medido antes de sacarlo.
+        sub:    hayStock ? `${m.stock_actual} ${m.unidad} en depósito` : undefined,
+        search: (m.alias ?? []).join(' '),
+        group:  rubro,
+      }
+    })
+  }, [stockMateriales])
 
   const [obraFiltro, setObraFiltro] = useState('')
   const router       = useRouter()
@@ -1583,11 +1622,6 @@ export function SolicitudesTab() {
             <div className="flex flex-col gap-2">
               {lineas.map(l => {
                 const matVinculado = l.material_id ? stockMap.get(l.material_id) : null
-                const stockOptions = (stockMateriales as StockMaterial[]).map(m => ({
-                  value: String(m.id),
-                  label: m.nombre,
-                  sub: `Stock: ${m.stock_actual} ${m.unidad}`,
-                }))
                 return (
                   <div key={l._id} className="border border-gris-mid rounded-lg p-3 bg-gris/20">
                     <div className="flex gap-2 items-start">
@@ -1607,9 +1641,12 @@ export function SolicitudesTab() {
                           }}
                         />
                       </div>
-                      {matVinculado && (
-                        <div className={`flex-shrink-0 px-2 py-1.5 rounded-lg text-xs font-bold ${matVinculado.stock_actual > 0 ? 'bg-verde-light text-verde' : 'bg-rojo-light text-rojo'}`}>
-                          Stock: {matVinculado.stock_actual}
+                      {/* Solo si HAY stock, y en verde: es un dato útil. En rojo y
+                          con 0 (684 de 718 materiales) se leía como "no se puede
+                          pedir" y mandaba al operario de vuelta al texto libre. */}
+                      {matVinculado && matVinculado.stock_actual > 0 && (
+                        <div className="flex-shrink-0 px-2 py-1.5 rounded-lg text-xs font-bold bg-verde-light text-verde">
+                          Hay {matVinculado.stock_actual} en depósito
                         </div>
                       )}
                       {lineas.length > 1 && <button onClick={() => setLineas(p => p.filter(x => x._id !== l._id))} className="shrink-0 w-9 h-9 flex items-center justify-center rounded-lg text-gris-mid hover:text-rojo hover:bg-rojo-light text-lg font-bold">✕</button>}
@@ -2093,11 +2130,6 @@ export function SolicitudesTab() {
                 {lineasEdit.map(l => {
                   const esPendiente = !l.estado || l.estado === 'pendiente'
                   const matVinculado = l.material_id ? stockMap.get(l.material_id) : null
-                  const stockOptions = (stockMateriales as StockMaterial[]).map(m => ({
-                    value: String(m.id),
-                    label: m.nombre,
-                    sub: `Stock: ${m.stock_actual} ${m.unidad}`,
-                  }))
 
                   if (!esPendiente) {
                     // Ítems ya resueltos: solo mostrar, no editar
@@ -2134,9 +2166,9 @@ export function SolicitudesTab() {
                             }}
                           />
                         </div>
-                        {matVinculado && (
-                          <div className={`flex-shrink-0 px-2 py-1.5 rounded-lg text-xs font-bold ${(matVinculado as StockMaterial).stock_actual > 0 ? 'bg-verde-light text-verde' : 'bg-rojo-light text-rojo'}`}>
-                            Stock: {(matVinculado as StockMaterial).stock_actual}
+                        {matVinculado && (matVinculado as StockMaterial).stock_actual > 0 && (
+                          <div className="flex-shrink-0 px-2 py-1.5 rounded-lg text-xs font-bold bg-verde-light text-verde">
+                            Hay {(matVinculado as StockMaterial).stock_actual} en depósito
                           </div>
                         )}
                         <button onClick={() => {

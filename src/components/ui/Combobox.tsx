@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { matchesSearch, normalizeText } from '@/lib/utils/text'
 
-interface ComboboxOption {
+export interface ComboboxOption {
   value: string
   label: string
   sub?:  string
@@ -13,6 +13,14 @@ interface ComboboxOption {
    * sin `group` el render es igual al legacy.
    */
   group?: string
+  /**
+   * Texto extra que entra al buscador pero NO se muestra en el dropdown.
+   * Sirve para sinónimos / nombres alternativos: la obra pide "lija 150"
+   * y el catálogo guarda "Lija al agua N°150". Poniendo los alias acá el
+   * match funciona sin ensuciar la UI. Opcional: sin `search` el filtro
+   * es igual al legacy (label + sub).
+   */
+  search?: string
 }
 
 interface ComboboxProps {
@@ -109,10 +117,11 @@ export function Combobox({
     ?? (freeText && value ? { value, label: value } : undefined)
 
   // Búsqueda tolerante a acentos y al orden de los términos: cada palabra del
-  // query debe aparecer en label o sub (ver matchesSearch). Concatenamos
-  // label + sub para que un token pueda matchear en cualquiera de los dos.
+  // query debe aparecer en label, sub o search (ver matchesSearch).
+  // Concatenamos los tres para que un token pueda matchear en cualquiera.
+  // `search` es invisible: lleva los sinónimos (ver ComboboxOption.search).
   const filtered = query.trim()
-    ? options.filter(o => matchesSearch(`${o.label} ${o.sub ?? ''}`, query))
+    ? options.filter(o => matchesSearch(`${o.label} ${o.sub ?? ''} ${o.search ?? ''}`, query))
     : options
 
   // Cerrar al clickear fuera
@@ -155,6 +164,9 @@ export function Combobox({
   // Mostramos la opción de "crear" cuando hay query no vacío y ningún label
   // matchea exacto (case-insensitive). Así un usuario que tipea "Bosch" y
   // ya existe "Bosch" en la lista no ve la opción duplicada.
+  // OJO: solo mira `label`, no `search`. Si en el futuro se habilita
+  // `onCreate` en un combo con alias, revisar acá para no ofrecer "crear"
+  // algo que ya existe bajo otro nombre.
   const queryTrim = query.trim()
   const exactMatch = queryTrim
     ? options.some(o => normalizeText(o.label) === normalizeText(queryTrim))

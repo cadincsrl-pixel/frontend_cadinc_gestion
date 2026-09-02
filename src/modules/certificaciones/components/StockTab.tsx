@@ -3,10 +3,14 @@
 import { useState, useMemo, useRef } from 'react'
 import * as XLSX from 'xlsx'
 import { Controller, useForm } from 'react-hook-form'
+import type { UseFormRegisterReturn } from 'react-hook-form'
 import {
   useStockRubros, useStockMateriales, useStockMovimientos,
   useCreateStockMaterial, useUpdateStockMaterial, useDeleteStockMaterial,
-  useCreateMovimiento, useCreateRubro,
+  useCreateMovimiento, useCreateRubro, parseMaterialConflicto,
+} from '../hooks/useStock'
+import type {
+  CreateStockMaterialDto, UpdateStockMaterialDto, MaterialConflicto, MaterialCandidato,
 } from '../hooks/useStock'
 import { useProveedores } from '../hooks/useProveedores'
 import { usePermisos } from '@/hooks/usePermisos'
@@ -20,7 +24,7 @@ import { DeclararAjusteModal } from './DeclararAjusteModal'
 import { AjustesPendientesSection } from './AjustesPendientesSection'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import { toISO } from '@/lib/utils/dates'
-import { matchesSearch } from '@/lib/utils/text'
+import { matchesSearch, normalizeText } from '@/lib/utils/text'
 import type { StockMaterial, StockRubro, StockMovimiento, Proveedor } from '@/types/domain.types'
 
 const UNIDADES = [
@@ -40,6 +44,35 @@ function fmtF(s: string) {
   return `${d}/${m}/${y}`
 }
 
+// ── Sinónimos ("alias") ──
+//
+// Son los nombres con los que la obra pide el material ("t1", "alargue",
+// "plástico negro"). El catálogo guarda el nombre técnico; sin sinónimos el
+// operario no encuentra la fila y termina pidiendo texto libre → material
+// duplicado. En la UI se editan como texto separado por comas.
+
+const ALIAS_PLACEHOLDER = 'cómo lo pide la obra: t1, alargue, plástico negro'
+
+/** "T1, Alargue , t1" → ['t1', 'alargue'] (normalizado, sin vacíos ni repetidos). */
+function parseAlias(texto: string): string[] {
+  const vistos = new Set<string>()
+  const out: string[] = []
+  for (const parte of texto.split(',')) {
+    const n = normalizeText(parte)
+    if (n && !vistos.has(n)) { vistos.add(n); out.push(n) }
+  }
+  return out
+}
+
+function aliasToTexto(alias: string[] | null | undefined): string {
+  return (alias ?? []).join(', ')
+}
+
+/** Suma `nuevo` a los sinónimos de `m` sin perder los que ya tenía. */
+function aliasConNuevo(m: StockMaterial, nuevo: string): string[] {
+  return parseAlias([...(m.alias ?? []), nuevo].join(','))
+}
+
 // ── Tipos de formulario ──
 interface MaterialForm {
   rubro_id: number | ''
@@ -48,6 +81,8 @@ interface MaterialForm {
   stock_minimo: number | string
   precio_ref: number | string
   proveedor_id: string
+  /** Sinónimos separados por comas (se parsean con `parseAlias`). */
+  alias: string
 }
 interface MovimientoForm {
   cantidad: number | string
@@ -77,8 +112,8 @@ export function StockTab() {
   const { data: materiales = [], isLoading } = useStockMateriales()
   const { data: proveedores = [] } = useProveedores()
   const provOptions = (proveedores as Proveedor[]).map(p => ({ value: String(p.id), label: p.nombre, sub: p.cuit ?? undefined }))
-  const { mutate: createMat } = useCreateStockMaterial()
-  const { mutate: updateMat } = useUpdateStockMaterial()
+  const { mutate: createMat, isPending: creandoMat } = useCreateStockMaterial()
+  const { mutate: updateMat, isPending: guardandoMat } = useUpdateStockMaterial()
   const { mutate: deleteMat } = useDeleteStockMaterial()
   const { mutate: createMov, mutateAsync: createMovAsync } = useCreateMovimiento()
   const { mutate: createRubro } = useCreateRubro()
@@ -93,10 +128,17 @@ export function StockTab() {
   const [modalNuevoRubro, setModalNuevoRubro] = useState(false)
   const [modalEliminar, setModalEliminar] = useState<StockMaterial | null>(null)
   const [modalAjuste, setModalAjuste] = useState<StockMaterial | null>(null)
+  // Estado del modal "¿No será este?" (409 del candado anti-duplicados).
+  // `dtoCreate` es el body original del alta, para poder reintentarlo con
+  // `forzar: true`. Es `null` cuando el 409 vino de una edición (ahí no hay
+  // reintento posible).
+  const [conflicto, setConflicto] = useState<
+    (MaterialConflicto & { nombreIntentado: string; dtoCreate: CreateStockMaterialDto | null }) | null
+  >(null)
 
-  const formNuevo = useForm<MaterialForm>({ defaultValues: { rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0, proveedor_id: '' } })
+  const formNuevo = useForm<MaterialForm>({ defaultValues: { rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0, proveedor_id: '', alias: '' } })
   const formEntrada = useForm<MovimientoForm>({ defaultValues: { cantidad: 0, tipo: 'entrada', motivo: 'compra', obs: '' } })
-  const formEditar = useForm<MaterialForm>({ defaultValues: { rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0, proveedor_id: '' } })
+  const formEditar = useForm<MaterialForm>({ defaultValues: { rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0, proveedor_id: '', alias: '' } })
   const formRubro = useForm<RubroForm>({ defaultValues: { nombre: '', icono: '' } })
 
   // Filtrar y agrupar
@@ -108,8 +150,10 @@ export function StockTab() {
     if (stockFiltro === 'stock_bajo') list = list.filter(m => m.stock_minimo > 0 && m.stock_actual > 0 && m.stock_actual <= m.stock_minimo)
     if (busqueda.trim()) {
       // Búsqueda tolerante a acentos y al orden de los términos (ver matchesSearch).
+      // Los sinónimos entran al match: si la obra lo pide como "t1", buscar
+      // "t1" tiene que traer "Tornillo T1 autoperforante".
       list = list.filter(m =>
-        matchesSearch(`${m.nombre} ${m.proveedores?.nombre ?? ''}`, busqueda)
+        matchesSearch(`${m.nombre} ${m.proveedores?.nombre ?? ''} ${(m.alias ?? []).join(' ')}`, busqueda)
       )
     }
     return list
@@ -171,7 +215,12 @@ export function StockTab() {
       .map(m => ({
         value: m.nombre,
         label: m.nombre,
-        sub: `Stock: ${m.stock_actual} ${UNIDADES.find(u => u.value === m.unidad)?.label ?? m.unidad}`,
+        sub: [
+          `Stock: ${m.stock_actual} ${UNIDADES.find(u => u.value === m.unidad)?.label ?? m.unidad}`,
+          (m.alias ?? []).length ? `· ${(m.alias ?? []).join(', ')}` : '',
+        ].filter(Boolean).join(' '),
+        // Los sinónimos matchean en el buscador aunque no se muestren enteros.
+        search: (m.alias ?? []).join(' '),
       }))
   }, [materiales, nuevoRubroId])
 
@@ -183,7 +232,11 @@ export function StockTab() {
       .map(m => ({
         value: m.nombre,
         label: m.nombre,
-        sub: `Stock: ${m.stock_actual} ${UNIDADES.find(u => u.value === m.unidad)?.label ?? m.unidad}`,
+        sub: [
+          `Stock: ${m.stock_actual} ${UNIDADES.find(u => u.value === m.unidad)?.label ?? m.unidad}`,
+          (m.alias ?? []).length ? `· ${(m.alias ?? []).join(', ')}` : '',
+        ].filter(Boolean).join(' '),
+        search: (m.alias ?? []).join(' '),
       }))
   }, [materiales, editRubroId, modalEditar])
 
@@ -201,9 +254,34 @@ export function StockTab() {
     const precioRef = Number(data.precio_ref)
     if (!Number.isFinite(stockMinimo) || stockMinimo < 0) { toast('Stock mínimo inválido', 'err'); return }
     if (!Number.isFinite(precioRef) || precioRef < 0) { toast('Precio inválido', 'err'); return }
-    createMat({ ...data, nombre, rubro_id: Number(data.rubro_id), stock_minimo: stockMinimo, precio_ref: precioRef, proveedor_id: data.proveedor_id ? Number(data.proveedor_id) : null }, {
-      onSuccess: () => { toast('Material creado', 'ok'); setModalNuevo(false) },
-      onError: (e: unknown) => toast(e instanceof Error ? e.message : 'Error', 'err'),
+    enviarCreate({
+      rubro_id:     Number(data.rubro_id),
+      nombre,
+      unidad:       data.unidad,
+      stock_minimo: stockMinimo,
+      precio_ref:   precioRef,
+      proveedor_id: data.proveedor_id ? Number(data.proveedor_id) : null,
+      alias:        parseAlias(data.alias),
+    })
+  }
+
+  /**
+   * POST del material. El backend puede responder 409 con el candado
+   * anti-duplicados; en ese caso abrimos el modal "¿No será este?" en vez de
+   * dejar al usuario con un toast y sin salida.
+   */
+  function enviarCreate(dto: CreateStockMaterialDto) {
+    createMat(dto, {
+      onSuccess: () => {
+        toast(dto.forzar ? 'Material creado (confirmado como distinto)' : 'Material creado', 'ok')
+        setConflicto(null)
+        setModalNuevo(false)
+      },
+      onError: (e: unknown) => {
+        const c = parseMaterialConflicto(e)
+        if (c) { setConflicto({ ...c, nombreIntentado: dto.nombre, dtoCreate: dto }); return }
+        toast(e instanceof Error ? e.message : 'Error', 'err')
+      },
     })
   }
 
@@ -235,7 +313,7 @@ export function StockTab() {
 
   // Editar material
   function abrirEditar(m: StockMaterial) {
-    formEditar.reset({ nombre: m.nombre, unidad: m.unidad, stock_minimo: m.stock_minimo, precio_ref: m.precio_ref, rubro_id: m.rubro_id, proveedor_id: m.proveedor_id ? String(m.proveedor_id) : '' })
+    formEditar.reset({ nombre: m.nombre, unidad: m.unidad, stock_minimo: m.stock_minimo, precio_ref: m.precio_ref, rubro_id: m.rubro_id, proveedor_id: m.proveedor_id ? String(m.proveedor_id) : '', alias: aliasToTexto(m.alias) })
     setModalEditar(m)
   }
 
@@ -253,10 +331,70 @@ export function StockTab() {
     const precioRef = Number(data.precio_ref)
     if (!Number.isFinite(stockMinimo) || stockMinimo < 0) { toast('Stock mínimo inválido', 'err'); return }
     if (!Number.isFinite(precioRef) || precioRef < 0) { toast('Precio inválido', 'err'); return }
-    updateMat({ id: modalEditar.id, dto: { ...data, nombre, rubro_id: Number(data.rubro_id), stock_minimo: stockMinimo, precio_ref: precioRef, proveedor_id: data.proveedor_id ? Number(data.proveedor_id) : null } }, {
+    const dto: UpdateStockMaterialDto = {
+      rubro_id:     Number(data.rubro_id),
+      nombre,
+      unidad:       data.unidad,
+      stock_minimo: stockMinimo,
+      precio_ref:   precioRef,
+      proveedor_id: data.proveedor_id ? Number(data.proveedor_id) : null,
+      alias:        parseAlias(data.alias),
+    }
+    updateMat({ id: modalEditar.id, dto }, {
       onSuccess: () => { toast('Actualizado', 'ok'); setModalEditar(null) },
+      onError: (e: unknown) => {
+        // El PATCH también puede chocar con el índice único de nombre
+        // (MATERIAL_DUPLICADO). Mostramos los candidatos, pero acá no hay
+        // "crearlo igual" posible: el nombre ya está tomado.
+        const c = parseMaterialConflicto(e)
+        if (c) { setConflicto({ ...c, nombreIntentado: nombre, dtoCreate: null }); return }
+        toast(e instanceof Error ? e.message : 'Error', 'err')
+      },
+    })
+  }
+
+  /**
+   * "Agregar mi término como sinónimo del existente": el usuario tipeó un
+   * nombre que ya está en el catálogo con otra redacción. En vez de sumar una
+   * fila duplicada, el término se guarda como alias del material que ya está,
+   * y la próxima búsqueda por ese nombre lo encuentra.
+   *
+   * El PATCH reemplaza la lista entera de alias → hay que mandar los actuales
+   * más el nuevo (`aliasConNuevo`).
+   */
+  function agregarSinonimo(candidato: MaterialCandidato, termino: string) {
+    const existente = (materiales as StockMaterial[]).find(m => m.id === candidato.id)
+    if (!existente) {
+      toast('No se pudo leer el material del catálogo. Recargá la página e intentá de nuevo.', 'err')
+      return
+    }
+    const alias = aliasConNuevo(existente, termino)
+    updateMat({ id: candidato.id, dto: { alias } }, {
+      onSuccess: () => {
+        toast(`"${normalizeText(termino)}" quedó como sinónimo de ${existente.nombre}`, 'ok')
+        cerrarConflicto()
+        mostrarMaterial(existente)
+      },
       onError: (e: unknown) => toast(e instanceof Error ? e.message : 'Error', 'err'),
     })
+  }
+
+  /** Cierra el modal de conflicto (y el de alta, si venía de ahí). */
+  function cerrarConflicto() {
+    setConflicto(null)
+    setModalNuevo(false)
+    setModalEditar(null)
+  }
+
+  /**
+   * Deja el material a la vista en la lista: filtra por su rubro y su nombre,
+   * y saca el filtro de stock (si está en 0 no aparecería con el default
+   * "Con stock").
+   */
+  function mostrarMaterial(m: StockMaterial) {
+    setRubroFiltro(m.rubro_id)
+    setStockFiltro('')
+    setBusqueda(m.nombre)
   }
 
   function handleDelete() {
@@ -465,7 +603,7 @@ export function StockTab() {
             </>
           )}
           <Button variant="secondary" size="sm" onClick={() => { formRubro.reset({ nombre: '', icono: '' }); setModalNuevoRubro(true) }}>+ Rubro</Button>
-          <Button variant="primary" size="sm" onClick={() => { formNuevo.reset({ rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0, proveedor_id: '' }); setModalNuevo(true) }}>+ Material</Button>
+          <Button variant="primary" size="sm" onClick={() => { formNuevo.reset({ rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0, proveedor_id: '', alias: '' }); setModalNuevo(true) }}>+ Material</Button>
         </div>
       </div>
 
@@ -503,7 +641,10 @@ export function StockTab() {
                   const cero = m.stock_actual <= 0
                   return (
                     <tr key={m.id} className="border-b border-gris last:border-0 hover:bg-gris/30 transition-colors">
-                      <td className="px-4 py-2.5 text-sm font-medium text-carbon">{m.nombre}</td>
+                      <td className="px-4 py-2.5 text-sm font-medium text-carbon">
+                        {m.nombre}
+                        <AliasChips alias={m.alias} />
+                      </td>
                       <td className="px-4 py-2.5 text-xs text-gris-dark">{m.proveedores?.nombre ?? '—'}</td>
                       <td className="px-4 py-2.5 text-xs text-gris-dark font-mono">{UNIDADES.find(u => u.value === m.unidad)?.label ?? m.unidad}</td>
                       <td className="px-4 py-2.5 text-right">
@@ -544,6 +685,7 @@ export function StockTab() {
                       <div className="text-[11px] text-gris-dark mt-0.5">
                         {m.proveedores?.nombre ?? 'Sin proveedor'}
                       </div>
+                      <AliasChips alias={m.alias} />
                     </div>
                     <div className="flex flex-col items-end shrink-0">
                       <span className={`font-mono font-bold text-base ${cero ? 'text-rojo' : bajo ? 'text-[#7A5500]' : 'text-verde'}`}>
@@ -571,12 +713,15 @@ export function StockTab() {
         </div>
       ))}
 
-      {/* ── Modal nuevo material ── */}
-      <Modal open={modalNuevo} onClose={() => setModalNuevo(false)} title="➕ NUEVO MATERIAL"
+      {/* ── Modal nuevo material ──
+          Se esconde mientras está abierto el de "¿No será este?" para no
+          apilar dos overlays (Escape los cerraría a los dos). El form no se
+          resetea al ocultarse: si el usuario vuelve, sus datos siguen ahí. */}
+      <Modal open={modalNuevo && !conflicto} onClose={() => setModalNuevo(false)} title="➕ NUEVO MATERIAL"
         footer={
           <>
             <Button variant="secondary" onClick={() => setModalNuevo(false)}>Cancelar</Button>
-            <Button variant="primary" disabled={!!duplicadoNuevoMismoRubro} onClick={formNuevo.handleSubmit(handleCreateMat)}>Crear</Button>
+            <Button variant="primary" loading={creandoMat} disabled={!!duplicadoNuevoMismoRubro} onClick={formNuevo.handleSubmit(handleCreateMat)}>Crear</Button>
           </>
         }>
         <div className="flex flex-col gap-3">
@@ -623,6 +768,7 @@ export function StockTab() {
               <InputMonto label="Precio ref. ($)" value={field.value} onChange={field.onChange} />
             )} />
           </div>
+          <SinonimosField texto={formNuevo.watch('alias')} register={formNuevo.register('alias')} />
         </div>
       </Modal>
 
@@ -668,11 +814,11 @@ export function StockTab() {
       <HistorialModal material={modalHistorial} onClose={() => setModalHistorial(null)} perfiles={perfiles} />
 
       {/* ── Modal editar material ── */}
-      <Modal open={!!modalEditar} onClose={() => setModalEditar(null)} title="✏️ EDITAR MATERIAL"
+      <Modal open={!!modalEditar && !conflicto} onClose={() => setModalEditar(null)} title="✏️ EDITAR MATERIAL"
         footer={
           <>
             <Button variant="secondary" onClick={() => setModalEditar(null)}>Cancelar</Button>
-            <Button variant="primary" disabled={!!duplicadoEditMismoRubro} onClick={formEditar.handleSubmit(handleUpdate)}>Guardar</Button>
+            <Button variant="primary" loading={guardandoMat} disabled={!!duplicadoEditMismoRubro} onClick={formEditar.handleSubmit(handleUpdate)}>Guardar</Button>
           </>
         }>
         <div className="flex flex-col gap-3">
@@ -718,6 +864,7 @@ export function StockTab() {
               <InputMonto label="Precio ref. ($)" value={field.value} onChange={field.onChange} />
             )} />
           </div>
+          <SinonimosField texto={formEditar.watch('alias')} register={formEditar.register('alias')} />
         </div>
       </Modal>
 
@@ -740,6 +887,24 @@ export function StockTab() {
         </div>
       </Modal>
 
+      {/* ── Modal "¿No será este?" (409 del candado anti-duplicados) ── */}
+      {conflicto && (
+        <MaterialParecidoModal
+          conflicto={conflicto}
+          materiales={materiales as StockMaterial[]}
+          rubros={rubros as StockRubro[]}
+          ocupado={creandoMat || guardandoMat}
+          puedeForzar={conflicto.code === 'MATERIAL_PARECIDO' && conflicto.dtoCreate !== null}
+          onClose={() => setConflicto(null)}
+          onUsarExistente={m => { cerrarConflicto(); mostrarMaterial(m) }}
+          onAgregarSinonimo={c => agregarSinonimo(c, conflicto.nombreIntentado)}
+          onForzar={() => {
+            const dto = conflicto.dtoCreate
+            if (dto) enviarCreate({ ...dto, forzar: true })
+          }}
+        />
+      )}
+
       {/* ── Modal Declarar diferencia (ajuste pendiente de aprobación) ── */}
       {modalAjuste && (
         <DeclararAjusteModal
@@ -748,6 +913,173 @@ export function StockTab() {
         />
       )}
     </>
+  )
+}
+
+// ── Sinónimos: input (comas) + preview de lo que se va a guardar ──
+function SinonimosField({ texto, register }: { texto: string; register: UseFormRegisterReturn }) {
+  const chips = parseAlias(texto)
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Input
+        label="Sinónimos (cómo lo pide la obra)"
+        placeholder={ALIAS_PLACEHOLDER}
+        hint="Separados por comas. Sirven para encontrar el material en el buscador y evitan que se cargue duplicado."
+        {...register}
+      />
+      {chips.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {chips.map(a => (
+            <span key={a} className="text-[11px] font-bold bg-azul-light text-azul px-2 py-0.5 rounded-full">{a}</span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Sinónimos ya guardados de un material (lista/detalle) ──
+function AliasChips({ alias }: { alias: string[] | null | undefined }) {
+  if (!alias || alias.length === 0) return null
+  return (
+    <div className="flex flex-wrap gap-1 mt-1" title={`También se pide como: ${alias.join(', ')}`}>
+      {alias.map(a => (
+        <span key={a} className="text-[10px] font-semibold text-gris-dark bg-gris px-1.5 py-0.5 rounded">{a}</span>
+      ))}
+    </div>
+  )
+}
+
+// ── Modal "¿No será este?" ────────────────────────────────────────────────
+//
+// Se abre con el 409 del candado anti-duplicados. Sin esto el usuario queda
+// sin salida: no puede crear el material y tampoco se le ofrece el que ya
+// está. Tres salidas:
+//   1. Agregar su término como SINÓNIMO del existente (la más valiosa: es
+//      como el catálogo se mantiene vivo, por eso va en primario).
+//   2. Usar el material existente (lo deja filtrado en la lista).
+//   3. Crearlo igual con `forzar: true` — solo para MATERIAL_PARECIDO; con
+//      MATERIAL_DUPLICADO el nombre ya está tomado y no hay reintento.
+
+interface MaterialParecidoModalProps {
+  conflicto:         MaterialConflicto & { nombreIntentado: string }
+  materiales:        StockMaterial[]
+  rubros:            StockRubro[]
+  /** Hay un POST/PATCH en vuelo: no dejar disparar otro. */
+  ocupado:           boolean
+  puedeForzar:       boolean
+  onClose:           () => void
+  onUsarExistente:   (m: StockMaterial) => void
+  onAgregarSinonimo: (c: MaterialCandidato) => void
+  onForzar:          () => void
+}
+
+function MaterialParecidoModal({
+  conflicto, materiales, rubros, ocupado, puedeForzar,
+  onClose, onUsarExistente, onAgregarSinonimo, onForzar,
+}: MaterialParecidoModalProps) {
+  const { code, candidatos, nombreIntentado } = conflicto
+  const esDuplicado = code === 'MATERIAL_DUPLICADO'
+  const termino = normalizeText(nombreIntentado)
+
+  const matById = useMemo(() => new Map(materiales.map(m => [m.id, m])), [materiales])
+  const rubroById = useMemo(() => new Map(rubros.map(r => [r.id, r])), [rubros])
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      width="max-w-lg"
+      title={esDuplicado ? '⛔ ESE NOMBRE YA EXISTE' : '🔎 ¿NO SERÁ ESTE?'}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Volver al formulario</Button>
+          {puedeForzar && (
+            <Button variant="ghost" disabled={ocupado} onClick={onForzar} className="text-gris-dark">
+              Es otro material, crealo igual
+            </Button>
+          )}
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3">
+        <div className={`rounded-xl px-3 py-2.5 text-sm ${esDuplicado ? 'bg-rojo-light text-rojo' : 'bg-amarillo-light text-[#7A5500]'}`}>
+          {esDuplicado ? (
+            <>Ya hay un material activo llamado <strong>&ldquo;{nombreIntentado}&rdquo;</strong>. Usá ese o cambiale el nombre al nuevo.</>
+          ) : (
+            <>Escribiste <strong>&ldquo;{nombreIntentado}&rdquo;</strong> y el catálogo ya tiene {candidatos.length === 1 ? 'uno parecido' : `${candidatos.length} parecidos`}. Fijate si es alguno de estos antes de sumar una fila más.</>
+          )}
+        </div>
+
+        {candidatos.length === 0 ? (
+          <p className="text-sm text-gris-dark italic">{conflicto.mensaje}</p>
+        ) : candidatos.map(c => {
+          const existente    = matById.get(c.id)
+          const rubro        = existente ? rubroById.get(existente.rubro_id) : undefined
+          const unidad       = c.unidad ?? existente?.unidad ?? ''
+          const unidadLabel  = UNIDADES.find(u => u.value === unidad)?.label ?? unidad
+          const yaEsSinonimo = c.por_alias || (existente?.alias ?? []).includes(termino)
+          const mismoNombre  = normalizeText(c.nombre) === termino
+
+          return (
+            <div key={c.id} className="border-[1.5px] border-gris-mid rounded-xl p-3 flex flex-col gap-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="font-bold text-sm text-carbon">{c.nombre}</div>
+                  <div className="text-[11px] text-gris-dark mt-0.5">
+                    {rubro ? `${rubro.icono ?? ''} ${rubro.nombre}` : 'Rubro —'}
+                    {unidadLabel && <> · {unidadLabel}</>}
+                    {existente && <> · stock <span className="font-mono font-bold">{existente.stock_actual}</span></>}
+                  </div>
+                  {existente && <AliasChips alias={existente.alias} />}
+                </div>
+                <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${c.por_alias ? 'bg-verde-light text-verde' : 'bg-gris text-gris-dark'}`}>
+                  {c.por_alias ? 'YA LO PIDEN ASÍ' : `${Math.round(c.sim * 100)}% parecido`}
+                </span>
+              </div>
+
+              {/* Salida 1 — sinónimo (destacada) */}
+              {yaEsSinonimo ? (
+                <div className="text-[11px] font-bold text-verde bg-verde-light px-2 py-1.5 rounded">
+                  ✓ Ya tiene &ldquo;{termino}&rdquo; como sinónimo: buscándolo así, lo encontrás.
+                </div>
+              ) : mismoNombre ? (
+                <div className="text-[11px] text-gris-dark px-2 py-1.5">
+                  Es exactamente el mismo nombre, no hace falta sinónimo.
+                </div>
+              ) : (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="w-full min-h-[38px]"
+                  disabled={ocupado || !existente}
+                  onClick={() => onAgregarSinonimo(c)}
+                >
+                  ➕ Guardar &ldquo;{termino}&rdquo; como sinónimo de este
+                </Button>
+              )}
+
+              {/* Salida 2 — usar el existente */}
+              <Button
+                variant="secondary"
+                size="sm"
+                className="w-full min-h-[38px]"
+                disabled={!existente}
+                onClick={() => { if (existente) onUsarExistente(existente) }}
+              >
+                Usar este material
+              </Button>
+
+              {!existente && (
+                <p className="text-[10px] text-gris-dark">
+                  No está en la lista cargada — recargá la página para operar sobre este material.
+                </p>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </Modal>
   )
 }
 

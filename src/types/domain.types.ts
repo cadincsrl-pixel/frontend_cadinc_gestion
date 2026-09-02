@@ -1443,6 +1443,13 @@ export interface StockMaterial extends AuditFields {
   proveedor_id:  number | null
   obs:           string | null
   activo:        boolean
+  /**
+   * Sinónimos / nombres de obra del material ("lija 150", "taco 8",
+   * "antiparras"). El catálogo guarda el nombre técnico; la obra pide por
+   * estos. Alimentan la búsqueda del Combobox, no se muestran.
+   * `not null default '{}'` en DB — puede venir `[]`, nunca null.
+   */
+  alias:         string[]
   stock_rubros?: { nombre: string; icono: string | null }
   proveedores?:  { id: number; nombre: string } | null
 }
