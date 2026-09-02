@@ -90,10 +90,10 @@ function writeMatrix(ws: ExcelJS.Worksheet, startRow: number, matrix: PlanillaMa
   const { sem, operarios } = matrix
   const days = getSemDays(new Date(sem.semKey + 'T12:00:00'))
 
-  // ── Section header: "Sem Vie 13/3 → Jue 19/3 · Cobro 20/3 · Estado" ──
+  // ── Section header: "Sem Vie 13/3 → Jue 19/3 · Cobro 20/3 · Cierre: Pendiente" ──
   ws.mergeCells(startRow, 1, startRow, COL_COUNT)
   const sectionCell = ws.getCell(startRow, 1)
-  sectionCell.value = `${sem.periodoCorto}  ·  Cobro ${fmtFecha(sem.cobro)}  ·  ${sem.estado === 'cerrado' ? 'Cerrado' : 'Pendiente'}`
+  sectionCell.value = `${sem.periodoCorto}  ·  Cobro ${fmtFecha(sem.cobro)}  ·  Cierre: ${sem.estadoCierre === 'cerrado' ? 'Cerrado' : 'Pendiente'}`
   sectionCell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: C_CARBON } }
   sectionCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 }
   sectionCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C_AZUL_LIGHT } }

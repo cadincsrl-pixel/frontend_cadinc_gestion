@@ -333,22 +333,42 @@ export interface Contratista extends AuditFields {
   obs: string | null
 }
 
-// Asignación contratista×obra. `cotizacion` es el monto inicial acordado del
-// que se van descontando las certificaciones semanales (saldo adeudado).
-// El backend omite cotizacion/cotizacion_obs si el usuario tiene ver_costos=false.
+// Asignación contratista×obra. `finalizado_en` marca que el contratista ya no
+// trabaja en la obra: no se ofrece al certificar y su historial queda intacto.
+// NULL = activo. Reemplaza al "desasignar" cuando hay certificaciones o
+// presupuestos cargados (sin historial, desasignar borra la fila como siempre).
+// El backend nunca devuelve cotizacion* (modelo viejo, se dropea en fase 2).
 export interface AsigContratista extends AuditFields {
   obra_cod: string
   contrat_id: number
-  cotizacion?: number | null
-  cotizacion_obs?: string | null
-  cotizacion_doc_path?: string | null
-  cotizacion_doc_nombre?: string | null
+  finalizado_en: string | null
   contratistas: Contratista
 }
 
-// ── Certificaciones ──
-export type CertEstado = 'pendiente' | 'cerrado'
+// Presupuesto de un contratista en una obra (N por asignación). Cada
+// certificación semanal se imputa a uno; saldo = monto − Σ certs del presupuesto.
+// `cerrado_en` NULL = abierto (se ofrece al certificar); se puede reabrir.
+// Adjunto (foto/PDF) en bucket privado `contratista-docs` bajo presupuesto/{id}/.
+// Solo lo ve quien tiene ver_costos (el backend responde 403; el hook lo trata como []).
+export interface Presupuesto extends AuditFields {
+  id: number
+  obra_cod: string
+  contrat_id: number
+  titulo: string
+  monto: number
+  fecha: string              // YYYY-MM-DD: fecha del presupuesto del contratista
+  obs: string | null
+  cerrado_en: string | null
+  doc_path: string | null
+  doc_nombre: string | null
+}
 
+// ── Certificaciones ──
+// Certificación semanal de un contratista. No tiene estado: se paga sí o sí el
+// viernes de cobro (getViernesCobro(sem_key) = sem_key + 7), igual que a los
+// operarios. `presupuesto_id` NULL = histórica sin presupuesto (permitida solo
+// si el contratista no tiene presupuestos abiertos en la obra; lo valida el
+// backend). Identidad: 1 por (obra, contratista, semana, presupuesto).
 export interface Certificacion extends AuditFields {
   id: number
   obra_cod: string
@@ -356,7 +376,8 @@ export interface Certificacion extends AuditFields {
   sem_key: string
   monto: number
   desc: string
-  estado: CertEstado
+  presupuesto_id: number | null
+  presupuesto_titulo: string | null   // lo embebe el backend desde contrat_presupuestos
 }
 
 export type ChoferEstado = 'activo' | 'descanso' | 'inactivo'

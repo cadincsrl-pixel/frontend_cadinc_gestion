@@ -59,7 +59,8 @@ export interface SemanaTotal {
   /** "Vie 13/3 → Jue 19/3" */
   periodoCorto:      string
   cobro:             Date
-  estado:            'pendiente' | 'cerrado'
+  /** Estado del CIERRE de la semana (tabla `cierres`), no de las certificaciones. */
+  estadoCierre:      'pendiente' | 'cerrado'
   hsRegulares:       number
   hsExtras:          number
   hsTotal:           number
@@ -97,7 +98,8 @@ export interface DetalleRow {
   /** `null` para contratistas y subtotales sin horas. */
   horas:           number | null
   monto:           number
-  estado:          'pendiente' | 'cerrado' | null
+  /** Estado del cierre de la semana; `null` en subtotales. */
+  estadoCierre:    'pendiente' | 'cerrado' | null
 }
 
 export interface PlanillaSemanaOperario {
@@ -121,11 +123,15 @@ export interface ContratistaRow {
   semKey:       string
   periodoCorto: string
   cobro:        Date
+  contratId:    number
   nombre:       string
   especialidad: string
+  /** Título del presupuesto al que se imputó la cert; `null` si es histórica (sin presupuesto). */
+  presupuesto:  string | null
   descripcion:  string
   monto:        number
-  estado:       'pendiente' | 'cerrado'
+  /** Estado del cierre de la semana (no de la certificación, que ya no tiene estado). */
+  estadoCierre: 'pendiente' | 'cerrado'
 }
 
 export interface PrestamoRow {

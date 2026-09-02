@@ -133,9 +133,14 @@ function FilaSemana({
                     <div className="min-w-0 flex items-center gap-2 flex-wrap">
                       <span className="font-semibold text-carbon">{ct?.nom ?? `Contratista #${c.contrat_id}`}</span>
                       {ct?.especialidad && <span className="text-xs text-gris-dark">· {ct.especialidad}</span>}
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide ${c.estado === 'cerrado' ? 'bg-verde-light text-verde' : 'bg-naranja-light text-naranja'}`}>
-                        {c.estado}
-                      </span>
+                      {c.presupuesto_titulo && (
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-[#EEE8FF] text-[#5A2D82] truncate max-w-[200px]"
+                          title={`Presupuesto: ${c.presupuesto_titulo}`}
+                        >
+                          {c.presupuesto_titulo}
+                        </span>
+                      )}
                       {c.desc && <span className="text-xs text-gris-dark truncate max-w-[280px]">— {c.desc}</span>}
                     </div>
                     <span className="font-mono text-naranja shrink-0">{fmtM(c.monto)}</span>

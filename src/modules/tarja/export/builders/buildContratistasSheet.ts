@@ -1,6 +1,10 @@
 /**
  * Hoja "Contratistas": certificaciones de la obra ordenadas por semana → nombre.
  * Mismas columnas que el export viejo, con subtotal al pie.
+ *
+ * La última columna es el PRESUPUESTO al que se imputó la cert (antes mostraba
+ * el estado del cierre de semana, que confundía: las certs no tienen estado,
+ * se pagan el viernes de cobro). "—" = cert histórica sin presupuesto.
  */
 import type ExcelJS from 'exceljs'
 import {
@@ -26,7 +30,7 @@ const HEADERS = [
   'Especialidad',
   'Descripción / avance',
   'Monto',
-  'Estado',
+  'Presupuesto',
 ] as const
 const COL_COUNT = HEADERS.length
 const HEADER_ROW = 3
@@ -37,12 +41,12 @@ const COL = {
   ESPECIALIDAD: 4,
   DESCRIPCION: 5,
   MONTO:       6,
-  ESTADO:      7,
+  PRESUPUESTO: 7,
 } as const
 
 export function buildContratistasSheet(wb: ExcelJS.Workbook, data: ExportData): void {
   const ws = wb.addWorksheet(SHEET_NAME)
-  setColWidths(ws, [26, 12, 26, 18, 32, 16, 12])
+  setColWidths(ws, [26, 12, 26, 18, 32, 16, 24])
 
   applyTitle(ws, `CONTRATISTAS — ${data.meta.obraNom} (${data.meta.obraCod})`, COL_COUNT)
   applySubtitle(
@@ -87,8 +91,8 @@ export function buildContratistasSheet(wb: ExcelJS.Workbook, data: ExportData): 
     r.getCell(COL.MONTO).numFmt = FMT_MONEDA_CERO
     r.getCell(COL.MONTO).alignment = { horizontal: 'right', vertical: 'middle' }
 
-    r.getCell(COL.ESTADO).value = c.estado === 'cerrado' ? 'Cerrado' : 'Pendiente'
-    r.getCell(COL.ESTADO).alignment = { horizontal: 'center', vertical: 'middle' }
+    r.getCell(COL.PRESUPUESTO).value = c.presupuesto ?? '—'
+    r.getCell(COL.PRESUPUESTO).alignment = { horizontal: 'left', vertical: 'middle' }
 
     row++
   }

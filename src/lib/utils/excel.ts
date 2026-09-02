@@ -401,7 +401,13 @@ export function generarRecibos(
         if (!contratMap[cert.contrat_id]) {
           contratMap[cert.contrat_id] = { contrat, obras: [], totalCosto: 0 }
         }
-        contratMap[cert.contrat_id]!.obras.push({ obra: o, monto: cert.monto, desc: cert.desc ?? '' })
+        // Descripción del recibo: "Presupuesto — desc" si la cert está imputada
+        // a un presupuesto; solo el título si no hay desc; solo desc si es histórica.
+        const desc = cert.desc?.trim() ?? ''
+        const descripcion = cert.presupuesto_titulo
+          ? (desc ? `${cert.presupuesto_titulo} — ${desc}` : cert.presupuesto_titulo)
+          : desc
+        contratMap[cert.contrat_id]!.obras.push({ obra: o, monto: cert.monto, desc: descripcion })
         contratMap[cert.contrat_id]!.totalCosto += cert.monto
       })
   })
@@ -497,9 +503,13 @@ export function generarRecibos(
   })
 
   // ── HTML contratistas ──
+  // Un contratista puede tener 2 certs (2 presupuestos) en la misma obra la
+  // misma semana: son 2 filas del recibo pero UNA obra certificada.
+  const nObrasCert = (obras: Array<{ obra: Obra }>) => new Set(obras.map(ob => ob.obra.cod)).size
   let contratHTML = ''
   contratData.forEach((cd, idx) => {
     const pb = (trabajadores.length > 0 || idx > 0) && (trabajadores.length + idx) % 4 === 0 ? 'page-break-before:always;' : ''
+    const nObras = nObrasCert(cd.obras)
     const filas = cd.obras.map(ob => `
       <tr>
         <td style="padding:5px 8px;font-size:10px;border-bottom:1px solid #eee">
@@ -541,7 +551,7 @@ export function generarRecibos(
         <tbody>${filas}</tbody>
       </table>
       <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 14px;background:#F0EFEB;border-top:2px solid #2C1654">
-        <div style="font-size:9px;color:#8A8980">${cd.obras.length} obra${cd.obras.length !== 1 ? 's' : ''} certificada${cd.obras.length !== 1 ? 's' : ''}</div>
+        <div style="font-size:9px;color:#8A8980">${nObras} obra${nObras !== 1 ? 's' : ''} certificada${nObras !== 1 ? 's' : ''}</div>
         <div style="text-align:center;flex:1">
           <div style="border-bottom:1px solid #C0C0C0;width:120px;margin:0 auto 2px"></div>
           <div style="font-size:8px;color:#8A8980">Firma contratista</div>

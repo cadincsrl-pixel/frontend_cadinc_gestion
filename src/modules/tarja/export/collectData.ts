@@ -138,7 +138,7 @@ export function collectData(input: ExportInput): ExportData {
       semKey:            sk,
       periodoCorto:      fmtPeriodoCorto(sk),
       cobro:             getViernesCobro(vie),
-      estado:            estadoCierre,
+      estadoCierre,
       hsRegulares:       hsReg,
       hsExtras:          hsExt,
       hsTotal:           hsReg + hsExt,
@@ -239,7 +239,7 @@ export function collectData(input: ExportInput): ExportData {
         catEspecialidad: op.catNom,
         horas:           op.hs,
         monto:           op.monto,
-        estado:          sem.estado,
+        estadoCierre:    sem.estadoCierre,
       })
     }
 
@@ -263,7 +263,7 @@ export function collectData(input: ExportInput): ExportData {
         catEspecialidad: c.especialidad,
         horas:           null,
         monto:           Math.round(c.cert.monto / 1000) * 1000,
-        estado:          sem.estado,
+        estadoCierre:    sem.estadoCierre,
       })
     }
 
@@ -278,7 +278,7 @@ export function collectData(input: ExportInput): ExportData {
       catEspecialidad: '',
       horas:           sem.hsTotal,
       monto:           sem.costoOperarios + sem.costoContratistas,
-      estado:          null,
+      estadoCierre:    null,
     })
   }
 
@@ -336,15 +336,21 @@ export function collectData(input: ExportInput): ExportData {
         semKey:       cert.sem_key,
         periodoCorto: sem.periodoCorto,
         cobro:        sem.cobro,
+        contratId:    cert.contrat_id,
         nombre:       ct?.nom ?? '—',
         especialidad: ct?.especialidad ?? '—',
+        presupuesto:  cert.presupuesto_titulo ?? null,
         descripcion:  cert.desc ?? '',
         monto:        Math.round(cert.monto / 1000) * 1000,
-        estado:       sem.estado,
+        estadoCierre: sem.estadoCierre,
       }
     })
+    // Un contratista puede certificar 2 presupuestos la misma semana: el
+    // presupuesto es el último criterio para que queden juntas y estables.
     .sort((a, b) =>
-      a.semKey.localeCompare(b.semKey) || a.nombre.localeCompare(b.nombre),
+      a.semKey.localeCompare(b.semKey)
+      || a.nombre.localeCompare(b.nombre)
+      || (a.presupuesto ?? '').localeCompare(b.presupuesto ?? ''),
     )
 
   // ── 10. Préstamos filtrados a legsEnObra + saldo acumulado por leg ──

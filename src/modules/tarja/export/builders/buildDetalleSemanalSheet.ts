@@ -10,7 +10,9 @@
  *  - Removida la columna `Centro de Costo` (irrelevante en una sola obra).
  *  - Subtotales por semana con estilo gris claro + bold. Fix problema #5.
  *  - Autofilter en el rango completo y freeze del header. Fix usabilidad.
- *  - Estado y Cobro: filas subtotal los dejan vacíos a propósito.
+ *  - Cierre y Cobro: filas subtotal los dejan vacíos a propósito. "Cierre"
+ *    es el estado del cierre de la SEMANA (tabla `cierres`); las
+ *    certificaciones de contratistas no tienen estado propio.
  */
 import type ExcelJS from 'exceljs'
 import {
@@ -38,7 +40,7 @@ export const DETALLE_COL = {
   CAT_ESP:  6,
   HORAS:    7,
   MONTO:    8,
-  ESTADO:   9,
+  CIERRE:   9,
 } as const
 const HEADERS = [
   'Tipo',
@@ -49,7 +51,7 @@ const HEADERS = [
   'Categoría / Especialidad',
   'Horas',
   'Monto',
-  'Estado',
+  'Cierre',
 ] as const
 const COL_COUNT = HEADERS.length
 const HEADER_ROW = 3
@@ -147,10 +149,10 @@ function writeRow(ws: ExcelJS.Worksheet, rowIdx: number, r: DetalleRow): void {
   row.getCell(DETALLE_COL.MONTO).numFmt = FMT_MONEDA_CERO
   row.getCell(DETALLE_COL.MONTO).alignment = { horizontal: 'right', vertical: 'middle' }
 
-  if (r.estado) {
-    row.getCell(DETALLE_COL.ESTADO).value = r.estado === 'cerrado' ? 'Cerrado' : 'Pendiente'
+  if (r.estadoCierre) {
+    row.getCell(DETALLE_COL.CIERRE).value = r.estadoCierre === 'cerrado' ? 'Cerrado' : 'Pendiente'
   }
-  row.getCell(DETALLE_COL.ESTADO).alignment = { horizontal: 'center', vertical: 'middle' }
+  row.getCell(DETALLE_COL.CIERRE).alignment = { horizontal: 'center', vertical: 'middle' }
 }
 
 function labelTipo(tipo: DetalleRow['tipo']): string {

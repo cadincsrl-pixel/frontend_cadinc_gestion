@@ -6,8 +6,11 @@
  * Tres tipos de salida:
  *   - Operarios: 1 fila por (obra, semana). Detalle "N op · NN hs". Monto
  *     consolidado de toda la obra esa semana.
- *   - Contratistas: 1 fila por (obra, semana, contratista). Detalle con
- *     nombre + especialidad + (opcional) descripción de la cert.
+ *   - Contratistas: 1 fila por (obra, semana, contratista). Si certificó
+ *     2+ presupuestos la misma semana, se consolidan en una sola fila (monto
+ *     sumado) — es un solo pago. Detalle con nombre + especialidad +
+ *     "Presupuesto A: desc + Presupuesto B: desc" (o solo desc si la cert es
+ *     histórica sin presupuesto).
  *   - Préstamos: UNA fila al final del bloque, como si fuese una obra más
  *     (pedido de Franco 2026-08-07: copia el bloque entero y lo pega en la
  *     caja). Monto = otorgados − descuentos del período (neto de caja);
@@ -30,7 +33,7 @@ import {
 } from '../helpers/cells'
 import { FMT_FECHA, FMT_MONEDA_CERO } from '../helpers/formatters'
 import { sumRange } from '../helpers/formulas'
-import type { ExportData } from '../types'
+import type { ContratistaRow, ExportData } from '../types'
 
 const SHEET_NAME = 'Salidas de Caja'
 const HEADERS = [
@@ -218,14 +221,10 @@ function collectSalidas(datas: ExportData[]): SalidaCaja[] {
         })
       }
 
-      // Contratistas de esta obra-semana.
-      const contratsSem = data.contratistas
-        .filter(c => c.semKey === sem.semKey)
-        .sort((a, b) => a.nombre.localeCompare(b.nombre))
-      for (const c of contratsSem) {
-        const detalle = c.descripcion
-          ? `${c.nombre} · ${c.especialidad} — ${c.descripcion}`
-          : `${c.nombre} · ${c.especialidad}`
+      // Contratistas de esta obra-semana: 1 fila por contratista (sus certs
+      // de distintos presupuestos se consolidan — es un único pago).
+      const contratsSem = data.contratistas.filter(c => c.semKey === sem.semKey)
+      for (const grupo of agruparPorContratista(contratsSem)) {
         out.push({
           obraNom:      data.meta.obraNom,
           obraCod:      data.meta.obraCod,
@@ -234,8 +233,8 @@ function collectSalidas(datas: ExportData[]): SalidaCaja[] {
           periodoCorto: sem.periodoCorto,
           cobro:        sem.cobro,
           concepto:     'Contratista',
-          detalle,
-          monto:        c.monto,
+          detalle:      detalleContratista(grupo),
+          monto:        grupo.reduce((s, c) => s + c.monto, 0),
         })
       }
     }
@@ -250,6 +249,33 @@ function collectSalidas(datas: ExportData[]): SalidaCaja[] {
 
 function conceptoOrden(c: SalidaConcepto): number {
   return c === 'Operarios' ? 0 : 1
+}
+
+/** Agrupa las certs de una semana por contratista, grupos en orden alfabético por nombre. */
+function agruparPorContratista(certs: ContratistaRow[]): ContratistaRow[][] {
+  const porContrat = new Map<number, ContratistaRow[]>()
+  for (const c of certs) {
+    const arr = porContrat.get(c.contratId)
+    if (arr) arr.push(c)
+    else porContrat.set(c.contratId, [c])
+  }
+  return [...porContrat.values()].sort((a, b) => a[0]!.nombre.localeCompare(b[0]!.nombre))
+}
+
+/**
+ * "Nombre · especialidad — Presupuesto A: desc + Presupuesto B: desc".
+ * Con una sola cert sin presupuesto queda igual que antes:
+ * "Nombre · especialidad — desc" (o sin el guion si no hay desc).
+ */
+function detalleContratista(grupo: ContratistaRow[]): string {
+  const base = `${grupo[0]!.nombre} · ${grupo[0]!.especialidad}`
+  const partes = grupo
+    .map(c => {
+      if (c.presupuesto && c.descripcion) return `${c.presupuesto}: ${c.descripcion}`
+      return c.presupuesto ?? c.descripcion
+    })
+    .filter(p => p.length > 0)
+  return partes.length ? `${base} — ${partes.join(' + ')}` : base
 }
 
 function sumOf<T>(items: T[], fn: (it: T) => number): number {
