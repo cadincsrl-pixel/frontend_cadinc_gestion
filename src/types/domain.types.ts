@@ -121,8 +121,9 @@ export interface PersonalDocumento {
   updated_by:     string | null
 }
 
-// ── Adjuntos del cobro (liquidación líquido producto / factura emitida + comprobante) ──
-export type CobroAdjuntoTipo = 'liquidacion' | 'comprobante' | 'factura'
+// ── Adjuntos del cobro (liquidación líquido producto / factura emitida +
+// comprobante + contra factura de la comisión del intermediario) ──
+export type CobroAdjuntoTipo = 'liquidacion' | 'comprobante' | 'factura' | 'contra_factura'
 
 export interface CobroAdjunto {
   id:             number
@@ -856,6 +857,10 @@ export interface Tramo {
 
   liquidacion_id: number | null
   cobro_id:       number | null
+  // Monto (CON IVA) que la empresa intermediaria contra facturó por este viaje.
+  // Resta del bruto antes de netear la base del chofer pct. null = todavía no
+  // llegó la contra factura. Solo aplica a empresas con contra_factura=true.
+  comision_intermediario: number | null
   obs:            string | null
   orden_dia:      number | null
   created_at:  string
@@ -965,6 +970,9 @@ export interface EmpresaTransportista extends AuditFields {
   obs: string | null
   estado: EmpresaEstado
   modalidad_cobro: EmpresaModalidadCobro
+  // Es intermediaria: nos emite una contra factura por su comisión sobre cada
+  // factura nuestra. Sus viajes no se liquidan a choferes pct hasta cargarla.
+  contra_factura: boolean
 }
 
 export interface TarifaEmpresaCantera {
@@ -1001,9 +1009,13 @@ export interface Cobro {
   // modalidad_cobro='facturacion' (una factura por viaje).
   factura_nro: string | null
   factura_fecha: string | null
+  // Contra factura que la empresa intermediaria emitió por su comisión sobre
+  // esta factura. El importe vive por viaje en `Tramo.comision_intermediario`.
+  contra_factura_nro: string | null
+  contra_factura_fecha: string | null
   created_at: string
   updated_at?: string | null
-  empresas_transportistas?: { nombre: string; modalidad_cobro?: EmpresaModalidadCobro }
+  empresas_transportistas?: { nombre: string; modalidad_cobro?: EmpresaModalidadCobro; contra_factura?: boolean }
   // Adjuntos del cobro (embebidos por el backend) — para mostrar qué
   // documentos tiene sin una query por fila, y agrupar en el historial las
   // facturas pagadas con el mismo comprobante (mismo hash = mismo pago).

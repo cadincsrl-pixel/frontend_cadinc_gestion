@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import {
   useLiquidaciones, useAdelantos, useChoferes, useCamiones, useTramos, useRutas, useCanteras, useDepositos,
   useCreateLiquidacion, useUpdateLiquidacion, useCerrarLiquidacion, useReabrirLiquidacion, useDeleteLiquidacion,
-  useAnularLiquidacion, useTarifasEmpresa,
+  useAnularLiquidacion, useTarifasEmpresa, useEmpresas,
   useCreateAdelanto, useUpdateAdelanto, useDeleteAdelanto, useSetTarifasChofer,
   useEstadias, useCreateEstadia, useDeleteEstadia,
   useGastosReintegrosPendientes, useReintegrosPendientesTodos,
@@ -28,7 +28,7 @@ import { apiGet } from '@/lib/api/client'
 import { usePermisos } from '@/hooks/usePermisos'
 import { pctEnFecha, type ChoferConHist } from '@/lib/utils/tarifas-chofer'
 import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
-import type { Chofer, Tramo, Adelanto, AdelantoFormaPago, Estadia, Ruta, RelevoPendiente, RelevoLiquidado, CerrarLiquidacionResp, TarifaEmpresaCantera, Camion } from '@/types/domain.types'
+import type { Chofer, Tramo, Adelanto, AdelantoFormaPago, Estadia, Ruta, RelevoPendiente, RelevoLiquidado, CerrarLiquidacionResp, TarifaEmpresaCantera, Camion, EmpresaTransportista } from '@/types/domain.types'
 import { exportLiquidacionExcel } from '@/lib/utils/liquidacion-export'
 import { toISO } from '@/lib/utils/dates'
 import {
@@ -149,6 +149,11 @@ export function LiquidacionesTab() {
   // Tarifas empresa-cantera: la modalidad pct valúa los viajes con la MISMA
   // escalera que facturación.
   const { data: tarifasEmpresa = [] } = useTarifasEmpresa()
+  // Empresas intermediarias: nos contra facturan su comisión sobre cada viaje
+  // y ese monto RESTA del bruto antes de calcular el % del chofer. Sin la
+  // contra factura cargada el viaje no se liquida (ver §contra factura en
+  // liquidacion-math.ts).
+  const { data: empresas      = [] } = useEmpresas()
   const { data: tramos        = [] } = useTramos()
   const { data: rutas         = [] } = useRutas()
   const { data: canteras      = [] } = useCanteras()
@@ -302,6 +307,12 @@ export function LiquidacionesTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watchDesde, watchHasta, choferLiq?.id])
 
+  // Set de empresas que contra facturan — se le pasa a calcularBasePctViajes
+  // en TODOS sus call-sites para que saldo, preview, modal y PDF den lo mismo.
+  const empresasContraFactura = new Set(
+    (empresas as EmpresaTransportista[]).filter(e => e.contra_factura).map(e => e.id),
+  )
+
   // Tramos que tienen relevo cargado: se liquidan por pata vía tramo_choferes
   // (cada chofer cobra lo suyo), no como tramo entero del titular.
   const relevos = relevosTodos as RelevoPendiente[]
@@ -390,7 +401,7 @@ export function LiquidacionesTab() {
       // fin del período (o a hoy si no hay rango).
       const finPeriodo = rHasta || toISO(new Date())
       const pctDe = (f: string | null) => pctEnFecha(chofer as ChoferConHist, f ?? finPeriodo)
-      const base = calcularBasePctViajes(mis_tramos, tarifasEmpresa as TarifaEmpresaCantera[], camiones as Camion[], pctDe)
+      const base = calcularBasePctViajes(mis_tramos, tarifasEmpresa as TarifaEmpresaCantera[], camiones as Camion[], pctDe, empresasContraFactura)
       const pct_aplicado = pctAplicadoEfectivo(base.subtotal_pct, base.base_neta, pctDe(finPeriodo))
       const totPct = calcularTotalesLiquidacionPct({
         dias, jornal_dia: chofer.basico_dia ?? 0,
@@ -474,7 +485,7 @@ export function LiquidacionesTab() {
       neto: 0,
       modalidad: 'km_jornal' as 'km_jornal' | 'pct',
       pct: 0, base_neta: 0, subtotal_pct: 0,
-      sin_tarifa: [] as Tramo[], sin_toneladas: [] as Tramo[],
+      sin_tarifa: [] as Tramo[], sin_toneladas: [] as Tramo[], sin_comision: [] as Tramo[],
       // Detalle económico por tramo (modalidad pct) — lo consume el PDF para
       // mostrar la comisión de cada viaje.
       detallePct: [] as BasePctResultado['detalle'],
@@ -514,7 +525,7 @@ export function LiquidacionesTab() {
       // que se muestra y se persiste como pct_aplicado.
       const finPeriodo = hasta || toISO(new Date())
       const pctDe = (f: string | null) => pctEnFecha(choferLiq as ChoferConHist, f ?? finPeriodo)
-      const base = calcularBasePctViajes(tramosSelec, tarifasEmpresa as TarifaEmpresaCantera[], camiones as Camion[], pctDe)
+      const base = calcularBasePctViajes(tramosSelec, tarifasEmpresa as TarifaEmpresaCantera[], camiones as Camion[], pctDe, empresasContraFactura)
       const pct  = pctAplicadoEfectivo(base.subtotal_pct, base.base_neta, pctDe(finPeriodo))
       const totPct = calcularTotalesLiquidacionPct({
         dias, jornal_dia: basico_dia, subtotal_pct: base.subtotal_pct,
@@ -529,6 +540,7 @@ export function LiquidacionesTab() {
         pct, base_neta: base.base_neta, subtotal_pct: totPct.subtotal_pct,
         sin_tarifa: base.sin_tarifa,
         sin_toneladas: base.sin_toneladas,
+        sin_comision: base.sin_comision,
         detallePct: base.detalle,
       }
     }
@@ -553,7 +565,7 @@ export function LiquidacionesTab() {
       neto: tot.neto,
       modalidad: 'km_jornal' as const,
       pct: 0, base_neta: 0, subtotal_pct: 0,
-      sin_tarifa: [] as Tramo[], sin_toneladas: [] as Tramo[],
+      sin_tarifa: [] as Tramo[], sin_toneladas: [] as Tramo[], sin_comision: [] as Tramo[],
       detallePct: [] as BasePctResultado['detalle'],
     }
   }
@@ -650,6 +662,9 @@ export function LiquidacionesTab() {
             neto:       det?.neto ?? null,
             pct:        det?.pct ?? null,
             comision:   det?.comision ?? null,
+            // El neto de arriba YA viene descontado: esto es solo para que el
+            // PDF explique el descuento (nota al pie ✚).
+            comision_intermediario: det?.comision_intermediario ?? null,
           }
         }),
         ...relevoLegs.map(legToPdf),
@@ -821,7 +836,7 @@ export function LiquidacionesTab() {
     if ((liq.modalidad ?? 'km_jornal') === 'pct') {
       const finPeriodo = liq.fecha_hasta || toISO(new Date())
       const pctDe = (f: string | null) => pctEnFecha(chofer as ChoferConHist, f ?? finPeriodo)
-      const base = calcularBasePctViajes(liqTramos, tarifasEmpresa as TarifaEmpresaCantera[], camiones as Camion[], pctDe)
+      const base = calcularBasePctViajes(liqTramos, tarifasEmpresa as TarifaEmpresaCantera[], camiones as Camion[], pctDe, empresasContraFactura)
       const cuadra =
         Math.abs(base.base_neta   - Number(liq.base_neta   ?? 0)) <= 1 &&
         Math.abs(base.subtotal_pct - Number(liq.subtotal_pct ?? 0)) <= 1
@@ -875,6 +890,9 @@ export function LiquidacionesTab() {
             neto:       det?.neto ?? null,
             pct:        det?.pct ?? null,
             comision:   det?.comision ?? null,
+            // El neto de arriba YA viene descontado: esto es solo para que el
+            // PDF explique el descuento (nota al pie ✚).
+            comision_intermediario: det?.comision_intermediario ?? null,
           }
         }),
         ...relevoLegs.map(legToPdf),
@@ -925,6 +943,13 @@ export function LiquidacionesTab() {
       // falta. La tarifa se carga en Facturación y se reintenta.
       if (p.sin_tarifa.length > 0) {
         toast(`No se puede liquidar: ${p.sin_tarifa.length} viaje${p.sin_tarifa.length !== 1 ? 's' : ''} sin tarifa cargada para su empresa/cantera/depósito. Cargala en Facturación → tarifas y volvé.`, 'err')
+        return
+      }
+      // Empresa intermediaria sin contra factura cargada: el bruto del viaje
+      // todavía puede bajar, así que liquidar ahora pagaría de más. Decisión
+      // del dueño: esperar la contra factura.
+      if (p.sin_comision.length > 0) {
+        toast(`No se puede liquidar: ${p.sin_comision.length} viaje${p.sin_comision.length !== 1 ? 's' : ''} de una empresa intermediaria sin la contra factura cargada. Cargá el monto en Facturación y volvé (o destildá esos viajes).`, 'err')
         return
       }
       if (selRelevos.length > 0) {
@@ -1997,13 +2022,15 @@ export function LiquidacionesTab() {
               let detalleModal = new Map<number, BasePctResultado['detalle'][number]>()
               let sinTarifaIds = new Set<number>()
               let sinTonIds    = new Set<number>()
+              let sinComisionIds = new Set<number>()
               if (esPctModal) {
                 const finPeriodo = watchHasta || toISO(new Date())
                 const pctDe = (f: string | null) => pctEnFecha(choferLiq as ChoferConHist, f ?? finPeriodo)
-                const base = calcularBasePctViajes(tramosDelChofer, tarifasEmpresa as TarifaEmpresaCantera[], camiones as Camion[], pctDe)
+                const base = calcularBasePctViajes(tramosDelChofer, tarifasEmpresa as TarifaEmpresaCantera[], camiones as Camion[], pctDe, empresasContraFactura)
                 detalleModal = new Map(base.detalle.map(d => [d.tramo_id, d]))
                 sinTarifaIds = new Set(base.sin_tarifa.map(t => t.id))
                 sinTonIds    = new Set(base.sin_toneladas.map(t => t.id))
+                sinComisionIds = new Set(base.sin_comision.map(t => t.id))
               }
               return (
                 <div>
@@ -2061,6 +2088,9 @@ export function LiquidacionesTab() {
                           {esPctModal && sinTarifaIds.has(t.id) && (
                             <span className="ml-1 text-[10px] font-bold uppercase tracking-wide bg-rojo/10 text-rojo px-1.5 py-0.5 rounded" title="No hay tarifa cargada para esta empresa/cantera/depósito (o su variante): el viaje no puede comisionar y BLOQUEA la liquidación. Cargala en Facturación → Tarifas.">⚠ sin tarifa</span>
                           )}
+                          {esPctModal && sinComisionIds.has(t.id) && (
+                            <span className="ml-1 text-[10px] font-bold uppercase tracking-wide bg-rojo/10 text-rojo px-1.5 py-0.5 rounded" title="La empresa es intermediaria y todavía no cargaron su contra factura: el bruto de este viaje puede bajar, así que BLOQUEA la liquidación. Cargá el monto en Facturación.">⚠ falta contra factura</span>
+                          )}
                           {esPctModal && sinTonIds.has(t.id) && (
                             <span className="ml-1 text-[10px] font-bold uppercase tracking-wide bg-amarillo/20 text-amber-700 px-1.5 py-0.5 rounded" title="El viaje no tiene toneladas cargadas: comisiona $0. Completá las toneladas de descarga en Viajes.">⚠ sin toneladas</span>
                           )}
@@ -2074,6 +2104,14 @@ export function LiquidacionesTab() {
                                 <span className="block text-[10px] text-gris-dark font-mono">
                                   {det.pct.toLocaleString('es-AR', { maximumFractionDigits: 2 })}% de {fmtM(det.neto)}
                                 </span>
+                                {/* Contra factura del intermediario: ya está
+                                    restada del neto de arriba — se muestra para
+                                    que se entienda de dónde sale el número. */}
+                                {det.comision_intermediario > 0 && (
+                                  <span className="block text-[10px] text-naranja-dark font-mono" title="La empresa intermediaria contra facturó su comisión por este viaje: se resta del bruto (con IVA) antes de netear.">
+                                    − {fmtM(det.comision_intermediario)} contra factura
+                                  </span>
+                                )}
                               </>
                             ) : (
                               <span className="block text-[10px] text-gris-mid italic">{esVacio ? 'no factura' : 'sin comisión'}</span>
@@ -2218,6 +2256,17 @@ export function LiquidacionesTab() {
                 ⚠ {preview.sin_tarifa.length} viaje{preview.sin_tarifa.length !== 1 ? 's' : ''} sin tarifa
                 cargada para su empresa/cantera/depósito — no se puede calcular la comisión.
                 Cargá la tarifa en Facturación o destildá esos viajes.
+              </div>
+            )}
+
+            {/* Viajes de empresas intermediarias sin la contra factura cargada:
+                BLOQUEAN igual que sin_tarifa — el bruto todavía puede bajar. */}
+            {preview.modalidad === 'pct' && preview.sin_comision.length > 0 && (
+              <div className="bg-rojo-light/60 border border-rojo/40 rounded-xl px-4 py-3 text-sm text-rojo">
+                ⚠ {preview.sin_comision.length} viaje{preview.sin_comision.length !== 1 ? 's' : ''} de
+                una empresa intermediaria sin la contra factura cargada — el monto de la comisión
+                resta del viaje, así que todavía no se puede calcular lo que le toca al chofer.
+                Cargá la contra factura en Facturación o destildá esos viajes.
               </div>
             )}
 

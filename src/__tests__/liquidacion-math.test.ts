@@ -42,6 +42,7 @@ function mkTramo(over: Partial<Tramo> = {}): Tramo {
     fecha_vacio: null,
     liquidacion_id: null,
     cobro_id: null,
+    comision_intermediario: null,
     obs: null,
     orden_dia: null,
     created_at: '2026-07-01T12:00:00Z',
@@ -535,6 +536,120 @@ describe('calcularBasePctViajes', () => {
     const r = calcularBasePctViajes(tramos, TARIFAS_PCT, CAMIONES_PCT)
     expect(r.base_neta).toBeCloseTo(4_200_000, 6)
     expect(r.subtotal_pct).toBe(0)
+  })
+
+  it('sin el set de empresas (default vacío) no descuenta nada aunque el tramo tenga contra factura cargada', () => {
+    // Back-compat: los call-sites viejos que no pasan el set siguen dando el
+    // mismo número de siempre. 30 × 169.400/1,21 = 4.200.000.
+    const tramos = [
+      mkTramo({ id: 1, camion_id: 3, empresa_id: 7, cantera_id: 10, fecha_descarga: '2026-07-10', toneladas_descarga: 30, comision_intermediario: 605_000 }),
+    ]
+    const r = calcularBasePctViajes(tramos, TARIFAS_PCT, CAMIONES_PCT)
+    expect(r.base_neta).toBeCloseTo(4_200_000, 6)
+    expect(r.sin_comision).toHaveLength(0)
+  })
+})
+
+// ── Contra factura de empresas intermediarias (2026-09-01) ───────────────────
+// La empresa intermediaria (hoy solo LOGISTICA GLOBAL) nos contra factura su
+// comisión: ese monto RESTA del bruto del viaje ANTES de quitar el IVA, y el %
+// del chofer se calcula sobre el saldo. Sin contra factura cargada, el viaje
+// BLOQUEA el cierre (decisión del dueño: se espera la contra factura).
+
+describe('calcularBasePctViajes — contra factura de intermediarios', () => {
+  const CONTRA_FACTURA = new Set([7])   // empresa 7 = intermediaria
+
+  it('la comisión se resta ANTES de dividir por IVA (una sola división en todo el flujo)', () => {
+    // bruto  = 30 t × 169.400   = 5.082.000  (con IVA)
+    // contra factura            =   605.000  (con IVA)
+    // neto   = (5.082.000 − 605.000)/1,21 = 4.477.000/1,21 = 3.700.000
+    // (si se dividiera PRIMERO y se restara después daría 4.200.000 − 605.000
+    //  = 3.595.000 → el orden importa $105.000 en un solo viaje)
+    const tramos = [
+      mkTramo({ id: 1, camion_id: 3, empresa_id: 7, cantera_id: 10, fecha_descarga: '2026-07-10', toneladas_descarga: 30, comision_intermediario: 605_000 }),
+    ]
+    const r = calcularBasePctViajes(tramos, TARIFAS_PCT, CAMIONES_PCT, () => 10, CONTRA_FACTURA)
+    expect(r.base_neta).toBeCloseTo(3_700_000, 6)
+    expect(r.base_neta).not.toBeCloseTo(3_595_000, 6)   // el orden resta→dividir
+    // comisión del chofer: 10% de 3.700.000 = 370.000
+    expect(r.subtotal_pct).toBeCloseTo(370_000, 6)
+    expect(r.detalle).toHaveLength(1)
+    expect(r.detalle[0]!.comision_intermediario).toBe(605_000)
+    expect(r.detalle[0]!.neto).toBeCloseTo(3_700_000, 6)
+    expect(r.sin_comision).toHaveLength(0)
+  })
+
+  it('contra factura en 0 es un valor VÁLIDO: no descuenta y NO bloquea', () => {
+    // 0 ≠ null: la contra factura llegó por $0 → neto = 5.082.000/1,21 = 4.200.000
+    const tramos = [
+      mkTramo({ id: 1, camion_id: 3, empresa_id: 7, cantera_id: 10, fecha_descarga: '2026-07-10', toneladas_descarga: 30, comision_intermediario: 0 }),
+    ]
+    const r = calcularBasePctViajes(tramos, TARIFAS_PCT, CAMIONES_PCT, () => 10, CONTRA_FACTURA)
+    expect(r.base_neta).toBeCloseTo(4_200_000, 6)
+    expect(r.sin_comision).toHaveLength(0)
+    expect(r.detalle[0]!.comision_intermediario).toBe(0)
+  })
+
+  it('empresa marcada SIN contra factura cargada (null) → sin_comision, fuera de la base (bloquea el cierre)', () => {
+    const tramos = [
+      mkTramo({ id: 1, camion_id: 3, empresa_id: 7, cantera_id: 10, fecha_descarga: '2026-07-10', toneladas_descarga: 30, comision_intermediario: null }),
+    ]
+    const r = calcularBasePctViajes(tramos, TARIFAS_PCT, CAMIONES_PCT, () => 10, CONTRA_FACTURA)
+    expect(r.base_neta).toBe(0)
+    expect(r.subtotal_pct).toBe(0)
+    expect(r.detalle).toHaveLength(0)
+    expect(r.sin_comision.map(t => t.id)).toEqual([1])
+    expect(r.sin_tarifa).toHaveLength(0)
+  })
+
+  it('empresa NO marcada: el campo comision_intermediario se IGNORA (aunque tenga monto) y nunca bloquea', () => {
+    // Empresa 7 fuera del set → viaje normal: 30 × 169.400/1,21 = 4.200.000.
+    const tramos = [
+      mkTramo({ id: 1, camion_id: 3, empresa_id: 7, cantera_id: 10, fecha_descarga: '2026-07-10', toneladas_descarga: 30, comision_intermediario: 605_000 }),
+      mkTramo({ id: 2, camion_id: 3, empresa_id: 7, cantera_id: 10, fecha_descarga: '2026-07-11', toneladas_descarga: 30, comision_intermediario: null }),
+    ]
+    const r = calcularBasePctViajes(tramos, TARIFAS_PCT, CAMIONES_PCT, () => 10, new Set([99]))
+    // Los DOS viajes valen lo mismo: el campo no juega.
+    expect(r.base_neta).toBeCloseTo(8_400_000, 6)
+    expect(r.sin_comision).toHaveLength(0)
+    expect(r.detalle.map(d => d.comision_intermediario)).toEqual([0, 0])
+  })
+
+  it('mezcla: solo los viajes de la empresa intermediaria descuentan; los de otra empresa quedan intactos', () => {
+    // Tarifa general de la empresa 7 sirve para las dos (misma cantera) sólo si
+    // la empresa coincide, así que el segundo viaje usa empresa 7 también pero
+    // NO está marcada... acá marcamos 7 y el otro tramo va sin empresa marcada:
+    // viaje 1 (empresa 7, intermediaria): (30 × 169.400 − 605.000)/1,21 = 3.700.000
+    // viaje 2 (empresa 7, chasis):        20 × 102.850/1,21 = 1.700.000 (sin c/f cargada = 0)
+    const tramos = [
+      mkTramo({ id: 1, camion_id: 3, empresa_id: 7, cantera_id: 10, fecha_descarga: '2026-07-10', toneladas_descarga: 30, comision_intermediario: 605_000 }),
+      mkTramo({ id: 2, camion_id: 9, empresa_id: 7, cantera_id: 10, fecha_descarga: '2026-07-11', toneladas_descarga: 20, comision_intermediario: 0 }),
+    ]
+    const r = calcularBasePctViajes(tramos, TARIFAS_PCT, CAMIONES_PCT, () => 10, CONTRA_FACTURA)
+    expect(r.base_neta).toBeCloseTo(5_400_000, 6)   // 3.700.000 + 1.700.000
+    expect(r.subtotal_pct).toBeCloseTo(540_000, 6)  // 10%
+    expect(r.sin_comision).toHaveLength(0)
+  })
+
+  it('un viaje SIN tarifa de empresa intermediaria cae en sin_tarifa (no se duplica en sin_comision)', () => {
+    // Empresa 99 no tiene tarifa y tampoco está marcada; empresa 7 marcada sin
+    // tarifa para la cantera 55 → sin_tarifa manda (el bucket es excluyente).
+    const tramos = [
+      mkTramo({ id: 1, camion_id: 3, empresa_id: 7, cantera_id: 55, fecha_descarga: '2026-07-10', toneladas_descarga: 30, comision_intermediario: null }),
+    ]
+    const r = calcularBasePctViajes(tramos, TARIFAS_PCT, CAMIONES_PCT, () => 10, CONTRA_FACTURA)
+    expect(r.sin_tarifa.map(t => t.id)).toEqual([1])
+    expect(r.sin_comision).toHaveLength(0)
+  })
+
+  it('los VACÍOS de una empresa intermediaria nunca bloquean (no facturan, no hay contra factura que esperar)', () => {
+    const tramos = [
+      mkTramo({ id: 1, tipo: 'vacio', empresa_id: 7, cantera_id: 10, camion_id: 3, fecha_vacio: '2026-07-10', comision_intermediario: null }),
+    ]
+    const r = calcularBasePctViajes(tramos, TARIFAS_PCT, CAMIONES_PCT, () => 10, CONTRA_FACTURA)
+    expect(r.base_neta).toBe(0)
+    expect(r.sin_comision).toHaveLength(0)
+    expect(r.sin_toneladas).toHaveLength(0)
   })
 })
 

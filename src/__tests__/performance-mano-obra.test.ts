@@ -43,6 +43,7 @@ function mkTramo(over: Partial<Tramo> = {}): Tramo {
     fecha_vacio: null,
     liquidacion_id: null,
     cobro_id: null,
+    comision_intermediario: null,
     obs: null,
     orden_dia: null,
     created_at: '2026-07-01T12:00:00Z',
@@ -755,6 +756,25 @@ describe('mano de obra de choferes a porcentaje', () => {
     expect(r.totales.costo_mo_parcial).toBeCloseTo(300_000, 6)
     expect(r.totales.costo_mo_pct).toBeCloseTo(300_000, 6)
     expect(r.totales.costo_mo_km).toBe(0)
+  })
+
+  it('PARCIAL: la contra factura del intermediario baja la base del %', () => {
+    // Mismo viaje del test anterior, pero la empresa intermediaria nos contra
+    // facturó $605.000 (CON IVA) de comisión sobre ese viaje.
+    const cargado = mkTramo({
+      id: 954, chofer_id: 60, camion_id: 3, empresa_id: 7, cantera_id: 5, deposito_id: 2,
+      fecha_descarga: '2026-07-10', toneladas_descarga: 30,
+      comision_intermediario: 605_000,
+    })
+    const r = calcularPerformance(
+      [cargado], SIN_COBROS, TARIFA_PCT, '2026-07-01', '2026-07-31',
+      [], [choferPct], RUTAS, [], [], CAMIONES_P,
+    )
+    // Bruto 30 t × $121.000 = 3.630.000 · − comisión 605.000 = 3.025.000
+    // Neto 3.025.000 / 1,21 = 2.500.000 × 10% = 250.000
+    // (sin el descuento daban 300.000 — el costo quedaba inflado en 50.000).
+    expect(r.totales.costo_mo_pct).toBeCloseTo(250_000, 6)
+    expect(r.totales.costo_mo_parcial).toBeCloseTo(250_000, 6)
   })
 
   it('PARCIAL: con jornal opcional suma días corridos × jornal + comisión', () => {

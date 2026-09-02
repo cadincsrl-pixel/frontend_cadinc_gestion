@@ -4,13 +4,17 @@ import { useState, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import * as XLSX from 'xlsx'
 import JSZip from 'jszip'
-import { useForm, Controller } from 'react-hook-form'
+import { useForm, Controller, useWatch, type UseFormReturn } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 import {
   useEmpresas, useCreateEmpresa, useUpdateEmpresa, useDeleteEmpresa,
   useTarifasEmpresa, useUpsertTarifaEmpresa, useUpdateTarifaEmpresa, useDeleteTarifaEmpresa,
   useCobros, useCreateCobro, useMarcarCobrado, useRevertirCobrado, useDeleteCobro,
+  useGuardarContraFactura,
   useTramos, useUpdateTramo, useCanteras, useDepositos, useChoferes, useCamiones,
 } from '../hooks/useLogistica'
+import type { EmpresaDto } from '../hooks/useLogistica'
 import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input }  from '@/components/ui/Input'
@@ -92,15 +96,251 @@ function fechaCobroDe(c: Pick<Cobro, 'cobrado_en' | 'obs'>): string | null {
   return m ? m[1]! : null
 }
 
+// El backend responde `{ error: CODIGO, message }`; para la contra factura
+// preferimos su `message` (explica el caso puntual: qué viaje, qué monto) y
+// solo caemos a un texto propio si no vino.
+function apiErrorMessage(err: unknown): string | null {
+  const body = (err as { body?: { message?: unknown } } | null)?.body
+  return typeof body?.message === 'string' && body.message.trim() ? body.message : null
+}
+
+// ─── Contra factura del intermediario ─────────────────────────────────────────
+//
+// Empresas marcadas con `contra_factura`: por cada factura que les emitimos nos
+// devuelven UNA contra factura con su comisión. El monto se carga POR VIAJE
+// (viene CON IVA) porque el descuento tiene que bajar el bruto de ese viaje
+// puntual: es la base del % del chofer. Se puede cargar después de emitida la
+// factura e incluso con el cobro ya cobrado — la contra factura llega tarde.
+
+const contraFacturaItemSchema = z.object({
+  tramo_id: z.number(),
+  // Bruto facturado del viaje. Viaja en el form (no como prop suelta) para que
+  // el tope "la comisión no puede superar el viaje" sea parte del schema.
+  bruto:    z.number(),
+  // Formato máquina de InputMonto ("1234.56"); '' = sin comisión cargada.
+  monto:    z.string(),
+}).superRefine((v, ctx) => {
+  if (v.monto.trim() === '') return
+  const n = Number(v.monto)
+  if (!Number.isFinite(n) || n < 0) {
+    ctx.addIssue({ code: 'custom', message: 'Monto inválido', path: ['monto'] })
+    return
+  }
+  // Mismo tope (y misma tolerancia de 1 centavo) que valida el backend: la
+  // comisión no puede superar lo facturado por ese viaje.
+  if (n > v.bruto + 0.01) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['monto'],
+      message: v.bruto > 0
+        ? `Supera el bruto del viaje (${fmtM(v.bruto)})`
+        : 'Ese viaje se facturó en $0 (sin tarifa o sin toneladas)',
+    })
+  }
+})
+
+const contraFacturaSchema = z.object({
+  contra_factura_nro:   z.string().trim().max(50, 'Máximo 50 caracteres'),
+  contra_factura_fecha: z.string(),
+  montos:               z.array(contraFacturaItemSchema),
+})
+type ContraFacturaFormValues = z.infer<typeof contraFacturaSchema>
+
+interface ViajeContraFactura {
+  tramo_id: number
+  titulo:   string
+  detalle:  string
+  /** Bruto facturado del viaje (ton × tarifa, con IVA). */
+  bruto:    number
+  /** Comisión ya persistida en tramos.comision_intermediario. */
+  comision: number | null
+}
+
+function ContraFacturaSection({ cobro, viajes }: { cobro: Cobro; viajes: ViajeContraFactura[] }) {
+  const toast = useToast()
+  const { puedeEditar } = usePermisos('logistica')
+  const { mutate: guardar, isPending } = useGuardarContraFactura()
+
+  const form = useForm<ContraFacturaFormValues>({
+    resolver: zodResolver(contraFacturaSchema),
+    defaultValues: {
+      contra_factura_nro:   cobro.contra_factura_nro ?? '',
+      contra_factura_fecha: cobro.contra_factura_fecha ?? '',
+      montos: viajes.map(v => ({
+        tramo_id: v.tramo_id,
+        bruto:    v.bruto,
+        monto:    v.comision != null ? String(v.comision) : '',
+      })),
+    },
+  })
+
+  // useWatch (no form.watch): es memoizable, así el React Compiler no saltea la
+  // compilación de este componente — el resto del archivo usa form.watch por
+  // deuda heredada.
+  const montos = useWatch({ control: form.control, name: 'montos' }) ?? []
+  const nro    = useWatch({ control: form.control, name: 'contra_factura_nro' }) ?? ''
+  const totalContra = montos.reduce((s, m) => {
+    const n = Number(m?.monto)
+    return s + (Number.isFinite(n) ? n : 0)
+  }, 0)
+  const neto = cobro.total - totalContra
+  const nroVacio = !nro.trim()
+
+  function onSubmit(v: ContraFacturaFormValues) {
+    guardar({
+      id: cobro.id,
+      dto: {
+        contra_factura_nro:   v.contra_factura_nro.trim() || null,
+        contra_factura_fecha: v.contra_factura_fecha || null,
+        comisiones: v.montos.map(m => ({
+          tramo_id: m.tramo_id,
+          monto:    m.monto.trim() === '' ? null : Number(m.monto),
+        })),
+      },
+    }, {
+      onSuccess: () => toast('✓ Contra factura guardada', 'ok'),
+      onError:   (err) => {
+        const code = apiErrorCode(err)
+        toast(apiErrorMessage(err) ?? (
+          code === 'EMPRESA_SIN_CONTRA_FACTURA'
+            ? 'La empresa no está marcada como intermediaria — activá “Me contra factura su comisión” en su ficha.'
+          : code === 'COMISION_MAYOR_QUE_VIAJE'
+            ? 'Una comisión supera el bruto de su viaje.'
+          : code === 'TRAMO_NO_ES_DEL_COBRO'
+            ? 'Uno de los viajes ya no pertenece a esta factura — recargá la pantalla.'
+          : 'Error al guardar la contra factura'
+        ), 'err')
+      },
+    })
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div>
+        <h3 className="text-sm font-bold text-azul uppercase tracking-wider">📑 Contra factura</h3>
+        <p className="text-[11px] text-gris-dark mt-0.5">
+          Lo que la empresa nos descuenta por su comisión. El monto va <b>con IVA</b> y se carga viaje
+          por viaje: baja el bruto de cada uno y con eso la base del % del chofer.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Input
+          label="Nº de contra factura"
+          placeholder="0001-00000123"
+          disabled={!puedeEditar}
+          error={form.formState.errors.contra_factura_nro?.message}
+          {...form.register('contra_factura_nro')}
+        />
+        <Input
+          label="Fecha"
+          type="date"
+          disabled={!puedeEditar}
+          {...form.register('contra_factura_fecha')}
+        />
+      </div>
+
+      {viajes.length === 0 ? (
+        <div className="text-xs text-gris-mid italic">
+          Esta factura no tiene viajes asociados: no hay dónde imputar la comisión.
+        </div>
+      ) : (
+        <div className="border border-gris-mid rounded-xl divide-y divide-gris-mid overflow-hidden">
+          {viajes.map((v, i) => {
+            const err = form.formState.errors.montos?.[i]?.monto?.message
+            return (
+              <div key={v.tramo_id} className="flex flex-wrap items-center gap-2 px-3 py-2.5 bg-white">
+                <div className="flex-1 min-w-[140px]">
+                  <div className="text-xs font-semibold text-carbon truncate" title={v.titulo}>{v.titulo}</div>
+                  <div className="text-[11px] text-gris-dark">
+                    {v.detalle} · bruto <span className="font-mono font-bold text-carbon">{fmtM(v.bruto)}</span>
+                  </div>
+                </div>
+                <div className="w-full sm:w-40 shrink-0">
+                  <Controller
+                    name={`montos.${i}.monto` as const}
+                    control={form.control}
+                    render={({ field }) => (
+                      <InputMonto
+                        placeholder="0"
+                        disabled={!puedeEditar}
+                        value={field.value}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
+                        error={err}
+                      />
+                    )}
+                  />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Total derivado + neto de la factura después del descuento. */}
+      <div className="bg-gris/40 rounded-xl px-3 py-2.5 text-xs flex flex-col gap-1">
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-bold text-gris-dark uppercase tracking-wide">Total contra factura</span>
+          <span className="font-mono font-bold text-rojo">− {fmtM(totalContra)}</span>
+        </div>
+        <div className="flex items-center justify-between gap-2 border-t border-gris-mid pt-1">
+          <span className="font-bold text-gris-dark uppercase tracking-wide">Neto de la factura</span>
+          <span className="font-mono font-bold text-verde">{fmtM(neto)}</span>
+        </div>
+      </div>
+
+      {totalContra > 0 && nroVacio && (
+        <div className="text-[11px] text-[#7A5500] bg-amarillo-light border border-amarillo/30 rounded-lg px-3 py-2">
+          ⚠ Cargaste comisiones sin el nº de la contra factura. Se puede guardar igual, pero conviene
+          anotarlo para poder cruzarla con el papel.
+        </div>
+      )}
+
+      <div className="flex justify-end">
+        <Button
+          variant="primary"
+          size="sm"
+          loading={isPending}
+          disabled={!puedeEditar}
+          title={puedeEditar ? undefined : 'Necesitás permiso de actualización en Logística'}
+          onClick={form.handleSubmit(onSubmit)}
+        >
+          💾 Guardar contra factura
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 // ─── Sección empresas ─────────────────────────────────────────────────────────
+
+const empresaSchema = z.object({
+  nombre:          z.string().trim().min(1, 'Poné el nombre o razón social'),
+  cuit:            z.string(),
+  tel:             z.string(),
+  email:           z.string(),
+  obs:             z.string(),
+  modalidad_cobro: z.enum(['liquido_producto', 'facturacion']),
+  // Empresa intermediaria: nos emite una contra factura por su comisión.
+  contra_factura:  z.boolean(),
+  estado:          z.enum(['activa', 'inactiva']),
+})
+type EmpresaFormValues = z.infer<typeof empresaSchema>
+
+const EMPRESA_DEFAULTS: EmpresaFormValues = {
+  nombre: '', cuit: '', tel: '', email: '', obs: '',
+  modalidad_cobro: 'liquido_producto', contra_factura: false, estado: 'activa',
+}
 
 // Definido a nivel de módulo (no dentro de EmpresasSection) para que no se
 // recree en cada render del padre — si se redefiniera, los inputs perderían
 // foco al tipear (la identidad del componente cambia y React desmonta/remonta).
-function EmpresaForm({ form }: { form: any }) {
+function EmpresaForm({ form }: { form: UseFormReturn<EmpresaFormValues> }) {
+  const { errors } = form.formState
   return (
     <div className="flex flex-col gap-3">
-      <Input label="Nombre / Razón social" placeholder="Empresa S.A." {...form.register('nombre')} />
+      <Input label="Nombre / Razón social" placeholder="Empresa S.A." error={errors.nombre?.message} {...form.register('nombre')} />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Input label="CUIT" placeholder="20-12345678-9" {...form.register('cuit')} />
         <Input label="Teléfono" placeholder="299-XXX-XXXX" {...form.register('tel')} />
@@ -114,6 +354,24 @@ function EmpresaForm({ form }: { form: any }) {
         ]}
         {...form.register('modalidad_cobro')}
       />
+      {/* Intermediaria. El checkbox no se oculta según modalidad porque el
+          dueño puede marcarlo antes de definirla; el efecto sí se explica. */}
+      <label className="flex items-start gap-2.5 border-[1.5px] border-gris-mid rounded-lg px-3 py-2.5 cursor-pointer hover:border-azul transition-colors">
+        <input
+          type="checkbox"
+          className="accent-azul mt-0.5 shrink-0"
+          {...form.register('contra_factura')}
+        />
+        <span className="min-w-0">
+          <span className="block text-sm font-bold text-carbon">📑 Me contra factura su comisión</span>
+          <span className="block text-[11px] text-gris-dark mt-0.5">
+            Es una empresa intermediaria: por cada factura que le emitimos, ella nos emite una contra
+            factura por su comisión. En el detalle de cada factura vas a poder cargar el monto que
+            descontó viaje por viaje. Ese descuento <b>baja el bruto</b> sobre el que se calcula el
+            porcentaje del chofer.
+          </span>
+        </span>
+      </label>
       <Input label="Observaciones" placeholder="Notas..." {...form.register('obs')} />
     </div>
   )
@@ -139,8 +397,14 @@ function EmpresasSection({
   // tabla crece con cada cliente nuevo.
   const [verListado, setVerListado] = useState(false)
   const [buscarEmp,  setBuscarEmp]  = useState('')
-  const formNueva = useForm<any>({ defaultValues: { modalidad_cobro: 'liquido_producto' } })
-  const formEdit  = useForm<any>()
+  const formNueva = useForm<EmpresaFormValues>({
+    resolver: zodResolver(empresaSchema),
+    defaultValues: EMPRESA_DEFAULTS,
+  })
+  const formEdit  = useForm<EmpresaFormValues>({
+    resolver: zodResolver(empresaSchema),
+    defaultValues: EMPRESA_DEFAULTS,
+  })
 
   // Viajes por empresa, para saber cuáles están realmente en uso. useTramos ya
   // lo pide el resto de la pestaña: React Query lo comparte, no es un fetch más.
@@ -161,23 +425,41 @@ function EmpresasSection({
       `${e.nombre} ${e.cuit ?? ''} ${e.tel ?? ''}`.toLowerCase().includes(q))
   }, [empresas, buscarEmp])
 
-  function handleCreate(data: any) {
-    create(data, {
-      onSuccess: () => { toast('✓ Empresa agregada', 'ok'); setModalNueva(false); formNueva.reset() },
+  function aDto(data: EmpresaFormValues): EmpresaDto {
+    return {
+      nombre:          data.nombre.trim(),
+      cuit:            data.cuit.trim(),
+      tel:             data.tel.trim(),
+      email:           data.email.trim(),
+      obs:             data.obs.trim(),
+      estado:          data.estado,
+      modalidad_cobro: data.modalidad_cobro,
+      contra_factura:  data.contra_factura,
+    }
+  }
+
+  function handleCreate(data: EmpresaFormValues) {
+    create(aDto(data), {
+      onSuccess: () => { toast('✓ Empresa agregada', 'ok'); setModalNueva(false); formNueva.reset(EMPRESA_DEFAULTS) },
       onError:   () => toast('Error al agregar', 'err'),
     })
   }
 
-  function handleUpdate(data: any) {
+  function handleUpdate(data: EmpresaFormValues) {
     if (!editando) return
-    update({ id: editando.id, dto: data }, {
+    update({ id: editando.id, dto: aDto(data) }, {
       onSuccess: () => { toast('✓ Empresa actualizada', 'ok'); setEditando(null) },
       onError:   () => toast('Error al actualizar', 'err'),
     })
   }
 
   function openEdit(e: EmpresaTransportista) {
-    formEdit.reset({ nombre: e.nombre, cuit: e.cuit ?? '', tel: e.tel ?? '', email: e.email ?? '', obs: e.obs ?? '', estado: e.estado, modalidad_cobro: e.modalidad_cobro ?? 'liquido_producto' })
+    formEdit.reset({
+      nombre: e.nombre, cuit: e.cuit ?? '', tel: e.tel ?? '', email: e.email ?? '',
+      obs: e.obs ?? '', estado: e.estado,
+      modalidad_cobro: e.modalidad_cobro ?? 'liquido_producto',
+      contra_factura: e.contra_factura ?? false,
+    })
     setEditando(e)
   }
 
@@ -207,7 +489,7 @@ function EmpresasSection({
               </Button>
             )}
             {puedeCrear && (
-              <Button variant="primary" size="sm" onClick={() => setModalNueva(true)}>＋ Nueva empresa</Button>
+              <Button variant="primary" size="sm" onClick={() => { formNueva.reset(EMPRESA_DEFAULTS); setModalNueva(true) }}>＋ Nueva empresa</Button>
             )}
           </div>
         </div>
@@ -272,6 +554,12 @@ function EmpresasSection({
                           </td>
                           <td className="px-3 py-2 text-gris-dark">
                             {e.modalidad_cobro === 'facturacion' ? '🧾 Facturación' : '🤝 Líq. producto'}
+                            {e.contra_factura && (
+                              <span
+                                className="ml-1.5 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-amarillo-light text-[#7A5500] border border-amarillo/40 whitespace-nowrap"
+                                title="Intermediaria: nos contra factura su comisión"
+                              >📑 Contra fact.</span>
+                            )}
                           </td>
                           <td className={`px-3 py-2 text-right font-mono ${viajes === 0 ? 'text-gris-mid' : 'text-carbon font-bold'}`}>
                             {viajes || '—'}
@@ -295,6 +583,12 @@ function EmpresasSection({
                 <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-azul-light text-azul-mid">
                   {empresaSeleccionada.modalidad_cobro === 'facturacion' ? '🧾 Facturación' : '🤝 Líq. producto'}
                 </span>
+                {empresaSeleccionada.contra_factura && (
+                  <span
+                    className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amarillo-light text-[#7A5500] border border-amarillo/40"
+                    title="Intermediaria: por cada factura nos emite una contra factura por su comisión"
+                  >📑 Contra factura</span>
+                )}
                 <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
                   empresaSeleccionada.estado === 'activa' ? 'bg-verde-light text-verde' : 'bg-gris text-gris-dark'
                 }`}>{empresaSeleccionada.estado}</span>
@@ -2201,6 +2495,16 @@ function FacturacionSection() {
           arr.push(rem)
           remitosPorCobro.set(t.cobro_id, arr)
         }
+        // Empresas intermediarias (nos contra facturan su comisión) y comisión
+        // ya cargada por cobro — el descuento vive por viaje en los tramos.
+        const empresasCF = new Set(
+          (empresas as EmpresaTransportista[]).filter(e => e.contra_factura).map(e => e.id),
+        )
+        const comisionPorCobro = new Map<number, number>()
+        for (const t of tramos as Tramo[]) {
+          if (t.cobro_id == null || t.comision_intermediario == null) continue
+          comisionPorCobro.set(t.cobro_id, (comisionPorCobro.get(t.cobro_id) ?? 0) + Number(t.comision_intermediario))
+        }
         const q = busquedaCobro.trim().toLowerCase()
         const filtrados = todos.filter(c => {
           if (filtroEstadoCobro === 'pendientes' && c.estado !== 'pendiente') return false
@@ -2464,6 +2768,9 @@ function FacturacionSection() {
                                     <span className="text-gris-dark"> · {tramosDelCobro.length} remitos · {fmtFechaCorta(c.fecha_desde)} → {fmtFechaCorta(c.fecha_hasta)}</span>
                                   )}
                                   <span className="text-gris-dark"> · {fmtTon(c.toneladas_totales)}</span>
+                                  {(comisionPorCobro.get(c.id) ?? 0) > 0 && (
+                                    <span className="text-gris-dark"> · 📑 −{fmtM(comisionPorCobro.get(c.id)!)} → neto <span className="font-mono font-bold text-carbon">{fmtM(c.total - comisionPorCobro.get(c.id)!)}</span></span>
+                                  )}
                                 </div>
                                 <div className="font-mono font-bold text-verde shrink-0">{fmtM(c.total)}</div>
                               </div>
@@ -2489,6 +2796,11 @@ function FacturacionSection() {
                     : adjs.some(a => a.tipo === 'liquidacion')
                   const fechaCobro = cobrado ? fechaCobroDe(c) : null
                   const faltaComprobante = !cobrado && !tieneComprobante
+                  // Contra factura del intermediario: chip documental + neto.
+                  const esIntermediaria = empresasCF.has(c.empresa_id) || (c.empresas_transportistas?.contra_factura ?? false)
+                  const tieneContraFactura = adjs.some(a => a.tipo === 'contra_factura')
+                  const comisionCobro = comisionPorCobro.get(c.id) ?? 0
+                  const contraFacturaCargada = tieneContraFactura || !!c.contra_factura_nro || comisionCobro > 0
                   return (
                     <div
                       key={c.id}
@@ -2534,6 +2846,22 @@ function FacturacionSection() {
                           <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${tieneComprobante ? 'bg-verde-light text-verde' : faltaComprobante ? 'bg-naranja-light text-naranja-dark' : 'bg-gris text-gris-dark line-through'}`}>
                             💰 Comprobante
                           </span>
+                          {esIntermediaria && (
+                            <span
+                              title={
+                                tieneContraFactura ? 'Contra factura adjunta'
+                                : contraFacturaCargada ? 'Comisión cargada, pero falta adjuntar la contra factura'
+                                : 'La empresa todavía no mandó su contra factura'
+                              }
+                              className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                tieneContraFactura ? 'bg-verde-light text-verde'
+                                : contraFacturaCargada ? 'bg-naranja-light text-naranja-dark'
+                                : 'bg-gris text-gris-dark line-through'
+                              }`}
+                            >
+                              📑 Contra factura
+                            </span>
+                          )}
                           {fechaCobro && (
                             <span className="text-[10px] text-verde font-semibold">· cobrado el {fechaCobro}</span>
                           )}
@@ -2541,6 +2869,12 @@ function FacturacionSection() {
                       </div>
                       <div className="font-mono font-bold text-base shrink-0 text-right">
                         <span className={cobrado ? 'text-verde' : 'text-naranja-dark'}>{fmtM(c.total)}</span>
+                        {comisionCobro > 0 && (
+                          <div className="text-[10px] font-normal text-gris-dark leading-tight" title="Total facturado menos la comisión que nos contra facturó la empresa">
+                            − {fmtM(comisionCobro)} comisión<br />
+                            neto <span className="font-bold text-carbon">{fmtM(c.total - comisionCobro)}</span>
+                          </div>
+                        )}
                       </div>
                       {!cobrado && (
                         <Button
@@ -2684,9 +3018,19 @@ function FacturacionSection() {
           const tramosCobro = (tramos as Tramo[]).filter(t => t.cobro_id === cobroDetalle.id)
           // Modalidad de la empresa del cobro: define qué slots de adjuntos
           // mostrar (liquidación vs factura emitida).
-          const modalidadDetalle = (empresas as EmpresaTransportista[]).find(e => e.id === cobroDetalle.empresa_id)?.modalidad_cobro
+          const empresaDetalle = (empresas as EmpresaTransportista[]).find(e => e.id === cobroDetalle.empresa_id)
+          const modalidadDetalle = empresaDetalle?.modalidad_cobro
             ?? cobroDetalle.empresas_transportistas?.modalidad_cobro
             ?? 'liquido_producto'
+          // Empresa intermediaria: habilita la sección de contra factura y su
+          // slot de adjunto.
+          const esIntermediaria = empresaDetalle?.contra_factura
+            ?? cobroDetalle.empresas_transportistas?.contra_factura
+            ?? false
+          // `cobroDetalle` es un snapshot del click; para precargar nº/fecha de
+          // la contra factura usamos la fila viva de la query (así después de
+          // guardar y reabrir el modal se ve lo persistido, no lo de antes).
+          const cobroVivo = (cobros as Cobro[]).find(c => c.id === cobroDetalle.id) ?? cobroDetalle
           // Importe individual por remito = ton × tarifa vigente a la fecha del
           // tramo — el mismo cálculo (calcDesglose) con el que se armó el total
           // del cobro. La suma debería dar cobroDetalle.total; si difiere (tarifa
@@ -2802,9 +3146,28 @@ function FacturacionSection() {
                 )}
               </div>
 
+              {/* Contra factura del intermediario — se puede cargar en cualquier
+                  momento (incluso con el cobro ya cobrado: la contra factura
+                  llega después). Solo se gatea por permiso de actualización. */}
+              {esIntermediaria && (
+                <div className="border-t border-gris-mid pt-4">
+                  <ContraFacturaSection
+                    key={cobroDetalle.id}
+                    cobro={cobroVivo}
+                    viajes={desgloseCobro.map(d => ({
+                      tramo_id: d.t.id,
+                      titulo:   `${d.cantera?.nombre ?? '—'}${(d.t.remito_descarga ?? d.t.remito_carga) ? ` · #${d.t.remito_descarga ?? d.t.remito_carga}` : ''}`,
+                      detalle:  `${d.fecha ? fmtFecha(d.fecha) : '—'} · ${fmtTon(d.ton)}`,
+                      bruto:    d.subtotal,
+                      comision: d.t.comision_intermediario,
+                    }))}
+                  />
+                </div>
+              )}
+
               {/* Adjuntos: liquidación líquido producto (o factura emitida) + comprobante de pago */}
               <div className="border-t border-gris-mid pt-4">
-                <CobroAdjuntosSection cobroId={cobroDetalle.id} modalidad={modalidadDetalle} />
+                <CobroAdjuntosSection cobroId={cobroDetalle.id} modalidad={modalidadDetalle} contraFactura={esIntermediaria} />
               </div>
             </div>
           )
@@ -2851,7 +3214,7 @@ function FacturacionSection() {
                     : 'Subí ahora la liquidación del líquido producto y el comprobante de cobro. Si no los tenés disponibles, podés cerrar y agregarlos después editando el cobro.'}
                 </div>
               </div>
-              <CobroAdjuntosSection cobroId={cobroCreado.id} modalidad={empresaCobro.modalidad_cobro} />
+              <CobroAdjuntosSection cobroId={cobroCreado.id} modalidad={empresaCobro.modalidad_cobro} contraFactura={empresaCobro.contra_factura} />
             </div>
           )
         })()}

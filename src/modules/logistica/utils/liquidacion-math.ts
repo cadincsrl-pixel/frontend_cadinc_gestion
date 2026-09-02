@@ -157,21 +157,46 @@ export function calcularTotalesLiquidacion(i: TotalesLiquidacionInput): TotalesL
 //   · Un viaje sin facturar se liquida igual, a tarifa vigente — sin esperar
 //     la factura del cliente.
 //   · El jornal diario es opcional (basico_dia del chofer; 0 = solo %).
+//
+// CONTRA FACTURA DE INTERMEDIARIOS (2026-09-01, decisión del dueño):
+//   Cuando el viaje se le factura a una empresa INTERMEDIARIA (hoy solo
+//   LOGISTICA GLOBAL; flag `empresas_transportistas.contra_factura`), esa
+//   empresa nos emite una contra factura por su comisión, que RESTA del bruto
+//   del viaje. El chofer pct cobra su % sobre lo que efectivamente nos queda:
+//
+//       neto = (ton × tarifa − comisión_intermediario) ÷ 1,21
+//
+//   Los dos montos vienen CON IVA, así que la resta va ANTES de la división
+//   (sigue habiendo UNA sola división por IVA en todo el flujo pct).
+//   · `comision_intermediario = 0` es un valor válido (contra factura por $0):
+//     no descuenta nada y NO bloquea.
+//   · `comision_intermediario = null` en una empresa marcada = la contra
+//     factura TODAVÍA NO LLEGÓ → el tramo cae en `sin_comision` y BLOQUEA el
+//     cierre (mismo tratamiento que `sin_tarifa`). El dueño decidió esperar la
+//     contra factura antes de liquidar, en vez de liquidar de más y corregir.
+//   · Empresa NO marcada → el campo se IGNORA aunque tenga valor.
 
 export interface BasePctResultado {
-  /** Σ (ton × tarifa neta) de los viajes cargados. */
+  /** Σ netos de los viajes cargados: (ton × tarifa − contra factura) ÷ IVA. */
   base_neta:   number
   /** Σ comisiones por tramo, cada una con el % vigente A LA FECHA de ese tramo
    *  (solo si el caller pasó `pctDe`; sin callback queda en 0). */
   subtotal_pct: number
-  /** Detalle por tramo para mostrar en el preview y el PDF. */
-  detalle:     Array<{ tramo_id: number; fecha: string | null; ton: number; tarifa_final: number; neto: number; pct: number; comision: number }>
+  /** Detalle por tramo para mostrar en el preview y el PDF.
+   *  `comision_intermediario` es el monto (CON IVA) que se restó del bruto
+   *  antes de netear; 0 cuando la empresa no contra factura. */
+  detalle:     Array<{ tramo_id: number; fecha: string | null; ton: number; tarifa_final: number; neto: number; pct: number; comision: number; comision_intermediario: number }>
   /** Tramos cargados SIN tarifa para su empresa/cantera/depósito: bloquean la
    *  liquidación — pagarlos en $0 en silencio sería robarle al chofer. */
   sin_tarifa:  Tramo[]
   /** Tramos cargados con toneladas ≤ 0: no suman comisión, pero se AVISAN —
    *  antes se salteaban en silencio y el chofer perdía el viaje sin enterarse. */
   sin_toneladas: Tramo[]
+  /** Tramos cargados de una empresa que contra factura y todavía SIN el monto
+   *  de la contra factura (`comision_intermediario == null`): bloquean el
+   *  cierre igual que `sin_tarifa` — liquidar antes pagaría un % sobre un
+   *  bruto que después baja. OJO: 0 es un monto válido y NO cae acá. */
+  sin_comision: Tramo[]
 }
 
 export function calcularBasePctViajes(
@@ -182,12 +207,18 @@ export function calcularBasePctViajes(
    *  regla que categoria_tarifas y que el reporte de performance). El caller
    *  resuelve el fallback para fecha null. Sin callback → comisiones en 0. */
   pctDe?:   (fecha: string | null) => number,
+  /** ids de empresas con `contra_factura = true` (intermediarias). Solo para
+   *  esas empresas se descuenta `comision_intermediario` y se exige que esté
+   *  cargado. Default vacío = ninguna contra factura (back-comp con los
+   *  callers que no lo pasan). */
+  empresasContraFactura: ReadonlySet<number> = new Set<number>(),
 ): BasePctResultado {
   let base_neta = 0
   let subtotal_pct = 0
   const detalle: BasePctResultado['detalle'] = []
   const sin_tarifa: Tramo[] = []
   const sin_toneladas: Tramo[] = []
+  const sin_comision: Tramo[] = []
 
   for (const t of tramos) {
     if (t.tipo !== 'cargado') continue   // los vacíos no facturan → no pagan
@@ -205,15 +236,21 @@ export function calcularBasePctViajes(
         )
       : 0
     if (!(tarifa > 0)) { sin_tarifa.push(t); continue }
-    const neto     = ton * tarifa / IVA   // ÚNICA división por IVA de todo el flujo pct
+    // Contra factura del intermediario: resta del bruto (los dos montos con
+    // IVA). Sin el monto cargado el viaje BLOQUEA — igual que sin tarifa, no
+    // se liquida sobre un bruto que después baja.
+    const contraFactura = t.empresa_id != null && empresasContraFactura.has(t.empresa_id)
+    if (contraFactura && t.comision_intermediario == null) { sin_comision.push(t); continue }
+    const comision_intermediario = contraFactura ? Number(t.comision_intermediario ?? 0) : 0
+    const neto     = (ton * tarifa - comision_intermediario) / IVA   // ÚNICA división por IVA de todo el flujo pct
     const pct      = pctDe ? pctDe(fecha) : 0
     const comision = neto * pct / 100
     base_neta    += neto
     subtotal_pct += comision
-    detalle.push({ tramo_id: t.id, fecha, ton, tarifa_final: tarifa, neto, pct, comision })
+    detalle.push({ tramo_id: t.id, fecha, ton, tarifa_final: tarifa, neto, pct, comision, comision_intermediario })
   }
 
-  return { base_neta, subtotal_pct, detalle, sin_tarifa, sin_toneladas }
+  return { base_neta, subtotal_pct, detalle, sin_tarifa, sin_toneladas, sin_comision }
 }
 
 /**

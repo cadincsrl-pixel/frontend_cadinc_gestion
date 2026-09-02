@@ -3,7 +3,7 @@ import { apiGet, apiPost, apiDelete, apiPatch } from '@/lib/api/client'
 import type {
   Chofer, Camion, Batea, Cantera, Deposito, Ruta, LugarOperativo,
   Tramo, Viaje, Liquidacion, CerrarLiquidacionResp, Adelanto, Estadia, TarifaCantera,
-  EmpresaTransportista, TarifaEmpresaCantera, Cobro,
+  EmpresaTransportista, EmpresaEstado, EmpresaModalidadCobro, TarifaEmpresaCantera, Cobro,
 } from '@/types/domain.types'
 
 // ── Keys ──
@@ -650,10 +650,25 @@ export function useEmpresas() {
   })
 }
 
+// Campos editables de una empresa desde el ABM. Es un subconjunto explícito de
+// EmpresaTransportista (sin id ni campos de auditoría) para que el form tipado
+// del ABM entre sin casts.
+export interface EmpresaDto {
+  nombre:           string
+  cuit?:            string | null
+  tel?:             string | null
+  email?:           string | null
+  obs?:             string | null
+  estado?:          EmpresaEstado
+  modalidad_cobro?: EmpresaModalidadCobro
+  // Empresa intermediaria: nos emite una contra factura por su comisión.
+  contra_factura?:  boolean
+}
+
 export function useCreateEmpresa() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (dto: Omit<EmpresaTransportista, 'id'>) =>
+    mutationFn: (dto: EmpresaDto) =>
       apiPost<EmpresaTransportista>('/api/logistica/empresas', dto),
     onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.empresas }),
   })
@@ -662,7 +677,7 @@ export function useCreateEmpresa() {
 export function useUpdateEmpresa() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, dto }: { id: number; dto: Partial<EmpresaTransportista> }) =>
+    mutationFn: ({ id, dto }: { id: number; dto: EmpresaDto }) =>
       apiPatch<EmpresaTransportista>(`/api/logistica/empresas/${id}`, dto),
     onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.empresas }),
   })
@@ -757,6 +772,38 @@ export function useRevertirCobrado() {
   return useMutation({
     mutationFn: (id: number) => apiPatch<Cobro>(`/api/logistica/cobros/${id}/revertir`, {}),
     onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.cobros }),
+  })
+}
+
+// ── Contra factura del intermediario ──────────────────────────────────────
+// Cuando le facturamos a una empresa intermediaria (empresas_transportistas
+// .contra_factura = true), esa empresa nos emite una contra factura por su
+// comisión. El importe se carga POR VIAJE (tramos.comision_intermediario, CON
+// IVA) y resta del bruto antes de netear la base del % del chofer.
+export interface ComisionContraFactura {
+  tramo_id: number
+  /** Monto CON IVA. null = borrar la comisión de ese viaje. */
+  monto:    number | null
+}
+
+export interface ContraFacturaDto {
+  contra_factura_nro:   string | null
+  contra_factura_fecha: string | null
+  comisiones:           ComisionContraFactura[]
+}
+
+export function useGuardarContraFactura() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: number; dto: ContraFacturaDto }) =>
+      apiPatch<Cobro>(`/api/logistica/cobros/${id}/contra-factura`, dto),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: LOG_KEYS.cobros })
+      // La comisión vive en los TRAMOS y baja la base del % del chofer: sin
+      // invalidar tramos, el preview de liquidación seguiría con el bruto viejo.
+      qc.invalidateQueries({ queryKey: LOG_KEYS.tramos })
+      qc.invalidateQueries({ queryKey: LOG_KEYS.liquidaciones })
+    },
   })
 }
 

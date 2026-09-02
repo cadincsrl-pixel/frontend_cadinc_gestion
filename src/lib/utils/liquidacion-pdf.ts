@@ -30,6 +30,11 @@ export interface PdfLiquidacionTramo {
   neto?:       number | null
   pct?:        number | null
   comision?:   number | null
+  // Monto (CON IVA) que la empresa intermediaria contra facturó por este
+  // viaje. `neto` YA viene descontado; esto se imprime aparte para que el
+  // chofer entienda por qué el neto no es ton × tarifa. 0/null = sin contra
+  // factura (la empresa no es intermediaria).
+  comision_intermediario?: number | null
 }
 
 export interface PdfLiquidacionAdelanto {
@@ -131,6 +136,10 @@ export function generarPdfLiquidacion(args: PdfLiquidacionArgs): void {
   const esCargadoSinDetalle = (t: PdfLiquidacionTramo) =>
     t.tipo === 'cargado' && !t.esRelevo && t.comision == null
 
+  // Viaje al que una empresa intermediaria le descontó una contra factura.
+  const contraFacturaDe = (t: PdfLiquidacionTramo) => Number(t.comision_intermediario ?? 0)
+  const tieneContraFactura = (t: PdfLiquidacionTramo) => t.comision != null && contraFacturaDe(t) > 0
+
   let tramosTable: Content
   if (args.tramos.length === 0) {
     tramosTable = { text: '' }
@@ -141,6 +150,7 @@ export function generarPdfLiquidacion(args: PdfLiquidacionArgs): void {
     const totalTon     = conDetalle.reduce((s, t) => s + (t.toneladas ?? 0), 0)
     const totalNeto    = conDetalle.reduce((s, t) => s + (t.neto ?? 0), 0)
     const totalCom     = conDetalle.reduce((s, t) => s + (t.comision ?? 0), 0)
+    const totalContraF = conDetalle.reduce((s, t) => s + contraFacturaDe(t), 0)
     const fmtPct = (p: number | null | undefined) =>
       p != null ? p.toLocaleString('es-AR', { maximumFractionDigits: 2 }) + '%' : '—'
 
@@ -148,7 +158,9 @@ export function generarPdfLiquidacion(args: PdfLiquidacionArgs): void {
       style: 'table',
       table: {
         headerRows: 1,
-        widths: [50, '*', 35, 62, 30, 62, 48],
+        // 'Neto viaje' un poco más ancha que el resto: con contra factura
+        // lleva el importe descontado en una segunda línea.
+        widths: [50, '*', 35, 70, 30, 62, 48],
         body: [
           [
             { text: 'Fecha',      style: 'tableHeader' },
@@ -166,7 +178,17 @@ export function generarPdfLiquidacion(args: PdfLiquidacionArgs): void {
               { text: fmtFecha(t.fecha) },
               { text: prefijo + rutaDe(t) + (esCargadoSinDetalle(t) ? ' ✱' : ''), italics: italica },
               { text: t.toneladas != null ? fmtN(t.toneladas, 2) : '—', alignment: 'right' as const },
-              { text: t.neto     != null ? fmtM(t.neto)     : '—', alignment: 'right' as const },
+              tieneContraFactura(t)
+                // El neto ya está descontado: se muestra el importe de la
+                // contra factura debajo, con ✚ que remite a la nota al pie.
+                ? {
+                    stack: [
+                      { text: fmtM(t.neto ?? 0) + ' ✚' },
+                      { text: '− ' + fmtM(contraFacturaDe(t)) + ' c/f', fontSize: 6, color: '#B42318' },
+                    ],
+                    alignment: 'right' as const,
+                  }
+                : { text: t.neto != null ? fmtM(t.neto) : '—', alignment: 'right' as const },
               { text: fmtPct(t.pct), alignment: 'right' as const },
               { text: t.comision != null ? fmtM(t.comision) : '—', alignment: 'right' as const, bold: t.comision != null },
               { text: t.esRelevo ? 'Relevo' : (t.remito ?? '—') },
@@ -176,7 +198,15 @@ export function generarPdfLiquidacion(args: PdfLiquidacionArgs): void {
             { text: '' },
             { text: `TOTAL (${conDetalle.length} viaje${conDetalle.length !== 1 ? 's' : ''})`, bold: true },
             { text: fmtN(totalTon, 2), alignment: 'right' as const, bold: true },
-            { text: fmtM(totalNeto), alignment: 'right' as const, bold: true },
+            totalContraF > 0
+              ? {
+                  stack: [
+                    { text: fmtM(totalNeto), bold: true },
+                    { text: '− ' + fmtM(totalContraF) + ' c/f', fontSize: 6, color: '#B42318' },
+                  ],
+                  alignment: 'right' as const,
+                }
+              : { text: fmtM(totalNeto), alignment: 'right' as const, bold: true },
             { text: '' },
             { text: fmtM(totalCom), alignment: 'right' as const, bold: true },
             { text: '' },
@@ -232,6 +262,9 @@ export function generarPdfLiquidacion(args: PdfLiquidacionArgs): void {
         : []),
       ...(args.tramos.some(esCargadoSinDetalle)
         ? [{ text: '✱ Viaje sin tarifa o sin toneladas cargadas: no genera comisión y NO está incluido en la fila TOTAL.', style: 'meta', margin: [0, 1, 0, 0] } as Content]
+        : []),
+      ...(args.tramos.some(tieneContraFactura)
+        ? [{ text: '✚ Viaje facturado a una empresa intermediaria: al bruto ya se le restó la contra factura de su comisión (importe en rojo bajo el neto) ANTES de quitar el IVA. El % del chofer se calcula sobre ese neto.', style: 'meta', margin: [0, 1, 0, 0] } as Content]
         : []),
     ],
   }

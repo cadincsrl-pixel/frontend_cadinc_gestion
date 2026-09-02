@@ -538,6 +538,12 @@ export function calcularPerformance(
           // Comisión: % × (ton × tarifa neta), solo cargados — los vacíos no
           // facturan y no pagan en esta modalidad. Un viaje sin tarifa suma 0
           // acá (el lado de ingresos ya lo marca sin_tarifa).
+          //
+          // ⚠ Esta cuenta está COPIADA de calcularBasePctViajes() en
+          // src/modules/logistica/utils/liquidacion-math.ts, que es la FUENTE
+          // DE VERDAD de la modalidad pct. Si allá cambia la fórmula, hay que
+          // replicarla acá (o el margen por camión de Reportes deja de
+          // coincidir con lo que se le paga al chofer).
           if (t.tipo === 'cargado' && t.empresa_id != null && t.cantera_id != null) {
             const ton    = Number(t.toneladas_descarga ?? t.toneladas_carga ?? 0)
             const tarifa = tarifaParaFecha(
@@ -546,7 +552,25 @@ export function calcularPerformance(
               t.tarifa_variante ?? null,
             )
             if (ton > 0 && tarifa > 0) {
-              montoPctVivos += ton * tarifa / IVA * pctEnFecha(chofer, fechaTramo) / 100
+              // La comisión que la empresa intermediaria nos contra facturó por
+              // este viaje (CON IVA) resta del bruto ANTES de netear: el chofer
+              // cobra su % sobre lo que realmente quedó facturado. Sin este
+              // descuento el costo de mano de obra queda inflado y el margen
+              // por camión, sobreestimado.
+              //
+              // Dos diferencias deliberadas con calcularBasePctViajes(), que
+              // acá no cambian el número pero conviene tener presentes:
+              //   · Allá el descuento se aplica sólo si la EMPRESA está marcada
+              //     como intermediaria; acá alcanza con que el tramo tenga
+              //     monto (el endpoint de contra factura sólo deja cargarlo en
+              //     empresas marcadas, así que es lo mismo — salvo que se
+              //     desmarque una empresa dejando montos viejos colgados).
+              //   · Allá un tramo de empresa marcada SIN monto bloquea el
+              //     cierre; acá se estima con el bruto entero (sin descuento),
+              //     que es el lado conservador: sobreestima el costo, no lo
+              //     esconde.
+              const bruto = ton * tarifa - Number(t.comision_intermediario ?? 0)
+              montoPctVivos += bruto / IVA * pctEnFecha(chofer, fechaTramo) / 100
             }
           }
         } else {

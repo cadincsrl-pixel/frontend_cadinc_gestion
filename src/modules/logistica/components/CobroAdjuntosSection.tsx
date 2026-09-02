@@ -15,12 +15,16 @@ interface Props {
   // Define qué slots de adjuntos se muestran: liquidación (líquido producto)
   // o factura emitida (facturación por viaje). Default: líquido producto.
   modalidad?: EmpresaModalidadCobro
+  // La empresa es intermediaria y nos contra factura su comisión: se suma el
+  // cuarto slot para el PDF/foto de esa contra factura.
+  contraFactura?: boolean
 }
 
 const TODOS_TIPOS: { key: CobroAdjuntoTipo; label: string; icon: string }[] = [
-  { key: 'liquidacion',  label: 'Liquidación líquido producto', icon: '🧾' },
-  { key: 'factura',      label: 'Factura emitida',               icon: '🧾' },
-  { key: 'comprobante',  label: 'Comprobante de cobro',          icon: '💰' },
+  { key: 'liquidacion',    label: 'Liquidación líquido producto', icon: '🧾' },
+  { key: 'factura',        label: 'Factura emitida',              icon: '🧾' },
+  { key: 'comprobante',    label: 'Comprobante de cobro',         icon: '💰' },
+  { key: 'contra_factura', label: 'Contra factura (comisión)',    icon: '📑' },
 ]
 
 const ACCEPT = 'image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf'
@@ -36,7 +40,7 @@ function fmtFecha(iso: string): string {
   return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`
 }
 
-export function CobroAdjuntosSection({ cobroId, modalidad = 'liquido_producto' }: Props) {
+export function CobroAdjuntosSection({ cobroId, modalidad = 'liquido_producto', contraFactura = false }: Props) {
   const toast = useToast()
   const { puedeCrear, puedeEliminar } = usePermisos('logistica')
 
@@ -45,7 +49,7 @@ export function CobroAdjuntosSection({ cobroId, modalidad = 'liquido_producto' }
   const { mutate: deleteAdj } = useDeleteCobroAdjunto()
 
   const fileInputs = useRef<Record<CobroAdjuntoTipo, HTMLInputElement | null>>({
-    liquidacion: null, comprobante: null, factura: null,
+    liquidacion: null, comprobante: null, factura: null, contra_factura: null,
   })
   const [pendingTipo, setPendingTipo] = useState<CobroAdjuntoTipo | null>(null)
 
@@ -95,6 +99,9 @@ export function CobroAdjuntosSection({ cobroId, modalidad = 'liquido_producto' }
   const slotsBase: CobroAdjuntoTipo[] = modalidad === 'facturacion'
     ? ['factura', 'comprobante']
     : ['liquidacion', 'comprobante']
+  // El slot de contra factura solo aplica a empresas intermediarias; si un
+  // cobro viejo ya tiene una cargada, el filtro de abajo la muestra igual.
+  if (contraFactura) slotsBase.push('contra_factura')
   const porTipo = TODOS_TIPOS
     .filter(t => slotsBase.includes(t.key) || adjuntos.some(a => a.tipo === t.key))
     .map(t => ({

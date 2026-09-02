@@ -15,6 +15,7 @@ function mkTramo(over: Partial<Tramo> = {}): Tramo {
     fecha_descarga: '2026-07-10', toneladas_descarga: 30.2, remito_descarga: 'RD-9',
     remito_descarga_img_url: null,
     fecha_vacio: null, liquidacion_id: 24, cobro_id: 63,
+    comision_intermediario: null,
     obs: null, orden_dia: null,
     created_at: '', updated_at: '', created_by: null, updated_by: null,
     ...over,
