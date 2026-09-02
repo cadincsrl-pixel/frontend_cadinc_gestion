@@ -19,8 +19,20 @@ export interface ComboboxOption {
    * y el catálogo guarda "Lija al agua N°150". Poniendo los alias acá el
    * match funciona sin ensuciar la UI. Opcional: sin `search` el filtro
    * es igual al legacy (label + sub).
+   *
+   * Pasarlo como **array** cuando son sinónimos discretos: además del
+   * filtro difuso, habilita el match exacto por alias que usa `exactMatch`
+   * para no ofrecer "crear" algo que ya existe bajo otro nombre. Como
+   * string unido el filtro anda igual, pero el match exacto no puede
+   * separar los términos ("chapa acanalada" no es una palabra suelta).
    */
-  search?: string
+  search?: string | string[]
+}
+
+/** Los términos de búsqueda de una option, siempre como array. */
+function searchTerms(o: ComboboxOption): string[] {
+  if (!o.search) return []
+  return Array.isArray(o.search) ? o.search : [o.search]
 }
 
 interface ComboboxProps {
@@ -121,7 +133,7 @@ export function Combobox({
   // Concatenamos los tres para que un token pueda matchear en cualquiera.
   // `search` es invisible: lleva los sinónimos (ver ComboboxOption.search).
   const filtered = query.trim()
-    ? options.filter(o => matchesSearch(`${o.label} ${o.sub ?? ''} ${o.search ?? ''}`, query))
+    ? options.filter(o => matchesSearch(`${o.label} ${o.sub ?? ''} ${searchTerms(o).join(' ')}`, query))
     : options
 
   // Cerrar al clickear fuera
@@ -164,12 +176,20 @@ export function Combobox({
   // Mostramos la opción de "crear" cuando hay query no vacío y ningún label
   // matchea exacto (case-insensitive). Así un usuario que tipea "Bosch" y
   // ya existe "Bosch" en la lista no ve la opción duplicada.
-  // OJO: solo mira `label`, no `search`. Si en el futuro se habilita
-  // `onCreate` en un combo con alias, revisar acá para no ofrecer "crear"
-  // algo que ya existe bajo otro nombre.
+  //
+  // Mira `label` Y los alias de `search` (cuando vienen como array). Sin
+  // esto, tipear "ceresita" ofrecía "＋ Crear: ceresita" aunque el material
+  // ya exista como "Hidrófugo x 5lts" con ese sinónimo — o sea, la UI
+  // invitaba a crear justo el duplicado que el candado del backend intenta
+  // evitar. Un alias que apunta a varios materiales (las 4 largos de chapa
+  // acanalada) igual cuenta como "ya existe": lo que falta ahí es que el
+  // usuario elija el tamaño, no dar de alta otra fila.
   const queryTrim = query.trim()
+  const queryNorm = normalizeText(queryTrim)
   const exactMatch = queryTrim
-    ? options.some(o => normalizeText(o.label) === normalizeText(queryTrim))
+    ? options.some(o =>
+        normalizeText(o.label) === queryNorm ||
+        searchTerms(o).some(t => normalizeText(t) === queryNorm))
     : false
   const showCreate = !!onCreate && !!queryTrim && !exactMatch
 

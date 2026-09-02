@@ -12,7 +12,9 @@ import {
 import { useProveedores, useCreateProveedor } from '../hooks/useProveedores'
 import { useStockCliente } from '../hooks/useStockCliente'
 import { useFacturasCompra, useCreateFactura } from '../hooks/useFacturasCompra'
-import { useStockMateriales } from '../hooks/useStock'
+import { useStockMateriales, useStockRubros, useCreateStockMaterial, useUpdateStockMaterial, parseMaterialConflicto } from '../hooks/useStock'
+import type { CreateStockMaterialDto, MaterialConflicto, MaterialCandidato } from '../hooks/useStock'
+import { MaterialParecidoModal } from './MaterialParecidoModal'
 import { useQueryClient } from '@tanstack/react-query'
 import { useCreateRemitoEnvio } from '../hooks/useRemitosEnvio'
 import { imprimirRemito, armarEstadoPedido, armarEnvios, useSoloEnvio, SoloEnvioCheck, type EstadoPedido } from './RemitoEnvioPrint'
@@ -23,6 +25,7 @@ import { ItemHistorialModal } from './ItemHistorialModal'
 import { useObras } from '@/modules/tarja/hooks/useObras'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import { usePermisos } from '@/hooks/usePermisos'
+import { UNIDADES } from '../constants'
 import { createClient } from '@/lib/supabase/client'
 import { toISO } from '@/lib/utils/dates'
 import { Modal }    from '@/components/ui/Modal'
@@ -31,18 +34,8 @@ import { Input }    from '@/components/ui/Input'
 import { InputMonto } from '@/components/ui/InputMonto'
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox'
 import { useToast } from '@/components/ui/Toast'
-import type { SolicitudCompra, SolicitudCompraItem, SolicitudEstado, SolicitudProgreso, ItemEstado, Obra, Proveedor, StockMaterial, RemitoEnvio, StockClienteRow } from '@/types/domain.types'
+import type { SolicitudCompra, SolicitudCompraItem, SolicitudEstado, SolicitudProgreso, ItemEstado, Obra, Proveedor, StockMaterial, StockRubro, RemitoEnvio, StockClienteRow } from '@/types/domain.types'
 
-const UNIDADES = [
-  { value: 'unid', label: 'Unid.' },
-  { value: 'kg',   label: 'kg'    },
-  { value: 'tn',   label: 'tn'    },
-  { value: 'lt',   label: 'lt'    },
-  { value: 'm',    label: 'm'     },
-  { value: 'm2',   label: 'm²'    },
-  { value: 'm3',   label: 'm³'    },
-  { value: 'gl',   label: 'gl'    },
-]
 
 const ESTADO_SOL: Record<SolicitudEstado, { label: string; bg: string; text: string }> = {
   pendiente: { label: 'Pend. aprobación', bg: 'bg-amarillo-light', text: 'text-[#7A5500]' },
@@ -92,9 +85,66 @@ async function uploadAdjunto(file: File): Promise<{ url: string; nombre: string 
 }
 
 // ── Línea de ítem en formulario de nueva solicitud ──
-interface LineaForm { _id: number; descripcion: string; cantidad: number; unidad: string; obs: string; material_id: number | null }
+/**
+ * `libre` = el usuario pidió explícitamente escribir el material a mano
+ * (link "No encuentro el material"). Antes el input de texto libre estaba
+ * SIEMPRE visible debajo del buscador, y era el camino de menor resistencia:
+ * de ahí salieron los 3.116 ítems históricos con descripción inventada, los
+ * duplicados del catálogo y los 63 pedidos cargados con precio 1. Ahora hay
+ * que optar por él. No se elimina: hay material real que no está catalogado
+ * y bloquear el pedido sería peor.
+ */
+interface LineaForm { _id: number; descripcion: string; cantidad: number; unidad: string; obs: string; material_id: number | null; libre: boolean }
 let nextId = 1
-function newLinea(): LineaForm { return { _id: nextId++, descripcion: '', cantidad: 1, unidad: 'unid', obs: '', material_id: null } }
+function newLinea(): LineaForm { return { _id: nextId++, descripcion: '', cantidad: 1, unidad: 'unid', obs: '', material_id: null, libre: false } }
+
+/**
+ * El escape del catálogo, detrás de un link en vez de un input siempre
+ * visible (ver `LineaForm.libre`). Se usa igual en el modal de alta y en el
+ * de edición, por eso está acá afuera.
+ */
+function DescripcionLibre({ linea, onChange }: {
+  linea:    LineaForm
+  onChange: (patch: Partial<LineaForm>) => void
+}) {
+  if (linea.material_id) return null
+
+  if (!linea.libre) {
+    return (
+      <button
+        type="button"
+        onClick={() => onChange({ libre: true })}
+        className="mt-2 text-xs font-semibold text-gris-dark underline underline-offset-2 hover:text-naranja transition-colors"
+      >
+        No encuentro el material
+      </button>
+    )
+  }
+
+  return (
+    <div className="mt-2">
+      <input
+        type="text" autoComplete="off" autoFocus
+        placeholder="Describí el material..."
+        value={linea.descripcion}
+        onChange={e => onChange({ descripcion: e.target.value })}
+        className="w-full px-2 py-1.5 border border-naranja/60 rounded-lg text-sm outline-none focus:border-naranja"
+      />
+      <div className="flex items-start justify-between gap-2 mt-1">
+        <span className="text-[11px] text-gris-dark">
+          Sin catalogar: no cruza precios ni stock con el resto de las obras.
+        </span>
+        <button
+          type="button"
+          onClick={() => onChange({ libre: false, descripcion: '' })}
+          className="shrink-0 text-[11px] font-bold text-azul hover:text-naranja transition-colors"
+        >
+          Volver al catálogo
+        </button>
+      </div>
+    </div>
+  )
+}
 
 // ── Categorías para los tabs ──
 // "Por comprar" / "Por enviar" / "Enviadas" son los 3 tabs principales y mapean
@@ -193,6 +243,25 @@ export function SolicitudesTab() {
   const { mutate: createFactura, isPending: creandoFact } = useCreateFactura()
   const stockMap = new Map((stockMateriales as StockMaterial[]).map(m => [m.id, m]))
 
+  // ── Alta de material desde el pedido ──
+  //
+  // Sin esto el operario que no encuentra su material solo puede escribir
+  // texto libre, y el catálogo nunca crece: es la fuente de los duplicados
+  // que venimos limpiando. El alta pega al módulo `stock` del backend, que
+  // exige permiso de `certificaciones` (ver stock.routes.ts), así que
+  // `puedeCrear` es el gate correcto — no hace falta otro permiso.
+  const { data: stockRubros = [] } = useStockRubros()
+  const { mutate: createMat, isPending: creandoMat } = useCreateStockMaterial()
+  const { mutate: updateMat, isPending: guardandoMat } = useUpdateStockMaterial()
+  /** Qué línea disparó el alta, para poder seleccionarle el material creado. */
+  const [modalNuevoMat, setModalNuevoMat] = useState<
+    { lineaId: number; enEdicion: boolean; nombre: string; rubro_id: number | ''; unidad: string } | null
+  >(null)
+  /** 409 del candado anti-duplicados. `dtoCreate` permite reintentar con `forzar`. */
+  const [conflictoMat, setConflictoMat] = useState<
+    (MaterialConflicto & { nombreIntentado: string; dtoCreate: CreateStockMaterialDto | null; lineaId: number; enEdicion: boolean }) | null
+  >(null)
+
   // Opciones del selector de material del catálogo. Se arma UNA vez por
   // render de la pantalla (antes se rearmaba por cada línea del pedido:
   // ~700 materiales × N líneas).
@@ -226,11 +295,61 @@ export function SolicitudesTab() {
         // devolvía las 76 filas del rubro en vez de los 4 materiales que la
         // tienen en el nombre. Medido antes de sacarlo.
         sub:    hayStock ? `${m.stock_actual} ${m.unidad} en depósito` : undefined,
-        search: (m.alias ?? []).join(' '),
+        search: m.alias ?? [],
         group:  rubro,
       }
     })
   }, [stockMateriales])
+
+  /** Deja el material elegido en la línea que disparó el alta. */
+  function usarMaterialEnLinea(lineaId: number, enEdicion: boolean, m: StockMaterial) {
+    const patch = { material_id: m.id, descripcion: m.nombre, unidad: m.unidad, libre: false }
+    if (enEdicion) setLineasEdit(p => p.map(x => x._id === lineaId ? { ...x, ...patch } : x))
+    else           setLineas(p => p.map(x => x._id === lineaId ? { ...x, ...patch } : x))
+    setModalNuevoMat(null)
+    setConflictoMat(null)
+  }
+
+  /**
+   * POST del material nuevo. El backend puede responder 409 con el candado
+   * anti-duplicados; ahí abrimos "¿No será este?" en vez de dejar al usuario
+   * con un toast y sin salida (que es exactamente cuando se va al texto libre).
+   */
+  function enviarCreateMat(dto: CreateStockMaterialDto, lineaId: number, enEdicion: boolean) {
+    createMat(dto, {
+      onSuccess: (m: StockMaterial) => {
+        toast(dto.forzar ? 'Material creado (confirmado como distinto)' : 'Material agregado al catálogo', 'ok')
+        usarMaterialEnLinea(lineaId, enEdicion, m)
+      },
+      onError: (e: unknown) => {
+        const c = parseMaterialConflicto(e)
+        if (c) { setConflictoMat({ ...c, nombreIntentado: dto.nombre, dtoCreate: dto, lineaId, enEdicion }); return }
+        toast(e instanceof Error ? e.message : 'Error', 'err')
+      },
+    })
+  }
+
+  /**
+   * Salida 1 del modal de conflicto: en vez de crear una fila nueva, suma lo
+   * que el usuario tipeó como sinónimo del material que ya existe. Es como el
+   * catálogo aprende los nombres de obra. `alias` se reemplaza entero, así que
+   * hay que mandar los que ya tenía más el nuevo.
+   */
+  function agregarSinonimoMat(c: MaterialCandidato) {
+    if (!conflictoMat) return
+    const existente = stockMap.get(c.id)
+    if (!existente) { toast('Recargá la página para operar sobre ese material', 'err'); return }
+    const termino = conflictoMat.nombreIntentado.trim().toLowerCase()
+    const alias = Array.from(new Set([...(existente.alias ?? []), termino]))
+    const { lineaId, enEdicion } = conflictoMat
+    updateMat({ id: existente.id, dto: { alias } }, {
+      onSuccess: (m: StockMaterial) => {
+        toast(`Guardado: buscando "${termino}" ahora aparece ${existente.nombre}`, 'ok')
+        usarMaterialEnLinea(lineaId, enEdicion, m ?? existente)
+      },
+      onError: (e: unknown) => toast(e instanceof Error ? e.message : 'Error', 'err'),
+    })
+  }
 
   const [obraFiltro, setObraFiltro] = useState('')
   const router       = useRouter()
@@ -443,6 +562,9 @@ export function SolicitudesTab() {
       unidad: it.unidad,
       obs: it.obs ?? '',
       material_id: it.material_id ?? null,
+      // Un ítem viejo sin material del catálogo ya tiene descripción escrita a
+      // mano: hay que mostrarla, no esconderla detrás del link.
+      libre: !it.material_id,
       estado: it.estado,
     }))
     setLineasEdit(editLines)
@@ -1637,8 +1759,13 @@ export function SolicitudesTab() {
                               material_id: mat ? mat.id : null,
                               descripcion: mat ? mat.nombre : '',
                               unidad: mat ? mat.unidad : x.unidad,
+                              libre: false,
                             } : x))
                           }}
+                          onCreate={puedeCrear ? q => setModalNuevoMat({
+                            lineaId: l._id, enEdicion: false, nombre: q, rubro_id: '', unidad: l.unidad,
+                          }) : undefined}
+                          createLabel="Agregar al catálogo"
                         />
                       </div>
                       {/* Solo si HAY stock, y en verde: es un dato útil. En rojo y
@@ -1651,11 +1778,10 @@ export function SolicitudesTab() {
                       )}
                       {lineas.length > 1 && <button onClick={() => setLineas(p => p.filter(x => x._id !== l._id))} className="shrink-0 w-9 h-9 flex items-center justify-center rounded-lg text-gris-mid hover:text-rojo hover:bg-rojo-light text-lg font-bold">✕</button>}
                     </div>
-                    {!l.material_id && (
-                      <input type="text" autoComplete="off" placeholder="O escribir descripción libre..." value={l.descripcion}
-                        onChange={e => setLineas(p => p.map(x => x._id === l._id ? { ...x, descripcion: e.target.value } : x))}
-                        className="w-full mt-2 px-2 py-1.5 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja" />
-                    )}
+                    <DescripcionLibre
+                      linea={l}
+                      onChange={patch => setLineas(p => p.map(x => x._id === l._id ? { ...x, ...patch } : x))}
+                    />
                     <div className="flex gap-2 mt-2">
                       <input type="number" min="0" step="1" value={l.cantidad} onChange={e => setLineas(p => p.map(x => x._id === l._id ? { ...x, cantidad: parseFloat(e.target.value) || 0 } : x))}
                         placeholder="Cant." className="w-20 px-2 py-1.5 border border-gris-mid rounded-lg text-sm text-right outline-none focus:border-naranja" />
@@ -2162,8 +2288,13 @@ export function SolicitudesTab() {
                                 material_id: mat ? mat.id : null,
                                 descripcion: mat ? mat.nombre : '',
                                 unidad: mat ? mat.unidad : x.unidad,
+                                libre: false,
                               } : x))
                             }}
+                            onCreate={puedeCrear ? q => setModalNuevoMat({
+                              lineaId: l._id, enEdicion: true, nombre: q, rubro_id: '', unidad: l.unidad,
+                            }) : undefined}
+                            createLabel="Agregar al catálogo"
                           />
                         </div>
                         {matVinculado && (matVinculado as StockMaterial).stock_actual > 0 && (
@@ -2176,11 +2307,10 @@ export function SolicitudesTab() {
                           setLineasEdit(p => p.filter(x => x._id !== l._id))
                         }} className="shrink-0 w-9 h-9 flex items-center justify-center rounded-lg text-gris-mid hover:text-rojo hover:bg-rojo-light text-lg font-bold">✕</button>
                       </div>
-                      {!l.material_id && (
-                        <input type="text" autoComplete="off" placeholder="O escribir descripción libre..." value={l.descripcion}
-                          onChange={e => setLineasEdit(p => p.map(x => x._id === l._id ? { ...x, descripcion: e.target.value } : x))}
-                          className="w-full mt-2 px-2 py-1.5 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja" />
-                      )}
+                      <DescripcionLibre
+                        linea={l}
+                        onChange={patch => setLineasEdit(p => p.map(x => x._id === l._id ? { ...x, ...patch } : x))}
+                      />
                       <div className="flex gap-2 mt-2">
                         <input type="number" min="0" step="1" value={l.cantidad} onChange={e => setLineasEdit(p => p.map(x => x._id === l._id ? { ...x, cantidad: parseFloat(e.target.value) || 0 } : x))}
                           placeholder="Cant." className="w-20 px-2 py-1.5 border border-gris-mid rounded-lg text-sm text-right outline-none focus:border-naranja" />
@@ -2319,6 +2449,85 @@ export function SolicitudesTab() {
           obraNombre={(cod: string) => obrasMap.get(cod)?.nom}
           soloEnvio={soloEnvio}
           setSoloEnvio={setSoloEnvio}
+        />
+      )}
+
+      {/* ── Alta rápida de material desde el pedido ──
+          Pide lo mínimo que exige el backend (nombre + rubro). El resto
+          (stock mínimo, precio, proveedor) se completa después desde Stock:
+          acá el objetivo es que el pedido no se corte. */}
+      {modalNuevoMat && (
+        <Modal
+          open
+          onClose={() => setModalNuevoMat(null)}
+          width="max-w-md"
+          title="＋ AGREGAR AL CATÁLOGO"
+          footer={<>
+            <Button variant="secondary" onClick={() => setModalNuevoMat(null)}>Cancelar</Button>
+            <Button
+              variant="primary"
+              loading={creandoMat}
+              disabled={!modalNuevoMat.nombre.trim() || !modalNuevoMat.rubro_id}
+              onClick={() => {
+                const { nombre, rubro_id, unidad, lineaId, enEdicion } = modalNuevoMat
+                if (!rubro_id) return
+                enviarCreateMat(
+                  { nombre: nombre.trim(), rubro_id: Number(rubro_id), unidad },
+                  lineaId, enEdicion,
+                )
+              }}
+            >
+              Agregar y usar
+            </Button>
+          </>}
+        >
+          <div className="flex flex-col gap-3">
+            <Input
+              label="Nombre"
+              value={modalNuevoMat.nombre}
+              onChange={e => setModalNuevoMat(s => s && { ...s, nombre: e.target.value })}
+            />
+            <div>
+              <label className="block text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1">Rubro</label>
+              <select
+                value={modalNuevoMat.rubro_id}
+                onChange={e => setModalNuevoMat(s => s && { ...s, rubro_id: e.target.value ? Number(e.target.value) : '' })}
+                className="w-full px-2 py-2 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white"
+              >
+                <option value="">Elegí un rubro...</option>
+                {(stockRubros as StockRubro[]).map(r => (
+                  <option key={r.id} value={r.id}>{r.nombre}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1">Unidad</label>
+              <select
+                value={modalNuevoMat.unidad}
+                onChange={e => setModalNuevoMat(s => s && { ...s, unidad: e.target.value })}
+                className="w-full px-2 py-2 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white"
+              >
+                {UNIDADES.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
+              </select>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {conflictoMat && (
+        <MaterialParecidoModal
+          conflicto={conflictoMat}
+          materiales={stockMateriales as StockMaterial[]}
+          rubros={stockRubros as StockRubro[]}
+          ocupado={creandoMat || guardandoMat}
+          puedeForzar={conflictoMat.code === 'MATERIAL_PARECIDO' && conflictoMat.dtoCreate !== null}
+          onClose={() => setConflictoMat(null)}
+          onUsarExistente={m => usarMaterialEnLinea(conflictoMat.lineaId, conflictoMat.enEdicion, m)}
+          onAgregarSinonimo={agregarSinonimoMat}
+          onForzar={() => {
+            const { dtoCreate, lineaId, enEdicion } = conflictoMat
+            if (dtoCreate) enviarCreateMat({ ...dtoCreate, forzar: true }, lineaId, enEdicion)
+          }}
         />
       )}
     </>

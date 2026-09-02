@@ -13,21 +13,12 @@ import { Input }    from '@/components/ui/Input'
 import { InputMonto } from '@/components/ui/InputMonto'
 import { Select }   from '@/components/ui/Select'
 import { Combobox } from '@/components/ui/Combobox'
+import { UNIDADES } from '../constants'
 import { useToast } from '@/components/ui/Toast'
 import type { CertMaterial, Obra, StockMaterial } from '@/types/domain.types'
 
 type DescripcionOption = { value: string; label: string; sub?: string }
 
-const UNIDADES = [
-  { value: 'unid', label: 'Unid.' },
-  { value: 'kg',   label: 'kg'    },
-  { value: 'tn',   label: 'tn'    },
-  { value: 'lt',   label: 'lt'    },
-  { value: 'm',    label: 'm'     },
-  { value: 'm2',   label: 'm²'    },
-  { value: 'm3',   label: 'm³'    },
-  { value: 'gl',   label: 'gl'    },
-]
 
 function fmtM(n: number) { return '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 0 }) }
 function fmtF(s: string) { const [y,m,d] = s.split('-'); return `${d}/${m}/${y}` }
