@@ -54,6 +54,11 @@ export interface StockMaterialFields {
   proveedor_id?: number | null
   obs?:          string
   alias?:        string[]
+  /**
+   * El color es una elección real para este material. Cuando es true, el form
+   * del pedido muestra el campo "Color". Ver migración `20260902s`.
+   */
+  usa_color?:    boolean
 }
 
 /**

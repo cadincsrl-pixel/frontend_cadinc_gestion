@@ -78,6 +78,8 @@ interface MaterialForm {
   proveedor_id: string
   /** Sinónimos separados por comas (se parsean con `parseAlias`). */
   alias: string
+  /** Ver `UsaColorField`. */
+  usa_color: boolean
 }
 interface MovimientoForm {
   cantidad: number | string
@@ -131,9 +133,9 @@ export function StockTab() {
     (MaterialConflicto & { nombreIntentado: string; dtoCreate: CreateStockMaterialDto | null }) | null
   >(null)
 
-  const formNuevo = useForm<MaterialForm>({ defaultValues: { rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0, proveedor_id: '', alias: '' } })
+  const formNuevo = useForm<MaterialForm>({ defaultValues: { rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0, proveedor_id: '', alias: '', usa_color: false } })
   const formEntrada = useForm<MovimientoForm>({ defaultValues: { cantidad: 0, tipo: 'entrada', motivo: 'compra', obs: '' } })
-  const formEditar = useForm<MaterialForm>({ defaultValues: { rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0, proveedor_id: '', alias: '' } })
+  const formEditar = useForm<MaterialForm>({ defaultValues: { rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0, proveedor_id: '', alias: '', usa_color: false } })
   const formRubro = useForm<RubroForm>({ defaultValues: { nombre: '', icono: '' } })
 
   // Filtrar y agrupar
@@ -257,6 +259,7 @@ export function StockTab() {
       precio_ref:   precioRef,
       proveedor_id: data.proveedor_id ? Number(data.proveedor_id) : null,
       alias:        parseAlias(data.alias),
+      usa_color:    data.usa_color,
     })
   }
 
@@ -308,7 +311,7 @@ export function StockTab() {
 
   // Editar material
   function abrirEditar(m: StockMaterial) {
-    formEditar.reset({ nombre: m.nombre, unidad: m.unidad, stock_minimo: m.stock_minimo, precio_ref: m.precio_ref, rubro_id: m.rubro_id, proveedor_id: m.proveedor_id ? String(m.proveedor_id) : '', alias: aliasToTexto(m.alias) })
+    formEditar.reset({ nombre: m.nombre, unidad: m.unidad, stock_minimo: m.stock_minimo, precio_ref: m.precio_ref, rubro_id: m.rubro_id, proveedor_id: m.proveedor_id ? String(m.proveedor_id) : '', alias: aliasToTexto(m.alias), usa_color: m.usa_color ?? false })
     setModalEditar(m)
   }
 
@@ -334,6 +337,7 @@ export function StockTab() {
       precio_ref:   precioRef,
       proveedor_id: data.proveedor_id ? Number(data.proveedor_id) : null,
       alias:        parseAlias(data.alias),
+      usa_color:    data.usa_color,
     }
     updateMat({ id: modalEditar.id, dto }, {
       onSuccess: () => { toast('Actualizado', 'ok'); setModalEditar(null) },
@@ -598,7 +602,7 @@ export function StockTab() {
             </>
           )}
           <Button variant="secondary" size="sm" onClick={() => { formRubro.reset({ nombre: '', icono: '' }); setModalNuevoRubro(true) }}>+ Rubro</Button>
-          <Button variant="primary" size="sm" onClick={() => { formNuevo.reset({ rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0, proveedor_id: '', alias: '' }); setModalNuevo(true) }}>+ Material</Button>
+          <Button variant="primary" size="sm" onClick={() => { formNuevo.reset({ rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0, proveedor_id: '', alias: '', usa_color: false }); setModalNuevo(true) }}>+ Material</Button>
         </div>
       </div>
 
@@ -764,6 +768,7 @@ export function StockTab() {
             )} />
           </div>
           <SinonimosField texto={formNuevo.watch('alias')} register={formNuevo.register('alias')} />
+          <UsaColorField register={formNuevo.register('usa_color')} />
         </div>
       </Modal>
 
@@ -860,6 +865,7 @@ export function StockTab() {
             )} />
           </div>
           <SinonimosField texto={formEditar.watch('alias')} register={formEditar.register('alias')} />
+          <UsaColorField register={formEditar.register('usa_color')} />
         </div>
       </Modal>
 
@@ -908,6 +914,30 @@ export function StockTab() {
         />
       )}
     </>
+  )
+}
+
+// ── ¿Lleva color? ──
+//
+// Marca los materiales donde el color es una elección real (pinturas, pastina,
+// cable unipolar, cerámicos). El form del PEDIDO muestra el campo "Color" solo
+// para estos; en el resto no aparece, porque un input de color en las 900 filas
+// —incluido el tornillo— sería ruido.
+//
+// Va acá y no como fila por color porque eso ya se probó y falló: hay 19 filas de
+// "Esmalte sintético <color> x <tamaño>" y 17 nunca se usaron.
+function UsaColorField({ register }: { register: UseFormRegisterReturn }) {
+  return (
+    <label className="flex items-start gap-2 cursor-pointer">
+      <input type="checkbox" className="mt-0.5 w-4 h-4 accent-naranja" {...register} />
+      <span>
+        <span className="block text-sm font-semibold text-carbon">Se pide por color</span>
+        <span className="block text-[11px] text-gris-dark">
+          Al pedirlo desde una obra aparece el campo &ldquo;Color&rdquo;. Para pinturas,
+          pastina, cerámicos y cable unipolar.
+        </span>
+      </span>
+    </label>
   )
 }
 

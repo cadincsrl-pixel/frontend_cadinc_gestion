@@ -94,9 +94,48 @@ async function uploadAdjunto(file: File): Promise<{ url: string; nombre: string 
  * que optar por él. No se elimina: hay material real que no está catalogado
  * y bloquear el pedido sería peor.
  */
-interface LineaForm { _id: number; descripcion: string; cantidad: number; unidad: string; obs: string; material_id: number | null; libre: boolean }
+interface LineaForm { _id: number; descripcion: string; cantidad: number; unidad: string; obs: string; material_id: number | null; libre: boolean; color: string }
 let nextId = 1
-function newLinea(): LineaForm { return { _id: nextId++, descripcion: '', cantidad: 1, unidad: 'unid', obs: '', material_id: null, libre: false } }
+function newLinea(): LineaForm { return { _id: nextId++, descripcion: '', cantidad: 1, unidad: 'unid', obs: '', material_id: null, libre: false, color: '' } }
+
+/**
+ * El color en las pantallas donde se RESUELVE el pedido (comprar, despachar).
+ * Si solo se ve en el detalle, el que compra confirma sin saber el tono y trae
+ * el color equivocado — que es exactamente el problema que el campo venía a
+ * resolver.
+ */
+function ChipColor({ color }: { color?: string | null }) {
+  if (!color) return null
+  return (
+    <span className="ml-2 text-[11px] font-bold px-1.5 py-0.5 rounded bg-azul-light text-azul align-middle">
+      {color}
+    </span>
+  )
+}
+
+/**
+ * El color solo se pide donde es una elección real (pinturas, pastina, cable
+ * unipolar, cerámicos), marcado con `stock_materiales.usa_color`. En el resto no
+ * aparece: un input de color en las 900 filas, incluido el tornillo, sería ruido.
+ *
+ * Va como texto libre a propósito — la carta de colores es del proveedor y cambia.
+ */
+function ColorLinea({ linea, material, onChange }: {
+  linea:    LineaForm
+  material: StockMaterial | null | undefined
+  onChange: (patch: Partial<LineaForm>) => void
+}) {
+  if (!material?.usa_color) return null
+  return (
+    <input
+      type="text" autoComplete="off"
+      placeholder="Color..."
+      value={linea.color}
+      onChange={e => onChange({ color: e.target.value })}
+      className="w-28 px-2 py-1.5 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja"
+    />
+  )
+}
 
 /**
  * El escape del catálogo, detrás de un link en vez de un input siempre
@@ -303,9 +342,19 @@ export function SolicitudesTab() {
 
   /** Deja el material elegido en la línea que disparó el alta. */
   function usarMaterialEnLinea(lineaId: number, enEdicion: boolean, m: StockMaterial) {
-    const patch = { material_id: m.id, descripcion: m.nombre, unidad: m.unidad, libre: false }
-    if (enEdicion) setLineasEdit(p => p.map(x => x._id === lineaId ? { ...x, ...patch } : x))
-    else           setLineas(p => p.map(x => x._id === lineaId ? { ...x, ...patch } : x))
+    // `color` se limpia si el material nuevo no usa color: si no, el valor queda
+    // pegado en el state, el input desaparece y se guarda un color fantasma sobre
+    // un material que no lleva (ej. "gris" sobre Cemento Portland).
+    const aplicar = (x: LineaForm): LineaForm => ({
+      ...x,
+      material_id: m.id,
+      descripcion: m.nombre,
+      unidad:      m.unidad,
+      libre:       false,
+      color:       m.usa_color ? x.color : '',
+    })
+    if (enEdicion) setLineasEdit(p => p.map(x => x._id === lineaId ? aplicar(x) : x))
+    else           setLineas(p => p.map(x => x._id === lineaId ? aplicar(x) : x))
     setModalNuevoMat(null)
     setConflictoMat(null)
   }
@@ -536,7 +585,7 @@ export function SolicitudesTab() {
 
   function handleCreate(cab: any) {
     if (!obraNueva) { toast('Seleccioná una obra', 'err'); return }
-    const items = lineas.filter(l => l.descripcion.trim()).map(l => ({ descripcion: l.descripcion, cantidad: l.cantidad, unidad: l.unidad, obs: l.obs || null, material_id: l.material_id }))
+    const items = lineas.filter(l => l.descripcion.trim()).map(l => ({ descripcion: l.descripcion, cantidad: l.cantidad, unidad: l.unidad, obs: l.obs || null, material_id: l.material_id, color: l.color.trim() || null }))
     if (!items.length) { toast('Agregá al menos un material', 'err'); return }
     // Cantidad obligatoria: dejar el campo vacío guardaba 0 en silencio y el
     // pedido viajaba con "0 unidades" hasta el remito (dato real: 73 items
@@ -565,6 +614,7 @@ export function SolicitudesTab() {
       // Un ítem viejo sin material del catálogo ya tiene descripción escrita a
       // mano: hay que mostrarla, no esconderla detrás del link.
       libre: !it.material_id,
+      color: it.color ?? '',
       estado: it.estado,
     }))
     setLineasEdit(editLines)
@@ -584,6 +634,7 @@ export function SolicitudesTab() {
         cantidad: l.cantidad,
         unidad: l.unidad,
         obs: l.obs || null,
+        color: l.color.trim() || null,
         material_id: l.material_id,
       }))
 
@@ -1225,7 +1276,16 @@ export function SolicitudesTab() {
                             <tr key={item.id ?? i} className={`border-t border-gris align-top ${atenuar ? 'bg-gris/40 opacity-60' : 'bg-gris/20'}`}>
                               <td className="px-2 py-2.5 text-xs text-gris-mid text-center">{i + 1}</td>
                               <td className="px-4 py-2.5">
-                                <div className="text-sm font-medium text-carbon">{item.descripcion}</div>
+                                <div className="text-sm font-medium text-carbon">
+                                {item.descripcion}
+                                {/* El color es parte de QUÉ se pide, no una nota al pie:
+                                    si no se ve acá, el que compra no se entera. */}
+                                {item.color && (
+                                  <span className="ml-2 text-[11px] font-bold px-1.5 py-0.5 rounded bg-azul-light text-azul align-middle">
+                                    {item.color}
+                                  </span>
+                                )}
+                              </div>
                                 {(() => {
                                   const unidLabel = UNIDADES.find(u => u.value === item.unidad)?.label ?? item.unidad
                                   const cantEfectiva = item.cantidad_comprada ?? item.cantidad
@@ -1555,7 +1615,16 @@ export function SolicitudesTab() {
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex-1 min-w-0">
                               <div className="text-xs text-gris-mid">#{i + 1}</div>
-                              <div className="text-sm font-medium text-carbon">{item.descripcion}</div>
+                              <div className="text-sm font-medium text-carbon">
+                                {item.descripcion}
+                                {/* El color es parte de QUÉ se pide, no una nota al pie:
+                                    si no se ve acá, el que compra no se entera. */}
+                                {item.color && (
+                                  <span className="ml-2 text-[11px] font-bold px-1.5 py-0.5 rounded bg-azul-light text-azul align-middle">
+                                    {item.color}
+                                  </span>
+                                )}
+                              </div>
                               {(() => {
                                 const unidLabel = UNIDADES.find(u => u.value === item.unidad)?.label ?? item.unidad
                                 const cantEfectiva = item.cantidad_comprada ?? item.cantidad
@@ -1760,6 +1829,8 @@ export function SolicitudesTab() {
                               descripcion: mat ? mat.nombre : '',
                               unidad: mat ? mat.unidad : x.unidad,
                               libre: false,
+                              // ver usarMaterialEnLinea: sin esto queda color fantasma
+                              color: mat?.usa_color ? x.color : '',
                             } : x))
                           }}
                           onCreate={puedeCrear ? q => setModalNuevoMat({
@@ -1789,6 +1860,11 @@ export function SolicitudesTab() {
                         className="w-20 px-1 py-1.5 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white">
                         {UNIDADES.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
                       </select>
+                      <ColorLinea
+                        linea={l}
+                        material={l.material_id ? stockMap.get(l.material_id) : null}
+                        onChange={patch => setLineas(p => p.map(x => x._id === l._id ? { ...x, ...patch } : x))}
+                      />
                       <input type="text" autoComplete="off" placeholder="Obs..." value={l.obs} onChange={e => setLineas(p => p.map(x => x._id === l._id ? { ...x, obs: e.target.value } : x))}
                         className="flex-1 px-2 py-1.5 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja" />
                     </div>
@@ -1817,7 +1893,7 @@ export function SolicitudesTab() {
         {modalComprar && (
           <div className="flex flex-col gap-4">
             <div className="bg-azul-light rounded-xl px-4 py-3">
-              <div className="font-bold text-sm text-azul">{modalComprar.descripcion}</div>
+              <div className="font-bold text-sm text-azul">{modalComprar.descripcion}<ChipColor color={modalComprar.color} /></div>
               <div className="text-xs text-gris-dark font-mono">
                 Solicitado: {modalComprar.cantidad} {UNIDADES.find(u => u.value === modalComprar.unidad)?.label ?? modalComprar.unidad}
               </div>
@@ -2005,7 +2081,7 @@ export function SolicitudesTab() {
                       return (
                         <tr key={it.id} className="border-t border-gris">
                           <td className="px-3 py-2">
-                            <div className="font-medium text-sm">{it.descripcion}</div>
+                            <div className="font-medium text-sm">{it.descripcion}<ChipColor color={it.color} /></div>
                             <div className="text-[10px] text-gris-dark">Solicitado: {it.cantidad} {unidLabel}</div>
                           </td>
                           <td className="px-3 py-2">
@@ -2088,7 +2164,7 @@ export function SolicitudesTab() {
         {modalDespachar && (
           <div className="flex flex-col gap-4">
             <div className="bg-naranja-light rounded-xl px-4 py-3">
-              <div className="font-bold text-sm text-naranja">{modalDespachar.descripcion}</div>
+              <div className="font-bold text-sm text-naranja">{modalDespachar.descripcion}<ChipColor color={modalDespachar.color} /></div>
               <div className="text-xs text-gris-dark font-mono">{modalDespachar.cantidad} {UNIDADES.find(u => u.value === modalDespachar.unidad)?.label ?? modalDespachar.unidad}</div>
             </div>
             {(() => {
@@ -2289,6 +2365,8 @@ export function SolicitudesTab() {
                                 descripcion: mat ? mat.nombre : '',
                                 unidad: mat ? mat.unidad : x.unidad,
                                 libre: false,
+                                // ver usarMaterialEnLinea: sin esto queda color fantasma
+                                color: mat?.usa_color ? x.color : '',
                               } : x))
                             }}
                             onCreate={puedeCrear ? q => setModalNuevoMat({
@@ -2318,6 +2396,11 @@ export function SolicitudesTab() {
                           className="w-20 px-1 py-1.5 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white">
                           {UNIDADES.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
                         </select>
+                        <ColorLinea
+                          linea={l}
+                          material={l.material_id ? stockMap.get(l.material_id) : null}
+                          onChange={patch => setLineasEdit(p => p.map(x => x._id === l._id ? { ...x, ...patch } : x))}
+                        />
                         <input type="text" autoComplete="off" placeholder="Obs..." value={l.obs} onChange={e => setLineasEdit(p => p.map(x => x._id === l._id ? { ...x, obs: e.target.value } : x))}
                           className="flex-1 px-2 py-1.5 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja" />
                       </div>

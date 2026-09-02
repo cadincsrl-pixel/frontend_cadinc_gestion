@@ -1327,6 +1327,13 @@ export interface SolicitudCompraItem {
   cantidad_enviada?: number
   unidad:           string
   obs?:             string | null
+  /**
+   * Color pedido para la obra ("gris", "verde tenis", "blanco mate").
+   * Texto libre a propósito: la carta de colores es del proveedor y cambia.
+   * El form solo lo pide si el material tiene `usa_color` — ver migración
+   * 20260902s y `StockMaterial.usa_color`.
+   */
+  color?:           string | null
   estado:           ItemEstado
   material_id?:     number | null
   proveedor_id?:    number | null
@@ -1450,6 +1457,17 @@ export interface StockMaterial extends AuditFields {
    * `not null default '{}'` en DB — puede venir `[]`, nunca null.
    */
   alias:         string[]
+  /**
+   * El color es una elección real para este material (pinturas, pastina, cable
+   * unipolar, cerámicos). Cuando es true el form del pedido muestra el campo
+   * "Color".
+   *
+   * Por qué un flag y no una fila por color: el catálogo ya probó la grilla y
+   * falló — hay 19 filas de "Esmalte sintético <color> x <tamaño>" y 17 nunca
+   * se usaron, mientras el color se escribía en texto libre en los materiales
+   * que sí se piden (Pastina x 5kg, Latex p/ cielorraso).
+   */
+  usa_color:     boolean
   stock_rubros?: { nombre: string; icono: string | null }
   proveedores?:  { id: number; nombre: string } | null
 }
