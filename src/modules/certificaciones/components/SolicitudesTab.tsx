@@ -34,7 +34,7 @@ import { Input }    from '@/components/ui/Input'
 import { InputMonto } from '@/components/ui/InputMonto'
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox'
 import { useToast } from '@/components/ui/Toast'
-import type { SolicitudCompra, SolicitudCompraItem, SolicitudEstado, SolicitudProgreso, ItemEstado, Obra, Proveedor, StockMaterial, StockRubro, RemitoEnvio, StockClienteRow } from '@/types/domain.types'
+import type { SolicitudCompra, SolicitudCompraItem, SolicitudEstado, SolicitudProgreso, ItemEstado, ItemClase, Obra, Proveedor, StockMaterial, StockRubro, RemitoEnvio, StockClienteRow } from '@/types/domain.types'
 
 
 const ESTADO_SOL: Record<SolicitudEstado, { label: string; bg: string; text: string }> = {
@@ -94,9 +94,9 @@ async function uploadAdjunto(file: File): Promise<{ url: string; nombre: string 
  * que optar por él. No se elimina: hay material real que no está catalogado
  * y bloquear el pedido sería peor.
  */
-interface LineaForm { _id: number; descripcion: string; cantidad: number; unidad: string; obs: string; material_id: number | null; libre: boolean; color: string }
+interface LineaForm { _id: number; descripcion: string; cantidad: number; unidad: string; obs: string; material_id: number | null; libre: boolean; color: string; clase: ItemClase; devuelve: boolean }
 let nextId = 1
-function newLinea(): LineaForm { return { _id: nextId++, descripcion: '', cantidad: 1, unidad: 'unid', obs: '', material_id: null, libre: false, color: '' } }
+function newLinea(): LineaForm { return { _id: nextId++, descripcion: '', cantidad: 1, unidad: 'unid', obs: '', material_id: null, libre: false, color: '', clase: 'material', devuelve: false } }
 
 /**
  * El color en las pantallas donde se RESUELVE el pedido (comprar, despachar).
@@ -110,6 +110,47 @@ function ChipColor({ color }: { color?: string | null }) {
     <span className="ml-2 text-[11px] font-bold px-1.5 py-0.5 rounded bg-azul-light text-azul align-middle">
       {color}
     </span>
+  )
+}
+
+/**
+ * Material o herramienta, por línea. Y si es herramienta, si la obra la PIDE o
+ * la DEVUELVE.
+ *
+ * Es la puerta única: el pedido se carga entero acá, mezclado, y la
+ * derivación al pañol es un filtro sobre `clase`. No hay pantalla aparte para
+ * pedir herramientas porque el pedido de obra es UNO SOLO (97 solicitudes
+ * mixtas en 60 días) y partirlo es pelearle a cómo trabajan.
+ *
+ * El toggle es explícito y no se deduce del catálogo: el 97,6% de las
+ * herramientas se piden en texto libre, sin material_id. El catálogo solo
+ * pre-tilda.
+ */
+function ClaseLinea({ linea, onChange }: {
+  linea:    LineaForm
+  onChange: (patch: Partial<LineaForm>) => void
+}) {
+  const esHerr = linea.clase === 'herramienta'
+  const base = 'px-2 py-1 text-[11px] font-bold rounded transition-colors'
+  const on   = 'bg-carbon text-white'
+  const off  = 'bg-gris text-gris-dark hover:bg-gris-mid'
+  return (
+    <div className="flex items-center gap-1 shrink-0">
+      <div className="flex rounded-lg overflow-hidden border border-gris-mid">
+        <button type="button" onClick={() => onChange({ clase: 'material', devuelve: false })}
+          className={`${base} ${!esHerr ? on : off}`}>Material</button>
+        <button type="button" onClick={() => onChange({ clase: 'herramienta' })}
+          className={`${base} ${esHerr ? on : off}`}>🔧 Herramienta</button>
+      </div>
+      {esHerr && (
+        <div className="flex rounded-lg overflow-hidden border border-gris-mid">
+          <button type="button" onClick={() => onChange({ devuelve: false })}
+            className={`${base} ${!linea.devuelve ? on : off}`}>Pide</button>
+          <button type="button" onClick={() => onChange({ devuelve: true })}
+            className={`${base} ${linea.devuelve ? on : off}`} title="La obra devuelve esta herramienta al pañol">↩ Devuelve</button>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -352,6 +393,13 @@ export function SolicitudesTab() {
       unidad:      m.unidad,
       libre:       false,
       color:       m.usa_color ? x.color : '',
+      // El catalogo solo PRE-TILDA hacia herramienta, nunca baja la marca del
+      // usuario. `stock_materiales.clase` es NOT NULL default 'material', asi que
+      // un `??` jamas caeria al valor de la linea: elegir cualquiera de los 891
+      // materiales comunes (o crear uno nuevo, que nace 'material') pisaba el
+      // toggle Herramienta sin aviso. Lo cazo la revision adversarial.
+      clase:       m.clase === 'herramienta' ? 'herramienta' : x.clase,
+      devuelve:    (m.clase === 'herramienta' ? 'herramienta' : x.clase) === 'herramienta' ? x.devuelve : false,
     })
     if (enEdicion) setLineasEdit(p => p.map(x => x._id === lineaId ? aplicar(x) : x))
     else           setLineas(p => p.map(x => x._id === lineaId ? aplicar(x) : x))
@@ -585,7 +633,7 @@ export function SolicitudesTab() {
 
   function handleCreate(cab: any) {
     if (!obraNueva) { toast('Seleccioná una obra', 'err'); return }
-    const items = lineas.filter(l => l.descripcion.trim()).map(l => ({ descripcion: l.descripcion, cantidad: l.cantidad, unidad: l.unidad, obs: l.obs || null, material_id: l.material_id, color: l.color.trim() || null }))
+    const items = lineas.filter(l => l.descripcion.trim()).map(l => ({ descripcion: l.descripcion, cantidad: l.cantidad, unidad: l.unidad, obs: l.obs || null, material_id: l.material_id, color: l.color.trim() || null, clase: l.clase, devuelve: l.clase === 'herramienta' && l.devuelve }))
     if (!items.length) { toast('Agregá al menos un material', 'err'); return }
     // Cantidad obligatoria: dejar el campo vacío guardaba 0 en silencio y el
     // pedido viajaba con "0 unidades" hasta el remito (dato real: 73 items
@@ -615,6 +663,8 @@ export function SolicitudesTab() {
       // mano: hay que mostrarla, no esconderla detrás del link.
       libre: !it.material_id,
       color: it.color ?? '',
+      clase: it.clase ?? 'material',
+      devuelve: it.devuelve ?? false,
       estado: it.estado,
     }))
     setLineasEdit(editLines)
@@ -635,6 +685,8 @@ export function SolicitudesTab() {
         unidad: l.unidad,
         obs: l.obs || null,
         color: l.color.trim() || null,
+        clase: l.clase,
+        devuelve: l.clase === 'herramienta' && l.devuelve,
         material_id: l.material_id,
       }))
 
@@ -1285,6 +1337,11 @@ export function SolicitudesTab() {
                                     {item.color}
                                   </span>
                                 )}
+                                {item.clase === 'herramienta' && (
+                                  <span className="ml-2 text-[11px] font-bold px-1.5 py-0.5 rounded bg-carbon text-white align-middle">
+                                    {item.devuelve ? '↩ Devuelve' : '🔧 Pañol'}
+                                  </span>
+                                )}
                               </div>
                                 {(() => {
                                   const unidLabel = UNIDADES.find(u => u.value === item.unidad)?.label ?? item.unidad
@@ -1624,6 +1681,11 @@ export function SolicitudesTab() {
                                     {item.color}
                                   </span>
                                 )}
+                                {item.clase === 'herramienta' && (
+                                  <span className="ml-2 text-[11px] font-bold px-1.5 py-0.5 rounded bg-carbon text-white align-middle">
+                                    {item.devuelve ? '↩ Devuelve' : '🔧 Pañol'}
+                                  </span>
+                                )}
                               </div>
                               {(() => {
                                 const unidLabel = UNIDADES.find(u => u.value === item.unidad)?.label ?? item.unidad
@@ -1831,6 +1893,9 @@ export function SolicitudesTab() {
                               libre: false,
                               // ver usarMaterialEnLinea: sin esto queda color fantasma
                               color: mat?.usa_color ? x.color : '',
+                              // ver usarMaterialEnLinea: el catalogo solo sube a herramienta
+                              clase: mat?.clase === 'herramienta' ? 'herramienta' : x.clase,
+                              devuelve: (mat?.clase === 'herramienta' || x.clase === 'herramienta') ? x.devuelve : false,
                             } : x))
                           }}
                           onCreate={puedeCrear ? q => setModalNuevoMat({
@@ -1860,6 +1925,10 @@ export function SolicitudesTab() {
                         className="w-20 px-1 py-1.5 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white">
                         {UNIDADES.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
                       </select>
+                      <ClaseLinea
+                        linea={l}
+                        onChange={patch => setLineas(p => p.map(x => x._id === l._id ? { ...x, ...patch } : x))}
+                      />
                       <ColorLinea
                         linea={l}
                         material={l.material_id ? stockMap.get(l.material_id) : null}
@@ -2367,6 +2436,9 @@ export function SolicitudesTab() {
                                 libre: false,
                                 // ver usarMaterialEnLinea: sin esto queda color fantasma
                                 color: mat?.usa_color ? x.color : '',
+                                // ver usarMaterialEnLinea: el catalogo solo sube a herramienta
+                                clase: mat?.clase === 'herramienta' ? 'herramienta' : x.clase,
+                                devuelve: (mat?.clase === 'herramienta' || x.clase === 'herramienta') ? x.devuelve : false,
                               } : x))
                             }}
                             onCreate={puedeCrear ? q => setModalNuevoMat({
@@ -2396,6 +2468,10 @@ export function SolicitudesTab() {
                           className="w-20 px-1 py-1.5 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white">
                           {UNIDADES.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
                         </select>
+                        <ClaseLinea
+                          linea={l}
+                          onChange={patch => setLineasEdit(p => p.map(x => x._id === l._id ? { ...x, ...patch } : x))}
+                        />
                         <ColorLinea
                           linea={l}
                           material={l.material_id ? stockMap.get(l.material_id) : null}
@@ -2554,8 +2630,11 @@ export function SolicitudesTab() {
               onClick={() => {
                 const { nombre, rubro_id, unidad, lineaId, enEdicion } = modalNuevoMat
                 if (!rubro_id) return
+                const lineaOrigen = (enEdicion ? lineasEdit : lineas).find(l => l._id === lineaId)
                 enviarCreateMat(
-                  { nombre: nombre.trim(), rubro_id: Number(rubro_id), unidad },
+                  // Si la linea ya estaba marcada 🔧, el material nuevo nace
+                  // herramienta: el catalogo aprende de lo que la obra pide.
+                  { nombre: nombre.trim(), rubro_id: Number(rubro_id), unidad, clase: lineaOrigen?.clase ?? 'material' },
                   lineaId, enEdicion,
                 )
               }}

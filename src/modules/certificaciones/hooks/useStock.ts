@@ -59,6 +59,11 @@ export interface StockMaterialFields {
    * del pedido muestra el campo "Color". Ver migración `20260902s`.
    */
   usa_color?:    boolean
+  /**
+   * 'material' | 'herramienta'. Espejo de `solicitud_compra_item.clase`: al
+   * elegir este material en un pedido, la línea nace pre-tildada. Ver 20260902u.
+   */
+  clase?:        'material' | 'herramienta'
 }
 
 /**

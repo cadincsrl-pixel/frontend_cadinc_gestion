@@ -1295,6 +1295,8 @@ export interface FacturaCompra extends AuditFields {
 
 // ── Solicitudes de compra ──
 export type SolicitudEstado = 'pendiente' | 'aprobada' | 'rechazada'
+export type ItemClase = 'material' | 'herramienta'
+
 export type ItemEstado =
   | 'pendiente'
   | 'comprado'
@@ -1334,6 +1336,17 @@ export interface SolicitudCompraItem {
    * 20260902s y `StockMaterial.usa_color`.
    */
   color?:           string | null
+  /**
+   * `material` (default) o `herramienta`. La derivación al pañol es un FILTRO
+   * sobre esto, no una copia de la fila: la línea nunca sale de esta tabla.
+   * Solo lo setea un humano con el toggle — no hay backfill heurístico.
+   */
+  clase?:           ItemClase
+  /**
+   * Solo con `clase='herramienta'`: la obra DEVUELVE la herramienta en vez de
+   * pedirla. Es el disparador de la devolución, que antes no existía.
+   */
+  devuelve?:        boolean
   estado:           ItemEstado
   material_id?:     number | null
   proveedor_id?:    number | null
@@ -1468,6 +1481,12 @@ export interface StockMaterial extends AuditFields {
    * que sí se piden (Pastina x 5kg, Latex p/ cielorraso).
    */
   usa_color:     boolean
+  /**
+   * Espejo de `SolicitudCompraItem.clase`: sirve para PRE-TILDAR el toggle al
+   * elegir del catálogo. No decide por sí solo — el 97,6% de los pedidos de
+   * herramienta se escriben en texto libre, sin material_id.
+   */
+  clase:         ItemClase
   stock_rubros?: { nombre: string; icono: string | null }
   proveedores?:  { id: number; nombre: string } | null
 }

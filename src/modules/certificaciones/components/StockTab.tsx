@@ -80,6 +80,8 @@ interface MaterialForm {
   alias: string
   /** Ver `UsaColorField`. */
   usa_color: boolean
+  /** Ver `ClaseField`. */
+  clase: 'material' | 'herramienta'
 }
 interface MovimientoForm {
   cantidad: number | string
@@ -133,9 +135,9 @@ export function StockTab() {
     (MaterialConflicto & { nombreIntentado: string; dtoCreate: CreateStockMaterialDto | null }) | null
   >(null)
 
-  const formNuevo = useForm<MaterialForm>({ defaultValues: { rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0, proveedor_id: '', alias: '', usa_color: false } })
+  const formNuevo = useForm<MaterialForm>({ defaultValues: { rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0, proveedor_id: '', alias: '', usa_color: false, clase: 'material' } })
   const formEntrada = useForm<MovimientoForm>({ defaultValues: { cantidad: 0, tipo: 'entrada', motivo: 'compra', obs: '' } })
-  const formEditar = useForm<MaterialForm>({ defaultValues: { rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0, proveedor_id: '', alias: '', usa_color: false } })
+  const formEditar = useForm<MaterialForm>({ defaultValues: { rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0, proveedor_id: '', alias: '', usa_color: false, clase: 'material' } })
   const formRubro = useForm<RubroForm>({ defaultValues: { nombre: '', icono: '' } })
 
   // Filtrar y agrupar
@@ -260,6 +262,7 @@ export function StockTab() {
       proveedor_id: data.proveedor_id ? Number(data.proveedor_id) : null,
       alias:        parseAlias(data.alias),
       usa_color:    data.usa_color,
+      clase:        data.clase,
     })
   }
 
@@ -311,7 +314,7 @@ export function StockTab() {
 
   // Editar material
   function abrirEditar(m: StockMaterial) {
-    formEditar.reset({ nombre: m.nombre, unidad: m.unidad, stock_minimo: m.stock_minimo, precio_ref: m.precio_ref, rubro_id: m.rubro_id, proveedor_id: m.proveedor_id ? String(m.proveedor_id) : '', alias: aliasToTexto(m.alias), usa_color: m.usa_color ?? false })
+    formEditar.reset({ nombre: m.nombre, unidad: m.unidad, stock_minimo: m.stock_minimo, precio_ref: m.precio_ref, rubro_id: m.rubro_id, proveedor_id: m.proveedor_id ? String(m.proveedor_id) : '', alias: aliasToTexto(m.alias), usa_color: m.usa_color ?? false, clase: m.clase ?? 'material' })
     setModalEditar(m)
   }
 
@@ -338,6 +341,7 @@ export function StockTab() {
       proveedor_id: data.proveedor_id ? Number(data.proveedor_id) : null,
       alias:        parseAlias(data.alias),
       usa_color:    data.usa_color,
+      clase:        data.clase,
     }
     updateMat({ id: modalEditar.id, dto }, {
       onSuccess: () => { toast('Actualizado', 'ok'); setModalEditar(null) },
@@ -602,7 +606,7 @@ export function StockTab() {
             </>
           )}
           <Button variant="secondary" size="sm" onClick={() => { formRubro.reset({ nombre: '', icono: '' }); setModalNuevoRubro(true) }}>+ Rubro</Button>
-          <Button variant="primary" size="sm" onClick={() => { formNuevo.reset({ rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0, proveedor_id: '', alias: '', usa_color: false }); setModalNuevo(true) }}>+ Material</Button>
+          <Button variant="primary" size="sm" onClick={() => { formNuevo.reset({ rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0, proveedor_id: '', alias: '', usa_color: false, clase: 'material' }); setModalNuevo(true) }}>+ Material</Button>
         </div>
       </div>
 
@@ -769,6 +773,7 @@ export function StockTab() {
           </div>
           <SinonimosField texto={formNuevo.watch('alias')} register={formNuevo.register('alias')} />
           <UsaColorField register={formNuevo.register('usa_color')} />
+          <ClaseField register={formNuevo.register('clase')} />
         </div>
       </Modal>
 
@@ -866,6 +871,7 @@ export function StockTab() {
           </div>
           <SinonimosField texto={formEditar.watch('alias')} register={formEditar.register('alias')} />
           <UsaColorField register={formEditar.register('usa_color')} />
+          <ClaseField register={formEditar.register('clase')} />
         </div>
       </Modal>
 
@@ -937,6 +943,23 @@ function UsaColorField({ register }: { register: UseFormRegisterReturn }) {
           pastina, cerámicos y cable unipolar.
         </span>
       </span>
+    </label>
+  )
+}
+
+// ── ¿Material o herramienta? ──
+//
+// Espejo de `solicitud_compra_item.clase`. Al elegir este material en un pedido,
+// la línea nace pre-tildada como herramienta. NO decide por sí solo: el catálogo
+// solo sube a herramienta, nunca baja la marca que puso el usuario en la línea.
+function ClaseField({ register }: { register: UseFormRegisterReturn }) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Clase</span>
+      <select {...register} className="px-2 py-2 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white">
+        <option value="material">Material (consumible, se factura al cliente)</option>
+        <option value="herramienta">🔧 Herramienta (activo de CADINC, va y vuelve)</option>
+      </select>
     </label>
   )
 }
