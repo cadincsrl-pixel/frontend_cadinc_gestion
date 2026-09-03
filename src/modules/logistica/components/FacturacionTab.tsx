@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useMemo, useEffect } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import * as XLSX from 'xlsx'
 import JSZip from 'jszip'
 import { useForm, Controller, useWatch, type UseFormReturn } from 'react-hook-form'
@@ -84,13 +84,11 @@ function fmtFecha(s: string) {
 // al volver se perdía todo — el cobro que estaba abierto, la empresa
 // desplegada, los filtros y el scroll (reporte de Alina, 2026-09-03).
 // Sacamos una foto antes de irnos y la reponemos cuando ViajesTab nos devuelve
-// con ?restaurar=1. sessionStorage y no la URL porque son 9 campos y la barra
-// de direcciones no es lugar para el estado de un acordeón.
-const SNAP_KEY = 'logistica:facturacion:vista'
-
+// con ?restaurar=1 (esa marca hoy es sólo informativa: sirve para ver de un
+// vistazo que la vuelta se disparó, pero la restauración no depende de ella).
 interface SnapshotFacturacion {
-  // Momento en que se sacó la foto. Sin esto, la marca `restaurar=1` que
-  // queda en la URL reviviría una vista de hace horas si el user recarga.
+  // Momento en que se sacó la foto: es lo que distingue "volví recién de
+  // Viajes" de "entré a Facturación media hora después".
   ts:                number
   cobroDetalleId:    number | null
   saldoExpandida:    number | null
@@ -104,10 +102,19 @@ interface SnapshotFacturacion {
   scrollY:           number
 }
 
-// sessionStorage puede tirar (modo privado, cookies bloqueadas). Si falla, se
-// pierde la posición de la vista pero nunca un dato: por eso no se avisa.
+// La foto vive en una variable de MÓDULO, no en sessionStorage ni en la URL.
+//
+// La ida y vuelta a Viajes es una navegación de cliente: el módulo nunca se
+// descarga, así que la variable sobrevive igual que sobreviviría el storage,
+// pero sin serializar, sin permisos de storage que puedan fallar y sin
+// depender de que un query param llegue a tiempo al primer render. Los dos
+// intentos anteriores se apoyaron justamente en eso y fallaron (reportes de
+// Alina, 2026-09-03: volvía a Facturación con `restaurar=1` en la URL y aun
+// así la vista aparecía en cero).
+let snapshotFacturacion: SnapshotFacturacion | null = null
+
 function guardarSnapshot(snap: SnapshotFacturacion) {
-  try { sessionStorage.setItem(SNAP_KEY, JSON.stringify(snap)) } catch { /* noop */ }
+  snapshotFacturacion = snap
 }
 // Ventana de validez de la foto. Es una ida y vuelta a Viajes: si pasaron
 // más de 10 minutos, el user se fue a hacer otra cosa y no quiere que le
@@ -115,13 +122,10 @@ function guardarSnapshot(snap: SnapshotFacturacion) {
 const SNAP_TTL_MS = 10 * 60 * 1000
 
 function leerSnapshotFresco(): SnapshotFacturacion | null {
-  try {
-    const raw = sessionStorage.getItem(SNAP_KEY)
-    if (!raw) return null
-    const snap = JSON.parse(raw) as SnapshotFacturacion
-    if (typeof snap?.ts !== 'number' || Date.now() - snap.ts > SNAP_TTL_MS) return null
-    return snap
-  } catch { return null }
+  const snap = snapshotFacturacion
+  if (!snap) return null
+  if (Date.now() - snap.ts > SNAP_TTL_MS) return null
+  return snap
 }
 
 // Límite del bucket `cobros-docs` y mimes que acepta (espejo de
@@ -2089,7 +2093,6 @@ function ModalCobrarFacturas({
 function FacturacionSection() {
   const toast = useToast()
   const router = useRouter()
-  const searchParams = useSearchParams()
   // Una sola restauración por montaje: si no, el efecto pelearía contra los
   // clicks del propio user cada vez que cambian los cobros.
   const yaRestaurado = useRef(false)
@@ -2134,9 +2137,11 @@ function FacturacionSection() {
   // cualquier re-montaje posterior se quedaba sin nada que reponer y la vista
   // volvía a cero (reporte de Alina, 2026-09-03). Inicializando el estado, la
   // restauración se rehace sola en cada montaje.
-  const [snapInicial] = useState<SnapshotFacturacion | null>(() =>
-    searchParams.get('restaurar') === '1' ? leerSnapshotFresco() : null
-  )
+  // No se condiciona a `restaurar=1`: una foto de hace segundos sólo puede
+  // significar que nos fuimos y volvimos. Depender del query param agregaba un
+  // punto de falla (que searchParams esté poblado en el primer render) sin
+  // aportar nada.
+  const [snapInicial] = useState<SnapshotFacturacion | null>(() => leerSnapshotFresco())
 
   // Empresa expandida en "Saldo corriente" para ver remitos individuales.
   const [saldoExpandida, setSaldoExpandida] = useState<number | null>(snapInicial?.saldoExpandida ?? null)
