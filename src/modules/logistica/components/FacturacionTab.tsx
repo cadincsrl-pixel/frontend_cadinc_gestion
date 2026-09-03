@@ -89,6 +89,9 @@ function fmtFecha(s: string) {
 const SNAP_KEY = 'logistica:facturacion:vista'
 
 interface SnapshotFacturacion {
+  // Momento en que se sacó la foto. Sin esto, la marca `restaurar=1` que
+  // queda en la URL reviviría una vista de hace horas si el user recarga.
+  ts:                number
   cobroDetalleId:    number | null
   saldoExpandida:    number | null
   facturasExpandida: number | null
@@ -106,14 +109,19 @@ interface SnapshotFacturacion {
 function guardarSnapshot(snap: SnapshotFacturacion) {
   try { sessionStorage.setItem(SNAP_KEY, JSON.stringify(snap)) } catch { /* noop */ }
 }
-function leerSnapshot(): SnapshotFacturacion | null {
+// Ventana de validez de la foto. Es una ida y vuelta a Viajes: si pasaron
+// más de 10 minutos, el user se fue a hacer otra cosa y no quiere que le
+// reaparezca la vista vieja.
+const SNAP_TTL_MS = 10 * 60 * 1000
+
+function leerSnapshotFresco(): SnapshotFacturacion | null {
   try {
     const raw = sessionStorage.getItem(SNAP_KEY)
-    return raw ? JSON.parse(raw) as SnapshotFacturacion : null
+    if (!raw) return null
+    const snap = JSON.parse(raw) as SnapshotFacturacion
+    if (typeof snap?.ts !== 'number' || Date.now() - snap.ts > SNAP_TTL_MS) return null
+    return snap
   } catch { return null }
-}
-function borrarSnapshot() {
-  try { sessionStorage.removeItem(SNAP_KEY) } catch { /* noop */ }
 }
 
 // Límite del bucket `cobros-docs` y mimes que acepta (espejo de
@@ -2082,10 +2090,9 @@ function FacturacionSection() {
   const toast = useToast()
   const router = useRouter()
   const searchParams = useSearchParams()
-  // Se lee en el PRIMER render y no se vuelve a mirar: más abajo limpiamos el
-  // query param, y el efecto de restauración corre después de eso.
-  const restaurarRef  = useRef(searchParams.get('restaurar') === '1')
-  const yaRestaurado  = useRef(false)
+  // Una sola restauración por montaje: si no, el efecto pelearía contra los
+  // clicks del propio user cada vez que cambian los cobros.
+  const yaRestaurado = useRef(false)
   // anularCobros: flag fino para borrar cobros pendientes sin eliminación
   // del módulo entero (el backend valida igual; acá solo se deshabilita).
   const { puedeEliminar: puedeEliminarModulo, anularCobros } = usePermisos('logistica')
@@ -2119,23 +2126,35 @@ function FacturacionSection() {
   // Cobro con el "✓ Cobrar" inline en vuelo — bloquea los demás botones de la
   // lista mientras tanto (evita dobles marcas y modales pisados).
   const [marcandoId, setMarcandoId] = useState<number | null>(null)
+  // Vista guardada antes de irse a Viajes, si volvemos de ahí. Se lee UNA vez
+  // por montaje y alimenta los useState de abajo como valor inicial.
+  //
+  // Va acá y no en un efecto a propósito: la versión anterior restauraba
+  // después de montar y encima borraba el snapshot y limpiaba la URL, así que
+  // cualquier re-montaje posterior se quedaba sin nada que reponer y la vista
+  // volvía a cero (reporte de Alina, 2026-09-03). Inicializando el estado, la
+  // restauración se rehace sola en cada montaje.
+  const [snapInicial] = useState<SnapshotFacturacion | null>(() =>
+    searchParams.get('restaurar') === '1' ? leerSnapshotFresco() : null
+  )
+
   // Empresa expandida en "Saldo corriente" para ver remitos individuales.
-  const [saldoExpandida, setSaldoExpandida] = useState<number | null>(null)
+  const [saldoExpandida, setSaldoExpandida] = useState<number | null>(snapInicial?.saldoExpandida ?? null)
   // Empresa expandida para ver el detalle de facturas/cobros por cobrar.
-  const [facturasExpandida, setFacturasExpandida] = useState<number | null>(null)
+  const [facturasExpandida, setFacturasExpandida] = useState<number | null>(snapInicial?.facturasExpandida ?? null)
   // Tramo abierto para editar toneladas/remito de descarga (ajuste fino
   // cuando la empresa transportista paga distinto a lo del remito).
   const [editandoTramo, setEditandoTramo] = useState<Tramo | null>(null)
   // Filtros del Historial de cobros. Default 'pendientes' porque son los
   // que requieren acción del usuario.
-  const [filtroEstadoCobro, setFiltroEstadoCobro] = useState<'pendientes' | 'cobrados' | 'todos'>('pendientes')
-  const [busquedaCobro, setBusquedaCobro] = useState('')
+  const [filtroEstadoCobro, setFiltroEstadoCobro] = useState<'pendientes' | 'cobrados' | 'todos'>(snapInicial?.filtroEstadoCobro ?? 'pendientes')
+  const [busquedaCobro, setBusquedaCobro] = useState(snapInicial?.busquedaCobro ?? '')
   // Buscador de remitos DENTRO del modal de registrar cobro.
-  const [busquedaRemito, setBusquedaRemito] = useState('')
-  const [cobroDesde, setCobroDesde] = useState('')
-  const [cobroHasta, setCobroHasta] = useState('')
+  const [busquedaRemito, setBusquedaRemito] = useState(snapInicial?.busquedaRemito ?? '')
+  const [cobroDesde, setCobroDesde] = useState(snapInicial?.cobroDesde ?? '')
+  const [cobroHasta, setCobroHasta] = useState(snapInicial?.cobroHasta ?? '')
   // Empresas expandidas en el historial (acordeón). Vacío = todo colapsado.
-  const [histExpandidas, setHistExpandidas] = useState<Set<number>>(new Set())
+  const [histExpandidas, setHistExpandidas] = useState<Set<number>>(() => new Set(snapInicial?.histExpandidas ?? []))
   function toggleHistEmp(id: number) {
     setHistExpandidas(prev => {
       const next = new Set(prev)
@@ -2151,6 +2170,7 @@ function FacturacionSection() {
   // Antes de irse a Viajes: foto de la vista para poder reponerla al volver.
   function abrirViaje(tramoId: number) {
     guardarSnapshot({
+      ts:                Date.now(),
       cobroDetalleId:    cobroDetalle?.id ?? null,
       saldoExpandida,
       facturasExpandida,
@@ -2165,42 +2185,30 @@ function FacturacionSection() {
     router.push(`/logistica?tab=viajes&tramo=${tramoId}&volver=facturacion`)
   }
 
-  // Al volver de Viajes: reponer la vista. Depende de `cobros` porque para
-  // reabrir el modal de detalle hace falta el objeto entero, no alcanza con el
-  // id; si la lista todavía no llegó, esperamos al próximo render en vez de
-  // abrir un modal vacío.
+  // Lo único que no se puede resolver inicializando estado: el modal de
+  // detalle necesita el objeto Cobro (no alcanza con el id, y puede no estar
+  // en cache todavía), y el scroll necesita que el listado ya esté pintado.
+  //
+  // Ni el snapshot ni la marca `restaurar=1` se borran acá: si se borraran,
+  // un re-montaje posterior perdería la vista de nuevo, que es exactamente el
+  // bug que esto arregla. El snapshot caduca solo (SNAP_TTL_MS) y la marca se
+  // va de la URL en cuanto el user cambia de pestaña.
   useEffect(() => {
-    if (!restaurarRef.current || yaRestaurado.current) return
-    // Saca sólo `restaurar` y respeta lo demás que venga en la URL.
-    const limpiarUrl = () => {
-      restaurarRef.current = false
-      const sp = new URLSearchParams(searchParams.toString())
-      sp.delete('restaurar')
-      router.replace(`/logistica?${sp.toString()}`)
+    if (!snapInicial || yaRestaurado.current) return
+    if (snapInicial.cobroDetalleId != null) {
+      const c = (cobros as Cobro[]).find(c => c.id === snapInicial.cobroDetalleId)
+      // Todavía sin cargar: reintentamos cuando lleguen los cobros. Si el
+      // cobro se borró mientras tanto, el modal no se reabre y ya está.
+      if (!c && cobros.length === 0) return
+      yaRestaurado.current = true
+      setCobroDetalle(c ?? null)
+    } else {
+      yaRestaurado.current = true
     }
-    const snap = leerSnapshot()
-    if (!snap) { limpiarUrl(); return }
-    if (snap.cobroDetalleId != null && cobros.length === 0) return
-
-    yaRestaurado.current = true
-    setSaldoExpandida(snap.saldoExpandida)
-    setFacturasExpandida(snap.facturasExpandida)
-    setHistExpandidas(new Set(snap.histExpandidas))
-    setFiltroEstadoCobro(snap.filtroEstadoCobro)
-    setBusquedaCobro(snap.busquedaCobro)
-    setBusquedaRemito(snap.busquedaRemito)
-    setCobroDesde(snap.cobroDesde)
-    setCobroHasta(snap.cobroHasta)
-    // El cobro puede haber desaparecido (lo borraron mientras tanto): en ese
-    // caso el modal simplemente no se reabre, el resto de la vista sí.
-    if (snap.cobroDetalleId != null) {
-      setCobroDetalle((cobros as Cobro[]).find(c => c.id === snap.cobroDetalleId) ?? null)
-    }
-    // El scroll se repone recién cuando el listado ya se pintó con los
-    // acordeones abiertos; si no, la página todavía es corta y no llega.
-    requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, snap.scrollY)))
-    borrarSnapshot()
-    limpiarUrl()
+    // Dos frames: el primero pinta los acordeones ya abiertos (la página se
+    // hace larga), el segundo scrollea sobre esa altura real.
+    const y = snapInicial.scrollY
+    requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, y)))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cobros])
   const facturaFileRef = useRef<HTMLInputElement | null>(null)
