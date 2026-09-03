@@ -901,7 +901,15 @@ export function SolicitudesTab() {
     if (!modalDespachar?.id) return
     despacharItem({ itemId: modalDespachar.id, dto: { precio_unit: Number(data.precio_unit) } }, {
       onSuccess: () => { toast('Despacho registrado', 'ok'); setModalDespachar(null) },
-      onError: (e: any) => toast(e.message || 'Error', 'err'),
+      // El botón ya no se muestra en pedidos con destino depósito, pero una
+      // pestaña vieja todavía puede mandarlo: el backend corta con este code
+      // y sin traducción el toast escupiría la constante cruda.
+      onError: (e: any) => toast(
+        e.message === 'DESPACHO_A_DEPOSITO'
+          ? 'El depósito no se despacha a sí mismo. Si el material ya está en el depósito, rechazá el renglón.'
+          : (e.message || 'Error'),
+        'err',
+      ),
     })
   }
 
@@ -1227,6 +1235,7 @@ export function SolicitudesTab() {
                   <span className="text-xs text-gris-dark select-none shrink-0">{isExp ? '▼' : '▶'}</span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono text-xs font-bold text-gris-dark shrink-0">#{s.id}</span>
                       <span className="text-sm font-bold text-carbon">{obra?.nom ?? s.obra_cod}</span>
                       {obra && <span className="font-mono text-[11px] font-semibold text-azul">{s.obra_cod}</span>}
                       {s.progreso ? (
@@ -1423,7 +1432,13 @@ export function SolicitudesTab() {
                                             title="Seleccionar para compra en lote (mismo proveedor)"
                                           />
                                           <button disabled={!resolverItems} onClick={() => abrirComprar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Comprar</button>
-                                          <button disabled={!resolverItems} onClick={() => abrirDespachar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-naranja-light text-naranja hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Depósito</button>
+                                          {/* El depósito no se despacha a sí mismo: el material no se mueve, pero
+                                              el despacho descuenta stock y el recibo no lo repone
+                                              (sólo acredita los ítems comprados). Pedido #436, agosto 2026.
+                                              Para "esto ya lo tengo", el renglón se rechaza. */}
+                                          {!obra?.es_deposito && (
+                                            <button disabled={!resolverItems} onClick={() => abrirDespachar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-naranja-light text-naranja hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Depósito</button>
+                                          )}
                                           {stockClientePorObra.has(s.obra_cod) && (
                                             <button disabled={!resolverItems} onClick={() => setModalStockCliente({ item, obraCod: s.obra_cod })} title="Cubrir con material que el cliente ya pagó y tiene en depósito (no se factura)" className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-azul-mid hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Cliente</button>
                                           )}
@@ -1569,6 +1584,12 @@ export function SolicitudesTab() {
             const totalItems = items.length
             const resueltosCount = items.filter(it => it.estado !== 'pendiente' && it.estado !== 'rechazado').length
             const faltanCount = items.filter(it => it.estado === 'pendiente').length
+            // Botones de un ítem pendiente en mobile: Comprar y ✕ siempre;
+            // Depósito salvo que la obra SEA el depósito; Cliente si esa obra
+            // tiene stock del cliente. La grilla se arma con ese número.
+            const accionesPendiente = 2
+              + (obra?.es_deposito ? 0 : 1)
+              + (stockClientePorObra.has(s.obra_cod) ? 1 : 0)
             return (
               <div key={s.id} className="bg-white rounded-card shadow-sm border border-gris-mid p-3">
                 {/* Resumen */}
@@ -1579,6 +1600,7 @@ export function SolicitudesTab() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-xs font-bold text-gris-dark shrink-0">#{s.id}</span>
                         <span className="text-sm font-bold text-carbon">{obra?.nom ?? s.obra_cod}</span>
                         {s.prioridad === 'urgente' && (
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rojo text-white uppercase">Urgente</span>
@@ -1753,9 +1775,15 @@ export function SolicitudesTab() {
                           {s.estado === 'aprobada' && (
                             <div className="mt-3">
                               {item.estado === 'pendiente' && (
-                                <div className={`grid gap-2 ${stockClientePorObra.has(s.obra_cod) ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'}`}>
+                                <div className={`grid gap-2 ${accionesPendiente === 4 ? 'grid-cols-2 sm:grid-cols-4' : accionesPendiente === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
                                   <button disabled={!resolverItems} onClick={() => abrirComprar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Comprar</button>
-                                  <button disabled={!resolverItems} onClick={() => abrirDespachar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-naranja-light text-naranja hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Depósito</button>
+                                  {/* El depósito no se despacha a sí mismo: el material no se mueve, pero
+                                      el despacho descuenta stock y el recibo no lo repone (sólo acredita
+                                      los ítems comprados). Pedido #436, agosto 2026. Para "esto ya lo
+                                      tengo", el renglón se rechaza. */}
+                                  {!obra?.es_deposito && (
+                                    <button disabled={!resolverItems} onClick={() => abrirDespachar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-naranja-light text-naranja hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Depósito</button>
+                                  )}
                                   {stockClientePorObra.has(s.obra_cod) && (
                                     <button disabled={!resolverItems} onClick={() => setModalStockCliente({ item, obraCod: s.obra_cod })} title="Cubrir con material que el cliente ya pagó y tiene en depósito (no se factura)" className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-azul-mid hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Cliente</button>
                                   )}
@@ -2368,7 +2396,7 @@ export function SolicitudesTab() {
       </Modal>
 
       {/* ── Modal editar solicitud ── */}
-      <Modal open={!!modalEditar} onClose={() => setModalEditar(null)} title="✏️ EDITAR SOLICITUD" width="max-w-3xl"
+      <Modal open={!!modalEditar} onClose={() => setModalEditar(null)} title={`✏️ EDITAR SOLICITUD #${modalEditar?.id ?? ''}`} width="max-w-3xl"
         footer={<>
           <Button variant="secondary" onClick={() => setModalEditar(null)}>Cancelar</Button>
           <Button variant="primary" loading={updating} onClick={formEdit.handleSubmit(handleEditar)}>Guardar cambios</Button>
