@@ -122,8 +122,9 @@ export interface PersonalDocumento {
 }
 
 // ── Adjuntos del cobro (liquidación líquido producto / factura emitida +
-// comprobante + contra factura de la comisión del intermediario) ──
-export type CobroAdjuntoTipo = 'liquidacion' | 'comprobante' | 'factura' | 'contra_factura'
+// comprobante + contra factura de la comisión del intermediario +
+// certificados de retención que la empresa manda con el pago) ──
+export type CobroAdjuntoTipo = 'liquidacion' | 'comprobante' | 'factura' | 'contra_factura' | 'retencion'
 
 export interface CobroAdjunto {
   id:             number

@@ -20,14 +20,20 @@ interface Props {
   contraFactura?: boolean
 }
 
-const TODOS_TIPOS: { key: CobroAdjuntoTipo; label: string; icon: string }[] = [
+// `multi`: el slot admite varios archivos de una. Las retenciones vienen de a
+// una por impuesto/jurisdicción (IVA, Ganancias, IIBB), así que obligar a
+// subirlas de a una sería un click por certificado.
+const TODOS_TIPOS: { key: CobroAdjuntoTipo; label: string; icon: string; multi?: boolean; vacio?: string }[] = [
   { key: 'liquidacion',    label: 'Liquidación líquido producto', icon: '🧾' },
   { key: 'factura',        label: 'Factura emitida',              icon: '🧾' },
   { key: 'comprobante',    label: 'Comprobante de cobro',         icon: '💰' },
+  { key: 'retencion',      label: 'Retenciones',                  icon: '✂️', multi: true,
+    vacio: 'Sin archivos. Opcional — IVA, Ganancias, IIBB.' },
   { key: 'contra_factura', label: 'Contra factura (comisión)',    icon: '📑' },
 ]
 
 const ACCEPT = 'image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf'
+const MAX_SIZE = 10 * 1024 * 1024
 
 function fmtSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -45,34 +51,51 @@ export function CobroAdjuntosSection({ cobroId, modalidad = 'liquido_producto', 
   const { puedeCrear, puedeEliminar } = usePermisos('logistica')
 
   const { data: adjuntos = [], isLoading } = useCobroAdjuntos(cobroId)
-  const { mutate: uploadAdj, isPending: uploading } = useUploadCobroAdjunto()
+  const { mutateAsync: uploadAdj, isPending: uploading } = useUploadCobroAdjunto()
   const { mutate: deleteAdj } = useDeleteCobroAdjunto()
 
   const fileInputs = useRef<Record<CobroAdjuntoTipo, HTMLInputElement | null>>({
-    liquidacion: null, comprobante: null, factura: null, contra_factura: null,
+    liquidacion: null, comprobante: null, factura: null, contra_factura: null, retencion: null,
   })
   const [pendingTipo, setPendingTipo] = useState<CobroAdjuntoTipo | null>(null)
 
-  function handleFileChange(tipo: CobroAdjuntoTipo, e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
+  // Sube de a uno en serie (el flujo es upload-url → PUT → registrar): si uno
+  // falla, los demás igual entran y el toast dice cuál quedó afuera.
+  async function handleFileChange(tipo: CobroAdjuntoTipo, e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? [])
     e.target.value = ''
-    if (!file) return
-    if (file.size > 10 * 1024 * 1024) {
-      toast('Archivo demasiado grande (máx 10 MB)', 'err')
-      return
+    if (files.length === 0) return
+
+    const grandes = files.filter(f => f.size > MAX_SIZE)
+    const aSubir  = files.filter(f => f.size <= MAX_SIZE)
+    if (grandes.length > 0) {
+      toast(grandes.length === 1
+        ? `"${grandes[0].name}" es demasiado grande (máx 10 MB)`
+        : `${grandes.length} archivos superan los 10 MB y no se suben`, 'err')
     }
+    if (aSubir.length === 0) return
+
     setPendingTipo(tipo)
-    uploadAdj(
-      { cobroId, file, tipo },
-      {
-        onSuccess: () => { toast(`✓ ${file.name} subido`, 'ok'); setPendingTipo(null) },
-        onError: (err) => {
-          const msg = err instanceof Error ? err.message : 'Error al subir'
-          toast(msg.includes('ADJ_DUPLICADO') ? 'Ese archivo ya está cargado' : msg, 'err')
-          setPendingTipo(null)
-        },
+    let ok = 0
+    const fallidos: string[] = []
+    for (const file of aSubir) {
+      try {
+        await uploadAdj({ cobroId, file, tipo })
+        ok++
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'error al subir'
+        fallidos.push(`${file.name} (${msg.includes('ADJ_DUPLICADO') ? 'ya está cargado' : msg.slice(0, 60)})`)
       }
-    )
+    }
+    setPendingTipo(null)
+
+    if (fallidos.length === 0) {
+      toast(ok === 1 ? `✓ ${aSubir[0].name} subido` : `✓ ${ok} archivos subidos`, 'ok')
+    } else if (ok === 0) {
+      toast(`No se pudo subir: ${fallidos.join(' · ')}`, 'err')
+    } else {
+      toast(`✓ ${ok} subido${ok !== 1 ? 's' : ''} · ⚠ quedó afuera: ${fallidos.join(' · ')}`, 'err')
+    }
   }
 
   async function handleVer(adj: CobroAdjunto) {
@@ -96,9 +119,10 @@ export function CobroAdjuntosSection({ cobroId, modalidad = 'liquido_producto', 
   // Slots según modalidad, más cualquier tipo fuera de ella que ya tenga
   // archivos (p.ej. un cobro viejo con liquidación de una empresa que
   // después pasó a facturación — que no quede oculto).
+  // La retención va en ambas modalidades: el que paga es el que retiene.
   const slotsBase: CobroAdjuntoTipo[] = modalidad === 'facturacion'
-    ? ['factura', 'comprobante']
-    : ['liquidacion', 'comprobante']
+    ? ['factura', 'comprobante', 'retencion']
+    : ['liquidacion', 'comprobante', 'retencion']
   // El slot de contra factura solo aplica a empresas intermediarias; si un
   // cobro viejo ya tiene una cargada, el filtro de abajo la muestra igual.
   if (contraFactura) slotsBase.push('contra_factura')
@@ -122,7 +146,7 @@ export function CobroAdjuntosSection({ cobroId, modalidad = 'liquido_producto', 
         <div className="text-xs text-gris-dark italic">Cargando…</div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {porTipo.map(({ key, label, icon, items }) => (
+          {porTipo.map(({ key, label, icon, multi, vacio, items }) => (
             <div
               key={key}
               className="border border-gris-mid rounded-lg p-3 flex flex-col gap-2 bg-gris/20"
@@ -150,6 +174,7 @@ export function CobroAdjuntosSection({ cobroId, modalidad = 'liquido_producto', 
                       ref={el => { fileInputs.current[key] = el }}
                       type="file"
                       accept={ACCEPT}
+                      multiple={multi}
                       className="hidden"
                       onChange={e => handleFileChange(key, e)}
                     />
@@ -158,7 +183,7 @@ export function CobroAdjuntosSection({ cobroId, modalidad = 'liquido_producto', 
               </div>
 
               {items.length === 0 ? (
-                <div className="text-[11px] text-gris-dark italic">Sin archivos.</div>
+                <div className="text-[11px] text-gris-dark italic">{vacio ?? 'Sin archivos.'}</div>
               ) : (
                 <ul className="flex flex-col gap-1.5">
                   {items.map(adj => (

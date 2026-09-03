@@ -1628,8 +1628,13 @@ function ModalCobrarFacturas({
   const [seleccion, setSeleccion]     = useState<Set<number>>(new Set(preseleccionIds ?? cobrosPendientes.map(c => c.id)))
   const [fechaCobro, setFechaCobro]   = useState(toISO(new Date()))
   const [comprobante, setComprobante] = useState<File | null>(null)
+  // Certificados de retención (IVA, Ganancias, IIBB): son VARIOS por pago y
+  // opcionales — no todas las empresas retienen. Se adjuntan a cada cobro
+  // seleccionado, igual que el comprobante.
+  const [retenciones, setRetenciones] = useState<File[]>([])
   const [procesando, setProcesando]   = useState(false)
   const fileRef = useRef<HTMLInputElement | null>(null)
+  const retRef  = useRef<HTMLInputElement | null>(null)
 
   const [busqueda, setBusqueda] = useState('')
 
@@ -1708,22 +1713,53 @@ function ModalCobrarFacturas({
     setComprobante(file)
   }
 
+  function handleRetenciones(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? [])
+    e.target.value = ''
+    if (files.length === 0) return
+    const grandes = files.filter(f => f.size > 10 * 1024 * 1024)
+    if (grandes.length > 0) {
+      toast(grandes.length === 1
+        ? `"${grandes[0].name}" es demasiado grande (máx 10 MB)`
+        : `${grandes.length} archivos superan los 10 MB y no se agregan`, 'err')
+    }
+    const nuevos = files.filter(f => f.size <= 10 * 1024 * 1024)
+    // El picker se puede usar varias veces (una tanda por impuesto): se
+    // acumulan, evitando repetir el mismo archivo por nombre+tamaño.
+    setRetenciones(prev => [
+      ...prev,
+      ...nuevos.filter(f => !prev.some(p => p.name === f.name && p.size === f.size)),
+    ])
+  }
+
   async function handleSubmit() {
     if (seleccionados.length === 0) { toast(esFact ? 'Seleccioná al menos una factura' : 'Seleccioná al menos un cobro', 'err'); return }
     if (!comprobante) { toast('Adjuntá el comprobante del pago', 'err'); return }
     setProcesando(true)
     let ok = 0
     const fallidas: string[] = []
+    // Retenciones que no entraron en algún cobro: no abortan el pago, se
+    // avisan al final para cargarlas a mano desde el detalle.
+    const retFallidas = new Set<string>()
+
+    // Mismo archivo ya subido a este cobro (retry tras fallo parcial): el
+    // adjunto ya está donde tiene que estar, no es un error.
+    const subir = async (cobroId: number, file: File, tipo: 'comprobante' | 'retencion') => {
+      try {
+        await uploadAdjunto({ cobroId, file, tipo })
+      } catch (err: any) {
+        const code = err?.body?.error ?? ''
+        const msg  = err instanceof Error ? err.message : ''
+        if (code !== 'ADJ_DUPLICADO' && !msg.includes('ADJ_DUPLICADO')) throw err
+      }
+    }
+
     for (const c of seleccionados) {
       try {
-        try {
-          await uploadAdjunto({ cobroId: c.id, file: comprobante, tipo: 'comprobante' })
-        } catch (err: any) {
-          // Mismo archivo ya subido a este cobro (retry tras fallo parcial):
-          // el comprobante ya está, seguir con marcar cobrado.
-          const code = err?.body?.error ?? ''
-          const msg  = err instanceof Error ? err.message : ''
-          if (code !== 'ADJ_DUPLICADO' && !msg.includes('ADJ_DUPLICADO')) throw err
+        await subir(c.id, comprobante, 'comprobante')
+        for (const r of retenciones) {
+          try { await subir(c.id, r, 'retencion') }
+          catch { retFallidas.add(r.name) }
         }
         await marcarCobradoAsync({ id: c.id, fecha_cobro: fechaCobro || undefined })
         ok++
@@ -1744,15 +1780,19 @@ function ModalCobrarFacturas({
       }
     }
     setProcesando(false)
+    const avisoRet = retFallidas.size > 0
+      ? ` · ⚠ No se pudo subir ${[...retFallidas].join(', ')} — cargá esa retención desde el detalle del cobro`
+      : ''
     if (fallidas.length === 0) {
-      toast(esFact
+      const base = esFact
         ? `✓ ${ok} factura${ok !== 1 ? 's' : ''} cobrada${ok !== 1 ? 's' : ''}`
-        : `✓ ${ok} cobro${ok !== 1 ? 's' : ''} confirmado${ok !== 1 ? 's' : ''}`, 'ok')
+        : `✓ ${ok} cobro${ok !== 1 ? 's' : ''} confirmado${ok !== 1 ? 's' : ''}`
+      toast(base + avisoRet, retFallidas.size > 0 ? 'err' : 'ok')
       onClose()
     } else {
       // Las que se cobraron quedan cobradas; las fallidas siguen pendientes
       // y se pueden reintentar desde el mismo modal (queda abierto).
-      toast(`✓ ${ok} de ${seleccionados.length} · ⚠ Fallaron: ${fallidas.join(', ')} — reintentá`, 'err')
+      toast(`✓ ${ok} de ${seleccionados.length} · ⚠ Fallaron: ${fallidas.join(', ')} — reintentá${avisoRet}`, 'err')
     }
   }
 
@@ -1923,10 +1963,67 @@ function ModalCobrarFacturas({
             />
           </div>
         </div>
+
+        {/* Retenciones: opcionales y de a varias (una por impuesto). Se
+            adjuntan al mismo cobro que el comprobante, con tipo 'retencion'. */}
+        <div>
+          <div className="flex items-baseline justify-between gap-2">
+            <label className="block text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1">
+              ✂️ Retenciones <span className="font-normal normal-case tracking-normal text-gris-mid">(opcional)</span>
+            </label>
+            {retenciones.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setRetenciones([])}
+                className="text-[11px] font-bold text-gris-dark hover:text-rojo hover:underline"
+              >
+                Quitar todas
+              </button>
+            )}
+          </div>
+          {retenciones.length > 0 && (
+            <ul className="flex flex-col gap-1 mb-1.5">
+              {retenciones.map((f, i) => (
+                <li
+                  key={`${f.name}-${f.size}`}
+                  className="flex items-center gap-2 bg-white border border-gris-mid rounded-lg px-3 py-1.5"
+                >
+                  <span className="text-base">{f.type === 'application/pdf' ? '📕' : '🖼'}</span>
+                  <span className="flex-1 min-w-0 text-xs font-semibold text-carbon truncate" title={f.name}>
+                    {f.name}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setRetenciones(prev => prev.filter((_, j) => j !== i))}
+                    title="Quitar archivo"
+                    className="text-xs px-2 py-1 rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors"
+                  >✕</button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <button
+            type="button"
+            onClick={() => retRef.current?.click()}
+            className="w-full border-[1.5px] border-dashed border-gris-mid rounded-lg px-3 py-2 text-xs font-bold text-gris-dark hover:border-azul hover:text-azul hover:bg-azul-light/40 transition-colors"
+          >
+            {retenciones.length > 0 ? '＋ Agregar más retenciones' : '＋ Adjuntar retenciones (IVA, Ganancias, IIBB)'}
+          </button>
+          <input
+            ref={retRef}
+            type="file"
+            multiple
+            accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
+            className="hidden"
+            onChange={handleRetenciones}
+          />
+        </div>
+
         <p className="text-[11px] text-gris-mid italic">
           {esFact
             ? 'El comprobante es obligatorio: se adjunta a cada factura seleccionada y todas pasan a cobradas.'
             : 'El comprobante es obligatorio: se adjunta a cada cobro seleccionado y todos pasan a cobrados.'}
+          {retenciones.length > 0 && ` ${retenciones.length === 1 ? 'La retención se adjunta' : `Las ${retenciones.length} retenciones se adjuntan`} a ${seleccionados.length === 1 ? 'ese mismo cobro' : 'todos los seleccionados'}.`}
         </p>
       </div>
     </Modal>
@@ -2796,6 +2893,9 @@ function FacturacionSection() {
                     : adjs.some(a => a.tipo === 'liquidacion')
                   const fechaCobro = cobrado ? fechaCobroDe(c) : null
                   const faltaComprobante = !cobrado && !tieneComprobante
+                  // Las retenciones son opcionales (no todas las empresas
+                  // retienen): el chip aparece sólo si el cobro tiene alguna.
+                  const nRetenciones = adjs.filter(a => a.tipo === 'retencion').length
                   // Contra factura del intermediario: chip documental + neto.
                   const esIntermediaria = empresasCF.has(c.empresa_id) || (c.empresas_transportistas?.contra_factura ?? false)
                   const tieneContraFactura = adjs.some(a => a.tipo === 'contra_factura')
@@ -2846,6 +2946,14 @@ function FacturacionSection() {
                           <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${tieneComprobante ? 'bg-verde-light text-verde' : faltaComprobante ? 'bg-naranja-light text-naranja-dark' : 'bg-gris text-gris-dark line-through'}`}>
                             💰 Comprobante
                           </span>
+                          {nRetenciones > 0 && (
+                            <span
+                              title="Certificados de retención adjuntos a este cobro"
+                              className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-verde-light text-verde"
+                            >
+                              ✂️ {nRetenciones} retenci{nRetenciones !== 1 ? 'ones' : 'ón'}
+                            </span>
+                          )}
                           {esIntermediaria && (
                             <span
                               title={

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiDelete } from '@/lib/api/client'
+import { LOG_KEYS } from './useLogistica'
 import type { CobroAdjunto, CobroAdjuntoTipo } from '@/types/domain.types'
 
 export const COBRO_ADJ_KEY = ['cobros', 'adjuntos'] as const
@@ -51,6 +52,10 @@ export function useUploadCobroAdjunto() {
     },
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: [...COBRO_ADJ_KEY, vars.cobroId] })
+      // La fila del cobro trae los adjuntos embebidos y de ahí salen sus chips
+      // documentales (comprobante / retenciones / contra factura): sin esto el
+      // chip queda viejo hasta que otra cosa invalide la lista.
+      qc.invalidateQueries({ queryKey: LOG_KEYS.cobros })
     },
   })
 }
@@ -71,6 +76,7 @@ export function useDeleteCobroAdjunto() {
       ),
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: [...COBRO_ADJ_KEY, vars.cobroId] })
+      qc.invalidateQueries({ queryKey: LOG_KEYS.cobros })
     },
   })
 }
