@@ -301,7 +301,12 @@ export function ViajesTab() {
   // Si el deep link trae ?volver=<tab>, al cerrar el modal volvemos a ese tab
   // (típicamente 'facturacion'): el user vino de ahí y no debería quedar
   // varado en Tramos al cerrar el modal.
-  const volverRef = useRef<string | null>(null)
+  //
+  // El destino se lee de la URL, NO de un ref. Antes vivía en un `useRef` que
+  // se seteaba en este efecto, y si el componente se re-montaba entre que se
+  // abría el modal y se cerraba, el ref volvía a null y la vuelta no pasaba:
+  // el user quedaba varado en Viajes (reporte de Alina, 2026-09-03 — la URL
+  // quedaba en ?tab=viajes al cerrar). La URL sobrevive a los re-montajes.
   useEffect(() => {
     const tramoIdRaw = searchParams.get('tramo')
     if (!tramoIdRaw) return
@@ -309,12 +314,12 @@ export function ViajesTab() {
     if (!Number.isFinite(tramoId)) return
     const t = (tramos as Tramo[]).find(t => t.id === tramoId)
     if (!t) return
-    volverRef.current = searchParams.get('volver')
     openEdit(t)
-    // Quitamos los query params de navegación, preservando 'tab=viajes'.
+    // Sacamos sólo `tramo`, para que el modal no se re-abra solo. `volver` se
+    // queda hasta que el modal se cierre: es lo que dice adónde volver, y al
+    // volver desaparece con la navegación.
     const sp = new URLSearchParams(searchParams.toString())
     sp.delete('tramo')
-    sp.delete('volver')
     router.replace(`/logistica?${sp.toString()}`)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tramos])
@@ -329,11 +334,10 @@ export function ViajesTab() {
   // usa Facturación; en los demás tabs es inofensiva).
   function cerrarEdicion() {
     setEditando(null)
-    if (volverRef.current) {
-      const dest = volverRef.current
-      volverRef.current = null
-      router.push(`/logistica?tab=${dest}&restaurar=1`)
-    }
+    // Sólo hay destino si se llegó por deep link; un tramo abierto desde la
+    // lista de Viajes no tiene `volver` en la URL y se queda donde está.
+    const dest = searchParams.get('volver')
+    if (dest) router.push(`/logistica?tab=${dest}&restaurar=1`)
   }
 
   async function handleUpload(form: { setValue: (k: any, v: any) => void }, field: string, file: File | undefined) {
