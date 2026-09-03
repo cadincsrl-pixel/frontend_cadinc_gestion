@@ -646,7 +646,7 @@ export function StockTab() {
                     <tr key={m.id} className="border-b border-gris last:border-0 hover:bg-gris/30 transition-colors">
                       <td className="px-4 py-2.5 text-sm font-medium text-carbon">
                         {m.nombre}
-                        <AliasChips alias={m.alias} />
+                        <AliasChips alias={m.alias} compact />
                       </td>
                       <td className="px-4 py-2.5 text-xs text-gris-dark">{m.proveedores?.nombre ?? '—'}</td>
                       <td className="px-4 py-2.5 text-xs text-gris-dark font-mono">{UNIDADES.find(u => u.value === m.unidad)?.label ?? m.unidad}</td>
@@ -688,7 +688,7 @@ export function StockTab() {
                       <div className="text-[11px] text-gris-dark mt-0.5">
                         {m.proveedores?.nombre ?? 'Sin proveedor'}
                       </div>
-                      <AliasChips alias={m.alias} />
+                      <AliasChips alias={m.alias} compact />
                     </div>
                     <div className="flex flex-col items-end shrink-0">
                       <span className={`font-mono font-bold text-base ${cero ? 'text-rojo' : bajo ? 'text-[#7A5500]' : 'text-verde'}`}>
