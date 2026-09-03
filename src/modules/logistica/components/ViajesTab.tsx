@@ -322,12 +322,17 @@ export function ViajesTab() {
   // Cierre del modal de edición: si el user llegó desde otro tab (deep link
   // con ?volver=), lo devolvemos ahí; si abrió el modal desde Tramos, se
   // queda en Tramos.
+  //
+  // `restaurar=1`: LogisticaPage monta un solo tab por vez, así que el tab de
+  // origen se desmontó y perdió su estado. Con esta marca el tab de destino
+  // repone la vista que había guardado antes de mandarnos acá (hoy sólo la
+  // usa Facturación; en los demás tabs es inofensiva).
   function cerrarEdicion() {
     setEditando(null)
     if (volverRef.current) {
       const dest = volverRef.current
       volverRef.current = null
-      router.push(`/logistica?tab=${dest}`)
+      router.push(`/logistica?tab=${dest}&restaurar=1`)
     }
   }
 

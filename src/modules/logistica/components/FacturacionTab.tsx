@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useRef, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useRef, useMemo, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import * as XLSX from 'xlsx'
 import JSZip from 'jszip'
 import { useForm, Controller, useWatch, type UseFormReturn } from 'react-hook-form'
@@ -78,6 +78,44 @@ function fmtFecha(s: string) {
   const [y, m, d] = s.split('-')
   return `${d}/${m}/${y}`
 }
+// ─── Ida y vuelta a la pestaña Viajes ─────────────────────────────────────────
+// Abrir un viaje desde Facturación navega a ?tab=viajes, y LogisticaPage hace
+// `{tab === 'facturacion' && <FacturacionTab />}`: el componente se DESMONTA y
+// al volver se perdía todo — el cobro que estaba abierto, la empresa
+// desplegada, los filtros y el scroll (reporte de Alina, 2026-09-03).
+// Sacamos una foto antes de irnos y la reponemos cuando ViajesTab nos devuelve
+// con ?restaurar=1. sessionStorage y no la URL porque son 9 campos y la barra
+// de direcciones no es lugar para el estado de un acordeón.
+const SNAP_KEY = 'logistica:facturacion:vista'
+
+interface SnapshotFacturacion {
+  cobroDetalleId:    number | null
+  saldoExpandida:    number | null
+  facturasExpandida: number | null
+  histExpandidas:    number[]
+  filtroEstadoCobro: 'pendientes' | 'cobrados' | 'todos'
+  busquedaCobro:     string
+  busquedaRemito:    string
+  cobroDesde:        string
+  cobroHasta:        string
+  scrollY:           number
+}
+
+// sessionStorage puede tirar (modo privado, cookies bloqueadas). Si falla, se
+// pierde la posición de la vista pero nunca un dato: por eso no se avisa.
+function guardarSnapshot(snap: SnapshotFacturacion) {
+  try { sessionStorage.setItem(SNAP_KEY, JSON.stringify(snap)) } catch { /* noop */ }
+}
+function leerSnapshot(): SnapshotFacturacion | null {
+  try {
+    const raw = sessionStorage.getItem(SNAP_KEY)
+    return raw ? JSON.parse(raw) as SnapshotFacturacion : null
+  } catch { return null }
+}
+function borrarSnapshot() {
+  try { sessionStorage.removeItem(SNAP_KEY) } catch { /* noop */ }
+}
+
 // Límite del bucket `cobros-docs` y mimes que acepta (espejo de
 // adjuntos.service.ts en el backend).
 const MAX_ADJ_SIZE = 10 * 1024 * 1024
@@ -2043,6 +2081,11 @@ function ModalCobrarFacturas({
 function FacturacionSection() {
   const toast = useToast()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  // Se lee en el PRIMER render y no se vuelve a mirar: más abajo limpiamos el
+  // query param, y el efecto de restauración corre después de eso.
+  const restaurarRef  = useRef(searchParams.get('restaurar') === '1')
+  const yaRestaurado  = useRef(false)
   // anularCobros: flag fino para borrar cobros pendientes sin eliminación
   // del módulo entero (el backend valida igual; acá solo se deshabilita).
   const { puedeEliminar: puedeEliminarModulo, anularCobros } = usePermisos('logistica')
@@ -2104,6 +2147,62 @@ function FacturacionSection() {
   // automáticamente después de crear el cobro, todo en un solo paso.
   const [facturaFile, setFacturaFile] = useState<File | null>(null)
   const [subiendoFactura, setSubiendoFactura] = useState(false)
+
+  // Antes de irse a Viajes: foto de la vista para poder reponerla al volver.
+  function abrirViaje(tramoId: number) {
+    guardarSnapshot({
+      cobroDetalleId:    cobroDetalle?.id ?? null,
+      saldoExpandida,
+      facturasExpandida,
+      histExpandidas:    [...histExpandidas],
+      filtroEstadoCobro,
+      busquedaCobro,
+      busquedaRemito,
+      cobroDesde,
+      cobroHasta,
+      scrollY:           typeof window !== 'undefined' ? window.scrollY : 0,
+    })
+    router.push(`/logistica?tab=viajes&tramo=${tramoId}&volver=facturacion`)
+  }
+
+  // Al volver de Viajes: reponer la vista. Depende de `cobros` porque para
+  // reabrir el modal de detalle hace falta el objeto entero, no alcanza con el
+  // id; si la lista todavía no llegó, esperamos al próximo render en vez de
+  // abrir un modal vacío.
+  useEffect(() => {
+    if (!restaurarRef.current || yaRestaurado.current) return
+    // Saca sólo `restaurar` y respeta lo demás que venga en la URL.
+    const limpiarUrl = () => {
+      restaurarRef.current = false
+      const sp = new URLSearchParams(searchParams.toString())
+      sp.delete('restaurar')
+      router.replace(`/logistica?${sp.toString()}`)
+    }
+    const snap = leerSnapshot()
+    if (!snap) { limpiarUrl(); return }
+    if (snap.cobroDetalleId != null && cobros.length === 0) return
+
+    yaRestaurado.current = true
+    setSaldoExpandida(snap.saldoExpandida)
+    setFacturasExpandida(snap.facturasExpandida)
+    setHistExpandidas(new Set(snap.histExpandidas))
+    setFiltroEstadoCobro(snap.filtroEstadoCobro)
+    setBusquedaCobro(snap.busquedaCobro)
+    setBusquedaRemito(snap.busquedaRemito)
+    setCobroDesde(snap.cobroDesde)
+    setCobroHasta(snap.cobroHasta)
+    // El cobro puede haber desaparecido (lo borraron mientras tanto): en ese
+    // caso el modal simplemente no se reabre, el resto de la vista sí.
+    if (snap.cobroDetalleId != null) {
+      setCobroDetalle((cobros as Cobro[]).find(c => c.id === snap.cobroDetalleId) ?? null)
+    }
+    // El scroll se repone recién cuando el listado ya se pintó con los
+    // acordeones abiertos; si no, la página todavía es corta y no llega.
+    requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, snap.scrollY)))
+    borrarSnapshot()
+    limpiarUrl()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cobros])
   const facturaFileRef = useRef<HTMLInputElement | null>(null)
   const { mutateAsync: uploadAdjunto } = useUploadCobroAdjunto()
   const form = useForm<any>()
@@ -2530,11 +2629,11 @@ function FacturacionSection() {
                             key={d.t.id}
                             role="link"
                             tabIndex={0}
-                            onClick={() => router.push(`/logistica?tab=viajes&tramo=${d.t.id}&volver=facturacion`)}
+                            onClick={() => abrirViaje(d.t.id)}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter' || e.key === ' ') {
                                 e.preventDefault()
-                                router.push(`/logistica?tab=viajes&tramo=${d.t.id}&volver=facturacion`)
+                                abrirViaje(d.t.id)
                               }
                             }}
                             title="Abrir tramo en Viajes (al cerrar volvés acá)"
@@ -3218,11 +3317,11 @@ function FacturacionSection() {
                             key={t.id}
                             role="link"
                             tabIndex={0}
-                            onClick={() => router.push(`/logistica?tab=viajes&tramo=${t.id}&volver=facturacion`)}
+                            onClick={() => abrirViaje(t.id)}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter' || e.key === ' ') {
                                 e.preventDefault()
-                                router.push(`/logistica?tab=viajes&tramo=${t.id}&volver=facturacion`)
+                                abrirViaje(t.id)
                               }
                             }}
                             title="Abrir el tramo en Viajes (al cerrar volvés acá)"
