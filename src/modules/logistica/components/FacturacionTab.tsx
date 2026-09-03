@@ -102,19 +102,22 @@ interface SnapshotFacturacion {
   scrollY:           number
 }
 
-// La foto vive en una variable de MÓDULO, no en sessionStorage ni en la URL.
+// La foto se guarda en DOS lados a propósito, porque cada uno cubre un modo
+// de falla distinto que ya nos comimos (reportes de Alina, 2026-09-03):
 //
-// La ida y vuelta a Viajes es una navegación de cliente: el módulo nunca se
-// descarga, así que la variable sobrevive igual que sobreviviría el storage,
-// pero sin serializar, sin permisos de storage que puedan fallar y sin
-// depender de que un query param llegue a tiempo al primer render. Los dos
-// intentos anteriores se apoyaron justamente en eso y fallaron (reportes de
-// Alina, 2026-09-03: volvía a Facturación con `restaurar=1` en la URL y aun
-// así la vista aparecía en cero).
+//   · variable de módulo → sobrevive una navegación de cliente sin serializar
+//     ni depender de permisos, pero se pierde si la vuelta termina siendo una
+//     carga completa de página (el módulo se reevalúa vacío).
+//   · sessionStorage     → sobrevive esa carga completa, pero puede fallar por
+//     permisos del navegador y no existe durante el render de servidor.
+//
+// Leemos el módulo primero y caemos al storage. Que sobre.
+const SNAP_KEY = 'logistica:facturacion:vista'
 let snapshotFacturacion: SnapshotFacturacion | null = null
 
 function guardarSnapshot(snap: SnapshotFacturacion) {
   snapshotFacturacion = snap
+  try { sessionStorage.setItem(SNAP_KEY, JSON.stringify(snap)) } catch { /* noop */ }
 }
 // Ventana de validez de la foto. Es una ida y vuelta a Viajes: si pasaron
 // más de 10 minutos, el user se fue a hacer otra cosa y no quiere que le
@@ -122,8 +125,14 @@ function guardarSnapshot(snap: SnapshotFacturacion) {
 const SNAP_TTL_MS = 10 * 60 * 1000
 
 function leerSnapshotFresco(): SnapshotFacturacion | null {
-  const snap = snapshotFacturacion
-  if (!snap) return null
+  let snap = snapshotFacturacion
+  if (!snap && typeof window !== 'undefined') {
+    try {
+      const raw = sessionStorage.getItem(SNAP_KEY)
+      if (raw) snap = JSON.parse(raw) as SnapshotFacturacion
+    } catch { /* noop */ }
+  }
+  if (!snap || typeof snap.ts !== 'number') return null
   if (Date.now() - snap.ts > SNAP_TTL_MS) return null
   return snap
 }
@@ -2189,6 +2198,33 @@ function FacturacionSection() {
     })
     router.push(`/logistica?tab=viajes&tramo=${tramoId}&volver=facturacion`)
   }
+
+  // Red de seguridad. El bloque de arriba resuelve el caso normal, pero el
+  // lazy init de useState puede correr en un contexto sin sessionStorage
+  // (render de servidor / hidratación) y salir vacío aunque la foto exista.
+  // Acá ya estamos en el cliente con todo disponible: si quedó sin reponer y
+  // hay foto fresca, se repone. Corre una sola vez por montaje.
+  const repuestoTardio = useRef(false)
+  useEffect(() => {
+    if (snapInicial || repuestoTardio.current) return
+    const snap = leerSnapshotFresco()
+    if (!snap) return
+    repuestoTardio.current = true
+    setSaldoExpandida(snap.saldoExpandida)
+    setFacturasExpandida(snap.facturasExpandida)
+    setHistExpandidas(new Set(snap.histExpandidas))
+    setFiltroEstadoCobro(snap.filtroEstadoCobro)
+    setBusquedaCobro(snap.busquedaCobro)
+    setBusquedaRemito(snap.busquedaRemito)
+    setCobroDesde(snap.cobroDesde)
+    setCobroHasta(snap.cobroHasta)
+    if (snap.cobroDetalleId != null) {
+      setCobroDetalle((cobros as Cobro[]).find(c => c.id === snap.cobroDetalleId) ?? null)
+    }
+    const y = snap.scrollY
+    requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, y)))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cobros])
 
   // Lo único que no se puede resolver inicializando estado: el modal de
   // detalle necesita el objeto Cobro (no alcanza con el id, y puede no estar
