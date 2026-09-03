@@ -51,7 +51,7 @@ export function CobroAdjuntosSection({ cobroId, modalidad = 'liquido_producto', 
   const { puedeCrear, puedeEliminar } = usePermisos('logistica')
 
   const { data: adjuntos = [], isLoading } = useCobroAdjuntos(cobroId)
-  const { mutateAsync: uploadAdj, isPending: uploading } = useUploadCobroAdjunto()
+  const { mutateAsync: uploadAdj } = useUploadCobroAdjunto()
   const { mutate: deleteAdj } = useDeleteCobroAdjunto()
 
   const fileInputs = useRef<Record<CobroAdjuntoTipo, HTMLInputElement | null>>({
@@ -165,10 +165,10 @@ export function CobroAdjuntosSection({ cobroId, modalidad = 'liquido_producto', 
                   <>
                     <button
                       onClick={() => fileInputs.current[key]?.click()}
-                      disabled={uploading && pendingTipo === key}
+                      disabled={pendingTipo !== null}
                       className="text-[11px] font-bold px-2.5 py-1 rounded bg-azul text-white hover:bg-azul-mid transition-colors disabled:opacity-50"
                     >
-                      {uploading && pendingTipo === key ? '⏳ Subiendo…' : '＋ Subir'}
+                      {pendingTipo === key ? '⏳ Subiendo…' : '＋ Subir'}
                     </button>
                     <input
                       ref={el => { fileInputs.current[key] = el }}

@@ -78,6 +78,11 @@ function fmtFecha(s: string) {
   const [y, m, d] = s.split('-')
   return `${d}/${m}/${y}`
 }
+// Límite del bucket `cobros-docs` y mimes que acepta (espejo de
+// adjuntos.service.ts en el backend).
+const MAX_ADJ_SIZE = 10 * 1024 * 1024
+const ACCEPT_ADJ = 'image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf'
+
 // DD/MM (sin año) para las sublíneas compactas del historial.
 function fmtFechaCorta(s: string | null | undefined) {
   if (!s) return '—'
@@ -1706,7 +1711,7 @@ function ModalCobrarFacturas({
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
-    if (file.size > 10 * 1024 * 1024) {
+    if (file.size > MAX_ADJ_SIZE) {
       toast('Archivo demasiado grande (máx 10 MB)', 'err')
       return
     }
@@ -1717,13 +1722,13 @@ function ModalCobrarFacturas({
     const files = Array.from(e.target.files ?? [])
     e.target.value = ''
     if (files.length === 0) return
-    const grandes = files.filter(f => f.size > 10 * 1024 * 1024)
+    const grandes = files.filter(f => f.size > MAX_ADJ_SIZE)
     if (grandes.length > 0) {
       toast(grandes.length === 1
         ? `"${grandes[0].name}" es demasiado grande (máx 10 MB)`
         : `${grandes.length} archivos superan los 10 MB y no se agregan`, 'err')
     }
-    const nuevos = files.filter(f => f.size <= 10 * 1024 * 1024)
+    const nuevos = files.filter(f => f.size <= MAX_ADJ_SIZE)
     // El picker se puede usar varias veces (una tanda por impuesto): se
     // acumulan, evitando repetir el mismo archivo por nombre+tamaño.
     setRetenciones(prev => [
@@ -1746,9 +1751,12 @@ function ModalCobrarFacturas({
     // adjunto ya está donde tiene que estar, no es un error.
     const subir = async (cobroId: number, file: File, tipo: 'comprobante' | 'retencion') => {
       try {
-        await uploadAdjunto({ cobroId, file, tipo })
-      } catch (err: any) {
-        const code = err?.body?.error ?? ''
+        // invalidarLista false: marcarCobradoAsync invalida la lista de cobros
+        // una vez por cobro. Sin esto, cada archivo de la tanda dispara un GET
+        // de la lista completa y solo sirve el último.
+        await uploadAdjunto({ cobroId, file, tipo, invalidarLista: false })
+      } catch (err: unknown) {
+        const code = (err as { body?: { error?: string } })?.body?.error ?? ''
         const msg  = err instanceof Error ? err.message : ''
         if (code !== 'ADJ_DUPLICADO' && !msg.includes('ADJ_DUPLICADO')) throw err
       }
@@ -1759,7 +1767,7 @@ function ModalCobrarFacturas({
         await subir(c.id, comprobante, 'comprobante')
         for (const r of retenciones) {
           try { await subir(c.id, r, 'retencion') }
-          catch { retFallidas.add(r.name) }
+          catch { retFallidas.add(`${c.factura_nro ?? `#${c.id}`} → ${r.name}`) }
         }
         await marcarCobradoAsync({ id: c.id, fecha_cobro: fechaCobro || undefined })
         ok++
@@ -1781,7 +1789,7 @@ function ModalCobrarFacturas({
     }
     setProcesando(false)
     const avisoRet = retFallidas.size > 0
-      ? ` · ⚠ No se pudo subir ${[...retFallidas].join(', ')} — cargá esa retención desde el detalle del cobro`
+      ? ` · ⚠ Retenciones que no entraron: ${[...retFallidas].join(', ')} — cargalas desde el detalle de ese cobro`
       : ''
     if (fallidas.length === 0) {
       const base = esFact
@@ -1957,7 +1965,7 @@ function ModalCobrarFacturas({
             <input
               ref={fileRef}
               type="file"
-              accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
+              accept={ACCEPT_ADJ}
               className="hidden"
               onChange={handleFile}
             />
@@ -2013,7 +2021,7 @@ function ModalCobrarFacturas({
             ref={retRef}
             type="file"
             multiple
-            accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
+            accept={ACCEPT_ADJ}
             className="hidden"
             onChange={handleRetenciones}
           />
@@ -2115,7 +2123,7 @@ function FacturacionSection() {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
-    if (file.size > 10 * 1024 * 1024) {
+    if (file.size > MAX_ADJ_SIZE) {
       toast('Archivo demasiado grande (máx 10 MB)', 'err')
       return
     }
@@ -3444,7 +3452,7 @@ function FacturacionSection() {
                   <input
                     ref={facturaFileRef}
                     type="file"
-                    accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
+                    accept={ACCEPT_ADJ}
                     className="hidden"
                     onChange={handleFacturaFile}
                   />

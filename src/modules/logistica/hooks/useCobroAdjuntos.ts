@@ -19,6 +19,11 @@ interface UploadInput {
   file:    File
   tipo:    CobroAdjuntoTipo
   obs?:    string
+  // Invalidar además la lista de cobros (de ahí salen los chips documentales
+  // de cada fila). Default true; se pasa false cuando el que llama sube en
+  // tanda y ya invalida la lista al final — si no, son N×R refetch de una
+  // query pesada de los que solo sirve el último.
+  invalidarLista?: boolean
 }
 
 interface UploadUrlResponse {
@@ -55,7 +60,9 @@ export function useUploadCobroAdjunto() {
       // La fila del cobro trae los adjuntos embebidos y de ahí salen sus chips
       // documentales (comprobante / retenciones / contra factura): sin esto el
       // chip queda viejo hasta que otra cosa invalide la lista.
-      qc.invalidateQueries({ queryKey: LOG_KEYS.cobros })
+      if (vars.invalidarLista !== false) {
+        qc.invalidateQueries({ queryKey: LOG_KEYS.cobros })
+      }
     },
   })
 }
