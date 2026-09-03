@@ -124,6 +124,18 @@ function guardarSnapshot(snap: SnapshotFacturacion) {
 // reaparezca la vista vieja.
 const SNAP_TTL_MS = 10 * 60 * 1000
 
+// El layout scrollea en el <main class="overflow-y-auto"> del Shell, NO en la
+// ventana: `window.scrollY` siempre da 0 acá, así que guardarlo y hacer
+// `window.scrollTo` no hacía absolutamente nada. Esto era lo último que
+// quedaba roto: el acordeón ya se reponía bien, pero la página aparecía
+// arriba de todo y desde la obra se veía como "se cerró todo".
+function contenedorScroll(): HTMLElement | null {
+  if (typeof document === 'undefined') return null
+  const main = document.querySelector('main')
+  if (main instanceof HTMLElement && main.scrollHeight > main.clientHeight) return main
+  return (document.scrollingElement as HTMLElement | null) ?? null
+}
+
 function leerSnapshotFresco(): SnapshotFacturacion | null {
   let snap = snapshotFacturacion
   if (!snap && typeof window !== 'undefined') {
@@ -2194,7 +2206,7 @@ function FacturacionSection() {
       busquedaRemito,
       cobroDesde,
       cobroHasta,
-      scrollY:           typeof window !== 'undefined' ? window.scrollY : 0,
+      scrollY:           contenedorScroll()?.scrollTop ?? 0,
     })
     router.push(`/logistica?tab=viajes&tramo=${tramoId}&volver=facturacion`)
   }
@@ -2222,7 +2234,10 @@ function FacturacionSection() {
       setCobroDetalle((cobros as Cobro[]).find(c => c.id === snap.cobroDetalleId) ?? null)
     }
     const y = snap.scrollY
-    requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, y)))
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const cont = contenedorScroll()
+      if (cont) cont.scrollTop = y
+    }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cobros])
 
@@ -2249,7 +2264,10 @@ function FacturacionSection() {
     // Dos frames: el primero pinta los acordeones ya abiertos (la página se
     // hace larga), el segundo scrollea sobre esa altura real.
     const y = snapInicial.scrollY
-    requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, y)))
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const cont = contenedorScroll()
+      if (cont) cont.scrollTop = y
+    }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cobros])
   const facturaFileRef = useRef<HTMLInputElement | null>(null)
