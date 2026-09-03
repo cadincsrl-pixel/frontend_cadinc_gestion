@@ -505,6 +505,9 @@ export function SolicitudesTab() {
   // Modal de armado de remito con cantidades editables (envíos parciales):
   // lo que se manda de menos queda pendiente para otro remito.
   const [modalEnvio, setModalEnvio] = useState<{ solicitud: SolicitudCompra; items: SolicitudCompraItem[] } | null>(null)
+  // Recibir en depósito acopia stock, pero sólo de los renglones que el backend
+  // puede acreditar. Si alguno queda afuera hay que decirlo antes, no después.
+  const [confirmoSinStock, setConfirmoSinStock] = useState(false)
   const [cantEnvio, setCantEnvio] = useState<Record<number, string>>({})
   // Selección de items pendientes para compra en LOTE (mismo proveedor +
   // misma factura, precio individual por item). Map<solicitudId, Set<itemId>>
@@ -1002,6 +1005,7 @@ export function SolicitudesTab() {
       init[it.id!] = String(pendiente)
     }
     setCantEnvio(init)
+    setConfirmoSinStock(false)
     setModalEnvio({ solicitud, items })
   }
 
@@ -2523,6 +2527,17 @@ export function SolicitudesTab() {
       {modalEnvio && (() => {
         const obraEnv = obrasMap.get(modalEnvio.solicitud.obra_cod)
         const esDep = obraEnv?.es_deposito === true
+        // Espejo EXACTO de la condición del backend (remitos-envio.service.ts):
+        // sólo acredita stock un ítem 'comprado' con material del catálogo. Un
+        // renglón de texto libre entra al depósito y no suma nada — 35 ítems se
+        // perdieron así entre 05/26 y 09/26 sin que nadie se enterara. Si esta
+        // condición cambia allá, cambiarla acá: el aviso no puede mentir.
+        // Sólo cuenta lo que se recibe en ESTE remito: un renglón que queda en 0
+        // no entra ahora, así que avisar por él sería ruido.
+        const sinStock = esDep
+          ? modalEnvio.items.filter(it =>
+              Number(cantEnvio[it.id!]) > 0 && (it.material_id == null || it.estado !== 'comprado'))
+          : []
         return (
           <Modal
             open
@@ -2537,7 +2552,8 @@ export function SolicitudesTab() {
                     🖨 Vista previa (borrador)
                   </Button>
                 )}
-                <Button variant="primary" loading={enviandoRemito} onClick={confirmarEnvio}>
+                <Button variant="primary" loading={enviandoRemito} onClick={confirmarEnvio}
+                  disabled={sinStock.length > 0 && !confirmoSinStock}>
                   {esDep ? '✓ Recibir e ingresar al stock' : '✓ Generar remito'}
                 </Button>
               </>
@@ -2563,6 +2579,11 @@ export function SolicitudesTab() {
                           Pendiente: <b>{pendiente}</b> {it.unidad}
                           {yaEnviada > 0 && <span className="text-azul"> · ya enviados {yaEnviada}/{efectiva}</span>}
                         </div>
+                        {sinStock.includes(it) && (
+                          <div className="text-[11px] font-bold text-[#7A5500] mt-0.5">
+                            ⚠ No suma stock{it.material_id == null ? ' — sin material del catálogo' : ' — no viene de una compra'}
+                          </div>
+                        )}
                       </div>
                       <div className="w-28 ml-auto sm:ml-0">
                         <input
@@ -2580,9 +2601,35 @@ export function SolicitudesTab() {
                   )
                 })}
               </div>
+              {sinStock.length > 0 && (
+                <div className="rounded-lg border border-amarillo bg-amarillo-light/40 px-3 py-2.5">
+                  <div className="text-xs font-bold text-[#7A5500]">
+                    ⚠ {sinStock.length} de {modalEnvio.items.length} renglones NO van a sumar stock
+                  </div>
+                  <ul className="mt-1 text-[11px] text-[#7A5500] list-disc pl-4">
+                    {sinStock.map(it => (
+                      <li key={it.id}>
+                        {it.descripcion}
+                        {it.material_id == null
+                          ? ' — vinculalo a un material del catálogo (✏️ Editar) para que acopie'
+                          : ' — no viene de una compra, el stock ya se movió cuando se resolvió'}
+                      </li>
+                    ))}
+                  </ul>
+                  <label className="mt-2 flex items-center gap-2 text-[11px] font-bold text-[#7A5500] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={confirmoSinStock}
+                      onChange={e => setConfirmoSinStock(e.target.checked)}
+                      className="accent-naranja w-4 h-4"
+                    />
+                    Recibir igual — entiendo que ese material no queda en el stock del depósito
+                  </label>
+                </div>
+              )}
               <p className="text-[11px] text-gris-mid italic">
                 {esDep
-                  ? 'Las cantidades recibidas ingresan al stock del depósito; lo no recibido queda pendiente.'
+                  ? 'Ingresan al stock del depósito los renglones comprados y vinculados al catálogo; lo no recibido queda pendiente.'
                   : 'El remito sale con las cantidades que pongas acá. Cantidad 0 = ese material no va en este remito.'}
               </p>
               {!esDep && <SoloEnvioCheck value={soloEnvio} onChange={setSoloEnvio} />}
