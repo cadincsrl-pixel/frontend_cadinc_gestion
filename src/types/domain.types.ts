@@ -1254,6 +1254,11 @@ export interface HerrEntrega {
   nota:             string | null
   resuelto_por:     string | null
   resuelto_el:      string | null
+  /** Devolución manual (20260904ay): la salida que devuelve. */
+  salida_id:        number | null
+  /** En una salida: Σ de sus devoluciones vivas; `en_obra` = cantidad − devuelto. */
+  devuelto:         number
+  en_obra:          number
   created_at:       string
   updated_at:       string
 }
@@ -1265,17 +1270,30 @@ export interface HerrEntregasPage {
   offset: number
 }
 
+export interface HerrEntregasObraResumen {
+  cod:            string
+  n:              number
+  n_pendientes:   number
+  /** Salidas vivas con algo todavía en obra. */
+  n_en_obra:      number
+  cant_en_obra:   number
+  n_devoluciones: number
+  ultima:         string | null
+}
+
 export interface HerrEntregasStats {
-  pendientes: number
-  revisar:    number
-  obras:      number
+  pendientes:   number
+  revisar:      number
+  obras:        number
+  en_obra:      number
+  devoluciones: number
   // Herramientas que salieron y NO quedaron registradas. Tiene que ser 0
   // siempre: si no, el `exception when others` del trigger tapó un error.
   faltantes:  number
   /** Obras con salidas, con su conteo. Viene del backend y no del listado
    *  paginado: si se derivara de la página actual, el filtro no ofrecería las
    *  obras que quedaron en las páginas siguientes. */
-  obras_lista: { cod: string; n: number; n_pendientes: number }[]
+  obras_lista: HerrEntregasObraResumen[]
 }
 
 // ── Ropa de trabajo ──

@@ -45,6 +45,7 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
     // 'remitos' se quitó: quedó huérfano desde 20260520_drop_herr_remitos.sql
     // (ningún item de HERR_SUBNAV lo usaba, ocupaba lugar sin renderizar nada).
     { key: 'salidas',      label: 'Salidas a obra', icon: '📤' },
+    { key: 'retornos',     label: 'Retorno de obra', icon: '↩' },
     { key: 'parametros',   label: 'Parámetros',   icon: '⚙️' },
   ],
   certificaciones: [

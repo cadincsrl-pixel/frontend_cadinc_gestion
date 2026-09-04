@@ -38,6 +38,7 @@ const HERR_SUBNAV = [
   { href: '/herramientas/movimientos',  icon: '↔',  label: 'Movimientos',  meta: 'Registrar traslados',        tabKey: 'movimientos'  },
   { href: '/herramientas/trazabilidad', icon: '📍', label: 'Trazabilidad', meta: 'Historial por herramienta',  tabKey: 'trazabilidad' },
   { href: '/herramientas/salidas',      icon: '📤', label: 'Salidas a obra', meta: 'Lo que se llevó cada obra', tabKey: 'salidas'    },
+  { href: '/herramientas/retornos',     icon: '↩',  label: 'Retorno de obra', meta: 'Lo que volvió al pañol',   tabKey: 'retornos'   },
   { href: '/herramientas/parametros',   icon: '⚙️', label: 'Parámetros',   meta: 'Tipos y configuración',      tabKey: 'parametros'   },
 ]
 
