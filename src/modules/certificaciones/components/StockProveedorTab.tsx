@@ -360,6 +360,7 @@ function ModalRetiro({ proveedorId, proveedorNombre, obraCodSugerida, stockDelPr
       if (code === 'COMPROBANTE_DUPLICADO') toast('El comprobante ya está cargado en otro remito', 'err')
       else if (code === 'CANTIDAD_EXCEDE_PENDIENTE') toast('Una cantidad supera el pendiente — revisá', 'err')
       else if (code === 'ITEM_PROVEEDOR_DISTINTO') toast('Hay un item de otro proveedor — revisá', 'err')
+      else if (code === 'ITEM_COBRADO') toast('Uno de los items ya está cobrado al cliente: su cuenta está congelada. Sacalo del retiro y resolvelo aparte', 'err')
       else toast(e?.message || 'Error al crear el remito', 'err')
     } finally {
       setSubiendo(false)
