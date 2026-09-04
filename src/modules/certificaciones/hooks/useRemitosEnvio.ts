@@ -19,6 +19,9 @@ export function useCreateRemitoEnvio() {
       // Enviar a una obra depósito ingresa stock (compra recibida) → refrescar.
       qc.invalidateQueries({ queryKey: ['stock', 'materiales'] })
       qc.invalidateQueries({ queryKey: ['stock', 'movimientos'] })
+      // El remito mueve `cantidad_enviada` → el trigger escribe en el ledger
+      // del pañol. Sin esta línea, Salidas a obra no refleja el envío recién hecho.
+      qc.invalidateQueries({ queryKey: ['herr-entregas'] })
     },
   })
 }

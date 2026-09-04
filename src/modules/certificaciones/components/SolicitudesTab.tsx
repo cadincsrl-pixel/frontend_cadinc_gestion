@@ -6,6 +6,7 @@ import { Controller, useForm } from 'react-hook-form'
 import {
   useSolicitudes, useCreateSolicitud, useUpdateSolicitud, useDeleteSolicitud,
   useComprarItem, useDespacharItem, useEnviarItem, useRechazarItem, useRevertirItem, useRevertirEnvio, useComprarFaltante,
+  useRecibirDevolucion,
   useResolverStockCliente,
   useEditarItem,
 } from '../hooks/useSolicitudes'
@@ -307,6 +308,8 @@ export function SolicitudesTab() {
   // Permisos: deshabilitar (no ocultar) botones según capacidad. El backend
   // valida igual; esto evita clicks que rebotan con error feo (CLAUDE.md §6).
   const { puedeCrear, puedeEditar, puedeEliminar, resolverItems } = usePermisos('certificaciones')
+  // El puente a la bandeja del pañol sólo si el usuario tiene el módulo.
+  const { puedeVer: puedeVerHerramientas } = usePermisos('herramientas')
   const { data: obras = [] } = useObras('certificaciones')
   // Historial de remitos emitidos (pedido del dueño 2026-07-31: hasta hoy no
   // había forma de ver ni reimprimir un remito viejo — si se cerraba el modal
@@ -478,6 +481,7 @@ export function SolicitudesTab() {
   const { mutate: despacharItem, isPending: despachando } = useDespacharItem()
   const { mutate: resolverStockCliente, isPending: resolviendoStockCliente } = useResolverStockCliente()
   const { mutate: enviarItem } = useEnviarItem()
+  const { mutate: recibirDevolucion, isPending: recibiendoDev } = useRecibirDevolucion()
   const { mutate: rechazarItem } = useRechazarItem()
   const { mutate: revertirItem } = useRevertirItem()
   const { mutate: revertirEnvio } = useRevertirEnvio()
@@ -916,6 +920,15 @@ export function SolicitudesTab() {
     })
   }
 
+  // La obra devuelve la herramienta al pañol. Un solo paso: no hay compra ni
+  // despacho previos que resolver, y el ledger del pañol lo registra solo.
+  function handleRecibirDevolucion(itemId: number) {
+    recibirDevolucion({ itemId }, {
+      onSuccess: () => toast('Devolución recibida en el pañol', 'ok'),
+      onError:   (e: any) => toast(e.message || 'Error', 'err'),
+    })
+  }
+
   function handleEnviar(itemId: number) {
     enviarItem({ itemId }, {
       onSuccess: () => toast('Marcado como enviado', 'ok'),
@@ -1048,6 +1061,10 @@ export function SolicitudesTab() {
         precio_unit: null,
         origen: (it.estado === 'comprado' || it.estado === 'retirado') ? 'proveedor' : 'deposito',
         proveedor: it.proveedores?.nombre ?? null,
+        // Viene calculado del backend (campo computado de PostgREST). Sin esto
+        // el BORRADOR mostraría distinto del remito definitivo, y la vista
+        // previa existe justamente para revisar antes de imprimir.
+        es_herramienta: it.es_herramienta ?? false,
       })),
     }
     const remitosCache = (queryClient.getQueryData<RemitoEnvio[]>(['remitos-envio', 'all']) ?? [])
@@ -1186,6 +1203,16 @@ export function SolicitudesTab() {
           <div className="flex-1 min-w-0 sm:max-w-xs">
             <Combobox placeholder="Filtrar por obra..." options={obraOptions} value={obraFiltro} onChange={setObraFiltro} />
           </div>
+          {/* El módulo Herramientas tiene su propio sidebar, que sólo se ve estando
+              adentro. Sosa vive acá, así que el puente va acá. */}
+          {puedeVerHerramientas && (
+            <a href="/herramientas/salidas"
+               title="Herramientas que salieron a obra desde los pedidos"
+               className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-gris text-gris-dark hover:bg-azul-light hover:text-azul transition-colors text-xs font-bold min-h-[36px]">
+              <span>🔧</span>
+              <span className="hidden sm:inline">Salidas al pañol</span>
+            </a>
+          )}
           <Button variant="secondary" size="sm" onClick={() => setModalRemitos(true)} className="shrink-0">
             <span className="sm:hidden">📄</span>
             <span className="hidden sm:inline">📄 Remitos</span>
@@ -1350,8 +1377,12 @@ export function SolicitudesTab() {
                                     {item.color}
                                   </span>
                                 )}
-                                {item.clase === 'herramienta' && (
-                                  <span className="ml-2 text-[11px] font-bold px-1.5 py-0.5 rounded bg-carbon text-white align-middle">
+                                {/* `clase` es el tilde manual (4 usos en 256 salidas reales);
+                                    `es_herramienta` lo calcula el backend con el mismo predicado
+                                    que el ledger, así el badge dice la verdad aunque nadie tildó. */}
+                                {(item.clase === 'herramienta' || item.es_herramienta) && (
+                                  <span className="ml-2 text-[11px] font-bold px-1.5 py-0.5 rounded bg-carbon text-white align-middle"
+                                        title={item.clase === 'herramienta' ? 'Marcada como herramienta en el pedido' : 'Detectada como herramienta: queda registrada en Salidas a obra'}>
                                     {item.devuelve ? '↩ Devuelve' : '🔧 Pañol'}
                                   </span>
                                 )}
@@ -1425,7 +1456,17 @@ export function SolicitudesTab() {
                                   )}
                                   {s.estado === 'aprobada' && (
                                     <>
-                                      {item.estado === 'pendiente' && (
+                                      {item.estado === 'pendiente' && item.devuelve && (
+                                        <>
+                                          {/* La obra DEVUELVE: no hay nada que comprar ni despachar. Peor,
+                                              con material vinculado el botón Depósito descontaría stock
+                                              de algo que está entrando. Un solo camino, y la devolución
+                                              queda en la bandeja del pañol con sentido='devolucion'. */}
+                                          <button disabled={!resolverItems || recibiendoDev} onClick={() => handleRecibirDevolucion(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">↩ Recibir en pañol</button>
+                                          <button disabled={!resolverItems} onClick={() => handleRechazarItem(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
+                                        </>
+                                      )}
+                                      {item.estado === 'pendiente' && !item.devuelve && (
                                         <>
                                           <input
                                             type="checkbox"
@@ -1707,8 +1748,12 @@ export function SolicitudesTab() {
                                     {item.color}
                                   </span>
                                 )}
-                                {item.clase === 'herramienta' && (
-                                  <span className="ml-2 text-[11px] font-bold px-1.5 py-0.5 rounded bg-carbon text-white align-middle">
+                                {/* `clase` es el tilde manual (4 usos en 256 salidas reales);
+                                    `es_herramienta` lo calcula el backend con el mismo predicado
+                                    que el ledger, así el badge dice la verdad aunque nadie tildó. */}
+                                {(item.clase === 'herramienta' || item.es_herramienta) && (
+                                  <span className="ml-2 text-[11px] font-bold px-1.5 py-0.5 rounded bg-carbon text-white align-middle"
+                                        title={item.clase === 'herramienta' ? 'Marcada como herramienta en el pedido' : 'Detectada como herramienta: queda registrada en Salidas a obra'}>
                                     {item.devuelve ? '↩ Devuelve' : '🔧 Pañol'}
                                   </span>
                                 )}
@@ -1778,7 +1823,13 @@ export function SolicitudesTab() {
                           {/* Acciones del ítem */}
                           {s.estado === 'aprobada' && (
                             <div className="mt-3">
-                              {item.estado === 'pendiente' && (
+                              {item.estado === 'pendiente' && item.devuelve && (
+                                <div className="grid grid-cols-2 gap-2">
+                                  <button disabled={!resolverItems || recibiendoDev} onClick={() => handleRecibirDevolucion(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">↩ Recibir en pañol</button>
+                                  <button disabled={!resolverItems} onClick={() => handleRechazarItem(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
+                                </div>
+                              )}
+                              {item.estado === 'pendiente' && !item.devuelve && (
                                 <div className={`grid gap-2 ${accionesPendiente === 4 ? 'grid-cols-2 sm:grid-cols-4' : accionesPendiente === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
                                   <button disabled={!resolverItems} onClick={() => abrirComprar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Comprar</button>
                                   {/* El depósito no se despacha a sí mismo: el material no se mueve, pero

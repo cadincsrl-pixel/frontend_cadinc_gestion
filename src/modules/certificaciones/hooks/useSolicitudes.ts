@@ -20,6 +20,10 @@ function invalidarResolucionItem(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ['cuenta-cliente-pendientes'] })
   // Revertir un ítem de_stock_cliente devuelve el consumo al ledger del cliente.
   qc.invalidateQueries({ queryKey: ['stock-cliente'] })
+  // Resolver o revertir mueve `cantidad_enviada`, que es lo que dispara el
+  // ledger del pañol (herr_entregas). Sin esto la bandeja de Salidas queda
+  // desactualizada hasta el próximo refetch.
+  qc.invalidateQueries({ queryKey: ['herr-entregas'] })
 }
 
 export function useSolicitudes(obra_cod?: string) {
@@ -86,6 +90,20 @@ export function useDespacharItem() {
   return useMutation({
     mutationFn: ({ itemId, dto }: { itemId: number; dto: any }) =>
       apiPost(`/api/solicitudes/items/${itemId}/despachar`, dto),
+    onSuccess: () => invalidarResolucionItem(qc),
+  })
+}
+
+/**
+ * La obra DEVUELVE una herramienta al pañol. No pasa por comprar/despachar:
+ * un renglón que entra no se compra, y despacharlo descontaría stock de algo
+ * que está llegando. Cierra el renglón en un paso.
+ */
+export function useRecibirDevolucion() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ itemId }: { itemId: number }) =>
+      apiPost(`/api/solicitudes/items/${itemId}/recibir-devolucion`, {}),
     onSuccess: () => invalidarResolucionItem(qc),
   })
 }

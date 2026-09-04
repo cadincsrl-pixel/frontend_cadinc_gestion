@@ -207,7 +207,10 @@ export function RemitoEnvioPrint({ remito, obraNom }: Props) {
               {remito.items.map((it, i) => (
                 <tr key={it.id} style={{ borderBottom: '1px solid #ddd' }}>
                   <td style={{ padding: '5px 8px', fontSize: '10px', color: '#666' }}>{i + 1}</td>
-                  <td style={{ padding: '5px 8px', fontSize: '11px', fontWeight: 500 }}>{it.descripcion}</td>
+                  <td style={{ padding: '5px 8px', fontSize: '11px', fontWeight: 500 }}>
+                    {it.es_herramienta && <span style={{ marginRight: 4 }}>🔧</span>}
+                    {it.descripcion}
+                  </td>
                   <td style={{ padding: '5px 8px', textAlign: 'center', fontWeight: 'bold' }}>{it.cantidad}</td>
                   <td style={{ padding: '5px 8px', textAlign: 'center', fontSize: '10px' }}>{it.unidad}</td>
                   <td style={{ padding: '5px 8px', fontSize: '10px' }}>{it.proveedor || (it.origen === 'deposito' ? 'Depósito' : it.origen)}</td>
@@ -302,12 +305,22 @@ export function htmlRemito(
   const itemsHtml = remito.items.map((it, i) => `
     <tr style="border-bottom:1px solid #ddd">
       <td style="padding:2px 4px;font-size:${fz.texto};color:#666">${i + 1}</td>
-      <td style="padding:2px 4px;font-size:${fz.texto}">${it.descripcion}</td>
+      <td style="padding:2px 4px;font-size:${fz.texto}">${it.es_herramienta ? '🔧 ' : ''}${it.descripcion}</td>
       <td style="padding:2px 4px;text-align:center;font-weight:bold;font-size:${fz.texto}">${it.cantidad}</td>
       <td style="padding:2px 4px;text-align:center;font-size:${fz.chico}">${it.unidad}</td>
       <td style="padding:2px 4px;font-size:${fz.chico}">${it.proveedor || (it.origen === 'deposito' ? 'Depósito' : it.origen)}</td>
     </tr>
   `).join('')
+
+  // Aviso de herramientas. Pedido del dueño (2026-09-03): que el papel que firma
+  // el capataz diga que la herramienta es préstamo y no entrega. Solo aparece si
+  // el remito lleva alguna, para no meter ruido en un remito de materiales.
+  const hayHerramienta = remito.items.some(it => it.es_herramienta)
+  const avisoHerrHtml = !hayHerramienta ? '' : `
+      <div style="margin-top:6px;padding:4px 6px;border:1.5px solid #1A365D;border-radius:3px;font-size:${fz.chico}">
+        <strong>🔧 Los renglones marcados son HERRAMIENTAS y deben volver al pañol.</strong>
+        No son material de consumo: quedan a cargo de quien firma la recepción.
+      </div>`
 
   // Estado del pedido original: pedido / enviado / falta por ítem. El capataz
   // ve en el papel qué le mandaron y qué tiene que seguir esperando.
@@ -392,6 +405,7 @@ export function htmlRemito(
         </tr></thead>
         <tbody>${itemsHtml}</tbody>
       </table>
+      ${avisoHerrHtml}
       ${estadoHtml}
       <!-- Firmas: en flujo normal (no absolute) — bajan con el contenido en vez
            de pisarlo. En compacto margin-top:auto las manda al pie del tercio;

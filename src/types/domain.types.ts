@@ -1215,6 +1215,61 @@ export interface HerrStats {
   ultimosMovimientos: HerrMovimiento[]
 }
 
+// ── Salidas de herramientas a obra (bandeja del pañol) ──
+// Las escribe el trigger `trg_herr_entregas_sync` sobre el delta de
+// `solicitud_compra_item.cantidad_enviada` (migración 20260904b). Fase 1 NO
+// toca el padrón de herramientas: es un log de texto de lo que se llevó.
+export type HerrEntregaEstado =
+  | 'pendiente' | 'vinculada' | 'catalogada' | 'ignorada' | 'anulada' | 'revisar'
+
+export interface HerrEntrega {
+  id:               number
+  item_id:          number | null
+  solicitud_id:     number | null
+  obra_cod:         string | null
+  descripcion:      string
+  descripcion_norm: string
+  cantidad:         number
+  unidad:           string | null
+  material_id:      number | null
+  fecha:            string
+  sentido:          'salida' | 'devolucion'
+  // 'clase' = tildado a mano · 'catalogo' = el material está marcado como
+  // herramienta · 'patron' = detectado por el texto de la descripción.
+  origen:           'clase' | 'catalogo' | 'patron' | 'manual'
+  es_backfill:      boolean
+  estado:           HerrEntregaEstado
+  herramienta_id:   number | null
+  movimiento_id:    number | null
+  remito_envio_id:  number | null
+  remito_numero:    string | null
+  nota:             string | null
+  resuelto_por:     string | null
+  resuelto_el:      string | null
+  created_at:       string
+  updated_at:       string
+}
+
+export interface HerrEntregasPage {
+  items:  HerrEntrega[]
+  total:  number
+  limit:  number
+  offset: number
+}
+
+export interface HerrEntregasStats {
+  pendientes: number
+  revisar:    number
+  obras:      number
+  // Herramientas que salieron y NO quedaron registradas. Tiene que ser 0
+  // siempre: si no, el `exception when others` del trigger tapó un error.
+  faltantes:  number
+  /** Obras con salidas, con su conteo. Viene del backend y no del listado
+   *  paginado: si se derivara de la página actual, el filtro no ofrecería las
+   *  obras que quedaron en las páginas siguientes. */
+  obras_lista: { cod: string; n: number }[]
+}
+
 // ── Ropa de trabajo ──
 export interface RopaCategoria {
   id:                 number
@@ -1343,6 +1398,14 @@ export interface SolicitudCompraItem {
    * Solo lo setea un humano con el toggle — no hay backfill heurístico.
    */
   clase?:           ItemClase
+  /**
+   * Campo CALCULADO por PostgREST (migración 20260904f): el renglón es
+   * herramienta según `es_herramienta_item()` — el tilde manual, o el material
+   * del catálogo, o el texto de la descripción. Es de solo lectura y es la
+   * única fuente: no reimplementar la regla en el cliente.
+   * `clase` cubre 4 de 256 casos reales; esto cubre los 256.
+   */
+  es_herramienta?:  boolean
   /**
    * Solo con `clase='herramienta'`: la obra DEVUELVE la herramienta en vez de
    * pedirla. Es el disparador de la devolución, que antes no existía.
@@ -1532,6 +1595,10 @@ export interface RemitoEnvioItem {
   precio_unit: number | null
   origen:      string
   proveedor:   string | null
+  // Lo calcula el trigger trg_remito_item_marca_herramienta con el mismo
+  // predicado que el ledger del pañol (migración 20260904e). El remito impreso
+  // lo usa para el 🔧 y la leyenda "debe volver al pañol".
+  es_herramienta: boolean
 }
 
 export interface RemitoEnvio {

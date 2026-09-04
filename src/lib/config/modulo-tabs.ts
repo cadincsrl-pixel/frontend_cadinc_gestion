@@ -42,7 +42,9 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
     { key: 'inventario',   label: 'Inventario',   icon: '🔧' },
     { key: 'movimientos',  label: 'Movimientos',  icon: '↔' },
     { key: 'trazabilidad', label: 'Trazabilidad', icon: '📍' },
-    { key: 'remitos',      label: 'Remitos',      icon: '📄' },
+    // 'remitos' se quitó: quedó huérfano desde 20260520_drop_herr_remitos.sql
+    // (ningún item de HERR_SUBNAV lo usaba, ocupaba lugar sin renderizar nada).
+    { key: 'salidas',      label: 'Salidas a obra', icon: '📤' },
     { key: 'parametros',   label: 'Parámetros',   icon: '⚙️' },
   ],
   certificaciones: [
