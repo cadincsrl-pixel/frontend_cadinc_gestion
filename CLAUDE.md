@@ -94,8 +94,10 @@ Cliente (Next.js)
 ### 4.2 Sub-tabs de Certificaciones (`/certificaciones?tab=...`)
 - `solicitudes` — Pedidos de compra y workflow line-item (§5.1).
 - `stock` — Stock en depósito interno por rubro.
+- `catalogo` — Catálogo de precios: precio de referencia (final, IVA incluido), fecha y última compra por material.
 - `stock-proveedor` — Materiales **comprados pero todavía en el galpón del proveedor** (§5.8).
-- `materiales` — Materiales a cuenta del cliente (facturable).
+- `stock-cliente` — Material del cliente administrado en depósito (no facturable).
+- `cuenta-corriente` — Una sola vista de `materiales_a_cuenta_cliente`: cada renglón tiene UN estado (`pago_directo` › `gasto_cadinc` › `cobrado` › `a_cobrar`, en ese orden de precedencia, derivado en `v_cuenta_corriente`), filtros en el server, resumen por obra/mes/proveedor, cargar precios, pagos del cliente y PDF (solo con la deuda del cliente). Reemplazó a `cuenta-cliente`, `gastos-cadinc` y `materiales` el 2026-09-04 (migraciones `20260904ap`/`aq`); las URLs viejas redirigen.
 
 ## 5. Reglas de negocio NO-OBVIAS (críticas)
 
