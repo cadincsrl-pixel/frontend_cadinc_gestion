@@ -16,7 +16,7 @@ function invalidarResolucionItem(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ['solicitudes'] })
   qc.invalidateQueries({ queryKey: ['stock', 'materiales'] })
   qc.invalidateQueries({ queryKey: ['stock', 'movimientos'] })
-  qc.invalidateQueries({ queryKey: ['cuenta-cliente'] })
+  qc.invalidateQueries({ queryKey: ['cuenta-corriente'] })
   qc.invalidateQueries({ queryKey: ['cuenta-cliente-pendientes'] })
   // Revertir un ítem de_stock_cliente devuelve el consumo al ledger del cliente.
   qc.invalidateQueries({ queryKey: ['stock-cliente'] })
@@ -185,7 +185,7 @@ export function useEditarItem() {
       qc.invalidateQueries({ queryKey: ['solicitudes'] })
       // Editar precio/proveedor de un ítem recalcula su fila en la cuenta del
       // cliente (MCC) → refrescar esas vistas también.
-      qc.invalidateQueries({ queryKey: ['cuenta-cliente'] })
+      qc.invalidateQueries({ queryKey: ['cuenta-corriente'] })
       qc.invalidateQueries({ queryKey: ['cuenta-cliente-pendientes'] })
     },
   })

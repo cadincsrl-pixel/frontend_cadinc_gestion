@@ -1,55 +1,11 @@
-// Hook para el tab "Cuenta del cliente". Lee materiales_a_cuenta_cliente
-// (MCC) con joins ya resueltos del backend.
-//
-// Cuando `obra_cod` está presente: filtra a esa obra (y el backend valida
-// scope). Cuando no, devuelve MCC de todas las obras permitidas al user.
-// Para usuarios con scope global (admin), el backend exige `obra_cod` —
-// si se llama sin él, la query falla con 400.
+// Hooks de la cuenta corriente que NO son el listado: pendientes de tasar,
+// carga masiva de precios y cobros (pagos del cliente). El listado y el
+// resumen viven en useCuentaCorriente.ts (20260904ap); el hook viejo de la
+// lista y el de gastos de CADINC se fueron en la fase 3 (20260904aq).
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPatch, apiPost, apiDelete } from '@/lib/api/client'
-import type { MaterialACuentaCliente, CuentaClienteCobro, MedioCobro, GastoCadincResumen } from '@/types/domain.types'
-
-/** Fila de MCC con joins que devuelve el backend. */
-export interface CuentaClienteRow extends MaterialACuentaCliente {
-  proveedores?:     { nombre: string } | null
-  facturas_compra?: { numero: string | null; adjunto_url: string | null; fecha: string | null } | null
-  /** Estado del item de la solicitud — un 'en_proveedor' con retiros
-   *  pendientes puede crecer su total, por eso no es imputable a un pago. */
-  item?:            { estado: string } | null
-}
-
-const KEYS = {
-  list: (obra?: string, aCargoDe: ACargoDeFiltro = 'cliente') => ['cuenta-cliente', obra ?? 'all', aCargoDe] as const,
-  gastos: ['cuenta-cliente', 'gastos-cadinc'] as const,
-}
-
-/** 'cliente' = lo que se le cobra (default); 'cadinc' = gasto de CADINC (llave en mano o EPP); 'todos' = ambos. */
-export type ACargoDeFiltro = 'cliente' | 'cadinc' | 'todos'
-
-export function useCuentaCliente(obra_cod?: string, enabled = true, aCargoDe: ACargoDeFiltro = 'cliente') {
-  const p = new URLSearchParams()
-  if (obra_cod) p.set('obra_cod', obra_cod)
-  if (aCargoDe !== 'cliente') p.set('a_cargo_de', aCargoDe)
-  const qs = p.toString()
-  return useQuery({
-    queryKey: KEYS.list(obra_cod, aCargoDe),
-    queryFn: () => apiGet<CuentaClienteRow[]>(`/api/cuenta-cliente${qs ? `?${qs}` : ''}`),
-    enabled,
-  })
-}
-
-/**
- * Gasto de CADINC por obra, tipo (material | epp) y mes (20260904ak): los
- * materiales de las obras llave en mano y el EPP de cualquier obra.
- */
-export function useGastosCadinc() {
-  return useQuery({
-    queryKey: KEYS.gastos,
-    queryFn:  () => apiGet<GastoCadincResumen[]>('/api/cuenta-cliente/gastos-cadinc'),
-    staleTime: 60_000,
-  })
-}
+import type { CuentaClienteCobro, MedioCobro } from '@/types/domain.types'
 
 /**
  * Carga/corrige el precio de varios ítems de MCC de una sola vez. Reusa el
@@ -69,9 +25,8 @@ export function useGuardarPreciosMCC() {
       )
       return { total: items.length, fallidos: res.filter(r => r.status === 'rejected').length }
     },
-    // Refetch de la lista (key ['cuenta-cliente', obra]) y del conteo de pendientes.
+    // Refetch de la cuenta corriente (listado y resumen) y del conteo de pendientes.
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['cuenta-cliente'] })
       qc.invalidateQueries({ queryKey: ['cuenta-cliente-pendientes'] })
       qc.invalidateQueries({ queryKey: ['cuenta-corriente'] })
     },
@@ -129,14 +84,13 @@ export function useCobrosCliente(obra_cod?: string, enabled = true) {
 }
 
 // La imputación toca filas de MCC (cobro_id/monto_cobrado): las mutaciones de
-// cobros invalidan TAMBIÉN la lista de cuenta-cliente, no solo los cobros.
+// cobros invalidan TAMBIÉN la cuenta corriente, no solo los cobros.
 export function useCrearCobroCliente() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (dto: CrearCobroInput) => apiPost<CuentaClienteCobro>('/api/cuenta-cliente/cobros', dto),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['cuenta-cliente-cobros'] })
-      qc.invalidateQueries({ queryKey: ['cuenta-cliente'] })
       qc.invalidateQueries({ queryKey: ['cuenta-corriente'] })
     },
   })
@@ -160,7 +114,6 @@ export function useEliminarCobroCliente() {
     mutationFn: (id: number) => apiDelete<{ success: boolean }>(`/api/cuenta-cliente/cobros/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['cuenta-cliente-cobros'] })
-      qc.invalidateQueries({ queryKey: ['cuenta-cliente'] })
       qc.invalidateQueries({ queryKey: ['cuenta-corriente'] })
     },
   })

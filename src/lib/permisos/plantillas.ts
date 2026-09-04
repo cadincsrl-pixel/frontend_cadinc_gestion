@@ -57,7 +57,7 @@ export const PRESETS: PresetBase[] = [
     permisos: {
       certificaciones: {
         ...fullCRUD,
-        tabs: ['solicitudes', 'stock', 'catalogo', 'stock-proveedor', 'materiales', 'cuenta-corriente', 'cuenta-cliente', 'gastos-cadinc', 'adicionales', 'costos'],
+        tabs: ['solicitudes', 'stock', 'catalogo', 'stock-proveedor', 'cuenta-corriente', 'adicionales', 'costos'],
         resolver_items: true,
         forzar_despacho: true,
       },

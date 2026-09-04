@@ -6,12 +6,9 @@ import { useTabsPermitidos } from '@/hooks/useTabsPermitidos'
 import { SolicitudesTab }     from './SolicitudesTab'
 import { StockTab }           from './StockTab'
 import { CatalogoTab }        from './CatalogoTab'
-import { MaterialesTab }      from './MaterialesTab'
 import { StockProveedorTab }  from './StockProveedorTab'
 import { StockClienteTab }    from './StockClienteTab'
-import { CuentaClienteTab }   from './CuentaClienteTab'
 import { CuentaCorrienteTab } from './cuenta-corriente/CuentaCorrienteTab'
-import { GastosCadincTab }    from './GastosCadincTab'
 
 const TABS = [
   { key: 'solicitudes',      icon: '🛒', label: 'Solicitudes',         sub: 'Pedidos de compra y envío de materiales' },
@@ -19,11 +16,16 @@ const TABS = [
   { key: 'catalogo',         icon: '🏷️', label: 'Catálogo de precios',  sub: 'Todo el catálogo: precio de referencia, de cuándo es y a quién se le compró por última vez' },
   { key: 'stock-proveedor',  icon: '🏭', label: 'Stock en proveedores', sub: 'Materiales comprados que aún quedan en el galpón del proveedor' },
   { key: 'stock-cliente',    icon: '🤝', label: 'Stock de clientes',    sub: 'Material del cliente administrado en depósito (no facturable)' },
-  { key: 'materiales',       icon: '📦', label: 'Materiales',           sub: 'Materiales a cuenta del cliente (cert_materiales)' },
   { key: 'cuenta-corriente', icon: '💳', label: 'Cuenta corriente',     sub: 'Todo lo que salió a cada obra y quién lo paga: a cobrar al cliente, cobrado, pagado directo por el cliente o gasto de CADINC' },
-  { key: 'cuenta-cliente',   icon: '💳', label: 'Cuenta del cliente',   sub: 'Lo que CADINC adelantó y lo que el cliente pagó directo' },
-  { key: 'gastos-cadinc',    icon: '🏢', label: 'Gastos de CADINC',     sub: 'Lo que gastó CADINC por obra: materiales de obras llave en mano y EPP en cualquier obra' },
 ]
+
+// Pestañas que se unificaron en "Cuenta corriente" (20260904aq): los links y
+// favoritos viejos siguen llegando.
+const TABS_LEGADO: Record<string, string> = {
+  'cuenta-cliente': 'cuenta-corriente',
+  'gastos-cadinc':  'cuenta-corriente',
+  'materiales':     'cuenta-corriente',
+}
 
 export function CertificacionesPage() {
   const router = useRouter()
@@ -35,14 +37,19 @@ export function CertificacionesPage() {
   // Si el tab del query param no está permitido, redirigir al primer tab
   // permitido. El sidebar oculta los items prohibidos pero un user podría
   // tipear `?tab=stock` directo.
+  const destinoLegado = TABS_LEGADO[tab]
   useEffect(() => {
+    if (destinoLegado) {
+      router.replace(`/certificaciones?tab=${destinoLegado}`)
+      return
+    }
     if (allowedTabs.length > 0 && !allowedTabs.includes(tab)) {
       const fallback = allowedTabs[0]
       router.replace(`/certificaciones?tab=${fallback}`)
     }
-  }, [allowedTabs, tab, router])
+  }, [allowedTabs, tab, router, destinoLegado])
 
-  if (allowedTabs.length > 0 && !allowedTabs.includes(tab)) {
+  if (destinoLegado || (allowedTabs.length > 0 && !allowedTabs.includes(tab))) {
     return null
   }
 
@@ -64,10 +71,7 @@ export function CertificacionesPage() {
         {tab === 'catalogo'        && <CatalogoTab />}
         {tab === 'stock-proveedor' && <StockProveedorTab />}
         {tab === 'stock-cliente'   && <StockClienteTab />}
-        {tab === 'materiales'      && <MaterialesTab />}
         {tab === 'cuenta-corriente' && <CuentaCorrienteTab />}
-        {tab === 'cuenta-cliente'  && <CuentaClienteTab />}
-        {tab === 'gastos-cadinc'   && <GastosCadincTab />}
       </div>
     </div>
   )

@@ -9,9 +9,8 @@ import { EMPRESA } from '@/lib/config/empresa'
 import type { CuentaClienteCobro } from '@/types/domain.types'
 
 /**
- * Lo mínimo que necesita el PDF de un renglón. Lo cumplen tanto las filas
- * viejas (`CuentaClienteRow`, proveedor en `proveedores.nombre`) como las de
- * la cuenta corriente (`CuentaRenglon`, proveedor en `proveedor_nom`).
+ * Lo mínimo que necesita el PDF de un renglón (lo cumple `CuentaRenglon`).
+ * `proveedores.nombre` queda por compatibilidad con la forma vieja del MCC.
  */
 export interface CuentaPdfRow {
   fecha_resolucion: string | null

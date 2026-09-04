@@ -1618,16 +1618,6 @@ export type MaterialesACargoDe = 'cliente' | 'cadinc'
 /** Clase de un material del catálogo. 'epp' (20260904ak): costo de CADINC, nunca se cobra al cliente. */
 export type ClaseMaterial = 'material' | 'herramienta' | 'epp'
 
-/** Fila de `v_gastos_cadinc_obra`: gasto de CADINC por obra, tipo y mes. */
-export interface GastoCadincResumen {
-  obra_cod:   string
-  tipo:       'material' | 'epp'
-  /** Primer día del mes (YYYY-MM-DD). */
-  mes:        string
-  renglones:  number
-  total:      number
-  sin_precio: number
-}
 
 /**
  * Fila del catálogo de precios (`v_catalogo_materiales`, migración 20260904v):
@@ -1785,22 +1775,6 @@ export interface RemitoEnvio {
   items:        RemitoEnvioItem[]
 }
 
-// ── Certificaciones ──
-export interface CertMaterial extends AuditFields {
-  id:             number
-  obra_cod:       string
-  fecha:          string
-  descripcion:    string
-  proveedor:      string | null
-  cantidad:       number
-  unidad:         string
-  precio_unit:    number
-  total:          number
-  obs:            string | null
-  adjunto_url:    string | null
-  adjunto_nombre: string | null
-  compra_id:      string | null
-}
 
 export interface CertAdicional extends AuditFields {
   id:             number

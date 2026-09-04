@@ -53,10 +53,7 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
     { key: 'catalogo',        label: 'Catálogo de precios',  icon: '🏷️', meta: 'Precios y última compra' },
     { key: 'stock-proveedor', label: 'Stock en proveedores', icon: '🏭',  meta: 'Materiales comprados sin retirar' },
     { key: 'stock-cliente',   label: 'Stock de clientes',    icon: '🤝',  meta: 'Material del cliente en depósito' },
-    { key: 'materiales',      label: 'Materiales',           icon: '📦',  meta: 'A cuenta del cliente' },
     { key: 'cuenta-corriente', label: 'Cuenta corriente',    icon: '💳',  meta: 'A cobrar, cobrado y gasto de CADINC por obra' },
-    { key: 'cuenta-cliente',  label: 'Cuenta del cliente',   icon: '💳',  meta: 'Deuda y pagos directos' },
-    { key: 'gastos-cadinc',   label: 'Gastos de CADINC',     icon: '🏢',  meta: 'Llave en mano y EPP' },
   ],
   caja: [
     { key: 'movimientos',   label: 'Movimientos',   icon: '💵', meta: 'Ingresos y egresos' },
