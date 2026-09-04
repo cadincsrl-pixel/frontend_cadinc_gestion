@@ -50,6 +50,7 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
   certificaciones: [
     { key: 'solicitudes',     label: 'Solicitudes',          icon: '🛒',  meta: 'Pedidos de compra y envío' },
     { key: 'stock',           label: 'Stock',                icon: '🏗️', meta: 'Stock en depósito' },
+    { key: 'catalogo',        label: 'Catálogo de precios',  icon: '🏷️', meta: 'Precios y última compra' },
     { key: 'stock-proveedor', label: 'Stock en proveedores', icon: '🏭',  meta: 'Materiales comprados sin retirar' },
     { key: 'stock-cliente',   label: 'Stock de clientes',    icon: '🤝',  meta: 'Material del cliente en depósito' },
     { key: 'materiales',      label: 'Materiales',           icon: '📦',  meta: 'A cuenta del cliente' },

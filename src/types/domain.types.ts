@@ -1516,6 +1516,43 @@ export interface StockRubro {
   activo: boolean
 }
 
+/**
+ * Fila del catálogo de precios (`v_catalogo_materiales`, migración 20260904v):
+ * el material con su rubro, el precio de referencia y de cuándo es, y la
+ * última compra real (no despachos de depósito). `uc_*` viene null si el
+ * material nunca se compró por el sistema.
+ */
+export interface CatalogoMaterial {
+  id:                    number
+  rubro_id:              number
+  rubro:                 string
+  rubro_icono:           string | null
+  nombre:                string
+  unidad:                string
+  precio_ref:            number
+  /** Cuándo cambió por última vez `precio_ref` (trigger). Null si nunca tuvo precio. */
+  precio_actualizado_en: string | null
+  proveedor_id:          number | null
+  proveedor_nombre:      string | null
+  alias:                 string[]
+  clase:                 'material' | 'herramienta'
+  activo:                boolean
+  usa_color:             boolean
+  stock_actual:          number
+  obs:                   string | null
+  updated_at:            string | null
+  uc_precio:             number | null
+  uc_proveedor:          string | null
+  uc_fecha:              string | null
+  uc_pedido:             number | null
+  uc_obra:               string | null
+}
+
+export interface CatalogoPage {
+  items: CatalogoMaterial[]
+  total: number
+}
+
 export interface StockMaterial extends AuditFields {
   id:            number
   rubro_id:      number
@@ -1524,6 +1561,8 @@ export interface StockMaterial extends AuditFields {
   stock_actual:  number
   stock_minimo:  number
   precio_ref:    number
+  /** Cuándo cambió por última vez `precio_ref` (trigger, 20260904v). */
+  precio_actualizado_en?: string | null
   proveedor_id:  number | null
   obs:           string | null
   activo:        boolean

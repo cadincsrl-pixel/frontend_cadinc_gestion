@@ -1,6 +1,6 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api/client'
-import type { StockRubro, StockMaterial, StockMovimiento } from '@/types/domain.types'
+import type { StockRubro, StockMaterial, StockMovimiento, CatalogoPage } from '@/types/domain.types'
 
 // ── Rubros ──
 export function useStockRubros() {
@@ -33,6 +33,37 @@ export function useStockMateriales(rubro_id?: number) {
       apiGet<StockMaterial[]>(
         `/api/stock/materiales${rubro_id ? `?rubro_id=${rubro_id}` : ''}`
       ),
+  })
+}
+
+export interface CatalogoFiltro {
+  q?:                 string
+  rubro_id?:          number
+  incluir_inactivos?: boolean
+  sin_precio?:        boolean
+  limit:              number
+  offset:             number
+}
+
+/**
+ * Catálogo de precios, paginado en el server (el catálogo ya pasa las 1000
+ * filas del cap de PostgREST). La key cuelga de ['stock','materiales'] a
+ * propósito: editar un precio desde acá o desde el ABM invalida las dos vistas.
+ */
+export function useCatalogo(filtro: CatalogoFiltro) {
+  const p = new URLSearchParams()
+  if (filtro.q)                 p.set('q', filtro.q)
+  if (filtro.rubro_id)          p.set('rubro_id', String(filtro.rubro_id))
+  if (filtro.incluir_inactivos) p.set('incluir_inactivos', '1')
+  if (filtro.sin_precio)        p.set('sin_precio', '1')
+  p.set('limit',  String(filtro.limit))
+  p.set('offset', String(filtro.offset))
+  return useQuery({
+    queryKey: ['stock', 'materiales', 'catalogo', filtro],
+    queryFn:  () => apiGet<CatalogoPage>(`/api/stock/catalogo?${p.toString()}`),
+    // Sin esto, cambiar de página o tipear manda `data` a undefined y la
+    // tabla se va detrás del spinner en cada paso.
+    placeholderData: keepPreviousData,
   })
 }
 

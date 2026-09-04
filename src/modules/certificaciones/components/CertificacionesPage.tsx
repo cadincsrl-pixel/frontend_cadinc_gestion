@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useTabsPermitidos } from '@/hooks/useTabsPermitidos'
 import { SolicitudesTab }     from './SolicitudesTab'
 import { StockTab }           from './StockTab'
+import { CatalogoTab }        from './CatalogoTab'
 import { MaterialesTab }      from './MaterialesTab'
 import { StockProveedorTab }  from './StockProveedorTab'
 import { StockClienteTab }    from './StockClienteTab'
@@ -13,6 +14,7 @@ import { CuentaClienteTab }   from './CuentaClienteTab'
 const TABS = [
   { key: 'solicitudes',      icon: '🛒', label: 'Solicitudes',         sub: 'Pedidos de compra y envío de materiales' },
   { key: 'stock',            icon: '🏗️', label: 'Stock',                sub: 'Stock en depósito por rubro' },
+  { key: 'catalogo',         icon: '🏷️', label: 'Catálogo de precios',  sub: 'Todo el catálogo: precio de referencia, de cuándo es y a quién se le compró por última vez' },
   { key: 'stock-proveedor',  icon: '🏭', label: 'Stock en proveedores', sub: 'Materiales comprados que aún quedan en el galpón del proveedor' },
   { key: 'stock-cliente',    icon: '🤝', label: 'Stock de clientes',    sub: 'Material del cliente administrado en depósito (no facturable)' },
   { key: 'materiales',       icon: '📦', label: 'Materiales',           sub: 'Materiales a cuenta del cliente (cert_materiales)' },
@@ -55,6 +57,7 @@ export function CertificacionesPage() {
       <div className="flex flex-col gap-4">
         {tab === 'solicitudes'     && <SolicitudesTab />}
         {tab === 'stock'           && <StockTab />}
+        {tab === 'catalogo'        && <CatalogoTab />}
         {tab === 'stock-proveedor' && <StockProveedorTab />}
         {tab === 'stock-cliente'   && <StockClienteTab />}
         {tab === 'materiales'      && <MaterialesTab />}
