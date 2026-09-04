@@ -24,6 +24,8 @@ interface Props {
   conteoTipo:   Record<CuentaTipo, number>
   conteoTodos:  number
   conteoSinPrecio: number
+  /** Sin obra elegida ni "ver todas": solo la fila de obra y buscador. */
+  compacto:     boolean
 }
 
 const chip = (active: boolean, tone: 'azul' | 'naranja' = 'azul') =>
@@ -36,7 +38,7 @@ const chip = (active: boolean, tone: 'azul' | 'naranja' = 'azul') =>
 const cnt = (active: boolean) =>
   `text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center ${active ? 'bg-white/20' : 'bg-white border border-gris-mid text-carbon'}`
 
-export function FiltrosCuenta({ filtro, patch, grupo, onGrupo, obras, proveedores, conteoEstado, conteoTipo, conteoTodos, conteoSinPrecio }: Props) {
+export function FiltrosCuenta({ filtro, patch, grupo, onGrupo, obras, proveedores, conteoEstado, conteoTipo, conteoTodos, conteoSinPrecio, compacto }: Props) {
   const [q, setQ] = useState(filtro.q ?? '')
   useEffect(() => {
     const t = setTimeout(() => { if ((filtro.q ?? '') !== q.trim()) patch({ q: q.trim() || undefined }) }, 350)
@@ -47,7 +49,7 @@ export function FiltrosCuenta({ filtro, patch, grupo, onGrupo, obras, proveedore
   const estados = filtro.estados ?? []
   const obrasVisibles = obras.filter(o => !o.archivada || filtro.archivadas || o.cod === filtro.obra_cod)
   const obraOptions = [
-    { value: '', label: '— Todas las obras —' },
+    { value: '', label: '— Elegí una obra —' },
     ...obrasVisibles.map(o => ({ value: o.cod, label: `${o.cod} — ${o.nom}${o.archivada ? ' (archivada)' : ''}` })),
   ]
 
@@ -65,7 +67,7 @@ export function FiltrosCuenta({ filtro, patch, grupo, onGrupo, obras, proveedore
       <div className="flex items-center gap-3 flex-wrap">
         <div className="min-w-[240px] flex-1 max-w-md">
           <Combobox
-            placeholder="— Todas las obras —"
+            placeholder="— Elegí una obra —"
             options={obraOptions}
             value={filtro.obra_cod ?? ''}
             onChange={v => patch({ obra_cod: v || undefined })}
@@ -93,7 +95,7 @@ export function FiltrosCuenta({ filtro, patch, grupo, onGrupo, obras, proveedore
       </div>
 
       {/* Estado + tipo + sin precio */}
-      <div className="flex items-center gap-2 flex-wrap">
+      {!compacto && <div className="flex items-center gap-2 flex-wrap">
         <div className="flex gap-1 bg-gris rounded-xl p-1 overflow-x-auto max-w-full">
           <button type="button" onClick={() => patch({ estados: undefined })} className={chip(estados.length === 0)} title="Todos los renglones">
             Todos <span className={cnt(estados.length === 0)}>{conteoTodos}</span>
@@ -120,10 +122,10 @@ export function FiltrosCuenta({ filtro, patch, grupo, onGrupo, obras, proveedore
         <button type="button" onClick={() => patch({ sin_precio: filtro.sin_precio ? undefined : true })} className={chip(!!filtro.sin_precio, 'naranja')} title="Solo renglones sin precio (a tasar)">
           ⚠ Sin precio <span className={cnt(!!filtro.sin_precio)}>{conteoSinPrecio}</span>
         </button>
-      </div>
+      </div>}
 
       {/* Proveedor, origen, período, agrupar */}
-      <div className="flex items-center gap-2 flex-wrap text-xs">
+      {!compacto && <div className="flex items-center gap-2 flex-wrap text-xs">
         <select
           value={filtro.proveedor_id ?? ''}
           onChange={e => patch({ proveedor_id: e.target.value ? Number(e.target.value) : undefined })}
@@ -165,7 +167,7 @@ export function FiltrosCuenta({ filtro, patch, grupo, onGrupo, obras, proveedore
             Limpiar filtros
           </button>
         )}
-      </div>
+      </div>}
     </div>
   )
 }

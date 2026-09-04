@@ -49,6 +49,9 @@ export function CuentaCorrienteTab() {
   const [page, setPage]     = useState(1)
   const [modalPrecios, setModalPrecios] = useState(false)
   const [exportando, setExportando]     = useState(false)
+  // Sin obra elegida no se carga nada: los totales de todas las obras juntas
+  // son información sensible, así que verlos es una decisión explícita.
+  const [verTodas, setVerTodas] = useState(false)
 
   function patch(p: Partial<CuentaFiltro>) {
     setFiltro(f => ({ ...f, ...p }))
@@ -64,8 +67,9 @@ export function CuentaCorrienteTab() {
     [proveedoresData],
   )
 
-  const { data: resumen, isLoading: cargandoResumen, error: errorResumen } = useCuentaResumen(filtro, grupo)
-  const { data: pagina, isLoading: cargandoLista, isFetching } = useCuentaRenglones(filtro, page, PAGE_SIZE)
+  const hayDatos = !!obraSel || verTodas
+  const { data: resumen, isLoading: cargandoResumen, error: errorResumen } = useCuentaResumen(filtro, grupo, hayDatos)
+  const { data: pagina, isLoading: cargandoLista, isFetching } = useCuentaRenglones(filtro, page, PAGE_SIZE, hayDatos)
   const { data: cobrosObra = [] } = useCobrosCliente(obraSel, !!obraSel)
 
   // El resumen baja sin recortar por estado ni tipo; acá se recorta para los
@@ -164,7 +168,18 @@ export function CuentaCorrienteTab() {
         obras={obras} proveedores={proveedores}
         conteoEstado={conteoEstado} conteoTipo={conteoTipo} conteoTodos={conteoTodos}
         conteoSinPrecio={filtro.sin_precio ? tot.renglones : tot.sin_precio}
+        compacto={!hayDatos}
       />
+
+      {!hayDatos && (
+        <div className="bg-white rounded-card shadow-card p-8 flex flex-col items-center gap-3 text-center">
+          <div className="text-sm text-gris-dark max-w-md">
+            Elegí una obra para ver su cuenta: qué se le cobra al cliente, qué pagó y qué es gasto de CADINC.
+            {filtro.q && <> Para buscar <b>&quot;{filtro.q}&quot;</b> en todas las obras, mostralas.</>}
+          </div>
+          <Button variant="secondary" size="sm" onClick={() => setVerTodas(true)}>Ver todas las obras</Button>
+        </div>
+      )}
 
       {errorResumen && (
         <div className="bg-rojo-light border border-rojo/30 rounded-card p-4 text-sm text-rojo">
@@ -172,32 +187,8 @@ export function CuentaCorrienteTab() {
         </div>
       )}
 
-      {/* KPIs por estado (del conjunto filtrado) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {ESTADOS.map(e => {
-          const t = tot.porEstado[e.key]
-          const apagado = (filtro.estados?.length ?? 0) > 0 && !filtro.estados!.includes(e.key)
-          return (
-            <Kpi
-              key={e.key}
-              label={e.label}
-              value={fmtM(t.total)}
-              accent={e.kpi}
-              apagado={apagado}
-              sub={
-                e.key === 'gasto_cadinc' && t.total > 0
-                  ? `mat. ${fmtM(tot.gastoMaterial)} · EPP ${fmtM(tot.gastoEpp)}`
-                  : `${t.renglones} ${t.renglones === 1 ? 'renglón' : 'renglones'}`
-              }
-              sinPrecio={t.sin_precio}
-              hint={e.hint}
-            />
-          )
-        })}
-      </div>
-
       {/* Cabecera de la obra elegida + acciones */}
-      {obraSel ? (
+      {!hayDatos ? null : obraSel ? (
         <div className="bg-white rounded-card shadow-card p-4 flex items-center justify-between gap-3 flex-wrap">
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
@@ -224,15 +215,18 @@ export function CuentaCorrienteTab() {
                 <Button variant="ghost" size="sm" onClick={() => pdf('historico')} title="Deuda, cobrado y pagos, con saldo">📄 Histórico</Button>
               </>
             )}
-            <Button variant="ghost" size="sm" onClick={() => patch({ obra_cod: undefined, sin_precio: undefined })} title="Volver a todas las obras">✕ Todas las obras</Button>
+            <Button variant="ghost" size="sm" onClick={() => patch({ obra_cod: undefined, sin_precio: undefined })} title="Cerrar esta obra">✕ Cerrar obra</Button>
           </div>
         </div>
       ) : (
         <div className="flex items-center justify-between gap-3 flex-wrap px-1">
           <p className="text-xs text-gris-dark">
-            Precios finales, IVA incluido. Elegí una obra (o hacé click en su fila) para cargar precios, registrar pagos y sacar el PDF para el cliente.
+            Todas las obras. Precios finales, IVA incluido. Hacé click en una obra para cargar precios, registrar pagos y sacar el PDF para el cliente.
           </p>
-          <Button variant="secondary" size="sm" onClick={exportar} loading={exportando} disabled={total === 0}>📊 Exportar Excel</Button>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={exportar} loading={exportando} disabled={total === 0}>📊 Exportar Excel</Button>
+            <Button variant="ghost" size="sm" onClick={() => setVerTodas(false)} title="Volver a la pantalla vacía">✕ Ocultar</Button>
+          </div>
         </div>
       )}
 
@@ -240,14 +234,14 @@ export function CuentaCorrienteTab() {
         <PagosCliente obraCod={obraSel} obraNom={obraNom} puedeCrear={puedeCrear} puedeEditar={puedeEditar} puedeEliminar={puedeEliminar} />
       )}
 
-      {mostrarResumen && (
+      {hayDatos && mostrarResumen && (
         cargandoResumen && !resumen
           ? <div className="bg-white rounded-card shadow-card p-8 text-center text-sm text-gris-dark">Cargando resumen…</div>
           : <ResumenTabla filas={filas} grupo={grupo} onElegirObra={cod => patch({ obra_cod: cod })} />
       )}
 
       {/* Renglones */}
-      <div className="bg-white rounded-card shadow-card overflow-hidden">
+      {hayDatos && <div className="bg-white rounded-card shadow-card overflow-hidden">
         <div className="px-4 pt-3 pb-2 flex items-center justify-between gap-2 flex-wrap">
           <h3 className="text-xs font-bold text-gris-dark uppercase tracking-wider">
             Renglones <span className="font-mono normal-case tracking-normal">({total.toLocaleString('es-AR')})</span>
@@ -273,31 +267,11 @@ export function CuentaCorrienteTab() {
             <Pagination page={page} total={total} pageSize={PAGE_SIZE} onChange={setPage} />
           </div>
         )}
-      </div>
+      </div>}
 
       {obraSel && (
         <ModalCargarPrecios open={modalPrecios} onClose={() => setModalPrecios(false)} obraCod={obraSel} obraNom={obraNom} />
       )}
-    </div>
-  )
-}
-
-function Kpi({ label, value, sub, sinPrecio, accent, apagado, hint }: {
-  label: string; value: string; sub: string; sinPrecio: number
-  accent: 'naranja' | 'verde' | 'gris' | 'azul'; apagado: boolean; hint: string
-}) {
-  const cls = accent === 'azul'    ? 'border-azul-light text-azul-mid'
-            : accent === 'naranja' ? 'border-naranja-light text-naranja-dark'
-            : accent === 'verde'   ? 'border-verde-light text-verde'
-            : 'border-gris-mid text-gris-dark'
-  return (
-    <div className={`bg-white rounded-card shadow-card p-3 border-l-[4px] ${cls} ${apagado ? 'opacity-40' : ''}`} title={hint}>
-      <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">{label}</div>
-      <div className="font-mono font-bold text-xl mt-1">{value}</div>
-      <div className="text-[10px] text-gris-dark mt-0.5 flex items-center gap-1.5 flex-wrap">
-        <span>{sub}</span>
-        {sinPrecio > 0 && <span className="text-[9px] font-bold bg-naranja-light text-naranja-dark px-1 py-0.5 rounded">{sinPrecio} sin precio</span>}
-      </div>
     </div>
   )
 }

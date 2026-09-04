@@ -41,12 +41,13 @@ function armarQuery(f: CuentaFiltro, extra: Record<string, string | number | und
 }
 
 /** Renglones paginados con todos los filtros aplicados en el server. */
-export function useCuentaRenglones(f: CuentaFiltro, page: number, pageSize: number) {
+export function useCuentaRenglones(f: CuentaFiltro, page: number, pageSize: number, enabled = true) {
   const qs = armarQuery(f, { limit: pageSize, offset: (page - 1) * pageSize })
   return useQuery({
     queryKey: [...CUENTA_CORRIENTE_KEY, 'renglones', qs],
     queryFn:  () => apiGet<CuentaRenglonesPage>(`/api/cuenta-cliente/renglones?${qs}`),
     placeholderData: keepPreviousData,
+    enabled,
   })
 }
 
@@ -55,12 +56,13 @@ export function useCuentaRenglones(f: CuentaFiltro, page: number, pageSize: numb
  * dimensiones se recortan en el cliente sobre el resultado, así los chips
  * muestran cuánto hay en cada una con los demás filtros puestos.
  */
-export function useCuentaResumen(f: CuentaFiltro, grupo: CuentaGrupo) {
+export function useCuentaResumen(f: CuentaFiltro, grupo: CuentaGrupo, enabled = true) {
   const qs = armarQuery({ ...f, estados: undefined, tipo: undefined }, { grupo })
   return useQuery({
     queryKey: [...CUENTA_CORRIENTE_KEY, 'resumen', qs],
     queryFn:  () => apiGet<CuentaResumen>(`/api/cuenta-cliente/resumen?${qs}`),
     placeholderData: keepPreviousData,
+    enabled,
   })
 }
 
