@@ -37,7 +37,8 @@ export function HerrRetornoModal({ open, onClose, salidas, obraNom, onListo }: P
   // Cantidad tipeada por salida; sin override = todo lo que está en obra.
   const [cant, setCant]   = useState<Record<number, string>>({})
 
-  const vivas = useMemo(() => salidas.filter(s => s.sentido === 'salida' && Number(s.en_obra) > 0), [salidas])
+  // Solo confirmadas: la base rechaza devolver una salida sin revisar.
+  const vivas = useMemo(() => salidas.filter(s => s.sentido === 'salida' && s.estado === 'confirmada' && Number(s.en_obra) > 0), [salidas])
 
   function cantidadDe(s: HerrEntrega): number {
     const raw = cant[s.id]
@@ -61,7 +62,7 @@ export function HerrRetornoModal({ open, onClose, salidas, obraNom, onListo }: P
       onError: (err: unknown) => {
         const code = (err as { body?: { error?: string } })?.body?.error
         toast(code === 'CANTIDAD_INVALIDA' ? 'Alguna cantidad supera lo que está en obra. Recargá y probá de nuevo.'
-            : code === 'SALIDA_NO_DEVOLVIBLE' ? 'Alguna salida ya no está viva (archivada o anulada).'
+            : code === 'SALIDA_NO_DEVOLVIBLE' ? 'Alguna salida no está confirmada (o fue archivada o anulada): confirmala primero en Salidas a obra.'
             : (err as Error).message || 'No se pudo registrar el retorno', 'err')
       },
     })
@@ -84,7 +85,7 @@ export function HerrRetornoModal({ open, onClose, salidas, obraNom, onListo }: P
         </p>
         {salidas.length > vivas.length && (
           <div className="text-[11px] text-naranja-dark bg-naranja-light rounded px-2 py-1">
-            {salidas.length - vivas.length} de las elegidas no siguen en obra (ya devueltas, archivadas o devoluciones) y se saltean.
+            {salidas.length - vivas.length} de las elegidas no se pueden devolver (sin confirmar, ya devueltas, archivadas o devoluciones) y se saltean.
           </div>
         )}
         <div className="border border-gris rounded-lg overflow-hidden max-h-[45vh] overflow-y-auto">

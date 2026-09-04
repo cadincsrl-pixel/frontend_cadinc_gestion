@@ -70,8 +70,8 @@ export function HerrRetornos() {
       <div>
         <h1 className="text-xl font-bold text-carbon">↩ Retorno de obra</h1>
         <p className="text-xs text-gris-dark mt-1 max-w-2xl">
-          Lo que cada obra todavía tiene del pañol, y el registro de lo que volvió. Elegí las herramientas que
-          volvieron y registrá el retorno; si volvió una parte, bajá la cantidad.
+          Lo que cada obra todavía tiene del pañol (salidas confirmadas sin devolver), y el registro de lo que volvió.
+          Elegí las herramientas que volvieron y registrá el retorno; si volvió una parte, bajá la cantidad.
         </p>
       </div>
 
@@ -79,6 +79,11 @@ export function HerrRetornos() {
         <span className="px-3 py-1.5 rounded-lg bg-white shadow-card text-xs"><b className="text-carbon">{stats?.en_obra ?? '—'}</b><span className="text-gris-dark ml-1">salidas en obra</span></span>
         <span className="px-3 py-1.5 rounded-lg bg-white shadow-card text-xs"><b className="text-carbon">{obrasConEnObra.length}</b><span className="text-gris-dark ml-1">obras con herramientas</span></span>
         <span className="px-3 py-1.5 rounded-lg bg-white shadow-card text-xs"><b className="text-carbon">{stats?.devoluciones ?? '—'}</b><span className="text-gris-dark ml-1">retornos registrados</span></span>
+        {(stats?.pendientes ?? 0) > 0 && (
+          <span className="px-3 py-1.5 rounded-lg bg-naranja-light text-naranja-dark text-xs font-bold" title="Hasta que se confirmen en Salidas a obra no aparecen acá">
+            {stats?.pendientes} sin revisar en Salidas a obra
+          </span>
+        )}
       </div>
 
       <div className="bg-white rounded-card shadow-card p-3 flex flex-col sm:flex-row gap-2">
@@ -110,7 +115,7 @@ export function HerrRetornos() {
         {cargandoEnObra ? (
           <div className="p-8 text-center text-sm text-gris-dark">Cargando…</div>
         ) : itemsEnObra.length === 0 ? (
-          <div className="p-8 text-center text-sm text-gris-dark italic">{obraCod || busquedaAplicada ? 'Nada en obra con estos filtros.' : 'No hay herramientas en obra.'}</div>
+          <div className="p-8 text-center text-sm text-gris-dark italic">{obraCod || busquedaAplicada ? 'Nada en obra con estos filtros.' : 'No hay herramientas confirmadas en obra. Lo que está sin revisar se confirma en Salidas a obra.'}</div>
         ) : (
           <div className="divide-y divide-gris">
             {itemsEnObra.map(e => (
@@ -122,7 +127,6 @@ export function HerrRetornos() {
                     <span className="text-[11px] font-mono font-bold text-azul">×{Number(e.en_obra)}</span>
                     {Number(e.devuelto) > 0 && <span className="text-[10px] text-gris-dark">de {Number(e.cantidad)} salieron, {Number(e.devuelto)} ya volvieron</span>}
                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${ORIGEN_LABEL[e.origen].cls}`} title={ORIGEN_LABEL[e.origen].title}>{ORIGEN_LABEL[e.origen].txt}</span>
-                    {e.estado === 'pendiente' && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-naranja-light text-naranja-dark" title="Todavía nadie la confirmó en Salidas a obra">sin revisar</span>}
                   </div>
                   <div className="text-[11px] text-gris-dark mt-0.5 flex items-center gap-1.5 flex-wrap">
                     <span className="font-bold text-carbon">{nombreObra(e.obra_cod)}</span>

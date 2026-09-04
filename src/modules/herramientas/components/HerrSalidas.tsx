@@ -47,8 +47,10 @@ export function fmtFecha(s: string | null | undefined) {
   return `${d}/${m}/${a}`
 }
 
+// Solo una salida CONFIRMADA puede volver: primero se decide si es herramienta
+// (Confirmar / No es), después si volvió al pañol.
 const puedeVolver = (e: HerrEntrega) =>
-  e.sentido === 'salida' && ['pendiente', 'confirmada', 'revisar'].includes(e.estado) && Number(e.en_obra) > 0
+  e.sentido === 'salida' && e.estado === 'confirmada' && Number(e.en_obra) > 0
 
 export function HerrSalidas() {
   const { puedeEditar } = usePermisos('herramientas')
@@ -158,8 +160,9 @@ export function HerrSalidas() {
       <div>
         <h1 className="text-xl font-bold text-carbon">📤 Salidas a obra</h1>
         <p className="text-xs text-gris-dark mt-1 max-w-2xl">
-          Herramientas que salieron de un pedido con remito y las que volvieron al pañol. Las salidas se registran solas;
-          el retorno se marca acá o en <b>Retorno de obra</b>. Todavía <b>no se dan de alta en el inventario</b>.
+          Herramientas que salieron de un pedido con remito. Se registran solas. El circuito es: <b>Confirmar</b> (sí, es
+          herramienta del pañol) o <b>No es herramienta</b> (el sistema la detectó mal); una vez confirmada, <b>Volvió al pañol</b>
+          cuando la traen. Todavía <b>no se dan de alta en el inventario</b>.
         </p>
       </div>
 
@@ -248,10 +251,10 @@ export function HerrSalidas() {
       {sel.size > 0 && (
         <div className="bg-carbon text-white rounded-card px-4 py-2.5 flex flex-wrap items-center gap-2">
           <span className="text-xs font-bold mr-2">{sel.size} elegida{sel.size !== 1 ? 's' : ''}</span>
-          <button disabled={!puedeEditar || ocupado} onClick={() => marcarLote('confirmada', 'confirmadas')} className={btn('bg-verde-light text-verde hover:opacity-80')} title="Sí, son herramientas del pañol y ya las vi">✓ Ya está</button>
-          <button disabled={!puedeEditar || ocupado} onClick={() => marcarLote('ignorada', 'archivadas')} className={btn('bg-white text-gris-dark hover:bg-rojo-light hover:text-rojo')} title="No son herramientas del pañol">No es</button>
+          <button disabled={!puedeEditar || ocupado} onClick={() => marcarLote('confirmada', 'confirmadas')} className={btn('bg-verde-light text-verde hover:opacity-80')} title="Sí, son herramientas del pañol">✓ Confirmar</button>
+          <button disabled={!puedeEditar || ocupado} onClick={() => marcarLote('ignorada', 'archivadas')} className={btn('bg-white text-gris-dark hover:bg-rojo-light hover:text-rojo')} title="El sistema las detectó mal: no son herramientas del pañol">No es herramienta</button>
           <button disabled={!puedeEditar || ocupado} onClick={() => marcarLote('pendiente', 'vueltas a la bandeja')} className={btn('bg-white/10 text-white hover:bg-white/20')} title="Volverlas a Sin revisar">↺ A la bandeja</button>
-          <button disabled={!puedeEditar || ocupado || elegidosVolver.length === 0} onClick={() => setRetorno(elegidosVolver)} className={btn('bg-azul-light text-azul hover:opacity-80')} title="Registrar que volvieron al pañol">
+          <button disabled={!puedeEditar || ocupado || elegidosVolver.length === 0} onClick={() => setRetorno(elegidosVolver)} className={btn('bg-azul-light text-azul hover:opacity-80')} title="Registrar que volvieron al pañol (solo las confirmadas)">
             ↩ Volvió al pañol{elegidosVolver.length > 0 && elegidosVolver.length !== sel.size ? ` (${elegidosVolver.length})` : ''}
           </button>
           <button onClick={() => setSel(new Set())} className="ml-auto text-xs text-white/70 hover:text-white">Quitar selección</button>
@@ -298,12 +301,14 @@ export function HerrSalidas() {
                         <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-verde-light text-verde" title={e.salida_id ? `Devuelve la salida #${e.salida_id}` : 'Devolución cargada en el pedido'}>
                           ↩ volvió al pañol{e.salida_id ? ` · salida #${e.salida_id}` : ''}
                         </span>
-                      ) : e.estado !== 'anulada' && e.estado !== 'ignorada' && (
+                      ) : e.estado === 'confirmada' ? (
                         devuelto > 0
                           ? <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${enObraN > 0 ? 'bg-amarillo-light text-[#7A5500]' : 'bg-gris text-gris-dark'}`}>
                               {enObraN > 0 ? `en obra ×${enObraN} · devuelto ×${devuelto}` : 'toda devuelta'}
                             </span>
                           : <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-azul-light text-azul">🏗 en obra</span>
+                      ) : (e.estado === 'pendiente' || e.estado === 'revisar') && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-naranja-light text-naranja-dark" title="Confirmala para poder registrar el retorno">sin revisar</span>
                       )}
                       <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${ORIGEN_LABEL[e.origen].cls}`} title={ORIGEN_LABEL[e.origen].title}>{ORIGEN_LABEL[e.origen].txt}</span>
                     </div>
@@ -325,17 +330,14 @@ export function HerrSalidas() {
                       <>
                         <span className="text-[11px] font-bold text-verde">✓ confirmada</span>
                         {!esDev && puedeVolver(e) && (
-                          <button disabled={!puedeEditar || ocupado} onClick={() => setRetorno([e])} title="Volvió al pañol" className={btn('bg-azul-light text-azul hover:opacity-80')}>↩ Volvió</button>
+                          <button disabled={!puedeEditar || ocupado} onClick={() => setRetorno([e])} title="La trajeron de vuelta al pañol" className={btn('bg-azul-light text-azul hover:opacity-80')}>↩ Volvió al pañol</button>
                         )}
-                        <button disabled={!puedeEditar || ocupado} onClick={() => marcarUna(e, 'pendiente', 'Vuelta a la bandeja')} title="Volverla a la bandeja" className={btn('text-gris-dark hover:text-azul hover:bg-azul-light')}>↺</button>
+                        <button disabled={!puedeEditar || ocupado} onClick={() => marcarUna(e, 'pendiente', 'Vuelta a la bandeja')} title="Volverla a Sin revisar" className={btn('text-gris-dark hover:text-azul hover:bg-azul-light')}>↺</button>
                       </>
                     ) : (
                       <>
-                        <button disabled={!puedeEditar || ocupado} onClick={() => marcarUna(e, 'confirmada', 'Confirmada')} title="Sí, es herramienta del pañol y ya la vi" className={btn('bg-verde-light text-verde hover:opacity-80')}>✓ Ya está</button>
-                        {!esDev && puedeVolver(e) && (
-                          <button disabled={!puedeEditar || ocupado} onClick={() => setRetorno([e])} title="Volvió al pañol" className={btn('bg-azul-light text-azul hover:opacity-80')}>↩ Volvió</button>
-                        )}
-                        <button disabled={!puedeEditar || ocupado} onClick={() => marcarUna(e, 'ignorada', 'Archivada')} title="Sacarla de la bandeja: esto no es una herramienta del pañol" className={btn('bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo')}>No es</button>
+                        <button disabled={!puedeEditar || ocupado} onClick={() => marcarUna(e, 'confirmada', 'Confirmada')} title="Sí, es herramienta del pañol" className={btn('bg-verde-light text-verde hover:opacity-80')}>✓ Confirmar</button>
+                        <button disabled={!puedeEditar || ocupado} onClick={() => marcarUna(e, 'ignorada', 'Archivada')} title="El sistema la detectó mal: no es una herramienta del pañol" className={btn('bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo')}>No es herramienta</button>
                       </>
                     )}
                   </div>
