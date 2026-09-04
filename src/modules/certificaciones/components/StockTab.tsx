@@ -28,7 +28,7 @@ import { UNIDADES } from '../constants'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import { toISO } from '@/lib/utils/dates'
 import { matchesSearch, normalizeText } from '@/lib/utils/text'
-import type { StockMaterial, StockRubro, StockMovimiento, Proveedor } from '@/types/domain.types'
+import type { StockMaterial, StockRubro, StockMovimiento, Proveedor, ClaseMaterial } from '@/types/domain.types'
 
 
 function fmtM(n: number) { return '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 0 }) }
@@ -81,7 +81,7 @@ interface MaterialForm {
   /** Ver `UsaColorField`. */
   usa_color: boolean
   /** Ver `ClaseField`. */
-  clase: 'material' | 'herramienta'
+  clase: ClaseMaterial
 }
 interface MovimientoForm {
   cantidad: number | string
@@ -959,6 +959,7 @@ function ClaseField({ register }: { register: UseFormRegisterReturn }) {
       <select {...register} className="px-2 py-2 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white">
         <option value="material">Material (consumible, se factura al cliente)</option>
         <option value="herramienta">🔧 Herramienta (activo de CADINC, va y vuelve)</option>
+        <option value="epp">🦺 EPP (protección personal: costo de CADINC, no se cobra)</option>
       </select>
     </label>
   )

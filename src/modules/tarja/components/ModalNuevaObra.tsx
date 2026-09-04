@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
+import { Select } from '@/components/ui/Select'
 import { Combobox } from '@/components/ui/Combobox'
 import { Button } from '@/components/ui/Button'
 import { useCreateObra, useResponsablesDisponibles, useProximoCodigoObra } from '@/modules/tarja/hooks/useObras'
@@ -20,9 +21,16 @@ const schema = z.object({
   dir:  z.string().optional(),
   resp: z.string().optional(),
   obs:  z.string().optional(),
+  // Quién se hace cargo de los materiales (20260904ak).
+  materiales_a_cargo_de: z.enum(['cliente', 'cadinc']),
 })
 
 type FormData = z.infer<typeof schema>
+
+const A_CARGO_DE_OPTIONS = [
+  { value: 'cliente', label: 'El cliente: los materiales se le cobran (cuenta del cliente)' },
+  { value: 'cadinc',  label: 'CADINC, llave en mano: todo es gasto de CADINC' },
+]
 
 interface Props {
   open: boolean
@@ -43,6 +51,7 @@ export function ModalNuevaObra({ open, onClose }: Props) {
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
+    defaultValues: { materiales_a_cargo_de: 'cliente' },
   })
 
   const opcionesCapataz = useMemo(() => [
@@ -167,6 +176,17 @@ export function ModalNuevaObra({ open, onClose }: Props) {
           placeholder="Notas adicionales"
           {...register('obs')}
         />
+        <div>
+          <Select
+            label="Materiales a cargo de"
+            options={A_CARGO_DE_OPTIONS}
+            {...register('materiales_a_cargo_de')}
+          />
+          <p className="text-[11px] text-gris-dark mt-1">
+            Se cobran en la cuenta del cliente, o quedan como gasto de CADINC si la
+            obra es llave en mano. El EPP es gasto de CADINC en cualquier caso.
+          </p>
+        </div>
       </div>
     </Modal>
   )

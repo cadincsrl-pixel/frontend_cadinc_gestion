@@ -8,7 +8,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPatch, apiPost, apiDelete } from '@/lib/api/client'
-import type { MaterialACuentaCliente, CuentaClienteCobro, MedioCobro } from '@/types/domain.types'
+import type { MaterialACuentaCliente, CuentaClienteCobro, MedioCobro, GastoCadincResumen } from '@/types/domain.types'
 
 /** Fila de MCC con joins que devuelve el backend. */
 export interface CuentaClienteRow extends MaterialACuentaCliente {
@@ -20,17 +20,34 @@ export interface CuentaClienteRow extends MaterialACuentaCliente {
 }
 
 const KEYS = {
-  list: (obra?: string) => ['cuenta-cliente', obra ?? 'all'] as const,
+  list: (obra?: string, aCargoDe: ACargoDeFiltro = 'cliente') => ['cuenta-cliente', obra ?? 'all', aCargoDe] as const,
+  gastos: ['cuenta-cliente', 'gastos-cadinc'] as const,
 }
 
-export function useCuentaCliente(obra_cod?: string, enabled = true) {
+/** 'cliente' = lo que se le cobra (default); 'cadinc' = gasto de CADINC (llave en mano o EPP); 'todos' = ambos. */
+export type ACargoDeFiltro = 'cliente' | 'cadinc' | 'todos'
+
+export function useCuentaCliente(obra_cod?: string, enabled = true, aCargoDe: ACargoDeFiltro = 'cliente') {
+  const p = new URLSearchParams()
+  if (obra_cod) p.set('obra_cod', obra_cod)
+  if (aCargoDe !== 'cliente') p.set('a_cargo_de', aCargoDe)
+  const qs = p.toString()
   return useQuery({
-    queryKey: KEYS.list(obra_cod),
-    queryFn: () =>
-      apiGet<CuentaClienteRow[]>(
-        `/api/cuenta-cliente${obra_cod ? `?obra_cod=${encodeURIComponent(obra_cod)}` : ''}`,
-      ),
+    queryKey: KEYS.list(obra_cod, aCargoDe),
+    queryFn: () => apiGet<CuentaClienteRow[]>(`/api/cuenta-cliente${qs ? `?${qs}` : ''}`),
     enabled,
+  })
+}
+
+/**
+ * Gasto de CADINC por obra, tipo (material | epp) y mes (20260904ak): los
+ * materiales de las obras llave en mano y el EPP de cualquier obra.
+ */
+export function useGastosCadinc() {
+  return useQuery({
+    queryKey: KEYS.gastos,
+    queryFn:  () => apiGet<GastoCadincResumen[]>('/api/cuenta-cliente/gastos-cadinc'),
+    staleTime: 60_000,
   })
 }
 

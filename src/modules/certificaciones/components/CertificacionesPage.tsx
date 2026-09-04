@@ -10,6 +10,7 @@ import { MaterialesTab }      from './MaterialesTab'
 import { StockProveedorTab }  from './StockProveedorTab'
 import { StockClienteTab }    from './StockClienteTab'
 import { CuentaClienteTab }   from './CuentaClienteTab'
+import { GastosCadincTab }    from './GastosCadincTab'
 
 const TABS = [
   { key: 'solicitudes',      icon: '🛒', label: 'Solicitudes',         sub: 'Pedidos de compra y envío de materiales' },
@@ -19,6 +20,7 @@ const TABS = [
   { key: 'stock-cliente',    icon: '🤝', label: 'Stock de clientes',    sub: 'Material del cliente administrado en depósito (no facturable)' },
   { key: 'materiales',       icon: '📦', label: 'Materiales',           sub: 'Materiales a cuenta del cliente (cert_materiales)' },
   { key: 'cuenta-cliente',   icon: '💳', label: 'Cuenta del cliente',   sub: 'Lo que CADINC adelantó y lo que el cliente pagó directo' },
+  { key: 'gastos-cadinc',    icon: '🏢', label: 'Gastos de CADINC',     sub: 'Lo que gastó CADINC por obra: materiales de obras llave en mano y EPP en cualquier obra' },
 ]
 
 export function CertificacionesPage() {
@@ -62,6 +64,7 @@ export function CertificacionesPage() {
         {tab === 'stock-cliente'   && <StockClienteTab />}
         {tab === 'materiales'      && <MaterialesTab />}
         {tab === 'cuenta-cliente'  && <CuentaClienteTab />}
+        {tab === 'gastos-cadinc'   && <GastosCadincTab />}
       </div>
     </div>
   )

@@ -17,6 +17,12 @@ export interface Obra extends AuditFields {
   archivada: boolean
   fecha_archivo: string | null
   es_deposito: boolean
+  /**
+   * Quién se hace cargo de los materiales (20260904ak). 'cliente': se cobran
+   * en la cuenta del cliente. 'cadinc': obra llave en mano, todo es gasto de
+   * CADINC. Cambiarlo recalcula la cuenta (trigger en la base).
+   */
+  materiales_a_cargo_de: MaterialesACargoDe
   // FK a profiles(id). Cuando se setean, el backend auto-asigna la
   // obra al user en `usuario_obras` (modulo=NULL), de modo que
   // capataces y jefes de obra ven sus obras automáticamente.
@@ -34,6 +40,7 @@ export interface CreateObraDto {
   obs?: string
   capataz_user_id?:   string | null
   jefe_obra_user_id?: string | null
+  materiales_a_cargo_de?: MaterialesACargoDe
 }
 
 export interface UpdateObraDto {
@@ -44,6 +51,7 @@ export interface UpdateObraDto {
   obs?: string
   capataz_user_id?:   string | null
   jefe_obra_user_id?: string | null
+  materiales_a_cargo_de?: MaterialesACargoDe
 }
 
 // ── Personal ──
@@ -1479,6 +1487,12 @@ export interface MaterialACuentaCliente extends AuditFields {
   factura_id:       number | null
   fecha_resolucion: string
   /**
+   * A quién se le imputa (20260904ak): 'cliente' → Cuenta del cliente;
+   * 'cadinc' → gasto de CADINC (obra llave en mano o material EPP). Lo pone
+   * la base, no se edita.
+   */
+  a_cargo_de:       MaterialesACargoDe
+  /**
    * Quién pagó al proveedor. Si `'cadinc'` → suma a la cuenta del cliente
    * (deuda). Si `'cliente'` → solo se registra para rendición (no deuda).
    * Heredado de `solicitud_compra_item.pagado_por` al insertar el MCC.
@@ -1516,6 +1530,22 @@ export interface StockRubro {
   activo: boolean
 }
 
+export type MaterialesACargoDe = 'cliente' | 'cadinc'
+
+/** Clase de un material del catálogo. 'epp' (20260904ak): costo de CADINC, nunca se cobra al cliente. */
+export type ClaseMaterial = 'material' | 'herramienta' | 'epp'
+
+/** Fila de `v_gastos_cadinc_obra`: gasto de CADINC por obra, tipo y mes. */
+export interface GastoCadincResumen {
+  obra_cod:   string
+  tipo:       'material' | 'epp'
+  /** Primer día del mes (YYYY-MM-DD). */
+  mes:        string
+  renglones:  number
+  total:      number
+  sin_precio: number
+}
+
 /**
  * Fila del catálogo de precios (`v_catalogo_materiales`, migración 20260904v):
  * el material con su rubro, el precio de referencia y de cuándo es, y la
@@ -1535,7 +1565,7 @@ export interface CatalogoMaterial {
   proveedor_id:          number | null
   proveedor_nombre:      string | null
   alias:                 string[]
-  clase:                 'material' | 'herramienta'
+  clase:                 ClaseMaterial
   activo:                boolean
   usa_color:             boolean
   stock_actual:          number
@@ -1608,7 +1638,7 @@ export interface StockMaterial extends AuditFields {
    * elegir del catálogo. No decide por sí solo — el 97,6% de los pedidos de
    * herramienta se escriben en texto libre, sin material_id.
    */
-  clase:         ItemClase
+  clase:         ClaseMaterial
   stock_rubros?: { nombre: string; icono: string | null }
   proveedores?:  { id: number; nombre: string } | null
 }

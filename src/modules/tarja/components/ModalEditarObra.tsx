@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
+import { Select } from '@/components/ui/Select'
 import { Combobox } from '@/components/ui/Combobox'
 import { Button } from '@/components/ui/Button'
 import {
@@ -23,9 +24,17 @@ const schema = z.object({
   dir:  z.string().optional(),
   resp: z.string().optional(),
   obs:  z.string().optional(),
+  // Quién se hace cargo de los materiales (20260904ak). Cambiarlo recalcula
+  // la cuenta del cliente de la obra en la base.
+  materiales_a_cargo_de: z.enum(['cliente', 'cadinc']),
 })
 
 type FormData = z.infer<typeof schema>
+
+const A_CARGO_DE_OPTIONS = [
+  { value: 'cliente', label: 'El cliente: los materiales se le cobran (cuenta del cliente)' },
+  { value: 'cadinc',  label: 'CADINC, llave en mano: todo es gasto de CADINC' },
+]
 
 interface Props {
   open: boolean
@@ -59,6 +68,7 @@ export function ModalEditarObra({ open, onClose, obra }: Props) {
         dir:  obra.dir ?? '',
         resp: obra.resp ?? '',
         obs:  obra.obs ?? '',
+        materiales_a_cargo_de: obra.materiales_a_cargo_de ?? 'cliente',
       })
       setCapatazUserId(obra.capataz_user_id ?? '')
       setJefeObraUserId(obra.jefe_obra_user_id ?? '')
@@ -205,6 +215,20 @@ export function ModalEditarObra({ open, onClose, obra }: Props) {
           placeholder="Notas adicionales"
           {...register('obs')}
         />
+
+        <div>
+          <Select
+            label="Materiales a cargo de"
+            options={A_CARGO_DE_OPTIONS}
+            {...register('materiales_a_cargo_de')}
+          />
+          <p className="text-[11px] text-gris-dark mt-1">
+            Define qué pasa con cada material que llega a la obra: se cobra en la
+            cuenta del cliente, o queda como gasto de CADINC (obra llave en mano).
+            Cambiarlo reclasifica la cuenta de la obra, salvo lo ya cobrado. El EPP
+            es gasto de CADINC en cualquier caso.
+          </p>
+        </div>
 
         <AuditInfo
           createdBy={obra?.created_by}

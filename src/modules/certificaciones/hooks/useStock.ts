@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api/client'
-import type { StockRubro, StockMaterial, StockMovimiento, CatalogoPage, CatalogoStats, CatalogoEstadoPrecio } from '@/types/domain.types'
+import type { StockRubro, StockMaterial, StockMovimiento, CatalogoPage, CatalogoStats, CatalogoEstadoPrecio, ClaseMaterial } from '@/types/domain.types'
 
 // ── Rubros ──
 export function useStockRubros() {
@@ -103,7 +103,7 @@ export interface StockMaterialFields {
    * 'material' | 'herramienta'. Espejo de `solicitud_compra_item.clase`: al
    * elegir este material en un pedido, la línea nace pre-tildada. Ver 20260902u.
    */
-  clase?:        'material' | 'herramienta'
+  clase?:        ClaseMaterial
 }
 
 /**
