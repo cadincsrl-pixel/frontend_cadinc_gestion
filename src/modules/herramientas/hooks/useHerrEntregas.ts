@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { apiGet, apiPatch } from '@/lib/api/client'
 import type { HerrEntregasPage, HerrEntregasStats, HerrEntregaEstado } from '@/types/domain.types'
 
@@ -35,6 +35,9 @@ export function useHerrEntregas(filtro: EntregasFiltro = {}) {
     queryKey: [...ENTREGAS_KEY, filtro],
     queryFn:  () => apiGet<HerrEntregasPage>(`/api/herramientas/entregas${qs(filtro)}`),
     staleTime: 60_000,
+    // Cada filtro es una queryKey distinta. Sin esto, cambiar de página o de tab
+    // manda `data` a undefined y la lista se va detrás del spinner en cada paso.
+    placeholderData: keepPreviousData,
   })
 }
 
@@ -55,8 +58,10 @@ export function useHerrEntregasStats() {
 export function useMarcarEntrega() {
   const qc = useQueryClient()
   return useMutation({
+    // `nota` va solo si se pasa. Mandarla siempre (aunque fuera null) pisaba la
+    // nota que escribe el trigger, que explica por qué la fila quedó en 'revisar'.
     mutationFn: ({ id, estado, nota }: { id: number; estado: 'pendiente' | 'ignorada' | 'revisar'; nota?: string | null }) =>
-      apiPatch(`/api/herramientas/entregas/${id}`, { estado, nota: nota ?? null }),
+      apiPatch(`/api/herramientas/entregas/${id}`, nota === undefined ? { estado } : { estado, nota }),
     onSuccess: () => { void qc.invalidateQueries({ queryKey: ENTREGAS_KEY }) },
   })
 }

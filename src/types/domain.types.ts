@@ -1267,7 +1267,7 @@ export interface HerrEntregasStats {
   /** Obras con salidas, con su conteo. Viene del backend y no del listado
    *  paginado: si se derivara de la página actual, el filtro no ofrecería las
    *  obras que quedaron en las páginas siguientes. */
-  obras_lista: { cod: string; n: number }[]
+  obras_lista: { cod: string; n: number; n_pendientes: number }[]
 }
 
 // ── Ropa de trabajo ──

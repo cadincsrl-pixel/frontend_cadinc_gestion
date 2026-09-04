@@ -1204,14 +1204,19 @@ export function SolicitudesTab() {
             <Combobox placeholder="Filtrar por obra..." options={obraOptions} value={obraFiltro} onChange={setObraFiltro} />
           </div>
           {/* El módulo Herramientas tiene su propio sidebar, que sólo se ve estando
-              adentro. Sosa vive acá, así que el puente va acá. */}
+              adentro. Sosa vive acá, así que el puente va acá.
+              `router.push` y no <a href>: en App Router un ancla cruda hace
+              navegación de documento completa, tira el cache de React Query y
+              recarga la app entera. Era el único <a href> interno del repo. */}
           {puedeVerHerramientas && (
-            <a href="/herramientas/salidas"
-               title="Herramientas que salieron a obra desde los pedidos"
-               className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-gris text-gris-dark hover:bg-azul-light hover:text-azul transition-colors text-xs font-bold min-h-[36px]">
+            <button
+              type="button"
+              onClick={() => router.push('/herramientas/salidas')}
+              title="Herramientas que salieron a obra desde los pedidos"
+              className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-gris text-gris-dark hover:bg-azul-light hover:text-azul transition-colors text-xs font-bold min-h-[36px]">
               <span>🔧</span>
               <span className="hidden sm:inline">Salidas al pañol</span>
-            </a>
+            </button>
           )}
           <Button variant="secondary" size="sm" onClick={() => setModalRemitos(true)} className="shrink-0">
             <span className="sm:hidden">📄</span>
@@ -1426,7 +1431,9 @@ export function SolicitudesTab() {
                               </td>
                               <td className="px-4 py-2.5">
                                 <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${cfg.bg} ${cfg.text}`}>{cfg.label}</span>
-                                {item.estado === 'enviado' && (!item.precio_unit || Number(item.precio_unit) === 0) && !obra?.es_deposito && (
+                                {/* `!item.devuelve`: una herramienta que VUELVE de la obra nunca va a tener
+                                    precio de compra, así que el aviso quedaba clavado para siempre. */}
+                                {item.estado === 'enviado' && !item.devuelve && (!item.precio_unit || Number(item.precio_unit) === 0) && !obra?.es_deposito && (
                                   <div className="mt-1">
                                     <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-amarillo-light text-[#7A5500]">⚠ sin precio</span>
                                   </div>
@@ -1525,7 +1532,7 @@ export function SolicitudesTab() {
                                         )
                                       )}
                                       {item.estado === 'enviado' && (
-                                        <button disabled={!resolverItems} onClick={() => handleRevertirEnvio(item.id!)} title="Deshacer el envío (vuelve a comprado/depósito, borra el remito)" className="text-xs font-bold px-3 py-1.5 rounded text-gris-dark hover:text-rojo hover:bg-rojo-light min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">↩ Deshacer envío</button>
+                                        <button disabled={!resolverItems} onClick={() => handleRevertirEnvio(item.id!)} title={item.devuelve ? 'Deshacer la recepción (el renglón vuelve a quedar pendiente de recibir)' : 'Deshacer el envío (vuelve a comprado/depósito, borra el remito)'} className="text-xs font-bold px-3 py-1.5 rounded text-gris-dark hover:text-rojo hover:bg-rojo-light min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">↩ Deshacer {item.devuelve ? 'recepción' : 'envío'}</button>
                                       )}
                                     </>
                                   )}
@@ -1787,7 +1794,9 @@ export function SolicitudesTab() {
                             </div>
                             <div className="shrink-0 flex flex-col items-end gap-1">
                               <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${cfg.bg} ${cfg.text}`}>{cfg.label}</span>
-                              {item.estado === 'enviado' && (!item.precio_unit || Number(item.precio_unit) === 0) && !obra?.es_deposito && (
+                              {/* `!item.devuelve`: una herramienta que VUELVE de la obra nunca va a tener
+                                    precio de compra, así que el aviso quedaba clavado para siempre. */}
+                                {item.estado === 'enviado' && !item.devuelve && (!item.precio_unit || Number(item.precio_unit) === 0) && !obra?.es_deposito && (
                                 <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-amarillo-light text-[#7A5500]">⚠ sin precio</span>
                               )}
                             </div>
@@ -1892,7 +1901,7 @@ export function SolicitudesTab() {
                                 </div>
                               )}
                               {item.estado === 'enviado' && (
-                                <button disabled={!resolverItems} onClick={() => handleRevertirEnvio(item.id!)} className="w-full text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">↩ Deshacer envío</button>
+                                <button disabled={!resolverItems} onClick={() => handleRevertirEnvio(item.id!)} className="w-full text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">↩ Deshacer {item.devuelve ? 'recepción' : 'envío'}</button>
                               )}
                             </div>
                           )}

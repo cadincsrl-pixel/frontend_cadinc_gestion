@@ -80,7 +80,10 @@ export const PRESETS: PresetBase[] = [
         lectura: true, creacion: true, actualizacion: true, eliminacion: false,
         // Excluye 'parametros' para mantener configuración de tipos/categorías
         // como territorio admin.
-        tabs: ['inventario', 'movimientos', 'trazabilidad'],
+        // 'salidas' = la bandeja del pañol (lo que salió a obra desde un pedido).
+        // Sin esta línea, reaplicar el preset le pisa el tab a quien ya lo tenía
+        // por la migración 20260904d: es el 6º lugar del bug de Áridos.
+        tabs: ['inventario', 'movimientos', 'trazabilidad', 'salidas'],
       },
     },
     obras_scope_default: 'todas',

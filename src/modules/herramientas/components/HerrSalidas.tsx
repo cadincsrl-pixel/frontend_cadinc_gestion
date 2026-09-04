@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useHerrEntregas, useHerrEntregasStats, useMarcarEntrega } from '../hooks/useHerrEntregas'
 import { useObras } from '@/modules/tarja/hooks/useObras'
 import { usePermisos } from '@/hooks/usePermisos'
@@ -54,16 +54,26 @@ export function HerrSalidas() {
   const [busqueda, setBusqueda] = useState('')
   const [page, setPage]         = useState(1)
 
+  // Debounce: `busqueda` es parte de la queryKey, así que sin esto cada tecla
+  // disparaba un request y, al no haber cache para esa key nueva, el componente
+  // se iba a la rama del spinner y desmontaba la lista en cada letra.
+  const [busquedaAplicada, setBusquedaAplicada] = useState('')
+  useEffect(() => {
+    const t = setTimeout(() => { setBusquedaAplicada(busqueda.trim()); setPage(1) }, 350)
+    return () => clearTimeout(t)
+  }, [busqueda])
+
   const filtro = {
     ...(tab !== 'todas' ? { estado: tab } : {}),
     ...(obraCod ? { obra_cod: obraCod } : {}),
-    ...(busqueda.trim() ? { q: busqueda.trim() } : {}),
+    ...(busquedaAplicada ? { q: busquedaAplicada } : {}),
     limit:  PAGE_SIZE,
     offset: (page - 1) * PAGE_SIZE,
   }
 
-  const { data, isLoading } = useHerrEntregas(filtro)
-  const { data: stats }     = useHerrEntregasStats()
+
+  const { data, isLoading, isError, error, refetch } = useHerrEntregas(filtro)
+  const { data: stats, isError: statsError } = useHerrEntregasStats()
   const { data: obras = [] } = useObras()
   const { mutate: marcar, isPending } = useMarcarEntrega()
 
@@ -86,14 +96,19 @@ export function HerrSalidas() {
   function cambiarTab(k: HerrEntregaEstado | 'todas') { setTab(k); setPage(1) }
 
   function archivar(e: HerrEntrega) {
-    marcar({ id: e.id, estado: 'ignorada', nota: 'marcada como "no es herramienta"' }, {
-      onSuccess: () => toast('Archivada', 'ok'),
+    // Si era la última fila de la página, hay que retroceder: si no, la request
+    // siguiente pide un offset que ya no existe y la lista se ve vacía, como si
+    // no quedara nada pendiente. Va acá y no en un efecto (React 19 prohíbe el
+    // set-state-in-effect, y acá además se sabe exactamente cuándo pasa).
+    const eraLaUltima = items.length === 1 && page > 1
+    marcar({ id: e.id, estado: 'ignorada' }, {
+      onSuccess: () => { if (eraLaUltima) setPage(p => p - 1); toast('Archivada', 'ok') },
       onError:   (err: unknown) => toast((err as Error).message || 'Error', 'err'),
     })
   }
 
   function desarchivar(e: HerrEntrega) {
-    marcar({ id: e.id, estado: 'pendiente', nota: null }, {
+    marcar({ id: e.id, estado: 'pendiente' }, {
       onSuccess: () => toast('Vuelta a la bandeja', 'ok'),
       onError:   (err: unknown) => toast((err as Error).message || 'Error', 'err'),
     })
@@ -127,6 +142,12 @@ export function HerrSalidas() {
         )}
         {/* Si esto aparece, el trigger se tragó un error y hay herramientas que
             salieron sin quedar registradas. Nunca debería verse. */}
+        {statsError && (
+          <span className="px-3 py-1.5 rounded-lg bg-amarillo-light text-[#7A5500] text-xs font-bold"
+                title="No se pudieron leer los contadores; la alarma de faltantes no es confiable ahora mismo">
+            ⚠ contadores no disponibles
+          </span>
+        )}
         {(stats?.faltantes ?? 0) > 0 && (
           <span
             className="px-3 py-1.5 rounded-lg bg-rojo text-white text-xs font-bold"
@@ -158,7 +179,7 @@ export function HerrSalidas() {
           <Input
             placeholder="Buscar por descripción…"
             value={busqueda}
-            onChange={e => { setBusqueda(e.target.value); setPage(1) }}
+            onChange={e => setBusqueda(e.target.value)}
           />
         </div>
         <select
@@ -167,14 +188,26 @@ export function HerrSalidas() {
           className="px-3 py-2 text-sm border-[1.5px] border-gris-mid rounded-lg outline-none focus:border-naranja bg-white sm:w-64"
         >
           <option value="">Todas las obras</option>
-          {obrasConSalidas.map(o => (
-            <option key={o.cod} value={o.cod}>{(obraNom.get(o.cod) ?? o.cod)} ({o.n})</option>
-          ))}
+          {obrasConSalidas.map(o => {
+            // El conteo tiene que hablar del tab que se está mirando: mostrar el
+            // total mientras la lista filtra por 'pendiente' daba un número de
+            // otro universo que el de la lista.
+            const n = tab === 'pendiente' ? o.n_pendientes : o.n
+            return <option key={o.cod} value={o.cod}>{(obraNom.get(o.cod) ?? o.cod)} ({n})</option>
+          })}
         </select>
       </div>
 
       {/* Listado */}
-      {isLoading ? (
+      {isError ? (
+        <div className="bg-white rounded-card shadow-card p-8 text-center">
+          <div className="text-sm font-bold text-rojo">No se pudo cargar la bandeja</div>
+          <div className="text-xs text-gris-dark mt-1">{(error as Error)?.message ?? 'Error desconocido'}</div>
+          <button onClick={() => void refetch()} className="mt-3 text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-azul-light hover:text-azul min-h-[36px]">
+            Reintentar
+          </button>
+        </div>
+      ) : isLoading ? (
         <div className="bg-white rounded-card shadow-card p-8 flex items-center justify-center gap-3 text-gris-dark">
           <span className="w-5 h-5 border-2 border-naranja border-t-transparent rounded-full animate-spin" />
           Cargando…
