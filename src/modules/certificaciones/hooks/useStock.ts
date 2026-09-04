@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api/client'
-import type { StockRubro, StockMaterial, StockMovimiento, CatalogoPage } from '@/types/domain.types'
+import type { StockRubro, StockMaterial, StockMovimiento, CatalogoPage, CatalogoStats, CatalogoEstadoPrecio } from '@/types/domain.types'
 
 // ── Rubros ──
 export function useStockRubros() {
@@ -40,7 +40,8 @@ export interface CatalogoFiltro {
   q?:                 string
   rubro_id?:          number
   incluir_inactivos?: boolean
-  sin_precio?:        boolean
+  /** 'sin_precio' agrupa sin_precio + tasar; el resto es el estado exacto. */
+  estado?:            CatalogoEstadoPrecio
   limit:              number
   offset:             number
 }
@@ -55,7 +56,7 @@ export function useCatalogo(filtro: CatalogoFiltro) {
   if (filtro.q)                 p.set('q', filtro.q)
   if (filtro.rubro_id)          p.set('rubro_id', String(filtro.rubro_id))
   if (filtro.incluir_inactivos) p.set('incluir_inactivos', '1')
-  if (filtro.sin_precio)        p.set('sin_precio', '1')
+  if (filtro.estado)            p.set('estado', filtro.estado)
   p.set('limit',  String(filtro.limit))
   p.set('offset', String(filtro.offset))
   return useQuery({
@@ -64,6 +65,14 @@ export function useCatalogo(filtro: CatalogoFiltro) {
     // Sin esto, cambiar de página o tipear manda `data` a undefined y la
     // tabla se va detrás del spinner en cada paso.
     placeholderData: keepPreviousData,
+  })
+}
+
+/** Conteo por estado de precio (activos), para los chips del filtro. */
+export function useCatalogoStats() {
+  return useQuery({
+    queryKey: ['stock', 'materiales', 'catalogo', 'stats'],
+    queryFn:  () => apiGet<CatalogoStats>('/api/stock/catalogo/stats'),
   })
 }
 

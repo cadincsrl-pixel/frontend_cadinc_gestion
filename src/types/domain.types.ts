@@ -1546,11 +1546,30 @@ export interface CatalogoMaterial {
   uc_fecha:              string | null
   uc_pedido:             number | null
   uc_obra:               string | null
+  /**
+   * Qué hay que hacer con el precio (lo calcula la vista, 20260904z):
+   * sin_precio (ni precio ni compra) · tasar (sin precio, con compra para
+   * tomar) · desactualizado (difiere >0,5% de la última compra) · al_dia ·
+   * sin_compra (tiene precio, nunca se compró por el sistema).
+   */
+  estado_precio:         CatalogoEstadoPrecio
+  /** Última compra vs referencia, en % (null si falta alguno de los dos). */
+  dif_pct:               number | null
 }
+
+export type CatalogoEstadoPrecio = 'sin_precio' | 'tasar' | 'desactualizado' | 'al_dia' | 'sin_compra'
 
 export interface CatalogoPage {
   items: CatalogoMaterial[]
   total: number
+}
+
+export interface CatalogoStats {
+  total:          number
+  sin_precio:     number
+  tasar:          number
+  desactualizado: number
+  al_dia:         number
 }
 
 export interface StockMaterial extends AuditFields {
