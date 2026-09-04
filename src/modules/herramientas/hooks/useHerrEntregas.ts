@@ -48,6 +48,18 @@ export function useHerrEntregas(filtro: EntregasFiltro = {}, enabled = true) {
   })
 }
 
+/** Todas las filas de un filtro, de a 200 (para agrupar en el cliente sin chocar con el techo de 1000). */
+export async function fetchHerrEntregasTodas(filtro: EntregasFiltro): Promise<HerrEntrega[]> {
+  const PAGE = 200
+  const all: HerrEntrega[] = []
+  for (let offset = 0; ; offset += PAGE) {
+    const page = await apiGet<HerrEntregasPage>(`/api/herramientas/entregas${qs({ ...filtro, limit: PAGE, offset })}`)
+    all.push(...page.items)
+    if (page.items.length < PAGE) break
+  }
+  return all
+}
+
 export function useHerrEntregasStats() {
   return useQuery({
     queryKey: [...ENTREGAS_KEY, 'stats'],
