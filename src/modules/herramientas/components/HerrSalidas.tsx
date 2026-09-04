@@ -31,10 +31,11 @@ const ORIGEN_LABEL: Record<HerrEntrega['origen'], { txt: string; cls: string; ti
 }
 
 const TABS: { key: HerrEntregaEstado | 'todas'; label: string }[] = [
-  { key: 'pendiente', label: 'Sin catalogar' },
-  { key: 'revisar',   label: 'A revisar' },
-  { key: 'ignorada',  label: 'Archivadas' },
-  { key: 'todas',     label: 'Todas' },
+  { key: 'pendiente',  label: 'Sin revisar' },
+  { key: 'confirmada', label: 'Confirmadas' },
+  { key: 'revisar',    label: 'A revisar' },
+  { key: 'ignorada',   label: 'Archivadas' },
+  { key: 'todas',      label: 'Todas' },
 ]
 
 function fmtFecha(s: string | null | undefined) {
@@ -95,6 +96,17 @@ export function HerrSalidas() {
 
   function cambiarTab(k: HerrEntregaEstado | 'todas') { setTab(k); setPage(1) }
 
+  // "Sí, es herramienta y ya la vi." Saca la fila de la bandeja SIN tocar el
+  // padrón (eso es fase 2). Sin esto, la única forma de vaciar la bandeja era
+  // archivar herramientas reales como "no es herramienta".
+  function confirmar(e: HerrEntrega) {
+    const eraLaUltima = items.length === 1 && page > 1
+    marcar({ id: e.id, estado: 'confirmada' }, {
+      onSuccess: () => { if (eraLaUltima) setPage(p => p - 1); toast('Confirmada', 'ok') },
+      onError:   (err: unknown) => toast((err as Error).message || 'Error', 'err'),
+    })
+  }
+
   function archivar(e: HerrEntrega) {
     // Si era la última fila de la página, hay que retroceder: si no, la request
     // siguiente pide un offset que ya no existe y la lista se ve vacía, como si
@@ -129,7 +141,7 @@ export function HerrSalidas() {
       <div className="flex flex-wrap gap-2">
         <span className="px-3 py-1.5 rounded-lg bg-white shadow-card text-xs">
           <b className="text-carbon">{stats?.pendientes ?? '—'}</b>
-          <span className="text-gris-dark ml-1">sin catalogar</span>
+          <span className="text-gris-dark ml-1">sin revisar</span>
         </span>
         <span className="px-3 py-1.5 rounded-lg bg-white shadow-card text-xs">
           <b className="text-carbon">{stats?.obras ?? '—'}</b>
@@ -215,7 +227,7 @@ export function HerrSalidas() {
       ) : items.length === 0 ? (
         <div className="bg-white rounded-card shadow-card p-8 text-center text-gris-dark text-sm italic">
           {tab === 'pendiente'
-            ? 'No hay herramientas sin catalogar. Cuando salga una en un remito, aparece sola acá.'
+            ? 'Nada sin revisar. Cuando salga una herramienta en un remito, aparece sola acá.'
             : 'Sin resultados.'}
         </div>
       ) : (
@@ -275,15 +287,37 @@ export function HerrSalidas() {
                   </button>
                 ) : e.estado === 'anulada' ? (
                   <span className="text-[11px] text-gris-dark italic">envío deshecho</span>
+                ) : e.estado === 'confirmada' ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold text-verde">✓ confirmada</span>
+                    <button
+                      disabled={!puedeEditar || isPending}
+                      onClick={() => desarchivar(e)}
+                      title="Volverla a la bandeja"
+                      className="text-xs font-bold px-3 py-1.5 rounded text-gris-dark hover:text-azul hover:bg-azul-light transition-colors min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      ↩
+                    </button>
+                  </div>
                 ) : (
-                  <button
-                    disabled={!puedeEditar || isPending}
-                    onClick={() => archivar(e)}
-                    title="Sacarla de la bandeja: esto no es una herramienta del pañol"
-                    className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    No es herramienta
-                  </button>
+                  <div className="flex gap-1.5">
+                    <button
+                      disabled={!puedeEditar || isPending}
+                      onClick={() => confirmar(e)}
+                      title="Sí, es herramienta del pañol y ya la vi"
+                      className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 transition-colors min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      ✓ Ya está
+                    </button>
+                    <button
+                      disabled={!puedeEditar || isPending}
+                      onClick={() => archivar(e)}
+                      title="Sacarla de la bandeja: esto no es una herramienta del pañol"
+                      className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      No es
+                    </button>
+                  </div>
                 )}
               </div>
             </div>

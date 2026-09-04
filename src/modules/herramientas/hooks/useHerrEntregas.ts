@@ -60,7 +60,7 @@ export function useMarcarEntrega() {
   return useMutation({
     // `nota` va solo si se pasa. Mandarla siempre (aunque fuera null) pisaba la
     // nota que escribe el trigger, que explica por qué la fila quedó en 'revisar'.
-    mutationFn: ({ id, estado, nota }: { id: number; estado: 'pendiente' | 'ignorada' | 'revisar'; nota?: string | null }) =>
+    mutationFn: ({ id, estado, nota }: { id: number; estado: 'pendiente' | 'confirmada' | 'ignorada' | 'revisar'; nota?: string | null }) =>
       apiPatch(`/api/herramientas/entregas/${id}`, nota === undefined ? { estado } : { estado, nota }),
     onSuccess: () => { void qc.invalidateQueries({ queryKey: ENTREGAS_KEY }) },
   })

@@ -1220,7 +1220,7 @@ export interface HerrStats {
 // `solicitud_compra_item.cantidad_enviada` (migración 20260904b). Fase 1 NO
 // toca el padrón de herramientas: es un log de texto de lo que se llevó.
 export type HerrEntregaEstado =
-  | 'pendiente' | 'vinculada' | 'catalogada' | 'ignorada' | 'anulada' | 'revisar'
+  | 'pendiente' | 'confirmada' | 'vinculada' | 'catalogada' | 'ignorada' | 'anulada' | 'revisar'
 
 export interface HerrEntrega {
   id:               number
