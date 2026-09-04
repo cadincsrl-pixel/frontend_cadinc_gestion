@@ -7,7 +7,24 @@ import pdfFonts from 'pdfmake/build/vfs_fonts'
 import type { TDocumentDefinitions, Content } from 'pdfmake/interfaces'
 import { EMPRESA } from '@/lib/config/empresa'
 import type { CuentaClienteCobro } from '@/types/domain.types'
-import type { CuentaClienteRow } from '../hooks/useCuentaCliente'
+
+/**
+ * Lo mínimo que necesita el PDF de un renglón. Lo cumplen tanto las filas
+ * viejas (`CuentaClienteRow`, proveedor en `proveedores.nombre`) como las de
+ * la cuenta corriente (`CuentaRenglon`, proveedor en `proveedor_nom`).
+ */
+export interface CuentaPdfRow {
+  fecha_resolucion: string | null
+  descripcion:      string
+  cantidad:         number
+  unidad:           string
+  precio_unit:      number
+  precio_total:     number | null
+  cobro_id:         number | null
+  pagado_por:       string
+  proveedor_nom?:   string | null
+  proveedores?:     { nombre: string } | null
+}
 
 ;(pdfMake as any).vfs = (pdfFonts as any)?.vfs ?? (pdfFonts as any)?.pdfMake?.vfs ?? pdfFonts
 
@@ -37,7 +54,7 @@ const MEDIO_LABEL: Record<string, string> = {
 export function descargarCuentaClienteObraPdf(args: {
   obraCod:    string
   obraNombre: string
-  rows:       CuentaClienteRow[]
+  rows:       CuentaPdfRow[]
   cobros:     CuentaClienteCobro[]
   modo:       'deuda' | 'historico'
 }) {
@@ -64,7 +81,7 @@ export function descargarCuentaClienteObraPdf(args: {
       { text: fmtFecha(r.fecha_resolucion), fontSize: 8 },
       { text: r.descripcion, fontSize: 8 },
       { text: `${Number(r.cantidad).toLocaleString('es-AR')} ${r.unidad}`, fontSize: 8, alignment: 'right' },
-      { text: r.proveedores?.nombre ?? '—', fontSize: 7, color: '#666' },
+      { text: r.proveedor_nom ?? r.proveedores?.nombre ?? '—', fontSize: 7, color: '#666' },
       Number(r.precio_unit) > 0
         ? { text: fmtM(Number(r.precio_unit)), fontSize: 8, alignment: 'right' }
         : { text: 'sin tasar', fontSize: 7, alignment: 'right', color: '#C05621', italics: true },

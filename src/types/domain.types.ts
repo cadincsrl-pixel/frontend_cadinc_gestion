@@ -1521,6 +1521,89 @@ export interface CuentaClienteCobro extends AuditFields {
   comprobante_url:  string | null
 }
 
+// ── Cuenta corriente (20260904ap) ──
+// Una sola vista para lo que se le cobra al cliente y lo que gastó CADINC.
+// Cada renglón de la cuenta tiene UN estado excluyente (lo deriva la vista
+// v_cuenta_corriente, en este orden): pago_directo (el cliente le pagó al
+// proveedor), gasto_cadinc (llave en mano o EPP), cobrado, a_cobrar.
+
+export type CuentaEstado = 'a_cobrar' | 'cobrado' | 'pago_directo' | 'gasto_cadinc'
+export type CuentaTipo   = 'material' | 'epp'
+export type CuentaGrupo  = 'obra' | 'mes' | 'proveedor'
+
+export interface CuentaRenglon {
+  id:                  number
+  obra_cod:            string
+  obra_nom:            string
+  obra_archivada:      boolean
+  obra_modalidad:      MaterialesACargoDe
+  solicitud_id:        number
+  item_id:             number
+  descripcion:         string
+  cantidad:            number
+  unidad:              string
+  precio_unit:         number
+  precio_total:        number
+  origen:              'proveedor' | 'deposito'
+  proveedor_id:        number | null
+  proveedor_nom:       string | null
+  factura_id:          number | null
+  factura_numero:      string | null
+  factura_adjunto_url: string | null
+  factura_fecha:       string | null
+  fecha_resolucion:    string
+  /** YYYY-MM de fecha_resolucion. */
+  mes:                 string
+  pagado_por:          PagadoPor
+  a_cargo_de:          MaterialesACargoDe
+  cobro_id:            number | null
+  monto_cobrado:       number | null
+  /** Estado del ítem de la solicitud (imputable a un pago solo si es final). */
+  item_estado:         string
+  material_id:         number | null
+  clase:               ClaseMaterial | null
+  rubro_id:            number | null
+  rubro_nom:           string | null
+  tipo:                CuentaTipo
+  estado:              CuentaEstado
+  /** Por qué es gasto de CADINC (solo si a_cargo_de = 'cadinc'). */
+  motivo_cadinc:       'llave_en_mano' | 'epp' | null
+  created_at:          string
+  updated_at:          string
+}
+
+export interface CuentaRenglonesPage {
+  items:  CuentaRenglon[]
+  total:  number
+  limit:  number
+  offset: number
+}
+
+/** Una fila por grupo × estado × tipo del conjunto filtrado. */
+export interface CuentaResumenGrupo {
+  grupo:      string
+  grupo_nom:  string
+  /** Modalidad de la obra (solo cuando el grupo es 'obra'). */
+  modalidad:  MaterialesACargoDe | null
+  estado:     CuentaEstado
+  tipo:       CuentaTipo
+  renglones:  number
+  total:      number
+  sin_precio: number
+  ultimo:     string | null
+}
+
+export interface CuentaResumenPagos {
+  obra_cod: string
+  pagos:    number
+  monto:    number
+}
+
+export interface CuentaResumen {
+  grupos: CuentaResumenGrupo[]
+  pagos:  CuentaResumenPagos[]
+}
+
 // ── Stock en Depósito ──
 export interface StockRubro {
   id:     number

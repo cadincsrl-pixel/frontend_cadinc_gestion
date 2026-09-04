@@ -73,6 +73,7 @@ export function useGuardarPreciosMCC() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['cuenta-cliente'] })
       qc.invalidateQueries({ queryKey: ['cuenta-cliente-pendientes'] })
+      qc.invalidateQueries({ queryKey: ['cuenta-corriente'] })
     },
   })
 }
@@ -115,8 +116,9 @@ export interface EditarCobroInput {
 // los KPIs de "todas mis obras" incluyan los pagos. Para scope global (admin)
 // el backend responde 400 igual que el listado de MCC; retry off para no
 // spamear.
-export function useCobrosCliente(obra_cod?: string) {
+export function useCobrosCliente(obra_cod?: string, enabled = true) {
   return useQuery({
+    enabled,
     queryKey: COBROS_KEY(obra_cod),
     queryFn: () =>
       apiGet<CuentaClienteCobro[]>(
@@ -135,6 +137,7 @@ export function useCrearCobroCliente() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['cuenta-cliente-cobros'] })
       qc.invalidateQueries({ queryKey: ['cuenta-cliente'] })
+      qc.invalidateQueries({ queryKey: ['cuenta-corriente'] })
     },
   })
 }
@@ -144,7 +147,10 @@ export function useEditarCobroCliente() {
   return useMutation({
     mutationFn: ({ id, ...dto }: EditarCobroInput) =>
       apiPatch<CuentaClienteCobro>(`/api/cuenta-cliente/cobros/${id}`, dto),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['cuenta-cliente-cobros'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cuenta-cliente-cobros'] })
+      qc.invalidateQueries({ queryKey: ['cuenta-corriente'] })
+    },
   })
 }
 
@@ -155,6 +161,7 @@ export function useEliminarCobroCliente() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['cuenta-cliente-cobros'] })
       qc.invalidateQueries({ queryKey: ['cuenta-cliente'] })
+      qc.invalidateQueries({ queryKey: ['cuenta-corriente'] })
     },
   })
 }
