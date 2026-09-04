@@ -101,7 +101,7 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="text-xs text-gris-dark">
             {isLoading ? 'Cargando…' : <>
-              {editables.length} renglón{editables.length !== 1 ? 'es' : ''} ·{' '}
+              {editables.length} {editables.length === 1 ? 'renglón' : 'renglones'} ·{' '}
               <span className="font-bold text-naranja-dark">{sinPrecio} sin precio</span>. Precio unitario final (IVA incluido); el total se calcula solo.
               {cobrados > 0 && ` ${cobrados} ya cobrado${cobrados !== 1 ? 's' : ''} no se pueden retasar.`}
             </>}

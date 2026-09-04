@@ -78,7 +78,7 @@ function buildResumen(wb: ExcelJS.Workbook, { rows, pagos, filtroTxt, cuentaComp
   ws.mergeCells(2, 1, 2, NCOLS)
   const s = ws.getCell(2, 1)
   const sinTasar = rows.filter(r => Number(r.precio_unit) === 0).length
-  const warn = sinTasar > 0 ? `  ·  ⚠ ${sinTasar} renglón${sinTasar !== 1 ? 'es' : ''} sin precio (a $0)` : ''
+  const warn = sinTasar > 0 ? `  ·  ⚠ ${sinTasar} ${sinTasar === 1 ? 'renglón' : 'renglones'} sin precio (a $0)` : ''
   s.value = `Generado: ${fmtFechaCorta(generadoEn)}  ·  Filtro: ${filtroTxt}${warn}  ·  Precios finales, IVA incluido`
   s.font = { name: 'Calibri', size: 10, italic: true, color: { argb: sinTasar > 0 ? 'FFC05621' : C_CARBON } }
   s.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 }
@@ -165,7 +165,7 @@ function buildDetalle(wb: ExcelJS.Workbook, rows: CuentaRenglon[]): void {
 
   ws.mergeCells(2, 1, 2, NCOLS)
   const s = ws.getCell(2, 1)
-  s.value = `${rows.length} renglón${rows.length !== 1 ? 'es' : ''}`
+  s.value = `${rows.length} ${rows.length === 1 ? 'renglón' : 'renglones'}`
   s.font = { name: 'Calibri', size: 10, italic: true, color: { argb: C_CARBON } }
   s.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 }
   s.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C_AZUL_LIGHT } }

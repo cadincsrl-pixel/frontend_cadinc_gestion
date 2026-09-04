@@ -143,7 +143,7 @@ export function CuentaCorrienteTab() {
       {pendientesTotal > 0 && (
         <div className="bg-naranja-light border border-naranja/40 rounded-card p-3 flex items-start gap-3 flex-wrap">
           <div className="flex-1 min-w-[200px]">
-            <div className="text-sm font-bold text-naranja-dark">⚠ {pendientesTotal} renglón{pendientesTotal !== 1 ? 'es' : ''} sin precio</div>
+            <div className="text-sm font-bold text-naranja-dark">⚠ {pendientesTotal} {pendientesTotal === 1 ? 'renglón' : 'renglones'} sin precio</div>
             <div className="text-[11px] text-gris-dark">En {pendientes.length} obra{pendientes.length !== 1 ? 's' : ''}. Suman $0 hasta que se tasen.</div>
           </div>
           <div className="flex gap-1.5 flex-wrap">
@@ -187,7 +187,7 @@ export function CuentaCorrienteTab() {
               sub={
                 e.key === 'gasto_cadinc' && t.total > 0
                   ? `mat. ${fmtM(tot.gastoMaterial)} · EPP ${fmtM(tot.gastoEpp)}`
-                  : `${t.renglones} renglón${t.renglones !== 1 ? 'es' : ''}`
+                  : `${t.renglones} ${t.renglones === 1 ? 'renglón' : 'renglones'}`
               }
               sinPrecio={t.sin_precio}
               hint={e.hint}
