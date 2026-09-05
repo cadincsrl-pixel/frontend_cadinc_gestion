@@ -1270,6 +1270,27 @@ export interface HerrEntregasPage {
   offset: number
 }
 
+/** Tipo de herramienta del catálogo (stock_materiales clase 'herramienta') + resumen del pañol (v_herr_tipos). */
+export interface HerrTipoCatalogo {
+  id:           number
+  nombre:       string
+  alias:        string[] | null
+  obs:          string | null
+  activo:       boolean
+  rubro_id:     number | null
+  created_at:   string
+  updated_at:   string
+  /** Σ en_obra de las salidas confirmadas (lo que sigue afuera). */
+  en_obra:      number
+  n_obras:      number
+  sin_revisar:  number
+  salidas:      number
+  devoluciones: number
+  ultima:       string | null
+  /** Renglones de pedido que usaron el tipo. */
+  renglones:    number
+}
+
 export interface HerrEntregasObraResumen {
   cod:            string
   n:              number

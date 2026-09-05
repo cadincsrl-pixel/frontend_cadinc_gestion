@@ -90,7 +90,7 @@ async function authFetch(
   return res
 }
 
-class HttpError extends Error {
+export class HttpError extends Error {
   status: number
   body?:  unknown
   constructor(message: string, status: number, body?: unknown) {

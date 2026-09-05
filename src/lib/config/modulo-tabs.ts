@@ -46,6 +46,7 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
     // (ningún item de HERR_SUBNAV lo usaba, ocupaba lugar sin renderizar nada).
     { key: 'salidas',      label: 'Salidas a obra', icon: '📤' },
     { key: 'retornos',     label: 'Retorno de obra', icon: '↩' },
+    { key: 'catalogo',     label: 'Catálogo',     icon: '📕' },
     { key: 'parametros',   label: 'Parámetros',   icon: '⚙️' },
   ],
   certificaciones: [

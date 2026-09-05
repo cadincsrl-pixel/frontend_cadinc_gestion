@@ -27,13 +27,13 @@ export function HerrParametros() {
       <div>
         <h1 className="font-display text-[2rem] tracking-wider text-azul">PARÁMETROS</h1>
         <p className="text-sm text-gris-dark mt-0.5">
-          Tipos de herramienta, tipos de movimiento y catálogo de marcas/modelos
+          Categorías de fichas del inventario, tipos de movimiento y catálogo de marcas/modelos. Los TIPOS de herramienta (lo que se pide y sale a obra) viven en Catálogo.
         </p>
       </div>
 
       <div className="flex gap-1 bg-white rounded-card shadow-card p-1.5 w-fit flex-wrap">
         {[
-          { id: 'tipos', icon: '🔧', label: 'Tipos de herramienta' },
+          { id: 'tipos', icon: '🗂️', label: 'Categorías de fichas' },
           { id: 'movimientos', icon: '↔', label: 'Tipos de movimiento' },
           { id: 'marcas', icon: '🏷️', label: 'Marcas y modelos' },
         ].map(t => (
@@ -116,7 +116,7 @@ function TiposTab() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="font-bold text-azul text-base">
-            Tipos de herramienta ({tipos.length})
+            Categorías de fichas del inventario ({tipos.length})
           </h2>
           <p className="text-xs text-gris-dark mt-0.5">Clasificación de herramientas por tipo.</p>
         </div>

@@ -15,9 +15,10 @@ const RUTA_POR_TAB: Record<string, string> = {
   trazabilidad: '/herramientas/trazabilidad',
   salidas:      '/herramientas/salidas',
   retornos:     '/herramientas/retornos',
+  catalogo:     '/herramientas/catalogo',
   parametros:   '/herramientas/parametros',
 }
-const ORDEN = ['movimientos', 'inventario', 'trazabilidad', 'salidas', 'retornos', 'parametros']
+const ORDEN = ['movimientos', 'inventario', 'trazabilidad', 'salidas', 'retornos', 'catalogo', 'parametros']
 
 export default function Page() {
   const router    = useRouter()

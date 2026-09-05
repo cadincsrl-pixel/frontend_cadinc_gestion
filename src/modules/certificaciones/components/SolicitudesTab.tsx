@@ -190,6 +190,20 @@ function DescripcionLibre({ linea, onChange }: {
 }) {
   if (linea.material_id) return null
 
+  // Las herramientas NO se cargan en texto libre ni se crean desde el pedido
+  // (decisión del user 2026-09-05): así nacieron los duplicados del catálogo.
+  // Si no está, se da de alta en Herramientas › Catálogo. Un renglón viejo que
+  // ya venía libre (edición) sigue mostrando su texto.
+  if (linea.clase === 'herramienta' && !linea.libre) {
+    return (
+      <p className="mt-2 text-xs text-gris-dark">
+        Las herramientas salen del catálogo. Si no está,{' '}
+        <a href="/herramientas/catalogo" target="_blank" rel="noreferrer" className="font-semibold text-azul underline underline-offset-2">cargala en Herramientas › Catálogo</a>
+        {' '}y volvé a buscarla.
+      </p>
+    )
+  }
+
   if (!linea.libre) {
     return (
       <button
@@ -1990,7 +2004,7 @@ export function SolicitudesTab() {
                               devuelve: (mat?.clase === 'herramienta' || x.clase === 'herramienta') ? x.devuelve : false,
                             } : x))
                           }}
-                          onCreate={puedeCrear ? q => setModalNuevoMat({
+                          onCreate={puedeCrear && l.clase !== 'herramienta' ? q => setModalNuevoMat({
                             lineaId: l._id, enEdicion: false, nombre: q, rubro_id: '', unidad: l.unidad,
                           }) : undefined}
                           createLabel="Agregar al catálogo"
@@ -2533,7 +2547,7 @@ export function SolicitudesTab() {
                                 devuelve: (mat?.clase === 'herramienta' || x.clase === 'herramienta') ? x.devuelve : false,
                               } : x))
                             }}
-                            onCreate={puedeCrear ? q => setModalNuevoMat({
+                            onCreate={puedeCrear && l.clase !== 'herramienta' ? q => setModalNuevoMat({
                               lineaId: l._id, enEdicion: true, nombre: q, rubro_id: '', unidad: l.unidad,
                             }) : undefined}
                             createLabel="Agregar al catálogo"
