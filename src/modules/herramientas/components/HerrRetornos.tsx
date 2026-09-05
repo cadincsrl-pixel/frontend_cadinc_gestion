@@ -9,6 +9,7 @@ import { Pagination } from '@/components/ui/Pagination'
 import { Combobox } from '@/components/ui/Combobox'
 import { matchesSearch, normalizeText } from '@/lib/utils/text'
 import { HerrRetornoModal } from './HerrRetornoModal'
+import { Buscador, FiltroChip, selectCls, btnMini } from './HerrFiltros'
 import { ORIGEN_LABEL, fmtFecha } from './HerrSalidas'
 import type { HerrEntrega } from '@/types/domain.types'
 
@@ -165,7 +166,6 @@ export function HerrRetornos() {
   }
 
   const itemsRet = useMemo(() => retornos?.items ?? [], [retornos])
-  const btnMini = 'text-[11px] font-bold px-2.5 py-1 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed'
 
   return (
     <div className="p-4 md:p-6 flex flex-col gap-3">
@@ -198,25 +198,11 @@ export function HerrRetornos() {
 
       {/* Barra de herramientas: buscador + obra + antigüedad + abrir/cerrar */}
       <div className="bg-white rounded-card shadow-card px-3 py-2 flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[220px]">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gris-dark text-sm pointer-events-none">🔍</span>
-          <input
-            type="search" value={busqueda} onChange={e => setBusqueda(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Escape') setBusqueda('') }}
-            placeholder="Herramienta, obra, remito o pedido…"
-            autoComplete="off" data-1p-ignore data-lpignore="true"
-            className="w-full pl-9 pr-8 py-2 text-sm border-[1.5px] border-gris-mid rounded-lg bg-blanco text-carbon placeholder:text-gris-mid outline-none transition-colors focus:border-naranja focus:bg-white [&::-webkit-search-cancel-button]:hidden"
-          />
-          {busqueda && (
-            <button type="button" onClick={() => setBusqueda('')} aria-label="Borrar búsqueda"
-              className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full text-[11px] text-gris-dark hover:bg-gris hover:text-carbon">✕</button>
-          )}
-        </div>
+        <Buscador className="flex-1 min-w-[220px]" value={busqueda} onChange={setBusqueda} placeholder="Herramienta, obra, remito o pedido…" />
         <div className="w-full sm:w-64">
           <Combobox placeholder="Todas las obras" options={obraOptions} value={obraCod} onChange={setObraCod} />
         </div>
-        <select value={antiguedad} onChange={e => setAntiguedad(e.target.value)} title="Filtrar por cuánto hace que salieron"
-          className={`px-2.5 py-2 text-sm border-[1.5px] rounded-lg bg-blanco outline-none focus:border-naranja cursor-pointer ${antiguedad ? 'border-azul text-azul font-bold' : 'border-gris-mid text-carbon'}`}>
+        <select value={antiguedad} onChange={e => setAntiguedad(e.target.value)} title="Filtrar por cuánto hace que salieron" className={selectCls(!!antiguedad)}>
           {ANTIGUEDAD.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
         <div className="flex items-center gap-1 ml-auto">
@@ -413,14 +399,5 @@ export function HerrRetornos() {
 
       <HerrRetornoModal open={retorno !== null} onClose={() => setRetorno(null)} salidas={retorno ?? []} obraNom={nombreObra} onListo={() => setSel(new Set())} />
     </div>
-  )
-}
-
-function FiltroChip({ children, onQuitar }: { children: React.ReactNode; onQuitar: () => void }) {
-  return (
-    <span className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-full bg-azul-light text-azul font-bold">
-      {children}
-      <button type="button" onClick={onQuitar} aria-label="Quitar filtro" className="w-4 h-4 rounded-full text-[10px] leading-none hover:bg-azul hover:text-white transition-colors">✕</button>
-    </span>
   )
 }

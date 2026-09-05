@@ -6,8 +6,9 @@ import { useObras } from '@/modules/tarja/hooks/useObras'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useToast } from '@/components/ui/Toast'
 import { Pagination } from '@/components/ui/Pagination'
-import { Input } from '@/components/ui/Input'
+import { Combobox } from '@/components/ui/Combobox'
 import { HerrRetornoModal } from './HerrRetornoModal'
+import { Buscador, FiltroChip, FechaFiltro, selectCls, btnMini } from './HerrFiltros'
 import type { HerrEntrega, HerrEntregaEstado } from '@/types/domain.types'
 
 /**
@@ -17,6 +18,9 @@ import type { HerrEntrega, HerrEntregaEstado } from '@/types/domain.types'
  * Las salidas las escribe el trigger sobre `cantidad_enviada`; acá se leen, se
  * confirman o archivan (de a una o en lote) y se registra cuando vuelven al
  * pañol (20260904ay: una devolución colgada de la salida, parcial permitida).
+ *
+ * La lista es del SERVER (paginada, §5.7): tabs, buscador y filtros van por
+ * query. El buscador tiene debounce porque es parte de la queryKey.
  *
  * FASE 1 NO TOCA EL PADRÓN a propósito: vincular a un HER-NNN existente o dar
  * de alta es decisión de un humano, y va en fase 2.
@@ -31,12 +35,26 @@ export const ORIGEN_LABEL: Record<HerrEntrega['origen'], { txt: string; cls: str
   manual:   { txt: '✍ a mano',    cls: 'bg-gris text-gris-dark',           title: 'Cargada a mano' },
 }
 
-const TABS: { key: HerrEntregaEstado | 'todas'; label: string }[] = [
+type Tab = HerrEntregaEstado | 'todas'
+const TABS: { key: Tab; label: string }[] = [
   { key: 'pendiente',  label: 'Sin revisar' },
   { key: 'confirmada', label: 'Confirmadas' },
   { key: 'revisar',    label: 'A revisar' },
   { key: 'ignorada',   label: 'Archivadas' },
   { key: 'todas',      label: 'Todas' },
+]
+
+const SENTIDOS: { value: '' | 'salida' | 'devolucion'; label: string }[] = [
+  { value: '',           label: 'Salidas y retornos' },
+  { value: 'salida',     label: 'Solo salidas' },
+  { value: 'devolucion', label: 'Solo retornos' },
+]
+const ORIGENES: { value: '' | HerrEntrega['origen']; label: string }[] = [
+  { value: '',         label: 'Origen: todos' },
+  { value: 'clase',    label: 'Tildada en el pedido' },
+  { value: 'catalogo', label: 'Del catálogo' },
+  { value: 'patron',   label: 'Detectada por el texto' },
+  { value: 'manual',   label: 'A mano' },
 ]
 
 export function fmtFecha(s: string | null | undefined) {
@@ -56,7 +74,9 @@ export function HerrSalidas() {
   const { puedeEditar } = usePermisos('herramientas')
   const toast = useToast()
 
-  const [tab, setTab]           = useState<HerrEntregaEstado | 'todas'>('pendiente')
+  // `null` = todavía no se eligió: cae en "Sin revisar" si hay algo ahí y si
+  // no en "Todas", para no aterrizar en una bandeja vacía.
+  const [tabElegido, setTabElegido] = useState<Tab | null>(null)
   const [obraCod, setObraCod]   = useState('')
   const [busqueda, setBusqueda] = useState('')
   const [sentido, setSentido]   = useState<'' | 'salida' | 'devolucion'>('')
@@ -67,6 +87,7 @@ export function HerrSalidas() {
   const [page, setPage]         = useState(1)
   const [sel, setSel]           = useState<Set<number>>(new Set())
   const [retorno, setRetorno]   = useState<HerrEntrega[] | null>(null)
+  const [verAyuda, setVerAyuda] = useState(false)
 
   // Debounce: `busqueda` es parte de la queryKey; sin esto cada tecla dispara
   // un request y una key nueva.
@@ -76,8 +97,11 @@ export function HerrSalidas() {
     return () => clearTimeout(t)
   }, [busqueda])
 
+  const { data: stats, isError: statsError } = useHerrEntregasStats()
+  const tab: Tab | null = tabElegido ?? (stats ? (stats.pendientes > 0 ? 'pendiente' : 'todas') : statsError ? 'todas' : null)
+
   const filtro = {
-    ...(tab !== 'todas' ? { estado: tab } : {}),
+    ...(tab && tab !== 'todas' ? { estado: tab } : {}),
     ...(obraCod ? { obra_cod: obraCod } : {}),
     ...(busquedaAplicada ? { q: busquedaAplicada } : {}),
     ...(sentido ? { sentido } : {}),
@@ -89,8 +113,7 @@ export function HerrSalidas() {
     offset: (page - 1) * PAGE_SIZE,
   }
 
-  const { data, isLoading, isError, error, refetch, isFetching } = useHerrEntregas(filtro)
-  const { data: stats, isError: statsError } = useHerrEntregasStats()
+  const { data, isLoading, isError, error, refetch, isFetching } = useHerrEntregas(filtro, tab !== null)
   const { data: obras = [] } = useObras()
   const { mutate: marcar, isPending } = useMarcarEntrega()
   const { mutate: marcarBulk, isPending: bulkPending } = useMarcarEntregasBulk()
@@ -105,12 +128,18 @@ export function HerrSalidas() {
   }, [obras])
   const nombreObra = (cod: string | null) => (cod ? (obraNom.get(cod) ?? cod) : 'sin obra')
 
-  // Las obras del selector vienen del BACKEND (vista agregada), no del listado paginado.
-  const obrasConSalidas = stats?.obras_lista ?? []
+  // Las obras del selector vienen del BACKEND (vista agregada), no del listado
+  // paginado. El conteo habla del tab que se está mirando.
+  const obraOptions = useMemo(() => (stats?.obras_lista ?? []).map(o => {
+    const n = tab === 'pendiente' ? o.n_pendientes : enObra ? o.n_en_obra : o.n
+    return { value: o.cod, label: nombreObra(o.cod), sub: `${n} · ${o.cod}`, search: [o.cod] }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [stats, obraNom, tab, enObra])
 
   function resetPagina() { setPage(1); setSel(new Set()) }
-  function cambiarTab(k: HerrEntregaEstado | 'todas') { setTab(k); resetPagina() }
+  function cambiarTab(k: Tab) { setTabElegido(k); resetPagina() }
   function patch(fn: () => void) { fn(); resetPagina() }
+  function limpiar() { setBusqueda(''); patch(() => { setObraCod(''); setSentido(''); setOrigen(''); setEnObra(false); setDesde(''); setHasta('') }) }
 
   // ── Selección múltiple ──────────────────────────────────────────────────
   const seleccionables = useMemo(() => items.filter(e => e.estado !== 'anulada'), [items])
@@ -151,113 +180,90 @@ export function HerrSalidas() {
 
   const hayFiltros = !!(obraCod || busqueda || sentido || origen || enObra || desde || hasta)
   const ocupado = isPending || bulkPending
-
-  const btn = (extra: string) => `text-xs font-bold px-3 py-1.5 rounded transition-colors min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed ${extra}`
+  const contadorTab = (k: Tab): number | null => k === 'pendiente' ? (stats?.pendientes ?? null) : k === 'revisar' ? (stats?.revisar ?? null) : null
 
   return (
-    <div className="p-4 md:p-6 flex flex-col gap-4">
-      {/* Encabezado */}
-      <div>
-        <h1 className="text-xl font-bold text-carbon">📤 Salidas a obra</h1>
-        <p className="text-xs text-gris-dark mt-1 max-w-2xl">
-          Herramientas que salieron de un pedido con remito. Se registran solas. El circuito es: <b>Confirmar</b> (sí, es
-          herramienta del pañol) o <b>No es herramienta</b> (el sistema la detectó mal); una vez confirmada, <b>Volvió al pañol</b>
-          cuando la traen. Todavía <b>no se dan de alta en el inventario</b>.
-        </p>
-      </div>
-
-      {/* Contadores */}
-      <div className="flex flex-wrap gap-2">
-        <span className="px-3 py-1.5 rounded-lg bg-white shadow-card text-xs"><b className="text-carbon">{stats?.pendientes ?? '—'}</b><span className="text-gris-dark ml-1">sin revisar</span></span>
-        <span className="px-3 py-1.5 rounded-lg bg-white shadow-card text-xs"><b className="text-carbon">{stats?.en_obra ?? '—'}</b><span className="text-gris-dark ml-1">en obra</span></span>
-        <span className="px-3 py-1.5 rounded-lg bg-white shadow-card text-xs"><b className="text-carbon">{stats?.devoluciones ?? '—'}</b><span className="text-gris-dark ml-1">retornos</span></span>
-        <span className="px-3 py-1.5 rounded-lg bg-white shadow-card text-xs"><b className="text-carbon">{stats?.obras ?? '—'}</b><span className="text-gris-dark ml-1">obras</span></span>
-        {(stats?.revisar ?? 0) > 0 && (
-          <span className="px-3 py-1.5 rounded-lg bg-amarillo-light text-[#7A5500] text-xs font-bold">{stats?.revisar} a revisar</span>
-        )}
-        {statsError && (
-          <span className="px-3 py-1.5 rounded-lg bg-amarillo-light text-[#7A5500] text-xs font-bold" title="No se pudieron leer los contadores; la alarma de faltantes no es confiable ahora mismo">⚠ contadores no disponibles</span>
-        )}
-        {(stats?.faltantes ?? 0) > 0 && (
-          <span className="px-3 py-1.5 rounded-lg bg-rojo text-white text-xs font-bold" title="Salieron herramientas que no quedaron registradas acá. Es un bug: avisá.">⚠ {stats?.faltantes} sin registrar</span>
-        )}
-      </div>
-
-      {/* Tabs */}
-      <div className="flex flex-wrap gap-1.5">
-        {TABS.map(t => (
-          <button key={t.key} onClick={() => cambiarTab(t.key)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${tab === t.key ? 'bg-carbon text-white' : 'bg-gris text-gris-dark hover:bg-gris-mid'}`}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Filtros */}
-      <div className="bg-white rounded-card shadow-card p-3 flex flex-col gap-2">
-        <div className="flex flex-col sm:flex-row gap-2">
-          <div className="flex-1 min-w-0">
-            <Input placeholder="Buscar por herramienta…" value={busqueda} onChange={e => setBusqueda(e.target.value)} />
-          </div>
-          <select value={obraCod} onChange={e => patch(() => setObraCod(e.target.value))}
-            className="px-3 py-2 text-sm border-[1.5px] border-gris-mid rounded-lg outline-none focus:border-naranja bg-white sm:w-72">
-            <option value="">Todas las obras</option>
-            {obrasConSalidas.map(o => {
-              // El conteo habla del tab que se está mirando.
-              const n = tab === 'pendiente' ? o.n_pendientes : enObra ? o.n_en_obra : o.n
-              return <option key={o.cod} value={o.cod}>{nombreObra(o.cod)} ({n})</option>
-            })}
-          </select>
+    <div className="p-4 md:p-6 flex flex-col gap-3">
+      {/* Encabezado: título + contadores en una sola línea */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <h1 className="text-xl font-bold text-carbon flex items-center gap-2">
+          📤 Salidas a obra
+          <button type="button" onClick={() => setVerAyuda(v => !v)} aria-expanded={verAyuda} title="Cómo funciona"
+            className={`w-5 h-5 rounded-full text-[11px] font-bold leading-none transition-colors ${verAyuda ? 'bg-azul text-white' : 'bg-gris-mid/40 text-gris-dark hover:bg-azul hover:text-white'}`}>?</button>
+        </h1>
+        <div className="flex flex-wrap items-center gap-1.5 sm:ml-auto text-xs">
+          <span className="px-2.5 py-1 rounded-lg bg-white shadow-card"><b className="text-carbon tabular-nums">{stats?.pendientes ?? '—'}</b><span className="text-gris-dark ml-1">sin revisar</span></span>
+          <span className="px-2.5 py-1 rounded-lg bg-white shadow-card"><b className="text-carbon tabular-nums">{stats?.en_obra ?? '—'}</b><span className="text-gris-dark ml-1">en obra</span></span>
+          <span className="px-2.5 py-1 rounded-lg bg-white shadow-card"><b className="text-carbon tabular-nums">{stats?.devoluciones ?? '—'}</b><span className="text-gris-dark ml-1">retornos</span></span>
+          <span className="px-2.5 py-1 rounded-lg bg-white shadow-card"><b className="text-carbon tabular-nums">{stats?.obras ?? '—'}</b><span className="text-gris-dark ml-1">obras</span></span>
+          {(stats?.revisar ?? 0) > 0 && (
+            <span className="px-2.5 py-1 rounded-lg bg-amarillo-light text-[#7A5500] font-bold">{stats?.revisar} a revisar</span>
+          )}
+          {statsError && (
+            <span className="px-2.5 py-1 rounded-lg bg-amarillo-light text-[#7A5500] font-bold" title="No se pudieron leer los contadores; la alarma de faltantes no es confiable ahora mismo">⚠ contadores no disponibles</span>
+          )}
+          {(stats?.faltantes ?? 0) > 0 && (
+            <span className="px-2.5 py-1 rounded-lg bg-rojo text-white font-bold" title="Salieron herramientas que no quedaron registradas acá. Es un bug: avisá.">⚠ {stats?.faltantes} sin registrar</span>
+          )}
+          {isFetching && <span className="w-3.5 h-3.5 border-2 border-naranja border-t-transparent rounded-full animate-spin" />}
         </div>
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <select value={sentido} onChange={e => patch(() => setSentido(e.target.value as typeof sentido))}
-            className="px-2 py-1.5 border-[1.5px] border-gris-mid rounded-lg bg-white outline-none focus:border-naranja min-h-[34px]">
-            <option value="">Salidas y retornos</option>
-            <option value="salida">Solo salidas</option>
-            <option value="devolucion">Solo retornos</option>
+      </div>
+      {verAyuda && (
+        <div className="bg-azul-light/60 text-azul rounded-card px-4 py-2.5 text-xs leading-relaxed">
+          Herramientas que salieron de un pedido con remito: se registran solas. El circuito es <b>Confirmar</b> (sí, es herramienta del pañol)
+          o <b>No es herramienta</b> (el sistema la detectó mal); una vez confirmada, <b>Volvió al pañol</b> cuando la traen. Todavía no se dan de
+          alta en el inventario. Para registrar retornos de a muchas, por obra, está la pestaña Retorno de obra.
+        </div>
+      )}
+
+      {/* Tabs + filtros en una sola tarjeta */}
+      <div className="bg-white rounded-card shadow-card px-3 py-2 flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {TABS.map(t => {
+            const n = contadorTab(t.key)
+            const activo = tab === t.key
+            return (
+              <button key={t.key} type="button" onClick={() => cambiarTab(t.key)}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors ${activo ? 'bg-carbon text-white' : 'bg-gris text-gris-dark hover:bg-gris-mid'}`}>
+                {t.label}
+                {n !== null && n > 0 && <span className={`ml-1.5 px-1.5 py-px rounded-full tabular-nums ${activo ? 'bg-white/20' : t.key === 'pendiente' ? 'bg-naranja text-white' : 'bg-amarillo text-white'}`}>{n}</span>}
+              </button>
+            )
+          })}
+          <span className="ml-auto text-[11px] text-gris-dark tabular-nums">{tab !== null && !isLoading ? `${total.toLocaleString('es-AR')} en total` : ''}</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Buscador className="flex-1 min-w-[200px]" value={busqueda} onChange={setBusqueda} placeholder="Buscar por herramienta…" />
+          <div className="w-full sm:w-56">
+            <Combobox placeholder="Todas las obras" options={obraOptions} value={obraCod} onChange={v => patch(() => setObraCod(v))} />
+          </div>
+          <select value={sentido} onChange={e => patch(() => setSentido(e.target.value as typeof sentido))} className={selectCls(!!sentido)}>
+            {SENTIDOS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
-          <select value={origen} onChange={e => patch(() => setOrigen(e.target.value as typeof origen))}
-            className="px-2 py-1.5 border-[1.5px] border-gris-mid rounded-lg bg-white outline-none focus:border-naranja min-h-[34px]">
-            <option value="">Origen: todos</option>
-            <option value="clase">Tildada en el pedido</option>
-            <option value="catalogo">Del catálogo</option>
-            <option value="patron">Detectada por el texto</option>
-            <option value="manual">A mano</option>
+          <select value={origen} onChange={e => patch(() => setOrigen(e.target.value as typeof origen))} className={selectCls(!!origen)}>
+            {ORIGENES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
-          <label className="flex items-center gap-1 text-gris-dark">Desde
-            <input type="date" value={desde} onChange={e => patch(() => setDesde(e.target.value))}
-              className="border-[1.5px] border-gris-mid rounded-lg px-2 py-1 bg-white outline-none focus:border-naranja min-h-[34px] text-carbon" />
-          </label>
-          <label className="flex items-center gap-1 text-gris-dark">Hasta
-            <input type="date" value={hasta} onChange={e => patch(() => setHasta(e.target.value))}
-              className="border-[1.5px] border-gris-mid rounded-lg px-2 py-1 bg-white outline-none focus:border-naranja min-h-[34px] text-carbon" />
-          </label>
-          <button type="button" onClick={() => patch(() => setEnObra(v => !v))}
-            className={`px-3 py-1.5 rounded-lg font-bold min-h-[34px] transition-colors ${enObra ? 'bg-azul text-white' : 'bg-gris text-gris-dark hover:bg-gris-mid'}`}
-            title="Solo salidas que todavía no volvieron">
+          <FechaFiltro label="Desde" value={desde} onChange={v => patch(() => setDesde(v))} />
+          <FechaFiltro label="Hasta" value={hasta} onChange={v => patch(() => setHasta(v))} />
+          <button type="button" onClick={() => patch(() => setEnObra(v => !v))} title="Solo salidas confirmadas que todavía no volvieron"
+            className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors border-[1.5px] ${enObra ? 'bg-azul border-azul text-white' : 'bg-blanco border-gris-mid text-gris-dark hover:bg-gris'}`}>
             🏗 Solo en obra
           </button>
-          {hayFiltros && (
-            <button type="button" className="text-azul font-bold hover:underline"
-              onClick={() => { setBusqueda(''); patch(() => { setObraCod(''); setSentido(''); setOrigen(''); setEnObra(false); setDesde(''); setHasta('') }) }}>
-              Limpiar filtros
-            </button>
-          )}
-          {isFetching && <span className="w-3.5 h-3.5 border-2 border-naranja border-t-transparent rounded-full animate-spin ml-auto" />}
         </div>
       </div>
 
-      {/* Barra de selección */}
-      {sel.size > 0 && (
-        <div className="bg-carbon text-white rounded-card px-4 py-2.5 flex flex-wrap items-center gap-2">
-          <span className="text-xs font-bold mr-2">{sel.size} elegida{sel.size !== 1 ? 's' : ''}</span>
-          <button disabled={!puedeEditar || ocupado} onClick={() => marcarLote('confirmada', 'confirmadas')} className={btn('bg-verde-light text-verde hover:opacity-80')} title="Sí, son herramientas del pañol">✓ Confirmar</button>
-          <button disabled={!puedeEditar || ocupado} onClick={() => marcarLote('ignorada', 'archivadas')} className={btn('bg-white text-gris-dark hover:bg-rojo-light hover:text-rojo')} title="El sistema las detectó mal: no son herramientas del pañol">No es herramienta</button>
-          <button disabled={!puedeEditar || ocupado} onClick={() => marcarLote('pendiente', 'vueltas a la bandeja')} className={btn('bg-white/10 text-white hover:bg-white/20')} title="Volverlas a Sin revisar">↺ A la bandeja</button>
-          <button disabled={!puedeEditar || ocupado || elegidosVolver.length === 0} onClick={() => setRetorno(elegidosVolver)} className={btn('bg-azul-light text-azul hover:opacity-80')} title="Registrar que volvieron al pañol (solo las confirmadas)">
-            ↩ Volvió al pañol{elegidosVolver.length > 0 && elegidosVolver.length !== sel.size ? ` (${elegidosVolver.length})` : ''}
-          </button>
-          <button onClick={() => setSel(new Set())} className="ml-auto text-xs text-white/70 hover:text-white">Quitar selección</button>
+      {/* Resumen de filtros activos */}
+      {hayFiltros && (
+        <div className="flex flex-wrap items-center gap-1.5 text-xs -mt-1">
+          <span className="text-gris-dark"><b className="text-carbon tabular-nums">{total.toLocaleString('es-AR')}</b> con estos filtros</span>
+          {busqueda.trim() && <FiltroChip onQuitar={() => setBusqueda('')}>“{busqueda.trim()}”</FiltroChip>}
+          {obraCod && <FiltroChip onQuitar={() => patch(() => setObraCod(''))}>{nombreObra(obraCod)}</FiltroChip>}
+          {sentido && <FiltroChip onQuitar={() => patch(() => setSentido(''))}>{SENTIDOS.find(s => s.value === sentido)?.label.toLowerCase()}</FiltroChip>}
+          {origen && <FiltroChip onQuitar={() => patch(() => setOrigen(''))}>{ORIGENES.find(o => o.value === origen)?.label.toLowerCase()}</FiltroChip>}
+          {desde && <FiltroChip onQuitar={() => patch(() => setDesde(''))}>desde {fmtFecha(desde)}</FiltroChip>}
+          {hasta && <FiltroChip onQuitar={() => patch(() => setHasta(''))}>hasta {fmtFecha(hasta)}</FiltroChip>}
+          {enObra && <FiltroChip onQuitar={() => patch(() => setEnObra(false))}>solo en obra</FiltroChip>}
+          <button type="button" onClick={limpiar} className="text-azul font-bold hover:underline ml-1">Limpiar</button>
         </div>
       )}
 
@@ -266,89 +272,137 @@ export function HerrSalidas() {
         <div className="bg-white rounded-card shadow-card p-8 text-center">
           <div className="text-sm font-bold text-rojo">No se pudo cargar la bandeja</div>
           <div className="text-xs text-gris-dark mt-1">{(error as Error)?.message ?? 'Error desconocido'}</div>
-          <button onClick={() => void refetch()} className="mt-3 text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-azul-light hover:text-azul min-h-[36px]">Reintentar</button>
+          <button onClick={() => void refetch()} className="mt-3 text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-azul-light hover:text-azul">Reintentar</button>
         </div>
-      ) : isLoading ? (
-        <div className="bg-white rounded-card shadow-card p-8 flex items-center justify-center gap-3 text-gris-dark">
-          <span className="w-5 h-5 border-2 border-naranja border-t-transparent rounded-full animate-spin" /> Cargando…
+      ) : tab === null || isLoading ? (
+        <div className="flex flex-col gap-1.5" aria-busy="true">
+          {[0, 1, 2, 3, 4, 5, 6, 7].map(i => <div key={i} className="h-10 bg-white rounded-card shadow-card animate-pulse" />)}
         </div>
       ) : items.length === 0 ? (
-        <div className="bg-white rounded-card shadow-card p-8 text-center text-gris-dark text-sm italic">
-          {tab === 'pendiente' && !hayFiltros ? 'Nada sin revisar. Cuando salga una herramienta en un remito, aparece sola acá.' : 'Sin resultados con estos filtros.'}
+        <div className="bg-white rounded-card shadow-card p-8 text-center text-gris-dark text-sm">
+          {tab === 'pendiente' && !hayFiltros
+            ? <>Nada sin revisar. Cuando salga una herramienta en un remito, aparece sola acá. <button type="button" onClick={() => cambiarTab('confirmada')} className="text-azul font-bold hover:underline">Ver las confirmadas</button>.</>
+            : <>Sin resultados con estos filtros.{hayFiltros && <> <button type="button" onClick={limpiar} className="text-azul font-bold hover:underline">Limpiar</button></>}</>}
         </div>
       ) : (
         <div className="bg-white rounded-card shadow-card overflow-hidden">
-          <div className="flex items-center gap-3 px-4 py-2 border-b border-gris bg-gris/40 text-xs text-gris-dark">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" checked={todosPagina} onChange={togglePagina} disabled={seleccionables.length === 0} />
-              Elegir la página ({seleccionables.length})
-            </label>
-            <span className="ml-auto">{total.toLocaleString('es-AR')} en total</span>
-          </div>
-          <div className="divide-y divide-gris">
-            {items.map(e => {
-              const esDev = e.sentido === 'devolucion'
-              const enObraN = Number(e.en_obra)
-              const devuelto = Number(e.devuelto)
-              return (
-                <div key={e.id} className={`flex flex-wrap items-start gap-x-3 gap-y-1.5 px-4 py-3 ${sel.has(e.id) ? 'bg-azul-light/30' : ''}`}>
-                  <input type="checkbox" className="mt-1" checked={sel.has(e.id)} disabled={e.estado === 'anulada'} onChange={() => toggle(e.id)} />
-                  <div className="flex-1 min-w-[12rem]">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-medium text-carbon">{e.descripcion}</span>
-                      {Number(e.cantidad) > 1 && <span className="text-[11px] font-mono font-bold text-azul">×{Number(e.cantidad)}</span>}
-                      {esDev ? (
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-verde-light text-verde" title={e.salida_id ? `Devuelve la salida #${e.salida_id}` : 'Devolución cargada en el pedido'}>
-                          ↩ volvió al pañol{e.salida_id ? ` · salida #${e.salida_id}` : ''}
-                        </span>
-                      ) : e.estado === 'confirmada' ? (
-                        devuelto > 0
-                          ? <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${enObraN > 0 ? 'bg-amarillo-light text-[#7A5500]' : 'bg-gris text-gris-dark'}`}>
-                              {enObraN > 0 ? `en obra ×${enObraN} · devuelto ×${devuelto}` : 'toda devuelta'}
-                            </span>
-                          : <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-azul-light text-azul">🏗 en obra</span>
-                      ) : (e.estado === 'pendiente' || e.estado === 'revisar') && (
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-naranja-light text-naranja-dark" title="Confirmala para poder registrar el retorno">sin revisar</span>
-                      )}
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${ORIGEN_LABEL[e.origen].cls}`} title={ORIGEN_LABEL[e.origen].title}>{ORIGEN_LABEL[e.origen].txt}</span>
-                    </div>
-                    <div className="text-[11px] text-gris-dark mt-0.5 flex items-center gap-1.5 flex-wrap">
-                      <span className="font-bold text-carbon">{nombreObra(e.obra_cod)}</span>
-                      <span>·</span><span className="font-mono">{fmtFecha(e.fecha)}</span>
-                      {e.remito_numero && <><span>·</span><span className="font-mono text-naranja font-bold">{e.remito_numero}</span></>}
-                      {e.solicitud_id && <><span>·</span><span className="font-mono">pedido #{e.solicitud_id}</span></>}
-                      {e.nota && <span className="italic">· {e.nota}</span>}
-                    </div>
-                  </div>
-
-                  <div className="shrink-0 flex items-center gap-1.5">
-                    {e.estado === 'ignorada' ? (
-                      <button disabled={!puedeEditar || ocupado} onClick={() => marcarUna(e, 'pendiente', 'Vuelta a la bandeja')} className={btn('bg-gris text-gris-dark hover:bg-azul-light hover:text-azul')}>↩ Desarchivar</button>
-                    ) : e.estado === 'anulada' ? (
-                      <span className="text-[11px] text-gris-dark italic">envío deshecho</span>
-                    ) : e.estado === 'confirmada' ? (
-                      <>
-                        <span className="text-[11px] font-bold text-verde">✓ confirmada</span>
-                        {!esDev && puedeVolver(e) && (
-                          <button disabled={!puedeEditar || ocupado} onClick={() => setRetorno([e])} title="La trajeron de vuelta al pañol" className={btn('bg-azul-light text-azul hover:opacity-80')}>↩ Volvió al pañol</button>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gris/40 text-[10px] uppercase tracking-wide text-gris-dark">
+                <th className="w-9 px-3 py-1.5">
+                  <input type="checkbox" checked={todosPagina} onChange={togglePagina} disabled={seleccionables.length === 0} title="Elegir la página" aria-label="Elegir la página" />
+                </th>
+                <th className="text-left px-2 py-1.5 font-bold">Herramienta</th>
+                <th className="text-left px-2 py-1.5 font-bold hidden sm:table-cell">Obra</th>
+                <th className="text-left px-2 py-1.5 font-bold hidden sm:table-cell">Fecha · remito</th>
+                <th className="text-left px-2 py-1.5 font-bold hidden lg:table-cell w-28">Origen</th>
+                <th className="text-right px-3 py-1.5 font-bold whitespace-nowrap">
+                  {sel.size > 0 ? <span className="normal-case tracking-normal text-azul">{sel.size} elegida{sel.size !== 1 ? 's' : ''}</span> : `${total.toLocaleString('es-AR')} en total`}
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gris">
+              {items.map(e => {
+                const esDev = e.sentido === 'devolucion'
+                const enObraN = Number(e.en_obra)
+                const devuelto = Number(e.devuelto)
+                const anulada = e.estado === 'anulada'
+                const marcada = sel.has(e.id)
+                return (
+                  <tr key={e.id} onClick={() => { if (!anulada) toggle(e.id) }}
+                    className={`transition-colors ${anulada ? 'opacity-60' : 'cursor-pointer'} ${marcada ? 'bg-azul-light/50' : anulada ? '' : 'hover:bg-gris/20'}`}>
+                    <td className="px-3 py-1.5 text-center align-top">
+                      <input type="checkbox" checked={marcada} disabled={anulada} onChange={() => toggle(e.id)} onClick={ev => ev.stopPropagation()} aria-label={`Elegir ${e.descripcion}`} />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap leading-tight">
+                        <span className="font-medium text-carbon">{e.descripcion}</span>
+                        {Number(e.cantidad) > 1 && <span className="text-[11px] font-mono font-bold text-azul">×{Number(e.cantidad)}</span>}
+                        {esDev ? (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-verde-light text-verde" title={e.salida_id ? `Devuelve la salida #${e.salida_id}` : 'Devolución cargada en el pedido'}>
+                            ↩ volvió{e.salida_id ? ` · salida #${e.salida_id}` : ''}
+                          </span>
+                        ) : e.estado === 'confirmada' ? (
+                          devuelto > 0
+                            ? <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${enObraN > 0 ? 'bg-amarillo-light text-[#7A5500]' : 'bg-gris text-gris-dark'}`}>
+                                {enObraN > 0 ? `en obra ×${enObraN} · volvieron ×${devuelto}` : 'toda devuelta'}
+                              </span>
+                            : <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-azul-light text-azul">🏗 en obra</span>
+                        ) : e.estado === 'pendiente' ? (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-naranja-light text-naranja-dark" title="Confirmala para poder registrar el retorno">sin revisar</span>
+                        ) : e.estado === 'revisar' ? (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amarillo-light text-[#7A5500]" title={e.nota ?? 'Marcada para revisar'}>a revisar</span>
+                        ) : e.estado === 'ignorada' ? (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gris text-gris-dark">archivada</span>
+                        ) : anulada ? (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gris text-gris-dark">envío deshecho</span>
+                        ) : null}
+                      </div>
+                      {e.nota && e.estado !== 'revisar' && <div className="text-[11px] text-gris-dark italic truncate max-w-md" title={e.nota}>{e.nota}</div>}
+                      <div className="sm:hidden text-[11px] text-gris-dark mt-0.5">
+                        <span className="font-bold text-carbon">{nombreObra(e.obra_cod)}</span> · <span className="font-mono">{fmtFecha(e.fecha)}</span>
+                        {e.remito_numero && <span className="font-mono text-naranja font-bold ml-1.5">{e.remito_numero}</span>}
+                      </div>
+                    </td>
+                    <td className="px-2 py-1.5 hidden sm:table-cell align-top">
+                      <div className="text-xs font-bold text-carbon leading-tight">{nombreObra(e.obra_cod)}</div>
+                      {e.obra_cod && <div className="text-[10px] font-mono text-gris-dark">{e.obra_cod}</div>}
+                    </td>
+                    <td className="px-2 py-1.5 hidden sm:table-cell align-top text-[11px] text-gris-dark whitespace-nowrap">
+                      <span className="font-mono text-carbon">{fmtFecha(e.fecha)}</span>
+                      {e.remito_numero && <span className="font-mono text-naranja font-bold ml-1.5">{e.remito_numero}</span>}
+                      {e.solicitud_id && <span className="font-mono ml-1.5">#{e.solicitud_id}</span>}
+                    </td>
+                    <td className="px-2 py-1.5 hidden lg:table-cell align-top">
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${ORIGEN_LABEL[e.origen].cls}`} title={ORIGEN_LABEL[e.origen].title}>{ORIGEN_LABEL[e.origen].txt}</span>
+                    </td>
+                    <td className="px-3 py-1.5 text-right align-top whitespace-nowrap" onClick={ev => ev.stopPropagation()}>
+                      <div className="inline-flex items-center gap-1">
+                        {e.estado === 'ignorada' ? (
+                          <button disabled={!puedeEditar || ocupado} onClick={() => marcarUna(e, 'pendiente', 'Vuelta a la bandeja')} className={`${btnMini} bg-gris text-gris-dark hover:bg-azul-light hover:text-azul`}>↩ Desarchivar</button>
+                        ) : anulada ? null : e.estado === 'confirmada' ? (
+                          <>
+                            {!esDev && puedeVolver(e) && (
+                              <button disabled={!puedeEditar || ocupado} onClick={() => setRetorno([e])} title="La trajeron de vuelta al pañol" className={`${btnMini} bg-azul-light text-azul hover:opacity-80`}>↩ Volvió</button>
+                            )}
+                            {!esDev && (
+                              <button disabled={!puedeEditar || ocupado} onClick={() => marcarUna(e, 'pendiente', 'Vuelta a la bandeja')} title="Volverla a Sin revisar" className={`${btnMini} text-gris-dark hover:text-azul hover:bg-azul-light`}>↺</button>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <button disabled={!puedeEditar || ocupado} onClick={() => marcarUna(e, 'confirmada', 'Confirmada')} title="Sí, es herramienta del pañol" className={`${btnMini} bg-verde-light text-verde hover:opacity-80`}>✓ Confirmar</button>
+                            <button disabled={!puedeEditar || ocupado} onClick={() => marcarUna(e, 'ignorada', 'Archivada')} title="El sistema la detectó mal: no es una herramienta del pañol" className={`${btnMini} bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo`}>No es</button>
+                          </>
                         )}
-                        <button disabled={!puedeEditar || ocupado} onClick={() => marcarUna(e, 'pendiente', 'Vuelta a la bandeja')} title="Volverla a Sin revisar" className={btn('text-gris-dark hover:text-azul hover:bg-azul-light')}>↺</button>
-                      </>
-                    ) : (
-                      <>
-                        <button disabled={!puedeEditar || ocupado} onClick={() => marcarUna(e, 'confirmada', 'Confirmada')} title="Sí, es herramienta del pañol" className={btn('bg-verde-light text-verde hover:opacity-80')}>✓ Confirmar</button>
-                        <button disabled={!puedeEditar || ocupado} onClick={() => marcarUna(e, 'ignorada', 'Archivada')} title="El sistema la detectó mal: no es una herramienta del pañol" className={btn('bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo')}>No es herramienta</button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          {total > PAGE_SIZE && (
+            <div className="p-3 border-t border-gris">
+              <Pagination page={page} total={total} pageSize={PAGE_SIZE} onChange={p => { setPage(p); setSel(new Set()) }} />
+            </div>
+          )}
         </div>
       )}
 
-      <Pagination page={page} total={total} pageSize={PAGE_SIZE} onChange={p => { setPage(p); setSel(new Set()) }} />
+      {/* Barra de selección: pegada abajo mientras se recorre la lista */}
+      {sel.size > 0 && (
+        <div className="sticky bottom-2 z-10 bg-carbon text-white rounded-card shadow-card-lg px-4 py-2.5 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-bold mr-1">{sel.size} elegida{sel.size !== 1 ? 's' : ''}</span>
+          <button disabled={!puedeEditar || ocupado} onClick={() => marcarLote('confirmada', 'confirmadas')} className={`${btnMini} py-1.5 bg-verde-light text-verde hover:opacity-80`} title="Sí, son herramientas del pañol">✓ Confirmar</button>
+          <button disabled={!puedeEditar || ocupado} onClick={() => marcarLote('ignorada', 'archivadas')} className={`${btnMini} py-1.5 bg-white text-gris-dark hover:bg-rojo-light hover:text-rojo`} title="El sistema las detectó mal: no son herramientas del pañol">No es herramienta</button>
+          <button disabled={!puedeEditar || ocupado} onClick={() => marcarLote('pendiente', 'vueltas a la bandeja')} className={`${btnMini} py-1.5 bg-white/10 text-white hover:bg-white/20`} title="Volverlas a Sin revisar">↺ A la bandeja</button>
+          <button disabled={!puedeEditar || ocupado || elegidosVolver.length === 0} onClick={() => setRetorno(elegidosVolver)} className={`${btnMini} py-1.5 bg-naranja text-white hover:bg-naranja-dark`} title="Registrar que volvieron al pañol (solo las confirmadas)">
+            ↩ Volvió al pañol{elegidosVolver.length > 0 && elegidosVolver.length !== sel.size ? ` (${elegidosVolver.length})` : ''}
+          </button>
+          <button onClick={() => setSel(new Set())} className="ml-auto text-xs text-white/70 hover:text-white px-1">Quitar</button>
+        </div>
+      )}
 
       <HerrRetornoModal
         open={retorno !== null}
