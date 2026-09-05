@@ -260,7 +260,7 @@ export function HerrCatalogo() {
           fusionando={fusionando}
           onConfirmar={(destinoId) => fusionar({ id: fusion.id, destino_id: destinoId }, {
             onSuccess: (r) => {
-              toast(`✓ “${r.origen}” se fundió en “${r.destino}”: ${r.renglones} renglón${r.renglones === 1 ? '' : 'es'} de pedido y ${r.entregas} movimiento${r.entregas === 1 ? '' : 's'} del pañol pasaron al destino`, 'ok')
+              toast(`✓ “${r.origen}” se fundió en “${r.destino}”: ${r.renglones} ${r.renglones === 1 ? 'renglón' : 'renglones'} de pedido y ${r.entregas} movimiento${r.entregas === 1 ? '' : 's'} del pañol pasaron al destino`, 'ok')
               setFusion(null)
             },
             onError: (err: unknown) => toast(mensajeError(err), 'err'),
@@ -299,7 +299,7 @@ function FusionarTipo({ origen, onClose, onConfirmar, fusionando }: {
     >
       <div className="flex flex-col gap-3 text-sm text-carbon">
         <p>
-          <b>{origen.nombre}</b> queda dado de baja y todo lo suyo pasa al tipo que elijas: sus {origen.renglones} renglón{origen.renglones === 1 ? '' : 'es'} de pedido,
+          <b>{origen.nombre}</b> queda dado de baja y todo lo suyo pasa al tipo que elijas: sus {origen.renglones} {origen.renglones === 1 ? 'renglón' : 'renglones'} de pedido,
           sus salidas y retornos del pañol{Number(origen.en_obra) > 0 && <> (hoy hay <b>{Number(origen.en_obra)}</b> en obra)</>} y sus sinónimos. No se puede deshacer desde acá.
         </p>
         <Input placeholder="Buscar el tipo destino…" value={busq} onChange={e => setBusq(e.target.value)} autoFocus />
@@ -311,7 +311,7 @@ function FusionarTipo({ origen, onClose, onConfirmar, fusionando }: {
               <span className="flex-1 min-w-0">
                 <span className="font-semibold text-azul">{t.nombre}</span>
                 <span className="block text-[11px] text-gris-dark">
-                  {Number(t.en_obra) > 0 ? `${Number(t.en_obra)} en obra · ` : ''}{t.renglones} renglón{t.renglones === 1 ? '' : 'es'}
+                  {Number(t.en_obra) > 0 ? `${Number(t.en_obra)} en obra · ` : ''}{t.renglones} {t.renglones === 1 ? 'renglón' : 'renglones'}
                   {(t.alias ?? []).length > 0 && <> · {(t.alias ?? []).slice(0, 4).join(', ')}{(t.alias ?? []).length > 4 ? '…' : ''}</>}
                 </span>
               </span>
@@ -353,7 +353,7 @@ function DetalleTipo({ tipo, onClose, onEditar }: { tipo: HerrTipoCatalogo; onCl
   return (
     <Modal open onClose={onClose} title={tipo.nombre} width="max-w-2xl"
       footer={<div className="flex justify-between items-center gap-2">
-        <span className="text-xs text-gris-dark">{tipo.renglones} renglón{tipo.renglones === 1 ? '' : 'es'} de pedido usaron este tipo</span>
+        <span className="text-xs text-gris-dark">{tipo.renglones} {tipo.renglones === 1 ? 'renglón' : 'renglones'} de pedido usaron este tipo</span>
         <div className="flex gap-2">
           {onEditar && <Button variant="secondary" onClick={onEditar}>Editar</Button>}
           <Button onClick={onClose}>Cerrar</Button>
