@@ -103,8 +103,17 @@ export function HerrRetornos() {
   const filtradas = useMemo(() => enObra.filter(e => {
     if (obraCod && e.obra_cod !== obraCod) return false
     if (minDias && diasEnObra(e.fecha) < minDias) return false
-    // Por palabras y sin importar el orden: "amoladora 7" encuentra 'Amoladora angular 7"'.
-    if (nq && !matchesSearch(`${e.descripcion} ${nombreObra(e.obra_cod)} ${e.obra_cod ?? ''} ${e.remito_numero ?? ''} ${e.solicitud_id ? `#${e.solicitud_id}` : ''}`, busqueda)) return false
+    if (nq) {
+      // Herramienta y obra: por palabras y sin importar el orden ("amoladora 7"
+      // encuentra 'Amoladora angular 7"'). Remito y pedido: solo con el número
+      // entero (3+ caracteres), si no un "7" suelto matchea RM-0277 y #275.
+      const texto = matchesSearch(`${e.descripcion} ${nombreObra(e.obra_cod)} ${e.obra_cod ?? ''}`, busqueda)
+      const ref = nq.replace(/^#/, '')
+      const referencia = ref.length >= 3 && (
+        (e.remito_numero ?? '').toLowerCase().includes(ref) || String(e.solicitud_id ?? '') === ref
+      )
+      if (!texto && !referencia) return false
+    }
     return true
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [enObra, obraCod, minDias, nq, obraNom])
