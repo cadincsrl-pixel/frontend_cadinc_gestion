@@ -7,7 +7,7 @@ import { useObras } from '@/modules/tarja/hooks/useObras'
 import { usePermisos } from '@/hooks/usePermisos'
 import { Pagination } from '@/components/ui/Pagination'
 import { Combobox } from '@/components/ui/Combobox'
-import { normalizeText } from '@/lib/utils/text'
+import { matchesSearch, normalizeText } from '@/lib/utils/text'
 import { HerrRetornoModal } from './HerrRetornoModal'
 import { ORIGEN_LABEL, fmtFecha } from './HerrSalidas'
 import type { HerrEntrega } from '@/types/domain.types'
@@ -103,10 +103,8 @@ export function HerrRetornos() {
   const filtradas = useMemo(() => enObra.filter(e => {
     if (obraCod && e.obra_cod !== obraCod) return false
     if (minDias && diasEnObra(e.fecha) < minDias) return false
-    if (nq) {
-      const blob = normalizeText(`${e.descripcion} ${nombreObra(e.obra_cod)} ${e.obra_cod ?? ''} ${e.remito_numero ?? ''} ${e.solicitud_id ? `#${e.solicitud_id}` : ''}`)
-      if (!blob.includes(nq)) return false
-    }
+    // Por palabras y sin importar el orden: "amoladora 7" encuentra 'Amoladora angular 7"'.
+    if (nq && !matchesSearch(`${e.descripcion} ${nombreObra(e.obra_cod)} ${e.obra_cod ?? ''} ${e.remito_numero ?? ''} ${e.solicitud_id ? `#${e.solicitud_id}` : ''}`, busqueda)) return false
     return true
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [enObra, obraCod, minDias, nq, obraNom])
@@ -161,7 +159,7 @@ export function HerrRetornos() {
   const btnMini = 'text-[11px] font-bold px-2.5 py-1 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed'
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="p-4 md:p-6 flex flex-col gap-3">
       {/* Encabezado: título + contadores en una sola línea */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <h1 className="text-xl font-bold text-carbon flex items-center gap-2">

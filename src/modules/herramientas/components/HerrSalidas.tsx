@@ -155,7 +155,7 @@ export function HerrSalidas() {
   const btn = (extra: string) => `text-xs font-bold px-3 py-1.5 rounded transition-colors min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed ${extra}`
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="p-4 md:p-6 flex flex-col gap-4">
       {/* Encabezado */}
       <div>
         <h1 className="text-xl font-bold text-carbon">📤 Salidas a obra</h1>
