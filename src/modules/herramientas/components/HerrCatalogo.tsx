@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useHerrTipos, useHerrTipoEntregas, useCrearHerrTipo, useEditarHerrTipo, type HerrTipoInput } from '../hooks/useHerrTipos'
+import { useHerrTipos, useHerrTipoEntregas, useCrearHerrTipo, useEditarHerrTipo, useFusionarHerrTipo, type HerrTipoInput } from '../hooks/useHerrTipos'
 import { useObras } from '@/modules/tarja/hooks/useObras'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useToast } from '@/components/ui/Toast'
@@ -20,7 +20,8 @@ import type { HerrTipoCatalogo, HerrEntrega } from '@/types/domain.types'
  * y sus sinónimos; el buscador del pedido no deja crear herramientas.
  *
  * Ver = tab `catalogo`. Crear / editar / dar de baja = `herramientas.actualizacion`
- * (decisión del user 2026-09-05: Sosa puede sumar un tipo).
+ * (decisión del user 2026-09-05: Sosa puede sumar un tipo). Fusionar dos tipos
+ * reescribe pedidos y pañol, así que pide `herramientas.eliminacion`.
  */
 
 type Form = { id?: number; nombre: string; alias: string; obs: string }
@@ -30,6 +31,18 @@ function parseAlias(txt: string): string[] {
   return txt.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean)
 }
 
+// Misma idea que norm_txt del server: minúsculas, sin tildes, espacios simples.
+function norm(s: string): string {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim()
+}
+
+const ERRORES_FUSION: Record<string, string> = {
+  DESTINO_DE_BAJA:   'El tipo destino está dado de baja: reactivalo primero.',
+  ORIGEN_NO_ES_TIPO: 'El tipo a fusionar ya no existe.',
+  DESTINO_NO_ES_TIPO: 'El tipo destino ya no existe.',
+  FUSION_MISMO_TIPO: 'Elegí un tipo distinto para fusionar.',
+}
+
 function mensajeError(err: unknown): string {
   if (err instanceof HttpError) {
     const b = err.body as { error?: string; candidatos?: { id: number; nombre: string }[] } | undefined
@@ -37,12 +50,13 @@ function mensajeError(err: unknown): string {
       const c = (b.candidatos ?? []).map(x => x.nombre).join(', ')
       return c ? `Ya existe: ${c}. Sumale un sinónimo a ese en vez de crear otro.` : 'Ya existe un tipo con ese nombre o sinónimo.'
     }
+    if (b?.error && ERRORES_FUSION[b.error]) return ERRORES_FUSION[b.error]
   }
   return (err as Error)?.message || 'Error'
 }
 
 export function HerrCatalogo() {
-  const { puedeEditar } = usePermisos('herramientas')
+  const { puedeEditar, puedeEliminar } = usePermisos('herramientas')
   const toast = useToast()
 
   const [busqueda, setBusqueda] = useState('')
@@ -51,6 +65,7 @@ export function HerrCatalogo() {
   const [detalle, setDetalle] = useState<HerrTipoCatalogo | null>(null)
   const [form, setForm] = useState<Form | null>(null)
   const [baja, setBaja] = useState<HerrTipoCatalogo | null>(null)
+  const [fusion, setFusion] = useState<HerrTipoCatalogo | null>(null)
 
   useEffect(() => {
     const t = setTimeout(() => setQ(busqueda.trim()), 300)
@@ -60,6 +75,7 @@ export function HerrCatalogo() {
   const { data: tipos = [], isLoading, isError, error, refetch, isFetching } = useHerrTipos(q, verBajas)
   const { mutate: crear, isPending: creando } = useCrearHerrTipo()
   const { mutate: editar, isPending: editando } = useEditarHerrTipo()
+  const { mutate: fusionar, isPending: fusionando } = useFusionarHerrTipo()
 
   const resumen = useMemo(() => ({
     tipos:      tipos.filter(t => t.activo).length,
@@ -170,6 +186,7 @@ export function HerrCatalogo() {
                   {puedeEditar && (t.activo
                     ? <Button variant="ghost" size="sm" onClick={() => setBaja(t)}>Dar de baja</Button>
                     : <Button variant="ghost" size="sm" onClick={() => cambiarActivo(t, true)} disabled={editando}>Reactivar</Button>)}
+                  {puedeEliminar && t.activo && <Button variant="ghost" size="sm" onClick={() => setFusion(t)}>Fusionar con…</Button>}
                 </td>
               </tr>
             ))}
@@ -236,8 +253,73 @@ export function HerrCatalogo() {
         )}
       </Modal>
 
+      {fusion && (
+        <FusionarTipo
+          origen={fusion}
+          onClose={() => setFusion(null)}
+          fusionando={fusionando}
+          onConfirmar={(destinoId) => fusionar({ id: fusion.id, destino_id: destinoId }, {
+            onSuccess: (r) => {
+              toast(`✓ “${r.origen}” se fundió en “${r.destino}”: ${r.renglones} renglón${r.renglones === 1 ? '' : 'es'} de pedido y ${r.entregas} movimiento${r.entregas === 1 ? '' : 's'} del pañol pasaron al destino`, 'ok')
+              setFusion(null)
+            },
+            onError: (err: unknown) => toast(mensajeError(err), 'err'),
+          })}
+        />
+      )}
+
       {detalle && <DetalleTipo tipo={detalle} onClose={() => setDetalle(null)} onEditar={puedeEditar ? () => { abrirEditar(detalle); setDetalle(null) } : undefined} />}
     </div>
+  )
+}
+
+// ── Fusionar: el origen se funde en el destino y queda de baja ────────────
+function FusionarTipo({ origen, onClose, onConfirmar, fusionando }: {
+  origen: HerrTipoCatalogo; onClose: () => void; onConfirmar: (destinoId: number) => void; fusionando: boolean
+}) {
+  const [busq, setBusq] = useState('')
+  const [destinoId, setDestinoId] = useState<number | null>(null)
+  // Todos los tipos activos (~100 filas, ya en caché): el filtro es local.
+  const { data: todos = [] } = useHerrTipos('', false)
+  const nb = norm(busq)
+  const candidatos = useMemo(() => todos
+    .filter(t => t.id !== origen.id && t.activo)
+    .filter(t => !nb || norm(t.nombre).includes(nb) || (t.alias ?? []).some(a => norm(a).includes(nb)))
+    .slice(0, 15), [todos, origen.id, nb])
+  const destino = candidatos.find(t => t.id === destinoId) ?? todos.find(t => t.id === destinoId) ?? null
+
+  return (
+    <Modal open onClose={onClose} title={`Fusionar “${origen.nombre}” con…`} width="max-w-lg"
+      footer={<div className="flex justify-end gap-2">
+        <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+        <Button variant="danger" disabled={!destino} loading={fusionando} onClick={() => destino && onConfirmar(destino.id)}>
+          {destino ? `Fundir en “${destino.nombre}”` : 'Elegí el destino'}
+        </Button>
+      </div>}
+    >
+      <div className="flex flex-col gap-3 text-sm text-carbon">
+        <p>
+          <b>{origen.nombre}</b> queda dado de baja y todo lo suyo pasa al tipo que elijas: sus {origen.renglones} renglón{origen.renglones === 1 ? '' : 'es'} de pedido,
+          sus salidas y retornos del pañol{Number(origen.en_obra) > 0 && <> (hoy hay <b>{Number(origen.en_obra)}</b> en obra)</>} y sus sinónimos. No se puede deshacer desde acá.
+        </p>
+        <Input placeholder="Buscar el tipo destino…" value={busq} onChange={e => setBusq(e.target.value)} autoFocus />
+        <div className="border border-gris-mid rounded-lg max-h-[40vh] overflow-y-auto">
+          {candidatos.length === 0 && <div className="px-3 py-4 text-gris-dark text-center">Ningún tipo activo coincide.</div>}
+          {candidatos.map(t => (
+            <label key={t.id} className={`flex items-start gap-2 px-3 py-2 border-b border-gris last:border-0 cursor-pointer hover:bg-gris/30 ${t.id === destinoId ? 'bg-naranja/10' : ''}`}>
+              <input type="radio" name="destino" className="mt-1" checked={t.id === destinoId} onChange={() => setDestinoId(t.id)} />
+              <span className="flex-1 min-w-0">
+                <span className="font-semibold text-azul">{t.nombre}</span>
+                <span className="block text-[11px] text-gris-dark">
+                  {Number(t.en_obra) > 0 ? `${Number(t.en_obra)} en obra · ` : ''}{t.renglones} renglón{t.renglones === 1 ? '' : 'es'}
+                  {(t.alias ?? []).length > 0 && <> · {(t.alias ?? []).slice(0, 4).join(', ')}{(t.alias ?? []).length > 4 ? '…' : ''}</>}
+                </span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </div>
+    </Modal>
   )
 }
 

@@ -55,6 +55,22 @@ export function useCrearHerrTipo() {
   })
 }
 
+export interface HerrFusionResultado {
+  origen_id: number; origen: string; destino_id: number; destino: string
+  renglones: number; entregas: number; movimientos: number; cuenta_cliente: number
+  tipo: HerrTipoCatalogo
+}
+
+/** El tipo `id` se funde en `destino_id` y queda de baja (RPC transaccional). */
+export function useFusionarHerrTipo() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, destino_id }: { id: number; destino_id: number }) =>
+      apiPost<HerrFusionResultado>(`/api/herramientas/tipos/${id}/fusionar`, { destino_id }),
+    onSuccess:  () => invalidarTodo(qc),
+  })
+}
+
 export function useEditarHerrTipo() {
   const qc = useQueryClient()
   return useMutation({
