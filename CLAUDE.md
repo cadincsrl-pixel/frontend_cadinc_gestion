@@ -99,6 +99,15 @@ Cliente (Next.js)
 - `stock-cliente` — Material del cliente administrado en depósito (no facturable).
 - `cuenta-corriente` — Una sola vista de `materiales_a_cuenta_cliente`: cada renglón tiene UN estado (`pago_directo` › `gasto_cadinc` › `cobrado` › `a_cobrar`, en ese orden de precedencia, derivado en `v_cuenta_corriente`), filtros en el server, resumen por obra/mes/proveedor, cargar precios, pagos del cliente y PDF (solo con la deuda del cliente). Reemplazó a `cuenta-cliente`, `gastos-cadinc` y `materiales` el 2026-09-04 (migraciones `20260904ap`/`aq`); las URLs viejas redirigen.
 
+### 4.3 Sub-tabs de Herramientas (`/herramientas/<tab>`)
+Rutas propias (no query string). Tabs en `profiles.permisos.herramientas.tabs`, orden y redirect al primero permitido en `src/app/(app)/herramientas/page.tsx`:
+- `inventario` — fichas HER-NNN (unidades físicas) y su vista "por obra".
+- `movimientos` — traslados de fichas entre obras.
+- `trazabilidad` — historial por ficha.
+- `salidas` / `retornos` — el **pañol** (`herr_entregas`): lo que cada obra se llevó vía pedidos y lo que volvió.
+- `catalogo` — **tipos de herramienta** (§5.12): alta, sinónimos, baja, detalle por obra y "Fusionar con…".
+- `parametros` — categorías de fichas y configuración.
+
 ## 5. Reglas de negocio NO-OBVIAS (críticas)
 
 ### 5.1 Tracking a nivel line-item (certificaciones)
@@ -183,6 +192,15 @@ La **fórmula correcta** usa `costoLegConCatObra` (en `src/lib/utils/costos.ts`)
 Los 4 lugares deben dar el mismo número. La función vieja `calcularTotalesSemana` (que usa `costoLeg` sin cat_obra) **ya no se usa**.
 
 **Precio global versionado (2026-07-02)**: el `vh` global por categoría está versionado en `categoria_tarifas (cat_id, vh, desde)` — espejo de `tarifas` por obra. `categorias.vh` es solo **cache de la última versión** (para labels/selects). En cualquier cálculo con fecha (semanas pasadas, recibos, exports) **NUNCA usar `cat.vh` directo**: usar `getVHGlobalEnFecha(cat, fechaRef)` de `costos.ts`. Motivo: el 2026-06-26 un aumento global (UPDATE in-place, modelo viejo) recalculó retroactivamente los costos de todas las semanas ya pagadas; los valores históricos se recuperaron por extrapolación del Excel de pagos (migración `20260702_categoria_tarifas.sql`).
+
+### 5.12 Herramientas: tipos, no precios, fuera de la cuenta del cliente
+Una herramienta es una fila de `stock_materiales` con `clase='herramienta'` (rubro "Herramientas y máquinas"). Se llama **tipo** y es lo que ofrece el buscador del pedido y lo que cuenta el pañol por `material_id`. Reglas:
+- **No tiene precio ni entra en la cuenta del cliente.** Va y vuelve de la obra; el trigger `trg_mcc_sin_herramientas` la saca de `materiales_a_cuenta_cliente` al insertar. Si una fila del catálogo pasa a `herramienta`, hay que borrar a mano sus filas de MCC no cobradas (evento `sacado_de_cuenta_cliente`) y tocar `material_id = material_id` en sus renglones para que el pañol las tome.
+- **El pedido no deja crear herramientas en texto libre ni desde el Combobox**: se crean en `/herramientas/catalogo` (backend `tipos.routes.ts`: `GET/POST /api/herramientas/tipos`, `PATCH /tipos/:id`, `POST /tipos/:id/fusionar`). Ver = tab `catalogo`; crear/editar/baja = `herramientas.actualizacion`; fusionar = `herramientas.eliminacion`.
+- **Duplicados**: el backend compara `normTxt(nombre)` y alias contra los tipos activos y responde `409 TIPO_DUPLICADO { candidatos }`; el frontend muestra "ya existe X, sumale un sinónimo". Además existe el índice único parcial `stock_materiales_nombre_norm_uidx`.
+- **Renombrar propaga** el nombre nuevo a `solicitud_compra_item.descripcion` y `herr_entregas.descripcion` de los renglones que llevaban el viejo. **Fusionar** (RPC `fusionar_tipo_herramienta`, SECURITY DEFINER, solo service_role) mueve renglones, pañol, movimientos y sinónimos al destino y da de baja el origen; es transaccional y no se deshace desde la UI.
+- **Un renglón con dos herramientas** ("masa y cortafierro") se desdobla en un renglón hermano (obs `Desdoblado del renglón #N`), nunca se elige una sola.
+- Precios del catálogo: `precio_ref` es **precio final con IVA** (§ memoria). Regla al vincular renglones a $0/$1: toman el precio de referencia solo en obras llave en mano (`obras.materiales_a_cargo_de='cadinc'`); en obras de cliente quedan en $0 salvo pedido explícito del user.
 
 ## 6. Convenciones de código (frontend)
 
@@ -317,4 +335,4 @@ El frontend espera al backend en `http://localhost:3001` (configurable vía env)
 
 ---
 
-_Última actualización: 2026-05-04._
+_Última actualización: 2026-09-05._
