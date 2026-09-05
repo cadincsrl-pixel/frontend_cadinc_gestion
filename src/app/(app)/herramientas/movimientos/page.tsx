@@ -2,5 +2,5 @@ import { HerrMovimientos } from '@/modules/herramientas/components/HerrMovimient
 import { GuardWrapper }    from '@/components/GuardWrapper'
 
 export default function Page() {
-  return <GuardWrapper modulo="herramientas"><HerrMovimientos /></GuardWrapper>
+  return <GuardWrapper modulo="herramientas" tabRequerido="movimientos"><HerrMovimientos /></GuardWrapper>
 }

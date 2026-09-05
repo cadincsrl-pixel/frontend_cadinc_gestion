@@ -2,5 +2,5 @@ import { HerrTrazabilidad } from '@/modules/herramientas/components/HerrTrazabil
 import { GuardWrapper }     from '@/components/GuardWrapper'
 
 export default function Page() {
-  return <GuardWrapper modulo="herramientas"><HerrTrazabilidad /></GuardWrapper>
+  return <GuardWrapper modulo="herramientas" tabRequerido="trazabilidad"><HerrTrazabilidad /></GuardWrapper>
 }
