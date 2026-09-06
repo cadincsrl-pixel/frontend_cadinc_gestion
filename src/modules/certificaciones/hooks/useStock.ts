@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api/client'
-import type { StockRubro, StockMaterial, StockMovimiento, CatalogoPage, CatalogoStats, CatalogoEstadoPrecio, ClaseMaterial } from '@/types/domain.types'
+import type { StockRubro, StockMaterial, StockMovimiento, CatalogoPage, CatalogoStats, CatalogoEstadoPrecio, ClaseMaterial, MaterialComprasResumen } from '@/types/domain.types'
 
 // ── Rubros ──
 export function useStockRubros() {
@@ -69,6 +69,16 @@ export function useCatalogo(filtro: CatalogoFiltro) {
 }
 
 /** Conteo por estado de precio (activos), para los chips del filtro. */
+/** Historial de compras de un material (por compra y por proveedor), para el modal del catálogo. */
+export function useMaterialCompras(materialId: number | null) {
+  return useQuery({
+    queryKey: ['stock', 'materiales', 'compras', materialId],
+    queryFn:  () => apiGet<MaterialComprasResumen>(`/api/stock/catalogo/${materialId}/compras`),
+    enabled:  materialId != null,
+    staleTime: 60_000,
+  })
+}
+
 export function useCatalogoStats() {
   return useQuery({
     queryKey: ['stock', 'materiales', 'catalogo', 'stats'],

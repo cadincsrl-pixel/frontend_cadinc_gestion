@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/Input'
 import { InputMonto } from '@/components/ui/InputMonto'
 import { Pagination } from '@/components/ui/Pagination'
 import { AliasChips } from './AliasChips'
+import { HistorialPrecios } from './HistorialPrecios'
 import { UNIDADES } from '../constants'
 import type { CatalogoMaterial, CatalogoEstadoPrecio, StockRubro } from '@/types/domain.types'
 
@@ -58,6 +59,7 @@ export function CatalogoTab() {
   const toast = useToast()
 
   const [busqueda, setBusqueda] = useState('')
+  const [historial, setHistorial] = useState<CatalogoMaterial | null>(null)
   const [rubroId, setRubroId]   = useState<number | ''>('')
   const [estado, setEstado]     = useState<CatalogoEstadoPrecio | ''>('')
   const [conBajas, setConBajas] = useState(false)
@@ -279,7 +281,7 @@ export function CatalogoTab() {
                       )}
                       <td className="px-4 py-2.5">
                         <div className="font-medium text-sm flex items-center gap-1.5 flex-wrap">
-                          {m.nombre}
+                          <button type="button" onClick={() => setHistorial(m)} className="text-left hover:underline hover:text-azul" title="Ver el historial de compras y precios">{m.nombre}</button>
                           {m.clase === 'herramienta' && <span className="text-[9px] font-bold bg-azul-light text-azul px-1.5 py-0.5 rounded" title="Herramienta: va al pañol, no a la cuenta del cliente">🔧</span>}
                           {!m.activo && <span className="text-[9px] font-bold bg-gris text-gris-dark px-1.5 py-0.5 rounded">BAJA</span>}
                         </div>
@@ -335,6 +337,7 @@ export function CatalogoTab() {
                         )}
                       </td>
                       <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                        <button onClick={() => setHistorial(m)} className="text-xs font-bold px-2.5 py-1.5 rounded text-gris-dark hover:bg-azul-light hover:text-azul mr-1" title="Historial de compras y precios por proveedor">📈 Historial</button>
                         {puedeEditar && !editando && (
                           <button onClick={() => abrirEdicion(m)} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-gris-mid" title="Editar el precio de referencia">
                             ✏️ Precio
@@ -363,7 +366,7 @@ export function CatalogoTab() {
                       )}
                       <div className="min-w-0">
                         <div className="font-medium text-sm">
-                          {m.nombre} {m.clase === 'herramienta' && '🔧'} {!m.activo && <span className="text-[9px] font-bold bg-gris text-gris-dark px-1.5 py-0.5 rounded">BAJA</span>}
+                          <button type="button" onClick={() => setHistorial(m)} className="text-left hover:underline">{m.nombre}</button> {m.clase === 'herramienta' && '🔧'} {!m.activo && <span className="text-[9px] font-bold bg-gris text-gris-dark px-1.5 py-0.5 rounded">BAJA</span>}
                         </div>
                         <div className="text-[11px] text-gris-dark">{m.rubro_icono} {m.rubro} · {unidadLabel(m.unidad)}</div>
                         <AliasChips alias={m.alias} compact />
@@ -396,6 +399,7 @@ export function CatalogoTab() {
                       </div>
                     ) : (
                       <div className="flex gap-2 mt-2">
+                        <button onClick={() => setHistorial(m)} className="text-xs font-bold px-3 py-1.5 rounded text-gris-dark hover:bg-azul-light hover:text-azul min-h-[36px]">📈 Historial</button>
                         <button onClick={() => abrirEdicion(m)} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark min-h-[36px]">✏️ Precio</button>
                         {seleccionable && (
                           <button disabled={ocupado} onClick={() => guardarPrecio(m, m.uc_precio!)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul min-h-[36px]">Usar últ. compra</button>
@@ -412,6 +416,15 @@ export function CatalogoTab() {
             <Pagination page={page} total={total} pageSize={PAGE_SIZE} onChange={setPage} />
           </div>
         </div>
+      )}
+
+      {historial && (
+        <HistorialPrecios
+          material={historial}
+          onClose={() => setHistorial(null)}
+          ocupado={ocupado}
+          onUsarPrecio={puedeEditar ? (p) => { guardarPrecio(historial, p); setHistorial(null) } : undefined}
+        />
       )}
     </div>
   )

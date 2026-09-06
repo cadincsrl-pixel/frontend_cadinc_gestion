@@ -1664,6 +1664,37 @@ export type ClaseMaterial = 'material' | 'herramienta' | 'epp'
  * última compra real (no despachos de depósito). `uc_*` viene null si el
  * material nunca se compró por el sistema.
  */
+/** Una compra real de un material (v_material_compras, 20260906f). */
+export interface MaterialCompra {
+  material_id:      number
+  item_id:          number
+  solicitud_id:     number
+  obra_cod:         string
+  obra_nom:         string | null
+  descripcion:      string
+  color:            string | null
+  cantidad:         number
+  unidad:           string
+  precio_unit:      number
+  proveedor_id:     number | null
+  proveedor_nombre: string | null
+  fecha:            string | null
+  pagado_por:       string
+  factura_id:       number | null
+  factura_numero:   string | null
+  estado:           string
+}
+export interface MaterialCompraProveedor {
+  proveedor_id:  number | null
+  proveedor:     string
+  ultimo_precio: number
+  ultima_fecha:  string | null
+  compras:       number
+  minimo:        number
+  maximo:        number
+}
+export interface MaterialComprasResumen { compras: MaterialCompra[]; por_proveedor: MaterialCompraProveedor[] }
+
 export interface CatalogoMaterial {
   id:                    number
   rubro_id:              number
