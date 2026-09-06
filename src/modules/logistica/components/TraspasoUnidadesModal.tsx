@@ -10,6 +10,7 @@ import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
+import { usePermisos } from '@/hooks/usePermisos'
 import { useTraspasoChofer } from '../hooks/useLogistica'
 import type { Chofer, Camion, Batea } from '@/types/domain.types'
 
@@ -24,6 +25,8 @@ interface Props {
 export function TraspasoUnidadesModal({ open, onClose, choferes, camiones, bateas }: Props) {
   const toast = useToast()
   const { mutate: traspasar, isPending } = useTraspasoChofer()
+  // POST /choferes/traspaso, pero el backend lo gatea con actualizacion.
+  const { puedeEditar } = usePermisos('logistica')
 
   const [origenId,    setOrigenId]    = useState('')
   const [destinoId,   setDestinoId]   = useState('')
@@ -141,7 +144,7 @@ export function TraspasoUnidadesModal({ open, onClose, choferes, camiones, batea
       footer={
         <>
           <Button variant="secondary" onClick={cerrar}>Cancelar</Button>
-          <Button variant="primary" loading={isPending} disabled={!puedeConfirmar} onClick={confirmar}>
+          <Button variant="primary" loading={isPending} disabled={!puedeConfirmar || !puedeEditar} title={puedeEditar ? undefined : 'Sin permiso para traspasar unidades'} onClick={confirmar}>
             ✓ Confirmar traspaso
           </Button>
         </>

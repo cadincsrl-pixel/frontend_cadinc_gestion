@@ -132,9 +132,7 @@ export function CamionCubiertasSection({ camionId }: Props) {
             </p>
           )}
         </div>
-        {puedeCrear && (
-          <Button variant="secondary" size="sm" onClick={abrirNuevo}>＋ Registrar cubiertas</Button>
-        )}
+        <Button variant="secondary" size="sm" disabled={!puedeCrear} title={puedeCrear ? undefined : 'Sin permiso para registrar cubiertas'} onClick={abrirNuevo}>＋ Registrar cubiertas</Button>
       </div>
 
       {isLoading ? (
@@ -166,26 +164,24 @@ export function CamionCubiertasSection({ camionId }: Props) {
                   {r.obs && <div className="text-[11px] text-gris-dark italic truncate" title={r.obs}>{r.obs}</div>}
                 </div>
                 <div className="flex gap-1 shrink-0">
-                  {puedeEditar && (
-                    <button
-                      onClick={() => abrirEditar(r)}
-                      title="Editar"
-                      className="text-xs px-2 py-1 rounded hover:bg-white transition-colors"
-                    >✏️</button>
-                  )}
-                  {puedeEliminar && (
-                    <button
-                      onClick={() => {
-                        if (!confirm(`¿Eliminar el registro de ${r.cantidad} cubiertas del ${fmtFecha(r.fecha)}?`)) return
-                        eliminar(r.id, {
-                          onSuccess: () => toast('✓ Registro eliminado', 'ok'),
-                          onError:   () => toast('Error al eliminar', 'err'),
-                        })
-                      }}
-                      title="Eliminar"
-                      className="text-xs px-2 py-1 rounded text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors"
-                    >✕</button>
-                  )}
+                  <button
+                    onClick={() => abrirEditar(r)}
+                    disabled={!puedeEditar}
+                    title={puedeEditar ? 'Editar' : 'Sin permiso para editar cubiertas'}
+                    className="text-xs px-2 py-1 rounded hover:bg-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >✏️</button>
+                  <button
+                    onClick={() => {
+                      if (!confirm(`¿Eliminar el registro de ${r.cantidad} cubiertas del ${fmtFecha(r.fecha)}?`)) return
+                      eliminar(r.id, {
+                        onSuccess: () => toast('✓ Registro eliminado', 'ok'),
+                        onError:   () => toast('Error al eliminar', 'err'),
+                      })
+                    }}
+                    disabled={!puedeEliminar}
+                    title={puedeEliminar ? 'Eliminar' : 'Sin permiso para eliminar cubiertas'}
+                    className="text-xs px-2 py-1 rounded text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >✕</button>
                 </div>
               </div>
             )

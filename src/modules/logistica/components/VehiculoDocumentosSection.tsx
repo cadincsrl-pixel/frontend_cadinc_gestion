@@ -213,24 +213,24 @@ export function VehiculoDocumentosSection({ entidad, id }: Props) {
         >
           👁
         </button>
-        {puedeEditar && (venceObligatorio || doc.vence_el) && (
+        {(venceObligatorio || doc.vence_el) && (
           <button
             onClick={() => abrirEditVence(doc)}
-            className="text-sm font-bold px-2.5 py-1.5 min-w-[36px] rounded bg-naranja-light text-naranja-dark hover:bg-naranja hover:text-white transition-colors"
-            title="Editar fecha de vencimiento"
+            disabled={!puedeEditar}
+            className="text-sm font-bold px-2.5 py-1.5 min-w-[36px] rounded bg-naranja-light text-naranja-dark hover:bg-naranja hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            title={puedeEditar ? 'Editar fecha de vencimiento' : 'Sin permiso para editar documentos'}
           >
             📅
           </button>
         )}
-        {puedeEliminar && (
-          <button
-            onClick={() => handleBorrar(doc)}
-            className="text-sm font-bold px-2.5 py-1.5 min-w-[36px] rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors"
-            title="Eliminar"
-          >
-            ✕
-          </button>
-        )}
+        <button
+          onClick={() => handleBorrar(doc)}
+          disabled={!puedeEliminar}
+          className="text-sm font-bold px-2.5 py-1.5 min-w-[36px] rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          title={puedeEliminar ? 'Eliminar' : 'Sin permiso para eliminar documentos'}
+        >
+          ✕
+        </button>
       </li>
     )
   }
@@ -276,16 +276,14 @@ export function VehiculoDocumentosSection({ entidad, id }: Props) {
                 )}
               </div>
 
-              {puedeCrear && (
-                <button
-                  onClick={() => abrirUpload(key)}
-                  disabled={uploading && pendingTipo === key}
-                  className="self-start text-[11px] font-bold px-2.5 py-1 rounded bg-azul text-white hover:bg-azul-mid transition-colors disabled:opacity-50"
-                  title={venceObligatorio ? 'Cargar archivo + fecha de vencimiento' : 'Cargar archivo'}
-                >
-                  {uploading && pendingTipo === key ? '⏳ Subiendo…' : '＋ Cargar'}
-                </button>
-              )}
+              <button
+                onClick={() => abrirUpload(key)}
+                disabled={(uploading && pendingTipo === key) || !puedeCrear}
+                className="self-start text-[11px] font-bold px-2.5 py-1 rounded bg-azul text-white hover:bg-azul-mid transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title={!puedeCrear ? 'Sin permiso para cargar documentos' : venceObligatorio ? 'Cargar archivo + fecha de vencimiento' : 'Cargar archivo'}
+              >
+                {uploading && pendingTipo === key ? '⏳ Subiendo…' : '＋ Cargar'}
+              </button>
 
               {vigentes.length === 0 && archivados.length === 0 ? (
                 <div className="text-[11px] text-gris-dark italic">Sin documentos.</div>

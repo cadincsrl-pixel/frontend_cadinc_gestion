@@ -177,9 +177,7 @@ export function BateasTab() {
             </button>
           ))}
         </div>
-        {puedeCrear && (
-          <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)}>＋ Nuevo remolque</Button>
-        )}
+        <Button variant="primary" size="sm" disabled={!puedeCrear} title={puedeCrear ? undefined : 'Sin permiso para crear remolques'} onClick={() => setModalNuevo(true)}>＋ Nuevo remolque</Button>
       </div>
 
       {/* Tabla — desktop/tablet */}
@@ -226,7 +224,7 @@ export function BateasTab() {
                   />
                 </td>
                 <td className="px-4 py-3 flex gap-1 justify-end" onClick={(e) => e.stopPropagation()}>
-                  {puedeEliminar && <button onClick={() => handleDelete(b)} className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors">✕</button>}
+                  <button disabled={!puedeEliminar} title={puedeEliminar ? 'Eliminar' : 'Sin permiso para eliminar remolques'} onClick={() => handleDelete(b)} className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
                 </td>
               </tr>
             ))}
@@ -288,16 +286,16 @@ export function BateasTab() {
                   label={b.estado === 'mantenimiento' ? 'En mantenimiento' : undefined}
                 />
               </div>
-              {puedeEliminar && (
-                <div className="flex justify-end mt-2 pt-2 border-t border-gris">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleDelete(b) }}
-                    className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors"
-                  >
-                    ✕ Eliminar
-                  </button>
-                </div>
-              )}
+              <div className="flex justify-end mt-2 pt-2 border-t border-gris">
+                <button
+                  disabled={!puedeEliminar}
+                  title={puedeEliminar ? undefined : 'Sin permiso para eliminar remolques'}
+                  onClick={(e) => { e.stopPropagation(); handleDelete(b) }}
+                  className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  ✕ Eliminar
+                </button>
+              </div>
             </button>
           )
         })}

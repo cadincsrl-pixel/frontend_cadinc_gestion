@@ -461,7 +461,8 @@ function EmpresasSection({
   empresaSeleccionada: EmpresaTransportista | null
 }) {
   const toast = useToast()
-  const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('logistica')
+  // empresas.routes.ts gatea POST y PATCH con actualizacion (no creacion).
+  const { puedeEditar, puedeEliminar } = usePermisos('logistica')
   const { data: empresas = [] } = useEmpresas()
   const { mutate: create, isPending: creating } = useCreateEmpresa()
   const { mutate: update, isPending: updating } = useUpdateEmpresa()
@@ -564,9 +565,7 @@ function EmpresasSection({
                 {verListado ? '▲ Ocultar listado' : `📋 Ver listado (${empresas.length})`}
               </Button>
             )}
-            {puedeCrear && (
-              <Button variant="primary" size="sm" onClick={() => { formNueva.reset(EMPRESA_DEFAULTS); setModalNueva(true) }}>＋ Nueva empresa</Button>
-            )}
+            <Button variant="primary" size="sm" disabled={!puedeEditar} title={puedeEditar ? undefined : 'Sin permiso para crear empresas'} onClick={() => { formNueva.reset(EMPRESA_DEFAULTS); setModalNueva(true) }}>＋ Nueva empresa</Button>
           </div>
         </div>
         <div className="px-5 py-4 flex flex-col gap-3">
@@ -668,14 +667,10 @@ function EmpresasSection({
                 <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
                   empresaSeleccionada.estado === 'activa' ? 'bg-verde-light text-verde' : 'bg-gris text-gris-dark'
                 }`}>{empresaSeleccionada.estado}</span>
-                {puedeEditar && (
-                  <button onClick={() => openEdit(empresaSeleccionada)}
-                    className="text-xs px-2 py-1 rounded hover:bg-gris transition-colors">✏️</button>
-                )}
-                {puedeEliminar && (
-                  <button onClick={() => { if (confirm(`¿Eliminar ${empresaSeleccionada.nombre}?`)) remove(empresaSeleccionada.id, { onSuccess: () => { toast('✓ Eliminada', 'ok'); onSelectEmpresa(null) }, onError: () => toast('No se puede eliminar: la empresa tiene cobros o viajes asociados', 'err') }) }}
-                    className="text-xs px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors">✕</button>
-                )}
+                <button disabled={!puedeEditar} title={puedeEditar ? 'Editar empresa' : 'Sin permiso para editar empresas'} onClick={() => openEdit(empresaSeleccionada)}
+                  className="text-xs px-2 py-1 rounded hover:bg-gris transition-colors disabled:opacity-40 disabled:cursor-not-allowed">✏️</button>
+                <button disabled={!puedeEliminar} title={puedeEliminar ? 'Eliminar empresa' : 'Sin permiso para eliminar empresas'} onClick={() => { if (confirm(`¿Eliminar ${empresaSeleccionada.nombre}?`)) remove(empresaSeleccionada.id, { onSuccess: () => { toast('✓ Eliminada', 'ok'); onSelectEmpresa(null) }, onError: () => toast('No se puede eliminar: la empresa tiene cobros o viajes asociados', 'err') }) }}
+                  className="text-xs px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
               </div>
             </div>
           )}
@@ -961,7 +956,8 @@ function AvisoMismaFecha({ tarifas, fecha }: { tarifas: TarifaEmpresaCantera[]; 
 
 function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
   const toast = useToast()
-  const { puedeCrear, puedeEliminar } = usePermisos('logistica')
+  // Tarifas de empresa: POST y PATCH van con actualizacion en el backend.
+  const { puedeEditar, puedeEliminar } = usePermisos('logistica')
   const { data: todasTarifas = [] } = useTarifasEmpresa()
   const { data: canteras     = [] } = useCanteras()
   const { data: depositos    = [] } = useDepositos()
@@ -1313,9 +1309,7 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
             <h2 className="font-bold text-azul text-base">Tarifas — {empresa.nombre}</h2>
             <p className="text-xs text-gris-dark mt-0.5">Historial de $/ton por punto de carga (y depósito, si paga según destino) · cada entrega usa la tarifa vigente en su fecha de descarga</p>
           </div>
-          {puedeCrear && (
-            <Button variant="primary" size="sm" onClick={() => setModal(true)}>＋ Nueva tarifa</Button>
-          )}
+          <Button variant="primary" size="sm" disabled={!puedeEditar} title={puedeEditar ? undefined : 'Sin permiso para cargar tarifas'} onClick={() => setModal(true)}>＋ Nueva tarifa</Button>
         </div>
 
         {grupos.length === 0 ? (
@@ -1370,30 +1364,27 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
                       {/* Acción principal: cargar el precio NUEVO como una versión
                           más, con fecha de hoy. "Editar" queda al lado, chico y
                           gris, para el caso raro de corregir la versión vigente. */}
-                      {puedeCrear && (
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => abrirActualizarPrecio(vigente)}
-                          title="Cargar un precio nuevo desde hoy — la tarifa actual queda en el historial"
-                        >
-                          $ Actualizar precio
-                        </Button>
-                      )}
-                      {puedeCrear && (
-                        <button
-                          onClick={() => abrirEditar(vigente)}
-                          title="Corregir esta versión (sólo si el precio o la fecha se cargaron mal). Para un aumento usá Actualizar precio."
-                          className="text-xs px-2 py-1 rounded text-gris-dark hover:bg-gris transition-colors"
-                        >✏️</button>
-                      )}
-                      {puedeEliminar && (
-                        <button
-                          onClick={() => abrirBorrar(vigente)}
-                          title="Eliminar tarifa"
-                          className="text-xs px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors"
-                        >✕</button>
-                      )}
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={!puedeEditar}
+                        onClick={() => abrirActualizarPrecio(vigente)}
+                        title={puedeEditar ? 'Cargar un precio nuevo desde hoy — la tarifa actual queda en el historial' : 'Sin permiso para cargar tarifas'}
+                      >
+                        $ Actualizar precio
+                      </Button>
+                      <button
+                        disabled={!puedeEditar}
+                        onClick={() => abrirEditar(vigente)}
+                        title={puedeEditar ? 'Corregir esta versión (sólo si el precio o la fecha se cargaron mal). Para un aumento usá Actualizar precio.' : 'Sin permiso para editar tarifas'}
+                        className="text-xs px-2 py-1 rounded text-gris-dark hover:bg-gris transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      >✏️</button>
+                      <button
+                        disabled={!puedeEliminar}
+                        onClick={() => abrirBorrar(vigente)}
+                        title={puedeEliminar ? 'Eliminar tarifa' : 'Sin permiso para eliminar tarifas'}
+                        className="text-xs px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      >✕</button>
                     </div>
                   </div>
 
@@ -1405,13 +1396,9 @@ function TarifasEmpresaSection({ empresa }: { empresa: EmpresaTransportista }) {
                           <span>desde {fmtDate(t.vigente_desde)}</span>
                           <div className="flex items-center gap-2">
                             <span className="font-mono">${Number(t.valor_ton).toLocaleString('es-AR', { minimumFractionDigits: 2 })}/ton <span className="text-[10px]">c/IVA</span></span>
-                            {puedeCrear && (
-                              <button onClick={() => abrirEditar(t)} title="Editar" className="px-2 py-1 -my-1 rounded hover:text-azul hover:bg-white/60">✏️</button>
-                            )}
-                            {puedeEliminar && (
-                              <button onClick={() => abrirBorrar(t)} title="Eliminar"
-                                className="px-2 py-1 -my-1 rounded hover:text-rojo hover:bg-white/60">✕</button>
-                            )}
+                            <button disabled={!puedeEditar} onClick={() => abrirEditar(t)} title={puedeEditar ? 'Editar' : 'Sin permiso para editar tarifas'} className="px-2 py-1 -my-1 rounded hover:text-azul hover:bg-white/60 disabled:opacity-40 disabled:cursor-not-allowed">✏️</button>
+                            <button disabled={!puedeEliminar} onClick={() => abrirBorrar(t)} title={puedeEliminar ? 'Eliminar' : 'Sin permiso para eliminar tarifas'}
+                              className="px-2 py-1 -my-1 rounded hover:text-rojo hover:bg-white/60 disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
                           </div>
                         </div>
                       ))}
@@ -1699,6 +1686,8 @@ function ModalCobrarFacturas({
 }) {
   const toast = useToast()
   const esFact = empresa.modalidad_cobro === 'facturacion'
+  // PATCH /cobros/:id/cobrar → actualizacion.
+  const { puedeEditar } = usePermisos('logistica')
   const { mutateAsync: marcarCobradoAsync } = useMarcarCobrado()
   const { mutateAsync: uploadAdjunto } = useUploadCobroAdjunto()
   const [seleccion, setSeleccion]     = useState<Set<number>>(new Set(preseleccionIds ?? cobrosPendientes.map(c => c.id)))
@@ -1887,7 +1876,7 @@ function ModalCobrarFacturas({
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={procesando}>Cancelar</Button>
-          <Button variant="primary" loading={procesando} onClick={handleSubmit}>
+          <Button variant="primary" loading={procesando} disabled={!puedeEditar} title={puedeEditar ? undefined : 'Sin permiso para marcar cobros'} onClick={handleSubmit}>
             {esFact ? `✓ Marcar cobradas (${seleccionados.length})` : `✓ Marcar cobrados (${seleccionados.length})`}
           </Button>
         </>
@@ -2119,7 +2108,7 @@ function FacturacionSection() {
   const yaRestaurado = useRef(false)
   // anularCobros: flag fino para borrar cobros pendientes sin eliminación
   // del módulo entero (el backend valida igual; acá solo se deshabilita).
-  const { puedeEliminar: puedeEliminarModulo, anularCobros } = usePermisos('logistica')
+  const { puedeCrear, puedeEditar, puedeEliminar: puedeEliminarModulo, anularCobros } = usePermisos('logistica')
   const puedeAnularCobro = puedeEliminarModulo || anularCobros
   const { data: empresas     = [] } = useEmpresas()
   const { data: tramos       = [] } = useTramos()
@@ -2596,12 +2585,12 @@ function FacturacionSection() {
                 {!alDia && (
                   <div className="mt-3 pt-3 border-t border-gris flex flex-wrap gap-2 items-center">
                     {!sinMovimientos && (
-                      <Button variant="primary" size="sm" onClick={() => abrirCobrar(empresa)}>
+                      <Button variant="primary" size="sm" disabled={!puedeCrear} title={puedeCrear ? undefined : 'Sin permiso para registrar cobros'} onClick={() => abrirCobrar(empresa)}>
                         {esFact ? '🧾 Cargar factura' : '🧾 Registrar liquidación'}
                       </Button>
                     )}
                     {porCobrar.length > 0 && (
-                      <Button variant="secondary" size="sm" onClick={() => { setPreseleccionCobro(null); setCobroFacturasEmpresa(empresa) }}>
+                      <Button variant="secondary" size="sm" disabled={!puedeEditar} title={puedeEditar ? undefined : 'Sin permiso para marcar cobros'} onClick={() => { setPreseleccionCobro(null); setCobroFacturasEmpresa(empresa) }}>
                         {esFact ? `💰 Registrar cobro (${porCobrar.length})` : `💰 Confirmar pago (${porCobrar.length})`}
                       </Button>
                     )}
@@ -2725,15 +2714,17 @@ function FacturacionSection() {
                             <div className="font-mono font-bold text-verde shrink-0 w-auto sm:w-20 text-right">{d.tarifa > 0 ? fmtM(d.subtotal) : '—'}</div>
                             {esFact && (
                               <button
+                                disabled={!puedeCrear}
                                 onClick={(e) => { e.stopPropagation(); abrirFacturarViaje(empresa, d.t.id) }}
-                                title="Cargar la factura de este viaje"
-                                className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-azul text-white hover:bg-azul-mid transition-colors shrink-0"
+                                title={puedeCrear ? 'Cargar la factura de este viaje' : 'Sin permiso para registrar cobros'}
+                                className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-azul text-white hover:bg-azul-mid transition-colors shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
                               >🧾 Facturar</button>
                             )}
                             <button
+                              disabled={!puedeEditar}
                               onClick={(e) => { e.stopPropagation(); abrirEditarTramo(d.t) }}
-                              title="Editar toneladas / nº remito"
-                              className="text-xs px-2 py-1 rounded hover:bg-gris-mid transition-colors shrink-0"
+                              title={puedeEditar ? 'Editar toneladas / nº remito' : 'Sin permiso para editar remitos'}
+                              className="text-xs px-2 py-1 rounded hover:bg-gris-mid transition-colors shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
                             >✏️</button>
                           </div>
                         )
@@ -3163,8 +3154,8 @@ function FacturacionSection() {
                           variant="primary"
                           size="sm"
                           loading={marcandoId === c.id}
-                          disabled={marcandoId != null && marcandoId !== c.id}
-                          title={faltaComprobante ? 'Falta el comprobante del pago — se pide al cobrar' : 'Marcar como cobrado (con fecha de hoy)'}
+                          disabled={(marcandoId != null && marcandoId !== c.id) || !puedeEditar}
+                          title={!puedeEditar ? 'Sin permiso para marcar cobros' : faltaComprobante ? 'Falta el comprobante del pago — se pide al cobrar' : 'Marcar como cobrado (con fecha de hoy)'}
                           onClick={ev => {
                             ev.stopPropagation()
                             if (marcandoId != null) return
@@ -3259,6 +3250,8 @@ function FacturacionSection() {
             {cobroDetalle?.estado === 'pendiente' && (
               <Button
                 variant="primary"
+                disabled={!puedeEditar}
+                title={puedeEditar ? undefined : 'Sin permiso para marcar cobros'}
                 onClick={() => {
                   if (!cobroDetalle) return
                   marcarCobrado({ id: cobroDetalle.id }, {
@@ -3279,6 +3272,8 @@ function FacturacionSection() {
             {cobroDetalle?.estado === 'cobrado' && (
               <Button
                 variant="ghost"
+                disabled={!puedeEditar}
+                title={puedeEditar ? undefined : 'Sin permiso para revertir cobros'}
                 onClick={() => {
                   if (!cobroDetalle) return
                   if (!confirm('¿Revertir este cobro a pendiente?')) return
@@ -3472,7 +3467,7 @@ function FacturacionSection() {
           ) : (
             <>
               <Button variant="secondary" onClick={cerrarModalCobro}>Cancelar</Button>
-              <Button variant="primary" loading={creando || subiendoFactura} onClick={form.handleSubmit(handleCobrar)}>
+              <Button variant="primary" loading={creando || subiendoFactura} disabled={!puedeCrear} title={puedeCrear ? undefined : 'Sin permiso para registrar cobros'} onClick={form.handleSubmit(handleCobrar)}>
                 {empresaCobro?.modalidad_cobro === 'facturacion' ? '✓ Registrar factura' : '✓ Guardar cobro'}
               </Button>
             </>
@@ -3651,7 +3646,7 @@ function FacturacionSection() {
         footer={
           <>
             <Button variant="secondary" onClick={() => setEditandoTramo(null)}>Cancelar</Button>
-            <Button variant="primary" loading={updatingTramo} onClick={formEditTramo.handleSubmit(handleEditTramo)}>
+            <Button variant="primary" loading={updatingTramo} disabled={!puedeEditar} title={puedeEditar ? undefined : 'Sin permiso para editar remitos'} onClick={formEditTramo.handleSubmit(handleEditTramo)}>
               ✓ Guardar
             </Button>
           </>

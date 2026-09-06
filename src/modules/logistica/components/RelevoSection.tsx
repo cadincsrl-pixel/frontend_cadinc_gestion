@@ -6,6 +6,7 @@ import { Button }   from '@/components/ui/Button'
 import { Combobox } from '@/components/ui/Combobox'
 import { Input }    from '@/components/ui/Input'
 import { useToast } from '@/components/ui/Toast'
+import { usePermisos } from '@/hooks/usePermisos'
 import { useChoferes } from '../hooks/useLogistica'
 import {
   useTramoRelevo, useTramoRelevoSugerencia,
@@ -26,6 +27,9 @@ function fmtKm(n: number) {
 // el detalle de los 2 choferes con km/jornales editables.
 export function RelevoSection({ tramo }: Props) {
   const toast = useToast()
+  // Mismo criterio que el backend (relevo.routes.ts): crear=creacion,
+  // editar km/jornales=actualizacion, quitar=eliminacion.
+  const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('logistica')
   const tramoId = tramo.id
   const isCargado = tramo.tipo === 'cargado'
 
@@ -87,11 +91,11 @@ export function RelevoSection({ tramo }: Props) {
           🔄 Relevo de chofer
         </div>
         {!tieneRelevo ? (
-          <Button variant="primary" size="sm" onClick={() => setCrearOpen(true)}>
+          <Button variant="primary" size="sm" disabled={!puedeCrear} title={puedeCrear ? undefined : 'Sin permiso para registrar relevos'} onClick={() => setCrearOpen(true)}>
             + Registrar relevo
           </Button>
         ) : (
-          <Button variant="ghost" size="sm" loading={deleting} onClick={handleEliminar}>
+          <Button variant="ghost" size="sm" loading={deleting} disabled={!puedeEliminar} title={puedeEliminar ? undefined : 'Sin permiso para eliminar relevos'} onClick={handleEliminar}>
             🗑 Quitar relevo
           </Button>
         )}
@@ -138,7 +142,7 @@ export function RelevoSection({ tramo }: Props) {
             })}
           </div>
           <div className="flex justify-end">
-            <Button variant="primary" size="sm" loading={saving} onClick={handleGuardar}>
+            <Button variant="primary" size="sm" loading={saving} disabled={!puedeEditar} title={puedeEditar ? undefined : 'Sin permiso para editar relevos'} onClick={handleGuardar}>
               ✓ Guardar cambios del relevo
             </Button>
           </div>
@@ -158,6 +162,7 @@ export function RelevoSection({ tramo }: Props) {
 
 function ModalCrearRelevo({ tramo, open, onClose }: { tramo: Tramo; open: boolean; onClose: () => void }) {
   const toast = useToast()
+  const { puedeCrear } = usePermisos('logistica')
   const tramoId = tramo.id
   const isCargado = tramo.tipo === 'cargado'
   const { data: choferes = [] } = useChoferes()
@@ -246,7 +251,7 @@ function ModalCrearRelevo({ tramo, open, onClose }: { tramo: Tramo; open: boolea
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" loading={isPending} onClick={handleCrear}>✓ Registrar</Button>
+          <Button variant="primary" loading={isPending} disabled={!puedeCrear} title={puedeCrear ? undefined : 'Sin permiso para registrar relevos'} onClick={handleCrear}>✓ Registrar</Button>
         </>
       }
     >

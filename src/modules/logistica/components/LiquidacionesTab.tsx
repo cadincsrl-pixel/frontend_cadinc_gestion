@@ -174,7 +174,7 @@ export function LiquidacionesTab() {
   const { mutate: anularLiqMut, isPending: anulando } = useAnularLiquidacion()
   // Anular saca una liquidación de circulación: va con permiso de eliminación,
   // no de actualización.
-  const { puedeEliminar } = usePermisos('logistica')
+  const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('logistica')
   const { mutate: createAdel,  isPending: creatingAdel } = useCreateAdelanto()
   const { mutate: updateAdel,  isPending: updatingAdel } = useUpdateAdelanto()
   const { mutate: deleteAdel  } = useDeleteAdelanto()
@@ -1127,13 +1127,13 @@ export function LiquidacionesTab() {
         <Button variant="secondary" size="sm" onClick={() => setModalTransf(true)}>
           🏦 Solicitud de transferencia
         </Button>
-        <Button variant="secondary" size="sm" onClick={() => {
+        <Button variant="secondary" size="sm" disabled={!puedeCrear} title={puedeCrear ? undefined : 'Sin permiso para registrar adelantos'} onClick={() => {
           formAdel.reset({ fecha: toISO(new Date()), forma_pago: 'efectivo', chofer_id: '', monto: '', descripcion: '' })
           setModalAdel(true)
         }}>
           💵 Registrar adelanto
         </Button>
-        <Button variant="secondary" size="sm" onClick={() => {
+        <Button variant="secondary" size="sm" disabled={!puedeCrear} title={puedeCrear ? undefined : 'Sin permiso para registrar estadías'} onClick={() => {
           formEst.reset({ chofer_id: '', fecha_desde: toISO(new Date()), fecha_hasta: toISO(new Date()), monto_dia: '', obs: '' })
           setModalEst(true)
         }}>
@@ -1244,7 +1244,7 @@ export function LiquidacionesTab() {
                       <span className="font-bold text-carbon">{fmtM(borrador.total_neto)}</span>
                     </div>
                     <div className="flex gap-2">
-                      <Button variant="primary" size="sm" onClick={() => {
+                      <Button variant="primary" size="sm" disabled={!puedeEditar} title={puedeEditar ? undefined : 'Sin permiso para cerrar liquidaciones'} onClick={() => {
                         if (!confirmarNetoNegativo(Number(borrador.total_neto))) return
                         cerrarLiq(borrador.id, {
                           onSuccess: (resp) => toast(mensajeCierre(resp), 'ok'),
@@ -1253,7 +1253,7 @@ export function LiquidacionesTab() {
                       }}>
                         💰 Liquidar
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => {
+                      <Button variant="ghost" size="sm" disabled={!puedeEliminar} title={puedeEliminar ? undefined : 'Sin permiso para eliminar liquidaciones'} onClick={() => {
                         if (confirm('¿Eliminar borrador?')) deleteLiq(borrador.id, {
                           onSuccess: () => toast('✓ Eliminado', 'ok'),
                           onError:   (e: unknown) => toast(msgErrorLiq(e, 'Error al eliminar'), 'err'),
@@ -1268,7 +1268,7 @@ export function LiquidacionesTab() {
                 {/* Botones liquidar + exportar */}
                 {!sinMovimientos && !borrador && (
                   <div className="mt-3 pt-3 border-t border-gris flex gap-2 flex-wrap">
-                    <Button variant="primary" size="sm" onClick={() => abrirLiquidar(chofer)}>
+                    <Button variant="primary" size="sm" disabled={!puedeCrear} title={puedeCrear ? undefined : 'Sin permiso para crear liquidaciones'} onClick={() => abrirLiquidar(chofer)}>
                       💰 Liquidar
                     </Button>
                     {(mis_tramos.length > 0 || mis_relevos.length > 0) && (() => {
@@ -1457,7 +1457,7 @@ export function LiquidacionesTab() {
                       🔍 Ver detalle
                     </Button>
                     {liq.estado === 'borrador' && (
-                      <Button variant="primary" size="sm" onClick={() => {
+                      <Button variant="primary" size="sm" disabled={!puedeEditar} title={puedeEditar ? undefined : 'Sin permiso para cerrar liquidaciones'} onClick={() => {
                         if (!confirmarNetoNegativo(Number(liq.total_neto))) return
                         cerrarLiq(liq.id, {
                           onSuccess: (resp) => toast(mensajeCierre(resp), 'ok'),
@@ -1519,8 +1519,8 @@ export function LiquidacionesTab() {
                         </>
                       )
                     })()}
-                    {!anulada && vacia && puedeEliminar && (
-                      <Button variant="secondary" size="sm" onClick={() => {
+                    {!anulada && vacia && (
+                      <Button variant="secondary" size="sm" disabled={!puedeEliminar} title={puedeEliminar ? undefined : 'Sin permiso para anular liquidaciones'} onClick={() => {
                         setAnularLiq(liq)
                         setAnularMotivo('')
                       }}>
@@ -1528,7 +1528,7 @@ export function LiquidacionesTab() {
                       </Button>
                     )}
                     {!anulada && (
-                      <Button variant="ghost" size="sm" onClick={() => {
+                      <Button variant="ghost" size="sm" disabled={!puedeEliminar} title={puedeEliminar ? undefined : 'Sin permiso para eliminar liquidaciones'} onClick={() => {
                         setConfirmDelLiq(liq)
                         setConfirmDelNumero('')
                         setConfirmDelMotivo('')
@@ -1715,16 +1715,20 @@ export function LiquidacionesTab() {
                                 {!a.liquidacion_id && (
                                   <>
                                     <button
+                                      disabled={!puedeEditar}
+                                      title={puedeEditar ? 'Editar' : 'Sin permiso para editar adelantos'}
                                       onClick={() => { setEditandoAdel(a); formEditAdel.reset({ fecha: a.fecha, monto: a.monto, descripcion: a.descripcion ?? '', forma_pago: a.forma_pago ?? 'efectivo' }); setArchivoEditAdel(null); setRemoverCompEdit(false) }}
-                                      className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors"
+                                      className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                                     >✏️</button>
                                     {/* El adelanto de saldo NO se borra a mano: es la deuda que
                                         dejó una liquidación al cerrar en negativo. Se anula
                                         reabriendo esa liquidación (la RPC lo borra sola). */}
                                     {!a.liquidacion_origen_id && (
                                       <button
+                                        disabled={!puedeEliminar}
+                                        title={puedeEliminar ? 'Eliminar' : 'Sin permiso para eliminar adelantos'}
                                         onClick={() => { if (confirm('¿Eliminar adelanto?')) deleteAdel(a.id, { onSuccess: () => toast('✓ Adelanto eliminado', 'ok'), onError: (err: unknown) => toast(msgErrorLiq(err, 'Error al eliminar'), 'err') }) }}
-                                        className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors"
+                                        className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                                       >✕</button>
                                     )}
                                   </>
@@ -1887,8 +1891,10 @@ export function LiquidacionesTab() {
                               <div className="font-mono font-bold text-verde shrink-0">{fmtM(Number(e.total))}</div>
                               {!e.liquidacion_id && (
                                 <button
+                                  disabled={!puedeEliminar}
+                                  title={puedeEliminar ? 'Eliminar' : 'Sin permiso para eliminar estadías'}
                                   onClick={() => { if (confirm('¿Eliminar estadía?')) deleteEst(e.id, { onSuccess: () => toast('✓ Estadía eliminada', 'ok'), onError: () => toast('Error al eliminar', 'err') }) }}
-                                  className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors shrink-0"
+                                  className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
                                 >✕</button>
                               )}
                             </div>
@@ -1912,10 +1918,10 @@ export function LiquidacionesTab() {
             <Button variant="ghost" onClick={formLiq.handleSubmit(handleDescargarPdfPreview)}>
               📄 PDF parcial
             </Button>
-            <Button variant="ghost" loading={savingTarifas} onClick={formLiq.handleSubmit(handleGuardarTarifas)}>
+            <Button variant="ghost" loading={savingTarifas} disabled={!puedeEditar} title={puedeEditar ? undefined : 'Sin permiso para editar las tarifas del chofer'} onClick={formLiq.handleSubmit(handleGuardarTarifas)}>
               Guardar
             </Button>
-            <Button variant="primary" loading={creating} onClick={formLiq.handleSubmit(handleLiquidar)}>
+            <Button variant="primary" loading={creating} disabled={!puedeCrear} title={puedeCrear ? undefined : 'Sin permiso para crear liquidaciones'} onClick={formLiq.handleSubmit(handleLiquidar)}>
               💰 Liquidar
             </Button>
           </>
@@ -2457,7 +2463,7 @@ export function LiquidacionesTab() {
               <>
                 <Button variant="secondary" onClick={() => setDetalleLiq(null)}>Cerrar</Button>
                 {!esBorrador && (
-                  <Button variant="ghost" onClick={() => {
+                  <Button variant="ghost" disabled={!puedeEditar} title={puedeEditar ? undefined : 'Sin permiso para reabrir liquidaciones'} onClick={() => {
                     if (!confirm('¿Reabrir la liquidación? Volverá a estado borrador y los tramos/adelantos quedarán disponibles para editar.')) return
                     reabrirLiq(detalleLiq.id, {
                       onSuccess: () => { toast('✓ Liquidación reabierta', 'ok'); setDetalleLiq(null) },
@@ -2468,12 +2474,12 @@ export function LiquidacionesTab() {
                   </Button>
                 )}
                 {esBorrador && (
-                  <Button variant="ghost" loading={updating} onClick={formDetalle.handleSubmit(handleGuardar)}>
+                  <Button variant="ghost" loading={updating} disabled={!puedeEditar} title={puedeEditar ? undefined : 'Sin permiso para editar liquidaciones'} onClick={formDetalle.handleSubmit(handleGuardar)}>
                     Guardar
                   </Button>
                 )}
                 {esBorrador && (
-                  <Button variant="primary" loading={updating} onClick={handleLiquidarDetalle}>
+                  <Button variant="primary" loading={updating} disabled={!puedeEditar} title={puedeEditar ? undefined : 'Sin permiso para cerrar liquidaciones'} onClick={handleLiquidarDetalle}>
                     💰 Liquidar
                   </Button>
                 )}

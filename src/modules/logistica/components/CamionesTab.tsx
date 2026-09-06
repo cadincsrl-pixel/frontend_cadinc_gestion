@@ -163,14 +163,10 @@ export function CamionesTab() {
           ))}
         </div>
         <div className="flex gap-2">
-          {puedeEditar && (
-            <Button variant="secondary" size="sm" loading={syncingTodos} onClick={handleSyncTodos}>
-              🛰 Sincronizar GPS
-            </Button>
-          )}
-          {puedeCrear && (
-            <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)}>＋ Nuevo camión</Button>
-          )}
+          <Button variant="secondary" size="sm" loading={syncingTodos} disabled={!puedeEditar} title={puedeEditar ? undefined : 'Sin permiso para sincronizar GPS'} onClick={handleSyncTodos}>
+            🛰 Sincronizar GPS
+          </Button>
+          <Button variant="primary" size="sm" disabled={!puedeCrear} title={puedeCrear ? undefined : 'Sin permiso para crear camiones'} onClick={() => setModalNuevo(true)}>＋ Nuevo camión</Button>
         </div>
       </div>
 

@@ -57,7 +57,8 @@ const ESTADO_STYLE: Record<CamionServiceEstadoKey, { cls: string; label: string 
 export function CamionServicesSection({ camionId }: Props) {
   const toast = useToast()
   const qc = useQueryClient()
-  const { puedeEditar, puedeEliminar } = usePermisos('logistica')
+  // Registrar service es POST → el backend exige creacion (no actualizacion).
+  const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('logistica')
 
   const { data: camiones = [] } = useCamiones()
   const camion = camiones.find(c => c.id === camionId)
@@ -186,16 +187,15 @@ export function CamionServicesSection({ camionId }: Props) {
                 <span className="font-mono font-bold text-sm text-carbon">
                   {fmtKm(camion?.km_actuales ?? estado?.km_actuales ?? 0)}
                 </span>
-                {puedeEditar && (
-                  <button
-                    type="button"
-                    onClick={startEditKm}
-                    title="Editar km actuales"
-                    className="text-[11px] font-bold px-2 py-1 rounded bg-naranja-light text-naranja-dark hover:bg-naranja hover:text-white transition-colors"
-                  >
-                    ✏️
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={startEditKm}
+                  disabled={!puedeEditar}
+                  title={puedeEditar ? 'Editar km actuales' : 'Sin permiso para editar el camión'}
+                  className="text-[11px] font-bold px-2 py-1 rounded bg-naranja-light text-naranja-dark hover:bg-naranja hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  ✏️
+                </button>
               </>
             )}
           </div>
@@ -220,12 +220,13 @@ export function CamionServicesSection({ camionId }: Props) {
                     👁
                   </button>
                 )}
-                {historial[0] && !historial[0].comprobante_url && puedeEditar && (
+                {historial[0] && !historial[0].comprobante_url && (
                   <button
                     type="button"
                     onClick={() => setEditService(historial[0])}
-                    title="Este service no tiene comprobante — subirlo"
-                    className="text-[11px] font-bold px-2 py-1 rounded bg-amarillo-light text-[#7A5500] hover:bg-amarillo hover:text-carbon transition-colors"
+                    disabled={!puedeEditar}
+                    title={puedeEditar ? 'Este service no tiene comprobante — subirlo' : 'Sin permiso para editar services'}
+                    className="text-[11px] font-bold px-2 py-1 rounded bg-amarillo-light text-[#7A5500] hover:bg-amarillo hover:text-carbon transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     📎 Subir comprobante
                   </button>
@@ -251,15 +252,15 @@ export function CamionServicesSection({ camionId }: Props) {
 
           {/* Acciones */}
           <div className="flex gap-2 mt-1 flex-wrap">
-            {puedeEditar && (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => setModalRegistrar(true)}
-              >
-                ＋ Registrar service
-              </Button>
-            )}
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={!puedeCrear}
+              title={puedeCrear ? undefined : 'Sin permiso para registrar services'}
+              onClick={() => setModalRegistrar(true)}
+            >
+              ＋ Registrar service
+            </Button>
             {historial.length > 0 && (
               <Button
                 variant="secondary"
@@ -298,26 +299,24 @@ export function CamionServicesSection({ camionId }: Props) {
                       👁
                     </button>
                   )}
-                  {puedeEditar && (
-                    <button
-                      type="button"
-                      onClick={() => setEditService(s)}
-                      title={s.comprobante_url ? 'Editar service' : 'Editar service / subir comprobante'}
-                      className="text-sm font-bold px-2.5 py-1.5 min-w-[36px] rounded bg-gris text-gris-dark hover:bg-azul-light hover:text-azul transition-colors"
-                    >
-                      ✏️
-                    </button>
-                  )}
-                  {puedeEliminar && (
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteService(s)}
-                      title="Eliminar"
-                      className="text-[11px] font-bold px-2 py-1 rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors"
-                    >
-                      ✕
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => setEditService(s)}
+                    disabled={!puedeEditar}
+                    title={!puedeEditar ? 'Sin permiso para editar services' : s.comprobante_url ? 'Editar service' : 'Editar service / subir comprobante'}
+                    className="text-sm font-bold px-2.5 py-1.5 min-w-[36px] rounded bg-gris text-gris-dark hover:bg-azul-light hover:text-azul transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    ✏️
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteService(s)}
+                    disabled={!puedeEliminar}
+                    title={puedeEliminar ? 'Eliminar' : 'Sin permiso para eliminar services'}
+                    className="text-[11px] font-bold px-2 py-1 rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    ✕
+                  </button>
                 </li>
               ))}
             </ul>

@@ -343,12 +343,8 @@ export function ChoferesTab() {
   return (
     <>
       <div className="flex justify-end gap-2">
-        {puedeEditar && (
-          <Button variant="secondary" size="sm" onClick={() => setModalTraspaso(true)}>⇄ Traspaso</Button>
-        )}
-        {puedeCrear && (
-          <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)}>＋ Nuevo chofer</Button>
-        )}
+        <Button variant="secondary" size="sm" disabled={!puedeEditar} title={puedeEditar ? undefined : 'Sin permiso para traspasar unidades'} onClick={() => setModalTraspaso(true)}>⇄ Traspaso</Button>
+        <Button variant="primary" size="sm" disabled={!puedeCrear} title={puedeCrear ? undefined : 'Sin permiso para crear choferes'} onClick={() => setModalNuevo(true)}>＋ Nuevo chofer</Button>
       </div>
 
       {/* Tabla — desktop/tablet */}
@@ -398,7 +394,7 @@ export function ChoferesTab() {
                   />
                 </td>
                 <td className="px-4 py-3 flex gap-1 justify-end" onClick={(e) => e.stopPropagation()}>
-                  {puedeEliminar && <button onClick={() => handleDelete(c)} className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors">✕</button>}
+                  <button disabled={!puedeEliminar} title={puedeEliminar ? 'Eliminar' : 'Sin permiso para eliminar choferes'} onClick={() => handleDelete(c)} className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
                 </td>
               </tr>
               )
@@ -449,16 +445,16 @@ export function ChoferesTab() {
                   )}
                 </div>
               )}
-              {puedeEliminar && (
-                <div className="flex justify-end mt-2 pt-2 border-t border-gris">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleDelete(c) }}
-                    className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors"
-                  >
-                    ✕ Eliminar
-                  </button>
-                </div>
-              )}
+              <div className="flex justify-end mt-2 pt-2 border-t border-gris">
+                <button
+                  disabled={!puedeEliminar}
+                  title={puedeEliminar ? undefined : 'Sin permiso para eliminar choferes'}
+                  onClick={(e) => { e.stopPropagation(); handleDelete(c) }}
+                  className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  ✕ Eliminar
+                </button>
+              </div>
             </button>
           )
         })}
@@ -497,9 +493,7 @@ export function ChoferesTab() {
           ) : (
             <>
               <Button variant="secondary" onClick={cerrarModal}>Cerrar</Button>
-              {puedeEditar && (
-                <Button variant="primary" onClick={() => setModoEdicion(true)}>✏️ Editar</Button>
-              )}
+              <Button variant="primary" disabled={!puedeEditar} title={puedeEditar ? undefined : 'Sin permiso para editar choferes'} onClick={() => setModoEdicion(true)}>✏️ Editar</Button>
             </>
           )
         }

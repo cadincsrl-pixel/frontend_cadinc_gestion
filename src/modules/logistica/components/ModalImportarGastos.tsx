@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx'
 import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
+import { usePermisos } from '@/hooks/usePermisos'
 import { useCreateGasto, type GastoCategoria } from '../hooks/useLogistica'
 
 interface Chofer { id: number; nombre: string; camion_id?: number | null }
@@ -304,6 +305,7 @@ export function ModalImportarGastos({ open, onClose, categorias, choferes, camio
   const toast = useToast()
   const inputRef = useRef<HTMLInputElement>(null)
   const { mutateAsync: crear } = useCreateGasto()
+  const { puedeCrear } = usePermisos('logistica')
 
   const [filas,     setFilas]     = useState<Fila[] | null>(null)
   const [guardando, setGuardando] = useState(false)
@@ -582,7 +584,7 @@ export function ModalImportarGastos({ open, onClose, categorias, choferes, camio
         <>
           <Button variant="secondary" onClick={handleClose}>Cancelar</Button>
           {!resultado && filas && validas > 0 && (
-            <Button variant="primary" loading={guardando} onClick={handleGuardar}>
+            <Button variant="primary" loading={guardando} disabled={!puedeCrear} title={puedeCrear ? undefined : 'Sin permiso para crear gastos'} onClick={handleGuardar}>
               ✓ Importar {validas} fila{validas !== 1 ? 's' : ''}
             </Button>
           )}

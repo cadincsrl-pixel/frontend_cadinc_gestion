@@ -103,8 +103,8 @@ export function GpsCamionSection({ camion }: Props) {
         <h4 className="text-sm font-bold text-carbon flex items-center gap-2">
           🛰 Seguimiento GPS (Mobile Quest)
         </h4>
-        {tieneGps && puedeEditar && (
-          <Button variant="secondary" size="sm" loading={syncing} onClick={handleSync}>
+        {tieneGps && (
+          <Button variant="secondary" size="sm" loading={syncing} disabled={!puedeEditar} title={puedeEditar ? undefined : 'Sin permiso para sincronizar GPS'} onClick={handleSync}>
             Sincronizar ahora
           </Button>
         )}
@@ -118,15 +118,15 @@ export function GpsCamionSection({ camion }: Props) {
             <div className="font-mono text-sm">
               {camion.id_vehiculo_gps ?? <span className="text-gris-mid italic">no asignado</span>}
             </div>
-            {puedeEditar && (
-              <button
-                type="button"
-                onClick={() => { setIdDraft(camion.id_vehiculo_gps ?? ''); setEditandoId(true) }}
-                className="text-xs text-azul hover:underline"
-              >
-                {camion.id_vehiculo_gps ? 'Cambiar' : 'Asignar'}
-              </button>
-            )}
+            <button
+              type="button"
+              disabled={!puedeEditar}
+              title={puedeEditar ? undefined : 'Sin permiso para editar el GPS'}
+              onClick={() => { setIdDraft(camion.id_vehiculo_gps ?? ''); setEditandoId(true) }}
+              className="text-xs text-azul hover:underline disabled:opacity-40 disabled:cursor-not-allowed disabled:no-underline"
+            >
+              {camion.id_vehiculo_gps ? 'Cambiar' : 'Asignar'}
+            </button>
           </div>
         ) : (
           <div className="flex items-end gap-2">

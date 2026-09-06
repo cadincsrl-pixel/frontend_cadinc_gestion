@@ -118,24 +118,21 @@ export function LiquidacionAdjuntosSection({ liqId }: Props) {
                     </span>
                   )}
                 </div>
-                {puedeCrear && (
-                  <>
-                    <button
-                      onClick={() => fileInputs.current[key]?.click()}
-                      disabled={uploading && pendingTipo === key}
-                      className="text-[11px] font-bold px-2.5 py-1 rounded bg-azul text-white hover:bg-azul-mid transition-colors disabled:opacity-50"
-                    >
-                      {uploading && pendingTipo === key ? '⏳ Subiendo…' : '＋ Subir'}
-                    </button>
-                    <input
-                      ref={el => { fileInputs.current[key] = el }}
-                      type="file"
-                      accept={ACCEPT}
-                      className="hidden"
-                      onChange={e => handleFileChange(key, e)}
-                    />
-                  </>
-                )}
+                <button
+                  onClick={() => fileInputs.current[key]?.click()}
+                  disabled={(uploading && pendingTipo === key) || !puedeCrear}
+                  title={puedeCrear ? undefined : 'Sin permiso para subir adjuntos'}
+                  className="text-[11px] font-bold px-2.5 py-1 rounded bg-azul text-white hover:bg-azul-mid transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {uploading && pendingTipo === key ? '⏳ Subiendo…' : '＋ Subir'}
+                </button>
+                <input
+                  ref={el => { fileInputs.current[key] = el }}
+                  type="file"
+                  accept={ACCEPT}
+                  className="hidden"
+                  onChange={e => handleFileChange(key, e)}
+                />
               </div>
 
               {items.length === 0 ? (
@@ -163,15 +160,14 @@ export function LiquidacionAdjuntosSection({ liqId }: Props) {
                       >
                         👁
                       </button>
-                      {puedeEliminar && (
-                        <button
-                          onClick={() => handleBorrar(adj)}
-                          className="text-[11px] font-bold px-2 py-1 rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors"
-                          title="Eliminar"
-                        >
-                          ✕
-                        </button>
-                      )}
+                      <button
+                        onClick={() => handleBorrar(adj)}
+                        disabled={!puedeEliminar}
+                        className="text-[11px] font-bold px-2 py-1 rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        title={puedeEliminar ? 'Eliminar' : 'Sin permiso para eliminar adjuntos'}
+                      >
+                        ✕
+                      </button>
                     </li>
                   ))}
                 </ul>

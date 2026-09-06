@@ -159,9 +159,7 @@ export function RentabilidadTab() {
               i
             </button>
           </div>
-          {puedeCrear && (
-            <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)}>＋ Nuevo viaje</Button>
-          )}
+          <Button variant="primary" size="sm" disabled={!puedeCrear} title={puedeCrear ? undefined : 'Sin permiso para crear viajes'} onClick={() => setModalNuevo(true)}>＋ Nuevo viaje</Button>
         </div>
         {ranking.length === 0 ? (
           <div className="p-6 text-center text-gris-dark text-sm">No hay viajes cargados.</div>
@@ -205,9 +203,7 @@ export function RentabilidadTab() {
                     <Badge variant={diagnosticoVariant[r.diagnostico]} label={diagnosticoLabel(r.diagnostico)} />
                   </td>
                   <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
-                    {puedeEliminar && (
-                      <DeleteViajeBtn id={viaje.id} nombre={viaje.nombre} />
-                    )}
+                    <DeleteViajeBtn id={viaje.id} nombre={viaje.nombre} disabled={!puedeEliminar} />
                   </td>
                 </tr>
               ))}
@@ -260,11 +256,9 @@ export function RentabilidadTab() {
                     <div className="font-mono font-bold text-verde">{fmtARS(r.margen_mensual)}</div>
                   </div>
                 </div>
-                {puedeEliminar && (
-                  <div className="flex justify-end mt-2 pt-2 border-t border-gris" onClick={(e) => e.stopPropagation()}>
-                    <DeleteViajeBtn id={viaje.id} nombre={viaje.nombre} />
-                  </div>
-                )}
+                <div className="flex justify-end mt-2 pt-2 border-t border-gris" onClick={(e) => e.stopPropagation()}>
+                  <DeleteViajeBtn id={viaje.id} nombre={viaje.nombre} disabled={!puedeEliminar} />
+                </div>
               </button>
             ))}
           </div>
@@ -375,11 +369,13 @@ function viajeToInput(v: ViajeRow): RentabilidadViajeInput {
   }
 }
 
-function DeleteViajeBtn({ id, nombre }: { id: number; nombre: string }) {
+function DeleteViajeBtn({ id, nombre, disabled }: { id: number; nombre: string; disabled?: boolean }) {
   const toast = useToast()
   const { mutate: remove } = useDeleteViajeRentabilidad()
   return (
     <button
+      disabled={disabled}
+      title={disabled ? 'Sin permiso para eliminar viajes' : 'Eliminar viaje'}
       onClick={() => {
         if (!confirm(`¿Eliminar el viaje "${nombre}"?`)) return
         remove(id, {
@@ -387,7 +383,7 @@ function DeleteViajeBtn({ id, nombre }: { id: number; nombre: string }) {
           onError:   () => toast('Error al eliminar', 'err'),
         })
       }}
-      className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors"
+      className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
     >✕</button>
   )
 }
@@ -869,11 +865,9 @@ function ParametrosCard({ paramsRow, open, onToggle, readOnly }: ParametrosCardP
             </div>
           </fieldset>
 
-          {!readOnly && (
-            <div className="flex justify-end">
-              <Button variant="primary" loading={isPending} onClick={form.handleSubmit(onSave)}>✓ Guardar parámetros</Button>
-            </div>
-          )}
+          <div className="flex justify-end">
+            <Button variant="primary" loading={isPending} disabled={readOnly} title={readOnly ? 'Sin permiso para editar parámetros' : undefined} onClick={form.handleSubmit(onSave)}>✓ Guardar parámetros</Button>
+          </div>
         </div>
       )}
     </div>

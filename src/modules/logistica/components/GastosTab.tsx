@@ -496,14 +496,12 @@ export function GastosTab() {
             <Input label="Buscar" placeholder="Descripción, proveedor..." value={filters.q ?? ''} onChange={e => setFilter('q', e.target.value || undefined)} />
           </div>
         </div>
-        {puedeCrear && (
-          <div className="flex flex-wrap gap-2 justify-end">
-            <Button variant="secondary" onClick={() => setModalImport(true)}>📥 Importar Excel</Button>
-            <Button variant="primary" onClick={() => { formNuevo.reset({ ...GASTO_VACIO, fecha: hoy() }); resetUpload(); setModalCreate(true) }}>
-              + Registrar gasto
-            </Button>
-          </div>
-        )}
+        <div className="flex flex-wrap gap-2 justify-end">
+          <Button variant="secondary" disabled={!puedeCrear} title={puedeCrear ? undefined : 'Sin permiso para crear gastos'} onClick={() => setModalImport(true)}>📥 Importar Excel</Button>
+          <Button variant="primary" disabled={!puedeCrear} title={puedeCrear ? undefined : 'Sin permiso para crear gastos'} onClick={() => { formNuevo.reset({ ...GASTO_VACIO, fecha: hoy() }); resetUpload(); setModalCreate(true) }}>
+            + Registrar gasto
+          </Button>
+        </div>
       </div>
 
       {/* Totales */}
@@ -521,15 +519,17 @@ export function GastosTab() {
       </div>
 
       {/* Barra de aprobación múltiple — solo si hay pendientes aprobables */}
-      {puedeCrear && aprobables.length > 0 && (
+      {aprobables.length > 0 && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-card p-3 flex flex-wrap items-center gap-3 text-sm">
           <label className="flex items-center gap-2 cursor-pointer select-none">
             <input
               type="checkbox"
               checked={seleccion.size === aprobables.length}
+              disabled={!puedeCrear}
+              title={puedeCrear ? undefined : 'Sin permiso para aprobar gastos'}
               ref={el => { if (el) el.indeterminate = seleccion.size > 0 && seleccion.size < aprobables.length }}
               onChange={toggleTodos}
-              className="w-4 h-4 accent-emerald-600 cursor-pointer"
+              className="w-4 h-4 accent-emerald-600 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
             />
             <span className="font-semibold text-emerald-900">
               Seleccionar pendientes por aprobar ({aprobables.length})
@@ -542,7 +542,8 @@ export function GastosTab() {
             <Button
               variant="primary"
               size="sm"
-              disabled={seleccion.size === 0}
+              disabled={seleccion.size === 0 || !puedeCrear}
+              title={puedeCrear ? undefined : 'Sin permiso para aprobar gastos'}
               loading={aprobandoLote}
               onClick={handleAprobarSeleccionados}
             >
@@ -568,21 +569,20 @@ export function GastosTab() {
                 key={g.id}
                 className={`p-3 transition flex items-center gap-3 ${seleccion.has(g.id) ? 'bg-emerald-50' : 'hover:bg-gris-light'}`}
               >
-                {puedeCrear && (
-                  <div className="shrink-0 w-5 flex justify-center">
-                    {esAprobable ? (
-                      <input
-                        type="checkbox"
-                        checked={seleccion.has(g.id)}
-                        onChange={() => toggleSeleccion(g.id)}
-                        title="Seleccionar para aprobar"
-                        className="w-4 h-4 accent-emerald-600 cursor-pointer"
-                      />
-                    ) : esPropioPend ? (
-                      <span title="No podés aprobar un gasto que vos mismo creaste" className="text-gris-mid text-xs cursor-help">🔒</span>
-                    ) : null}
-                  </div>
-                )}
+                <div className="shrink-0 w-5 flex justify-center">
+                  {esAprobable ? (
+                    <input
+                      type="checkbox"
+                      checked={seleccion.has(g.id)}
+                      disabled={!puedeCrear}
+                      onChange={() => toggleSeleccion(g.id)}
+                      title={puedeCrear ? 'Seleccionar para aprobar' : 'Sin permiso para aprobar gastos'}
+                      className="w-4 h-4 accent-emerald-600 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                    />
+                  ) : esPropioPend ? (
+                    <span title="No podés aprobar un gasto que vos mismo creaste" className="text-gris-mid text-xs cursor-help">🔒</span>
+                  ) : null}
+                </div>
                 <button
                   onClick={() => setVerDetalle(g)}
                   className="flex-1 min-w-0 text-left flex items-center gap-3"
@@ -704,6 +704,7 @@ export function GastosTab() {
             gasto={verDetalle}
             canEdit={puedeEditar}
             canDelete={puedeEliminar}
+            puedeAprobar={puedeCrear}
             canApprove={verDetalle.estado === 'pendiente' && verDetalle.created_by !== userId}
             canMarkPaid={
               verDetalle.estado === 'aprobado'
@@ -873,9 +874,12 @@ function GastoFormFields({
   )
 }
 
-function DetalleGasto({ gasto, canEdit, canDelete, canApprove, canMarkPaid, aprobando, marcandoPagado, onEdit, onDelete, onAprobar, onRechazar, onMarcarPagado }: {
+function DetalleGasto({ gasto, canEdit, canDelete, canApprove, canMarkPaid, puedeAprobar, aprobando, marcandoPagado, onEdit, onDelete, onAprobar, onRechazar, onMarcarPagado }: {
   gasto: Gasto
-  canEdit: boolean; canDelete: boolean; canApprove: boolean; canMarkPaid: boolean
+  // canApprove/canMarkPaid describen el ESTADO del gasto (pendiente, no propio) y
+  // deciden si el botón se muestra; puedeAprobar es el PERMISO (creacion) y
+  // decide si está habilitado. Aprobar/rechazar/marcar pagado son POST.
+  canEdit: boolean; canDelete: boolean; canApprove: boolean; canMarkPaid: boolean; puedeAprobar: boolean
   aprobando: boolean; marcandoPagado: boolean
   onEdit: () => void; onDelete: () => void
   onAprobar: () => void; onRechazar: () => void; onMarcarPagado: () => void
@@ -912,18 +916,18 @@ function DetalleGasto({ gasto, canEdit, canDelete, canApprove, canMarkPaid, apro
       <div className="flex flex-wrap gap-2 pt-2 border-t border-gris">
         {canApprove && (
           <>
-            <Button variant="primary" size="sm" loading={aprobando} onClick={onAprobar}>✓ Aprobar</Button>
-            <Button variant="secondary" size="sm" onClick={onRechazar}>✕ Rechazar</Button>
+            <Button variant="primary" size="sm" loading={aprobando} disabled={!puedeAprobar} title={puedeAprobar ? undefined : 'Sin permiso para aprobar gastos'} onClick={onAprobar}>✓ Aprobar</Button>
+            <Button variant="secondary" size="sm" disabled={!puedeAprobar} title={puedeAprobar ? undefined : 'Sin permiso para rechazar gastos'} onClick={onRechazar}>✕ Rechazar</Button>
           </>
         )}
         {canMarkPaid && (
-          <Button variant="primary" size="sm" loading={marcandoPagado} onClick={onMarcarPagado}>💰 Marcar pagado</Button>
+          <Button variant="primary" size="sm" loading={marcandoPagado} disabled={!puedeAprobar} title={puedeAprobar ? undefined : 'Sin permiso para marcar gastos como pagados'} onClick={onMarcarPagado}>💰 Marcar pagado</Button>
         )}
-        {canEdit && !gasto.liquidacion_id && (
-          <Button variant="secondary" size="sm" onClick={onEdit}>✏ Editar</Button>
+        {!gasto.liquidacion_id && (
+          <Button variant="secondary" size="sm" disabled={!canEdit} title={canEdit ? undefined : 'Sin permiso para editar gastos'} onClick={onEdit}>✏ Editar</Button>
         )}
-        {canDelete && !gasto.liquidacion_id && (
-          <Button variant="secondary" size="sm" onClick={onDelete}>🗑 Eliminar</Button>
+        {!gasto.liquidacion_id && (
+          <Button variant="secondary" size="sm" disabled={!canDelete} title={canDelete ? undefined : 'Sin permiso para eliminar gastos'} onClick={onDelete}>🗑 Eliminar</Button>
         )}
       </div>
     </div>

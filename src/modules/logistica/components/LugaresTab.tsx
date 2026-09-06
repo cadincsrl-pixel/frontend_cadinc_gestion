@@ -14,6 +14,7 @@ import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input }  from '@/components/ui/Input'
 import { useToast } from '@/components/ui/Toast'
+import { usePermisos } from '@/hooks/usePermisos'
 import { useForm } from 'react-hook-form'
 import { intInputProps } from '@/lib/utils/inputs'
 import { useGeocode, useResolverMapsUrl, useSugerirKm } from '../hooks/useEnRuta'
@@ -34,6 +35,9 @@ function msgCompletar(err: unknown): string {
 export function LugaresTab() {
   const toast = useToast()
   const qc = useQueryClient()
+  // lugares.routes.ts: POST=creacion, PATCH=actualizacion, DELETE=eliminacion.
+  // maps.routes.ts (completar matriz): POST=actualizacion.
+  const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('logistica')
   const { data: canteras  = [] } = useCanteras()
   const { data: depositos = [] } = useDepositos()
   const { data: rutas     = [] } = useRutas()
@@ -429,7 +433,7 @@ export function LugaresTab() {
     <div className="flex flex-col gap-6">
 
       {/* Canteras */}
-      <Section title="⛏ Puntos de carga" onAdd={() => setModalCantera(true)} addLabel="＋ Punto de carga">
+      <Section title="⛏ Puntos de carga" onAdd={() => setModalCantera(true)} addLabel="＋ Punto de carga" addDisabled={!puedeCrear} addTitle={puedeCrear ? undefined : 'Sin permiso para crear puntos de carga'}>
         <div className="px-4 py-2 border-b border-gris bg-gris/30">
           <Input
             placeholder="🔍 Buscar punto de carga…"
@@ -455,14 +459,14 @@ export function LugaresTab() {
                   </a>
                 )}
               </div>
-              <button onClick={() => openEditCantera(c)} className="text-xs px-2 py-1 rounded hover:bg-gris transition-colors text-gris-dark shrink-0">✏️</button>
+              <button disabled={!puedeEditar} title={puedeEditar ? 'Editar' : 'Sin permiso para editar puntos de carga'} onClick={() => openEditCantera(c)} className="text-xs px-2 py-1 rounded hover:bg-gris transition-colors text-gris-dark shrink-0 disabled:opacity-40 disabled:cursor-not-allowed">✏️</button>
             </div>
           )}
         />
       </Section>
 
       {/* Depósitos */}
-      <Section title="🏭 Depósitos" onAdd={() => setModalDeposito(true)} addLabel="＋ Depósito">
+      <Section title="🏭 Depósitos" onAdd={() => setModalDeposito(true)} addLabel="＋ Depósito" addDisabled={!puedeCrear} addTitle={puedeCrear ? undefined : 'Sin permiso para crear depósitos'}>
         <div className="px-4 py-2 border-b border-gris bg-gris/30">
           <Input
             placeholder="🔍 Buscar depósito…"
@@ -488,7 +492,7 @@ export function LugaresTab() {
                   </a>
                 )}
               </div>
-              <button onClick={() => openEditDeposito(d)} className="text-xs px-2 py-1 rounded hover:bg-gris transition-colors text-gris-dark shrink-0">✏️</button>
+              <button disabled={!puedeEditar} title={puedeEditar ? 'Editar' : 'Sin permiso para editar depósitos'} onClick={() => openEditDeposito(d)} className="text-xs px-2 py-1 rounded hover:bg-gris transition-colors text-gris-dark shrink-0 disabled:opacity-40 disabled:cursor-not-allowed">✏️</button>
             </div>
           )}
         />
@@ -498,7 +502,7 @@ export function LugaresTab() {
           que se gestiona como un concepto y por detrás es el par cantera+depósito
           (ambos operativo). No facturable: no puede ser origen/destino de cargados,
           sí de vacíos. */}
-      <Section title="🅿️ Lugares operativos" onAdd={openNewLugarOp} addLabel="＋ Lugar operativo">
+      <Section title="🅿️ Lugares operativos" onAdd={openNewLugarOp} addLabel="＋ Lugar operativo" addDisabled={!puedeCrear} addTitle={puedeCrear ? undefined : 'Sin permiso para crear lugares operativos'}>
         <div className="px-4 py-2 text-[11px] text-gris-dark border-b border-gris bg-naranja-light/30">
           Puntos físicos no facturables (mantenimiento, relevos, estacionamiento). Se usan en tramos vacíos; nunca como origen/destino de un cargado.
         </div>
@@ -519,8 +523,8 @@ export function LugaresTab() {
                 {l.obs && <span className="text-xs text-gris-dark truncate">{l.obs}</span>}
               </div>
               <div className="flex items-center gap-1 shrink-0">
-                <button onClick={() => openEditLugarOp(l)} title="Editar" className="text-xs px-2 py-1 rounded hover:bg-gris transition-colors text-gris-dark">✏️</button>
-                <button onClick={() => handleDeleteLugarOp(l)} title="Eliminar" className="text-xs px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors">✕</button>
+                <button disabled={!puedeEditar} onClick={() => openEditLugarOp(l)} title={puedeEditar ? 'Editar' : 'Sin permiso para editar lugares operativos'} className="text-xs px-2 py-1 rounded hover:bg-gris transition-colors text-gris-dark disabled:opacity-40 disabled:cursor-not-allowed">✏️</button>
+                <button disabled={!puedeEliminar} onClick={() => handleDeleteLugarOp(l)} title={puedeEliminar ? 'Eliminar' : 'Sin permiso para eliminar lugares operativos'} className="text-xs px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
               </div>
             </div>
           )}
@@ -545,7 +549,7 @@ export function LugaresTab() {
                 Resaltar faltantes
               </label>
             )}
-            <Button variant="secondary" size="sm" onClick={() => { formRuta.reset(); setModalRuta(true) }}>＋ Ruta</Button>
+            <Button variant="secondary" size="sm" disabled={!puedeCrear} title={puedeCrear ? undefined : 'Sin permiso para cargar rutas'} onClick={() => { formRuta.reset(); setModalRuta(true) }}>＋ Ruta</Button>
           </div>
         </div>
 
@@ -589,10 +593,10 @@ export function LugaresTab() {
                     <RutaMapsLink url={rutaMapsUrl(selCant, selDep)} />
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    <button onClick={() => openEditRuta(rutaSel)} title="Editar km / observaciones"
-                      className="text-gris-dark hover:text-azul transition-colors text-sm px-2 py-1">✏️</button>
-                    <button onClick={() => handleDeleteRuta(rutaSel.id)} title="Eliminar ruta"
-                      className="text-gris-mid hover:text-rojo transition-colors text-sm px-2 py-1">✕</button>
+                    <button disabled={!puedeEditar} onClick={() => openEditRuta(rutaSel)} title={puedeEditar ? 'Editar km / observaciones' : 'Sin permiso para editar rutas'}
+                      className="text-gris-dark hover:text-azul transition-colors text-sm px-2 py-1 disabled:opacity-40 disabled:cursor-not-allowed">✏️</button>
+                    <button disabled={!puedeEliminar} onClick={() => handleDeleteRuta(rutaSel.id)} title={puedeEliminar ? 'Eliminar ruta' : 'Sin permiso para eliminar rutas'}
+                      className="text-gris-mid hover:text-rojo transition-colors text-sm px-2 py-1 disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
                   </div>
                 </div>
               ) : (
@@ -612,10 +616,10 @@ export function LugaresTab() {
                         placeholder="Ej: 1220"
                         value={kmInline}
                         onChange={e => setKmInline(e.target.value.replace(/[^\d]/g, ''))}
-                        onKeyDown={e => { if (e.key === 'Enter') guardarRutaInline(Number(selCant), Number(selDep), kmInline) }}
+                        onKeyDown={e => { if (e.key === 'Enter' && puedeCrear) guardarRutaInline(Number(selCant), Number(selDep), kmInline) }}
                       />
                     </div>
-                    <Button variant="primary" loading={loading}
+                    <Button variant="primary" loading={loading} disabled={!puedeCrear} title={puedeCrear ? undefined : 'Sin permiso para cargar rutas'}
                       onClick={() => guardarRutaInline(Number(selCant), Number(selDep), kmInline)}>
                       ✓ Guardar
                     </Button>
@@ -642,13 +646,14 @@ export function LugaresTab() {
             </span>
 
             <div className="flex flex-wrap items-center gap-2 mt-2">
-              {/* Sin gate de permisos acá: el resto del tab tampoco lo tiene y
-                  el backend exige logistica.actualizacion para este endpoint. */}
+              {/* POST /maps/completar-matriz: el backend exige logistica.actualizacion. */}
               {faltantes > 0 && (
                 <Button
                   variant="secondary"
                   size="sm"
                   loading={completando.isPending && !previewMatriz}
+                  disabled={!puedeEditar}
+                  title={puedeEditar ? undefined : 'Sin permiso para editar rutas'}
                   onClick={() => completando.mutate(true, {
                     onSuccess: (r) => setPreviewMatriz(r),
                     onError:   (e) => toast(msgCompletar(e), 'err'),
@@ -727,10 +732,13 @@ export function LugaresTab() {
                               // revisar (ámbar, con borde) · ＋ sin cargar (abajo).
                               <button
                                 onClick={() => openEditRuta(r)}
-                                title={r.verificada
-                                  ? `${c.nombre} → ${d.nombre} · ${Math.round(r.km_ida_vuelta).toLocaleString('es-AR')} km · verificado · editar`
-                                  : `${c.nombre} → ${d.nombre} · ${Math.round(r.km_ida_vuelta).toLocaleString('es-AR')} km SUGERIDO POR GOOGLE, sin verificar · tocá para revisarlo contra el mapa`}
-                                className={`w-full px-2 py-2.5 text-center font-mono text-xs font-bold transition-colors
+                                disabled={!puedeEditar}
+                                title={!puedeEditar
+                                  ? `${c.nombre} → ${d.nombre} · ${Math.round(r.km_ida_vuelta).toLocaleString('es-AR')} km · sin permiso para editar rutas`
+                                  : r.verificada
+                                    ? `${c.nombre} → ${d.nombre} · ${Math.round(r.km_ida_vuelta).toLocaleString('es-AR')} km · verificado · editar`
+                                    : `${c.nombre} → ${d.nombre} · ${Math.round(r.km_ida_vuelta).toLocaleString('es-AR')} km SUGERIDO POR GOOGLE, sin verificar · tocá para revisarlo contra el mapa`}
+                                className={`w-full px-2 py-2.5 text-center font-mono text-xs font-bold transition-colors disabled:cursor-default
                                   ${!r.verificada
                                     ? 'bg-[#fff3d6] text-[#8a5a00] border-l-[3px] border-[#c98a00] hover:bg-[#ffe9b8]'
                                     : soloFaltantes || soloSinVerificar
@@ -744,8 +752,11 @@ export function LugaresTab() {
                             ) : (
                               <button
                                 onClick={() => openNuevaRutaPar(c.id, d.id)}
-                                title={`${c.nombre} → ${d.nombre} · falta — tocá para cargar el km`}
-                                className={`w-full px-2 py-2.5 text-center text-sm transition-colors
+                                disabled={!puedeCrear}
+                                title={puedeCrear
+                                  ? `${c.nombre} → ${d.nombre} · falta — tocá para cargar el km`
+                                  : `${c.nombre} → ${d.nombre} · falta · sin permiso para cargar rutas`}
+                                className={`w-full px-2 py-2.5 text-center text-sm transition-colors disabled:cursor-not-allowed
                                   ${soloFaltantes
                                     ? 'bg-rojo-light/60 text-rojo-dark font-bold hover:bg-rojo-light'
                                     : 'text-gris-mid hover:bg-rojo-light/40 hover:text-rojo'}
@@ -976,7 +987,7 @@ export function LugaresTab() {
               <Button
                 variant="primary"
                 loading={completando.isPending}
-                disabled={previewMatriz.a_calcular === 0}
+                disabled={previewMatriz.a_calcular === 0 || !puedeEditar}
                 onClick={() => completando.mutate(false, {
                   onSuccess: (r) => {
                     setPreviewMatriz(null)
@@ -1297,14 +1308,14 @@ function SugerirKmBtn({ loading, onClick }: { loading: boolean; onClick: () => v
   )
 }
 
-function Section({ title, onAdd, addLabel, children }: {
-  title: string; onAdd: () => void; addLabel: string; children: React.ReactNode
+function Section({ title, onAdd, addLabel, addDisabled, addTitle, children }: {
+  title: string; onAdd: () => void; addLabel: string; addDisabled?: boolean; addTitle?: string; children: React.ReactNode
 }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
         <h3 className="font-display text-lg tracking-wider text-azul">{title}</h3>
-        <Button variant="secondary" size="sm" onClick={onAdd}>{addLabel}</Button>
+        <Button variant="secondary" size="sm" disabled={addDisabled} title={addTitle} onClick={onAdd}>{addLabel}</Button>
       </div>
       <div className="bg-white rounded-card shadow-card overflow-hidden">{children}</div>
     </div>

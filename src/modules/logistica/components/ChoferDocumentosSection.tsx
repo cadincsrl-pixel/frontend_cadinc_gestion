@@ -208,24 +208,24 @@ export function ChoferDocumentosSection({ choferId }: Props) {
         >
           👁
         </button>
-        {puedeEditar && (venceObligatorio || doc.vence_el) && (
+        {(venceObligatorio || doc.vence_el) && (
           <button
             onClick={() => abrirEditVence(doc)}
-            className="text-sm font-bold px-2.5 py-1.5 min-w-[36px] rounded bg-naranja-light text-naranja-dark hover:bg-naranja hover:text-white transition-colors"
-            title="Editar fecha de vencimiento"
+            disabled={!puedeEditar}
+            className="text-sm font-bold px-2.5 py-1.5 min-w-[36px] rounded bg-naranja-light text-naranja-dark hover:bg-naranja hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            title={puedeEditar ? 'Editar fecha de vencimiento' : 'Sin permiso para editar documentos'}
           >
             📅
           </button>
         )}
-        {puedeEliminar && (
-          <button
-            onClick={() => handleBorrar(doc)}
-            className="text-sm font-bold px-2.5 py-1.5 min-w-[36px] rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors"
-            title="Eliminar"
-          >
-            ✕
-          </button>
-        )}
+        <button
+          onClick={() => handleBorrar(doc)}
+          disabled={!puedeEliminar}
+          className="text-sm font-bold px-2.5 py-1.5 min-w-[36px] rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          title={puedeEliminar ? 'Eliminar' : 'Sin permiso para eliminar documentos'}
+        >
+          ✕
+        </button>
       </li>
     )
   }
@@ -274,33 +274,33 @@ export function ChoferDocumentosSection({ choferId }: Props) {
               </div>
 
               {/* Input fecha de vencimiento (si aplica) + botón subir */}
-              {puedeCrear && (
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {venceObligatorio && (
-                    <input
-                      type="date"
-                      value={pendingVence[key] ?? ''}
-                      onChange={e => setPendingVence(prev => ({ ...prev, [key]: e.target.value }))}
-                      className="text-[11px] px-1.5 py-1 border-[1.5px] border-gris-mid rounded outline-none focus:border-naranja"
-                      title="Fecha de vencimiento"
-                    />
-                  )}
-                  <button
-                    onClick={() => fileInputs.current[key]?.click()}
-                    disabled={uploading && pendingTipo === key}
-                    className="text-[11px] font-bold px-2.5 py-1 rounded bg-azul text-white hover:bg-azul-mid transition-colors disabled:opacity-50"
-                  >
-                    {uploading && pendingTipo === key ? '⏳ Subiendo…' : '＋ Subir'}
-                  </button>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {venceObligatorio && (
                   <input
-                    ref={el => { fileInputs.current[key] = el }}
-                    type="file"
-                    accept={ACCEPT}
-                    className="hidden"
-                    onChange={e => handleFileChange(key, e)}
+                    type="date"
+                    value={pendingVence[key] ?? ''}
+                    disabled={!puedeCrear}
+                    onChange={e => setPendingVence(prev => ({ ...prev, [key]: e.target.value }))}
+                    className="text-[11px] px-1.5 py-1 border-[1.5px] border-gris-mid rounded outline-none focus:border-naranja disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={puedeCrear ? 'Fecha de vencimiento' : 'Sin permiso para cargar documentos'}
                   />
-                </div>
-              )}
+                )}
+                <button
+                  onClick={() => fileInputs.current[key]?.click()}
+                  disabled={(uploading && pendingTipo === key) || !puedeCrear}
+                  title={puedeCrear ? undefined : 'Sin permiso para cargar documentos'}
+                  className="text-[11px] font-bold px-2.5 py-1 rounded bg-azul text-white hover:bg-azul-mid transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {uploading && pendingTipo === key ? '⏳ Subiendo…' : '＋ Subir'}
+                </button>
+                <input
+                  ref={el => { fileInputs.current[key] = el }}
+                  type="file"
+                  accept={ACCEPT}
+                  className="hidden"
+                  onChange={e => handleFileChange(key, e)}
+                />
+              </div>
 
               {vigentes.length === 0 && archivados.length === 0 ? (
                 <div className="text-[11px] text-gris-dark italic">Sin documentos.</div>

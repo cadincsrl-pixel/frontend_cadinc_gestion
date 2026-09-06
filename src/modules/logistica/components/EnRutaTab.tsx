@@ -73,11 +73,9 @@ export function EnRutaTab() {
               Tramos cargados en curso · distancia y ETA al destino vía Google Maps
             </p>
           </div>
-          {puedeEditar && (
-            <Button variant="primary" size="sm" loading={syncing} onClick={handleActualizar}>
-              🔄 Actualizar ahora
-            </Button>
-          )}
+          <Button variant="primary" size="sm" loading={syncing} disabled={!puedeEditar} title={puedeEditar ? undefined : 'Sin permiso para sincronizar GPS'} onClick={handleActualizar}>
+            🔄 Actualizar ahora
+          </Button>
         </div>
         <div className="flex gap-3 mt-3 flex-wrap text-xs">
           <Stat label="Cargados en ruta" value={filas.length} color="orange" />

@@ -119,9 +119,7 @@ export function TarifasTab() {
                       {c.precio_km_vacio ? `$${Number(c.precio_km_vacio).toLocaleString('es-AR')}` : <span className="text-gris-mid">—</span>}
                     </td>
                     <td className="px-4 py-3 flex gap-1 justify-end">
-                      {puedeEditar && (
-                        <button onClick={() => openEdit(c.id)} className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors">✏️</button>
-                      )}
+                      <button disabled={!puedeEditar} title={puedeEditar ? 'Editar tarifas' : 'Sin permiso para editar tarifas'} onClick={() => openEdit(c.id)} className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors disabled:opacity-40 disabled:cursor-not-allowed">✏️</button>
                     </td>
                   </>
                 )}
