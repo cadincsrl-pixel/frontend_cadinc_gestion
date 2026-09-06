@@ -44,7 +44,7 @@ function getHoraClass(h: number): string {
 export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoStateChange, readonly = false }: Props) {
   const { semActual } = useTarjaStore()
   const toast = useToast()
-  const { puedeEditar, puedeEliminar, verCostos, esCapataz } = usePermisos('tarja')
+  const { puedeEditar, puedeEliminar, verCostos, verPii, esCapataz } = usePermisos('tarja')
   // Vista restringida (scope='asignadas' y no es admin): el user solo carga
   // horas; ni cambia categoría, ni ve hs extras, ni costos.
   const scopeAsignadas = useSessionStore(s =>
@@ -52,6 +52,12 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
   )
   const puedeCambiarCategoria = puedeEditar && !scopeAsignadas
   const verHsExtras = !scopeAsignadas
+  // Quitar de la semana = DELETE /horas/:obra/semana → tarja.eliminacion + ver_pii.
+  // Se deshabilita (no se oculta): el backend valida igual.
+  const puedeQuitar = puedeEliminar && verPii
+  const motivoNoQuitar = !puedeEliminar ? 'Sin permiso para quitar trabajadores'
+    : !verPii ? 'Requiere el permiso ver_pii en tarja'
+    : null
   const days = getSemDays(semActual)
   // Fecha de hoy en horario Argentina (YYYY-MM-DD). Para capataces el único
   // día editable es éste — el resto queda read-only aunque sea de la semana
@@ -422,15 +428,14 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                   className="border-b border-gris last:border-0 hover:bg-gris/40 transition-colors"
                 >
                   <td className="px-1 py-1.5 text-center">
-                    {puedeEliminar && (
-                      <button
-                        onClick={() => handleQuitar(p)}
-                        title={`Quitar ${p.nom} de esta semana`}
-                        className="w-6 h-6 rounded flex items-center justify-center text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors text-xs"
-                      >
-                        ✕
-                      </button>
-                    )}
+                    <button
+                      onClick={() => handleQuitar(p)}
+                      disabled={!puedeQuitar}
+                      title={motivoNoQuitar ?? `Quitar ${p.nom} de esta semana`}
+                      className="w-6 h-6 rounded flex items-center justify-center text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors text-xs disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      ✕
+                    </button>
                   </td>
                   <td className="font-mono text-xs text-gris-dark px-3 py-1.5 font-semibold whitespace-nowrap">
                     {p.leg}

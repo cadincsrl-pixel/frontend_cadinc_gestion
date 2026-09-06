@@ -332,10 +332,16 @@ export function TarjaObraPage({ obraCod }: Props) {
             )}
             <Chip value={desde} label="Período" variant="orange" />
           </div>
-          {/* Acciones — solo en obras activas y para usuarios distintos al capataz */}
-          {puedeAdministrarObras && !archivada && !scopeAsignadas && (
+          {/* Acciones — solo en obras activas. Sin permiso queda deshabilitado (no oculto). */}
+          {!archivada && (
             <div className="flex items-center gap-1 flex-wrap">
-              <Button variant="ghost" size="sm" onClick={() => setModalEditarObra(true)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setModalEditarObra(true)}
+                disabled={!puedeAdministrarObras || scopeAsignadas}
+                title={!puedeAdministrarObras ? 'Sin permiso para administrar obras' : scopeAsignadas ? 'Solo disponible con acceso a todas las obras' : undefined}
+              >
                 ✏️ Editar
               </Button>
             </div>
@@ -364,9 +370,15 @@ export function TarjaObraPage({ obraCod }: Props) {
           La toolbar completa queda oculta porque scope='asignadas' implica
           vista restringida (sin auto-fill, limpiar, tarifas, etc.), pero
           sí pueden sumar un legajo existente a la semana de su obra. */}
-      {!archivada && scopeAsignadas && esJefeObra && puedeCrear && (
+      {!archivada && scopeAsignadas && esJefeObra && (
         <div className="flex justify-end">
-          <Button variant="primary" size="sm" onClick={() => setModalTrab(true)}>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => setModalTrab(true)}
+            disabled={!puedeCrear}
+            title={puedeCrear ? undefined : 'Sin permiso para agregar trabajadores'}
+          >
             ＋ Trabajador
           </Button>
         </div>

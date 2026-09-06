@@ -29,6 +29,16 @@ import type { Personal, Contratista } from '@/types/domain.types'
 
 type Tab = 'personal' | 'contratistas'
 
+// Tooltip de los controles deshabilitados por permiso (undefined = habilitado).
+// Personal y contratistas mutan con el permiso CRUD de tarja + ver_pii; se
+// deshabilita (no se oculta) porque el backend valida igual.
+function sinPermiso(ok: boolean, accion: string, pii = true): string | undefined {
+  if (!ok)  return `Sin permiso para ${accion}`
+  if (!pii) return 'Requiere el permiso ver_pii en tarja'
+  return undefined
+}
+const BTN_DISABLED = 'disabled:opacity-40 disabled:cursor-not-allowed'
+
 const ESP_OPTIONS = [
   { value: 'Electricista',  label: 'Electricista'      },
   { value: 'Sanitarista',   label: 'Sanitarista'       },
@@ -42,7 +52,11 @@ const ESP_OPTIONS = [
 
 export function PersonalPage() {
   const toast = useToast()
-  const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('tarja')
+  const { puedeCrear: puedeCrearPerm, puedeEditar: puedeEditarPerm, puedeEliminar: puedeEliminarPerm, verPii } = usePermisos('tarja')
+  // El backend exige el permiso CRUD + ver_pii para mutar personal y contratistas.
+  const puedeCrear    = puedeCrearPerm    && verPii
+  const puedeEditar   = puedeEditarPerm   && verPii
+  const puedeEliminar = puedeEliminarPerm && verPii
   const [tab, setTab] = useState<Tab>('personal')
 
   // ── Horas para calcular activos ──
@@ -298,20 +312,34 @@ export function PersonalPage() {
             <Button variant="secondary" size="sm" onClick={exportarExcel}>
               📥 Exportar Excel
             </Button>
-            {puedeCrear && (
-              <Button variant="secondary" size="sm" onClick={() => setModalImportar(true)}>
-                📤 Importar Excel
-              </Button>
-            )}
-            {puedeCrear && (
-              <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)}>
-                ＋ Nuevo trabajador
-              </Button>
-            )}
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setModalImportar(true)}
+              disabled={!puedeCrear}
+              title={sinPermiso(puedeCrearPerm, 'importar trabajadores', verPii)}
+            >
+              📤 Importar Excel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => setModalNuevo(true)}
+              disabled={!puedeCrear}
+              title={sinPermiso(puedeCrearPerm, 'crear trabajadores', verPii)}
+            >
+              ＋ Nuevo trabajador
+            </Button>
           </div>
         )}
-        {tab === 'contratistas' && puedeCrear && (
-          <Button variant="primary" size="sm" onClick={() => setModalNuevoC(true)}>
+        {tab === 'contratistas' && (
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => setModalNuevoC(true)}
+            disabled={!puedeCrear}
+            title={sinPermiso(puedeCrearPerm, 'crear contratistas', verPii)}
+          >
             ＋ Nuevo contratista
           </Button>
         )}
@@ -525,14 +553,14 @@ export function PersonalPage() {
                             className="px-4 py-3 text-center"
                             onClick={e => e.stopPropagation()}
                           >
-                            {puedeEditar && (
-                              <button
-                                onClick={() => setEditando(p)}
-                                className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors"
-                              >
-                                ✏️
-                              </button>
-                            )}
+                            <button
+                              onClick={() => setEditando(p)}
+                              disabled={!puedeEditar}
+                              title={sinPermiso(puedeEditarPerm, 'editar trabajadores', verPii) ?? 'Editar'}
+                              className={`text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors ${BTN_DISABLED}`}
+                            >
+                              ✏️
+                            </button>
                           </td>
                         </tr>
                       )
@@ -630,22 +658,22 @@ export function PersonalPage() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex gap-1 justify-end">
-                            {puedeEditar && (
-                              <button
-                                onClick={() => openEditContrat(c)}
-                                className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors"
-                              >
-                                ✏️
-                              </button>
-                            )}
-                            {puedeEliminar && (
-                              <button
-                                onClick={() => handleDeleteContrat(c)}
-                                className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors"
-                              >
-                                ✕
-                              </button>
-                            )}
+                            <button
+                              onClick={() => openEditContrat(c)}
+                              disabled={!puedeEditar}
+                              title={sinPermiso(puedeEditarPerm, 'editar contratistas', verPii) ?? 'Editar'}
+                              className={`text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors ${BTN_DISABLED}`}
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              onClick={() => handleDeleteContrat(c)}
+                              disabled={!puedeEliminar}
+                              title={sinPermiso(puedeEliminarPerm, 'eliminar contratistas', verPii) ?? 'Eliminar'}
+                              className={`text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors ${BTN_DISABLED}`}
+                            >
+                              ✕
+                            </button>
                           </div>
                         </td>
                       </tr>

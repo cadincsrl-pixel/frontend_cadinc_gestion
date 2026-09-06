@@ -6,6 +6,7 @@ import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api/client'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
+import { usePermisos } from '@/hooks/usePermisos'
 import type { HerrTipo, HerrMovTipo, HerrConfig, HerrMarca, HerrModelo } from '@/types/domain.types'
 import {
   useHerrMarcas,
@@ -18,6 +19,13 @@ import {
 } from '../hooks/useHerramientas'
 
 type ParamTab = 'tipos' | 'movimientos' | 'marcas'
+
+// Tooltip de los controles deshabilitados por permiso (undefined = habilitado).
+// Se deshabilita, no se oculta: el backend valida igual y ocultar confunde.
+function sinPermiso(ok: boolean, accion: string): string | undefined {
+  return ok ? undefined : `Sin permiso para ${accion}`
+}
+const BTN_DISABLED = 'disabled:opacity-40 disabled:cursor-not-allowed'
 
 export function HerrParametros() {
   const [tab, setTab] = useState<ParamTab>('tipos')
@@ -63,6 +71,7 @@ export function HerrParametros() {
 // ── Tipos de herramienta ──
 function TiposTab() {
   const toast = useToast()
+  const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('herramientas')
 
   const { data: tipos = [], isLoading, refetch } = useQuery({
     queryKey: ['herr-tipos'],
@@ -120,7 +129,13 @@ function TiposTab() {
           </h2>
           <p className="text-xs text-gris-dark mt-0.5">Clasificación de herramientas por tipo.</p>
         </div>
-        <Button variant="primary" size="sm" onClick={() => { setNom(''); setIcono(''); setModalNuevo(true) }}>
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={() => { setNom(''); setIcono(''); setModalNuevo(true) }}
+          disabled={!puedeCrear}
+          title={sinPermiso(puedeCrear, 'crear categorías')}
+        >
           ＋ Nuevo tipo
         </Button>
       </div>
@@ -166,13 +181,17 @@ function TiposTab() {
                   <div className="flex gap-1 justify-end">
                     <button
                       onClick={() => openEdit(t)}
-                      className="text-xs px-2 py-1 rounded hover:bg-gris transition-colors"
+                      disabled={!puedeEditar}
+                      title={sinPermiso(puedeEditar, 'editar categorías') ?? 'Editar'}
+                      className={`text-xs px-2 py-1 rounded hover:bg-gris transition-colors ${BTN_DISABLED}`}
                     >
                       ✏️
                     </button>
                     <button
                       onClick={() => confirm(`¿Eliminar "${t.nom}"?`) && remove(t.id)}
-                      className="text-xs px-2 py-1 rounded hover:bg-rojo-light hover:text-rojo transition-colors"
+                      disabled={!puedeEliminar}
+                      title={sinPermiso(puedeEliminar, 'eliminar categorías') ?? 'Eliminar'}
+                      className={`text-xs px-2 py-1 rounded hover:bg-rojo-light hover:text-rojo transition-colors ${BTN_DISABLED}`}
                     >
                       ✕
                     </button>
@@ -243,6 +262,7 @@ function TiposTab() {
 // ── Tipos de movimiento ──
 function MovTiposTab() {
   const toast = useToast()
+  const { puedeEditar } = usePermisos('herramientas')
 
   const { data: movTipos = [], isLoading, refetch } = useQuery({
     queryKey: ['herr-mov-tipos'],
@@ -329,7 +349,9 @@ function MovTiposTab() {
                 <td className="px-4 py-3">
                   <button
                     onClick={() => openEdit(t)}
-                    className="text-xs px-2 py-1 rounded hover:bg-gris transition-colors"
+                    disabled={!puedeEditar}
+                    title={sinPermiso(puedeEditar, 'editar tipos de movimiento') ?? 'Editar'}
+                    className={`text-xs px-2 py-1 rounded hover:bg-gris transition-colors ${BTN_DISABLED}`}
                   >
                     ✏️
                   </button>
@@ -405,6 +427,7 @@ function MovTiposTab() {
 // ── Marcas y modelos ──
 function MarcasTab() {
   const toast = useToast()
+  const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('herramientas')
   const { data: marcas = [], isLoading } = useHerrMarcas()
   const { mutate: createMarca, isPending: creatingMarca } = useCreateMarca()
   const { mutate: updateMarca, isPending: updatingMarca } = useUpdateMarca()
@@ -500,7 +523,13 @@ function MarcasTab() {
             Catálogo usado en alta y edición de herramientas. El soft-delete preserva el snapshot del nombre en las herramientas existentes.
           </p>
         </div>
-        <Button variant="primary" size="sm" onClick={openNewMarca}>
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={openNewMarca}
+          disabled={!puedeCrear}
+          title={sinPermiso(puedeCrear, 'crear marcas')}
+        >
           ＋ Nueva marca
         </Button>
       </div>
@@ -544,16 +573,18 @@ function MarcasTab() {
                     )}
                     <button
                       onClick={() => openEditMarca(m)}
-                      title="Editar marca"
-                      className="text-xs px-2 py-1 rounded hover:bg-gris transition-colors"
+                      disabled={!puedeEditar}
+                      title={sinPermiso(puedeEditar, 'editar marcas') ?? 'Editar marca'}
+                      className={`text-xs px-2 py-1 rounded hover:bg-gris transition-colors ${BTN_DISABLED}`}
                     >
                       ✏️
                     </button>
                     {m.activo && (
                       <button
                         onClick={() => handleDeleteMarca(m)}
-                        title="Desactivar marca"
-                        className="text-xs px-2 py-1 rounded hover:bg-rojo-light hover:text-rojo transition-colors"
+                        disabled={!puedeEliminar}
+                        title={sinPermiso(puedeEliminar, 'desactivar marcas') ?? 'Desactivar marca'}
+                        className={`text-xs px-2 py-1 rounded hover:bg-rojo-light hover:text-rojo transition-colors ${BTN_DISABLED}`}
                       >
                         ✕
                       </button>
@@ -582,16 +613,18 @@ function MarcasTab() {
                             )}
                             <button
                               onClick={() => openEditModelo(m.id, mod)}
-                              title="Editar modelo"
-                              className="text-xs px-2 py-1 rounded hover:bg-gris transition-colors"
+                              disabled={!puedeEditar}
+                              title={sinPermiso(puedeEditar, 'editar modelos') ?? 'Editar modelo'}
+                              className={`text-xs px-2 py-1 rounded hover:bg-gris transition-colors ${BTN_DISABLED}`}
                             >
                               ✏️
                             </button>
                             {mod.activo && (
                               <button
                                 onClick={() => handleDeleteModelo(mod)}
-                                title="Desactivar modelo"
-                                className="text-xs px-2 py-1 rounded hover:bg-rojo-light hover:text-rojo transition-colors"
+                                disabled={!puedeEliminar}
+                                title={sinPermiso(puedeEliminar, 'desactivar modelos') ?? 'Desactivar modelo'}
+                                className={`text-xs px-2 py-1 rounded hover:bg-rojo-light hover:text-rojo transition-colors ${BTN_DISABLED}`}
                               >
                                 ✕
                               </button>
@@ -603,7 +636,9 @@ function MarcasTab() {
                         <div className="pl-7 pr-2 pt-1">
                           <button
                             onClick={() => openNewModelo(m.id)}
-                            className="text-xs text-azul hover:text-naranja font-bold transition-colors"
+                            disabled={!puedeCrear}
+                            title={sinPermiso(puedeCrear, 'crear modelos')}
+                            className={`text-xs text-azul hover:text-naranja font-bold transition-colors ${BTN_DISABLED}`}
                           >
                             ＋ Nuevo modelo
                           </button>

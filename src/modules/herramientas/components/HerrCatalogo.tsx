@@ -55,6 +55,12 @@ function mensajeError(err: unknown): string {
   return (err as Error)?.message || 'Error'
 }
 
+// Tooltip de los botones deshabilitados por permiso (undefined = habilitado).
+// Se deshabilita, no se oculta: el backend valida igual y ocultar confunde.
+function sinPermiso(ok: boolean, accion: string): string | undefined {
+  return ok ? undefined : `Sin permiso para ${accion}`
+}
+
 export function HerrCatalogo() {
   const { puedeEditar, puedeEliminar } = usePermisos('herramientas')
   const toast = useToast()
@@ -118,7 +124,7 @@ export function HerrCatalogo() {
             Los tipos que el pedido ofrece y el pañol cuenta. Si una herramienta no está acá, se crea acá, no desde el pedido.
           </p>
         </div>
-        {puedeEditar && <Button onClick={abrirNuevo}>＋ Nuevo tipo</Button>}
+        <Button onClick={abrirNuevo} disabled={!puedeEditar} title={sinPermiso(puedeEditar, 'crear tipos')}>＋ Nuevo tipo</Button>
       </div>
 
       <div className="bg-white rounded-card shadow-card p-3 flex flex-wrap gap-3 items-center">
@@ -160,7 +166,7 @@ export function HerrCatalogo() {
             )}
             {!isLoading && tipos.length === 0 && (
               <tr><td colSpan={6} className="px-3 py-8 text-center text-gris-dark">
-                {q ? <>No hay ningún tipo que se llame o se pida como “{q}”.{puedeEditar && <> <button className="underline text-azul" onClick={abrirNuevo}>Crearlo</button>.</>}</> : 'No hay tipos cargados.'}
+                {q ? <>No hay ningún tipo que se llame o se pida como “{q}”. <button className="underline text-azul disabled:opacity-40 disabled:cursor-not-allowed" disabled={!puedeEditar} title={sinPermiso(puedeEditar, 'crear tipos')} onClick={abrirNuevo}>Crearlo</button>.</> : 'No hay tipos cargados.'}
               </td></tr>
             )}
             {tipos.map(t => (
@@ -182,11 +188,11 @@ export function HerrCatalogo() {
                 <td className="px-3 py-2 text-gris-dark">{fmtFecha(t.ultima)}</td>
                 <td className="px-3 py-2 text-right whitespace-nowrap">
                   <Button variant="ghost" size="sm" onClick={() => setDetalle(t)}>Ver</Button>
-                  {puedeEditar && <Button variant="ghost" size="sm" onClick={() => abrirEditar(t)}>Editar</Button>}
-                  {puedeEditar && (t.activo
-                    ? <Button variant="ghost" size="sm" onClick={() => setBaja(t)}>Dar de baja</Button>
-                    : <Button variant="ghost" size="sm" onClick={() => cambiarActivo(t, true)} disabled={editando}>Reactivar</Button>)}
-                  {puedeEliminar && t.activo && <Button variant="ghost" size="sm" onClick={() => setFusion(t)}>Fusionar con…</Button>}
+                  <Button variant="ghost" size="sm" onClick={() => abrirEditar(t)} disabled={!puedeEditar} title={sinPermiso(puedeEditar, 'editar tipos')}>Editar</Button>
+                  {t.activo
+                    ? <Button variant="ghost" size="sm" onClick={() => setBaja(t)} disabled={!puedeEditar} title={sinPermiso(puedeEditar, 'dar de baja tipos')}>Dar de baja</Button>
+                    : <Button variant="ghost" size="sm" onClick={() => cambiarActivo(t, true)} disabled={editando || !puedeEditar} title={sinPermiso(puedeEditar, 'reactivar tipos')}>Reactivar</Button>}
+                  {t.activo && <Button variant="ghost" size="sm" onClick={() => setFusion(t)} disabled={!puedeEliminar} title={sinPermiso(puedeEliminar, 'fusionar tipos')}>Fusionar con…</Button>}
                 </td>
               </tr>
             ))}
@@ -268,7 +274,7 @@ export function HerrCatalogo() {
         />
       )}
 
-      {detalle && <DetalleTipo tipo={detalle} onClose={() => setDetalle(null)} onEditar={puedeEditar ? () => { abrirEditar(detalle); setDetalle(null) } : undefined} />}
+      {detalle && <DetalleTipo tipo={detalle} onClose={() => setDetalle(null)} puedeEditar={puedeEditar} onEditar={() => { abrirEditar(detalle); setDetalle(null) }} />}
     </div>
   )
 }
@@ -324,7 +330,7 @@ function FusionarTipo({ origen, onClose, onConfirmar, fusionando }: {
 }
 
 // ── Detalle: dónde está cada unidad ──────────────────────────────────────
-function DetalleTipo({ tipo, onClose, onEditar }: { tipo: HerrTipoCatalogo; onClose: () => void; onEditar?: () => void }) {
+function DetalleTipo({ tipo, onClose, onEditar, puedeEditar }: { tipo: HerrTipoCatalogo; onClose: () => void; onEditar: () => void; puedeEditar: boolean }) {
   const { data: entregas = [], isLoading } = useHerrTipoEntregas(tipo.id)
   const { data: obras = [] } = useObras()
   const nombreObra = useMemo(() => {
@@ -355,7 +361,7 @@ function DetalleTipo({ tipo, onClose, onEditar }: { tipo: HerrTipoCatalogo; onCl
       footer={<div className="flex justify-between items-center gap-2">
         <span className="text-xs text-gris-dark">{tipo.renglones} {tipo.renglones === 1 ? 'renglón' : 'renglones'} de pedido usaron este tipo</span>
         <div className="flex gap-2">
-          {onEditar && <Button variant="secondary" onClick={onEditar}>Editar</Button>}
+          <Button variant="secondary" onClick={onEditar} disabled={!puedeEditar} title={sinPermiso(puedeEditar, 'editar tipos')}>Editar</Button>
           <Button onClick={onClose}>Cerrar</Button>
         </div>
       </div>}

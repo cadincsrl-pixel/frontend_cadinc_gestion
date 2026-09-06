@@ -357,15 +357,17 @@ export function ContratistasPanel({ obraCod, readonly = false }: Props) {
               </p>
             </div>
           </button>
-          {puedeCrear && (
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => setModalAsig(true)}
-            >
-              ＋ Asignar
-            </Button>
-          )}
+          {/* El modal ofrece asignar uno existente (puedeMutar) o crear uno nuevo
+              (puedeCrear): con cualquiera de los dos se puede abrir. */}
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => setModalAsig(true)}
+            disabled={!puedeCrear && !puedeMutar}
+            title={!puedeCrear && !puedeMutar ? (motivoBloqueo ?? undefined) : undefined}
+          >
+            ＋ Asignar
+          </Button>
         </div>
 
         {expanded && (
@@ -409,12 +411,20 @@ export function ContratistasPanel({ obraCod, readonly = false }: Props) {
           <>
             <button
               onClick={() => { setModalAsig(false); abrirNuevoContrat() }}
-              className="mr-auto text-xs font-bold text-azul hover:text-naranja transition-colors"
+              disabled={!puedeCrear}
+              title={puedeCrear ? undefined : (readonly ? 'Obra archivada: solo lectura' : 'Sin permiso para crear contratistas')}
+              className="mr-auto text-xs font-bold text-azul hover:text-naranja transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               ＋ Crear nuevo
             </button>
             <Button variant="secondary" onClick={() => setModalAsig(false)}>Cancelar</Button>
-            <Button variant="primary" loading={asignando} onClick={handleAsignar}>
+            <Button
+              variant="primary"
+              loading={asignando}
+              disabled={!puedeMutar}
+              title={motivoBloqueo ?? undefined}
+              onClick={handleAsignar}
+            >
               ✓ Asignar
             </Button>
           </>

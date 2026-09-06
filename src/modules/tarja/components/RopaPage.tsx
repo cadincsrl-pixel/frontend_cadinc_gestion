@@ -26,6 +26,13 @@ import type { Hora, Personal, RopaEntrega } from '@/types/domain.types'
 
 const DEFAULT_PAGE_SIZE = 12
 
+// Tooltip de los botones deshabilitados por permiso (undefined = habilitado).
+// Se deshabilita, no se oculta: el backend valida igual y ocultar confunde.
+function sinPermiso(ok: boolean, accion: string): string | undefined {
+  return ok ? undefined : `Sin permiso para ${accion}`
+}
+const BTN_DISABLED = 'disabled:opacity-40 disabled:cursor-not-allowed'
+
 function hoy() { return toISO(new Date()) }
 
 function semKey(offsetWeeks: number): string {
@@ -178,7 +185,16 @@ function ModalEntrega({ open, legInicial, personalActivo, onClose }: ModalEntreg
 }
 
 // ── Modal gestionar categorías ───────────────────────────────────────────────
-function ModalCategorias({ open, onClose }: { open: boolean; onClose: () => void }) {
+interface ModalCategoriasProps {
+  open:    boolean
+  onClose: () => void
+  // Categorías de ropa: POST → tarja.creacion, PATCH → actualizacion, DELETE → eliminacion.
+  puedeCrear:    boolean
+  puedeEditar:   boolean
+  puedeEliminar: boolean
+}
+
+function ModalCategorias({ open, onClose, puedeCrear, puedeEditar, puedeEliminar }: ModalCategoriasProps) {
   const toast = useToast()
   const { data: categorias = [] } = useRopaCategorias()
   const { mutate: crear,    isPending: creando  } = useCreateRopaCategoria()
@@ -244,12 +260,21 @@ function ModalCategorias({ open, onClose }: { open: boolean; onClose: () => void
               ) : (
                 <button
                   onClick={() => setEditandoVenc({ id: c.id, valor: String(c.meses_vencimiento ?? 6) })}
-                  className="text-[11px] font-bold text-azul-mid bg-azul-light px-2 py-0.5 rounded hover:bg-azul hover:text-white transition-colors"
+                  disabled={!puedeEditar}
+                  title={sinPermiso(puedeEditar, 'editar categorías') ?? 'Cambiar meses de vencimiento'}
+                  className={`text-[11px] font-bold text-azul-mid bg-azul-light px-2 py-0.5 rounded hover:bg-azul hover:text-white transition-colors ${BTN_DISABLED}`}
                 >
                   ⏱ {c.meses_vencimiento ?? 6}m
                 </button>
               )}
-              <button onClick={() => handleDelete(c.id, c.nombre)} className="text-gris-mid hover:text-rojo text-xs transition-colors">🗑</button>
+              <button
+                onClick={() => handleDelete(c.id, c.nombre)}
+                disabled={!puedeEliminar}
+                title={sinPermiso(puedeEliminar, 'eliminar categorías') ?? 'Eliminar categoría'}
+                className={`text-gris-mid hover:text-rojo text-xs transition-colors ${BTN_DISABLED}`}
+              >
+                🗑
+              </button>
             </div>
           ))}
         </div>
@@ -269,7 +294,7 @@ function ModalCategorias({ open, onClose }: { open: boolean; onClose: () => void
               className="w-32"
             />
           </div>
-          <Button variant="primary" size="sm" loading={creando} onClick={handleCreate}>＋ Agregar</Button>
+          <Button variant="primary" size="sm" loading={creando} onClick={handleCreate} disabled={!puedeCrear} title={sinPermiso(puedeCrear, 'crear categorías')}>＋ Agregar</Button>
         </div>
       </div>
     </Modal>
@@ -329,9 +354,14 @@ function ModalHistorial({ open, onClose, leg, nombre, catMap, puedeElim, onDelet
                           </div>
                         )}
                       </div>
-                      {puedeElim && (
-                        <button onClick={() => onDelete(e.id)} className="text-gris-mid hover:text-rojo text-xs transition-colors">🗑</button>
-                      )}
+                      <button
+                        onClick={() => onDelete(e.id)}
+                        disabled={!puedeElim}
+                        title={sinPermiso(puedeElim, 'eliminar entregas') ?? 'Eliminar entrega'}
+                        className={`text-gris-mid hover:text-rojo text-xs transition-colors ${BTN_DISABLED}`}
+                      >
+                        🗑
+                      </button>
                     </div>
                   )
                 })}
@@ -350,7 +380,7 @@ function ModalHistorial({ open, onClose, leg, nombre, catMap, puedeElim, onDelet
 // ── Página principal ─────────────────────────────────────────────────────────
 export function RopaPage() {
   const toast = useToast()
-  const { puedeCrear, puedeEliminar } = usePermisos('tarja')
+  const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('tarja')
   const { data: categorias = [] } = useRopaCategorias()
   const { data: personal   = [] } = usePersonal()
   const { mutate: deleteEntrega } = useDeleteRopaEntrega()
@@ -489,11 +519,15 @@ export function RopaPage() {
           <Button variant="secondary" size="sm" onClick={() => setModalCats(true)}>
             ⚙️ Categorías
           </Button>
-          {puedeCrear && (
-            <Button variant="primary" size="sm" onClick={() => setModalEntrega('')}>
-              👕 Registrar entrega
-            </Button>
-          )}
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => setModalEntrega('')}
+            disabled={!puedeCrear}
+            title={sinPermiso(puedeCrear, 'registrar entregas')}
+          >
+            👕 Registrar entrega
+          </Button>
         </div>
       </div>
 
@@ -599,15 +633,14 @@ export function RopaPage() {
                           >
                             📋
                           </button>
-                          {puedeCrear && (
-                            <button
-                              onClick={() => setModalEntrega(p.leg)}
-                              className="text-xs font-bold px-2 py-1 rounded-lg bg-naranja-light text-naranja-dark hover:bg-naranja hover:text-white transition-colors"
-                              title="Registrar entrega"
-                            >
-                              ＋
-                            </button>
-                          )}
+                          <button
+                            onClick={() => setModalEntrega(p.leg)}
+                            disabled={!puedeCrear}
+                            className={`text-xs font-bold px-2 py-1 rounded-lg bg-naranja-light text-naranja-dark hover:bg-naranja hover:text-white transition-colors ${BTN_DISABLED}`}
+                            title={sinPermiso(puedeCrear, 'registrar entregas') ?? 'Registrar entrega'}
+                          >
+                            ＋
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -647,7 +680,15 @@ export function RopaPage() {
           onDelete={handleDeleteEntrega}
         />
       )}
-      {modalCats && <ModalCategorias open onClose={() => setModalCats(false)} />}
+      {modalCats && (
+        <ModalCategorias
+          open
+          onClose={() => setModalCats(false)}
+          puedeCrear={!!puedeCrear}
+          puedeEditar={!!puedeEditar}
+          puedeEliminar={!!puedeEliminar}
+        />
+      )}
     </div>
   )
 }

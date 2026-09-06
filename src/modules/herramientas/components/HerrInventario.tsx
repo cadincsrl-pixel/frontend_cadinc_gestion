@@ -125,6 +125,13 @@ function fmtFecha(s: string | null) {
   return `${d}/${m}/${y}`
 }
 
+// Tooltip de los botones deshabilitados por permiso (undefined = habilitado).
+// Se deshabilita, no se oculta: el backend valida igual y ocultar confunde.
+function sinPermiso(ok: boolean, accion: string): string | undefined {
+  return ok ? undefined : `Sin permiso para ${accion}`
+}
+const BTN_DISABLED = 'disabled:opacity-40 disabled:cursor-not-allowed'
+
 export function HerrInventario() {
   const toast = useToast()
   const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('herramientas')
@@ -349,11 +356,15 @@ export function HerrInventario() {
             {herramientas.length} herramienta{herramientas.length !== 1 ? 's' : ''} registrada{herramientas.length !== 1 ? 's' : ''}
           </p>
         </div>
-        {puedeCrear && (
-          <Button variant="primary" size="sm" onClick={() => { formNuevo.setValue('codigo', nextCodigo()); setModalNuevo(true) }}>
-            ＋ Nueva herramienta
-          </Button>
-        )}
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={() => { formNuevo.setValue('codigo', nextCodigo()); setModalNuevo(true) }}
+          disabled={!puedeCrear}
+          title={sinPermiso(puedeCrear, 'crear herramientas')}
+        >
+          ＋ Nueva herramienta
+        </Button>
       </div>
 
       {/* Alertas — solo se renderiza si hay items que llamen atención */}
@@ -496,22 +507,22 @@ export function HerrInventario() {
                     </td>
                     <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                       <div className="flex gap-1 justify-end">
-                        {puedeEditar && (
-                          <button
-                            onClick={() => openEdit(h)}
-                            className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors"
-                          >
-                            ✏️
-                          </button>
-                        )}
-                        {puedeEliminar && (
-                          <button
-                            onClick={() => handleDelete(h)}
-                            className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors"
-                          >
-                            ✕
-                          </button>
-                        )}
+                        <button
+                          onClick={() => openEdit(h)}
+                          disabled={!puedeEditar}
+                          title={sinPermiso(puedeEditar, 'editar herramientas') ?? 'Editar'}
+                          className={`text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors ${BTN_DISABLED}`}
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          onClick={() => handleDelete(h)}
+                          disabled={!puedeEliminar}
+                          title={sinPermiso(puedeEliminar, 'dar de baja herramientas') ?? 'Dar de baja'}
+                          className={`text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors ${BTN_DISABLED}`}
+                        >
+                          ✕
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -583,29 +594,27 @@ export function HerrInventario() {
                 <span className="text-[10px] text-gris-dark">👤 {h.responsable}</span>
               )}
             </div>
-            {(puedeEditar || puedeEliminar) && (
-              <div
-                onClick={(e) => e.stopPropagation()}
-                className="flex gap-1 justify-end mt-2 pt-2 border-t border-gris"
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="flex gap-1 justify-end mt-2 pt-2 border-t border-gris"
+            >
+              <button
+                onClick={() => openEdit(h)}
+                disabled={!puedeEditar}
+                title={sinPermiso(puedeEditar, 'editar herramientas')}
+                className={`text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors ${BTN_DISABLED}`}
               >
-                {puedeEditar && (
-                  <button
-                    onClick={() => openEdit(h)}
-                    className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors"
-                  >
-                    ✏️ Editar
-                  </button>
-                )}
-                {puedeEliminar && (
-                  <button
-                    onClick={() => handleDelete(h)}
-                    className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors"
-                  >
-                    ✕ Eliminar
-                  </button>
-                )}
-              </div>
-            )}
+                ✏️ Editar
+              </button>
+              <button
+                onClick={() => handleDelete(h)}
+                disabled={!puedeEliminar}
+                title={sinPermiso(puedeEliminar, 'dar de baja herramientas')}
+                className={`text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors ${BTN_DISABLED}`}
+              >
+                ✕ Eliminar
+              </button>
+            </div>
           </div>
         ))}
       </div>
@@ -643,7 +652,13 @@ export function HerrInventario() {
         title="✏️ EDITAR HERRAMIENTA"
         footer={
           <>
-            <Button variant="danger" onClick={() => editando && handleDelete(editando)} className="mr-auto">
+            <Button
+              variant="danger"
+              onClick={() => editando && handleDelete(editando)}
+              disabled={!puedeEliminar}
+              title={sinPermiso(puedeEliminar, 'dar de baja herramientas')}
+              className="mr-auto"
+            >
               🗑 Dar de baja
             </Button>
             <Button variant="secondary" onClick={() => setEditando(null)}>Cancelar</Button>
@@ -680,7 +695,12 @@ export function HerrInventario() {
           footer={
             <>
               <Button variant="secondary" onClick={() => setDetalle(null)}>Cerrar</Button>
-              <Button variant="primary" onClick={() => { setDetalle(null); openEdit(detalle) }}>
+              <Button
+                variant="primary"
+                onClick={() => { setDetalle(null); openEdit(detalle) }}
+                disabled={!puedeEditar}
+                title={sinPermiso(puedeEditar, 'editar herramientas')}
+              >
                 ✏️ Editar
               </Button>
             </>

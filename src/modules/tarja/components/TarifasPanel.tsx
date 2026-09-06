@@ -28,8 +28,13 @@ function buildSemanas() {
 
 export function TarifasPanel({ obraCod, readonly = false }: Props) {
   const toast = useToast()
-  const { puedeEditar: puedeEditarPerm } = usePermisos('tarja')
-  const puedeEditar = puedeEditarPerm && !readonly
+  const { puedeEditar: puedeEditarPerm, verPii } = usePermisos('tarja')
+  // PUT /api/tarifas exige tarja.actualizacion + ver_pii. Se deshabilita, no se oculta.
+  const puedeEditar = puedeEditarPerm && verPii && !readonly
+  const motivoBloqueo = readonly ? 'Obra archivada: solo lectura'
+    : !puedeEditarPerm ? 'Sin permiso de edición en tarja'
+    : !verPii ? 'Requiere el permiso ver_pii en tarja'
+    : undefined
   const { data: categorias = [] } = useCategorias()
   const { data: tarifas = [], refetch } = useTarifasObra(obraCod)
   const { mutate: upsert } = useUpsertTarifa()
@@ -215,19 +220,18 @@ export function TarifasPanel({ obraCod, readonly = false }: Props) {
                         value={state.value}
                         onChange={e => updateSemState(cat.id, 'value', e.target.value)}
                         placeholder={inputPlaceholder}
-                        onKeyDown={e => { if (e.key === 'Enter') handleSave(cat.id) }}
+                        onKeyDown={e => { if (e.key === 'Enter' && puedeEditar) handleSave(cat.id) }}
                         className="flex-1 min-w-0 border-b-2 border-gris-mid focus:border-naranja outline-none bg-transparent font-mono font-bold text-verde text-sm py-1 transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
                       <span className="text-xs text-gris-dark flex-shrink-0">/h</span>
-                      {puedeEditar && (
-                        <button
-                          onClick={() => handleSave(cat.id)}
-                          disabled={!state.value}
-                          className="px-3 py-1 bg-naranja text-white text-xs font-bold rounded-lg hover:bg-naranja-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
-                        >
-                          ✓ Guardar
-                        </button>
-                      )}
+                      <button
+                        onClick={() => handleSave(cat.id)}
+                        disabled={!puedeEditar || !state.value}
+                        title={motivoBloqueo}
+                        className="px-3 py-1 bg-naranja text-white text-xs font-bold rounded-lg hover:bg-naranja-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                      >
+                        ✓ Guardar
+                      </button>
                     </div>
 
                     {/* Aviso si hay precio guardado para la semana seleccionada */}
@@ -287,10 +291,12 @@ export function TarifasPanel({ obraCod, readonly = false }: Props) {
                   )}
 
                   {/* Reset al global */}
-                  {esCustom && puedeEditar && (
+                  {esCustom && (
                     <button
                       onClick={() => handleResetGlobal(cat.id, cat.vh)}
-                      className="mt-2 w-full text-[10px] font-bold text-gris-dark hover:text-naranja-dark transition-colors text-left py-1 border-t border-naranja/20"
+                      disabled={!puedeEditar}
+                      title={motivoBloqueo}
+                      className="mt-2 w-full text-[10px] font-bold text-gris-dark hover:text-naranja-dark transition-colors text-left py-1 border-t border-naranja/20 disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       ↺ Volver al global desde hoy (${cat.vh.toLocaleString('es-AR')}/h)
                     </button>

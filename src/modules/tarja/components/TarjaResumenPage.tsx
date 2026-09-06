@@ -230,11 +230,15 @@ export function TarjaResumenPage() {
               {obras.length} obra{obras.length !== 1 ? 's' : ''} en curso
             </p>
           </div>
-          {puedeAdministrarObras && !scopeAsignadas && (
-            <Button variant="primary" size="sm" onClick={() => setModalObra(true)}>
-              ＋ Nueva obra
-            </Button>
-          )}
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => setModalObra(true)}
+            disabled={!puedeAdministrarObras || scopeAsignadas}
+            title={!puedeAdministrarObras ? 'Sin permiso para administrar obras' : scopeAsignadas ? 'Solo disponible con acceso a todas las obras' : undefined}
+          >
+            ＋ Nueva obra
+          </Button>
         </div>
 
         {/* Barra de búsqueda + ordenar */}

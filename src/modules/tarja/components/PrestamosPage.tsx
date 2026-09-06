@@ -17,6 +17,13 @@ import type { Personal, Prestamo } from '@/types/domain.types'
 
 const DEFAULT_PAGE_SIZE = 12
 
+// Tooltip de los botones deshabilitados por permiso (undefined = habilitado).
+// Se deshabilita, no se oculta: el backend valida igual y ocultar confunde.
+function sinPermiso(ok: boolean, accion: string): string | undefined {
+  return ok ? undefined : `Sin permiso para ${accion}`
+}
+const BTN_DISABLED = 'disabled:opacity-40 disabled:cursor-not-allowed'
+
 function fmtM(n: number) {
   return '$' + Math.round(n).toLocaleString('es-AR')
 }
@@ -143,13 +150,15 @@ interface CardOperarioProps {
   /** Total dado de baja como incobrable (histórico del operario). */
   incobrable: number
   puedeCrear: boolean
+  /** DELETE /api/prestamos/:id exige tarja.eliminacion (no creacion). */
+  puedeEliminar: boolean
   perfiles:   Map<string, string>
   onNuevo:    (tipo: 'otorgado' | 'descontado', leg: string) => void
   onIncobrable: (leg: string, saldo: number) => void
   onDelete:   (id: number) => void
 }
 
-function CardOperario({ leg, nombre, movs, saldo, incobrable, puedeCrear, perfiles, onNuevo, onIncobrable, onDelete }: CardOperarioProps) {
+function CardOperario({ leg, nombre, movs, saldo, incobrable, puedeCrear, puedeEliminar, perfiles, onNuevo, onIncobrable, onDelete }: CardOperarioProps) {
   const [expandido, setExpandido] = useState(false)
 
   const movsOrdenados = [...movs].sort((a, b) => a.created_at.localeCompare(b.created_at))
@@ -180,30 +189,31 @@ function CardOperario({ leg, nombre, movs, saldo, incobrable, puedeCrear, perfil
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0">
-          {puedeCrear && (
-            <>
-              <button
-                onClick={() => onNuevo('otorgado', leg)}
-                className="text-xs font-bold px-2.5 py-1.5 rounded-lg bg-naranja-light text-naranja-dark hover:bg-naranja hover:text-white transition-colors"
-              >
-                💵 Prestar
-              </button>
-              <button
-                onClick={() => onNuevo('descontado', leg)}
-                className="text-xs font-bold px-2.5 py-1.5 rounded-lg bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors"
-              >
-                ↩ Descontar
-              </button>
-              {saldo > 0 && (
-                <button
-                  onClick={() => onIncobrable(leg, saldo)}
-                  title="Dar de baja la deuda sin registrarla como recupero (ej: renuncia)"
-                  className="text-xs font-bold px-2.5 py-1.5 rounded-lg bg-gris text-gris-dark hover:bg-carbon hover:text-white transition-colors"
-                >
-                  ✕ Incobrable
-                </button>
-              )}
-            </>
+          <button
+            onClick={() => onNuevo('otorgado', leg)}
+            disabled={!puedeCrear}
+            title={sinPermiso(puedeCrear, 'registrar préstamos')}
+            className={`text-xs font-bold px-2.5 py-1.5 rounded-lg bg-naranja-light text-naranja-dark hover:bg-naranja hover:text-white transition-colors ${BTN_DISABLED}`}
+          >
+            💵 Prestar
+          </button>
+          <button
+            onClick={() => onNuevo('descontado', leg)}
+            disabled={!puedeCrear}
+            title={sinPermiso(puedeCrear, 'registrar descuentos')}
+            className={`text-xs font-bold px-2.5 py-1.5 rounded-lg bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors ${BTN_DISABLED}`}
+          >
+            ↩ Descontar
+          </button>
+          {saldo > 0 && (
+            <button
+              onClick={() => onIncobrable(leg, saldo)}
+              disabled={!puedeCrear}
+              title={sinPermiso(puedeCrear, 'dar de baja deudas') ?? 'Dar de baja la deuda sin registrarla como recupero (ej: renuncia)'}
+              className={`text-xs font-bold px-2.5 py-1.5 rounded-lg bg-gris text-gris-dark hover:bg-carbon hover:text-white transition-colors ${BTN_DISABLED}`}
+            >
+              ✕ Incobrable
+            </button>
           )}
           <button
             onClick={() => setExpandido(p => !p)}
@@ -258,15 +268,14 @@ function CardOperario({ leg, nombre, movs, saldo, incobrable, puedeCrear, perfil
                         saldo: {m.acumulado > 0 ? fmtM(m.acumulado) : '✓ $0'}
                       </div>
                     </div>
-                    {puedeCrear && (
-                      <button
-                        onClick={() => onDelete(m.id)}
-                        className="text-gris-mid hover:text-rojo transition-colors text-xs"
-                        title="Eliminar"
-                      >
-                        🗑
-                      </button>
-                    )}
+                    <button
+                      onClick={() => onDelete(m.id)}
+                      disabled={!puedeEliminar}
+                      className={`text-gris-mid hover:text-rojo transition-colors text-xs ${BTN_DISABLED}`}
+                      title={sinPermiso(puedeEliminar, 'eliminar movimientos') ?? 'Eliminar'}
+                    >
+                      🗑
+                    </button>
                   </div>
                 </div>
               )
@@ -293,7 +302,7 @@ function CardOperario({ leg, nombre, movs, saldo, incobrable, puedeCrear, perfil
 // ── Página principal ─────────────────────────────────────────────────────────
 export function PrestamosPage() {
   const toast = useToast()
-  const { puedeCrear } = usePermisos('tarja')
+  const { puedeCrear, puedeEliminar } = usePermisos('tarja')
 
   // Datos ligeros (leg + tipo + monto) para calcular saldos de todos los operarios
   const { data: ligero = [], isLoading: loadingLigero } = usePrestamosLigero()
@@ -407,16 +416,26 @@ export function PrestamosPage() {
             )}
           </p>
         </div>
-        {puedeCrear && (
-          <div className="flex gap-2">
-            <Button variant="primary"   size="sm" onClick={() => setModalConfig({ tipo: 'otorgado',   leg: '' })}>
-              💵 Otorgar préstamo
-            </Button>
-            <Button variant="secondary" size="sm" onClick={() => setModalConfig({ tipo: 'descontado', leg: '' })}>
-              ↩ Registrar descuento
-            </Button>
-          </div>
-        )}
+        <div className="flex gap-2">
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => setModalConfig({ tipo: 'otorgado', leg: '' })}
+            disabled={!puedeCrear}
+            title={sinPermiso(puedeCrear, 'registrar préstamos')}
+          >
+            💵 Otorgar préstamo
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setModalConfig({ tipo: 'descontado', leg: '' })}
+            disabled={!puedeCrear}
+            title={sinPermiso(puedeCrear, 'registrar descuentos')}
+          >
+            ↩ Registrar descuento
+          </Button>
+        </div>
       </div>
 
       {/* Filtro */}
@@ -446,6 +465,7 @@ export function PrestamosPage() {
                 saldo={saldo}
                 incobrable={incobrable}
                 puedeCrear={!!puedeCrear}
+                puedeEliminar={!!puedeEliminar}
                 perfiles={perfiles}
                 onNuevo={(tipo, l) => setModalConfig({ tipo, leg: l })}
                 onIncobrable={handleIncobrable}

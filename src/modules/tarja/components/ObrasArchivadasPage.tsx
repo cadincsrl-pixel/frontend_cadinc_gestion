@@ -174,15 +174,14 @@ function ObraArchivadasRow({ obra }: { obra: Obra }) {
           >
             Ver horas
           </button>
-          {puedeAdministrarObras && (
-            <button
-              onClick={handleDesarchivar}
-              disabled={isPending}
-              className="text-xs font-bold px-3 py-1 rounded bg-azul text-white hover:bg-azul/80 transition-colors disabled:opacity-50"
-            >
-              {isPending ? '...' : '↩ Desarchivar'}
-            </button>
-          )}
+          <button
+            onClick={handleDesarchivar}
+            disabled={isPending || !puedeAdministrarObras}
+            title={puedeAdministrarObras ? undefined : 'Sin permiso para administrar obras'}
+            className="text-xs font-bold px-3 py-1 rounded bg-azul text-white hover:bg-azul/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isPending ? '...' : '↩ Desarchivar'}
+          </button>
           <span className="text-gris-dark text-sm select-none">{expandida ? '▲' : '▼'}</span>
         </div>
       </div>

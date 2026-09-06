@@ -13,6 +13,14 @@ import { createClient } from '@/lib/supabase/client'
 import { getViernes, toISO } from '@/lib/utils/dates'
 import type { Personal, Categoria, Hora, Tarifa, Obra, Prestamo } from '@/types/domain.types'
 
+// Tooltip de los botones deshabilitados por permiso (undefined = habilitado).
+// Se deshabilita, no se oculta: el backend valida igual y ocultar confunde.
+function sinPermiso(ok: boolean, accion: string, pii = true): string | undefined {
+  if (!ok)  return `Sin permiso para ${accion}`
+  if (!pii) return 'Requiere el permiso ver_pii en tarja'
+  return undefined
+}
+
 interface Props {
   personal: Personal[]
   categorias: Categoria[]
@@ -32,7 +40,9 @@ export function ToolbarTarja({
   onAgregarTrabajador, onAutoFill, onLimpiar, undoCount, onUndo,
 }: Props) {
   const toast = useToast()
-  const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('tarja')
+  const { puedeCrear, puedeEditar, puedeEliminar, verPii } = usePermisos('tarja')
+  // Limpiar = DELETE /horas/:obra/semana → tarja.eliminacion + ver_pii.
+  const puedeLimpiar = puedeEliminar && verPii
   const { semActual } = useTarjaStore()
   const { mutate: upsertLote, isPending: importing } = useUpsertHorasLote()
   const { mutate: copiarSemana, isPending: copiando } = useCopiarSemanaAnterior()
@@ -135,62 +145,73 @@ export function ToolbarTarja({
       {/* Fila principal */}
       <div className="flex items-center gap-2 flex-wrap">
         <WeekNavigator obraCod={obraCod} />
-        {puedeCrear && (
-          <Button variant="primary" size="sm" onClick={onAgregarTrabajador}>
-            ＋ Trabajador
-          </Button>
-        )}
-        {puedeCrear && (
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={handleCopiarSemana}
-            disabled={copiando}
-          >
-            {copiando ? '⏳ Copiando...' : '📋 Copiar sem. anterior'}
-          </Button>
-        )}
-        {puedeEditar && (
-          <Button variant="secondary" size="sm" onClick={handleOpenAutoFill} disabled={!personal.length}>
-            ⚡ Auto-fill
-          </Button>
-        )}
-        {puedeEliminar && (
-          <Button variant="ghost" size="sm" onClick={handleLimpiar} disabled={!personal.length}>
-            🗑 Limpiar
-          </Button>
-        )}
-        {puedeEditar && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onUndo}
-            disabled={!undoCount}
-            title="Deshacer último cambio (Ctrl+Z)"
-          >
-            ↩ Deshacer{undoCount ? ` (${undoCount})` : ''}
-          </Button>
-        )}
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={onAgregarTrabajador}
+          disabled={!puedeCrear}
+          title={sinPermiso(puedeCrear, 'agregar trabajadores')}
+        >
+          ＋ Trabajador
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={handleCopiarSemana}
+          disabled={copiando || !puedeCrear}
+          title={sinPermiso(puedeCrear, 'copiar la semana anterior')}
+        >
+          {copiando ? '⏳ Copiando...' : '📋 Copiar sem. anterior'}
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={handleOpenAutoFill}
+          disabled={!puedeEditar || !personal.length}
+          title={sinPermiso(puedeEditar, 'cargar horas')}
+        >
+          ⚡ Auto-fill
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleLimpiar}
+          disabled={!puedeLimpiar || !personal.length}
+          title={sinPermiso(puedeEliminar, 'limpiar la semana', verPii)}
+        >
+          🗑 Limpiar
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onUndo}
+          disabled={!puedeEditar || !undoCount}
+          title={sinPermiso(puedeEditar, 'editar horas') ?? 'Deshacer último cambio (Ctrl+Z)'}
+        >
+          ↩ Deshacer{undoCount ? ` (${undoCount})` : ''}
+        </Button>
         <div className="flex gap-1 ml-auto">
           <Button variant="ghost" size="sm" onClick={handleExportExcel} disabled={!personal.length}>
             ⬇ Excel
           </Button>
-          {puedeEditar && (
-            <>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleExportPlantilla}
-                disabled={!personal.length}
-                title="Descargar plantilla vacía para cargar horas en Excel"
-              >
-                📋 Plantilla
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => fileRef.current?.click()} disabled={importing}>
-                {importing ? 'Importando...' : '📥 Importar'}
-              </Button>
-            </>
-          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleExportPlantilla}
+            disabled={!puedeEditar || !personal.length}
+            title={sinPermiso(puedeEditar, 'importar horas') ?? 'Descargar plantilla vacía para cargar horas en Excel'}
+          >
+            📋 Plantilla
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => fileRef.current?.click()}
+            disabled={!puedeEditar || importing}
+            title={sinPermiso(puedeEditar, 'importar horas')}
+          >
+            {importing ? 'Importando...' : '📥 Importar'}
+          </Button>
           <input
             ref={fileRef}
             type="file"

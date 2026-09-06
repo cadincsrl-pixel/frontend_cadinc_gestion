@@ -116,13 +116,14 @@ export function HerramientaFotosSection({ herramientaId, readOnly = false }: Pro
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h3 className="text-sm font-bold text-azul uppercase tracking-wider">📷 Fotos</h3>
-        {puedeCrear && !readOnly && (
+        {!readOnly && (
           <>
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="text-[11px] font-bold px-3 py-1.5 rounded-lg bg-naranja text-white hover:bg-naranja-dark transition-colors disabled:opacity-60"
+              disabled={uploading || !puedeCrear}
+              title={puedeCrear ? undefined : 'Sin permiso para subir fotos'}
+              className="text-[11px] font-bold px-3 py-1.5 rounded-lg bg-naranja text-white hover:bg-naranja-dark transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {uploading ? '⏳ Subiendo…' : '＋ Subir foto'}
             </button>
@@ -167,11 +168,12 @@ export function HerramientaFotosSection({ herramientaId, readOnly = false }: Pro
                     Cargando…
                   </div>
                 )}
-                {puedeEliminar && !readOnly && (
+                {!readOnly && (
                   <button
                     onClick={() => handleBorrar(f.id)}
-                    title="Borrar foto"
-                    className="absolute top-1 right-1 w-7 h-7 flex items-center justify-center rounded-full bg-black/60 text-white text-xs opacity-0 group-hover:opacity-100 hover:bg-rojo transition-all"
+                    disabled={!puedeEliminar}
+                    title={puedeEliminar ? 'Borrar foto' : 'Sin permiso para borrar fotos'}
+                    className="absolute top-1 right-1 w-7 h-7 flex items-center justify-center rounded-full bg-black/60 text-white text-xs opacity-0 group-hover:opacity-100 hover:bg-rojo transition-all disabled:cursor-not-allowed disabled:hover:bg-black/60 disabled:text-white/50"
                   >
                     ✕
                   </button>

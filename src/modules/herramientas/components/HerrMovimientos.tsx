@@ -85,7 +85,10 @@ function renderObraCell(
 
 export function HerrMovimientos() {
   const toast = useToast()
-  const { puedeCrear } = usePermisos('herramientas')
+  // POST /movimientos y /movimientos/lote exigen herramientas.actualizacion
+  // (no creacion). Se deshabilita, no se oculta: el backend valida igual.
+  const { puedeEditar } = usePermisos('herramientas')
+  const motivoSinPermiso = puedeEditar ? undefined : 'Sin permiso para registrar movimientos'
   const [loteModalOpen, setLoteModalOpen] = useState(false)
 
   const { data: herramientas = [] } = useHerramientas()
@@ -385,11 +388,9 @@ export function HerrMovimientos() {
           <h1 className="font-display text-[2rem] tracking-wider text-azul">MOVIMIENTOS</h1>
           <p className="text-sm text-gris-dark mt-0.5">Registrá asignaciones y traslados entre obras</p>
         </div>
-        {puedeCrear && (
-          <Button variant="primary" size="sm" onClick={() => setLoteModalOpen(true)}>
-            📦 Movimiento múltiple
-          </Button>
-        )}
+        <Button variant="primary" size="sm" onClick={() => setLoteModalOpen(true)} disabled={!puedeEditar} title={motivoSinPermiso}>
+          📦 Movimiento múltiple
+        </Button>
       </div>
 
       {/* Formulario */}
@@ -582,7 +583,8 @@ export function HerrMovimientos() {
           <Button
             variant={tipoMov === 'baja' ? 'danger' : 'primary'}
             loading={registrando}
-            disabled={!herrSel || !tipoMov}
+            disabled={!puedeEditar || !herrSel || !tipoMov}
+            title={motivoSinPermiso}
             onClick={handleRegistrar}
           >
             {tipoMov === 'baja' ? '✕ Confirmar baja' : '✓ Registrar movimiento'}
