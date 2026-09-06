@@ -84,8 +84,8 @@ update public.solicitud_compra_item i set descripcion = m.nombre
   from viejos v join public.stock_materiales m on m.id = v.id
  where i.material_id = v.id and i.descripcion = v.nombre and v.id in (179, 981, 1241, 696);
 update public.materiales_a_cuenta_cliente c set descripcion = m.nombre, updated_at = now()
-  from viejos v join public.stock_materiales m on m.id = v.id join public.solicitud_compra_item i on i.id = c.item_id
- where i.material_id = v.id and c.descripcion = v.nombre and c.cobro_id is null and v.id in (179, 981, 1241, 696);
+  from public.solicitud_compra_item i join viejos v on v.id = i.material_id join public.stock_materiales m on m.id = v.id
+ where i.id = c.item_id and c.descripcion = v.nombre and c.cobro_id is null and v.id in (179, 981, 1241, 696);
 
 -- 5) color gris en los renglones del genérico cuyo texto original lo decía
 update public.solicitud_compra_item i set color = 'gris'
