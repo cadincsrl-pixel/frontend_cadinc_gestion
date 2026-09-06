@@ -7,18 +7,24 @@ import type { NextRequest }   from 'next/server'
 // tarja con tabs (dashboard, personal, horas-trabajador, configuracion, etc.)
 // NO van acá: las gobierna GuardWrapper con tabRequerido en su page.tsx,
 // porque pueden estar permitidas o no según el array `permisos.tarja.tabs`.
-const ROUTE_MODULOS: Record<string, string> = {
-  '/tarja':            'tarja',
-  '/herramientas':     'herramientas',
-  '/logistica':        'logistica',
-  '/certificaciones':  'certificaciones',
-  '/caja':             'caja',
-  '/admin':            'admin',
+// Cada ruta lista los módulos que alcanzan para entrar (con UNO basta). Ropa y
+// préstamos son tabs de tarja pero también existen como módulo asignable: un
+// usuario que solo tenga `ropa` entra a /tarja/ropa. Las rutas más específicas
+// van primero porque gana la primera que matchea.
+const ROUTE_MODULOS: Record<string, string[]> = {
+  '/tarja/ropa':       ['tarja', 'ropa'],
+  '/tarja/prestamos':  ['tarja', 'prestamos'],
+  '/tarja':            ['tarja'],
+  '/herramientas':     ['herramientas'],
+  '/logistica':        ['logistica'],
+  '/certificaciones':  ['certificaciones'],
+  '/caja':             ['caja'],
+  '/admin':            ['admin'],
 }
 
-function getModuloRequerido(pathname: string): string | null {
-  for (const [route, modulo] of Object.entries(ROUTE_MODULOS)) {
-    if (pathname === route || pathname.startsWith(route + '/')) return modulo
+function getModulosRequeridos(pathname: string): string[] | null {
+  for (const [route, modulos] of Object.entries(ROUTE_MODULOS)) {
+    if (pathname === route || pathname.startsWith(route + '/')) return modulos
   }
   return null
 }
@@ -51,8 +57,8 @@ export async function middleware(request: NextRequest) {
   // Chequeo de módulo a nivel servidor: si la ruta requiere un módulo,
   // validamos que el usuario lo tenga en `profiles.modulos` (o sea admin).
   // Esto previene acceso por URL directa a páginas de otros módulos.
-  const moduloRequerido = getModuloRequerido(pathname)
-  if (moduloRequerido) {
+  const modulosRequeridos = getModulosRequeridos(pathname)
+  if (modulosRequeridos) {
     const { data: profile } = await supabase
       .from('profiles')
       .select('rol, modulos')
@@ -63,7 +69,7 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL('/', request.url))
     }
     const esAdmin = profile.rol === 'admin'
-    const tieneModulo = Array.isArray(profile.modulos) && profile.modulos.includes(moduloRequerido)
+    const tieneModulo = Array.isArray(profile.modulos) && modulosRequeridos.some(m => profile.modulos.includes(m))
     if (!esAdmin && !tieneModulo) {
       return NextResponse.redirect(new URL('/', request.url))
     }

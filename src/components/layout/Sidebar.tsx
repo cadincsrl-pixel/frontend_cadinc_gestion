@@ -1,5 +1,6 @@
 'use client'
 
+import { modulosOrdenados } from '@/lib/config/modulos'
 import { Suspense, useState, type ReactNode } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useObras }        from '@/modules/tarja/hooks/useObras'
@@ -299,7 +300,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         {/* ── Botón cambiar módulo — solo si tiene más de un módulo accesible ── */}
         {(() => {
           const totalModulos = profile?.rol === 'admin'
-            ? 6 // admin ve todos
+            ? modulosOrdenados({ incluirAdmin: true }).length // admin ve todos
             : (profile?.modulos?.length ?? 0)
           if (totalModulos <= 1) return null
           return (

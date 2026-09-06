@@ -123,10 +123,10 @@ export function UsuariosTab() {
     })
   }, [usuarios, busqueda])
 
-  // Módulos: fuente única en `src/lib/config/modulos.ts`. El endpoint
-  // `/api/usuarios/modulos` ya no se consume porque la tabla `modulos` fue
-  // eliminada en la migración Permisos v3 (ver feat/permisos-v3).
-  const modulos: Modulo[] = modulosOrdenados({ incluirAdmin: true }).map((m, idx) => ({
+  // Módulos: fuente única en `src/lib/config/modulos.ts`. `admin` no entra:
+  // no es asignable (marcado `noAsignable`), se hereda del rol admin; el
+  // backend nunca lo consulta, así que tildarlo solo confundía.
+  const modulos: Modulo[] = modulosOrdenados().map((m, idx) => ({
     id:          idx,
     key:         m.key,
     nombre:      m.label,

@@ -6,25 +6,18 @@ import { createClient } from '@/lib/supabase/client'
 import { useSessionStore } from '@/store/session.store'
 import { EMPRESA } from '@/lib/config/empresa'
 
-interface Modulo {
-  key: string
-  nombre: string
-  descripcion: string
-  icono: string
-  appHref: string
-}
+import { modulosOrdenados, type Modulo, type ModuloInfo } from '@/lib/config/modulos'
 
-const MODULOS: Modulo[] = [
-  { key: 'tarja',           nombre: 'Tarja de Obra',     descripcion: 'Control de horas y personal',          icono: '📋', appHref: '/tarja'            },
-  { key: 'logistica',       nombre: 'Logística',         descripcion: 'Transporte de camiones',               icono: '🚛', appHref: '/logistica'        },
-  { key: 'herramientas',    nombre: 'Herramientas',      descripcion: 'Control de herramientas y equipos',    icono: '🔧', appHref: '/herramientas'     },
-  { key: 'certificaciones', nombre: 'Compras y Stock',   descripcion: 'Solicitudes, materiales y costos',     icono: '🛒', appHref: '/certificaciones'  },
-  { key: 'caja',            nombre: 'Caja',              descripcion: 'Efectivo y movimientos',               icono: '💵', appHref: '/caja'             },
-  { key: 'flota',           nombre: 'Flota interna',     descripcion: 'Vehículos internos (autos, camionetas)', icono: '🚙', appHref: '/flota'           },
-  { key: 'alquiler',        nombre: 'Alquiler',          descripcion: 'Máquinas, obras y partes de horas',    icono: '🚜', appHref: '/alquiler'         },
-  { key: 'aridos',          nombre: 'Áridos',            descripcion: 'Venta de áridos, stock y cta. corriente', icono: '⛰️', appHref: '/aridos'        },
-  { key: 'admin',           nombre: 'Administración',    descripcion: 'Usuarios, permisos y auditoría',       icono: '⚙️', appHref: '/admin'            },
-]
+// Adónde lleva cada módulo. Ropa y préstamos viven dentro de tarja.
+const HREF_MODULO: Record<Modulo, string> = {
+  tarja: '/tarja', logistica: '/logistica', herramientas: '/herramientas', certificaciones: '/certificaciones',
+  caja: '/caja', ropa: '/tarja/ropa', prestamos: '/tarja/prestamos', configuracion: '/configuracion',
+  flota: '/flota', alquiler: '/alquiler', aridos: '/aridos', admin: '/admin',
+}
+// Tabs de tarja que también existen como módulo: si el user ya tiene tarja
+// no se repiten como tarjeta; si solo tiene esos, son su única entrada (antes
+// esta lista era propia, sin ellos, y a ese user lo deslogueaba "sin módulos").
+const DENTRO_DE_TARJA = new Set<Modulo>(['ropa', 'prestamos'])
 
 // Página post-login: muestra solo los módulos a los que el user tiene acceso.
 //
@@ -75,7 +68,7 @@ export function ModuloSelector() {
       // Auto-redirect si tiene un solo módulo accesible.
       const accesibles = filtrarAccesibles(currentProfile.rol, currentProfile.modulos)
       if (accesibles.length === 1) {
-        router.replace(accesibles[0]!.appHref)
+        router.replace(HREF_MODULO[accesibles[0]!.key])
         return
       }
       if (accesibles.length === 0) {
@@ -137,13 +130,13 @@ export function ModuloSelector() {
         {accesibles.map(m => (
           <button
             key={m.key}
-            onClick={() => router.push(m.appHref)}
+            onClick={() => router.push(HREF_MODULO[m.key])}
             className="relative flex flex-col items-center gap-4 p-8 rounded-2xl border-2 border-white/20 bg-white/10 hover:bg-white/20 hover:border-naranja hover:scale-[1.03] cursor-pointer active:scale-[0.98] transition-all"
           >
             <div className="text-5xl">{m.icono}</div>
             <div className="text-center">
               <div className="font-display text-white text-lg tracking-wider">
-                {m.nombre.toUpperCase()}
+                {m.label.toUpperCase()}
               </div>
               <div className="text-white/50 text-xs mt-1 font-semibold">
                 {m.descripcion}
@@ -169,7 +162,11 @@ export function ModuloSelector() {
   )
 }
 
-function filtrarAccesibles(rol: string, modulos: string[]): Modulo[] {
-  if (rol === 'admin') return MODULOS
-  return MODULOS.filter(m => modulos.includes(m.key))
+function filtrarAccesibles(rol: string, modulos: string[]): ModuloInfo[] {
+  const todos = modulosOrdenados({ incluirAdmin: true })
+  // Administración al final, como siempre estuvo.
+  const ordenados = [...todos.filter(m => m.key !== 'admin'), ...todos.filter(m => m.key === 'admin')]
+  if (rol === 'admin') return ordenados.filter(m => !DENTRO_DE_TARJA.has(m.key))
+  const tieneTarja = modulos.includes('tarja')
+  return ordenados.filter(m => modulos.includes(m.key) && !(tieneTarja && DENTRO_DE_TARJA.has(m.key)))
 }

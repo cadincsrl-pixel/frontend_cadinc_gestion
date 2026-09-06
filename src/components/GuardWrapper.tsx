@@ -32,15 +32,17 @@ export function GuardWrapper({ modulo, tabRequerido, children }: Props) {
     // Validación de tab dentro del módulo (solo no-admin).
     if (tabRequerido && profile.rol !== 'admin') {
       const tabs = profile.permisos?.[modulo]?.tabs
-      // Si tabs está explícitamente definido y no incluye el tab requerido,
-      // redirigimos al fallback más inocuo. Para tarja → /tarja (lista de
-      // obras), salvo que el user tampoco tenga el tab "tarja" → en ese
-      // caso a "/" para evitar loops.
-      if (Array.isArray(tabs) && !tabs.includes(tabRequerido)) {
+      // Si tabs tiene elementos y no incluye el tab requerido, redirigimos al
+      // fallback más inocuo. Para tarja → /tarja (lista de obras), salvo que
+      // el user tampoco tenga el tab "tarja" → en ese caso a "/" para evitar
+      // loops. Una lista VACÍA significa "todas las tabs" (así la escribe el
+      // wizard y así la lee useTabsPermitidos): antes acá se leía como
+      // "ninguna" y el sidebar mostraba tabs que al entrar rebotaban.
+      if (Array.isArray(tabs) && tabs.length > 0 && !tabs.includes(tabRequerido)) {
         const tarjaTabs = profile.permisos?.tarja?.tabs
         const puedeIrATarja =
           hasModulo('tarja') && (
-            !Array.isArray(tarjaTabs) || tarjaTabs.includes('tarja')
+            !Array.isArray(tarjaTabs) || tarjaTabs.length === 0 || tarjaTabs.includes('tarja')
           )
         router.replace(puedeIrATarja ? '/tarja' : '/')
         return

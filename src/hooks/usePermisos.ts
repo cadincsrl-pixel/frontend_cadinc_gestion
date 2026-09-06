@@ -38,7 +38,7 @@ export function usePermisos(modulo: string) {
     puedeEditar:   canDo(modulo, 'actualizacion'),
     puedeEliminar: canDo(modulo, 'eliminacion'),
     verCostos:       flagCapacidad('ver_costos', true),       // back-compat: ve costos por default
-    verPii:          flagCapacidad('ver_pii', true),          // back-compat: ve PII por default
+    verPii:          flagCapacidad('ver_pii', false),         // mismo default que el backend: sin el flag no ve PII
     resolverItems:        flagCapacidad('resolver_items', false),
     forzarDespacho:       flagCapacidad('forzar_despacho', false),
     aprobarAjustesStock:  flagCapacidad('aprobar_ajustes_stock', false),

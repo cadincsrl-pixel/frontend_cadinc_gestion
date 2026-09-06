@@ -79,6 +79,12 @@ const FLAGS_BOOLEAN: { key: FlagBoolean; label: string; help: string; modulos?: 
     modulos: ['certificaciones'],
   },
   {
+    key: 'aprobar_ajustes_stock',
+    label: 'Aprobar ajustes de stock',
+    help: 'Aprobar o rechazar los ajustes de stock que declaró otro usuario (doble aprobación: quien declara no aprueba). Solo tiene efecto en certificaciones.',
+    modulos: ['certificaciones'],
+  },
+  {
     key: 'gestionar_cobros',
     label: 'Gestionar cobros',
     help: 'Cargar y editar cobros de clientes sin ser admin (eliminar cobros sigue siendo admin-only). Solo tiene efecto en alquiler.',

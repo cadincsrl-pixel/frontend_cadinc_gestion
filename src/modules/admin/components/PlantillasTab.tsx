@@ -24,6 +24,7 @@ const FLAGS = [
   { key: 'administrar_obras', label: 'Administrar obras (catálogo)' },
   { key: 'resolver_items',   label: 'Resolver items' },
   { key: 'forzar_despacho',  label: 'Forzar despacho' },
+  { key: 'aprobar_ajustes_stock', label: 'Aprobar ajustes de stock' },
   { key: 'gestionar_cobros', label: 'Gestionar cobros (alquiler)' },
   { key: 'gestionar_docs',   label: '📄 Documentación de máquinas (alquiler)' },
   { key: 'anular_cobros',    label: '🗑 Anular cobros (logística)' },
