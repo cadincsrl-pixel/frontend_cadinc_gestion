@@ -7,13 +7,11 @@ import type { NextRequest }   from 'next/server'
 // tarja con tabs (dashboard, personal, horas-trabajador, configuracion, etc.)
 // NO van acá: las gobierna GuardWrapper con tabRequerido en su page.tsx,
 // porque pueden estar permitidas o no según el array `permisos.tarja.tabs`.
-// Cada ruta lista los módulos que alcanzan para entrar (con UNO basta). Ropa y
-// préstamos son tabs de tarja pero también existen como módulo asignable: un
-// usuario que solo tenga `ropa` entra a /tarja/ropa. Las rutas más específicas
-// van primero porque gana la primera que matchea.
+// Cada ruta lista los módulos que alcanzan para entrar (con UNO basta). Ropa,
+// préstamos y categorías son tabs de tarja (ya no existen como módulo): con
+// `tarja` alcanza para /tarja/* y el tab lo gatea GuardWrapper. Las rutas más
+// específicas van primero porque gana la primera que matchea.
 const ROUTE_MODULOS: Record<string, string[]> = {
-  '/tarja/ropa':       ['tarja', 'ropa'],
-  '/tarja/prestamos':  ['tarja', 'prestamos'],
   '/tarja':            ['tarja'],
   '/herramientas':     ['herramientas'],
   '/logistica':        ['logistica'],

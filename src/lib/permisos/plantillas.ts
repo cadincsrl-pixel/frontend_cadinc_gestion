@@ -1,53 +1,69 @@
 /**
- * Sistema de roles v2 — 5 presets base + add-ons opcionales.
+ * Roles y add-ons de permisos.
  *
- * Cada usuario tiene:
- * - Un `rol_base` (uno de los 5 abajo, o admin que bypaseaa todo).
- * - Un `obras_scope` ('todas' o 'asignadas').
- * - Add-ons opcionales que extienden capabilities (ver_costos, ver_pii, etc.).
+ * Desde la fase 4 (2026-09) los ROLES viven en la tabla `roles` y se editan
+ * desde Admin → Plantillas de roles (`GET/POST/PATCH/DELETE /api/usuarios/roles`,
+ * hook `useRoles`). Este archivo conserva:
  *
- * La UI ofrece "wizard" en 4 pasos: rol → obras_scope → add-ons → asignar
- * obras (si scope=asignadas). Si admin edita permisos a mano, el rol_base
- * NO cambia y se muestra badge "modificado" comparando contra el preset.
+ *   - `PRESETS_FALLBACK`: el seed original (5 roles). Es el fallback del
+ *     wizard mientras carga el API y la referencia de labels cuando un perfil
+ *     viejo solo tiene `rol_base`. NO es la fuente de verdad: editar acá no
+ *     cambia nada en producción.
+ *   - `ADDONS`: variaciones de tarja que se aplican encima de un rol. Siguen
+ *     en código. `aplicaA` se compara contra el `rol_base` del rol (no contra
+ *     su key), así un rol nuevo con rol_base='jefe_obra' hereda los addons
+ *     de jefe de obra.
+ *   - Helpers puros: `aplicarPreset`, `deriveAddons`, `rolToPreset`,
+ *     `modulosDePermisos`, `labelDeRol`, `canonJson`.
  *
- * Compat: el array PLANTILLAS legacy se mantiene durante la transición
- * para que el dropdown viejo siga funcionando.
+ * Cada usuario tiene `rol_key` (de qué rol partió), `rol_base` (identidad
+ * que usa el backend: capataz/jefe_obra), `obras_scope` y `personalizado`
+ * (true = tiene ajustes propios; "Aplicar rol" no lo pisa).
  */
-import type { Permisos } from '@/types/domain.types'
+import type { Permisos, Rol, RolBase, ObrasScope } from '@/types/domain.types'
 
-// ─── PRESETS BASE v2 ──────────────────────────────────────────────────────────
+// Muchos componentes importan estos tipos desde acá.
+export type { RolBase, ObrasScope }
 
-export type RolBase = 'administrativo' | 'compras' | 'deposito' | 'jefe_obra' | 'capataz'
-export type ObrasScope = 'todas' | 'asignadas'
+/** Identidades que entiende el backend (select de `rol_base` en el editor). */
+export const ROL_BASES: { key: RolBase; label: string }[] = [
+  { key: 'administrativo', label: 'Administrativo' },
+  { key: 'compras',        label: 'Compras' },
+  { key: 'deposito',       label: 'Encargado de depósito' },
+  { key: 'jefe_obra',      label: 'Jefe de obra' },
+  { key: 'capataz',        label: 'Capataz' },
+]
+
+// ─── PRESETS (seed / fallback) ────────────────────────────────────────────────
 
 export interface PresetBase {
-  key:               RolBase
-  label:             string
-  descripcion:       string
-  modulos:           string[]
-  permisos:          Permisos
+  key:                 string
+  label:               string
+  descripcion:         string
+  /** Módulos con lectura en `permisos` (derivado; el backend hace lo mismo). */
+  modulos:             string[]
+  permisos:            Permisos
   obras_scope_default: ObrasScope
+  rol_base:            RolBase | null
 }
 
 const fullCRUD = { lectura: true, creacion: true, actualizacion: true, eliminacion: true }
 
-export const PRESETS: PresetBase[] = [
+export const PRESETS_FALLBACK: PresetBase[] = [
   {
     key:   'administrativo',
     label: 'Administrativo',
-    descripcion: 'Gestión amplia: tarja, logística, compras y stock, ropa, préstamos, configuración, caja, flota. Casi-admin sin permisos de usuarios/permisos.',
-    modulos: ['tarja', 'logistica', 'certificaciones', 'ropa', 'prestamos', 'configuracion', 'caja', 'flota'],
+    descripcion: 'Gestión amplia: tarja (incluye préstamos, ropa y categorías), logística, compras y stock, caja, flota. Casi-admin sin permisos de usuarios/permisos.',
+    modulos: ['tarja', 'logistica', 'certificaciones', 'caja', 'flota'],
     permisos: {
       tarja:           { ...fullCRUD, ver_costos: true, ver_pii: true, administrar_obras: true },
       logistica:       { ...fullCRUD },
       caja:            { ...fullCRUD },
       flota:           { ...fullCRUD },
       certificaciones: { ...fullCRUD, resolver_items: true, forzar_despacho: true, aprobar_ajustes_stock: true },
-      ropa:            { ...fullCRUD },
-      prestamos:       { ...fullCRUD },
-      configuracion:   { ...fullCRUD },
     },
     obras_scope_default: 'todas',
+    rol_base: 'administrativo',
   },
   {
     key:   'compras',
@@ -63,6 +79,7 @@ export const PRESETS: PresetBase[] = [
       },
     },
     obras_scope_default: 'todas',
+    rol_base: 'compras',
   },
   {
     key:   'deposito',
@@ -87,6 +104,7 @@ export const PRESETS: PresetBase[] = [
       },
     },
     obras_scope_default: 'todas',
+    rol_base: 'deposito',
   },
   {
     key:   'jefe_obra',
@@ -110,6 +128,7 @@ export const PRESETS: PresetBase[] = [
       } as Permisos[string] & { obras_scope: ObrasScope },
     },
     obras_scope_default: 'asignadas',
+    rol_base: 'jefe_obra',
   },
   {
     key:   'capataz',
@@ -125,14 +144,65 @@ export const PRESETS: PresetBase[] = [
       },
     },
     obras_scope_default: 'asignadas',
+    rol_base: 'capataz',
   },
 ]
 
-export function getPreset(key: string): PresetBase | null {
-  return PRESETS.find(p => p.key === key) ?? null
+/** @deprecated Alias de `PRESETS_FALLBACK`. Los roles reales salen de `useRoles()`. */
+export const PRESETS = PRESETS_FALLBACK
+
+/**
+ * Módulos a los que dan acceso unos `permisos`: los que tienen `lectura`.
+ * Espejo de `modulosDePermisos` del backend (que es quien persiste
+ * `profiles.modulos`); el cliente ya no manda `modulos`.
+ */
+export function modulosDePermisos(permisos: Permisos | null | undefined): string[] {
+  return Object.entries(permisos ?? {})
+    .filter(([, v]) => !!v && v.lectura === true)
+    .map(([k]) => k)
 }
 
-// ─── ADD-ONS opcionales que extienden un preset ────────────────────────────
+/** Un rol del API en el shape que consumen el wizard y `aplicarPreset`. */
+export function rolToPreset(rol: Rol): PresetBase {
+  return {
+    key:                 rol.key,
+    label:               rol.label,
+    descripcion:         rol.descripcion ?? '',
+    modulos:             modulosDePermisos(rol.permisos),
+    permisos:            rol.permisos ?? {},
+    obras_scope_default: rol.obras_scope_default,
+    rol_base:            rol.rol_base,
+  }
+}
+
+export function getPreset(
+  key: string | null | undefined,
+  presets: PresetBase[] = PRESETS_FALLBACK,
+): PresetBase | null {
+  if (!key) return null
+  return presets.find(p => p.key === key) ?? null
+}
+
+/**
+ * Label para mostrar de un usuario según su rol: busca `rol_key` en los roles
+ * del API, después en el seed, después el `rol_base`. Un perfil anterior a
+ * los roles editables solo trae `rol_base` (los presets viejos son roles con
+ * la misma key). Devuelve null si no parte de ningún rol (personalizado puro).
+ */
+export function labelDeRol(
+  rolKey:  string | null | undefined,
+  rolBase: RolBase | null | undefined,
+  roles?:  ReadonlyArray<Pick<Rol, 'key' | 'label'>>,
+): string | null {
+  const key = rolKey ?? rolBase ?? null
+  if (!key) return null
+  return roles?.find(r => r.key === key)?.label
+    ?? PRESETS_FALLBACK.find(p => p.key === key)?.label
+    ?? (rolBase ? ROL_BASES.find(r => r.key === rolBase)?.label : undefined)
+    ?? key
+}
+
+// ─── ADD-ONS opcionales que extienden un rol ───────────────────────────────
 //
 // Cada addon expone:
 //   - aplicar(p)  : agrega o setea las claves que el addon controla.
@@ -140,11 +210,11 @@ export function getPreset(key: string): PresetBase | null {
 //                   defaults del preset/personalizado. NO usa state
 //                   externo: solo mira `p` y deshace lo que `aplicar`
 //                   habría agregado.
-//   - aplicaA     : whitelist de presets donde tiene sentido. Si el
-//                   user está en modo Personalizado (rol_base=null),
-//                   el wizard ofrece addons cuyo módulo target esté
-//                   tildado. La validación final la hace el handler
-//                   del onChange.
+//   - aplicaA     : whitelist de `rol_base` donde tiene sentido (se compara
+//                   contra el rol_base del rol, no contra su key). Si el
+//                   user está en modo Personalizado, el wizard ofrece
+//                   addons cuyo módulo target esté tildado. La validación
+//                   final la hace el handler del onChange.
 
 export interface AddOn {
   key:       string
@@ -155,7 +225,7 @@ export interface AddOn {
   aplicaA:   RolBase[]
   // Módulo cuya activación habilita el addon en modo Personalizado.
   // Si el user está en Personalizado, el wizard ofrece este addon
-  // SOLO cuando ese módulo está tildado en `data.modulos`. Si queda
+  // SOLO cuando ese módulo está tildado en `permisos`. Si queda
   // undefined, el addon se ofrece siempre que haya módulos elegidos.
   moduloTarget?: string
   // Addons mutuamente excluyentes con éste. Al tildarlo, el wizard
@@ -272,7 +342,7 @@ export const ADDONS: AddOn[] = [
     label: 'Cargar horas propias',
     descripcion: 'Habilita módulo Tarja con vista restringida (capataz) y scope "asignadas" SOLO para tarja. El admin debe asignar la obra correspondiente abajo. Caso típico: encargado de depósito que también trabaja físicamente y carga sus horas.',
     // Whitelist amplia: cualquiera que NO sea ya capataz/jefe_obra puro
-    // (esos ya cargan horas por su preset). Personalizado se trata aparte
+    // (esos ya cargan horas por su rol). Personalizado se trata aparte
     // en el wizard, donde se ofrece si tarja está tildado.
     aplicaA: ['deposito', 'compras', 'administrativo'],
     moduloTarget: 'tarja',
@@ -301,17 +371,15 @@ export function getAddOn(key: string): AddOn | null {
   return ADDONS.find(a => a.key === key) ?? null
 }
 
-// ─── Inversas: derivar addons / tipo_usuario desde el state persistido ──
+/** Si el addon tiene sentido para un rol, según su `rol_base` (no su key). */
+export function addonAplicaA(addon: AddOn | null | undefined, rolBase: RolBase | null | undefined): boolean {
+  return !!addon && !!rolBase && addon.aplicaA.includes(rolBase)
+}
+
+// ─── Inversa: derivar addons desde el state persistido ─────────────────────
 //
 // Cuando abrimos el modal de edición, no tenemos `addons` en DB (no se
-// persiste). Lo derivamos inspeccionando `permisos`. Y al guardar,
-// computamos el `tipo_usuario` legacy para el badge de la tabla y para
-// queries que aún lo usen.
-//
-// Ambas funciones DEBEN seguir como inversas: si `deriveAddons` mapea
-// (rolBase, permisos) → ['X'], entonces `computeTipoUsuario(rolBase, ['X'])`
-// debe devolver el tipo legacy correspondiente. Las pongo juntas para que
-// el drift sea visible cuando se modifica una sin la otra.
+// persiste). Lo derivamos inspeccionando `permisos` según el `rol_base`.
 
 export function deriveAddons(
   rolBase: RolBase | null | undefined,
@@ -359,112 +427,36 @@ export function deriveAddons(
   return addons
 }
 
-// Mapeo preset+addons → tipo_usuario legacy. Solo se conocen los combos
-// históricos; combos nuevos (compras+tarja_lectura, deposito+cargar_horas)
-// devuelven el rolBase puro y el badge muestra los addons aparte.
-export function computeTipoUsuario(rolBase: RolBase, addons: string[]): string {
-  if (rolBase === 'jefe_obra' && addons.includes('tarja_lectura')) {
-    return 'jefe_obra_supervisor'
-  }
-  if (rolBase === 'capataz' && addons.includes('tab_personal')) {
-    return 'capataz_supervisor'
-  }
-  return rolBase
-}
-
-// Aplica un preset + lista de add-ons. Devuelve { permisos, modulos }.
+/**
+ * Aplica un rol + lista de add-ons. Devuelve { permisos, modulos }.
+ * `preset` puede ser el PresetBase directo (roles del API mapeados con
+ * `rolToPreset`) o una key a resolver contra `presets` (default: el seed).
+ */
 export function aplicarPreset(
-  presetKey: RolBase,
-  addons: string[] = [],
+  preset:  PresetBase | string,
+  addons:  string[] = [],
+  presets: PresetBase[] = PRESETS_FALLBACK,
 ): { permisos: Permisos; modulos: string[] } {
-  const preset = getPreset(presetKey)
-  if (!preset) throw new Error(`Preset desconocido: ${presetKey}`)
+  const base = typeof preset === 'string' ? getPreset(preset, presets) : preset
+  if (!base) throw new Error(`Preset desconocido: ${String(preset)}`)
 
-  let permisos: Permisos = JSON.parse(JSON.stringify(preset.permisos))
+  let permisos: Permisos = JSON.parse(JSON.stringify(base.permisos))
   for (const addonKey of addons) {
     const addon = getAddOn(addonKey)
-    if (!addon || !addon.aplicaA.includes(presetKey)) continue
-    permisos = addon.aplicar(permisos)
+    if (!addonAplicaA(addon, base.rol_base)) continue
+    permisos = addon!.aplicar(permisos)
   }
-  // modulos derivado de las keys de permisos.
-  const modulos = Object.keys(permisos)
-  return { permisos, modulos }
+  return { permisos, modulos: modulosDePermisos(permisos) }
 }
 
-// ─── COMPAT LEGACY ────────────────────────────────────────────────────────────
-// Las "plantillas" viejas se mantienen para que el UsuariosTab actual siga
-// funcionando hasta que se reemplace por el wizard nuevo.
-
-export interface Plantilla {
-  key:                 string
-  label:               string
-  descripcion:         string
-  rol:                 'admin' | 'operador'
-  modulos:             string[]
-  permisos:            Permisos
-  obras_restringidas:  boolean
-}
-
-export const PLANTILLAS: Plantilla[] = [
-  // Mapeo 1:1 con presets.
-  ...PRESETS.map(p => ({
-    key:   p.key,
-    label: p.label,
-    descripcion: p.descripcion,
-    rol:   'operador' as const,
-    modulos: p.modulos,
-    permisos: p.permisos,
-    obras_restringidas: p.obras_scope_default === 'asignadas',
-  })),
-  // Combinaciones que existen en DB (Candela, Cristian futuro).
-  // Internamente son preset+addon, pero la UI vieja las trata como plantilla.
-  {
-    key:   'jefe_obra_supervisor',
-    label: 'Jefe de obra + supervisor',
-    descripcion: 'Jefe de obra + ver tarja para supervisar (lectura).',
-    rol:   'operador',
-    modulos: aplicarPreset('jefe_obra', ['tarja_lectura']).modulos,
-    permisos: aplicarPreset('jefe_obra', ['tarja_lectura']).permisos,
-    obras_restringidas: true,
-  },
-  {
-    key:   'capataz_supervisor',
-    label: 'Capataz + perfiles de personal',
-    descripcion: 'Capataz + acceso al tab Personal con PII completa.',
-    rol:   'operador',
-    modulos: aplicarPreset('capataz', ['tab_personal']).modulos,
-    permisos: aplicarPreset('capataz', ['tab_personal']).permisos,
-    obras_restringidas: true,
-  },
-]
-
-export function getPlantilla(key: string): Plantilla | null {
-  return PLANTILLAS.find(p => p.key === key) ?? null
-}
-
-export function permisosMatchPlantilla(
-  permisos: Permisos | undefined | null,
-  rol: 'admin' | 'operador',
-  modulos: string[],
-  plantillaKey: string,
-): boolean {
-  const p = getPlantilla(plantillaKey)
-  if (!p) return false
-  if (p.rol !== rol) return false
-  if (!sameSet(p.modulos, modulos)) return false
-  return canon(permisos ?? {}) === canon(p.permisos)
-}
-
-function sameSet(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false
-  const sa = [...a].sort()
-  const sb = [...b].sort()
-  return sa.every((v, i) => v === sb[i])
-}
-
-function canon(obj: any): string {
+/**
+ * Serialización canónica (claves ordenadas) para comparar permisos/roles sin
+ * depender del orden de inserción. La usan los checks de "sin cambios".
+ */
+export function canonJson(obj: unknown): string {
   if (obj === null || typeof obj !== 'object') return JSON.stringify(obj)
-  if (Array.isArray(obj)) return '[' + obj.map(canon).join(',') + ']'
-  const keys = Object.keys(obj).sort()
-  return '{' + keys.map(k => JSON.stringify(k) + ':' + canon(obj[k])).join(',') + '}'
+  if (Array.isArray(obj)) return '[' + obj.map(canonJson).join(',') + ']'
+  const rec = obj as Record<string, unknown>
+  const keys = Object.keys(rec).sort()
+  return '{' + keys.map(k => JSON.stringify(k) + ':' + canonJson(rec[k])).join(',') + '}'
 }

@@ -136,12 +136,15 @@ CADINC cierra semanas los jueves. Todo `sem_key` es el ISO del **viernes** de es
 Las 68 tablas tienen RLS habilitado pero con policies `using(true) with check(true)`. La seguridad real está en el **backend Hono**, que autentica con JWT y valida permisos. La anon key **no se usa para mutar datos**. No proponer cambios a RLS estricta sin consultar — rompería el modelo.
 
 ### 5.5 Permisos granulares
-Esquema: `permisos: { modulo: { lectura, creacion, actualizacion, eliminacion, tabs[], <flags_extra> } }` en `profiles.permisos` (JSONB).
+Esquema: `permisos: { modulo: { lectura, creacion, actualizacion, eliminacion, tabs[], <flags_extra>, obras_scope? } }` en `profiles.permisos` (JSONB). **Es lo efectivo**: lo que leen las guardias del backend.
 
-- **Backend**: `requirePermiso(modulo, accion)` en cada ruta mutativa. Admin (`rol='admin'`) hace bypass.
-- **Frontend**: `usePermisos('modulo')` → `{ puedeVer, puedeCrear, puedeEditar, puedeEliminar }`.
-- **Flags extra** (como `forzar_despacho` en certificaciones): se chequean inline en el handler del endpoint cuando son condicionales al body.
-- **Excepción conocida**: `personal` no es módulo asignable, es tab de `tarja`. Endpoints usan `requirePermisoOr('personal', 'tarja')`.
+- **Roles** (2026-09-06): la plantilla vive en la tabla `roles` (permisos, tabs, flags, `obras_scope_default`, `rol_base`) y se edita desde Admin › Plantillas. `profiles.rol_key` dice de qué rol partió el usuario y `profiles.personalizado` si tiene ajustes propios. Cambiar un rol no toca a nadie hasta "Aplicar a N usuarios" (`POST /api/usuarios/roles/:key/aplicar` → RPC `aplicar_rol`, solo a los no personalizados, con historial). `tipo_usuario` es legacy y el backend lo ignora.
+- **`profiles.modulos` se deriva de `permisos`** (módulos con lectura) en el backend (`modulosDePermisos` / `modulos_de_permisos()`); la pantalla no lo manda. Gatea páginas (Next middleware) y el selector de módulos.
+- **Backend**: `requirePermiso(modulo, accion)` en cada ruta mutativa; `requireTab(modulo, tab | tabs)` donde la tab de la pantalla también vale en la API (lista ausente o vacía = todas, igual que la UI); `requireFlag` para flags. Admin (`rol='admin'`) hace bypass. Un perfil con `activo=false` no pasa ninguna guardia y al desactivarlo queda baneado en Supabase Auth.
+- **Frontend**: `usePermisos('modulo')` → `{ puedeVer, puedeCrear, puedeEditar, puedeEliminar, verPii, verCostos, ...flags }`. Los botones se **deshabilitan** con tooltip, no se ocultan.
+- **Flags**: `ver_pii` default **false** en backend y frontend; `ver_costos` default true. Los condicionales al body se chequean inline en el handler (`forzar_despacho`).
+- **Alcance por obra**: `profiles.obras_scope` ('todas' | 'asignadas') con override por módulo en `permisos.<modulo>.obras_scope`; la lista de obras es UNA por usuario (`usuario_obras`). Helpers en `lib/obras-usuario.ts`: `getObrasDelUsuarioCached`, `validarObraDelUsuario`, `validarObraDeRegistro` (para PATCH/DELETE por id). Lo aplican tarja, solicitudes, cuenta corriente, materiales certificables, stock del cliente, stock en proveedor y remitos de envío.
+- **Catálogo de módulos**: `tarja, logistica, certificaciones, herramientas, caja, flota, alquiler, aridos, admin`, espejado en `lib/modulos.ts` de ambos repos. `personal`, `ropa`, `prestamos` y `configuracion` son **tabs de tarja**, no módulos: sus endpoints exigen `tarja.*`.
 
 ### 5.6 Auditoría automática
 `auditMiddleware` del backend corre **después** de la respuesta. Solo loguea POST/PATCH/PUT/DELETE con status 2xx. Extrae entidad/acción de la ruta. **No escribir auditoría manual en handlers**, ya está cubierta.
@@ -335,4 +338,4 @@ El frontend espera al backend en `http://localhost:3001` (configurable vía env)
 
 ---
 
-_Última actualización: 2026-09-05._
+_Última actualización: 2026-09-06._

@@ -8,16 +8,12 @@ import { EMPRESA } from '@/lib/config/empresa'
 
 import { modulosOrdenados, type Modulo, type ModuloInfo } from '@/lib/config/modulos'
 
-// Adónde lleva cada módulo. Ropa y préstamos viven dentro de tarja.
+// Adónde lleva cada módulo. Préstamos, ropa y categorías son tabs de tarja
+// (no módulos): se entra por /tarja y el sidebar los ofrece según `tabs`.
 const HREF_MODULO: Record<Modulo, string> = {
   tarja: '/tarja', logistica: '/logistica', herramientas: '/herramientas', certificaciones: '/certificaciones',
-  caja: '/caja', ropa: '/tarja/ropa', prestamos: '/tarja/prestamos', configuracion: '/configuracion',
-  flota: '/flota', alquiler: '/alquiler', aridos: '/aridos', admin: '/admin',
+  caja: '/caja', flota: '/flota', alquiler: '/alquiler', aridos: '/aridos', admin: '/admin',
 }
-// Tabs de tarja que también existen como módulo: si el user ya tiene tarja
-// no se repiten como tarjeta; si solo tiene esos, son su única entrada (antes
-// esta lista era propia, sin ellos, y a ese user lo deslogueaba "sin módulos").
-const DENTRO_DE_TARJA = new Set<Modulo>(['ropa', 'prestamos'])
 
 // Página post-login: muestra solo los módulos a los que el user tiene acceso.
 //
@@ -166,7 +162,6 @@ function filtrarAccesibles(rol: string, modulos: string[]): ModuloInfo[] {
   const todos = modulosOrdenados({ incluirAdmin: true })
   // Administración al final, como siempre estuvo.
   const ordenados = [...todos.filter(m => m.key !== 'admin'), ...todos.filter(m => m.key === 'admin')]
-  if (rol === 'admin') return ordenados.filter(m => !DENTRO_DE_TARJA.has(m.key))
-  const tieneTarja = modulos.includes('tarja')
-  return ordenados.filter(m => modulos.includes(m.key) && !(tieneTarja && DENTRO_DE_TARJA.has(m.key)))
+  if (rol === 'admin') return ordenados
+  return ordenados.filter(m => modulos.includes(m.key))
 }

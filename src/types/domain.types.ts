@@ -1085,19 +1085,44 @@ export type ModuloPermisos = { [K in Accion]?: boolean } & {
 }
 export type Permisos = Record<string, ModuloPermisos>
 
+// ── Roles (tabla `roles`, editable desde Admin → Plantillas de roles) ──
+// `rol_base` es la identidad que usa el backend (capataz / jefe_obra scopean
+// por obra); `key` es el slug del rol. Helpers en `src/lib/permisos/plantillas.ts`.
+export type RolBase = 'administrativo' | 'compras' | 'deposito' | 'jefe_obra' | 'capataz'
+export type ObrasScope = 'todas' | 'asignadas'
+
+export interface Rol {
+  key:                 string          // slug [a-z0-9_]+
+  label:               string
+  descripcion:         string
+  permisos:            Permisos        // mismo shape que profiles.permisos
+  obras_scope_default: ObrasScope
+  rol_base:            RolBase | null
+  orden:               number
+  activo:              boolean
+  usuarios:            number          // perfiles con rol_key = key
+  personalizados:      number          // de esos, cuántos tienen ajustes propios
+}
+
 export interface Profile {
   id:       string
   nombre:   string
   rol:      'admin' | 'operador'
+  // Lo deriva el backend de `permisos` (módulos con lectura). Solo lectura:
+  // el cliente ya no lo manda en POST/PATCH /api/usuarios.
   modulos:  string[]
   activo:   boolean
   permisos: Permisos
-  // Sistema de roles v2 — ver `src/lib/permisos/plantillas.ts`.
-  rol_base?:    'administrativo' | 'compras' | 'deposito' | 'jefe_obra' | 'capataz' | null
-  obras_scope?: 'todas' | 'asignadas'
-  // Legacy (back-compat). Antes era el "tipo" del usuario; ahora se deriva
-  // de rol_base + addons. Lo seguimos persistiendo para queries y reportes
-  // viejos. Se va a eliminar en una fase posterior.
+  rol_base?:    RolBase | null
+  obras_scope?: ObrasScope
+  // Rol del que parte el usuario (tabla `roles`). null = admin o personalizado puro.
+  rol_key?:      string | null
+  // true = tiene ajustes propios sobre el rol; "Aplicar rol" no lo pisa.
+  personalizado?: boolean
+  /**
+   * @deprecated Legacy, solo lectura por compat. El backend lo ignora en
+   * POST/PATCH y ningún componente lo escribe ni lo muestra.
+   */
   tipo_usuario?: string | null
 }
 

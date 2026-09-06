@@ -12,45 +12,104 @@ import { Button }   from '@/components/ui/Button'
 import { Input }    from '@/components/ui/Input'
 import { useToast } from '@/components/ui/Toast'
 import { useSessionStore } from '@/store/session.store'
-import { getPlantilla, deriveAddons, getAddOn } from '@/lib/permisos/plantillas'
+import { deriveAddons, getAddOn, labelDeRol } from '@/lib/permisos/plantillas'
 import type { RolBase, ObrasScope } from '@/lib/permisos/plantillas'
+import { useRoles } from '../hooks/useRoles'
+import type { Permisos, Profile, Modulo } from '@/types/domain.types'
 
 // Etiqueta corta del addon para los chips de la tabla. Cae al key si el
 // addon ya no existe en el catálogo (ej. addon viejo deprecado).
 function addonLabel(key: string): string {
   return getAddOn(key)?.label ?? key
 }
-import type { Permisos, Profile, Modulo } from '@/types/domain.types'
 
 interface NuevoUsuario {
-  email:        string
-  password:     string
-  nombre:       string
-  rol:          'admin' | 'operador'
-  modulos:      string[]
-  permisos:     Permisos
-  rol_base:     RolBase | null
-  obras_scope:  ObrasScope
-  addons:       string[]
-  tipo_usuario?: string | null
+  email:         string
+  password:      string
+  nombre:        string
+  rol:           'admin' | 'operador'
+  permisos:      Permisos
+  rol_base:      RolBase | null
+  obras_scope:   ObrasScope
+  addons:        string[]
+  // Rol del que parte (tabla `roles`) y si tiene ajustes propios. Sin rol
+  // elegido el wizard arranca en modo personalizado.
+  rol_key:       string | null
+  personalizado: boolean
 }
 
 const EMPTY_NUEVO: NuevoUsuario = {
-  email:        '',
-  password:     '',
-  nombre:       '',
-  rol:          'operador',
-  modulos:      [],
-  permisos:     {},
-  rol_base:     null,
-  obras_scope:  'todas',
-  addons:       [],
-  tipo_usuario: null,
+  email:         '',
+  password:      '',
+  nombre:        '',
+  rol:           'operador',
+  permisos:      {},
+  rol_base:      null,
+  obras_scope:   'todas',
+  addons:        [],
+  rol_key:       null,
+  personalizado: true,
+}
+
+// ── Payloads hacia /api/usuarios ──
+// Sin `modulos` (el backend lo deriva de `permisos`: módulos con lectura) ni
+// `tipo_usuario` (murió con los roles editables; el backend lo ignora).
+interface UsuarioPermisosDto {
+  rol:           'admin' | 'operador'
+  permisos:      Permisos
+  rol_base:      RolBase | null
+  obras_scope:   ObrasScope
+  rol_key:       string | null
+  personalizado: boolean
+}
+interface CrearUsuarioDto extends UsuarioPermisosDto {
+  email:    string
+  password: string
+  nombre:   string
+}
+interface ActualizarUsuarioDto extends UsuarioPermisosDto {
+  nombre: string
+  email?: string
+  activo: boolean
+}
+
+function permisosDto(
+  d: Pick<Profile, 'rol' | 'permisos' | 'rol_base' | 'obras_scope' | 'rol_key' | 'personalizado'>,
+): UsuarioPermisosDto {
+  // Admin: bypass total, sin rol ni permisos. Defensa en profundidad aunque
+  // el wizard ya limpie todo al elegir la card "Administrador".
+  if (d.rol === 'admin') {
+    return { rol: 'admin', permisos: {}, rol_base: null, obras_scope: 'todas', rol_key: null, personalizado: false }
+  }
+  const rol_key = d.rol_key ?? null
+  return {
+    rol:           'operador',
+    permisos:      d.permisos,
+    rol_base:      d.rol_base ?? null,
+    obras_scope:   d.obras_scope ?? 'todas',
+    rol_key,
+    // Sin rol del que partir es personalizado por definición.
+    personalizado: (d.personalizado ?? false) || rol_key === null,
+  }
+}
+
+function payloadCrear(f: NuevoUsuario): CrearUsuarioDto {
+  return { email: f.email, password: f.password, nombre: f.nombre, ...permisosDto(f) }
+}
+
+// Perfiles anteriores a los roles editables no traen rol_key/personalizado:
+// se derivan de rol_base (los presets viejos son roles con la misma key).
+function rolKeyDe(u: Pick<Profile, 'rol_key' | 'rol_base'>): string | null {
+  return u.rol_key ?? u.rol_base ?? null
+}
+function esPersonalizado(u: Pick<Profile, 'rol_key' | 'rol_base' | 'personalizado' | 'permisos'>): boolean {
+  // Sin la flag (perfil viejo): personalizado si no parte de un rol o si sus
+  // permisos traen add-ons (ya difieren del rol; "Aplicar rol" los pisaría).
+  return u.personalizado ?? (rolKeyDe(u) === null || deriveAddons(u.rol_base ?? null, u.permisos).length > 0)
 }
 
 // `deriveAddons` se importa de `lib/permisos/plantillas.ts` (inspecciona
-// `permisos` directamente para cubrir los 4 addons, no solo los 2
-// "supervisor" que tenían tipo_usuario legacy).
+// `permisos` directamente para cubrir los addons; no se persisten).
 
 export function UsuariosTab() {
   const toast        = useToast()
@@ -60,7 +119,7 @@ export function UsuariosTab() {
   const router = useRouter()
 
   // El estado de edición extiende Profile con `addons` (no se persiste en
-  // DB; lo derivamos del tipo_usuario al abrir el modal y lo usa el wizard
+  // DB; lo derivamos de los permisos al abrir el modal y lo usa el wizard
   // para mostrar qué add-ons tiene activos).
   type EditandoState = Profile & { addons: string[]; email?: string }
   const [editando,    setEditando]    = useState<EditandoState | null>(null)
@@ -94,7 +153,7 @@ export function UsuariosTab() {
     mutationFn: ({ id, password }: { id: string; password: string }) =>
       apiPost(`/api/usuarios/${id}/reset-password`, { password }),
     onSuccess: () => { toast('Contraseña actualizada', 'ok'); cerrarModalPassword() },
-    onError: (e: any) => toast(e.message || 'Error', 'err'),
+    onError: (e: Error) => toast(e.message || 'Error', 'err'),
   })
 
   const { data: usuarios = [], isLoading } = useQuery({
@@ -102,8 +161,14 @@ export function UsuariosTab() {
     queryFn:  () => apiGet<Profile[]>('/api/usuarios'),
   })
 
-  // Filtrado client-side: matchea contra nombre, email, rol, rol_base,
-  // tipo_usuario y módulos. Case-insensitive. Sin filtro = todos.
+  // Labels de los roles (tabla `roles`) para badges y filtro. Mientras carga
+  // cae al seed en código.
+  const { data: roles } = useRoles()
+  const rolLabel = (u: Profile): string | null =>
+    labelDeRol(rolKeyDe(u), u.rol_base ?? null, roles)
+
+  // Filtrado client-side: matchea contra nombre, email, rol, rol (key y
+  // label), "personalizado" y módulos. Case-insensitive. Sin filtro = todos.
   const usuariosFiltrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase()
     if (!q) return usuarios
@@ -112,8 +177,9 @@ export function UsuariosTab() {
         u.nombre,
         (u as { email?: string }).email,
         u.rol,
-        u.rol_base,
-        u.tipo_usuario,
+        rolKeyDe(u),
+        labelDeRol(rolKeyDe(u), u.rol_base ?? null, roles),
+        u.rol !== 'admin' && esPersonalizado(u) ? 'personalizado' : null,
         ...(u.modulos ?? []),
       ]
         .filter(Boolean)
@@ -121,7 +187,7 @@ export function UsuariosTab() {
         .toLowerCase()
       return haystack.includes(q)
     })
-  }, [usuarios, busqueda])
+  }, [usuarios, busqueda, roles])
 
   // Módulos: fuente única en `src/lib/config/modulos.ts`. `admin` no entra:
   // no es asignable (marcado `noAsignable`), se hereda del rol admin; el
@@ -137,18 +203,18 @@ export function UsuariosTab() {
   }))
 
   const { mutate: create, isPending: creating } = useMutation({
-    mutationFn: (dto: NuevoUsuario) => apiPost('/api/usuarios', dto),
+    mutationFn: (form: NuevoUsuario) => apiPost('/api/usuarios', payloadCrear(form)),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['usuarios'] })
       toast('✓ Usuario creado', 'ok')
       setModalNuevo(false)
       setNuevoForm(EMPTY_NUEVO)
     },
-    onError: (e: any) => toast(e.message ?? 'Error al crear usuario', 'err'),
+    onError: (e: Error) => toast(e.message || 'Error al crear usuario', 'err'),
   })
 
   const { mutate: update, isPending: updating } = useMutation({
-    mutationFn: ({ id, dto }: { id: string; dto: Partial<Profile> & { email?: string } }) =>
+    mutationFn: ({ id, dto }: { id: string; dto: ActualizarUsuarioDto }) =>
       apiPatch(`/api/usuarios/${id}`, dto),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['usuarios'] })
@@ -164,7 +230,7 @@ export function UsuariosTab() {
       qc.invalidateQueries({ queryKey: ['usuarios'] })
       toast('✓ Usuario eliminado', 'ok')
     },
-    onError: (e: any) => toast(e.message ?? 'Error al eliminar', 'err'),
+    onError: (e: Error) => toast(e.message || 'Error al eliminar', 'err'),
   })
 
   function handleDelete(u: Profile) {
@@ -234,7 +300,7 @@ export function UsuariosTab() {
             ) : usuariosFiltrados.length === 0 ? (
               <tr>
                 <td colSpan={6} className="text-center py-8 text-xs text-gris-dark italic">
-                  Sin resultados para "{busqueda}".
+                  Sin resultados para &quot;{busqueda}&quot;.
                 </td>
               </tr>
             ) : usuariosFiltrados.map(u => (
@@ -247,22 +313,24 @@ export function UsuariosTab() {
                     <div>
                       <div className="font-bold text-sm text-carbon">{u.nombre}</div>
                       <div className="flex items-center gap-1.5 mt-0.5">
-                        {/* Badge principal: rol_base si está, si no tipo_usuario legacy. */}
-                        {u.rol_base && (
+                        {/* Badge principal: label del rol (tabla `roles`) o
+                            "Personalizado" si no parte de ninguno. */}
+                        {u.rol !== 'admin' && rolKeyDe(u) && (
                           <span className="text-[10px] font-bold text-azul-mid bg-azul-light px-1.5 py-0.5 rounded">
-                            {getPlantilla(u.rol_base)?.label ?? u.rol_base}
+                            {rolLabel(u)}
                           </span>
                         )}
-                        {!u.rol_base && u.tipo_usuario && u.tipo_usuario !== 'personalizado' && (
-                          <span className="text-[10px] font-bold text-azul-mid bg-azul-light px-1.5 py-0.5 rounded">
-                            {/* Alias legacy: 'encargado_deposito' (CHECK)
-                                ↔ 'deposito' (preset key). */}
-                            {getPlantilla(u.tipo_usuario === 'encargado_deposito' ? 'deposito' : u.tipo_usuario)?.label ?? u.tipo_usuario}
-                          </span>
-                        )}
-                        {u.tipo_usuario === 'personalizado' && (
+                        {u.rol !== 'admin' && !rolKeyDe(u) && (
                           <span className="text-[10px] font-bold text-gris-dark bg-gris px-1.5 py-0.5 rounded">
                             ⚙ Personalizado
+                          </span>
+                        )}
+                        {u.rol !== 'admin' && rolKeyDe(u) && esPersonalizado(u) && (
+                          <span
+                            className="text-[10px] font-bold text-[#7A5500] bg-amarillo-light px-1.5 py-0.5 rounded"
+                            title="Tiene ajustes propios sobre el rol: «Aplicar rol» no lo pisa"
+                          >
+                            ajustes propios
                           </span>
                         )}
                         {/* Chips de addons activos (derivados de los permisos
@@ -286,48 +354,21 @@ export function UsuariosTab() {
                     </div>
                   </div>
                 </td>
-                <td className="px-4 py-3 text-xs text-gris-dark">{(u as any).email ?? '—'}</td>
+                <td className="px-4 py-3 text-xs text-gris-dark">{(u as { email?: string | null }).email ?? '—'}</td>
                 <td className="px-4 py-3">
-                  {(() => {
-                    if (u.rol === 'admin') {
-                      return (
-                        <span className="text-xs font-bold px-2 py-0.5 rounded bg-[#EEE8FF] text-[#5A2D82]">
-                          ⭐ Admin
-                        </span>
-                      )
-                    }
-                    // Preset v2 (rol_base seteado).
-                    if (u.rol_base) {
-                      return (
-                        <span className="text-xs font-bold px-2 py-0.5 rounded bg-azul-light text-azul-mid">
-                          {getPlantilla(u.rol_base)?.label ?? u.rol_base}
-                        </span>
-                      )
-                    }
-                    // Personalizado explícito.
-                    if (u.tipo_usuario === 'personalizado') {
-                      return (
-                        <span className="text-xs font-bold px-2 py-0.5 rounded bg-gris text-gris-dark">
-                          ⚙ Personalizado
-                        </span>
-                      )
-                    }
-                    // Legacy: tipo_usuario sin rol_base (alias 'encargado_deposito' → 'deposito').
-                    if (u.tipo_usuario) {
-                      const presetKey = u.tipo_usuario === 'encargado_deposito' ? 'deposito' : u.tipo_usuario
-                      return (
-                        <span className="text-xs font-bold px-2 py-0.5 rounded bg-azul-light text-azul-mid">
-                          {getPlantilla(presetKey)?.label ?? u.tipo_usuario}
-                        </span>
-                      )
-                    }
-                    // Fallback: operador legacy sin nada seteado.
-                    return (
-                      <span className="text-xs font-bold px-2 py-0.5 rounded bg-gris text-gris-dark">
-                        Operador
-                      </span>
-                    )
-                  })()}
+                  {u.rol === 'admin' ? (
+                    <span className="text-xs font-bold px-2 py-0.5 rounded bg-[#EEE8FF] text-[#5A2D82]">
+                      ⭐ Admin
+                    </span>
+                  ) : rolKeyDe(u) ? (
+                    <span className="text-xs font-bold px-2 py-0.5 rounded bg-azul-light text-azul-mid">
+                      {rolLabel(u)}
+                    </span>
+                  ) : (
+                    <span className="text-xs font-bold px-2 py-0.5 rounded bg-gris text-gris-dark">
+                      ⚙ Personalizado
+                    </span>
+                  )}
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex gap-1 flex-wrap">
@@ -359,16 +400,18 @@ export function UsuariosTab() {
                   <div className="flex gap-1 justify-end">
                     <button
                       onClick={() => {
-                        // Hidrato el state de edición con `addons` derivados.
-                        // Si rol_base no está seteado (perfil legacy o
-                        // 'personalizado'), tratamos al usuario como
-                        // personalizado: rol_base=null, addons=[].
-                        const rolBase = (u.rol_base ?? null) as RolBase | null
+                        // Hidrato el state de edición con `addons` derivados
+                        // de los permisos y con rol_key/personalizado (si el
+                        // perfil es anterior a los roles editables, salen de
+                        // rol_base).
+                        const rolBase = u.rol_base ?? null
                         const addons  = deriveAddons(rolBase, u.permisos)
                         setEditando({
                           ...u,
-                          rol_base:    rolBase,
-                          obras_scope: u.obras_scope ?? 'todas',
+                          rol_base:      rolBase,
+                          obras_scope:   u.obras_scope ?? 'todas',
+                          rol_key:       rolKeyDe(u),
+                          personalizado: esPersonalizado(u),
                           addons,
                         })
                         setRolOriginal(u.rol)
@@ -422,10 +465,10 @@ export function UsuariosTab() {
           </div>
         ) : usuariosFiltrados.length === 0 ? (
           <div className="bg-white rounded-card shadow-card p-6 text-center text-gris-dark text-sm italic">
-            Sin resultados para "{busqueda}".
+            Sin resultados para &quot;{busqueda}&quot;.
           </div>
         ) : usuariosFiltrados.map(u => {
-          const addons = deriveAddons((u.rol_base ?? null) as RolBase | null, u.permisos)
+          const addons = deriveAddons(u.rol_base ?? null, u.permisos)
           return (
             <div key={u.id} className="bg-white rounded-card shadow-card p-3 flex flex-col gap-2">
               <div className="flex items-start gap-3">
@@ -439,7 +482,7 @@ export function UsuariosTab() {
                       <span className="ml-1.5 text-[10px] text-naranja font-bold">(Vos)</span>
                     )}
                   </div>
-                  <div className="text-[11px] text-gris-dark truncate">{(u as any).email ?? '—'}</div>
+                  <div className="text-[11px] text-gris-dark truncate">{(u as { email?: string | null }).email ?? '—'}</div>
                 </div>
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded flex-shrink-0 ${u.activo ? 'bg-verde-light text-verde' : 'bg-rojo-light text-rojo'}`}>
                   {u.activo ? '✓' : '✕'}
@@ -450,18 +493,15 @@ export function UsuariosTab() {
               <div className="flex flex-wrap gap-1">
                 {u.rol === 'admin' ? (
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#EEE8FF] text-[#5A2D82]">⭐ Admin</span>
-                ) : u.rol_base ? (
+                ) : rolKeyDe(u) ? (
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-azul-light text-azul-mid">
-                    {getPlantilla(u.rol_base)?.label ?? u.rol_base}
-                  </span>
-                ) : u.tipo_usuario === 'personalizado' ? (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gris text-gris-dark">⚙ Personalizado</span>
-                ) : u.tipo_usuario ? (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-azul-light text-azul-mid">
-                    {getPlantilla(u.tipo_usuario === 'encargado_deposito' ? 'deposito' : u.tipo_usuario)?.label ?? u.tipo_usuario}
+                    {rolLabel(u)}
                   </span>
                 ) : (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gris text-gris-dark">Operador</span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gris text-gris-dark">⚙ Personalizado</span>
+                )}
+                {u.rol !== 'admin' && rolKeyDe(u) && esPersonalizado(u) && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amarillo-light text-[#7A5500]">ajustes propios</span>
                 )}
                 {addons.map(addonKey => (
                   <span
@@ -489,9 +529,16 @@ export function UsuariosTab() {
               <div className="flex gap-1 justify-end pt-1 border-t border-gris">
                 <button
                   onClick={() => {
-                    const rolBase = (u.rol_base ?? null) as RolBase | null
+                    const rolBase = u.rol_base ?? null
                     const addonsList = deriveAddons(rolBase, u.permisos)
-                    setEditando({ ...u, rol_base: rolBase, obras_scope: u.obras_scope ?? 'todas', addons: addonsList })
+                    setEditando({
+                      ...u,
+                      rol_base:      rolBase,
+                      obras_scope:   u.obras_scope ?? 'todas',
+                      rol_key:       rolKeyDe(u),
+                      personalizado: esPersonalizado(u),
+                      addons:        addonsList,
+                    })
                     setRolOriginal(u.rol)
                   }}
                   className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors"
@@ -604,35 +651,16 @@ export function UsuariosTab() {
                 variant="primary"
                 loading={updating}
                 onClick={() => {
-                  // Defensa en profundidad: si el rol final es admin,
-                  // forzamos limpieza de permisos/modulos/rol_base aunque
-                  // el wizard ya lo haga al elegir la card "Admin". Evita
-                  // que queden residuos si el admin abre el modal y solo
-                  // cambia el rol con el toggle viejo (que ya no existe
-                  // pero queda como guardia futura).
-                  const dto: Partial<Profile> & { email?: string } = editando.rol === 'admin'
-                    ? {
-                        nombre:       editando.nombre,
-                        email:        editando.email || undefined,
-                        rol:          'admin',
-                        modulos:      [],
-                        activo:       editando.activo,
-                        permisos:     {},
-                        rol_base:     null,
-                        obras_scope:  'todas',
-                        tipo_usuario: null,
-                      }
-                    : {
-                        nombre:       editando.nombre,
-                        email:        editando.email || undefined,
-                        rol:          editando.rol,
-                        modulos:      editando.modulos,
-                        activo:       editando.activo,
-                        permisos:     editando.permisos,
-                        rol_base:     editando.rol_base,
-                        obras_scope:  editando.obras_scope,
-                        tipo_usuario: editando.tipo_usuario ?? null,
-                      }
+                  // `permisosDto` limpia todo si el rol final es admin
+                  // (defensa en profundidad aunque el wizard ya lo haga al
+                  // elegir la card "Administrador") y normaliza
+                  // rol_key/personalizado. Sin `modulos` ni `tipo_usuario`.
+                  const dto: ActualizarUsuarioDto = {
+                    nombre: editando.nombre,
+                    email:  editando.email || undefined,
+                    activo: editando.activo,
+                    ...permisosDto(editando),
+                  }
                   const doUpdate = () => update({ id: editando.id, dto })
                   // Si se está promoviendo a admin (operador → admin), pedir
                   // doble confirmación. No aplica si ya era admin (cambios
@@ -815,13 +843,13 @@ function UsuarioForm({
 }) {
   // Adapter: el wizard recibe/emite WizardData; el form maneja un superset.
   const wizardData: WizardData = {
-    rol:          data.rol,
-    rol_base:     ((data as Partial<Profile>).rol_base ?? null) as RolBase | null,
-    obras_scope:  ((data as Partial<Profile>).obras_scope ?? 'todas') as ObrasScope,
-    addons:       (data as { addons?: string[] }).addons ?? [],
-    modulos:      data.modulos,
-    permisos:     data.permisos,
-    tipo_usuario: data.tipo_usuario ?? null,
+    rol:           data.rol,
+    rol_key:       data.rol_key ?? null,
+    rol_base:      data.rol_base ?? null,
+    personalizado: data.personalizado ?? false,
+    obras_scope:   data.obras_scope ?? 'todas',
+    addons:        data.addons,
+    permisos:      data.permisos,
   }
   const onWizardChange = (patch: Partial<WizardData>) => {
     onChange({ ...data, ...patch } as typeof data)

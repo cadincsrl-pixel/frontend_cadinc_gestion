@@ -7,127 +7,52 @@
  * Bloques visibles (no stepper, decisión de UX: admin ve todo de un
  * vistazo y entiende qué está otorgando):
  *
- *   1. **Rol base**: 6 cards (admin + 5 presets + personalizado).
+ *   1. **Rol**: cards admin + roles de la tabla `roles` (activos, por orden;
+ *      mientras carga el API se muestra el seed `PRESETS_FALLBACK`) +
+ *      personalizado.
  *   2. **Obras visibles**: radio "todas" / "asignadas". Se auto-setea según
- *      el preset elegido pero el admin puede cambiarlo.
- *   3. **Capacidades extra (add-ons)**: checkboxes filtrados por preset
- *      O — en modo Personalizado — por módulos tildados.
+ *      el rol elegido pero el admin puede cambiarlo.
+ *   3. **Capacidades extra (add-ons)**: checkboxes filtrados por el
+ *      `rol_base` del rol O — en modo Personalizado — por módulos tildados.
  *   4. **Edición fina (solo personalizado)**: matriz CRUD por módulo +
  *      sub-bloque "Capacidades" (ver_pii, ver_costos, administrar_obras,
- *      resolver_items, forzar_despacho) por módulo.
+ *      resolver_items, forzar_despacho…) por módulo.
+ *
+ * `personalizado`: al elegir un rol queda en false (el usuario sigue al rol y
+ * "Aplicar rol" lo actualiza). Pasa a true al elegir Personalizado, al tocar
+ * la matriz/tabs/flags o al tildar un add-on (con add-ons los permisos ya
+ * difieren del rol: si "Aplicar rol" los pisara, el usuario perdería p.ej.
+ * su acceso a tarja). `rol_key` se conserva en Personalizado para saber de
+ * qué rol partió.
  *
  * El componente NO maneja `nombre`, `email`, `password`, `activo`, ni la
  * sección de obras asignadas — esos siguen viviendo en `UsuariosTab`.
  *
  * Output: cuando cambia algo, llama a `onChange(updates)` con un patch
  * parcial del form. El parent decide qué hacer (merge, validar, persistir).
+ * Ya no emite `modulos` (el backend lo deriva de `permisos`) ni `tipo_usuario`.
  */
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import {
-  PRESETS, ADDONS, aplicarPreset, getPreset, getAddOn, computeTipoUsuario,
-  type RolBase, type ObrasScope, type AddOn,
+  PRESETS_FALLBACK, ADDONS, aplicarPreset, getAddOn, addonAplicaA, rolToPreset, modulosDePermisos, canonJson,
+  type PresetBase, type RolBase, type ObrasScope, type AddOn,
 } from '@/lib/permisos/plantillas'
+import { ACCIONES, FLAGS_BOOLEAN, MODULOS_CON_OBRAS_SCOPE, type FlagBoolean } from '@/lib/permisos/flags'
 import { TABS_POR_MODULO } from '@/lib/config/modulo-tabs'
+import { useRoles, rolesActivos } from '../hooks/useRoles'
 import type { Permisos, ModuloPermisos, Accion, Modulo } from '@/types/domain.types'
-
-const ACCIONES: { key: Accion; label: string }[] = [
-  { key: 'lectura',       label: 'Ver'      },
-  { key: 'creacion',      label: 'Crear'    },
-  { key: 'actualizacion', label: 'Editar'   },
-  { key: 'eliminacion',   label: 'Eliminar' },
-]
-
-// Módulos donde el override `obras_scope` por módulo tiene sentido.
-// (Filtran por usuario_obras según `modulo`.)
-const MODULOS_CON_OBRAS_SCOPE: ReadonlySet<string> = new Set([
-  'tarja', 'certificaciones', 'logistica', 'herramientas',
-])
-
-// Toggles secundarios mostrados en el sub-bloque "Capacidades" de cada módulo
-// en modo Personalizado. Se muestran SIEMPRE (es modo experto) pero algunos
-// solo afectan a ciertos módulos en el código del frontend; los `title` lo
-// documentan.
-type FlagBoolean = 'ver_pii' | 'ver_costos' | 'administrar_obras' | 'resolver_items' | 'forzar_despacho' | 'aprobar_ajustes_stock' | 'gestionar_cobros' | 'gestionar_docs' | 'anular_cobros' | 'costos_oficina' | 'asistente_ia'
-const FLAGS_BOOLEAN: { key: FlagBoolean; label: string; help: string; modulos?: string[] }[] = [
-  {
-    key: 'ver_pii',
-    label: 'Ver datos personales (PII)',
-    help: 'Permite ver DNI, dirección, teléfono y fecha de nacimiento. Aplica principalmente a tarja.',
-  },
-  {
-    key: 'ver_costos',
-    label: 'Ver costos',
-    help: 'Muestra precios, totales y tarifas. Aplica a tarja y otros módulos sensibles.',
-  },
-  {
-    key: 'administrar_obras',
-    label: 'Administrar obras (catálogo)',
-    help: 'Crear, editar, archivar y eliminar la entidad obra. Independiente de los permisos sobre horas. Solo tiene efecto en tarja.',
-    modulos: ['tarja'],
-  },
-  {
-    key: 'resolver_items',
-    label: 'Resolver items',
-    help: 'Comprar / despachar / enviar / rechazar items de solicitudes. Solo tiene efecto en certificaciones.',
-    modulos: ['certificaciones'],
-  },
-  {
-    key: 'forzar_despacho',
-    label: 'Forzar despacho',
-    help: 'Override que permite despachar aunque el stock no alcance. Solo tiene efecto en certificaciones.',
-    modulos: ['certificaciones'],
-  },
-  {
-    key: 'aprobar_ajustes_stock',
-    label: 'Aprobar ajustes de stock',
-    help: 'Aprobar o rechazar los ajustes de stock que declaró otro usuario (doble aprobación: quien declara no aprueba). Solo tiene efecto en certificaciones.',
-    modulos: ['certificaciones'],
-  },
-  {
-    key: 'gestionar_cobros',
-    label: 'Gestionar cobros',
-    help: 'Cargar y editar cobros de clientes sin ser admin (eliminar cobros sigue siendo admin-only). Solo tiene efecto en alquiler.',
-    modulos: ['alquiler'],
-  },
-  {
-    key: 'gestionar_docs',
-    label: '📄 Documentación de máquinas',
-    help: 'Cargar y renovar la póliza de seguro, aseguradora y vencimiento de las máquinas de alquiler sin ser admin. No habilita el resto del ABM de flota (crear/editar/borrar máquinas sigue admin-only). Quitar la póliza requiere además permiso de eliminación en el módulo. Solo tiene efecto en alquiler.',
-    modulos: ['alquiler'],
-  },
-  {
-    key: 'anular_cobros',
-    label: '🗑 Anular cobros (facturación)',
-    help: 'Eliminar cobros PENDIENTES de facturación (los tramos vuelven a quedar por cobrar) sin tener eliminación de todo el módulo logística. Los cobros ya marcados como cobrados no se pueden borrar: primero hay que revertirlos a pendiente. Solo tiene efecto en logística.',
-    modulos: ['logistica'],
-  },
-  {
-    key: 'costos_oficina',
-    label: '🏢 Costos de oficina (ver y administrar)',
-    help: 'Habilita el tab "Costos oficina" del dashboard: da acceso a los sueldos del personal administrativo y a su prorrateo por obra, incluida la carga de personas, sueldos y asignaciones. Dato sensible — otorgar solo a quien deba ver esos montos. Solo tiene efecto en tarja.',
-    modulos: ['tarja'],
-  },
-  {
-    key: 'asistente_ia',
-    label: '🤖 Asistente IA',
-    help: 'Habilita el chat de consultas sobre los datos del ERP. El asistente responde SOLO con datos que el usuario ya puede ver: cada consulta valida sus permisos y sus obras permitidas (no es un bypass). Consume créditos de API en cada pregunta. Solo tiene efecto en tarja.',
-    modulos: ['tarja'],
-  },
-]
 
 // El estado del wizard. El parent puede tener más campos (nombre, email…)
 // pero el wizard solo lee/escribe estos.
 export interface WizardData {
-  rol:          'admin' | 'operador'
-  rol_base:     RolBase | null     // null = personalizado
-  obras_scope:  ObrasScope
-  addons:       string[]
-  modulos:      string[]
-  permisos:     Permisos
-  // Compat legacy: el endpoint sigue persistiendo `tipo_usuario` para que
-  // los reportes/queries viejos no rompan. Lo computamos al guardar.
-  tipo_usuario?: string | null
+  rol:           'admin' | 'operador'
+  rol_key:       string | null      // rol del que parte; null = admin o personalizado puro
+  rol_base:      RolBase | null     // identidad que usa el backend (capataz / jefe_obra)
+  personalizado: boolean            // true = ajustes propios; "Aplicar rol" no lo pisa
+  obras_scope:   ObrasScope
+  addons:        string[]
+  permisos:      Permisos
 }
 
 export type WizardPatch = Partial<WizardData>
@@ -138,86 +63,145 @@ interface Props {
   modulos:  Modulo[]
 }
 
-// Cards de elección de rol (incluye admin y personalizado, además de los 5 presets).
+// Cards de elección de rol (incluye admin y personalizado, además de los roles).
 type RolOpcion =
   | { kind: 'admin' }
   | { kind: 'personalizado' }
-  | { kind: 'preset'; key: RolBase; label: string; descripcion: string }
-
-const OPCIONES_ROL: RolOpcion[] = [
-  { kind: 'admin' },
-  ...PRESETS.map(p => ({ kind: 'preset' as const, key: p.key, label: p.label, descripcion: p.descripcion })),
-  { kind: 'personalizado' },
-]
+  | { kind: 'rol'; preset: PresetBase; inactivo?: boolean }
 
 export function PermisosWizard({ data, onChange, modulos }: Props) {
-  // Derivar el "estado" del rol elegido para pintar la UI.
-  const rolElegido: 'admin' | RolBase | 'personalizado' = data.rol === 'admin'
-    ? 'admin'
-    : data.rol_base ?? 'personalizado'
+  const { data: roles } = useRoles()
 
-  const isAdmin = rolElegido === 'admin'
-  const isPersonalizado = rolElegido === 'personalizado'
+  // Roles del API (activos, por orden). Mientras carga —o si el endpoint
+  // falla— caemos al seed en código para que el modal no quede sin opciones.
+  const presets = useMemo<PresetBase[]>(
+    () => (roles ? rolesActivos(roles).map(rolToPreset) : PRESETS_FALLBACK),
+    [roles],
+  )
+
+  // El admin eligió la card "Personalizado" en esta sesión del modal (estado
+  // de UI: hasta que edite algo, sus permisos siguen coincidiendo con el rol
+  // y no alcanzaría con mirar `personalizado`).
+  const [modoManual, setModoManual] = useState(false)
+
+  const presetDelRol = useMemo<PresetBase | null>(
+    () => (data.rol_key ? presets.find(p => p.key === data.rol_key) ?? null : null),
+    [presets, data.rol_key],
+  )
+  // "Rol + add-ons" se muestra en modo rol (card del rol + add-ons tildados)
+  // aunque `personalizado` sea true, si los permisos coinciden exactamente con
+  // aplicar el rol con esos add-ons. Si además hubo ediciones manuales, cae a
+  // Personalizado con la matriz.
+  const coincideConRol = useMemo(() => {
+    if (!presetDelRol) return false
+    return canonJson(aplicarPreset(presetDelRol, data.addons).permisos) === canonJson(data.permisos)
+  }, [presetDelRol, data.addons, data.permisos])
+
+  // Derivar el "estado" del rol elegido para pintar la UI.
+  const isAdmin = data.rol === 'admin'
+  const isPersonalizado = !isAdmin && (!data.rol_key || modoManual || (data.personalizado && !coincideConRol))
+  const presetActual = !isAdmin && !isPersonalizado ? presetDelRol : null
+  const rolElegido: string = isAdmin ? 'admin' : isPersonalizado ? 'personalizado' : (data.rol_key ?? 'personalizado')
+
+  const opciones = useMemo<RolOpcion[]>(() => {
+    const out: RolOpcion[] = [
+      { kind: 'admin' },
+      ...presets.map(p => ({ kind: 'rol' as const, preset: p })),
+    ]
+    // Rol elegido que ya no está activo (o que el API no devolvió): lo
+    // mostramos igual para que el admin vea de qué parte y pueda cambiarlo.
+    if (!isAdmin && !isPersonalizado && data.rol_key && !presets.some(p => p.key === data.rol_key)) {
+      const rolInactivo = roles?.find(r => r.key === data.rol_key)
+      out.push({
+        kind: 'rol',
+        inactivo: true,
+        preset: rolInactivo ? rolToPreset(rolInactivo) : {
+          key:                 data.rol_key,
+          label:               data.rol_key,
+          descripcion:         'Rol inactivo o eliminado. Elegí otro rol o Personalizado.',
+          modulos:             modulosDePermisos(data.permisos),
+          permisos:            data.permisos,
+          obras_scope_default: data.obras_scope,
+          rol_base:            data.rol_base,
+        },
+      })
+    }
+    out.push({ kind: 'personalizado' })
+    return out
+  }, [presets, roles, isAdmin, isPersonalizado, data.rol_key, data.permisos, data.obras_scope, data.rol_base])
+
+  // Módulos tildados (existen en permisos, aun sin lectura) y módulos con
+  // acceso real (lectura=true, que es lo que el backend persiste en modulos).
+  const modulosTildados  = useMemo(() => Object.keys(data.permisos), [data.permisos])
+  const modulosOtorgados = useMemo(() => modulosDePermisos(data.permisos), [data.permisos])
+
+  // Label del rol del que parte un personalizado (para la card y el resumen).
+  const labelRolOrigen = data.rol_key
+    ? (presets.find(p => p.key === data.rol_key)?.label ?? roles?.find(r => r.key === data.rol_key)?.label ?? data.rol_key)
+    : null
 
   // Add-ons disponibles según el modo:
-  // - Preset: filtra por aplicaA.includes(preset).
-  // - Personalizado: filtra por moduloTarget incluido en data.modulos
-  //   (o sin moduloTarget si "se ofrece siempre"). Permite que un user
-  //   custom como Cristian (depósito + herramientas) pueda volver a
-  //   tildar "Cargar horas propias" si tiene tarja activa.
+  // - Rol: filtra por aplicaA contra el rol_base del rol.
+  // - Personalizado: filtra por moduloTarget tildado (o sin moduloTarget si
+  //   "se ofrece siempre"). Permite que un user custom como Cristian
+  //   (depósito + herramientas) pueda volver a tildar "Cargar horas
+  //   propias" si tiene tarja activa.
   const addonsDisponibles = useMemo<AddOn[]>(() => {
     if (isAdmin) return []
     if (isPersonalizado) {
-      return ADDONS.filter(a => !a.moduloTarget || data.modulos.includes(a.moduloTarget))
+      return ADDONS.filter(a => !a.moduloTarget || modulosTildados.includes(a.moduloTarget))
     }
-    return ADDONS.filter(a => a.aplicaA.includes(rolElegido as RolBase))
-  }, [isAdmin, isPersonalizado, rolElegido, data.modulos])
+    return ADDONS.filter(a => addonAplicaA(a, data.rol_base))
+  }, [isAdmin, isPersonalizado, data.rol_base, modulosTildados])
 
   // ── Handlers ────────────────────────────────────────────────────
 
   function elegirRol(opcion: RolOpcion) {
+    setModoManual(opcion.kind === 'personalizado')
     if (opcion.kind === 'admin') {
       onChange({
         rol:           'admin',
+        rol_key:       null,
         rol_base:      null,
+        personalizado: false,
         obras_scope:   'todas',
         addons:        [],
-        modulos:       [],
         permisos:      {},
-        tipo_usuario:  null,
       })
       return
     }
     if (opcion.kind === 'personalizado') {
+      // Conservamos rol_key/rol_base: registran de qué rol partió y la
+      // identidad que usa el backend. No tocamos permisos (el admin edita
+      // la matriz a mano); los addons que sigan disponibles quedan tildados.
       onChange({
         rol:           'operador',
-        rol_base:      null,
-        // Mantengo el scope actual (o 'todas' por default).
+        personalizado: true,
         obras_scope:   data.obras_scope ?? 'todas',
-        addons:        [],
-        // No tocamos permisos/modulos: el admin edita la matriz a mano.
-        tipo_usuario:  'personalizado',
+        addons:        data.addons.filter(k => {
+          const a = getAddOn(k)
+          return !!a && (!a.moduloTarget || modulosTildados.includes(a.moduloTarget))
+        }),
       })
       return
     }
-    // Preset.
-    const preset = getPreset(opcion.key)!
+    // Rol.
+    const { preset } = opcion
     // Preservamos los addons que ya estaban tildados Y son compatibles con
-    // el nuevo preset. Caso típico: el admin estaba en Personalizado con
+    // el nuevo rol. Caso típico: el admin estaba en Personalizado con
     // 'cargar_horas_propias' tildado y cambia a 'Encargado de depósito'
     // (que también lo permite) — no tiene sentido obligarlo a re-tildar.
-    const addonsCompatibles = data.addons.filter(k =>
-      getAddOn(k)?.aplicaA.includes(opcion.key)
-    )
-    const { permisos, modulos: mods } = aplicarPreset(opcion.key, addonsCompatibles)
+    const addonsCompatibles = data.addons.filter(k => addonAplicaA(getAddOn(k), preset.rol_base))
+    const { permisos } = aplicarPreset(preset, addonsCompatibles)
     onChange({
       rol:           'operador',
-      rol_base:      opcion.key,
+      rol_key:       preset.key,
+      rol_base:      preset.rol_base,
+      // Con addons los permisos ya difieren del rol: son ajustes propios.
+      personalizado: addonsCompatibles.length > 0,
       obras_scope:   preset.obras_scope_default,
       addons:        addonsCompatibles,
       permisos,
-      modulos:       mods,
-      tipo_usuario:  computeTipoUsuario(opcion.key, addonsCompatibles),
     })
   }
 
@@ -237,29 +221,19 @@ export function PermisosWizard({ data, onChange, modulos }: Props) {
       ? baseAddons.filter(k => k !== addonKey)
       : [...baseAddons, addonKey]
 
-    let newPermisos: Permisos
-    if (isPersonalizado) {
-      // En personalizado no hay preset al que volver: aplicamos/revertimos
-      // sobre los permisos actuales.
-      newPermisos = tildado ? addon.revertir(data.permisos) : addon.aplicar(data.permisos)
-    } else {
-      // Con preset, recomputamos desde cero para mantener idempotencia
-      // y borrar correctamente cualquier residuo de un addon ya destildado.
-      const result = aplicarPreset(rolElegido as RolBase, newAddons)
-      newPermisos = result.permisos
+    if (isPersonalizado || !presetActual) {
+      // Sin rol al que volver: aplicamos/revertimos sobre los permisos actuales.
+      const newPermisos = tildado ? addon.revertir(data.permisos) : addon.aplicar(data.permisos)
+      onChange({ addons: newAddons, permisos: newPermisos, personalizado: true })
+      return
     }
-    const newModulos = Object.keys(newPermisos)
-
-    // En este punto ya descartamos isAdmin con el return temprano.
-    const tipo = rolElegido !== 'personalizado'
-      ? computeTipoUsuario(rolElegido as RolBase, newAddons)
-      : 'personalizado'
-
+    // Con rol, recomputamos desde cero para mantener idempotencia y borrar
+    // correctamente cualquier residuo de un addon ya destildado.
+    const { permisos } = aplicarPreset(presetActual, newAddons)
     onChange({
-      addons:       newAddons,
-      permisos:     newPermisos,
-      modulos:      newModulos,
-      tipo_usuario: tipo,
+      addons:        newAddons,
+      permisos,
+      personalizado: newAddons.length > 0,
     })
   }
 
@@ -268,15 +242,16 @@ export function PermisosWizard({ data, onChange, modulos }: Props) {
   }
 
   // ── Modo personalizado: edición fina de matriz CRUD ────────────
+  // Toda edición manual marca `personalizado: true`.
 
   function togglePermiso(modKey: string, accion: Accion) {
     const modPerm = data.permisos[modKey] ?? {}
     const nuevoPerm: ModuloPermisos = { ...modPerm, [accion]: !modPerm[accion] }
-    onChange({ permisos: { ...data.permisos, [modKey]: nuevoPerm } })
+    onChange({ permisos: { ...data.permisos, [modKey]: nuevoPerm }, personalizado: true })
   }
 
   function toggleModulo(modKey: string) {
-    const tiene = data.modulos.includes(modKey)
+    const tiene = modulosTildados.includes(modKey)
     if (tiene) {
       const nuevosPermisos = { ...data.permisos }
       delete nuevosPermisos[modKey]
@@ -286,15 +261,13 @@ export function PermisosWizard({ data, onChange, modulos }: Props) {
         const a = getAddOn(k)
         return !(a?.moduloTarget === modKey)
       })
-      onChange({
-        modulos:  data.modulos.filter(m => m !== modKey),
-        permisos: nuevosPermisos,
-        addons:   newAddons,
-      })
+      onChange({ permisos: nuevosPermisos, addons: newAddons, personalizado: true })
     } else {
+      // Arranca con lectura: sin ella el módulo no aparece para el usuario
+      // (el backend deriva `modulos` de los módulos con lectura).
       onChange({
-        modulos:  [...data.modulos, modKey],
-        permisos: { ...data.permisos, [modKey]: data.permisos[modKey] ?? {} },
+        permisos:      { ...data.permisos, [modKey]: data.permisos[modKey] ?? { lectura: true } },
+        personalizado: true,
       })
     }
   }
@@ -313,14 +286,15 @@ export function PermisosWizard({ data, onChange, modulos }: Props) {
     }
     if (newTabs.length === allTabs.length) newTabs = [] // "todos"
     onChange({
-      permisos: { ...data.permisos, [modKey]: { ...modPerm, tabs: newTabs } },
+      permisos:      { ...data.permisos, [modKey]: { ...modPerm, tabs: newTabs } },
+      personalizado: true,
     })
   }
 
   function toggleFlag(modKey: string, flag: FlagBoolean) {
     const modPerm = data.permisos[modKey] ?? {}
     const actual = modPerm[flag]
-    // Tri-state: undefined (default true) → false → true → undefined.
+    // Tri-state: undefined (auto) → false → true → undefined.
     let next: boolean | undefined
     if (actual === undefined)      next = false
     else if (actual === false)     next = true
@@ -332,7 +306,7 @@ export function PermisosWizard({ data, onChange, modulos }: Props) {
     } else {
       nuevoPerm[flag] = next
     }
-    onChange({ permisos: { ...data.permisos, [modKey]: nuevoPerm } })
+    onChange({ permisos: { ...data.permisos, [modKey]: nuevoPerm }, personalizado: true })
   }
 
   function cambiarObrasScopeModulo(modKey: string, value: 'sin-override' | 'todas' | 'asignadas') {
@@ -343,7 +317,7 @@ export function PermisosWizard({ data, onChange, modulos }: Props) {
     } else {
       nuevoPerm.obras_scope = value
     }
-    onChange({ permisos: { ...data.permisos, [modKey]: nuevoPerm } })
+    onChange({ permisos: { ...data.permisos, [modKey]: nuevoPerm }, personalizado: true })
   }
 
   // ── Hint contextual: addons que setean obras_scope='asignadas' ────
@@ -379,19 +353,21 @@ export function PermisosWizard({ data, onChange, modulos }: Props) {
           1. Rol
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {OPCIONES_ROL.map(op => {
-            const key = op.kind === 'admin' ? 'admin' : op.kind === 'personalizado' ? 'personalizado' : op.key
+          {opciones.map(op => {
+            const key = op.kind === 'admin' ? 'admin' : op.kind === 'personalizado' ? 'personalizado' : op.preset.key
             const elegido = key === rolElegido
             const label = op.kind === 'admin'
               ? '⭐ Administrador'
               : op.kind === 'personalizado'
                 ? '⚙ Personalizado'
-                : op.label
+                : op.inactivo ? `${op.preset.label} (inactivo)` : op.preset.label
             const desc = op.kind === 'admin'
               ? 'Acceso total al sistema, todos los módulos.'
               : op.kind === 'personalizado'
-                ? 'Edición manual de módulos y permisos.'
-                : op.descripcion
+                ? (isPersonalizado && labelRolOrigen
+                    ? `Ajustes propios sobre «${labelRolOrigen}». Los cambios del rol no se le aplican automáticamente.`
+                    : 'Edición manual de módulos y permisos.')
+                : op.preset.descripcion
             return (
               <button
                 key={key}
@@ -405,6 +381,7 @@ export function PermisosWizard({ data, onChange, modulos }: Props) {
                       : 'bg-naranja-light border-naranja'
                     : 'bg-white border-gris-mid hover:border-gris-dark'
                   }
+                  ${op.kind === 'rol' && op.inactivo ? 'opacity-70' : ''}
                 `}
               >
                 <div className="font-bold text-sm text-carbon">{label}</div>
@@ -481,6 +458,11 @@ export function PermisosWizard({ data, onChange, modulos }: Props) {
               )
             })}
           </div>
+          {!isPersonalizado && data.addons.length > 0 && (
+            <div className="mt-2 text-[11px] text-gris-dark bg-gris/40 rounded-md px-2 py-1.5">
+              ℹ Con capacidades extra el usuario queda con <b>ajustes propios</b>: «Aplicar rol» desde Plantillas no lo pisa.
+            </div>
+          )}
           {hintsObrasScope.length > 0 && (
             <div className="mt-2 flex flex-col gap-1">
               {hintsObrasScope.map((h, i) => (
@@ -507,7 +489,7 @@ export function PermisosWizard({ data, onChange, modulos }: Props) {
           </div>
           <div className="flex flex-col gap-3">
             {modulos.map(m => {
-              const tiene = data.modulos.includes(m.key)
+              const tiene = modulosTildados.includes(m.key)
               const modPerm = (data.permisos[m.key] ?? {}) as ModuloPermisos & { obras_scope?: ObrasScope }
               const obrasScopeModulo: 'sin-override' | 'todas' | 'asignadas' =
                 modPerm.obras_scope === 'todas' ? 'todas'
@@ -554,6 +536,11 @@ export function PermisosWizard({ data, onChange, modulos }: Props) {
                           )
                         })}
                       </div>
+                      {modPerm.lectura !== true && (
+                        <div className="mt-2 text-[11px] text-rojo font-semibold">
+                          Sin «Ver» el módulo no aparece para el usuario.
+                        </div>
+                      )}
                       {TABS_POR_MODULO[m.key] && (
                         <div className="mt-3 pt-2 border-t border-gris">
                           <div className="text-[10px] font-bold text-gris-dark uppercase tracking-wider mb-1.5">
@@ -649,16 +636,13 @@ export function PermisosWizard({ data, onChange, modulos }: Props) {
         </section>
       )}
 
-      {/* Resumen del rol elegido (informativo, especialmente para presets) */}
-      {!isAdmin && !isPersonalizado && (
+      {/* Resumen (informativo): módulos con acceso real = los que tienen lectura */}
+      {!isAdmin && (
         <div className="bg-gris/40 rounded-lg p-2.5 text-[11px] text-gris-dark">
           <span className="font-bold">Módulos otorgados:</span>{' '}
-          {data.modulos.length === 0 ? '—' : data.modulos.join(', ')}
+          {modulosOtorgados.length === 0 ? '—' : modulosOtorgados.join(', ')}
         </div>
       )}
     </div>
   )
 }
-
-// `computeTipoUsuario` se importa de `lib/permisos/plantillas.ts`
-// (su inverso `deriveAddons` también vive ahí).

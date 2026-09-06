@@ -164,5 +164,8 @@ export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
 export async function apiDelete<T>(path: string, body?: unknown): Promise<T> {
   const res = await authFetch('DELETE', path, body)
   if (!res.ok) throw await parseError(res, 'DELETE', path)
+  // 204 No Content (ej. DELETE /api/usuarios/roles/:key): no hay JSON que
+  // parsear; `res.json()` tiraría SyntaxError sobre un body vacío.
+  if (res.status === 204) return undefined as T
   return res.json() as Promise<T>
 }
