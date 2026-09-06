@@ -175,8 +175,8 @@ export function PagosCliente({ obraCod, obraNom, puedeCrear, puedeEditar, puedeE
             </div>
           )}
         </div>
-        {puedeCrear && !esLlaveEnMano && (
-          <Button variant="primary" size="sm" onClick={abrirNuevo}>💲 Registrar pago</Button>
+        {!esLlaveEnMano && (
+          <Button variant="primary" size="sm" onClick={abrirNuevo} disabled={!puedeCrear} title={puedeCrear ? undefined : 'Sin permiso para registrar pagos'}>💲 Registrar pago</Button>
         )}
       </div>
       {cobros.length === 0 ? (
@@ -198,14 +198,10 @@ export function PagosCliente({ obraCod, obraNom, puedeCrear, puedeEditar, puedeE
                     className="text-sm p-2 min-w-[36px] min-h-[36px] flex items-center justify-center rounded hover:bg-azul-light text-gris-dark hover:text-azul transition-colors shrink-0">📎</button>
                 )}
                 <span className="font-mono font-bold text-verde shrink-0">{fmtM(Number(c.monto))}</span>
-                {puedeEditar && (
-                  <button onClick={() => abrirEditar(c)} title="Editar pago"
-                    className="text-sm p-2 min-w-[36px] min-h-[36px] flex items-center justify-center rounded hover:bg-gris transition-colors text-gris-dark shrink-0">✏️</button>
-                )}
-                {puedeEliminar && (
-                  <button onClick={() => eliminar(c)} title="Eliminar pago"
-                    className="text-sm p-2 min-w-[36px] min-h-[36px] flex items-center justify-center rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors shrink-0">✕</button>
-                )}
+                <button onClick={() => abrirEditar(c)} disabled={!puedeEditar} title={puedeEditar ? 'Editar pago' : 'Sin permiso para editar pagos'}
+                  className="text-sm p-2 min-w-[36px] min-h-[36px] flex items-center justify-center rounded hover:bg-gris transition-colors text-gris-dark shrink-0 disabled:opacity-40 disabled:cursor-not-allowed">✏️</button>
+                <button onClick={() => eliminar(c)} disabled={!puedeEliminar} title={puedeEliminar ? 'Eliminar pago' : 'Sin permiso para eliminar pagos'}
+                  className="text-sm p-2 min-w-[36px] min-h-[36px] flex items-center justify-center rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors shrink-0 disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
               </div>
             )
           })}

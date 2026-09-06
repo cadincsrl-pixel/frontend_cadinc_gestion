@@ -11,9 +11,11 @@ import { Button } from '@/components/ui/Button'
 import { Input }  from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
+import { usePermisos } from '@/hooks/usePermisos'
 
 export function ConfiguracionTab() {
   const toast = useToast()
+  const { puedeCrear, puedeEditar } = usePermisos('caja')
   const { data: conceptos = [] } = useConceptos()
   const { data: centros   = [] } = useCentrosCosto()
 
@@ -65,7 +67,7 @@ export function ConfiguracionTab() {
       <div>
         <div className="flex items-center justify-between mb-2">
           <h3 className="font-display text-lg tracking-wider text-azul">📝 Conceptos</h3>
-          <Button variant="secondary" size="sm" onClick={() => setShowFormConcepto(p => !p)}>
+          <Button variant="secondary" size="sm" onClick={() => setShowFormConcepto(p => !p)} disabled={!puedeCrear} title={puedeCrear ? undefined : 'Sin permiso para crear conceptos'}>
             {showFormConcepto ? 'Cancelar' : '＋ Concepto'}
           </Button>
         </div>
@@ -111,7 +113,9 @@ export function ConfiguracionTab() {
                 </div>
                 <button
                   onClick={() => handleToggleConcepto(c.id, c.activo)}
-                  className={`text-xs px-3 py-1 rounded-full font-bold transition-colors ${
+                  disabled={!puedeEditar}
+                  title={puedeEditar ? undefined : 'Sin permiso para editar conceptos'}
+                  className={`text-xs px-3 py-1 rounded-full font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                     c.activo
                       ? 'bg-verde/10 text-verde hover:bg-verde/20'
                       : 'bg-gris text-gris-dark hover:bg-gris-dark/20'
@@ -129,7 +133,7 @@ export function ConfiguracionTab() {
       <div>
         <div className="flex items-center justify-between mb-2">
           <h3 className="font-display text-lg tracking-wider text-azul">🏷️ Centros de Costo</h3>
-          <Button variant="secondary" size="sm" onClick={() => setShowFormCentro(p => !p)}>
+          <Button variant="secondary" size="sm" onClick={() => setShowFormCentro(p => !p)} disabled={!puedeCrear} title={puedeCrear ? undefined : 'Sin permiso para crear centros de costo'}>
             {showFormCentro ? 'Cancelar' : '＋ Centro'}
           </Button>
         </div>
@@ -159,7 +163,9 @@ export function ConfiguracionTab() {
                 <span className={`font-semibold text-sm ${c.activo ? 'text-carbon' : 'text-gris-dark line-through'}`}>{c.nombre}</span>
                 <button
                   onClick={() => handleToggleCentro(c.id, c.activo)}
-                  className={`text-xs px-3 py-1 rounded-full font-bold transition-colors ${
+                  disabled={!puedeEditar}
+                  title={puedeEditar ? undefined : 'Sin permiso para editar centros de costo'}
+                  className={`text-xs px-3 py-1 rounded-full font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                     c.activo
                       ? 'bg-verde/10 text-verde hover:bg-verde/20'
                       : 'bg-gris text-gris-dark hover:bg-gris-dark/20'

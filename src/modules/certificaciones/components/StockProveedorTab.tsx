@@ -169,9 +169,11 @@ export function StockProveedorTab() {
                           />
                         </td>
                         <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
-                          {item.estado === 'en_proveedor' && puedeCrear && (
+                          {item.estado === 'en_proveedor' && (
                             <Button
                               size="sm"
+                              disabled={!puedeCrear}
+                              title={puedeCrear ? undefined : 'Sin permiso para retirar de proveedor'}
                               onClick={() => setModalRetiro({ proveedor_id: item.proveedor_id, nombre: grp.nombre, obra_cod: item.obra_cod ?? '' })}
                             >📤 Retirar</Button>
                           )}
@@ -222,11 +224,13 @@ export function StockProveedorTab() {
                         Precio unit. <span className="font-mono font-bold">{fmtM(item.precio_unit)}</span>
                       </div>
                     )}
-                    {item.estado === 'en_proveedor' && puedeCrear && (
+                    {item.estado === 'en_proveedor' && (
                       <div className="mt-3" onClick={(e) => e.stopPropagation()}>
                         <Button
                           size="sm"
                           className="w-full"
+                          disabled={!puedeCrear}
+                          title={puedeCrear ? undefined : 'Sin permiso para retirar de proveedor'}
                           onClick={() => setModalRetiro({ proveedor_id: item.proveedor_id, nombre: grp.nombre, obra_cod: item.obra_cod ?? '' })}
                         >📤 Retirar</Button>
                       </div>

@@ -12,6 +12,7 @@ import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toISO, getViernes, getSemLabel } from '@/lib/utils/dates'
 import type { Categoria, UpdateCategoriaDto } from '@/types/domain.types'
+import { usePermisos } from '@/hooks/usePermisos'
 
 const schemaNuevo = z.object({
   nom: z.string().min(1, 'El nombre es requerido'),
@@ -29,6 +30,11 @@ type FormEditData = z.infer<typeof schemaEdit>
 
 export function CategoriasTab() {
   const toast = useToast()
+  // El backend exige `tarja.eliminacion` + flag `ver_pii` para crear/editar/
+  // borrar categorías (categorias.routes.ts); acá se replica para deshabilitar.
+  const { puedeEliminar, verPii } = usePermisos('tarja')
+  const puedeGestionar = puedeEliminar && verPii
+  const sinPermisoTitle = puedeGestionar ? undefined : 'Requiere permiso de eliminación en tarja y ver datos personales'
   const { data: categorias = [], isLoading } = useCategorias()
   const { mutate: create, isPending: creating } = useCreateCategoria()
   const { mutate: update, isPending: updating } = useUpdateCategoria()
@@ -133,7 +139,7 @@ export function CategoriasTab() {
             Define los roles y tarifas globales. Cada obra puede personalizar sus propias tarifas.
           </p>
         </div>
-        <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)}>
+        <Button variant="primary" size="sm" onClick={() => setModalNuevo(true)} disabled={!puedeGestionar} title={sinPermisoTitle}>
           ＋ Nueva categoría
         </Button>
       </div>
@@ -199,13 +205,17 @@ export function CategoriasTab() {
                     <div className="flex gap-1 justify-end">
                       <button
                         onClick={() => openEdit(cat)}
-                        className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors"
+                        disabled={!puedeGestionar}
+                        title={sinPermisoTitle}
+                        className="text-xs font-bold px-2 py-1 rounded hover:bg-gris transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         ✏️
                       </button>
                       <button
                         onClick={() => handleDelete(cat)}
-                        className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors"
+                        disabled={!puedeGestionar}
+                        title={sinPermisoTitle}
+                        className="text-xs font-bold px-2 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         ✕
                       </button>

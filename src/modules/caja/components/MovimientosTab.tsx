@@ -8,6 +8,7 @@ import {
   type Movimiento, type CreateMovimientoDto,
 } from '../hooks/useCaja'
 import { useObras } from '@/modules/tarja/hooks/useObras'
+import { usePermisos } from '@/hooks/usePermisos'
 import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
 import { Combobox } from '@/components/ui/Combobox'
@@ -26,6 +27,7 @@ function fmtMonto(n: number) {
 
 export function MovimientosTab() {
   const toast = useToast()
+  const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('caja')
   const { data: movimientos = [], isLoading } = useMovimientos()
   const { data: conceptos   = [] }            = useConceptos()
   const { data: centros     = [] }            = useCentrosCosto()
@@ -203,7 +205,7 @@ export function MovimientosTab() {
           />
         </div>
 
-        <Button variant="primary" size="sm" onClick={openCreate}>＋ Movimiento</Button>
+        <Button variant="primary" size="sm" onClick={openCreate} disabled={!puedeCrear} title={puedeCrear ? undefined : 'Sin permiso para cargar movimientos de caja'}>＋ Movimiento</Button>
       </div>
 
       {/* Tabla */}
@@ -251,8 +253,8 @@ export function MovimientosTab() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <button onClick={() => openEdit(m)} className="text-xs px-2 py-1 rounded hover:bg-gris text-gris-dark transition-colors">✏️</button>
-                          <button onClick={() => handleDelete(m)} className="text-xs px-2 py-1 rounded hover:bg-rojo/10 text-gris-dark hover:text-rojo transition-colors">✕</button>
+                          <button onClick={() => openEdit(m)} disabled={!puedeEditar} title={puedeEditar ? undefined : 'Sin permiso para editar movimientos de caja'} className="text-xs px-2 py-1 rounded hover:bg-gris text-gris-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed">✏️</button>
+                          <button onClick={() => handleDelete(m)} disabled={!puedeEliminar} title={puedeEliminar ? undefined : 'Sin permiso para eliminar movimientos de caja'} className="text-xs px-2 py-1 rounded hover:bg-rojo/10 text-gris-dark hover:text-rojo transition-colors disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
                         </div>
                       </td>
                     </tr>

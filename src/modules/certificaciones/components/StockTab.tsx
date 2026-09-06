@@ -106,7 +106,11 @@ const TIPO_CFG: Record<string, { label: string; color: string }> = {
 export function StockTab() {
   const toast = useToast()
   const perfiles = usePerfilesMap()
-  const { puedeEliminar: puedeAjustar } = usePermisos('certificaciones')
+  const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('certificaciones')
+  // El import masivo de Excel dispara ajustes de inventario en lote: se sigue
+  // gateando con `eliminacion` (criterio histórico), más estricto que el
+  // `creacion` que pide el backend para un movimiento suelto.
+  const puedeAjustar = puedeEliminar
   const { data: rubros = [] } = useStockRubros()
   const { data: materiales = [], isLoading } = useStockMateriales()
   const { data: proveedores = [] } = useProveedores()
@@ -593,20 +597,18 @@ export function StockTab() {
           >
             📊 Exportar Excel
           </button>
-          {puedeAjustar && (
-            <>
-              <input ref={importRef} type="file" accept=".xlsx,.xls" className="hidden"
-                onChange={e => { if (e.target.files?.[0]) importarExcel(e.target.files[0]); e.target.value = '' }} />
-              <button
-                onClick={() => importRef.current?.click()}
-                className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-amarillo-light text-[#7A5500] border border-[#E0A800]/30 text-xs font-bold hover:bg-[#E0A800] hover:text-white transition-colors min-h-[36px]"
-              >
-                📥 Importar Excel
-              </button>
-            </>
-          )}
-          <Button variant="secondary" size="sm" onClick={() => { formRubro.reset({ nombre: '', icono: '' }); setModalNuevoRubro(true) }}>+ Rubro</Button>
-          <Button variant="primary" size="sm" onClick={() => { formNuevo.reset({ rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0, proveedor_id: '', alias: '', usa_color: false, clase: 'material' }); setModalNuevo(true) }}>+ Material</Button>
+          <input ref={importRef} type="file" accept=".xlsx,.xls" className="hidden"
+            onChange={e => { if (e.target.files?.[0]) importarExcel(e.target.files[0]); e.target.value = '' }} />
+          <button
+            onClick={() => importRef.current?.click()}
+            disabled={!puedeAjustar}
+            title={puedeAjustar ? undefined : 'Sin permiso para importar ajustes de stock'}
+            className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-amarillo-light text-[#7A5500] border border-[#E0A800]/30 text-xs font-bold hover:bg-[#E0A800] hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed min-h-[36px]"
+          >
+            📥 Importar Excel
+          </button>
+          <Button variant="secondary" size="sm" disabled={!puedeCrear} title={puedeCrear ? undefined : 'Sin permiso para crear rubros'} onClick={() => { formRubro.reset({ nombre: '', icono: '' }); setModalNuevoRubro(true) }}>+ Rubro</Button>
+          <Button variant="primary" size="sm" disabled={!puedeCrear} title={puedeCrear ? undefined : 'Sin permiso para crear materiales'} onClick={() => { formNuevo.reset({ rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0, proveedor_id: '', alias: '', usa_color: false, clase: 'material' }); setModalNuevo(true) }}>+ Material</Button>
         </div>
       </div>
 
@@ -661,11 +663,11 @@ export function StockTab() {
                       <td className="px-4 py-2.5 text-right font-mono text-xs text-gris-dark">{m.precio_ref > 0 ? fmtM(m.precio_ref) : '—'}</td>
                       <td className="px-4 py-2.5">
                         <div className="flex gap-1 justify-end">
-                          <button onClick={() => abrirEntrada(m)} className="text-[10px] font-bold px-2 py-1 rounded bg-verde-light text-verde hover:opacity-80">+ Entrada</button>
-                          <button onClick={() => setModalAjuste(m)} title="Declarar diferencia (queda pendiente de aprobación)" className="text-[10px] font-bold px-2 py-1 rounded bg-naranja-light text-naranja-dark hover:opacity-80">↔ Diferencia</button>
+                          <button onClick={() => abrirEntrada(m)} disabled={!puedeCrear} title={puedeCrear ? undefined : 'Sin permiso para registrar movimientos de stock'} className="text-[10px] font-bold px-2 py-1 rounded bg-verde-light text-verde hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed">+ Entrada</button>
+                          <button onClick={() => setModalAjuste(m)} disabled={!puedeCrear} title={puedeCrear ? 'Declarar diferencia (queda pendiente de aprobación)' : 'Sin permiso para declarar diferencias de stock'} className="text-[10px] font-bold px-2 py-1 rounded bg-naranja-light text-naranja-dark hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed">↔ Diferencia</button>
                           <button onClick={() => setModalHistorial(m)} className="text-[10px] font-bold px-2 py-1 rounded bg-azul-light text-azul hover:opacity-80">Historial</button>
-                          <button onClick={() => abrirEditar(m)} aria-label={`Editar ${m.nombre}`} title="Editar" className="text-xs px-1.5 py-1 rounded hover:bg-gris transition-colors">✏️</button>
-                          <button onClick={() => setModalEliminar(m)} aria-label={`Eliminar ${m.nombre}`} title="Eliminar" className="text-xs px-1.5 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors">✕</button>
+                          <button onClick={() => abrirEditar(m)} disabled={!puedeEditar} aria-label={`Editar ${m.nombre}`} title={puedeEditar ? 'Editar' : 'Sin permiso para editar materiales'} className="text-xs px-1.5 py-1 rounded hover:bg-gris transition-colors disabled:opacity-40 disabled:cursor-not-allowed">✏️</button>
+                          <button onClick={() => setModalEliminar(m)} disabled={!puedeEliminar} aria-label={`Eliminar ${m.nombre}`} title={puedeEliminar ? 'Eliminar' : 'Sin permiso para eliminar materiales'} className="text-xs px-1.5 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
                         </div>
                       </td>
                     </tr>
@@ -703,11 +705,11 @@ export function StockTab() {
                     <div>Precio ref.: <span className="font-mono">{m.precio_ref > 0 ? fmtM(m.precio_ref) : '—'}</span></div>
                   </div>
                   <div className="grid grid-cols-2 gap-2 mt-3">
-                    <button onClick={() => abrirEntrada(m)} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 min-h-[36px]">+ Entrada</button>
-                    <button onClick={() => setModalAjuste(m)} className="text-xs font-bold px-3 py-1.5 rounded bg-naranja-light text-naranja-dark hover:opacity-80 min-h-[36px]">↔ Diferencia</button>
+                    <button onClick={() => abrirEntrada(m)} disabled={!puedeCrear} title={puedeCrear ? undefined : 'Sin permiso para registrar movimientos de stock'} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed min-h-[36px]">+ Entrada</button>
+                    <button onClick={() => setModalAjuste(m)} disabled={!puedeCrear} title={puedeCrear ? undefined : 'Sin permiso para declarar diferencias de stock'} className="text-xs font-bold px-3 py-1.5 rounded bg-naranja-light text-naranja-dark hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed min-h-[36px]">↔ Diferencia</button>
                     <button onClick={() => setModalHistorial(m)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul hover:opacity-80 min-h-[36px]">Historial</button>
-                    <button onClick={() => abrirEditar(m)} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-gris-mid min-h-[36px]">✏️ Editar</button>
-                    <button onClick={() => setModalEliminar(m)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 min-h-[36px]">✕ Eliminar</button>
+                    <button onClick={() => abrirEditar(m)} disabled={!puedeEditar} title={puedeEditar ? undefined : 'Sin permiso para editar materiales'} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-gris-mid disabled:opacity-40 disabled:cursor-not-allowed min-h-[36px]">✏️ Editar</button>
+                    <button onClick={() => setModalEliminar(m)} disabled={!puedeEliminar} title={puedeEliminar ? undefined : 'Sin permiso para eliminar materiales'} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed min-h-[36px]">✕ Eliminar</button>
                   </div>
                 </div>
               )

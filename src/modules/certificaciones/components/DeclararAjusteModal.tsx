@@ -9,6 +9,7 @@ import {
   useCreateMovimiento,
   subirComprobanteAjuste,
 } from '../hooks/useStock'
+import { usePermisos } from '@/hooks/usePermisos'
 
 const SUB_MOTIVOS = [
   { value: 'faltante_fisico',    label: 'Faltante físico',                 sign: 'neg', help: 'No aparece. Potencial extravío o robo.' },
@@ -34,6 +35,7 @@ interface Props {
 
 export function DeclararAjusteModal({ material, onClose, onSuccess }: Props) {
   const toast = useToast()
+  const { puedeCrear } = usePermisos('certificaciones')
   const { mutateAsync: createMov, isPending: creating } = useCreateMovimiento()
   const [signo,      setSigno]      = useState<'-' | '+'>('-')
   const [cantidadAbs, setCantidadAbs] = useState('')
@@ -130,7 +132,7 @@ export function DeclararAjusteModal({ material, onClose, onSuccess }: Props) {
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" loading={creating || subiendo} onClick={handleConfirmar}>
+          <Button variant="primary" loading={creating || subiendo} disabled={!puedeCrear} title={puedeCrear ? undefined : 'Sin permiso para declarar diferencias de stock'} onClick={handleConfirmar}>
             ✓ Declarar (queda pendiente)
           </Button>
         </>

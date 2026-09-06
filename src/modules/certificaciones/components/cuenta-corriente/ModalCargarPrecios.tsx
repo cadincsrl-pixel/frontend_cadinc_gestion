@@ -6,6 +6,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { InputMonto } from '@/components/ui/InputMonto'
 import { useToast } from '@/components/ui/Toast'
+import { usePermisos } from '@/hooks/usePermisos'
 import { useGuardarPreciosMCC } from '../../hooks/useCuentaCliente'
 import { fetchCuentaRenglonesTodos, CUENTA_CORRIENTE_KEY } from '../../hooks/useCuentaCorriente'
 import type { CuentaRenglon } from '@/types/domain.types'
@@ -31,6 +32,9 @@ interface Props {
 
 export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
   const toast = useToast()
+  // El PATCH del ítem exige `actualizacion` + flag `resolver_items` (solicitudes.routes.ts).
+  const { puedeEditar, resolverItems } = usePermisos('certificaciones')
+  const puedeCargarPrecios = puedeEditar && resolverItems
   const { data: rows = [], isLoading } = useQuery({
     queryKey: [...CUENTA_CORRIENTE_KEY, 'obra-todos', obraCod],
     queryFn:  () => fetchCuentaRenglonesTodos({ obra_cod: obraCod }),
@@ -91,7 +95,7 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
       footer={
         <>
           <Button variant="secondary" onClick={cerrar}>Cancelar</Button>
-          <Button variant="primary" loading={isPending} disabled={cambios.length === 0} onClick={guardar}>
+          <Button variant="primary" loading={isPending} disabled={!puedeCargarPrecios || cambios.length === 0} title={puedeCargarPrecios ? undefined : 'Sin permiso para cargar precios (requiere actualización y resolver ítems)'} onClick={guardar}>
             ✓ Guardar precios ({cambios.length})
           </Button>
         </>
