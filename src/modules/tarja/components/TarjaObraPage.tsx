@@ -11,7 +11,8 @@ import { useHorasSemana, useHorasObra, useUpsertHorasLote, useLimpiarSemana } fr
 import { useHsExtras } from '@/modules/tarja/hooks/useHsExtras'
 import { useTarifasObra } from '@/modules/tarja/hooks/useTarifas'
 import { useCierresObra, useCreateCierre, useUpdateCierre } from '@/modules/tarja/hooks/useCierres'
-import { semanaCerrada as calcSemanaCerrada } from '@/lib/utils/cierres'
+import { semanaCerrada as calcSemanaCerrada, motivoErrorGuardado } from '@/lib/utils/cierres'
+import { useCatObraSemana } from '@/modules/tarja/hooks/useCatObra'
 import { useContratistas } from '@/modules/tarja/hooks/useContratistas'
 import { useTarjaStore } from '@/modules/tarja/store/tarja.store'
 import { getSemDays, toISO, getViernes, getSemLabel } from '@/lib/utils/dates'
@@ -77,7 +78,8 @@ export function TarjaObraPage({ obraCod }: Props) {
     }
     const semParam = searchParams.get('sem')
     if (semParam && /^\d{4}-\d{2}-\d{2}$/.test(semParam)) {
-      setSemActual(new Date(semParam + 'T12:00:00'))
+      // ?sem= puede venir con cualquier día: normalizar al viernes de esa semana.
+      setSemActual(getViernes(new Date(semParam + 'T12:00:00')))
     }
   }, [searchParams, setSemActual, scopeAsignadas])
 
@@ -117,6 +119,10 @@ export function TarjaObraPage({ obraCod }: Props) {
   // El signal de "vacía" sale de `horasData` (registros reales en DB), NO
   // de `personal`: usePersonalSemana backfillea placeholders visuales de la
   // semana anterior, que taparían este disparo (ver useAutoTraerSemanaAnterior).
+  // Solo la semana en curso o la anterior: entrar a una semana vieja vacía no
+  // debe sembrar placeholders en 0 (después figuraban como "semana con
+  // actividad" en Cierres).
+  const semanaReciente = semActual.getTime() >= getViernes(new Date()).getTime() - 7 * 86_400_000
   useAutoTraerSemanaAnterior({
     obraCod,
     semActual,
@@ -125,9 +131,11 @@ export function TarjaObraPage({ obraCod }: Props) {
     // puedeEditar además de puedeCrear: el PUT /horas/lote exige
     // 'actualizacion' — con solo 'creacion' el backend rechaza la copia y
     // el toast de error saltaría en cada semana vacía sin solución posible.
-    enabled: puedeCrear && puedeEditar && !soloLectura && !obra?.archivada,
+    enabled: puedeCrear && puedeEditar && !soloLectura && !obra?.archivada && semanaReciente,
   })
   const { data: hsExtrasData = [] } = useHsExtras(obraCod, desde, hasta)
+  // Overrides de categoría de la semana: el CSV usa la misma fórmula que la grilla.
+  const { data: catObraData = [] } = useCatObraSemana(obraCod, desde)
   const { mutate: upsertLote } = useUpsertHorasLote()
   const { mutate: limpiarSemana } = useLimpiarSemana()
 
@@ -205,16 +213,25 @@ export function TarjaObraPage({ obraCod }: Props) {
   }, [])
 
   // ── Handlers ──
-  function handleAutoFill(hs: number, legs: string[]) {
+  // Auto-fill: solo los días elegidos (por defecto lunes a viernes) y solo
+  // celdas vacías: una hora ya cargada no se pisa. Antes llenaba los 7 días,
+  // sábado y domingo incluidos, y sobreescribía lo tipeado.
+  function handleAutoFill(hs: number, legs: string[], dias: number[]) {
+    const cargadas = new Set(horasData.filter(h => h.horas > 0).map(h => `${h.leg}|${h.fecha}`))
     const horas = legs.flatMap(leg =>
-      days.map(d => ({ fecha: toISO(d), leg, horas: hs }))
+      dias
+        .map(i => days[i])
+        .filter((d): d is Date => d !== undefined)
+        .map(d => ({ fecha: toISO(d), leg, horas: hs }))
+        .filter(h => !cargadas.has(`${h.leg}|${h.fecha}`)),
     )
+    if (!horas.length) { toast('No quedaban celdas vacías para completar', 'warn'); return }
     upsertLote(
       { obra_cod: obraCod, horas },
       {
         onSuccess: () =>
-          toast(`✓ ${hs}hs cargadas para ${legs.length} trabajador${legs.length !== 1 ? 'es' : ''}`, 'ok'),
-        onError: () => toast('Error al cargar horas', 'err'),
+          toast(`✓ ${hs}hs en ${horas.length} celda${horas.length !== 1 ? 's' : ''} de ${legs.length} trabajador${legs.length !== 1 ? 'es' : ''}`, 'ok'),
+        onError: (err) => toast(motivoErrorGuardado(err, 'No se pudieron cargar las horas'), 'err'),
       }
     )
   }
@@ -225,7 +242,7 @@ export function TarjaObraPage({ obraCod }: Props) {
       { obraCod, desde, hasta },
       {
         onSuccess: () => toast('✓ Semana limpiada', 'ok'),
-        onError: () => toast('Error al limpiar', 'err'),
+        onError: (err) => toast(motivoErrorGuardado(err, 'No se pudo limpiar la semana'), 'err'),
       }
     )
   }
@@ -233,7 +250,7 @@ export function TarjaObraPage({ obraCod }: Props) {
   function handleCSV() {
     if (!obra) return
     if (!personal.length) { toast('No hay trabajadores asignados', 'warn'); return }
-    exportarCSVTarja(obraCod, obra.nom, semActual, personal, categorias, horasData, tarifas)
+    exportarCSVTarja(obraCod, obra.nom, semActual, personal, categorias, horasData, tarifas, catObraData, hsExtrasData)
     toast('⬇ CSV exportado', 'ok')
   }
 

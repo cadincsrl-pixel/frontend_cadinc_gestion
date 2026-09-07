@@ -8,6 +8,7 @@ import { usePersonal } from '@/modules/tarja/hooks/usePersonal'
 import { useContratistasObra, useCertificacionesObra } from '@/modules/tarja/hooks/useContratistas'
 import { apiGet } from '@/lib/api/client'
 import { useQuery } from '@tanstack/react-query'
+import { getViernes, toISO } from '@/lib/utils/dates'
 import { useToast } from '@/components/ui/Toast'
 import type { Obra, Hora } from '@/types/domain.types'
 
@@ -27,11 +28,8 @@ function ObraArchivadasDetalle({ obra }: { obra: Obra }) {
   const horasPorSemana = useMemo(() => {
     const map = new Map<string, Hora[]>()
     for (const h of horas) {
-      // Calcular el viernes de esa fecha
-      const d = new Date(h.fecha + 'T12:00:00')
-      const diff = (5 - d.getDay() + 7) % 7
-      d.setDate(d.getDate() + diff)
-      const key = d.toISOString().slice(0, 10)
+      // Viernes de la semana (vie→jue) de esa fecha: el anterior, no el siguiente.
+      const key = toISO(getViernes(new Date(h.fecha + 'T12:00:00')))
       if (!map.has(key)) map.set(key, [])
       map.get(key)!.push(h)
     }

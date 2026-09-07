@@ -301,7 +301,7 @@ export function TarjaResumenPage() {
           </div>
           <div className="bg-white rounded-card shadow-card p-3 text-center">
             <div className="font-mono text-2xl font-bold text-naranja">
-              {new Set(horasSemana.filter(h => semDays.has(h.fecha)).map(h => h.leg)).size}
+              {new Set(horasSemana.filter(h => h.horas > 0 && semDays.has(h.fecha)).map(h => h.leg)).size}
             </div>
             <div className="text-[11px] text-gris-dark font-bold uppercase tracking-wide">Trab. esta semana</div>
           </div>

@@ -5,7 +5,7 @@ import {
   useRopaCategorias,
   useRopaUltimasEntregas,
   useRopaEntregasPorLeg,
-  useCreateRopaEntrega,
+  useCreateRopaEntregasLote,
   useDeleteRopaEntrega,
   useCreateRopaCategoria,
   useUpdateRopaCategoria,
@@ -13,6 +13,7 @@ import {
 } from '../hooks/useRopa'
 import { usePersonal } from '../hooks/usePersonal'
 import { toISO } from '@/lib/utils/dates'
+import { venceEl, entregaVencida } from '@/lib/utils/ropa'
 import { esActivo } from '@/lib/utils/personal'
 import { useActividadPersonal, legsActivosDe } from '../hooks/useActividadPersonal'
 import { Button }     from '@/components/ui/Button'
@@ -35,14 +36,6 @@ const BTN_DISABLED = 'disabled:opacity-40 disabled:cursor-not-allowed'
 
 function hoy() { return toISO(new Date()) }
 
-function diffMeses(fechaISO: string): number {
-  const desde = new Date(fechaISO + 'T12:00:00')
-  const ahora = new Date()
-  return (ahora.getFullYear() - desde.getFullYear()) * 12 +
-    (ahora.getMonth() - desde.getMonth()) +
-    (ahora.getDate() < desde.getDate() ? -1 : 0)
-}
-
 function fmtFecha(s: string) {
   const [y, m, d] = s.split('-')
   const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']
@@ -54,18 +47,6 @@ function fmtCorta(s: string) {
   return `${d}/${m}/${y!.slice(2)}`
 }
 
-// Fecha en que vence una entrega: fecha_entrega + meses_vencimiento de la categoría.
-function fechaVencimiento(fechaISO: string, meses: number): string {
-  const d = new Date(fechaISO + 'T12:00:00')
-  d.setMonth(d.getMonth() + meses)
-  return toISO(d)
-}
-
-function estaVencido(leg: string, catId: number, ultimaMap: Map<string, RopaEntrega>, mesesVencimiento: number): boolean {
-  const ult = ultimaMap.get(`${leg}|${catId}`)
-  if (!ult) return true
-  return diffMeses(ult.fecha_entrega) >= mesesVencimiento
-}
 
 // ── Modal nueva entrega ──────────────────────────────────────────────────────
 interface ModalEntregaProps {
@@ -79,7 +60,7 @@ interface ModalEntregaProps {
 function ModalEntrega({ open, legInicial, personalActivo, onClose }: ModalEntregaProps) {
   const toast = useToast()
   const { data: categorias = [] } = useRopaCategorias()
-  const { mutate: create, isPending } = useCreateRopaEntrega()
+  const { mutateAsync: crearLote, isPending } = useCreateRopaEntregasLote()
 
   const [leg,    setLeg]    = useState(legInicial)
   const [catIds, setCatIds] = useState<number[]>([])
@@ -100,17 +81,16 @@ function ModalEntrega({ open, legInicial, personalActivo, onClose }: ModalEntreg
     if (!leg)           { toast('Seleccioná un trabajador', 'err'); return }
     if (!catIds.length) { toast('Seleccioná al menos un elemento', 'err'); return }
     setSaving(true)
-    let errored = false
-    for (const catId of catIds) {
-      await new Promise<void>(resolve => {
-        create(
-          { leg, categoria_id: catId, fecha_entrega: fecha, obs: obs || null },
-          { onSuccess: () => resolve(), onError: () => { errored = true; resolve() } }
-        )
-      })
+    try {
+      // Un solo request: entran todas las prendas o ninguna (antes eran N POST
+      // y un reintento duplicaba las que sí habían entrado).
+      await crearLote({ leg, categoria_ids: catIds, fecha_entrega: fecha, obs: obs || null })
+    } catch (e) {
+      setSaving(false)
+      toast(`No se pudo registrar la entrega: ${e instanceof Error ? e.message : 'error de red'}`, 'err')
+      return
     }
     setSaving(false)
-    if (errored) { toast('Error al guardar algún elemento', 'err'); return }
     toast(`✓ ${catIds.length} entrega${catIds.length > 1 ? 's' : ''} registrada${catIds.length > 1 ? 's' : ''}`, 'ok')
     setCatIds([]); setObs('')
     onClose()
@@ -330,7 +310,7 @@ function ModalHistorial({ open, onClose, leg, nombre, catMap, puedeElim, onDelet
               </div>
               <div className="flex flex-col gap-1">
                 {movsOrdenados.map((e, idx) => {
-                  const vence     = cat ? fechaVencimiento(e.fecha_entrega, cat.meses_vencimiento) : null
+                  const vence     = cat ? venceEl(e.fecha_entrega, cat.meses_vencimiento) : null
                   const yaVencida = !!vence && vence <= hoy()
                   return (
                     <div key={e.id} className={`flex items-center justify-between px-3 py-2 rounded-lg ${idx === 0 ? 'bg-azul-light' : 'bg-gris'}`}>
@@ -442,7 +422,7 @@ export function RopaPage() {
     const base = !soloVencidos
       ? trabajadoresBusqueda
       : trabajadoresBusqueda.filter(p =>
-          categorias.some(cat => estaVencido(p.leg, cat.id, ultimaEntrega, cat.meses_vencimiento ?? 6))
+          categorias.some(cat => entregaVencida(ultimaEntrega.get(`${p.leg}|${cat.id}`)?.fecha_entrega, cat.meses_vencimiento ?? 6))
         )
 
     const claves = new Map<string, [string, string]>()
@@ -452,8 +432,8 @@ export function RopaPage() {
       for (const cat of categorias) {
         const ult = ultimaEntrega.get(`${p.leg}|${cat.id}`)
         if (!ult) { faltante = true; continue }
-        const v = fechaVencimiento(ult.fecha_entrega, cat.meses_vencimiento ?? 6)
-        if (v < minReal) minReal = v
+        const v = venceEl(ult.fecha_entrega, cat.meses_vencimiento ?? 6)
+        if (v !== null && v < minReal) minReal = v
       }
       claves.set(p.leg, [faltante ? '0000-00-00' : minReal, minReal])
     }
@@ -560,9 +540,9 @@ export function RopaPage() {
                 {paginaPersonal.map(p => {
                   const items = categorias.map(cat => {
                     const ult     = ultimaEntrega.get(`${p.leg}|${cat.id}`)
-                    const meses   = ult ? diffMeses(ult.fecha_entrega) : null
-                    const vencido = meses === null || meses >= (cat.meses_vencimiento ?? 6)
-                    return { cat, ult, meses, vencido }
+                    const vence   = ult ? venceEl(ult.fecha_entrega, cat.meses_vencimiento ?? 6) : null
+                    const vencido = entregaVencida(ult?.fecha_entrega, cat.meses_vencimiento ?? 6)
+                    return { cat, ult, vence, vencido }
                   })
                   const tieneAlgunVencido = items.some(i => i.vencido)
 
@@ -577,13 +557,12 @@ export function RopaPage() {
                       {/* Categorías en línea */}
                       <td className="px-4 py-3 align-middle">
                         <div className="flex flex-wrap gap-1.5">
-                          {items.map(({ cat, ult, meses, vencido }) => {
-                            const vence = ult ? fechaVencimiento(ult.fecha_entrega, cat.meses_vencimiento ?? 6) : null
+                          {items.map(({ cat, ult, vence, vencido }) => {
                             return (
                               <span
                                 key={cat.id}
                                 title={ult
-                                  ? `${cat.nombre}: entregado ${fmtFecha(ult.fecha_entrega)} (${meses}m) · ${vencido ? 'venció' : 'vence'} ${fmtFecha(vence!)}`
+                                  ? `${cat.nombre}: entregado ${fmtFecha(ult.fecha_entrega)} · ${vence ? `${vencido ? 'venció' : 'vence'} ${fmtFecha(vence)}` : 'sin vencimiento'}`
                                   : `${cat.nombre}: sin entregas`}
                                 className={`
                                   inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-bold border
@@ -599,7 +578,7 @@ export function RopaPage() {
                                     <span className="font-semibold opacity-70 uppercase text-[9px] tracking-wide">Entrega</span>
                                     <span className="whitespace-nowrap">{fmtCorta(ult.fecha_entrega)}</span>
                                     <span className="font-semibold opacity-70 uppercase text-[9px] tracking-wide">{vencido ? 'Venció' : 'Vence'}</span>
-                                    <span className="whitespace-nowrap">{fmtCorta(vence!)}</span>
+                                    <span className="whitespace-nowrap">{vence ? fmtCorta(vence) : 'nunca'}</span>
                                   </span>
                                 ) : '—'}
                               </span>
@@ -639,7 +618,7 @@ export function RopaPage() {
             page={page}
             total={trabajadoresFinal.length}
             pageSize={pageSize}
-            onChange={p => { setPage(p); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+            onChange={p => { setPage(p); (document.querySelector('main') ?? window).scrollTo({ top: 0, behavior: 'smooth' }) }}
             onPageSizeChange={handlePageSizeChange}
           />
         </>

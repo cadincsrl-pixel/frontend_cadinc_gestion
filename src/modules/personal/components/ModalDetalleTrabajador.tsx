@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
+import { getVHGlobalEnFecha } from '@/lib/utils/costos'
 import { useObras, useObrasArchivadas } from '@/modules/tarja/hooks/useObras'
 import { useHorasTrabajador } from '@/modules/tarja/hooks/useHoras'
 import { AuditInfo } from '@/components/ui/AuditInfo'
@@ -295,7 +296,7 @@ export function ModalDetalleTrabajador({ open, onClose, trabajador, onEditar }: 
                             </div>
                             {cat && (
                               <div className="text-xs text-gris-dark font-mono">
-                                ${cat.vh}/h
+                                ${getVHGlobalEnFecha(cat, h.desde).toLocaleString('es-AR')}/h
                               </div>
                             )}
                           </div>

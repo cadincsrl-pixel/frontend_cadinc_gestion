@@ -2,7 +2,7 @@ import * as XLSX from 'xlsx'
 import { resumenPrestamos, labelTipoPrestamo } from './prestamos'
 import type { Obra, Certificacion, Contratista, Categoria, Personal, Hora, Tarifa, Prestamo, TarjaHsExtra, ResumenObra } from '@/types/domain.types'
 import { getSemDays, toISO, getSemLabel, getViernesCobro, getViernes, DIAS } from './dates'
-import { totalHsLeg, getHsExtrasLeg, getVHConCatObra, getVHGlobalEnFecha, getCatIdEfectivo } from './costos'
+import { totalHsLeg, getHsExtrasLeg, getVHConCatObra, getCatIdEfectivo, costoLegConCatObra, type CatObraEntry } from './costos'
 import { calcularResumenSemana } from './resumen-semana'
 
 // ══════════════════════════════════════════════════
@@ -167,29 +167,35 @@ export function exportarCSVTarja(
   personal: Personal[],
   categorias: Categoria[],
   horas: Hora[],
-  tarifas: Tarifa[]
+  tarifas: Tarifa[],
+  catObra: CatObraEntry[] = [],
+  hsExtras: TarjaHsExtra[] = [],
 ) {
   const days = getSemDays(semActual)
+  const fechaRef = toISO(days[0]!)
 
   let csv = `TARJA - ${obraNom} - ${getSemLabel(semActual)}\n`
-  csv += `Legajo,Nombre,Categoría,Valor Hora,${days.map((d, i) => DIAS[i] + ' ' + d.getDate()).join(',')},Total Hs,Costo\n`
+  csv += `Legajo,Nombre,Categoría,Valor Hora,${days.map((d, i) => DIAS[i] + ' ' + d.getDate()).join(',')},Hs Extras,Total Hs,Costo\n`
 
+  // Misma fórmula que la grilla y los recibos (CLAUDE.md §5.11): categoría
+  // efectiva con cat_obra, tarifa de obra o precio global vigente al viernes,
+  // horas extras y redondeo al millar por legajo.
   personal.forEach(p => {
-    const cat = categorias.find(c => c.id === p.cat_id)
-    const vh = tarifas
-      .filter(t => t.obra_cod === obraCod && t.cat_id === p.cat_id && t.desde <= toISO(semActual))
-      .sort((a, b) => b.desde.localeCompare(a.desde))[0]?.vh ?? getVHGlobalEnFecha(cat, toISO(semActual))
+    const catId = getCatIdEfectivo(catObra, personal, obraCod, p.leg, fechaRef) ?? p.cat_id
+    const cat = categorias.find(c => c.id === catId)
+    const vh = getVHConCatObra(catObra, personal, categorias, tarifas, obraCod, p.leg, fechaRef)
 
-    let totalHs = 0, totalCosto = 0
+    let totalHs = 0
     const hsDia = days.map(d => {
       const h = horas.find(x => x.obra_cod === obraCod && x.leg === p.leg && x.fecha === toISO(d))
       const val = h?.horas ?? 0
       totalHs += val
-      totalCosto += val * vh
       return val || ''
     })
+    const extras = getHsExtrasLeg(hsExtras, obraCod, p.leg, fechaRef)
+    const costo = costoLegConCatObra(horas, hsExtras, personal, categorias, tarifas, catObra, obraCod, p.leg, days)
 
-    csv += `${p.leg},"${p.nom}","${cat?.nom ?? '—'}",${vh},${hsDia.join(',')},${totalHs || ''},${Math.round(totalCosto / 1000) * 1000}\n`
+    csv += `${p.leg},"${p.nom}","${cat?.nom ?? '—'}",${vh},${hsDia.join(',')},${extras || ''},${(totalHs + extras) || ''},${costo}\n`
   })
 
   const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
@@ -692,7 +698,8 @@ export function generarRecibos(
   }
 
   const win = window.open('', '_blank', 'width=900,height=700')
-  if (!win) return null
+  // Popup bloqueado por el navegador: no es "sin datos", el modal lo distingue.
+  if (!win) throw new Error('POPUP_BLOQUEADO')
 
   win.document.write(`<!DOCTYPE html><html><head>
     <meta charset="UTF-8">

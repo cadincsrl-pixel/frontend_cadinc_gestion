@@ -53,7 +53,13 @@ export function ModalExcelObras({
   const [semUna, setSemUna] = useState('')
   const [semDesde, setSemDesde] = useState('')
   const [semHasta, setSemHasta] = useState('')
-  const [obrasSelec, setObrasSelec] = useState<string[]>(obras.map(o => o.cod))
+  // null = "todas las obras", resuelto al render: en un cold load `obras` llega
+  // vacío al montar y la selección quedaba en 0/N para siempre.
+  const [obrasSelecRaw, setObrasSelecRaw] = useState<string[] | null>(null)
+  const todasLasObras = useMemo(() => obras.map(o => o.cod), [obras])
+  const obrasSelec = obrasSelecRaw ?? todasLasObras
+  const setObrasSelec = (v: string[] | ((prev: string[]) => string[])) =>
+    setObrasSelecRaw(prev => (typeof v === 'function' ? v(prev ?? todasLasObras) : v))
   const [busqueda, setBusqueda] = useState('')
   const [exportModo, setExportModo] = useState<ExportModo>('detallado')
 
@@ -107,7 +113,9 @@ export function ModalExcelObras({
 
   // Wrapper que cierra sobre la data del componente.
   const getVHConCatObraLocal = (obraCod: string, leg: string, fechaRef: string) =>
-    getVHConCatObra(todasCatObra, personal, categorias, tarifas, obraCod, leg, fechaRef)
+    // personalAll, no personal: el de la semana no tiene a los operarios de
+    // otras semanas y el preview subestimaba el costo de un rango.
+    getVHConCatObra(todasCatObra, personalAll, categorias, tarifas, obraCod, leg, fechaRef)
 
 
   // ── Preview calculado ──

@@ -11,7 +11,7 @@ import { useUpsertHorasLote } from '../hooks/useHoras'
 import { useCopiarSemanaAnterior } from '../hooks/useAsignaciones'
 import { usePermisos } from '@/hooks/usePermisos'
 import { fetchPrestamos } from '../hooks/usePrestamos'
-import { getViernes, toISO } from '@/lib/utils/dates'
+import { getViernes, toISO, DIAS } from '@/lib/utils/dates'
 import type { Personal, Categoria, Hora, Tarifa, Obra, Prestamo } from '@/types/domain.types'
 
 // Tooltip de los botones deshabilitados por permiso (undefined = habilitado).
@@ -30,7 +30,7 @@ interface Props {
   obra: Obra
   obraCod: string
   onAgregarTrabajador: () => void
-  onAutoFill: (hs: number, legs: string[]) => void
+  onAutoFill: (hs: number, legs: string[], dias: number[]) => void
   onLimpiar: (legs: string[]) => void
   undoCount?: number
   onUndo?: () => void
@@ -52,9 +52,14 @@ export function ToolbarTarja({
   const [showAutoFill, setShowAutoFill] = useState(false)
   const [horas, setHoras] = useState<string>('8')
   const [seleccionados, setSeleccionados] = useState<string[]>([])
+  // Índices de getSemDays: 0 = viernes … 6 = jueves. Por defecto los días
+  // hábiles (vie + lun a jue); sábado (1) y domingo (2) se eligen a mano.
+  const DIAS_HABILES = [0, 3, 4, 5, 6]
+  const [dias, setDias] = useState<number[]>(DIAS_HABILES)
 
   function handleOpenAutoFill() {
     setSeleccionados(personal.map(p => p.leg))
+    setDias(DIAS_HABILES)
     setShowAutoFill(true)
   }
 
@@ -67,8 +72,8 @@ export function ToolbarTarja({
   function handleConfirmarAutoFill() {
     const hs = parseFloat(horas)
     if (isNaN(hs) || hs <= 0 || hs > 24) return
-    if (!seleccionados.length) return
-    onAutoFill(hs, seleccionados)
+    if (!seleccionados.length || !dias.length) return
+    onAutoFill(hs, seleccionados, dias)
     setShowAutoFill(false)
   }
 
@@ -251,6 +256,26 @@ export function ToolbarTarja({
                 className="w-16 h-9 border-[1.5px] border-gris-mid rounded-lg text-center font-mono font-bold text-sm outline-none focus:border-naranja bg-blanco ml-1"
               />
             </div>
+          </div>
+
+          <div className="flex items-center gap-3 flex-wrap">
+            <label className="text-xs font-bold text-gris-dark uppercase tracking-wider whitespace-nowrap">Días</label>
+            <div className="flex items-center gap-1">
+              {DIAS.map((d, i) => {
+                const sel = dias.includes(i)
+                return (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setDias(prev => prev.includes(i) ? prev.filter(x => x !== i) : [...prev, i].sort((a, b) => a - b))}
+                    className={`h-9 px-2.5 rounded-lg font-bold text-xs transition-colors ${sel ? 'bg-azul text-white' : 'bg-gris text-carbon hover:bg-azul-light hover:text-azul'}`}
+                  >
+                    {d}
+                  </button>
+                )
+              })}
+            </div>
+            <span className="text-[11px] text-gris-dark">Las celdas que ya tienen horas no se pisan.</span>
           </div>
 
           <div>

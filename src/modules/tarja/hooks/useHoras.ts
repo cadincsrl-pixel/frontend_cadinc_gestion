@@ -47,8 +47,11 @@ export function useUpsertHora() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (dto: UpsertHoraDto) => horasApi.upsert(dto),
-    onSuccess: (_, vars) => {
-      qc.invalidateQueries({ queryKey: [...HORAS_KEY, vars.obra_cod] })
+    // Todo lo de horas: la vista de la obra, los conflictos del mismo día en
+    // otras obras, el resumen por obra… Invalidar solo la obra dejaba las
+    // celdas rojas y Cierres viejos hasta un minuto.
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: HORAS_KEY })
     },
   })
 }
@@ -57,8 +60,11 @@ export function useUpsertHorasLote() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (dto: UpsertHorasLoteDto) => horasApi.upsertLote(dto),
-    onSuccess: (_, vars) => {
-      qc.invalidateQueries({ queryKey: [...HORAS_KEY, vars.obra_cod] })
+    // Todo lo de horas: la vista de la obra, los conflictos del mismo día en
+    // otras obras, el resumen por obra… Invalidar solo la obra dejaba las
+    // celdas rojas y Cierres viejos hasta un minuto.
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: HORAS_KEY })
     },
   })
 }

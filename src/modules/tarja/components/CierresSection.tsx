@@ -80,6 +80,7 @@ export function CierresSection({ obraCod }: Props) {
     // Horas de la obra
     todasHoras.forEach(h => {
       if (h.obra_cod !== obraCod) return
+      if (!(h.horas > 0)) return  // placeholders en 0 (copia de semana) no son actividad
       const vie = getViernes(new Date(h.fecha + 'T12:00:00'))
       keysConActividad.add(toISO(vie))
     })
@@ -256,7 +257,7 @@ export function CierresSection({ obraCod }: Props) {
 
                         {sem.cierre?.cerrado_en && (
                           <div className="text-xs text-verde mt-1 font-semibold">
-                            ✓ Cerrado el {formatFecha(sem.cierre.cerrado_en.slice(0, 10))}
+                            ✓ Cerrado el {formatFecha(toISO(new Date(sem.cierre.cerrado_en)))}
                           </div>
                         )}
                         {sem.esAutomatico && (

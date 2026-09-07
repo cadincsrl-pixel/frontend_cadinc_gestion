@@ -163,7 +163,9 @@ function CardOperario({ leg, nombre, movs, saldo, incobrable, puedeCrear, puedeE
 
   const movsOrdenados = [...movs].sort((a, b) => a.created_at.localeCompare(b.created_at))
 
-  const saldado = saldo <= 0
+  // saldo < 0 = se le descontó más de lo prestado: plata a favor del operario.
+  const aFavor = saldo < 0 && incobrable === 0
+  const saldado = saldo <= 0 && !aFavor
   // Saldado a fuerza de incobrable ≠ saldado de verdad: se muestra distinto.
   const porIncobrable = saldado && incobrable > 0
 
@@ -174,7 +176,7 @@ function CardOperario({ leg, nombre, movs, saldo, incobrable, puedeCrear, puedeE
   })
 
   return (
-    <div className={`bg-white rounded-card shadow-card border-l-4 ${porIncobrable ? 'border-gris-mid' : saldado ? 'border-verde' : 'border-naranja'}`}>
+    <div className={`bg-white rounded-card shadow-card border-l-4 ${porIncobrable ? 'border-gris-mid' : (saldado || aFavor) ? 'border-verde' : 'border-naranja'}`}>
       <div className="flex items-center justify-between gap-3 p-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
@@ -183,8 +185,8 @@ function CardOperario({ leg, nombre, movs, saldo, incobrable, puedeCrear, puedeE
               Leg. {leg}
             </span>
           </div>
-          <div className={`font-mono font-bold text-lg mt-0.5 ${porIncobrable ? 'text-gris-dark' : saldado ? 'text-verde' : 'text-naranja-dark'}`}>
-            {porIncobrable ? `✕ Incobrable (${fmtM(incobrable)})` : saldado ? '✓ Saldado' : `Debe ${fmtM(saldo)}`}
+          <div className={`font-mono font-bold text-lg mt-0.5 ${porIncobrable ? 'text-gris-dark' : (saldado || aFavor) ? 'text-verde' : 'text-naranja-dark'}`}>
+            {porIncobrable ? `✕ Incobrable (${fmtM(incobrable)})` : aFavor ? `A favor ${fmtM(-saldo)}` : (saldado || aFavor) ? '✓ Saldado' : `Debe ${fmtM(saldo)}`}
           </div>
         </div>
 
@@ -284,13 +286,13 @@ function CardOperario({ leg, nombre, movs, saldo, incobrable, puedeCrear, puedeE
 
           <div className={`
             mt-3 rounded-lg px-3 py-2 flex items-center justify-between
-            ${porIncobrable ? 'bg-gris' : saldado ? 'bg-verde-light' : 'bg-naranja-light'}
+            ${porIncobrable ? 'bg-gris' : (saldado || aFavor) ? 'bg-verde-light' : 'bg-naranja-light'}
           `}>
-            <span className={`text-xs font-bold uppercase tracking-wide ${porIncobrable ? 'text-gris-dark' : saldado ? 'text-verde' : 'text-naranja-dark'}`}>
+            <span className={`text-xs font-bold uppercase tracking-wide ${porIncobrable ? 'text-gris-dark' : (saldado || aFavor) ? 'text-verde' : 'text-naranja-dark'}`}>
               Saldo total
             </span>
-            <span className={`font-mono font-bold text-base ${porIncobrable ? 'text-gris-dark' : saldado ? 'text-verde' : 'text-naranja-dark'}`}>
-              {porIncobrable ? `✕ Incobrable (${fmtM(incobrable)})` : saldado ? '✓ Saldado' : fmtM(saldo)}
+            <span className={`font-mono font-bold text-base ${porIncobrable ? 'text-gris-dark' : (saldado || aFavor) ? 'text-verde' : 'text-naranja-dark'}`}>
+              {porIncobrable ? `✕ Incobrable (${fmtM(incobrable)})` : aFavor ? `A favor ${fmtM(-saldo)}` : (saldado || aFavor) ? '✓ Saldado' : fmtM(saldo)}
             </span>
           </div>
         </div>
@@ -478,7 +480,7 @@ export function PrestamosPage() {
             page={page}
             total={filtrados.length}
             pageSize={pageSize}
-            onChange={p => { setPage(p); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+            onChange={p => { setPage(p); (document.querySelector('main') ?? window).scrollTo({ top: 0, behavior: 'smooth' }) }}
             onPageSizeChange={handlePageSizeChange}
           />
         </>

@@ -84,10 +84,14 @@ export interface ResponsablesDisponibles {
   capataces:  Array<{ id: string; nombre: string }>
   jefes_obra: Array<{ id: string; nombre: string }>
 }
-export function useResponsablesDisponibles() {
+// `enabled`: los modales que lo usan están montados (cerrados) en la pantalla
+// de obras; para un capataz el endpoint es 403, y disparaba 4 errores al
+// entrar sin haber abierto nada.
+export function useResponsablesDisponibles(enabled = true) {
   return useQuery({
     queryKey: ['obras-responsables-disponibles'],
     queryFn: () => obrasApi.responsablesDisponibles(),
+    enabled,
   })
 }
 

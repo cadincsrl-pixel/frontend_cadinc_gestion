@@ -411,8 +411,8 @@ export function ContratistasPanel({ obraCod, readonly = false }: Props) {
           <>
             <button
               onClick={() => { setModalAsig(false); abrirNuevoContrat() }}
-              disabled={!puedeCrear}
-              title={puedeCrear ? undefined : (readonly ? 'Obra archivada: solo lectura' : 'Sin permiso para crear contratistas')}
+              disabled={!puedeCrear || !verPii}
+              title={puedeCrear && verPii ? undefined : (readonly ? 'Obra archivada: solo lectura' : !verPii ? 'Requiere el permiso ver_pii en tarja' : 'Sin permiso para crear contratistas')}
               className="mr-auto text-xs font-bold text-azul hover:text-naranja transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               ＋ Crear nuevo
@@ -464,7 +464,8 @@ export function ContratistasPanel({ obraCod, readonly = false }: Props) {
             <Button
               variant="primary"
               loading={creando || actualizando}
-              disabled={editId == null ? !puedeCrear : !puedeEditar}
+              disabled={(editId == null ? !puedeCrear : !puedeEditar) || !verPii}
+              title={!verPii ? 'Requiere el permiso ver_pii en tarja' : undefined}
               onClick={handleSubmit(onSubmitContrat)}
             >
               ✓ {editId == null ? 'Crear' : 'Guardar'}

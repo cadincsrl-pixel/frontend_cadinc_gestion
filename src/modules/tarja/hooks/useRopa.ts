@@ -104,6 +104,20 @@ export function useCreateRopaEntrega() {
   })
 }
 
+/** Varias prendas al mismo trabajador en un request (atómico en el backend). */
+export function useCreateRopaEntregasLote() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: {
+      leg:           string
+      categoria_ids: number[]
+      fecha_entrega: string
+      obs?:          string | null
+    }) => apiPost<RopaEntrega[]>('/api/ropa/entregas/lote', dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY_ENTREGAS }),
+  })
+}
+
 export function useDeleteRopaEntrega() {
   const qc = useQueryClient()
   return useMutation({

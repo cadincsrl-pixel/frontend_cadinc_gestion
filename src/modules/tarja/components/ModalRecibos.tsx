@@ -60,7 +60,13 @@ export function ModalRecibos({
   const { data: todasHsExtras = [] } = useHsExtrasAll()
   const [semKey, setSemKey] = useState(semActual ? toISO(semActual) : '')
   const [empresa, setEmpresa] = useState(EMPRESA.nombre)
-  const [obrasSelec, setObrasSelec] = useState<string[]>(obras.map(o => o.cod))
+  // null = "todas las obras", resuelto al render: en un cold load `obras` llega
+  // vacío al montar y la selección quedaba en 0/N para siempre.
+  const [obrasSelecRaw, setObrasSelecRaw] = useState<string[] | null>(null)
+  const todasLasObras = useMemo(() => obras.map(o => o.cod), [obras])
+  const obrasSelec = obrasSelecRaw ?? todasLasObras
+  const setObrasSelec = (v: string[] | ((prev: string[]) => string[])) =>
+    setObrasSelecRaw(prev => (typeof v === 'function' ? v(prev ?? todasLasObras) : v))
   const [incluirOp, setIncluirOp] = useState(true)
   const [incluirCont, setIncluirCont] = useState(true)
   const [incluirPortada, setIncluirPortada] = useState(true)
@@ -215,7 +221,9 @@ export function ModalRecibos({
 
     const hsExtrasParaRecibo = incluirOp ? todasHsExtras : []
 
-    const result = generarRecibos(
+    let result: ReturnType<typeof generarRecibos>
+    try {
+      result = generarRecibos(
       semKey, empresa, obrasTarget,
       personal, categorias, horasParaRecibo, tarifas,
       certsParaRecibo, contratParaRecibo,
@@ -223,7 +231,14 @@ export function ModalRecibos({
       incluirOp ? legsSelec : null,
       hsExtrasParaRecibo,
       incluirPortada,
-    )
+      )
+    } catch (e) {
+      if (e instanceof Error && e.message === 'POPUP_BLOQUEADO') {
+        toast('El navegador bloqueó la ventana de los recibos. Permití ventanas emergentes para este sitio y volvé a intentar.', 'err')
+        return
+      }
+      throw e
+    }
 
     if (!result) { toast('No hay datos para esta selección', 'err'); return }
 

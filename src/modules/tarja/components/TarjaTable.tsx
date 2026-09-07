@@ -11,7 +11,7 @@ import { useObras } from '../hooks/useObras'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useSessionStore } from '@/store/session.store'
-import { getSemDays, getViernes, toISO, esFinde, esJueves, esHoy, DIAS } from '@/lib/utils/dates'
+import { getSemDays, getViernes, toISO, esFinde, esJueves, esHoy, DIAS, hoyArgentinaISO } from '@/lib/utils/dates'
 import { costoLegConCatObra, getVHConCatObra, getTarifaEnFecha, fmtMonto, getHsExtrasLeg, redondearHs } from '@/lib/utils/costos'
 import { useToast } from '@/components/ui/Toast'
 import { useQuery } from '@tanstack/react-query'
@@ -35,6 +35,8 @@ interface UndoEntry {
   leg: string
   fecha: string
   antes: number
+  /** obra:semana en la que se hizo el cambio: no se deshace en otra. */
+  ctx: string
 }
 
 function getHoraClass(h: number): string {
@@ -78,7 +80,8 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
       window.removeEventListener('focus', refrescar)
     }
   }, [])
-  const hoyISO = toISO(new Date())
+  // Hora Argentina, no el reloj del dispositivo (mismo criterio que el backend).
+  const hoyISO = hoyArgentinaISO()
   const desde = toISO(days[0]!)
   const hasta = toISO(days[6]!)
 
@@ -214,7 +217,7 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
       // individual BORRA la fila cuando llega 0, un trabajador cuya única
       // fila de la semana era ese placeholder desaparecía de la tarja.
       if (antes === horas) return
-      undoStack.current.push({ leg, fecha, antes })
+      undoStack.current.push({ leg, fecha, antes, ctx: `${obraCod}:${semKey}` })
       if (undoStack.current.length > 50) undoStack.current.shift()
       setUndoCount(undoStack.current.length)
       // Poner en 0 la ÚNICA fila del trabajador en la semana lo haría
@@ -265,7 +268,7 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
         }
       )
     },
-    [obraCod, upsertHora, upsertHoraLote, horasData, toast, days]
+    [obraCod, upsertHora, upsertHoraLote, horasData, toast, days, semKey]
   )
 
   const handleExtraChange = useCallback(
@@ -293,6 +296,13 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
   const handleUndo = useCallback(() => {
     const entry = undoStack.current.pop()
     if (!entry) return
+    if (entry.ctx !== `${obraCod}:${semKey}`) {
+      // El historial era de otra semana u obra: descartarlo, no tocar esta.
+      undoStack.current = []
+      setUndoCount(0)
+      toast('El historial de deshacer era de otra semana y se descartó', 'warn')
+      return
+    }
     setUndoCount(undoStack.current.length)
     const cb = {
       onSuccess: () => toast('↩ Deshecho', 'ok'),
@@ -306,7 +316,7 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
       return
     }
     upsertHora({ obra_cod: obraCod, fecha: entry.fecha, leg: entry.leg, horas: entry.antes }, cb)
-  }, [obraCod, upsertHora, upsertHoraLote, horasData, toast])
+  }, [obraCod, semKey, upsertHora, upsertHoraLote, horasData, toast])
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -483,7 +493,7 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                     >
                       {categorias.map(cat => (
                         <option key={cat.id} value={cat.id}>
-                          {cat.nom} — ${cat.vh.toLocaleString('es-AR')}/h
+                          {verCostos ? `${cat.nom} — $${cat.vh.toLocaleString('es-AR')}/h` : cat.nom}
                         </option>
                       ))}
                     </select>

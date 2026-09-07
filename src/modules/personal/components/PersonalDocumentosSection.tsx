@@ -36,13 +36,14 @@ function fmtFecha(iso: string): string {
 
 export function PersonalDocumentosSection({ leg }: Props) {
   const toast = useToast()
-  const { puedeCrear, puedeEliminar } = usePermisos('personal')
-  const { puedeCrear: puedeCrearTarja, puedeEliminar: puedeEliminarTarja } = usePermisos('tarja')
+  // Documentos = PII del legajo: el backend exige tarja.creacion/eliminacion +
+  // ver_pii ('personal' no es un módulo, es un tab de tarja).
+  const { puedeCrear, puedeEliminar, verPii } = usePermisos('tarja')
+  const canCreate = puedeCrear && verPii
+  const canDelete = puedeEliminar && verPii
+  const motivoNoPuede = !verPii ? 'Requiere el permiso ver_pii en tarja' : 'Sin permiso'
 
-  const canCreate = puedeCrear || puedeCrearTarja
-  const canDelete = puedeEliminar || puedeEliminarTarja
-
-  const { data: docs = [], isLoading } = usePersonalDocumentos(leg)
+  const { data: docs = [], isLoading, isError } = usePersonalDocumentos(leg)
   const { mutate: uploadDoc, isPending: uploading } = useUploadDocumento()
   const { mutate: deleteDoc } = useDeleteDocumento()
 
@@ -111,6 +112,10 @@ export function PersonalDocumentosSection({ leg }: Props) {
 
       {isLoading ? (
         <div className="text-xs text-gris-dark italic">Cargando documentos…</div>
+      ) : isError ? (
+        <div className="text-xs text-rojo italic">
+          No se pudieron cargar los documentos{!verPii ? ' (requiere el permiso ver_pii)' : ''}.
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {porTipo.map(({ key, label, icon, docs: docsTipo }) => (
@@ -128,11 +133,11 @@ export function PersonalDocumentosSection({ leg }: Props) {
                     </span>
                   )}
                 </div>
-                {canCreate && (
-                  <>
+                <>
                     <button
                       onClick={() => fileInputs.current[key]?.click()}
-                      disabled={uploading && pendingTipo === key}
+                      disabled={!canCreate || (uploading && pendingTipo === key)}
+                      title={canCreate ? undefined : motivoNoPuede}
                       className="text-[11px] font-bold px-2.5 py-1 rounded bg-azul text-white hover:bg-azul-mid transition-colors disabled:opacity-50"
                     >
                       {uploading && pendingTipo === key ? '⏳ Subiendo…' : '＋ Subir'}
@@ -145,7 +150,6 @@ export function PersonalDocumentosSection({ leg }: Props) {
                       onChange={e => handleFileChange(key, e)}
                     />
                   </>
-                )}
               </div>
 
               {docsTipo.length === 0 ? (
@@ -173,15 +177,14 @@ export function PersonalDocumentosSection({ leg }: Props) {
                       >
                         👁 Ver
                       </button>
-                      {canDelete && (
-                        <button
-                          onClick={() => handleBorrar(doc)}
-                          className="text-[11px] font-bold px-2 py-1 rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors"
-                          title="Eliminar"
-                        >
-                          ✕
-                        </button>
-                      )}
+                      <button
+                        onClick={() => handleBorrar(doc)}
+                        disabled={!canDelete}
+                        className="text-[11px] font-bold px-2 py-1 rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        title={canDelete ? 'Eliminar' : motivoNoPuede}
+                      >
+                        ✕
+                      </button>
                     </li>
                   ))}
                 </ul>

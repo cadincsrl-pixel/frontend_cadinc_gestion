@@ -1,12 +1,12 @@
 'use client'
 
-import { esErrorSemanaCerrada } from '@/lib/utils/cierres'
+import { esErrorSemanaCerrada, semanaCerrada } from '@/lib/utils/cierres'
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePersonal } from '@/modules/tarja/hooks/usePersonal'
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
 import { useObras } from '@/modules/tarja/hooks/useObras'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api/client'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import {
@@ -20,7 +20,7 @@ import { Chip } from '@/components/ui/Chip'
 import { useToast } from '@/components/ui/Toast'
 import { useUpsertHora } from '@/modules/tarja/hooks/useHoras'
 import { usePermisos } from '@/hooks/usePermisos'
-import type { Hora, Tarifa, Personal, Categoria, TarjaHsExtra } from '@/types/domain.types'
+import type { Hora, Tarifa, Personal, Categoria, TarjaHsExtra, Cierre } from '@/types/domain.types'
 
 // Redondea horas a 2 decimales para matar el epsilon de punto flotante al sumar
 // (ej. 39.900000000006 → 39.9). Las horas se cargan en incrementos de 0.25/0.5,
@@ -34,7 +34,7 @@ export function HorasTrabajadorPage() {
   const router = useRouter()
   const toast = useToast()
   const qc = useQueryClient()
-  const { puedeEditar } = usePermisos('tarja')
+  const { puedeEditar, verCostos } = usePermisos('tarja')
   const { mutate: upsertHora } = useUpsertHora()
   const { mutateAsync: upsertHsExtra } = useUpsertHsExtra()
   const perfiles = usePerfilesMap()
@@ -70,6 +70,15 @@ export function HorasTrabajadorPage() {
   const { data: todasHoras = [], isLoading: loadingHoras } = useQuery({
     queryKey: ['horas', 'semana', desde, hasta],
     queryFn: () => apiGet<Hora[]>(`/api/horas/all?desde=${desde}&hasta=${hasta}`),
+    // Al cambiar de semana se muestra la anterior hasta que llega la nueva:
+    // sin esto la lista quedaba vacía un instante y el filtro de obra se reseteaba.
+    placeholderData: keepPreviousData,
+  })
+  // Cierres de todas las obras: una semana cerrada en una obra es de solo
+  // lectura también desde acá (misma regla que la grilla y el backend).
+  const { data: todosCierres = [] } = useQuery({
+    queryKey: ['cierres', 'all'],
+    queryFn: () => apiGet<Cierre[]>('/api/cierres/all'),
   })
   // Horas de la semana anterior — usadas solo para detectar trabajadores
   // que cargaron la semana pasada pero no esta semana.
@@ -179,10 +188,20 @@ export function HorasTrabajadorPage() {
   // (típico al navegar a otra semana), reseteamos a "Todas" para evitar un
   // select con valor "fantasma" que no aparece entre las opciones.
   useEffect(() => {
+    if (loadingHoras) return  // con la semana todavía cargando, la lista vacía no es "sin horas"
     if (filtroObra && !obrasConHorasSemana.some(o => o.cod === filtroObra)) {
       setFiltroObra('')
     }
-  }, [filtroObra, obrasConHorasSemana])
+  }, [filtroObra, obrasConHorasSemana, loadingHoras])
+
+  const cerradaPorObra = useMemo(() => {
+    const m = new Map<string, boolean>()
+    for (const o of obras) {
+      const c = todosCierres.find(x => x.obra_cod === o.cod && x.sem_key === semKey)
+      m.set(o.cod, semanaCerrada(c?.estado, semKey))
+    }
+    return m
+  }, [obras, todosCierres, semKey])
 
   // ── Filas: una por leg+obra ──
   const obrasTarget = useMemo(() => {
@@ -404,7 +423,6 @@ export function HorasTrabajadorPage() {
 
   const mostrarObra = !filtroObra
 
-  const hoyRef = toISO(new Date())
 
   return (
     <div className="p-4 md:p-6 flex flex-col gap-4">
@@ -497,7 +515,7 @@ export function HorasTrabajadorPage() {
             {totHsExtras > 0 && (
               <Chip value={`${totHsExtras}`} label="Hs extras" />
             )}
-            <Chip value={fmtM(totCosto)} label="Costo total" variant="green" />
+            {verCostos && <Chip value={fmtM(totCosto)} label="Costo total" variant="green" />}
             <button
               onClick={() => exportarHorasTrabajador(
                 semActual,
@@ -505,7 +523,7 @@ export function HorasTrabajadorPage() {
                   leg:         f.leg,
                   nom:         f.p.nom,
                   dni:         f.p.dni,
-                  catNom:      getCatNom(getCatId(f.obra.cod, f.leg, hoyRef)),
+                  catNom:      getCatNom(getCatId(f.obra.cod, f.leg, semKey)),
                   obraCod:     f.obra.cod,
                   obraNom:     f.obra.nom,
                   horasPorDia: f.horasPorDia,
@@ -620,16 +638,18 @@ export function HorasTrabajadorPage() {
                   <th className="bg-verde text-white text-xs font-bold px-2 py-2.5 text-center uppercase tracking-wide min-w-[80px]">
                     Total Hs
                   </th>
-                  <th className="bg-[#0F4A28] text-white text-xs font-bold px-3 py-2.5 text-right uppercase tracking-wide min-w-[120px]">
-                    Costo ($)
-                  </th>
+                  {verCostos && (
+                    <th className="bg-[#0F4A28] text-white text-xs font-bold px-3 py-2.5 text-right uppercase tracking-wide min-w-[120px]">
+                      Costo ($)
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
                 {filasFiltradas.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={4 + (mostrarObra ? 1 : 0) + days.length + 3}
+                      colSpan={4 + (mostrarObra ? 1 : 0) + days.length + 2 + (verCostos ? 1 : 0)}
                       className="text-center py-8 text-gris-dark text-sm"
                     >
                       No hay trabajadores con horas esta semana.
@@ -676,16 +696,19 @@ export function HorasTrabajadorPage() {
                             <td className="text-center bg-[#E0A800] font-mono text-sm font-bold text-white px-2 py-2 whitespace-nowrap">
                               {subHs > 0 ? subHs : '—'}
                             </td>
-                            <td className="text-right bg-[#E0A800] px-3 py-2 whitespace-nowrap font-mono text-sm font-bold text-white">
-                              {subCosto > 0 ? fmtM(subCosto) : '—'}
-                            </td>
+                            {verCostos && (
+                              <td className="text-right bg-[#E0A800] px-3 py-2 whitespace-nowrap font-mono text-sm font-bold text-white">
+                                {subCosto > 0 ? fmtM(subCosto) : '—'}
+                              </td>
+                            )}
                           </tr>
                         )
                       }
 
                       // ── Fila normal ──
                       const f = item.data
-                      const catId = getCatId(f.obra.cod, f.leg, hoyRef)
+                      const editable = puedeEditar && !cerradaPorObra.get(f.obra.cod)
+                      const catId = getCatId(f.obra.cod, f.leg, semKey)
                       const catNom = getCatNom(catId)
                       const esMulti = multiObra.has(f.leg)
 
@@ -760,22 +783,23 @@ export function HorasTrabajadorPage() {
                                   min={0}
                                   step={0.5}
                                   value={displayVal}
-                                  readOnly={!puedeEditar}
+                                  readOnly={!editable}
                                   data-htrab-row={rowKey}
                                   data-htrab-day={i}
                                   onWheel={e => (e.currentTarget as HTMLInputElement).blur()}
-                                  onChange={puedeEditar ? e => handleCellChange(f.leg, f.obra.cod, ds, e.target.value) : undefined}
-                                  onBlur={puedeEditar ? e => handleCellBlur(f.leg, f.obra.cod, ds, val, e.target.value) : undefined}
-                                  onFocus={puedeEditar ? e => { setEditingCell({ key: ck, val: e.target.value }); e.target.select() } : undefined}
-                                  onKeyDown={puedeEditar ? e => {
+                                  onChange={editable ? e => handleCellChange(f.leg, f.obra.cod, ds, e.target.value) : undefined}
+                                  onBlur={editable ? e => handleCellBlur(f.leg, f.obra.cod, ds, val, e.target.value) : undefined}
+                                  onFocus={editable ? e => { setEditingCell({ key: ck, val: e.target.value }); e.target.select() } : undefined}
+                                  onKeyDown={editable ? e => {
                                     const el = e.target as HTMLInputElement
                                     // Enter: commit + saltar al día siguiente del mismo trabajador-obra.
+                                    // Enter y flechas solo mueven el foco: el guardado lo hace el
+                                    // onBlur (llamar al handler acá guardaba dos veces).
                                     if (e.key === 'Enter') {
-                                      handleCellBlur(f.leg, f.obra.cod, ds, val, el.value)
                                       const next = document.querySelector<HTMLInputElement>(
                                         `input[data-htrab-row="${rowKey}"][data-htrab-day="${i + 1}"]`
                                       )
-                                      next?.focus()
+                                      if (next) next.focus(); else el.blur()
                                       return
                                     }
                                     // Flechas: ←/→ mismo trabajador-obra; ↑/↓ misma columna,
@@ -790,13 +814,12 @@ export function HorasTrabajadorPage() {
                                     const dir = arrows[e.key]
                                     if (!dir) return
                                     e.preventDefault()
-                                    handleCellBlur(f.leg, f.obra.cod, ds, val, el.value)
                                     if (dir === 'left' || dir === 'right') {
                                       const targetDay = dir === 'left' ? i - 1 : i + 1
                                       const t = document.querySelector<HTMLInputElement>(
                                         `input[data-htrab-row="${rowKey}"][data-htrab-day="${targetDay}"]`
                                       )
-                                      if (t) { t.focus(); t.select() }
+                                      if (t) { t.focus(); t.select() } else el.blur()
                                     } else {
                                       const allRows = Array.from(document.querySelectorAll<HTMLInputElement>(
                                         `input[data-htrab-day="${i}"]`
@@ -804,10 +827,10 @@ export function HorasTrabajadorPage() {
                                       const here = allRows.findIndex(x => x.dataset.htrabRow === rowKey)
                                       const targetIdx = dir === 'up' ? here - 1 : here + 1
                                       const t = allRows[targetIdx]
-                                      if (t) { t.focus(); t.select() }
+                                      if (t) { t.focus(); t.select() } else el.blur()
                                     }
                                   } : undefined}
-                                  className={`${cls} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none${!puedeEditar ? ' cursor-not-allowed opacity-60' : ''}`}
+                                  className={`${cls} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none${!editable ? ' cursor-not-allowed opacity-60' : ''}`}
                                 />
                               </td>
                             )
@@ -826,15 +849,15 @@ export function HorasTrabajadorPage() {
                                   min={0}
                                   step={0.5}
                                   value={displayVal}
-                                  readOnly={!puedeEditar}
+                                  readOnly={!editable}
                                   title="Horas extras de la semana"
                                   data-htrab-row={`${f.leg}-${f.obra.cod}`}
                                   data-htrab-day={7}
                                   onWheel={e => (e.currentTarget as HTMLInputElement).blur()}
-                                  onChange={puedeEditar ? e => setEditingCell({ key: ek, val: e.target.value }) : undefined}
-                                  onBlur={puedeEditar ? e => handleExtraBlur(f.leg, f.obra.cod, f.hsExtras, e.target.value) : undefined}
-                                  onFocus={puedeEditar ? e => { setEditingCell({ key: ek, val: e.target.value }); e.target.select() } : undefined}
-                                  onKeyDown={puedeEditar ? e => {
+                                  onChange={editable ? e => setEditingCell({ key: ek, val: e.target.value }) : undefined}
+                                  onBlur={editable ? e => handleExtraBlur(f.leg, f.obra.cod, f.hsExtras, e.target.value) : undefined}
+                                  onFocus={editable ? e => { setEditingCell({ key: ek, val: e.target.value }); e.target.select() } : undefined}
+                                  onKeyDown={editable ? e => {
                                     // La columna de extras es el "día 7" de la grilla: mismas
                                     // flechas que las horas comunes. El guardado lo hace el
                                     // onBlur al mover el foco (no llamamos al handler acá para
@@ -859,7 +882,7 @@ export function HorasTrabajadorPage() {
                                     const t = all[here + (e.key === 'ArrowUp' ? -1 : 1)]
                                     if (t) { t.focus(); t.select() }
                                   } : undefined}
-                                  className={`${cls} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none${!puedeEditar ? ' cursor-not-allowed opacity-60' : ''}`}
+                                  className={`${cls} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none${!editable ? ' cursor-not-allowed opacity-60' : ''}`}
                                 />
                               )
                             })()}
@@ -867,9 +890,11 @@ export function HorasTrabajadorPage() {
                           <td className="text-center bg-verde-light font-mono text-sm font-bold text-verde px-2 py-1.5 whitespace-nowrap">
                             {f.totalHs > 0 ? f.totalHs : '—'}
                           </td>
-                          <td className="text-right bg-azul-light px-3 py-1.5 whitespace-nowrap font-mono text-sm font-bold text-azul-mid">
-                            {f.totalCosto > 0 ? fmtM(f.totalCosto) : '—'}
-                          </td>
+                          {verCostos && (
+                            <td className="text-right bg-azul-light px-3 py-1.5 whitespace-nowrap font-mono text-sm font-bold text-azul-mid">
+                              {f.totalCosto > 0 ? fmtM(f.totalCosto) : '—'}
+                            </td>
+                          )}
                         </tr>
                       )
                     })}
@@ -899,9 +924,11 @@ export function HorasTrabajadorPage() {
                       <td className="bg-azul text-[#7DD9A2] font-mono text-sm font-bold text-center px-2 py-2.5">
                         {totHs > 0 ? totHs : '—'}
                       </td>
-                      <td className="bg-azul text-naranja font-mono text-sm font-bold text-right px-3 py-2.5">
-                        {totCosto > 0 ? fmtM(totCosto) : '—'}
-                      </td>
+                      {verCostos && (
+                        <td className="bg-azul text-naranja font-mono text-sm font-bold text-right px-3 py-2.5">
+                          {totCosto > 0 ? fmtM(totCosto) : '—'}
+                        </td>
+                      )}
                     </tr>
                   </>
                 )}

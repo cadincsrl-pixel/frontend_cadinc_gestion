@@ -40,7 +40,7 @@ interface Props {
 export function ModalNuevaObra({ open, onClose }: Props) {
   const toast = useToast()
   const { mutate: createObra, isPending } = useCreateObra()
-  const { data: responsables } = useResponsablesDisponibles()
+  const { data: responsables } = useResponsablesDisponibles(open)
   // Solo trae el preview cuando el modal está abierto. Si entre el
   // preview y el submit alguien creó una obra, el cod final puede
   // ser distinto — el backend recalcula con la sequence atómica.

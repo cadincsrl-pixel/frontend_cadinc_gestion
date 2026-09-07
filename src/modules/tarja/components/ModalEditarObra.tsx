@@ -48,7 +48,7 @@ export function ModalEditarObra({ open, onClose, obra }: Props) {
   const { mutate: updateObra, isPending: updating } = useUpdateObra()
   const { mutate: archivarObra, isPending: archivando } = useArchivarObra()
   const { mutate: deleteObra, isPending: eliminando } = useDeleteObra()
-  const { data: responsables } = useResponsablesDisponibles()
+  const { data: responsables } = useResponsablesDisponibles(open)
 
   // Estado local para los user_ids — fuera del form porque son selects
   // (Combobox), no inputs. Esto NO duplica state: los Combobox son
@@ -106,9 +106,8 @@ export function ModalEditarObra({ open, onClose, obra }: Props) {
     )
   }
 
-  function handleArchivar() {
+  function archivar() {
     if (!obra) return
-    if (!confirm(`¿Archivar "${obra.nom}"? Los datos se conservan pero la obra pasará al historial.`)) return
     archivarObra(obra.cod, {
       onSuccess: () => {
         toast('✓ Obra archivada', 'ok')
@@ -119,16 +118,30 @@ export function ModalEditarObra({ open, onClose, obra }: Props) {
     })
   }
 
+  function handleArchivar() {
+    if (!obra) return
+    if (!confirm(`¿Archivar "${obra.nom}"? Los datos se conservan pero la obra pasará al historial.`)) return
+    archivar()
+  }
+
   function handleEliminar() {
     if (!obra) return
-    if (!confirm(`¿Eliminar "${obra.nom}"? Esta acción borrará la obra y todas sus horas. No se puede deshacer.`)) return
+    if (!confirm(`¿Eliminar "${obra.nom}"? Solo se puede eliminar una obra sin horas ni registros; si tiene datos, hay que archivarla. No se puede deshacer.`)) return
     deleteObra(obra.cod, {
       onSuccess: () => {
         toast('✓ Obra eliminada', 'ok')
         onClose()
         router.push('/tarja')
       },
-      onError: (err) => toast(err.message ?? 'Error al eliminar', 'err'),
+      onError: (err) => {
+        const msg = err.message ?? 'Error al eliminar'
+        // El backend frena con 409 si la obra tiene datos: ofrecer archivar.
+        if (msg.startsWith('OBRA_CON_DATOS')) {
+          if (confirm(`${msg.replace(/^OBRA_CON_DATOS:\s*/, '')}\n\n¿Archivarla ahora?`)) archivar()
+          return
+        }
+        toast(msg, 'err')
+      },
     })
   }
 
