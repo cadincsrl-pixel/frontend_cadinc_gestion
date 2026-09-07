@@ -119,6 +119,7 @@ function ModalEntrega({ open, legInicial, personal, legsActivos, onClose }: Moda
   async function handleSubmit() {
     if (!leg)           { toast('Seleccioná un trabajador', 'err'); return }
     if (!catIds.length) { toast('Seleccioná al menos un elemento', 'err'); return }
+    if (fecha > hoy())  { toast('No se puede registrar una entrega con fecha futura', 'err'); return }
     setSaving(true)
     try {
       // Un solo request: entran todas las prendas o ninguna (antes eran N POST
@@ -190,7 +191,17 @@ function ModalEntrega({ open, legInicial, personal, legsActivos, onClose }: Moda
           )}
         </div>
 
-        <Input label="Fecha de entrega" type="date" value={fecha} onChange={e => setFecha(e.target.value)} />
+        {/* Sin fecha futura: una entrega adelantada nunca vence (el vencimiento
+            se calcula sumándole los meses) y la prenda queda "al día" para
+            siempre. El backend lo rechaza con 400; el `max` evita llegar ahí. */}
+        <Input
+          label="Fecha de entrega"
+          type="date"
+          value={fecha}
+          max={hoy()}
+          error={fecha > hoy() ? 'No se puede registrar una entrega con fecha futura.' : undefined}
+          onChange={e => setFecha(e.target.value)}
+        />
         <Input label="Observaciones (opcional)" placeholder="Talle, marca, etc." value={obs} onChange={e => setObs(e.target.value)} />
       </div>
     </Modal>
