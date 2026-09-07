@@ -59,12 +59,12 @@ Cliente (Next.js)
   → Hono backend (repo cadincsrl)
   → authMiddleware (verifica JWT)
   → requirePermiso(modulo, accion) o requirePermisoOr(...)
-  → Handler (valida con zod, opera sobre Supabase con cliente per-request)
+  → Handler (valida con zod, opera sobre Supabase como service_role, con el header x-cadinc-user = usuario del JWT)
   → auditMiddleware (loguea post-respuesta si 2xx y método mutativo)
   → Respuesta
 ```
 
-**El frontend NUNCA muta datos directamente contra Supabase con la anon key.** Toda mutación pasa por el backend Hono.
+**El frontend NUNCA muta datos directamente contra Supabase con la anon key.** Toda mutación pasa por el backend Hono. Desde 2026-09-07 la base tampoco lo permite: `anon` y `authenticated` no tienen INSERT/UPDATE/DELETE en `public` (migración `20260906q`); el único escritor es el backend, como `service_role`. `usuario_actual()` devuelve el usuario del request (el header `x-cadinc-user` del backend, o `auth.uid()` si hay JWT) y lo usan los triggers de auditoría.
 
 ## 4. Dominios (10 módulos)
 
@@ -132,8 +132,8 @@ Las operaciones de resolución de items usan RPCs de PostgreSQL (`resolver_item_
 ### 5.3 Semana viernes → jueves
 CADINC cierra semanas los jueves. Todo `sem_key` es el ISO del **viernes** de esa semana. Helpers en `src/lib/utils/dates.ts`: `getViernes`, `getSemDays`, `toISO`. **Nunca calcular semanas con lunes-domingo.**
 
-### 5.4 RLS permisiva por diseño
-Las 68 tablas tienen RLS habilitado pero con policies `using(true) with check(true)`. La seguridad real está en el **backend Hono**, que autentica con JWT y valida permisos. La anon key **no se usa para mutar datos**. No proponer cambios a RLS estricta sin consultar — rompería el modelo.
+### 5.4 RLS permisiva + base cerrada a escritura directa
+Las tablas tienen RLS habilitado con policies `using(true) with check(true)`: la seguridad real está en el **backend Hono** (JWT + permisos + alcance por obra + auditoría). Desde 2026-09-07 (migración `20260906q`) los roles `anon` y `authenticated` **no tienen INSERT/UPDATE/DELETE/TRUNCATE ni USAGE de secuencias en `public`** (tampoco en los default privileges de tablas futuras): aunque alguien use la anon key con su JWT, no puede escribir. El backend escribe como `service_role` y manda el usuario en el header `x-cadinc-user` (`cadincsrl/src/lib/supabase.ts` + `lib/jwt.ts`); `usuario_actual()` lo lee y lo usan los triggers de auditoría. Las **lecturas** directas desde el frontend siguen permitidas y se cierran tabla por tabla (fase 3 de permisos). No proponer RLS estricta ni funciones/vistas que dependan de `auth.uid()` sin consultar: el backend ya no manda JWT a PostgREST, así que `auth.uid()` es null en sus requests.
 
 ### 5.5 Permisos granulares
 Esquema: `permisos: { modulo: { lectura, creacion, actualizacion, eliminacion, tabs[], <flags_extra>, obras_scope? } }` en `profiles.permisos` (JSONB). **Es lo efectivo**: lo que leen las guardias del backend.
@@ -252,7 +252,8 @@ Una herramienta es una fila de `stock_materiales` con `clase='herramienta'` (rub
 
 - ❌ Asumir APIs de Next.js anteriores a v16 o de React anteriores a v19. Siempre verificar.
 - ❌ Proponer RLS estricta sin consultar (rompería el modelo actual).
-- ❌ Usar la anon key para mutar datos desde el cliente.
+- ❌ Usar la anon key para mutar datos desde el cliente (desde 2026-09-07 la base lo rechaza con `permission denied`).
+- ❌ Escribir RPCs, vistas o triggers que dependan de `auth.uid()`: en los requests del backend es null. Usar `usuario_actual()` o recibir `p_user_id`.
 - ❌ Agregar `useForm<any>()` o `as any` en código nuevo (hay deuda heredada, no replicar).
 - ❌ Calcular semanas con lunes-domingo.
 - ❌ Escribir auditoría manual en handlers — el middleware del backend ya cubre.
@@ -268,7 +269,7 @@ Una herramienta es una fila de `stock_materiales` con `clase='herramienta'` (rub
 - **Modelos paralelos sin consolidar**: `empresas` vs `empresas_transportistas`, `viajes/cargas/descargas` vs `tramos`, múltiples sistemas de remitos (`remitos` vs `remitos_envio` vs `remitos_carga/descarga` vs `remitos_retiro_proveedor`).
 - **Columnas duplicadas**: `camiones.año` y `camiones.anio`.
 - **`useForm<any>` pendientes de tipado**: ViajesTab, PersonalPage, ChoferesTab, BateasTab, RentabilidadTab, modal adelantos.
-- **~80 tablas con RLS permisiva**: es decisión consciente, pero documentar antes de cualquier cambio.
+- **RLS permisiva + lectura directa desde el frontend en ~130 tablas**: la escritura directa ya está cerrada (`20260906q`, 2026-09-07); la lectura se cierra tabla por tabla en la fase 3 de permisos (ver Obsidian `Proyectos/Permisos - Revisión completa 2026-09-06.md`).
 - **Login de herramientas separado** (`/herramientas/login`): coexiste con `/login`, razón no documentada.
 - ~~**Falta índice** en `stock_movimientos.material_id` y `.solicitud_item_id`~~ **RESUELTO** — creados en `20260424_perf_indices.sql` (verificado en DB viva 2026-07-01: `stock_movimientos_material_id_idx`, `stock_movimientos_solicitud_item_id_idx` parcial, `solicitud_compra_item_solicitud_estado_idx`).
 - **`npm audit` en el backend**: 3 vulnerabilidades (2 moderate, 1 high) detectadas al clonar. Evaluar con contexto, no correr `audit fix` a ciegas.
@@ -277,7 +278,7 @@ Una herramienta es una fila de `stock_materiales` con `clase='herramienta'` (rub
 - **Notificaciones sin persistencia**: el hook `useNotificaciones` calcula in-memory. Para "marcar como leído" o silenciar habría que crear tabla `notificaciones_dismiss`.
 - **Sin notificaciones de docs de choferes**: la campana muestra solo vencimientos de vehículos, no de papeles del personal de conducción (DNI, licencia).
 - **`materiales_a_cuenta_cliente.cantidad` se sobrescribe** en cada retiro parcial desde proveedor (UPSERT con `ON CONFLICT (item_id)`). Eso pierde el detalle por retiro. Si se necesita auditar parciales, mirar `stock_proveedor_movimientos` que sí tiene el desglose.
-- **⚠️ RPCs SECURITY DEFINER: SIEMPRE llamarlas con el cliente admin (`supabase` service_role), NUNCA con `createSupabaseClient(token)`.** Ese cliente per-request manda el service key como `apikey` pero el JWT del usuario en `Authorization` → PostgREST resuelve el rol por el JWT → rol efectivo `authenticated`. La migración `20260527_revoke_secdef_from_public` revocó EXECUTE de TODAS las funciones SECURITY DEFINER para `authenticated` (dejando solo `service_role`), así que llamarlas con el token client tira `permission denied`. Patrón correcto: `obras.service.ts` (usa `supabaseAdmin`). Las validaciones de permiso/obra-scope corren en el backend ANTES de la RPC; las funciones reciben `p_user_id` explícito (no usan `auth.uid()`), así que correrlas como service_role es seguro. Regresión detectada y arreglada el 2026-05-29 (commit backend `9c1be32`).
+- **RPCs SECURITY DEFINER**: la migración `20260527_revoke_secdef_from_public` dejó EXECUTE solo para `service_role`. Hasta 2026-09-07 el cliente per-request (`createSupabaseClient(token)`) mandaba el JWT del usuario y PostgREST lo trataba como `authenticated` → `permission denied` (regresión del 2026-05-29, commit backend `9c1be32`). Desde el commit `5ff41ad` ese cliente también es `service_role` (+ header `x-cadinc-user`), así que las RPC se pueden llamar con cualquiera de los dos clientes. La regla que sigue vigente: las validaciones de permiso/obra-scope corren en el backend ANTES de la RPC y las funciones reciben `p_user_id` explícito (no usan `auth.uid()`).
 
 ## 10. Comandos útiles
 
