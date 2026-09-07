@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest'
 import {
   esActivo, legsConHorasDesde, semCorteActivos,
   normalizarDni, dniValido, fechaNacimientoValida, errorDeCampo,
+  LEGAJO_RE, normalizarTelefono, telefonoValido, normalizarNombre, nombreValido, normalizarTalle, talleValido,
 } from '../lib/utils/personal'
 
 const conHoras = new Set(['001'])
@@ -46,15 +47,49 @@ describe('DNI y nacimiento', () => {
     expect(normalizarDni(' 12 345 678 ')).toBe('12345678')
     expect(normalizarDni(null)).toBe('')
   })
-  it('dniValido: vacío o 7-8 dígitos', () => {
+  it('dniValido: vacío o 7-8 dígitos, con o sin puntos; letras no', () => {
     expect(dniValido('')).toBe(true)
     expect(dniValido('1234567')).toBe(true)
+    expect(dniValido('12.345.678')).toBe(true)
     expect(dniValido('123456789')).toBe(false)
+    expect(dniValido('abc')).toBe(false)
   })
   it('fechaNacimientoValida corta los typos de año', () => {
     expect(fechaNacimientoValida('2022-02-07', '2026-09-06')).toBe(false)
     expect(fechaNacimientoValida('1193-08-03', '2026-09-06')).toBe(false)
     expect(fechaNacimientoValida('1993-08-03', '2026-09-06')).toBe(true)
+  })
+})
+
+describe('reglas de campos (espejo del backend)', () => {
+  it('legajo: 3 o 4 dígitos', () => {
+    expect(LEGAJO_RE.test('112')).toBe(true)
+    expect(LEGAJO_RE.test('1000')).toBe(true)
+    expect(LEGAJO_RE.test('12')).toBe(false)
+    expect(LEGAJO_RE.test('A12')).toBe(false)
+  })
+  it('teléfono: solo dígitos, 8 a 13; "381" solo no vale', () => {
+    expect(normalizarTelefono('(381) 555-1234')).toBe('3815551234')
+    expect(telefonoValido('')).toBe(true)
+    expect(telefonoValido('3815551234')).toBe(true)
+    expect(telefonoValido('381')).toBe(false)
+    expect(telefonoValido('sin teléfono')).toBe(false)
+  })
+  it('nombre: dos palabras, solo letras', () => {
+    expect(normalizarNombre('  PEREZ   JUAN ')).toBe('PEREZ JUAN')
+    expect(nombreValido('PEREZ JUAN')).toBe(true)
+    expect(nombreValido('MOLINA, ESTEBAN GABRIEL')).toBe(true)
+    expect(nombreValido("D'Angelo Ñandú-Pérez")).toBe(true)
+    expect(nombreValido('PEREZ')).toBe(false)
+    expect(nombreValido('PEREZ 2')).toBe(false)
+  })
+  it('talle: 30–60 o letra, en mayúsculas', () => {
+    expect(normalizarTalle(' xl ')).toBe('XL')
+    expect(talleValido('44')).toBe(true)
+    expect(talleValido('XL')).toBe(true)
+    expect(talleValido('')).toBe(true)
+    expect(talleValido('4')).toBe(false)
+    expect(talleValido('grande')).toBe(false)
   })
 })
 
@@ -66,6 +101,8 @@ describe('errorDeCampo', () => {
       .toEqual({ campo: 'leg', mensaje: 'el legajo 001 ya es de X' })
     expect(errorDeCampo({ status: 400, body: { error: 'DNI inválido', campo: 'dni' } }))
       .toEqual({ campo: 'dni', mensaje: 'DNI inválido' })
+    expect(errorDeCampo({ status: 400, body: { error: 'DNI_OBLIGATORIO: no se puede borrar' } }))
+      .toEqual({ campo: 'dni', mensaje: 'no se puede borrar' })
   })
   it('cualquier otro error va al toast', () => {
     expect(errorDeCampo({ status: 409, body: { error: 'AFECTA_SEMANAS_CERRADAS: ...' } })).toBeNull()

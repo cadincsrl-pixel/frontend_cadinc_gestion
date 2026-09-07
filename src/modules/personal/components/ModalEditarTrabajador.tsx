@@ -14,29 +14,36 @@ import { useToast } from '@/components/ui/Toast'
 import { AuditInfo } from '@/components/ui/AuditInfo'
 import { PersonalDocumentosSection } from './PersonalDocumentosSection'
 import { toISO, getViernes, esViernesISO, hoyArgentinaISO } from '@/lib/utils/dates'
-import { normalizarDni, dniValido, fechaNacimientoValida, errorDeCampo } from '@/lib/utils/personal'
+import {
+  MSG_PERSONAL as M, errorDeCampo, fechaNacimientoValida,
+  normalizarDni, dniValido, normalizarTelefono, telefonoValido,
+  normalizarNombre, nombreValido, normalizarTalle, talleValido,
+} from '@/lib/utils/personal'
 import { motivoAfectaCerradas } from '@/lib/utils/cierres'
 import type { Personal, UpdatePersonalDto } from '@/types/domain.types'
 
+// Mismas reglas que el backend (personal.schema.ts): el error aparece debajo
+// del campo antes de mandar nada.
+const talle = z.string().optional().transform(normalizarTalle).refine(talleValido, M.talle)
 const schema = z.object({
-  nom:             z.string().trim().min(1, 'El nombre es requerido'),
-  dni:             z.string().optional()
-                     .refine(v => dniValido(normalizarDni(v)), 'DNI inválido: 7 u 8 dígitos'),
+  nom:             z.string().transform(normalizarNombre).refine(nombreValido, M.nombre),
+  // Vacío solo en legajos viejos que nunca tuvieron DNI (onSubmit lo controla).
+  dni:             z.string().optional().refine(dniValido, M.dni).transform(normalizarDni),
   condicion:       z.enum(['blanco', 'asegurado', '']).optional(),
   modalidad:       z.enum(['hora', 'mes']).optional(),
   cat_id:          z.coerce.number().min(1, 'Seleccioná una categoría'),
   // Viernes desde el que rige la categoría nueva (solo se manda si cambia).
   cat_desde:       z.string().optional()
                      .refine(v => !v || esViernesISO(v), 'Tiene que ser un viernes (inicio de semana)'),
-  tel:             z.string().optional(),
-  dir:             z.string().optional(),
-  obs:             z.string().optional(),
-  talle_pantalon:  z.string().optional(),
-  talle_botines:   z.string().optional(),
-  talle_camisa:    z.string().optional(),
+  tel:             z.string().optional().refine(telefonoValido, M.telefono).transform(normalizarTelefono),
+  dir:             z.string().trim().max(200).optional(),
+  obs:             z.string().trim().max(1000).optional(),
+  talle_pantalon:  talle,
+  talle_botines:   talle,
+  talle_camisa:    talle,
   activo_override: z.enum(['auto', 'activo', 'inactivo']).optional(),
   fecha_nacimiento: z.string().optional()
-                     .refine(v => !v || fechaNacimientoValida(v, hoyArgentinaISO()), 'Revisá el año de nacimiento'),
+                     .refine(v => !v || fechaNacimientoValida(v, hoyArgentinaISO()), M.nacimiento),
 })
 
 type FormInput  = z.input<typeof schema>
@@ -113,9 +120,14 @@ export function ModalEditarTrabajador({ open, onClose, trabajador }: Props) {
   function onSubmit(data: FormOutput) {
     if (!trabajador) return
     const { activo_override: ao, condicion, fecha_nacimiento, cat_desde, dni, ...rest } = data
+    // El DNI es obligatorio: si ya tenía uno, se corrige pero no se borra.
+    if (!dni && trabajador.dni) {
+      setError('dni', { message: M.dniFalta })
+      return
+    }
     guardar({
       ...rest,
-      dni:              normalizarDni(dni),
+      dni,
       condicion:        condicion || null,
       activo_override:  ao === 'activo' ? true : ao === 'inactivo' ? false : null,
       fecha_nacimiento: fecha_nacimiento && fecha_nacimiento.trim() !== '' ? fecha_nacimiento : null,
@@ -172,8 +184,8 @@ export function ModalEditarTrabajador({ open, onClose, trabajador }: Props) {
         </div>
         <div className="grid grid-cols-2 gap-3">
           <Input
-            label="DNI"
-            placeholder="12.345.678"
+            label="DNI *"
+            placeholder="12345678"
             inputMode="numeric"
             error={errors.dni?.message}
             {...register('dni')}
@@ -224,12 +236,15 @@ export function ModalEditarTrabajador({ open, onClose, trabajador }: Props) {
         />
         <Input
           label="Teléfono"
-          placeholder="351-XXX-XXXX"
+          placeholder="3815551234"
+          inputMode="tel"
+          error={errors.tel?.message}
           {...register('tel')}
         />
         <Input
           label="Dirección"
           placeholder="Calle y número"
+          error={errors.dir?.message}
           {...register('dir')}
         />
         <Input
@@ -241,6 +256,7 @@ export function ModalEditarTrabajador({ open, onClose, trabajador }: Props) {
         <Input
           label="Observaciones"
           placeholder="Notas adicionales"
+          error={errors.obs?.message}
           {...register('obs')}
         />
 
@@ -287,16 +303,19 @@ export function ModalEditarTrabajador({ open, onClose, trabajador }: Props) {
             <Input
               label="Pantalón"
               placeholder="Ej: 44"
+              error={errors.talle_pantalon?.message}
               {...register('talle_pantalon')}
             />
             <Input
               label="Botines"
               placeholder="Ej: 42"
+              error={errors.talle_botines?.message}
               {...register('talle_botines')}
             />
             <Input
               label="Camisa"
               placeholder="Ej: L"
+              error={errors.talle_camisa?.message}
               {...register('talle_camisa')}
             />
           </div>

@@ -39,15 +39,74 @@ export function esActivo(
   return legsConHoras.has(p.leg)
 }
 
+// ── Reglas de campos del legajo ─────────────────────────────────────────────
+// Espejo exacto del backend (cadincsrl/src/modules/personal/personal.schema.ts).
+// Si cambia una regla, cambia en los dos repos.
+
+/** Legajo: 3 dígitos con padding ("099", "112"); 4 cuando pasen de 999. */
+export const LEGAJO_RE = /^\d{3,4}$/
+
 /** Deja solo dígitos: "36.890.735" → "36890735". Vacío si no hay ninguno. */
 export function normalizarDni(s: string | null | undefined): string {
   return (s ?? '').replace(/\D/g, '')
 }
 
-/** DNI argentino: 7 u 8 dígitos. Vacío = no cargado (se admite). */
-export function dniValido(dniNormalizado: string): boolean {
-  return dniNormalizado === '' || /^\d{7,8}$/.test(dniNormalizado)
+/** DNI argentino: 7 u 8 dígitos (se admiten puntos y espacios). Vacío = no cargado (solo legajos viejos). */
+export function dniValido(dni: string | null | undefined): boolean {
+  const crudo = (dni ?? '').trim()
+  return crudo === '' || /^\d{7,8}$/.test(normalizarDni(crudo))
 }
+
+/** Deja solo dígitos: "381-555-1234" → "3815551234". */
+export function normalizarTelefono(s: string | null | undefined): string {
+  return (s ?? '').replace(/\D/g, '')
+}
+
+/**
+ * Celular argentino sin 0 ni 15: 10 dígitos (se admiten guiones, espacios y
+ * paréntesis). Se toleran 8 a 13 por fijos viejos. Vacío = sin cargar. Texto
+ * sin dígitos ("sin teléfono") NO vale: se rechaza, no se vacía en silencio.
+ */
+export function telefonoValido(tel: string | null | undefined): boolean {
+  const crudo = (tel ?? '').trim()
+  return crudo === '' || /^\d{8,13}$/.test(normalizarTelefono(crudo))
+}
+
+/** Recorta y deja un solo espacio entre palabras. */
+export function normalizarNombre(s: string | null | undefined): string {
+  return (s ?? '').trim().replace(/\s+/g, ' ')
+}
+
+/** Apellido y nombre: al menos dos palabras, solo letras (con acentos), punto, coma, apóstrofo o guion. */
+export function nombreValido(nombreNormalizado: string): boolean {
+  const palabras = nombreNormalizado.split(/[\s,]+/).filter(Boolean)
+  return palabras.length >= 2 && palabras.every(p => /^[\p{L}][\p{L}.'’-]*$/u.test(p))
+}
+
+export function normalizarTalle(s: string | null | undefined): string {
+  return (s ?? '').trim().toUpperCase()
+}
+
+/** Talle: número de dos dígitos entre 30 y 60 o XS…XXXL. */
+export function talleValido(talleNormalizado: string): boolean {
+  if (talleNormalizado === '') return true
+  if (/^\d{2}$/.test(talleNormalizado)) {
+    const n = Number(talleNormalizado)
+    return n >= 30 && n <= 60
+  }
+  return /^(XS|S|M|L|XL|XXL|XXXL)$/.test(talleNormalizado)
+}
+
+/** Mensajes de las reglas, iguales a los del backend. */
+export const MSG_PERSONAL = {
+  legajo:     'El legajo son 3 dígitos, ej. 112',
+  nombre:     'Apellido y nombre: al menos dos palabras y solo letras',
+  dni:        'DNI inválido: 7 u 8 dígitos',
+  dniFalta:   'El DNI es obligatorio',
+  telefono:   'Teléfono inválido: 10 dígitos sin 0 ni 15, ej. 3815551234',
+  talle:      'Talle inválido: número (ej. 44) o S, M, L, XL',
+  nacimiento: 'Revisá el año de nacimiento',
+} as const
 
 /** Nacimiento plausible para alguien que trabaja: entre 100 y 14 años atrás. */
 export function fechaNacimientoValida(iso: string, hoyISO: string): boolean {
@@ -65,6 +124,7 @@ export function errorDeCampo(err: unknown): { campo: string; mensaje: string } |
   const e = err as { status?: number; body?: { error?: string; campo?: string } } | null
   const msg = e?.body?.error ?? ''
   if (e?.status === 400 && e.body?.campo) return { campo: e.body.campo, mensaje: msg }
+  if (e?.status === 400 && msg.startsWith('DNI_OBLIGATORIO:')) return { campo: 'dni', mensaje: msg.replace(/^DNI_OBLIGATORIO:\s*/, '') }
   if (e?.status === 409) {
     if (msg.startsWith('DNI_DUPLICADO:'))    return { campo: 'dni', mensaje: msg.replace(/^DNI_DUPLICADO:\s*/, '') }
     if (msg.startsWith('LEGAJO_DUPLICADO:')) return { campo: 'leg', mensaje: msg.replace(/^LEGAJO_DUPLICADO:\s*/, '') }

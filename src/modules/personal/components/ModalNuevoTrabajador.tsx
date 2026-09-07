@@ -12,26 +12,35 @@ import { useCreatePersonal, usePersonal } from '@/modules/tarja/hooks/usePersona
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
 import { useToast } from '@/components/ui/Toast'
 import { hoyArgentinaISO } from '@/lib/utils/dates'
-import { normalizarDni, dniValido, fechaNacimientoValida, errorDeCampo } from '@/lib/utils/personal'
+import {
+  LEGAJO_RE, MSG_PERSONAL as M, errorDeCampo, fechaNacimientoValida,
+  normalizarDni, dniValido, normalizarTelefono, telefonoValido,
+  normalizarNombre, nombreValido, normalizarTalle, talleValido,
+} from '@/lib/utils/personal'
 
+// Mismas reglas que el backend (personal.schema.ts): acá para que el error
+// aparezca debajo del campo antes de mandar nada.
+const talle = z.string().optional().transform(normalizarTalle).refine(talleValido, M.talle)
 const schema = z.object({
-  leg:              z.string().trim().min(1, 'El legajo es requerido'),
-  nom:              z.string().trim().min(1, 'El nombre es requerido'),
+  leg:              z.string().trim().regex(LEGAJO_RE, M.legajo),
+  nom:              z.string().transform(normalizarNombre).refine(nombreValido, M.nombre),
   dni:              z.string().optional()
-                      .refine(v => dniValido(normalizarDni(v)), 'DNI inválido: 7 u 8 dígitos'),
+                      .refine(dniValido, M.dni)
+                      .transform(normalizarDni)
+                      .refine(d => d !== '', M.dniFalta),
   // '' = "Sin especificar": se guarda como null (antes hacía fallar el enum
   // en silencio y el trabajador no se creaba).
   condicion:        z.enum(['blanco', 'asegurado', '']).optional(),
   modalidad:        z.enum(['hora', 'mes']),
   cat_id:           z.coerce.number({ error: 'La categoría es requerida' }).min(1, 'Seleccioná una categoría'),
   fecha_nacimiento: z.string().optional()
-                      .refine(v => !v || fechaNacimientoValida(v, hoyArgentinaISO()), 'Revisá el año de nacimiento'),
-  tel:              z.string().optional(),
-  dir:              z.string().optional(),
-  obs:              z.string().optional(),
-  talle_pantalon:   z.string().optional(),
-  talle_botines:    z.string().optional(),
-  talle_camisa:     z.string().optional(),
+                      .refine(v => !v || fechaNacimientoValida(v, hoyArgentinaISO()), M.nacimiento),
+  tel:              z.string().optional().refine(telefonoValido, M.telefono).transform(normalizarTelefono),
+  dir:              z.string().trim().max(200).optional(),
+  obs:              z.string().trim().max(1000).optional(),
+  talle_pantalon:   talle,
+  talle_botines:    talle,
+  talle_camisa:     talle,
 })
 
 type FormInput  = z.input<typeof schema>
@@ -74,8 +83,8 @@ export function ModalNuevoTrabajador({ open, onClose }: Props) {
       setError('leg', { message: `Ya existe: ${repetido.nom}` })
       return
     }
-    const dni = normalizarDni(data.dni)
-    const mismoDni = dni ? personal.find(p => normalizarDni(p.dni) === dni) : undefined
+    const dni = data.dni
+    const mismoDni = personal.find(p => normalizarDni(p.dni) === dni)
     if (mismoDni) {
       setError('dni', { message: `Ya lo tiene el legajo ${mismoDni.leg} (${mismoDni.nom})` })
       return
@@ -139,9 +148,10 @@ export function ModalNuevoTrabajador({ open, onClose }: Props) {
             {...register('leg')}
           />
           <Input
-            label="DNI"
-            placeholder="12.345.678"
+            label="DNI *"
+            placeholder="12345678"
             inputMode="numeric"
+            hint="Obligatorio: es lo que evita cargar dos veces a la misma persona."
             error={errors.dni?.message}
             {...register('dni')}
           />
@@ -189,18 +199,22 @@ export function ModalNuevoTrabajador({ open, onClose }: Props) {
           />
           <Input
             label="Teléfono"
-            placeholder="351-XXX-XXXX"
+            placeholder="3815551234"
+            inputMode="tel"
+            error={errors.tel?.message}
             {...register('tel')}
           />
         </div>
         <Input
           label="Dirección"
           placeholder="Calle y número"
+          error={errors.dir?.message}
           {...register('dir')}
         />
         <Input
           label="Observaciones"
           placeholder="Notas adicionales"
+          error={errors.obs?.message}
           {...register('obs')}
         />
 
@@ -213,16 +227,19 @@ export function ModalNuevoTrabajador({ open, onClose }: Props) {
             <Input
               label="Pantalón"
               placeholder="Ej: 44"
+              error={errors.talle_pantalon?.message}
               {...register('talle_pantalon')}
             />
             <Input
               label="Botines"
               placeholder="Ej: 42"
+              error={errors.talle_botines?.message}
               {...register('talle_botines')}
             />
             <Input
               label="Camisa"
               placeholder="Ej: L"
+              error={errors.talle_camisa?.message}
               {...register('talle_camisa')}
             />
           </div>

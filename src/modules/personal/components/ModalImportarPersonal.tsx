@@ -6,7 +6,10 @@ import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
 import { useCreatePersonal, useUpdatePersonal } from '@/modules/tarja/hooks/usePersonal'
-import { normalizarDni, dniValido } from '@/lib/utils/personal'
+import {
+  LEGAJO_RE, normalizarDni, dniValido, normalizarTelefono, telefonoValido,
+  normalizarNombre, nombreValido, normalizarTalle, talleValido,
+} from '@/lib/utils/personal'
 import type { Personal, Categoria, UpdatePersonalDto } from '@/types/domain.types'
 
 interface Props {
@@ -96,29 +99,40 @@ export function ModalImportarPersonal({ open, onClose, personal, categorias }: P
         const dataRows = rows.slice(headerIdx + 1).filter(r => String(r[iLeg] ?? '').trim())
 
         const parsed: Fila[] = dataRows.map(r => {
-          const leg     = String(r[iLeg]  ?? '').trim()
-          const nom     = iNom  >= 0 ? String(r[iNom]  ?? '').trim() : ''
-          const catNom  = iCat  >= 0 ? String(r[iCat]  ?? '').trim() : ''
-          const catObj  = categorias.find(c =>
-            c.nom.toLowerCase() === catNom.toLowerCase()
-          )
+          const celda   = (i: number) => (i >= 0 ? String(r[i] ?? '').trim() : '')
+          const leg     = celda(iLeg)
+          const nom     = normalizarNombre(celda(iNom))
+          const catNom  = celda(iCat)
+          const catObj  = categorias.find(c => c.nom.toLowerCase() === catNom.toLowerCase())
           const esNuevo = !personal.some(p => p.leg === leg)
-          const dni     = iDni  >= 0 ? normalizarDni(String(r[iDni] ?? '')) : ''
-          const condTxt = iCond >= 0 ? String(r[iCond] ?? '').trim().toLowerCase() : ''
+          const dniCrudo = celda(iDni)
+          const telCrudo = celda(iTel)
+          const dni     = normalizarDni(dniCrudo)
+          const tel     = normalizarTelefono(telCrudo)
+          const talle_pantalon = normalizarTalle(celda(iPant))
+          const talle_botines  = normalizarTalle(celda(iBoti))
+          const talle_camisa   = normalizarTalle(celda(iCami))
+          const condTxt = celda(iCond).toLowerCase()
           const condicion: Fila['condicion'] =
             condTxt === 'blanco' ? 'blanco' : condTxt === 'asegurado' ? 'asegurado' : ''
-          const modTxt  = iMod  >= 0 ? String(r[iMod]  ?? '').trim().toLowerCase() : ''
+          const modTxt  = celda(iMod).toLowerCase()
           const modalidad: Fila['modalidad'] =
             /^(mes|mensual|mensualizado)$/.test(modTxt) ? 'mes'
             : /^(hora|por hora|jornal)$/.test(modTxt)   ? 'hora'
             : ''
 
+          // Mismas reglas que el alta manual y que el backend.
           let error: string | null = null
           if (!leg)                               error = 'Legajo vacío'
-          else if (!nom && esNuevo)               error = 'Nombre requerido para trabajador nuevo'
+          else if (!LEGAJO_RE.test(leg))          error = 'Legajo inválido (3 dígitos, ej. 112)'
+          else if (esNuevo && !nom)               error = 'Nombre requerido para trabajador nuevo'
+          else if (nom && !nombreValido(nom))     error = 'Nombre inválido (apellido y nombre, solo letras)'
           else if (esNuevo && !catObj)            error = catNom ? `Categoría "${catNom}" no encontrada` : 'Categoría requerida para trabajador nuevo'
           else if (!esNuevo && catNom && !catObj) error = `Categoría "${catNom}" no encontrada`
-          else if (!dniValido(dni))               error = 'DNI inválido (7 u 8 dígitos)'
+          else if (esNuevo && !dni)               error = 'DNI requerido para trabajador nuevo'
+          else if (!dniValido(dniCrudo))          error = 'DNI inválido (7 u 8 dígitos)'
+          else if (!telefonoValido(telCrudo))     error = 'Teléfono inválido (10 dígitos, ej. 3815551234)'
+          else if (![talle_pantalon, talle_botines, talle_camisa].every(talleValido)) error = 'Talle inválido (ej. 44 o L)'
           else if (condTxt && !condicion)         error = `Condición "${condTxt}" no válida (Blanco / Asegurado)`
           else if (modTxt && !modalidad)          error = `Modalidad "${modTxt}" no válida (Hora / Mes)`
 
@@ -130,12 +144,12 @@ export function ModalImportarPersonal({ open, onClose, personal, categorias }: P
             modalidad,
             categoria:      catNom,
             cat_id:         catObj?.id ?? null,
-            tel:            iTel  >= 0 ? String(r[iTel]  ?? '').trim() : '',
-            dir:            iDir  >= 0 ? String(r[iDir]  ?? '').trim() : '',
-            talle_pantalon: iPant >= 0 ? String(r[iPant] ?? '').trim() : '',
-            talle_botines:  iBoti >= 0 ? String(r[iBoti] ?? '').trim() : '',
-            talle_camisa:   iCami >= 0 ? String(r[iCami] ?? '').trim() : '',
-            obs:            iObs  >= 0 ? String(r[iObs]  ?? '').trim() : '',
+            tel,
+            dir:            celda(iDir),
+            talle_pantalon,
+            talle_botines,
+            talle_camisa,
+            obs:            celda(iObs),
             esNuevo,
             error,
           }
@@ -161,11 +175,11 @@ export function ModalImportarPersonal({ open, onClose, personal, categorias }: P
     for (const f of validas) {
       try {
         if (f.esNuevo) {
-          if (!f.nom || f.cat_id == null) continue
+          if (!f.nom || f.cat_id == null || !f.dni) continue
           await crear({
             leg:            f.leg,
             nom:            f.nom,
-            dni:            f.dni   || undefined,
+            dni:            f.dni,
             condicion:      f.condicion || undefined,
             modalidad:      f.modalidad || undefined,
             cat_id:         f.cat_id,
@@ -273,8 +287,8 @@ export function ModalImportarPersonal({ open, onClose, personal, categorias }: P
 
             <p className="text-xs text-gris-dark">
               Columnas esperadas: <span className="font-mono">Legajo, Apellido y Nombre, DNI, Categoría, Condición, Modalidad, Teléfono, Dirección, Pantalón, Botines, Camisa, Observaciones</span>.
-              Si el legajo ya existe, se actualizan los datos. Si no existe, se crea el trabajador (con categoría obligatoria).
-              Condición (Blanco / Asegurado) y Modalidad (Hora / Mes) son opcionales.
+              Si el legajo ya existe, se actualizan los datos. Si no existe, se crea el trabajador (categoría y DNI obligatorios).
+              Condición (Blanco / Asegurado) y Modalidad (Hora / Mes) son opcionales. Se aplican las mismas reglas que el alta manual.
             </p>
           </>
         )}
