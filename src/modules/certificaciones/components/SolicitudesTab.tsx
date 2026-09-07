@@ -31,6 +31,7 @@ import { useTabPermitido } from '@/hooks/useTabsPermitidos'
 import { UNIDADES } from '../constants'
 import { createClient } from '@/lib/supabase/client'
 import { toISO } from '@/lib/utils/dates'
+import { matchesSearch } from '@/lib/utils/text'
 import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
 import { Input }    from '@/components/ui/Input'
@@ -476,6 +477,13 @@ export function SolicitudesTab() {
   }
 
   const [obraFiltro, setObraFiltro] = useState('')
+  /**
+   * Buscador de material. Filtra los pedidos a los que tienen algún renglón que
+   * coincide, y dentro de cada uno muestra SOLO esos renglones. Pedido del user
+   * para "ver los últimos movimientos de cemento": sin esto había que abrir
+   * pedido por pedido. Vale en todos los tabs, no solo en Enviadas.
+   */
+  const [busquedaMat, setBusquedaMat] = useState('')
   const router       = useRouter()
   const searchParams = useSearchParams()
   // Categoría activa: viene del query param `?categoria=...`. Si no hay,
@@ -624,6 +632,22 @@ export function SolicitudesTab() {
     ? (proveedores as Proveedor[]).find(p => normalizarNombre(p.nombre) === normalizarNombre(nombreProvNuevo))
     : undefined
 
+  // Un renglón matchea si coincide su descripción o el nombre/sinónimos de su
+  // ficha del catálogo: así "portland" encuentra al cemento aunque el renglón
+  // diga otra cosa.
+  const buscaMat = busquedaMat.trim()
+  const itemMatch = useMemo(() => {
+    if (!buscaMat) return () => true
+    return (it: SolicitudCompraItem) => {
+      const m = it.material_id != null ? stockMap.get(it.material_id) : undefined
+      return matchesSearch(`${it.descripcion ?? ''} ${m?.nombre ?? ''} ${(m?.alias ?? []).join(' ')}`, buscaMat)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buscaMat, stockMateriales])
+
+  /** El pedido entra si tiene al menos un renglón que coincide con la búsqueda. */
+  const matchBusqueda = (s: SolicitudCompra) => !buscaMat || (s.items ?? []).some(itemMatch)
+
   // Contadores live por categoría — para los chips de cada tab.
   const counts = useMemo(() => {
     const c: Record<CategoriaSol, number> = {
@@ -631,15 +655,17 @@ export function SolicitudesTab() {
       'sin-aprobar': 0, 'rechazadas': 0,
     }
     for (const s of (solicitudes as SolicitudCompra[])) {
+      if (!matchBusqueda(s)) continue
       for (const cat of CATEGORIAS_ALL) {
         if (matchCategoria(s, cat)) c[cat]++
       }
     }
     return c
-  }, [solicitudes])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [solicitudes, buscaMat, itemMatch])
 
   // Filtrar por la categoría activa.
-  const filtered = (solicitudes as SolicitudCompra[]).filter(s => matchCategoria(s, categoriaSel))
+  const filtered = (solicitudes as SolicitudCompra[]).filter(s => matchCategoria(s, categoriaSel) && matchBusqueda(s))
 
   const sorted = [...filtered].sort((a, b) => {
     // En "Enviadas" ordenamos por el envío MÁS RECIENTE del pedido (la última
@@ -1227,6 +1253,28 @@ export function SolicitudesTab() {
           <div className="flex-1 min-w-0 sm:max-w-xs">
             <Combobox placeholder="Filtrar por obra..." options={obraOptions} value={obraFiltro} onChange={setObraFiltro} />
           </div>
+          {/* Buscador de material: "cemento" deja solo los pedidos que lo tienen
+              y, adentro de cada uno, solo esos renglones. Los contadores de los
+              tabs también se ajustan. */}
+          <div className="relative flex-1 min-w-0 sm:max-w-[220px]">
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gris-dark text-sm pointer-events-none">🔍</span>
+            <input
+              type="text"
+              value={busquedaMat}
+              onChange={e => setBusquedaMat(e.target.value)}
+              placeholder="Buscar material..."
+              autoComplete="off"
+              className="w-full pl-8 pr-7 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white"
+            />
+            {busquedaMat && (
+              <button
+                type="button"
+                onClick={() => setBusquedaMat('')}
+                title="Limpiar"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gris-mid hover:text-carbon text-xs"
+              >✕</button>
+            )}
+          </div>
           {/* El módulo Herramientas tiene su propio sidebar, que sólo se ve estando
               adentro. Sosa vive acá, así que el puente va acá.
               `router.push` y no <a href>: en App Router un ancla cruda hace
@@ -1252,6 +1300,13 @@ export function SolicitudesTab() {
           </Button>
         </div>
         <CategoriaTabs categoriaSel={categoriaSel} counts={counts} onSelect={setCategoria} />
+        {buscaMat && (
+          <div className="text-xs text-gris-dark bg-amarillo-light/50 border border-[#E0A800]/30 rounded-lg px-3 py-2">
+            Buscando <b className="text-carbon">&ldquo;{buscaMat}&rdquo;</b>: se muestran solo los renglones que coinciden, y los
+            contadores de arriba cuentan únicamente los pedidos que lo tienen.
+            {' '}<button type="button" onClick={() => setBusquedaMat('')} className="font-bold text-azul hover:underline">Ver todo</button>
+          </div>
+        )}
       </div>
 
       {/* Tabla */}
@@ -1264,22 +1319,29 @@ export function SolicitudesTab() {
         <div className="hidden md:flex flex-col gap-3">
           {sorted.length === 0 ? (
             <div className="bg-white rounded-card shadow-card p-8 text-center text-gris-dark text-sm italic">
-              Sin solicitudes.
+              {buscaMat
+                ? <>Ningún pedido de este tab tiene &ldquo;{buscaMat}&rdquo;. Probá en otro tab: los contadores de arriba te dicen dónde está.</>
+                : 'Sin solicitudes.'}
             </div>
           ) : sorted.map(s => {
             const obra = obrasMap.get(s.obra_cod)
-            const isExp = expanded.has(s.id)
+            // Con búsqueda no hace falta abrir pedido por pedido.
+            const isExp = expanded.has(s.id) || !!buscaMat
             const items = s.items ?? []
             // En los tabs de trabajo ("Por comprar" / "Por enviar") mostramos el
             // PEDIDO COMPLETO para no perder la foto: primero los ítems foco de
             // este tab y después los ya resueltos / no-foco (atenuados).
             const tabTrabajo = categoriaSel === 'por-comprar' || categoriaSel === 'por-enviar'
             const itemsFiltrados = items.filter(it => itemEnCategoria(it.estado, categoriaSel))
-            const itemsVisibles = !esTabPorItem(categoriaSel)
-              ? items
-              : tabTrabajo
-                ? [...items].sort((a, b) => Number(itemEnCategoria(b.estado, categoriaSel)) - Number(itemEnCategoria(a.estado, categoriaSel)))
-                : (itemsFiltrados.length === 0 ? items : itemsFiltrados)
+            // Con búsqueda de material la vista se reduce a lo buscado: si abro
+            // "cemento" no quiero los otros 20 renglones del pedido.
+            const itemsVisibles = buscaMat
+              ? items.filter(itemMatch)
+              : !esTabPorItem(categoriaSel)
+                ? items
+                : tabTrabajo
+                  ? [...items].sort((a, b) => Number(itemEnCategoria(b.estado, categoriaSel)) - Number(itemEnCategoria(a.estado, categoriaSel)))
+                  : (itemsFiltrados.length === 0 ? items : itemsFiltrados)
             // Avance de resolución del pedido (chip en el header, solo tabs de trabajo)
             const totalItems = items.length
             const resueltosCount = items.filter(it => it.estado !== 'pendiente' && it.estado !== 'rechazado').length
@@ -1642,21 +1704,28 @@ export function SolicitudesTab() {
         <div className="flex flex-col gap-2 md:hidden">
           {sorted.length === 0 ? (
             <div className="bg-white rounded-card shadow-card p-6 text-center text-gris-dark text-sm italic">
-              Sin solicitudes.
+              {buscaMat
+                ? <>Ningún pedido de este tab tiene &ldquo;{buscaMat}&rdquo;. Probá en otro tab: los contadores de arriba te dicen dónde está.</>
+                : 'Sin solicitudes.'}
             </div>
           ) : sorted.map(s => {
             const obra = obrasMap.get(s.obra_cod)
-            const isExp = expanded.has(s.id)
+            // Con búsqueda no hace falta abrir pedido por pedido.
+            const isExp = expanded.has(s.id) || !!buscaMat
             const items = s.items ?? []
             const itemsSeleccionados = items.filter(it => selected.has(it.id!) && (it.estado === 'comprado' || it.estado === 'de_deposito' || it.estado === 'retirado' || it.estado === 'de_stock_cliente'))
             // En los tabs de trabajo mostramos el pedido completo (foco primero).
             const tabTrabajo = categoriaSel === 'por-comprar' || categoriaSel === 'por-enviar'
             const itemsFiltrados = items.filter(it => itemEnCategoria(it.estado, categoriaSel))
-            const itemsVisibles = !esTabPorItem(categoriaSel)
-              ? items
-              : tabTrabajo
-                ? [...items].sort((a, b) => Number(itemEnCategoria(b.estado, categoriaSel)) - Number(itemEnCategoria(a.estado, categoriaSel)))
-                : (itemsFiltrados.length === 0 ? items : itemsFiltrados)
+            // Con búsqueda de material la vista se reduce a lo buscado: si abro
+            // "cemento" no quiero los otros 20 renglones del pedido.
+            const itemsVisibles = buscaMat
+              ? items.filter(itemMatch)
+              : !esTabPorItem(categoriaSel)
+                ? items
+                : tabTrabajo
+                  ? [...items].sort((a, b) => Number(itemEnCategoria(b.estado, categoriaSel)) - Number(itemEnCategoria(a.estado, categoriaSel)))
+                  : (itemsFiltrados.length === 0 ? items : itemsFiltrados)
             const totalItems = items.length
             const resueltosCount = items.filter(it => it.estado !== 'pendiente' && it.estado !== 'rechazado').length
             const faltanCount = items.filter(it => it.estado === 'pendiente').length
