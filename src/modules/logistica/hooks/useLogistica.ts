@@ -30,6 +30,23 @@ export const LOG_KEYS = {
   gastosCategorias:['logistica', 'gastos_categorias'] as const,
 }
 
+/**
+ * La campana del topbar tiene su PROPIA query de gastos pendientes y su clave
+ * NO cuelga de `LOG_KEYS.gastos` (`['logistica','gastos']` no es prefijo de
+ * `['logistica','notificaciones','gastos-pendientes']`). Por eso aprobar un
+ * gasto refrescaba la lista pero dejaba el aviso "gastos pendientes de
+ * aprobar" con el número viejo hasta recargar la página: esa query solo tiene
+ * `staleTime`, sin `refetchInterval`, así que sin invalidación no se entera.
+ * La consume `src/hooks/useNotificaciones.ts`.
+ */
+export const GASTOS_NOTIF_KEY = ['logistica', 'notificaciones', 'gastos-pendientes'] as const
+
+/** Todo lo que hay que refrescar cuando un gasto cambia. Mismo patrón que `invalidarServices`. */
+function invalidarGastos(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: LOG_KEYS.gastos })
+  qc.invalidateQueries({ queryKey: GASTOS_NOTIF_KEY })
+}
+
 // ── Choferes ──
 export function useChoferes() {
   return useQuery({
@@ -909,7 +926,7 @@ export function useCreateGasto() {
   return useMutation({
     mutationFn: (dto: Partial<Gasto> & { comprobante_path?: string | null }) =>
       apiPost<Gasto>('/api/logistica/gastos', dto),
-    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.gastos }),
+      onSuccess: () => invalidarGastos(qc),
   })
 }
 
@@ -918,7 +935,7 @@ export function useUpdateGasto() {
   return useMutation({
     mutationFn: ({ id, dto }: { id: number; dto: Partial<Gasto> & { comprobante_path?: string | null } }) =>
       apiPatch<Gasto>(`/api/logistica/gastos/${id}`, dto),
-    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.gastos }),
+      onSuccess: () => invalidarGastos(qc),
   })
 }
 
@@ -926,7 +943,7 @@ export function useDeleteGasto() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: number) => apiDelete(`/api/logistica/gastos/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.gastos }),
+      onSuccess: () => invalidarGastos(qc),
   })
 }
 
@@ -934,7 +951,7 @@ export function useAprobarGasto() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: number) => apiPost<Gasto>(`/api/logistica/gastos/${id}/aprobar`, {}),
-    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.gastos }),
+      onSuccess: () => invalidarGastos(qc),
   })
 }
 
@@ -948,7 +965,7 @@ export function useAprobarGastoLote() {
       apiPost<{ aprobados: number[]; saltados: { id: number; code: string }[] }>(
         '/api/logistica/gastos/aprobar-lote', { ids },
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.gastos }),
+      onSuccess: () => invalidarGastos(qc),
   })
 }
 
@@ -957,7 +974,7 @@ export function useRechazarGasto() {
   return useMutation({
     mutationFn: ({ id, motivo_rechazo }: { id: number; motivo_rechazo: string }) =>
       apiPost<Gasto>(`/api/logistica/gastos/${id}/rechazar`, { motivo_rechazo }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.gastos }),
+      onSuccess: () => invalidarGastos(qc),
   })
 }
 
@@ -965,7 +982,7 @@ export function useMarcarGastoPagado() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: number) => apiPost<Gasto>(`/api/logistica/gastos/${id}/marcar-pagado`, {}),
-    onSuccess: () => qc.invalidateQueries({ queryKey: LOG_KEYS.gastos }),
+      onSuccess: () => invalidarGastos(qc),
   })
 }
 

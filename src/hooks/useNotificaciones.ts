@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api/client'
 import { usePersonal } from '@/modules/tarja/hooks/usePersonal'
+import { GASTOS_NOTIF_KEY } from '@/modules/logistica/hooks/useLogistica'
 import { useSessionStore } from '@/store/session.store'
 import { usePermisos } from '@/hooks/usePermisos'
 import type { Personal } from '@/types/domain.types'
@@ -232,7 +233,9 @@ export function useNotificaciones(): NotificacionesResult {
     staleTime: 5 * 60 * 1000,
   })
   const { data: gastosPend } = useQuery({
-    queryKey: ['logistica', 'notificaciones', 'gastos-pendientes'],
+    // La clave vive en useLogistica: las mutaciones de gastos la invalidan
+    // para que aprobar refresque este aviso sin recargar la página.
+    queryKey: GASTOS_NOTIF_KEY,
     queryFn:  () => apiGet<{
       items: Array<{
         id: number; fecha: string; monto: number; descripcion: string | null;
