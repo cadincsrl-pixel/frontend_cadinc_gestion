@@ -11,6 +11,7 @@ import { useToast } from '@/components/ui/Toast'
 import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
 import { usePermisos } from '@/hooks/usePermisos'
+import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 
 const SUB_MOTIVO_LABELS: Record<string, string> = {
   faltante_fisico:    'Faltante físico',
@@ -45,11 +46,14 @@ interface AjusteRow {
   created_by:   string | null
   comprobante_storage_path: string | null
   stock_materiales?: { id: number; nombre: string; unidad: string; stock_actual: number } | null
-  declarante?:       { id: string; nombre: string }                                       | null
 }
 
 export function AjustesPendientesSection() {
   const { aprobarAjustesStock, esAdmin } = usePermisos('certificaciones')
+  // El backend ya no embebe el declarante: `created_by` apunta a auth.users,
+  // no a profiles, y ese embed rompía la query entera (ver el service).
+  const perfiles = usePerfilesMap()
+  const quienDeclaro = (a: AjusteRow) => (a.created_by && perfiles.get(a.created_by)) || 'alguien del equipo'
   const habilitado = esAdmin || aprobarAjustesStock
   const { data: ajustes = [], isLoading } = useAjustesPendientes(habilitado)
   const { mutate: aprobar,  isPending: aprobando  } = useAprobarAjuste()
@@ -140,7 +144,7 @@ export function AjustesPendientesSection() {
                     </span>
                   )}
                   <span className="text-gris-dark">
-                    👤 {a.declarante?.nombre ?? '—'}
+                    👤 {quienDeclaro(a)}
                   </span>
                   <span className="text-gris-dark">
                     🕒 {fmtFechaHora(a.created_at)}
@@ -225,7 +229,7 @@ export function AjustesPendientesSection() {
           <div className="flex flex-col gap-3">
             <p className="text-sm text-carbon">
               Estás por rechazar el ajuste de <strong>{rechazoOpen.stock_materiales?.nombre}</strong>
-              {' '}declarado por <strong>{rechazoOpen.declarante?.nombre ?? '—'}</strong>.
+              {' '}declarado por <strong>{quienDeclaro(rechazoOpen)}</strong>.
               El stock no se modifica; el declarante puede ver el motivo del rechazo.
             </p>
             <div className="flex flex-col gap-1">
