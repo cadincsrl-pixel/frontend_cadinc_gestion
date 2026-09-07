@@ -12,27 +12,37 @@ export function getHsExtrasLeg(
   return row?.hs ?? 0
 }
 
-// Tarifa vigente para una categoría en una obra en una fecha dada
+// Fila de tarifa de obra que rige en una fecha: la más reciente con
+// desde <= fecha; si todas son futuras, la más antigua (retroactivo); sin
+// filas, null. Una fila con vh null es "volver al global" desde ese viernes.
+export function tarifaVigente(
+  tarifas: Tarifa[],
+  obraCod: string,
+  catId: number,
+  fechaRef: string,
+): Tarifa | null {
+  const hist = tarifas
+    .filter(t => t.obra_cod === obraCod && t.cat_id === catId)
+    .sort((a, b) => a.desde.localeCompare(b.desde))
+  if (!hist.length) return null
+  let vigente: Tarifa | null = null
+  for (const t of hist) {
+    if (t.desde <= fechaRef) vigente = t
+  }
+  return vigente ?? hist[0]!
+}
+
+// Tarifa vigente para una categoría en una obra en una fecha dada. null =
+// no hay tarifa de obra que aplique (o la que aplica es "volver al global"):
+// el que llama cae al precio global.
 export function getTarifaEnFecha(
   tarifas: Tarifa[],
   obraCod: string,
   catId: number,
   dateStr: string
 ): number | null {
-  const hist = tarifas
-    .filter(t => t.obra_cod === obraCod && t.cat_id === catId)
-    .sort((a, b) => a.desde.localeCompare(b.desde))
-
-  if (!hist.length) return null
-
-  // Buscar la más reciente cuya vigencia sea <= dateStr
-  let vigente: Tarifa | null = null
-  for (const t of hist) {
-    if (t.desde <= dateStr) vigente = t
-  }
-
-  // Si ninguna cubre esa fecha, usar la más antigua (retroactivo)
-  return vigente ? vigente.vh : hist[0]!.vh
+  const vigente = tarifaVigente(tarifas, obraCod, catId, dateStr)
+  return vigente && vigente.vh != null ? vigente.vh : null
 }
 
 // Precio global de una categoría vigente a una fecha dada.
@@ -244,19 +254,11 @@ export function getVHConCatObra(
 ): number {
   const catId = getCatIdEfectivo(catObra, personal, obraCod, leg, fechaRef)
   if (!catId) return 0
-  const tarifaObraAll = tarifas
-    .filter(t => t.obra_cod === obraCod && t.cat_id === catId)
-    .sort((a, b) => a.desde.localeCompare(b.desde))
-  let vh: number | null = null
-  if (tarifaObraAll.length > 0) {
-    for (const t of tarifaObraAll) {
-      if (t.desde <= fechaRef) vh = t.vh
-      else break
-    }
-    if (vh === null) vh = tarifaObraAll[0]!.vh
-  } else {
-    vh = getVHGlobalEnFecha(categorias.find(c => c.id === catId), fechaRef)
-  }
+  // Tarifa de obra vigente (vh null = volver al global) o precio global.
+  const deObra = tarifaVigente(tarifas, obraCod, catId, fechaRef)
+  const vh = deObra && deObra.vh != null
+    ? deObra.vh
+    : getVHGlobalEnFecha(categorias.find(c => c.id === catId), fechaRef)
   return vh ?? 0
 }
 

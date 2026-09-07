@@ -28,8 +28,9 @@ export const obrasApi = {
   update: (cod: string, dto: UpdateObraDto) =>
     apiPatch<Obra>(`/api/obras/${encodeURIComponent(cod)}`, dto),
 
-  archivar: (cod: string) =>
-    apiPatch<Obra>(`/api/obras/${encodeURIComponent(cod)}/archivar`, {}),
+  // forzar: archivar aunque haya horas en la semana en curso o semanas reabiertas (409 OBRA_CON_SEMANA_ABIERTA).
+  archivar: (cod: string, forzar = false) =>
+    apiPatch<Obra>(`/api/obras/${encodeURIComponent(cod)}/archivar${forzar ? '?forzar=1' : ''}`, {}),
 
   delete: (cod: string) =>
     apiDelete<{ success: boolean }>(`/api/obras/${encodeURIComponent(cod)}`),

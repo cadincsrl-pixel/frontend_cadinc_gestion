@@ -15,7 +15,8 @@ export function useTarifasObra(obraCod: string) {
 export function useUpsertTarifa() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (dto: { obra_cod: string; cat_id: number; vh: number; desde?: string; confirmar_historico?: boolean }) =>
+    // vh null = "volver al global" desde `desde`.
+    mutationFn: (dto: { obra_cod: string; cat_id: number; vh: number | null; desde?: string; confirmar_historico?: boolean }) =>
       apiPut<Tarifa>('/api/tarifas', dto),
     onSuccess: () => qc.invalidateQueries({ queryKey: TARIFAS_KEY }),
   })

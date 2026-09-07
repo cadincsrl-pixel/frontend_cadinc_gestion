@@ -106,15 +106,24 @@ export function ModalEditarObra({ open, onClose, obra }: Props) {
     )
   }
 
-  function archivar() {
+  function archivar(forzar = false) {
     if (!obra) return
-    archivarObra(obra.cod, {
+    archivarObra({ cod: obra.cod, forzar }, {
       onSuccess: () => {
         toast('✓ Obra archivada', 'ok')
         onClose()
         router.push('/tarja')
       },
-      onError: (err) => toast(err.message ?? 'Error al archivar', 'err'),
+      onError: (err) => {
+        const msg = err.message ?? 'Error al archivar'
+        // Horas en la semana en curso o semanas reabiertas: el backend avisa
+        // con 409 y acá se puede archivar igual.
+        if (!forzar && msg.startsWith('OBRA_CON_SEMANA_ABIERTA')) {
+          if (confirm(`${msg.replace(/^OBRA_CON_SEMANA_ABIERTA:\s*/, '')}\n\n¿Archivar igual?`)) archivar(true)
+          return
+        }
+        toast(msg, 'err')
+      },
     })
   }
 

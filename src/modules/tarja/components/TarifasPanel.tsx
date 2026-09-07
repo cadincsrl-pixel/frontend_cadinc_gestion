@@ -116,15 +116,18 @@ export function TarifasPanel({ obraCod, readonly = false }: Props) {
     })
   }
 
-  function handleResetGlobal(catId: number, globalVH: number) {
+  // "Volver al global" guarda una fila con vh null desde esta semana: desde
+  // ahí rige el precio global (y sigue al global cuando cambie). Antes
+  // copiaba el global de hoy como tarifa de obra y quedaba pinneado.
+  function handleResetGlobal(catId: number) {
     upsert(
-      { obra_cod: obraCod, cat_id: catId, vh: globalVH, desde: viernesActual },
+      { obra_cod: obraCod, cat_id: catId, vh: null, desde: viernesActual },
       {
         onSuccess: () => {
-          toast('↺ Vuelto al precio global desde esta semana', 'ok')
+          toast('↺ Desde esta semana rige el precio global', 'ok')
           refetch()
         },
-        onError: () => toast('Error al restablecer tarifa', 'err'),
+        onError: (err) => toast(err.message ?? 'Error al restablecer tarifa', 'err'),
       }
     )
   }
@@ -152,13 +155,14 @@ export function TarifasPanel({ obraCod, readonly = false }: Props) {
             {categorias.map(cat => {
               const vigente  = getTarifaVigente(cat.id)
               const hist     = getTarifaHist(cat.id)
-              const esCustom = vigente !== null && vigente.vh !== cat.vh
+              // Una fila con vh null es "volver al global": no es custom.
+              const esCustom = vigente !== null && vigente.vh !== null && vigente.vh !== cat.vh
               const showHist = historialAbierto === cat.id
               const state    = getSemForCat(cat.id)
               const tarifaEnSemSel = getTarifaEnSem(cat.id, state.viernes)
 
               // Placeholder del input: precio ya guardado para esa semana, o global
-              const inputPlaceholder = tarifaEnSemSel
+              const inputPlaceholder = tarifaEnSemSel && tarifaEnSemSel.vh !== null
                 ? String(tarifaEnSemSel.vh)
                 : String(cat.vh)
 
@@ -181,7 +185,7 @@ export function TarifasPanel({ obraCod, readonly = false }: Props) {
                         Global: ${cat.vh.toLocaleString('es-AR')}/h
                         {esCustom && (
                           <span className="ml-1 font-bold text-naranja-dark">
-                            · Vigente: ${vigente!.vh.toLocaleString('es-AR')}/h
+                            · Vigente: ${(vigente?.vh ?? 0).toLocaleString('es-AR')}/h
                           </span>
                         )}
                       </div>
@@ -213,7 +217,7 @@ export function TarifasPanel({ obraCod, readonly = false }: Props) {
                           <option key={key} value={key}>
                             {getSemLabel(vie)}
                             {esActual ? ' ← Actual' : ''}
-                            {tarifaGuardada ? ` · $${tarifaGuardada.vh.toLocaleString('es-AR')}` : ''}
+                            {tarifaGuardada ? (tarifaGuardada.vh === null ? ' · global' : ` · $${tarifaGuardada.vh.toLocaleString('es-AR')}`) : ''}
                           </option>
                         )
                       })}
@@ -246,7 +250,9 @@ export function TarifasPanel({ obraCod, readonly = false }: Props) {
                     {/* Aviso si hay precio guardado para la semana seleccionada */}
                     {tarifaEnSemSel && (
                       <p className="text-[10px] text-naranja-dark font-semibold mt-1">
-                        Ya existe precio para esta semana: ${tarifaEnSemSel.vh.toLocaleString('es-AR')}/h — se sobreescribirá.
+                        {tarifaEnSemSel.vh === null
+                          ? 'Esta semana ya está marcada "volver al global" — se sobreescribirá.'
+                          : `Ya existe precio para esta semana: $${tarifaEnSemSel.vh.toLocaleString('es-AR')}/h — se sobreescribirá.`}
                       </p>
                     )}
 
@@ -281,7 +287,7 @@ export function TarifasPanel({ obraCod, readonly = false }: Props) {
                                   {i === 0 ? <strong className="text-carbon">Vigente</strong> : 'Anterior'} · desde {t.desde}
                                 </span>
                                 <span className="font-mono font-bold text-carbon">
-                                  ${t.vh.toLocaleString('es-AR')}
+                                  {t.vh === null ? '↺ global' : `$${t.vh.toLocaleString('es-AR')}`}
                                 </span>
                               </div>
                               {t.updated_by && (
@@ -302,12 +308,12 @@ export function TarifasPanel({ obraCod, readonly = false }: Props) {
                   {/* Reset al global */}
                   {esCustom && (
                     <button
-                      onClick={() => handleResetGlobal(cat.id, cat.vh)}
+                      onClick={() => handleResetGlobal(cat.id)}
                       disabled={!puedeEditar}
                       title={motivoBloqueo}
                       className="mt-2 w-full text-[10px] font-bold text-gris-dark hover:text-naranja-dark transition-colors text-left py-1 border-t border-naranja/20 disabled:opacity-40 disabled:cursor-not-allowed"
                     >
-                      ↺ Volver al global desde hoy (${cat.vh.toLocaleString('es-AR')}/h)
+                      ↺ Volver al global desde esta semana (hoy ${cat.vh.toLocaleString('es-AR')}/h, y sigue al global si cambia)
                     </button>
                   )}
                 </div>

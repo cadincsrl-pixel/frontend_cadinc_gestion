@@ -334,7 +334,8 @@ export interface Tarifa extends AuditFields {
   id: number
   obra_cod: string
   cat_id: number
-  vh: number
+  /** null = desde ese viernes vuelve a regir el precio global de la categoría. */
+  vh: number | null
   desde: string
 }
 

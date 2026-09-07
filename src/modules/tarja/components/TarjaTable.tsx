@@ -98,6 +98,16 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
   // sem_key para esta semana = viernes (días[0] es viernes por getSemDays(semActual))
   const semKey = desde
 
+  // Detalle de conflicto abierto por click/tap (leg|fecha). El title del
+  // <td> sigue sirviendo al hover; en touch no hay hover.
+  const [conflictoAbierto, setConflictoAbierto] = useState<string | null>(null)
+  useEffect(() => {
+    if (!conflictoAbierto) return
+    const cerrar = () => setConflictoAbierto(null)
+    document.addEventListener('click', cerrar)
+    return () => document.removeEventListener('click', cerrar)
+  }, [conflictoAbierto])
+
   // ── Undo ──
   const undoStack = useRef<UndoEntry[]>([])
   const [undoCount, setUndoCount] = useState(0)
@@ -529,10 +539,22 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                         title={tooltipBloqueo ?? (enConflicto ? `⚠ También tiene horas este día en — ${otrasObrasMismoDia.join(' · ')}` : undefined)}
                       >
                         {enConflicto && (
-                          <span
-                            className="absolute top-0 right-0.5 text-[10px] leading-none text-rojo font-bold pointer-events-none"
-                            aria-hidden="true"
-                          >⚠</span>
+                          <button
+                            type="button"
+                            onClick={e => { e.stopPropagation(); setConflictoAbierto(prev => prev === `${p.leg}|${fecha}` ? null : `${p.leg}|${fecha}`) }}
+                            className="absolute top-0 right-0.5 text-[10px] leading-none text-rojo font-bold"
+                            aria-label="Ver en qué otra obra tiene horas este día"
+                          >⚠</button>
+                        )}
+                        {conflictoAbierto === `${p.leg}|${fecha}` && (
+                          <div
+                            className="absolute z-20 left-0 top-full mt-0.5 min-w-[180px] max-w-[260px] bg-white border border-rojo/40 rounded-lg shadow-card p-2 text-left text-[11px] text-carbon"
+                            onClick={e => e.stopPropagation()}
+                          >
+                            <div className="font-bold text-rojo mb-1">También tiene horas este día en:</div>
+                            {otrasObrasMismoDia.map(o => <div key={o}>{o}</div>)}
+                            <button type="button" className="mt-1 text-[10px] font-bold text-gris-dark hover:text-carbon" onClick={() => setConflictoAbierto(null)}>Cerrar</button>
+                          </div>
                         )}
                         <input
                           type="number"

@@ -131,8 +131,19 @@ export function ToolbarTarja({
     if (!file) return
     importarTarjaExcel(
       file, obraCod, personal,
-      resultado => {
-        if (!confirm(`¿Importar ${resultado.length} registros de horas? Se sobreescribirán las horas existentes.`)) return
+      ({ horas: resultado, semanaArchivo, legsDesconocidos, celdasVacias }) => {
+        const semKey = toISO(getViernes(semActual))
+        const avisos: string[] = []
+        if (semanaArchivo !== semKey) {
+          avisos.push(`⚠ El archivo es de la semana del ${semanaArchivo} y estás viendo la del ${semKey}: las horas van a las fechas del archivo.`)
+        }
+        if (legsDesconocidos.length) {
+          avisos.push(`Se saltean ${legsDesconocidos.length} legajo${legsDesconocidos.length === 1 ? '' : 's'} que no están en esta semana: ${legsDesconocidos.slice(0, 8).join(', ')}${legsDesconocidos.length > 8 ? '…' : ''}.`)
+        }
+        if (celdasVacias > 0) {
+          avisos.push(`${celdasVacias} celda${celdasVacias === 1 ? '' : 's'} vacía${celdasVacias === 1 ? '' : 's'}: no borran horas ya cargadas (poné 0 para borrar).`)
+        }
+        if (!confirm(`¿Importar ${resultado.length} registros de horas? Se sobreescriben las celdas con valor.${avisos.length ? '\n\n' + avisos.join('\n') : ''}`)) return
         upsertLote(
           { obra_cod: obraCod, horas: resultado },
           {

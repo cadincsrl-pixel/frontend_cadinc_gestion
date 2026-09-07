@@ -185,6 +185,31 @@ describe('getTarifaEnFecha — tarifa de obra versionada por fecha', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+describe('tarifa de obra con vh null = "volver al global" desde ese viernes', () => {
+  let n = 900
+  const T = (cat_id: number, vh: number | null, desde: string): Tarifa =>
+    ({ id: ++n, obra_cod: 'OB1', cat_id, vh, desde } as unknown as Tarifa)
+  // Global cat 1: 4.600 desde 19/06, 4.900 desde 24/07.
+  const CAT: Categoria = { id: 1, nom: 'Oficial', vh: 4900, categoria_tarifas: [{ id: 1, vh: 4600, desde: '2026-06-19' }, { id: 2, vh: 4900, desde: '2026-07-24' }] } as unknown as Categoria
+  const PERS: Personal = { leg: '001', nom: 'X', cat_id: 1, personal_cat_historial: [] } as unknown as Personal
+  const tarifas = [T(1, 6000, '2026-07-10'), T(1, null, '2026-07-17')]
+
+  it('getTarifaEnFecha: antes del null rige la tarifa; desde el null no hay tarifa de obra', () => {
+    expect(getTarifaEnFecha(tarifas, 'OB1', 1, '2026-07-13')).toBe(6000)
+    expect(getTarifaEnFecha(tarifas, 'OB1', 1, '2026-07-17')).toBeNull()
+    expect(getTarifaEnFecha(tarifas, 'OB1', 1, '2026-08-01')).toBeNull()
+  })
+  it('getVHConCatObra cae al global versionado (y lo sigue cuando cambia)', () => {
+    expect(getVHConCatObra([], [PERS], [CAT], tarifas, 'OB1', '001', '2026-07-13')).toBe(6000)
+    expect(getVHConCatObra([], [PERS], [CAT], tarifas, 'OB1', '001', '2026-07-17')).toBe(4600) // global vigente ese día
+    expect(getVHConCatObra([], [PERS], [CAT], tarifas, 'OB1', '001', '2026-07-24')).toBe(4900) // el global subió y la obra lo sigue
+  })
+  it('si la única fila es el null, es como no tener tarifa de obra', () => {
+    expect(getTarifaEnFecha([T(1, null, '2026-07-17')], 'OB1', 1, '2026-07-01')).toBeNull()
+    expect(getVHConCatObra([], [PERS], [CAT], [T(1, null, '2026-07-17')], 'OB1', '001', '2026-07-01')).toBe(4600)
+  })
+})
+
 describe('getVHGlobalEnFecha — vh global versionado (regresión del 2026-06-26)', () => {
   it('REGRESIÓN CLAVE: una semana vieja usa el vh viejo aunque haya un aumento posterior', () => {
     // El 2026-06-26 un aumento global (UPDATE in-place, modelo viejo)

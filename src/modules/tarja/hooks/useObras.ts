@@ -57,7 +57,7 @@ export function useUpdateObra() {
 export function useArchivarObra() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (cod: string) => obrasApi.archivar(cod),
+    mutationFn: ({ cod, forzar }: { cod: string; forzar?: boolean }) => obrasApi.archivar(cod, forzar),
     onSuccess: () => qc.invalidateQueries({ queryKey: OBRAS_KEY }),
   })
 }

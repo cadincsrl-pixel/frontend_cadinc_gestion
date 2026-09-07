@@ -111,11 +111,21 @@ export function exportarTarjaExcel(
 // ══════════════════════════════════════════════════
 // IMPORT TARJA — desde planilla Excel
 // ══════════════════════════════════════════════════
+export interface ImportTarjaResultado {
+  horas: Array<{ leg: string; fecha: string; horas: number }>
+  /** Viernes de la semana que trae el archivo (fila 3 de fechas). */
+  semanaArchivo: string
+  /** Legajos del archivo que no están en la nómina de la semana (se saltean). */
+  legsDesconocidos: string[]
+  /** Celdas vacías de legajos válidos: no borran horas ya cargadas. */
+  celdasVacias: number
+}
+
 export function importarTarjaExcel(
   file: File,
   obraCod: string,
   personal: Personal[],
-  onResult: (horas: Array<{ leg: string; fecha: string; horas: number }>) => void,
+  onResult: (resultado: ImportTarjaResultado) => void,
   onError: (msg: string) => void
 ) {
   const reader = new FileReader()
@@ -138,18 +148,32 @@ export function importarTarjaExcel(
 
       if (!fechaCols.length) { onError('No se encontraron fechas válidas en la fila 3'); return }
 
-      const resultado: Array<{ leg: string; fecha: string; horas: number }> = []
+      const horasLeidas: Array<{ leg: string; fecha: string; horas: number }> = []
+      const legsDesconocidos: string[] = []
+      let celdasVacias = 0
       dataRows.forEach(row => {
-        const leg = String(row[0] ?? '').trim()
-        if (!leg || !personal.some(p => p.leg === leg)) return
+        // Excel convierte "012" en 12: se vuelve a rellenar a 3 dígitos.
+        let leg = String(row[0] ?? '').trim()
+        if (/^\d+$/.test(leg) && leg.length < 3) leg = leg.padStart(3, '0')
+        if (!leg) return
+        if (!personal.some(p => p.leg === leg)) { legsDesconocidos.push(leg); return }
         fechaCols.forEach(({ col, fecha }) => {
-          const val = parseFloat(String(row[col] ?? ''))
-          if (!isNaN(val) && val >= 0 && val <= 24) resultado.push({ leg, fecha, horas: val })
+          const crudo = String(row[col] ?? '').trim()
+          if (crudo === '') { celdasVacias++; return }
+          const val = parseFloat(crudo)
+          // Sin tope de horas (los premios por producción se cargan como horas).
+          if (!isNaN(val) && val >= 0) horasLeidas.push({ leg, fecha, horas: val })
         })
       })
 
-      if (!resultado.length) { onError('No se encontraron datos válidos en el archivo'); return }
-      onResult(resultado)
+      if (!horasLeidas.length) {
+        onError(legsDesconocidos.length
+          ? `Ningún legajo del archivo está en esta semana (${legsDesconocidos.slice(0, 6).join(', ')}${legsDesconocidos.length > 6 ? '…' : ''}). Agregá los trabajadores primero.`
+          : 'No se encontraron datos válidos en el archivo')
+        return
+      }
+      const semanaArchivo = toISO(getViernes(new Date(fechaCols[0]!.fecha + 'T12:00:00')))
+      onResult({ horas: horasLeidas, semanaArchivo, legsDesconocidos: [...new Set(legsDesconocidos)], celdasVacias })
     } catch {
       onError('Error al leer el archivo Excel')
     }
