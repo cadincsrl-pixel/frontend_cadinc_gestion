@@ -1,7 +1,8 @@
 import * as XLSX from 'xlsx'
+import { resumenPrestamos, labelTipoPrestamo } from './prestamos'
 import type { Obra, Certificacion, Contratista, Categoria, Personal, Hora, Tarifa, Prestamo, TarjaHsExtra } from '@/types/domain.types'
 import { getSemDays, toISO, getSemLabel, getViernesCobro, getViernes, DIAS } from './dates'
-import { totalHsLeg, getHsExtrasLeg, getVHConCatObra, getVHGlobalEnFecha } from './costos'
+import { totalHsLeg, getHsExtrasLeg, getVHConCatObra, getVHGlobalEnFecha, getCatIdEfectivo } from './costos'
 import { calcularResumenSemana } from './resumen-semana'
 
 // ══════════════════════════════════════════════════
@@ -83,7 +84,7 @@ export function exportarTarjaExcel(
       .filter(p => p.sem_key === semKey)
       .map(p => {
         const nom = personal.find(per => per.leg === p.leg)?.nom ?? '—'
-        const tipo = p.tipo === 'otorgado' ? 'Otorgado' : 'Descontado'
+        const tipo = labelTipoPrestamo(p.tipo)
         const fecha = p.created_at ? p.created_at.slice(0, 10) : ''
         return [p.leg, nom, tipo, p.monto, p.concepto ?? '', fecha]
       })
@@ -360,12 +361,17 @@ export function generarRecibos(
       const hsDias = totalHsLeg(horas, o.cod, leg, days.map(toISO))
       const hsExtra = getHsExtrasLeg(hsExtras, o.cod, leg, semKey)
       const vh = getVHLocal(o.cod, leg)
-      // Redondeo consistente: costo base y extra redondeados por separado a miles
-      // para mantener el patrón del proyecto (fmtM siempre redondea a miles)
-      const costoBase = Math.round(hsDias * vh / 1000) * 1000
-      const costoExtra = Math.round(hsExtra * vh / 1000) * 1000
       if (hsDias === 0 && hsExtra === 0) return
-      const cat = categorias.find(c => c.id === p.cat_id)
+      // Fórmula canónica (§5.11): (horas + extras) × vh, redondeado UNA vez al
+      // millar por legajo y obra, igual que el chip, los cierres y la portada.
+      // Antes se redondeaban base y extras por separado y el recibo podía
+      // diferir $1.000 de la portada del mismo PDF.
+      const costoBase = hsDias * vh
+      const costoExtra = hsExtra * vh
+      const costoLegObra = Math.round((hsDias + hsExtra) * vh / 1000) * 1000
+      // Categoría efectiva en la obra (cat_obra > historial > categoría base).
+      const catIdEf = getCatIdEfectivo(catObra, personal, o.cod, leg, semKey)
+      const cat = categorias.find(c => c.id === (catIdEf ?? p.cat_id))
       if (!trabMap[leg]) trabMap[leg] = { p, obras: [], totalHs: 0, totalCosto: 0, totalHsExtra: 0, totalCostoExtra: 0 }
       trabMap[leg]!.obras.push({
         obra: o,
@@ -377,7 +383,7 @@ export function generarRecibos(
         costoExtra,
       })
       trabMap[leg]!.totalHs += hsDias + hsExtra
-      trabMap[leg]!.totalCosto += costoBase + costoExtra
+      trabMap[leg]!.totalCosto += costoLegObra
       trabMap[leg]!.totalHsExtra += hsExtra
       trabMap[leg]!.totalCostoExtra += costoExtra
     })
@@ -434,23 +440,27 @@ export function generarRecibos(
 
     const hsExtrasRows = ''  // se removió el desglose; hs extras ya van sumadas arriba
 
-    // Préstamo/descuento de esta semana para este trabajador
-    const prestamo = prestamos.find(p => p.leg === t.p.leg && p.sem_key === semKey)
-    const totalNeto = prestamo
-      ? prestamo.tipo === 'otorgado'
-        ? t.totalCosto + prestamo.monto
-        : t.totalCosto - prestamo.monto
-      : t.totalCosto
+    // Préstamos de esta semana para este trabajador: TODOS los movimientos
+    // (un préstamo y un descuento la misma semana se suman), sin contar los
+    // incobrables (baja de saldo: no se le da ni se le descuenta).
+    const prest = resumenPrestamos(prestamos, semKey, t.p.leg)
+    const totalNeto = t.totalCosto + prest.neto
+    const conceptos = prest.movimientos
+      .filter(m => m.tipo !== 'incobrable' && m.concepto)
+      .map(m => m.concepto)
+      .join(' · ')
+    const hayPrestamo = prest.otorgados > 0 || prest.descontados > 0
 
-    const prestamoRow = prestamo ? `
+    const prestamoRow = hayPrestamo ? `
       <div style="padding:5px 14px;border-top:1px dashed #d0d0d0;display:flex;justify-content:space-between;align-items:center;background:#FAFAFA">
         <div style="font-size:9px;color:#8A8980">
           Jornales: <span style="font-family:monospace;color:#1C1C1E;font-weight:700">${fmtM(t.totalCosto)}</span>
         </div>
-        <div style="font-size:9px;font-weight:700;${prestamo.tipo === 'otorgado' ? 'color:#E8621A' : 'color:#C0392B'}">
-          ${prestamo.tipo === 'otorgado' ? '+ Préstamo: ' : '− Descuento: '}
-          <span style="font-family:monospace">${fmtM(prestamo.monto)}</span>
-          ${prestamo.concepto ? `<span style="font-weight:400;color:#8A8980"> (${prestamo.concepto})</span>` : ''}
+        <div style="font-size:9px;font-weight:700;text-align:right">
+          ${prest.otorgados > 0 ? `<span style="color:#E8621A">+ Préstamo: <span style="font-family:monospace">${fmtM(prest.otorgados)}</span></span>` : ''}
+          ${prest.otorgados > 0 && prest.descontados > 0 ? ' &nbsp; ' : ''}
+          ${prest.descontados > 0 ? `<span style="color:#C0392B">− Descuento: <span style="font-family:monospace">${fmtM(prest.descontados)}</span></span>` : ''}
+          ${conceptos ? `<span style="font-weight:400;color:#8A8980"> (${conceptos})</span>` : ''}
         </div>
       </div>` : ''
 

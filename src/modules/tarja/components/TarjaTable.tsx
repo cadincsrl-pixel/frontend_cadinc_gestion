@@ -10,8 +10,8 @@ import { useObras } from '../hooks/useObras'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useSessionStore } from '@/store/session.store'
-import { getSemDays, toISO, esFinde, esJueves, esHoy, DIAS } from '@/lib/utils/dates'
-import { costoLeg, getVHenFecha, getTarifaEnFecha, fmtMonto, getHsExtrasLeg, redondearHs } from '@/lib/utils/costos'
+import { getSemDays, getViernes, toISO, esFinde, esJueves, esHoy, DIAS } from '@/lib/utils/dates'
+import { costoLegConCatObra, getVHConCatObra, getTarifaEnFecha, fmtMonto, getHsExtrasLeg, redondearHs } from '@/lib/utils/costos'
 import { useToast } from '@/components/ui/Toast'
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api/client'
@@ -183,18 +183,21 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
     return m
   }, [obras])
 
-  // Totales usando la categoría efectiva (catObra override) de cada trabajador
+  // Fecha de referencia del valor hora, igual que costoLegConCatObra: hoy si
+  // es la semana en curso, el viernes si es histórica.
+  const fechaRefCosto = semKey === toISO(getViernes(new Date())) ? toISO(new Date()) : desde
+
+  // Totales con la fórmula canónica (§5.11): cat_obra + historial de
+  // categorías + tarifa vigente, redondeo al millar por legajo. Antes usaba
+  // costoLeg/getVHenFecha con `catObraMap ?? p.cat_id` y el chip "Costo
+  // semana" de la página podía no coincidir con este footer.
   const { totalHs, totalCosto } = (() => {
     let hs = 0, costo = 0
     for (const p of personal) {
-      const catId = catObraMap[p.leg] ?? p.cat_id
       const hsDias = days.reduce((s, d) => s + (horasMap[p.leg]?.[toISO(d)] ?? 0), 0)
       const hsExtra = getHsExtrasLeg(hsExtrasData, obraCod, p.leg, semKey)
       hs = redondearHs(hs + hsDias + hsExtra)
-      const vh = getVHenFecha(personal, categorias, tarifas, obraCod, p.leg, desde, catId)
-      const costoBase = costoLeg(horasData, personal, categorias, tarifas, obraCod, p.leg, days, catId)
-      const costoExtra = hsExtra * vh
-      costo += Math.round((costoBase + costoExtra) / 1000) * 1000
+      costo += Math.round(costoLegConCatObra(horasData, hsExtrasData, personal, categorias, tarifas, catObraData, obraCod, p.leg, days) / 1000) * 1000
     }
     return { totalHs: hs, totalCosto: costo }
   })()
@@ -254,11 +257,16 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
               undoStack.current.pop()
               setUndoCount(undoStack.current.length)
             }
-            const detail = (err as { body?: { detail?: string; error?: string } })?.body
+            const e = err as { status?: number; body?: { detail?: string; error?: string } }
+            const detail = e?.body
             toast(
               detail?.error === 'FECHA_FUERA_DE_RANGO'
                 ? (detail.detail ?? 'Como capataz solo podés cargar horas del día actual.')
-                : '⚠ La hora NO se guardó — revisá la conexión y volvé a cargarla',
+                : e?.status === 409
+                  ? 'La semana está cerrada: reabrila en Cierres para poder editarla.'
+                  : e?.status === 403
+                    ? 'No tenés permiso para cargar esta celda.'
+                    : '⚠ La hora NO se guardó — revisá la conexión y volvé a cargarla',
               'err',
             )
           },
@@ -294,14 +302,19 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
     const entry = undoStack.current.pop()
     if (!entry) return
     setUndoCount(undoStack.current.length)
-    upsertHora(
-      { obra_cod: obraCod, fecha: entry.fecha, leg: entry.leg, horas: entry.antes },
-      {
-        onSuccess: () => toast('↩ Deshecho', 'ok'),
-        onError: () => toast('Error al deshacer', 'err'),
-      }
-    )
-  }, [obraCod, upsertHora, toast])
+    const cb = {
+      onSuccess: () => toast('↩ Deshecho', 'ok'),
+      onError: () => toast('Error al deshacer', 'err'),
+    }
+    // Misma guarda que handleChange: volver a 0 la única fila del trabajador
+    // lo haría desaparecer de la grilla (el upsert individual borra la fila
+    // en 0); va por /lote, que conserva la fila-ancla.
+    if (entry.antes === 0 && horasData.filter(h => h.leg === entry.leg).length <= 1) {
+      upsertHoraLote({ obra_cod: obraCod, horas: [{ fecha: entry.fecha, leg: entry.leg, horas: 0 }] }, cb)
+      return
+    }
+    upsertHora({ obra_cod: obraCod, fecha: entry.fecha, leg: entry.leg, horas: entry.antes }, cb)
+  }, [obraCod, upsertHora, upsertHoraLote, horasData, toast])
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -412,9 +425,8 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
               const hsExtraLeg = getHsExtrasLeg(hsExtrasData, obraCod, p.leg, semKey)
               const totalLeg = redondearHs(hsDiasLeg + hsExtraLeg)
               const fechaRef = toISO(days[0]!)
-              const vh = getVHenFecha(personal, categorias, tarifas, obraCod, p.leg, fechaRef, catId)
-              const costoBase = costoLeg(horasData, personal, categorias, tarifas, obraCod, p.leg, days, catId)
-              const costo = costoBase + hsExtraLeg * vh
+              const vh = getVHConCatObra(catObraData, personal, categorias, tarifas, obraCod, p.leg, fechaRefCosto)
+              const costo = costoLegConCatObra(horasData, hsExtrasData, personal, categorias, tarifas, catObraData, obraCod, p.leg, days)
 
               // Última hora editada de este trabajador en la semana
               const lastHora = horasData
@@ -531,16 +543,30 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                           data-tarja-day={i}
                           // Evitar cambios por accidente cuando el usuario
                           // hace scroll con la rueda del mouse sobre la celda.
+                          inputMode="decimal"
                           onWheel={e => (e.currentTarget as HTMLInputElement).blur()}
-                          onBlur={celdaEditable ? e => handleChange(p.leg, fecha, e.target.value, h) : undefined}
+                          onBlur={celdaEditable ? e => {
+                            // Safari/Firefox con "8,5" (coma): el browser no lo
+                            // parsea, `value` llega vacío y se guardaría 0
+                            // (borrando la fila). Revertimos y avisamos.
+                            if (e.target.validity.badInput) {
+                              e.target.value = h ? String(h) : ''
+                              toast('Usá punto para los decimales: 8.5', 'warn')
+                              return
+                            }
+                            handleChange(p.leg, fecha, e.target.value, h)
+                          } : undefined}
                           onKeyDown={celdaEditable ? e => {
                             const el = e.target as HTMLInputElement
+                            // El guardado lo hace SIEMPRE el onBlur: mover el foco
+                            // ya lo dispara. Llamar a handleChange acá además
+                            // mandaba dos PUT (y dos entradas de deshacer) por celda.
                             if (e.key === 'Enter') {
-                              handleChange(p.leg, fecha, el.value, h)
                               const next = document.querySelector<HTMLInputElement>(
                                 `input[data-tarja-leg="${p.leg}"][data-tarja-day="${i + 1}"]`
                               )
-                              next?.focus()
+                              if (next) next.focus()
+                              else el.blur()
                               return
                             }
                             // Navegación con flechas. ↑/↓ saltan a la misma columna
@@ -558,7 +584,6 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                             // Inputs de horas son números cortos (1-3 chars);
                             // ←/→ siempre saltan de celda en vez de mover el caret.
                             e.preventDefault()
-                            handleChange(p.leg, fecha, el.value, h)
                             const [direction, targetDay] = move
                             let selector: string
                             if (direction === 'same-leg') {

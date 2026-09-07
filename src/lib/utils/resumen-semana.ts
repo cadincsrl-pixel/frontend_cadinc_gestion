@@ -108,7 +108,8 @@ export function calcularResumenSemana(params: CalcularResumenSemanaParams): Resu
     if (p.tipo === 'otorgado') {
       totalPrestamosOtorgados += p.monto
       countPrestamosOtorgados++
-    } else {
+    } else if (p.tipo === 'descontado') {
+      // 'incobrable' es una baja de saldo: no es plata descontada de la semana.
       totalPrestamosDescuentos += p.monto
       countPrestamosDescuentos++
     }

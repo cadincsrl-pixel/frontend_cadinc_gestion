@@ -150,15 +150,17 @@ export function ModalRecibos({
       if (!legMap.has(key)) legMap.set(key, { obraCod: h.obra_cod, leg: h.leg, totalHs: 0, sk })
       legMap.get(key)!.totalHs += h.horas
     })
-    const costoOpBase = [...legMap.values()].reduce((sum, entry) => {
+    // Fórmula canónica: (horas + extras) × vh redondeado UNA vez al millar por
+    // legajo y obra, igual que el recibo y la portada.
+    hsExtrasFilt.forEach(x => {
+      const key = `${x.obra_cod}|${x.leg}`
+      if (!legMap.has(key)) legMap.set(key, { obraCod: x.obra_cod, leg: x.leg, totalHs: 0, sk: x.sem_key })
+      legMap.get(key)!.totalHs += x.hs
+    })
+    const costoOp = [...legMap.values()].reduce((sum, entry) => {
       const vh = getVHConCatObraLocal(entry.obraCod, entry.leg, entry.sk)
       return sum + Math.round(entry.totalHs * vh / 1000) * 1000
     }, 0)
-    const costoOpExtras = hsExtrasFilt.reduce((sum, x) => {
-      const vh = getVHConCatObraLocal(x.obra_cod, x.leg, x.sem_key)
-      return sum + Math.round(x.hs * vh / 1000) * 1000
-    }, 0)
-    const costoOp = costoOpBase + costoOpExtras
 
     const costoContrat = certsFilt.reduce((s, c) => s + c.monto, 0)
     const totalHs = horasFilt.reduce((s, h) => s + h.horas, 0)

@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useObra } from '@/modules/tarja/hooks/useObras'
 import { useObras } from '@/modules/tarja/hooks/useObras'
 import { usePersonalSemana, useAutoTraerSemanaAnterior } from '@/modules/tarja/hooks/useAsignaciones'
+import { usePersonal } from '@/modules/tarja/hooks/usePersonal'
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
 import { useHorasSemana, useUpsertHorasLote, useLimpiarSemana } from '@/modules/tarja/hooks/useHoras'
 import { useHsExtras } from '@/modules/tarja/hooks/useHsExtras'
@@ -83,6 +84,10 @@ export function TarjaObraPage({ obraCod }: Props) {
   const desde = toISO(days[0]!)
   const hasta = toISO(days[6]!)
   const { data: personal = [], isLoading: loadingPersonal } = usePersonalSemana(obraCod, desde, hasta)
+  // Nómina completa para Recibos y Excel de obras: esos modales abarcan
+  // TODAS las obras y `personal` es solo el de esta obra/semana (con eso los
+  // recibos "Todas las obras" omitían a los operarios de las demás).
+  const { data: personalAll = [] } = usePersonal()
   const { data: horasData = [], isLoading: loadingHoras } = useHorasSemana(obraCod, desde, hasta)
 
   // Auto-copiar trabajadores de la semana anterior cuando entrás a una
@@ -424,7 +429,7 @@ export function TarjaObraPage({ obraCod }: Props) {
         open={modalExcelObras}
         onClose={() => setModalExcelObras(false)}
         obras={obras}
-        personal={personal}
+        personal={personalAll}
         categorias={categorias}
         horas={todasHoras}
         tarifas={todasTarifas}
@@ -437,7 +442,7 @@ export function TarjaObraPage({ obraCod }: Props) {
         open={modalRecibos}
         onClose={() => setModalRecibos(false)}
         obras={obras}
-        personal={personal}
+        personal={personalAll}
         categorias={categorias}
         horas={todasHoras}
         tarifas={todasTarifas}

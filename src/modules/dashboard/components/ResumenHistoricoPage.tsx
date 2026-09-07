@@ -326,8 +326,9 @@ export function ResumenHistoricoPage() {
     let totalOtorgado   = 0
     let totalDescontado = 0
     for (const p of filtrados) {
-      if (p.tipo === 'otorgado') totalOtorgado   += p.monto
-      else                       totalDescontado += p.monto
+      if (p.tipo === 'otorgado')        totalOtorgado   += p.monto
+      else if (p.tipo === 'descontado') totalDescontado += p.monto
+      // 'incobrable' es una baja de saldo: ni plata dada ni recuperada.
     }
 
     // Agrupar por sem_key, semanas más recientes primero.
@@ -958,15 +959,17 @@ export function ResumenHistoricoPage() {
                                 className={`text-[11px] font-bold px-2 py-0.5 rounded uppercase tracking-wide ${
                                   esOtorgado
                                     ? 'bg-naranja-light text-naranja-dark'
-                                    : 'bg-rojo-light text-rojo'
+                                    : p.tipo === 'incobrable'
+                                      ? 'bg-gris text-gris-dark'
+                                      : 'bg-rojo-light text-rojo'
                                 }`}
                               >
-                                {esOtorgado ? '+ Otorgado' : '− Descontado'}
+                                {esOtorgado ? '+ Otorgado' : p.tipo === 'incobrable' ? 'Incobrable' : '− Descontado'}
                               </span>
                             </td>
                             <td
                               className={`px-3 py-2 text-right font-mono font-bold text-sm ${
-                                esOtorgado ? 'text-naranja-dark' : 'text-rojo'
+                                esOtorgado ? 'text-naranja-dark' : p.tipo === 'incobrable' ? 'text-gris-dark line-through' : 'text-rojo'
                               }`}
                             >
                               {fmtMonto(p.monto)}
