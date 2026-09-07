@@ -34,29 +34,10 @@ export function useTramosEnRuta() {
   })
 }
 
-// Geocoding por dirección (para autocompletar lat/lng al editar
-// canteras/depósitos).
-export function useGeocode() {
-  return useMutation({
-    mutationFn: (direccion: string) =>
-      apiPost<{ lat: number; lng: number; formatted_address: string }>(
-        '/api/logistica/maps/geocode',
-        { direccion },
-      ),
-  })
-}
-
-// Extrae lat/lng del pin de un link de Google Maps (resuelve shortlinks
-// en el backend). Fuente 'pin' = marcador exacto; 'aprox' = centro del mapa.
-export function useResolverMapsUrl() {
-  return useMutation({
-    mutationFn: (url: string) =>
-      apiPost<{ lat: number; lng: number; fuente: 'pin' | 'aprox' }>(
-        '/api/logistica/maps/resolver-url',
-        { url },
-      ),
-  })
-}
+// `useGeocode` y `useResolverMapsUrl` se mudaron a `@/hooks/useMaps`: los usa
+// también áridos para geolocalizar sus canteras, y no correspondía que un
+// módulo importara los hooks de otro. Se re-exportan para no romper imports.
+export { useGeocode, useResolverMapsUrl } from '@/hooks/useMaps'
 
 // Km sugerido cantera→depósito vía Google Distance Matrix (backend).
 // Es una sugerencia editable — el usuario la verifica con el link del trayecto.

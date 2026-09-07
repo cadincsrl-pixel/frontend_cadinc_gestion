@@ -17,7 +17,8 @@ import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useForm } from 'react-hook-form'
 import { intInputProps } from '@/lib/utils/inputs'
-import { useGeocode, useResolverMapsUrl, useSugerirKm } from '../hooks/useEnRuta'
+import { useSugerirKm } from '../hooks/useEnRuta'
+import { MapsUrlInput } from '@/components/ui/MapsUrlInput'
 import { Combobox } from '@/components/ui/Combobox'
 import { matchesSearch } from '@/lib/utils/text'
 import type { Cantera, Deposito, Ruta, LugarOperativo } from '@/types/domain.types'
@@ -1134,139 +1135,6 @@ function ConfirmRenombreLugar({ info, loading, onCancel, onConfirmar }: {
         </p>
       </div>
     </Modal>
-  )
-}
-
-function MapsUrlInput({ register, watch, setValue }: { register: any; watch: any; setValue?: any }) {
-  const url = watch('maps_url') ?? ''
-  const lat = watch('lat')
-  const lng = watch('lng')
-  const nombre    = watch('nombre') ?? ''
-  const localidad = watch('localidad') ?? ''
-  const { mutate: geocodeMutate,  isPending: geocoding }   = useGeocode()
-  const { mutate: resolverMutate, isPending: resolviendo } = useResolverMapsUrl()
-  const toast = useToast()
-
-  // Geocoding por nombre+localidad. Es el fallback: suele caer en el centro
-  // del pueblo, no en la planta (caso MARCAMPO: ~19 km de error).
-  function buscarPorDireccion() {
-    const direccion = [nombre, localidad].filter(Boolean).join(', ').trim()
-    if (!direccion) { toast('Cargá el link de Maps, o al menos el nombre o la localidad', 'err'); return }
-    geocodeMutate(direccion, {
-      onSuccess: (r) => {
-        setValue('lat', r.lat, { shouldDirty: true })
-        setValue('lng', r.lng, { shouldDirty: true })
-        toast(`✓ Coordenadas (por nombre): ${r.formatted_address}. Verificá el punto en Maps.`, 'ok')
-      },
-      onError: (err: any) => {
-        const msg = err?.body?.error === 'GOOGLE_API_KEY_MISSING'
-          ? 'Falta configurar GOOGLE_MAPS_API_KEY en el backend'
-          : 'No se encontró la dirección. Cargá lat/lng manualmente.'
-        toast(msg, 'err')
-      },
-    })
-  }
-
-  // Buscar: si hay link de Maps usa el PIN de ese link (punto exacto que
-  // cargó el usuario); si no hay link, geocodifica por nombre+localidad.
-  function handleBuscar() {
-    if (!setValue) return
-    const link = (url ?? '').trim()
-    if (!link) { buscarPorDireccion(); return }
-    resolverMutate(link, {
-      onSuccess: (r) => {
-        setValue('lat', r.lat, { shouldDirty: true })
-        setValue('lng', r.lng, { shouldDirty: true })
-        toast(r.fuente === 'pin'
-          ? '✓ Coordenadas tomadas del pin del link de Maps'
-          : '✓ Coordenadas aproximadas (centro del mapa del link). Verificá el punto.', 'ok')
-      },
-      // Si el link no se pudo resolver (inválido, sin coords), caemos al
-      // geocoding por nombre avisando por qué.
-      onError: (err: any) => {
-        const code = err?.body?.error
-        toast(code === 'MAPS_URL_INVALIDA'
-          ? 'El link no parece de Google Maps — busco por nombre…'
-          : 'No pude sacar coordenadas del link — busco por nombre…', 'warn')
-        buscarPorDireccion()
-      },
-    })
-  }
-
-  return (
-    <div className="flex flex-col gap-2">
-      <div>
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="flex-1 min-w-0 basis-full sm:basis-0">
-            <Input label="Link Google Maps" placeholder="https://maps.google.com/..." {...register('maps_url')} />
-          </div>
-          {url && (
-            <a
-              href={url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mb-0.5 inline-flex items-center gap-1 px-3 py-2 rounded-lg bg-azul-light text-azul text-xs font-bold hover:bg-azul hover:text-white transition-colors"
-            >
-              📍 Abrir
-            </a>
-          )}
-        </div>
-        <p className="text-xs text-gris-dark mt-1">
-          En Google Maps: botón Compartir → Copiar link
-        </p>
-      </div>
-
-      {/* Coordenadas (necesarias para calcular distancia GPS→destino) */}
-      <div>
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="flex-1 min-w-0 basis-full sm:basis-0 grid grid-cols-2 gap-2">
-            <Input
-              label="Latitud"
-              type="number"
-              step="0.0000001"
-              placeholder="-34.6037"
-              {...register('lat', { valueAsNumber: true })}
-            />
-            <Input
-              label="Longitud"
-              type="number"
-              step="0.0000001"
-              placeholder="-58.3816"
-              {...register('lng', { valueAsNumber: true })}
-            />
-          </div>
-          {setValue && (
-            <button
-              type="button"
-              onClick={handleBuscar}
-              disabled={geocoding || resolviendo}
-              className="mb-0.5 inline-flex items-center gap-1 px-3 py-2 rounded-lg bg-verde-light text-verde text-xs font-bold hover:bg-verde hover:text-white transition-colors disabled:opacity-50"
-            >
-              {(geocoding || resolviendo) ? '⏳' : '🔍'} Buscar
-            </button>
-          )}
-          {/* Verificar visualmente las coords en Google Maps. Útil cuando
-              Geocoding devolvió un punto que no es exactamente el real
-              (ej. el centro de la localidad en lugar de la planta). */}
-          {lat != null && lng != null && lat !== '' && lng !== '' && (
-            <a
-              href={`https://www.google.com/maps?q=${lat},${lng}&z=18`}
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Abrir las coordenadas exactas en Google Maps para verificarlas"
-              className="mb-0.5 inline-flex items-center gap-1 px-3 py-2 rounded-lg bg-azul-light text-azul text-xs font-bold hover:bg-azul hover:text-white transition-colors"
-            >
-              📍 Verificar
-            </a>
-          )}
-        </div>
-        <p className="text-xs text-gris-dark mt-1">
-          {(lat != null && lng != null && lat !== '' && lng !== '')
-            ? '✓ Coordenadas cargadas. Verificá en Maps que el punto sea el correcto. Si no, ajustá lat/lng a mano (copialas del lugar exacto en Maps).'
-            : 'Click en "Buscar": usa el pin del link de Maps (exacto); sin link, busca por nombre + localidad (aproximado)'}
-        </p>
-      </div>
-    </div>
   )
 }
 

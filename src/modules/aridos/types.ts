@@ -66,6 +66,9 @@ export interface CanteraArido {
   nombre: string
   direccion: string | null
   localidad: string | null
+  // Link de Google Maps + coordenadas del pin. Mismo mecanismo que los lugares
+  // de logística (ver el componente MapsUrlInput).
+  maps_url: string | null
   lat: number | null
   lng: number | null
   obs: string | null

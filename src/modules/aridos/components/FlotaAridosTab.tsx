@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/Input'
 import { InputMonto } from '@/components/ui/InputMonto'
 import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
+import { MapsUrlInput } from '@/components/ui/MapsUrlInput'
 import { usePermisos } from '@/hooks/usePermisos'
 import { toISO } from '@/lib/utils/dates'
 import {
@@ -22,10 +23,10 @@ import type { CanteraArido, UnidadFlota } from '../types'
 // precios por viaje) y unidades propias del negocio de áridos —
 // independiente de la flota y las canteras de logística.
 
-interface CanteraForm { nombre: string; direccion: string; localidad: string; obs: string }
+interface CanteraForm { nombre: string; direccion: string; localidad: string; maps_url: string; lat: number | null; lng: number | null; obs: string }
 interface UnidadForm  { nombre: string; patente: string; chofer: string; id_vehiculo_gps: string; obs: string }
 
-const CANTERA_DEFAULTS: CanteraForm = { nombre: '', direccion: '', localidad: '', obs: '' }
+const CANTERA_DEFAULTS: CanteraForm = { nombre: '', direccion: '', localidad: '', maps_url: '', lat: null, lng: null, obs: '' }
 const UNIDAD_DEFAULTS: UnidadForm   = { nombre: '', patente: '', chofer: '', id_vehiculo_gps: '', obs: '' }
 
 export function FlotaAridosTab() {
@@ -49,7 +50,7 @@ function CanterasSection() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editId, setEditId] = useState<number | null>(null)
   const [preciosDe, setPreciosDe] = useState<CanteraArido | null>(null)
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<CanteraForm>({ defaultValues: CANTERA_DEFAULTS })
+  const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<CanteraForm>({ defaultValues: CANTERA_DEFAULTS })
 
   function abrirNueva() {
     setEditId(null)
@@ -59,7 +60,10 @@ function CanterasSection() {
 
   function abrirEditar(c: CanteraArido) {
     setEditId(c.id)
-    reset({ nombre: c.nombre, direccion: c.direccion ?? '', localidad: c.localidad ?? '', obs: c.obs ?? '' })
+    reset({
+      nombre: c.nombre, direccion: c.direccion ?? '', localidad: c.localidad ?? '',
+      maps_url: c.maps_url ?? '', lat: c.lat ?? null, lng: c.lng ?? null, obs: c.obs ?? '',
+    })
     setModalOpen(true)
   }
 
@@ -68,6 +72,12 @@ function CanterasSection() {
       nombre:    data.nombre.trim(),
       direccion: data.direccion.trim() || null,
       localidad: data.localidad.trim() || null,
+      maps_url:  data.maps_url.trim() || null,
+      // valueAsNumber deja NaN cuando el input queda vacío → null. Mandarlas
+      // siempre (aunque sean null) le dice al backend que NO geocodifique por
+      // dirección: manda lo que se cargó acá.
+      lat: Number.isFinite(data.lat as number) ? (data.lat as number) : null,
+      lng: Number.isFinite(data.lng as number) ? (data.lng as number) : null,
       obs:       data.obs.trim() || null,
     }
     if (editId == null) {
@@ -165,8 +175,8 @@ function CanterasSection() {
             <Input label="Dirección" placeholder="Ruta 9 km 1300" {...register('direccion')} />
             <Input label="Localidad" placeholder="El Cadillal, Tucumán" {...register('localidad')} />
           </div>
+          <MapsUrlInput register={register} watch={watch} setValue={setValue} />
           <Input label="Observaciones" placeholder="Contacto, teléfono, notas..." {...register('obs')} />
-          <p className="text-[11px] text-gris-dark">Con dirección cargada se geolocaliza automáticamente (📍) para rutas y tiempos.</p>
         </div>
       </Modal>
 
