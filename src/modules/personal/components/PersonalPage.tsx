@@ -9,6 +9,7 @@ import { usePersonal, useUpdatePersonal } from '@/modules/tarja/hooks/usePersona
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
 import { useObras } from '@/modules/tarja/hooks/useObras'
 import { toISO, getViernes } from '@/lib/utils/dates'
+import { esActivo as esActivoBase, legsConHorasDesde, semCorteActivos } from '@/lib/utils/personal'
 import type { Hora } from '@/types/domain.types'
 import { useContratistas, useCreateContratista, useUpdateContratista, useDeleteContratista } from '@/modules/tarja/hooks/useContratistas'
 import { Pagination } from '@/components/ui/Pagination'
@@ -65,16 +66,8 @@ export function PersonalPage() {
     queryFn: () => apiGet<Hora[]>('/api/horas/all'),
   })
 
-  const semCorte3 = useMemo(() => {
-    const d = new Date(); d.setDate(d.getDate() - 3 * 7)
-    return toISO(getViernes(d))
-  }, [])
-
-  const legsActivos3sem = useMemo(() => new Set(
-    todasHoras
-      .filter(h => toISO(getViernes(new Date(h.fecha + 'T12:00:00'))) >= semCorte3)
-      .map(h => h.leg)
-  ), [todasHoras, semCorte3])
+  const semCorte3 = useMemo(() => semCorteActivos(), [])
+  const legsActivos3sem = useMemo(() => legsConHorasDesde(todasHoras, semCorte3), [todasHoras, semCorte3])
 
   // Última obra (o las dos últimas) en las que cada trabajador tuvo horas.
   // Se calcula con la SEMANA viernes→jueves más reciente del trabajador,
@@ -111,10 +104,10 @@ export function PersonalPage() {
     return m
   }, [obras])
 
-  function esActivo(p: (typeof personal)[0]): boolean {
-    if (p.activo_override === true)  return true
-    if (p.activo_override === false) return false
-    return legsActivos3sem.has(p.leg)
+  // Criterio único (lib/utils/personal.ts): override manual, mensualizados
+  // siempre activos, jornalizados con horas en las últimas 3 semanas.
+  function esActivo(p: Personal): boolean {
+    return esActivoBase(p, legsActivos3sem)
   }
 
   // ── Personal ──

@@ -84,7 +84,7 @@ export interface CreatePersonalDto {
   leg: string
   nom: string
   dni?: string
-  condicion?: 'blanco' | 'asegurado'
+  condicion?: 'blanco' | 'asegurado' | null
   modalidad?: PersonalModalidad
   cat_id: number
   tel?: string
@@ -110,6 +110,10 @@ export interface UpdatePersonalDto {
   talle_camisa?:    string
   activo_override?: boolean | null
   fecha_nacimiento?: string | null
+  /** Viernes desde el que rige la categoría nueva (solo si cambia cat_id). Default: semana en curso. */
+  cat_desde?: string
+  /** Aplicar el cambio de categoría aunque recalcule semanas cerradas (409 AFECTA_SEMANAS_CERRADAS). */
+  confirmar_historico?: boolean
 }
 
 // ── Documentos del legajo ──

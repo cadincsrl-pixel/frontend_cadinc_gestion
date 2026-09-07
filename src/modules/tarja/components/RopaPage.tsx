@@ -13,8 +13,9 @@ import {
   useDeleteRopaCategoria,
 } from '../hooks/useRopa'
 import { usePersonal } from '../hooks/usePersonal'
-import { toISO, getViernes } from '@/lib/utils/dates'
+import { toISO } from '@/lib/utils/dates'
 import { apiGet }     from '@/lib/api/client'
+import { esActivo, legsConHorasDesde, semCorteActivos } from '@/lib/utils/personal'
 import { Button }     from '@/components/ui/Button'
 import { Modal }      from '@/components/ui/Modal'
 import { Input }      from '@/components/ui/Input'
@@ -34,12 +35,6 @@ function sinPermiso(ok: boolean, accion: string): string | undefined {
 const BTN_DISABLED = 'disabled:opacity-40 disabled:cursor-not-allowed'
 
 function hoy() { return toISO(new Date()) }
-
-function semKey(offsetWeeks: number): string {
-  const d = new Date()
-  d.setDate(d.getDate() - offsetWeeks * 7)
-  return toISO(getViernes(d))
-}
 
 function diffMeses(fechaISO: string): number {
   const desde = new Date(fechaISO + 'T12:00:00')
@@ -398,20 +393,14 @@ export function RopaPage() {
   const [page,           setPage]           = useState(1)
   const [pageSize,       setPageSize]       = useState(DEFAULT_PAGE_SIZE)
 
-  // Trabajadores activos: horas en las últimas 3 semanas u override manual.
-  // Mismo criterio que el badge "Activo" de PersonalPage (esActivo) para que
-  // ambas pantallas muestren la misma gente. A los inactivos no se les da ropa.
-  const semCorte3 = semKey(3)
+  // Trabajadores activos con el criterio único de lib/utils/personal.ts
+  // (override manual, mensualizados siempre, jornalizados con horas en las
+  // últimas 3 semanas): la misma gente que el badge "Activo" de Personal.
+  // A los inactivos no se les da ropa.
+  const semCorte3 = useMemo(() => semCorteActivos(), [])
   const trabajadoresActivos = useMemo(() => {
-    const legsConHoras = new Set(
-      todasHoras
-        .filter(h => toISO(getViernes(new Date(h.fecha + 'T12:00:00'))) >= semCorte3)
-        .map(h => h.leg)
-    )
-    return personal.filter((p: Personal) =>
-      p.activo_override === true ||
-      (p.activo_override !== false && legsConHoras.has(p.leg))
-    ) as Personal[]
+    const legsConHoras = legsConHorasDesde(todasHoras, semCorte3)
+    return (personal as Personal[]).filter(p => esActivo(p, legsConHoras))
   }, [todasHoras, personal, semCorte3])
 
   // Filtrar por búsqueda

@@ -6,7 +6,8 @@ import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
 import { useCreatePersonal, useUpdatePersonal } from '@/modules/tarja/hooks/usePersonal'
-import type { Personal, Categoria } from '@/types/domain.types'
+import { normalizarDni, dniValido } from '@/lib/utils/personal'
+import type { Personal, Categoria, UpdatePersonalDto } from '@/types/domain.types'
 
 interface Props {
   open:       boolean
@@ -19,6 +20,8 @@ interface Fila {
   leg:            string
   nom:            string
   dni:            string
+  condicion:      '' | 'blanco' | 'asegurado'
+  modalidad:      '' | 'hora' | 'mes'
   categoria:      string   // nombre para mostrar
   cat_id:         number | null
   tel:            string
@@ -32,16 +35,16 @@ interface Fila {
 }
 
 const COLS = [
-  'Legajo', 'Apellido y Nombre', 'DNI', 'Categoría',
+  'Legajo', 'Apellido y Nombre', 'DNI', 'Categoría', 'Condición', 'Modalidad',
   'Teléfono', 'Dirección', 'Pantalón', 'Botines', 'Camisa', 'Observaciones',
 ]
 
 function descargarPlantilla() {
   const ws = XLSX.utils.aoa_to_sheet([
     COLS,
-    ['001', 'Pérez, Juan', '12345678', 'Oficial', '351-111-2222', 'Calle 123', '44', '42', 'L', ''],
+    ['001', 'Pérez, Juan', '12345678', 'Oficial', 'Asegurado', 'Hora', '351-111-2222', 'Calle 123', '44', '42', 'L', ''],
   ])
-  ws['!cols'] = COLS.map((_, i) => ({ wch: i === 1 ? 28 : i === 5 ? 24 : 14 }))
+  ws['!cols'] = COLS.map((_, i) => ({ wch: i === 1 ? 28 : i === 7 ? 24 : 14 }))
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Personal')
   XLSX.writeFile(wb, 'Plantilla_Personal.xlsx')
@@ -87,6 +90,8 @@ export function ModalImportarPersonal({ open, onClose, personal, categorias }: P
         const iBoti = col('botines')
         const iCami = col('camisa')
         const iObs  = col('observaciones')
+        const iCond = col('condición')
+        const iMod  = col('modalidad')
 
         const dataRows = rows.slice(headerIdx + 1).filter(r => String(r[iLeg] ?? '').trim())
 
@@ -98,16 +103,31 @@ export function ModalImportarPersonal({ open, onClose, personal, categorias }: P
             c.nom.toLowerCase() === catNom.toLowerCase()
           )
           const esNuevo = !personal.some(p => p.leg === leg)
+          const dni     = iDni  >= 0 ? normalizarDni(String(r[iDni] ?? '')) : ''
+          const condTxt = iCond >= 0 ? String(r[iCond] ?? '').trim().toLowerCase() : ''
+          const condicion: Fila['condicion'] =
+            condTxt === 'blanco' ? 'blanco' : condTxt === 'asegurado' ? 'asegurado' : ''
+          const modTxt  = iMod  >= 0 ? String(r[iMod]  ?? '').trim().toLowerCase() : ''
+          const modalidad: Fila['modalidad'] =
+            /^(mes|mensual|mensualizado)$/.test(modTxt) ? 'mes'
+            : /^(hora|por hora|jornal)$/.test(modTxt)   ? 'hora'
+            : ''
 
           let error: string | null = null
-          if (!leg)                   error = 'Legajo vacío'
-          else if (!nom && esNuevo)   error = 'Nombre requerido para trabajador nuevo'
-          else if (!catObj && esNuevo && catNom) error = `Categoría "${catNom}" no encontrada`
+          if (!leg)                               error = 'Legajo vacío'
+          else if (!nom && esNuevo)               error = 'Nombre requerido para trabajador nuevo'
+          else if (esNuevo && !catObj)            error = catNom ? `Categoría "${catNom}" no encontrada` : 'Categoría requerida para trabajador nuevo'
+          else if (!esNuevo && catNom && !catObj) error = `Categoría "${catNom}" no encontrada`
+          else if (!dniValido(dni))               error = 'DNI inválido (7 u 8 dígitos)'
+          else if (condTxt && !condicion)         error = `Condición "${condTxt}" no válida (Blanco / Asegurado)`
+          else if (modTxt && !modalidad)          error = `Modalidad "${modTxt}" no válida (Hora / Mes)`
 
           return {
             leg,
             nom,
-            dni:            iDni  >= 0 ? String(r[iDni]  ?? '').trim() : '',
+            dni,
+            condicion,
+            modalidad,
             categoria:      catNom,
             cat_id:         catObj?.id ?? null,
             tel:            iTel  >= 0 ? String(r[iTel]  ?? '').trim() : '',
@@ -141,12 +161,14 @@ export function ModalImportarPersonal({ open, onClose, personal, categorias }: P
     for (const f of validas) {
       try {
         if (f.esNuevo) {
-          if (!f.nom) continue
+          if (!f.nom || f.cat_id == null) continue
           await crear({
             leg:            f.leg,
             nom:            f.nom,
             dni:            f.dni   || undefined,
-            cat_id:         f.cat_id ?? 1,
+            condicion:      f.condicion || undefined,
+            modalidad:      f.modalidad || undefined,
+            cat_id:         f.cat_id,
             tel:            f.tel   || undefined,
             dir:            f.dir   || undefined,
             obs:            f.obs   || undefined,
@@ -156,9 +178,11 @@ export function ModalImportarPersonal({ open, onClose, personal, categorias }: P
           })
           nuevos++
         } else {
-          const dto: Record<string, any> = {}
+          const dto: UpdatePersonalDto = {}
           if (f.nom)            dto.nom            = f.nom
           if (f.dni)            dto.dni            = f.dni
+          if (f.condicion)      dto.condicion      = f.condicion
+          if (f.modalidad)      dto.modalidad      = f.modalidad
           if (f.cat_id)         dto.cat_id         = f.cat_id
           if (f.tel)            dto.tel            = f.tel
           if (f.dir)            dto.dir            = f.dir
@@ -248,8 +272,9 @@ export function ModalImportarPersonal({ open, onClose, personal, categorias }: P
             </div>
 
             <p className="text-xs text-gris-dark">
-              Columnas esperadas: <span className="font-mono">Legajo, Apellido y Nombre, DNI, Categoría, Teléfono, Dirección, Pantalón, Botines, Camisa, Observaciones</span>.
-              Si el legajo ya existe, se actualizan los datos. Si no existe, se crea el trabajador.
+              Columnas esperadas: <span className="font-mono">Legajo, Apellido y Nombre, DNI, Categoría, Condición, Modalidad, Teléfono, Dirección, Pantalón, Botines, Camisa, Observaciones</span>.
+              Si el legajo ya existe, se actualizan los datos. Si no existe, se crea el trabajador (con categoría obligatoria).
+              Condición (Blanco / Asegurado) y Modalidad (Hora / Mes) son opcionales.
             </p>
           </>
         )}

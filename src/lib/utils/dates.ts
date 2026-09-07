@@ -75,3 +75,8 @@ export function esHoy(d: Date): boolean {
 export function getSemKey(vie: Date): string {
   return toISO(vie)
 }
+
+/** true si la fecha ISO (yyyy-mm-dd) cae en viernes, el inicio de la semana de tarja. */
+export function esViernesISO(iso: string): boolean {
+  return new Date(iso + 'T12:00:00Z').getUTCDay() === 5
+}

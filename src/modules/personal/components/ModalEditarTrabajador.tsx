@@ -13,14 +13,21 @@ import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
 import { useToast } from '@/components/ui/Toast'
 import { AuditInfo } from '@/components/ui/AuditInfo'
 import { PersonalDocumentosSection } from './PersonalDocumentosSection'
-import type { Personal } from '@/types/domain.types'
+import { toISO, getViernes, esViernesISO, hoyArgentinaISO } from '@/lib/utils/dates'
+import { normalizarDni, dniValido, fechaNacimientoValida, errorDeCampo } from '@/lib/utils/personal'
+import { motivoAfectaCerradas } from '@/lib/utils/cierres'
+import type { Personal, UpdatePersonalDto } from '@/types/domain.types'
 
 const schema = z.object({
-  nom:             z.string().min(1, 'El nombre es requerido'),
-  dni:             z.string().optional(),
+  nom:             z.string().trim().min(1, 'El nombre es requerido'),
+  dni:             z.string().optional()
+                     .refine(v => dniValido(normalizarDni(v)), 'DNI inválido: 7 u 8 dígitos'),
   condicion:       z.enum(['blanco', 'asegurado', '']).optional(),
   modalidad:       z.enum(['hora', 'mes']).optional(),
   cat_id:          z.coerce.number().min(1, 'Seleccioná una categoría'),
+  // Viernes desde el que rige la categoría nueva (solo se manda si cambia).
+  cat_desde:       z.string().optional()
+                     .refine(v => !v || esViernesISO(v), 'Tiene que ser un viernes (inicio de semana)'),
   tel:             z.string().optional(),
   dir:             z.string().optional(),
   obs:             z.string().optional(),
@@ -28,10 +35,12 @@ const schema = z.object({
   talle_botines:   z.string().optional(),
   talle_camisa:    z.string().optional(),
   activo_override: z.enum(['auto', 'activo', 'inactivo']).optional(),
-  fecha_nacimiento: z.string().optional(),
+  fecha_nacimiento: z.string().optional()
+                     .refine(v => !v || fechaNacimientoValida(v, hoyArgentinaISO()), 'Revisá el año de nacimiento'),
 })
 
-type FormData = z.infer<typeof schema>
+type FormInput  = z.input<typeof schema>
+type FormOutput = z.output<typeof schema>
 
 interface Props {
   open: boolean
@@ -45,8 +54,8 @@ export function ModalEditarTrabajador({ open, onClose, trabajador }: Props) {
   const { mutate: updatePersonal, isPending: updating } = useUpdatePersonal()
   const { mutate: deletePersonal, isPending: deleting } = useDeletePersonal()
 
-  const { register, handleSubmit, reset, watch, setValue, formState: { errors } } = useForm<FormData>({
-    resolver: zodResolver(schema) as any
+  const { register, handleSubmit, reset, watch, setValue, setError, formState: { errors } } = useForm<FormInput, unknown, FormOutput>({
+    resolver: zodResolver(schema),
   })
 
   useEffect(() => {
@@ -67,19 +76,18 @@ export function ModalEditarTrabajador({ open, onClose, trabajador }: Props) {
                        : trabajador.activo_override === false ? 'inactivo'
                        : 'auto',
         fecha_nacimiento: trabajador.fecha_nacimiento ?? '',
+        cat_desde:       toISO(getViernes(new Date())),
       })
     }
   }, [trabajador, reset])
 
-  function onSubmit(data: FormData) {
+  // La fecha "rige desde" solo importa si la categoría cambia.
+  const catElegida = watch('cat_id')
+  const catCambiada = trabajador != null && catElegida != null && catElegida !== ''
+    && Number(catElegida) !== trabajador.cat_id
+
+  function guardar(dto: UpdatePersonalDto) {
     if (!trabajador) return
-    const { activo_override: ao, condicion, fecha_nacimiento, ...rest } = data as any
-    const dto = {
-      ...rest,
-      condicion: condicion || null,
-      activo_override: ao === 'activo' ? true : ao === 'inactivo' ? false : null,
-      fecha_nacimiento: fecha_nacimiento && fecha_nacimiento.trim() !== '' ? fecha_nacimiento : null,
-    }
     updatePersonal(
       { leg: trabajador.leg, dto },
       {
@@ -87,9 +95,32 @@ export function ModalEditarTrabajador({ open, onClose, trabajador }: Props) {
           toast('✓ Trabajador actualizado', 'ok')
           onClose()
         },
-        onError: (err) => toast(err.message ?? 'Error al actualizar', 'err'),
+        onError: (err) => {
+          // Cambio de categoría con fecha vieja: recalcula semanas ya cerradas.
+          const motivo = motivoAfectaCerradas(err)
+          if (motivo) {
+            if (confirm(`${motivo}\n\n¿Cambiar la categoría igual?`)) guardar({ ...dto, confirmar_historico: true })
+            return
+          }
+          const deCampo = errorDeCampo(err)
+          if (deCampo) setError(deCampo.campo as keyof FormInput, { message: deCampo.mensaje })
+          else toast(err.message ?? 'Error al actualizar', 'err')
+        },
       }
     )
+  }
+
+  function onSubmit(data: FormOutput) {
+    if (!trabajador) return
+    const { activo_override: ao, condicion, fecha_nacimiento, cat_desde, dni, ...rest } = data
+    guardar({
+      ...rest,
+      dni:              normalizarDni(dni),
+      condicion:        condicion || null,
+      activo_override:  ao === 'activo' ? true : ao === 'inactivo' ? false : null,
+      fecha_nacimiento: fecha_nacimiento && fecha_nacimiento.trim() !== '' ? fecha_nacimiento : null,
+      ...(catCambiada && cat_desde ? { cat_desde } : {}),
+    })
   }
 
   function handleDelete() {
@@ -143,6 +174,8 @@ export function ModalEditarTrabajador({ open, onClose, trabajador }: Props) {
           <Input
             label="DNI"
             placeholder="12.345.678"
+            inputMode="numeric"
+            error={errors.dni?.message}
             {...register('dni')}
           />
           <Select
@@ -174,6 +207,15 @@ export function ModalEditarTrabajador({ open, onClose, trabajador }: Props) {
           options={categorias.map(c => ({ value: c.id, label: c.nom }))}
           {...register('cat_id')}
         />
+        {catCambiada && (
+          <Input
+            label="La categoría nueva rige desde el viernes"
+            type="date"
+            hint="Por defecto, la semana en curso. Una fecha anterior recalcula semanas ya cerradas y pide confirmación."
+            error={errors.cat_desde?.message}
+            {...register('cat_desde')}
+          />
+        )}
         <Input
           label="Apellido y Nombre"
           placeholder="Apellido, Nombre"
@@ -193,6 +235,7 @@ export function ModalEditarTrabajador({ open, onClose, trabajador }: Props) {
         <Input
           label="Fecha de nacimiento"
           type="date"
+          error={errors.fecha_nacimiento?.message}
           {...register('fecha_nacimiento')}
         />
         <Input
@@ -231,7 +274,7 @@ export function ModalEditarTrabajador({ open, onClose, trabajador }: Props) {
             })}
           </div>
           <p className="text-[10px] text-gris-dark mt-1">
-            Auto = activo si tuvo horas las últimas 3 semanas.
+            Auto = activo si tuvo horas las últimas 3 semanas. Los mensualizados cuentan siempre como activos.
           </p>
         </div>
 

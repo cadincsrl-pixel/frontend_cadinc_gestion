@@ -205,6 +205,12 @@ Una herramienta es una fila de `stock_materiales` con `clase='herramienta'` (rub
 - **Un renglón con dos herramientas** ("masa y cortafierro") se desdobla en un renglón hermano (obs `Desdoblado del renglón #N`), nunca se elige una sola.
 - Precios del catálogo: `precio_ref` es **precio final con IVA** (§ memoria). Regla al vincular renglones a $0/$1: toman el precio de referencia solo en obras llave en mano (`obras.materiales_a_cargo_de='cadinc'`); en obras de cliente quedan en $0 salvo pedido explícito del user.
 
+### 5.13 Personal: alta, DNI, historial de categorías y "activo" (2026-09-06)
+- **El alta guarda todo**: `condicion` (null = "sin especificar"), `modalidad` (default `hora`), talles y `fecha_nacimiento`. `CreatePersonalSchema`/`UpdatePersonalSchema` (`personal.schema.ts`) son la fuente de verdad; la UI repite las mismas reglas con `src/lib/utils/personal.ts`. Los 400 de validación vuelven como `{ error, campo }` y los modales los muestran bajo el input (`errorDeCampo`).
+- **DNI solo dígitos** (7 u 8; CHECK `personal_dni_formato_check`). El backend normaliza (`"36.890.735"` → `36890735`) y responde `409 DNI_DUPLICADO: …` o `409 LEGAJO_DUPLICADO: …`. Sin índice único sobre `dni` hasta que el user resuelva los 2 repetidos reales (ver migración `20260906u`).
+- **`personal_cat_historial` se escribe solo cuando cambia la categoría**: una fila por `(leg, desde)` (índice único), `desde` siempre viernes (`cat_desde` opcional en el PATCH; default la semana en curso). Un `cat_desde` pasado tira `409 AFECTA_SEMANAS_CERRADAS` salvo `confirmar_historico: true`, igual que tarifas y precios globales. Hasta esa fecha cada edición insertaba una fila (453 filas para 116 cambios reales; se limpiaron).
+- **Un solo criterio de "activo"**: `esActivo(p, legsConHoras)` en `src/lib/utils/personal.ts` (override manual › mensualizado = activo › horas en las últimas 3 semanas). Lo usan Personal, Ropa y las alertas de legajo; no reimplementarlo.
+
 ## 6. Convenciones de código (frontend)
 
 - **Feature-based folders**: `src/modules/<feature>/{components,hooks,store}`. Sin `services/` (los hooks de React Query encapsulan API).

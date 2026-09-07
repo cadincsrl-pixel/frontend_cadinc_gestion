@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import type { Hora, Personal } from '@/types/domain.types'
-import { getViernes, toISO } from '@/lib/utils/dates'
+import { esActivo, legsConHorasDesde, semCorteActivos } from '@/lib/utils/personal'
 import { useResumenDocumentos } from '../hooks/usePersonalDocumentos'
 
 interface Props {
@@ -32,27 +32,12 @@ export function AlertaDniFaltante({ personal, horas, onSelect }: Props) {
     if (!personal.length || !resumen) return [] as Faltante[]
     const legsConDni = new Set(resumen.dni ?? [])
 
-    const hoy = new Date()
-    const semCorte3 = (() => {
-      const d = new Date(hoy); d.setDate(d.getDate() - 3 * 7)
-      return toISO(getViernes(d))
-    })()
-    const legsActivos3sem = new Set(
-      horas
-        .filter(h => toISO(getViernes(new Date(h.fecha + 'T12:00:00'))) >= semCorte3)
-        .map(h => h.leg),
-    )
-
-    const esActivo = (p: Personal) => {
-      if (p.modalidad === 'mes') return p.activo_override !== false
-      if (p.activo_override === true) return true
-      if (p.activo_override === false) return false
-      return legsActivos3sem.has(p.leg)
-    }
+    // Criterio único de activo (lib/utils/personal.ts).
+    const legsConHoras = legsConHorasDesde(horas, semCorteActivos())
 
     const resultado: Faltante[] = []
     for (const p of personal) {
-      if (!esActivo(p)) continue
+      if (!esActivo(p, legsConHoras)) continue
       const faltan: DatoFaltante[] = []
       if (!legsConDni.has(p.leg)) faltan.push('dni')
       if (!p.dir?.trim()) faltan.push('dir')

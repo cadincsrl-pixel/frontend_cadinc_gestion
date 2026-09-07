@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import type { Hora, Personal } from '@/types/domain.types'
-import { getViernes, toISO } from '@/lib/utils/dates'
+import { esActivo, legsConHorasDesde, semCorteActivos } from '@/lib/utils/personal'
 
 interface Props {
   personal: Personal[]
@@ -28,28 +28,13 @@ export function AlertaInactivosConCobertura({ personal, horas }: Props) {
   const inactivosConCobertura = useMemo(() => {
     if (!personal.length) return []
 
-    // Legs con horas en las últimas 3 semanas (calculado por viernes ISO).
-    const hoy = new Date()
-    const semCorte3 = (() => {
-      const d = new Date(hoy); d.setDate(d.getDate() - 3 * 7)
-      return toISO(getViernes(d))
-    })()
-    const legsActivos3sem = new Set(
-      horas
-        .filter(h => toISO(getViernes(new Date(h.fecha + 'T12:00:00'))) >= semCorte3)
-        .map(h => h.leg),
-    )
+    const legsConHoras = legsConHorasDesde(horas, semCorteActivos())
 
     return personal.filter(p => {
-      // Mensualizados nunca cargan horas → la regla "sin horas en 3 sem"
-      // los marcaría siempre como inactivos. Quedan fuera de la alerta.
-      if (p.modalidad === 'mes') return false
       const tieneCobertura = p.condicion === 'blanco' || p.condicion === 'asegurado'
-      if (!tieneCobertura) return false
-      // ¿Está inactivo según la regla esActivo invertida?
-      if (p.activo_override === true)  return false           // activo manual → no
-      if (p.activo_override === false) return true            // inactivo manual → sí
-      return !legsActivos3sem.has(p.leg)                      // auto: inactivo si sin horas recientes
+      // Criterio único de activo (lib/utils/personal.ts): los mensualizados
+      // cuentan como activos, así que ya no hace falta excluirlos a mano.
+      return tieneCobertura && !esActivo(p, legsConHoras)
     })
   }, [personal, horas])
 
