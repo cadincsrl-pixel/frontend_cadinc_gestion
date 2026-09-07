@@ -34,7 +34,7 @@ export function useGuardarPreciosMCC() {
 }
 
 /** Conteo de materiales sin precio (a tasar) por obra, en las obras del usuario. */
-export interface PendientePrecio { obra_cod: string; sin_precio: number }
+export interface PendientePrecio { obra_cod: string; sin_precio: number; obra_archivada: boolean }
 
 export function usePendientesDePrecio() {
   return useQuery({
