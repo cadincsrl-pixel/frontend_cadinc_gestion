@@ -13,9 +13,10 @@ import {
 import { useProveedores, useCreateProveedor } from '../hooks/useProveedores'
 import { useStockCliente } from '../hooks/useStockCliente'
 import { useFacturasCompra, useCreateFactura } from '../hooks/useFacturasCompra'
-import { useStockMateriales, useStockRubros, useCreateStockMaterial, useUpdateStockMaterial, parseMaterialConflicto } from '../hooks/useStock'
+import { useStockMateriales, useStockRubros, useCreateStockMaterial, useUpdateStockMaterial, parseMaterialConflicto, parseNombreEsCodigo } from '../hooks/useStock'
 import type { CreateStockMaterialDto, MaterialConflicto, MaterialCandidato } from '../hooks/useStock'
 import { MaterialParecidoModal } from './MaterialParecidoModal'
+import { AltaRapidaMaterialModal } from './AltaRapidaMaterialModal'
 import { useQueryClient } from '@tanstack/react-query'
 import { useCreateRemitoEnvio } from '../hooks/useRemitosEnvio'
 import { imprimirRemito, armarEstadoPedido, armarEnvios, useSoloEnvio, SoloEnvioCheck, type EstadoPedido } from './RemitoEnvioPrint'
@@ -26,6 +27,7 @@ import { ItemHistorialModal } from './ItemHistorialModal'
 import { useObras } from '@/modules/tarja/hooks/useObras'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import { usePermisos } from '@/hooks/usePermisos'
+import { useTabPermitido } from '@/hooks/useTabsPermitidos'
 import { UNIDADES } from '../constants'
 import { createClient } from '@/lib/supabase/client'
 import { toISO } from '@/lib/utils/dates'
@@ -322,6 +324,12 @@ export function SolicitudesTab() {
   // Permisos: deshabilitar (no ocultar) botones según capacidad. El backend
   // valida igual; esto evita clicks que rebotan con error feo (CLAUDE.md §6).
   const { puedeCrear, puedeEditar, puedeEliminar, resolverItems } = usePermisos('certificaciones')
+  // Sumar filas al catálogo no es lo mismo que cargar un pedido (2026-09-07):
+  // hace falta editar certificaciones Y la pestaña Catálogo, igual que en el
+  // backend (POST /api/stock/materiales). Sin eso el buscador no ofrece
+  // "Agregar al catálogo": el renglón va en texto libre y el depósito lo cataloga.
+  const tabCatalogo = useTabPermitido('certificaciones', 'catalogo')
+  const puedeAltaCatalogo = puedeEditar && tabCatalogo
   // El puente a la bandeja del pañol sólo si el usuario tiene el módulo.
   const { puedeVer: puedeVerHerramientas } = usePermisos('herramientas')
   const { data: obras = [] } = useObras('certificaciones')
@@ -352,8 +360,10 @@ export function SolicitudesTab() {
   const { mutate: updateMat, isPending: guardandoMat } = useUpdateStockMaterial()
   /** Qué línea disparó el alta, para poder seleccionarle el material creado. */
   const [modalNuevoMat, setModalNuevoMat] = useState<
-    { lineaId: number; enEdicion: boolean; nombre: string; rubro_id: number | ''; unidad: string } | null
+    { lineaId: number; enEdicion: boolean; buscadoComo: string; unidad: string } | null
   >(null)
+  /** 400 NOMBRE_ES_CODIGO del backend: se muestra bajo el nombre del alta. */
+  const [errorNombreMat, setErrorNombreMat] = useState<string | null>(null)
   /** 409 del candado anti-duplicados. `dtoCreate` permite reintentar con `forzar`. */
   const [conflictoMat, setConflictoMat] = useState<
     (MaterialConflicto & { nombreIntentado: string; dtoCreate: CreateStockMaterialDto | null; lineaId: number; enEdicion: boolean }) | null
@@ -438,6 +448,8 @@ export function SolicitudesTab() {
       onError: (e: unknown) => {
         const c = parseMaterialConflicto(e)
         if (c) { setConflictoMat({ ...c, nombreIntentado: dto.nombre, dtoCreate: dto, lineaId, enEdicion }); return }
+        const msgNombre = parseNombreEsCodigo(e)
+        if (msgNombre) { setErrorNombreMat(msgNombre); return }
         toast(e instanceof Error ? e.message : 'Error', 'err')
       },
     })
@@ -449,13 +461,11 @@ export function SolicitudesTab() {
    * catálogo aprende los nombres de obra. `alias` se reemplaza entero, así que
    * hay que mandar los que ya tenía más el nuevo.
    */
-  function agregarSinonimoMat(c: MaterialCandidato) {
-    if (!conflictoMat) return
+  function agregarSinonimoMat(c: MaterialCandidato, buscado: string, lineaId: number, enEdicion: boolean) {
     const existente = stockMap.get(c.id)
     if (!existente) { toast('Recargá la página para operar sobre ese material', 'err'); return }
-    const termino = conflictoMat.nombreIntentado.trim().toLowerCase()
+    const termino = buscado.trim().toLowerCase()
     const alias = Array.from(new Set([...(existente.alias ?? []), termino]))
-    const { lineaId, enEdicion } = conflictoMat
     updateMat({ id: existente.id, dto: { alias } }, {
       onSuccess: (m: StockMaterial) => {
         toast(`Guardado: buscando "${termino}" ahora aparece ${existente.nombre}`, 'ok')
@@ -2004,9 +2014,10 @@ export function SolicitudesTab() {
                               devuelve: (mat?.clase === 'herramienta' || x.clase === 'herramienta') ? x.devuelve : false,
                             } : x))
                           }}
-                          onCreate={puedeCrear && l.clase !== 'herramienta' ? q => setModalNuevoMat({
-                            lineaId: l._id, enEdicion: false, nombre: q, rubro_id: '', unidad: l.unidad,
-                          }) : undefined}
+                          onCreate={puedeAltaCatalogo && l.clase !== 'herramienta' ? q => {
+                            setErrorNombreMat(null)
+                            setModalNuevoMat({ lineaId: l._id, enEdicion: false, buscadoComo: q, unidad: l.unidad })
+                          } : undefined}
                           createLabel="Agregar al catálogo"
                         />
                       </div>
@@ -2547,9 +2558,10 @@ export function SolicitudesTab() {
                                 devuelve: (mat?.clase === 'herramienta' || x.clase === 'herramienta') ? x.devuelve : false,
                               } : x))
                             }}
-                            onCreate={puedeCrear && l.clase !== 'herramienta' ? q => setModalNuevoMat({
-                              lineaId: l._id, enEdicion: true, nombre: q, rubro_id: '', unidad: l.unidad,
-                            }) : undefined}
+                            onCreate={puedeAltaCatalogo && l.clase !== 'herramienta' ? q => {
+                              setErrorNombreMat(null)
+                              setModalNuevoMat({ lineaId: l._id, enEdicion: true, buscadoComo: q, unidad: l.unidad })
+                            } : undefined}
                             createLabel="Agregar al catálogo"
                           />
                         </div>
@@ -2761,68 +2773,28 @@ export function SolicitudesTab() {
       )}
 
       {/* ── Alta rápida de material desde el pedido ──
-          Pide lo mínimo que exige el backend (nombre + rubro). El resto
-          (stock mínimo, precio, proveedor) se completa después desde Stock:
-          acá el objetivo es que el pedido no se corte. */}
+          Ver AltaRapidaMaterialModal: parecidos en vivo, nombre con palabras,
+          rubro/unidad/precio obligatorios y lo buscado como sinónimo. */}
       {modalNuevoMat && (
-        <Modal
-          open
-          onClose={() => setModalNuevoMat(null)}
-          width="max-w-md"
-          title="＋ AGREGAR AL CATÁLOGO"
-          footer={<>
-            <Button variant="secondary" onClick={() => setModalNuevoMat(null)}>Cancelar</Button>
-            <Button
-              variant="primary"
-              loading={creandoMat}
-              disabled={!modalNuevoMat.nombre.trim() || !modalNuevoMat.rubro_id}
-              onClick={() => {
-                const { nombre, rubro_id, unidad, lineaId, enEdicion } = modalNuevoMat
-                if (!rubro_id) return
-                const lineaOrigen = (enEdicion ? lineasEdit : lineas).find(l => l._id === lineaId)
-                enviarCreateMat(
-                  // Si la linea ya estaba marcada 🔧, el material nuevo nace
-                  // herramienta: el catalogo aprende de lo que la obra pide.
-                  { nombre: nombre.trim(), rubro_id: Number(rubro_id), unidad, clase: lineaOrigen?.clase ?? 'material' },
-                  lineaId, enEdicion,
-                )
-              }}
-            >
-              Agregar y usar
-            </Button>
-          </>}
-        >
-          <div className="flex flex-col gap-3">
-            <Input
-              label="Nombre"
-              value={modalNuevoMat.nombre}
-              onChange={e => setModalNuevoMat(s => s && { ...s, nombre: e.target.value })}
-            />
-            <div>
-              <label className="block text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1">Rubro</label>
-              <select
-                value={modalNuevoMat.rubro_id}
-                onChange={e => setModalNuevoMat(s => s && { ...s, rubro_id: e.target.value ? Number(e.target.value) : '' })}
-                className="w-full px-2 py-2 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white"
-              >
-                <option value="">Elegí un rubro...</option>
-                {(stockRubros as StockRubro[]).map(r => (
-                  <option key={r.id} value={r.id}>{r.nombre}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1">Unidad</label>
-              <select
-                value={modalNuevoMat.unidad}
-                onChange={e => setModalNuevoMat(s => s && { ...s, unidad: e.target.value })}
-                className="w-full px-2 py-2 border border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white"
-              >
-                {UNIDADES.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
-              </select>
-            </div>
-          </div>
-        </Modal>
+        <AltaRapidaMaterialModal
+          buscadoComo={modalNuevoMat.buscadoComo}
+          unidadInicial={modalNuevoMat.unidad}
+          rubros={stockRubros as StockRubro[]}
+          materiales={stockMateriales as StockMaterial[]}
+          ocupado={creandoMat || guardandoMat}
+          errorNombre={errorNombreMat}
+          onClose={() => { setModalNuevoMat(null); setErrorNombreMat(null) }}
+          onUsarExistente={m => usarMaterialEnLinea(modalNuevoMat.lineaId, modalNuevoMat.enEdicion, m)}
+          onAgregarSinonimo={(c, termino) => agregarSinonimoMat(c, termino, modalNuevoMat.lineaId, modalNuevoMat.enEdicion)}
+          onCrear={dto => {
+            const { lineaId, enEdicion } = modalNuevoMat
+            const lineaOrigen = (enEdicion ? lineasEdit : lineas).find(l => l._id === lineaId)
+            setErrorNombreMat(null)
+            // Si la linea ya estaba marcada 🔧, el material nuevo nace
+            // herramienta: el catalogo aprende de lo que la obra pide.
+            enviarCreateMat({ ...dto, clase: lineaOrigen?.clase ?? 'material' }, lineaId, enEdicion)
+          }}
+        />
       )}
 
       {conflictoMat && (
@@ -2834,7 +2806,7 @@ export function SolicitudesTab() {
           puedeForzar={conflictoMat.code === 'MATERIAL_PARECIDO' && conflictoMat.dtoCreate !== null}
           onClose={() => setConflictoMat(null)}
           onUsarExistente={m => usarMaterialEnLinea(conflictoMat.lineaId, conflictoMat.enEdicion, m)}
-          onAgregarSinonimo={agregarSinonimoMat}
+          onAgregarSinonimo={c => agregarSinonimoMat(c, conflictoMat.nombreIntentado, conflictoMat.lineaId, conflictoMat.enEdicion)}
           onForzar={() => {
             const { dtoCreate, lineaId, enEdicion } = conflictoMat
             if (dtoCreate) enviarCreateMat({ ...dtoCreate, forzar: true }, lineaId, enEdicion)

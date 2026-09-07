@@ -14,6 +14,7 @@ import type {
 } from '../hooks/useStock'
 import { useProveedores } from '../hooks/useProveedores'
 import { usePermisos } from '@/hooks/usePermisos'
+import { useTabPermitido } from '@/hooks/useTabsPermitidos'
 import { Modal }  from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input }  from '@/components/ui/Input'
@@ -107,6 +108,10 @@ export function StockTab() {
   const toast = useToast()
   const perfiles = usePerfilesMap()
   const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('certificaciones')
+  // Sumar filas al catálogo pide editar certificaciones + pestaña Catálogo
+  // (POST /api/stock/materiales, 2026-09-07). Rubros siguen con `creacion`.
+  const tabCatalogo = useTabPermitido('certificaciones', 'catalogo')
+  const puedeAltaCatalogo = puedeEditar && tabCatalogo
   // El import masivo de Excel dispara ajustes de inventario en lote: se sigue
   // gateando con `eliminacion` (criterio histórico), más estricto que el
   // `creacion` que pide el backend para un movimiento suelto.
@@ -608,7 +613,7 @@ export function StockTab() {
             📥 Importar Excel
           </button>
           <Button variant="secondary" size="sm" disabled={!puedeCrear} title={puedeCrear ? undefined : 'Sin permiso para crear rubros'} onClick={() => { formRubro.reset({ nombre: '', icono: '' }); setModalNuevoRubro(true) }}>+ Rubro</Button>
-          <Button variant="primary" size="sm" disabled={!puedeCrear} title={puedeCrear ? undefined : 'Sin permiso para crear materiales'} onClick={() => { formNuevo.reset({ rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0, proveedor_id: '', alias: '', usa_color: false, clase: 'material' }); setModalNuevo(true) }}>+ Material</Button>
+          <Button variant="primary" size="sm" disabled={!puedeAltaCatalogo} title={puedeAltaCatalogo ? undefined : 'Para sumar materiales hace falta poder editar y tener la pestaña Catálogo'} onClick={() => { formNuevo.reset({ rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0, proveedor_id: '', alias: '', usa_color: false, clase: 'material' }); setModalNuevo(true) }}>+ Material</Button>
         </div>
       </div>
 

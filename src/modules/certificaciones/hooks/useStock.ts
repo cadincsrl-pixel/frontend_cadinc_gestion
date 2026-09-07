@@ -124,6 +124,13 @@ export type CreateStockMaterialDto = StockMaterialFields & { forzar?: boolean }
 
 export type UpdateStockMaterialDto = Partial<StockMaterialFields>
 
+/**
+ * Por qué el backend ofrece un material como "¿no será este?", de más fuerte a
+ * más débil: es uno de sus sinónimos, comparten un código de proveedor, los
+ * nombres se parecen, o comparten las palabras con contenido.
+ */
+export type MotivoParecido = 'alias' | 'codigo' | 'nombre' | 'palabras'
+
 /** Material del catálogo que el backend ofrece como "¿no será este?". */
 export interface MaterialCandidato {
   id:     number
@@ -133,6 +140,38 @@ export interface MaterialCandidato {
   sim:    number
   /** true si el nombre tipeado ya es EXACTAMENTE uno de sus sinónimos. */
   por_alias: boolean
+  /** true si comparten un código de proveedor ("cod7055" ↔ sinónimo "cod 7055"). */
+  por_codigo: boolean
+  /** Qué parte de las palabras con contenido del tipeado aparece en nombre+sinónimos (0..1). */
+  palabras: number
+  /** Qué parte del nombre del candidato son esas palabras (0..1); ordena entre los que comparten palabras. */
+  precision: number
+  motivo: MotivoParecido
+}
+
+const MOTIVOS: readonly MotivoParecido[] = ['alias', 'codigo', 'nombre', 'palabras']
+
+/** Lee un candidato tal como lo manda el backend; `null` si no tiene la forma. */
+export function parseMaterialCandidato(c: unknown): MaterialCandidato | null {
+  const r = asRecord(c)
+  if (!r || typeof r.id !== 'number' || typeof r.nombre !== 'string') return null
+  const por_alias  = r.por_alias === true
+  const por_codigo = r.por_codigo === true
+  const sim        = typeof r.sim === 'number' ? r.sim : 0
+  const motivo     = (MOTIVOS as readonly unknown[]).includes(r.motivo)
+    ? r.motivo as MotivoParecido
+    : por_alias ? 'alias' : por_codigo ? 'codigo' : 'nombre'
+  return {
+    id:        r.id,
+    nombre:    r.nombre,
+    unidad:    typeof r.unidad === 'string' ? r.unidad : null,
+    sim,
+    por_alias,
+    por_codigo,
+    palabras:  typeof r.palabras === 'number' ? r.palabras : 0,
+    precision: typeof r.precision === 'number' ? r.precision : 0,
+    motivo,
+  }
 }
 
 export type MaterialConflictoCode = 'MATERIAL_PARECIDO' | 'MATERIAL_DUPLICADO'
@@ -169,15 +208,8 @@ export function parseMaterialConflicto(e: unknown): MaterialConflicto | null {
 
   const crudos = Array.isArray(body.candidatos) ? body.candidatos : []
   const candidatos = crudos.flatMap<MaterialCandidato>(c => {
-    const r = asRecord(c)
-    if (!r || typeof r.id !== 'number' || typeof r.nombre !== 'string') return []
-    return [{
-      id:        r.id,
-      nombre:    r.nombre,
-      unidad:    typeof r.unidad === 'string' ? r.unidad : null,
-      sim:       typeof r.sim === 'number' ? r.sim : 0,
-      por_alias: r.por_alias === true,
-    }]
+    const cand = parseMaterialCandidato(c)
+    return cand ? [cand] : []
   })
 
   const mensaje = typeof body.error === 'string'
@@ -185,6 +217,41 @@ export function parseMaterialConflicto(e: unknown): MaterialConflicto | null {
     : e instanceof Error ? e.message : 'Ya hay un material parecido en el catálogo.'
 
   return { code, mensaje, candidatos }
+}
+
+/**
+ * 400 NOMBRE_ES_CODIGO del backend (el nombre es solo un código o una medida).
+ * Devuelve el mensaje para mostrar bajo el input, o `null` si es otro error.
+ */
+export function parseNombreEsCodigo(e: unknown): string | null {
+  const err = asRecord(e)
+  if (!err || err.status !== 400) return null
+  const body = asRecord(err.body)
+  if (!body || body.code !== 'NOMBRE_ES_CODIGO') return null
+  return typeof body.error === 'string' ? body.error : 'El nombre no puede ser solo un código.'
+}
+
+/**
+ * Los "¿no será este?" del catálogo para un nombre, ANTES de intentar el alta
+ * (`GET /api/stock/materiales/parecidos`). Es la misma búsqueda que dispara
+ * el 409 del candado, así el modal del pedido los muestra mientras se tipea.
+ * Pasar el nombre ya debounced; con menos de 2 caracteres no consulta.
+ */
+export function useMaterialesParecidos(nombre: string) {
+  const q = nombre.trim()
+  return useQuery({
+    queryKey: ['stock', 'materiales', 'parecidos', q],
+    queryFn: async () => {
+      const crudos = await apiGet<unknown[]>(`/api/stock/materiales/parecidos?nombre=${encodeURIComponent(q)}`)
+      return (Array.isArray(crudos) ? crudos : []).flatMap<MaterialCandidato>(c => {
+        const cand = parseMaterialCandidato(c)
+        return cand ? [cand] : []
+      })
+    },
+    enabled: q.length >= 2,
+    staleTime: 30_000,
+    placeholderData: prev => prev,
+  })
 }
 
 export function useCreateStockMaterial() {

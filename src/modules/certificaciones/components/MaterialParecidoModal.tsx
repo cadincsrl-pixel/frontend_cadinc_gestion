@@ -20,6 +20,16 @@ import { UNIDADES } from '../constants'
 //   3. Crearlo igual con `forzar: true` — solo para MATERIAL_PARECIDO; con
 //      MATERIAL_DUPLICADO el nombre ya está tomado y no hay reintento.
 
+/** Por qué el backend lo ofrece, en palabras del usuario. */
+export function etiquetaMotivo(c: MaterialCandidato): string {
+  switch (c.motivo) {
+    case 'alias':    return 'YA LO PIDEN ASÍ'
+    case 'codigo':   return 'MISMO CÓDIGO'
+    case 'palabras': return 'MISMAS PALABRAS'
+    default:         return `${Math.round(c.sim * 100)}% parecido`
+  }
+}
+
 export interface MaterialParecidoModalProps {
   conflicto:         MaterialConflicto & { nombreIntentado: string }
   materiales:        StockMaterial[]
@@ -92,8 +102,8 @@ export function MaterialParecidoModal({
                   </div>
                   {existente && <AliasChips alias={existente.alias} />}
                 </div>
-                <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${c.por_alias ? 'bg-verde-light text-verde' : 'bg-gris text-gris-dark'}`}>
-                  {c.por_alias ? 'YA LO PIDEN ASÍ' : `${Math.round(c.sim * 100)}% parecido`}
+                <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${c.motivo === 'alias' || c.motivo === 'codigo' ? 'bg-verde-light text-verde' : 'bg-gris text-gris-dark'}`}>
+                  {etiquetaMotivo(c)}
                 </span>
               </div>
 
