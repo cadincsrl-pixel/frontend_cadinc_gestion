@@ -41,8 +41,9 @@ export function useObrasArchivadas(modulo?: string) {
  * que todavía tiene cosas afuera.
  */
 export function useObrasTodas(modulo?: string) {
-  const { data: activas    = [] } = useObras(modulo)
-  const { data: archivadas = [] } = useObrasArchivadas(modulo)
+  const { data: activas    = [], isLoading: cargandoActivas    } = useObras(modulo)
+  const { data: archivadas = [], isLoading: cargandoArchivadas } = useObrasArchivadas(modulo)
+  const isLoading = cargandoActivas || cargandoArchivadas
 
   return useMemo(() => {
     const nombres = new Map<string, string>()
@@ -57,8 +58,10 @@ export function useObrasTodas(modulo?: string) {
       obras: [...activas, ...archivadas.filter(o => !activas.some(a => a.cod === o.cod))] as Obra[],
       nombreObra:  (cod: string | null | undefined) => (cod ? (nombres.get(cod) ?? cod) : 'sin obra'),
       esArchivada: (cod: string | null | undefined) => !!cod && cerradas.has(cod),
+      /** Para las pantallas que muestran un spinner mientras llegan las obras. */
+      isLoading,
     }
-  }, [activas, archivadas])
+  }, [activas, archivadas, isLoading])
 }
 
 export function useObra(cod: string, modulo?: string) {

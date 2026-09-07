@@ -94,13 +94,6 @@ export function ResumenHistoricoPage() {
 
 
 
-  // ── Obras filtradas por nombre ──
-  // Para semana actual: siempre obras activas
-  const obrasFiltradas = useMemo(() => {
-    if (!filtroNombre) return obras
-    return obras.filter(o => o.nom.toLowerCase().includes(filtroNombre.toLowerCase()))
-  }, [obras, filtroNombre])
-
   // Para histórico: según selector activas/archivadas/todas
   const obrasFiltradasHist = useMemo(() => {
     return obrasCombinadas.filter(o =>
@@ -179,6 +172,25 @@ export function ResumenHistoricoPage() {
   }, [semConGracia])
   const semVista     = verSemAnterior ? semAnterior : semConGracia
   const semVistaKey  = toISO(semVista)
+
+  // ── Obras filtradas por nombre ──
+  // Activas + las ARCHIVADAS QUE TENGAN ACTIVIDAD en la semana que se está
+  // mirando. Antes eran solo las activas, y con eso el tab "Última semana
+  // cerrada" —que es historia, no operación— mostraba menos horas, menos
+  // operarios y menos costo de los que realmente se pagaron esa semana, sin
+  // ninguna marca. Se archiva DESPUÉS de cerrar, así que el caso es la regla,
+  // no la excepción.
+  //
+  // No se suman todas las archivadas: las que no tuvieron actividad esa semana
+  // aportan cero e inflarían el chip "Obras".
+  const obrasFiltradas = useMemo(() => {
+    const conActividad = new Set<string>()
+    for (const h of todasHoras)  if (h.fecha >= semVistaKey) conActividad.add(h.obra_cod)
+    for (const c of todasCerts)  if (c.sem_key === semVistaKey) conActividad.add(c.obra_cod)
+    const base = [...obras, ...obrasArchivadas.filter(o => conActividad.has(o.cod))]
+    if (!filtroNombre) return base
+    return base.filter(o => o.nom.toLowerCase().includes(filtroNombre.toLowerCase()))
+  }, [obras, obrasArchivadas, filtroNombre, todasHoras, todasCerts, semVistaKey])
 
   // ── RESUMEN SEMANA ACTUAL ──
   const resumenSemActual = useMemo(() => {
@@ -432,7 +444,11 @@ export function ResumenHistoricoPage() {
             <Chip value={fmtHs(resumenSemActual.totalHs)} label="Horas" />
             <Chip value={fmtMonto(resumenSemActual.totalCosto)} label="Operarios" variant="green" />
             {(() => {
-              const certsSem = todasCerts.filter(c => c.sem_key === semVistaKey)
+              // Mismo conjunto de obras que el chip: antes el desplegable
+              // listaba certificaciones de obras que el chip no sumaba, así
+              // que el detalle daba más que el total.
+              const codsDelChip = new Set(obrasFiltradas.map(o => o.cod))
+              const certsSem = todasCerts.filter(c => c.sem_key === semVistaKey && codsDelChip.has(c.obra_cod))
               if (resumenSemActual.totalContrat === 0 || certsSem.length === 0) {
                 return <Chip value={fmtMonto(resumenSemActual.totalContrat)} label="Contratistas" />
               }

@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import * as XLSX from 'xlsx'
 import { usePersonal, useUpdatePersonal } from '@/modules/tarja/hooks/usePersonal'
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
-import { useObras } from '@/modules/tarja/hooks/useObras'
+import { useObrasTodas } from '@/modules/tarja/hooks/useObras'
 import { toISO } from '@/lib/utils/dates'
 import { esActivo as esActivoBase } from '@/lib/utils/personal'
 import { useActividadPersonal, legsActivosDe, ultimasObrasDe } from '@/modules/tarja/hooks/useActividadPersonal'
@@ -67,7 +67,11 @@ export function PersonalPage() {
   // obras de esa semana: si laburó en 2, aparecen las dos (CLAUDE.md §5.3).
   const ultimasObrasPorLeg = useMemo(() => ultimasObrasDe(actividad), [actividad])
 
-  const { data: obras = [] } = useObras('tarja')
+  // ACTIVAS + ARCHIVADAS: la columna "Última obra" muestra HISTORIA. Con
+  // solo-activas, todo trabajador cuya última semana con horas fue en una obra
+  // archivada después mostraba el código crudo ("CC BELLA VISTA" en vez de
+  // "CAJA BELLA VISTA"). Son 15 legajos hoy. También sale así en el Excel.
+  const { obras } = useObrasTodas('tarja')
   const obraNombrePorCod = useMemo(() => {
     const m = new Map<string, string>()
     for (const o of obras) m.set(o.cod, o.nom)

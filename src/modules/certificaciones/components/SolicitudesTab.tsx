@@ -24,7 +24,7 @@ import { useRemitosEnvio } from '../hooks/useRemitosEnvio'
 import { EMPRESA } from '@/lib/config/empresa'
 import { netaAFinal, finalANeta } from '@/lib/utils/iva'
 import { ItemHistorialModal } from './ItemHistorialModal'
-import { useObras } from '@/modules/tarja/hooks/useObras'
+import { useObrasTodas } from '@/modules/tarja/hooks/useObras'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useTabPermitido } from '@/hooks/useTabsPermitidos'
@@ -333,7 +333,14 @@ export function SolicitudesTab() {
   const puedeAltaCatalogo = puedeEditar && tabCatalogo
   // El puente a la bandeja del pañol sólo si el usuario tiene el módulo.
   const { puedeVer: puedeVerHerramientas } = usePermisos('herramientas')
-  const { data: obras = [] } = useObras('certificaciones')
+  // ACTIVAS + ARCHIVADAS. `obrasMap` NOMBRA pedidos y remitos viejos, incluido
+  // el historial de remitos emitidos y el papel que sale al reimprimir: con
+  // solo-activas, una obra archivada salía como "CC-019" pelado, no se la
+  // encontraba buscando por nombre, y el remito impreso decía "Obra: CC-019".
+  // El combo de obra destino sigue ofreciendo solo activas: `obrasActivas`
+  // filtra por `!o.archivada` unas líneas más abajo, que es lo correcto para
+  // un pedido nuevo.
+  const { obras } = useObrasTodas('certificaciones')
   // Historial de remitos emitidos (pedido del dueño 2026-07-31: hasta hoy no
   // había forma de ver ni reimprimir un remito viejo — si se cerraba el modal
   // post-generación, el número quedaba huérfano de papel).

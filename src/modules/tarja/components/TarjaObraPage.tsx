@@ -3,7 +3,7 @@
 import { useState, useCallback, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useObra } from '@/modules/tarja/hooks/useObras'
-import { useObras } from '@/modules/tarja/hooks/useObras'
+import { useObrasTodas } from '@/modules/tarja/hooks/useObras'
 import { usePersonalSemana, useAutoTraerSemanaAnterior } from '@/modules/tarja/hooks/useAsignaciones'
 import { usePersonal } from '@/modules/tarja/hooks/usePersonal'
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
@@ -63,7 +63,12 @@ export function TarjaObraPage({ obraCod }: Props) {
 
   // ── Datos de la obra ──
   const { data: obra, isLoading: loadingObra } = useObra(obraCod, 'tarja')
-  const { data: obras = [] } = useObras('tarja')
+  // ACTIVAS + ARCHIVADAS, como en TarjaResumenPage. Acá además arreglaba un
+  // caso concreto: parado en una obra archivada (la página abre a propósito,
+  // con su banner y su panel de semanas), el botón "⊙ Obra actual" del Excel
+  // dejaba la selección en una obra que NO estaba en esta lista, así que
+  // exportaba cero y avisaba "exportado" igual.
+  const { obras } = useObrasTodas('tarja')
   const { data: categorias = [] } = useCategorias()
   const { data: tarifas = [] } = useTarifasObra(obraCod)
   const { data: contratistas = [] } = useContratistas()

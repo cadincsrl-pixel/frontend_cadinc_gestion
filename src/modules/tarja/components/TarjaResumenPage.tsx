@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useObras } from '@/modules/tarja/hooks/useObras'
+import { useObrasTodas } from '@/modules/tarja/hooks/useObras'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
@@ -43,7 +43,13 @@ export function TarjaResumenPage() {
   const scopeAsignadas = useSessionStore(s =>
     s.profile?.rol !== 'admin' && s.profile?.obras_scope === 'asignadas'
   )
-  const { data: obras = [], isLoading } = useObras('tarja')
+  // ACTIVAS + ARCHIVADAS: esta lista alimenta Recibos y el Excel por obras, y
+  // los dos aceptan semanas y rangos de TODA la historia. Con solo-activas, un
+  // operario que esa semana tarjó en una obra archivada después salía en el
+  // recibo con menos horas de las que trabajó, y el ZIP perdía una planilla
+  // entera — las dos cosas en silencio. El filtro cruza obra × semana, así que
+  // una archivada sin horas en el período no agrega ruido.
+  const { obras, isLoading } = useObrasTodas('tarja')
   const perfiles = usePerfilesMap()
   const [modalObra, setModalObra] = useState(false)
   const [modalExcelObras, setModalExcelObras] = useState(false)

@@ -5,7 +5,7 @@ import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePersonal } from '@/modules/tarja/hooks/usePersonal'
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
-import { useObras } from '@/modules/tarja/hooks/useObras'
+import { useObrasTodas } from '@/modules/tarja/hooks/useObras'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api/client'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
@@ -65,7 +65,12 @@ export function HorasTrabajadorPage() {
   // ── Datos ──
   const { data: personal = [] } = usePersonal()
   const { data: categorias = [] } = useCategorias()
-  const { data: obras = [] } = useObras('tarja')
+  // ACTIVAS + ARCHIVADAS: el picker de semanas va hacia atrás sin tope y el
+  // backend manda las horas de todas las obras, pero las filas se armaban
+  // recorriendo solo las activas. Al mirar una semana vieja, las horas de una
+  // obra archivada después no se dibujaban: no había fila, no sumaban al total
+  // y no salían en el Excel de la pantalla.
+  const { obras, nombreObra, esArchivada } = useObrasTodas('tarja')
 
   const { data: todasHoras = [], isLoading: loadingHoras } = useQuery({
     queryKey: ['horas', 'semana', desde, hasta],
@@ -303,7 +308,7 @@ export function HorasTrabajadorPage() {
       const obrasAnt = Array.from(obrasMap.entries())
         .map(([cod, hs]) => ({
           obra_cod: cod,
-          nom: obras.find(o => o.cod === cod)?.nom ?? cod,
+          nom: nombreObra(cod) + (esArchivada(cod) ? ' · archivada' : ''),
           hs,
         }))
         .sort((a, b) => b.hs - a.hs)
@@ -315,7 +320,7 @@ export function HorasTrabajadorPage() {
       })
     })
     return out.sort((a, b) => a.p.nom.localeCompare(b.p.nom))
-  }, [horasAnt, todasHoras, personal, obras, filtroObra])
+  }, [horasAnt, todasHoras, personal, filtroObra, nombreObra, esArchivada])
 
   // Detectar legs en múltiples obras
   const multiObra = useMemo(() => {
