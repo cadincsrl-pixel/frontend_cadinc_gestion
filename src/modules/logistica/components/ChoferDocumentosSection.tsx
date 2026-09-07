@@ -16,7 +16,7 @@ import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
 import type { ChoferDocumento, ChoferDocTipo } from '@/types/domain.types'
-import { partirVigentesYArchivados } from '../utils/docs-vigentes'
+import { partirVigentesYArchivados } from '@/lib/utils/docs-vigentes'
 
 interface Props {
   choferId: number

@@ -9,6 +9,7 @@ import {
   fmtDocTipo,
   type CumpleanieroItem,
   type DocVencimientoItem,
+  type EntidadConPapeles,
   type DocChoferVencimientoItem,
   type ServiceCamionItem,
   type GastoPendienteItem,
@@ -164,13 +165,20 @@ export function NotificationsBell() {
     router.push(`/personal?leg=${encodeURIComponent(leg)}`)
   }
 
-  // Llevar al tab "Camiones y bateas" del módulo logística. Los sub-tabs
-  // de camion/batea son state interno del componente, así que no podemos
-  // hacer deep-link directo al modal del vehículo. El user encuentra el
-  // vehículo por la patente que mostramos en la notif.
-  function abrirVehiculo(_entidad: 'camion' | 'batea', _id: number) {
+  // Cada entidad vive en una pantalla distinta. Ninguna tiene deep-link al
+  // modal del vehículo (los sub-tabs son state interno), así que se llega a la
+  // pantalla y se busca por la patente o el nombre que muestra la notificación.
+  const PANTALLA_DE_ENTIDAD: Record<EntidadConPapeles, string> = {
+    camion:  '/logistica?tab=camiones',
+    batea:   '/logistica?tab=camiones',
+    flota:   '/flota',
+    maquina: '/alquiler?tab=maquinas',
+    unidad:  '/aridos?tab=flota',
+  }
+
+  function abrirVehiculo(entidad: EntidadConPapeles, _id: number) {
     setAbierto(false)
-    router.push('/logistica?tab=camiones')
+    router.push(PANTALLA_DE_ENTIDAD[entidad] ?? '/logistica?tab=camiones')
   }
 
   function abrirChofer(_id: number) {
@@ -397,6 +405,10 @@ function Section({ titulo, tono, children }: { titulo: string; tono: 'rojo' | 'a
   )
 }
 
+const ICONO_ENTIDAD: Record<EntidadConPapeles, string> = {
+  camion: '🚚', batea: '🛻', flota: '🚙', maquina: '🏗', unidad: '🚛',
+}
+
 function DocRow({ doc, onClick }: { doc: DocVencimientoItem; onClick: () => void }) {
   const vencido = doc.diasParaVencer < 0
   return (
@@ -405,7 +417,7 @@ function DocRow({ doc, onClick }: { doc: DocVencimientoItem; onClick: () => void
       className="w-full text-left px-3 py-2 hover:bg-gris/40 transition-colors"
     >
       <div className="font-bold text-sm text-azul">
-        {doc.entidad === 'batea' ? '🛻' : '🚚'} {doc.entidad_patente}
+        {ICONO_ENTIDAD[doc.entidad] ?? '🚚'} {doc.entidad_patente}
         <span className="ml-2 text-xs font-semibold text-gris-dark">{fmtDocTipo(doc.tipo)}</span>
       </div>
       <div className={`text-xs mt-0.5 ${vencido ? 'text-rojo font-bold' : 'text-gris-dark'}`}>

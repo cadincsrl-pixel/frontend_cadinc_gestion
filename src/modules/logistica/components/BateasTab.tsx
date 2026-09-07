@@ -12,7 +12,7 @@ import { AuditInfo } from '@/components/ui/AuditInfo'
 import { useToast } from '@/components/ui/Toast'
 import { useForm } from 'react-hook-form'
 import { usePermisos } from '@/hooks/usePermisos'
-import { VehiculoDocumentosSection } from './VehiculoDocumentosSection'
+import { EntidadDocumentosSection } from '@/components/documentos/EntidadDocumentosSection'
 import type { Batea } from '@/types/domain.types'
 
 const ESTADO_OPTIONS = [
@@ -333,7 +333,7 @@ export function BateasTab() {
 
           {editando && (
             <div className="border-t border-gris-mid pt-4">
-              <VehiculoDocumentosSection entidad="batea" id={editando.id} />
+              <EntidadDocumentosSection entidad="batea" id={editando.id} />
             </div>
           )}
 

@@ -26,6 +26,8 @@ const LABEL_CHOFER_TIPOS: Record<ChoferDocTipo, string> = {
   otro:                'Otro',
 }
 
+// Nombre de carpeta/archivo por tipo. Cubre las cuatro entidades: los 6 de
+// camión/batea más los 4 que suman máquinas de alquiler y unidades de áridos.
 const LABEL_VEHICULO_TIPOS: Record<VehiculoDocTipo, string> = {
   titulo:        'Titulo',
   tarjeta_verde: 'Tarjeta_verde',
@@ -33,6 +35,10 @@ const LABEL_VEHICULO_TIPOS: Record<VehiculoDocTipo, string> = {
   poliza_seguro: 'Poliza_seguro',
   homologacion:          'Homologacion',
   registro_modificacion: 'Registro_modificacion',
+  vtv:     'VTV',
+  patente: 'Patente',
+  oblea:   'Oblea',
+  otro:    'Otro',
 }
 
 export { DEFAULT_CHOFER_TIPOS, DEFAULT_VEHICULO_TIPOS, LABEL_CHOFER_TIPOS, LABEL_VEHICULO_TIPOS }

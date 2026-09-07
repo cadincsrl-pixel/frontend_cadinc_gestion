@@ -21,9 +21,12 @@ export interface CumpleanieroItem {
 }
 
 // Documento de vehículo (camion/batea) con vence_el cargado.
+/** Entidades con papeles que vencen. Espejo de `v_vehiculo_documentos_vencimientos`. */
+export type EntidadConPapeles = 'camion' | 'batea' | 'flota' | 'maquina' | 'unidad'
+
 export interface DocVencimientoItem {
   doc_id:           number
-  entidad:          'camion' | 'batea'
+  entidad:          EntidadConPapeles
   entidad_id:       number
   entidad_patente:  string
   tipo:             string
@@ -149,7 +152,9 @@ export function fmtDocTipo(tipo: string): string {
 
 interface DocVencimientoRow {
   doc_id: number
-  entidad: 'camion' | 'batea'
+  // Las cinco entidades con papeles vencibles. El backend ya filtra las filas
+  // por los módulos que la persona puede leer.
+  entidad: EntidadConPapeles
   entidad_id: number
   entidad_patente: string
   tipo: string
@@ -199,6 +204,8 @@ export function useNotificaciones(): NotificacionesResult {
   const tieneTarja     = hasModulo('tarja')
   const tieneLogistica = hasModulo('logistica')
   const tieneAlquiler  = hasModulo('alquiler')
+  const tieneFlota     = hasModulo('flota')
+  const tieneAridos    = hasModulo('aridos')
   // Solicitudes "por comprar": solo para quien resuelve ítems (compras/depósito).
   const tieneCertificaciones = hasModulo('certificaciones')
   const { resolverItems } = usePermisos('certificaciones')
@@ -207,7 +214,11 @@ export function useNotificaciones(): NotificacionesResult {
   const { data: docsVenc = [] } = useQuery({
     queryKey: ['logistica', 'notificaciones', 'documentos'],
     queryFn:  () => apiGet<DocVencimientoRow[]>('/api/logistica/notificaciones/documentos'),
-    enabled:  tieneLogistica,
+    // Ya no es solo de logística: la misma llamada trae los vencimientos de
+    // flota, alquiler y áridos, filtrados por el backend. Gatearla con
+    // `tieneLogistica` dejaba sin campana a quien tiene esos módulos y no
+    // logística.
+    enabled:  tieneLogistica || tieneFlota || tieneAlquiler || tieneAridos,
     retry: false,
     staleTime: 5 * 60 * 1000,
   })

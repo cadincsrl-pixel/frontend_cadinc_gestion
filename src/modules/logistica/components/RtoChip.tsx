@@ -1,6 +1,6 @@
 'use client'
 
-import { estadoVencimiento } from '../utils/docs-vigentes'
+import { estadoVencimiento } from '@/lib/utils/docs-vigentes'
 
 // Chip de vencimiento de RTO/VTV: rojo vencida, ámbar ≤30 días, gris normal.
 // La campana de notificaciones ya avisa estos vencimientos; esto los pone

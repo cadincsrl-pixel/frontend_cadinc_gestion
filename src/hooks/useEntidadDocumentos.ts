@@ -4,11 +4,23 @@ import type { VehiculoDocumento, VehiculoDocTipo, VehiculoEntidad } from '@/type
 
 export const VEH_DOCS_KEY = ['vehiculo-docs'] as const
 
-// Endpoints sirven la misma estructura para camion y batea — solo cambia el
-// path raíz: /api/logistica/{camiones|bateas}/:id/documentos/...
+// Los endpoints sirven la misma estructura para las cuatro entidades — solo
+// cambia el path raíz. Espejo del mapa `ENTIDADES` del backend.
+const RAIZ: Record<VehiculoEntidad, string> = {
+  camion:  '/api/logistica/camiones',
+  batea:   '/api/logistica/bateas',
+  maquina: '/api/alquiler/maquinas',
+  unidad:  '/api/aridos/unidades',
+}
+
 function basePath(entidad: VehiculoEntidad, id: number): string {
-  const seg = entidad === 'camion' ? 'camiones' : 'bateas'
-  return `/api/logistica/${seg}/${id}`
+  return `${RAIZ[entidad]}/${id}`
+}
+
+// Módulo de permisos que gobierna cada entidad. Lo usa la sección para
+// deshabilitar los botones (el backend valida igual).
+export const MODULO_DE_ENTIDAD: Record<VehiculoEntidad, string> = {
+  camion: 'logistica', batea: 'logistica', maquina: 'alquiler', unidad: 'aridos',
 }
 
 export function useVehiculoDocumentos(entidad: VehiculoEntidad, id: number | null) {

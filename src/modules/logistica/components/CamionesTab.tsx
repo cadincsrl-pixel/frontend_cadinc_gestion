@@ -12,7 +12,7 @@ import { RtoChip } from './RtoChip'
 import { useToast } from '@/components/ui/Toast'
 import { useForm } from 'react-hook-form'
 import { usePermisos } from '@/hooks/usePermisos'
-import { VehiculoDocumentosSection } from './VehiculoDocumentosSection'
+import { EntidadDocumentosSection } from '@/components/documentos/EntidadDocumentosSection'
 import { CamionServicesSection } from './CamionServicesSection'
 import { CamionCubiertasSection } from './CamionCubiertasSection'
 import { GpsCamionSection, GpsBadge } from './GpsCamionSection'
@@ -320,7 +320,7 @@ export function CamionesTab() {
 
           {editando && (
             <div className="border-t border-gris-mid pt-4">
-              <VehiculoDocumentosSection entidad="camion" id={editando.id} />
+              <EntidadDocumentosSection entidad="camion" id={editando.id} />
             </div>
           )}
 

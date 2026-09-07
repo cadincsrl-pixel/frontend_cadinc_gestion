@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -10,17 +10,13 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
+import { EntidadDocumentosSection } from '@/components/documentos/EntidadDocumentosSection'
 import { usePermisos } from '@/hooks/usePermisos'
-import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
 import {
   useMaquinas,
   useCreateMaquina,
   useUpdateMaquina,
   useDeleteMaquina,
-  useUploadSeguroPoliza,
-  useDeleteSeguroPoliza,
-  fetchSeguroPolizaSignedUrl,
-  validarArchivoPoliza,
 } from '../hooks/useAlquiler'
 import {
   MAQUINA_TIPO_LABEL,
@@ -74,17 +70,13 @@ export function MaquinasTab() {
   const { mutate: create, isPending: creating } = useCreateMaquina()
   const { mutate: update, isPending: updating } = useUpdateMaquina()
   const { mutate: remove, isPending: removing } = useDeleteMaquina()
-  const { mutate: uploadPoliza, isPending: subiendoPoliza } = useUploadSeguroPoliza()
-  const { mutate: deletePoliza, isPending: quitandoPoliza } = useDeleteSeguroPoliza()
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editId, setEditId] = useState<number | null>(null)
   const [busqueda, setBusqueda] = useState('')
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Máquina en edición (para conocer el estado de la póliza). Se deriva del
   // array de máquinas, que se refresca al invalidar MAQUINAS_KEY tras subir/quitar.
-  const maquinaEnEdicion = editId == null ? null : maquinas.find(m => m.id === editId) ?? null
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -159,46 +151,6 @@ export function MaquinasTab() {
   }
 
   // ── Póliza del seguro (solo en edición de máquina existente) ──
-  function handleSubirPoliza(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    // Reseteamos el input para permitir re-seleccionar el mismo archivo luego.
-    e.target.value = ''
-    if (!file || editId == null) return
-    try {
-      validarArchivoPoliza(file)
-    } catch (err: unknown) {
-      toast(mensajeError(err, 'Archivo no válido'), 'err')
-      return
-    }
-    uploadPoliza(
-      { maquinaId: editId, file },
-      {
-        onSuccess: () => toast('✓ Póliza adjuntada', 'ok'),
-        onError: (err: unknown) => toast(mensajeError(err, 'Error al subir la póliza'), 'err'),
-      },
-    )
-  }
-
-  async function handleVerPoliza() {
-    if (editId == null) return
-    await abrirAdjuntoFirmado(
-      () => fetchSeguroPolizaSignedUrl(editId),
-      (err) => toast(mensajeError(err, 'No se pudo abrir la póliza'), 'err'),
-    )
-  }
-
-  function handleQuitarPoliza() {
-    if (editId == null) return
-    if (!confirm('¿Quitar la póliza adjunta de esta máquina?')) return
-    deletePoliza(
-      { maquinaId: editId },
-      {
-        onSuccess: () => toast('✓ Póliza quitada', 'ok'),
-        onError: (err: unknown) => toast(mensajeError(err, 'No se pudo quitar la póliza'), 'err'),
-      },
-    )
-  }
-
   return (
     <>
       {/* Barra superior */}
@@ -350,71 +302,17 @@ export function MaquinasTab() {
             />
           </div>
 
-          {/* Póliza adjunta — solo en edición de máquina existente */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">
-              Póliza (foto / PDF)
-            </label>
-            {editId == null ? (
-              <p className="text-xs text-gris-dark italic">
-                Guardá la máquina primero para adjuntar la póliza.
-              </p>
-            ) : maquinaEnEdicion?.seguro_poliza_nombre ? (
-              <div className="flex items-center justify-between gap-2 rounded-lg border-[1.5px] border-gris-mid px-3 py-2">
-                <span className="text-sm text-carbon truncate" title={maquinaEnEdicion.seguro_poliza_nombre}>
-                  📎 {maquinaEnEdicion.seguro_poliza_nombre}
-                </span>
-                <div className="flex items-center gap-1 shrink-0">
-                  <Button variant="ghost" size="sm" onClick={handleVerPoliza}>Ver</Button>
-                  {/* Renovación: re-subir pisa la póliza anterior (POST), no
-                      requiere permiso de eliminación como "Quitar". */}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*,application/pdf"
-                    onChange={handleSubirPoliza}
-                    className="hidden"
-                  />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={!gestionarDocs || subiendoPoliza}
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    {subiendoPoliza ? 'Subiendo…' : 'Reemplazar'}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={!gestionarDocs || !puedeEliminar || quitandoPoliza}
-                    onClick={handleQuitarPoliza}
-                  >
-                    {quitandoPoliza ? 'Quitando…' : 'Quitar'}
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-2">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*,application/pdf"
-                  onChange={handleSubirPoliza}
-                  disabled={!gestionarDocs || subiendoPoliza}
-                  className="text-xs text-gris-dark file:mr-3 file:rounded-lg file:border-0 file:bg-gris file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-carbon hover:file:bg-gris-mid disabled:opacity-60 disabled:cursor-not-allowed"
-                />
-                {subiendoPoliza && (
-                  <span className="text-xs text-gris-dark inline-flex items-center gap-2">
-                    <span className="w-3 h-3 border-2 border-naranja border-t-transparent rounded-full animate-spin" />
-                    Subiendo…
-                  </span>
-                )}
-                <span className="text-[11px] text-gris-mid">
-                  JPG, PNG, WEBP, HEIC o PDF · máx. 10 MB
-                </span>
-              </div>
-            )}
-          </div>
+          {/* Papeles de la máquina: VTV, RTO, póliza, título… Es el mismo
+              componente que usan camiones, bateas y las unidades de áridos.
+              Reemplazó al adjunto único de póliza que vivía en columnas de
+              `alquiler_maquinas` (migradas en `20260907w`). */}
+          {editId == null ? (
+            <p className="text-xs text-gris-dark italic">
+              Guardá la máquina primero para poder cargarle los papeles.
+            </p>
+          ) : (
+            <EntidadDocumentosSection entidad="maquina" id={editId} />
+          )}
 
           <Input label="Observaciones" placeholder="Notas adicionales" {...register('obs')} />
         </div>

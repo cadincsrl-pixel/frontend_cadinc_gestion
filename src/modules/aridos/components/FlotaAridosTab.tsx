@@ -9,6 +9,7 @@ import { InputMonto } from '@/components/ui/InputMonto'
 import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 import { MapsUrlInput } from '@/components/ui/MapsUrlInput'
+import { EntidadDocumentosSection } from '@/components/documentos/EntidadDocumentosSection'
 import { usePermisos } from '@/hooks/usePermisos'
 import { toISO } from '@/lib/utils/dates'
 import {
@@ -532,7 +533,7 @@ function UnidadesSection() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         title={editId == null ? '🚚 NUEVA UNIDAD' : '🚚 EDITAR UNIDAD'}
-        width="max-w-lg"
+        width={editId == null ? 'max-w-lg' : 'max-w-3xl'}
         footer={
           <>
             <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button>
@@ -562,6 +563,17 @@ function UnidadesSection() {
           </div>
           <Input label="Chofer" placeholder="Nombre del chofer habitual" {...register('chofer')} />
           <Input label="Observaciones" placeholder="Notas..." {...register('obs')} />
+
+          {/* Papeles de la unidad: VTV, RTO, póliza, título… Mismo componente
+              que camiones, bateas y las máquinas de alquiler. Solo en edición:
+              hasta que la unidad no existe no hay a qué colgarle el archivo. */}
+          {editId == null ? (
+            <p className="text-xs text-gris-dark italic">
+              Guardá la unidad primero para poder cargarle los papeles.
+            </p>
+          ) : (
+            <EntidadDocumentosSection entidad="unidad" id={editId} />
+          )}
         </div>
       </Modal>
     </div>

@@ -1,5 +1,10 @@
 'use client'
 
+// Sección de documentación con vencimiento, compartida por las cuatro
+// entidades que la tienen: camiones y bateas (logística), máquinas (alquiler)
+// y unidades (áridos). Los tipos de papel, el título y el módulo de permisos
+// salen de la entidad; el resto es idéntico.
+
 import { useRef, useState } from 'react'
 import {
   useVehiculoDocumentos,
@@ -8,7 +13,8 @@ import {
   useDeleteVehiculoDocumento,
   fetchVehiculoDocSignedUrl,
   calcularEstadoVencimiento,
-} from '../hooks/useVehiculoDocumentos'
+  MODULO_DE_ENTIDAD,
+} from '@/hooks/useEntidadDocumentos'
 import { useToast } from '@/components/ui/Toast'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -17,22 +23,48 @@ import { usePermisos } from '@/hooks/usePermisos'
 import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
 import { toISO } from '@/lib/utils/dates'
 import type { VehiculoDocumento, VehiculoDocTipo, VehiculoEntidad } from '@/types/domain.types'
-import { partirVigentesYArchivados } from '../utils/docs-vigentes'
+import { partirVigentesYArchivados } from '@/lib/utils/docs-vigentes'
 
 interface Props {
   entidad: VehiculoEntidad
   id:      number
+  /** Encabezado. Por defecto, el que corresponde a la entidad. */
+  titulo?: string
 }
 
-const TIPOS: { key: VehiculoDocTipo; label: string; icon: string; venceObligatorio?: boolean }[] = [
-  { key: 'titulo',         label: 'Título',          icon: '📜' },
-  { key: 'tarjeta_verde',  label: 'Tarjeta verde',   icon: '🪪' },
-  { key: 'rto',            label: 'RTO',             icon: '🛠', venceObligatorio: true },
-  { key: 'poliza_seguro',  label: 'Póliza de seguro',icon: '🛡', venceObligatorio: true },
-  { key: 'homologacion',   label: 'Homologación',    icon: '✅' },
+interface TipoCfg { key: VehiculoDocTipo; label: string; icon: string; venceObligatorio?: boolean }
+
+const T: Record<string, TipoCfg> = {
+  titulo:                 { key: 'titulo',         label: 'Título',           icon: '📜' },
+  tarjeta_verde:          { key: 'tarjeta_verde',  label: 'Tarjeta verde',    icon: '🪪' },
+  vtv:                    { key: 'vtv',            label: 'VTV',              icon: '🔎', venceObligatorio: true },
+  rto:                    { key: 'rto',            label: 'RTO',              icon: '🛠', venceObligatorio: true },
+  poliza_seguro:          { key: 'poliza_seguro',  label: 'Póliza de seguro', icon: '🛡', venceObligatorio: true },
+  patente:                { key: 'patente',        label: 'Patente',          icon: '🧾', venceObligatorio: true },
+  oblea:                  { key: 'oblea',          label: 'Oblea',            icon: '🏷', venceObligatorio: true },
+  homologacion:           { key: 'homologacion',   label: 'Homologación',     icon: '✅' },
   // Son 2 PDFs: el casillero acepta varios archivos (se listan todos)
-  { key: 'registro_modificacion', label: 'Registro de modificación', icon: '🔧' },
-]
+  registro_modificacion:  { key: 'registro_modificacion', label: 'Registro de modificación', icon: '🔧' },
+  otro:                   { key: 'otro',           label: 'Otro',             icon: '📎' },
+}
+
+// Qué papeles lleva cada entidad. Espejo del CHECK de cada tabla y del mapa
+// `ENTIDADES` del backend: si no coinciden, el backend rechaza con 400.
+// Máquinas de alquiler y unidades de áridos llevan la misma lista que flota
+// por pedido del user ("lleva todo lo mismo, si no lo tiene lo dejo en blanco").
+const TIPOS_POR_ENTIDAD: Record<VehiculoEntidad, TipoCfg[]> = {
+  camion:  [T.titulo!, T.tarjeta_verde!, T.rto!, T.poliza_seguro!, T.homologacion!, T.registro_modificacion!],
+  batea:   [T.titulo!, T.tarjeta_verde!, T.rto!, T.poliza_seguro!, T.homologacion!, T.registro_modificacion!],
+  maquina: [T.titulo!, T.tarjeta_verde!, T.vtv!, T.rto!, T.poliza_seguro!, T.patente!, T.oblea!, T.otro!],
+  unidad:  [T.titulo!, T.tarjeta_verde!, T.vtv!, T.rto!, T.poliza_seguro!, T.patente!, T.oblea!, T.otro!],
+}
+
+const TITULO_POR_ENTIDAD: Record<VehiculoEntidad, string> = {
+  camion:  '📂 Papeles del vehículo',
+  batea:   '📂 Papeles del vehículo',
+  maquina: '📂 Papeles de la máquina',
+  unidad:  '📂 Papeles de la unidad',
+}
 
 const ACCEPT = 'image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf'
 
@@ -70,9 +102,10 @@ function badgeVencimiento(vence_el: string | null) {
   )
 }
 
-export function VehiculoDocumentosSection({ entidad, id }: Props) {
+export function EntidadDocumentosSection({ entidad, id, titulo }: Props) {
+  const TIPOS = TIPOS_POR_ENTIDAD[entidad]
   const toast = useToast()
-  const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos('logistica')
+  const { puedeCrear, puedeEditar, puedeEliminar } = usePermisos(MODULO_DE_ENTIDAD[entidad])
 
   const { data: docs = [], isLoading } = useVehiculoDocumentos(entidad, id)
   const { mutate: uploadDoc, isPending: uploading } = useUploadVehiculoDocumento()
@@ -251,7 +284,7 @@ export function VehiculoDocumentosSection({ entidad, id }: Props) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-2">
-        <h3 className="text-sm font-bold text-azul uppercase tracking-wider">📂 Documentos del vehículo</h3>
+        <h3 className="text-sm font-bold text-azul uppercase tracking-wider">{titulo ?? TITULO_POR_ENTIDAD[entidad]}</h3>
         <span className="text-xs text-gris-dark">
           {docs.length} archivo{docs.length !== 1 ? 's' : ''}
         </span>

@@ -570,8 +570,16 @@ export interface Batea extends AuditFields {
 }
 
 // ── Documentos del vehículo (camión y batea, mismo schema) ──
-export type VehiculoDocTipo = 'titulo' | 'tarjeta_verde' | 'rto' | 'poliza_seguro' | 'homologacion' | 'registro_modificacion'
-export type VehiculoEntidad = 'camion' | 'batea'
+// Unión de los tipos de TODAS las entidades. Cada una acepta un subconjunto:
+// camión/batea los 6 primeros, máquina de alquiler y unidad de áridos los 8 de
+// flota. La lista por entidad vive en TIPOS_POR_ENTIDAD (EntidadDocumentosSection).
+export type VehiculoDocTipo =
+  | 'titulo' | 'tarjeta_verde' | 'rto' | 'poliza_seguro'
+  | 'homologacion' | 'registro_modificacion'
+  | 'vtv' | 'patente' | 'oblea' | 'otro'
+// Entidades que tienen documentación con vencimiento. Espejo de `Entidad` del
+// backend (`modules/documentos/entidad-docs.service.ts`).
+export type VehiculoEntidad = 'camion' | 'batea' | 'maquina' | 'unidad'
 
 export interface VehiculoDocumento {
   id:             number

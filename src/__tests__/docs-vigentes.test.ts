@@ -4,7 +4,7 @@
 // licencia de Acosta mandó al frente a "anteriores".
 
 import { describe, it, expect } from 'vitest'
-import { partirVigentesYArchivados } from '@/modules/logistica/utils/docs-vigentes'
+import { partirVigentesYArchivados } from '@/lib/utils/docs-vigentes'
 
 describe('partirVigentesYArchivados', () => {
   it('CASO REAL (licencia de Acosta): frente y dorso de la renovación quedan VIGENTES juntos', () => {
@@ -56,7 +56,7 @@ describe('partirVigentesYArchivados', () => {
   })
 })
 
-import { estadoVencimiento } from '@/modules/logistica/utils/docs-vigentes'
+import { estadoVencimiento } from '@/lib/utils/docs-vigentes'
 
 describe('estadoVencimiento — semáforo de RTO/documentos', () => {
   const HOY = '2026-08-05'
