@@ -326,6 +326,58 @@ export function useAprobarAjuste() {
   })
 }
 
+export type ResultadoLote = { ok: number[]; fallaron: { id: number; error: string }[] }
+
+// Aprobar/rechazar varios ajustes de una. El backend expone un endpoint por
+// movimiento, así que el lote se resuelve acá en serie — a propósito, no en
+// paralelo: cada aprobación lee `stock_actual` y lo reescribe, y dos requests
+// simultáneas sobre el MISMO material se pisarían (el service lo dice: "race
+// condition mínima posible si dos admin aprueban a la vez"). En serie eso no
+// puede pasar ni siquiera con varios ajustes del mismo material.
+//
+// Un error no corta el lote: cada ajuste es independiente, así que se siguen
+// los demás y se devuelve qué entró y qué no. Las queries se invalidan UNA vez
+// al final y no por ítem, que con 50 ajustes serían 50 refetch.
+function useLoteAjustes<V extends { ids: number[]; onProgreso?: (hechos: number) => void }>(
+  llamar: (id: number, vars: V) => Promise<unknown>,
+  keysExtra: readonly (readonly string[])[],
+) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: V) => {
+      const res: ResultadoLote = { ok: [], fallaron: [] }
+      for (const id of vars.ids) {
+        try {
+          await llamar(id, vars)
+          res.ok.push(id)
+        } catch (e) {
+          res.fallaron.push({ id, error: e instanceof Error ? e.message : 'error desconocido' })
+        }
+        vars.onProgreso?.(res.ok.length + res.fallaron.length)
+      }
+      return res
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: AJUSTES_PENDIENTES_KEY })
+      for (const k of keysExtra) qc.invalidateQueries({ queryKey: k })
+    },
+  })
+}
+
+export function useAprobarAjustesLote() {
+  return useLoteAjustes<{ ids: number[]; onProgreso?: (hechos: number) => void }>(
+    id => apiPost(`/api/stock/movimientos/${id}/aprobar`, {}),
+    [['stock', 'movimientos'], ['stock', 'materiales']],
+  )
+}
+
+export function useRechazarAjustesLote() {
+  return useLoteAjustes<{ ids: number[]; motivo: string; onProgreso?: (hechos: number) => void }>(
+    (id, v) => apiPost(`/api/stock/movimientos/${id}/rechazar`, { rechazo_motivo: v.motivo }),
+    [['stock', 'movimientos']],
+  )
+}
+
 export function useRechazarAjuste() {
   const qc = useQueryClient()
   return useMutation({
