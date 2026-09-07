@@ -1,5 +1,6 @@
 'use client'
 
+import { esErrorSemanaCerrada } from '@/lib/utils/cierres'
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePersonal } from '@/modules/tarja/hooks/usePersonal'
@@ -369,7 +370,12 @@ export function HorasTrabajadorPage() {
           qc.invalidateQueries({ queryKey: ['horas', 'semana'] })
           toast('✓ Hora guardada', 'ok')
         },
-        onError: () => toast('Error al guardar', 'err'),
+        onError: (err) => toast(
+          esErrorSemanaCerrada(err)
+            ? 'La semana está cerrada en esa obra: reabrila en Cierres para editarla.'
+            : (err as { status?: number })?.status === 403 ? 'No tenés permiso para cargar esta celda.' : 'Error al guardar',
+          'err',
+        ),
       }
     )
   }

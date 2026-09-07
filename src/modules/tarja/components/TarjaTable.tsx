@@ -50,12 +50,14 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
   const scopeAsignadas = useSessionStore(s =>
     s.profile?.rol !== 'admin' && s.profile?.obras_scope === 'asignadas'
   )
-  const puedeCambiarCategoria = puedeEditar && !scopeAsignadas
+  // `readonly` = obra archivada o semana cerrada: ni categoría ni quitar.
+  const puedeCambiarCategoria = puedeEditar && !scopeAsignadas && !readonly
   const verHsExtras = !scopeAsignadas
   // Quitar de la semana = DELETE /horas/:obra/semana → tarja.eliminacion + ver_pii.
   // Se deshabilita (no se oculta): el backend valida igual.
-  const puedeQuitar = puedeEliminar && verPii
-  const motivoNoQuitar = !puedeEliminar ? 'Sin permiso para quitar trabajadores'
+  const puedeQuitar = puedeEliminar && verPii && !readonly
+  const motivoNoQuitar = readonly ? 'Semana cerrada u obra archivada'
+    : !puedeEliminar ? 'Sin permiso para quitar trabajadores'
     : !verPii ? 'Requiere el permiso ver_pii en tarja'
     : null
   const days = getSemDays(semActual)

@@ -274,6 +274,8 @@ export interface UpdateCategoriaDto {
   nom?: string
   vh?: number
   desde?: string   // vigencia del nuevo precio (YYYY-MM-DD, viernes de semana)
+  /** true = el usuario confirmó que el precio recalcula semanas ya cerradas (409 AFECTA_SEMANAS_CERRADAS). */
+  confirmar_historico?: boolean
 }
 
 // ── Horas ──

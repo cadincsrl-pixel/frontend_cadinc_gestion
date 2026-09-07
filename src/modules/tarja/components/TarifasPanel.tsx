@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useTarifasObra, useUpsertTarifa } from '../hooks/useTarifas'
 import { useCategorias } from '../hooks/useCategorias'
+import { motivoAfectaCerradas } from '@/lib/utils/cierres'
 import { useToast } from '@/components/ui/Toast'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import { usePermisos } from '@/hooks/usePermisos'
@@ -90,21 +91,29 @@ export function TarifasPanel({ obraCod, readonly = false }: Props) {
       toast('Ingresá un precio válido', 'err')
       return
     }
-    upsert(
-      { obra_cod: obraCod, cat_id: catId, vh, desde: state.viernes },
-      {
-        onSuccess: () => {
-          toast(`✓ Tarifa guardada para ${state.viernes}`, 'ok')
-          setSemState(prev => ({
-            ...prev,
-            [catId]: { viernes: state.viernes, value: '' },
-          }))
-          setHistorialAbierto(catId)
-          refetch()
-        },
-        onError: () => toast('Error al guardar tarifa', 'err'),
-      }
-    )
+    const dto = { obra_cod: obraCod, cat_id: catId, vh, desde: state.viernes }
+    const onSuccess = () => {
+      toast(`✓ Tarifa guardada para ${state.viernes}`, 'ok')
+      setSemState(prev => ({
+        ...prev,
+        [catId]: { viernes: state.viernes, value: '' },
+      }))
+      setHistorialAbierto(catId)
+      refetch()
+    }
+    upsert(dto, {
+      onSuccess,
+      onError: (err) => {
+        // El backend rechaza una vigencia pasada porque recalcula semanas ya
+        // cerradas; si el usuario lo confirma, se reintenta con la marca.
+        const motivo = motivoAfectaCerradas(err)
+        if (motivo && confirm(`${motivo}\n\n¿Aplicar la tarifa igual?`)) {
+          upsert({ ...dto, confirmar_historico: true }, { onSuccess, onError: () => toast('Error al guardar tarifa', 'err') })
+          return
+        }
+        toast(motivo ? 'Tarifa no aplicada' : 'Error al guardar tarifa', motivo ? 'warn' : 'err')
+      },
+    })
   }
 
   function handleResetGlobal(catId: number, globalVH: number) {

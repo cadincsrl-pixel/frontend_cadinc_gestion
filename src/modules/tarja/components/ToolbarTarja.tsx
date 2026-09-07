@@ -1,5 +1,6 @@
 'use client'
 
+import { esErrorSemanaCerrada } from '@/lib/utils/cierres'
 import { useState, useRef } from 'react'
 import { WeekNavigator } from './WeekNavigator'
 import { Button } from '@/components/ui/Button'
@@ -81,7 +82,7 @@ export function ToolbarTarja({
       { obraCod, semActual },
       {
         onSuccess: () => toast('✓ Trabajadores copiados de la semana anterior', 'ok'),
-        onError: (err) => toast(err.message ?? 'Error al copiar semana', 'err'),
+        onError: (err) => toast(esErrorSemanaCerrada(err) ? 'La semana está cerrada: reabrila en Cierres para copiar horas.' : (err.message ?? 'Error al copiar semana'), 'err'),
       }
     )
   }
@@ -130,7 +131,7 @@ export function ToolbarTarja({
           { obra_cod: obraCod, horas: resultado },
           {
             onSuccess: () => toast(`✓ ${resultado.length} horas importadas`, 'ok'),
-            onError: () => toast('Error al importar', 'err'),
+            onError: (err) => toast(esErrorSemanaCerrada(err) ? 'La semana está cerrada: reabrila en Cierres para importar.' : 'Error al importar', 'err'),
           }
         )
       },

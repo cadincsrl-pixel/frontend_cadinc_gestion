@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { motivoAfectaCerradas } from '@/lib/utils/cierres'
 import { useCategorias, useCreateCategoria, useUpdateCategoria, useDeleteCategoria } from '@/modules/tarja/hooks/useCategorias'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -82,14 +83,24 @@ export function CategoriasTab() {
       dto.vh = data.vh
       dto.desde = data.desde
     }
+    const onSuccess = () => {
+      toast('✓ Categoría actualizada', 'ok')
+      setEditando(null)
+    }
     update(
       { id: editando.id, dto },
       {
-        onSuccess: () => {
-          toast('✓ Categoría actualizada', 'ok')
-          setEditando(null)
+        onSuccess,
+        onError: (err) => {
+          // Un precio con vigencia pasada recalcula semanas cerradas de todas
+          // las obras: el backend pide confirmación explícita.
+          const motivo = motivoAfectaCerradas(err)
+          if (motivo && confirm(`${motivo}\n\n¿Aplicar el precio igual?`)) {
+            update({ id: editando.id, dto: { ...dto, confirmar_historico: true } }, { onSuccess, onError: () => toast('Error al actualizar', 'err') })
+            return
+          }
+          toast(motivo ? 'Precio no aplicado' : 'Error al actualizar', motivo ? 'warn' : 'err')
         },
-        onError: () => toast('Error al actualizar', 'err'),
       }
     )
   }

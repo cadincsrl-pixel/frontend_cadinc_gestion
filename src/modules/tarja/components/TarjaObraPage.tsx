@@ -10,6 +10,8 @@ import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
 import { useHorasSemana, useUpsertHorasLote, useLimpiarSemana } from '@/modules/tarja/hooks/useHoras'
 import { useHsExtras } from '@/modules/tarja/hooks/useHsExtras'
 import { useTarifasObra } from '@/modules/tarja/hooks/useTarifas'
+import { useCierresObra, useCreateCierre, useUpdateCierre } from '@/modules/tarja/hooks/useCierres'
+import { semanaCerrada as calcSemanaCerrada } from '@/lib/utils/cierres'
 import { useContratistas } from '@/modules/tarja/hooks/useContratistas'
 import { useTarjaStore } from '@/modules/tarja/store/tarja.store'
 import { getSemDays, toISO, getViernes, getSemLabel } from '@/lib/utils/dates'
@@ -43,7 +45,7 @@ interface Props {
 
 export function TarjaObraPage({ obraCod }: Props) {
   const toast = useToast()
-  const { puedeEditar, puedeCrear, puedeAdministrarObras, verCostos, esJefeObra } = usePermisos('tarja')
+  const { puedeEditar, puedeCrear, puedeAdministrarObras, verCostos, verPii, esJefeObra } = usePermisos('tarja')
   // Vista restringida (scope='asignadas' y no es admin): solo carga horas en
   // la semana actual, sin acceso a tarifas/cierres/edición fuera de hoy.
   const scopeAsignadas = useSessionStore(s =>
@@ -84,6 +86,22 @@ export function TarjaObraPage({ obraCod }: Props) {
   const desde = toISO(days[0]!)
   const hasta = toISO(days[6]!)
   const { data: personal = [], isLoading: loadingPersonal } = usePersonalSemana(obraCod, desde, hasta)
+  // Cierre de la semana visible (misma regla que el backend: sin fila y con
+  // el jueves pasado = cerrada). Cerrada → grilla y toolbar en solo lectura.
+  const { data: cierresObra = [] } = useCierresObra(obraCod)
+  const cierreSem = cierresObra.find(c => c.sem_key === desde)
+  const semanaCerrada = calcSemanaCerrada(cierreSem?.estado, desde)
+  const { mutate: crearCierre, isPending: reabriendo1 } = useCreateCierre()
+  const { mutate: actualizarCierre, isPending: reabriendo2 } = useUpdateCierre()
+  const puedeReabrir = puedeEditar && verPii
+  function reabrirSemana() {
+    const cb = {
+      onSuccess: () => toast('↩ Semana reabierta: ya se puede editar. Volvé a cerrarla en Cierres cuando termines.', 'ok'),
+      onError: () => toast('No se pudo reabrir la semana', 'err'),
+    }
+    if (cierreSem) actualizarCierre({ obraCod, semKey: desde, estado: 'pendiente' }, cb)
+    else crearCierre({ obra_cod: obraCod, sem_key: desde, estado: 'pendiente' }, cb)
+  }
   // Nómina completa para Recibos y Excel de obras: esos modales abarcan
   // TODAS las obras y `personal` es solo el de esta obra/semana (con eso los
   // recibos "Todas las obras" omitían a los operarios de las demás).
@@ -264,6 +282,27 @@ export function TarjaObraPage({ obraCod }: Props) {
         </div>
       )}
 
+      {/* ── Banner semana cerrada (regla del backend desde 2026-09-06) ── */}
+      {!archivada && semanaCerrada && (
+        <div className="bg-amarillo-light border border-[#E0A800] rounded-card px-4 py-2 flex items-center gap-3 text-sm text-[#7A5500]">
+          <span className="text-base">🔒</span>
+          <span className="flex-1">
+            <strong>Semana cerrada</strong>
+            {cierreSem?.cerrado_en ? ` · cerrada el ${new Date(cierreSem.cerrado_en).toLocaleDateString('es-AR')}` : ' · automática (el jueves ya pasó)'}
+            {' — '}solo lectura. Para corregir horas hay que reabrirla.
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={reabrirSemana}
+            disabled={!puedeReabrir || reabriendo1 || reabriendo2}
+            title={puedeReabrir ? 'Reabre la semana para editarla' : 'Reabrir requiere permiso de edición y ver_pii en tarja'}
+          >
+            ↩ Reabrir semana
+          </Button>
+        </div>
+      )}
+
       {/* ── Panel de semanas — solo archivadas ── */}
       {archivada && (
         <div className="bg-white rounded-card shadow-card overflow-hidden">
@@ -354,8 +393,8 @@ export function TarjaObraPage({ obraCod }: Props) {
         </div>
       </div>
 
-      {/* ── Toolbar — solo en obras activas y para usuarios con permisos de edición ── */}
-      {!archivada && !scopeAsignadas && !soloLectura && (
+      {/* ── Toolbar — solo en obras activas, semana abierta y con permisos de edición ── */}
+      {!archivada && !semanaCerrada && !scopeAsignadas && !soloLectura && (
         <ToolbarTarja
           personal={personal}
           categorias={categorias}
@@ -375,7 +414,7 @@ export function TarjaObraPage({ obraCod }: Props) {
           La toolbar completa queda oculta porque scope='asignadas' implica
           vista restringida (sin auto-fill, limpiar, tarifas, etc.), pero
           sí pueden sumar un legajo existente a la semana de su obra. */}
-      {!archivada && scopeAsignadas && esJefeObra && (
+      {!archivada && !semanaCerrada && scopeAsignadas && esJefeObra && (
         <div className="flex justify-end">
           <Button
             variant="primary"
@@ -391,7 +430,7 @@ export function TarjaObraPage({ obraCod }: Props) {
 
       {/* ── WeekNavigator suelto para supervisores solo-lectura ──
           (el toolbar completo está oculto pero necesitan navegar semanas). */}
-      {!archivada && soloLectura && (
+      {!archivada && (soloLectura || semanaCerrada) && (
         <div className="bg-white rounded-card shadow-card p-3">
           <WeekNavigator obraCod={obraCod} />
         </div>
@@ -404,7 +443,7 @@ export function TarjaObraPage({ obraCod }: Props) {
         categorias={categorias}
         tarifas={tarifas}
         onUndoStateChange={handleUndoStateChange}
-        readonly={archivada}
+        readonly={archivada || semanaCerrada}
       />
 
       {/* ── Tarifas / Contratistas / Cierres — ocultos para capataz y supervisores solo-lectura ── */}
