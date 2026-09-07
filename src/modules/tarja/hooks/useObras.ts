@@ -1,6 +1,7 @@
+import { useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { obrasApi } from '@/lib/api/obras.api'
-import type { CreateObraDto, UpdateObraDto } from '@/types/domain.types'
+import type { CreateObraDto, UpdateObraDto, Obra } from '@/types/domain.types'
 
 export const OBRAS_KEY = ['obras'] as const
 
@@ -23,6 +24,41 @@ export function useObrasArchivadas(modulo?: string) {
     queryKey: modulo ? [...OBRAS_KEY, 'archivadas', 'modulo', modulo] : [...OBRAS_KEY, 'archivadas'],
     queryFn: () => obrasApi.getArchivadas(modulo),
   })
+}
+
+/**
+ * Obras activas + archivadas, para PANTALLAS QUE MUESTRAN HISTORIA.
+ *
+ * `useObras()` trae solo las activas, así que cualquier pantalla que nombre
+ * una obra vieja cae al código crudo apenas se archiva. Caso que lo destapó:
+ * CC-019 (Hipódromo) se archivó el 2026-09-05 con 45 herramientas sin
+ * devolver, y en Herramientas › Retornos la fila decía "CC-019" en vez de
+ * "Hipodromo". Lo mismo pasaba en Salidas, Movimientos y Trazabilidad.
+ *
+ * `nombreObra` cae al código si la obra no está en ninguna de las dos listas
+ * (borrada, o el usuario no la ve por alcance), que es el comportamiento que
+ * ya había. `esArchivada` sirve para marcar el caso raro de una obra cerrada
+ * que todavía tiene cosas afuera.
+ */
+export function useObrasTodas(modulo?: string) {
+  const { data: activas    = [] } = useObras(modulo)
+  const { data: archivadas = [] } = useObrasArchivadas(modulo)
+
+  return useMemo(() => {
+    const nombres = new Map<string, string>()
+    for (const o of activas)    nombres.set(o.cod, o.nom)
+    // Las activas ganan: si un código estuviera en las dos listas, la fila
+    // viva es la que vale.
+    for (const o of archivadas) if (!nombres.has(o.cod)) nombres.set(o.cod, o.nom)
+    const cerradas = new Set(archivadas.map(o => o.cod))
+
+    return {
+      /** Activas primero, después las archivadas. Para selectores que deben ofrecer historia. */
+      obras: [...activas, ...archivadas.filter(o => !activas.some(a => a.cod === o.cod))] as Obra[],
+      nombreObra:  (cod: string | null | undefined) => (cod ? (nombres.get(cod) ?? cod) : 'sin obra'),
+      esArchivada: (cod: string | null | undefined) => !!cod && cerradas.has(cod),
+    }
+  }, [activas, archivadas])
 }
 
 export function useObra(cod: string, modulo?: string) {

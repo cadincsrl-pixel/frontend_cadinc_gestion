@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useHerrEntregas, useHerrEntregasStats, fetchHerrEntregasTodas, ENTREGAS_KEY } from '../hooks/useHerrEntregas'
-import { useObras } from '@/modules/tarja/hooks/useObras'
+import { useObrasTodas } from '@/modules/tarja/hooks/useObras'
 import { usePermisos } from '@/hooks/usePermisos'
 import { Pagination } from '@/components/ui/Pagination'
 import { Combobox } from '@/components/ui/Combobox'
@@ -87,14 +87,9 @@ export function HerrRetornos() {
     sentido: 'devolucion', estados: 'confirmada,pendiente,revisar', limit: PAGE_SIZE, offset: (pageRet - 1) * PAGE_SIZE,
   }, verHistorial)
   const { data: stats } = useHerrEntregasStats()
-  const { data: obras = [] } = useObras()
-
-  const obraNom = useMemo(() => {
-    const m = new Map<string, string>()
-    for (const o of obras) m.set(o.cod, o.nom)
-    return m
-  }, [obras])
-  const nombreObra = (cod: string | null) => (cod ? (obraNom.get(cod) ?? cod) : 'sin obra')
+  // Incluye las archivadas: el pañol es historia y una obra cerrada puede
+  // seguir teniendo herramientas afuera (CC-019 Hipódromo, 45 sin devolver).
+  const { nombreObra, esArchivada } = useObrasTodas()
 
   // ── Filtros (cliente) ───────────────────────────────────────────────────
   const nq = normalizeText(busqueda)
@@ -117,7 +112,7 @@ export function HerrRetornos() {
     }
     return true
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [enObra, obraCod, minDias, nq, obraNom])
+  }), [enObra, obraCod, minDias, nq, nombreObra])
 
   function agrupar(lista: HerrEntrega[]): GrupoObra[] {
     const m = new Map<string, GrupoObra>()
@@ -133,15 +128,14 @@ export function HerrRetornos() {
     return [...m.values()].sort((a, b) => b.items.length - a.items.length || nombreObra(a.cod).localeCompare(nombreObra(b.cod)))
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const gruposTodos = useMemo(() => agrupar(enObra), [enObra, obraNom])
+  const gruposTodos = useMemo(() => agrupar(enObra), [enObra, nombreObra])
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const grupos = useMemo(() => hayFiltro ? agrupar(filtradas) : gruposTodos, [filtradas, gruposTodos, hayFiltro, obraNom])
+  const grupos = useMemo(() => hayFiltro ? agrupar(filtradas) : gruposTodos, [filtradas, gruposTodos, hayFiltro, nombreObra])
   const totalObra = useMemo(() => new Map(gruposTodos.map(g => [g.cod, g.items.length])), [gruposTodos])
 
   const obraOptions = useMemo(() => gruposTodos.map(g => ({
     value: g.cod, label: nombreObra(g.cod), sub: `${g.items.length} herramienta${g.items.length === 1 ? '' : 's'} · ${g.cod}`, search: [g.cod],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  })), [gruposTodos, obraNom])
+  })), [gruposTodos, nombreObra])
 
   // Con filtros, las barras que quedan se abren solas (y un click las cierra);
   // sin filtros, cerradas hasta que se abren a mano.
@@ -257,6 +251,14 @@ export function HerrRetornos() {
                   <span className={`text-[10px] text-gris-dark transition-transform ${abierta ? 'rotate-90' : ''}`}>▶</span>
                   <span className="text-sm font-bold text-carbon truncate">{nombreObra(g.cod)}</span>
                   <span className="hidden sm:inline text-[10px] font-mono text-gris-dark">{g.cod}</span>
+                  {/* Una obra cerrada con herramientas afuera es lo que hay que
+                      mirar primero: el pañol nunca las vio volver. */}
+                  {esArchivada(g.cod) && (
+                    <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-naranja-light text-naranja-dark"
+                          title="La obra está archivada y todavía figura con herramientas sin devolver">
+                      archivada
+                    </span>
+                  )}
                   <span className="ml-auto flex items-center gap-2 text-[11px] text-gris-dark whitespace-nowrap">
                     {nSel > 0 && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-azul text-white">{nSel} elegida{nSel !== 1 ? 's' : ''}</span>}
                     <span>

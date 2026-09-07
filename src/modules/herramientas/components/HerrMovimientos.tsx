@@ -8,7 +8,7 @@ import {
   useHerrResponsables,
   useRegistrarMovimiento,
 } from '../hooks/useHerramientas'
-import { useObras } from '@/modules/tarja/hooks/useObras'
+import { useObras, useObrasTodas } from '@/modules/tarja/hooks/useObras'
 import { EMPRESA } from '@/lib/config/empresa'
 import { useToast }   from '@/components/ui/Toast'
 import { Button }    from '@/components/ui/Button'
@@ -93,7 +93,11 @@ export function HerrMovimientos() {
 
   const { data: herramientas = [] } = useHerramientas()
   const { data: config } = useHerrConfig()
+  // Dos listas a propósito: para ELEGIR el destino de un movimiento solo valen
+  // las obras vivas (no se manda una herramienta a una obra cerrada); para
+  // MOSTRAR y FILTRAR historia hacen falta también las archivadas.
   const { data: obras = [] } = useObras()
+  const { obras: obrasTodas, nombreObra } = useObrasTodas()
   // Combo de responsable: endpoint propio del módulo (solo nombres). Las
   // fuentes completas están gateadas por admin/tarja y para un operador de
   // herramientas devolvían 403 silencioso → grupos vacíos.
@@ -209,8 +213,8 @@ export function HerrMovimientos() {
         onSuccess: (data: any) => {
           const herr      = herramientas.find(x => String(x.id) === herrSel)
           const tipoInfo  = config?.movTipos.find(t => t.key === tipoMov)
-          const origenNom = obras.find(o => o.cod === obraOrigen)?.nom ?? (obraOrigen || 'Depósito')
-          const destinoNom = obras.find(o => o.cod === obraDestino)?.nom ?? (obraDestino || 'Depósito')
+          const origenNom  = obraOrigen  ? nombreObra(obraOrigen)  : 'Depósito'
+          const destinoNom = obraDestino ? nombreObra(obraDestino) : 'Depósito'
           setUltimoRemito({
             numero:    String(data?.id ?? Date.now()).padStart(6, '0'),
             fecha:     fechaManual ? new Date(fechaManual).toISOString() : new Date().toISOString(),
@@ -458,8 +462,9 @@ export function HerrMovimientos() {
                 <div className="flex items-center gap-2 text-sm font-mono">
                   {campos.origen && (
                     <span className="text-gris-dark">
-                      {obras.find(o => o.cod === obraOrigen)?.nom
-                        ?? (obraOrigen || (tipoMov === 'retorno_rep' ? 'Taller / Depósito' : '—'))}
+                      {obraOrigen
+                        ? nombreObra(obraOrigen)
+                        : (tipoMov === 'retorno_rep' ? 'Taller / Depósito' : '—')}
                     </span>
                   )}
                   {campos.origen && campos.destino && (
@@ -468,7 +473,7 @@ export function HerrMovimientos() {
                   {campos.destino && (
                     obraDestino ? (
                       <span className="text-azul font-bold">
-                        {obras.find(o => o.cod === obraDestino)?.nom ?? obraDestino}
+                        {nombreObra(obraDestino)}
                       </span>
                     ) : (
                       <span className="text-gris-dark italic font-sans">elegí destino</span>
@@ -694,7 +699,7 @@ export function HerrMovimientos() {
             className="px-3 py-1.5 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white"
           >
             <option value="">Todas las obras</option>
-            {obras.map(o => (
+            {obrasTodas.map(o => (
               <option key={o.cod} value={o.cod}>{o.nom}</option>
             ))}
           </select>

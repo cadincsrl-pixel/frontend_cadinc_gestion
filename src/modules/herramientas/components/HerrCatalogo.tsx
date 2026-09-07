@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useHerrTipos, useHerrTipoEntregas, useCrearHerrTipo, useEditarHerrTipo, useFusionarHerrTipo, type HerrTipoInput } from '../hooks/useHerrTipos'
-import { useObras } from '@/modules/tarja/hooks/useObras'
+import { useObrasTodas } from '@/modules/tarja/hooks/useObras'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useToast } from '@/components/ui/Toast'
 import { Modal } from '@/components/ui/Modal'
@@ -332,12 +332,7 @@ function FusionarTipo({ origen, onClose, onConfirmar, fusionando }: {
 // ── Detalle: dónde está cada unidad ──────────────────────────────────────
 function DetalleTipo({ tipo, onClose, onEditar, puedeEditar }: { tipo: HerrTipoCatalogo; onClose: () => void; onEditar: () => void; puedeEditar: boolean }) {
   const { data: entregas = [], isLoading } = useHerrTipoEntregas(tipo.id)
-  const { data: obras = [] } = useObras()
-  const nombreObra = useMemo(() => {
-    const m = new Map<string, string>()
-    for (const o of obras) m.set(o.cod, o.nom)
-    return (cod: string | null) => (cod ? (m.get(cod) ?? cod) : 'sin obra')
-  }, [obras])
+  const { nombreObra } = useObrasTodas()
 
   // Agrupado por obra, con lo que sigue afuera arriba de todo.
   const porObra = useMemo(() => {

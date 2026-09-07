@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { useHerramientas, useHerrMovimientos } from '../hooks/useHerramientas'
-import { useObras } from '@/modules/tarja/hooks/useObras'
+import { useObrasTodas } from '@/modules/tarja/hooks/useObras'
 import type { HerrMovimiento } from '@/types/domain.types'
 
 function fmtFecha(s: string) {
@@ -32,7 +32,7 @@ export function HerrTrazabilidad() {
   const [busqueda, setBusqueda] = useState('')
 
   const { data: herramientas = [] } = useHerramientas()
-  const { data: obras        = [] } = useObras()
+  const { obras, nombreObra } = useObrasTodas()
 
   const herramientaId = herrSel ? Number(herrSel) : 0
   const { data: movimientos = [], isLoading } = useHerrMovimientos(herramientaId)
@@ -244,7 +244,7 @@ export function HerrTrazabilidad() {
             <h3 className="font-bold text-azul">Línea de tiempo</h3>
             <span className="text-xs text-gris-dark">
               {movFiltrados.length} movimiento{movFiltrados.length !== 1 ? 's' : ''}
-              {obraFilt ? ` en ${obras.find(o => o.cod === obraFilt)?.nom ?? obraFilt}` : ''}
+              {obraFilt ? ` en ${nombreObra(obraFilt)}` : ''}
             </span>
           </div>
 

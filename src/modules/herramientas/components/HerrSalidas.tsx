@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useHerrEntregas, useHerrEntregasStats, useMarcarEntrega, useMarcarEntregasBulk, type EstadoHumano } from '../hooks/useHerrEntregas'
-import { useObras } from '@/modules/tarja/hooks/useObras'
+import { useObrasTodas } from '@/modules/tarja/hooks/useObras'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useToast } from '@/components/ui/Toast'
 import { Pagination } from '@/components/ui/Pagination'
@@ -114,27 +114,20 @@ export function HerrSalidas() {
   }
 
   const { data, isLoading, isError, error, refetch, isFetching } = useHerrEntregas(filtro, tab !== null)
-  const { data: obras = [] } = useObras()
+  const { nombreObra } = useObrasTodas()
   const { mutate: marcar, isPending } = useMarcarEntrega()
   const { mutate: marcarBulk, isPending: bulkPending } = useMarcarEntregasBulk()
 
   const items = useMemo(() => data?.items ?? [], [data])
   const total = data?.total ?? 0
 
-  const obraNom = useMemo(() => {
-    const m = new Map<string, string>()
-    for (const o of obras) m.set(o.cod, o.nom)
-    return m
-  }, [obras])
-  const nombreObra = (cod: string | null) => (cod ? (obraNom.get(cod) ?? cod) : 'sin obra')
 
   // Las obras del selector vienen del BACKEND (vista agregada), no del listado
   // paginado. El conteo habla del tab que se está mirando.
   const obraOptions = useMemo(() => (stats?.obras_lista ?? []).map(o => {
     const n = tab === 'pendiente' ? o.n_pendientes : enObra ? o.n_en_obra : o.n
     return { value: o.cod, label: nombreObra(o.cod), sub: `${n} · ${o.cod}`, search: [o.cod] }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [stats, obraNom, tab, enObra])
+  }), [stats, nombreObra, tab, enObra])
 
   function resetPagina() { setPage(1); setSel(new Set()) }
   function cambiarTab(k: Tab) { setTabElegido(k); resetPagina() }
