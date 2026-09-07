@@ -5,13 +5,13 @@ import { Button } from '@/components/ui/Button'
 import { Pagination } from '@/components/ui/Pagination'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
-import { useObras } from '@/modules/tarja/hooks/useObras'
+import { useObrasTodas } from '@/modules/tarja/hooks/useObras'
 import { useProveedores } from '../../hooks/useProveedores'
 import { usePendientesDePrecio, useCobrosCliente } from '../../hooks/useCuentaCliente'
 import { useCuentaRenglones, useCuentaResumen, fetchCuentaRenglonesTodos, type CuentaFiltro } from '../../hooks/useCuentaCorriente'
 import { exportarCuentaCorriente } from '../../utils/cuentaCorrienteExport'
 import { descargarCuentaClienteObraPdf } from '../../utils/cuentaClientePdf'
-import type { CuentaEstado, CuentaGrupo, Obra } from '@/types/domain.types'
+import type { CuentaEstado, CuentaGrupo } from '@/types/domain.types'
 import { FiltrosCuenta } from './FiltrosCuenta'
 import { ResumenTabla } from './ResumenTabla'
 import { RenglonesTabla } from './RenglonesTabla'
@@ -39,8 +39,15 @@ const PAGE_SIZE = 50
 export function CuentaCorrienteTab() {
   const toast = useToast()
   const { resolverItems, puedeCrear, puedeEditar, puedeEliminar } = usePermisos('certificaciones')
-  const { data: obrasData = [] } = useObras('certificaciones')
-  const obras = obrasData as Obra[]
+  // ACTIVAS + ARCHIVADAS. Con `useObras()` (solo activas) el checkbox "incluir
+  // obras archivadas" no hacía nada: el filtro del selector nunca veía una
+  // archivada, así que no se la podía elegir. Y si igual se llegaba a una
+  // (por "ver todas", que el backend sí resuelve bien), la pantalla no la
+  // encontraba en el mapa y se rompían tres cosas: el nombre caía al código
+  // crudo, el cartel ARCHIVADA no aparecía, y `llaveEnMano` daba false porque
+  // `materiales_a_cargo_de` era undefined — o sea que una obra llave en mano
+  // archivada dejaba de comportarse como tal.
+  const { obras } = useObrasTodas('certificaciones')
   const { data: proveedoresData = [] } = useProveedores()
   const { data: pendientes = [] } = usePendientesDePrecio()
 
