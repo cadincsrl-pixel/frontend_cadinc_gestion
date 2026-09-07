@@ -18,6 +18,18 @@ import type {
   UnidadEta,
   PagoCantera,
   CuentaCorrienteCantera,
+  CategoriaGastoArido,
+  GastoArido,
+  CargaCombustible,
+  CargaCombustibleVista,
+  ResultadoMesArido,
+  GastoMesPorCategoria,
+  FilaImportacion,
+  ResultadoImportacion,
+  ChoferArido,
+  JornalChofer,
+  DiaChofer,
+  PagoMesChofer,
 } from '../types'
 
 // ── Query keys ──
@@ -481,5 +493,223 @@ export function useCuentaCorrienteAridos() {
   return useQuery({
     queryKey: CTACTE_KEY,
     queryFn:  () => apiGet<CuentaCorrienteArido[]>('/api/aridos/cuenta-corriente'),
+  })
+}
+
+// ─────────────────────────── Gastos del área ───────────────────────────
+export const GASTOS_CATEGORIAS_KEY = ['aridos', 'gastos-categorias'] as const
+export const RESULTADO_KEY         = ['aridos', 'resultado'] as const
+
+export interface GastosFiltro {
+  mes?:          string
+  desde?:        string
+  hasta?:        string
+  unidad_id?:    number
+  categoria_id?: number
+  sin_unidad?:   boolean
+}
+export const gastosKey = (f: GastosFiltro) => ['aridos', 'gastos', f] as const
+
+function qs(params: Record<string, unknown>): string {
+  const p = new URLSearchParams()
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== '' && v !== false) p.set(k, String(v))
+  }
+  const s = p.toString()
+  return s ? `?${s}` : ''
+}
+
+export function useCategoriasGasto() {
+  return useQuery({
+    queryKey: GASTOS_CATEGORIAS_KEY,
+    queryFn:  () => apiGet<CategoriaGastoArido[]>('/api/aridos/gastos/categorias'),
+    staleTime: 10 * 60_000,   // el catálogo casi no cambia
+  })
+}
+
+export function useGastos(f: GastosFiltro) {
+  return useQuery({
+    queryKey: gastosKey(f),
+    queryFn:  () => apiGet<{ data: GastoArido[]; total: number; limit: number; offset: number }>(
+      `/api/aridos/gastos${qs({ ...f, limit: 500 })}`),
+  })
+}
+
+/**
+ * Todo lo que toca plata del mes invalida el resultado: es una vista que suma
+ * ventas, gastos y jornales, así que un gasto nuevo la deja vieja.
+ */
+function invalidarResultado(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ['aridos', 'gastos'] })
+  qc.invalidateQueries({ queryKey: RESULTADO_KEY })
+}
+
+export function useCreateGastoArido() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: FilaImportacion & { comprobante_path?: string | null }) =>
+      apiPost<{ gasto: GastoArido; carga: CargaCombustible | null }>('/api/aridos/gastos', dto),
+    onSuccess: () => invalidarResultado(qc),
+  })
+}
+
+export function useUpdateGastoArido() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...dto }: Partial<FilaImportacion> & { id: number; comprobante_path?: string | null }) =>
+      apiPatch<GastoArido>(`/api/aridos/gastos/${id}`, dto),
+    onSuccess: () => invalidarResultado(qc),
+  })
+}
+
+export function useDeleteGastoArido() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiDelete<{ success: boolean }>(`/api/aridos/gastos/${id}`),
+    onSuccess: () => invalidarResultado(qc),
+  })
+}
+
+/**
+ * El Excel del mes va entero en una request. Con `dry_run` valida sin escribir,
+ * que es lo que alimenta la previsualización del modal.
+ */
+export function useImportarGastos() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { filas: FilaImportacion[]; dry_run?: boolean }) =>
+      apiPost<ResultadoImportacion>('/api/aridos/gastos/importar', body),
+    onSuccess: (res) => { if (!res.dry_run) invalidarResultado(qc) },
+  })
+}
+
+export function useResultadoMes(mes?: string) {
+  return useQuery({
+    queryKey: [...RESULTADO_KEY, mes ?? 'todos'],
+    queryFn:  () => apiGet<ResultadoMesArido[]>(`/api/aridos/gastos/resultado${qs({ mes })}`),
+  })
+}
+
+export function useGastosPorCategoria(mes?: string) {
+  return useQuery({
+    queryKey: ['aridos', 'gastos-por-categoria', mes ?? 'todos'],
+    queryFn:  () => apiGet<GastoMesPorCategoria[]>(`/api/aridos/gastos/por-categoria${qs({ mes })}`),
+  })
+}
+
+export function useCargasCombustible(f: { unidad_id?: number; desde?: string; hasta?: string }) {
+  return useQuery({
+    queryKey: ['aridos', 'cargas-combustible', f],
+    queryFn:  () => apiGet<CargaCombustibleVista[]>(`/api/aridos/gastos/combustible${qs(f)}`),
+  })
+}
+
+/** Paso 1 del alta con comprobante: pedir la URL firmada y subir el archivo. */
+export async function subirComprobanteGasto(file: File): Promise<string> {
+  const { path, signedUrl } = await apiPost<{ path: string; signedUrl: string; token: string }>(
+    '/api/aridos/gastos/upload-comprobante', { content_type: file.type })
+  const res = await fetch(signedUrl, {
+    method:  'PUT',
+    headers: { 'Content-Type': file.type },
+    body:    file,
+  })
+  if (!res.ok) throw new Error(`No se pudo subir el comprobante (${res.status})`)
+  return path
+}
+
+export async function verComprobanteGasto(id: number): Promise<string> {
+  const { signedUrl } = await apiGet<{ signedUrl: string }>(`/api/aridos/gastos/${id}/comprobante-url`)
+  return signedUrl
+}
+
+// ─────────────────────────── Choferes del área ───────────────────────────
+export const CHOFERES_ARIDOS_KEY = ['aridos', 'choferes'] as const
+
+export function useChoferesAridos() {
+  return useQuery({
+    queryKey: CHOFERES_ARIDOS_KEY,
+    queryFn:  () => apiGet<ChoferArido[]>('/api/aridos/choferes'),
+  })
+}
+
+export function useCreateChoferArido() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: { nombre: string; dni?: string | null; tel?: string | null; obs?: string | null; jornal?: number | null; jornal_desde?: string | null }) =>
+      apiPost<ChoferArido>('/api/aridos/choferes', dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: CHOFERES_ARIDOS_KEY }),
+  })
+}
+
+export function useUpdateChoferArido() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...dto }: { id: number; nombre?: string; dni?: string | null; tel?: string | null; obs?: string | null; activo?: boolean }) =>
+      apiPatch<ChoferArido>(`/api/aridos/choferes/${id}`, dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: CHOFERES_ARIDOS_KEY }),
+  })
+}
+
+export function useJornalesChofer(choferId?: number) {
+  return useQuery({
+    queryKey: ['aridos', 'chofer-jornales', choferId],
+    queryFn:  () => apiGet<JornalChofer[]>(`/api/aridos/choferes/${choferId}/jornales`),
+    enabled:  choferId != null,
+  })
+}
+
+/**
+ * Cambiar el jornal INSERTA una versión nueva; no pisa la anterior. Por eso
+ * también hay que invalidar los días y el pago: lo que cambia es de qué fecha
+ * en adelante rige el número nuevo.
+ */
+export function useSetJornalChofer() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ chofer_id, ...dto }: { chofer_id: number; jornal: number; vigente_desde: string; obs?: string | null }) =>
+      apiPost<JornalChofer>(`/api/aridos/choferes/${chofer_id}/jornales`, dto),
+    onSuccess: (_r, v) => {
+      qc.invalidateQueries({ queryKey: CHOFERES_ARIDOS_KEY })
+      qc.invalidateQueries({ queryKey: ['aridos', 'chofer-jornales', v.chofer_id] })
+      qc.invalidateQueries({ queryKey: ['aridos', 'chofer-pago'] })
+    },
+  })
+}
+
+export function useDiasChofer(f: { desde?: string; hasta?: string; chofer_id?: number }) {
+  return useQuery({
+    queryKey: ['aridos', 'chofer-dias', f],
+    queryFn:  () => apiGet<DiaChofer[]>(`/api/aridos/chofer-dias${qs(f)}`),
+  })
+}
+
+function invalidarDiasYPago(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ['aridos', 'chofer-dias'] })
+  qc.invalidateQueries({ queryKey: ['aridos', 'chofer-pago'] })
+  qc.invalidateQueries({ queryKey: RESULTADO_KEY })   // los jornales entran al resultado
+}
+
+export function useMarcarDiaChofer() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: { chofer_id: number; fecha: string; unidad_id?: number | null; obs?: string | null }) =>
+      apiPost<DiaChofer>('/api/aridos/chofer-dias', dto),
+    onSuccess: () => invalidarDiasYPago(qc),
+  })
+}
+
+export function useBorrarDiaChofer() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiDelete<{ success: boolean }>(`/api/aridos/chofer-dias/${id}`),
+    onSuccess: () => invalidarDiasYPago(qc),
+  })
+}
+
+export function usePagoMesChoferes(mes: string) {
+  return useQuery({
+    queryKey: ['aridos', 'chofer-pago', mes],
+    queryFn:  () => apiGet<PagoMesChofer[]>(`/api/aridos/chofer-pago/${mes}`),
+    enabled:  !!mes,
   })
 }

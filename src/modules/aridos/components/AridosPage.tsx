@@ -10,6 +10,9 @@ import { VentasTab } from './VentasTab'
 import { AcopiosTab } from './AcopiosTab'
 import { CuentaCorrienteTab } from './CuentaCorrienteTab'
 import { FlotaAridosTab } from './FlotaAridosTab'
+import { ChoferesAridosTab } from './ChoferesAridosTab'
+import { GastosAridosTab } from './GastosAridosTab'
+import { ResultadoAridosTab } from './ResultadoAridosTab'
 
 const TABS = [
   { key: 'ventas',     icon: '🛒', label: 'Ventas',     sub: 'Ventas por m³ y retiros de escombro' },
@@ -19,6 +22,9 @@ const TABS = [
   { key: 'clientes',   icon: '🧑‍💼', label: 'Clientes',   sub: 'Fichas de clientes y precios preestablecidos' },
   { key: 'materiales', icon: '🪨', label: 'Materiales', sub: 'Catálogo, costos de cantera y municipios' },
   { key: 'flota',      icon: '🚚', label: 'Canteras y unidades', sub: 'Canteras propias y camiones con GPS del negocio de áridos' },
+  { key: 'choferes',   icon: '👷', label: 'Choferes',   sub: 'Padrón propio del área: cobran por día trabajado, con jornal versionado' },
+  { key: 'gastos',     icon: '💸', label: 'Gastos',     sub: 'Combustible, gomería, taller, VTV y papeles de los camiones' },
+  { key: 'resultado',  icon: '📊', label: 'Resultado',  sub: 'Lo facturado contra el material de cantera, los gastos y los jornales' },
 ]
 
 export function AridosPage() {
@@ -57,6 +63,9 @@ export function AridosPage() {
         {tab === 'materiales' && <MaterialesTab />}
         {tab === 'flota'      && <FlotaAridosTab />}
         {tab === 'cuenta-corriente' && <CuentaCorrienteTab />}
+        {tab === 'choferes'   && <ChoferesAridosTab />}
+        {tab === 'gastos'     && <GastosAridosTab />}
+        {tab === 'resultado'  && <ResultadoAridosTab />}
       </div>
     </div>
   )

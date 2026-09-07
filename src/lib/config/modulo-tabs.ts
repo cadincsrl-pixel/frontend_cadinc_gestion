@@ -90,5 +90,8 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
     { key: 'clientes',   label: 'Clientes',   icon: '🧑‍💼', meta: 'Fichas y precios por cliente' },
     { key: 'materiales', label: 'Materiales', icon: '🪨', meta: 'Catálogo, costos de cantera y municipios' },
     { key: 'flota',      label: 'Canteras y unidades', icon: '🚚', meta: 'Canteras propias y camiones con GPS' },
+    { key: 'choferes',   label: 'Choferes',   icon: '👷', meta: 'Padrón del área, jornal por día y días trabajados' },
+    { key: 'gastos',     label: 'Gastos',     icon: '💸', meta: 'Combustible, taller, VTV y papeles de los camiones' },
+    { key: 'resultado',  label: 'Resultado',  icon: '📊', meta: 'Facturado contra material, gastos y jornales del mes' },
   ],
 }

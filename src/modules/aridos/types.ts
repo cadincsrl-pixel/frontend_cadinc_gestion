@@ -202,3 +202,177 @@ export interface CuentaCorrienteArido {
   cobrado: number
   saldo: number
 }
+
+// ── Gastos del área ───────────────────────────────────────────────────
+// Áridos anota lo que gasta cada camión para poder medir el resultado del mes.
+// No hay estado ni aprobación a propósito: los carga quien tiene los
+// comprobantes y el dueño lee el número. Ver el encabezado del servicio del
+// backend (`aridos-gastos.service.ts`) para el porqué largo.
+
+export interface CategoriaGastoArido {
+  id:                   number
+  codigo:               string
+  nombre:               string
+  activo:               boolean
+  orden:                number
+  lleva_iva:            boolean
+  /** Peaje y gomería son hechos consumados: no se cargan adelantados. */
+  permite_fecha_futura: boolean
+}
+
+export interface CargaCombustible {
+  litros:           number
+  odometro_km:      number | null
+  tipo_combustible: 'gasoil' | 'nafta'
+  tanque_lleno:     boolean
+  /** Odómetro que retrocede, consumo fuera de banda. No bloquean la carga. */
+  warnings:         Array<{ code: string; detail?: unknown }>
+  obs:              string | null
+}
+
+export interface GastoArido {
+  id:              number
+  fecha:           string
+  categoria_id:    number
+  /** NULL es un renglón real: gasto del área, no de un camión. */
+  unidad_id:       number | null
+  monto:           number
+  descripcion:     string | null
+  proveedor:       string | null
+  metodo_pago:     string | null
+  comprobante_nro: string | null
+  comprobante_path: string | null
+  obs:             string | null
+  created_at:      string
+  categoria?: Pick<CategoriaGastoArido, 'id' | 'codigo' | 'nombre' | 'lleva_iva'> | null
+  unidad?:    { id: number; nombre: string; patente: string } | null
+  /** El backend la devuelve como array por la relación 1-1 de PostgREST. */
+  carga?:     CargaCombustible[] | CargaCombustible | null
+}
+
+export interface CargaCombustibleVista {
+  id:               number
+  gasto_id:         number
+  fecha:            string
+  unidad_id:        number | null
+  unidad:           string | null
+  patente:          string | null
+  monto:            number
+  litros:           number
+  odometro_km:      number | null
+  tipo_combustible: string
+  tanque_lleno:     boolean
+  warnings:         Array<{ code: string; detail?: unknown }>
+  proveedor:        string | null
+  precio_litro:     number | null
+}
+
+export interface ResultadoMesArido {
+  mes:            string
+  unidad_id:      number | null
+  unidad:         string
+  patente:        string | null
+  ingresos:       number
+  costo_material: number
+  gastos:         number
+  mano_obra:      number
+  /** Compra a stock. Queda AFUERA del resultado: es costo recién al vender. */
+  costo_acopio:   number
+  resultado:      number
+}
+
+export interface GastoMesPorCategoria {
+  mes:               string
+  unidad_id:         number | null
+  unidad:            string
+  categoria_codigo:  string
+  categoria:         string
+  movimientos:       number
+  total:             number
+}
+
+export interface FilaImportacion {
+  fecha:            string
+  categoria_id:     number
+  unidad_id?:       number | null
+  monto:            number
+  descripcion?:     string | null
+  proveedor?:       string | null
+  metodo_pago?:     string | null
+  comprobante_nro?: string | null
+  obs?:             string | null
+  carga?: {
+    litros:            number
+    odometro_km?:      number | null
+    tipo_combustible?: 'gasoil' | 'nafta'
+    tanque_lleno?:     boolean
+    obs?:              string | null
+  } | null
+}
+
+export interface ResultadoImportacion {
+  dry_run:    boolean
+  total:      number
+  creados:    number
+  duplicados: number
+  errores:    number
+  resultados: Array<{
+    n:        number
+    estado:   'ok' | 'duplicado' | 'error'
+    gasto_id?: number
+    code?:    string
+    detail?:  unknown
+    warnings?: Array<{ code: string; detail?: unknown }>
+  }>
+}
+
+// ── Choferes del área ─────────────────────────────────────────────────
+// Padrón propio: no son los choferes de logística (que cobran por km o por
+// porcentaje) ni el personal de tarja (que cobra por hora y semana
+// viernes-jueves). Estos cobran por día trabajado.
+
+export interface ChoferArido {
+  id:               number
+  nombre:           string
+  dni:              string | null
+  tel:              string | null
+  activo:           boolean
+  obs:              string | null
+  /** El jornal que rige hoy. Null = todavía no se le cargó ninguno. */
+  jornal_vigente:   number | null
+  jornal_desde:     string | null
+  versiones_jornal: number
+}
+
+export interface JornalChofer {
+  id:            number
+  chofer_id:     number
+  jornal:        number
+  vigente_desde: string
+  obs:           string | null
+  created_at:    string
+}
+
+export interface DiaChofer {
+  id:              number
+  chofer_id:       number
+  fecha:           string
+  unidad_id:       number | null
+  /** Congelado al marcar el día: subir el jornal no mueve meses ya pagados. */
+  jornal_aplicado: number | null
+  obs:             string | null
+  aridos_choferes?: { nombre: string } | null
+  aridos_unidades?: { nombre: string; patente: string } | null
+}
+
+export interface PagoMesChofer {
+  mes:             string
+  chofer_id:       number
+  chofer:          string
+  unidad_id:       number | null
+  unidad:          string | null
+  dias:            number
+  /** > 0 significa que el total está incompleto: hay días sin jornal cargado. */
+  dias_sin_jornal: number
+  a_pagar:         number
+}
