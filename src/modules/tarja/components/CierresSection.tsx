@@ -18,7 +18,8 @@ import { Chip }   from '@/components/ui/Chip'
 import { useToast }       from '@/components/ui/Toast'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import { usePermisos }    from '@/hooks/usePermisos'
-import type { Cierre, Hora, Certificacion, Personal, TarjaHsExtra } from '@/types/domain.types'
+import type { Cierre, Certificacion, Personal, TarjaHsExtra } from '@/types/domain.types'
+import { useHorasObra } from '@/modules/tarja/hooks/useHoras'
 
 interface Props {
   obraCod: string
@@ -49,7 +50,9 @@ export function CierresSection({ obraCod }: Props) {
   const perfiles = usePerfilesMap()
 
   // Datos para calcular totales y detectar semanas con actividad
-  const { data: todasHoras    = [], isLoading: loadingHoras } = useQuery({ queryKey: ['horas', 'all'],   queryFn: () => apiGet<Hora[]>('/api/horas/all') })
+  // Horas de ESTA obra (historial completo, paginado en el backend). Antes
+  // bajaba las de todas las obras para filtrar acá.
+  const { data: todasHoras    = [], isLoading: loadingHoras } = useHorasObra(obraCod)
   const { data: todasCerts    = [], isLoading: loadingCerts } = useQuery({ queryKey: ['certs', 'all'],   queryFn: () => apiGet<Certificacion[]>('/api/contratistas/cert/all') })
   const { data: tarifas       = [] } = useTarifasObra(obraCod)
   const { data: categorias    = [] } = useCategorias()

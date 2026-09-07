@@ -9,12 +9,14 @@ import { exportarTarjaObras, type ExportModo } from '@/modules/tarja/export'
 import { getVHConCatObra } from '@/lib/utils/costos'
 import { useToast } from '@/components/ui/Toast'
 import { getSemLabel, getViernes, toISO } from '@/lib/utils/dates'
-import { createClient } from '@/lib/supabase/client'
+import { fetchPrestamos } from '../hooks/usePrestamos'
 import type { Obra, Personal, Categoria, Hora, Tarifa, Cierre, Certificacion, Contratista, Prestamo } from '@/types/domain.types'
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api/client'
 import { useHsExtrasAll } from '../hooks/useHsExtras'
 
+
+const SIN_HORAS: Hora[] = []
 
 interface Props {
   open: boolean
@@ -22,7 +24,6 @@ interface Props {
   obras: Obra[]
   personal: Personal[]
   categorias: Categoria[]
-  horas: Hora[]
   tarifas: Tarifa[]
   cierres: Cierre[]
   certificaciones: Certificacion[]
@@ -34,8 +35,19 @@ function fmtM(n: number) { return '$' + (Math.round(n / 1000) * 1000).toLocaleSt
 
 export function ModalExcelObras({
   open, onClose, obras, personal, categorias,
-  horas, tarifas, cierres, certificaciones, contratistas, obraActual,
+  tarifas, cierres, certificaciones, contratistas, obraActual,
 }: Props) {
+  // Todas las horas (todas las obras, toda la historia) solo mientras el modal
+  // está abierto. Antes cada pantalla que montaba este modal las bajaba al
+  // cargar, aunque nadie abriera el modal.
+  const { data: horasAll } = useQuery({
+    queryKey: ['horas', 'all'],
+    queryFn: () => apiGet<Hora[]>('/api/horas/all'),
+    enabled: open,
+  })
+  // Referencia estable mientras no hay datos: un `= []` nuevo por render
+  // invalidaba todos los useMemo que dependen de `horas`.
+  const horas = horasAll ?? SIN_HORAS
   const toast = useToast()
   const [semModo, setSemModo] = useState<'todas' | 'una' | 'rango'>('todas')
   const [semUna, setSemUna] = useState('')
@@ -171,11 +183,13 @@ export function ModalExcelObras({
     // Usamos personalAll (toda la nómina histórica), no personal (que viene
     // filtrado por la semana de la UI).
     const legs = personalAll.map(p => p.leg)
-    let q = createClient().from('prestamos').select('*').in('leg', legs)
-    if (filtroSem.desde) q = q.gte('sem_key', filtroSem.desde)
-    if (filtroSem.hasta) q = q.lte('sem_key', filtroSem.hasta)
-    const { data: prestamos, error } = await q
-    if (error) { toast(`No se pudo cargar préstamos: ${error.message}`, 'err'); return }
+    let prestamos: Prestamo[]
+    try {
+      prestamos = await fetchPrestamos({ legs, desde: filtroSem.desde || undefined, hasta: filtroSem.hasta || undefined })
+    } catch (e) {
+      toast(`No se pudo cargar préstamos: ${e instanceof Error ? e.message : 'error de red'}`, 'err')
+      return
+    }
 
     // Si N=1: descarga directa del XLSX.
     // Si N>1: ZIP con un XLSX por obra + 1 XLSX "Comparativa" con resumen
@@ -197,7 +211,7 @@ export function ModalExcelObras({
         contratistas,
         catObraAll:         todasCatObra,
         hsExtrasAll:        todasHsExtras,
-        prestamosAll:       (prestamos ?? []) as Prestamo[],
+        prestamosAll:       prestamos,
         filtroSem:          filtroSemExport,
       }))
       await exportarTarjaObras(inputs, exportModo)

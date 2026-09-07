@@ -2,12 +2,12 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import type { Hora, Personal } from '@/types/domain.types'
-import { esActivo, legsConHorasDesde, semCorteActivos } from '@/lib/utils/personal'
+import type { Personal } from '@/types/domain.types'
+import { esActivo } from '@/lib/utils/personal'
 
 interface Props {
   personal: Personal[]
-  horas:    Hora[]
+  legsConHoras: ReadonlySet<string>   // de useActividadPersonal + legsActivosDe
 }
 
 /**
@@ -22,13 +22,11 @@ interface Props {
  * Sólo se renderiza si hay matches. Click expande la lista con link al tab
  * Personal de cada legajo para que el admin baje la cobertura.
  */
-export function AlertaInactivosConCobertura({ personal, horas }: Props) {
+export function AlertaInactivosConCobertura({ personal, legsConHoras }: Props) {
   const [expandido, setExpandido] = useState(false)
 
   const inactivosConCobertura = useMemo(() => {
     if (!personal.length) return []
-
-    const legsConHoras = legsConHorasDesde(horas, semCorteActivos())
 
     return personal.filter(p => {
       const tieneCobertura = p.condicion === 'blanco' || p.condicion === 'asegurado'
@@ -36,7 +34,7 @@ export function AlertaInactivosConCobertura({ personal, horas }: Props) {
       // cuentan como activos, así que ya no hace falta excluirlos a mano.
       return tieneCobertura && !esActivo(p, legsConHoras)
     })
-  }, [personal, horas])
+  }, [personal, legsConHoras])
 
   if (inactivosConCobertura.length === 0) return null
 

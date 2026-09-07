@@ -2,15 +2,13 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { useQuery } from '@tanstack/react-query'
 import * as XLSX from 'xlsx'
-import { apiGet } from '@/lib/api/client'
 import { usePersonal, useUpdatePersonal } from '@/modules/tarja/hooks/usePersonal'
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
 import { useObras } from '@/modules/tarja/hooks/useObras'
-import { toISO, getViernes } from '@/lib/utils/dates'
-import { esActivo as esActivoBase, legsConHorasDesde, semCorteActivos } from '@/lib/utils/personal'
-import type { Hora } from '@/types/domain.types'
+import { toISO } from '@/lib/utils/dates'
+import { esActivo as esActivoBase } from '@/lib/utils/personal'
+import { useActividadPersonal, legsActivosDe, ultimasObrasDe } from '@/modules/tarja/hooks/useActividadPersonal'
 import { useContratistas, useCreateContratista, useUpdateContratista, useDeleteContratista } from '@/modules/tarja/hooks/useContratistas'
 import { Pagination } from '@/components/ui/Pagination'
 import { ModalNuevoTrabajador }    from './ModalNuevoTrabajador'
@@ -60,42 +58,14 @@ export function PersonalPage() {
   const puedeEliminar = puedeEliminarPerm && verPii
   const [tab, setTab] = useState<Tab>('personal')
 
-  // ── Horas para calcular activos ──
-  const { data: todasHoras = [] } = useQuery({
-    queryKey: ['horas', 'all'],
-    queryFn: () => apiGet<Hora[]>('/api/horas/all'),
-  })
+  // ── Actividad por legajo (RPC personal_actividad): activos y última obra ──
+  // Antes esta pantalla bajaba TODA la tabla de horas (19k filas) para esto.
+  const { data: actividad = [] } = useActividadPersonal()
+  const legsActivos3sem = useMemo(() => legsActivosDe(actividad), [actividad])
 
-  const semCorte3 = useMemo(() => semCorteActivos(), [])
-  const legsActivos3sem = useMemo(() => legsConHorasDesde(todasHoras, semCorte3), [todasHoras, semCorte3])
-
-  // Última obra (o las dos últimas) en las que cada trabajador tuvo horas.
-  // Se calcula con la SEMANA viernes→jueves más reciente del trabajador,
-  // así si en esa semana laburó en 2 obras, aparecen las dos. CLAUDE.md
-  // §5.3 deja claro que las semanas en CADINC son viernes-jueves.
-  const ultimasObrasPorLeg = useMemo(() => {
-    // 1) última fecha por leg
-    const ultimaFechaPorLeg = new Map<string, string>()
-    for (const h of todasHoras) {
-      const prev = ultimaFechaPorLeg.get(h.leg)
-      if (!prev || h.fecha > prev) ultimaFechaPorLeg.set(h.leg, h.fecha)
-    }
-    // 2) semana viernes (sem_key) de cada leg
-    const semPorLeg = new Map<string, string>()
-    for (const [leg, fecha] of ultimaFechaPorLeg) {
-      semPorLeg.set(leg, toISO(getViernes(new Date(fecha + 'T12:00:00'))))
-    }
-    // 3) obras distintas por leg en su semana más reciente + fecha del último día
-    const out = new Map<string, { fecha: string; obras: string[] }>()
-    for (const h of todasHoras) {
-      const sem = toISO(getViernes(new Date(h.fecha + 'T12:00:00')))
-      if (sem !== semPorLeg.get(h.leg)) continue
-      const entry = out.get(h.leg) ?? { fecha: ultimaFechaPorLeg.get(h.leg)!, obras: [] }
-      if (!entry.obras.includes(h.obra_cod)) entry.obras.push(h.obra_cod)
-      out.set(h.leg, entry)
-    }
-    return out
-  }, [todasHoras])
+  // Última semana (viernes→jueves) con horas reales de cada trabajador y las
+  // obras de esa semana: si laburó en 2, aparecen las dos (CLAUDE.md §5.3).
+  const ultimasObrasPorLeg = useMemo(() => ultimasObrasDe(actividad), [actividad])
 
   const { data: obras = [] } = useObras('tarja')
   const obraNombrePorCod = useMemo(() => {
@@ -285,7 +255,7 @@ export function PersonalPage() {
       {tab === 'personal' && (
         <AlertaDniFaltante
           personal={personal}
-          horas={todasHoras}
+          legsConHoras={legsActivos3sem}
           onSelect={p => setEditando(p)}
         />
       )}

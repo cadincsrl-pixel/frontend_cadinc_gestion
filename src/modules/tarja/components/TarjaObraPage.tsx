@@ -7,7 +7,7 @@ import { useObras } from '@/modules/tarja/hooks/useObras'
 import { usePersonalSemana, useAutoTraerSemanaAnterior } from '@/modules/tarja/hooks/useAsignaciones'
 import { usePersonal } from '@/modules/tarja/hooks/usePersonal'
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
-import { useHorasSemana, useUpsertHorasLote, useLimpiarSemana } from '@/modules/tarja/hooks/useHoras'
+import { useHorasSemana, useHorasObra, useUpsertHorasLote, useLimpiarSemana } from '@/modules/tarja/hooks/useHoras'
 import { useHsExtras } from '@/modules/tarja/hooks/useHsExtras'
 import { useTarifasObra } from '@/modules/tarja/hooks/useTarifas'
 import { useCierresObra, useCreateCierre, useUpdateCierre } from '@/modules/tarja/hooks/useCierres'
@@ -32,7 +32,7 @@ import { ContratistasPanel } from './ContratistasPanel'
 import { Chip } from '@/components/ui/Chip'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
-import type { Hora, Tarifa, Cierre, Certificacion } from '@/types/domain.types'
+import type { Tarifa, Cierre, Certificacion } from '@/types/domain.types'
 import { useEffect } from 'react'
 import { useUIStore } from '@/store/ui.store'
 import { usePermisos } from '@/hooks/usePermisos'
@@ -132,11 +132,7 @@ export function TarjaObraPage({ obraCod }: Props) {
   const { mutate: limpiarSemana } = useLimpiarSemana()
 
   // ── Todas las horas de esta obra (para panel de semanas archivadas) ──
-  const { data: horasObra = [] } = useQuery({
-    queryKey: ['horas', obraCod, 'all'],
-    queryFn: () => apiGet<Hora[]>(`/api/horas/${encodeURIComponent(obraCod)}`),
-    enabled: !!obra?.archivada,
-  })
+  const { data: horasObra = [] } = useHorasObra(obraCod, { enabled: !!obra?.archivada })
 
   // Semanas con horas para obras archivadas
   const semanasConHoras = useMemo(() => {
@@ -147,11 +143,7 @@ export function TarjaObraPage({ obraCod }: Props) {
     return [...sems].sort().reverse()
   }, [horasObra])
 
-  // ── Datos globales para modales Excel/Recibos ──
-  const { data: todasHoras = [] } = useQuery({
-    queryKey: ['horas', 'all'],
-    queryFn: () => apiGet<Hora[]>('/api/horas/all'),
-  })
+  // ── Datos globales para modales Excel/Recibos (las horas las bajan los modales al abrirse) ──
   const { data: todasTarifas = [] } = useQuery({
     queryKey: ['tarifas', 'all'],
     queryFn: () => apiGet<Tarifa[]>('/api/tarifas/all'),
@@ -470,7 +462,6 @@ export function TarjaObraPage({ obraCod }: Props) {
         obras={obras}
         personal={personalAll}
         categorias={categorias}
-        horas={todasHoras}
         tarifas={todasTarifas}
         cierres={todosCierres}
         certificaciones={todasCerts}
@@ -483,7 +474,6 @@ export function TarjaObraPage({ obraCod }: Props) {
         obras={obras}
         personal={personalAll}
         categorias={categorias}
-        horas={todasHoras}
         tarifas={todasTarifas}
         cierres={todosCierres}
         certificaciones={todasCerts}

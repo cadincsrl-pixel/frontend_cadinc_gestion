@@ -1,26 +1,39 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { createClient } from '@/lib/supabase/client'
-import { apiPost, apiDelete } from '@/lib/api/client'
+import { apiGet, apiPost, apiDelete } from '@/lib/api/client'
 import type { Prestamo } from '@/types/domain.types'
 
 const KEY = ['prestamos']
 
-// Solo lectura va por Supabase directo (data no-PII, RLS permisiva).
-// Las mutaciones (create/delete) pasan por el backend Hono para que apliquen
-// requirePermiso('tarja',...) y queden en audit_log.
-function sb() { return createClient() }
+export interface FiltroPrestamos {
+  /** Solo estos legajos ([] → no consulta, devuelve []). */
+  legs?: string[]
+  semKey?: string
+  desde?: string
+  hasta?: string
+}
 
-/** Todos los movimientos (peso ligero: solo leg + tipo + monto) para calcular saldos */
+/**
+ * Lectura de préstamos por el backend (GET /api/prestamos), paginada y con un
+ * solo orden (más nuevo primero). Hasta 2026-09-07 se leía la tabla con la
+ * anon key desde cuatro lugares distintos, sin paginar.
+ */
+export async function fetchPrestamos(f: FiltroPrestamos = {}): Promise<Prestamo[]> {
+  if (f.legs && f.legs.length === 0) return []
+  const q = new URLSearchParams()
+  if (f.legs)   q.set('legs', f.legs.join(','))
+  if (f.semKey) q.set('sem_key', f.semKey)
+  if (f.desde)  q.set('desde', f.desde)
+  if (f.hasta)  q.set('hasta', f.hasta)
+  const qs = q.toString()
+  return apiGet<Prestamo[]>(`/api/prestamos${qs ? `?${qs}` : ''}`)
+}
+
+/** Todos los movimientos, solo leg + tipo + monto, para calcular saldos. */
 export function usePrestamosLigero() {
   return useQuery({
     queryKey: [...KEY, 'ligero'],
-    queryFn: async () => {
-      const { data, error } = await sb()
-        .from('prestamos')
-        .select('leg, tipo, monto')
-      if (error) throw new Error(error.message)
-      return (data ?? []) as Pick<Prestamo, 'leg' | 'tipo' | 'monto'>[]
-    },
+    queryFn: async () =>
+      (await fetchPrestamos()).map(p => ({ leg: p.leg, tipo: p.tipo, monto: p.monto })) as Pick<Prestamo, 'leg' | 'tipo' | 'monto'>[],
   })
 }
 
@@ -28,32 +41,16 @@ export function usePrestamosLigero() {
 export function usePrestamosForLegs(legs: string[]) {
   return useQuery({
     queryKey: [...KEY, 'legs', legs],
-    queryFn: async () => {
-      if (!legs.length) return [] as Prestamo[]
-      const { data, error } = await sb()
-        .from('prestamos')
-        .select('*')
-        .in('leg', legs)
-        .order('created_at', { ascending: false })
-      if (error) throw new Error(error.message)
-      return (data ?? []) as Prestamo[]
-    },
+    queryFn: () => fetchPrestamos({ legs }),
     enabled: legs.length > 0,
   })
 }
 
-/** Mantener para compatibilidad (ModalForm usa usePersonal, no este hook) */
+/** Todos los movimientos completos (recibos, histórico). */
 export function usePrestamos() {
   return useQuery({
     queryKey: KEY,
-    queryFn: async () => {
-      const { data, error } = await sb()
-        .from('prestamos')
-        .select('*')
-        .order('created_at', { ascending: false })
-      if (error) throw new Error(error.message)
-      return (data ?? []) as Prestamo[]
-    },
+    queryFn: () => fetchPrestamos(),
   })
 }
 

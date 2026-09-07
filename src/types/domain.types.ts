@@ -116,6 +116,25 @@ export interface UpdatePersonalDto {
   confirmar_historico?: boolean
 }
 
+/** Fila de GET /api/personal/actividad (RPC personal_actividad). */
+export interface ActividadLeg {
+  leg: string
+  ultima_fecha: string | null            // último día con horas > 0
+  obras_ultima_semana: string[] | null   // obras de esa semana (vie→jue)
+  filas_desde: number                    // filas de horas desde el corte de "activo"
+}
+
+/** Fila de GET /api/horas/resumen-obras (RPC obras_actividad). */
+export interface ResumenObra {
+  obra_cod: string
+  hs_semana: number
+  trabajadores_semana: number
+  hs_total: number
+  trabajadores_total: number
+  ultima_actividad: string | null
+  ultima_carga_por: string | null
+}
+
 // ── Documentos del legajo ──
 export type PersonalDocTipo = 'dni' | 'alta_temprana' | 'baja' | 'telegrama'
 

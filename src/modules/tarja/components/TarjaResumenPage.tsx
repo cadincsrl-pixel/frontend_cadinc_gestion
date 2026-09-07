@@ -12,6 +12,8 @@ import { AlertaInactivosConCobertura } from './AlertaInactivosConCobertura'
 import { ModalExcelObras } from './ModalExcelObras'
 import { ModalRecibos } from './ModalRecibos'
 import { useQuery } from '@tanstack/react-query'
+import { useResumenObras } from '@/modules/tarja/hooks/useHoras'
+import { useActividadPersonal, legsActivosDe } from '@/modules/tarja/hooks/useActividadPersonal'
 import { apiGet } from '@/lib/api/client'
 import { exportarCSVResumenObras } from '@/lib/utils/excel'
 import { useToast } from '@/components/ui/Toast'
@@ -59,11 +61,20 @@ export function TarjaResumenPage() {
   }, [sortKey])
   const setTopbarAccion = useUIStore(s => s.setTopbarAccion)
 
-  // Datos globales para stats — todas las horas históricas
-  const { data: todasHoras = [] } = useQuery({
-    queryKey: ['horas', 'all'],
-    queryFn: () => apiGet<Hora[]>('/api/horas/all'),
+  // Semana actual (vie→jue), calculada una sola vez al montar; si la semana
+  // cambia con la página abierta el usuario recarga igual al volver.
+  const semanaKey = useMemo(() => toISO(getViernes(new Date())), [])
+  const juevesKey = useMemo(() => toISO(getSemDays(getViernes(new Date()))[6]!), [])
+  // Horas de ESTA semana (todas las obras): stats, alerta de cobertura y
+  // recuento de trabajadores. Las históricas ya no se bajan enteras (19k
+  // filas): el resumen por obra y la actividad por legajo los calcula la base.
+  const { data: horasSemana = [] } = useQuery({
+    queryKey: ['horas', 'semana', semanaKey, juevesKey],
+    queryFn: () => apiGet<Hora[]>(`/api/horas/all?desde=${semanaKey}&hasta=${juevesKey}`),
   })
+  const { data: resumenObras = [] } = useResumenObras(semanaKey)
+  const { data: actividad = [] } = useActividadPersonal()
+  const legsActivos = useMemo(() => legsActivosDe(actividad), [actividad])
   const { data: todoPersonal = [] } = useQuery({
     queryKey: ['personal'],
     queryFn: () => apiGet<Personal[]>('/api/personal'),
@@ -96,8 +107,10 @@ export function TarjaResumenPage() {
     return new Set(getSemDays(getViernes(new Date())).map(toISO))
   }, [])
 
-  // Stats por obra
+  // Stats por obra (RPC obras_actividad). Toda obra tiene entrada, con ceros
+  // si todavía no cargó horas.
   const statsMap = useMemo(() => {
+    const porObra = new Map(resumenObras.map(r => [r.obra_cod, r]))
     const map: Record<string, {
       hsSemana: number
       trabajadoresSemana: number
@@ -105,29 +118,16 @@ export function TarjaResumenPage() {
       ultimaCargaPor: string | null
     }> = {}
     obras.forEach(o => {
-      const horasObra = todasHoras.filter(h => h.obra_cod === o.cod)
-      const horasSemana = horasObra.filter(h => semDays.has(h.fecha))
-      const hsSemana = horasSemana.reduce((s, h) => s + h.horas, 0)
-      const trabajadoresSemana = new Set(horasSemana.map(h => h.leg)).size
-      // "Última actividad": último fecha con horas REALES cargadas (horas > 0).
-      // Filtramos los placeholders (horas=0) que se crean al abrir la semana
-      // para una obra, porque sino "última actividad" queda fijada en el día
-      // del placeholder más reciente aunque nadie haya cargado horas reales.
-      const horasReales = horasObra.filter(h => h.horas > 0)
-      const ultimaFecha = horasReales.length
-        ? horasReales.reduce((max, h) => h.fecha > max ? h.fecha : max, horasReales[0]!.fecha)
-        : null
-      // "Última carga por": user_id del registro de horas reales con
-      // updated_at más reciente. Se muestra como chip ✎ en la card de la
-      // obra, en vez del legacy obra.updated_by (que reflejaba edición de
-      // la metadata de la obra, no carga de horas).
-      const ultimaCargaPor = horasReales.length
-        ? horasReales.reduce((a, b) => (a.updated_at ?? '') > (b.updated_at ?? '') ? a : b).updated_by ?? null
-        : null
-      map[o.cod] = { hsSemana, trabajadoresSemana, ultimaActividad: ultimaFecha, ultimaCargaPor }
+      const r = porObra.get(o.cod)
+      map[o.cod] = {
+        hsSemana:           Number(r?.hs_semana ?? 0),
+        trabajadoresSemana: r?.trabajadores_semana ?? 0,
+        ultimaActividad:    r?.ultima_actividad ?? null,
+        ultimaCargaPor:     r?.ultima_carga_por ?? null,
+      }
     })
     return map
-  }, [obras, todasHoras, semDays])
+  }, [obras, resumenObras])
 
   const obrasFiltradas = useMemo(() => {
     if (!busqueda.trim()) return obras
@@ -183,13 +183,13 @@ export function TarjaResumenPage() {
           toast('No hay obras para exportar', 'warn')
           return
         }
-        exportarCSVResumenObras(obrasFiltradas, todasHoras)
+        exportarCSVResumenObras(obrasFiltradas, resumenObras)
         toast('⬇ CSV exportado', 'ok')
       }
     })
 
     return () => setTopbarAccion(null)
-  }, [obrasFiltradas, setTopbarAccion, toast, todasHoras, scopeAsignadas])
+  }, [obrasFiltradas, setTopbarAccion, toast, resumenObras, scopeAsignadas])
 
   function fmtFecha(fecha: string | null): string {
     if (!fecha) return 'Sin actividad'
@@ -214,8 +214,8 @@ export function TarjaResumenPage() {
           2. Inactivos con cobertura activa (naranja, sangrado financiero). */}
       {verPii && (
         <>
-          <AlertaSinCobertura personal={todoPersonal} horas={todasHoras} />
-          <AlertaInactivosConCobertura personal={todoPersonal} horas={todasHoras} />
+          <AlertaSinCobertura personal={todoPersonal} horas={horasSemana} />
+          <AlertaInactivosConCobertura personal={todoPersonal} legsConHoras={legsActivos} />
         </>
       )}
 
@@ -301,13 +301,13 @@ export function TarjaResumenPage() {
           </div>
           <div className="bg-white rounded-card shadow-card p-3 text-center">
             <div className="font-mono text-2xl font-bold text-naranja">
-              {new Set(todasHoras.filter(h => semDays.has(h.fecha)).map(h => h.leg)).size}
+              {new Set(horasSemana.filter(h => semDays.has(h.fecha)).map(h => h.leg)).size}
             </div>
             <div className="text-[11px] text-gris-dark font-bold uppercase tracking-wide">Trab. esta semana</div>
           </div>
           <div className="bg-white rounded-card shadow-card p-3 text-center">
             <div className="font-mono text-2xl font-bold text-verde">
-              {todasHoras
+              {horasSemana
                 .filter(h => semDays.has(h.fecha))
                 .reduce((s, h) => s + h.horas, 0)
                 .toLocaleString('es-AR')}
@@ -432,7 +432,6 @@ export function TarjaResumenPage() {
         obras={obras}
         personal={todoPersonal}
         categorias={categorias}
-        horas={todasHoras}
         tarifas={todasTarifas}
         cierres={todosCierres}
         certificaciones={todasCerts}
@@ -445,7 +444,6 @@ export function TarjaResumenPage() {
         obras={obras}
         personal={todoPersonal}
         categorias={categorias}
-        horas={todasHoras}
         tarifas={todasTarifas}
         cierres={todosCierres}
         certificaciones={todasCerts}

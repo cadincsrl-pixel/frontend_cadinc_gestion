@@ -1,5 +1,6 @@
 'use client'
 
+import { motivoErrorGuardado } from '@/lib/utils/cierres'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTarjaStore } from '../store/tarja.store'
 import { useHorasSemana, useUpsertHora, useUpsertHorasLote } from '../hooks/useHoras'
@@ -120,7 +121,7 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
       { obra_cod: obraCod, leg, cat_id: catId, desde },
       {
         onSuccess: () => toast('✓ Categoría actualizada', 'ok'),
-        onError: () => toast('Error al cambiar categoría', 'err'),
+        onError: (err) => toast(motivoErrorGuardado(err, 'No se pudo cambiar la categoría'), 'err'),
       }
     )
   }
@@ -223,7 +224,7 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
         upsertHoraLote(
           { obra_cod: obraCod, horas: [{ fecha, leg, horas: 0 }] },
           {
-            onError: () => {
+            onError: (err: unknown) => {
               const i = days.findIndex(d => toISO(d) === fecha)
               const el = document.querySelector<HTMLInputElement>(
                 `input[data-tarja-leg="${leg}"][data-tarja-day="${i}"]`
@@ -233,7 +234,7 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                 undoStack.current.pop()
                 setUndoCount(undoStack.current.length)
               }
-              toast('⚠ La hora NO se guardó — revisá la conexión y volvé a cargarla', 'err')
+              toast(motivoErrorGuardado(err, '⚠ La hora NO se guardó — revisá la conexión y volvé a cargarla'), 'err')
             },
           },
         )
@@ -259,18 +260,7 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
               undoStack.current.pop()
               setUndoCount(undoStack.current.length)
             }
-            const e = err as { status?: number; body?: { detail?: string; error?: string } }
-            const detail = e?.body
-            toast(
-              detail?.error === 'FECHA_FUERA_DE_RANGO'
-                ? (detail.detail ?? 'Como capataz solo podés cargar horas del día actual.')
-                : e?.status === 409
-                  ? 'La semana está cerrada: reabrila en Cierres para poder editarla.'
-                  : e?.status === 403
-                    ? 'No tenés permiso para cargar esta celda.'
-                    : '⚠ La hora NO se guardó — revisá la conexión y volvé a cargarla',
-              'err',
-            )
+            toast(motivoErrorGuardado(err, '⚠ La hora NO se guardó — revisá la conexión y volvé a cargarla'), 'err')
           },
         }
       )
@@ -306,7 +296,7 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
     setUndoCount(undoStack.current.length)
     const cb = {
       onSuccess: () => toast('↩ Deshecho', 'ok'),
-      onError: () => toast('Error al deshacer', 'err'),
+      onError: (err: unknown) => toast(motivoErrorGuardado(err, 'No se pudo deshacer'), 'err'),
     }
     // Misma guarda que handleChange: volver a 0 la única fila del trabajador
     // lo haría desaparecer de la grilla (el upsert individual borra la fila
@@ -342,7 +332,7 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
       { obraCod, leg: p.leg, desde, hasta },
       {
         onSuccess: () => toast(`✓ ${p.nom} quitado de esta semana`, 'ok'),
-        onError: () => toast('Error al quitar trabajador', 'err'),
+        onError: (err) => toast(motivoErrorGuardado(err, 'No se pudo quitar al trabajador'), 'err'),
       }
     )
   }

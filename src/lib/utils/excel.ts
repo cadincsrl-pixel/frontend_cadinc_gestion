@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx'
 import { resumenPrestamos, labelTipoPrestamo } from './prestamos'
-import type { Obra, Certificacion, Contratista, Categoria, Personal, Hora, Tarifa, Prestamo, TarjaHsExtra } from '@/types/domain.types'
+import type { Obra, Certificacion, Contratista, Categoria, Personal, Hora, Tarifa, Prestamo, TarjaHsExtra, ResumenObra } from '@/types/domain.types'
 import { getSemDays, toISO, getSemLabel, getViernesCobro, getViernes, DIAS } from './dates'
 import { totalHsLeg, getHsExtrasLeg, getVHConCatObra, getVHGlobalEnFecha, getCatIdEfectivo } from './costos'
 import { calcularResumenSemana } from './resumen-semana'
@@ -203,27 +203,24 @@ export function exportarCSVTarja(
 
 export function exportarCSVResumenObras(
   obras: Obra[],
-  horas: Hora[]
+  resumen: ResumenObra[],
 ) {
   let csv = 'Codigo,Obra,Centro de Costo,Direccion,Responsable,Trabajadores,Horas Totales,Ultima Actividad\n'
 
+  // Totales históricos por obra calculados en la base (RPC obras_actividad);
+  // antes se bajaba toda la tabla de horas para sumarlos acá.
+  const porObra = new Map(resumen.map(r => [r.obra_cod, r]))
   obras.forEach((obra) => {
-    const horasObra = horas.filter((hora) => hora.obra_cod === obra.cod)
-    const trabajadores = new Set(horasObra.map((hora) => hora.leg)).size
-    const totalHs = horasObra.reduce((sum, hora) => sum + hora.horas, 0)
-    const ultimaActividad = horasObra.length
-      ? horasObra.reduce((max, hora) => (hora.fecha > max ? hora.fecha : max), horasObra[0]!.fecha)
-      : ''
-
+    const r = porObra.get(obra.cod)
     csv += [
       obra.cod,
       `"${obra.nom}"`,
       `"${obra.cc ?? ''}"`,
       `"${obra.dir ?? ''}"`,
       `"${obra.resp ?? ''}"`,
-      trabajadores,
-      totalHs,
-      ultimaActividad,
+      r?.trabajadores_total ?? 0,
+      r?.hs_total ?? 0,
+      r?.ultima_actividad ?? '',
     ].join(',') + '\n'
   })
 

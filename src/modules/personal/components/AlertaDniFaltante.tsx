@@ -1,13 +1,13 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import type { Hora, Personal } from '@/types/domain.types'
-import { esActivo, legsConHorasDesde, semCorteActivos } from '@/lib/utils/personal'
+import type { Personal } from '@/types/domain.types'
+import { esActivo } from '@/lib/utils/personal'
 import { useResumenDocumentos } from '../hooks/usePersonalDocumentos'
 
 interface Props {
   personal: Personal[]
-  horas:    Hora[]
+  legsConHoras: ReadonlySet<string>   // de useActividadPersonal + legsActivosDe
   onSelect?: (p: Personal) => void
 }
 
@@ -24,7 +24,7 @@ const LABEL: Record<DatoFaltante, string> = {
   tel: 'Teléfono',
 }
 
-export function AlertaDniFaltante({ personal, horas, onSelect }: Props) {
+export function AlertaDniFaltante({ personal, legsConHoras, onSelect }: Props) {
   const [expandido, setExpandido] = useState(false)
   const { data: resumen } = useResumenDocumentos()
 
@@ -32,8 +32,6 @@ export function AlertaDniFaltante({ personal, horas, onSelect }: Props) {
     if (!personal.length || !resumen) return [] as Faltante[]
     const legsConDni = new Set(resumen.dni ?? [])
 
-    // Criterio único de activo (lib/utils/personal.ts).
-    const legsConHoras = legsConHorasDesde(horas, semCorteActivos())
 
     const resultado: Faltante[] = []
     for (const p of personal) {
@@ -45,7 +43,7 @@ export function AlertaDniFaltante({ personal, horas, onSelect }: Props) {
       if (faltan.length > 0) resultado.push({ persona: p, faltan })
     }
     return resultado
-  }, [personal, horas, resumen])
+  }, [personal, legsConHoras, resumen])
 
   if (faltantes.length === 0) return null
 

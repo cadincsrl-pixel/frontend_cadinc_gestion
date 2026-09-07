@@ -17,13 +17,14 @@ import { usePrestamos } from '../hooks/usePrestamos'
 import { useHsExtrasAll } from '../hooks/useHsExtras'
 
 
+const SIN_HORAS: Hora[] = []
+
 interface Props {
   open: boolean
   onClose: () => void
   obras: Obra[]
   personal: Personal[]
   categorias: Categoria[]
-  horas: Hora[]
   tarifas: Tarifa[]
   cierres: Cierre[]
   certificaciones: Certificacion[]
@@ -40,9 +41,20 @@ function fmtFecha(d: Date) {
 
 export function ModalRecibos({
   open, onClose, obras, personal, categorias,
-  horas, tarifas, cierres, certificaciones, contratistas,
+  tarifas, cierres, certificaciones, contratistas,
   obraActual, semActual,
 }: Props) {
+  // Todas las horas (todas las obras, toda la historia) solo mientras el modal
+  // está abierto. Antes cada pantalla que montaba este modal las bajaba al
+  // cargar, aunque nadie abriera el modal.
+  const { data: horasAll } = useQuery({
+    queryKey: ['horas', 'all'],
+    queryFn: () => apiGet<Hora[]>('/api/horas/all'),
+    enabled: open,
+  })
+  // Referencia estable mientras no hay datos: un `= []` nuevo por render
+  // invalidaba todos los useMemo que dependen de `horas`.
+  const horas = horasAll ?? SIN_HORAS
   const toast = useToast()
   const { data: prestamos = [] } = usePrestamos()
   const { data: todasHsExtras = [] } = useHsExtrasAll()

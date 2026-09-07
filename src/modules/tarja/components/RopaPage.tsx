@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import {
   useRopaCategorias,
   useRopaUltimasEntregas,
@@ -14,8 +13,8 @@ import {
 } from '../hooks/useRopa'
 import { usePersonal } from '../hooks/usePersonal'
 import { toISO } from '@/lib/utils/dates'
-import { apiGet }     from '@/lib/api/client'
-import { esActivo, legsConHorasDesde, semCorteActivos } from '@/lib/utils/personal'
+import { esActivo } from '@/lib/utils/personal'
+import { useActividadPersonal, legsActivosDe } from '../hooks/useActividadPersonal'
 import { Button }     from '@/components/ui/Button'
 import { Modal }      from '@/components/ui/Modal'
 import { Input }      from '@/components/ui/Input'
@@ -23,7 +22,7 @@ import { Combobox }   from '@/components/ui/Combobox'
 import { Pagination } from '@/components/ui/Pagination'
 import { useToast }   from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
-import type { Hora, Personal, RopaEntrega } from '@/types/domain.types'
+import type { Personal, RopaEntrega } from '@/types/domain.types'
 
 const DEFAULT_PAGE_SIZE = 12
 
@@ -380,10 +379,8 @@ export function RopaPage() {
   const { data: personal   = [] } = usePersonal()
   const { mutate: deleteEntrega } = useDeleteRopaEntrega()
 
-  const { data: todasHoras = [] } = useQuery({
-    queryKey: ['horas', 'all'],
-    queryFn: () => apiGet<Hora[]>('/api/horas/all'),
-  })
+  // Actividad por legajo (RPC): antes se bajaba toda la tabla de horas.
+  const { data: actividad = [] } = useActividadPersonal()
 
   const [modalEntrega,   setModalEntrega]   = useState<string | null>(null)
   const [modalHistorial, setModalHistorial] = useState<string | null>(null)
@@ -397,11 +394,10 @@ export function RopaPage() {
   // (override manual, mensualizados siempre, jornalizados con horas en las
   // últimas 3 semanas): la misma gente que el badge "Activo" de Personal.
   // A los inactivos no se les da ropa.
-  const semCorte3 = useMemo(() => semCorteActivos(), [])
   const trabajadoresActivos = useMemo(() => {
-    const legsConHoras = legsConHorasDesde(todasHoras, semCorte3)
+    const legsConHoras = legsActivosDe(actividad)
     return (personal as Personal[]).filter(p => esActivo(p, legsConHoras))
-  }, [todasHoras, personal, semCorte3])
+  }, [actividad, personal])
 
   // Filtrar por búsqueda
   const trabajadoresBusqueda = useMemo(() =>

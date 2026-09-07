@@ -168,6 +168,8 @@ sobre una tabla que **puede crecer >1000 rows totales en las obras del usuario**
 
 Caso histórico: 2026-05-20 — Candela (jefe_obra, 1705 filas en sus obras) no veía 5 trabajadores. Fix con `legs_de_obras`. La feature de auto-archivado de obras se eliminó el mismo día.
 
+**Para traer una tabla entera (admin / scope "todas")**: `todasLasFilas((d, h) => q.order('id').range(d, h))` de `cadincsrl/src/lib/paginar.ts`, siempre con orden estable. Lo usan `GET /horas/:obra`, `/horas/trabajador/:leg`, `/api/prestamos` y los `/all` de cierres, tarifas, cat-obra, asignaciones, certificaciones y hs-extras (2026-09-07). **Para agregados** (quién está activo, última obra por legajo, horas por obra en la semana) no bajar `horas` al cliente: RPCs `personal_actividad(p_desde, p_obras)` → `GET /api/personal/actividad` y `obras_actividad(p_vie, p_obras)` → `GET /api/horas/resumen-obras` (migración `20260907a`; se llaman con el cliente admin, el backend aplica el alcance). Los modales de Excel/Recibos bajan `/api/horas/all` solo al abrirse.
+
 ### 5.8 Stock en proveedor (compras pendientes de retiro)
 Cuando se compra un material y queda físicamente en el galpón del proveedor (no llega a CADINC ni a la obra todavía), se marca como `en_proveedor`:
 - **RPC `resolver_item_en_proveedor`**: setea estado, agrega entrada en `stock_proveedor_movimientos`. NO inserta en MCC.

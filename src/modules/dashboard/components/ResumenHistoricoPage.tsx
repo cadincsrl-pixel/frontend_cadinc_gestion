@@ -108,6 +108,21 @@ export function ResumenHistoricoPage() {
     )
   }, [obrasCombinadas, filtroNombre])
 
+  // Índices por obra: el histórico filtraba las 19k horas por obra dentro de
+  // cada semana de cada obra (O(n²), congelaba el navegador con rango
+  // completo). totalHsLeg/costoLegConCatObra filtran por obra igual, así que
+  // pasarles solo las filas de esa obra da el mismo resultado.
+  const horasPorObra = useMemo(() => {
+    const m = new Map<string, Hora[]>()
+    for (const h of todasHoras) { const l = m.get(h.obra_cod); if (l) l.push(h); else m.set(h.obra_cod, [h]) }
+    return m
+  }, [todasHoras])
+  const extrasPorObra = useMemo(() => {
+    const m = new Map<string, TarjaHsExtra[]>()
+    for (const e of todasHsExtras) { const l = m.get(e.obra_cod); if (l) l.push(e); else m.set(e.obra_cod, [e]) }
+    return m
+  }, [todasHsExtras])
+
   // ── Semanas disponibles (de todas las horas + certificaciones) ──
   const semanasDisponibles = useMemo(() => {
     const sems = new Set<string>()
@@ -196,9 +211,11 @@ export function ResumenHistoricoPage() {
     let htSemsCerradas = 0
 
     const filas = obrasFiltradasHist.map(o => {
+      const horasO  = horasPorObra.get(o.cod) ?? []
+      const extrasO = extrasPorObra.get(o.cod) ?? []
       // Agrupar fechas de horas por semana
       const seenKeys = new Set<string>()
-      todasHoras.filter(h => h.obra_cod === o.cod).forEach(h => {
+      horasO.forEach(h => {
         const sk = toISO(getViernes(new Date(h.fecha + 'T12:00:00')))
         if (filtroDesde && sk < filtroDesde) return
         if (filtroHasta && sk > filtroHasta) return
@@ -213,7 +230,7 @@ export function ResumenHistoricoPage() {
       })
 
       // También semanas con hs extras (por si la obra cobró extras sin horas normales)
-      todasHsExtras.filter(e => e.obra_cod === o.cod).forEach(e => {
+      extrasO.forEach(e => {
         if (filtroDesde && e.sem_key < filtroDesde) return
         if (filtroHasta && e.sem_key > filtroHasta) return
         seenKeys.add(e.sem_key)
@@ -225,23 +242,19 @@ export function ResumenHistoricoPage() {
 
       seenKeys.forEach(sk => {
         const days = getSemDays(new Date(sk + 'T12:00:00'))
-        const horasSem = todasHoras.filter(
-          h => h.obra_cod === o.cod &&
-            h.fecha >= toISO(days[0]!) &&
-            h.fecha <= toISO(days[6]!)
-        )
-        const extrasSem = todasHsExtras.filter(e => e.obra_cod === o.cod && e.sem_key === sk)
+        const horasSem = horasO.filter(h => h.fecha >= toISO(days[0]!) && h.fecha <= toISO(days[6]!))
+        const extrasSem = extrasO.filter(e => e.sem_key === sk)
         const legsConActividad = [...new Set([
           ...horasSem.map(h => h.leg),
           ...extrasSem.map(e => e.leg),
         ])]
 
         legsConActividad.forEach(leg => {
-          const hs = totalHsLeg(todasHoras, o.cod, leg, days.map(toISO), todasHsExtras)
+          const hs = totalHsLeg(horasO, o.cod, leg, days.map(toISO), extrasO)
           if (hs > 0) legsUnicos.add(leg)
           oHs += hs
           oCosto += Math.round(
-            costoLegConCatObra(todasHoras, todasHsExtras, personal, categorias, todasTarifas, todasCatObra, o.cod, leg, days) / 1000
+            costoLegConCatObra(horasO, extrasO, personal, categorias, todasTarifas, todasCatObra, o.cod, leg, days) / 1000
           ) * 1000
         })
       })
@@ -263,7 +276,7 @@ export function ResumenHistoricoPage() {
         const dSem = getSemDays(new Date(c.sem_key + 'T12:00:00'))
         const legsAct = getLegsActivos(o.cod, c.sem_key)
         const hsSem = legsAct.reduce(
-          (s, leg) => s + totalHsLeg(todasHoras, o.cod, leg, dSem.map(toISO), todasHsExtras),
+          (s, leg) => s + totalHsLeg(horasO, o.cod, leg, dSem.map(toISO), extrasO),
           0,
         )
         const contratSem = todasCerts
@@ -307,7 +320,7 @@ export function ResumenHistoricoPage() {
     }>
 
     return { filas, htHs, htCosto, htContrat, htSemsCerradas }
-  }, [obrasFiltradasHist, todasHoras, todasHsExtras, personal, categorias, todasTarifas, todasCerts, todosCierres, todasAsignaciones, filtroNombre, filtroDesde, filtroHasta])
+  }, [obrasFiltradasHist, horasPorObra, extrasPorObra, personal, categorias, todasTarifas, todasCerts, todosCierres, todasAsignaciones, filtroNombre, filtroDesde, filtroHasta])
 
   function limpiarFiltros() {
     setFiltroNombre('')
