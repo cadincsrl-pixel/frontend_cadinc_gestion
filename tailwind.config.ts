@@ -41,9 +41,14 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans:  ['Syne', 'sans-serif'],
-        mono:  ['JetBrains Mono', 'monospace'],
-        display: ['Bebas Neue', 'sans-serif'],
+        // Las variables las define `next/font` en el <html> (ver layout.tsx).
+        // El fallback que va detrás no es decorativo: mientras la fuente carga,
+        // y si falla, el navegador usa la de sistema — y con `next/font` esa
+        // fallback ya viene ajustada a las métricas de la real, así que el
+        // texto no salta de ancho. En Windows la de reemplazo es Segoe UI.
+        sans:    ['var(--fuente-sans)', 'Segoe UI', 'system-ui', 'sans-serif'],
+        mono:    ['var(--fuente-mono)', 'Consolas', 'ui-monospace', 'monospace'],
+        display: ['var(--fuente-display)', 'Segoe UI', 'system-ui', 'sans-serif'],
       },
       boxShadow: {
         card:    '0 2px 12px rgba(15,39,68,.10)',

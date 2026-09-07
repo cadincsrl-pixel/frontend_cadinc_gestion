@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="CADINC">
+  <title>CADINC</title>
+  <rect width="64" height="64" rx="13" fill="#0F2744"/>
+  <!--
+    La C del logo de CADINC es un tubo rectangular doblado en C, dibujado en
+    isométrica con líneas finas. A 16 px esas líneas desaparecen, así que acá
+    va la misma forma en SÓLIDO: la C en blanco y una copia desplazada
+    arriba-derecha en un azul intermedio, que es lo que le da el volumen.
+    Dos formas, sin detalle fino: se lee igual en la pestaña que en el escritorio.
+    La C mide 32x42 y con la sombra ocupa 38x48, centrada en el azulejo de 64.
+  -->
+  <g transform="translate(13 14)">
+    <path fill="#5C769B" d="M0 0 H32 V12 H12 V30 H32 V42 H0 Z" transform="translate(6 -6)"/>
+    <path fill="#FFFFFF" d="M0 0 H32 V12 H12 V30 H32 V42 H0 Z"/>
+  </g>
+</svg>
