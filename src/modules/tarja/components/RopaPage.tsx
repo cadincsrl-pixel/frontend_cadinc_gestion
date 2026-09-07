@@ -47,17 +47,49 @@ function fmtCorta(s: string) {
   return `${d}/${m}/${y!.slice(2)}`
 }
 
+/**
+ * Estado de un trabajador frente a la ropa. "Sin entregas" se separa de
+ * "vencidos" a propósito: `entregaVencida(undefined, ...)` da true, así que el
+ * viejo filtro "solo vencidos" mezclaba a los 20 que nunca recibieron nada con
+ * los que tienen ropa gastada. Son dos problemas distintos y se resuelven
+ * distinto.
+ */
+type EstadoRopa = 'sin-entregas' | 'vencidos' | 'al-dia'
+
+const FILTRO_LABEL: Record<'todos' | EstadoRopa, string> = {
+  'todos':        'Todos',
+  'vencidos':     'Con algo vencido',
+  'al-dia':       'Al día',
+  'sin-entregas': 'Sin entregas',
+}
+
+/** Talles del legajo, listos para mostrar. Solo los que están cargados. */
+function tallesDe(p: Personal): string {
+  return [
+    p.talle_pantalon && `Pant. ${p.talle_pantalon}`,
+    p.talle_botines  && `Bot. ${p.talle_botines}`,
+    p.talle_camisa   && `Cam. ${p.talle_camisa}`,
+  ].filter(Boolean).join(' · ')
+}
+
 
 // ── Modal nueva entrega ──────────────────────────────────────────────────────
 interface ModalEntregaProps {
   open:       boolean
   legInicial: string
-  // Solo trabajadores activos: a los inactivos no se les entrega ropa.
-  personalActivo: Personal[]
+  /**
+   * Toda la nómina, con los activos primero. Antes eran solo los activos, pero
+   * desde que la lista muestra también a los inactivos el botón "＋" de una de
+   * esas filas abría el modal con el buscador en blanco: el legajo no estaba
+   * entre las opciones. Y sí hay que poder entregarle a alguien que vuelve de
+   * licencia antes de que cargue horas.
+   */
+  personal:   Personal[]
+  legsActivos: ReadonlySet<string>
   onClose:    () => void
 }
 
-function ModalEntrega({ open, legInicial, personalActivo, onClose }: ModalEntregaProps) {
+function ModalEntrega({ open, legInicial, personal, legsActivos, onClose }: ModalEntregaProps) {
   const toast = useToast()
   const { data: categorias = [] } = useRopaCategorias()
   const { mutateAsync: crearLote, isPending } = useCreateRopaEntregasLote()
@@ -68,10 +100,17 @@ function ModalEntrega({ open, legInicial, personalActivo, onClose }: ModalEntreg
   const [obs,    setObs]    = useState('')
   const [saving, setSaving] = useState(false)
 
-  const opPersonal = useMemo(() =>
-    personalActivo.map((p: Personal) => ({ value: p.leg, label: p.nom, sub: `Leg. ${p.leg}` })),
-    [personalActivo]
-  )
+  const opPersonal = useMemo(() => {
+    const orden = [...personal].sort((a, b) => {
+      const act = (legsActivos.has(b.leg) ? 1 : 0) - (legsActivos.has(a.leg) ? 1 : 0)
+      return act || a.nom.localeCompare(b.nom)
+    })
+    return orden.map((p: Personal) => ({
+      value: p.leg,
+      label: p.nom,
+      sub: legsActivos.has(p.leg) ? `Leg. ${p.leg}` : `Leg. ${p.leg} · sin horas recientes`,
+    }))
+  }, [personal, legsActivos])
 
   function toggleCat(id: number) {
     setCatIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
@@ -365,7 +404,10 @@ export function RopaPage() {
   const [modalEntrega,   setModalEntrega]   = useState<string | null>(null)
   const [modalHistorial, setModalHistorial] = useState<string | null>(null)
   const [modalCats,      setModalCats]      = useState(false)
-  const [soloVencidos,   setSoloVencidos]   = useState(false)
+  const [filtro,         setFiltro]         = useState<'todos' | EstadoRopa>('todos')
+  // Por defecto se ven TODOS, con los activos arriba. El toggle deja la lista
+  // corta cuando solo interesa a quién hay que entregarle hoy.
+  const [soloActivos,    setSoloActivos]    = useState(false)
   const [busqueda,       setBusqueda]       = useState('')
   const [page,           setPage]           = useState(1)
   const [pageSize,       setPageSize]       = useState(DEFAULT_PAGE_SIZE)
@@ -374,21 +416,25 @@ export function RopaPage() {
   // (override manual, mensualizados siempre, jornalizados con horas en las
   // últimas 3 semanas): la misma gente que el badge "Activo" de Personal.
   // A los inactivos no se les da ropa.
-  const trabajadoresActivos = useMemo(() => {
+  const legsActivosSet = useMemo(() => {
     const legsConHoras = legsActivosDe(actividad)
-    return (personal as Personal[]).filter(p => esActivo(p, legsConHoras))
+    return new Set((personal as Personal[]).filter(p => esActivo(p, legsConHoras)).map(p => p.leg))
   }, [actividad, personal])
 
-  // Filtrar por búsqueda
-  const trabajadoresBusqueda = useMemo(() =>
-    !busqueda
-      ? trabajadoresActivos
-      : trabajadoresActivos.filter(p =>
-          p.nom.toLowerCase().includes(busqueda.toLowerCase()) ||
-          p.leg.includes(busqueda)
-        ),
-    [trabajadoresActivos, busqueda]
+  const trabajadoresActivos = useMemo(
+    () => (personal as Personal[]).filter(p => legsActivosSet.has(p.leg)),
+    [personal, legsActivosSet],
   )
+
+  // La lista muestra a TODOS por defecto, con los activos arriba. Antes se
+  // ocultaba al inactivo y con él se iba su historial de ropa: 8 legajos con
+  // entregas quedaban invisibles, y no había forma de ver qué se les había
+  // dado a los que están de licencia o volvieron después de un tiempo.
+  const trabajadoresBusqueda = useMemo(() => {
+    const base = soloActivos ? trabajadoresActivos : (personal as Personal[])
+    const q = busqueda.trim().toLowerCase()
+    return !q ? base : base.filter(p => p.nom.toLowerCase().includes(q) || p.leg.includes(q))
+  }, [soloActivos, trabajadoresActivos, personal, busqueda])
 
   const catMap = useMemo(() => {
     const m = new Map<number, { nombre: string; icono: string | null; meses_vencimiento: number }>()
@@ -405,8 +451,10 @@ export function RopaPage() {
   // Últimas entregas por (leg, categoría) de TODOS los activos en una sola
   // query (RPC agregada). Alimenta los chips, el filtro de vencidos y el orden
   // por vencimiento — por eso no alcanza con cargar solo la página actual.
-  const legsActivos = useMemo(() => trabajadoresActivos.map(p => p.leg), [trabajadoresActivos])
-  const { data: ultimasEntregas = [], isFetching: loadingEntregas } = useRopaUltimasEntregas(legsActivos)
+  // Se piden para TODA la nómina, no solo los activos: la lista ahora muestra
+  // también a los inactivos y el orden depende de sus vencimientos.
+  const legsTodos = useMemo(() => (personal as Personal[]).map(p => p.leg), [personal])
+  const { data: ultimasEntregas = [], isFetching: loadingEntregas } = useRopaUltimasEntregas(legsTodos)
 
   const ultimaEntrega = useMemo(() => {
     const m = new Map<string, RopaEntrega>()
@@ -414,16 +462,26 @@ export function RopaPage() {
     return m
   }, [ultimasEntregas])
 
-  // Lista final a paginar: filtro de vencidos (si aplica) + orden por
-  // vencimiento más próximo. Quien tiene una categoría sin entrega (o nunca
-  // recibió nada) va primero; los empates se resuelven por el vencimiento
-  // real más cercano y después por nombre.
+  /** Estado de un trabajador: sin entregas, con algo vencido, o al día. */
+  const estadoDe = useMemo(() => (p: Personal): EstadoRopa => {
+    let alguna = false
+    let vencida = false
+    for (const cat of categorias) {
+      const ult = ultimaEntrega.get(`${p.leg}|${cat.id}`)
+      if (ult) alguna = true
+      if (entregaVencida(ult?.fecha_entrega, cat.meses_vencimiento ?? 6)) vencida = true
+    }
+    if (!alguna) return 'sin-entregas'
+    return vencida ? 'vencidos' : 'al-dia'
+  }, [categorias, ultimaEntrega])
+
+  // Lista final a paginar. Orden: ACTIVOS PRIMERO (pedido del user), después
+  // por vencimiento más próximo — quien tiene una prenda sin entregar va antes
+  // que quien la tiene por vencer — y a igualdad, por nombre.
   const trabajadoresFinal = useMemo(() => {
-    const base = !soloVencidos
+    const base = filtro === 'todos'
       ? trabajadoresBusqueda
-      : trabajadoresBusqueda.filter(p =>
-          categorias.some(cat => entregaVencida(ultimaEntrega.get(`${p.leg}|${cat.id}`)?.fecha_entrega, cat.meses_vencimiento ?? 6))
-        )
+      : trabajadoresBusqueda.filter(p => estadoDe(p) === filtro)
 
     const claves = new Map<string, [string, string]>()
     for (const p of base) {
@@ -438,14 +496,22 @@ export function RopaPage() {
       claves.set(p.leg, [faltante ? '0000-00-00' : minReal, minReal])
     }
     return [...base].sort((a, b) => {
+      const activoA = legsActivosSet.has(a.leg) ? 0 : 1
+      const activoB = legsActivosSet.has(b.leg) ? 0 : 1
+      if (activoA !== activoB) return activoA - activoB
       const [a1, a2] = claves.get(a.leg)!
       const [b1, b2] = claves.get(b.leg)!
       return a1.localeCompare(b1) || a2.localeCompare(b2) || a.nom.localeCompare(b.nom)
     })
-  }, [soloVencidos, trabajadoresBusqueda, categorias, ultimaEntrega])
+  }, [filtro, trabajadoresBusqueda, categorias, ultimaEntrega, estadoDe, legsActivosSet])
 
-  // Recuento de vencidos sobre todos los activos (para el badge del header)
-  const vencidosCount = soloVencidos ? trabajadoresFinal.length : 0
+  /** Cuántos hay de cada estado en lo que se está mirando (para los chips del filtro). */
+  const conteos = useMemo(() => {
+    const c: Record<EstadoRopa, number> = { 'sin-entregas': 0, 'vencidos': 0, 'al-dia': 0 }
+    for (const p of trabajadoresBusqueda) c[estadoDe(p)]++
+    return c
+  }, [trabajadoresBusqueda, estadoDe])
+
 
   // Página actual
   const paginaPersonal = useMemo(() => {
@@ -474,9 +540,12 @@ export function RopaPage() {
         <div>
           <h1 className="font-display text-2xl tracking-wider text-azul">ROPA DE TRABAJO</h1>
           <p className="text-sm text-gris-dark mt-0.5">
-            {trabajadoresActivos.length} trabajadores activos
-            {soloVencidos && vencidosCount > 0 && (
-              <span className="ml-2 text-rojo font-bold">· {vencidosCount} con vencimientos</span>
+            <b className="text-carbon">{trabajadoresActivos.length}</b> activos de {personal.length}
+            {conteos.vencidos > 0 && (
+              <span className="ml-2 text-rojo font-bold">· {conteos.vencidos} con algo vencido</span>
+            )}
+            {conteos['sin-entregas'] > 0 && (
+              <span className="ml-2 text-gris-dark">· {conteos['sin-entregas']} sin entregas</span>
             )}
           </p>
         </div>
@@ -506,24 +575,40 @@ export function RopaPage() {
           onChange={e => { setBusqueda(e.target.value); setPage(1) }}
           className="flex-1 min-w-[180px] px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white"
         />
+        {/* Estado: "sin entregas" ya no se mezcla con "vencido" */}
+        <div className="flex gap-1 bg-gris rounded-lg p-1">
+          {(['todos', 'vencidos', 'al-dia', 'sin-entregas'] as const).map(f => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => { setFiltro(f); setPage(1) }}
+              className={`text-xs font-bold px-2.5 py-1.5 rounded-md transition-colors whitespace-nowrap ${
+                filtro === f ? 'bg-white shadow-sm text-carbon' : 'text-gris-dark hover:text-carbon'
+              }`}
+            >
+              {FILTRO_LABEL[f]}
+              {f !== 'todos' && <span className="ml-1 opacity-60 tabular-nums">{conteos[f]}</span>}
+            </button>
+          ))}
+        </div>
         <button
-          onClick={() => { setSoloVencidos(p => !p); setPage(1) }}
-          className={`
-            text-xs font-bold px-3 py-2 rounded-lg border-[1.5px] transition-all
-            ${soloVencidos
-              ? 'bg-rojo-light border-rojo text-rojo'
-              : 'bg-white border-gris-mid text-gris-dark hover:border-rojo hover:text-rojo'
-            }
-          `}
+          type="button"
+          onClick={() => { setSoloActivos(v => !v); setPage(1) }}
+          title="Los inactivos son los que no cargaron horas en las últimas 3 semanas"
+          className={`text-xs font-bold px-3 py-2 rounded-lg border-[1.5px] transition-all whitespace-nowrap ${
+            soloActivos
+              ? 'bg-verde-light border-verde text-verde'
+              : 'bg-white border-gris-mid text-gris-dark hover:border-verde hover:text-verde'
+          }`}
         >
-          🔴 Solo vencidos
+          {soloActivos ? '✓ Solo activos' : 'Solo activos'}
         </button>
       </div>
 
       {/* Tabla compacta por trabajador */}
       {trabajadoresFinal.length === 0 ? (
         <div className="bg-white rounded-card shadow-card p-8 text-center text-gris-dark text-sm">
-          {busqueda || soloVencidos ? 'No se encontraron trabajadores.' : 'No hay trabajadores activos con registros.'}
+          {busqueda || filtro !== 'todos' || soloActivos ? 'No se encontraron trabajadores con esos filtros.' : 'No hay trabajadores cargados.'}
         </div>
       ) : (
         <>
@@ -542,37 +627,62 @@ export function RopaPage() {
                     const ult     = ultimaEntrega.get(`${p.leg}|${cat.id}`)
                     const vence   = ult ? venceEl(ult.fecha_entrega, cat.meses_vencimiento ?? 6) : null
                     const vencido = entregaVencida(ult?.fecha_entrega, cat.meses_vencimiento ?? 6)
-                    return { cat, ult, vence, vencido }
+                    // Una entrega con fecha futura nunca vence: la prenda queda
+                    // "al día" para siempre y nadie se entera. Suele ser una
+                    // fecha mal tipeada.
+                    const futura  = !!ult && ult.fecha_entrega > hoy()
+                    return { cat, ult, vence, vencido, futura }
                   })
                   const tieneAlgunVencido = items.some(i => i.vencido)
+                  const activo = legsActivosSet.has(p.leg)
+                  const talles = tallesDe(p)
 
                   return (
-                    <tr key={p.leg} className={`border-b border-gris last:border-0 hover:bg-gris/30 transition-colors border-l-4 ${tieneAlgunVencido ? 'border-l-rojo' : 'border-l-verde'}`}>
-                      {/* Nombre */}
+                    <tr key={p.leg} className={`border-b border-gris last:border-0 hover:bg-gris/30 transition-colors border-l-4 ${tieneAlgunVencido ? 'border-l-rojo' : 'border-l-verde'} ${activo ? '' : 'bg-gris/20'}`}>
+                      {/* Nombre + talles */}
                       <td className="px-4 py-3 align-middle">
-                        <div className="font-bold text-sm text-carbon leading-tight">{p.nom}</div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-bold text-sm text-carbon leading-tight">{p.nom}</span>
+                          {!activo && (
+                            <span
+                              className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-gris text-gris-dark"
+                              title="No cargó horas en las últimas 3 semanas"
+                            >
+                              sin horas
+                            </span>
+                          )}
+                        </div>
                         <div className="text-[11px] text-gris-dark font-mono">Leg. {p.leg}</div>
+                        {/* El talle es lo que hace falta para entregar; estaba en el
+                            legajo y no se veía acá. */}
+                        {talles ? (
+                          <div className="text-[11px] text-azul font-semibold mt-0.5">{talles}</div>
+                        ) : (
+                          <div className="text-[11px] text-gris-mid italic mt-0.5">sin talles cargados</div>
+                        )}
                       </td>
 
                       {/* Categorías en línea */}
                       <td className="px-4 py-3 align-middle">
                         <div className="flex flex-wrap gap-1.5">
-                          {items.map(({ cat, ult, vence, vencido }) => {
+                          {items.map(({ cat, ult, vence, vencido, futura }) => {
                             return (
                               <span
                                 key={cat.id}
                                 title={ult
-                                  ? `${cat.nombre}: entregado ${fmtFecha(ult.fecha_entrega)} · ${vence ? `${vencido ? 'venció' : 'vence'} ${fmtFecha(vence)}` : 'sin vencimiento'}`
+                                  ? `${cat.nombre}: entregado ${fmtFecha(ult.fecha_entrega)} · ${vence ? `${vencido ? 'venció' : 'vence'} ${fmtFecha(vence)}` : 'sin vencimiento'}${futura ? ' — ⚠ la fecha de entrega es futura, revisala' : ''}`
                                   : `${cat.nombre}: sin entregas`}
                                 className={`
                                   inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-bold border
-                                  ${vencido
-                                    ? ult ? 'bg-rojo-light border-rojo/30 text-rojo' : 'bg-gris border-gris-mid text-gris-dark'
-                                    : 'bg-verde-light border-verde/30 text-verde'
+                                  ${futura
+                                    ? 'bg-amarillo-light border-[#E0A800]/40 text-[#7A5500]'
+                                    : vencido
+                                      ? ult ? 'bg-rojo-light border-rojo/30 text-rojo' : 'bg-gris border-gris-mid text-gris-dark'
+                                      : 'bg-verde-light border-verde/30 text-verde'
                                   }
                                 `}
                               >
-                                <span>{cat.icono ?? '📦'}</span>
+                                <span>{futura ? '⚠' : (cat.icono ?? '📦')}</span>
                                 {ult ? (
                                   <span className="grid grid-cols-[auto_auto] gap-x-1.5 leading-tight text-left items-baseline">
                                     <span className="font-semibold opacity-70 uppercase text-[9px] tracking-wide">Entrega</span>
@@ -629,7 +739,8 @@ export function RopaPage() {
         <ModalEntrega
           open
           legInicial={modalEntrega}
-          personalActivo={trabajadoresActivos}
+          personal={personal as Personal[]}
+          legsActivos={legsActivosSet}
           onClose={() => setModalEntrega(null)}
         />
       )}
