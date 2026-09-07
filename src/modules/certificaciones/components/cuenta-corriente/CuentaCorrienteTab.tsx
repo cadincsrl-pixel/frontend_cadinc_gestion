@@ -98,13 +98,13 @@ export function CuentaCorrienteTab() {
   const items = pagina?.items ?? []
   const total = pagina?.total ?? 0
   const mostrarResumen = !obraSel || grupo !== 'obra'
-  // La alerta separa vivas de archivadas. Antes sumaba todo junto y prometía
-  // un número que el listado por defecto no muestra: hoy son 606 renglones,
-  // de los cuales 148 están en 7 obras cerradas.
-  const pendVivas      = pendientes.filter(p => !p.obra_archivada)
-  const pendCerradas   = pendientes.filter(p => p.obra_archivada)
-  const pendientesTotal = pendVivas.reduce((s, p) => s + p.sin_precio, 0)
-  const cerradasTotal   = pendCerradas.reduce((s, p) => s + p.sin_precio, 0)
+  // La alerta obedece al MISMO checkbox que el listado ("incluir obras
+  // archivadas"). Antes sumaba todo junto y prometía un número que el listado
+  // por defecto no mostraba: 606 renglones, de los cuales 148 están en obras
+  // cerradas. Ahora, con el checkbox apagado, la alerta dice 458 y el listado
+  // muestra esos mismos 458.
+  const pendVisibles = filtro.archivadas ? pendientes : pendientes.filter(p => !p.obra_archivada)
+  const pendientesTotal = pendVisibles.reduce((s, p) => s + p.sin_precio, 0)
 
   const hayOtrosFiltros = !!(filtro.q || filtro.estados?.length || filtro.tipo || filtro.sin_precio || filtro.proveedor_id || filtro.origen || filtro.desde || filtro.hasta)
 
@@ -157,26 +157,19 @@ export function CuentaCorrienteTab() {
     <div className="flex flex-col gap-4">
 
       {/* Pendientes de tasar: atajo a obra + sin precio */}
-      {(pendientesTotal > 0 || cerradasTotal > 0) && (
+      {pendientesTotal > 0 && (
         <div className="bg-naranja-light border border-naranja/40 rounded-card p-3 flex items-start gap-3 flex-wrap">
           <div className="flex-1 min-w-[200px]">
             <div className="text-sm font-bold text-naranja-dark">⚠ {pendientesTotal} {pendientesTotal === 1 ? 'renglón' : 'renglones'} sin precio</div>
             <div className="text-[11px] text-gris-dark">
-              En {pendVivas.length} obra{pendVivas.length !== 1 ? 's' : ''} abierta{pendVivas.length !== 1 ? 's' : ''}. Suman $0 hasta que se tasen.
-              {cerradasTotal > 0 && (
-                <> Además hay <b className="text-carbon">{cerradasTotal}</b> en {pendCerradas.length} obra{pendCerradas.length !== 1 ? 's' : ''} ya archivada{pendCerradas.length !== 1 ? 's' : ''}.</>
-              )}
+              En {pendVisibles.length} obra{pendVisibles.length !== 1 ? 's' : ''}. Suman $0 hasta que se tasen.
+              {filtro.archivadas && ' Incluye obras archivadas.'}
             </div>
           </div>
           <div className="flex gap-1.5 flex-wrap">
-            {[...pendVivas, ...pendCerradas].slice(0, 6).map(p => (
+            {pendVisibles.slice(0, 6).map(p => (
               <button key={p.obra_cod} type="button"
-                title={p.obra_archivada ? 'Obra archivada — se abre con el filtro de archivadas puesto' : undefined}
-                onClick={() => patch({
-                  obra_cod: p.obra_cod, sin_precio: true, estados: undefined, tipo: undefined,
-                  // Sin esto el combo de obra no puede mostrar la archivada elegida.
-                  archivadas: p.obra_archivada || undefined,
-                })}
+                onClick={() => patch({ obra_cod: p.obra_cod, sin_precio: true, estados: undefined, tipo: undefined })}
                 className={`text-[11px] font-bold px-2 py-1 rounded-lg border transition-colors ${
                   p.obra_archivada
                     ? 'bg-gris border-gris-mid text-gris-dark hover:bg-white'
@@ -185,7 +178,7 @@ export function CuentaCorrienteTab() {
                 {p.obra_archivada && <span className="ml-1 font-normal">· archivada</span>}
               </button>
             ))}
-            {pendientes.length > 6 && <span className="text-[11px] text-gris-dark self-center">+{pendientes.length - 6} más</span>}
+            {pendVisibles.length > 6 && <span className="text-[11px] text-gris-dark self-center">+{pendVisibles.length - 6} más</span>}
           </div>
         </div>
       )}
