@@ -1850,7 +1850,7 @@ export interface StockMovimiento {
   material_id:       number
   tipo:              'entrada' | 'salida' | 'ajuste'
   cantidad:          number
-  motivo:            'compra' | 'despacho_obra' | 'devolucion' | 'ajuste_inventario'
+  motivo:            'compra' | 'despacho_obra' | 'devolucion' | 'ajuste_inventario' | 'consumo_interno'
   obra_cod:          string | null
   solicitud_item_id: number | null
   obs:               string | null
