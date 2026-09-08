@@ -175,15 +175,27 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
                       </td>
                       <td className="px-3 py-2 text-center">
                         <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap ${m.badge}`}>{m.label}</span>
-                        <button type="button"
-                          onClick={() => setPagadores(p => ({ ...p, [r.item_id]: pagadorDe(r) === 'cliente' ? 'cadinc' : 'cliente' }))}
-                          title="Quién le pagó al proveedor. 'Cliente' lo saca de la deuda: pasa a Pagó directo."
-                          className={`block mx-auto mt-1 px-1.5 py-0.5 rounded text-[9px] font-bold whitespace-nowrap transition-colors ${
-                            pagadorDe(r) === 'cliente'
-                              ? 'bg-verde-light text-verde'
-                              : 'bg-gris text-gris-dark hover:bg-gris-mid'}`}>
-                          pagó: {pagadorDe(r) === 'cliente' ? 'Cliente' : 'CADINC'}{pagadorDe(r) !== (r.pagado_por === 'cliente' ? 'cliente' : 'cadinc') ? ' *' : ''}
-                        </button>
+                        {/* Dos opciones explícitas, no un botón que alterna: la
+                            primera versión (un chip que cambiaba al tocarlo) hizo
+                            que el user revirtiera un pago directo sin darse
+                            cuenta — parecía una etiqueta, no un control. */}
+                        <div className="flex items-center justify-center gap-0.5 mt-1"
+                          title="Quién le pagó al proveedor. 'Cliente' lo saca de la deuda: pasa a Pagó directo.">
+                          <span className="text-[9px] text-gris-dark mr-0.5">pagó</span>
+                          {(['cadinc', 'cliente'] as const).map(op => (
+                            <button key={op} type="button"
+                              onClick={() => setPagadores(p => ({ ...p, [r.item_id]: op }))}
+                              className={`px-1.5 py-0.5 rounded text-[9px] font-bold whitespace-nowrap border transition-colors ${
+                                pagadorDe(r) === op
+                                  ? (op === 'cliente' ? 'bg-verde-light text-verde border-verde' : 'bg-azul-light text-azul border-azul')
+                                  : 'bg-white text-gris-mid border-gris-mid hover:text-gris-dark'}`}>
+                              {op === 'cliente' ? 'Cliente' : 'CADINC'}
+                            </button>
+                          ))}
+                          {pagadorDe(r) !== (r.pagado_por === 'cliente' ? 'cliente' : 'cadinc') && (
+                            <span className="text-[9px] font-bold text-naranja" title="Cambio sin guardar">*</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-3 py-2 text-right font-mono text-xs whitespace-nowrap">
                         {Number(r.cantidad).toLocaleString('es-AR')} <span className="text-gris-dark">{r.unidad}</span>
