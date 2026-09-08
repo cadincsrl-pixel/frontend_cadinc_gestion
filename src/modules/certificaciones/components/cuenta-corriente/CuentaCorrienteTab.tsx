@@ -61,6 +61,10 @@ export function CuentaCorrienteTab() {
   // son información sensible, así que verlos es una decisión explícita.
   const [verTodas, setVerTodas] = useState(false)
   const [modalExportar, setModalExportar] = useState(false)
+  // Señal para el modal de registrar pago, que vive adentro de PagosCliente:
+  // cada incremento lo abre. Así el botón queda en la cabecera de la obra sin
+  // mover el modal (usa los imputables y el estado del bloque).
+  const [registrarSignal, setRegistrarSignal] = useState(0)
 
   function patch(p: Partial<CuentaFiltro>) {
     setFiltro(f => ({ ...f, ...p }))
@@ -219,6 +223,11 @@ export function CuentaCorrienteTab() {
             >
               💲 Cargar precios
             </Button>
+            <Button variant="primary" size="sm" onClick={() => setRegistrarSignal(n => n + 1)}
+              disabled={!puedeCrear}
+              title={puedeCrear ? 'Registrar un pago del cliente' : 'Sin permiso para registrar pagos'}>
+              💲 Registrar pago
+            </Button>
             <Button variant="secondary" size="sm" onClick={() => setModalExportar(true)}
               title="PDF para el cliente o Excel para trabajar, todo en un lugar">
               ⬇ Exportar
@@ -253,7 +262,7 @@ export function CuentaCorrienteTab() {
       )}
 
       {obraSel && (
-        <PagosCliente obraCod={obraSel} obraNom={obraNom} puedeCrear={puedeCrear} puedeEditar={puedeEditar} puedeEliminar={puedeEliminar} porAdministracion={!!obra?.por_administracion} />
+        <PagosCliente obraCod={obraSel} obraNom={obraNom} puedeEditar={puedeEditar} puedeEliminar={puedeEliminar} porAdministracion={!!obra?.por_administracion} registrarSignal={registrarSignal} />
       )}
 
       {hayDatos && mostrarResumen && (

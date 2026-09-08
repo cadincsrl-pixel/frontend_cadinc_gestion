@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
@@ -32,14 +32,19 @@ const ESTADOS_ITEM_FINAL = ['comprado', 'de_deposito', 'retirado', 'enviado']
 interface Props {
   obraCod:       string
   obraNom:       string
-  puedeCrear:    boolean
   puedeEditar:   boolean
   puedeEliminar: boolean
   /** La obra se factura por administración: el saldo vive en esa sección, no acá. */
   porAdministracion?: boolean
+  /**
+   * Señal para abrir el modal de registrar pago desde afuera (el botón vive en
+   * la cabecera de la obra, junto a Cargar precios y Exportar): cada
+   * incremento abre el modal en modo nuevo.
+   */
+  registrarSignal?: number
 }
 
-export function PagosCliente({ obraCod, obraNom, puedeCrear, puedeEditar, puedeEliminar, porAdministracion }: Props) {
+export function PagosCliente({ obraCod, obraNom, puedeEditar, puedeEliminar, porAdministracion, registrarSignal }: Props) {
   const toast = useToast()
   const { data: cobros = [] } = useCobrosCliente(obraCod)
   const { data: resumenObra } = useCuentaResumen({ obra_cod: obraCod }, 'obra')
@@ -48,6 +53,9 @@ export function PagosCliente({ obraCod, obraNom, puedeCrear, puedeEditar, puedeE
   const { mutate: eliminarCobro } = useEliminarCobroCliente()
 
   const [modal, setModal] = useState(false)
+  // La lista arranca plegada: en una obra con meses de pagos ocupaba media
+  // página. Los números del encabezado quedan siempre a la vista.
+  const [verPagos, setVerPagos] = useState(false)
   const [editandoCobro, setEditandoCobro] = useState<CuentaClienteCobro | null>(null)
   const [form, setForm] = useState<{ fecha: string; monto: string; medio: MedioCobro; obs: string }>({ fecha: toISO(new Date()), monto: '', medio: 'efectivo', obs: '' })
   const [sel, setSel] = useState<Set<number>>(new Set())
@@ -88,6 +96,11 @@ export function PagosCliente({ obraCod, obraNom, puedeCrear, puedeEditar, puedeE
     setForm({ fecha: toISO(new Date()), monto: '', medio: 'efectivo', obs: '' })
     setSel(new Set()); setArchivo(null); setModal(true)
   }
+  // El botón de la cabecera manda una señal; acá se traduce en abrir el modal.
+  useEffect(() => {
+    if (registrarSignal) abrirNuevo()
+  }, [registrarSignal])
+
   function abrirEditar(c: CuentaClienteCobro) {
     setEditandoCobro(c)
     setForm({ fecha: c.fecha, monto: String(c.monto), medio: c.medio, obs: c.obs ?? '' })
@@ -187,13 +200,16 @@ export function PagosCliente({ obraCod, obraNom, puedeCrear, puedeEditar, puedeE
             </div>
           )}
         </div>
-        {(porAdministracion || !esLlaveEnMano) && (
-          <Button variant="primary" size="sm" onClick={abrirNuevo} disabled={!puedeCrear} title={puedeCrear ? undefined : 'Sin permiso para registrar pagos'}>💲 Registrar pago</Button>
+        {cobros.length > 0 && (
+          <button onClick={() => setVerPagos(v => !v)}
+            className="text-[11px] font-bold px-2 py-1 rounded bg-gris text-gris-dark hover:bg-gris-mid transition-colors shrink-0">
+            {verPagos ? '▾' : '▸'} {cobros.length} pago{cobros.length !== 1 ? 's' : ''}
+          </button>
         )}
       </div>
       {cobros.length === 0 ? (
         (porAdministracion || !esLlaveEnMano) && <p className="text-xs text-gris-mid italic">Sin pagos registrados para esta obra.</p>
-      ) : (
+      ) : !verPagos ? null : (
         <div className="divide-y divide-gris">
           {cobros.map(c => {
             const n = itemsPorCobro.get(c.id) ?? 0
