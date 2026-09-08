@@ -7,17 +7,16 @@ import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useObrasTodas } from '@/modules/tarja/hooks/useObras'
 import { useProveedores } from '../../hooks/useProveedores'
-import { usePendientesDePrecio, useCobrosCliente } from '../../hooks/useCuentaCliente'
+import { usePendientesDePrecio } from '../../hooks/useCuentaCliente'
 import { useCuentaRenglones, useCuentaResumen, fetchCuentaRenglonesTodos, type CuentaFiltro } from '../../hooks/useCuentaCorriente'
 import { exportarCuentaCorriente } from '../../utils/cuentaCorrienteExport'
-import { descargarCuentaClienteObraPdf } from '../../utils/cuentaClientePdf'
 import type { CuentaEstado, CuentaGrupo } from '@/types/domain.types'
 import { FiltrosCuenta } from './FiltrosCuenta'
 import { ResumenTabla } from './ResumenTabla'
 import { RenglonesTabla } from './RenglonesTabla'
 import { PagosCliente } from './PagosCliente'
 import { AdministracionSection, MarcarAdministracion } from './AdministracionSection'
-import { ModalExportar, type OpcionExport } from './ModalExportar'
+import { ModalExportar } from './ModalExportar'
 import { ModalCargarPrecios } from './ModalCargarPrecios'
 import { ESTADOS, ESTADO_META, fmtM, fmtFecha, recortar, totalizar, filasPorGrupo } from './cuentaCorriente.utils'
 
@@ -80,7 +79,6 @@ export function CuentaCorrienteTab() {
   const hayDatos = !!obraSel || verTodas
   const { data: resumen, isLoading: cargandoResumen, error: errorResumen } = useCuentaResumen(filtro, grupo, hayDatos)
   const { data: pagina, isLoading: cargandoLista, isFetching } = useCuentaRenglones(filtro, page, PAGE_SIZE, hayDatos)
-  const { data: cobrosObra = [] } = useCobrosCliente(obraSel, !!obraSel)
 
   // El resumen baja sin recortar por estado ni tipo; acá se recorta para los
   // KPIs y la tabla, y se cuenta "cruzado" para los chips.
@@ -143,16 +141,6 @@ export function CuentaCorrienteTab() {
   // El PDF va siempre sobre la cuenta COMPLETA de la obra y solo con lo que es
   // deuda del cliente (a cobrar + cobrado): nunca sale un gasto de CADINC ni
   // un "pagó directo" en un papel para el cliente, sea cual sea el filtro.
-  async function pdf(modo: 'deuda' | 'historico') {
-    if (!obraSel) return
-    try {
-      const rows = await fetchCuentaRenglonesTodos({ obra_cod: obraSel, estados: ['a_cobrar', 'cobrado'] })
-      descargarCuentaClienteObraPdf({ obraCod: obraSel, obraNombre: obraNom, rows, cobros: cobrosObra, modo })
-    } catch (e) {
-      console.error('[cuenta-corriente-pdf]', e)
-      toast('Error al generar PDF', 'err')
-    }
-  }
 
   const llaveEnMano = obra?.materiales_a_cargo_de === 'cadinc'
 
@@ -250,36 +238,12 @@ export function CuentaCorrienteTab() {
         </div>
       )}
 
-      {/* Todas las salidas en un lugar: antes eran cinco botones en dos
-          cabeceras y la pantalla no se entendía. Las opciones reusan las
-          funciones de siempre; las de administración se montan adentro del
-          modal solo si la obra está marcada. */}
-      <ModalExportar
-        open={modalExportar}
-        onClose={() => setModalExportar(false)}
-        obra={obra}
-        opciones={([
-          !llaveEnMano && {
-            key: 'pdf-deuda', grupo: 'pdf', icono: '📄',
-            titulo: 'PDF deuda',
-            desc: 'Solo lo que el cliente adeuda hoy, para mandarle.',
-            run: () => pdf('deuda'),
-          },
-          !llaveEnMano && {
-            key: 'pdf-historico', grupo: 'pdf', icono: '📄',
-            titulo: 'PDF histórico',
-            desc: 'Todo: deuda, cobrado y pagos del cliente, con el saldo.',
-            run: () => pdf('historico'),
-          },
-          {
-            key: 'excel-cuenta', grupo: 'excel', icono: '📊',
-            titulo: 'Excel de la cuenta corriente',
-            desc: 'Los renglones con los filtros puestos, más el resumen por obra.',
-            bloqueada: total === 0 ? 'Nada para exportar con estos filtros' : undefined,
-            run: () => exportar(),
-          },
-        ] as (OpcionExport | false)[]).filter((o): o is OpcionExport => !!o)}
-      />
+      {/* El modal de exportar se arma solo: busca renglones, pagos y (si la
+          obra es por administración) las tres patas. Elegís formato y tildás
+          secciones — patrón de los exports de tarja. */}
+      {obra && (
+        <ModalExportar open={modalExportar} onClose={() => setModalExportar(false)} obra={obra} />
+      )}
 
       {/* Obra por administración: costo + % por pata, con su PDF y su Excel.
           Solo si la obra está marcada — para el resto no cambia nada. */}
