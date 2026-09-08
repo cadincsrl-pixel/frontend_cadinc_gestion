@@ -19,7 +19,7 @@
 
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { useGuardarAdminTarifa } from '../../hooks/useAdministracion'
+import { useGuardarAdminTarifa, useImputarPagado } from '../../hooks/useAdministracion'
 import { useAdministracionCuenta } from './useAdministracionCuenta'
 import { getSemLabel, getViernes, toISO } from '@/lib/utils/dates'
 import { fmtM, fmtMes } from './cuentaCorriente.utils'
@@ -39,6 +39,7 @@ export function AdministracionSection({ obra }: { obra: Obra }) {
   // termina más.
   const [verJornales, setVerJornales] = useState(false)
   const [verMateriales, setVerMateriales] = useState(false)
+  const [modalImputar, setModalImputar] = useState(false)
 
   // Los datos y el cálculo viven en el hook, compartidos con el modal de
   // exportar: mismas queries, mismo número.
@@ -62,6 +63,11 @@ export function AdministracionSection({ obra }: { obra: Obra }) {
         <Button variant="ghost" size="sm" onClick={() => setModalPct(true)} disabled={!puedeConfigurar}
           title={puedeConfigurar ? 'Nueva versión de porcentajes, desde un viernes' : 'Sin permiso para administrar obras'}>
           % Cambiar
+        </Button>
+        <Button variant="secondary" size="sm" onClick={() => setModalImputar(true)}
+          disabled={!vigente || tot.cobrado <= 0}
+          title={tot.cobrado <= 0 ? 'La obra no tiene pagos registrados' : 'Congelar lo que los pagos ya cubren, primero lo viejo'}>
+          🔒 Imputar lo pagado
         </Button>
       </div>
 
@@ -115,10 +121,10 @@ export function AdministracionSection({ obra }: { obra: Obra }) {
                     <td className="px-3 py-2 font-semibold text-azul whitespace-nowrap">{getSemLabel(new Date(s.semKey + 'T12:00:00'))}</td>
                     <td className={td('text-right')}>{s.moCosto ? fmtM(s.moCosto) : '—'}</td>
                     <td className={td('text-right text-gris-dark text-xs')}>{s.moCosto ? `${s.moPct}%` : ''}</td>
-                    <td className={td('text-right font-bold')}>{s.moCosto ? fmtM(s.moFacturable) : '—'}</td>
+                    <td className={td('text-right font-bold')}>{s.moCosto || s.moCobrada ? <>{fmtM(s.moFacturable)}{s.moCobrada && <span title="Semana cubierta por un pago: monto congelado"> 🔒</span>}</> : '—'}</td>
                     <td className={td('text-right')}>{s.contCosto ? fmtM(s.contCosto) : '—'}</td>
                     <td className={td('text-right text-gris-dark text-xs')}>{s.contCosto ? `${s.contPct}%` : ''}</td>
-                    <td className={td('text-right font-bold')}>{s.contCosto ? fmtM(s.contFacturable) : '—'}</td>
+                    <td className={td('text-right font-bold')}>{s.contCosto || s.contCobrada ? <>{fmtM(s.contFacturable)}{s.contCobrada && <span title="Semana cubierta por un pago: monto congelado"> 🔒</span>}</> : '—'}</td>
                   </tr>
                 ))}
                 {semanas.length === 0 && (
@@ -166,6 +172,9 @@ export function AdministracionSection({ obra }: { obra: Obra }) {
 
       {modalPct && (
         <ModalPorcentajes obraCod={obraCod} vigente={vigente} historial={tarifasAdmin} onClose={() => setModalPct(false)} />
+      )}
+      {modalImputar && (
+        <ModalImputar obraCod={obraCod} onClose={() => setModalImputar(false)} />
       )}
     </div>
   )
@@ -223,6 +232,53 @@ export function MarcarAdministracion({ obra }: { obra: Obra }) {
         <ModalPorcentajes obraCod={obra.cod} vigente={null} historial={[]} onClose={() => setAbierto(false)} />
       )}
     </>
+  )
+}
+
+// ── Imputar lo pagado ─────────────────────────────────────────────────
+
+function ModalImputar({ obraCod, onClose }: { obraCod: string; onClose: () => void }) {
+  const toast = useToast()
+  const imputar = useImputarPagado()
+
+  function correr() {
+    imputar.mutate(obraCod, {
+      onSuccess: (r) => {
+        const partes: string[] = []
+        if (r.congelado.operarios.n)    partes.push(`${r.congelado.operarios.n} semana${r.congelado.operarios.n !== 1 ? 's' : ''} de jornales (${fmtM(r.congelado.operarios.monto)})`)
+        if (r.congelado.contratistas.n) partes.push(`${r.congelado.contratistas.n} de contratistas (${fmtM(r.congelado.contratistas.monto)})`)
+        if (r.congelado.materiales.n)   partes.push(`${r.congelado.materiales.n} material${r.congelado.materiales.n !== 1 ? 'es' : ''} (${fmtM(r.congelado.materiales.monto)})`)
+        toast(partes.length
+          ? `🔒 Congelado: ${partes.join(' · ')}${r.sin_cubrir.n ? ` — quedan ${r.sin_cubrir.n} sin cubrir` : ''}`
+          : 'No había nada nuevo para congelar: lo pagado ya estaba imputado.', 'ok')
+        onClose()
+      },
+      onError: (e) => toast(e instanceof Error ? e.message : 'No se pudo imputar', 'err'),
+    })
+  }
+
+  return (
+    <Modal open onClose={onClose} title="🔒 IMPUTAR LO PAGADO"
+      footer={<>
+        <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+        <Button variant="primary" onClick={correr} loading={imputar.isPending}>🔒 Imputar</Button>
+      </>}>
+      <div className="space-y-2 text-sm">
+        <p>
+          Reparte los pagos del cliente sobre lo facturable, <b>primero lo más viejo</b>,
+          y congela lo que queda cubierto:
+        </p>
+        <ul className="list-disc pl-5 space-y-1 text-[13px]">
+          <li>Los <b>materiales</b> cubiertos pasan a &ldquo;Cobrado&rdquo;: el precio queda clavado y no se puede editar más.</li>
+          <li>Las <b>semanas de jornales y contratistas</b> cubiertas guardan su monto de hoy (🔒): un cambio retroactivo de tarifas ya no las mueve.</li>
+        </ul>
+        <p className="text-[12px] text-gris-dark">
+          La semana en curso y los materiales sin precio quedan afuera. Si más adelante se
+          elimina un pago, lo que ese pago cubría se descongela solo. Se puede correr las
+          veces que haga falta: lo ya congelado no se toca.
+        </p>
+      </div>
+    </Modal>
   )
 }
 

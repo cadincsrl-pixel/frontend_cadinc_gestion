@@ -47,3 +47,49 @@ export function pctVigente(tarifas: AdminTarifa[], fechaISO: string): AdminTarif
   }
   return mejor
 }
+
+// ── Imputar lo pagado ─────────────────────────────────────────────────
+
+/** Una semana congelada por un pago: la cuenta usa este monto, no el cálculo vivo. */
+export interface AdminImputacion {
+  sem_key: string
+  pata: 'operarios' | 'contratistas'
+  monto: number
+  cobro_id: number
+}
+
+export function useAdminImputaciones(obraCod: string) {
+  return useQuery({
+    queryKey: [...ADMIN_TARIFAS_KEY, 'imputaciones', obraCod],
+    queryFn:  () => apiGet<AdminImputacion[]>(`/api/obras/${encodeURIComponent(obraCod)}/admin-imputaciones`),
+    enabled:  !!obraCod,
+    staleTime: 60_000,
+  })
+}
+
+export interface ResumenImputacion {
+  congelado: {
+    operarios:    { n: number; monto: number }
+    contratistas: { n: number; monto: number }
+    materiales:   { n: number; monto: number }
+  }
+  sin_cubrir: { n: number; monto: number }
+}
+
+/**
+ * Reparte lo pagado sobre lo facturable (primero lo viejo) y congela lo
+ * cubierto. Invalida todo lo que muestra la cuenta: renglones, resumen,
+ * cobros y semanas congeladas.
+ */
+export function useImputarPagado() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (obraCod: string) =>
+      apiPost<ResumenImputacion>('/api/cuenta-cliente/imputar-pagado', { obra_cod: obraCod }),
+    onSuccess: (_d, obraCod) => {
+      qc.invalidateQueries({ queryKey: ['cuenta-corriente'] })
+      qc.invalidateQueries({ queryKey: ['cuenta-cliente-cobros'] })
+      qc.invalidateQueries({ queryKey: [...ADMIN_TARIFAS_KEY, 'imputaciones', obraCod] })
+    },
+  })
+}

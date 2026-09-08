@@ -20,7 +20,7 @@ import { useTarifasObra } from '@/modules/tarja/hooks/useTarifas'
 import { useHsExtras } from '@/modules/tarja/hooks/useHsExtras'
 import { useCertificacionesObra } from '@/modules/tarja/hooks/useContratistas'
 import { useCobrosCliente } from '../../hooks/useCuentaCliente'
-import { useAdminTarifas, pctVigente } from '../../hooks/useAdministracion'
+import { useAdminTarifas, useAdminImputaciones, pctVigente } from '../../hooks/useAdministracion'
 import { fetchCuentaRenglonesTodos } from '../../hooks/useCuentaCorriente'
 import { costoOperariosSemana, type CatObraEntry } from '@/lib/utils/costos'
 import { getSemDays, getViernes, toISO } from '@/lib/utils/dates'
@@ -34,9 +34,12 @@ export interface SemanaAdmin {
   moCosto:         number
   moPct:           number
   moFacturable:    number
+  /** La semana ya fue cubierta por un pago: el facturable es el monto congelado. */
+  moCobrada:       boolean
   contCosto:       number
   contPct:         number
   contFacturable:  number
+  contCobrada:     boolean
 }
 
 export interface MesMateriales {
@@ -59,6 +62,7 @@ export interface CuentaAdministracion {
 export function useAdministracionCuenta(obra: Obra): CuentaAdministracion {
   const obraCod = obra.cod
   const { data: tarifasAdmin = [], isLoading: cargandoPct } = useAdminTarifas(obraCod)
+  const { data: imputaciones = [] } = useAdminImputaciones(obraCod)
 
   // ── Las tres patas, con los datos que el sistema ya tiene ──
   const { data: horas = [] } = useQuery({
@@ -114,16 +118,25 @@ export function useAdministracionCuenta(obra: Obra): CuentaAdministracion {
       const pct = pctVigente(tarifasAdmin, semKey)
       const moPct   = Number(pct?.pct_operarios ?? 0)
       const contPct = Number(pct?.pct_contratistas ?? 0)
+      // Una semana cubierta por un pago usa el monto CONGELADO al imputar, no
+      // el cálculo vivo: lo que el cliente ya pagó no se mueve más, aunque una
+      // tarifa cambie retroactivamente. Es el "Cobrado" de las semanas.
+      const moCong   = imputaciones.find(i => i.sem_key === semKey && i.pata === 'operarios')
+      const contCong = imputaciones.find(i => i.sem_key === semKey && i.pata === 'contratistas')
       // Sin redondear acá: se acumula exacto y fmtM redondea al mostrar. Si se
       // redondeara por fila, con 0% el facturable diferiría del costo por los
       // centavos perdidos — y "al costo" tiene que dar EXACTAMENTE el costo.
       return {
         semKey,
-        moCosto,   moPct,   moFacturable:   moCosto * (1 + moPct / 100),
-        contCosto, contPct, contFacturable: contCosto * (1 + contPct / 100),
+        moCosto,   moPct,
+        moFacturable:   moCong ? Number(moCong.monto) : moCosto * (1 + moPct / 100),
+        moCobrada:      !!moCong,
+        contCosto, contPct,
+        contFacturable: contCong ? Number(contCong.monto) : contCosto * (1 + contPct / 100),
+        contCobrada:    !!contCong,
       }
     }).filter(s => s.moCosto > 0 || s.contCosto > 0)
-  }, [horas, hsExtras, certs, personal, categorias, tarifas, catObra, obraCod, tarifasAdmin])
+  }, [horas, hsExtras, certs, personal, categorias, tarifas, catObra, obraCod, tarifasAdmin, imputaciones])
 
   const meses = useMemo<MesMateriales[]>(() => {
     const por = new Map<string, MesMateriales>()
