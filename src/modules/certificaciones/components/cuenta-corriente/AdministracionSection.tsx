@@ -123,10 +123,13 @@ export function AdministracionSection({ obra }: { obra: Obra }) {
       const pct = pctVigente(tarifasAdmin, semKey)
       const moPct   = Number(pct?.pct_operarios ?? 0)
       const contPct = Number(pct?.pct_contratistas ?? 0)
+      // Sin redondear acá: se acumula exacto y fmtM redondea al mostrar. Si se
+      // redondeara por fila, con 0% el facturable diferiría del costo por los
+      // centavos perdidos — y "al costo" tiene que dar EXACTAMENTE el costo.
       return {
         semKey,
-        moCosto,   moPct,   moFacturable:   Math.round(moCosto * (1 + moPct / 100)),
-        contCosto, contPct, contFacturable: Math.round(contCosto * (1 + contPct / 100)),
+        moCosto,   moPct,   moFacturable:   moCosto * (1 + moPct / 100),
+        contCosto, contPct, contFacturable: contCosto * (1 + contPct / 100),
       }
     }).filter(s => s.moCosto > 0 || s.contCosto > 0)
   }, [horas, hsExtras, certs, personal, categorias, tarifas, catObra, obraCod, tarifasAdmin])
@@ -140,7 +143,7 @@ export function AdministracionSection({ obra }: { obra: Obra }) {
       let m = por.get(mes)
       if (!m) { m = { mes, costo: 0, facturable: 0 }; por.set(mes, m) }
       m.costo      += Number(r.precio_total ?? 0)
-      m.facturable += Math.round(Number(r.precio_total ?? 0) * (1 + pct / 100))
+      m.facturable += Number(r.precio_total ?? 0) * (1 + pct / 100)
     }
     return [...por.values()].sort((a, b) => b.mes.localeCompare(a.mes))
   }, [materiales, tarifasAdmin])
