@@ -65,6 +65,12 @@ export function AdministracionSection({ obra }: { obra: Obra }) {
   const { puedeAdministrarObras, esAdmin } = usePermisos('tarja')
   const puedeConfigurar = puedeAdministrarObras || esAdmin
   const [modalPct, setModalPct] = useState(false)
+  // Los totales siempre a la vista; el detalle plegado. Una obra con meses de
+  // historia mete decenas de semanas de jornales y sin esto la página no
+  // termina más — el pedido literal del user: "que sea desplegable lo
+  // referido a jornales".
+  const [verJornales, setVerJornales] = useState(false)
+  const [verMateriales, setVerMateriales] = useState(false)
 
   const obraCod = obra.cod
   const { data: tarifasAdmin = [], isLoading: cargandoPct } = useAdminTarifas(obraCod)
@@ -220,7 +226,14 @@ export function AdministracionSection({ obra }: { obra: Obra }) {
             </div>
           )}
 
-          {/* Operarios + contratistas, semana a semana */}
+          {/* Jornales y contratistas, semana a semana — plegado por defecto */}
+          <Pliegue
+            abierto={verJornales}
+            onToggle={() => setVerJornales(v => !v)}
+            titulo={`Jornales y contratistas, semana a semana (${semanas.length})`}
+            resumen={`${fmtM(tot.mo + tot.cont)} facturable`}
+          />
+          {verJornales && (
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[720px]">
               <thead>
@@ -252,11 +265,19 @@ export function AdministracionSection({ obra }: { obra: Obra }) {
               </tbody>
             </table>
           </div>
+          )}
 
-          {/* Materiales por mes */}
+          {/* Materiales por mes — plegado por defecto */}
           {meses.length > 0 && (
+            <>
+            <Pliegue
+              abierto={verMateriales}
+              onToggle={() => setVerMateriales(v => !v)}
+              titulo={`Materiales, mes a mes (${meses.length})`}
+              resumen={`${fmtM(tot.mat)} facturable`}
+            />
+            {verMateriales && (
             <div className="border-t border-gris-mid">
-              <div className="px-4 pt-2 text-[11px] font-bold text-gris-dark uppercase tracking-wider">Materiales</div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm min-w-[420px]">
                   <tbody>
@@ -275,6 +296,8 @@ export function AdministracionSection({ obra }: { obra: Obra }) {
                 </table>
               </div>
             </div>
+            )}
+            </>
           )}
         </>
       )}
@@ -283,6 +306,25 @@ export function AdministracionSection({ obra }: { obra: Obra }) {
         <ModalPorcentajes obraCod={obraCod} vigente={vigente} historial={tarifasAdmin} onClose={() => setModalPct(false)} />
       )}
     </div>
+  )
+}
+
+/**
+ * Cabecera de un bloque plegable: siempre visible, con el número clave a la
+ * derecha para que plegar no esconda información — solo esconde el detalle.
+ */
+function Pliegue({ abierto, onToggle, titulo, resumen }: {
+  abierto: boolean; onToggle: () => void; titulo: string; resumen: string
+}) {
+  return (
+    <button onClick={onToggle}
+      className="w-full flex items-center justify-between gap-2 px-4 py-2.5 border-t border-gris-mid bg-gris/40 hover:bg-gris/70 transition-colors text-left">
+      <span className="text-[12px] font-bold text-azul">
+        <span className="inline-block w-4 text-gris-dark">{abierto ? '▾' : '▸'}</span>
+        {titulo}
+      </span>
+      <span className="font-mono tabular-nums text-xs font-bold text-carbon whitespace-nowrap">{resumen}</span>
+    </button>
   )
 }
 
