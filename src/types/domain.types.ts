@@ -26,6 +26,14 @@ export interface Obra extends AuditFields {
    */
   es_interna: boolean
   /**
+   * La obra se factura por administración (2026-09-08): al cliente se le cobra
+   * el costo de cada pata (operarios, contratistas, materiales) más un
+   * porcentaje pactado. Los porcentajes viven versionados en
+   * `obras_admin_tarifas`; este flag prende la vista de administración en la
+   * cuenta corriente.
+   */
+  por_administracion: boolean
+  /**
    * Quién se hace cargo de los materiales (20260904ak). 'cliente': se cobran
    * en la cuenta del cliente. 'cadinc': obra llave en mano, todo es gasto de
    * CADINC. Cambiarlo recalcula la cuenta (trigger en la base).
@@ -1736,6 +1744,22 @@ export interface GastoInternoHerramientas {
 
 export interface GastoInterno extends CuentaResumen {
   herramientas: GastoInternoHerramientas[]
+}
+
+/**
+ * Una versión de los porcentajes de una obra por administración. `desde` es
+ * siempre viernes; la vigente para una semana o fecha es la de mayor `desde`
+ * que no la pase. Se agregan versiones, nunca se pisan.
+ */
+export interface AdminTarifa {
+  id:               number
+  obra_cod:         string
+  desde:            string
+  pct_operarios:    number
+  pct_contratistas: number
+  pct_materiales:   number
+  created_at:       string
+  created_by:       string | null
 }
 
 // ── Stock en Depósito ──

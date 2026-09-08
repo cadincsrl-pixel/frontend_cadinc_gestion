@@ -291,3 +291,21 @@ export function costoLegConCatObra(
   )?.hs ?? 0
   return (hs + extras) * vh
 }
+/**
+ * Costo de operarios de una semana con el criterio CANÓNICO (§5.11):
+ * costoLegConCatObra por legajo (respeta overrides de cat_obra), redondeado al
+ * millar POR LEGAJO, y sumado. Es el número del chip "Costo semana", del footer
+ * de TarjaTable, de los cierres, del resumen histórico, de la pestaña Costos y
+ * de la cuenta por administración. Si alguna pantalla muestra otro, esa
+ * pantalla está mal.
+ */
+export function costoOperariosSemana(
+  horas: Hora[], hsExtras: TarjaHsExtra[], personalObra: Personal[],
+  categorias: Categoria[], tarifas: Tarifa[], catObra: CatObraEntry[],
+  obraCod: string, dias: Date[],
+): number {
+  return personalObra.reduce((s, p) =>
+    s + Math.round(
+      costoLegConCatObra(horas, hsExtras, personalObra, categorias, tarifas, catObra, obraCod, p.leg, dias) / 1000,
+    ) * 1000, 0)
+}

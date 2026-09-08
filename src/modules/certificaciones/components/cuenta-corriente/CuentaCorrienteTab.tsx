@@ -16,6 +16,7 @@ import { FiltrosCuenta } from './FiltrosCuenta'
 import { ResumenTabla } from './ResumenTabla'
 import { RenglonesTabla } from './RenglonesTabla'
 import { PagosCliente } from './PagosCliente'
+import { AdministracionSection, MarcarAdministracion } from './AdministracionSection'
 import { ModalCargarPrecios } from './ModalCargarPrecios'
 import { ESTADOS, ESTADO_META, fmtM, fmtFecha, recortar, totalizar, filasPorGrupo } from './cuentaCorriente.utils'
 
@@ -248,6 +249,13 @@ export function CuentaCorrienteTab() {
             <Button variant="ghost" size="sm" onClick={() => setVerTodas(false)} title="Volver a la pantalla vacía">✕ Ocultar</Button>
           </div>
         </div>
+      )}
+
+      {/* Obra por administración: costo + % por pata, con su PDF y su Excel.
+          Solo si la obra está marcada — para el resto no cambia nada. */}
+      {obra?.por_administracion && <AdministracionSection obra={obra} />}
+      {obra && !obra.por_administracion && (
+        <div className="flex justify-end -mt-2"><MarcarAdministracion obra={obra} /></div>
       )}
 
       {obraSel && (

@@ -10,7 +10,7 @@ import { useHsExtras, useHsExtrasAll } from '@/modules/tarja/hooks/useHsExtras'
 import { useTarifasObra } from '@/modules/tarja/hooks/useTarifas'
 import { useCertificacionesObra, useContratistas } from '@/modules/tarja/hooks/useContratistas'
 import { Combobox } from '@/components/ui/Combobox'
-import { costoLegConCatObra, fmtMonto, type CatObraEntry } from '@/lib/utils/costos'
+import { costoOperariosSemana, fmtMonto, type CatObraEntry } from '@/lib/utils/costos'
 import { getSemDays, getSemLabel, getViernes, toISO } from '@/lib/utils/dates'
 import { horasApi } from '@/lib/api/horas.api'
 import { apiGet } from '@/lib/api/client'
@@ -20,20 +20,8 @@ import type { Obra, Certificacion, Contratista, Personal, Categoria, Tarifa, Hor
 // semana", el footer de TarjaTable, cierres y el resumen histórico — §5.11).
 const fmtM = fmtMonto
 
-// Costo de operarios de la semana con el criterio CANÓNICO (§5.11):
-// costoLegConCatObra (respeta overrides de cat_obra) + redondeo per-leg al
-// millar, sumado. Igual que TarjaObraPage/CierresSection/ResumenHistorico,
-// así los números coinciden en todos lados.
-function costoOperariosSemana(
-  horas: Hora[], hsExtras: TarjaHsExtra[], personalObra: Personal[],
-  categorias: Categoria[], tarifas: Tarifa[], catObra: CatObraEntry[],
-  obraCod: string, dias: Date[],
-): number {
-  return personalObra.reduce((s, p) =>
-    s + Math.round(
-      costoLegConCatObra(horas, hsExtras, personalObra, categorias, tarifas, catObra, obraCod, p.leg, dias) / 1000,
-    ) * 1000, 0)
-}
+// El costo de operarios de la semana vive en costos.ts (§5.11): es la misma
+// función que usa la cuenta por administración, así los números coinciden.
 
 // Todas las categorías por obra (una query cacheada, compartida por todas las
 // filas y el total vía la misma queryKey). Mismo endpoint que ResumenHistorico.
