@@ -17,11 +17,14 @@ import type { CuentaClienteCobro, MedioCobro } from '@/types/domain.types'
 export function useGuardarPreciosMCC() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (items: { itemId: number; precio_unit: number }[]) => {
+    mutationFn: async (items: { itemId: number; precio_unit?: number; pagado_por?: 'cadinc' | 'cliente' }[]) => {
       const res = await Promise.allSettled(
-        items.map(it =>
-          apiPatch(`/api/solicitudes/items/${it.itemId}`, { precio_unit: it.precio_unit }),
-        ),
+        items.map(it => {
+          const body: Record<string, unknown> = {}
+          if (it.precio_unit !== undefined) body.precio_unit = it.precio_unit
+          if (it.pagado_por !== undefined) body.pagado_por = it.pagado_por
+          return apiPatch(`/api/solicitudes/items/${it.itemId}`, body)
+        }),
       )
       return { total: items.length, fallidos: res.filter(r => r.status === 'rejected').length }
     },

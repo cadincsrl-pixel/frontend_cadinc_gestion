@@ -43,6 +43,11 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
   const { mutate: guardarPrecios, isPending } = useGuardarPreciosMCC()
 
   const [overrides, setOverrides] = useState<Record<number, string>>({})
+  // Overrides de "quién lo pagó": cambiar un renglón a pago directo del
+  // cliente lo saca de la deuda (y viceversa). Editable acá porque el caso
+  // real aparece tarde: se descubre que el cliente pagó algo cuando ya está
+  // cargado como "CADINC adelantó".
+  const [pagadores, setPagadores] = useState<Record<number, 'cadinc' | 'cliente'>>({})
   const [soloSinPrecio, setSoloSinPrecio] = useState(false)
   const [busqueda, setBusqueda] = useState('')
 
@@ -58,7 +63,11 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
     return Number.isFinite(v) && v >= 0 ? v : 0
   }
 
-  const cambios       = editables.filter(r => precioVal(r) !== Number(r.precio_unit))
+  function pagadorDe(r: CuentaRenglon): 'cadinc' | 'cliente' {
+    return pagadores[r.item_id] ?? ((r.pagado_por === 'cliente' ? 'cliente' : 'cadinc'))
+  }
+  const cambios       = editables.filter(r =>
+    precioVal(r) !== Number(r.precio_unit) || pagadorDe(r) !== (r.pagado_por === 'cliente' ? 'cliente' : 'cadinc'))
   const sinPrecio     = editables.filter(r => Number(r.precio_unit) === 0).length
   const totalObra     = editables.reduce((s, r) => s + Number(r.cantidad) * precioVal(r), 0)
   const q             = busqueda.trim().toLowerCase()
@@ -66,13 +75,17 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
     .filter(r => !soloSinPrecio || Number(r.precio_unit) === 0)
     .filter(r => !q || r.descripcion.toLowerCase().includes(q))
 
-  function cerrar() { setOverrides({}); setSoloSinPrecio(false); setBusqueda(''); onClose() }
+  function cerrar() { setOverrides({}); setPagadores({}); setSoloSinPrecio(false); setBusqueda(''); onClose() }
 
   function guardar() {
-    if (cambios.length === 0) { toast('No cambiaste ningún precio', 'err'); return }
+    if (cambios.length === 0) { toast('No cambiaste nada', 'err'); return }
     const aCero = cambios.filter(r => Number(r.precio_unit) > 0 && precioVal(r) === 0).length
     if (aCero > 0 && !confirm(`Vas a dejar en $0 ${aCero} material(es) que tenían precio cargado.\n¿Continuar?`)) return
-    guardarPrecios(cambios.map(r => ({ itemId: r.item_id, precio_unit: precioVal(r) })), {
+    guardarPrecios(cambios.map(r => ({
+      itemId: r.item_id,
+      ...(precioVal(r) !== Number(r.precio_unit) ? { precio_unit: precioVal(r) } : {}),
+      ...(pagadorDe(r) !== (r.pagado_por === 'cliente' ? 'cliente' : 'cadinc') ? { pagado_por: pagadorDe(r) } : {}),
+    })), {
       onSuccess: ({ total, fallidos }) => {
         if (fallidos > 0) {
           // No cerramos: el refetch repinta los que pasaron y lo tipeado queda para reintentar.
@@ -96,7 +109,7 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
         <>
           <Button variant="secondary" onClick={cerrar}>Cancelar</Button>
           <Button variant="primary" loading={isPending} disabled={!puedeCargarPrecios || cambios.length === 0} title={puedeCargarPrecios ? undefined : 'Sin permiso para cargar precios (requiere actualización y resolver ítems)'} onClick={guardar}>
-            ✓ Guardar precios ({cambios.length})
+            ✓ Guardar cambios ({cambios.length})
           </Button>
         </>
       }
@@ -160,7 +173,18 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
                         {r.descripcion}
                         <div className="text-[10px] text-gris-dark font-mono">#{r.solicitud_id} · {r.origen === 'deposito' ? 'Depósito' : (r.proveedor_nom ?? 'sin proveedor')}</div>
                       </td>
-                      <td className="px-3 py-2 text-center"><span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap ${m.badge}`}>{m.label}</span></td>
+                      <td className="px-3 py-2 text-center">
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap ${m.badge}`}>{m.label}</span>
+                        <button type="button"
+                          onClick={() => setPagadores(p => ({ ...p, [r.item_id]: pagadorDe(r) === 'cliente' ? 'cadinc' : 'cliente' }))}
+                          title="Quién le pagó al proveedor. 'Cliente' lo saca de la deuda: pasa a Pagó directo."
+                          className={`block mx-auto mt-1 px-1.5 py-0.5 rounded text-[9px] font-bold whitespace-nowrap transition-colors ${
+                            pagadorDe(r) === 'cliente'
+                              ? 'bg-verde-light text-verde'
+                              : 'bg-gris text-gris-dark hover:bg-gris-mid'}`}>
+                          pagó: {pagadorDe(r) === 'cliente' ? 'Cliente' : 'CADINC'}{pagadorDe(r) !== (r.pagado_por === 'cliente' ? 'cliente' : 'cadinc') ? ' *' : ''}
+                        </button>
+                      </td>
                       <td className="px-3 py-2 text-right font-mono text-xs whitespace-nowrap">
                         {Number(r.cantidad).toLocaleString('es-AR')} <span className="text-gris-dark">{r.unidad}</span>
                       </td>
