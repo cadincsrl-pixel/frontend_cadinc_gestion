@@ -259,7 +259,7 @@ export function CuentaCorrienteTab() {
       )}
 
       {obraSel && (
-        <PagosCliente obraCod={obraSel} obraNom={obraNom} puedeCrear={puedeCrear} puedeEditar={puedeEditar} puedeEliminar={puedeEliminar} />
+        <PagosCliente obraCod={obraSel} obraNom={obraNom} puedeCrear={puedeCrear} puedeEditar={puedeEditar} puedeEliminar={puedeEliminar} porAdministracion={!!obra?.por_administracion} />
       )}
 
       {hayDatos && mostrarResumen && (

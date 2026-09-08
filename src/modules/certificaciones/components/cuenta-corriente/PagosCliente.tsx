@@ -35,9 +35,11 @@ interface Props {
   puedeCrear:    boolean
   puedeEditar:   boolean
   puedeEliminar: boolean
+  /** La obra se factura por administración: el saldo vive en esa sección, no acá. */
+  porAdministracion?: boolean
 }
 
-export function PagosCliente({ obraCod, obraNom, puedeCrear, puedeEditar, puedeEliminar }: Props) {
+export function PagosCliente({ obraCod, obraNom, puedeCrear, puedeEditar, puedeEliminar, porAdministracion }: Props) {
   const toast = useToast()
   const { data: cobros = [] } = useCobrosCliente(obraCod)
   const { data: resumenObra } = useCuentaResumen({ obra_cod: obraCod }, 'obra')
@@ -160,7 +162,17 @@ export function PagosCliente({ obraCod, obraNom, puedeCrear, puedeEditar, puedeE
       <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
         <div>
           <h3 className="text-xs font-bold text-gris-dark uppercase tracking-wider">Pagos del cliente</h3>
-          {esLlaveEnMano ? (
+          {porAdministracion ? (
+            // En una obra por administración este bloque NO muestra deuda ni
+            // saldo propios: los calcularía solo con materiales, y con un pago
+            // que cubra los jornales diría "a favor del cliente" mientras
+            // arriba todavía debe. El saldo que manda es el de la sección
+            // 🧮 Por administración, que suma las tres patas.
+            <div className="text-sm mt-0.5">
+              Pagado <b className="font-mono text-verde">{fmtM(pagado)}</b>
+              <span className="text-[11px] text-gris-dark ml-2">el saldo de la obra está arriba, en Por administración</span>
+            </div>
+          ) : esLlaveEnMano ? (
             <div className="text-[11px] text-gris-dark">Obra llave en mano: no hay nada para cobrarle al cliente.</div>
           ) : (
             <div className="text-sm mt-0.5 flex flex-wrap gap-x-4 gap-y-0.5">
@@ -175,12 +187,12 @@ export function PagosCliente({ obraCod, obraNom, puedeCrear, puedeEditar, puedeE
             </div>
           )}
         </div>
-        {!esLlaveEnMano && (
+        {(porAdministracion || !esLlaveEnMano) && (
           <Button variant="primary" size="sm" onClick={abrirNuevo} disabled={!puedeCrear} title={puedeCrear ? undefined : 'Sin permiso para registrar pagos'}>💲 Registrar pago</Button>
         )}
       </div>
       {cobros.length === 0 ? (
-        !esLlaveEnMano && <p className="text-xs text-gris-mid italic">Sin pagos registrados para esta obra.</p>
+        (porAdministracion || !esLlaveEnMano) && <p className="text-xs text-gris-mid italic">Sin pagos registrados para esta obra.</p>
       ) : (
         <div className="divide-y divide-gris">
           {cobros.map(c => {
