@@ -642,7 +642,6 @@ export function SolicitudesTab() {
     ...obrasActivas.filter(esInterna).map(opcionObra),
     ...obrasActivas.filter(o => !esInterna(o)).map(opcionObra),
   ]
-  const codPanol = obrasActivas.find(o => o.cod === 'CC CADINC')?.cod
   const obrasMap = new Map((obras as Obra[]).map(o => [o.cod, o]))
   const provOptions = (proveedores as Proveedor[]).map(p => ({ value: String(p.id), label: p.nombre, sub: p.cuit ?? undefined }))
 
@@ -707,8 +706,8 @@ export function SolicitudesTab() {
   }
 
   // ── Crear solicitud ──
-  function abrirNuevo(destino = '') {
-    setLineas([newLinea()]); setObraNueva(destino); formCab.reset({ prioridad: 'normal', obs: '', entrega_tentativa: '' }); setModalNuevo(true)
+  function abrirNuevo() {
+    setLineas([newLinea()]); setObraNueva(''); formCab.reset({ prioridad: 'normal', obs: '', entrega_tentativa: '' }); setModalNuevo(true)
   }
 
   function handleCreate(cab: any) {
@@ -1317,15 +1316,7 @@ export function SolicitudesTab() {
             <span className="sm:hidden">📄</span>
             <span className="hidden sm:inline">📄 Remitos</span>
           </Button>
-          {codPanol && (
-            <Button variant="secondary" size="sm" onClick={() => abrirNuevo(codPanol)} disabled={!puedeCrear}
-              title="Pedido para el pañol y la oficina: es gasto de CADINC, no se le cobra a ningún cliente"
-              className="shrink-0">
-              <span className="sm:hidden">🧰</span>
-              <span className="hidden sm:inline">🧰 Pedido del pañol</span>
-            </Button>
-          )}
-          <Button variant="primary" size="sm" onClick={() => abrirNuevo()} disabled={!puedeCrear} className="shrink-0">
+          <Button variant="primary" size="sm" onClick={abrirNuevo} disabled={!puedeCrear} className="shrink-0">
             <span className="sm:hidden">+ Nueva</span>
             <span className="hidden sm:inline">+ Nueva solicitud</span>
           </Button>
