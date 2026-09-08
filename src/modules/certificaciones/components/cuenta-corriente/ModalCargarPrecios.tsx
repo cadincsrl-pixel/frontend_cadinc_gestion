@@ -33,8 +33,11 @@ interface Props {
 export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
   const toast = useToast()
   // El PATCH del ítem exige `actualizacion` + flag `resolver_items` (solicitudes.routes.ts).
-  const { puedeEditar, resolverItems } = usePermisos('certificaciones')
-  const puedeCargarPrecios = puedeEditar && resolverItems
+  const { puedeEditar, resolverItems, cargarPrecios, esAdmin } = usePermisos('certificaciones')
+  // Tocar precios mueve lo que se le cobra al cliente: además del permiso de
+  // siempre exige el flag cargar_precios (que arranca solo en admin — pedido
+  // del dueño). El backend lo re-valida campo por campo.
+  const puedeCargarPrecios = puedeEditar && resolverItems && (cargarPrecios || esAdmin)
   const { data: rows = [], isLoading } = useQuery({
     queryKey: [...CUENTA_CORRIENTE_KEY, 'obra-todos', obraCod],
     queryFn:  () => fetchCuentaRenglonesTodos({ obra_cod: obraCod }),
@@ -71,8 +74,11 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
   const sinPrecio     = editables.filter(r => Number(r.precio_unit) === 0).length
   const totalObra     = editables.reduce((s, r) => s + Number(r.cantidad) * precioVal(r), 0)
   const q             = busqueda.trim().toLowerCase()
-  const visibles      = editables
-    .filter(r => !soloSinPrecio || Number(r.precio_unit) === 0)
+  // Se muestra TODO el listado de la obra, congelados incluidos (en gris, solo
+  // lectura): el pedido del user fue poder ver la cuenta entera desde acá, no
+  // solo lo que falta tasar.
+  const visibles      = rows
+    .filter(r => !soloSinPrecio || (r.cobro_id == null && Number(r.precio_unit) === 0))
     .filter(r => !q || r.descripcion.toLowerCase().includes(q))
 
   function cerrar() { setOverrides({}); setPagadores({}); setSoloSinPrecio(false); setBusqueda(''); onClose() }
@@ -120,7 +126,7 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
             {isLoading ? 'Cargando…' : <>
               {editables.length} {editables.length === 1 ? 'renglón' : 'renglones'} ·{' '}
               <span className="font-bold text-naranja-dark">{sinPrecio} sin precio</span>. Precio unitario final (IVA incluido); el total se calcula solo.
-              {cobrados > 0 && ` ${cobrados} ya cobrado${cobrados !== 1 ? 's' : ''} no se pueden retasar.`}
+              {cobrados > 0 && ` ${cobrados} ya cobrado${cobrados !== 1 ? 's' : ''} (en gris, congelados).`}
             </>}
           </div>
           {sinPrecio > 0 && (
@@ -163,10 +169,25 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
                   </tr>
                 )}
                 {visibles.map(r => {
+                  const congelado = r.cobro_id != null
                   const val = precioVal(r)
                   const total = Number(r.cantidad) * val
-                  const sin = Number(r.precio_unit) === 0
+                  const sin = !congelado && Number(r.precio_unit) === 0
                   const m = ESTADO_META[r.estado]
+                  if (congelado) {
+                    return (
+                      <tr key={r.id} className="border-t border-gris opacity-55" title="Imputado a un pago: el precio quedó congelado. Para tocarlo hay que eliminar el pago.">
+                        <td className="px-3 py-2">
+                          {r.descripcion}
+                          <div className="text-[10px] text-gris-dark font-mono">#{r.solicitud_id} · {r.origen === 'deposito' ? 'Depósito' : (r.proveedor_nom ?? 'sin proveedor')}</div>
+                        </td>
+                        <td className="px-3 py-2 text-center"><span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap ${m.badge}`}>{m.label} 🔒</span></td>
+                        <td className="px-3 py-2 text-right font-mono text-xs whitespace-nowrap">{Number(r.cantidad).toLocaleString('es-AR')} <span className="text-gris-dark">{r.unidad}</span></td>
+                        <td className="px-3 py-2 text-right font-mono text-xs">{Number(r.precio_unit).toLocaleString('es-AR')}</td>
+                        <td className="px-3 py-2 text-right font-mono text-xs font-bold">${Math.round(Number(r.precio_total ?? 0)).toLocaleString('es-AR')}</td>
+                      </tr>
+                    )
+                  }
                   return (
                     <tr key={r.id} className={`border-t border-gris ${sin ? 'bg-naranja-light/20' : ''}`}>
                       <td className="px-3 py-2">

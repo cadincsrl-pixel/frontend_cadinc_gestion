@@ -39,7 +39,7 @@ const PAGE_SIZE = 50
 
 export function CuentaCorrienteTab() {
   const toast = useToast()
-  const { resolverItems, puedeCrear, puedeEditar, puedeEliminar } = usePermisos('certificaciones')
+  const { resolverItems, cargarPrecios, esAdmin, puedeCrear, puedeEditar, puedeEliminar } = usePermisos('certificaciones')
   // ACTIVAS + ARCHIVADAS. Con `useObras()` (solo activas) el checkbox "incluir
   // obras archivadas" no hacía nada: el filtro del selector nunca veía una
   // archivada, así que no se la podía elegir. Y si igual se llegaba a una
@@ -218,8 +218,8 @@ export function CuentaCorrienteTab() {
           <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="primary" size="sm" onClick={() => setModalPrecios(true)}
-              disabled={!resolverItems}
-              title={!resolverItems ? 'No tenés permiso para cargar precios' : 'Cargar o corregir precios de todos los renglones de la obra'}
+              disabled={!resolverItems || !(cargarPrecios || esAdmin)}
+              title={!(cargarPrecios || esAdmin) ? 'Los precios de la cuenta los carga el dueño (flag cargar_precios)' : !resolverItems ? 'No tenés permiso para cargar precios' : 'Cargar o corregir precios de todos los renglones de la obra'}
             >
               💲 Cargar precios
             </Button>

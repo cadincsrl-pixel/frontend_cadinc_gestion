@@ -1126,6 +1126,8 @@ export type ModuloPermisos = { [K in Accion]?: boolean } & {
   ver_pii?:                boolean
   resolver_items?:         boolean
   forzar_despacho?:        boolean
+  /** Editar precio y "quién lo pagó" de renglones resueltos: mueve la cuenta del cliente. Solo admin por default. */
+  cargar_precios?:         boolean
   administrar_obras?:      boolean
   aprobar_ajustes_stock?:  boolean
   gestionar_cobros?:       boolean

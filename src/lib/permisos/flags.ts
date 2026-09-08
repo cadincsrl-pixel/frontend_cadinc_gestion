@@ -24,6 +24,7 @@ export const MODULOS_CON_OBRAS_SCOPE: ReadonlySet<string> = new Set([
 
 export type FlagBoolean =
   | 'ver_pii' | 'ver_costos' | 'administrar_obras' | 'resolver_items' | 'forzar_despacho'
+  | 'cargar_precios'
   | 'aprobar_ajustes_stock' | 'gestionar_cobros' | 'gestionar_docs' | 'anular_cobros'
   | 'costos_oficina' | 'asistente_ia'
 
@@ -59,6 +60,12 @@ export const FLAGS_BOOLEAN: FlagDef[] = [
     key: 'resolver_items',
     label: 'Resolver items',
     help: 'Comprar / despachar / enviar / rechazar items de solicitudes. Solo tiene efecto en certificaciones.',
+    modulos: ['certificaciones'],
+  },
+  {
+    key: 'cargar_precios',
+    label: 'Cargar precios de la cuenta',
+    help: 'Editar el precio y el "quién lo pagó" de renglones ya resueltos: mueve lo que se le cobra al cliente. Por pedido del dueño arranca solo para admin.',
     modulos: ['certificaciones'],
   },
   {

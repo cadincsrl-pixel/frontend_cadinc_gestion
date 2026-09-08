@@ -41,6 +41,7 @@ export function usePermisos(modulo: string) {
     verPii:          flagCapacidad('ver_pii', false),         // mismo default que el backend: sin el flag no ve PII
     resolverItems:        flagCapacidad('resolver_items', false),
     forzarDespacho:       flagCapacidad('forzar_despacho', false),
+    cargarPrecios:        flagCapacidad('cargar_precios', false),
     aprobarAjustesStock:  flagCapacidad('aprobar_ajustes_stock', false),
     gestionarCobros:      flagCapacidad('gestionar_cobros', false),
     gestionarDocs:        flagCapacidad('gestionar_docs', false),
