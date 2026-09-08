@@ -11,7 +11,7 @@ import type { TDocumentDefinitions, Content } from 'pdfmake/interfaces'
 import { EMPRESA } from '@/lib/config/empresa'
 import { getSemLabel } from '@/lib/utils/dates'
 import type { Obra, CuentaClienteCobro } from '@/types/domain.types'
-import type { SemanaAdmin, MesMateriales } from '../components/cuenta-corriente/AdministracionSection'
+import type { SemanaAdmin, MesMateriales } from '../components/cuenta-corriente/useAdministracionCuenta'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ;(pdfMake as any).vfs = (pdfFonts as any)?.vfs ?? (pdfFonts as any)?.pdfMake?.vfs ?? pdfFonts

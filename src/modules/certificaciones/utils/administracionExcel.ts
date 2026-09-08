@@ -5,7 +5,7 @@ import ExcelJS from 'exceljs'
 import { toISO } from '@/lib/utils/dates'
 import { EMPRESA } from '@/lib/config/empresa'
 import type { Obra, CuentaClienteCobro } from '@/types/domain.types'
-import type { SemanaAdmin, MesMateriales } from '../components/cuenta-corriente/AdministracionSection'
+import type { SemanaAdmin, MesMateriales } from '../components/cuenta-corriente/useAdministracionCuenta'
 
 const FMT_MONEDA = '"$"#,##0;[Red]"-$"#,##0;"—"'
 const C_AZUL   = 'FF1F3A66'

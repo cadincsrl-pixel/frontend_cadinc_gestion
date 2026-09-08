@@ -17,6 +17,7 @@ import { ResumenTabla } from './ResumenTabla'
 import { RenglonesTabla } from './RenglonesTabla'
 import { PagosCliente } from './PagosCliente'
 import { AdministracionSection, MarcarAdministracion } from './AdministracionSection'
+import { ModalExportar, type OpcionExport } from './ModalExportar'
 import { ModalCargarPrecios } from './ModalCargarPrecios'
 import { ESTADOS, ESTADO_META, fmtM, fmtFecha, recortar, totalizar, filasPorGrupo } from './cuentaCorriente.utils'
 
@@ -60,6 +61,7 @@ export function CuentaCorrienteTab() {
   // Sin obra elegida no se carga nada: los totales de todas las obras juntas
   // son información sensible, así que verlos es una decisión explícita.
   const [verTodas, setVerTodas] = useState(false)
+  const [modalExportar, setModalExportar] = useState(false)
 
   function patch(p: Partial<CuentaFiltro>) {
     setFiltro(f => ({ ...f, ...p }))
@@ -229,13 +231,10 @@ export function CuentaCorrienteTab() {
             >
               💲 Cargar precios
             </Button>
-            <Button variant="secondary" size="sm" onClick={exportar} loading={exportando} disabled={total === 0}>📊 Excel</Button>
-            {!llaveEnMano && (
-              <>
-                <Button variant="ghost" size="sm" onClick={() => pdf('deuda')} title="Solo lo que el cliente adeuda, para mandarle">📄 PDF deuda</Button>
-                <Button variant="ghost" size="sm" onClick={() => pdf('historico')} title="Deuda, cobrado y pagos, con saldo">📄 Histórico</Button>
-              </>
-            )}
+            <Button variant="secondary" size="sm" onClick={() => setModalExportar(true)}
+              title="PDF para el cliente o Excel para trabajar, todo en un lugar">
+              ⬇ Exportar
+            </Button>
             <Button variant="ghost" size="sm" onClick={() => patch({ obra_cod: undefined, sin_precio: undefined })} title="Cerrar esta obra">✕ Cerrar obra</Button>
           </div>
         </div>
@@ -250,6 +249,37 @@ export function CuentaCorrienteTab() {
           </div>
         </div>
       )}
+
+      {/* Todas las salidas en un lugar: antes eran cinco botones en dos
+          cabeceras y la pantalla no se entendía. Las opciones reusan las
+          funciones de siempre; las de administración se montan adentro del
+          modal solo si la obra está marcada. */}
+      <ModalExportar
+        open={modalExportar}
+        onClose={() => setModalExportar(false)}
+        obra={obra}
+        opciones={([
+          !llaveEnMano && {
+            key: 'pdf-deuda', grupo: 'pdf', icono: '📄',
+            titulo: 'PDF deuda',
+            desc: 'Solo lo que el cliente adeuda hoy, para mandarle.',
+            run: () => pdf('deuda'),
+          },
+          !llaveEnMano && {
+            key: 'pdf-historico', grupo: 'pdf', icono: '📄',
+            titulo: 'PDF histórico',
+            desc: 'Todo: deuda, cobrado y pagos del cliente, con el saldo.',
+            run: () => pdf('historico'),
+          },
+          {
+            key: 'excel-cuenta', grupo: 'excel', icono: '📊',
+            titulo: 'Excel de la cuenta corriente',
+            desc: 'Los renglones con los filtros puestos, más el resumen por obra.',
+            bloqueada: total === 0 ? 'Nada para exportar con estos filtros' : undefined,
+            run: () => exportar(),
+          },
+        ] as (OpcionExport | false)[]).filter((o): o is OpcionExport => !!o)}
+      />
 
       {/* Obra por administración: costo + % por pata, con su PDF y su Excel.
           Solo si la obra está marcada — para el resto no cambia nada. */}
