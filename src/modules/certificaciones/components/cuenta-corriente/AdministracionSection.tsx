@@ -19,8 +19,8 @@
 
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { useGuardarAdminTarifa, useImputarPagado } from '../../hooks/useAdministracion'
-import { useAdministracionCuenta } from './useAdministracionCuenta'
+import { useAdminTarifas, useGuardarAdminTarifa, useImputarPagado, pctVigente } from '../../hooks/useAdministracion'
+import { useAdministracionCuenta, type ModoAdministracion } from './useAdministracionCuenta'
 import { getSemLabel, getViernes, toISO } from '@/lib/utils/dates'
 import { fmtM, fmtMes } from './cuentaCorriente.utils'
 import { Modal } from '@/components/ui/Modal'
@@ -30,7 +30,15 @@ import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import type { Obra } from '@/types/domain.types'
 
-export function AdministracionSection({ obra }: { obra: Obra }) {
+/**
+ * Con `modo="costos"` (obras llave en mano) la misma sección se vuelve el
+ * panel "Costos de obra": mismas tres patas y mismo panel de porcentajes —
+ * que acá es un recargo informativo, típicamente cargas sociales sobre la
+ * mano de obra — pero sin cobros, sin saldo del cliente y sin imputar:
+ * en llave en mano nada de esto se factura por acá.
+ */
+export function AdministracionSection({ obra, modo = 'facturacion' }: { obra: Obra; modo?: ModoAdministracion }) {
+  const esCostos = modo === 'costos'
   const { puedeAdministrarObras, esAdmin } = usePermisos('tarja')
   const puedeConfigurar = puedeAdministrarObras || esAdmin
   const [modalPct, setModalPct] = useState(false)
@@ -43,19 +51,23 @@ export function AdministracionSection({ obra }: { obra: Obra }) {
 
   // Los datos y el cálculo viven en el hook, compartidos con el modal de
   // exportar: mismas queries, mismo número.
-  const { semanas, meses, tot, tarifasAdmin, vigente, sinPrecio, cargando: cargandoPct } = useAdministracionCuenta(obra)
+  const { semanas, meses, tot, tarifasAdmin, vigente, sinPrecio, cargando: cargandoPct } = useAdministracionCuenta(obra, modo)
   const obraCod = obra.cod
+  const conPct = esCostos ? 'Con %' : 'Facturable'
 
   const th = (extra = '') => `px-3 py-2 text-[11px] font-bold text-gris-dark uppercase tracking-wider ${extra}`
   const td = (extra = '') => `px-3 py-2 font-mono tabular-nums ${extra}`
 
   return (
-    <div className="bg-white rounded-xl shadow-sm overflow-hidden border-l-4 border-naranja">
+    <div className={`bg-white rounded-xl shadow-sm overflow-hidden border-l-4 ${esCostos ? 'border-azul' : 'border-naranja'}`}>
       <div className="px-4 py-3 border-b border-gris-mid flex flex-wrap items-center gap-2">
         <div className="flex-1 min-w-[220px]">
-          <h3 className="font-display text-lg text-azul">🧮 POR ADMINISTRACIÓN</h3>
+          <h3 className="font-display text-lg text-azul">{esCostos ? '🧮 COSTOS DE OBRA' : '🧮 POR ADMINISTRACIÓN'}</h3>
           <p className="text-[11px] text-gris-dark">
-            Costo + % pactado por pata. {vigente
+            {esCostos
+              ? 'Lo gastado por pata: jornales, contratistas y materiales. El % es un recargo informativo (p. ej. cargas sociales), no se factura.'
+              : 'Costo + % pactado por pata.'}{' '}
+            {vigente
               ? `Vigente: operarios ${Number(vigente.pct_operarios)}% · contratistas ${Number(vigente.pct_contratistas)}% · materiales ${Number(vigente.pct_materiales)}%`
               : 'Sin porcentajes cargados todavía.'}
           </p>
@@ -64,14 +76,16 @@ export function AdministracionSection({ obra }: { obra: Obra }) {
           title={puedeConfigurar ? 'Nueva versión de porcentajes, desde un viernes' : 'Sin permiso para administrar obras'}>
           % Cambiar
         </Button>
+        {!esCostos && (
         <Button variant="secondary" size="sm" onClick={() => setModalImputar(true)}
           disabled={!vigente || tot.cobrado <= 0}
           title={tot.cobrado <= 0 ? 'La obra no tiene pagos registrados' : 'Congelar lo que los pagos ya cubren, primero lo viejo'}>
           🔒 Imputar lo pagado
         </Button>
+        )}
       </div>
 
-      {!vigente && !cargandoPct ? (
+      {!esCostos && !vigente && !cargandoPct ? (
         <div className="px-4 py-6 text-sm text-gris-dark">
           La obra está marcada por administración pero no tiene porcentajes.
           {puedeConfigurar ? ' Cargalos con "% Cambiar" y la cuenta se arma sola con lo que ya está en el sistema.' : ''}
@@ -79,6 +93,15 @@ export function AdministracionSection({ obra }: { obra: Obra }) {
       ) : (
         <>
           {/* Totales */}
+          {esCostos ? (
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2 p-3">
+              <Kpi label="Mano de obra" valor={tot.moCosto} />
+              <Kpi label="Contratistas" valor={tot.contCosto} />
+              <Kpi label="Materiales"   valor={tot.matCosto} />
+              <Kpi label="Gastado"      valor={tot.totalCosto} fuerte />
+              <Kpi label="Con %"        valor={tot.total} fuerte />
+            </div>
+          ) : (
           <div className="grid grid-cols-2 md:grid-cols-6 gap-2 p-3">
             <Kpi label="Mano de obra" valor={tot.mo} />
             <Kpi label="Contratistas" valor={tot.cont} />
@@ -87,6 +110,7 @@ export function AdministracionSection({ obra }: { obra: Obra }) {
             <Kpi label="Cobrado"      valor={tot.cobrado} verde />
             <Kpi label="Saldo"        valor={tot.saldo} rojo={tot.saldo > 0} fuerte />
           </div>
+          )}
 
           {sinPrecio > 0 && (
             <div className="mx-3 mb-2 bg-amarillo-light border border-amarillo rounded-lg px-3 py-1.5 text-xs text-[#7A5500]">
@@ -99,7 +123,7 @@ export function AdministracionSection({ obra }: { obra: Obra }) {
             abierto={verJornales}
             onToggle={() => setVerJornales(v => !v)}
             titulo={`Jornales y contratistas, semana a semana (${semanas.length})`}
-            resumen={`${fmtM(tot.mo + tot.cont)} facturable`}
+            resumen={`${fmtM(tot.mo + tot.cont)} ${esCostos ? 'con %' : 'facturable'}`}
           />
           {verJornales && (
           <div className="overflow-x-auto">
@@ -109,10 +133,10 @@ export function AdministracionSection({ obra }: { obra: Obra }) {
                   <th className={th('text-left')}>Semana</th>
                   <th className={th('text-right')}>Mano de obra</th>
                   <th className={th('text-right')}>%</th>
-                  <th className={th('text-right')}>Facturable</th>
+                  <th className={th('text-right')}>{conPct}</th>
                   <th className={th('text-right')}>Contratistas</th>
                   <th className={th('text-right')}>%</th>
-                  <th className={th('text-right')}>Facturable</th>
+                  <th className={th('text-right')}>{conPct}</th>
                 </tr>
               </thead>
               <tbody>
@@ -142,7 +166,7 @@ export function AdministracionSection({ obra }: { obra: Obra }) {
               abierto={verMateriales}
               onToggle={() => setVerMateriales(v => !v)}
               titulo={`Materiales, mes a mes (${meses.length})`}
-              resumen={`${fmtM(tot.mat)} facturable`}
+              resumen={`${fmtM(tot.mat)} ${esCostos ? 'con %' : 'facturable'}`}
             />
             {verMateriales && (
             <div className="border-t border-gris-mid">
@@ -220,7 +244,15 @@ function Kpi({ label, valor, fuerte, verde, rojo }: {
 export function MarcarAdministracion({ obra }: { obra: Obra }) {
   const { puedeAdministrarObras, esAdmin } = usePermisos('tarja')
   const [abierto, setAbierto] = useState(false)
+  // La obra puede traer porcentajes viejos aunque no esté marcada: una llave
+  // en mano con % informativos (cargas sociales) que después se pasó a
+  // "materiales a cargo del cliente" llega acá CON historial. Mostrarlo es
+  // clave: al marcarla por administración, esas versiones viejas empiezan a
+  // FACTURAR retroactivamente — el que marca tiene que verlas, no descubrirlo
+  // en la primera factura.
+  const { data: tarifasAdmin = [] } = useAdminTarifas(abierto ? obra.cod : '')
   if (!puedeAdministrarObras && !esAdmin) return null
+  const vigente = pctVigente(tarifasAdmin, toISO(new Date()))
   return (
     <>
       <button onClick={() => setAbierto(true)}
@@ -229,7 +261,7 @@ export function MarcarAdministracion({ obra }: { obra: Obra }) {
         🧮 Por administración
       </button>
       {abierto && (
-        <ModalPorcentajes obraCod={obra.cod} vigente={null} historial={[]} onClose={() => setAbierto(false)} />
+        <ModalPorcentajes obraCod={obra.cod} vigente={vigente} historial={tarifasAdmin} onClose={() => setAbierto(false)} />
       )}
     </>
   )

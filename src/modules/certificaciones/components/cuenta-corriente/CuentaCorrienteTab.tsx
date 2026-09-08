@@ -39,7 +39,13 @@ const PAGE_SIZE = 50
 
 export function CuentaCorrienteTab() {
   const toast = useToast()
-  const { resolverItems, cargarPrecios, esAdmin, puedeCrear, puedeEditar, puedeEliminar } = usePermisos('certificaciones')
+  const { resolverItems, cargarPrecios, esAdmin, puedeCrear, puedeEditar, puedeEliminar, verCostos } = usePermisos('certificaciones')
+  // Las patas de jornales y contratistas del panel de costos salen de
+  // endpoints de TARJA (horas, tarifas, certificaciones — todos con guardia
+  // tarja.lectura). Un usuario de certificaciones sin tarja recibiría 403s
+  // silenciosos y vería "Mano de obra $0" como si fuera dato real, así que
+  // sin lectura de tarja el panel directamente no se muestra.
+  const { puedeVer: veTarja } = usePermisos('tarja')
   // ACTIVAS + ARCHIVADAS. Con `useObras()` (solo activas) el checkbox "incluir
   // obras archivadas" no hacía nada: el filtro del selector nunca veía una
   // archivada, así que no se la podía elegir. Y si igual se llegaba a una
@@ -257,7 +263,14 @@ export function CuentaCorrienteTab() {
       {/* Obra por administración: costo + % por pata, con su PDF y su Excel.
           Solo si la obra está marcada — para el resto no cambia nada. */}
       {obra?.por_administracion && <AdministracionSection obra={obra} />}
-      {obra && !obra.por_administracion && (
+      {/* Llave en mano: la MISMA sección en modo costos — cuánto va gastando
+          CADINC en jornales, contratistas y materiales, con el % opcional
+          (cargas sociales) arriba del costo. Gateado por ver_costos: es
+          información de plata propia. */}
+      {obra && !obra.por_administracion && llaveEnMano && verCostos && veTarja && (
+        <AdministracionSection obra={obra} modo="costos" />
+      )}
+      {obra && !obra.por_administracion && !llaveEnMano && (
         <div className="flex justify-end -mt-2"><MarcarAdministracion obra={obra} /></div>
       )}
 

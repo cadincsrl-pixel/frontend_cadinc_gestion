@@ -51,7 +51,11 @@ export interface MesMateriales {
 export interface CuentaAdministracion {
   semanas:      SemanaAdmin[]
   meses:        MesMateriales[]
-  tot:          { mo: number; cont: number; mat: number; total: number; cobrado: number; saldo: number }
+  tot:          {
+    mo: number; cont: number; mat: number; total: number; cobrado: number; saldo: number
+    /** Los costos puros, sin %: la otra columna del panel de costos. */
+    moCosto: number; contCosto: number; matCosto: number; totalCosto: number
+  }
   cobros:       CuentaClienteCobro[]
   tarifasAdmin: AdminTarifa[]
   vigente:      AdminTarifa | null
@@ -59,7 +63,18 @@ export interface CuentaAdministracion {
   cargando:     boolean
 }
 
-export function useAdministracionCuenta(obra: Obra): CuentaAdministracion {
+/**
+ * Dos modos sobre el mismo cálculo:
+ *  - 'facturacion' (obras por administración): materiales = la cuenta del
+ *    cliente (a cobrar + cobrado), el % es lo pactado y el resultado se
+ *    factura.
+ *  - 'costos' (obras llave en mano): materiales = lo que pagó CADINC (gasto
+ *    CADINC + lo cobrable si lo hubiera), el % es un recargo informativo
+ *    (p. ej. cargas sociales sobre la mano de obra) y nada se factura.
+ */
+export type ModoAdministracion = 'facturacion' | 'costos'
+
+export function useAdministracionCuenta(obra: Obra, modo: ModoAdministracion = 'facturacion'): CuentaAdministracion {
   const obraCod = obra.cod
   const { data: tarifasAdmin = [], isLoading: cargandoPct } = useAdminTarifas(obraCod)
   const { data: imputaciones = [] } = useAdminImputaciones(obraCod)
@@ -87,11 +102,17 @@ export function useAdministracionCuenta(obra: Obra): CuentaAdministracion {
   const { data: certs = [] } = useCertificacionesObra(obraCod)
   const { data: cobros = [] } = useCobrosCliente(obraCod)
   const { data: materiales = [], isLoading: cargandoMat } = useQuery({
-    queryKey: ['cuenta-corriente', 'admin-materiales', obraCod],
-    // La cuenta del cliente: lo adeudado y lo ya cobrado. `pago_directo` queda
-    // afuera (el cliente ya le pagó al proveedor) y `gasto_cadinc` también
-    // (es plata de CADINC, no de esta cuenta).
-    queryFn: () => fetchCuentaRenglonesTodos({ obra_cod: obraCod, estados: ['a_cobrar', 'cobrado'], archivadas: true }),
+    queryKey: ['cuenta-corriente', 'admin-materiales', obraCod, modo],
+    // Facturación: la cuenta del cliente — lo adeudado y lo ya cobrado.
+    // `pago_directo` queda afuera (el cliente ya le pagó al proveedor) y
+    // `gasto_cadinc` también (es plata de CADINC, no de esta cuenta).
+    // Costos: todo lo que PAGÓ CADINC — el gasto propio más lo cobrable si
+    // lo hubiera; afuera queda solo `pago_directo`, que no salió de su caja.
+    queryFn: () => fetchCuentaRenglonesTodos({
+      obra_cod: obraCod,
+      estados: modo === 'costos' ? ['gasto_cadinc', 'a_cobrar', 'cobrado'] : ['a_cobrar', 'cobrado'],
+      archivadas: true,
+    }),
     enabled: !!obraCod,
     staleTime: 60_000,
   })
@@ -156,8 +177,14 @@ export function useAdministracionCuenta(obra: Obra): CuentaAdministracion {
     const mo   = semanas.reduce((s, x) => s + x.moFacturable, 0)
     const cont = semanas.reduce((s, x) => s + x.contFacturable, 0)
     const mat  = meses.reduce((s, x) => s + x.facturable, 0)
+    const moCosto   = semanas.reduce((s, x) => s + x.moCosto, 0)
+    const contCosto = semanas.reduce((s, x) => s + x.contCosto, 0)
+    const matCosto  = meses.reduce((s, x) => s + x.costo, 0)
     const cobrado = (cobros as { monto: number }[]).reduce((s, c) => s + Number(c.monto ?? 0), 0)
-    return { mo, cont, mat, total: mo + cont + mat, cobrado, saldo: mo + cont + mat - cobrado }
+    return {
+      mo, cont, mat, total: mo + cont + mat, cobrado, saldo: mo + cont + mat - cobrado,
+      moCosto, contCosto, matCosto, totalCosto: moCosto + contCosto + matCosto,
+    }
   }, [semanas, meses, cobros])
 
   const vigente = pctVigente(tarifasAdmin, toISO(new Date()))
