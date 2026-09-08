@@ -23,6 +23,9 @@ const MENSAJE_BIENVENIDA =
   '• Facturación a empresas transportistas\n' +
   '• Saldos de choferes y liquidaciones\n' +
   '• Stock en depósito o en proveedores\n\n' +
+  'Y te cargo pedidos de compra: dictámelos como se los dirías a alguien ' +
+  '("para la garita 20 bolsas de cemento y 3 kilos de alambre de atar"), ' +
+  'te pregunto lo que falte y te lo dejo cargado.\n\n' +
   'Las consultas con datos pueden tardar hasta 30 segundos.'
 
 export function AsistenteChat() {
@@ -110,7 +113,7 @@ export function AsistenteChat() {
             {mensajes.map((m, i) =>
               m.role === 'user'
                 ? <BurbujaUser key={i} texto={m.content} />
-                : <BurbujaAsistente key={i} texto={m.content} />
+                : <BurbujaAsistente key={i} texto={m.content} herramientas={m.herramientas} />
             )}
 
             {/* Indicador "pensando" — las consultas con datos tardan 5-30s */}
@@ -180,10 +183,31 @@ function BurbujaUser({ texto }: { texto: string }) {
   )
 }
 
-function BurbujaAsistente({ texto }: { texto: string }) {
+// Nombres de herramienta legibles. El chip de `crear_pedido` es el que
+// importa: cuando el asistente dice "listo, lo cargué", es la prueba de que
+// efectivamente escribió en el sistema y no de que lo dijo.
+const HERRAMIENTA_LABEL: Record<string, string> = {
+  crear_pedido:      '🛒 cargó el pedido',
+  buscar_materiales: 'buscó en el catálogo',
+}
+
+function BurbujaAsistente({ texto, herramientas }: { texto: string; herramientas?: string[] }) {
+  const usadas = herramientas?.filter(h => h in HERRAMIENTA_LABEL) ?? []
   return (
-    <div className="self-start max-w-[85%] bg-white border border-gris-mid text-carbon rounded-card rounded-bl-md px-3 py-2 text-sm whitespace-pre-wrap break-words">
-      {texto}
+    <div className="self-start max-w-[85%] flex flex-col gap-1">
+      <div className="bg-white border border-gris-mid text-carbon rounded-card rounded-bl-md px-3 py-2 text-sm whitespace-pre-wrap break-words">
+        {texto}
+      </div>
+      {usadas.length > 0 && (
+        <div className="flex flex-wrap gap-1 pl-1">
+          {usadas.map(h => (
+            <span key={h} className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+              h === 'crear_pedido' ? 'bg-verde-light text-verde' : 'bg-gris text-gris-dark'}`}>
+              {HERRAMIENTA_LABEL[h]}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

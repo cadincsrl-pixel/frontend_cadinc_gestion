@@ -15,6 +15,13 @@ import { apiPost } from '@/lib/api/client'
 export interface MensajeAsistente {
   role:    'user' | 'assistant'
   content: string
+  /**
+   * Qué herramientas usó el asistente para esa respuesta. Se muestra abajo del
+   * mensaje: cuando dice "listo, lo cargué", el chip `crear_pedido` es la
+   * prueba de que efectivamente lo cargó y no de que lo dijo. Solo en las
+   * respuestas del asistente.
+   */
+  herramientas?: string[]
 }
 
 interface AsistenteChatResponse {
@@ -69,7 +76,7 @@ export function useAsistente() {
       const res = await apiPost<AsistenteChatResponse>('/api/asistente/chat', {
         messages: primerUser > 0 ? ventana.slice(primerUser) : ventana,
       })
-      setMensajes(prev => [...prev, { role: 'assistant', content: res.reply }])
+      setMensajes(prev => [...prev, { role: 'assistant', content: res.reply, herramientas: res.herramientas_usadas }])
     } catch (err) {
       // El historial NO se pierde: el mensaje del usuario queda en la lista
       // y puede reintentar. Solo mostramos el error en el chat.
