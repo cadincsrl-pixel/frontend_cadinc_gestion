@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useRef } from 'react'
 import * as XLSX from 'xlsx'
-import { Controller, useForm, useWatch } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import type { UseFormRegisterReturn } from 'react-hook-form'
 import {
   useStockRubros, useStockMateriales, useStockMovimientos,
@@ -87,7 +87,7 @@ interface MaterialForm {
 interface MovimientoForm {
   cantidad: number | string
   tipo: 'entrada' | 'salida' | 'ajuste'
-  motivo: 'compra' | 'despacho_obra' | 'devolucion' | 'ajuste_inventario' | 'consumo_interno'
+  motivo: 'compra' | 'despacho_obra' | 'devolucion' | 'ajuste_inventario'
   obs: string
 }
 interface RubroForm {
@@ -97,7 +97,6 @@ interface RubroForm {
 
 const MOTIVO_LABEL: Record<string, string> = {
   compra: 'Compra', despacho_obra: 'Despacho a obra', devolucion: 'Devolución', ajuste_inventario: 'Ajuste inventario',
-  consumo_interno: 'Consumo del depósito',
 }
 const TIPO_CFG: Record<string, { label: string; color: string }> = {
   entrada: { label: '+ Entrada', color: 'text-verde' },
@@ -147,7 +146,6 @@ export function StockTab() {
 
   const formNuevo = useForm<MaterialForm>({ defaultValues: { rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0, proveedor_id: '', alias: '', usa_color: false, clase: 'material' } })
   const formEntrada = useForm<MovimientoForm>({ defaultValues: { cantidad: 0, tipo: 'entrada', motivo: 'compra', obs: '' } })
-  const motivoElegido = useWatch({ control: formEntrada.control, name: 'motivo' })
   const formEditar = useForm<MaterialForm>({ defaultValues: { rubro_id: '', nombre: '', unidad: 'unid', stock_minimo: 0, precio_ref: 0, proveedor_id: '', alias: '', usa_color: false, clase: 'material' } })
   const formRubro = useForm<RubroForm>({ defaultValues: { nombre: '', icono: '' } })
 
@@ -310,12 +308,6 @@ export function StockTab() {
     if (data.tipo === 'salida' && cantidad > modalEntrada.stock_actual) {
       toast(`No hay stock suficiente (disponible: ${modalEntrada.stock_actual})`, 'err')
       return
-    }
-    // Un consumo del depósito es siempre una salida, y sin el "para qué" no
-    // sirve como registro. El backend y la base lo exigen igual.
-    if (data.motivo === 'consumo_interno') {
-      if (data.tipo !== 'salida') { toast('Un consumo del depósito es una salida, no una entrada', 'err'); return }
-      if (data.obs.trim().length < 3) { toast('Decí para qué se usó (lavado, limpieza, arreglo…)', 'err'); return }
     }
     createMov({
       material_id: modalEntrada.id,
@@ -819,7 +811,6 @@ export function StockTab() {
                   <option value="compra">Compra</option>
                   <option value="despacho_obra">Despacho a obra</option>
                   <option value="devolucion">Devolución</option>
-                  <option value="consumo_interno">Consumo del depósito</option>
                   {/* "Ajuste inventario" se declara por "↔ Diferencia", no como
                       motivo de un movimiento de entrada/salida. */}
                 </select>
@@ -827,15 +818,9 @@ export function StockTab() {
             </div>
             <Input label="Cantidad" type="number" step="0.001" min="0" {...formEntrada.register('cantidad')} />
             <Input
-              label={motivoElegido === 'consumo_interno' ? 'Para qué se usó (obligatorio)' : 'Observaciones'}
-              placeholder={motivoElegido === 'consumo_interno' ? 'Lavado de la Hilux, limpieza del galpón, arreglo de la puerta…' : 'Detalle opcional...'}
+              label="Observaciones"
+              placeholder="Detalle opcional..." 
               {...formEntrada.register('obs')} />
-            {motivoElegido === 'consumo_interno' && (
-              <p className="text-[11px] text-gris-dark -mt-1">
-                Lo que el depósito usa para sí mismo. Descuenta el stock al instante y queda con tu nombre y el motivo,
-                así en el próximo recuento se lee como una salida explicada, no como un faltante. No pasa a ninguna cuenta de cliente.
-              </p>
-            )}
           </div>
         )}
       </Modal>

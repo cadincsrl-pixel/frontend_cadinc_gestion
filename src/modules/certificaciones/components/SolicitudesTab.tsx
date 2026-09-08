@@ -626,7 +626,23 @@ export function SolicitudesTab() {
   const [uploading, setUploading] = useState(false)
 
   const obrasActivas = (obras as Obra[]).filter(o => !o.archivada)
-  const obraOptions = obrasActivas.map(o => ({ value: o.cod, label: `${o.cod} — ${o.nom}`, sub: o.resp ?? undefined }))
+  // Los centros internos van arriba y en su propio grupo. Sin esto, tipear
+  // "oficina" ofrece primero CC-022 OFICINA MISION SALTA 2026 —que es una obra
+  // de un cliente— y el gasto del pañol termina facturado a quien no
+  // corresponde. El buscador matchea por substring, así que el grupo es lo
+  // único que separa visualmente las dos cosas.
+  const esInterna = (o: Obra) => o.es_interna
+  const opcionObra = (o: Obra) => ({
+    value: o.cod,
+    label: `${o.cod} — ${o.nom}`,
+    sub:   esInterna(o) ? 'Gasto de CADINC, no se le cobra a nadie' : (o.resp ?? undefined),
+    group: esInterna(o) ? 'Interno CADINC' : 'Obras',
+  })
+  const obraOptions = [
+    ...obrasActivas.filter(esInterna).map(opcionObra),
+    ...obrasActivas.filter(o => !esInterna(o)).map(opcionObra),
+  ]
+  const codPanol = obrasActivas.find(o => o.cod === 'CC CADINC')?.cod
   const obrasMap = new Map((obras as Obra[]).map(o => [o.cod, o]))
   const provOptions = (proveedores as Proveedor[]).map(p => ({ value: String(p.id), label: p.nombre, sub: p.cuit ?? undefined }))
 
@@ -691,8 +707,8 @@ export function SolicitudesTab() {
   }
 
   // ── Crear solicitud ──
-  function abrirNuevo() {
-    setLineas([newLinea()]); setObraNueva(''); formCab.reset({ prioridad: 'normal', obs: '', entrega_tentativa: '' }); setModalNuevo(true)
+  function abrirNuevo(destino = '') {
+    setLineas([newLinea()]); setObraNueva(destino); formCab.reset({ prioridad: 'normal', obs: '', entrega_tentativa: '' }); setModalNuevo(true)
   }
 
   function handleCreate(cab: any) {
@@ -1301,7 +1317,15 @@ export function SolicitudesTab() {
             <span className="sm:hidden">📄</span>
             <span className="hidden sm:inline">📄 Remitos</span>
           </Button>
-          <Button variant="primary" size="sm" onClick={abrirNuevo} disabled={!puedeCrear} className="shrink-0">
+          {codPanol && (
+            <Button variant="secondary" size="sm" onClick={() => abrirNuevo(codPanol)} disabled={!puedeCrear}
+              title="Pedido para el pañol y la oficina: es gasto de CADINC, no se le cobra a ningún cliente"
+              className="shrink-0">
+              <span className="sm:hidden">🧰</span>
+              <span className="hidden sm:inline">🧰 Pedido del pañol</span>
+            </Button>
+          )}
+          <Button variant="primary" size="sm" onClick={() => abrirNuevo()} disabled={!puedeCrear} className="shrink-0">
             <span className="sm:hidden">+ Nueva</span>
             <span className="hidden sm:inline">+ Nueva solicitud</span>
           </Button>
@@ -2043,7 +2067,15 @@ export function SolicitudesTab() {
         </>}>
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Combobox label="Obra destino" placeholder="Buscar obra..." options={obraOptions} value={obraNueva} onChange={setObraNueva} />
+            <div>
+              <Combobox label="Obra destino" placeholder="Buscar obra..." options={obraOptions} value={obraNueva} onChange={setObraNueva} />
+              {obrasMap.get(obraNueva)?.es_interna && (
+                <p className="text-[11px] text-azul bg-azul-light rounded px-2 py-1 mt-1 leading-tight">
+                  Destino interno: esto es <b>gasto de CADINC</b> y no se le cobra a ningún cliente.
+                  Se lee después en la pestaña Gasto interno.
+                </p>
+              )}
+            </div>
             <div>
               <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1 block">Prioridad</label>
               <select {...formCab.register('prioridad')} className="w-full px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white font-semibold focus:border-naranja">
