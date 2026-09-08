@@ -16,6 +16,7 @@ import {
 import { totalHsLeg, getCatIdEfectivo, costoLegConCatObra } from '@/lib/utils/costos'
 import { useHsExtrasAll, useUpsertHsExtra } from '@/modules/tarja/hooks/useHsExtras'
 import { exportarHorasTrabajador } from '@/lib/utils/excel'
+import { parseCantidadAR } from '@/lib/utils/numeros'
 import { Chip } from '@/components/ui/Chip'
 import { useToast } from '@/components/ui/Toast'
 import { useUpsertHora } from '@/modules/tarja/hooks/useHoras'
@@ -384,8 +385,11 @@ export function HorasTrabajadorPage() {
 
   function handleCellBlur(leg: string, obraCod: string, fecha: string, antes: number, val: string) {
     setEditingCell(null)
-    const horas = val === '' ? 0 : parseFloat(val)
-    if (isNaN(horas) || horas < 0) return
+    // Acepta coma o punto: parseFloat('8,5') daría 8 (ver lib/utils/numeros).
+    // El input es controlado, así que si el valor no sirve alcanza con salir:
+    // la celda vuelve sola a lo guardado.
+    const horas = val.trim() === '' ? 0 : parseCantidadAR(val)
+    if (horas === null) return
     if (horas === antes) return
     upsertHora(
       { obra_cod: obraCod, fecha, leg, horas },
@@ -411,8 +415,8 @@ export function HorasTrabajadorPage() {
   async function handleExtraBlur(leg: string, obraCod: string, antes: number, val: string) {
     setEditingCell(null)
     const raw = val.trim()
-    const hs = raw === '' ? 0 : parseFloat(raw)
-    if (isNaN(hs) || hs < 0) return
+    const hs = raw === '' ? 0 : parseCantidadAR(raw)
+    if (hs === null) return
     if (hs === antes) return
     // Sin tope duro, pero avisamos al cargar un valor inusualmente alto.
     // (El input es controlado: al cancelar, editingCell ya es null y vuelve al valor guardado.)
@@ -784,9 +788,8 @@ export function HorasTrabajadorPage() {
                             return (
                               <td key={i} className="px-1.5 py-1.5 text-center">
                                 <input
-                                  type="number"
-                                  min={0}
-                                  step={0.5}
+                                  type="text"
+                                  inputMode="decimal"
                                   value={displayVal}
                                   readOnly={!editable}
                                   data-htrab-row={rowKey}
@@ -850,9 +853,8 @@ export function HorasTrabajadorPage() {
                                 : 'w-14 h-8 border-[1.5px] border-gris-mid bg-white text-gris-mid rounded-md text-center font-mono text-sm font-bold outline-none focus:border-naranja focus:ring-1 focus:ring-naranja/30'
                               return (
                                 <input
-                                  type="number"
-                                  min={0}
-                                  step={0.5}
+                                  type="text"
+                                  inputMode="decimal"
                                   value={displayVal}
                                   readOnly={!editable}
                                   title="Horas extras de la semana"

@@ -8,6 +8,7 @@ import { useToast } from '@/components/ui/Toast'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import { usePermisos } from '@/hooks/usePermisos'
 import { toISO, getViernes, getSemLabel } from '@/lib/utils/dates'
+import { parseNumeroAR } from '@/lib/utils/numeros'
 import type { Categoria, Tarifa } from '@/types/domain.types'
 
 interface Props {
@@ -115,8 +116,10 @@ export function TarifasPanel({ obraCod, readonly = false }: Props) {
 
   function handleSave(cat: Categoria) {
     const state = getSemForCat(cat.id)
-    const vh = parseFloat(state.value)
-    if (isNaN(vh) || vh <= 0) {
+    // El valor hora se tipea con coma: parseFloat lo truncaría (ver
+    // lib/utils/numeros). "2.500,50" y "2500.5" son el mismo precio.
+    const vh = parseNumeroAR(state.value)
+    if (vh === null || vh <= 0) {
       toast('Ingresá un precio válido', 'err')
       return
     }
@@ -272,9 +275,8 @@ export function TarifasPanel({ obraCod, readonly = false }: Props) {
                             </select>
                             <span className="text-sm text-gris-dark font-bold">$</span>
                             <input
-                              type="number"
-                              min={0}
-                              step={50}
+                              type="text"
+                              inputMode="decimal"
                               autoFocus
                               value={state.value}
                               onChange={e => updateSemState(cat.id, 'value', e.target.value)}

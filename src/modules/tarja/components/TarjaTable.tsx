@@ -13,6 +13,7 @@ import { usePermisos } from '@/hooks/usePermisos'
 import { useSessionStore } from '@/store/session.store'
 import { getSemDays, getViernes, toISO, esFinde, esJueves, esHoy, DIAS, hoyArgentinaISO } from '@/lib/utils/dates'
 import { costoLegConCatObra, getVHConCatObra, getTarifaEnFecha, fmtMonto, getHsExtrasLeg, redondearHs } from '@/lib/utils/costos'
+import { parseCantidadAR } from '@/lib/utils/numeros'
 import { useToast } from '@/components/ui/Toast'
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api/client'
@@ -220,8 +221,10 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
 
   const handleChange = useCallback(
     (leg: string, fecha: string, val: string, antes: number) => {
-      const horas = val === '' ? 0 : parseFloat(val)
-      if (isNaN(horas) || horas < 0) return
+      // El separador puede venir con coma: parseFloat('8,5') daría 8 y
+      // guardaría media hora de menos sin avisar (ver lib/utils/numeros).
+      const horas = val.trim() === '' ? 0 : parseCantidadAR(val)
+      if (horas === null) return
       // Sin cambio real → sin PUT. Antes, tocar una celda y salir sin tipear
       // (gesto común en celular) mandaba horas=0 igual, y como el upsert
       // individual BORRA la fila cuando llega 0, un trabajador cuya única
@@ -284,8 +287,13 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
   const handleExtraChange = useCallback(
     (leg: string, val: string, antes: number, el?: HTMLInputElement) => {
       const raw = val.trim()
-      const hs = raw === '' ? 0 : parseFloat(raw)
-      if (isNaN(hs) || hs < 0) return
+      const hs = raw === '' ? 0 : parseCantidadAR(raw)
+      // Basura tipeada: se revierte el campo. Es no controlado, así que si no
+      // lo tocamos queda mostrando algo distinto de lo guardado.
+      if (hs === null) {
+        if (el) el.value = antes ? String(antes) : ''
+        return
+      }
       // Evitar mutación si el valor no cambió — un Tab-walk por la grilla
       // sin tocar nada no debería generar mutations innecesarias al backend.
       if (hs === antes) return
@@ -557,9 +565,11 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                           </div>
                         )}
                         <input
-                          type="number"
-                          min={0}
-                          step={0.5}
+                          // type="text" y no "number": con una coma el browser
+                          // marca badInput y `value` llega VACÍO, así que no se
+                          // puede ni leer lo que la persona escribió. inputMode
+                          // igual abre el teclado numérico en el celular.
+                          type="text"
                           key={`${p.leg}-${fecha}-${h}`}
                           defaultValue={h || ''}
                           readOnly={!celdaEditable}
@@ -570,15 +580,17 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                           inputMode="decimal"
                           onWheel={e => (e.currentTarget as HTMLInputElement).blur()}
                           onBlur={celdaEditable ? e => {
-                            // Safari/Firefox con "8,5" (coma): el browser no lo
-                            // parsea, `value` llega vacío y se guardaría 0
-                            // (borrando la fila). Revertimos y avisamos.
-                            if (e.target.validity.badInput) {
+                            // Acepta coma o punto. Lo que no sea un número se
+                            // revierte: el input no es controlado, así que si
+                            // quedara el texto tipeado la celda mostraría algo
+                            // distinto de lo guardado.
+                            const crudo = e.target.value.trim()
+                            if (crudo !== '' && parseCantidadAR(crudo) === null) {
                               e.target.value = h ? String(h) : ''
-                              toast('Usá punto para los decimales: 8.5', 'warn')
+                              toast('Poné un número de horas: 8 o 8,5', 'warn')
                               return
                             }
-                            handleChange(p.leg, fecha, e.target.value, h)
+                            handleChange(p.leg, fecha, crudo, h)
                           } : undefined}
                           onKeyDown={celdaEditable ? e => {
                             const el = e.target as HTMLInputElement
@@ -645,9 +657,8 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
                   {verHsExtras && (
                     <td className="px-1.5 py-1.5 text-center">
                       <input
-                        type="number"
-                        min={0}
-                        step={0.5}
+                        type="text"
+                        inputMode="decimal"
                         key={`extra-${p.leg}-${semKey}-${hsExtraLeg}`}
                         defaultValue={hsExtraLeg || ''}
                         readOnly={!puedeEditar || readonly}

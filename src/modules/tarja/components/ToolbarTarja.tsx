@@ -12,6 +12,7 @@ import { useCopiarSemanaAnterior } from '../hooks/useAsignaciones'
 import { usePermisos } from '@/hooks/usePermisos'
 import { fetchPrestamos } from '../hooks/usePrestamos'
 import { getViernes, toISO, DIAS } from '@/lib/utils/dates'
+import { parseCantidadAR } from '@/lib/utils/numeros'
 import type { Personal, Categoria, Hora, Tarifa, Obra, Prestamo } from '@/types/domain.types'
 
 // Tooltip de los botones deshabilitados por permiso (undefined = habilitado).
@@ -70,8 +71,9 @@ export function ToolbarTarja({
   }
 
   function handleConfirmarAutoFill() {
-    const hs = parseFloat(horas)
-    if (isNaN(hs) || hs <= 0 || hs > 24) return
+    // Acepta coma o punto (ver lib/utils/numeros).
+    const hs = parseCantidadAR(horas)
+    if (hs === null || hs <= 0 || hs > 24) return
     if (!seleccionados.length || !dias.length) return
     onAutoFill(hs, seleccionados, dias)
     setShowAutoFill(false)
@@ -261,7 +263,7 @@ export function ToolbarTarja({
                 </button>
               ))}
               <input
-                type="number" min={0.5} max={24} step={0.5}
+                type="text" inputMode="decimal"
                 value={horas}
                 onChange={e => setHoras(e.target.value)}
                 className="w-16 h-9 border-[1.5px] border-gris-mid rounded-lg text-center font-mono font-bold text-sm outline-none focus:border-naranja bg-blanco ml-1"
