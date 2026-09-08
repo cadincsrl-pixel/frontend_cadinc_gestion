@@ -18,6 +18,14 @@ export interface Obra extends AuditFields {
   fecha_archivo: string | null
   es_deposito: boolean
   /**
+   * Destino interno de CADINC (2026-09-08): el pañol y la oficina,
+   * mantenimiento, herreros, logística, poda. Lo que se les despacha es gasto
+   * propio y se lee en la pestaña "Gasto interno". Distinto de `es_deposito`,
+   * que marca el galpón donde vive el stock: un centro interno consume, el
+   * depósito guarda.
+   */
+  es_interna: boolean
+  /**
    * Quién se hace cargo de los materiales (20260904ak). 'cliente': se cobran
    * en la cuenta del cliente. 'cadinc': obra llave en mano, todo es gasto de
    * CADINC. Cambiarlo recalcula la cuenta (trigger en la base).
@@ -1708,6 +1716,26 @@ export interface CuentaResumenPagos {
 export interface CuentaResumen {
   grupos: CuentaResumenGrupo[]
   pagos:  CuentaResumenPagos[]
+}
+
+/**
+ * Herramientas compradas por un centro interno, agrupadas por mes.
+ *
+ * Vienen aparte del resto del gasto porque `materiales_a_cuenta_cliente` las
+ * excluye a propósito (una herramienta va y vuelve, no se le factura a nadie).
+ * En la pantalla van en su propia columna, etiquetadas como patrimonio: no se
+ * suman al consumo del mes.
+ */
+export interface GastoInternoHerramientas {
+  mes:       string
+  obra_cod:  string
+  obra_nom:  string
+  renglones: number
+  total:     number
+}
+
+export interface GastoInterno extends CuentaResumen {
+  herramientas: GastoInternoHerramientas[]
 }
 
 // ── Stock en Depósito ──

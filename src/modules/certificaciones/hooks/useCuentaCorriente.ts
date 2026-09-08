@@ -7,6 +7,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api/client'
 import type {
   CuentaEstado, CuentaTipo, CuentaGrupo, CuentaRenglon, CuentaRenglonesPage, CuentaResumen,
+  GastoInterno,
 } from '@/types/domain.types'
 
 export interface CuentaFiltro {
@@ -61,6 +62,37 @@ export function useCuentaResumen(f: CuentaFiltro, grupo: CuentaGrupo, enabled = 
   return useQuery({
     queryKey: [...CUENTA_CORRIENTE_KEY, 'resumen', qs],
     queryFn:  () => apiGet<CuentaResumen>(`/api/cuenta-cliente/resumen?${qs}`),
+    placeholderData: keepPreviousData,
+    enabled,
+  })
+}
+
+// ── Gasto interno (2026-09-08) ────────────────────────────────────────
+// Lo que gastan los centros internos de CADINC: el pañol, mantenimiento,
+// herreros, logística y poda. Son los mismos filtros y el mismo ledger que la
+// cuenta corriente, contra endpoints aparte: el recorte a "solo internas" lo
+// hace el backend y no viaja en la query, así esta pantalla puede dársele a
+// quien no tiene que ver la deuda de los clientes.
+
+export const GASTO_INTERNO_KEY = ['gasto-interno'] as const
+
+/** Totales por mes u obra, más las herramientas (que no están en el ledger). */
+export function useGastoInternoResumen(f: CuentaFiltro, grupo: CuentaGrupo, enabled = true) {
+  const qs = armarQuery({ ...f, estados: undefined, tipo: undefined }, { grupo })
+  return useQuery({
+    queryKey: [...GASTO_INTERNO_KEY, 'resumen', qs],
+    queryFn:  () => apiGet<GastoInterno>(`/api/cuenta-cliente/interno/resumen?${qs}`),
+    placeholderData: keepPreviousData,
+    enabled,
+  })
+}
+
+/** El detalle, renglón por renglón. */
+export function useGastoInternoRenglones(f: CuentaFiltro, page: number, pageSize: number, enabled = true) {
+  const qs = armarQuery(f, { limit: pageSize, offset: (page - 1) * pageSize })
+  return useQuery({
+    queryKey: [...GASTO_INTERNO_KEY, 'renglones', qs],
+    queryFn:  () => apiGet<CuentaRenglonesPage>(`/api/cuenta-cliente/interno/renglones?${qs}`),
     placeholderData: keepPreviousData,
     enabled,
   })

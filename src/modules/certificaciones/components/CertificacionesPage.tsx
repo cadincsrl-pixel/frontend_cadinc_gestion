@@ -9,6 +9,7 @@ import { CatalogoTab }        from './CatalogoTab'
 import { StockProveedorTab }  from './StockProveedorTab'
 import { StockClienteTab }    from './StockClienteTab'
 import { CuentaCorrienteTab } from './cuenta-corriente/CuentaCorrienteTab'
+import { GastoInternoTab }    from './GastoInternoTab'
 
 const TABS = [
   { key: 'solicitudes',      icon: '🛒', label: 'Solicitudes',         sub: 'Pedidos de compra y envío de materiales' },
@@ -17,6 +18,7 @@ const TABS = [
   { key: 'stock-proveedor',  icon: '🏭', label: 'Stock en proveedores', sub: 'Materiales comprados que aún quedan en el galpón del proveedor' },
   { key: 'stock-cliente',    icon: '🤝', label: 'Stock de clientes',    sub: 'Material del cliente administrado en depósito (no facturable)' },
   { key: 'cuenta-corriente', icon: '💳', label: 'Cuenta corriente',     sub: 'Todo lo que salió a cada obra y quién lo paga: a cobrar al cliente, cobrado, pagado directo por el cliente o gasto de CADINC' },
+  { key: 'gasto-interno',    icon: '🧰', label: 'Gasto interno',        sub: 'Lo que CADINC gasta en sí misma: el pañol y la oficina, mantenimiento, herreros, logística y poda. No se le cobra a ningún cliente' },
 ]
 
 // Pestañas que se unificaron en "Cuenta corriente" (20260904aq): los links y
@@ -72,6 +74,7 @@ export function CertificacionesPage() {
         {tab === 'stock-proveedor' && <StockProveedorTab />}
         {tab === 'stock-cliente'   && <StockClienteTab />}
         {tab === 'cuenta-corriente' && <CuentaCorrienteTab />}
+        {tab === 'gasto-interno'   && <GastoInternoTab />}
       </div>
     </div>
   )
