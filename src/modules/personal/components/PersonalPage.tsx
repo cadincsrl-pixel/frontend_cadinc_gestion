@@ -7,7 +7,7 @@ import { usePersonal, useUpdatePersonal } from '@/modules/tarja/hooks/usePersona
 import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
 import { useObrasTodas } from '@/modules/tarja/hooks/useObras'
 import { toISO } from '@/lib/utils/dates'
-import { esActivo as esActivoBase } from '@/lib/utils/personal'
+import { esActivo as esActivoBase, esOperario, PADRON_EXTERNO_LABEL } from '@/lib/utils/personal'
 import { useActividadPersonal, legsActivosDe, ultimasObrasDe } from '@/modules/tarja/hooks/useActividadPersonal'
 import { useContratistas, useCreateContratista, useUpdateContratista, useDeleteContratista } from '@/modules/tarja/hooks/useContratistas'
 import { Pagination } from '@/components/ui/Pagination'
@@ -98,7 +98,7 @@ export function PersonalPage() {
   const [detalle,       setDetalle]       = useState<Personal | null>(null)
   const [busqueda,      setBusqueda]      = useState('')
   const [filterCondicion, setFilterCondicion] = useState<'' | 'blanco' | 'asegurado' | 'sin_definir'>('')
-  const [filterActivo,    setFilterActivo]    = useState<'activos' | 'inactivos' | 'todos'>('activos')
+  const [filterActivo,    setFilterActivo]    = useState<'activos' | 'inactivos' | 'todos' | 'externos'>('activos')
   const [pageP,         setPageP]         = useState(1)
   const [pageSizeP,     setPageSizeP]     = useState(12)
 
@@ -113,12 +113,18 @@ export function PersonalPage() {
   const formNuevoC = useForm<any>()
   const formEditC  = useForm<any>()
 
-  // Conteos por condición (sobre el total, sin filtrar)
-  const countBlanco = personal.filter(p => p.condicion === 'blanco').length
-  const countAsegurado = personal.filter(p => p.condicion === 'asegurado').length
-  const countSinCondicion = personal.length - countBlanco - countAsegurado
+  // Conteos por condición, solo sobre operarios de obra (sin filtrar por texto).
+  const operarios = personal.filter(esOperario)
+  const countBlanco = operarios.filter(p => p.condicion === 'blanco').length
+  const countAsegurado = operarios.filter(p => p.condicion === 'asegurado').length
+  const countSinCondicion = operarios.length - countBlanco - countAsegurado
 
   // Filtros
+  // Legajos cuya ficha real vive en otro padrón (oficina, choferes). No se
+  // borran porque tienen historia, pero tampoco son personal de obra: van a su
+  // propia vista para no ensuciar ni los conteos ni las alertas.
+  const externos = personal.filter(p => !esOperario(p))
+
   const filtrados = personal.filter(p => {
     const matchText = p.nom.toLowerCase().includes(busqueda.toLowerCase()) ||
       p.leg.includes(busqueda) ||
@@ -126,6 +132,8 @@ export function PersonalPage() {
     const matchCondicion =
       !filterCondicion ||
       (filterCondicion === 'sin_definir' ? !p.condicion : p.condicion === filterCondicion)
+    if (filterActivo === 'externos') return matchText && matchCondicion && !esOperario(p)
+    if (!esOperario(p)) return false
     const activo = esActivo(p)
     const matchActivo =
       filterActivo === 'todos' ||
@@ -364,12 +372,15 @@ export function PersonalPage() {
             </select>
             <select
               value={filterActivo}
-              onChange={e => setFilterActivo(e.target.value as any)}
+              onChange={e => setFilterActivo(e.target.value as typeof filterActivo)}
               className="px-3 py-2 border-[1.5px] border-gris-mid rounded-lg font-sans text-sm outline-none transition-colors focus:border-naranja bg-white"
             >
               <option value="activos">Solo activos</option>
               <option value="inactivos">Solo inactivos</option>
               <option value="todos">Activos + inactivos</option>
+              {externos.length > 0 && (
+                <option value="externos">Fichas de otros padrones ({externos.length})</option>
+              )}
             </select>
             <div className="flex gap-2 text-xs">
               <button
@@ -452,9 +463,16 @@ export function PersonalPage() {
                           </td>
                           <td className="px-4 py-3">
                             <div className="font-bold text-sm text-carbon">{p.nom}</div>
-                            <span className={`inline-block text-[10px] font-bold px-1.5 py-0.5 rounded-full mt-0.5 ${activo ? 'bg-verde-light text-verde' : 'bg-gris text-gris-dark'}`}>
-                              {activo ? '● Activo' : '○ Inactivo'}
-                            </span>
+                            {p.padron_externo ? (
+                              <span className="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded-full mt-0.5 bg-azul-light text-azul"
+                                title="Su ficha real vive en otro padrón. Este legajo queda solo por su historia.">
+                                ↗ {PADRON_EXTERNO_LABEL[p.padron_externo]}
+                              </span>
+                            ) : (
+                              <span className={`inline-block text-[10px] font-bold px-1.5 py-0.5 rounded-full mt-0.5 ${activo ? 'bg-verde-light text-verde' : 'bg-gris text-gris-dark'}`}>
+                                {activo ? '● Activo' : '○ Inactivo'}
+                              </span>
+                            )}
                           </td>
                           <td className="font-mono text-xs text-gris-dark px-4 py-3 hidden md:table-cell">
                             {p.dni || '—'}

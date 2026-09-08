@@ -14,7 +14,7 @@ import {
 import { usePersonal } from '../hooks/usePersonal'
 import { toISO } from '@/lib/utils/dates'
 import { venceEl, entregaVencida } from '@/lib/utils/ropa'
-import { esActivo } from '@/lib/utils/personal'
+import { esActivo, esOperario } from '@/lib/utils/personal'
 import { useActividadPersonal, legsActivosDe } from '../hooks/useActividadPersonal'
 import { Button }     from '@/components/ui/Button'
 import { Modal }      from '@/components/ui/Modal'
@@ -429,7 +429,9 @@ export function RopaPage() {
   // A los inactivos no se les da ropa.
   const legsActivosSet = useMemo(() => {
     const legsConHoras = legsActivosDe(actividad)
-    return new Set((personal as Personal[]).filter(p => esActivo(p, legsConHoras)).map(p => p.leg))
+    // Solo operarios de obra: a la gente de oficina y a los choferes no se les
+    // entrega ropa de obra, y su ficha real vive en otro padrón.
+    return new Set((personal as Personal[]).filter(p => esOperario(p) && esActivo(p, legsConHoras)).map(p => p.leg))
   }, [actividad, personal])
 
   const trabajadoresActivos = useMemo(

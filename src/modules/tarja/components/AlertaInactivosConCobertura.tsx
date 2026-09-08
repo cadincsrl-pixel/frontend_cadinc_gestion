@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import type { Personal } from '@/types/domain.types'
-import { esActivo } from '@/lib/utils/personal'
+import { esActivo, esOperario } from '@/lib/utils/personal'
 
 interface Props {
   personal: Personal[]
@@ -29,6 +29,10 @@ export function AlertaInactivosConCobertura({ personal, legsConHoras }: Props) {
     if (!personal.length) return []
 
     return personal.filter(p => {
+      // Los legajos de otro padrón (oficina, choferes) no son un sangrado: esa
+      // gente trabaja, su cobertura está bien pagada y se rinde en otro lado.
+      // Contarlos acá afirmaba algo falso y tapaba los casos reales.
+      if (!esOperario(p)) return false
       const tieneCobertura = p.condicion === 'blanco' || p.condicion === 'asegurado'
       // Criterio único de activo (lib/utils/personal.ts): los mensualizados
       // cuentan como activos, así que ya no hace falta excluirlos a mano.

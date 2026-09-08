@@ -62,6 +62,8 @@ export interface CatHistorial {
 
 export type PersonalModalidad = 'hora' | 'mes'
 
+export type PadronExterno = 'oficina' | 'chofer' | 'contratista'
+
 export interface Personal extends AuditFields {
   leg: string
   nom: string
@@ -77,6 +79,12 @@ export interface Personal extends AuditFields {
   talle_camisa:    string | null
   activo_override: boolean | null
   fecha_nacimiento: string | null   // ISO yyyy-mm-dd
+  /**
+   * NULL = operario de obra. Con valor, la ficha real de la persona vive en
+   * otro padrón y este legajo existe solo por su historia. Filtrar con
+   * `esOperario()`, nunca con `activo_override`.
+   */
+  padron_externo: PadronExterno | null
   personal_cat_historial: CatHistorial[]
 }
 

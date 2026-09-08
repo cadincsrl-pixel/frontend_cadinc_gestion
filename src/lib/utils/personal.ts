@@ -29,6 +29,27 @@ export function legsConHorasDesde(
  * horas en tarja) y un jornalizado lo está si tuvo horas en las últimas
  * SEMANAS_ACTIVO semanas.
  */
+/**
+ * Un legajo es operario de obra salvo que su ficha real viva en otro padrón
+ * (oficina, choferes, contratistas). Esos legajos NO se borran porque tienen
+ * historia — horas, categorías, ropa — pero no cuentan como personal de obra.
+ *
+ * Va aparte de `esActivo()` a propósito: "no es un operario" y "este operario
+ * dejó de trabajar" son hechos distintos. Mezclarlos fue lo que hizo que
+ * darles de baja los mudara a la alerta de cobertura en vez de silenciarlos
+ * (migración `20260908w`).
+ */
+export function esOperario(p: Pick<Personal, 'padron_externo'>): boolean {
+  return !p.padron_externo
+}
+
+/** Dónde vive la ficha real, para el chip de la pantalla. */
+export const PADRON_EXTERNO_LABEL: Record<NonNullable<Personal['padron_externo']>, string> = {
+  oficina:     'Costos de oficina',
+  chofer:      'Choferes de logística',
+  contratista: 'Contratistas',
+}
+
 export function esActivo(
   p: Pick<Personal, 'leg' | 'modalidad' | 'activo_override'>,
   legsConHoras: ReadonlySet<string>,

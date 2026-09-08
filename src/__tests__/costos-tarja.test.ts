@@ -61,7 +61,7 @@ function mkPersonal(leg: string, nom: string, cat_id: number, hist: { cat_id: nu
     dni: null, condicion: 'blanco', modalidad: 'hora',
     tel: null, dir: null, obs: null,
     talle_pantalon: null, talle_botines: null, talle_camisa: null,
-    activo_override: null, fecha_nacimiento: null,
+    activo_override: null, fecha_nacimiento: null, padron_externo: null,
     personal_cat_historial: hist,
   }
 }

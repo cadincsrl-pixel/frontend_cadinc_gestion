@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import type { Personal } from '@/types/domain.types'
-import { esActivo } from '@/lib/utils/personal'
+import { esActivo, esOperario } from '@/lib/utils/personal'
 import { useResumenDocumentos } from '../hooks/usePersonalDocumentos'
 
 interface Props {
@@ -35,6 +35,8 @@ export function AlertaDniFaltante({ personal, legsConHoras, onSelect }: Props) {
 
     const resultado: Faltante[] = []
     for (const p of personal) {
+      // Un chofer o alguien de oficina no necesita legajo de obra completo.
+      if (!esOperario(p)) continue
       if (!esActivo(p, legsConHoras)) continue
       const faltan: DatoFaltante[] = []
       if (!legsConDni.has(p.leg)) faltan.push('dni')
