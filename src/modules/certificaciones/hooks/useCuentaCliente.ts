@@ -5,7 +5,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPatch, apiPost, apiDelete } from '@/lib/api/client'
-import type { CuentaClienteCobro, MedioCobro } from '@/types/domain.types'
+import type { CuentaClienteCobro, MedioCobro, CertificadoCliente, CertificadoDetalle, CertificadoEmitido } from '@/types/domain.types'
 
 /**
  * Carga/corrige el precio de varios ítems de MCC de una sola vez. Reusa el
@@ -61,6 +61,9 @@ export interface CrearCobroInput {
   item_ids?: number[]
   /** Path del comprobante ya subido con la signed URL. */
   comprobante_path?: string | null
+  /** Contra un certificado: se imputan todos sus renglones sin cobrar (item_ids se ignora). */
+  certificado_id?:     number | null
+  monto_mano_de_obra?: number
 }
 export interface EditarCobroInput {
   id:     number
@@ -144,4 +147,50 @@ export async function uploadComprobanteCobro(file: File): Promise<string> {
 export async function fetchCobroComprobanteUrl(id: number): Promise<string> {
   const { url } = await apiGet<{ url: string }>(`/api/cuenta-cliente/cobros/${id}/comprobante-url`)
   return url
+}
+
+// ── Certificados al cliente (20260911h/i/j) ─────────────────────────────
+const CERTIFICADOS_KEY = (obra?: string) => ['cuenta-cliente-certificados', obra ?? 'all'] as const
+
+export function useCertificados(obra_cod?: string, enabled = true) {
+  return useQuery({
+    queryKey: CERTIFICADOS_KEY(obra_cod),
+    queryFn:  () => apiGet<CertificadoCliente[]>(`/api/cuenta-cliente/certificados?obra_cod=${encodeURIComponent(obra_cod ?? '')}`),
+    enabled:  enabled && !!obra_cod,
+    staleTime: 60_000,
+  })
+}
+
+/** El certificado con renglones y cobros; el backend lo devuelve con `renglones` como lista. */
+export async function fetchCertificado(id: number): Promise<CertificadoDetalle> {
+  const raw = await apiGet<Omit<CertificadoDetalle, 'renglones_lista' | 'renglones'> & { renglones: CertificadoDetalle['renglones_lista'] }>(
+    `/api/cuenta-cliente/certificados/${id}`,
+  )
+  const { renglones, ...resto } = raw
+  return { ...resto, renglones: renglones.length, renglones_lista: renglones }
+}
+
+export interface EmitirCertificadoInput { obra_cod: string; fecha_corte: string; mano_de_obra: number; obs?: string | null }
+
+export function useEmitirCertificado() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: EmitirCertificadoInput) => apiPost<CertificadoEmitido>('/api/cuenta-cliente/certificados', dto),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cuenta-cliente-certificados'] })
+      qc.invalidateQueries({ queryKey: ['cuenta-corriente'] })
+    },
+  })
+}
+
+export function useAnularCertificado() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, motivo }: { id: number; motivo: string }) =>
+      apiPost<{ id: number; renglones_liberados: number }>(`/api/cuenta-cliente/certificados/${id}/anular`, { motivo }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cuenta-cliente-certificados'] })
+      qc.invalidateQueries({ queryKey: ['cuenta-corriente'] })
+    },
+  })
 }

@@ -15,6 +15,7 @@ import { FiltrosCuenta } from './FiltrosCuenta'
 import { ResumenTabla } from './ResumenTabla'
 import { RenglonesTabla } from './RenglonesTabla'
 import { PagosCliente } from './PagosCliente'
+import { CertificadosSection } from './CertificadosSection'
 import { AdministracionSection, MarcarAdministracion } from './AdministracionSection'
 import { ModalExportar } from './ModalExportar'
 import { ModalCargarPrecios } from './ModalCargarPrecios'
@@ -275,7 +276,10 @@ export function CuentaCorrienteTab() {
       )}
 
       {obraSel && (
-        <PagosCliente obraCod={obraSel} obraNom={obraNom} puedeEditar={puedeEditar} puedeEliminar={puedeEliminar} porAdministracion={!!obra?.por_administracion} registrarSignal={registrarSignal} />
+        <>
+          {obra && <CertificadosSection obra={obra} puedeEmitir={!!(cargarPrecios || esAdmin)} esAdmin={!!esAdmin} />}
+          <PagosCliente obraCod={obraSel} obraNom={obraNom} puedeEditar={puedeEditar} puedeEliminar={puedeEliminar} porAdministracion={!!obra?.por_administracion} registrarSignal={registrarSignal} />
+        </>
       )}
 
       {hayDatos && mostrarResumen && (

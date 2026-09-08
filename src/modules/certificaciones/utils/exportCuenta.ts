@@ -25,10 +25,10 @@ import type { CuentaAdministracion } from '../components/cuenta-corriente/useAdm
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ;(pdfMake as any).vfs = (pdfFonts as any)?.vfs ?? (pdfFonts as any)?.pdfMake?.vfs ?? pdfFonts
 
-const AZUL = '#1A365D'
-const NARANJA = '#E8621A'
-const fmtM = (n: number) => '$' + Math.round(n).toLocaleString('es-AR')
-const fmtFecha = (s: string | null | undefined) => {
+export const AZUL = '#1A365D'
+export const NARANJA = '#E8621A'
+export const fmtM = (n: number) => '$' + Math.round(n).toLocaleString('es-AR')
+export const fmtFecha = (s: string | null | undefined) => {
   if (!s) return '—'
   const [y, m, d] = s.split('-')
   return `${d}/${m}/${y}`
@@ -83,11 +83,11 @@ const nombreArchivo = (obra: Obra, ext: string) =>
 
 // ═════════════════════════════ PDF ═════════════════════════════
 
-const celda = (texto: string, extra: Partial<TableCell> = {}): TableCell =>
+export const celda = (texto: string, extra: Partial<TableCell> = {}): TableCell =>
   ({ text: texto, fontSize: 8, ...extra } as TableCell)
-const cabecera = (textos: string[]): TableCell[] =>
+export const cabecera = (textos: string[]): TableCell[] =>
   textos.map(t => celda(t, { bold: true, color: '#fff', fillColor: AZUL }))
-const derecha = (texto: string, extra: Partial<TableCell> = {}): TableCell =>
+export const derecha = (texto: string, extra: Partial<TableCell> = {}): TableCell =>
   celda(texto, { alignment: 'right', ...extra })
 
 export function descargarPdfCuenta(sel: SeleccionExport, datos: DatosExport): void {

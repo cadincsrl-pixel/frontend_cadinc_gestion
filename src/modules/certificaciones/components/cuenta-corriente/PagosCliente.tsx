@@ -11,7 +11,7 @@ import { useToast } from '@/components/ui/Toast'
 import { toISO } from '@/lib/utils/dates'
 import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
 import {
-  useCobrosCliente, useCrearCobroCliente, useEditarCobroCliente, useEliminarCobroCliente,
+  useCobrosCliente, useCrearCobroCliente, useEditarCobroCliente, useEliminarCobroCliente, useCertificados,
   uploadComprobanteCobro, fetchCobroComprobanteUrl,
 } from '../../hooks/useCuentaCliente'
 import { fetchCuentaRenglonesTodos, useCuentaResumen, CUENTA_CORRIENTE_KEY } from '../../hooks/useCuentaCorriente'
@@ -59,6 +59,28 @@ export function PagosCliente({ obraCod, obraNom, puedeEditar, puedeEliminar, por
   const [editandoCobro, setEditandoCobro] = useState<CuentaClienteCobro | null>(null)
   const [form, setForm] = useState<{ fecha: string; monto: string; medio: MedioCobro; obs: string }>({ fecha: toISO(new Date()), monto: '', medio: 'efectivo', obs: '' })
   const [sel, setSel] = useState<Set<number>>(new Set())
+  // Pago contra un certificado (20260911j): se imputan todos sus renglones sin
+  // cobrar y el monto se reparte en materiales + mano de obra.
+  const { data: certificados = [] } = useCertificados(obraCod, modal && !editandoCobro)
+  const [certId, setCertId] = useState<number | ''>('')
+  const [manoDeObra, setManoDeObra] = useState('')
+  const certElegido = certId === '' ? null : certificados.find(c => c.id === certId) ?? null
+  const cobradoPorCert = useMemo(() => {
+    const m = new Map<number, number>()
+    for (const c of cobros) if (c.certificado_id != null) m.set(c.certificado_id, (m.get(c.certificado_id) ?? 0) + Number(c.monto ?? 0))
+    return m
+  }, [cobros])
+  const certsConSaldo = certificados.filter(c => c.estado === 'emitido' && Number(c.total) - (cobradoPorCert.get(c.id) ?? 0) > 0.01)
+  function elegirCertificado(id: number | '') {
+    setCertId(id)
+    if (id === '') { setManoDeObra(''); return }
+    const c = certificados.find(x => x.id === id)
+    if (!c) return
+    const saldo = Math.max(0, Number(c.total) - (cobradoPorCert.get(c.id) ?? 0))
+    setSel(new Set())
+    setManoDeObra(String(Number(c.mano_de_obra)))
+    setForm(f => ({ ...f, monto: String(Math.round(saldo * 100) / 100) }))
+  }
   const [archivo, setArchivo] = useState<File | null>(null)
   const [subiendo, setSubiendo] = useState(false)
 
@@ -94,7 +116,7 @@ export function PagosCliente({ obraCod, obraNom, puedeEditar, puedeEliminar, por
   function abrirNuevo() {
     setEditandoCobro(null)
     setForm({ fecha: toISO(new Date()), monto: '', medio: 'efectivo', obs: '' })
-    setSel(new Set()); setArchivo(null); setModal(true)
+    setSel(new Set()); setArchivo(null); setCertId(''); setManoDeObra(''); setModal(true)
   }
   // El botón de la cabecera manda una señal; acá se traduce en abrir el modal.
   useEffect(() => {
@@ -131,6 +153,8 @@ export function PagosCliente({ obraCod, obraNom, puedeEditar, puedeEliminar, por
         else if (code === 'ITEM_INVALIDO')         toast('Algún item ya no es imputable (lo pagó otro cobro, es gasto de CADINC o cambió). Recargá la página.', 'err')
         else if (code === 'COMPROBANTE_DUPLICADO') toast('Ese comprobante ya está cargado en otro pago', 'err')
         else if (code === 'MONTO_MENOR_IMPUTADO')  toast('El monto no puede ser menor a lo imputado a items. Eliminá el pago y registralo de nuevo si hace falta.', 'err')
+        else if (code === 'CERTIFICADO_ANULADO')   toast('Ese certificado está anulado', 'err')
+        else if (code === 'MANO_DE_OBRA_INVALIDA') toast('La mano de obra tiene que ser un número mayor o igual a 0', 'err')
         else toast('Error al guardar el pago', 'err')
       },
     }
@@ -141,9 +165,12 @@ export function PagosCliente({ obraCod, obraNom, puedeEditar, puedeEliminar, por
     try {
       let comprobante_path: string | null = null
       if (archivo) { setSubiendo(true); comprobante_path = await uploadComprobanteCobro(archivo) }
+      const mo = Number(manoDeObra || 0)
+      if (certElegido && (!Number.isFinite(mo) || mo < 0)) { toast('La mano de obra tiene que ser un número', 'err'); return }
       crearCobro({
         obra_cod: obraCod, fecha: form.fecha, monto, medio: form.medio, obs: form.obs || null,
-        item_ids: [...sel],
+        item_ids: certElegido ? [] : [...sel],
+        ...(certElegido ? { certificado_id: certElegido.id, monto_mano_de_obra: mo } : {}),
         ...(comprobante_path ? { comprobante_path } : {}),
       }, cbs)
     } catch (e) {
@@ -250,7 +277,22 @@ export function PagosCliente({ obraCod, obraNom, puedeEditar, puedeEliminar, por
         <div className="flex flex-col gap-3">
           <div className="text-xs text-gris-dark">Obra: <span className="font-bold text-carbon">{obraNom}</span></div>
 
-          {!editandoCobro && imputables.length > 0 && (
+          {!editandoCobro && certsConSaldo.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <Select
+                label="Imputar contra un certificado" value={certId === '' ? '' : String(certId)}
+                onChange={e => elegirCertificado(e.target.value === '' ? '' : Number(e.target.value))}
+                options={[
+                  { value: '', label: '— renglones sueltos —' },
+                  ...certsConSaldo.map(c => ({ value: String(c.id), label: `N° ${c.numero} · corte ${fmtFecha(c.fecha_corte)} · saldo ${fmtM(Number(c.total) - (cobradoPorCert.get(c.id) ?? 0))}` })),
+                ]}
+              />
+              {certElegido && (
+                <InputMonto label="De este pago, mano de obra ($)" placeholder="0" value={manoDeObra} onChange={setManoDeObra} />
+              )}
+            </div>
+          )}
+          {!editandoCobro && !certElegido && imputables.length > 0 && (
             <div>
               <div className="text-xs font-bold text-gris-dark uppercase tracking-wider mb-1.5 flex items-center justify-between">
                 <span>¿Qué materiales paga? <span className="normal-case font-normal text-gris-mid">(opcional — sin tildar queda a cuenta)</span></span>

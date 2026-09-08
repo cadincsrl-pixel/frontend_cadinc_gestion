@@ -1643,6 +1643,43 @@ export interface CuentaClienteCobro extends AuditFields {
   obs:      string | null
   /** Path del comprobante en el bucket privado cobros-docs (se firma on-demand). */
   comprobante_url:  string | null
+  /** Cobro contra un certificado (20260911j): reparto entre materiales y mano de obra. */
+  certificado_id:     number | null
+  monto_mano_de_obra: number
+  monto_materiales:   number
+}
+
+// ── Certificado al cliente (20260911h) ──
+// La "presentacion" de la cuenta corriente: corte por fecha, mano de obra por
+// avance y los renglones de materiales hasta el corte, congelados al emitir.
+export interface CertificadoCliente extends AuditFields {
+  id:               number
+  obra_cod:         string
+  numero:           number
+  fecha_corte:      string
+  fecha_emision:    string
+  estado:           'emitido' | 'anulado'
+  mano_de_obra:     number
+  total_materiales: number
+  total:            number
+  renglones:        number
+  obs:              string | null
+  emitido_por:      string | null
+  anulado_por:      string | null
+  anulado_el:       string | null
+  anulado_motivo:   string | null
+}
+export interface CertificadoDetalle extends CertificadoCliente {
+  renglones_lista: CuentaRenglon[]
+  cobros:          CuentaClienteCobro[]
+  cobrado:         number
+  saldo:           number
+}
+/** Lo que devuelve emitir: el certificado mas lo que quedo afuera. */
+export interface CertificadoEmitido {
+  id: number; numero: number; obra_cod: string; fecha_corte: string
+  mano_de_obra: number; total_materiales: number; total: number
+  renglones: number; retasados: number; sin_precio_excluidos: number
 }
 
 // ── Cuenta corriente (20260904ap) ──
@@ -1657,6 +1694,9 @@ export type CuentaGrupo  = 'obra' | 'mes' | 'proveedor'
 
 export interface CuentaRenglon {
   id:                  number
+  /** Certificado que lo congelo (20260911j), si ya se presento. */
+  certificado_id?:     number | null
+  certificado_numero?: number | null
   obra_cod:            string
   obra_nom:            string
   obra_archivada:      boolean
