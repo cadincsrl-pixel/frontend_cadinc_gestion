@@ -1,4 +1,6 @@
 -- Cristian Sosa (066) pasa a Oficial Albañil desde la semana en curso
+-- (Renombrada de 20260911r el 09/09: ese prefijo lo tomó otra sesión en
+--  paralelo. Aplicada realmente el 08/09 a la noche; el contenido manda.)
 --
 -- Pedido del user (08/09): "pasemos a Cristian Sosa en tarja a oficial, si es
 -- posible que este viernes ya cobre como oficial".

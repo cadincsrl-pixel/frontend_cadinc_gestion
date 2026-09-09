@@ -1,4 +1,6 @@
 -- LAMADRID: los cuatro renglones de POLLANO que quedaron a $1
+-- (Renombrada de 20260911s el 09/09: ese prefijo lo tomó otra sesión en
+--  paralelo. Aplicada realmente el 08/09 a la noche; el contenido manda.)
 --
 -- En la compra del 08/09 a POLLANO SANITARIOS, cuatro renglones quedaron con
 -- precio_unit = 1 — un placeholder, no un precio. El resto de esa misma

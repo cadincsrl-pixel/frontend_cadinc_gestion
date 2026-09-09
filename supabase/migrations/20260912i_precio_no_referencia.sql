@@ -1,4 +1,6 @@
 -- Descartar una compra como referencia de precio
+-- (Renombrada de 20260912a el 09/09: ese prefijo ya lo usaba
+--  20260912a_precios_de_internet_tanda_1.sql, de otra sesión.)
 --
 -- El catálogo marca un material "desactualizado" comparando su precio de
 -- referencia contra la ÚLTIMA compra. Cuando esa última compra tiene el precio
