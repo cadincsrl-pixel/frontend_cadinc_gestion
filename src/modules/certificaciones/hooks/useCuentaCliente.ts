@@ -170,7 +170,7 @@ export async function fetchCertificado(id: number): Promise<CertificadoDetalle> 
   return { ...resto, renglones: renglones.length, renglones_lista: renglones }
 }
 
-export interface EmitirCertificadoInput { obra_cod: string; fecha_corte: string; mano_de_obra: number; obs?: string | null }
+export interface EmitirCertificadoInput { obra_cod: string; fecha_corte: string; mano_de_obra: number; obs?: string | null; item_ids?: number[] }
 
 export function useEmitirCertificado() {
   const qc = useQueryClient()

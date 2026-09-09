@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -8,6 +9,7 @@ import { InputMonto } from '@/components/ui/InputMonto'
 import { useToast } from '@/components/ui/Toast'
 import { toISO } from '@/lib/utils/dates'
 import { useCertificados, useEmitirCertificado, useAnularCertificado, fetchCertificado } from '../../hooks/useCuentaCliente'
+import { fetchCuentaRenglonesTodos, CUENTA_CORRIENTE_KEY } from '../../hooks/useCuentaCorriente'
 import { descargarPdfCertificado } from '../../utils/exportCertificado'
 import { fmtM, fmtFecha } from './cuentaCorriente.utils'
 import type { Obra, CertificadoCliente } from '@/types/domain.types'
@@ -29,9 +31,35 @@ export function CertificadosSection({ obra, puedeEmitir, esAdmin }: { obra: Obra
   const [anulandoCert, setAnulandoCert] = useState<CertificadoCliente | null>(null)
   const [motivo, setMotivo] = useState('')
   const [descargando, setDescargando] = useState<number | null>(null)
+  // Los renglones que pueden entrar: a cobrar, con precio, sin certificar.
+  // Se filtran por la fecha de corte en el cliente y se tildan todos por
+  // defecto; destildar es la excepcion ("el cliente no quiere certificar
+  // todo hasta la fecha").
+  const { data: aCobrar = [] } = useQuery({
+    queryKey: [...CUENTA_CORRIENTE_KEY, 'certificables', obra.cod],
+    queryFn:  () => fetchCuentaRenglonesTodos({ obra_cod: obra.cod, estados: ['a_cobrar'] }),
+    enabled:  modal,
+  })
+  const elegibles = useMemo(
+    () => aCobrar
+      .filter(r => Number(r.precio_unit) > 0 && !r.certificado_id && (!form.fecha_corte || (r.fecha_resolucion ?? '') <= form.fecha_corte))
+      .sort((a, b) => (a.fecha_resolucion ?? '').localeCompare(b.fecha_resolucion ?? '') || a.id - b.id),
+    [aCobrar, form.fecha_corte],
+  )
+  const sinPrecio = useMemo(
+    () => aCobrar.filter(r => !(Number(r.precio_unit) > 0) && !r.certificado_id && (!form.fecha_corte || (r.fecha_resolucion ?? '') <= form.fecha_corte)).length,
+    [aCobrar, form.fecha_corte],
+  )
+  const [destildados, setDestildados] = useState<Set<number>>(new Set())
+  const seleccionados = elegibles.filter(r => !destildados.has(r.id))
+  const totalSel = seleccionados.reduce((s, r) => s + Number(r.precio_total ?? 0), 0)
+  function toggle(id: number) {
+    setDestildados(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
+  }
 
   function abrir() {
     setForm({ fecha_corte: toISO(new Date()), mano_de_obra: '', obs: '' })
+    setDestildados(new Set())
     setModal(true)
   }
 
@@ -39,7 +67,10 @@ export function CertificadosSection({ obra, puedeEmitir, esAdmin }: { obra: Obra
     const mo = Number(form.mano_de_obra || 0)
     if (!form.fecha_corte) { toast('Elegí la fecha de corte', 'err'); return }
     if (!Number.isFinite(mo) || mo < 0) { toast('La mano de obra tiene que ser un número', 'err'); return }
-    emitir({ obra_cod: obra.cod, fecha_corte: form.fecha_corte, mano_de_obra: mo, obs: form.obs || null }, {
+    if (elegibles.length > 0 && seleccionados.length === 0 && mo <= 0) { toast('Sin renglones tildados y sin mano de obra no hay nada que certificar', 'err'); return }
+    // Con todos tildados no se manda lista: la funcion toma todo hasta el corte.
+    const item_ids = destildados.size > 0 ? seleccionados.map(r => r.id) : undefined
+    emitir({ obra_cod: obra.cod, fecha_corte: form.fecha_corte, mano_de_obra: mo, obs: form.obs || null, ...(item_ids ? { item_ids } : {}) }, {
       onSuccess: r => {
         setModal(false)
         const partes = [`Certificado N° ${r.numero} emitido: ${r.renglones} renglones, ${fmtM(Number(r.total))}`]
@@ -50,6 +81,7 @@ export function CertificadosSection({ obra, puedeEmitir, esAdmin }: { obra: Obra
       onError: err => {
         const code = (err as { body?: { error?: string } })?.body?.error
         if (code === 'SIN_PERMISO_CARGAR_PRECIOS') toast('Emitir certificados es del dueño (flag cargar_precios)', 'err')
+        else if (code === 'ITEM_NO_CERTIFICABLE') toast('Algún renglón tildado ya no se puede certificar (cambió mientras tanto). Cerrá y volvé a abrir.', 'err')
         else if (code === 'OBRA_ARCHIVADA') toast('La obra está archivada', 'err')
         else if (code === 'OBRA_ES_DEPOSITO') toast('El depósito no certifica', 'err')
         else toast('No se pudo emitir el certificado', 'err')
@@ -138,10 +170,40 @@ export function CertificadosSection({ obra, puedeEmitir, esAdmin }: { obra: Obra
       <Modal open={modal} onClose={() => setModal(false)} title={`Presentar certificado · ${obra.nom}`}>
         <div className="flex flex-col gap-3">
           <p className="text-xs text-gris-dark">
-            Entran todos los materiales a cargo del cliente hasta la fecha de corte que todavía no estén en otro certificado.
-            Al emitir se congelan y los de depósito pasan al precio del catálogo de ese día. Los que estén en $0 quedan afuera.
+            Al emitir, los materiales tildados se congelan en este certificado y los de depósito pasan al precio del catálogo de ese día.
           </p>
           <Input label="Fecha de corte" type="date" value={form.fecha_corte} onChange={e => setForm(f => ({ ...f, fecha_corte: e.target.value }))} />
+
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center justify-between text-xs font-bold text-gris-dark uppercase tracking-wider">
+              <span>Materiales hasta el corte <span className="normal-case font-normal text-gris-mid">(destildá lo que el cliente no certifica)</span></span>
+              {elegibles.length > 0 && (
+                <button type="button" className="text-azul hover:underline normal-case font-bold"
+                  onClick={() => setDestildados(destildados.size > 0 ? new Set() : new Set(elegibles.map(r => r.id)))}>
+                  {destildados.size > 0 ? `Tildar todos (${elegibles.length})` : 'Destildar todos'}
+                </button>
+              )}
+            </div>
+            {elegibles.length === 0 ? (
+              <p className="text-xs text-gris-dark italic">No hay materiales con precio a cobrar hasta esa fecha.</p>
+            ) : (
+              <div className="max-h-56 overflow-y-auto border border-gris rounded-lg divide-y divide-gris">
+                {elegibles.map(r => (
+                  <label key={r.id} className="flex items-center gap-2 px-2 py-1.5 text-xs cursor-pointer hover:bg-gris-light">
+                    <input type="checkbox" checked={!destildados.has(r.id)} onChange={() => toggle(r.id)} />
+                    <span className="text-gris-dark shrink-0 font-mono">{fmtFecha(r.fecha_resolucion)}</span>
+                    <span className="flex-1 truncate">{r.descripcion} <span className="text-gris-dark">· {Number(r.cantidad)} {r.unidad}</span></span>
+                    <b className="font-mono shrink-0">{fmtM(Number(r.precio_total ?? 0))}</b>
+                  </label>
+                ))}
+              </div>
+            )}
+            <div className="flex justify-between text-[11px] text-gris-dark">
+              <span>{sinPrecio > 0 ? `${sinPrecio} renglón${sinPrecio !== 1 ? 'es' : ''} en $0 quedan afuera` : ''}</span>
+              <span>{seleccionados.length} de {elegibles.length} · materiales {fmtM(totalSel)}</span>
+            </div>
+          </div>
+
           <InputMonto label="Mano de obra por avance ($)" placeholder="0" value={form.mano_de_obra} onChange={raw => setForm(f => ({ ...f, mano_de_obra: raw }))} />
           <Input label="Nota (opcional)" placeholder="Qué avance certifica, referencia…" value={form.obs} onChange={e => setForm(f => ({ ...f, obs: e.target.value }))} />
           <div className="flex justify-end gap-2 pt-1">
