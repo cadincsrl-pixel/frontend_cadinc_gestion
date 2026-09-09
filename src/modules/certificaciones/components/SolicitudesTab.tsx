@@ -17,6 +17,7 @@ import { useStockMateriales, useStockRubros, useCreateStockMaterial, useUpdateSt
 import type { CreateStockMaterialDto, MaterialConflicto, MaterialCandidato } from '../hooks/useStock'
 import { MaterialParecidoModal } from './MaterialParecidoModal'
 import { AltaRapidaMaterialModal } from './AltaRapidaMaterialModal'
+import { SugerenciaPrecio } from './SugerenciaPrecio'
 import { useQueryClient } from '@tanstack/react-query'
 import { useCreateRemitoEnvio } from '../hooks/useRemitosEnvio'
 import { imprimirRemito, armarEstadoPedido, armarEnvios, useSoloEnvio, SoloEnvioCheck, type EstadoPedido } from './RemitoEnvioPrint'
@@ -324,7 +325,7 @@ export function SolicitudesTab() {
   const perfiles = usePerfilesMap()
   // Permisos: deshabilitar (no ocultar) botones según capacidad. El backend
   // valida igual; esto evita clicks que rebotan con error feo (CLAUDE.md §6).
-  const { puedeCrear, puedeEditar, puedeEliminar, resolverItems } = usePermisos('certificaciones')
+  const { puedeCrear, puedeEditar, puedeEliminar, resolverItems, cargarPrecios } = usePermisos('certificaciones')
   // Sumar filas al catálogo no es lo mismo que cargar un pedido (2026-09-07):
   // hace falta editar certificaciones Y la pestaña Catálogo, igual que en el
   // backend (POST /api/stock/materiales). Sin eso el buscador no ofrece
@@ -612,7 +613,7 @@ export function SolicitudesTab() {
   // Forms
   const formCab = useForm<any>({ defaultValues: { prioridad: 'normal', obs: '', entrega_tentativa: '' } })
   const formEdit = useForm<any>({ defaultValues: { prioridad: 'normal', obs: '', entrega_tentativa: '' } })
-  const formComprar = useForm<any>({ defaultValues: { proveedor_id: '', precio_unit: 0, factura_id: '', pagado_por: 'cadinc', cantidad_comprada: 0 } })
+  const formComprar = useForm<any>({ defaultValues: { proveedor_id: '', precio_unit: 0, factura_id: '', pagado_por: 'cadinc', cantidad_comprada: 0, actualizar_catalogo: false, esperando_precio: false } })
   const formComprarLote = useForm<any>({
     defaultValues: { proveedor_id: '', factura_id: '', queda_en_proveedor: false, pagado_por: 'cadinc', precios: {} },
   })
@@ -832,7 +833,7 @@ export function SolicitudesTab() {
 
   // ── Acciones sobre ítems ──
   function abrirComprar(item: SolicitudCompraItem) {
-    formComprar.reset({ proveedor_id: '', precio_unit: 0, precio_neto: 0, factura_id: '', queda_en_proveedor: false, pagado_por: 'cadinc', cantidad_comprada: item.cantidad })
+    formComprar.reset({ proveedor_id: '', precio_unit: 0, precio_neto: 0, factura_id: '', queda_en_proveedor: false, pagado_por: 'cadinc', cantidad_comprada: item.cantidad, actualizar_catalogo: false, esperando_precio: false })
     setModalComprar(item)
   }
   function handleComprar(data: any) {
@@ -840,15 +841,18 @@ export function SolicitudesTab() {
     const proveedorId = Number(data.proveedor_id)
     const precio = Number(data.precio_unit)
     if (!proveedorId) { toast('Elegí un proveedor', 'err'); return }
-    // Compra siempre con precio (la factura lo tiene). El despacho de depósito
-    // sí puede quedar a tasar; esto es solo para compras.
-    if (!Number.isFinite(precio) || precio <= 0) { toast('Cargá un precio unitario mayor a 0', 'err'); return }
+    // Compra con precio (la factura lo tiene)... salvo que el proveedor lo
+    // pase después: "esperando precio" (20260912c) deja la compra en $0 con la
+    // marca. Si tipeó un precio, la marca no tiene sentido y no se manda.
+    const conPrecio = Number.isFinite(precio) && precio > 0
+    const esperando = !!data.esperando_precio && !conPrecio
+    if (!conPrecio && !esperando) { toast('Cargá un precio unitario mayor a 0, o marcá "esperando precio del proveedor"', 'err'); return }
     const cantComprada = Number(data.cantidad_comprada)
     comprarItem({
       itemId: modalComprar.id,
       dto: {
         proveedor_id:        proveedorId,
-        precio_unit:         precio,
+        precio_unit:         conPrecio ? precio : 0,
         factura_id:          data.factura_id ? Number(data.factura_id) : null,
         queda_en_proveedor:  !!data.queda_en_proveedor,
         pagado_por:          data.pagado_por === 'cliente' ? 'cliente' : 'cadinc',
@@ -856,10 +860,18 @@ export function SolicitudesTab() {
         ...(cantComprada > 0 && cantComprada !== modalComprar.cantidad
           ? { cantidad_comprada: cantComprada }
           : {}),
+        // Llevar este precio al catálogo (tilde del panel de referencia). El
+        // backend valida ficha, unidad, fecha y permiso antes de resolver.
+        actualizar_catalogo: conPrecio && !!data.actualizar_catalogo,
+        esperando_precio:    esperando,
       },
     }, {
-      onSuccess: () => {
-        toast(data.queda_en_proveedor ? 'Comprado (queda en proveedor)' : 'Compra registrada', 'ok')
+      onSuccess: (res: any) => {
+        const cat = res?.catalogo
+        if (cat?.ok) toast(`Compra registrada · catálogo ${fmtM(cat.precio_anterior)} → ${fmtM(cat.precio)}`, 'ok')
+        else if (cat && cat.ok === false) toast(`Compra registrada, pero el catálogo no se actualizó (${cat.code})`, 'err')
+        else if (esperando) toast('Compra registrada, esperando el precio del proveedor', 'ok')
+        else toast(data.queda_en_proveedor ? 'Comprado (queda en proveedor)' : 'Compra registrada', 'ok')
         setModalComprar(null)
       },
       onError: (e: any) => toast(e.message || 'Error', 'err'),
@@ -1531,6 +1543,15 @@ export function SolicitudesTab() {
                                         <>{item.cantidad} {unidLabel}</>
                                       )}
                                       {item.precio_unit != null && <span className="ml-2">× {fmtM(item.precio_unit)} = <strong>{fmtM(cantEfectiva * item.precio_unit)}</strong></span>}
+                                      {item.esperando_precio && (
+                                        <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-amarillo-light text-[#7A5500] font-sans" title="Compra sin precio: el proveedor lo pasa después. Se carga desde Cargar precios en la cuenta corriente.">
+                                          ⏳ esperando precio
+                                        </span>
+                                      )}
+                                      {/* Precio de referencia del catálogo, para que el que compra sepa contra qué comparar. */}
+                                      {Number((stk as StockMaterial | undefined)?.precio_ref ?? 0) > 0 && (
+                                        <span className="ml-2 text-gris-mid" title="Precio de referencia del catálogo (final, IVA incluido)">cat. {fmtM(Number((stk as StockMaterial).precio_ref))}</span>
+                                      )}
                                       {Number(item.cantidad_enviada ?? 0) > 0 && item.estado !== 'enviado' && (
                                         <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-azul-light text-azul font-sans" title="Envío parcial — el resto queda pendiente de enviar">
                                           📤 {Number(item.cantidad_enviada)}/{cantEfectiva} enviados
@@ -1917,6 +1938,14 @@ export function SolicitudesTab() {
                                     {item.precio_unit != null && (
                                       <span className="ml-2">× {fmtM(item.precio_unit)} = <strong>{fmtM(cantEfectiva * item.precio_unit)}</strong></span>
                                     )}
+                                    {item.esperando_precio && (
+                                      <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-amarillo-light text-[#7A5500] font-sans" title="Compra sin precio: el proveedor lo pasa después.">
+                                        ⏳ esperando precio
+                                      </span>
+                                    )}
+                                    {Number((stk as StockMaterial | undefined)?.precio_ref ?? 0) > 0 && (
+                                      <span className="ml-2 text-gris-mid" title="Precio de referencia del catálogo (final, IVA incluido)">cat. {fmtM(Number((stk as StockMaterial).precio_ref))}</span>
+                                    )}
                                     {Number(item.cantidad_enviada ?? 0) > 0 && item.estado !== 'enviado' && (
                                       <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-azul-light text-azul font-sans" title="Envío parcial — el resto queda pendiente de enviar">
                                         📤 {Number(item.cantidad_enviada)}/{cantEfectiva} enviados
@@ -2183,11 +2212,12 @@ export function SolicitudesTab() {
 
       {/* ── Modal comprar a proveedor ── */}
       {(() => {
-        // Validación: requiere proveedor + precio > 0 + cantidad > 0.
-        const cpProv   = formComprar.watch('proveedor_id')
-        const cpPrecio = Number(formComprar.watch('precio_unit'))
-        const cpCant   = Number(formComprar.watch('cantidad_comprada'))
-        const compraInvalida = !cpProv || !(cpPrecio > 0) || !(cpCant > 0)
+        // Validación: requiere proveedor + cantidad > 0 + (precio > 0 o "esperando precio").
+        const cpProv      = formComprar.watch('proveedor_id')
+        const cpPrecio    = Number(formComprar.watch('precio_unit'))
+        const cpCant      = Number(formComprar.watch('cantidad_comprada'))
+        const cpEsperando = !!formComprar.watch('esperando_precio') && !(cpPrecio > 0)
+        const compraInvalida = !cpProv || !(cpCant > 0) || (!(cpPrecio > 0) && !cpEsperando)
         return (
       <Modal open={!!modalComprar} onClose={() => setModalComprar(null)} title="🛒 COMPRAR A PROVEEDOR"
         footer={<>
@@ -2248,6 +2278,30 @@ export function SolicitudesTab() {
                 Cargá cualquiera de los dos: el otro se calcula solo (IVA 21%). A la cuenta del cliente va el <b>final</b>.
               </p>
             </div>
+            {/* Referencia: catálogo, última compra, última a este proveedor, y el
+                tilde para llevar este precio al catálogo (fase 2 de precios). */}
+            {modalComprar.id != null && (
+              <SugerenciaPrecio
+                itemId={modalComprar.id}
+                proveedorId={Number(cpProv) || null}
+                precio={cpPrecio}
+                onUsar={p => { formComprar.setValue('precio_unit', p); formComprar.setValue('precio_neto', finalANeta(p)) }}
+                actualizar={!!formComprar.watch('actualizar_catalogo')}
+                onActualizar={v => formComprar.setValue('actualizar_catalogo', v)}
+                puedeActualizar={cargarPrecios}
+                esperando={cpEsperando}
+              />
+            )}
+            <label className={`flex items-start gap-2.5 px-3 py-2.5 border-[1.5px] rounded-lg transition-colors cursor-pointer ${cpEsperando ? 'border-[#7A5500] bg-amarillo-light' : 'border-gris-mid hover:border-naranja'}`}>
+              <input type="checkbox" {...formComprar.register('esperando_precio')} className="mt-0.5" />
+              <div className="flex-1">
+                <div className="text-sm font-bold text-azul">⏳ Esperando precio del proveedor</div>
+                <div className="text-[11px] text-gris-dark mt-0.5">
+                  Se compró en cuenta corriente y el precio llega después. La compra entra en $0 y el renglón queda marcado en el pedido y en la cuenta corriente hasta que lo cargues desde “Cargar precios”.
+                  {cpPrecio > 0 && !!formComprar.watch('esperando_precio') && <b> Ya cargaste un precio, así que la marca no se usa.</b>}
+                </div>
+              </div>
+            </label>
             <div className="flex items-end gap-2">
               <div className="flex-1">
                 <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1 block">Factura (opcional)</label>

@@ -351,6 +351,9 @@ export function StockTab() {
       alias:        parseAlias(data.alias),
       usa_color:    data.usa_color,
       clase:        data.clase,
+      // El form manda todo, así que el backend no puede saber si el precio lo
+      // tipeó alguien: se lo decimos (historial, 20260911c).
+      ...(precioRef !== Number(modalEditar.precio_ref) ? { precio_fuente: 'manual' as const } : {}),
     }
     updateMat({ id: modalEditar.id, dto }, {
       onSuccess: () => { toast('Actualizado', 'ok'); setModalEditar(null) },

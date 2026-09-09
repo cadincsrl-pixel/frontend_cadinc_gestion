@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api/client'
-import type { SolicitudCompra, ItemEvento } from '@/types/domain.types'
+import type { SolicitudCompra, ItemEvento, SugerenciaPrecio } from '@/types/domain.types'
 
 const KEYS = {
   list: (obra?: string) => ['solicitudes', obra ?? 'all'] as const,
@@ -43,6 +43,19 @@ export function useItemEventos(itemId: number | undefined, enabled = true) {
   return useQuery({
     queryKey: ['solicitudes', 'items', itemId, 'eventos'] as const,
     queryFn: () => apiGet<ItemEvento[]>(`/api/solicitudes/items/${itemId}/eventos`),
+    enabled: !!itemId && enabled,
+    staleTime: 30_000,
+  })
+}
+
+/**
+ * Precio de referencia para el modal de compra (20260911): catálogo, última
+ * compra y última compra a este proveedor. Cambia con el proveedor elegido.
+ */
+export function useSugerenciaPrecio(itemId: number | undefined, proveedorId: number | null, enabled = true) {
+  return useQuery({
+    queryKey: ['solicitudes', 'items', itemId, 'sugerencia-precio', proveedorId ?? 0] as const,
+    queryFn: () => apiGet<SugerenciaPrecio>(`/api/solicitudes/items/${itemId}/sugerencia-precio${proveedorId ? `?proveedor_id=${proveedorId}` : ''}`),
     enabled: !!itemId && enabled,
     staleTime: 30_000,
   })

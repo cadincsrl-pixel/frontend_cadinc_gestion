@@ -122,7 +122,13 @@ export interface StockMaterialFields {
  */
 export type CreateStockMaterialDto = StockMaterialFields & { forzar?: boolean }
 
-export type UpdateStockMaterialDto = Partial<StockMaterialFields>
+/**
+ * `precio_fuente` dice de dónde sale un precio nuevo para el historial
+ * (20260911c): 'manual' (lo tipeó alguien) o 'ultima_compra' (el botón "usar
+ * última compra" del catálogo). Si no se manda, el backend lo infiere y puede
+ * equivocarse; desde las pantallas se manda siempre.
+ */
+export type UpdateStockMaterialDto = Partial<StockMaterialFields> & { precio_fuente?: 'manual' | 'ultima_compra' }
 
 /**
  * Por qué el backend ofrece un material como "¿no será este?", de más fuerte a

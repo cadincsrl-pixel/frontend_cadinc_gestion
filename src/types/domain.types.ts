@@ -1552,6 +1552,11 @@ export interface SolicitudCompraItem {
   fecha_envio?:     string | null
   /** Quién pagó esta compra. Default `'cadinc'` en datos históricos. */
   pagado_por?:      PagadoPor
+  /**
+   * Compra registrada sin precio porque el proveedor lo pasa después
+   * (20260912c). Se apaga sola cuando se carga el precio.
+   */
+  esperando_precio?: boolean
   proveedores?:     { nombre: string } | null
   facturas_compra?: { numero: string | null; adjunto_url: string | null } | null
 }
@@ -1697,6 +1702,8 @@ export interface CuentaRenglon {
   /** Certificado que lo congelo (20260911j), si ya se presento. */
   certificado_id?:     number | null
   certificado_numero?: number | null
+  /** Compra sin precio, el proveedor lo pasa después (20260912c). */
+  esperando_precio?:   boolean
   obra_cod:            string
   obra_nom:            string
   obra_archivada:      boolean
@@ -1880,18 +1887,24 @@ export interface CatalogoMaterial {
   uc_fecha:              string | null
   uc_pedido:             number | null
   uc_obra:               string | null
+  /** Unidad en que se cargó la última compra (20260911d). */
+  uc_unidad?:            string | null
+  /** La unidad de la última compra es compatible con la de la ficha (`unidad_compatible`). Null si no hay compra. */
+  uc_unidad_ok?:         boolean | null
   /**
    * Qué hay que hacer con el precio (lo calcula la vista, 20260904z):
    * sin_precio (ni precio ni compra) · tasar (sin precio, con compra para
-   * tomar) · desactualizado (difiere >0,5% de la última compra) · al_dia ·
-   * sin_compra (tiene precio, nunca se compró por el sistema).
+   * tomar) · unidad_distinta (la última compra está en otra unidad: no se
+   * puede usar sin convertir, 20260911d) · desactualizado (difiere >0,5% de
+   * la última compra) · al_dia · sin_compra (tiene precio, nunca se compró
+   * por el sistema).
    */
   estado_precio:         CatalogoEstadoPrecio
   /** Última compra vs referencia, en % (null si falta alguno de los dos). */
   dif_pct:               number | null
 }
 
-export type CatalogoEstadoPrecio = 'sin_precio' | 'tasar' | 'desactualizado' | 'al_dia' | 'sin_compra'
+export type CatalogoEstadoPrecio = 'sin_precio' | 'tasar' | 'unidad_distinta' | 'desactualizado' | 'al_dia' | 'sin_compra'
 
 export interface CatalogoPage {
   items: CatalogoMaterial[]
@@ -1899,11 +1912,46 @@ export interface CatalogoPage {
 }
 
 export interface CatalogoStats {
-  total:          number
-  sin_precio:     number
-  tasar:          number
-  desactualizado: number
-  al_dia:         number
+  total:           number
+  sin_precio:      number
+  tasar:           number
+  desactualizado:  number
+  al_dia:          number
+  unidad_distinta: number
+}
+
+/**
+ * Lo que el backend sugiere al comprar un renglón (GET
+ * /api/solicitudes/items/:id/sugerencia-precio, 20260911): catálogo, última
+ * compra y última compra a este proveedor, con unidad y compatibilidad.
+ */
+export interface SugerenciaPrecioLinea {
+  precio_unit: number
+  unidad:      string | null
+  fecha:       string | null
+  proveedor:   string | null
+  /** La unidad de esa compra es compatible con la del renglón. */
+  compatible:  boolean
+}
+
+export interface SugerenciaPrecio {
+  unidad_renglon:   string | null
+  ficha: {
+    id:                    number
+    nombre:                string
+    unidad:                string
+    precio_ref:            number
+    precio_actualizado_en: string | null
+    dias_desde_precio:     number | null
+    /** Más de 45 días sin actualizar. */
+    precio_viejo:          boolean
+  } | null
+  ultima_compra:    SugerenciaPrecioLinea | null
+  a_este_proveedor: SugerenciaPrecioLinea | null
+  /** La unidad del renglón es compatible con la de la ficha. */
+  compatible:           boolean
+  puede_actualizar_ref: boolean
+  motivo:               'SIN_FICHA' | 'UNIDAD_DISTINTA' | null
 }
 
 export interface StockMaterial extends AuditFields {

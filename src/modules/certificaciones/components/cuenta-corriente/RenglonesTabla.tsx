@@ -30,9 +30,13 @@ function EstadoBadge({ r }: { r: CuentaRenglon }) {
 }
 
 function Precio({ r }: { r: CuentaRenglon }) {
-  return Number(r.precio_unit) > 0
-    ? <span className="font-mono text-xs">{fmtM(Number(r.precio_unit))}</span>
-    : <span className="text-[9px] font-bold bg-naranja-light text-naranja-dark px-1 py-0.5 rounded whitespace-nowrap">SIN PRECIO</span>
+  if (Number(r.precio_unit) > 0) return <span className="font-mono text-xs">{fmtM(Number(r.precio_unit))}</span>
+  // "Esperando precio" (20260912c) es un sin-precio con dueño: se compró en
+  // cuenta corriente y el proveedor todavía no pasó el precio.
+  if (r.esperando_precio) {
+    return <span className="text-[9px] font-bold bg-amarillo-light text-[#7A5500] px-1 py-0.5 rounded whitespace-nowrap" title="Compra sin precio: el proveedor lo pasa después. Cargalo desde Cargar precios.">⏳ ESPERANDO PRECIO</span>
+  }
+  return <span className="text-[9px] font-bold bg-naranja-light text-naranja-dark px-1 py-0.5 rounded whitespace-nowrap">SIN PRECIO</span>
 }
 
 function Factura({ r }: { r: CuentaRenglon }) {

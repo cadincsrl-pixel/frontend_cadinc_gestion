@@ -30,11 +30,12 @@ import type { CatalogoMaterial, CatalogoEstadoPrecio, StockRubro } from '@/types
 
 const PAGE_SIZE = 50
 
-const ESTADOS: { key: CatalogoEstadoPrecio | ''; label: string; hint: string; stat: 'total' | 'tasar' | 'desactualizado' | 'sin_precio' }[] = [
-  { key: '',               label: 'Todos',           hint: 'Todo el catálogo activo',                               stat: 'total' },
-  { key: 'tasar',          label: 'Para tasar',      hint: 'Sin precio de referencia, pero con una compra para tomar', stat: 'tasar' },
-  { key: 'desactualizado', label: 'Desactualizados', hint: 'La última compra difiere del precio de referencia',      stat: 'desactualizado' },
-  { key: 'sin_precio',     label: 'Sin precio',      hint: 'Sin precio de referencia, con o sin compra',            stat: 'sin_precio' },
+const ESTADOS: { key: CatalogoEstadoPrecio | ''; label: string; hint: string; stat: 'total' | 'tasar' | 'desactualizado' | 'sin_precio' | 'unidad_distinta' }[] = [
+  { key: '',                label: 'Todos',           hint: 'Todo el catálogo activo',                               stat: 'total' },
+  { key: 'tasar',           label: 'Para tasar',      hint: 'Sin precio de referencia, pero con una compra para tomar', stat: 'tasar' },
+  { key: 'desactualizado',  label: 'Desactualizados', hint: 'La última compra difiere del precio de referencia',      stat: 'desactualizado' },
+  { key: 'unidad_distinta', label: 'Unidad distinta', hint: 'La última compra se cargó en otra unidad que la ficha: no se puede usar sin convertir', stat: 'unidad_distinta' },
+  { key: 'sin_precio',      label: 'Sin precio',      hint: 'Sin precio de referencia, con o sin compra',            stat: 'sin_precio' },
 ]
 
 function fmtM(n: number) { return '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 0 }) }
@@ -121,7 +122,7 @@ export function CatalogoTab() {
 
   function guardarPrecio(m: CatalogoMaterial, valor: number) {
     if (!Number.isFinite(valor) || valor < 0) { toast('Ingresá un precio válido', 'err'); return }
-    updateMat({ id: m.id, dto: { precio_ref: valor } }, {
+    updateMat({ id: m.id, dto: { precio_ref: valor, precio_fuente: 'manual' } }, {
       onSuccess: () => { toast(`✓ ${m.nombre}: ${fmtM(valor)}`, 'ok'); setEditId(null); setDraft('') },
       onError:   () => toast('No se pudo guardar el precio', 'err'),
     })
@@ -134,7 +135,7 @@ export function CatalogoTab() {
     setAplicando(true)
     let ok = 0, fallidos = 0
     for (const [id, { precio }] of sel) {
-      try { await updateAsync({ id, dto: { precio_ref: precio } }); ok++ }
+      try { await updateAsync({ id, dto: { precio_ref: precio, precio_fuente: 'ultima_compra' } }); ok++ }
       catch { fallidos++ }
     }
     setAplicando(false)
@@ -269,7 +270,8 @@ export function CatalogoTab() {
                 {items.map(m => {
                   const difiere = m.dif_pct !== null && Math.abs(m.dif_pct) > 10
                   const editando = editId === m.id
-                  const seleccionable = !!m.uc_precio && m.uc_precio !== m.precio_ref
+                  // Una compra en otra unidad no se puede "usar" sin convertir (409 UNIDAD_DISTINTA del backend).
+                  const seleccionable = !!m.uc_precio && m.uc_precio !== m.precio_ref && m.uc_unidad_ok !== false
                   return (
                     <tr key={m.id} className={`border-t border-gris ${!m.activo ? 'opacity-60' : ''} ${sel.has(m.id) ? 'bg-azul-light/40' : ''}`}>
                       <td className="px-3 py-2.5">
@@ -280,6 +282,12 @@ export function CatalogoTab() {
                           <button type="button" onClick={() => setHistorial(m)} className="text-left hover:underline hover:text-azul" title="Ver el historial de compras y precios">{m.nombre}</button>
                           {m.clase === 'herramienta' && <span className="text-[9px] font-bold bg-azul-light text-azul px-1.5 py-0.5 rounded" title="Herramienta: va al pañol, no a la cuenta del cliente">🔧</span>}
                           {!m.activo && <span className="text-[9px] font-bold bg-gris text-gris-dark px-1.5 py-0.5 rounded">BAJA</span>}
+                          {m.uc_unidad_ok === false && (
+                            <span className="text-[9px] font-bold bg-naranja-light text-naranja-dark px-1.5 py-0.5 rounded"
+                                  title={`La última compra se cargó por ${unidadLabel(m.uc_unidad ?? '')} y la ficha va por ${unidadLabel(m.unidad)}: no se puede usar sin convertir.`}>
+                              ⚠ compra en {unidadLabel(m.uc_unidad ?? '')}
+                            </span>
+                          )}
                         </div>
                         <AliasChips alias={m.alias} compact />
                       </td>
@@ -352,7 +360,7 @@ export function CatalogoTab() {
             {items.map(m => {
               const difiere = m.dif_pct !== null && Math.abs(m.dif_pct) > 10
               const editando = editId === m.id
-              const seleccionable = !!m.uc_precio && m.uc_precio !== m.precio_ref
+              const seleccionable = !!m.uc_precio && m.uc_precio !== m.precio_ref && m.uc_unidad_ok !== false
               return (
                 <div key={m.id} className={`p-3 ${!m.activo ? 'opacity-60' : ''} ${sel.has(m.id) ? 'bg-azul-light/40' : ''}`}>
                   <div className="flex items-start justify-between gap-2">
@@ -363,6 +371,7 @@ export function CatalogoTab() {
                       <div className="min-w-0">
                         <div className="font-medium text-sm">
                           <button type="button" onClick={() => setHistorial(m)} className="text-left hover:underline">{m.nombre}</button> {m.clase === 'herramienta' && '🔧'} {!m.activo && <span className="text-[9px] font-bold bg-gris text-gris-dark px-1.5 py-0.5 rounded">BAJA</span>}
+                          {m.uc_unidad_ok === false && <span className="ml-1 text-[9px] font-bold bg-naranja-light text-naranja-dark px-1.5 py-0.5 rounded" title="La última compra está en otra unidad que la ficha">⚠ compra en {unidadLabel(m.uc_unidad ?? '')}</span>}
                         </div>
                         <div className="text-[11px] text-gris-dark">{m.rubro_icono} {m.rubro} · {unidadLabel(m.unidad)}</div>
                         <AliasChips alias={m.alias} compact />
