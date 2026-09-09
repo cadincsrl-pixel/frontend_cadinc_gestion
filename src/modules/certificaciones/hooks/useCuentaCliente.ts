@@ -36,6 +36,69 @@ export function useGuardarPreciosMCC() {
   })
 }
 
+// ── Precios propuestos (20260912o) ────────────────────────────────────────
+//
+// Quien compra sabe el precio pero no puede fijarlo (flag `cargar_precios`):
+// lo propone y queda esperando el OK. Hasta que se aprueba, la cuenta del
+// cliente no se mueve.
+
+export interface PrecioPropuesto {
+  id:                   number
+  item_id:              number
+  obra_cod:             string
+  obra_nom:             string
+  descripcion:          string
+  cantidad:             number
+  unidad:               string
+  precio_unit:          number
+  precio_total:         number
+  precio_propuesto:     number
+  precio_propuesto_por: string | null
+  precio_propuesto_en:  string
+  precio_propuesto_obs: string | null
+  proveedor_nom:        string | null
+  fecha_resolucion:     string | null
+}
+
+/** La bandeja del que aprueba. 403 para quien no tiene el flag: no se pide. */
+export function usePreciosPropuestos(enabled = true) {
+  return useQuery({
+    queryKey: ['precios-propuestos'],
+    queryFn:  () => apiGet<PrecioPropuesto[]>('/api/solicitudes/items/precios-propuestos'),
+    enabled,
+    staleTime: 30_000,
+  })
+}
+
+/** Propone un precio (no lo aplica). Lo usa quien resuelve compras. */
+export function useProponerPrecio() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ itemId, precio_unit, obs }: { itemId: number; precio_unit: number; obs?: string }) =>
+      apiPost(`/api/solicitudes/items/${itemId}/proponer-precio`, { precio_unit, ...(obs ? { obs } : {}) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['precios-propuestos'] })
+      qc.invalidateQueries({ queryKey: ['cuenta-corriente'] })
+    },
+  })
+}
+
+/** Aprueba o rechaza una propuesta. Solo con el flag `cargar_precios`. */
+export function useResolverPrecioPropuesto() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ itemId, aprobar, motivo }: { itemId: number; aprobar: boolean; motivo?: string }) =>
+      aprobar
+        ? apiPost(`/api/solicitudes/items/${itemId}/aprobar-precio`, {})
+        : apiPost(`/api/solicitudes/items/${itemId}/rechazar-precio`, { motivo }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['precios-propuestos'] })
+      qc.invalidateQueries({ queryKey: ['cuenta-corriente'] })
+      qc.invalidateQueries({ queryKey: ['cuenta-cliente-pendientes'] })
+    },
+  })
+}
+
 /** Conteo de materiales sin precio (a tasar) por obra, en las obras del usuario. */
 export interface PendientePrecio { obra_cod: string; sin_precio: number; obra_archivada: boolean; obra_nom: string; esperando: number }
 

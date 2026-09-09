@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { InputMonto } from '@/components/ui/InputMonto'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
-import { useGuardarPreciosMCC } from '../../hooks/useCuentaCliente'
+import { useGuardarPreciosMCC, useProponerPrecio } from '../../hooks/useCuentaCliente'
 import { useEditarItem } from '../../hooks/useSolicitudes'
 import { fetchCuentaRenglonesTodos, CUENTA_CORRIENTE_KEY } from '../../hooks/useCuentaCorriente'
 import { UNIDADES } from '../../constants'
@@ -48,6 +48,12 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
     enabled:  open && !!obraCod,
   })
   const { mutate: guardarPrecios, isPending } = useGuardarPreciosMCC()
+  const { mutate: proponerPrecio, isPending: proponiendo } = useProponerPrecio()
+  // Quien resuelve compras pero NO tiene `cargar_precios` (Nicolás: compra en
+  // cuenta corriente y el proveedor le pasa la cuenta días después) igual sabe
+  // el precio. En vez de un 403, PROPONE: el dueño aprueba desde la bandeja y
+  // recién ahí se mueve la cuenta del cliente.
+  const modoPropuesta = puedeEditar && resolverItems && !(cargarPrecios || esAdmin)
   const { mutate: editarItem, isPending: convirtiendo } = useEditarItem()
   // "Pasar el renglón a la unidad de la ficha" (fase 3): el renglón dice "15 m"
   // y la ficha va por rollo; se pide cuánto es en la unidad de la ficha y el
@@ -123,7 +129,29 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
     })
   }
 
+  /** Manda los precios tipeados como PROPUESTA, uno por uno. */
+  function proponer() {
+    if (cambios.length === 0) { toast('No cambiaste nada', 'err'); return }
+    const conPrecio = cambios.filter(r => precioVal(r) > 0 && precioVal(r) !== Number(r.precio_unit))
+    if (conPrecio.length === 0) { toast('Proponé al menos un precio mayor a cero', 'err'); return }
+    let ok = 0, fallo = 0
+    let pendientes = conPrecio.length
+    for (const r of conPrecio) {
+      proponerPrecio({ itemId: r.item_id, precio_unit: precioVal(r) }, {
+        onSuccess: () => { ok++ },
+        onError:   () => { fallo++ },
+        onSettled: () => {
+          if (--pendientes > 0) return
+          if (fallo > 0) { toast(`Propuestos ${ok}/${conPrecio.length} — ${fallo} fallaron`, 'err'); return }
+          toast(`✓ ${ok} precio${ok !== 1 ? 's' : ''} propuesto${ok !== 1 ? 's' : ''}: esperan aprobación`, 'ok')
+          cerrar()
+        },
+      })
+    }
+  }
+
   function guardar() {
+    if (modoPropuesta) { proponer(); return }
     if (cambios.length === 0) { toast('No cambiaste nada', 'err'); return }
     const aCero = cambios.filter(r => Number(r.precio_unit) > 0 && precioVal(r) === 0).length
     if (aCero > 0 && !confirm(`Vas a dejar en $0 ${aCero} material(es) que tenían precio cargado.\n¿Continuar?`)) return
@@ -154,8 +182,16 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
       footer={
         <>
           <Button variant="secondary" onClick={cerrar}>Cancelar</Button>
-          <Button variant="primary" loading={isPending} disabled={!puedeCargarPrecios || cambios.length === 0} title={puedeCargarPrecios ? undefined : 'Sin permiso para cargar precios (requiere actualización y resolver ítems)'} onClick={guardar}>
-            ✓ Guardar cambios ({cambios.length})
+          <Button
+            variant="primary"
+            loading={isPending || proponiendo}
+            disabled={(!puedeCargarPrecios && !modoPropuesta) || cambios.length === 0}
+            title={puedeCargarPrecios ? undefined
+              : modoPropuesta ? 'Los precios quedan esperando la aprobación del dueño'
+              : 'Sin permiso para cargar precios (requiere actualización y resolver ítems)'}
+            onClick={guardar}
+          >
+            {modoPropuesta ? `📤 Proponer precios (${cambios.length})` : `✓ Guardar cambios (${cambios.length})`}
           </Button>
         </>
       }

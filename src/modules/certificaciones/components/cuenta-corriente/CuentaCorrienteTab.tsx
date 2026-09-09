@@ -16,6 +16,7 @@ import { FiltrosCuenta } from './FiltrosCuenta'
 import { ResumenTabla } from './ResumenTabla'
 import { RenglonesTabla } from './RenglonesTabla'
 import { PagosCliente } from './PagosCliente'
+import { PreciosPropuestos } from './PreciosPropuestos'
 import { CertificadosSection } from './CertificadosSection'
 import { AdministracionSection, MarcarAdministracion } from './AdministracionSection'
 import { ModalExportar } from './ModalExportar'
@@ -200,6 +201,11 @@ export function CuentaCorrienteTab() {
           </div>
         </div>
       )}
+
+      {/* Precios que cargó quien compró, esperando el OK. Va arriba de los
+          filtros: es una bandeja de trabajo, no depende de la obra elegida.
+          Solo para quien puede aprobar — al resto el endpoint le da 403. */}
+      {(cargarPrecios || esAdmin) && <PreciosPropuestos />}
 
       <FiltrosCuenta
         filtro={filtro} patch={patch} grupo={grupo} onGrupo={setGrupo}
