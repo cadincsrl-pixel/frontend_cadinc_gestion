@@ -1856,6 +1856,12 @@ export interface MaterialCompra {
   factura_id:       number | null
   factura_numero:   string | null
   estado:           string
+  /**
+   * Descartada como referencia de precio (20260912a): sigue en el historial y
+   * en la cuenta de la obra, pero el catálogo no la mira para decidir si el
+   * material está desactualizado.
+   */
+  precio_no_referencia?: boolean
 }
 export interface MaterialCompraProveedor {
   proveedor_id:  number | null

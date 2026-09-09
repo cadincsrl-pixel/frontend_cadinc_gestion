@@ -87,6 +87,23 @@ export function useCatalogoStats() {
 }
 
 /**
+ * Descartar una compra como referencia de precio, o volver a tomarla
+ * (20260912a). Invalida el catálogo entero además del historial: sacar la
+ * última compra de una ficha le cambia el estado de precio y las cuentas de
+ * los chips.
+ */
+export function useMarcarPrecioReferencia() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ itemId, usar }: { itemId: number; usar: boolean }) =>
+      apiPatch(`/api/stock/compras/${itemId}/referencia`, { usar }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['stock', 'materiales'] })
+    },
+  })
+}
+
+/**
  * Campos del material que acepta el backend (`CreateMaterialSchema` /
  * `UpdateMaterialSchema` de `stock.schema.ts`).
  *

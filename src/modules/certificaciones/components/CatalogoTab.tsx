@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useCatalogo, useCatalogoStats, useStockRubros, useUpdateStockMaterial } from '../hooks/useStock'
+import { useCatalogo, useCatalogoStats, useStockRubros, useUpdateStockMaterial, useMarcarPrecioReferencia } from '../hooks/useStock'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useToast } from '@/components/ui/Toast'
 import { Input } from '@/components/ui/Input'
@@ -11,7 +11,7 @@ import { AliasChips } from './AliasChips'
 import { HistorialPrecios } from './HistorialPrecios'
 import { MaterialFotosModal } from './MaterialFotosModal'
 import { UNIDADES } from '../constants'
-import type { CatalogoMaterial, CatalogoFiltroEstado, StockRubro } from '@/types/domain.types'
+import type { CatalogoMaterial, CatalogoFiltroEstado, MaterialCompra, StockRubro } from '@/types/domain.types'
 
 /**
  * Catálogo de precios — pestaña aparte del Stock (2026-09-04).
@@ -92,6 +92,7 @@ export function CatalogoTab() {
   const { data: stats } = useCatalogoStats()
   const { data: rubros = [] } = useStockRubros()
   const { mutate: updateMat, mutateAsync: updateAsync, isPending } = useUpdateStockMaterial()
+  const { mutate: marcarRef, isPending: marcando } = useMarcarPrecioReferencia()
 
   const items = useMemo(() => data?.items ?? [], [data])
   const total = data?.total ?? 0
@@ -135,6 +136,20 @@ export function CatalogoTab() {
     })
   }
 
+  /**
+   * Descarta (o vuelve a tomar) una compra como referencia del catálogo. No
+   * toca el precio cobrado a la obra: si ese también está mal, se corrige
+   * desde la cuenta corriente.
+   */
+  function descartarPrecio(c: MaterialCompra, descartar: boolean) {
+    marcarRef({ itemId: c.item_id, usar: !descartar }, {
+      onSuccess: () => toast(descartar
+        ? `✓ Descartado: ${fmtM(Number(c.precio_unit))} del ${fmtFecha(c.fecha)} ya no cuenta como referencia`
+        : `✓ ${fmtM(Number(c.precio_unit))} vuelve a contar como referencia`, 'ok'),
+      onError: () => toast('No se pudo cambiar', 'err'),
+    })
+  }
+
   // Aplica la última compra a todos los seleccionados, uno por uno (el PATCH
   // es por material). Si alguno falla, sigue con el resto y lo cuenta.
   async function aplicarSeleccion() {
@@ -156,7 +171,7 @@ export function CatalogoTab() {
   }
 
   const unidadLabel = (u: string) => UNIDADES.find(x => x.value === u)?.label ?? u
-  const ocupado = isPending || aplicando
+  const ocupado = isPending || aplicando || marcando
 
   return (
     <div className="flex flex-col gap-4">
@@ -446,6 +461,7 @@ export function CatalogoTab() {
           onClose={() => setHistorial(null)}
           ocupado={ocupado}
           onUsarPrecio={puedeEditar ? (p) => { guardarPrecio(historial, p); setHistorial(null) } : undefined}
+          onDescartar={puedeEditar ? (c, descartar) => descartarPrecio(c, descartar) : undefined}
         />
       )}
       <MaterialFotosModal material={fotosDe ? { id: fotosDe.id, nombre: fotosDe.nombre } : null} onClose={() => setFotosDe(null)} puedeEditar={puedeEditar} />
