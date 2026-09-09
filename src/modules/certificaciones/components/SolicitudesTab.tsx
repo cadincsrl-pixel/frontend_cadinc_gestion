@@ -658,6 +658,13 @@ export function SolicitudesTab() {
   // ficha del catálogo: así "portland" encuentra al cemento aunque el renglón
   // diga otra cosa.
   const buscaMat = busquedaMat.trim()
+  // Solo dígitos = número de pedido. "694" trae el pedido #694 aunque ningún
+  // renglón diga 694, que era la única forma de llegar a un pedido por su
+  // número (antes había que buscarlo a ojo filtrando por obra y estado).
+  // No reemplaza a la búsqueda por texto: el pedido #694 aparece Y también los
+  // renglones cuyo texto contenga "694" (códigos de proveedor, medidas), así
+  // que tipear un número nunca esconde lo que ya encontraba.
+  const buscaNum = /^\d+$/.test(buscaMat) ? Number(buscaMat) : null
   const itemMatch = useMemo(() => {
     if (!buscaMat) return () => true
     return (it: SolicitudCompraItem) => {
@@ -667,8 +674,12 @@ export function SolicitudesTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [buscaMat, stockMateriales])
 
-  /** El pedido entra si tiene al menos un renglón que coincide con la búsqueda. */
-  const matchBusqueda = (s: SolicitudCompra) => !buscaMat || (s.items ?? []).some(itemMatch)
+  /**
+   * El pedido entra si es el número buscado, o si tiene al menos un renglón
+   * que coincide con la búsqueda.
+   */
+  const matchBusqueda = (s: SolicitudCompra) =>
+    !buscaMat || s.id === buscaNum || (s.items ?? []).some(itemMatch)
 
   // Contadores live por categoría — para los chips de cada tab.
   const counts = useMemo(() => {
@@ -1284,7 +1295,7 @@ export function SolicitudesTab() {
               type="text"
               value={busquedaMat}
               onChange={e => setBusquedaMat(e.target.value)}
-              placeholder="Buscar material..."
+              placeholder="Buscar material o N° de pedido..."
               autoComplete="off"
               className="w-full pl-8 pr-7 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white"
             />
@@ -1342,7 +1353,9 @@ export function SolicitudesTab() {
           {sorted.length === 0 ? (
             <div className="bg-white rounded-card shadow-card p-8 text-center text-gris-dark text-sm italic">
               {buscaMat
-                ? <>Ningún pedido de este tab tiene &ldquo;{buscaMat}&rdquo;. Probá en otro tab: los contadores de arriba te dicen dónde está.</>
+                ? buscaNum
+                  ? <>En este tab no está el pedido #{buscaNum} ni ningún material que diga &ldquo;{buscaMat}&rdquo;. Probá en otro tab: los contadores de arriba te dicen dónde está.</>
+                  : <>Ningún pedido de este tab tiene &ldquo;{buscaMat}&rdquo;. Probá en otro tab: los contadores de arriba te dicen dónde está.</>
                 : 'Sin solicitudes.'}
             </div>
           ) : sorted.map(s => {
@@ -1356,9 +1369,11 @@ export function SolicitudesTab() {
             const tabTrabajo = categoriaSel === 'por-comprar' || categoriaSel === 'por-enviar'
             const itemsFiltrados = items.filter(it => itemEnCategoria(it.estado, categoriaSel))
             // Con búsqueda de material la vista se reduce a lo buscado: si abro
-            // "cemento" no quiero los otros 20 renglones del pedido.
+            // "cemento" no quiero los otros 20 renglones del pedido. Pero si lo
+            // buscado es el NÚMERO de este pedido, se muestra entero: quien
+            // busca "694" quiere ver el 694, no una lista vacía.
             const itemsVisibles = buscaMat
-              ? items.filter(itemMatch)
+              ? (s.id === buscaNum ? items : items.filter(itemMatch))
               : !esTabPorItem(categoriaSel)
                 ? items
                 : tabTrabajo
@@ -1727,7 +1742,9 @@ export function SolicitudesTab() {
           {sorted.length === 0 ? (
             <div className="bg-white rounded-card shadow-card p-6 text-center text-gris-dark text-sm italic">
               {buscaMat
-                ? <>Ningún pedido de este tab tiene &ldquo;{buscaMat}&rdquo;. Probá en otro tab: los contadores de arriba te dicen dónde está.</>
+                ? buscaNum
+                  ? <>En este tab no está el pedido #{buscaNum} ni ningún material que diga &ldquo;{buscaMat}&rdquo;. Probá en otro tab: los contadores de arriba te dicen dónde está.</>
+                  : <>Ningún pedido de este tab tiene &ldquo;{buscaMat}&rdquo;. Probá en otro tab: los contadores de arriba te dicen dónde está.</>
                 : 'Sin solicitudes.'}
             </div>
           ) : sorted.map(s => {
@@ -1740,9 +1757,11 @@ export function SolicitudesTab() {
             const tabTrabajo = categoriaSel === 'por-comprar' || categoriaSel === 'por-enviar'
             const itemsFiltrados = items.filter(it => itemEnCategoria(it.estado, categoriaSel))
             // Con búsqueda de material la vista se reduce a lo buscado: si abro
-            // "cemento" no quiero los otros 20 renglones del pedido.
+            // "cemento" no quiero los otros 20 renglones del pedido. Pero si lo
+            // buscado es el NÚMERO de este pedido, se muestra entero: quien
+            // busca "694" quiere ver el 694, no una lista vacía.
             const itemsVisibles = buscaMat
-              ? items.filter(itemMatch)
+              ? (s.id === buscaNum ? items : items.filter(itemMatch))
               : !esTabPorItem(categoriaSel)
                 ? items
                 : tabTrabajo
