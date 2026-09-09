@@ -24,6 +24,9 @@ import { UNIDADES } from '../constants'
 export function etiquetaMotivo(c: MaterialCandidato): string {
   switch (c.motivo) {
     case 'alias':    return 'YA LO PIDEN ASÍ'
+    // Casi seguro es un error de tipeo: se muestra el sinónimo real para que
+    // se vea la diferencia de una letra ("manifull" vs «maniful»).
+    case 'alias_parecido': return c.alias_parecido ? `¿QUISISTE DECIR «${c.alias_parecido}»?` : 'CASI IGUAL A UN SINÓNIMO'
     case 'codigo':   return 'MISMO CÓDIGO'
     case 'palabras': return 'MISMAS PALABRAS'
     default:         return `${Math.round(c.sim * 100)}% parecido`
@@ -107,7 +110,7 @@ export function MaterialParecidoModal({
                   </div>
                   {existente && <AliasChips alias={existente.alias} />}
                 </div>
-                <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${c.motivo === 'alias' || c.motivo === 'codigo' ? 'bg-verde-light text-verde' : 'bg-gris text-gris-dark'}`}>
+                <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${c.motivo === 'alias' || c.motivo === 'alias_parecido' || c.motivo === 'codigo' ? 'bg-verde-light text-verde' : 'bg-gris text-gris-dark'}`}>
                   {etiquetaMotivo(c)}
                 </span>
               </div>

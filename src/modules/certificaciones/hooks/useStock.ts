@@ -149,22 +149,25 @@ export type UpdateStockMaterialDto = Partial<StockMaterialFields> & { precio_fue
 
 /**
  * Por qué el backend ofrece un material como "¿no será este?", de más fuerte a
- * más débil: es uno de sus sinónimos, comparten un código de proveedor, los
- * nombres se parecen, o comparten las palabras con contenido.
+ * más débil: es uno de sus sinónimos, se escribe casi igual que uno de ellos,
+ * comparten un código de proveedor, los nombres se parecen, o comparten las
+ * palabras con contenido.
  */
-export type MotivoParecido = 'alias' | 'codigo' | 'nombre' | 'palabras'
+export type MotivoParecido = 'alias' | 'alias_parecido' | 'codigo' | 'nombre' | 'palabras'
 
 /** Material del catálogo que el backend ofrece como "¿no será este?". */
 export interface MaterialCandidato {
   id:     number
   nombre: string
   unidad: string | null
-  /** Similitud de trigramas contra el nombre tipeado (0..1). */
+  /** Similitud de trigramas: la mejor contra el nombre o contra un sinónimo (0..1). */
   sim:    number
   /** true si el nombre tipeado ya es EXACTAMENTE uno de sus sinónimos. */
   por_alias: boolean
   /** true si comparten un código de proveedor ("cod7055" ↔ sinónimo "cod 7055"). */
   por_codigo: boolean
+  /** El sinónimo al que se parece lo tipeado, cuando el motivo es `alias_parecido`. */
+  alias_parecido?: string
   /** Qué parte de las palabras con contenido del tipeado aparece en nombre+sinónimos (0..1). */
   palabras: number
   /** Qué parte del nombre del candidato son esas palabras (0..1); ordena entre los que comparten palabras. */
@@ -172,7 +175,7 @@ export interface MaterialCandidato {
   motivo: MotivoParecido
 }
 
-const MOTIVOS: readonly MotivoParecido[] = ['alias', 'codigo', 'nombre', 'palabras']
+const MOTIVOS: readonly MotivoParecido[] = ['alias', 'alias_parecido', 'codigo', 'nombre', 'palabras']
 
 /** Lee un candidato tal como lo manda el backend; `null` si no tiene la forma. */
 export function parseMaterialCandidato(c: unknown): MaterialCandidato | null {
@@ -191,6 +194,7 @@ export function parseMaterialCandidato(c: unknown): MaterialCandidato | null {
     sim,
     por_alias,
     por_codigo,
+    ...(typeof r.alias_parecido === 'string' ? { alias_parecido: r.alias_parecido } : {}),
     palabras:  typeof r.palabras === 'number' ? r.palabras : 0,
     precision: typeof r.precision === 'number' ? r.precision : 0,
     motivo,

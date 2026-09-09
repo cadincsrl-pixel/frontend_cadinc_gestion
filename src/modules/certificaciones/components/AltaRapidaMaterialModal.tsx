@@ -53,6 +53,8 @@ export function AltaRapidaMaterialModal({
   const [rubroId, setRubroId] = useState<number | ''>('')
   const [unidad,  setUnidad]  = useState(UNIDADES.some(u => u.value === unidadInicial) ? unidadInicial : '')
   const [precio,  setPrecio]  = useState('')
+  // "No sé el precio": nace en $0 y cae en la lista de tasar.
+  const [sinPrecio, setSinPrecio] = useState(false)
   const [guardarSinonimo, setGuardarSinonimo] = useState(true)
 
   const nombreLimpio    = nombre.trim()
@@ -68,7 +70,7 @@ export function AltaRapidaMaterialModal({
 
   const esCodigo   = nombreLimpio.length > 0 && esNombreSoloCodigo(nombreLimpio)
   const precioNum  = Number(precio)
-  const precioOk   = precio !== '' && Number.isFinite(precioNum) && precioNum > 0
+  const precioOk   = sinPrecio || (precio !== '' && Number.isFinite(precioNum) && precioNum > 0)
   const nombreOk   = nombreLimpio.length >= 3 && !esCodigo
   const listo      = nombreOk && rubroId !== '' && unidad !== '' && precioOk
 
@@ -80,7 +82,7 @@ export function AltaRapidaMaterialModal({
       nombre:     nombreLimpio,
       rubro_id:   Number(rubroId),
       unidad,
-      precio_ref: precioNum,
+      precio_ref: sinPrecio ? 0 : precioNum,
       alias:      sinonimoDistinto && guardarSinonimo ? [buscadoComo.trim()] : [],
       forzar:     parecidosAlDia,
     })
@@ -138,7 +140,7 @@ export function AltaRapidaMaterialModal({
                         {existente && existente.stock_actual > 0 && <> · <span className="font-mono font-bold">{existente.stock_actual}</span> en depósito</>}
                       </div>
                     </div>
-                    <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${c.motivo === 'alias' || c.motivo === 'codigo' ? 'bg-verde-light text-verde' : 'bg-gris text-gris-dark'}`}>
+                    <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${c.motivo === 'alias' || c.motivo === 'alias_parecido' || c.motivo === 'codigo' ? 'bg-verde-light text-verde' : 'bg-gris text-gris-dark'}`}>
                       {etiquetaMotivo(c)}
                     </span>
                   </div>
@@ -189,11 +191,27 @@ export function AltaRapidaMaterialModal({
         <InputMonto
           label="Precio de referencia (final, con IVA)"
           value={precio}
-          onChange={setPrecio}
+          onChange={v => { setPrecio(v); if (v !== '') setSinPrecio(false) }}
           placeholder="0,00"
+          disabled={sinPrecio}
           error={precio !== '' && !precioOk ? 'Tiene que ser mayor a cero' : undefined}
-          hint={precio === '' ? 'Lo que se paga por una unidad, IVA incluido. Es lo que se cotiza a la obra.' : undefined}
+          hint={precio === '' && !sinPrecio ? 'Lo que se paga por una unidad, IVA incluido. Es lo que se cotiza a la obra.' : undefined}
         />
+
+        {/* La salida honesta cuando no se sabe el precio. Sin esto, el campo
+            obligatorio se llenaba con cualquier número —el 08 y 09/09, cinco
+            fichas nuevas nacieron con "$11"— y eso es PEOR que dejarlo en
+            cero: el cero aparece en la alerta de "sin precio" y en la lista de
+            tasar; un $11 inventado no lo ve nadie hasta que alguien mira la
+            cuenta de la obra. */}
+        <label className="flex items-start gap-2 text-xs text-carbon cursor-pointer">
+          <input type="checkbox" className="mt-0.5" checked={sinPrecio}
+            onChange={e => { setSinPrecio(e.target.checked); if (e.target.checked) setPrecio('') }} />
+          <span>
+            <b>No sé el precio</b> — se guarda sin precio y queda en la lista de <b>Para tasar</b> del catálogo.
+            {' '}Es preferible a poner un número inventado: ese después se cobra.
+          </span>
+        </label>
 
         {sinonimoDistinto && (
           <label className="flex items-start gap-2 text-xs text-carbon cursor-pointer">
