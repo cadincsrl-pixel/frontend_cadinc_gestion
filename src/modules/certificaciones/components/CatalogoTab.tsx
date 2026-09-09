@@ -9,6 +9,7 @@ import { InputMonto } from '@/components/ui/InputMonto'
 import { Pagination } from '@/components/ui/Pagination'
 import { AliasChips } from './AliasChips'
 import { HistorialPrecios } from './HistorialPrecios'
+import { MaterialFotosModal } from './MaterialFotosModal'
 import { UNIDADES } from '../constants'
 import type { CatalogoMaterial, CatalogoEstadoPrecio, StockRubro } from '@/types/domain.types'
 
@@ -61,6 +62,7 @@ export function CatalogoTab() {
 
   const [busqueda, setBusqueda] = useState('')
   const [historial, setHistorial] = useState<CatalogoMaterial | null>(null)
+  const [fotosDe, setFotosDe] = useState<CatalogoMaterial | null>(null)
   const [rubroId, setRubroId]   = useState<number | ''>('')
   const [estado, setEstado]     = useState<CatalogoEstadoPrecio | ''>('')
   const [conBajas, setConBajas] = useState(false)
@@ -279,6 +281,11 @@ export function CatalogoTab() {
                       </td>
                       <td className="px-4 py-2.5">
                         <div className="font-medium text-sm flex items-center gap-1.5 flex-wrap">
+                          {m.foto_url && (
+                            <button type="button" onClick={() => setFotosDe(m)} className="shrink-0" title="Ver las fotos de la ficha">
+                              <img src={m.foto_url} alt="" loading="lazy" className="w-9 h-9 rounded object-cover border border-gris-mid" />
+                            </button>
+                          )}
                           <button type="button" onClick={() => setHistorial(m)} className="text-left hover:underline hover:text-azul" title="Ver el historial de compras y precios">{m.nombre}</button>
                           {m.clase === 'herramienta' && <span className="text-[9px] font-bold bg-azul-light text-azul px-1.5 py-0.5 rounded" title="Herramienta: va al pañol, no a la cuenta del cliente">🔧</span>}
                           {!m.activo && <span className="text-[9px] font-bold bg-gris text-gris-dark px-1.5 py-0.5 rounded">BAJA</span>}
@@ -341,6 +348,7 @@ export function CatalogoTab() {
                         )}
                       </td>
                       <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                        <button onClick={() => setFotosDe(m)} className="text-xs font-bold px-2.5 py-1.5 rounded text-gris-dark hover:bg-azul-light hover:text-azul mr-1" title={m.foto_url ? 'Ver o cambiar las fotos de la ficha' : 'Esta ficha no tiene fotos: subí una'}>📷{m.foto_url ? '' : ' Foto'}</button>
                         <button onClick={() => setHistorial(m)} className="text-xs font-bold px-2.5 py-1.5 rounded text-gris-dark hover:bg-azul-light hover:text-azul mr-1" title="Historial de compras y precios por proveedor">📈 Historial</button>
                         {!editando && (
                           <button onClick={() => abrirEdicion(m)} disabled={!puedeEditar} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-gris-mid disabled:opacity-40 disabled:cursor-not-allowed" title={puedeEditar ? 'Editar el precio de referencia' : 'Sin permiso para editar precios'}>
@@ -367,6 +375,11 @@ export function CatalogoTab() {
                     <div className="flex items-start gap-2 min-w-0">
                       {seleccionable && (
                         <input type="checkbox" className="mt-1" checked={sel.has(m.id)} disabled={!puedeEditar} onChange={() => toggleSel(m)} title={puedeEditar ? undefined : 'Sin permiso para editar precios'} />
+                      )}
+                      {m.foto_url && (
+                        <button type="button" onClick={() => setFotosDe(m)} className="shrink-0 mt-0.5" title="Ver las fotos de la ficha">
+                          <img src={m.foto_url} alt="" loading="lazy" className="w-10 h-10 rounded object-cover border border-gris-mid" />
+                        </button>
                       )}
                       <div className="min-w-0">
                         <div className="font-medium text-sm">
@@ -402,7 +415,8 @@ export function CatalogoTab() {
                       <button onClick={() => { setEditId(null); setDraft('') }} className="text-xs font-bold px-3 py-2 rounded text-gris-dark min-h-[36px]">Cancelar</button>
                     </div>
                   ) : (
-                    <div className="flex gap-2 mt-2">
+                    <div className="flex gap-2 mt-2 flex-wrap">
+                      <button onClick={() => setFotosDe(m)} className="text-xs font-bold px-3 py-1.5 rounded text-gris-dark hover:bg-azul-light hover:text-azul min-h-[36px]">📷 Fotos</button>
                       <button onClick={() => setHistorial(m)} className="text-xs font-bold px-3 py-1.5 rounded text-gris-dark hover:bg-azul-light hover:text-azul min-h-[36px]">📈 Historial</button>
                       <button onClick={() => abrirEdicion(m)} disabled={!puedeEditar} title={puedeEditar ? undefined : 'Sin permiso para editar precios'} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark disabled:opacity-40 disabled:cursor-not-allowed min-h-[36px]">✏️ Precio</button>
                       {seleccionable && (
@@ -429,6 +443,7 @@ export function CatalogoTab() {
           onUsarPrecio={puedeEditar ? (p) => { guardarPrecio(historial, p); setHistorial(null) } : undefined}
         />
       )}
+      <MaterialFotosModal material={fotosDe ? { id: fotosDe.id, nombre: fotosDe.nombre } : null} onClose={() => setFotosDe(null)} puedeEditar={puedeEditar} />
     </div>
   )
 }

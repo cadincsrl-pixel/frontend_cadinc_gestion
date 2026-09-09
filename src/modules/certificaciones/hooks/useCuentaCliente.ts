@@ -37,13 +37,14 @@ export function useGuardarPreciosMCC() {
 }
 
 /** Conteo de materiales sin precio (a tasar) por obra, en las obras del usuario. */
-export interface PendientePrecio { obra_cod: string; sin_precio: number; obra_archivada: boolean }
+export interface PendientePrecio { obra_cod: string; sin_precio: number; obra_archivada: boolean; obra_nom: string; esperando: number }
 
-export function usePendientesDePrecio() {
+export function usePendientesDePrecio(enabled = true) {
   return useQuery({
     queryKey: ['cuenta-cliente-pendientes'],
     queryFn: () => apiGet<PendientePrecio[]>('/api/cuenta-cliente/pendientes-precio'),
     staleTime: 60_000,
+    enabled,
   })
 }
 

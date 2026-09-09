@@ -15,6 +15,7 @@ import {
   type GastoPendienteItem,
   type SeguroMaquinaItem,
   type SolicitudPorComprarItem,
+  type SinPrecioItem,
 } from '@/hooks/useNotificaciones'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useToast } from '@/components/ui/Toast'
@@ -125,6 +126,8 @@ export function NotificationsBell() {
   const showAlquiler  =  modulo === null || modulo === 'alquiler'
   // Pedidos por comprar visibles en la campana (scopeados al módulo de compras).
   const solicitudesPorComprar = showCompras ? solicitudesAll : []
+  // Renglones sin precio en la cuenta corriente (solo quien carga precios los recibe).
+  const sinPrecio = showCompras ? notifs.sinPrecio : []
 
   const hoy                    = showCumple    ? notifs.hoy                    : []
   const proximos               = showCumple    ? notifs.proximos               : []
@@ -157,7 +160,7 @@ export function NotificationsBell() {
     solicitudesPorComprar.length
   const totalNoUrgentes =
     proximos.length + papelesPorVencer.length + papelesChoferPorVencer.length +
-    serviciosProximos.length + segurosPorVencer.length
+    serviciosProximos.length + segurosPorVencer.length + sinPrecio.length
   const sinNotifs = totalUrgente === 0 && totalNoUrgentes === 0
 
   function abrirPersonal(leg: string) {
@@ -204,6 +207,13 @@ export function NotificationsBell() {
   function abrirSolicitudes() {
     setAbierto(false)
     router.push('/certificaciones?tab=solicitudes')
+  }
+
+  // La cuenta corriente lee `obra` y `sin_precio` de la URL (fase 3): abre la
+  // obra ya filtrada en sus renglones sin precio.
+  function abrirSinPrecio(obraCod: string) {
+    setAbierto(false)
+    router.push(`/certificaciones?tab=cuenta-corriente&obra=${encodeURIComponent(obraCod)}&sin_precio=1`)
   }
 
   function abrirSeguroMaquina() {
@@ -264,6 +274,23 @@ export function NotificationsBell() {
                     className="w-full text-center px-3 py-2 text-[11px] text-azul hover:underline"
                   >
                     Ver los {solicitudesPorComprar.length - 10} restantes →
+                  </button>
+                )}
+              </Section>
+            )}
+
+            {/* Renglones sin precio en la cuenta corriente (quien carga precios) */}
+            {sinPrecio.length > 0 && (
+              <Section titulo={`💲 Sin precio en la cuenta (${sinPrecio.reduce((s, p) => s + p.sin_precio, 0)})`} tono="amarillo">
+                {sinPrecio.slice(0, 10).map(p => (
+                  <SinPrecioRow key={p.obra_cod} item={p} onClick={() => abrirSinPrecio(p.obra_cod)} />
+                ))}
+                {sinPrecio.length > 10 && (
+                  <button
+                    onClick={() => { setAbierto(false); router.push('/certificaciones?tab=cuenta-corriente') }}
+                    className="w-full text-center px-3 py-2 text-[11px] text-azul hover:underline"
+                  >
+                    Ver las {sinPrecio.length - 10} obras restantes →
                   </button>
                 )}
               </Section>
@@ -516,6 +543,26 @@ function GastoPendienteRow({ item, onClick }: { item: GastoPendienteItem; onClic
         {item.descripcion && (
           <span className="text-gris-mid italic truncate">· {item.descripcion}</span>
         )}
+      </div>
+    </button>
+  )
+}
+
+function SinPrecioRow({ item, onClick }: { item: SinPrecioItem; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full text-left px-3 py-2 hover:bg-gris/40 transition-colors"
+    >
+      <div className="font-bold text-sm text-azul">
+        💲 {item.obra_nom}
+        <span className="ml-2 text-xs font-semibold text-[#7A5500]">
+          {item.sin_precio} renglón{item.sin_precio !== 1 ? 'es' : ''} sin precio
+        </span>
+      </div>
+      <div className="text-xs text-gris-dark mt-0.5">
+        <span className="font-mono">{item.obra_cod}</span>
+        {item.esperando > 0 && <> · ⏳ {item.esperando} esperando el precio del proveedor</>}
       </div>
     </button>
   )

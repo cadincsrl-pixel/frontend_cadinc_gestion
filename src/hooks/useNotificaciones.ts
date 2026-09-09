@@ -7,6 +7,7 @@ import { usePersonal } from '@/modules/tarja/hooks/usePersonal'
 import { GASTOS_NOTIF_KEY } from '@/modules/logistica/hooks/useLogistica'
 import { useSessionStore } from '@/store/session.store'
 import { usePermisos } from '@/hooks/usePermisos'
+import { usePendientesDePrecio } from '@/modules/certificaciones/hooks/useCuentaCliente'
 import type { Personal } from '@/types/domain.types'
 
 // Cumpleañero precalculado, listo para renderizar.
@@ -91,6 +92,18 @@ export interface GastoPendienteItem {
   patente:         string | null
 }
 
+// Renglones de la cuenta corriente sin precio, agrupados por obra (fase 3 de
+// precios, 2026-09-09). Solo para quien tiene el permiso de cargar precios:
+// es su lista de trabajo, no un aviso para todos.
+export interface SinPrecioItem {
+  obra_cod:       string
+  obra_nom:       string
+  sin_precio:     number
+  // De esos, cuántos entraron como "esperando precio del proveedor".
+  esperando:      number
+  obra_archivada: boolean
+}
+
 interface NotificacionesResult {
   // Cumpleañeros del día (count → badge rojo).
   hoy:                 CumpleanieroItem[]
@@ -116,6 +129,8 @@ interface NotificacionesResult {
   segurosPorVencer:    SeguroMaquinaItem[]
   // Solicitudes de compra con ítems por comprar (para compras/depósito).
   solicitudesPorComprar: SolicitudPorComprarItem[]
+  // Renglones sin precio en la cuenta corriente, por obra (para quien carga precios).
+  sinPrecio:           SinPrecioItem[]
   // La lista de obras ya cargó: recién ahí el aviso puede mostrar el nombre.
   pedidosNombresListos: boolean
   // total de notificaciones "urgentes" (badge rojo).
@@ -208,7 +223,7 @@ export function useNotificaciones(): NotificacionesResult {
   const tieneAridos    = hasModulo('aridos')
   // Solicitudes "por comprar": solo para quien resuelve ítems (compras/depósito).
   const tieneCertificaciones = hasModulo('certificaciones')
-  const { resolverItems } = usePermisos('certificaciones')
+  const { resolverItems, cargarPrecios } = usePermisos('certificaciones')
 
   const { data: personal = [] } = usePersonal()
   const { data: docsVenc = [] } = useQuery({
@@ -275,6 +290,10 @@ export function useNotificaciones(): NotificacionesResult {
     refetchInterval: 5 * 60 * 1000,
   })
   const pendientes = pendientesQuery.data ?? []
+  // Sin precio por obra: mismo endpoint liviano que usa la cuenta corriente
+  // (una fila por obra); las mutaciones del módulo invalidan
+  // ['cuenta-cliente-pendientes'], así que cargar un precio lo refresca.
+  const { data: pendPrecio = [] } = usePendientesDePrecio(tieneCertificaciones && cargarPrecios)
   // El nombre de la obra viene embebido desde el backend: alcanza con que la
   // query haya cargado para que el warmup del aviso pueda activarse.
   const pedidosNombresListos = pendientesQuery.isSuccess
@@ -412,6 +431,13 @@ export function useNotificaciones(): NotificacionesResult {
       nPendientes: s.n_pendientes,
     }))
 
+    // ── Sin precio en la cuenta corriente ──
+    // Las archivadas no se avisan: no son trabajo vivo (la pestaña las muestra
+    // con el filtro de archivadas).
+    const sinPrecio: SinPrecioItem[] = pendPrecio
+      .filter(p => !p.obra_archivada)
+      .map(p => ({ obra_cod: p.obra_cod, obra_nom: p.obra_nom ?? p.obra_cod, sin_precio: p.sin_precio, esperando: p.esperando ?? 0, obra_archivada: p.obra_archivada }))
+
     return {
       hoy,
       proximos,
@@ -425,6 +451,7 @@ export function useNotificaciones(): NotificacionesResult {
       segurosVencidos,
       segurosPorVencer,
       solicitudesPorComprar,
+      sinPrecio,
       pedidosNombresListos,
       totalUrgente:
         hoy.length +
@@ -435,7 +462,7 @@ export function useNotificaciones(): NotificacionesResult {
         segurosVencidos.length +
         solicitudesPorComprar.length,
     }
-  }, [personal, docsVenc, docsChofer, servicesNotif, gastosPend, segurosNotif, pendientes, tieneTarja, pedidosNombresListos])
+  }, [personal, docsVenc, docsChofer, servicesNotif, gastosPend, segurosNotif, pendientes, pendPrecio, tieneTarja, pedidosNombresListos])
 }
 
 // Helper para mostrar "hoy", "mañana", "en 3 días" en la lista de próximos.

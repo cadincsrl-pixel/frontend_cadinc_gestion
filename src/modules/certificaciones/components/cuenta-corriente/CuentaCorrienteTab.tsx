@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
 import { Pagination } from '@/components/ui/Pagination'
 import { useToast } from '@/components/ui/Toast'
@@ -62,6 +63,21 @@ export function CuentaCorrienteTab() {
   const [filtro, setFiltro] = useState<CuentaFiltro>({})
   const [grupo, setGrupo]   = useState<CuentaGrupo>('obra')
   const [page, setPage]     = useState(1)
+  // Deep-link desde la campana (fase 3 de precios):
+  // /certificaciones?tab=cuenta-corriente&obra=CC-016&sin_precio=1 abre la
+  // obra ya filtrada en sus renglones sin precio. Se aplica cada vez que
+  // cambia el link (el tab puede estar montado cuando llega otro), con el
+  // patrón de "estado derivado durante el render", no en un efecto.
+  const searchParams = useSearchParams()
+  const obraQ = searchParams.get('obra')
+  const linkActual = obraQ ? `${obraQ}|${searchParams.get('sin_precio') === '1' ? 'sp' : ''}` : null
+  const [ultimoLink, setUltimoLink] = useState<string | null>(null)
+  if (linkActual && linkActual !== ultimoLink) {
+    setUltimoLink(linkActual)
+    const soloSinPrecio = linkActual.endsWith('|sp')
+    setFiltro(f => ({ ...f, obra_cod: obraQ!, ...(soloSinPrecio ? { sin_precio: true, estados: undefined, tipo: undefined } : {}) }))
+    setPage(1)
+  }
   const [modalPrecios, setModalPrecios] = useState(false)
   const [exportando, setExportando]     = useState(false)
   // Sin obra elegida no se carga nada: los totales de todas las obras juntas

@@ -27,6 +27,11 @@ export interface ComboboxOption {
    * separar los términos ("chapa acanalada" no es una palabra suelta).
    */
   search?: string | string[]
+  /**
+   * Miniatura a la izquierda de la opción (foto principal de la ficha del
+   * catálogo, 20260912g). Solo se muestra; no entra a la búsqueda.
+   */
+  imgUrl?: string
 }
 
 /** Todo el texto contra el que se busca una option: label + sub + sinónimos. */
@@ -84,8 +89,15 @@ function OptionButton({ o, selected, onSelect }: {
         ${selected ? 'bg-azul-light text-azul font-bold' : 'text-carbon'}
       `}
     >
-      <div className="font-semibold">{o.label}</div>
-      {o.sub && <div className="text-[11px] text-gris-dark mt-0.5">{o.sub}</div>}
+      <div className="flex items-center gap-2.5">
+        {o.imgUrl && (
+          <img src={o.imgUrl} alt="" loading="lazy" className="w-8 h-8 rounded object-cover shrink-0 border border-gris-mid bg-white" />
+        )}
+        <div className="min-w-0">
+          <div className="font-semibold">{o.label}</div>
+          {o.sub && <div className="text-[11px] text-gris-dark mt-0.5">{o.sub}</div>}
+        </div>
+      </div>
     </button>
   )
 }

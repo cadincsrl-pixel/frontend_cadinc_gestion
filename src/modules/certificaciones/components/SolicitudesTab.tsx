@@ -413,6 +413,7 @@ export function SolicitudesTab() {
         sub:    hayStock ? `${m.stock_actual} ${m.unidad} en depósito` : undefined,
         search: m.alias ?? [],
         group:  rubro,
+        imgUrl: m.foto_url ?? undefined,
       }
     })
   }, [stockMateriales])
@@ -2171,6 +2172,12 @@ export function SolicitudesTab() {
                       {/* Solo si HAY stock, y en verde: es un dato útil. En rojo y
                           con 0 (684 de 718 materiales) se leía como "no se puede
                           pedir" y mandaba al operario de vuelta al texto libre. */}
+                      {/* La foto de la ficha, para que el que pide vea si "eso" es lo que quiere (20260912g). */}
+                      {matVinculado?.foto_url && (
+                        <a href={matVinculado.foto_url} target="_blank" rel="noopener" className="shrink-0" title="Ver la foto grande">
+                          <img src={matVinculado.foto_url} alt="" className="w-9 h-9 rounded-lg object-cover border border-gris-mid" />
+                        </a>
+                      )}
                       {matVinculado && matVinculado.stock_actual > 0 && (
                         <div className="flex-shrink-0 px-2 py-1.5 rounded-lg text-xs font-bold bg-verde-light text-verde">
                           Hay {matVinculado.stock_actual} en depósito

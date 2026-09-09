@@ -1704,6 +1704,11 @@ export interface CuentaRenglon {
   certificado_numero?: number | null
   /** Compra sin precio, el proveedor lo pasa después (20260912c). */
   esperando_precio?:   boolean
+  /** Precio de referencia de la ficha del renglón (20260912f), para "usar sugeridos". Null sin ficha. */
+  ficha_precio_ref?:   number | null
+  ficha_unidad?:       string | null
+  /** La unidad del renglón es compatible con la de la ficha (`unidad_compatible`). Null sin ficha. */
+  ficha_unidad_ok?:    boolean | null
   obra_cod:            string
   obra_nom:            string
   obra_archivada:      boolean
@@ -1887,6 +1892,8 @@ export interface CatalogoMaterial {
   uc_fecha:              string | null
   uc_pedido:             number | null
   uc_obra:               string | null
+  /** Foto principal de la ficha (20260912g). */
+  foto_url?:             string | null
   /** Unidad en que se cargó la última compra (20260911d). */
   uc_unidad?:            string | null
   /** La unidad de la última compra es compatible con la de la ficha (`unidad_compatible`). Null si no hay compra. */
@@ -1991,8 +1998,23 @@ export interface StockMaterial extends AuditFields {
    * herramienta se escriben en texto libre, sin material_id.
    */
   clase:         ClaseMaterial
+  /** URL pública de la foto principal de la ficha (20260912g). Null si no tiene. */
+  foto_url?:     string | null
   stock_rubros?: { nombre: string; icono: string | null }
   proveedores?:  { id: number; nombre: string } | null
+}
+
+/** Una foto de una ficha del catálogo (bucket público catalogo-fotos, 20260912g). */
+export interface StockMaterialFoto {
+  id:           number
+  material_id:  number
+  storage_path: string
+  url:          string
+  file_hash:    string | null
+  descripcion:  string | null
+  orden:        number
+  created_at:   string
+  created_by:   string | null
 }
 
 export interface StockMovimiento {

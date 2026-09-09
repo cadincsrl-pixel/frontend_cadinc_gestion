@@ -126,7 +126,12 @@ export function AltaRapidaMaterialModal({
               return (
                 <div key={c.id} className="bg-white rounded-lg border border-gris-mid px-2.5 py-2 flex flex-col gap-1.5">
                   <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
+                    {existente?.foto_url && (
+                      <a href={existente.foto_url} target="_blank" rel="noopener" className="shrink-0" title="Ver la foto grande">
+                        <img src={existente.foto_url} alt="" className="w-10 h-10 rounded-lg object-cover border border-gris-mid" />
+                      </a>
+                    )}
+                    <div className="min-w-0 flex-1">
                       <div className="font-bold text-sm text-carbon leading-tight">{c.nombre}</div>
                       <div className="text-[11px] text-gris-dark">
                         {unidadLabel}

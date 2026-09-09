@@ -93,7 +93,12 @@ export function MaterialParecidoModal({
           return (
             <div key={c.id} className="border-[1.5px] border-gris-mid rounded-xl p-3 flex flex-col gap-2">
               <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
+                {existente?.foto_url && (
+                  <a href={existente.foto_url} target="_blank" rel="noopener" className="shrink-0" title="Ver la foto grande">
+                    <img src={existente.foto_url} alt="" className="w-12 h-12 rounded-lg object-cover border border-gris-mid" />
+                  </a>
+                )}
+                <div className="min-w-0 flex-1">
                   <div className="font-bold text-sm text-carbon">{c.nombre}</div>
                   <div className="text-[11px] text-gris-dark mt-0.5">
                     {rubro ? `${rubro.icono ?? ''} ${rubro.nombre}` : 'Rubro —'}
