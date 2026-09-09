@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api/client'
-import type { StockRubro, StockMaterial, StockMovimiento, CatalogoPage, CatalogoStats, CatalogoEstadoPrecio, ClaseMaterial, MaterialComprasResumen } from '@/types/domain.types'
+import type { StockRubro, StockMaterial, StockMovimiento, CatalogoPage, CatalogoStats, CatalogoFiltroEstado, ClaseMaterial, MaterialComprasResumen } from '@/types/domain.types'
 
 // ── Rubros ──
 export function useStockRubros() {
@@ -41,7 +41,7 @@ export interface CatalogoFiltro {
   rubro_id?:          number
   incluir_inactivos?: boolean
   /** 'sin_precio' agrupa sin_precio + tasar; el resto es el estado exacto. */
-  estado?:            CatalogoEstadoPrecio
+  estado?:            CatalogoFiltroEstado
   limit:              number
   offset:             number
 }

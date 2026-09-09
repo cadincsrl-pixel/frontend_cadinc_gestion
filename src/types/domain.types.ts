@@ -1913,6 +1913,14 @@ export interface CatalogoMaterial {
 
 export type CatalogoEstadoPrecio = 'sin_precio' | 'tasar' | 'unidad_distinta' | 'desactualizado' | 'al_dia' | 'sin_compra'
 
+/**
+ * Lo que se puede pedir como filtro: los estados que calcula la vista más los
+ * agrupadores que arma el backend — `mas_caro` / `mas_barato` parten los
+ * desactualizados por el signo de `dif_pct` (la última compra salió más cara
+ * o más barata que el precio de referencia).
+ */
+export type CatalogoFiltroEstado = CatalogoEstadoPrecio | 'mas_caro' | 'mas_barato'
+
 export interface CatalogoPage {
   items: CatalogoMaterial[]
   total: number
@@ -1925,6 +1933,10 @@ export interface CatalogoStats {
   desactualizado:  number
   al_dia:          number
   unidad_distinta: number
+  /** Desactualizados donde la compra salió MÁS CARA que la referencia. */
+  mas_caro:        number
+  /** …y donde salió más barata. */
+  mas_barato:      number
 }
 
 /**

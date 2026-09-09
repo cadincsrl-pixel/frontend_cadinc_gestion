@@ -11,7 +11,7 @@ import { AliasChips } from './AliasChips'
 import { HistorialPrecios } from './HistorialPrecios'
 import { MaterialFotosModal } from './MaterialFotosModal'
 import { UNIDADES } from '../constants'
-import type { CatalogoMaterial, CatalogoEstadoPrecio, StockRubro } from '@/types/domain.types'
+import type { CatalogoMaterial, CatalogoFiltroEstado, StockRubro } from '@/types/domain.types'
 
 /**
  * Catálogo de precios — pestaña aparte del Stock (2026-09-04).
@@ -31,10 +31,15 @@ import type { CatalogoMaterial, CatalogoEstadoPrecio, StockRubro } from '@/types
 
 const PAGE_SIZE = 50
 
-const ESTADOS: { key: CatalogoEstadoPrecio | ''; label: string; hint: string; stat: 'total' | 'tasar' | 'desactualizado' | 'sin_precio' | 'unidad_distinta' }[] = [
+const ESTADOS: { key: CatalogoFiltroEstado | ''; label: string; hint: string; stat: 'total' | 'tasar' | 'desactualizado' | 'sin_precio' | 'unidad_distinta' | 'mas_caro' | 'mas_barato' }[] = [
   { key: '',                label: 'Todos',           hint: 'Todo el catálogo activo',                               stat: 'total' },
   { key: 'tasar',           label: 'Para tasar',      hint: 'Sin precio de referencia, pero con una compra para tomar', stat: 'tasar' },
   { key: 'desactualizado',  label: 'Desactualizados', hint: 'La última compra difiere del precio de referencia',      stat: 'desactualizado' },
+  // Los dos lados de "desactualizado", que se miran distinto: si compramos
+  // más caro, el precio cargado quedó corto y se le está cobrando de menos al
+  // cliente; si más barato, de más. Cada uno ordenado por su punta.
+  { key: 'mas_caro',        label: '↑ Compramos más caro',   hint: 'La última compra salió MÁS CARA que el precio cargado: se está cobrando de menos. Ordenados de mayor a menor diferencia.', stat: 'mas_caro' },
+  { key: 'mas_barato',      label: '↓ Compramos más barato', hint: 'La última compra salió más barata que el precio cargado: se está cobrando de más. Ordenados de mayor a menor diferencia.',  stat: 'mas_barato' },
   { key: 'unidad_distinta', label: 'Unidad distinta', hint: 'La última compra se cargó en otra unidad que la ficha: no se puede usar sin convertir', stat: 'unidad_distinta' },
   { key: 'sin_precio',      label: 'Sin precio',      hint: 'Sin precio de referencia, con o sin compra',            stat: 'sin_precio' },
 ]
@@ -64,7 +69,7 @@ export function CatalogoTab() {
   const [historial, setHistorial] = useState<CatalogoMaterial | null>(null)
   const [fotosDe, setFotosDe] = useState<CatalogoMaterial | null>(null)
   const [rubroId, setRubroId]   = useState<number | ''>('')
-  const [estado, setEstado]     = useState<CatalogoEstadoPrecio | ''>('')
+  const [estado, setEstado]     = useState<CatalogoFiltroEstado | ''>('')
   const [conBajas, setConBajas] = useState(false)
   const [page, setPage]         = useState(1)
 
