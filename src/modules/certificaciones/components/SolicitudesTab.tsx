@@ -325,7 +325,7 @@ export function SolicitudesTab() {
   const perfiles = usePerfilesMap()
   // Permisos: deshabilitar (no ocultar) botones según capacidad. El backend
   // valida igual; esto evita clicks que rebotan con error feo (CLAUDE.md §6).
-  const { puedeCrear, puedeEditar, puedeEliminar, resolverItems, cargarPrecios } = usePermisos('certificaciones')
+  const { puedeCrear, puedeEditar, puedeEliminar, resolverItems, cargarPrecios, precioAlResolver } = usePermisos('certificaciones')
   // Sumar filas al catálogo no es lo mismo que cargar un pedido (2026-09-07):
   // hace falta editar certificaciones Y la pestaña Catálogo, igual que en el
   // backend (POST /api/stock/materiales). Sin eso el buscador no ofrece
@@ -619,6 +619,10 @@ export function SolicitudesTab() {
     defaultValues: { proveedor_id: '', factura_id: '', queda_en_proveedor: false, pagado_por: 'cadinc', precios: {} },
   })
   const formDespachar = useForm<any>({ defaultValues: { precio_unit: 0 } })
+  // Quien maneja el depósito pero no los números resuelve SIN precio: el
+  // renglón queda a tasar y lo carga quien corresponde. Antes ponía "11" o "1"
+  // para salir del paso y eso terminaba facturado.
+  const sinPrecio = !precioAlResolver
   const formProv = useForm<any>({ defaultValues: { nombre: '', cuit: '', tel: '' } })
   const formFact = useForm<any>({ defaultValues: { proveedor_id: '', numero: '', fecha: '', total: 0 } })
 
@@ -1002,7 +1006,7 @@ export function SolicitudesTab() {
   }
   function handleDespachar(data: any) {
     if (!modalDespachar?.id) return
-    despacharItem({ itemId: modalDespachar.id, dto: { precio_unit: Number(data.precio_unit) } }, {
+    despacharItem({ itemId: modalDespachar.id, dto: { precio_unit: sinPrecio ? 0 : Number(data.precio_unit) } }, {
       onSuccess: () => { toast('Despacho registrado', 'ok'); setModalDespachar(null) },
       // El botón ya no se muestra en pedidos con destino depósito, pero una
       // pestaña vieja todavía puede mandarlo: el backend corta con este code
@@ -2254,7 +2258,18 @@ export function SolicitudesTab() {
             {/* Precio en dos casilleros enlazados: cargás cualquiera y el otro
                 se calcula solo (IVA 21%). SE GUARDA EL FINAL — es la convención
                 de todo el sistema (cobros, cuenta cliente, reportes: con IVA).
-                setValue no re-dispara onChange, así que no hay loop. */}
+                setValue no re-dispara onChange, así que no hay loop.
+                Sin `precio_al_resolver` no se muestra: la compra entra sin
+                precio y queda a tasar. */}
+            {sinPrecio ? (
+              <div className="px-3 py-2.5 border-[1.5px] border-gris-mid rounded-lg bg-gris/40">
+                <div className="text-sm font-bold text-azul">El precio lo carga administración</div>
+                <div className="text-[11px] text-gris-dark mt-0.5">
+                  Registrá la compra igual: el renglón queda marcado como <b>esperando precio</b> y
+                  aparece en la lista de pendientes de tasar. No hace falta que pongas un número.
+                </div>
+              </div>
+            ) : (
             <div>
               <div className="grid grid-cols-2 gap-3">
                 <Controller name="precio_neto" control={formComprar.control} render={({ field }) => (
@@ -2285,6 +2300,7 @@ export function SolicitudesTab() {
                 Cargá cualquiera de los dos: el otro se calcula solo (IVA 21%). A la cuenta del cliente va el <b>final</b>.
               </p>
             </div>
+            )}
             {/* Referencia: catálogo, última compra, última a este proveedor, y el
                 tilde para llevar este precio al catálogo (fase 2 de precios). */}
             {modalComprar.id != null && (
@@ -2549,9 +2565,21 @@ export function SolicitudesTab() {
                 </>
               )
             })()}
-            <Controller name="precio_unit" control={formDespachar.control} render={({ field }) => (
-              <InputMonto label="Precio unitario interno ($)" value={field.value} onChange={field.onChange} />
-            )} />
+            {/* Sin `precio_al_resolver` el despacho va en $0 y queda a tasar:
+                es lo que el despacho ya admitía, pero acá deja de depender de
+                que la persona se acuerde de no completar el campo. */}
+            {sinPrecio ? (
+              <div className="px-3 py-2.5 border-[1.5px] border-gris-mid rounded-lg bg-gris/40">
+                <div className="text-sm font-bold text-azul">El precio lo carga administración</div>
+                <div className="text-[11px] text-gris-dark mt-0.5">
+                  Despachá igual: el renglón queda <b>a tasar</b> y aparece en la lista de pendientes.
+                </div>
+              </div>
+            ) : (
+              <Controller name="precio_unit" control={formDespachar.control} render={({ field }) => (
+                <InputMonto label="Precio unitario interno ($)" value={field.value} onChange={field.onChange} />
+              )} />
+            )}
           </div>
         )}
       </Modal>

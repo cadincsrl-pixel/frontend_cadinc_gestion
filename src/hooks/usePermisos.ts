@@ -42,6 +42,9 @@ export function usePermisos(modulo: string) {
     resolverItems:        flagCapacidad('resolver_items', false),
     forzarDespacho:       flagCapacidad('forzar_despacho', false),
     cargarPrecios:        flagCapacidad('cargar_precios', false),
+    // Default TRUE: se apaga a propósito para quien maneja el depósito pero no
+    // los números. Apagado, el pedido se resuelve sin precio y queda a tasar.
+    precioAlResolver:     flagCapacidad('precio_al_resolver', true),
     aprobarAjustesStock:  flagCapacidad('aprobar_ajustes_stock', false),
     gestionarCobros:      flagCapacidad('gestionar_cobros', false),
     gestionarDocs:        flagCapacidad('gestionar_docs', false),
