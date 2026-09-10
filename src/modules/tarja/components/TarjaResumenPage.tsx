@@ -50,6 +50,12 @@ export function TarjaResumenPage() {
   // entera — las dos cosas en silencio. El filtro cruza obra × semana, así que
   // una archivada sin horas en el período no agrega ruido.
   const { obras, isLoading } = useObrasTodas('tarja')
+  // …pero la PANTALLA es "Obras activas": la grilla, el buscador y los
+  // contadores muestran solo las que están en curso. Las archivadas viajan
+  // aparte a Recibos y al Excel por obras, que son los que necesitan historia.
+  // (Sin esto, archivar una obra no la sacaba de la lista: el 05/09 se
+  // archivaron 11 y seguían apareciendo con el cartelito verde "Activa".)
+  const obrasEnCurso = useMemo(() => obras.filter(o => !o.archivada), [obras])
   const perfiles = usePerfilesMap()
   const [modalObra, setModalObra] = useState(false)
   const [modalExcelObras, setModalExcelObras] = useState(false)
@@ -123,7 +129,7 @@ export function TarjaResumenPage() {
       ultimaActividad: string | null
       ultimaCargaPor: string | null
     }> = {}
-    obras.forEach(o => {
+    obrasEnCurso.forEach(o => {
       const r = porObra.get(o.cod)
       map[o.cod] = {
         hsSemana:           Number(r?.hs_semana ?? 0),
@@ -133,19 +139,19 @@ export function TarjaResumenPage() {
       }
     })
     return map
-  }, [obras, resumenObras])
+  }, [obrasEnCurso, resumenObras])
 
   const obrasFiltradas = useMemo(() => {
-    if (!busqueda.trim()) return obras
+    if (!busqueda.trim()) return obrasEnCurso
     const q = busqueda.toLowerCase().trim()
-    return obras.filter(o =>
+    return obrasEnCurso.filter(o =>
       o.nom.toLowerCase().includes(q) ||
       o.cod.toLowerCase().includes(q) ||
       (o.dir ?? '').toLowerCase().includes(q) ||
       (o.resp ?? '').toLowerCase().includes(q) ||
       (o.cc ?? '').toLowerCase().includes(q)
     )
-  }, [obras, busqueda])
+  }, [obrasEnCurso, busqueda])
 
   // Orden derivado del filtro. Para `ultimaActividad`, las obras sin actividad
   // van al final (no se mezclan con las recién tocadas).
@@ -233,7 +239,7 @@ export function TarjaResumenPage() {
               OBRAS ACTIVAS
             </h1>
             <p className="text-sm text-gris-dark mt-1">
-              {obras.length} obra{obras.length !== 1 ? 's' : ''} en curso
+              {obrasEnCurso.length} obra{obrasEnCurso.length !== 1 ? 's' : ''} en curso
             </p>
           </div>
           <Button
@@ -302,7 +308,7 @@ export function TarjaResumenPage() {
       {!scopeAsignadas && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="bg-white rounded-card shadow-card p-3 text-center">
-            <div className="font-mono text-2xl font-bold text-azul">{obras.length}</div>
+            <div className="font-mono text-2xl font-bold text-azul">{obrasEnCurso.length}</div>
             <div className="text-[11px] text-gris-dark font-bold uppercase tracking-wide">Obras activas</div>
           </div>
           <div className="bg-white rounded-card shadow-card p-3 text-center">
