@@ -7,7 +7,7 @@ import type { UseFormRegisterReturn } from 'react-hook-form'
 import {
   useStockRubros, useStockMateriales, useStockMovimientos,
   useCreateStockMaterial, useUpdateStockMaterial, useDeleteStockMaterial,
-  useCreateMovimiento, useCreateRubro, parseMaterialConflicto,
+  useCreateMovimiento, useCreateRubro, parseMaterialConflicto, useEquivalencias,
 } from '../hooks/useStock'
 import type {
   CreateStockMaterialDto, UpdateStockMaterialDto, MaterialConflicto, MaterialCandidato,
@@ -21,6 +21,7 @@ import { Input }  from '@/components/ui/Input'
 import { InputMonto } from '@/components/ui/InputMonto'
 import { Combobox } from '@/components/ui/Combobox'
 import { useToast } from '@/components/ui/Toast'
+import { FraccionarModal } from './FraccionarModal'
 import { DeclararAjusteModal } from './DeclararAjusteModal'
 import { AjustesPendientesSection } from './AjustesPendientesSection'
 import { MaterialParecidoModal } from './MaterialParecidoModal'
@@ -136,6 +137,14 @@ export function StockTab() {
   const [modalNuevoRubro, setModalNuevoRubro] = useState(false)
   const [modalEliminar, setModalEliminar] = useState<StockMaterial | null>(null)
   const [modalAjuste, setModalAjuste] = useState<StockMaterial | null>(null)
+  // Fraccionar bultos (20260913n): solo las fichas con equivalencia definida
+  // muestran el botón, así no aparece en las miles que no se fraccionan.
+  const [modalFraccionar, setModalFraccionar] = useState<StockMaterial | null>(null)
+  const { data: equivalencias = [] } = useEquivalencias()
+  const equivPorOrigen = useMemo(
+    () => new Map(equivalencias.map(e => [e.origen_id, e])),
+    [equivalencias],
+  )
   // Estado del modal "¿No será este?" (409 del candado anti-duplicados).
   // `dtoCreate` es el body original del alta, para poder reintentarlo con
   // `forzar: true`. Es `null` cuando el 409 vino de una edición (ahí no hay
@@ -666,6 +675,13 @@ export function StockTab() {
                         </span>
                         {bajo && !cero && <span className="ml-1.5 text-[9px] font-bold bg-amarillo-light text-[#7A5500] px-1.5 py-0.5 rounded">BAJO</span>}
                         {cero && <span className="ml-1.5 text-[9px] font-bold bg-rojo-light text-rojo px-1.5 py-0.5 rounded">SIN STOCK</span>}
+                        {/* Un stock con decimales en un envase contable es un
+                            envase EMPEZADO: 0,9 latas es un tacho abierto con el
+                            90% adentro, no "casi una lata". Quien despacha tiene
+                            que saberlo antes de prometer una lata sellada. */}
+                        {!cero && Number(m.stock_actual) % 1 !== 0 && ['lata', 'balde', 'bolsa', 'rollo', 'unid'].includes(m.unidad) && (
+                          <span title="Hay un envase empezado" className="ml-1.5 text-[9px] font-bold bg-amarillo-light text-[#7A5500] px-1.5 py-0.5 rounded">ABIERTO</span>
+                        )}
                       </td>
                       <td className="px-4 py-2.5 text-right font-mono text-xs text-gris-dark">{m.stock_minimo || '—'}</td>
                       <td className="px-4 py-2.5 text-right font-mono text-xs text-gris-dark">{m.precio_ref > 0 ? fmtM(m.precio_ref) : '—'}</td>
@@ -673,6 +689,13 @@ export function StockTab() {
                         <div className="flex gap-1 justify-end">
                           <button onClick={() => abrirEntrada(m)} disabled={!puedeCrear} title={puedeCrear ? 'Entrada o salida: compra, despacho a obra, devolución o consumo del depósito' : 'Sin permiso para registrar movimientos de stock'} className="text-[10px] font-bold px-2 py-1 rounded bg-verde-light text-verde hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed">+ Movimiento</button>
                           <button onClick={() => setModalAjuste(m)} disabled={!puedeCrear} title={puedeCrear ? 'Declarar diferencia (queda pendiente de aprobación)' : 'Sin permiso para declarar diferencias de stock'} className="text-[10px] font-bold px-2 py-1 rounded bg-naranja-light text-naranja-dark hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed">↔ Diferencia</button>
+                          {equivPorOrigen.has(m.id) && (
+                            <button onClick={() => setModalFraccionar(m)} disabled={!puedeCrear || m.stock_actual <= 0}
+                              title={!puedeCrear ? 'Sin permiso para registrar movimientos de stock'
+                                : m.stock_actual <= 0 ? 'No hay stock para fraccionar'
+                                : `Abrir el envase: 1 ${m.unidad} = ${equivPorOrigen.get(m.id)!.factor} unidades`}
+                              className="text-[10px] font-bold px-2 py-1 rounded bg-gris text-azul-mid hover:bg-gris-mid disabled:opacity-40 disabled:cursor-not-allowed">⇄ Fraccionar</button>
+                          )}
                           <button onClick={() => setModalHistorial(m)} className="text-[10px] font-bold px-2 py-1 rounded bg-azul-light text-azul hover:opacity-80">Historial</button>
                           <button onClick={() => abrirEditar(m)} disabled={!puedeEditar} aria-label={`Editar ${m.nombre}`} title={puedeEditar ? 'Editar' : 'Sin permiso para editar materiales'} className="text-xs px-1.5 py-1 rounded hover:bg-gris transition-colors disabled:opacity-40 disabled:cursor-not-allowed">✏️</button>
                           <button onClick={() => setModalEliminar(m)} disabled={!puedeEliminar} aria-label={`Eliminar ${m.nombre}`} title={puedeEliminar ? 'Eliminar' : 'Sin permiso para eliminar materiales'} className="text-xs px-1.5 py-1 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
@@ -926,6 +949,23 @@ export function StockTab() {
       )}
 
       {/* ── Modal Declarar diferencia (ajuste pendiente de aprobación) ── */}
+      {modalFraccionar && (() => {
+        const eq = equivPorOrigen.get(modalFraccionar.id)
+        if (!eq) return null
+        const dest = materiales.find(x => x.id === eq.destino_id)
+        return (
+          <FraccionarModal
+            material={{
+              id: modalFraccionar.id, nombre: modalFraccionar.nombre,
+              unidad: modalFraccionar.unidad, stock_actual: Number(modalFraccionar.stock_actual),
+              precio_ref: Number(modalFraccionar.precio_ref ?? 0),
+            }}
+            equiv={eq}
+            destino={dest ? { nombre: dest.nombre, unidad: dest.unidad } : null}
+            onClose={() => setModalFraccionar(null)}
+          />
+        )
+      })()}
       {modalAjuste && (
         <DeclararAjusteModal
           material={modalAjuste}

@@ -328,6 +328,62 @@ export function useCreateMovimiento() {
   })
 }
 
+// ─── Fraccionar bultos (20260913n) ──────────────────────────────────────
+//
+// Abrir un tambor de 200 lts y que salgan 200 litros, o una tonelada de arena
+// y que salgan 40 bolsas. Es lo que pasa físicamente cuando alguien abre el
+// envase, y hasta ahora había que hacerlo a mano y sin dejar rastro.
+
+export interface Equivalencia {
+  id:         number
+  origen_id:  number
+  destino_id: number
+  /** Cuántas unidades de destino salen de UNA de origen. */
+  factor:     number
+  obs:        string | null
+}
+
+export interface ResultadoFraccionar {
+  origen_id:      number
+  origen_nombre:  string
+  destino_id:     number
+  destino_nombre: string
+  fraccionado:    number
+  unidades:       number
+  unidad_destino: string
+  /** Informativo: a cuánto salió la unidad. NO se escribe en el catálogo. */
+  costo_prorrateado: number | null
+  /** El precio de venta del destino, que fraccionar no toca. */
+  precio_destino: number | null
+  stock_origen:   number
+  stock_destino:  number
+}
+
+/** Todas de una (hoy 9): el componente las mapea por origen_id. */
+export function useEquivalencias() {
+  return useQuery({
+    queryKey: ['stock', 'equivalencias'],
+    queryFn:  () => apiGet<Equivalencia[]>('/api/stock/equivalencias'),
+    staleTime: 5 * 60_000,
+  })
+}
+
+export function useFraccionar() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ materialId, cantidad, obs }: { materialId: number; cantidad: number; obs?: string }) =>
+      apiPost<ResultadoFraccionar>(`/api/stock/materiales/${materialId}/fraccionar`, {
+        cantidad, ...(obs ? { obs } : {}),
+      }),
+    onSuccess: () => {
+      // Mueve el stock de DOS fichas y deja dos movimientos.
+      qc.invalidateQueries({ queryKey: ['stock', 'materiales'] })
+      qc.invalidateQueries({ queryKey: ['stock', 'movimientos'] })
+      qc.invalidateQueries({ queryKey: ['catalogo'] })
+    },
+  })
+}
+
 // ─── Ajustes con doble aprobación ───────────────────────────────────────
 
 const AJUSTES_PENDIENTES_KEY = ['stock', 'ajustes-pendientes'] as const
