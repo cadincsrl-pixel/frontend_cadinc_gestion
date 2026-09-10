@@ -602,6 +602,10 @@ export function SolicitudesTab() {
     items: SolicitudCompraItem[]
   } | null>(null)
   const [fallidosLote, setFallidosLote] = useState<Array<{ desc: string; error: string }>>([])
+  // Precios con los que se ABRIÓ el lote (los del catálogo). Sirven para
+  // marcar cuáles todavía no confirmó nadie: prellenar sin avisar hacía que un
+  // precio viejo del catálogo entrara como precio de compra pareciendo correcto.
+  const [loteDelCatalogo, setLoteDelCatalogo] = useState<Record<string, number>>({})
   const [loteSubmitting, setLoteSubmitting] = useState(false)
   // Guarda desde qué modal se abrió el alta de proveedor, para asignarlo al form correcto.
   const [modalNuevoProveedor, setModalNuevoProveedor] = useState<null | 'comprar' | 'lote'>(null)
@@ -616,7 +620,7 @@ export function SolicitudesTab() {
   const formEdit = useForm<any>({ defaultValues: { prioridad: 'normal', obs: '', entrega_tentativa: '' } })
   const formComprar = useForm<any>({ defaultValues: { proveedor_id: '', precio_unit: 0, factura_id: '', pagado_por: 'cadinc', cantidad_comprada: 0, actualizar_catalogo: false, esperando_precio: false } })
   const formComprarLote = useForm<any>({
-    defaultValues: { proveedor_id: '', factura_id: '', queda_en_proveedor: false, pagado_por: 'cadinc', precios: {} },
+    defaultValues: { proveedor_id: '', factura_id: '', queda_en_proveedor: false, pagado_por: 'cadinc', precios: {}, actualizar_catalogo: false },
   })
   const formDespachar = useForm<any>({ defaultValues: { precio_unit: 0 } })
   // Quien maneja el depósito pero no los números resuelve SIN precio: el
@@ -894,10 +898,13 @@ export function SolicitudesTab() {
     const cantidades: Record<string, number> = {}
     for (const it of items) {
       const mat = it.material_id ? stockMap.get(it.material_id) : null
-      precios[String(it.id)] = (mat as StockMaterial | undefined)?.precio_ref ?? 0
+      // Con precio_al_resolver apagado no se precarga nada: la columna de
+      // precios ni siquiera se muestra y el renglón queda esperando precio.
+      precios[String(it.id)] = sinPrecio ? 0 : ((mat as StockMaterial | undefined)?.precio_ref ?? 0)
       cantidades[String(it.id)] = it.cantidad
     }
-    formComprarLote.reset({ proveedor_id: '', factura_id: '', queda_en_proveedor: false, pagado_por: 'cadinc', precios, cantidades })
+    setLoteDelCatalogo(sinPrecio ? {} : { ...precios })
+    formComprarLote.reset({ proveedor_id: '', factura_id: '', queda_en_proveedor: false, pagado_por: 'cadinc', precios, cantidades, actualizar_catalogo: false })
     setFallidosLote([])
     setModalComprarLote({ solId, items })
   }
@@ -922,11 +929,15 @@ export function SolicitudesTab() {
       ? modalComprarLote.items.filter(it => fallidosLote.some(f => f.desc === it.descripcion))
       : modalComprarLote.items
 
+    // Quien no carga precios (depósito) compra igual: el renglón entra en $0
+    // y marcado como "esperando precio". Antes la pantalla pedía los precios,
+    // el backend los descartaba en silencio y avisaba "comprados".
+    const alCatalogo = !sinPrecio && !!data.actualizar_catalogo
     for (const it of itemsActuales) {
       const precioCargado = Number(data.precios?.[String(it.id)] ?? 0)
       // Con el toggle en "netos", lo tipeado es sin IVA: se guarda el final.
-      const precio = lotePreciosNetos ? netaAFinal(precioCargado) : precioCargado
-      if (!precio || precio <= 0) {
+      const precio = sinPrecio ? 0 : (lotePreciosNetos ? netaAFinal(precioCargado) : precioCargado)
+      if (!sinPrecio && (!precio || precio <= 0)) {
         fallidos.push({ desc: it.descripcion, error: 'precio inválido' })
         continue
       }
@@ -941,6 +952,8 @@ export function SolicitudesTab() {
               factura_id: facturaId,
               queda_en_proveedor: queda,
               pagado_por: pagadoPor,
+              actualizar_catalogo: alCatalogo,
+              esperando_precio: sinPrecio,
               // Solo si difiere de la solicitada.
               ...(cantComprada > 0 && cantComprada !== it.cantidad
                 ? { cantidad_comprada: cantComprada }
@@ -956,7 +969,7 @@ export function SolicitudesTab() {
     setLoteSubmitting(false)
 
     if (fallidos.length === 0) {
-      toast(`✓ ${ok} ítem${ok !== 1 ? 's' : ''} comprado${ok !== 1 ? 's' : ''}${queda ? ' (queda en proveedor)' : ''}`, 'ok')
+      toast(`✓ ${ok} ítem${ok !== 1 ? 's' : ''} comprado${ok !== 1 ? 's' : ''}${queda ? ' (queda en proveedor)' : ''}${sinPrecio ? ', esperando precio' : ''}`, 'ok')
       clearSelCompra(modalComprarLote.solId)
       setModalComprarLote(null)
       setFallidosLote([])
@@ -2447,8 +2460,11 @@ export function SolicitudesTab() {
                     <tr>
                       <th className="text-left px-3 py-2 text-[11px] font-bold text-gris-dark uppercase">Ítem</th>
                       <th className="text-right px-3 py-2 text-[11px] font-bold text-gris-dark uppercase w-[110px]">Cant. comprada</th>
-                      <th className="text-right px-3 py-2 text-[11px] font-bold text-gris-dark uppercase w-[120px]">{lotePreciosNetos ? 'P. unit. NETO ($)' : 'Precio unit. ($)'}</th>
-                      <th className="text-right px-3 py-2 text-[11px] font-bold text-gris-dark uppercase w-[110px]">Subtotal final</th>
+                      {!sinPrecio && <>
+                        <th className="text-right px-3 py-2 text-[11px] font-bold text-gris-dark uppercase w-[120px]">{lotePreciosNetos ? 'P. unit. NETO ($)' : 'Precio unit. ($)'}</th>
+                        <th className="text-right px-3 py-2 text-[11px] font-bold text-gris-dark uppercase w-[110px]">Catálogo</th>
+                        <th className="text-right px-3 py-2 text-[11px] font-bold text-gris-dark uppercase w-[110px]">Subtotal final</th>
+                      </>}
                     </tr>
                   </thead>
                   <tbody>
@@ -2458,6 +2474,12 @@ export function SolicitudesTab() {
                       const cant   = Number(formComprarLote.watch(`cantidades.${it.id}`) ?? it.cantidad)
                       const subtotal = precio * cant
                       const difiere = cant !== it.cantidad
+                      // Precio de referencia de la ficha, para comparar contra lo que
+                      // se está por pagar (antes el lote no mostraba ninguna referencia).
+                      const ref = Number((it.material_id ? stockMap.get(it.material_id) : null)?.precio_ref ?? 0)
+                      const dif = ref > 0 && precio > 0 ? ((precio - ref) / ref) * 100 : null
+                      // Todavía tiene el número que puso el catálogo al abrir el modal.
+                      const sinTocar = !sinPrecio && precioTipeado > 0 && precioTipeado === loteDelCatalogo[String(it.id)]
                       const unidLabel = UNIDADES.find(u => u.value === it.unidad)?.label ?? it.unidad
                       return (
                         <tr key={it.id} className="border-t border-gris">
@@ -2477,21 +2499,41 @@ export function SolicitudesTab() {
                               <span className="text-[10px] text-gris-dark">{unidLabel}</span>
                             </div>
                           </td>
-                          <td className="px-3 py-2">
-                            <Controller name={`precios.${it.id}`} control={formComprarLote.control} render={({ field }) => (
-                              <InputMonto value={field.value} onChange={field.onChange} className="text-right font-mono" />
-                            )} />
-                          </td>
-                          <td className="px-3 py-2 text-right font-mono text-sm font-bold">
-                            {subtotal > 0 ? fmtM(subtotal) : '—'}
-                          </td>
+                          {!sinPrecio && <>
+                            <td className="px-3 py-2">
+                              <Controller name={`precios.${it.id}`} control={formComprarLote.control} render={({ field }) => (
+                                <InputMonto value={field.value} onChange={field.onChange} className="text-right font-mono" />
+                              )} />
+                              {sinTocar && (
+                                <div className="text-[9px] font-bold text-naranja-dark text-right mt-0.5" title="Este número lo puso el catálogo, no el proveedor. Confirmalo contra la factura.">del catálogo</div>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right whitespace-nowrap">
+                              {ref > 0 ? (
+                                <span className="inline-flex flex-col items-end leading-tight">
+                                  <span className="font-mono text-xs text-gris-dark">{fmtM(ref)}</span>
+                                  {dif !== null && Math.abs(dif) > 0.5 && (
+                                    <span className={`text-[9px] font-bold ${dif > 40 ? 'text-rojo' : 'text-gris-dark'}`}
+                                          title={`${dif > 0 ? 'Estás pagando' : 'Estás pagando'} ${Math.abs(dif).toFixed(1)} % ${dif > 0 ? 'más' : 'menos'} que el precio del catálogo`}>
+                                      {dif > 0 ? '+' : '−'}{Math.abs(dif).toFixed(0)} %
+                                    </span>
+                                  )}
+                                </span>
+                              ) : (
+                                <span className="text-gris-mid text-xs" title={it.material_id ? 'La ficha no tiene precio de referencia' : 'El renglón no está vinculado a una ficha del catálogo'}>—</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right font-mono text-sm font-bold">
+                              {subtotal > 0 ? fmtM(subtotal) : '—'}
+                            </td>
+                          </>}
                         </tr>
                       )
                     })}
                   </tbody>
-                  <tfoot className="bg-gris">
+                  {!sinPrecio && <tfoot className="bg-gris">
                     <tr>
-                      <td colSpan={3} className="px-3 py-2 text-right text-xs font-bold text-gris-dark uppercase">Total</td>
+                      <td colSpan={4} className="px-3 py-2 text-right text-xs font-bold text-gris-dark uppercase">Total</td>
                       <td className="px-3 py-2 text-right font-mono text-sm font-bold text-azul">
                         {fmtM(modalComprarLote.items.reduce((acc, it) => {
                           const p = Number(formComprarLote.watch(`precios.${it.id}`) ?? 0)
@@ -2499,9 +2541,24 @@ export function SolicitudesTab() {
                         }, 0))}
                       </td>
                     </tr>
-                  </tfoot>
+                  </tfoot>}
                 </table>
               </div>
+              {sinPrecio ? (
+                <div className="mt-2 text-[11px] text-gris-dark bg-gris rounded-lg px-3 py-2">
+                  No hace falta que pongas los precios: los renglones quedan marcados como <b>⏳ esperando precio</b> y los carga administración desde “Cargar precios”.
+                </div>
+              ) : cargarPrecios ? (
+                <label className="mt-2 flex items-start gap-2.5 px-3 py-2 border-[1.5px] border-gris-mid rounded-lg cursor-pointer hover:border-naranja transition-colors">
+                  <input type="checkbox" {...formComprarLote.register('actualizar_catalogo')} className="mt-0.5" />
+                  <div className="flex-1">
+                    <div className="text-sm font-bold text-azul">Poner estos precios en el catálogo</div>
+                    <div className="text-[11px] text-gris-dark mt-0.5">
+                      Actualiza el precio de referencia de cada ficha con lo que se pagó. El backend valida ficha, unidad y fecha uno por uno: los que no pueda, quedan como están.
+                    </div>
+                  </div>
+                </label>
+              ) : null}
             </div>
             {/* Pagador del lote: común a todos los ítems */}
             <div>
