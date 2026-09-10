@@ -28,7 +28,7 @@ import { usePermisos } from '@/hooks/usePermisos'
 import { DiferenciaToneladas } from './DiferenciaToneladas'
 import { CobroAdjuntosSection } from './CobroAdjuntosSection'
 import { useUploadCobroAdjunto } from '../hooks/useCobroAdjuntos'
-import type { EmpresaTransportista, TarifaEmpresaCantera, Tramo, Cobro, Camion } from '@/types/domain.types'
+import type { EmpresaTransportista, TarifaEmpresaCantera, Tramo, Cobro, Camion, Chofer } from '@/types/domain.types'
 import { toISO } from '@/lib/utils/dates'
 import { apiErrorCode, apiErrorDetail } from '@/lib/api/errors'
 import { tarifaParaFecha, unidadDelCamion, netaAFinal, finalANeta } from '../utils/tarifas'
@@ -694,6 +694,21 @@ function EmpresasSection({
 function fmtDate(s: string) {
   const [y, m, d] = s.split('-')
   return `${d}/${m}/${y}`
+}
+
+// Quién manejó los viajes de una factura o liquidación. El chofer sale del
+// TRAMO (`chofer_id`), no del cobro: la factura de un solo viaje muestra el
+// nombre y la de varios, cuántos manejaron (los nombres van en el tooltip).
+// Ojo: con relevo el tramo guarda al titular — el relevista vive en
+// `tramos_choferes` y este tab no lo trae.
+function choferDeCobro(tramosDelCobro: Tramo[], choferes: Chofer[]): { label: string; title: string } | null {
+  const ids = [...new Set(tramosDelCobro.map(t => t.chofer_id))]
+  const nombres = ids
+    .map(id => choferes.find(ch => ch.id === id)?.nombre)
+    .filter((n): n is string => !!n)
+  if (nombres.length === 0) return null
+  if (nombres.length === 1) return { label: nombres[0], title: nombres[0] }
+  return { label: `${nombres.length} choferes`, title: nombres.join(' · ') }
 }
 
 // tarifaParaFecha / unidadDelCamion / netaAFinal / finalANeta viven en
@@ -2628,6 +2643,7 @@ function FacturacionSection() {
                       // Factura de varios viajes → cae al render de período + cantidad.
                       const t0 = c.factura_nro && tramosDelCobro.length === 1 ? tramosDelCobro[0] : undefined
                       const remito = t0 ? (t0.remito_descarga ?? t0.remito_carga) : null
+                      const quien = choferDeCobro(tramosDelCobro, choferes)
                       return (
                         <div
                           key={c.id}
@@ -2658,6 +2674,7 @@ function FacturacionSection() {
                                   {tramosDelCobro.length > 0 && <> · {tramosDelCobro.length} remito{tramosDelCobro.length !== 1 ? 's' : ''}</>}
                                 </>
                               )}
+                              {quien && <span title={quien.title}> · 👷 {quien.label}</span>}
                             </div>
                           </div>
                           <div className="text-right shrink-0 font-mono">{fmtTon(c.toneladas_totales)}</div>
@@ -3012,6 +3029,7 @@ function FacturacionSection() {
                             const tramosDelCobro = (tramos as Tramo[]).filter(t => t.cobro_id === c.id)
                             const t0 = tramosDelCobro.length === 1 ? tramosDelCobro[0] : undefined
                             const remito = t0 ? (t0.remito_descarga ?? t0.remito_carga) : null
+                            const quien = choferDeCobro(tramosDelCobro, choferes)
                             return (
                               <div
                                 key={c.id}
@@ -3030,6 +3048,7 @@ function FacturacionSection() {
                                     <span className="text-gris-dark"> · {tramosDelCobro.length} remitos · {fmtFechaCorta(c.fecha_desde)} → {fmtFechaCorta(c.fecha_hasta)}</span>
                                   )}
                                   <span className="text-gris-dark"> · {fmtTon(c.toneladas_totales)}</span>
+                                  {quien && <span className="text-gris-dark" title={quien.title}> · 👷 {quien.label}</span>}
                                   {(comisionPorCobro.get(c.id) ?? 0) > 0 && (
                                     <span className="text-gris-dark"> · 📑 −{fmtM(comisionPorCobro.get(c.id)!)} → neto <span className="font-mono font-bold text-carbon">{fmtM(c.total - comisionPorCobro.get(c.id)!)}</span></span>
                                   )}
@@ -3050,6 +3069,7 @@ function FacturacionSection() {
                   const remitos = remitosPorCobro.get(c.id) ?? []
                   const tramosDelCobro = (tramos as Tramo[]).filter(t => t.cobro_id === c.id)
                   const t0 = esFactCobro && tramosDelCobro.length === 1 ? tramosDelCobro[0] : undefined
+                  const quien = choferDeCobro(tramosDelCobro, choferes)
                   // Estado documental: qué adjuntos tiene (no borrados).
                   const adjs = (c.cobros_adjuntos ?? []).filter(a => a.deleted_at == null)
                   const tieneComprobante = adjs.some(a => a.tipo === 'comprobante')
@@ -3102,6 +3122,7 @@ function FacturacionSection() {
                               {esFactCobro && c.factura_fecha && <> · emitida {fmtFechaCorta(c.factura_fecha)}</>}
                             </>
                           )}
+                          {quien && <span title={quien.title}> · 👷 {quien.label}</span>}
                         </div>
                         {/* Estado documental + fecha de cobro */}
                         <div className="flex items-center gap-1.5 flex-wrap mt-1">
