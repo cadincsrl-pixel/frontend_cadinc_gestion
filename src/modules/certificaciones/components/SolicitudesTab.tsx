@@ -619,6 +619,13 @@ export function SolicitudesTab() {
   const [modalHistorial, setModalHistorial] = useState<SolicitudCompraItem | null>(null)
 
   // Forms
+  // `prioridad` sigue en el form pero YA NO tiene input: se sacó de los dos
+  // modales el 10/09 y la fecha de entrega ocupó su lugar. Estaba muerta —31
+  // pedidos urgentes de 683, el último del 31/08— mientras la fecha se usaba
+  // (73 pedidos, el último de hoy). Se mantiene en el form para dos cosas: que
+  // el alta siga mandando 'normal', y que al EDITAR un pedido viejo se conserve
+  // su valor en vez de degradarlo a normal sin que nadie lo pida. Los 31
+  // urgentes históricos siguen mostrando su chip y ordenando primero.
   const formCab = useForm<any>({ defaultValues: { prioridad: 'normal', obs: '', entrega_tentativa: '' } })
   const formEdit = useForm<any>({ defaultValues: { prioridad: 'normal', obs: '', entrega_tentativa: '' } })
   const formComprar = useForm<any>({ defaultValues: { proveedor_id: '', precio_unit: 0, factura_id: '', pagado_por: 'cadinc', cantidad_comprada: 0, actualizar_catalogo: false, esperando_precio: false } })
@@ -2156,22 +2163,20 @@ export function SolicitudesTab() {
                 </p>
               )}
             </div>
+            {/* La fecha de entrega ocupa el lugar que tenía "Prioridad".
+                La prioridad estaba muerta —31 pedidos urgentes de 683, y el
+                último del 31/08— mientras que la fecha se sigue cargando (73
+                pedidos, el último de hoy). El campo de prioridad sale del
+                formulario; los pedidos viejos conservan su valor y su chip. */}
             <div>
-              <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1 block">Prioridad</label>
-              <select {...formCab.register('prioridad')} className="w-full px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white font-semibold focus:border-naranja">
-                <option value="normal">Normal</option>
-                <option value="urgente">Urgente</option>
-              </select>
+              <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1 block">📅 Entrega tentativa</label>
+              <input
+                type="datetime-local"
+                {...formCab.register('entrega_tentativa')}
+                className="w-full px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white font-semibold focus:border-naranja"
+              />
+              <p className="text-[10px] text-gris-mid mt-1">Opcional — cuándo se necesita en obra.</p>
             </div>
-          </div>
-          <div>
-            <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1 block">📅 Entrega tentativa (fecha y hora)</label>
-            <input
-              type="datetime-local"
-              {...formCab.register('entrega_tentativa')}
-              className="w-full px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white font-semibold focus:border-naranja"
-            />
-            <p className="text-[10px] text-gris-mid mt-1">Opcional — cuándo se espera/necesita el material en obra.</p>
           </div>
           <Input label="Observaciones" placeholder="Notas adicionales..." {...formCab.register('obs')} />
           <div>
@@ -2793,21 +2798,18 @@ export function SolicitudesTab() {
           <div className="flex flex-col gap-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Combobox label="Obra destino" placeholder="Buscar obra..." options={obraOptions} value={obraEdit} onChange={setObraEdit} />
+              {/* Mismo cambio que en el modal de alta: la fecha reemplaza a
+                  la prioridad. Editar tiene que quedar igual que crear, o el
+                  campo desaparecido reaparecería al modificar un pedido. */}
               <div>
-                <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1 block">Prioridad</label>
-                <select {...formEdit.register('prioridad')} className="w-full px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white font-semibold focus:border-naranja">
-                  <option value="normal">Normal</option>
-                  <option value="urgente">Urgente</option>
-                </select>
+                <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1 block">📅 Entrega tentativa</label>
+                <input
+                  type="datetime-local"
+                  {...formEdit.register('entrega_tentativa')}
+                  className="w-full px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white font-semibold focus:border-naranja"
+                />
+                <p className="text-[10px] text-gris-mid mt-1">Opcional — cuándo se necesita en obra.</p>
               </div>
-            </div>
-            <div>
-              <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1 block">📅 Entrega tentativa (fecha y hora)</label>
-              <input
-                type="datetime-local"
-                {...formEdit.register('entrega_tentativa')}
-                className="w-full px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white font-semibold focus:border-naranja"
-              />
             </div>
             <Input label="Observaciones" placeholder="Notas adicionales..." {...formEdit.register('obs')} />
 
