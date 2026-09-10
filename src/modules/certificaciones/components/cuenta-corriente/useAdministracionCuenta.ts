@@ -19,7 +19,7 @@ import { useCategorias } from '@/modules/tarja/hooks/useCategorias'
 import { useTarifasObra } from '@/modules/tarja/hooks/useTarifas'
 import { useHsExtras } from '@/modules/tarja/hooks/useHsExtras'
 import { useCertificacionesObra } from '@/modules/tarja/hooks/useContratistas'
-import { useCobrosCliente } from '../../hooks/useCuentaCliente'
+import { useCobrosCliente, useNotasCredito } from '../../hooks/useCuentaCliente'
 import { useAdminTarifas, useAdminImputaciones, pctVigente } from '../../hooks/useAdministracion'
 import { fetchCuentaRenglonesTodos } from '../../hooks/useCuentaCorriente'
 import { costoOperariosSemana, type CatObraEntry } from '@/lib/utils/costos'
@@ -101,6 +101,8 @@ export function useAdministracionCuenta(obra: Obra, modo: ModoAdministracion = '
   })
   const { data: certs = [] } = useCertificacionesObra(obraCod)
   const { data: cobros = [] } = useCobrosCliente(obraCod)
+  // Devoluciones ya cobradas: bajan el saldo pero NO son cobranza (20260913k).
+  const { data: notasCredito = [] } = useNotasCredito(obraCod)
   const { data: materiales = [], isLoading: cargandoMat } = useQuery({
     queryKey: ['cuenta-corriente', 'admin-materiales', obraCod, modo],
     // Facturación: la cuenta del cliente — lo adeudado y lo ya cobrado.
@@ -181,11 +183,15 @@ export function useAdministracionCuenta(obra: Obra, modo: ModoAdministracion = '
     const contCosto = semanas.reduce((s, x) => s + x.contCosto, 0)
     const matCosto  = meses.reduce((s, x) => s + x.costo, 0)
     const cobrado = (cobros as { monto: number }[]).reduce((s, c) => s + Number(c.monto ?? 0), 0)
+    // Término aparte, NO dentro de `cobrado`: una nota de crédito no es plata
+    // que entró. Sumarla ahí inflaría el KPI "Cobrado" con devoluciones.
+    const notas = (notasCredito as { monto: number }[]).reduce((s, n) => s + Number(n.monto ?? 0), 0)
     return {
-      mo, cont, mat, total: mo + cont + mat, cobrado, saldo: mo + cont + mat - cobrado,
+      mo, cont, mat, total: mo + cont + mat, cobrado, notas,
+      saldo: mo + cont + mat - cobrado - notas,
       moCosto, contCosto, matCosto, totalCosto: moCosto + contCosto + matCosto,
     }
-  }, [semanas, meses, cobros])
+  }, [semanas, meses, cobros, notasCredito])
 
   const vigente = pctVigente(tarifasAdmin, toISO(new Date()))
   const sinPrecio = (materiales as CuentaRenglon[]).filter(r => Number(r.precio_unit) === 0).length

@@ -39,6 +39,7 @@ import { Input }    from '@/components/ui/Input'
 import { InputMonto } from '@/components/ui/InputMonto'
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox'
 import { useToast } from '@/components/ui/Toast'
+import { DevolverDepositoModal } from './DevolverDepositoModal'
 import type { SolicitudCompra, SolicitudCompraItem, SolicitudEstado, SolicitudProgreso, ItemEstado, ItemClase, Obra, Proveedor, StockMaterial, StockRubro, RemitoEnvio, StockClienteRow } from '@/types/domain.types'
 
 
@@ -593,6 +594,8 @@ export function SolicitudesTab() {
   const [modalDespachar, setModalDespachar] = useState<SolicitudCompraItem | null>(null)
   // Resolución con material del cliente: ítem + obra para filtrar su ledger.
   const [modalStockCliente, setModalStockCliente] = useState<{ item: SolicitudCompraItem; obraCod: string } | null>(null)
+  // Devolver al depósito material que sobró en la obra (20260913k).
+  const [modalDevolver, setModalDevolver] = useState<SolicitudCompraItem | null>(null)
   // ¿Los precios de la tabla del lote se cargan netos o finales? Se guarda
   // SIEMPRE el final (convención de todo el sistema); si el usuario carga
   // netos, la conversión (+21%) se aplica al confirmar y en los subtotales.
@@ -1670,6 +1673,18 @@ export function SolicitudesTab() {
                                           <button disabled={!resolverItems} onClick={() => handleRevertir(item.id!)} className="text-xs px-3 py-1.5 rounded text-gris-dark hover:text-rojo hover:bg-rojo-light min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">↩</button>
                                         </>
                                       )}
+                                      {/* Devolver al depósito. Va en su propio bloque porque
+                                          aplica a TODOS los estados resueltos y si no habría que
+                                          repetirlo en el de comprado/despachado y en el de enviado.
+                                          Fuera: las herramientas (vuelven por el pañol), los
+                                          renglones que YA son una devolución, y las obras depósito
+                                          (devolver al depósito desde el depósito no es nada). */}
+                                      {['comprado', 'de_deposito', 'retirado', 'enviado'].includes(item.estado as string)
+                                        && item.clase !== 'herramienta' && !item.devuelve && !obra?.es_deposito && (
+                                        <button disabled={!resolverItems} onClick={() => setModalDevolver(item)}
+                                          title={resolverItems ? 'La obra devuelve material que sobró' : 'Sin permiso para resolver ítems'}
+                                          className="text-xs font-bold px-3 py-1.5 rounded bg-naranja-light text-naranja hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">📦 Devolver</button>
+                                      )}
                                       {item.estado === 'rechazado' && (
                                         <button disabled={!resolverItems} onClick={() => handleRevertir(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-amarillo-light text-[#7A5500] hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Reactivar</button>
                                       )}
@@ -2055,6 +2070,14 @@ export function SolicitudesTab() {
                                     <button disabled={!resolverItems} onClick={() => handleRevertir(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">↩ Revertir</button>
                                   </div>
                                 </div>
+                              )}
+                              {/* Gemelo del de la vista de escritorio: la lista de renglones
+                                  está duplicada (tabla / cards) y hay que tocar las dos. */}
+                              {['comprado', 'de_deposito', 'retirado', 'enviado'].includes(item.estado as string)
+                                && item.clase !== 'herramienta' && !item.devuelve && !obra?.es_deposito && (
+                                <button disabled={!resolverItems} onClick={() => setModalDevolver(item)}
+                                  title={resolverItems ? 'La obra devuelve material que sobró' : 'Sin permiso para resolver ítems'}
+                                  className="w-full text-xs font-bold px-3 py-1.5 rounded bg-naranja-light text-naranja hover:opacity-80 min-h-[36px] mb-2 disabled:opacity-40 disabled:cursor-not-allowed">📦 Devolver al depósito</button>
                               )}
                               {item.estado === 'rechazado' && (
                                 <button disabled={!resolverItems} onClick={() => handleRevertir(item.id!)} className="w-full text-xs font-bold px-3 py-1.5 rounded bg-amarillo-light text-[#7A5500] hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Reactivar</button>
@@ -2642,6 +2665,18 @@ export function SolicitudesTab() {
       </Modal>
 
       {/* ── Modal resolver con stock del cliente ── */}
+      {modalDevolver && (
+        <DevolverDepositoModal
+          item={{
+            id:          modalDevolver.id!,
+            descripcion: modalDevolver.descripcion,
+            cantidad:    Number(modalDevolver.cantidad),
+            unidad:      modalDevolver.unidad ?? 'unid',
+            precio_unit: modalDevolver.precio_unit ?? null,
+          }}
+          onClose={() => setModalDevolver(null)}
+        />
+      )}
       {modalStockCliente && (() => {
         const candidatos = stockClientePorObra.get(modalStockCliente.obraCod) ?? []
         const item = modalStockCliente.item

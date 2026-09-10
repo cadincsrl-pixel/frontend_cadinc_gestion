@@ -1777,9 +1777,25 @@ export interface CuentaResumenPagos {
   monto:    number
 }
 
+/**
+ * Notas de crédito por obra (20260913l): saldo a favor del cliente por material
+ * devuelto cuyo renglón ya estaba cobrado o certificado.
+ *
+ * Viven en su propio array y NO dentro de `pagos` a propósito. Una nota no es
+ * plata que entró, es deuda que baja: si se mezclaran, una devolución
+ * aparecería en pantalla como cobranza.
+ */
+export interface CuentaResumenNotas {
+  obra_cod: string
+  notas:    number
+  monto:    number
+}
+
 export interface CuentaResumen {
   grupos: CuentaResumenGrupo[]
   pagos:  CuentaResumenPagos[]
+  /** Puede faltar si el backend todavía no se deployó: tratarlo como []. */
+  notas?: CuentaResumenNotas[]
 }
 
 /**

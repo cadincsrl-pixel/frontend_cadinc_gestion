@@ -50,6 +50,13 @@ export interface DatosExport {
   /** Renglones a_cobrar + cobrado de la obra (pago_directo y gasto CADINC no son cuenta). */
   renglones: CuentaRenglon[]
   cobros:    CuentaClienteCobro[]
+  /**
+   * Notas de crédito vigentes (20260913k): material devuelto al depósito cuyo
+   * renglón ya estaba cobrado. En el PDF va como línea propia "Devoluciones",
+   * no mezclado con los pagos: al cliente hay que mostrarle POR QUÉ debe menos.
+   * Opcional para no romper llamadas viejas — sin notas, se comporta igual.
+   */
+  notas?:    { monto: number }[]
   /** Presente si la obra es por administración. */
   admin?:    CuentaAdministracion
 }
@@ -70,12 +77,15 @@ function materialesSeleccionados(sel: SeleccionExport, datos: DatosExport): Cuen
 /** Los totales del resumen: la cuenta ENTERA, sin importar qué detalle se tildó. */
 function totales(datos: DatosExport) {
   const pagado = datos.cobros.reduce((s, c) => s + Number(c.monto ?? 0), 0)
+  // Las devoluciones bajan el saldo pero NO son pagos: van como término propio
+  // para que el cliente vea de dónde sale la diferencia.
+  const notas  = (datos.notas ?? []).reduce((s, n) => s + Number(n.monto ?? 0), 0)
   if (datos.admin) {
     const t = datos.admin.tot
-    return { admin: true, mo: t.mo, cont: t.cont, mat: t.mat, total: t.total, pagado, saldo: t.total - pagado }
+    return { admin: true, mo: t.mo, cont: t.cont, mat: t.mat, total: t.total, pagado, notas, saldo: t.total - pagado - notas }
   }
   const mat = datos.renglones.reduce((s, r) => s + Number(r.precio_total ?? 0), 0)
-  return { admin: false, mo: 0, cont: 0, mat, total: mat, pagado, saldo: mat - pagado }
+  return { admin: false, mo: 0, cont: 0, mat, total: mat, pagado, notas, saldo: mat - pagado - notas }
 }
 
 const nombreArchivo = (obra: Obra, ext: string) =>
@@ -111,8 +121,15 @@ export function descargarPdfCuenta(sel: SeleccionExport, datos: DatosExport): vo
     } else {
       filas.push([celda('Materiales', { fontSize: 9 }), derecha(fmtM(tot.mat), { fontSize: 9 })])
     }
+    filas.push([celda('Pagos recibidos', { fontSize: 9 }), derecha(fmtM(tot.pagado), { fontSize: 9 })])
+    // Solo si hubo: una línea "Devoluciones $0" en todas las obras sería ruido.
+    if (tot.notas > 0) {
+      filas.push([
+        celda('Devoluciones (material reintegrado)', { fontSize: 9 }),
+        derecha(`-${fmtM(tot.notas)}`, { fontSize: 9 }),
+      ])
+    }
     filas.push(
-      [celda('Pagos recibidos', { fontSize: 9 }), derecha(fmtM(tot.pagado), { fontSize: 9 })],
       [celda('SALDO', { fontSize: 9, bold: true, color: NARANJA }), derecha(fmtM(tot.saldo), { fontSize: 9, bold: true, color: NARANJA })],
     )
     contenido.push(
@@ -218,9 +235,11 @@ export async function descargarExcelCuenta(sel: SeleccionExport, datos: DatosExp
     const ws = wb.addWorksheet('Resumen')
     ws.columns = [{ width: 22 }, { width: 16 }]
     titulo(ws)
+    // Misma línea de devoluciones que el PDF, y solo si hubo.
+    const devol: [string, number][] = tot.notas > 0 ? [['Devoluciones (material reintegrado)', -tot.notas]] : []
     const filas: [string, number][] = tot.admin
-      ? [['Mano de obra', tot.mo], ['Contratistas', tot.cont], ['Materiales', tot.mat], ['Total', tot.total], ['Pagos recibidos', tot.pagado], ['SALDO', tot.saldo]]
-      : [['Materiales', tot.mat], ['Pagos recibidos', tot.pagado], ['SALDO', tot.saldo]]
+      ? [['Mano de obra', tot.mo], ['Contratistas', tot.cont], ['Materiales', tot.mat], ['Total', tot.total], ['Pagos recibidos', tot.pagado], ...devol, ['SALDO', tot.saldo]]
+      : [['Materiales', tot.mat], ['Pagos recibidos', tot.pagado], ...devol, ['SALDO', tot.saldo]]
     for (const [etiqueta, monto] of filas) {
       const r = ws.addRow([etiqueta, monto])
       r.getCell(2).numFmt = FMT_MONEDA

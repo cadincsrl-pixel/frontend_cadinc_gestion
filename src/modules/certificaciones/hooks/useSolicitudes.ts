@@ -24,6 +24,9 @@ function invalidarResolucionItem(qc: ReturnType<typeof useQueryClient>) {
   // ledger del pañol (herr_entregas). Sin esto la bandeja de Salidas queda
   // desactualizada hasta el próximo refetch.
   qc.invalidateQueries({ queryKey: ['herr-entregas'] })
+  // Devolver material con el renglón ya cobrado emite una nota de crédito
+  // (20260913k): sin esto el saldo a favor no aparece hasta el próximo refetch.
+  qc.invalidateQueries({ queryKey: ['cuenta-cliente-notas-credito'] })
 }
 
 export function useSolicitudes(obra_cod?: string) {
@@ -117,6 +120,41 @@ export function useRecibirDevolucion() {
   return useMutation({
     mutationFn: ({ itemId }: { itemId: number }) =>
       apiPost(`/api/solicitudes/items/${itemId}/recibir-devolucion`, {}),
+    onSuccess: () => invalidarResolucionItem(qc),
+  })
+}
+
+/** Lo que responde el endpoint de devolución. */
+export interface ResultadoDevolucion {
+  item_id:           number
+  devuelto:          number
+  /** true = el renglón ya estaba cobrado y se emitió una nota de crédito. */
+  saldo_a_favor:     boolean
+  nota_credito_id:   number | null
+  monto_credito:     number | null
+  cantidad_restante: number
+}
+
+/**
+ * La obra devuelve MATERIAL que sobró, o se cierra un despacho que nunca salió
+ * del galpón. No confundir con `useRecibirDevolucion`, que es para herramientas
+ * que vuelven al pañol y cierra el renglón entero.
+ *
+ * Dos caminos, y los decide el backend según el renglón (reglas del user):
+ *  · sin cobrar  → se descuenta de lo enviado (baja el renglón y la cuenta)
+ *  · ya cobrado  → la cuenta NO se toca y sale una NOTA DE CRÉDITO
+ *
+ * El segundo exige `cargar_precios`: emitir un crédito es una decisión de plata.
+ * Si falta el permiso el backend responde SIN_PERMISO_ACREDITAR y el modal lo
+ * explica en vez de mostrar un error genérico.
+ */
+export function useDevolverAlDeposito() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ itemId, cantidad, motivo }: { itemId: number; cantidad: number; motivo?: string }) =>
+      apiPost<ResultadoDevolucion>(`/api/solicitudes/items/${itemId}/devolver`, {
+        cantidad, ...(motivo ? { motivo } : {}),
+      }),
     onSuccess: () => invalidarResolucionItem(qc),
   })
 }

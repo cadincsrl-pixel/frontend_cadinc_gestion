@@ -119,6 +119,37 @@ export function usePendientesDePrecio(enabled = true) {
   })
 }
 
+// ── Notas de crédito (saldo a favor por devoluciones) ────────────────────
+//
+// Nacen cuando se devuelve al depósito material cuyo renglón YA estaba cobrado
+// o certificado (20260913k): la cuenta no se puede tocar, así que el crédito va
+// aparte. NO son cobros — no es plata que entró, es deuda que baja — y por eso
+// tienen su propia query y su propio término en el saldo.
+
+export interface NotaCredito {
+  id:          number
+  fecha:       string
+  descripcion: string
+  cantidad:    number
+  unidad:      string
+  precio_unit: number
+  monto:       number
+  motivo:      string | null
+  item_id:     number | null
+}
+
+const NOTAS_KEY = (obra?: string) => ['cuenta-cliente-notas-credito', obra ?? 'all'] as const
+
+export function useNotasCredito(obra_cod?: string, enabled = true) {
+  return useQuery({
+    queryKey: NOTAS_KEY(obra_cod),
+    queryFn:  () => apiGet<NotaCredito[]>(`/api/cuenta-cliente/notas-credito?obra_cod=${encodeURIComponent(obra_cod ?? '')}`),
+    enabled:  enabled && !!obra_cod,
+    staleTime: 60_000,
+    retry: false,
+  })
+}
+
 // ── Cobros (pagos del cliente a cuenta de la obra) ───────────────────────
 
 const COBROS_KEY = (obra?: string) => ['cuenta-cliente-cobros', obra ?? 'all'] as const

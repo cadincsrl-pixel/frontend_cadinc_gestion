@@ -21,7 +21,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
 import { useAdministracionCuenta, type CuentaAdministracion } from './useAdministracionCuenta'
-import { useCobrosCliente } from '../../hooks/useCuentaCliente'
+import { useCobrosCliente, useNotasCredito } from '../../hooks/useCuentaCliente'
 import { fetchCuentaRenglonesTodos, CUENTA_CORRIENTE_KEY } from '../../hooks/useCuentaCorriente'
 import { descargarPdfCuenta, descargarExcelCuenta, type SeleccionExport } from '../../utils/exportCuenta'
 import type { Obra, CuentaClienteCobro } from '@/types/domain.types'
@@ -70,6 +70,9 @@ function Cuerpo({ obra, onClose, admin }: {
     staleTime: 60_000,
   })
   const { data: cobros = [] } = useCobrosCliente(obra.cod)
+  // Devoluciones ya cobradas: el PDF las muestra como línea propia para que
+  // el cliente vea de dónde sale la diferencia con lo que se le facturó.
+  const { data: notas = [] } = useNotasCredito(obra.cod)
 
   const cargando = cargandoRenglones || (esAdmin && admin.cargando)
   const nadaTildado = !sel.resumen && !sel.jornales && !sel.contratistas && !sel.materiales && !sel.pagos
@@ -80,7 +83,7 @@ function Cuerpo({ obra, onClose, admin }: {
     if (nadaTildado || cargando || exportando) return
     setExportando(true)
     try {
-      const datos = { obra, renglones, cobros: cobros as CuentaClienteCobro[], admin }
+      const datos = { obra, renglones, cobros: cobros as CuentaClienteCobro[], notas, admin }
       if (formato === 'pdf') descargarPdfCuenta(sel, datos)
       else await descargarExcelCuenta(sel, datos)
       onClose()

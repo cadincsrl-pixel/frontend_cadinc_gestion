@@ -109,7 +109,12 @@ export function PagosCliente({ obraCod, obraNom, puedeEditar, puedeEliminar, por
   const tot = useMemo(() => totalizar(resumenObra?.grupos ?? []), [resumenObra])
   const deuda   = tot.porEstado.a_cobrar.total + tot.porEstado.cobrado.total
   const pagado  = cobros.reduce((s, c) => s + Number(c.monto ?? 0), 0)
-  const saldo   = deuda - pagado
+  // Devoluciones sobre renglones ya cobrados (20260913k): el renglón queda como
+  // está y el cliente recibe una nota de crédito. Es deuda que baja, así que va
+  // como término PROPIO y no sumada a `pagado`: una nota no es plata que entró,
+  // y mezclarlas haría que una devolución se vea como cobranza.
+  const notas   = (resumenObra?.notas ?? []).reduce((s, n) => s + Number(n.monto ?? 0), 0)
+  const saldo   = deuda - pagado - notas
   const sinPrecio = tot.porEstado.a_cobrar.sin_precio
   const esLlaveEnMano = deuda === 0 && cobros.length === 0 && tot.porEstado.gasto_cadinc.renglones > 0
 
@@ -218,6 +223,13 @@ export function PagosCliente({ obraCod, obraNom, puedeEditar, puedeEliminar, por
             <div className="text-sm mt-0.5 flex flex-wrap gap-x-4 gap-y-0.5">
               <span>Deuda <b className="font-mono">{fmtM(deuda)}</b></span>
               <span>Pagado <b className="font-mono text-verde">{fmtM(pagado)}</b></span>
+              {/* Solo si hubo devoluciones: la línea no aparece en la mayoría
+                  de las obras y no vale la pena un "$0" permanente. */}
+              {notas > 0 && (
+                <span title="Material devuelto al depósito cuyo renglón ya estaba cobrado">
+                  Devoluciones <b className="font-mono text-verde">−{fmtM(notas)}</b>
+                </span>
+              )}
               <span>
                 Saldo <b className={`font-mono ${saldo > 0 ? 'text-naranja-dark' : 'text-verde'}`}>{fmtM(saldo)}</b>
                 <span className="text-[11px] text-gris-dark ml-1">
