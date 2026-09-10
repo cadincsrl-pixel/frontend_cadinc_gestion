@@ -17,21 +17,29 @@ import type { CuentaClienteCobro, MedioCobro, CertificadoCliente, CertificadoDet
 export function useGuardarPreciosMCC() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (items: { itemId: number; precio_unit?: number; pagado_por?: 'cadinc' | 'cliente' }[]) => {
+    mutationFn: async (items: { itemId: number; precio_unit?: number; pagado_por?: 'cadinc' | 'cliente'; actualizar_catalogo?: boolean }[]) => {
       const res = await Promise.allSettled(
         items.map(it => {
           const body: Record<string, unknown> = {}
           if (it.precio_unit !== undefined) body.precio_unit = it.precio_unit
           if (it.pagado_por !== undefined) body.pagado_por = it.pagado_por
-          return apiPatch(`/api/solicitudes/items/${it.itemId}`, body)
+          // Llevar el precio también a la ficha del catálogo (10/09). El
+          // backend lo valida ficha por ficha y es best-effort: si una no
+          // puede, el precio del renglón se guarda igual.
+          if (it.actualizar_catalogo) body.actualizar_catalogo = true
+          return apiPatch<{ catalogo?: { ok: boolean } }>(`/api/solicitudes/items/${it.itemId}`, body)
         }),
       )
-      return { total: items.length, fallidos: res.filter(r => r.status === 'rejected').length }
+      const alCatalogo = res.filter(r => r.status === 'fulfilled' && (r.value as { catalogo?: { ok: boolean } })?.catalogo?.ok).length
+      return { total: items.length, fallidos: res.filter(r => r.status === 'rejected').length, alCatalogo }
     },
     // Refetch de la cuenta corriente (listado y resumen) y del conteo de pendientes.
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['cuenta-cliente-pendientes'] })
       qc.invalidateQueries({ queryKey: ['cuenta-corriente'] })
+      // El catálogo pudo cambiar: que la pestaña y los sugeridos lo reflejen.
+      qc.invalidateQueries({ queryKey: ['stock', 'materiales'] })
+      qc.invalidateQueries({ queryKey: ['catalogo'] })
     },
   })
 }

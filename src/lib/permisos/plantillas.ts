@@ -68,7 +68,7 @@ export const PRESETS_FALLBACK: PresetBase[] = [
   {
     key:   'compras',
     label: 'Compras',
-    descripcion: 'Solo Compras y Stock (todas las tabs). Resuelve compras y despachos.',
+    descripcion: 'Solo Compras y Stock (todas las tabs). Resuelve compras y despachos, carga precios y actualiza el catálogo.',
     modulos: ['certificaciones'],
     permisos: {
       certificaciones: {
@@ -76,6 +76,11 @@ export const PRESETS_FALLBACK: PresetBase[] = [
         tabs: ['solicitudes', 'stock', 'catalogo', 'stock-proveedor', 'stock-cliente', 'cuenta-corriente'],
         resolver_items: true,
         forzar_despacho: true,
+        // Es quien compra con la factura delante: es el único que puede
+        // devolverle al catálogo el precio real. Sin este flag el tilde
+        // "poner este precio en el catálogo" queda gris y la referencia
+        // nunca se actualiza (10/09: cero precios con fuente 'compra').
+        cargar_precios: true,
       },
     },
     obras_scope_default: 'todas',
@@ -84,7 +89,7 @@ export const PRESETS_FALLBACK: PresetBase[] = [
   {
     key:   'deposito',
     label: 'Encargado de depósito',
-    descripcion: 'Stock interno + stock en proveedores + herramientas. Resuelve despachos. Ve solicitudes en lectura.',
+    descripcion: 'Stock interno + stock en proveedores + herramientas. Resuelve despachos SIN cargar precios. Ve solicitudes en lectura.',
     modulos: ['certificaciones', 'herramientas'],
     permisos: {
       certificaciones: {
@@ -92,6 +97,10 @@ export const PRESETS_FALLBACK: PresetBase[] = [
         tabs: ['stock', 'catalogo', 'stock-proveedor', 'solicitudes'],
         resolver_items: true,
         forzar_despacho: true,
+        // Maneja el depósito, no los números: resuelve y el renglón queda
+        // "esperando precio" para que lo cargue quien corresponde. Antes
+        // ponía "11" o "1" para salir del paso y eso terminaba facturado.
+        precio_al_resolver: false,
       },
       herramientas: {
         lectura: true, creacion: true, actualizacion: true, eliminacion: false,

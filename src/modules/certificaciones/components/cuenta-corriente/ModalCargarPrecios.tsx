@@ -55,6 +55,10 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
   // recién ahí se mueve la cuenta del cliente.
   const modoPropuesta = puedeEditar && resolverItems && !(cargarPrecios || esAdmin)
   const { mutate: editarItem, isPending: convirtiendo } = useEditarItem()
+  // "Poner estos precios en el catálogo". Hasta el 10/09 llevar un precio a la
+  // ficha solo se podía en el instante de comprar, así que la compra en cuenta
+  // corriente —la que trae el precio real días después— nunca podía hacerlo.
+  const [alCatalogo, setAlCatalogo] = useState(false)
   // "Pasar el renglón a la unidad de la ficha" (fase 3): el renglón dice "15 m"
   // y la ficha va por rollo; se pide cuánto es en la unidad de la ficha y el
   // backend escala la cuenta, los envíos y el stock descontado.
@@ -155,18 +159,24 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
     if (cambios.length === 0) { toast('No cambiaste nada', 'err'); return }
     const aCero = cambios.filter(r => Number(r.precio_unit) > 0 && precioVal(r) === 0).length
     if (aCero > 0 && !confirm(`Vas a dejar en $0 ${aCero} material(es) que tenían precio cargado.\n¿Continuar?`)) return
-    guardarPrecios(cambios.map(r => ({
-      itemId: r.item_id,
-      ...(precioVal(r) !== Number(r.precio_unit) ? { precio_unit: precioVal(r) } : {}),
-      ...(pagadorDe(r) !== (r.pagado_por === 'cliente' ? 'cliente' : 'cadinc') ? { pagado_por: pagadorDe(r) } : {}),
-    })), {
-      onSuccess: ({ total, fallidos }) => {
+    guardarPrecios(cambios.map(r => {
+      const cambiaPrecio = precioVal(r) !== Number(r.precio_unit)
+      return {
+        itemId: r.item_id,
+        ...(cambiaPrecio ? { precio_unit: precioVal(r) } : {}),
+        ...(pagadorDe(r) !== (r.pagado_por === 'cliente' ? 'cliente' : 'cadinc') ? { pagado_por: pagadorDe(r) } : {}),
+        // El backend valida ficha, unidad y fecha uno por uno; los que no
+        // pueda, quedan como están sin frenar el guardado del precio.
+        ...(alCatalogo && cambiaPrecio && precioVal(r) > 0 ? { actualizar_catalogo: true } : {}),
+      }
+    }), {
+      onSuccess: ({ total, fallidos, alCatalogo }) => {
         if (fallidos > 0) {
           // No cerramos: el refetch repinta los que pasaron y lo tipeado queda para reintentar.
           toast(`Guardados ${total - fallidos}/${total} — ${fallidos} fallaron`, 'err')
           return
         }
-        toast(`✓ ${total} precio${total !== 1 ? 's' : ''} guardado${total !== 1 ? 's' : ''}`, 'ok')
+        toast(`✓ ${total} precio${total !== 1 ? 's' : ''} guardado${total !== 1 ? 's' : ''}${alCatalogo ? ` · ${alCatalogo} ficha${alCatalogo !== 1 ? 's' : ''} del catálogo actualizada${alCatalogo !== 1 ? 's' : ''}` : ''}`, 'ok')
         cerrar()
       },
       onError: () => toast('Error al guardar precios', 'err'),
@@ -206,6 +216,13 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
             </>}
           </div>
           <div className="flex items-center gap-3 flex-wrap shrink-0">
+            {puedeCargarPrecios && (
+              <label className="flex items-center gap-1.5 text-[11px] font-bold text-azul cursor-pointer"
+                     title="Actualiza el precio de referencia de cada ficha con el precio que estás cargando. Es lo mismo que el tilde de la compra, pero acá, que es donde llega el precio real del proveedor.">
+                <input type="checkbox" checked={alCatalogo} onChange={e => setAlCatalogo(e.target.checked)} />
+                Poner estos precios en el catálogo
+              </label>
+            )}
             {sugeribles.length > 0 && (
               <Button variant="secondary" size="sm" disabled={!puedeCargarPrecios} onClick={usarSugeridos}
                 title={puedeCargarPrecios ? 'Poner el precio de referencia del catálogo en los renglones sin precio cuya ficha lo tiene' : 'Sin permiso para cargar precios'}>
