@@ -39,6 +39,46 @@ function Precio({ r }: { r: CuentaRenglon }) {
   return <span className="text-[9px] font-bold bg-naranja-light text-naranja-dark px-1 py-0.5 rounded whitespace-nowrap">SIN PRECIO</span>
 }
 
+/**
+ * Precio de referencia de la ficha del catálogo, para comparar contra lo que
+ * se le está cobrando a la obra (pedido del user, 10/09). El dato ya venía en
+ * v_cuenta_corriente desde 20260912f; acá se muestra.
+ *
+ * La diferencia se lee siempre desde el renglón: "−12 %" es que a esta obra se
+ * le cobró 12 % MENOS que la referencia del catálogo. Sin ficha no hay con qué
+ * comparar, y si la ficha se mide en otra unidad el porcentaje mentiría.
+ */
+function Catalogo({ r }: { r: CuentaRenglon }) {
+  const ref = Number(r.ficha_precio_ref ?? 0)
+  if (!(ref > 0)) {
+    return <span className="text-gris-mid text-xs" title="El renglón no tiene ficha del catálogo, o la ficha no tiene precio de referencia">—</span>
+  }
+  const precio = Number(r.precio_unit)
+  const distinta = r.ficha_unidad_ok === false
+  const dif = !distinta && precio > 0 ? ((precio - ref) / ref) * 100 : null
+  return (
+    <span className="inline-flex flex-col items-end leading-tight">
+      <span className="font-mono text-xs text-gris-dark" title="Precio de referencia de la ficha del catálogo">{fmtM(ref)}</span>
+      {distinta && (
+        <span className="text-[9px] font-bold text-naranja-dark" title={`La ficha se mide por ${r.ficha_unidad ?? '—'} y este renglón por ${r.unidad}: los precios no son comparables`}>otra unidad</span>
+      )}
+      {dif !== null && Math.abs(dif) <= 0.5 && (
+        <span className="text-[9px] text-gris-mid" title="Se cobró al precio del catálogo">=</span>
+      )}
+      {dif !== null && Math.abs(dif) > 0.5 && (
+        <span
+          className={`text-[9px] font-bold ${dif < 0 ? 'text-naranja-dark' : 'text-gris-dark'}`}
+          title={dif < 0
+            ? `A esta obra se le cobró ${Math.abs(dif).toFixed(1)} % menos que la referencia del catálogo`
+            : `A esta obra se le cobró ${dif.toFixed(1)} % más que la referencia del catálogo`}
+        >
+          {dif > 0 ? '+' : '−'}{Math.abs(dif).toFixed(0)} %
+        </span>
+      )}
+    </span>
+  )
+}
+
 function Factura({ r }: { r: CuentaRenglon }) {
   if (!r.factura_adjunto_url) return <span className="text-gris-mid text-xs">{r.factura_numero ?? '—'}</span>
   return (
@@ -59,7 +99,7 @@ export function RenglonesTabla({ items, mostrarObra, vacio }: Props) {
     <>
       {/* Tabla — desktop */}
       <div className="hidden md:block overflow-x-auto">
-        <table className="w-full text-sm min-w-[900px]">
+        <table className="w-full text-sm min-w-[1000px]">
           <thead>
             <tr>
               <th className={th()}>Fecha</th>
@@ -68,6 +108,7 @@ export function RenglonesTabla({ items, mostrarObra, vacio }: Props) {
               <th className={th('right')}>Cant.</th>
               <th className={th()}>Proveedor</th>
               <th className={th('right')}>P. unit.</th>
+              <th className={th('right')}>Catálogo</th>
               <th className={th('right')}>Total</th>
               <th className={th('center')}>Estado</th>
               <th className={th('center')}>Factura</th>
@@ -91,6 +132,7 @@ export function RenglonesTabla({ items, mostrarObra, vacio }: Props) {
                     : (r.proveedor_nom ?? <span className="text-gris-mid">—</span>)}
                 </td>
                 <td className="px-3 py-2 text-right whitespace-nowrap"><Precio r={r} /></td>
+                <td className="px-3 py-2 text-right whitespace-nowrap"><Catalogo r={r} /></td>
                 <td className="px-3 py-2 text-right font-mono text-sm font-bold whitespace-nowrap">{fmtM(Number(r.precio_total ?? 0))}</td>
                 <td className="px-3 py-2 text-center"><EstadoBadge r={r} /></td>
                 <td className="px-3 py-2 text-center"><Factura r={r} /></td>
@@ -116,6 +158,9 @@ export function RenglonesTabla({ items, mostrarObra, vacio }: Props) {
               <div className="text-right shrink-0">
                 <div className="font-mono font-bold">{fmtM(Number(r.precio_total ?? 0))}</div>
                 <div className="text-[10px] text-gris-dark"><Precio r={r} /></div>
+                {Number(r.ficha_precio_ref ?? 0) > 0 && (
+                  <div className="text-[10px] text-gris-mid mt-0.5">catálogo <Catalogo r={r} /></div>
+                )}
               </div>
             </div>
             <div className="flex items-center justify-between gap-2 mt-2">
