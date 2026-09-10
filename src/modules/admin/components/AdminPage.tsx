@@ -6,11 +6,13 @@ import { useTabsPermitidos } from '@/hooks/useTabsPermitidos'
 import { UsuariosTab } from '@/modules/configuracion/components/UsuariosTab'
 import { PlantillasTab } from './PlantillasTab'
 import { AuditoriaTab } from './AuditoriaTab'
+import { PreciosTab } from './PreciosTab'
 
 const TABS = [
   { key: 'usuarios',   icon: '👥', label: 'Usuarios y permisos', sub: 'Gestión de cuentas, roles y accesos' },
   { key: 'plantillas', icon: '🎭', label: 'Plantillas de roles', sub: 'Detalle de los presets de permisos disponibles' },
   { key: 'auditoria',  icon: '📋', label: 'Auditoría',           sub: 'Registro de actividad de usuarios' },
+  { key: 'precios',    icon: '💲', label: 'Movimientos de precios', sub: 'Quién cambió qué precio, y de cuánto a cuánto' },
 ]
 
 export function AdminPage() {
@@ -45,6 +47,7 @@ export function AdminPage() {
         {tab === 'usuarios'   && <UsuariosTab />}
         {tab === 'plantillas' && <PlantillasTab />}
         {tab === 'auditoria'  && <AuditoriaTab />}
+        {tab === 'precios'    && <PreciosTab />}
       </div>
     </div>
   )
