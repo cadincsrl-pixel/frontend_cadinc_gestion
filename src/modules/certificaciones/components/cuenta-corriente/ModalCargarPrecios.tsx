@@ -72,6 +72,11 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
   // cargado como "CADINC adelantó".
   const [pagadores, setPagadores] = useState<Record<number, 'cadinc' | 'cliente'>>({})
   const [soloSinPrecio, setSoloSinPrecio] = useState(false)
+  // "Usar sugeridos" llenaba N casillas repartidas en una lista larga y no
+  // había forma de ver cuáles ni con qué (user, 10/09: "no sé qué precios se
+  // pusieron ni a qué"). Se marca cada renglón tocado y se puede ver solo eso.
+  const [soloCambios, setSoloCambios] = useState(false)
+  const [desdeSugerido, setDesdeSugerido] = useState<Record<number, true>>({})
   const [busqueda, setBusqueda] = useState('')
 
   const editables = useMemo(() => rows.filter(r => r.cobro_id == null), [rows])
@@ -102,16 +107,31 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
   // Se muestra TODO el listado de la obra, congelados incluidos (en gris, solo
   // lectura): el pedido del user fue poder ver la cuenta entera desde acá, no
   // solo lo que falta tasar.
+  const cambiados     = new Set(cambios.map(r => r.item_id))
   const visibles      = rows
+    .filter(r => !soloCambios || cambiados.has(r.item_id))
     .filter(r => !soloSinPrecio || (r.cobro_id == null && Number(r.precio_unit) === 0))
     .filter(r => !q || r.descripcion.toLowerCase().includes(q))
+  // Cuánto cambia la cuenta de la obra con lo que está tipeado, para poder
+  // decirlo ANTES de guardar.
+  const deltaTotal    = cambios.reduce((s, r) => s + Number(r.cantidad) * (precioVal(r) - Number(r.precio_unit)), 0)
 
-  function cerrar() { setOverrides({}); setPagadores({}); setSoloSinPrecio(false); setBusqueda(''); setConvertir(null); onClose() }
+  function cerrar() {
+    setOverrides({}); setPagadores({}); setSoloSinPrecio(false); setSoloCambios(false)
+    setDesdeSugerido({}); setBusqueda(''); setConvertir(null); onClose()
+  }
 
   function usarSugeridos() {
     if (sugeribles.length === 0) return
     setOverrides(p => ({ ...p, ...Object.fromEntries(sugeribles.map(r => [r.item_id, String(r.ficha_precio_ref)])) }))
-    toast(`${sugeribles.length} precio${sugeribles.length !== 1 ? 's' : ''} sugerido${sugeribles.length !== 1 ? 's' : ''} cargado${sugeribles.length !== 1 ? 's' : ''}: revisá y guardá`, 'ok')
+    setDesdeSugerido(p => ({ ...p, ...Object.fromEntries(sugeribles.map(r => [r.item_id, true as const])) }))
+    // La lista pasa a mostrar SOLO lo que se llenó: si no, quedan N casillas
+    // cargadas perdidas entre todos los renglones de la obra.
+    setSoloCambios(true)
+    setSoloSinPrecio(false)
+    setBusqueda('')
+    const plata = sugeribles.reduce((s, r) => s + Number(r.cantidad) * Number(r.ficha_precio_ref ?? 0), 0)
+    toast(`${sugeribles.length} precio${sugeribles.length !== 1 ? 's' : ''} del catálogo por ${fmtM(plata)} — revisalos y guardá`, 'ok')
   }
 
   function confirmarConversion() {
@@ -231,12 +251,31 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
             )}
             {sinPrecio > 0 && (
               <label className="flex items-center gap-1.5 text-xs font-semibold text-gris-dark cursor-pointer">
-                <input type="checkbox" className="accent-naranja" checked={soloSinPrecio} onChange={e => setSoloSinPrecio(e.target.checked)} />
+                <input type="checkbox" className="accent-naranja" checked={soloSinPrecio} onChange={e => { setSoloSinPrecio(e.target.checked); if (e.target.checked) setSoloCambios(false) }} />
                 Solo sin precio ({sinPrecio})
+              </label>
+            )}
+            {cambios.length > 0 && (
+              <label className="flex items-center gap-1.5 text-xs font-bold text-azul cursor-pointer">
+                <input type="checkbox" className="accent-azul" checked={soloCambios} onChange={e => { setSoloCambios(e.target.checked); if (e.target.checked) setSoloSinPrecio(false) }} />
+                Solo lo que voy a guardar ({cambios.length})
               </label>
             )}
           </div>
         </div>
+        {cambios.length > 0 && (
+          <div className="rounded-lg bg-azul-light/50 border-[1.5px] border-azul px-3 py-2 text-xs text-azul-mid flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="font-bold text-azul">
+              {cambios.length} renglón{cambios.length !== 1 ? 'es' : ''} sin guardar
+            </span>
+            {deltaTotal !== 0 && (
+              <span>
+                la cuenta de la obra {deltaTotal > 0 ? 'sube' : 'baja'} <b className="font-mono">{fmtM(Math.abs(deltaTotal))}</b>
+              </span>
+            )}
+            <span className="text-gris-dark">Nada se guarda hasta que toques “Guardar cambios”.</span>
+          </div>
+        )}
         {conUnidadDistinta > 0 && !convertir && (
           <div className="text-[11px] text-gris-dark">
             ⚠ {conUnidadDistinta} renglón{conUnidadDistinta !== 1 ? 'es' : ''} sin precio {conUnidadDistinta !== 1 ? 'están' : 'está'} en otra unidad que su ficha: pasalos a la unidad de la ficha (botón en la columna Sugerido) y después se pueden tasar.
@@ -316,10 +355,16 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
                       </tr>
                     )
                   }
+                  const tocado = cambiados.has(r.item_id)
                   return (
-                    <tr key={r.id} className={`border-t border-gris ${sin ? 'bg-naranja-light/20' : ''}`}>
+                    <tr key={r.id} className={`border-t border-gris ${tocado ? 'bg-azul-light/40' : sin ? 'bg-naranja-light/20' : ''}`}>
                       <td className="px-3 py-2">
                         {r.descripcion}
+                        {tocado && (
+                          <span className="ml-1.5 text-[9px] font-bold text-azul bg-white border border-azul px-1 py-0.5 rounded whitespace-nowrap">
+                            {desdeSugerido[r.item_id] ? 'del catálogo' : 'editado'} · sin guardar
+                          </span>
+                        )}
                         <div className="text-[10px] text-gris-dark font-mono">#{r.solicitud_id} · {r.origen === 'deposito' ? 'Depósito' : (r.proveedor_nom ?? 'sin proveedor')}</div>
                       </td>
                       <td className="px-3 py-2 text-center">
