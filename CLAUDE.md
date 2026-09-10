@@ -235,7 +235,21 @@ Una herramienta es una fila de `stock_materiales` con `clase='herramienta'` (rub
 - **`fn_mcc_congelada`**: una fila con `cobro_id` o `certificado_id` NO admite cambio de `precio_unit`, `precio_total` ni `cantidad` (409 `MCC_COBRADO` / `MCC_CERTIFICADO`). El camino correcto son **dos statements**: primero soltar del cobro (`cobro_id` y `monto_cobrado` a null, permitido porque los importes no cambian) y después valuar; el user reimputa con "Imputar lo pagado". El escape `set local cadinc.descongelar = 'on'` es para cuando el renglón DEBE seguir cobrado: no deja rastro, usarlo solo con motivo escrito en la migración.
 - **Traza**: el trigger de MCC escribe el evento `precio_cambiado` con antes y después; el catálogo, su historial. Los dos juntos se ven en **Admin › Movimientos de precios** (`v_movimientos_precio`), filtrable por usuario. Ojo: la `fuente` de los renglones dice `sql` casi siempre porque el backend no la setea (PostgREST no expone `set_config`) — **no** significa "tocaron la base a mano".
 - **Certificado**: valúa con `coalesce(precio_ref_en(ficha, fecha_corte), precio_ref)`, o sea que **si no hay precio a esa fecha usa el de hoy, en silencio**. Y las fechas de precio **no se pueden retroceder**: un trigger pisa `precio_actualizado_en` con `now()` en cada cambio.
-- **Precios con IVA**: `precio_ref`, el `precio_unit` de compras y el de MCC son precio FINAL. Ver §7.
+- **Todos los precios del sistema son FINALES, con IVA incluido**: `precio_ref`, el `precio_unit` de las compras y el de MCC. El modal de compra deja tipear neto y convierte. **No inferir la convención mirando compras ya cargadas**: hay muchas cargadas sin IVA por error, y tomarlas como referencia propaga el error.
+
+### 5.15 Catálogo de materiales: cómo se busca y cómo se crea
+
+El catálogo (`stock_materiales`, ~2.600 fichas) **no está vacío, está escondido**: el cuello de botella siempre fue la BÚSQUEDA, no el alta. La obra pide por nombre de obra y la ficha guarda el nombre técnico (lija 150 → `Lija al agua N°150`, alargue → `Prolongación 10m`, taco → `Tarugo fisher`, thinner → `Diluyente`).
+
+- **`alias text[]` + `norm_material()`** resuelven eso: 556 sinónimos sobre 99 materiales llevaron el match exacto de 89 ítems a 935. Índice único parcial sobre el nombre normalizado, y pg_trgm para los parecidos.
+- **El matcher corre AL CREAR el renglón, no después.** Un sinónimo nuevo NO alcanza a los renglones ya cargados: después de cada tanda de sinónimos hay que re-matchear los ítems **pendientes sin material**.
+- **El matcher del Combobox es `includes()` sobre un blob** de nombre + rubro + alias. Dos consecuencias: un alias corto contamina búsquedas lejanas, y "sopapa 50" NO matchea el alias "sopapa de 50" (falta el "de"). Al agregar sinónimos, agregar también las formas sin preposición.
+- **El rubro va SOLO en `group` del Combobox, NUNCA en `sub`**: el filtro corre sobre `label+sub+search`, así que el rubro en `sub` hacía que "pintura" devolviera las 76 filas del rubro.
+- **No se puede indexar `unaccent()`** (no es IMMUTABLE): usar `translate`.
+- **El import de Excel no chequea duplicados**, ni por `norm_material`: dos fichas nacidas de la misma compra (una desde el pedido, otra al importar). Después de importar, revisar duplicados.
+- **Alta rápida desde el pedido**: pide rubro, unidad y precio (o "No sé el precio", que la deja en $0 y en la lista de tasar — antes se inventaba un "$11" que nadie volvía a mirar). Muestra parecidos con 4 señales y rechaza nombres que son códigos (`400 NOMBRE_ES_CODIGO`). Permiso: `certificaciones.actualizacion` + tab `catalogo`.
+- **Marca**: cuando el precio cambia 2–3× según la marca, la ficha lleva la marca en el nombre (Awaduct vs PVC en desagüe, y falta hacerlo en eléctrico: Kalop/Cambre/Jeluz/Sica). El código de lista de 4 dígitos en el primer alias es la prueba dura de a qué línea pertenece una ficha.
+- **`stock_movimientos` no tiene unidad**: cambiarle la unidad a una ficha reinterpreta en silencio sus movimientos viejos. Fila nueva + desactivar la vieja, nunca rename in-place.
 
 ## 6. Convenciones de código (frontend)
 
