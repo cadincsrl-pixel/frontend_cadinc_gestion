@@ -3,7 +3,7 @@
 # CLAUDE.md — Frontend `frontend_cadinc_gestion` (ERP CADINC SRL)
 
 > Contexto operativo del proyecto. Leer completo antes de escribir código.
-> Para detalles exhaustivos: `CONTEXT_DUMP.md` en la raíz del repo.
+> `CONTEXT_DUMP.md` describe el estado al 2026-05-04 y **está desactualizado**: sirve como historia, no como referencia. Lo vigente es este archivo.
 > Repo hermano del backend: ver §12 "Repos hermanos".
 
 ---
@@ -98,6 +98,10 @@ Cliente (Next.js)
 - `stock-proveedor` — Materiales **comprados pero todavía en el galpón del proveedor** (§5.8).
 - `stock-cliente` — Material del cliente administrado en depósito (no facturable).
 - `cuenta-corriente` — Una sola vista de `materiales_a_cuenta_cliente`: cada renglón tiene UN estado (`pago_directo` › `gasto_cadinc` › `cobrado` › `a_cobrar`, en ese orden de precedencia, derivado en `v_cuenta_corriente`), filtros en el server, resumen por obra/mes/proveedor, cargar precios, pagos del cliente y PDF (solo con la deuda del cliente). Reemplazó a `cuenta-cliente`, `gastos-cadinc` y `materiales` el 2026-09-04 (migraciones `20260904ap`/`aq`); las URLs viejas redirigen.
+
+- `adicionales`, `costos`, `gasto-interno` — extras de la obra, costo interno y gastos de CADINC.
+
+Los **certificados al cliente** (`certificados_cliente`) se emiten desde la cuenta corriente: congelan precio y cantidad de los renglones que abarcan, y el cobro se cuelga del certificado. Emitir usa `emitir_certificado_cliente`; anular es solo admin y no corre si ya hay cobros.
 
 ### 4.3 Sub-tabs de Herramientas (`/herramientas/<tab>`)
 Rutas propias (no query string). Tabs en `profiles.permisos.herramientas.tabs`, orden y redirect al primero permitido en `src/app/(app)/herramientas/page.tsx`:
@@ -214,6 +218,25 @@ Una herramienta es una fila de `stock_materiales` con `clase='herramienta'` (rub
 - **`personal_cat_historial` se escribe solo cuando cambia la categoría**: una fila por `(leg, desde)` (índice único), `desde` siempre viernes (`cat_desde` opcional en el PATCH; default la semana en curso). Un `cat_desde` pasado tira `409 AFECTA_SEMANAS_CERRADAS` salvo `confirmar_historico: true`, igual que tarifas y precios globales. Hasta esa fecha cada edición insertaba una fila (453 filas para 116 cambios reales; se limpiaron).
 - **Un solo criterio de "activo"**: `esActivo(p, legsConHoras)` en `src/lib/utils/personal.ts` (override manual › mensualizado = activo › horas en las últimas 3 semanas). Lo usan Personal, Ropa y las alertas de legajo; no reimplementarlo.
 
+### 5.14 Precios: tres precios distintos, una puerta para cada uno (2026-09-10)
+
+**No son el mismo número y no se mueven juntos.**
+
+| Precio | Dónde vive | Alcance | Quién puede |
+|---|---|---|---|
+| **Referencia del catálogo** | `stock_materiales.precio_ref` | TODAS las obras | `certificaciones.actualizacion` **+** flag `cargar_precios` |
+| **Precio de la compra** | `solicitud_compra_item.precio_unit` | ese renglón | `resolver_items` (+ `precio_al_resolver`) |
+| **Lo que se le cobra al cliente** | `materiales_a_cuenta_cliente.precio_unit` | esa obra | flag `cargar_precios` |
+
+- **`fijar_precio_ref(material, precio, fuente, item, user)` es la ÚNICA puerta al catálogo.** Deja historial en `stock_materiales_precios` (fuente ∈ `manual|compra|ultima_compra|migracion|sql|backfill`). Nunca un `update … set precio_ref`. `precio_ref_en(material, fecha)` da el precio a una fecha; devuelve NULL si el historial no llega.
+- **MCC es una foto**: nada la retasa sola. Los cinco escritores están en §5.1 y §5.8.
+- **Flags** (todos en `permisos.certificaciones`): `cargar_precios` (default **false**) habilita tocar la cuenta del cliente y el catálogo; `precio_al_resolver` (default **true**) — apagado, quien resuelve compra sin poner precio y el renglón queda `esperando_precio`; `resolver_items` habilita comprar/despachar. **`aprobar_precios` no existe en el código**: aprobar una propuesta usa `cargar_precios`.
+- **Circuito de propuesta**: quien compra pero no puede fijar precios usa `precio_propuesto` y el dueño aprueba (`POST /items/:id/aprobar-precio`). Proponer no mueve la cuenta. Nadie se aprueba a sí mismo salvo admin.
+- **`fn_mcc_congelada`**: una fila con `cobro_id` o `certificado_id` NO admite cambio de `precio_unit`, `precio_total` ni `cantidad` (409 `MCC_COBRADO` / `MCC_CERTIFICADO`). El camino correcto son **dos statements**: primero soltar del cobro (`cobro_id` y `monto_cobrado` a null, permitido porque los importes no cambian) y después valuar; el user reimputa con "Imputar lo pagado". El escape `set local cadinc.descongelar = 'on'` es para cuando el renglón DEBE seguir cobrado: no deja rastro, usarlo solo con motivo escrito en la migración.
+- **Traza**: el trigger de MCC escribe el evento `precio_cambiado` con antes y después; el catálogo, su historial. Los dos juntos se ven en **Admin › Movimientos de precios** (`v_movimientos_precio`), filtrable por usuario. Ojo: la `fuente` de los renglones dice `sql` casi siempre porque el backend no la setea (PostgREST no expone `set_config`) — **no** significa "tocaron la base a mano".
+- **Certificado**: valúa con `coalesce(precio_ref_en(ficha, fecha_corte), precio_ref)`, o sea que **si no hay precio a esa fecha usa el de hoy, en silencio**. Y las fechas de precio **no se pueden retroceder**: un trigger pisa `precio_actualizado_en` con `now()` en cada cambio.
+- **Precios con IVA**: `precio_ref`, el `precio_unit` de compras y el de MCC son precio FINAL. Ver §7.
+
 ## 6. Convenciones de código (frontend)
 
 - **Feature-based folders**: `src/modules/<feature>/{components,hooks,store}`. Sin `services/` (los hooks de React Query encapsulan API).
@@ -271,6 +294,7 @@ Una herramienta es una fila de `stock_materiales` con `clase='herramienta'` (rub
 - **`useForm<any>` pendientes de tipado**: ViajesTab, PersonalPage, ChoferesTab, BateasTab, RentabilidadTab, modal adelantos.
 - **RLS permisiva + lectura directa desde el frontend en ~130 tablas**: la escritura directa ya está cerrada (`20260906q`, 2026-09-07); la lectura se cierra tabla por tabla en la fase 3 de permisos (ver Obsidian `Proyectos/Permisos - Revisión completa 2026-09-06.md`).
 - **Login de herramientas separado** (`/herramientas/login`): coexiste con `/login`, razón no documentada.
+- **Precios, lo que quedó abierto de la auditoría del 2026-09-10** (informe en Obsidian `Proyectos/Permisos y precios - auditoria 2026-09-10.md`): (a) la `fuente` del evento `precio_cambiado` siempre dice `sql` porque el backend no la setea — se arregla cuando las escrituras de MCC pasen por una RPC; (b) el certificado usa el precio de HOY cuando no hay precio a la fecha de corte, en silencio; (c) `POST/PATCH /api/certificaciones/materiales` escribe un precio facturable con guardas flojas, pero `cert_materiales` está vacía y nadie la lee: es código muerto para borrar; (d) `fn_mcc_congelada` no cubre DELETE y deja tocar `certificado_id` a mano; (e) `stock_materiales_precios` tiene FK `on delete cascade`: borrar una ficha borra su historial de precios.
 - ~~**Falta índice** en `stock_movimientos.material_id` y `.solicitud_item_id`~~ **RESUELTO** — creados en `20260424_perf_indices.sql` (verificado en DB viva 2026-07-01: `stock_movimientos_material_id_idx`, `stock_movimientos_solicitud_item_id_idx` parcial, `solicitud_compra_item_solicitud_estado_idx`).
 - **`npm audit` en el backend**: 3 vulnerabilidades (2 moderate, 1 high) detectadas al clonar. Evaluar con contexto, no correr `audit fix` a ciegas.
 - **Auto-archivado sin auditoría**: el endpoint `/api/obras/auto-archivar` no genera `audit_log` (filtro explícito en `audit.ts`). Si se necesita rastreo, agregar.
@@ -293,6 +317,8 @@ npm run lint     # ESLint
 - MCP de Supabase está conectado en Claude Code (si instalaste el plugin). Usarlo para `list_tables`, `execute_sql`, `apply_migration`.
 - Dashboard: https://supabase.com/dashboard/project/xclobkgmaxioifpkukul
 - Migraciones viven en `supabase/migrations/` de **este repo** (frontend), aunque afecten al backend también. Es la única ubicación versionada.
+- **Nombre**: `AAAAMMDD<letra>_descripcion.sql`, letra correlativa dentro del día (`a`, `b`, … `z`). El número NO es la fecha real de aplicación: la serie `20260912*` se aplicó el 09/09. **Antes de elegir letra, `ls supabase/migrations | tail`** — puede haber otra sesión de Claude trabajando en paralelo sobre el mismo repo y los prefijos chocan (pasó el 09/09; se resolvió renombrando, ver `20260912i/j/k`).
+- **Aplicar**: `apply_migration` del MCP, una por vez, y **probando antes con rollback**: envolver el cuerpo en `do $t$ … raise exception 'ROLLBACK_OK %', … $t$;` y verificar los números que devuelve. Es la práctica del proyecto para cualquier migración de datos.
 
 ### Git
 - Rama principal: `main` (producción).
@@ -303,9 +329,9 @@ npm run lint     # ESLint
 Viven en `.claude/agents/` de este repo:
 - `frontend-specialist` — UI/UX, React, formularios, componentes
 - `backend-specialist` — APIs Hono, queries, transacciones (aunque el código backend viva en el otro repo)
-- `database-architect` — schema, migraciones, RPCs
+- `database-architect` — schema, migraciones, RPCs. **Tiene el MCP de Supabase** (`execute_sql`, `apply_migration`, `list_tables`, `get_advisors`): puede mirar la base viva. Hasta el 2026-09-10 la descripción decía que sí pero la lista de herramientas no lo incluía, y una auditoría entera salió a ciegas.
 - `nextjs-react-specialist` — gotchas de Next.js 16 / React 19
-- `security-specialist` — Auth, permisos, RLS, datos sensibles
+- `security-specialist` — Auth, permisos, RLS, datos sensibles. Lee la base solo con `list_tables` y `get_advisors`: para consultas SQL, pedírselas al `database-architect`.
 - `code-reviewer` — Revisión previa a commit
 
 Invocar con: *"Usá al subagente X para..."*. También se activan proactivamente según su `description`.
@@ -348,4 +374,4 @@ El frontend espera al backend en `http://localhost:3001` (configurable vía env)
 
 ---
 
-_Última actualización: 2026-09-06._
+_Última actualización: 2026-09-10._

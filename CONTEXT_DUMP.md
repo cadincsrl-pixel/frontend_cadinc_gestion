@@ -1,5 +1,12 @@
 # CONTEXT_DUMP.md — ERP CADINC SRL
 
+> ⚠️ **DESACTUALIZADO — no usar como referencia.** Congelado en el **2026-05-04**.
+> Desde entonces cambiaron, entre otras cosas: el módulo de precios entero, los
+> certificados al cliente, el catálogo (Awaduct, fotos, alta rápida), los permisos
+> por rol y el cierre de escrituras directas a la base. **Lo vigente es `CLAUDE.md`.**
+> Esto queda como historia: sirve para entender de dónde viene algo, no para saber
+> cómo está hoy.
+
 > Estado exhaustivo del proyecto al **2026-05-04**.
 > Para resumen operativo leer `CLAUDE.md` (frontend o backend).
 > Esto es la referencia detallada para agentes / nuevos colaboradores.
