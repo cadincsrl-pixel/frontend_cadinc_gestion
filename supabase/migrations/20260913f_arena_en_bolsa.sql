@@ -1,5 +1,10 @@
 -- ARENA: dos despachos en bolsas estaban colgados de la ficha por TONELADA.
 --
+-- (Renombrada de 20260913b el 10/09: ese prefijo lo tomó otra sesión en
+--  paralelo con 20260913b_nicolas_cargar_precios, aplicada varias horas
+--  antes. En la base quedó registrada con el nombre viejo; manda el
+--  timestamp de schema_migrations, no la letra del archivo.)
+--
 -- Juan Pablo pidió 30 bolsas de arena para LAMADRID (pedido 721, 10/09) y el
 -- buscador le dio la ficha 90 "Arena fina", que se mide en tn. El despacho
 -- descontó 30 de esa ficha y el depósito quedó en -28 TONELADAS. La ficha
