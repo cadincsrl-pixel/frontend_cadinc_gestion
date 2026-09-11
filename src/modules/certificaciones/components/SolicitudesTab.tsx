@@ -320,6 +320,12 @@ function isCategoriaValida(s: string | null): s is CategoriaSol {
 }
 
 // ── Componente principal ──
+/** Form del despacho de depósito en lote: un precio por ítem (clave = item id). */
+type DespacharLoteForm = {
+  precios:          Record<string, number>
+  esperando_precio: boolean
+}
+
 export function SolicitudesTab() {
   const toast = useToast()
   const queryClient = useQueryClient()
@@ -571,6 +577,30 @@ export function SolicitudesTab() {
       return next
     })
   }
+  /**
+   * Tilda/destilda de una todos los PENDIENTES del pedido, para comprarlos o
+   * despacharlos en lote. Faltaba: el "☑ todos" de la cabecera solo alcanzaba
+   * a los enviables, así que sobre un pedido recién aprobado —donde todo está
+   * pendiente, que es justo cuando más sirve— no hacía nada.
+   */
+  function toggleSelCompraTodos(solId: number, items: SolicitudCompraItem[]) {
+    const pendientes = items.filter(it => it.id != null && it.estado === 'pendiente')
+    if (pendientes.length === 0) return
+    const set = selCompra.get(solId) ?? new Set<number>()
+    const todosTildados = pendientes.every(it => set.has(it.id!))
+    setSelCompra(prev => {
+      const next = new Map(prev)
+      const n = new Set(next.get(solId) ?? [])
+      for (const it of pendientes) {
+        if (todosTildados) n.delete(it.id!)
+        else n.add(it.id!)
+      }
+      if (n.size > 0) next.set(solId, n)
+      else            next.delete(solId)
+      return next
+    })
+  }
+
   function clearSelCompra(solId: number) {
     setSelCompra(prev => {
       const next = new Map(prev)
@@ -610,6 +640,13 @@ export function SolicitudesTab() {
   // precio viejo del catálogo entrara como precio de compra pareciendo correcto.
   const [loteDelCatalogo, setLoteDelCatalogo] = useState<Record<string, number>>({})
   const [loteSubmitting, setLoteSubmitting] = useState(false)
+  // Despacho de depósito EN LOTE. Faltaba: comprar en lote ya existía, pero
+  // un pedido donde todo sale del galpón obligaba a abrir un modal por
+  // renglón. Mismo patrón que la compra, incluido el manejo independiente de
+  // errores (cada despacho valida stock por su cuenta).
+  const [modalDespacharLote, setModalDespacharLote] = useState<{ solId: number; items: SolicitudCompraItem[] } | null>(null)
+  const [fallidosDespLote, setFallidosDespLote] = useState<Array<{ desc: string; error: string }>>([])
+  const [despLoteSubmitting, setDespLoteSubmitting] = useState(false)
   // Guarda desde qué modal se abrió el alta de proveedor, para asignarlo al form correcto.
   const [modalNuevoProveedor, setModalNuevoProveedor] = useState<null | 'comprar' | 'lote'>(null)
   // Preferencia de impresión, compartida por borrador / post-remito / reimpresión.
@@ -633,10 +670,18 @@ export function SolicitudesTab() {
     defaultValues: { proveedor_id: '', factura_id: '', queda_en_proveedor: false, pagado_por: 'cadinc', precios: {}, actualizar_catalogo: false },
   })
   const formDespachar = useForm<any>({ defaultValues: { precio_unit: 0 } })
+  const formDespacharLote = useForm<DespacharLoteForm>({ defaultValues: { precios: {}, esperando_precio: false } })
   // Quien maneja el depósito pero no los números resuelve SIN precio: el
   // renglón queda a tasar y lo carga quien corresponde. Antes ponía "11" o "1"
   // para salir del paso y eso terminaba facturado.
   const sinPrecio = !precioAlResolver
+  // El lote queda sin precio por dos motivos distintos: el flag apagado
+  // (depósito, no puede tipear precios) o porque quien compra tilda que el
+  // proveedor todavía no se los pasó. Los dos terminan igual: renglones en $0
+  // marcados como "esperando precio". El modal individual ya lo permitía; el
+  // de lote no, y era justo donde más molesta tipear 10 precios de una.
+  const loteSinPrecio = sinPrecio || !!formComprarLote.watch('esperando_precio')
+  const despLoteSinPrecio = sinPrecio || !!formDespacharLote.watch('esperando_precio')
   const formProv = useForm<any>({ defaultValues: { nombre: '', cuit: '', tel: '' } })
   const formFact = useForm<any>({ defaultValues: { proveedor_id: '', numero: '', fecha: '', total: 0 } })
 
@@ -914,7 +959,7 @@ export function SolicitudesTab() {
       cantidades[String(it.id)] = it.cantidad
     }
     setLoteDelCatalogo(sinPrecio ? {} : { ...precios })
-    formComprarLote.reset({ proveedor_id: '', factura_id: '', queda_en_proveedor: false, pagado_por: 'cadinc', precios, cantidades, actualizar_catalogo: false })
+    formComprarLote.reset({ proveedor_id: '', factura_id: '', queda_en_proveedor: false, pagado_por: 'cadinc', precios, cantidades, actualizar_catalogo: false, esperando_precio: false })
     setFallidosLote([])
     setModalComprarLote({ solId, items })
   }
@@ -942,12 +987,14 @@ export function SolicitudesTab() {
     // Quien no carga precios (depósito) compra igual: el renglón entra en $0
     // y marcado como "esperando precio". Antes la pantalla pedía los precios,
     // el backend los descartaba en silencio y avisaba "comprados".
-    const alCatalogo = !sinPrecio && !!data.actualizar_catalogo
+    // Sin precio por el flag O porque lo tildaron: en los dos casos entra en 0.
+    const esperando  = sinPrecio || !!data.esperando_precio
+    const alCatalogo = !esperando && !!data.actualizar_catalogo
     for (const it of itemsActuales) {
       const precioCargado = Number(data.precios?.[String(it.id)] ?? 0)
       // Con el toggle en "netos", lo tipeado es sin IVA: se guarda el final.
-      const precio = sinPrecio ? 0 : (lotePreciosNetos ? netaAFinal(precioCargado) : precioCargado)
-      if (!sinPrecio && (!precio || precio <= 0)) {
+      const precio = esperando ? 0 : (lotePreciosNetos ? netaAFinal(precioCargado) : precioCargado)
+      if (!esperando && (!precio || precio <= 0)) {
         fallidos.push({ desc: it.descripcion, error: 'precio inválido' })
         continue
       }
@@ -963,7 +1010,7 @@ export function SolicitudesTab() {
               queda_en_proveedor: queda,
               pagado_por: pagadoPor,
               actualizar_catalogo: alCatalogo,
-              esperando_precio: sinPrecio,
+              esperando_precio: esperando,
               // Solo si difiere de la solicitada.
               ...(cantComprada > 0 && cantComprada !== it.cantidad
                 ? { cantidad_comprada: cantComprada }
@@ -979,7 +1026,7 @@ export function SolicitudesTab() {
     setLoteSubmitting(false)
 
     if (fallidos.length === 0) {
-      toast(`✓ ${ok} ítem${ok !== 1 ? 's' : ''} comprado${ok !== 1 ? 's' : ''}${queda ? ' (queda en proveedor)' : ''}${sinPrecio ? ', esperando precio' : ''}`, 'ok')
+      toast(`✓ ${ok} ítem${ok !== 1 ? 's' : ''} comprado${ok !== 1 ? 's' : ''}${queda ? ' (queda en proveedor)' : ''}${esperando ? ', esperando precio' : ''}`, 'ok')
       clearSelCompra(modalComprarLote.solId)
       setModalComprarLote(null)
       setFallidosLote([])
@@ -1027,6 +1074,68 @@ export function SolicitudesTab() {
     formDespachar.reset({ precio_unit: mat?.precio_ref ?? 0 })
     setModalDespachar(item)
   }
+  /**
+   * Despacho de depósito EN LOTE. Espeja a `abrirComprarLote`: precarga el
+   * precio del catálogo por ítem y deja editar. Con `precio_al_resolver`
+   * apagado —o si se tilda que todavía no hay precios— no se pide nada y los
+   * renglones quedan a tasar.
+   */
+  function abrirDespacharLote(solId: number, items: SolicitudCompraItem[]) {
+    const precios: Record<string, number> = {}
+    for (const it of items) {
+      const mat = it.material_id ? stockMap.get(it.material_id) : null
+      precios[String(it.id)] = sinPrecio ? 0 : ((mat as StockMaterial | undefined)?.precio_ref ?? 0)
+    }
+    formDespacharLote.reset({ precios, esperando_precio: false })
+    setFallidosDespLote([])
+    setModalDespacharLote({ solId, items })
+  }
+
+  // Errores independientes, igual que la compra en lote: cada despacho valida
+  // su propio stock, así que uno sin existencias no puede voltear a los otros.
+  // Los que andan se aplican; los que fallan se listan con opción de reintentar.
+  async function handleDespacharLote(data: DespacharLoteForm) {
+    if (!modalDespacharLote || despLoteSubmitting) return
+    setDespLoteSubmitting(true)
+    const esperando = sinPrecio || !!data.esperando_precio
+    const fallidos: Array<{ desc: string; error: string }> = []
+    let ok = 0
+
+    const itemsActuales = fallidosDespLote.length > 0
+      ? modalDespacharLote.items.filter(it => fallidosDespLote.some(f => f.desc === it.descripcion))
+      : modalDespacharLote.items
+
+    for (const it of itemsActuales) {
+      const precio = esperando ? 0 : Number(data.precios?.[String(it.id)] ?? 0)
+      try {
+        await new Promise<void>((resolve, reject) => {
+          despacharItem({ itemId: it.id!, dto: { precio_unit: precio } },
+            { onSuccess: () => resolve(), onError: (e: unknown) => reject(e) })
+        })
+        ok++
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : ''
+        fallidos.push({
+          desc: it.descripcion,
+          error: msg === 'DESPACHO_A_DEPOSITO'
+            ? 'el depósito no se despacha a sí mismo'
+            : (msg || 'error desconocido'),
+        })
+      }
+    }
+    setDespLoteSubmitting(false)
+
+    if (fallidos.length === 0) {
+      toast(`✓ ${ok} ítem${ok !== 1 ? 's' : ''} despachado${ok !== 1 ? 's' : ''} de depósito${esperando ? ', esperando precio' : ''}`, 'ok')
+      clearSelCompra(modalDespacharLote.solId)
+      setModalDespacharLote(null)
+      setFallidosDespLote([])
+    } else {
+      setFallidosDespLote(fallidos)
+      toast(`${ok} despachado${ok !== 1 ? 's' : ''}, ${fallidos.length} con problema`, 'warn')
+    }
+  }
+
   function handleDespachar(data: any) {
     if (!modalDespachar?.id) return
     despacharItem({ itemId: modalDespachar.id, dto: { precio_unit: sinPrecio ? 0 : Number(data.precio_unit) } }, {
@@ -1509,13 +1618,29 @@ export function SolicitudesTab() {
                           <th className="px-4 py-2 text-left text-[10px] font-bold text-gris-dark uppercase tracking-wide">Estado</th>
                           <th className="px-4 py-2 text-left text-[10px] font-bold text-gris-dark uppercase tracking-wide">Detalle</th>
                           <th className="px-4 py-2 text-right text-[10px] font-bold text-gris-dark uppercase tracking-wide">
+                            {/* Dos botones en vez de uno: el checkbox de esta
+                                columna significa cosas distintas según el
+                                estado del renglón (pendientes → comprar/
+                                despachar en lote; resueltos → enviar), así que
+                                un solo "todos" era ambiguo y además solo
+                                alcanzaba a los segundos. Cada uno aparece solo
+                                si hay renglones de ese grupo. */}
+                            {items.some(it => it.estado === 'pendiente') && (
+                              <button
+                                onClick={() => toggleSelCompraTodos(s.id, items)}
+                                title="Tildar/destildar todos los pendientes, para comprarlos o despacharlos juntos"
+                                className="mr-3 normal-case font-bold text-azul hover:underline"
+                              >
+                                ☑ pendientes
+                              </button>
+                            )}
                             {items.some(it => it.estado === 'comprado' || it.estado === 'de_deposito' || it.estado === 'retirado' || it.estado === 'de_stock_cliente') && (
                               <button
                                 onClick={() => toggleSelectTodos(items)}
                                 title="Tildar/destildar todos los ítems listos para enviar"
                                 className="mr-3 normal-case font-bold text-verde hover:underline"
                               >
-                                ☑ todos
+                                ☑ para enviar
                               </button>
                             )}
                             Acciones
@@ -1746,7 +1871,7 @@ export function SolicitudesTab() {
                         <div className="border-t border-gris bg-azul-light/40 px-4 py-2.5">
                           <div className="flex items-center justify-between gap-2 flex-wrap">
                             <span className="text-sm font-bold text-azul">
-                              {itemsLote.length} ítem{itemsLote.length > 1 ? 's' : ''} para comprar al mismo proveedor
+                              {itemsLote.length} ítem{itemsLote.length > 1 ? 's' : ''} seleccionado{itemsLote.length > 1 ? 's' : ''} · comprar al mismo proveedor o despachar de depósito
                             </span>
                             <div className="flex gap-2">
                               <button
@@ -1755,6 +1880,20 @@ export function SolicitudesTab() {
                               >
                                 Limpiar
                               </button>
+                              {/* Las dos salidas posibles de un pendiente: se
+                                  compra afuera o sale del galpón. Hasta ahora
+                                  solo la primera estaba en lote. No se ofrece
+                                  despachar hacia una obra depósito: el depósito
+                                  no se despacha a sí mismo. */}
+                              {!obrasMap.get(s.obra_cod)?.es_deposito && (
+                                <button
+                                  disabled={!resolverItems}
+                                  onClick={() => abrirDespacharLote(s.id, itemsLote)}
+                                  className="text-xs font-bold px-3 py-1.5 rounded-lg bg-naranja text-white hover:opacity-90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                  📦 Despachar {itemsLote.length} de depósito
+                                </button>
+                              )}
                               <button
                                 disabled={!resolverItems}
                                 onClick={() => abrirComprarLote(s.id, itemsLote)}
@@ -2488,7 +2627,7 @@ export function SolicitudesTab() {
                     <tr>
                       <th className="text-left px-3 py-2 text-[11px] font-bold text-gris-dark uppercase">Ítem</th>
                       <th className="text-right px-3 py-2 text-[11px] font-bold text-gris-dark uppercase w-[110px]">Cant. comprada</th>
-                      {!sinPrecio && <>
+                      {!loteSinPrecio && <>
                         <th className="text-right px-3 py-2 text-[11px] font-bold text-gris-dark uppercase w-[120px]">{lotePreciosNetos ? 'P. unit. NETO ($)' : 'Precio unit. ($)'}</th>
                         <th className="text-right px-3 py-2 text-[11px] font-bold text-gris-dark uppercase w-[110px]">Catálogo</th>
                         <th className="text-right px-3 py-2 text-[11px] font-bold text-gris-dark uppercase w-[110px]">Subtotal final</th>
@@ -2507,7 +2646,7 @@ export function SolicitudesTab() {
                       const ref = Number((it.material_id ? stockMap.get(it.material_id) : null)?.precio_ref ?? 0)
                       const dif = ref > 0 && precio > 0 ? ((precio - ref) / ref) * 100 : null
                       // Todavía tiene el número que puso el catálogo al abrir el modal.
-                      const sinTocar = !sinPrecio && precioTipeado > 0 && precioTipeado === loteDelCatalogo[String(it.id)]
+                      const sinTocar = !loteSinPrecio && precioTipeado > 0 && precioTipeado === loteDelCatalogo[String(it.id)]
                       const unidLabel = UNIDADES.find(u => u.value === it.unidad)?.label ?? it.unidad
                       return (
                         <tr key={it.id} className="border-t border-gris">
@@ -2527,7 +2666,7 @@ export function SolicitudesTab() {
                               <span className="text-[10px] text-gris-dark">{unidLabel}</span>
                             </div>
                           </td>
-                          {!sinPrecio && <>
+                          {!loteSinPrecio && <>
                             <td className="px-3 py-2">
                               <Controller name={`precios.${it.id}`} control={formComprarLote.control} render={({ field }) => (
                                 <InputMonto value={field.value} onChange={field.onChange} className="text-right font-mono" />
@@ -2559,7 +2698,7 @@ export function SolicitudesTab() {
                       )
                     })}
                   </tbody>
-                  {!sinPrecio && <tfoot className="bg-gris">
+                  {!loteSinPrecio && <tfoot className="bg-gris">
                     <tr>
                       <td colSpan={4} className="px-3 py-2 text-right text-xs font-bold text-gris-dark uppercase">Total</td>
                       <td className="px-3 py-2 text-right font-mono text-sm font-bold text-azul">
@@ -2572,7 +2711,22 @@ export function SolicitudesTab() {
                   </tfoot>}
                 </table>
               </div>
-              {sinPrecio ? (
+              {/* Con el flag apagado no hay nada que decidir: siempre va sin
+                  precio. Con el flag prendido, se ofrece como TILDE — el
+                  proveedor a veces no pasa los precios hasta después, y hasta
+                  ahora eso obligaba a inventar números o a comprar de a uno. */}
+              {!sinPrecio && (
+                <label className="mt-2 flex items-start gap-2.5 px-3 py-2 border-[1.5px] border-gris-mid rounded-lg cursor-pointer hover:border-naranja transition-colors">
+                  <input type="checkbox" {...formComprarLote.register('esperando_precio')} className="mt-0.5" />
+                  <div className="flex-1">
+                    <div className="text-sm font-bold text-naranja-dark">⏳ El proveedor todavía no me pasó los precios</div>
+                    <div className="text-[11px] text-gris-dark mt-0.5">
+                      Los renglones entran en $0 y quedan marcados para tasar después desde “Cargar precios”. No hace falta tipear nada acá.
+                    </div>
+                  </div>
+                </label>
+              )}
+              {loteSinPrecio ? (
                 <div className="mt-2 text-[11px] text-gris-dark bg-gris rounded-lg px-3 py-2">
                   No hace falta que pongas los precios: los renglones quedan marcados como <b>⏳ esperando precio</b> y los carga administración desde “Cargar precios”.
                 </div>
@@ -2622,6 +2776,91 @@ export function SolicitudesTab() {
       </Modal>
 
       {/* ── Modal despachar de depósito ── */}
+      {/* Despacho de depósito EN LOTE */}
+      <Modal
+        open={!!modalDespacharLote}
+        onClose={() => { setModalDespacharLote(null); setFallidosDespLote([]) }}
+        title="📦 DESPACHAR DE DEPÓSITO EN LOTE"
+        footer={<>
+          <Button variant="secondary" onClick={() => { setModalDespacharLote(null); setFallidosDespLote([]) }} disabled={despLoteSubmitting}>Cancelar</Button>
+          <Button variant="primary" loading={despLoteSubmitting} onClick={formDespacharLote.handleSubmit(handleDespacharLote)}>
+            {fallidosDespLote.length > 0 ? `Reintentar ${fallidosDespLote.length}` : `Despachar ${modalDespacharLote?.items.length ?? 0}`}
+          </Button>
+        </>}
+      >
+        {modalDespacharLote && (
+          <div className="flex flex-col gap-3">
+            <div className="border border-gris-mid rounded-xl overflow-x-auto">
+              <table className="w-full min-w-[420px] text-sm">
+                <thead className="bg-gris">
+                  <tr>
+                    <th className="text-left px-3 py-2 text-[11px] font-bold text-gris-dark uppercase">Ítem</th>
+                    <th className="text-right px-3 py-2 text-[11px] font-bold text-gris-dark uppercase w-[110px]">En depósito</th>
+                    {!despLoteSinPrecio && <th className="text-right px-3 py-2 text-[11px] font-bold text-gris-dark uppercase w-[120px]">Precio unit. ($)</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {modalDespacharLote.items.map(it => {
+                    const mat   = it.material_id ? stockMap.get(it.material_id) : null
+                    const stock = Number((mat as StockMaterial | undefined)?.stock_actual ?? 0)
+                    // Avisar ANTES: cada despacho valida su stock por separado,
+                    // así que el que no alcance va a fallar solo y los demás pasan.
+                    const falta = !!mat && stock < Number(it.cantidad)
+                    const fallo = fallidosDespLote.find(f => f.desc === it.descripcion)
+                    return (
+                      <tr key={it.id} className={`border-t border-gris ${fallo ? 'bg-rojo-light/40' : ''}`}>
+                        <td className="px-3 py-2">
+                          <div className="font-semibold">{it.descripcion}<ChipColor color={it.color} /></div>
+                          <div className="text-[11px] text-gris-dark font-mono">{it.cantidad} {it.unidad}</div>
+                          {fallo && <div className="text-[11px] text-rojo font-bold mt-0.5">✕ {fallo.error}</div>}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono text-xs">
+                          {mat ? (
+                            <span className={falta ? 'text-rojo font-bold' : 'text-verde font-bold'}>{stock}</span>
+                          ) : <span className="text-gris-mid">sin ficha</span>}
+                          {falta && <div className="text-[10px] text-rojo">no alcanza</div>}
+                        </td>
+                        {!despLoteSinPrecio && (
+                          <td className="px-3 py-2 text-right">
+                            <input
+                              type="number" inputMode="decimal" step="any" min="0"
+                              {...formDespacharLote.register(`precios.${it.id}`)}
+                              className="w-full px-2 py-1 border-[1.5px] border-gris-mid rounded text-sm text-right outline-none focus:border-naranja"
+                            />
+                          </td>
+                        )}
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {!sinPrecio && (
+              <label className="flex items-start gap-2.5 px-3 py-2 border-[1.5px] border-gris-mid rounded-lg cursor-pointer hover:border-naranja transition-colors">
+                <input type="checkbox" {...formDespacharLote.register('esperando_precio')} className="mt-0.5" />
+                <div className="flex-1">
+                  <div className="text-sm font-bold text-naranja-dark">⏳ Tasar después</div>
+                  <div className="text-[11px] text-gris-dark mt-0.5">
+                    Los renglones salen en $0 y quedan marcados para ponerles precio desde “Cargar precios”.
+                  </div>
+                </div>
+              </label>
+            )}
+            {despLoteSinPrecio && (
+              <div className="text-[11px] text-gris-dark bg-gris rounded-lg px-3 py-2">
+                No hace falta que pongas los precios: los renglones quedan marcados como <b>⏳ esperando precio</b>.
+              </div>
+            )}
+            {fallidosDespLote.length > 0 && (
+              <div className="text-[11px] text-rojo bg-rojo-light rounded-lg px-3 py-2">
+                Los que andaban ya se despacharon. Quedaron <b>{fallidosDespLote.length}</b> con problema — corregí y reintentá solo esos.
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+
       <Modal open={!!modalDespachar} onClose={() => setModalDespachar(null)} title="📦 DESPACHAR DE DEPÓSITO"
         footer={<>
           <Button variant="secondary" onClick={() => setModalDespachar(null)}>Cancelar</Button>
