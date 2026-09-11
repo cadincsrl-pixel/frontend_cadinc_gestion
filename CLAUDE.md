@@ -133,8 +133,17 @@ El campo `materiales_a_cuenta_cliente.origen` persiste uno de dos valores (restr
 ### 5.2 Resolución transaccional vía RPCs (Abril 2026)
 Las operaciones de resolución de items usan RPCs de PostgreSQL (`resolver_item_compra`, `resolver_item_despacho`) que son transaccionales con locks `FOR UPDATE`. Activación del backend detrás del feature flag `USE_RPC_RESOLVER` (env var). Default off = camino legacy; on = RPCs atómicas. Ver migraciones `20260422_rpc_resolver_items.sql` y `20260423_profiles_forzar_despacho.sql`.
 
-### 5.3 Semana viernes → jueves
+### 5.3 Semana viernes → jueves (y cuándo se cierra)
 CADINC cierra semanas los jueves. Todo `sem_key` es el ISO del **viernes** de esa semana. Helpers en `src/lib/utils/dates.ts`: `getViernes`, `getSemDays`, `toISO`. **Nunca calcular semanas con lunes-domingo.**
+
+**El ciclo real de la semana** (del user, 2026-09-11): se trabaja de viernes a jueves, las horas se terminan de cargar el **viernes** y se paga el **sábado**.
+
+**Cuándo una semana está cerrada** (`cadincsrl/src/lib/semanas.ts` y su espejo `src/lib/utils/cierres.ts` — la misma regla escrita dos veces, cambiarla en las dos):
+1. fila en `cierres` con estado `cerrado` → cerrada, aunque sea la semana actual;
+2. fila con estado `pendiente` → abierta (es una semana reabierta a mano);
+3. **sin fila** → cerrada cuando pasó el **viernes siguiente** al jueves de esa semana, o sea que **se cierra sola el sábado**. El margen es `DIAS_DE_GRACIA = 1`; hasta el 2026-09-11 era 0 y el viernes a la mañana, justo cuando se cargan las horas, ya estaba todo trabado.
+
+Editar horas de una semana cerrada devuelve **409 `SEMANA_CERRADA`**. Para corregir hay que reabrir (botón del banner en la pantalla de la obra, o el tab Cierres): pide `tarja.actualizacion` + `ver_pii`, y es obra por obra.
 
 ### 5.4 RLS permisiva + base cerrada a escritura directa
 Las tablas tienen RLS habilitado con policies `using(true) with check(true)`: la seguridad real está en el **backend Hono** (JWT + permisos + alcance por obra + auditoría). Desde 2026-09-07 (migración `20260906q`) los roles `anon` y `authenticated` **no tienen INSERT/UPDATE/DELETE/TRUNCATE ni USAGE de secuencias en `public`** (tampoco en los default privileges de tablas futuras): aunque alguien use la anon key con su JWT, no puede escribir. El backend escribe como `service_role` y manda el usuario en el header `x-cadinc-user` (`cadincsrl/src/lib/supabase.ts` + `lib/jwt.ts`); `usuario_actual()` lo lee y lo usan los triggers de auditoría. Las **lecturas** directas desde el frontend siguen permitidas y se cierran tabla por tabla (fase 3 de permisos). No proponer RLS estricta ni funciones/vistas que dependan de `auth.uid()` sin consultar: el backend ya no manda JWT a PostgREST, así que `auth.uid()` es null en sus requests.
