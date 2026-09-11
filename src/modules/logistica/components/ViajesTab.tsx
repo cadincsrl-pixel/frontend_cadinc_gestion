@@ -54,7 +54,47 @@ type TramoFormValues = {
   // Variante de tarifa del viaje ('' = tarifa base/única). Solo aparece el
   // selector cuando la ruta elegida tiene variantes cargadas en Facturación.
   tarifa_variante?: string
+  /** Qué se transportó: maíz, soja, harina de soja, arena… Solo en cargados. */
+  producto?: string
   obs?: string
+}
+
+// Lo que CADINC transporta habitualmente. Es una semilla para el desplegable,
+// no una lista cerrada: se puede escribir cualquier otra cosa y a partir de
+// ahí queda ofrecida para los viajes siguientes.
+const PRODUCTOS_SUGERIDOS = [
+  'Maíz', 'Soja', 'Trigo', 'Harina de soja', 'Azúcar', 'Arena',
+  'Cebada', 'Girasol', 'Sorgo', 'Pellet de soja', 'Cal', 'Cemento', 'Piedra',
+]
+
+/**
+ * Qué lleva el viaje (pedido de Alina, 2026-09-11). Es un input con
+ * desplegable, no un select cerrado: ofrece lo ya cargado más los habituales,
+ * pero deja escribir uno nuevo. El motivo del campo es que el cliente
+ * identifica el viaje por la carga —"ya te pagaron la harina de soja"— y
+ * hasta ahora el sistema solo sabía de remitos, fechas y toneladas.
+ */
+function ProductoField({ value, onChange, usados }: {
+  value: string
+  onChange: (v: string) => void
+  usados: string[]
+}) {
+  const opciones = [...new Set([...usados, ...PRODUCTOS_SUGERIDOS])].sort((a, b) => a.localeCompare(b, 'es'))
+  return (
+    <div>
+      <label className="block text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1">Qué lleva</label>
+      <input
+        list="productos-carga"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder="Maíz, soja, arena…"
+        className="w-full px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white"
+      />
+      <datalist id="productos-carga">
+        {opciones.map(o => <option key={o} value={o} />)}
+      </datalist>
+    </div>
+  )
 }
 
 // Selector de variante de tarifa del viaje. Solo se renderiza si la
@@ -287,6 +327,11 @@ export function ViajesTab() {
   const [filtDesde,     setFiltDesde]     = useState('')
   const [filtHasta,     setFiltHasta]     = useState('')
 
+  // Lo que ya se transportó alguna vez, para ofrecerlo en "Qué lleva".
+  const productosUsados = useMemo(
+    () => [...new Set((tramos as Tramo[]).map(t => (t.producto ?? '').trim()).filter(Boolean))],
+    [tramos],
+  )
   const formNuevo    = useForm<TramoFormValues>({ defaultValues: { tipo: 'cargado', fecha_carga: hoy(), fecha_vacio: hoy(), remito_carga_img_url: '', remito_descarga_img_url: '' } })
   const formEdit     = useForm<TramoFormValues>()
   const formDescarga = useForm<TramoFormValues>({ defaultValues: { fecha_descarga: hoy(), remito_descarga_img_url: '' } })
@@ -630,6 +675,7 @@ export function ViajesTab() {
       dto.remito_carga         = data.remito_carga ?? ''
       dto.remito_carga_img_url = data.remito_carga_img_url || null
       dto.tarifa_variante      = data.tarifa_variante || null
+      dto.producto             = data.producto?.trim() || null
     } else {
       dto.fecha_vacio = data.fecha_vacio
       // Override del default del backend (vacio→completado). El caso común es
@@ -853,6 +899,7 @@ export function ViajesTab() {
       remito_descarga_img_url: tramo.remito_descarga_img_url ?? '',
       fecha_vacio:       tramo.fecha_vacio ?? '',
       tarifa_variante:   tramo.tarifa_variante ?? '',
+      producto:          tramo.producto ?? '',
       obs:               tramo.obs ?? '',
     })
     setEditando(tramo)
@@ -935,6 +982,7 @@ export function ViajesTab() {
           remito_descarga_img_url: data.remito_descarga_img_url || null,
           fecha_vacio:        data.fecha_vacio         || undefined,
           tarifa_variante:    data.tarifa_variante || null,
+          producto:           data.producto?.trim() || null,
           obs:                data.obs ?? '',
         },
       },
@@ -1499,6 +1547,11 @@ export function ViajesTab() {
                   <Input label="Toneladas" type="number" step="0.01" min="0" placeholder="0.00" {...formNuevo.register('toneladas_carga')} />
                   <Input label="Nº Remito" placeholder="R-00456" {...formNuevo.register('remito_carga')} />
                 </div>
+                <ProductoField
+                  value={formNuevo.watch('producto') ?? ''}
+                  onChange={v => formNuevo.setValue('producto', v)}
+                  usados={productosUsados}
+                />
                 <RemitoImgField
                   label="Remito de carga (imagen o PDF)"
                   url={formNuevo.watch('remito_carga_img_url') ?? ''}
@@ -1744,6 +1797,11 @@ export function ViajesTab() {
             <>
               <div className="bg-gris rounded-xl p-3 flex flex-col gap-3">
                 <div className="text-xs font-bold text-gris-dark uppercase tracking-wider">⛏ Carga</div>
+                <ProductoField
+                  value={formEdit.watch('producto') ?? ''}
+                  onChange={v => formEdit.setValue('producto', v)}
+                  usados={productosUsados}
+                />
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <Input label="Fecha" type="date" {...formEdit.register('fecha_carga')} />
                   <Input label="Toneladas" type="number" step="0.01" min="0" {...formEdit.register('toneladas_carga')} />

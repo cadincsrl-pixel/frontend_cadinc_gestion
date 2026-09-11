@@ -896,6 +896,9 @@ export type TramoEstado = 'en_curso' | 'completado'
 
 export interface Tramo {
   id:          number
+  /** Qué se transportó: maíz, soja, harina de soja, arena… Solo en cargados.
+   *  El cliente identifica el viaje por acá al discutir la facturación. */
+  producto?:   string | null
   chofer_id:   number
   camion_id:   number
   tipo:        TramoTipo
