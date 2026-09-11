@@ -450,9 +450,12 @@ export function generarRecibos(
   if (!trabajadores.length && !contratData.length) return null
 
   // ── HTML operarios ──
+  // Sin salto de página forzado cada 4: con altura variable (ver .recibo en
+  // el CSS) obligar el corte podía empujar un recibo alto fuera de la hoja.
+  // El flujo natural ya da 4 por página (65+2mm sobre 277mm útiles) y
+  // page-break-inside:avoid manda entero al siguiente al que no entra.
   let recibosHTML = ''
-  trabajadores.forEach((t, idx) => {
-    const pb = idx > 0 && idx % 4 === 0 ? 'page-break-before:always;' : ''
+  trabajadores.forEach((t) => {
     // Las hs extras se suman al total de horas y costo de la obra (NO se listan
     // como línea separada). Para el operario es "trabajo en la obra X", sin
     // distinción de regulares vs extras — coincide con el criterio contable.
@@ -492,7 +495,7 @@ export function generarRecibos(
       </div>` : ''
 
     recibosHTML += `
-    <div class="recibo" style="${pb}border:1.5px solid #1D3F6E;border-radius:8px;font-family:Arial,sans-serif">
+    <div class="recibo" style="border:1.5px solid #1D3F6E;border-radius:8px;font-family:Arial,sans-serif">
       <div style="background:#0F2744;color:white;padding:8px 14px;display:flex;justify-content:space-between;align-items:center">
         <div>
           <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase">${empresa}</div>
@@ -544,8 +547,7 @@ export function generarRecibos(
   // misma semana: son 2 filas del recibo pero UNA obra certificada.
   const nObrasCert = (obras: Array<{ obra: Obra }>) => new Set(obras.map(ob => ob.obra.cod)).size
   let contratHTML = ''
-  contratData.forEach((cd, idx) => {
-    const pb = (trabajadores.length > 0 || idx > 0) && (trabajadores.length + idx) % 4 === 0 ? 'page-break-before:always;' : ''
+  contratData.forEach((cd) => {
     const nObras = nObrasCert(cd.obras)
     const filas = cd.obras.map(ob => `
       <tr>
@@ -558,7 +560,7 @@ export function generarRecibos(
       </tr>`).join('')
 
     contratHTML += `
-    <div class="recibo" style="${pb}border:1.5px solid #2C1654;border-radius:8px;font-family:Arial,sans-serif">
+    <div class="recibo" style="border:1.5px solid #2C1654;border-radius:8px;font-family:Arial,sans-serif">
       <div style="background:#2C1654;color:white;padding:8px 14px;display:flex;justify-content:space-between;align-items:center">
         <div>
           <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase">${empresa}</div>
@@ -733,12 +735,18 @@ export function generarRecibos(
       body{background:#f5f5f3;font-family:Arial,sans-serif;padding-top:68px}
       @page{size:A4;margin:10mm}
       @media print{body{background:#fff;padding-top:0!important}.no-print{display:none!important}}
-      /* Cada recibo (operario o contratista) ocupa una altura fija para
-         que al imprimir 4 por página queden todos del mismo tamaño y
-         puedan cortarse parejos con guillotina/tijera. Si el contenido
-         excediera (caso raro: muchísimas obras), se trunca con
-         overflow:hidden — preferimos uniformidad sobre completitud. */
-      .recibo{height:65mm;overflow:hidden;page-break-inside:avoid;break-inside:avoid;margin-bottom:2mm;display:flex;flex-direction:column}
+      /* Cada recibo (operario o contratista) mide 65mm para que al imprimir
+         queden 4 por página, todos iguales, y se corten parejos con
+         guillotina. Antes era height fija con overflow:hidden y el
+         comentario decía "preferimos uniformidad sobre completitud" — pero lo
+         que se truncaba era la ÚLTIMA fila, o sea el footer con el TOTAL A
+         COBRAR. Caso real: Torres (leg. 067), 6 obras en la semana del 4 al
+         10/09 — su recibo mide 66,1mm y salió impreso con el importe cortado.
+         En un recibo de haberes el total es lo único que no se puede perder,
+         así que la prioridad se invierte: min-height
+         mantiene la uniformidad para los recibos normales (1 a 3 obras, que son
+         casi todos) y el que tiene muchas obras CRECE en vez de recortarse. */
+      .recibo{min-height:65mm;page-break-inside:avoid;break-inside:avoid;margin-bottom:2mm;display:flex;flex-direction:column}
       .recibo > table{flex:1 1 auto;min-height:0}
       .topbar{position:fixed;top:0;left:0;right:0;z-index:999;background:#0F2744;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:10px 20px;gap:12px;box-shadow:0 2px 8px rgba(0,0,0,.25)}
       .topbar-info{font-size:11px;opacity:.8;line-height:1.5}
