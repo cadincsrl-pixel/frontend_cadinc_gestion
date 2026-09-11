@@ -14,6 +14,7 @@ import { fetchPrestamos } from '../hooks/usePrestamos'
 import { getViernes, toISO, DIAS } from '@/lib/utils/dates'
 import { parseCantidadAR } from '@/lib/utils/numeros'
 import type { Personal, Categoria, Hora, Tarifa, Obra, Prestamo } from '@/types/domain.types'
+import type { CatObraEntry } from '@/lib/utils/costos'
 
 // Tooltip de los botones deshabilitados por permiso (undefined = habilitado).
 // Se deshabilita, no se oculta: el backend valida igual y ocultar confunde.
@@ -28,6 +29,8 @@ interface Props {
   categorias: Categoria[]
   horasData: Hora[]
   tarifas: Tarifa[]
+  /** Overrides de categoría por obra: la columna Categoría del Excel los necesita. */
+  catObra: CatObraEntry[]
   obra: Obra
   obraCod: string
   onAgregarTrabajador: () => void
@@ -38,7 +41,7 @@ interface Props {
 }
 
 export function ToolbarTarja({
-  personal, categorias, horasData, tarifas, obra, obraCod,
+  personal, categorias, horasData, tarifas, catObra, obra, obraCod,
   onAgregarTrabajador, onAutoFill, onLimpiar, undoCount, onUndo,
 }: Props) {
   const toast = useToast()
@@ -110,7 +113,7 @@ export function ToolbarTarja({
     exportarTarjaExcel(
       obraCod, obra.nom, semActual,
       personal, categorias, horasData, tarifas,
-      { prestamos },
+      { prestamos, catObra },
     )
     toast('⬇ Excel exportado', 'ok')
   }
@@ -123,7 +126,7 @@ export function ToolbarTarja({
     exportarTarjaExcel(
       obraCod, obra.nom, semActual,
       personal, categorias, horasData, tarifas,
-      { sinHoras: true },
+      { sinHoras: true, catObra },
     )
     toast('📋 Plantilla descargada — completala y usá "Importar"', 'ok')
   }

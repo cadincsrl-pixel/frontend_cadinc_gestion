@@ -154,6 +154,10 @@ export function collectData(input: ExportInput): ExportData {
     let hsExt = 0
     let monto = 0
     let semanasConVH = 0
+    // Primera y última semana en que este leg realmente tarjó en el período:
+    // son la referencia para la categoría, no la fecha de hoy.
+    let primeraSem: string | null = null
+    let ultimaSem: string | null = null
 
     for (const sk of semKeys) {
       const vie = new Date(sk + 'T12:00:00')
@@ -165,6 +169,9 @@ export function collectData(input: ExportInput): ExportData {
       }, 0)
       const ext = getHsExtrasLeg(hsExtras, obra.cod, pdo.leg, sk)
       if (reg === 0 && ext === 0) continue
+
+      if (primeraSem === null) primeraSem = sk
+      ultimaSem = sk
 
       hsReg += reg
       hsExt += ext
@@ -181,16 +188,28 @@ export function collectData(input: ExportInput): ExportData {
     const otorgados = prestamosLeg.filter(pr => pr.tipo === 'otorgado').reduce((s, pr) => s + pr.monto, 0)
     const descuentos = prestamosLeg.filter(pr => pr.tipo === 'descontado').reduce((s, pr) => s + pr.monto, 0)
 
-    // Categoría más reciente vigente (a la fecha de hoy).
-    const hoyISO = toISO(new Date())
-    const catId = getCatIdEfectivo(catObraAll, personalAll, obra.cod, pdo.leg, hoyISO) ?? p.cat_id
-    const catNomActual = categorias.find(c => c.id === catId)?.nom ?? '—'
+    // Categoría con la que se liquidó el período. Antes pasaba la fecha de HOY
+    // a getCatIdEfectivo, así que la columna traía la categoría vigente ahora
+    // mientras el Monto bruto de la misma fila venía de costoLegConCatObra con
+    // la histórica. Caso real: Sosa (leg. 066) pasó a Oficial Albañil el
+    // 2026-09-04 y los exports de agosto lo mostraban así, cobrando a $4.200.
+    const refFin = ultimaSem ?? semKeys[semKeys.length - 1] ?? toISO(new Date())
+    const refIni = primeraSem ?? refFin
+    const nomCatEn = (fecha: string) => {
+      const id = getCatIdEfectivo(catObraAll, personalAll, obra.cod, pdo.leg, fecha) ?? p.cat_id
+      return categorias.find(c => c.id === id)?.nom ?? '—'
+    }
+    const catIni = nomCatEn(refIni)
+    const catFin = nomCatEn(refFin)
+    // Si cambió DENTRO del período, un solo valor miente en cualquiera de los
+    // dos sentidos: se muestran los dos.
+    const catNomPeriodo = catIni === catFin ? catFin : `${catIni} → ${catFin}`
 
     return {
       leg:                pdo.leg,
       nom:                pdo.nom,
       dni:                pdo.dni,
-      catNomActual,
+      catNomPeriodo,
       hsRegulares:        hsReg,
       hsExtras:           hsExt,
       hsTotal:            hsReg + hsExt,

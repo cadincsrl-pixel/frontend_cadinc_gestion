@@ -72,7 +72,13 @@ export interface OperarioTotal {
   leg:                string
   nom:                string
   dni:                string | null
-  catNomActual:       string
+  /**
+   * Categoría con la que se liquidó EL PERÍODO exportado, no la de hoy. Si
+   * cambió dentro del período, viene como "Vieja → Nueva". Se llamaba
+   * `catNomActual` y traía la de hoy: la plata de la fila es histórica, así
+   * que etiqueta e importe se contradecían.
+   */
+  catNomPeriodo:      string
   hsRegulares:        number
   hsExtras:           number
   hsTotal:            number

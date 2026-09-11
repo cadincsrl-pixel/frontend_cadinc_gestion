@@ -12,7 +12,7 @@ import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useSessionStore } from '@/store/session.store'
 import { getSemDays, getViernes, toISO, esFinde, esJueves, esHoy, DIAS, hoyArgentinaISO } from '@/lib/utils/dates'
-import { costoLegConCatObra, getVHConCatObra, getTarifaEnFecha, fmtMonto, getHsExtrasLeg, redondearHs } from '@/lib/utils/costos'
+import { costoLegConCatObra, getVHConCatObra, getCatIdEfectivo, getTarifaEnFecha, fmtMonto, getHsExtrasLeg, redondearHs } from '@/lib/utils/costos'
 import { parseCantidadAR } from '@/lib/utils/numeros'
 import { useToast } from '@/components/ui/Toast'
 import { useQuery } from '@tanstack/react-query'
@@ -117,17 +117,20 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
   const { data: catObraData = [] } = useCatObraSemana(obraCod, desde)
   const { mutate: setCatObra } = useSetCatObra()
 
-  // Mapa: leg → cat_id override para esta semana
-  const catObraMap = catObraData.reduce<Record<string, number>>((acc, co) => {
-    acc[co.leg] = co.cat_id
-    return acc
-  }, {})
+  // Fecha de referencia: hoy si es la semana en curso, el viernes si es
+  // histórica. Es la MISMA que usa el costo (fechaRefCosto, más abajo), para
+  // que etiqueta y plata no puedan contradecirse.
+  const fechaRefCat = semKey === toISO(getViernes(new Date())) ? toISO(new Date()) : desde
 
-  // Categoría efectiva: cat_obra override > personal.cat_id
+  // Categoría efectiva EN ESTA SEMANA: cat_obra > personal_cat_historial >
+  // personal.cat_id. Antes caía directo a `p.cat_id`, o sea la categoría de
+  // HOY, y al mirar una semana vieja el select decía la categoría nueva
+  // mientras la columna de costo de la misma fila usaba la vieja. Caso real:
+  // Sosa (leg. 066) pasó a Oficial Albañil desde el 2026-09-04; en agosto el
+  // cartel decía "Oficial Albañil" y la plata salía a $4.200 (Medio Oficial).
   function getCatEfectiva(p: Personal): Categoria | undefined {
-    const overrideCatId = catObraMap[p.leg]
-    if (overrideCatId) return categorias.find(c => c.id === overrideCatId)
-    return categorias.find(c => c.id === p.cat_id)
+    const catId = getCatIdEfectivo(catObraData, personal, obraCod, p.leg, fechaRefCat) ?? p.cat_id
+    return categorias.find(c => c.id === catId)
   }
 
   function handleCatChange(leg: string, catId: number) {
@@ -200,9 +203,9 @@ export function TarjaTable({ obraCod, personal, categorias, tarifas, onUndoState
     return m
   }, [obras])
 
-  // Fecha de referencia del valor hora, igual que costoLegConCatObra: hoy si
-  // es la semana en curso, el viernes si es histórica.
-  const fechaRefCosto = semKey === toISO(getViernes(new Date())) ? toISO(new Date()) : desde
+  // El valor hora usa la misma referencia que la categoría (definida arriba
+  // como fechaRefCat), igual que costoLegConCatObra.
+  const fechaRefCosto = fechaRefCat
 
   // Totales con la fórmula canónica (§5.11): cat_obra + historial de
   // categorías + tarifa vigente, redondeo al millar por legajo. Antes usaba

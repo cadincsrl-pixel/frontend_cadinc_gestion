@@ -18,12 +18,16 @@ export function exportarTarjaExcel(
   categorias: Categoria[],
   horas: Hora[],
   tarifas: Tarifa[],
-  opts: { sinHoras?: boolean; prestamos?: Prestamo[] } = {},
+  // `catObra` va en el objeto de opciones y no como parámetro posicional a
+  // propósito: la firma ya tiene 7 posicionales y un argumento nuevo en el
+  // medio desalinearía `opts` en silencio.
+  opts: { sinHoras?: boolean; prestamos?: Prestamo[]; catObra?: CatObraEntry[] } = {},
 ) {
-  const { sinHoras = false, prestamos = [] } = opts
+  const { sinHoras = false, prestamos = [], catObra = [] } = opts
   const wb = XLSX.utils.book_new()
   const days = getSemDays(semActual)
   const semKey = toISO(getViernes(semActual))
+  const fechaRef = toISO(days[0]!)
 
   const fechaRow = ['', '', '', ...days.map(d => toISO(d)), '']
   const headerRow = [
@@ -33,7 +37,11 @@ export function exportarTarjaExcel(
   ]
 
   const dataRows = personal.map(p => {
-    const cat = categorias.find(c => c.id === p.cat_id)
+    // Categoría vigente ESA semana (cat_obra > historial > ficha), no la de
+    // hoy: el archivo se titula con la semana, así que la columna tiene que
+    // coincidir con lo que se liquidó. El CSV hermano ya lo hacía así.
+    const catId = getCatIdEfectivo(catObra, personal, obraCod, p.leg, fechaRef) ?? p.cat_id
+    const cat = categorias.find(c => c.id === catId)
     const hsDia = days.map(d => {
       if (sinHoras) return ''
       const h = horas.find(x => x.obra_cod === obraCod && x.leg === p.leg && x.fecha === toISO(d))

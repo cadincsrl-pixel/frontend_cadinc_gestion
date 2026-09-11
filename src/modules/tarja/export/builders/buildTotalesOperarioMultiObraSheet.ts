@@ -62,7 +62,7 @@ interface FilaConsolidada {
   nom:                string
   obraNom:            string
   obraCod:            string
-  catNomActual:       string
+  catNomPeriodo:      string
   hsRegulares:        number
   hsExtras:           number
   hsTotal:            number
@@ -110,7 +110,7 @@ export function buildTotalesOperarioMultiObraSheet(wb: ExcelJS.Workbook, datas: 
     r.getCell(COL.COD).value = f.obraCod
     r.getCell(COL.COD).alignment = { horizontal: 'center', vertical: 'middle' }
 
-    r.getCell(COL.CAT).value = f.catNomActual
+    r.getCell(COL.CAT).value = f.catNomPeriodo
     r.getCell(COL.CAT).alignment = { horizontal: 'left', vertical: 'middle' }
 
     r.getCell(COL.HS_REG).value  = f.hsRegulares
@@ -182,7 +182,7 @@ function collectFilas(datas: ExportData[]): FilaConsolidada[] {
         nom:                op.nom,
         obraNom:            data.meta.obraNom,
         obraCod:            data.meta.obraCod,
-        catNomActual:       op.catNomActual,
+        catNomPeriodo:      op.catNomPeriodo,
         hsRegulares:        op.hsRegulares,
         hsExtras:           op.hsExtras,
         hsTotal:            op.hsTotal,

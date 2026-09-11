@@ -116,7 +116,7 @@ export function buildTotalesOperarioSheet(wb: ExcelJS.Workbook, data: ExportData
     r.getCell(COL.NOMBRE).value    = op.nom
     r.getCell(COL.NOMBRE).alignment = { horizontal: 'left', vertical: 'middle' }
 
-    r.getCell(COL.CAT).value       = op.catNomActual
+    r.getCell(COL.CAT).value       = op.catNomPeriodo
     r.getCell(COL.CAT).alignment   = { horizontal: 'left', vertical: 'middle' }
 
     r.getCell(COL.HS_REG).value    = op.hsRegulares

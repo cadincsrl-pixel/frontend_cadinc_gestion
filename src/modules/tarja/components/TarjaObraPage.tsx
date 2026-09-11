@@ -414,6 +414,7 @@ export function TarjaObraPage({ obraCod }: Props) {
           categorias={categorias}
           horasData={horasData}
           tarifas={tarifas}
+          catObra={catObraData}
           obra={obra}
           obraCod={obraCod}
           onAgregarTrabajador={() => setModalTrab(true)}
