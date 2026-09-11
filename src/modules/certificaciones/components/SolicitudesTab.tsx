@@ -110,6 +110,24 @@ function newLinea(): LineaForm { return { _id: nextId++, descripcion: '', cantid
  * el color equivocado — que es exactamente el problema que el campo venía a
  * resolver.
  */
+/**
+ * La aclaración que escribió quien pidió el material ("gris zócalo", "ALBA",
+ * "mallado", "marca duratop"). Se guardaba pero no se veía en ningún lado:
+ * había que abrir el modal de editar el renglón. Es el mismo razonamiento que
+ * el color —es parte de QUÉ se pide, no una nota al pie— así que va pegada a
+ * la descripción, donde la lee el que compra o despacha (user, 2026-09-11).
+ */
+function ObsRenglon({ obs }: { obs?: string | null }) {
+  const txt = (obs ?? '').trim()
+  if (!txt) return null
+  return (
+    <div className="text-[11px] text-[#7A5500] bg-amarillo-light/60 rounded px-1.5 py-0.5 mt-1 inline-flex items-start gap-1 max-w-full">
+      <span className="shrink-0">💬</span>
+      <span className="break-words">{txt}</span>
+    </div>
+  )
+}
+
 function ChipColor({ color }: { color?: string | null }) {
   if (!color) return null
   return (
@@ -1680,6 +1698,7 @@ export function SolicitudesTab() {
                                   </span>
                                 )}
                               </div>
+                                <ObsRenglon obs={item.obs} />
                                 {(() => {
                                   const unidLabel = UNIDADES.find(u => u.value === item.unidad)?.label ?? item.unidad
                                   const cantEfectiva = item.cantidad_comprada ?? item.cantidad
@@ -2099,6 +2118,7 @@ export function SolicitudesTab() {
                                   </span>
                                 )}
                               </div>
+                              <ObsRenglon obs={item.obs} />
                               {(() => {
                                 const unidLabel = UNIDADES.find(u => u.value === item.unidad)?.label ?? item.unidad
                                 const cantEfectiva = item.cantidad_comprada ?? item.cantidad
@@ -2422,6 +2442,7 @@ export function SolicitudesTab() {
               <div className="text-xs text-gris-dark font-mono">
                 Solicitado: {modalComprar.cantidad} {UNIDADES.find(u => u.value === modalComprar.unidad)?.label ?? modalComprar.unidad}
               </div>
+              <ObsRenglon obs={modalComprar.obs} />
             </div>
             <div className="flex items-end gap-2">
               <div className="flex-1">
@@ -2871,6 +2892,7 @@ export function SolicitudesTab() {
             <div className="bg-naranja-light rounded-xl px-4 py-3">
               <div className="font-bold text-sm text-naranja">{modalDespachar.descripcion}<ChipColor color={modalDespachar.color} /></div>
               <div className="text-xs text-gris-dark font-mono">{modalDespachar.cantidad} {UNIDADES.find(u => u.value === modalDespachar.unidad)?.label ?? modalDespachar.unidad}</div>
+              <ObsRenglon obs={modalDespachar.obs} />
             </div>
             {(() => {
               const mat = modalDespachar.material_id ? stockMap.get(modalDespachar.material_id) : null
