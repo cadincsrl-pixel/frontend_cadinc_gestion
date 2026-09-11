@@ -1517,6 +1517,14 @@ export interface SolicitudCompraItem {
   /** Acumulado enviado (envíos parciales 2026-07-22). El item pasa a 'enviado'
    *  recién cuando cubre la cantidad efectiva; mientras, sigue "por enviar". */
   cantidad_enviada?: number
+  /**
+   * El remito con el que salió, si ya se emitió.
+   *
+   * NO es lo mismo que `cantidad_enviada > 0`: hay 19 renglones con remito y
+   * cantidad_enviada en 0 (del envío que se deshizo) y 57 al revés. Para saber
+   * si el papel ya existe hay que mirar ESTE campo, no el acumulado.
+   */
+  remito_envio_id?: number | null
   unidad:           string
   obs?:             string | null
   /**

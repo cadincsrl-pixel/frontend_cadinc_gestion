@@ -31,8 +31,10 @@ interface ItemDevolver {
   precio_unit?: number | null
   /** Viene de la fila de la cuenta: si está cobrada o certificada, es crédito. */
   congelada?:  boolean
-  /** Cuánto salió por remito. En 0 y devolviendo todo, es una cancelación. */
+  /** Cuánto salió por remito. */
   cantidad_enviada?: number | null
+  /** Si el remito ya se emitió, no se cancela aunque no haya salido nada. */
+  remito_envio_id?: number | null
 }
 
 interface Props {
@@ -61,7 +63,9 @@ export function DevolverDepositoModal({ item, onClose, onSuccess }: Props) {
 
   // Vuelve TODO y nunca salió por remito: no es una devolución, es cancelar el
   // renglón. Conviene decirlo antes y no después (20260913p).
-  const cancela = valida && restante === 0 && Number(item.cantidad_enviada ?? 0) === 0
+  const cancela = valida && restante === 0
+    && Number(item.cantidad_enviada ?? 0) === 0
+    && item.remito_envio_id == null
 
   const monto = valida && item.precio_unit ? num * Number(item.precio_unit) : null
   const plata = monto?.toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 2 })
@@ -154,7 +158,7 @@ export function DevolverDepositoModal({ item, onClose, onSuccess }: Props) {
         {/* Qué va a pasar con la plata, ANTES de confirmar. */}
         {cancela ? (
           <div className="text-xs rounded p-2 bg-azul-light text-azul">
-            Vuelve <b>todo</b> y este renglón <b>nunca salió por remito</b>, así que no es una
+            Vuelve <b>todo</b> y este renglón <b>todavía no tiene remito</b>, así que no es una
             devolución: se <b>cancela</b>. El material vuelve al depósito y el renglón queda
             rechazado en el pedido, conservando su cantidad para que se vea qué se había pedido.
           </div>

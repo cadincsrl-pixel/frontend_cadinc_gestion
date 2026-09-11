@@ -77,8 +77,15 @@ begin
   end if;
   v_resto := v_item.cantidad - p_cantidad;
 
-  -- Vuelve TODO y nunca salió por remito: esto es una cancelación.
-  v_cancela := (v_resto = 0 and coalesce(v_item.cantidad_enviada, 0) = 0);
+  -- Cancelar exige las TRES cosas: vuelve todo, no salió nada, y NO HAY REMITO.
+  -- "Sin enviar" y "sin remito" NO son lo mismo en los datos: hay 19 renglones
+  -- con remito y cantidad_enviada en 0 (del envío que se deshizo) y 57 al revés.
+  -- El user fue explícito: la condición es que el papel todavía no se haya
+  -- emitido. Si el remito existe, el renglón no se cancela aunque no se haya
+  -- movido nada.
+  v_cancela := (v_resto = 0
+                and coalesce(v_item.cantidad_enviada, 0) = 0
+                and v_item.remito_envio_id is null);
 
   select * into v_mcc
     from public.materiales_a_cuenta_cliente
