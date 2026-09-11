@@ -1480,12 +1480,12 @@ export function SolicitudesTab() {
                   <div className="flex gap-1 justify-end shrink-0" onClick={e => e.stopPropagation()}>
                     {s.estado === 'pendiente' && (
                       <>
-                        <button disabled={!puedeEditar} onClick={() => aprobar(s.id)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul hover:opacity-80 transition-colors min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Aprobar</button>
-                        <button disabled={!puedeEditar} onClick={() => rechazar(s.id)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 transition-colors min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Rechazar</button>
+                        <button disabled={!puedeEditar} onClick={() => aprobar(s.id)} className="text-xs font-bold px-3 py-1 rounded whitespace-nowrap bg-azul-light text-azul hover:opacity-80 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Aprobar</button>
+                        <button disabled={!puedeEditar} onClick={() => rechazar(s.id)} className="text-xs font-bold px-3 py-1 rounded whitespace-nowrap bg-rojo-light text-rojo hover:opacity-80 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Rechazar</button>
                       </>
                     )}
-                    <button disabled={!puedeEditar} onClick={() => abrirEditar(s)} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-azul-light hover:text-azul transition-colors min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✏️ Editar</button>
-                    <button disabled={!puedeEliminar} onClick={() => eliminar(s.id)} className="text-xs px-3 py-1.5 rounded hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
+                    <button disabled={!puedeEditar} onClick={() => abrirEditar(s)} className="text-xs font-bold px-3 py-1 rounded whitespace-nowrap bg-gris text-gris-dark hover:bg-azul-light hover:text-azul transition-colors disabled:opacity-40 disabled:cursor-not-allowed">✏️ Editar</button>
+                    <button disabled={!puedeEliminar} onClick={() => eliminar(s.id)} className="text-xs px-3 py-1 rounded whitespace-nowrap hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
                   </div>
                 </div>
 
@@ -1535,7 +1535,7 @@ export function SolicitudesTab() {
                           return (
                             <tr key={item.id ?? i} className={`border-t border-gris align-top ${atenuar ? 'bg-gris/40 opacity-60' : 'bg-gris/20'}`}>
                               <td className="px-2 py-2.5 text-xs text-gris-mid text-center">{i + 1}</td>
-                              <td className="px-4 py-2.5">
+                              <td className="px-4 py-1.5">
                                 <div className="text-sm font-medium text-carbon">
                                 {item.descripcion}
                                 {/* El color es parte de QUÉ se pide, no una nota al pie:
@@ -1601,7 +1601,7 @@ export function SolicitudesTab() {
                                   <span className="text-gris-mid text-xs">—</span>
                                 )}
                               </td>
-                              <td className="px-4 py-2.5">
+                              <td className="px-4 py-1.5">
                                 <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${cfg.bg} ${cfg.text}`}>{cfg.label}</span>
                                 {/* `!item.devuelve`: una herramienta que VUELVE de la obra nunca va a tener
                                     precio de compra, así que el aviso quedaba clavado para siempre. */}
@@ -1611,7 +1611,7 @@ export function SolicitudesTab() {
                                   </div>
                                 )}
                               </td>
-                              <td className="px-4 py-2.5 text-xs text-gris-dark break-words">
+                              <td className="px-4 py-1.5 text-xs text-gris-dark break-words">
                                 {item.proveedores && <div>Prov: <strong>{item.proveedores.nombre}</strong></div>}
                                 {item.estado === 'de_deposito' && <div><strong>Depósito propio</strong></div>}
                                 {item.pagado_por === 'cliente' && ['comprado', 'en_proveedor', 'retirado', 'enviado'].includes(item.estado) && (
@@ -1628,10 +1628,10 @@ export function SolicitudesTab() {
                                 )}
                                 {item.fecha_envio && <div className="text-verde font-semibold mt-0.5">Enviado {fmtF(item.fecha_envio)}</div>}
                               </td>
-                              <td className="px-4 py-2.5">
+                              <td className="px-4 py-1.5">
                                 <div className="flex gap-1 justify-end flex-wrap items-center">
                                   {item.id != null && (
-                                    <button onClick={() => setModalHistorial(item)} title="Ver historial del ítem" className="text-xs px-2 py-1.5 rounded text-gris-dark hover:text-azul hover:bg-azul-light min-h-[36px]">🕑</button>
+                                    <button onClick={() => setModalHistorial(item)} title="Ver historial del ítem" className="text-xs px-2 py-1 rounded whitespace-nowrap text-gris-dark hover:text-azul hover:bg-azul-light">🕑</button>
                                   )}
                                   {s.estado === 'aprobada' && (
                                     <>
@@ -1641,8 +1641,8 @@ export function SolicitudesTab() {
                                               con material vinculado el botón Depósito descontaría stock
                                               de algo que está entrando. Un solo camino, y la devolución
                                               queda en la bandeja del pañol con sentido='devolucion'. */}
-                                          <button disabled={!resolverItems || recibiendoDev} onClick={() => handleRecibirDevolucion(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">↩ Recibir en pañol</button>
-                                          <button disabled={!resolverItems} onClick={() => handleRechazarItem(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
+                                          <button disabled={!resolverItems || recibiendoDev} onClick={() => handleRecibirDevolucion(item.id!)} className="text-xs font-bold px-3 py-1 rounded whitespace-nowrap bg-verde-light text-verde hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed">↩ Recibir en pañol</button>
+                                          <button disabled={!resolverItems} onClick={() => handleRechazarItem(item.id!)} className="text-xs font-bold px-3 py-1 rounded whitespace-nowrap bg-rojo-light text-rojo hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
                                         </>
                                       )}
                                       {item.estado === 'pendiente' && !item.devuelve && (
@@ -1655,29 +1655,29 @@ export function SolicitudesTab() {
                                             className="accent-azul w-4 h-4 disabled:opacity-40"
                                             title="Seleccionar para compra en lote (mismo proveedor)"
                                           />
-                                          <button disabled={!resolverItems} onClick={() => abrirComprar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Comprar</button>
+                                          <button disabled={!resolverItems} onClick={() => abrirComprar(item)} className="text-xs font-bold px-3 py-1 rounded whitespace-nowrap bg-azul-light text-azul hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed">Comprar</button>
                                           {/* El depósito no se despacha a sí mismo: el material no se mueve, pero
                                               el despacho descuenta stock y el recibo no lo repone
                                               (sólo acredita los ítems comprados). Pedido #436, agosto 2026.
                                               Para "esto ya lo tengo", el renglón se rechaza. */}
                                           {!obra?.es_deposito && (
-                                            <button disabled={!resolverItems} onClick={() => abrirDespachar(item)} className="text-xs font-bold px-3 py-1.5 rounded bg-naranja-light text-naranja hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Depósito</button>
+                                            <button disabled={!resolverItems} onClick={() => abrirDespachar(item)} className="text-xs font-bold px-3 py-1 rounded whitespace-nowrap bg-naranja-light text-naranja hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed">Depósito</button>
                                           )}
                                           {stockClientePorObra.has(s.obra_cod) && (
-                                            <button disabled={!resolverItems} onClick={() => setModalStockCliente({ item, obraCod: s.obra_cod })} title="Cubrir con material que el cliente ya pagó y tiene en depósito (no se factura)" className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-azul-mid hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Cliente</button>
+                                            <button disabled={!resolverItems} onClick={() => setModalStockCliente({ item, obraCod: s.obra_cod })} title="Cubrir con material que el cliente ya pagó y tiene en depósito (no se factura)" className="text-xs font-bold px-3 py-1 rounded whitespace-nowrap bg-verde-light text-azul-mid hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed">Cliente</button>
                                           )}
-                                          <button disabled={!resolverItems} onClick={() => handleRechazarItem(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
+                                          <button disabled={!resolverItems} onClick={() => handleRechazarItem(item.id!)} className="text-xs font-bold px-3 py-1 rounded whitespace-nowrap bg-rojo-light text-rojo hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
                                         </>
                                       )}
                                       {(item.estado === 'comprado' || item.estado === 'de_deposito' || item.estado === 'retirado' || item.estado === 'de_stock_cliente') && (
                                         <>
                                           <input type="checkbox" disabled={!resolverItems} checked={selected.has(item.id!)} onChange={() => toggleSelect(item.id!)}
                                             className="accent-verde w-4 h-4 disabled:opacity-40" title="Seleccionar para envío grupal" />
-                                          <button disabled={!resolverItems || enviandoRemito} onClick={() => enviarUnoConRemito(s, item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">{obra?.es_deposito ? 'Recibir en depósito' : 'Enviar + Remito'}</button>
+                                          <button disabled={!resolverItems || enviandoRemito} onClick={() => enviarUnoConRemito(s, item.id!)} className="text-xs font-bold px-3 py-1 rounded whitespace-nowrap bg-verde-light text-verde hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed">{obra?.es_deposito ? 'Recibir en depósito' : 'Enviar + Remito'}</button>
                                           {item.estado === 'de_deposito' && Number(item.cantidad_enviada ?? 0) > 0 && Number(item.cantidad_enviada ?? 0) < Number(item.cantidad_comprada ?? item.cantidad) && (
-                                            <button disabled={!resolverItems} onClick={() => handleComprarFaltante(item)} title="El faltante no está en depósito: cerrar este renglón por lo enviado y crear uno nuevo para comprarlo" className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">🛒 Comprar faltante</button>
+                                            <button disabled={!resolverItems} onClick={() => handleComprarFaltante(item)} title="El faltante no está en depósito: cerrar este renglón por lo enviado y crear uno nuevo para comprarlo" className="text-xs font-bold px-3 py-1 rounded whitespace-nowrap bg-azul-light text-azul hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed">🛒 Comprar faltante</button>
                                           )}
-                                          <button disabled={!resolverItems} onClick={() => handleRevertir(item.id!)} className="text-xs px-3 py-1.5 rounded text-gris-dark hover:text-rojo hover:bg-rojo-light min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">↩</button>
+                                          <button disabled={!resolverItems} onClick={() => handleRevertir(item.id!)} className="text-xs px-3 py-1 rounded whitespace-nowrap text-gris-dark hover:text-rojo hover:bg-rojo-light disabled:opacity-40 disabled:cursor-not-allowed">↩</button>
                                         </>
                                       )}
                                       {/* Devolver al depósito. Va en su propio bloque porque
@@ -1690,10 +1690,10 @@ export function SolicitudesTab() {
                                         && item.clase !== 'herramienta' && !item.devuelve && !obra?.es_deposito && (
                                         <button disabled={!resolverItems} onClick={() => setModalDevolver(item)}
                                           title={resolverItems ? 'La obra devuelve material que sobró' : 'Sin permiso para resolver ítems'}
-                                          className="text-xs font-bold px-3 py-1.5 rounded bg-naranja-light text-naranja hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">📦 Devolver</button>
+                                          className="text-xs font-bold px-3 py-1 rounded whitespace-nowrap bg-naranja-light text-naranja hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed">📦 Devolver</button>
                                       )}
                                       {item.estado === 'rechazado' && (
-                                        <button disabled={!resolverItems} onClick={() => handleRevertir(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-amarillo-light text-[#7A5500] hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Reactivar</button>
+                                        <button disabled={!resolverItems} onClick={() => handleRevertir(item.id!)} className="text-xs font-bold px-3 py-1 rounded whitespace-nowrap bg-amarillo-light text-[#7A5500] hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed">Reactivar</button>
                                       )}
                                       {item.estado === 'enviado' && !obra?.es_deposito && (
                                         precioItemId === item.id ? (
@@ -1706,17 +1706,17 @@ export function SolicitudesTab() {
                                               onChange={e => setPrecioDraft(e.target.value)}
                                               onKeyDown={e => { if (e.key === 'Enter') guardarPrecioItem(item.id!) }}
                                               placeholder="$/unid"
-                                              className="w-24 px-2 py-1.5 border-[1.5px] border-gris-mid rounded text-xs outline-none bg-white font-semibold focus:border-naranja min-h-[36px]"
+                                              className="w-24 px-2 py-1 border-[1.5px] border-gris-mid rounded whitespace-nowrap text-xs outline-none bg-white font-semibold focus:border-naranja"
                                             />
-                                            <button disabled={guardandoPrecio} onClick={() => guardarPrecioItem(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✓</button>
-                                            <button onClick={() => { setPrecioItemId(null); setPrecioDraft('') }} className="text-xs font-bold px-3 py-1.5 rounded text-gris-dark hover:text-rojo hover:bg-rojo-light min-h-[36px]">✕</button>
+                                            <button disabled={guardandoPrecio} onClick={() => guardarPrecioItem(item.id!)} className="text-xs font-bold px-3 py-1 rounded whitespace-nowrap bg-verde-light text-verde hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed">✓</button>
+                                            <button onClick={() => { setPrecioItemId(null); setPrecioDraft('') }} className="text-xs font-bold px-3 py-1 rounded whitespace-nowrap text-gris-dark hover:text-rojo hover:bg-rojo-light">✕</button>
                                           </>
                                         ) : (
-                                          <button disabled={!resolverItems} onClick={() => { setPrecioItemId(item.id!); setPrecioDraft(!item.precio_unit || Number(item.precio_unit) === 0 ? '' : String(item.precio_unit)) }} className={`text-xs font-bold px-3 py-1.5 rounded min-h-[36px] hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed ${!item.precio_unit || Number(item.precio_unit) === 0 ? 'bg-amarillo-light text-[#7A5500]' : 'bg-azul-light text-azul'}`}>{!item.precio_unit || Number(item.precio_unit) === 0 ? '💲 Cargar precio' : '✏️ Editar precio'}</button>
+                                          <button disabled={!resolverItems} onClick={() => { setPrecioItemId(item.id!); setPrecioDraft(!item.precio_unit || Number(item.precio_unit) === 0 ? '' : String(item.precio_unit)) }} className={`text-xs font-bold px-3 py-1 rounded whitespace-nowrap hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed ${!item.precio_unit || Number(item.precio_unit) === 0 ? 'bg-amarillo-light text-[#7A5500]' : 'bg-azul-light text-azul'}`}>{!item.precio_unit || Number(item.precio_unit) === 0 ? '💲 Cargar precio' : '✏️ Editar precio'}</button>
                                         )
                                       )}
                                       {item.estado === 'enviado' && (
-                                        <button disabled={!resolverItems} onClick={() => handleRevertirEnvio(item.id!)} title={item.devuelve ? 'Deshacer la recepción (el renglón vuelve a quedar pendiente de recibir)' : 'Deshacer el envío (vuelve a comprado/depósito, borra el remito)'} className="text-xs font-bold px-3 py-1.5 rounded text-gris-dark hover:text-rojo hover:bg-rojo-light min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">↩ Deshacer {item.devuelve ? 'recepción' : 'envío'}</button>
+                                        <button disabled={!resolverItems} onClick={() => handleRevertirEnvio(item.id!)} title={item.devuelve ? 'Deshacer la recepción (el renglón vuelve a quedar pendiente de recibir)' : 'Deshacer el envío (vuelve a comprado/depósito, borra el remito)'} className="text-xs font-bold px-3 py-1 rounded whitespace-nowrap text-gris-dark hover:text-rojo hover:bg-rojo-light disabled:opacity-40 disabled:cursor-not-allowed">↩ Deshacer</button>
                                       )}
                                     </>
                                   )}
