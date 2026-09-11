@@ -302,7 +302,7 @@ export function TarjaObraPage({ obraCod }: Props) {
           <span className="text-base">🔒</span>
           <span className="flex-1">
             <strong>Semana cerrada</strong>
-            {cierreSem?.cerrado_en ? ` · cerrada el ${new Date(cierreSem.cerrado_en).toLocaleDateString('es-AR')}` : ' · automática (el jueves ya pasó)'}
+            {cierreSem?.cerrado_en ? ` · cerrada el ${new Date(cierreSem.cerrado_en).toLocaleDateString('es-AR')}` : ' · automática (se cierra sola el sábado)'}
             {' — '}solo lectura. Para corregir horas hay que reabrirla.
           </span>
           <Button

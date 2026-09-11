@@ -5,7 +5,15 @@ import { hoyArgentinaISO } from './dates'
  * (`cadincsrl/src/lib/semanas.ts`, decisión del user 2026-09-06): sin fila en
  * `cierres`, una semana cuyo jueves ya pasó está CERRADA; una fila
  * 'pendiente' la reabre; 'cerrado' la cierra aunque sea la actual.
+ *
+ * MARGEN DEL VIERNES (2026-09-11): se trabaja hasta el jueves, se terminan de
+ * cargar las horas el VIERNES y se paga el SÁBADO, así que el cierre
+ * automático cae el sábado y no apenas pasa el jueves. Si se cambia acá hay
+ * que cambiarlo también en el backend: son la misma regla escrita dos veces.
  */
+
+/** Días de gracia después del jueves. Espejo de DIAS_DE_GRACIA del backend. */
+const DIAS_DE_GRACIA = 1
 export function juevesDeSemana(semKey: string): string {
   const d = new Date(semKey + 'T12:00:00Z')
   d.setUTCDate(d.getUTCDate() + 6)
@@ -19,7 +27,14 @@ export function semanaCerrada(
 ): boolean {
   if (estado === 'cerrado') return true
   if (estado === 'pendiente') return false
-  return hoyISO > juevesDeSemana(semKey)
+  return hoyISO > ultimoDiaEditable(semKey)
+}
+
+/** Último día editable sin reabrir: el jueves + los días de gracia (viernes). */
+export function ultimoDiaEditable(semKey: string): string {
+  const d = new Date(juevesDeSemana(semKey) + 'T12:00:00Z')
+  d.setUTCDate(d.getUTCDate() + DIAS_DE_GRACIA)
+  return d.toISOString().slice(0, 10)
 }
 
 /** true si el error de la API es el 409 de semana cerrada. */
