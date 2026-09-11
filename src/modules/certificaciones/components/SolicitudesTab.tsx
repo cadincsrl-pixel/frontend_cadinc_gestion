@@ -2678,6 +2678,7 @@ export function SolicitudesTab() {
             cantidad:    Number(modalDevolver.cantidad),
             unidad:      modalDevolver.unidad ?? 'unid',
             precio_unit: modalDevolver.precio_unit ?? null,
+            cantidad_enviada: Number(modalDevolver.cantidad_enviada ?? 0),
           }}
           onClose={() => setModalDevolver(null)}
         />

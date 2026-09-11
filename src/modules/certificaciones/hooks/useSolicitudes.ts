@@ -130,6 +130,12 @@ export interface ResultadoDevolucion {
   devuelto:          number
   /** true = el renglón ya estaba cobrado y se emitió una nota de crédito. */
   saldo_a_favor:     boolean
+  /**
+   * true = volvió TODO y nunca había salido por remito, así que no fue una
+   * devolución sino una cancelación: el renglón queda rechazado conservando su
+   * cantidad original (20260913p).
+   */
+  cancelado:         boolean
   nota_credito_id:   number | null
   monto_credito:     number | null
   cantidad_restante: number

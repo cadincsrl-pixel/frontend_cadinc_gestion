@@ -31,6 +31,8 @@ interface ItemDevolver {
   precio_unit?: number | null
   /** Viene de la fila de la cuenta: si está cobrada o certificada, es crédito. */
   congelada?:  boolean
+  /** Cuánto salió por remito. En 0 y devolviendo todo, es una cancelación. */
+  cantidad_enviada?: number | null
 }
 
 interface Props {
@@ -57,6 +59,10 @@ export function DevolverDepositoModal({ item, onClose, onSuccess }: Props) {
   const puedeCredito = cargarPrecios || esAdmin
   const bloqueado    = esCredito && !puedeCredito
 
+  // Vuelve TODO y nunca salió por remito: no es una devolución, es cancelar el
+  // renglón. Conviene decirlo antes y no después (20260913p).
+  const cancela = valida && restante === 0 && Number(item.cantidad_enviada ?? 0) === 0
+
   const monto = valida && item.precio_unit ? num * Number(item.precio_unit) : null
   const plata = monto?.toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 2 })
 
@@ -71,9 +77,12 @@ export function DevolverDepositoModal({ item, onClose, onSuccess }: Props) {
     }
     devolver({ itemId: item.id, cantidad: num, motivo: motivo.trim() || undefined }, {
       onSuccess: (r) => {
-        toast(r.saldo_a_favor
-          ? `✓ Devuelto. Nota de crédito por ${Number(r.monto_credito ?? 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' })}`
-          : `✓ Devuelto. Quedan ${r.cantidad_restante} ${item.unidad} en la obra`, 'ok')
+        toast(
+          // "Quedan X en la obra" sería mentira si se canceló: no quedó nada
+          // en la obra, el renglón nunca salió del depósito.
+          r.cancelado     ? '✓ Renglón cancelado. Vuelve entero al depósito y queda rechazado en el pedido.' :
+          r.saldo_a_favor ? `✓ Devuelto. Nota de crédito por ${Number(r.monto_credito ?? 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' })}`
+                          : `✓ Devuelto. Quedan ${r.cantidad_restante} ${item.unidad} en la obra`, 'ok')
         cerrar()
         onSuccess?.()
       },
@@ -143,7 +152,13 @@ export function DevolverDepositoModal({ item, onClose, onSuccess }: Props) {
         </label>
 
         {/* Qué va a pasar con la plata, ANTES de confirmar. */}
-        {esCredito ? (
+        {cancela ? (
+          <div className="text-xs rounded p-2 bg-azul-light text-azul">
+            Vuelve <b>todo</b> y este renglón <b>nunca salió por remito</b>, así que no es una
+            devolución: se <b>cancela</b>. El material vuelve al depósito y el renglón queda
+            rechazado en el pedido, conservando su cantidad para que se vea qué se había pedido.
+          </div>
+        ) : esCredito ? (
           <div className="text-xs rounded p-2 bg-amarillo-light text-amarillo-dark">
             Este renglón <b>ya está cobrado</b>, así que la cuenta no se toca: se emite una
             <b> nota de crédito</b> a favor del cliente{plata ? <> por <b>{plata}</b></> : null}.
