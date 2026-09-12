@@ -1,5 +1,12 @@
 -- Destinos internos: el gasto propio de CADINC deja de estar mezclado
 --
+-- Se aplicó a prod en TRES llamadas, anotadas en supabase_migrations como
+-- `obras_internas_flag_y_panol` (20260908103432, el alter + los updates de
+-- acá abajo), `cuenta_corriente_expone_obra_interna` (20260908103446, la
+-- vista v_cuenta_corriente) y `pendientes_y_resumen_saben_de_internas`
+-- (20260908103503, v_cuenta_cliente_pendientes + cuenta_corriente_resumen).
+-- Ninguna de las tres tiene archivo propio ni lo necesita: son este archivo.
+--
 -- El user pidió "un centro de costo que se llame pañol u oficina, hacer la
 -- solicitud ahí, y después poder ver el gasto de la oficina".
 --

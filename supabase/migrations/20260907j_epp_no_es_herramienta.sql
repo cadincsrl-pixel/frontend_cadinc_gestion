@@ -91,6 +91,11 @@ select v.patron, 'excluir', true
  where not exists (
    select 1 from public.herr_patrones p where p.patron = v.patron and p.tipo = 'excluir');
 
+-- (Este bloque se aplicó a prod como una llamada aparte, anotada en
+-- supabase_migrations con el nombre `20260907k_excluir_guantes_plural`
+-- (version 20260907125327). Ese nombre choca con el archivo real
+-- 20260907k_sika_silva_factura_25502.sql y no existe como archivo: el SQL
+-- vive acá, que es su lugar. No crear un archivo nuevo con esa copia.)
 -- OJO con el singularizador: es regexp_replace(cabeza, 'e?s$', ''), así que
 -- "guantes" queda en "guant", NO en "guante". Para las palabras cuyo singular
 -- termina en 'e' hay que cargar también la forma plural tal cual. (delantales →
