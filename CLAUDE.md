@@ -82,7 +82,7 @@ Cliente (Next.js)
 | **Admin** | Usuarios, permisos, auditoría | `/admin` |
 
 ### 4.1 Sub-tabs de Logística (`/logistica?tab=...`)
-- `viajes` — Tramos cargados/vacíos con remitos foto/PDF, filtro por chofer/tipo/estado/fechas.
+- `viajes` — Tramos cargados/vacíos con remitos foto/PDF, filtro por chofer/tipo/estado/fechas. **"Qué lleva"** (`tramos.producto`, 2026-09-11) es texto con sugerencias, no lista cerrada: el cliente nombra el viaje por la carga ("ya te pagaron la harina de soja") y el buscador de Facturación busca por ahí.
 - `liquidaciones` — Saldo por chofer + creación de liquidaciones, **adelantos con comprobante foto/PDF**.
 - `facturacion` — Cobros a empresas transportistas con adjuntos.
 - `choferes` — CRUD con `cuil` (no DNI), camión preasignado (`camion_id`), batea preasignada (`batea_id`), documentos (DNI, licencia, libreta sanitaria, etc.). Modal arranca en modo **detalle** read-only; botón "Editar" lo habilita.
@@ -94,7 +94,7 @@ Cliente (Next.js)
 ### 4.2 Sub-tabs de Certificaciones (`/certificaciones?tab=...`)
 - `solicitudes` — Pedidos de compra y workflow line-item (§5.1).
 - `stock` — Stock en depósito interno por rubro.
-- `catalogo` — Catálogo de precios: precio de referencia (final, IVA incluido), fecha y última compra por material.
+- `catalogo` — Catálogo de precios: precio de referencia (final, IVA incluido), fecha y última compra por material. **Fotos por ficha** (§5.17).
 - `stock-proveedor` — Materiales **comprados pero todavía en el galpón del proveedor** (§5.8).
 - `stock-cliente` — Material del cliente administrado en depósito (no facturable).
 - `cuenta-corriente` — Una sola vista de `materiales_a_cuenta_cliente`: cada renglón tiene UN estado (`pago_directo` › `gasto_cadinc` › `cobrado` › `a_cobrar`, en ese orden de precedencia, derivado en `v_cuenta_corriente`), filtros en el server, resumen por obra/mes/proveedor, cargar precios, pagos del cliente y PDF (solo con la deuda del cliente). Reemplazó a `cuenta-cliente`, `gastos-cadinc` y `materiales` el 2026-09-04 (migraciones `20260904ap`/`aq`); las URLs viejas redirigen.
@@ -263,6 +263,23 @@ El catálogo (`stock_materiales`, ~2.600 fichas) **no está vacío, está escond
 - **Un alias de UNA palabra sobre fichas hermanas con distinta unidad es un bug de plata esperando.** El matcher es substring, así que "arena" pegaba en "Arena fina" (toneladas) y dos despachos de BOLSAS quedaron colgados ahí: el depósito llegó a −28 toneladas y nadie lo vio hasta que el stock se fue a negativo, porque 30 bolsas y 30 toneladas se anotan idénticas (ver el punto anterior). Al 2026-09-10 hay 15 alias de una sola palabra que matchean fichas con 2 a 5 unidades distintas — los peores: `plastico` (22 fichas, 5 unidades), `balde`, `alambre`, `cemento` (bolsa/m2), `yeso` (bolsa/kg). **Antes de agregar un alias corto, mirar si las fichas hermanas se miden distinto.**
 - **Mover despachos entre fichas con un RECUENTO FÍSICO en el medio**: el número contado del ajuste es la verdad y no se toca; lo que hay que recalcular es la cantidad del ajuste, porque al mover un despacho anterior cambia el saldo previo. Verificar con `sum() over (order by created_at)` antes de dar la corrección por buena.
 
+### 5.16 Devolver, fraccionar y la nota de crédito (2026-09-10/11)
+
+**La cuenta del cliente se arma con lo DESPACHADO, no con lo enviado.** Tres operaciones nuevas se cuelgan de esa idea:
+
+- **Devolución** (`devolver_material`, `20260913k`). Material que vuelve al depósito. Si el renglón **ya está cobrado o certificado** genera una **nota de crédito**, que baja la deuda de verdad (`20260913l`/`m`); si no lo está, simplemente baja el renglón. Copia la descripción desde MCC, así que hereda el color solo.
+- **Devolver TODO lo que nunca salió es CANCELAR, no devolver** (`20260913p`). Vuelve todo **y** no salió nada **y** no hay remito emitido: las tres cosas. El renglón queda `rechazado` **conservando su cantidad** — "15 bolsas, rechazado" cuenta la historia; "0 bolsas" no dice nada. Ojo: `cantidad_enviada = 0` **no** equivale a "sin remito" (hay 19 renglones con remito y ese campo en 0, y 57 al revés).
+- **Fraccionar bultos** (`20260913n`/`o`). Abrir un tambor y que salgan litros. **El precio de venta NO se toca al fraccionar.** No hay conversión automática entre presentaciones: se compra un tambor de 200 lts y no se puede despachar 4.
+
+### 5.17 Lo que se pide viaja en la DESCRIPCIÓN, no en columnas nuevas (2026-09-11/12)
+
+`materiales_a_cuenta_cliente` y los remitos llevan una `descripcion` desnormalizada, y **todos los documentos que importan imprimen esa descripción**. Por eso lo que distingue al producto se compone adentro al escribir, en vez de agregar una columna a cada tabla y a cada PDF.
+
+- **Color**: `desc_con_color()` (`20260913t`) lo mete en la descripción desde las tres RPC que escriben MCC; el backend lo espeja en `src/lib/desc-con-color.ts`. El remito resuelve el color **en el server** desde `item_id`, no confía en el cliente. Usa `norm_txt` (no `norm_material`) para no duplicar "verde-amarillo" contra "verde amarillo" (`20260913u`).
+- **No pre-generar grillas color x tamaño.** De 62 fichas de pintura, 4 tienen stock positivo y 50 no tienen un solo movimiento: el depósito compra por obra, no inventaría colores. La ficha más usada es la genérica con `usa_color` prendido. Una ficha **no puede** tener el color en el nombre Y el flag prendido.
+- **La observación del renglón** (`solicitud_compra_item.obs`) se muestra pegada a la descripción en la fila, la tarjeta y los modales de comprar y despachar. Son 255 renglones y dicen "gris zócalo", "ALBA", "mallado": es parte de QUÉ se pide.
+- **Fotos del catálogo** (`20260912g`): tabla `stock_material_fotos` + `stock_materiales.foto_url` (la principal, la mantiene un trigger, **no escribirla a mano**). Bucket **público** `catalogo-fotos`, 5 MB, JPG/PNG/WEBP/HEIC. El duplicado se mira por `(material_id, file_hash)`: la misma foto en fichas distintas es válida a propósito (foto de familia). Para tandas, `scripts/subir-fotos-catalogo.mjs`.
+
 ## 6. Convenciones de código (frontend)
 
 - **Feature-based folders**: `src/modules/<feature>/{components,hooks,store}`. Sin `services/` (los hooks de React Query encapsulan API).
@@ -295,6 +312,8 @@ El catálogo (`stock_materiales`, ~2.600 fichas) **no está vacío, está escond
 - **Obra depósito** — Obra interna marcada con `es_deposito=true`. Sus materiales no se facturan al cliente; son reposición de stock.
 - **Stock en proveedor** — Material comprado que queda en el galpón del proveedor hasta que se retira con remito. Aún no facturable al cliente.
 - **Retiro** — Acción de traer material desde stock en proveedor a la obra. Genera `remitos_retiro_proveedor`.
+- **Devolución** — Material que vuelve de la obra al depósito. Si ya estaba cobrado, genera nota de crédito (§5.16).
+- **Fraccionar** — Abrir un envase grande para despachar por unidad chica. No cambia el precio de venta (§5.16).
 - **Modalidad de pago al chofer** — `km_jornal` (km × $/km + jornal × días) o `pct_jornal` (% sobre tarifa × ton + jornal × días).
 
 ## 8. Qué NO hacer
@@ -400,4 +419,4 @@ El frontend espera al backend en `http://localhost:3001` (configurable vía env)
 
 ---
 
-_Última actualización: 2026-09-10._
+_Última actualización: 2026-09-12._
