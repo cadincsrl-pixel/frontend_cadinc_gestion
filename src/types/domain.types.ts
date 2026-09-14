@@ -57,6 +57,8 @@ export interface CreateObraDto {
   capataz_user_id?:   string | null
   jefe_obra_user_id?: string | null
   materiales_a_cargo_de?: MaterialesACargoDe
+  /** Tipo de contratación, junto con el campo de arriba (14/09). */
+  por_administracion?: boolean
 }
 
 export interface UpdateObraDto {
@@ -68,6 +70,8 @@ export interface UpdateObraDto {
   capataz_user_id?:   string | null
   jefe_obra_user_id?: string | null
   materiales_a_cargo_de?: MaterialesACargoDe
+  /** Tipo de contratación, junto con el campo de arriba (14/09). */
+  por_administracion?: boolean
 }
 
 // ── Personal ──

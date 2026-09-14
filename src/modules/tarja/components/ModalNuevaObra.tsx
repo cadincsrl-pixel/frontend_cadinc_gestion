@@ -10,6 +10,7 @@ import { Select } from '@/components/ui/Select'
 import { Combobox } from '@/components/ui/Combobox'
 import { Button } from '@/components/ui/Button'
 import { useCreateObra, useResponsablesDisponibles, useProximoCodigoObra } from '@/modules/tarja/hooks/useObras'
+import { TIPOS_CONTRATACION, banderasDelTipo } from '../utils/tipoContratacion'
 import { useToast } from '@/components/ui/Toast'
 
 // Schema sin `cod` — el backend lo autogenera (CC-NNN, atómico vía
@@ -21,16 +22,13 @@ const schema = z.object({
   dir:  z.string().optional(),
   resp: z.string().optional(),
   obs:  z.string().optional(),
-  // Quién se hace cargo de los materiales (20260904ak).
-  materiales_a_cargo_de: z.enum(['cliente', 'cadinc']),
+  // El tipo de contratación (14/09). Se guarda en las dos banderas de siempre;
+  // ver src/modules/tarja/utils/tipoContratacion.ts.
+  tipo_contratacion: z.enum(['presupuesto', 'administracion', 'llave_en_mano']),
 })
 
 type FormData = z.infer<typeof schema>
 
-const A_CARGO_DE_OPTIONS = [
-  { value: 'cliente', label: 'El cliente: los materiales se le cobran (cuenta del cliente)' },
-  { value: 'cadinc',  label: 'CADINC, llave en mano: todo es gasto de CADINC' },
-]
 
 interface Props {
   open: boolean
@@ -51,7 +49,7 @@ export function ModalNuevaObra({ open, onClose }: Props) {
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { materiales_a_cargo_de: 'cliente' },
+    defaultValues: { tipo_contratacion: 'presupuesto' },
   })
 
   const opcionesCapataz = useMemo(() => [
@@ -64,9 +62,13 @@ export function ModalNuevaObra({ open, onClose }: Props) {
   ], [responsables])
 
   function onSubmit(data: FormData) {
+    // El tipo elegido se traduce a las dos banderas de siempre. La obra nunca
+    // guarda un "tipo": se deriva de ellas, asi que no hay dos verdades.
+    const { tipo_contratacion, ...resto } = data
     createObra(
       {
-        ...data,
+        ...resto,
+        ...banderasDelTipo(tipo_contratacion),
         capataz_user_id:   capatazUserId  || null,
         jefe_obra_user_id: jefeObraUserId || null,
       },
@@ -178,13 +180,15 @@ export function ModalNuevaObra({ open, onClose }: Props) {
         />
         <div>
           <Select
-            label="Materiales a cargo de"
-            options={A_CARGO_DE_OPTIONS}
-            {...register('materiales_a_cargo_de')}
+            label="Tipo de contratación"
+            options={TIPOS_CONTRATACION}
+            {...register('tipo_contratacion')}
           />
           <p className="text-[11px] text-gris-dark mt-1">
-            Se cobran en la cuenta del cliente, o quedan como gasto de CADINC si la
-            obra es llave en mano. El EPP es gasto de CADINC en cualquier caso.
+            Define qué se le cobra al cliente y qué queda como gasto de CADINC. Si
+            elegís <b>por administración</b>, los porcentajes de cada pata se cargan
+            después, desde la cuenta corriente de la obra. El EPP es gasto de CADINC
+            en los tres casos.
           </p>
         </div>
       </div>

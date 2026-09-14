@@ -17,6 +17,7 @@ import { useToast } from '@/components/ui/Toast'
 import { useRouter } from 'next/navigation'
 import { AuditInfo } from '@/components/ui/AuditInfo'
 import type { Obra } from '@/types/domain.types'
+import { TIPOS_CONTRATACION, banderasDelTipo, tipoDeLaObra } from '../utils/tipoContratacion'
 
 const schema = z.object({
   nom:  z.string().min(1, 'El nombre es requerido'),
@@ -26,15 +27,11 @@ const schema = z.object({
   obs:  z.string().optional(),
   // Quién se hace cargo de los materiales (20260904ak). Cambiarlo recalcula
   // la cuenta del cliente de la obra en la base.
-  materiales_a_cargo_de: z.enum(['cliente', 'cadinc']),
+  tipo_contratacion: z.enum(['presupuesto', 'administracion', 'llave_en_mano']),
 })
 
 type FormData = z.infer<typeof schema>
 
-const A_CARGO_DE_OPTIONS = [
-  { value: 'cliente', label: 'El cliente: los materiales se le cobran (cuenta del cliente)' },
-  { value: 'cadinc',  label: 'CADINC, llave en mano: todo es gasto de CADINC' },
-]
 
 interface Props {
   open: boolean
@@ -60,6 +57,9 @@ export function ModalEditarObra({ open, onClose, obra }: Props) {
     resolver: zodResolver(schema),
   })
 
+  // El tipo con el que se abrio el modal: si no cambia, no se pregunta nada.
+  const tipoOriginal = obra ? tipoDeLaObra(obra) : 'presupuesto'
+
   useEffect(() => {
     if (obra) {
       reset({
@@ -68,7 +68,7 @@ export function ModalEditarObra({ open, onClose, obra }: Props) {
         dir:  obra.dir ?? '',
         resp: obra.resp ?? '',
         obs:  obra.obs ?? '',
-        materiales_a_cargo_de: obra.materiales_a_cargo_de ?? 'cliente',
+        tipo_contratacion: tipoDeLaObra(obra),
       })
       setCapatazUserId(obra.capataz_user_id ?? '')
       setJefeObraUserId(obra.jefe_obra_user_id ?? '')
@@ -87,11 +87,25 @@ export function ModalEditarObra({ open, onClose, obra }: Props) {
 
   function onSubmit(data: FormData) {
     if (!obra) return
+    // Cambiar el tipo RECLASIFICA la cuenta de la obra hacia atras (el trigger
+    // recalcula todo lo no cobrado ni certificado), asi que se avisa con el
+    // numero antes de escribir. Sin esto era un <select> que movia plata en
+    // silencio: fue lo que paso el 14/09 con 9 DE JULIO.
+    const { tipo_contratacion, ...resto } = data
+    if (tipo_contratacion !== tipoOriginal) {
+      const destino = TIPOS_CONTRATACION.find(t => t.value === tipo_contratacion)?.label.split(' —')[0]
+      if (!window.confirm(
+        `Vas a pasar la obra a "${destino}".\n\n` +
+        'Eso reclasifica su cuenta corriente: los renglones que todavia no estan ' +
+        'cobrados ni certificados cambian de columna. Lo ya cobrado no se toca.\n\n' +
+        'Confirmas?')) return
+    }
     updateObra(
       {
         cod: obra.cod,
         dto: {
-          ...data,
+          ...resto,
+          ...banderasDelTipo(tipo_contratacion),
           capataz_user_id:   capatazUserId  || null,
           jefe_obra_user_id: jefeObraUserId || null,
         },
@@ -240,15 +254,16 @@ export function ModalEditarObra({ open, onClose, obra }: Props) {
 
         <div>
           <Select
-            label="Materiales a cargo de"
-            options={A_CARGO_DE_OPTIONS}
-            {...register('materiales_a_cargo_de')}
+            label="Tipo de contratación"
+            options={TIPOS_CONTRATACION}
+            {...register('tipo_contratacion')}
           />
           <p className="text-[11px] text-gris-dark mt-1">
-            Define qué pasa con cada material que llega a la obra: se cobra en la
-            cuenta del cliente, o queda como gasto de CADINC (obra llave en mano).
-            Cambiarlo reclasifica la cuenta de la obra, salvo lo ya cobrado. El EPP
-            es gasto de CADINC en cualquier caso.
+            Define qué se le cobra al cliente y qué queda como gasto de CADINC.
+            <b> Cambiarlo reclasifica la cuenta de la obra</b>, salvo lo ya cobrado o
+            certificado, y te lo va a pedir confirmado. Los porcentajes de una obra
+            por administración se cargan aparte, desde su cuenta corriente. El EPP es
+            gasto de CADINC en los tres casos.
           </p>
         </div>
 
