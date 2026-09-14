@@ -304,7 +304,9 @@ export function RentabilidadTab() {
 // ────────────────────────────────────────────────────────────────────────
 const COLUMNAS_INFO: { col: string; detalle: string }[] = [
   { col: 'Tarifa $/t',
-    detalle: 'Tarifa NETA (sin IVA) por tonelada que se le cobra al cliente. El ingreso del viaje es esta tarifa × toneladas.' },
+    detalle: 'Tarifa NETA (sin IVA) por tonelada que se le cobra al cliente, tal como la pasa el dador. Si el dador se queda una comisión, se carga aparte en % y el ingreso del viaje es (tarifa − comisión) × toneladas.' },
+  { col: 'Comisión del dador',
+    detalle: 'Porcentaje que se queda el dador de carga sobre la tarifa que él mismo informa. Baja el ingreso y, cuando el chofer cobra al %, también baja su base — igual que la contra factura del intermediario en la liquidación real. En 0 la tarifa se toma limpia.' },
   { col: 'Viajes/mes',
     detalle: 'Cuántas veces al mes el camión hace este viaje. Multiplica el margen mensual y prorratea los costos fijos mensuales (cargas sociales, seguros, patente, batea). También deriva los días por viaje (30 ÷ viajes/mes). Si está inflado, el margen mensual se infla y el costo por viaje se subestima.' },
   { col: 'Km/mes',
@@ -366,6 +368,7 @@ function viajeToInput(v: ViajeRow): RentabilidadViajeInput {
     chofer_por_dia:      Number(v.chofer_por_dia),
     modalidad_pago:      v.modalidad_pago,
     pct_sobre_tarifa:    Number(v.pct_sobre_tarifa),
+    comision_pct:        Number(v.comision_pct ?? 0),
   }
 }
 
@@ -422,6 +425,7 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
           chofer_por_dia: Number(viaje.chofer_por_dia),
           modalidad_pago: viaje.modalidad_pago,
           pct_sobre_tarifa: Number(viaje.pct_sobre_tarifa),
+          comision_pct: Number(viaje.comision_pct ?? 0),
           obs: viaje.obs ?? '',
         }
       : {
@@ -429,11 +433,17 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
           km_total: 0, toneladas: 35, viajes_por_mes: 0,
           tarifa_neta_por_ton: 0, precio_gasoil: 2200, consumo_camion: 3, peajes_total: 0,
           chofer_por_km: 140, chofer_por_dia: 30000, modalidad_pago: 'km_jornal', pct_sobre_tarifa: 0,
+          comision_pct: 0,
           obs: '',
         },
   })
 
   const watched = form.watch()
+
+  // La tarifa base sí lleva la sensibilidad; la comisión es un % y no depende
+  // de ella. Las dos se muestran en el bloque del dador.
+  const comisionPct = Number(watched.comision_pct) || 0
+  const tarifaBase  = (Number(watched.tarifa_neta_por_ton) || 0) * (1 + sensibilidad)
 
   // Resultado en vivo (con sensibilidad aplicada a la tarifa).
   const resultado = useMemo(() => {
@@ -449,6 +459,7 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
       chofer_por_dia:      Number(watched.chofer_por_dia) || 0,
       modalidad_pago:      watched.modalidad_pago || 'km_jornal',
       pct_sobre_tarifa:    Number(watched.pct_sobre_tarifa) || 0,
+      comision_pct:        comisionPct,
     }
     return calcularRentabilidad(input, params)
   }, [watched, params, sensibilidad])
@@ -473,6 +484,7 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
       chofer_por_km:       Number(data.chofer_por_km) || 0,
       chofer_por_dia:      Number(data.chofer_por_dia) || 0,
       pct_sobre_tarifa:    Number(data.pct_sobre_tarifa) || 0,
+      comision_pct:        Number(data.comision_pct) || 0,
     }
     if (mode === 'create') {
       create(dto, {
@@ -544,6 +556,33 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
               onChange={raw => field.onChange(raw === '' ? '' : Number(raw))} />
           )} />
 
+          {/* Comisión del dador: la tarifa de arriba YA la incluye. Se descuenta
+              del ingreso y, si el chofer va al %, también de su base — que es lo
+              que hace la liquidación real con la contra factura. */}
+          <div className="bg-gris/30 rounded-lg p-3">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-gris-dark mb-2">
+              🤝 Comisión del dador de carga
+            </div>
+            <Input
+              label="% que se queda el dador"
+              type="number" step="0.1" min={0} max={99.9}
+              disabled={readOnly}
+              {...form.register('comision_pct', { valueAsNumber: true })}
+              hint="Dejalo en 0 si la tarifa es limpia. Si el dador se queda un %, ponelo acá y cargá la tarifa tal cual te la pasan."
+            />
+            {comisionPct > 0 && tarifaBase > 0 && (
+              <div className="mt-2 text-xs text-gris-dark space-y-0.5">
+                <div>
+                  Te queda <span className="font-mono font-bold text-negro">{fmtARS(tarifaBase * (1 - comisionPct / 100))}</span> por tonelada
+                  <span className="text-gris-dark"> (de {fmtARS(tarifaBase)})</span>
+                </div>
+                <div>
+                  El dador se lleva <span className="font-mono font-bold">{fmtARS(resultado.comision_dador)}</span> en este viaje
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="bg-gris/30 rounded-lg p-3">
             <div className="text-[11px] font-bold uppercase tracking-wider text-gris-dark mb-2">⛽ Combustible (zona)</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -599,8 +638,20 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
           <div className="text-[11px] font-bold uppercase tracking-wider text-gris-dark">Resultado</div>
 
           <div className="bg-white rounded-lg p-3">
+            {resultado.comision_dador > 0 && (
+              <div className="flex items-center justify-between mb-1 pb-1 border-b border-gris/60">
+                <span className="text-[11px] text-gris-dark">
+                  Tarifa bruta <span className="opacity-70">· comisión {fmtPct(comisionPct / 100)}</span>
+                </span>
+                <span className="font-mono text-[11px] text-gris-dark">
+                  {fmtARS(tarifaBase * (Number(watched.toneladas) || 0))} − {fmtARS(resultado.comision_dador)}
+                </span>
+              </div>
+            )}
             <div className="flex items-center justify-between">
-              <span className="text-xs text-gris-dark">Ingreso</span>
+              <span className="text-xs text-gris-dark">
+                Ingreso{resultado.comision_dador > 0 && <span className="opacity-70"> (neto de comisión)</span>}
+              </span>
               <span className="font-mono text-sm font-bold">{fmtARS(resultado.ingreso)}</span>
             </div>
             <div className="flex items-center justify-between mt-1">

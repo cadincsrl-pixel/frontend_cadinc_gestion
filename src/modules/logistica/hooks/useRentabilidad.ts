@@ -70,6 +70,8 @@ export interface ViajeUpsertDto {
   chofer_por_dia:       number
   modalidad_pago:       ModalidadPago
   pct_sobre_tarifa:     number
+  /** Comisión del dador de carga, entero (8 = 8%). */
+  comision_pct:         number
   obs?:                 string | null
 }
 

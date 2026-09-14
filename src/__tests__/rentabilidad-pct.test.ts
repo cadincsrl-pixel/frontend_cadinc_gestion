@@ -66,3 +66,65 @@ describe('calcularRentabilidad — chofer a % de la tarifa neta', () => {
     expect(r.margen).toBeCloseTo(18000 * 28 - 75_600, 2)
   })
 })
+
+// ── Comisión del dador de carga (20260914y) ──────────────────────────────────
+//
+// "A veces la tarifa que nos brindan incluye un porcentaje de comisión del
+// dador de carga" — el pedido del user del 14/09. La tarifa que se carga es la
+// que informa el dador; lo que entra de verdad es esa tarifa menos su comisión.
+//
+// Lo que NO es obvio: también baja el pago del chofer al %. En la liquidación
+// real el chofer cobra sobre (ton × tarifa − comisión) / 1,21
+// (liquidacion-math.ts), así que el simulador tiene que hacer lo mismo o
+// sobreestima las dos puntas del viaje.
+describe('calcularRentabilidad — comisión del dador', () => {
+  it('sin comisión: el ingreso es la tarifa entera (los 28 viajes ya cargados)', () => {
+    const r = calcularRentabilidad(VIAJE_BASE, PARAMS)
+    expect(r.ingreso).toBeCloseTo(18_000 * 28, 2)
+    expect(r.comision_dador).toBe(0)
+  })
+
+  it('comisión 8%: baja el ingreso Y la base del chofer al %', () => {
+    const r = calcularRentabilidad({ ...VIAJE_BASE, comision_pct: 8 }, PARAMS)
+    // tarifa efectiva 18.000 × 0,92 = 16.560 → 16.560 × 28 = 463.680
+    expect(r.ingreso).toBeCloseTo(463_680, 2)
+    expect(r.comision_dador).toBeCloseTo(18_000 * 28 - 463_680, 2)
+    // el chofer al 15% cobra sobre lo que queda, no sobre el bruto
+    expect(r.pago_chofer).toBeCloseTo(463_680 * 0.15, 2)
+    // y NO sobre la tarifa entera, que era el bug
+    expect(r.pago_chofer).not.toBeCloseTo(18_000 * 28 * 0.15, 2)
+  })
+
+  it('el margen baja menos que el ingreso, porque el chofer también cobra menos', () => {
+    const sin = calcularRentabilidad(VIAJE_BASE, PARAMS)
+    const con = calcularRentabilidad({ ...VIAJE_BASE, comision_pct: 8 }, PARAMS)
+    const caidaIngreso = sin.ingreso - con.ingreso
+    const caidaMargen  = sin.margen - con.margen
+    expect(caidaMargen).toBeLessThan(caidaIngreso)
+    // exacto: la comisión menos lo que se ahorra en el chofer (15% de ella)
+    expect(caidaMargen).toBeCloseTo(caidaIngreso * (1 - 0.15), 2)
+  })
+
+  it('con el chofer por km la comisión no toca su pago, solo el ingreso', () => {
+    const base = { ...VIAJE_BASE, modalidad_pago: 'km_jornal' as const }
+    const sin = calcularRentabilidad(base, PARAMS)
+    const con = calcularRentabilidad({ ...base, comision_pct: 10 }, PARAMS)
+    expect(con.pago_chofer).toBeCloseTo(sin.pago_chofer, 2)
+    expect(sin.margen - con.margen).toBeCloseTo(18_000 * 28 * 0.10, 2)
+  })
+
+  it('replica la liquidación real: comisión sobre el bruto = comisión sobre el neto', () => {
+    // En la realidad la comisión llega CON IVA y se resta del bruto con IVA:
+    //   neto = (ton × tarifa_con_iva − comision_con_iva) / 1,21
+    // Acá se aplica el % sobre la tarifa NETA. Da lo mismo porque las dos puntas
+    // escalan por el mismo IVA — este test lo fija para que nadie lo "corrija".
+    const IVA = 1.21
+    const tarifaConIva = 18_000 * IVA
+    const brutoConIva  = tarifaConIva * 28
+    const comisionReal = brutoConIva * 0.08
+    const netoReal     = (brutoConIva - comisionReal) / IVA
+
+    const r = calcularRentabilidad({ ...VIAJE_BASE, comision_pct: 8 }, PARAMS)
+    expect(r.ingreso).toBeCloseTo(netoReal, 2)
+  })
+})
