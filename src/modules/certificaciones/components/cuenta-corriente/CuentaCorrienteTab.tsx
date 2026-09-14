@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
+import { Modal } from '@/components/ui/Modal'
 import { Pagination } from '@/components/ui/Pagination'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
@@ -168,18 +169,21 @@ export function CuentaCorrienteTab() {
   // la forma más fácil de mover plata sin querer.
   const hayDesmarcables = seleccionados.length > 0 && seleccionados.every(r => r.consumible_propio)
 
+  // La confirmación va en un Modal y no en un confirm() del navegador: el
+  // confirm no deja ver CUÁLES son los renglones, que es lo que evita marcar de
+  // más, y además bloquea cualquier automatización del navegador.
+  const [confirmando, setConfirmando] = useState<boolean | null>(null)
+
   function confirmarConsumible(marcar: boolean) {
     if (!obraSel || seleccionados.length === 0) return
-    const verbo = marcar ? 'saquen de la deuda del cliente' : 'vuelvan a la cuenta del cliente'
-    if (!window.confirm(`${seleccionados.length} renglón(es) por ${fmtM(plataMarcada)} ${verbo}.\n\n¿Confirmás?`)) return
     marcarConsumible(
       { obra_cod: obraSel, item_ids: seleccionados.map(r => r.item_id), marcar, motivo: motivoConsumible || undefined },
       {
         onSuccess: (r) => {
           toast(`✓ ${r.marcados} renglón(es) · ${fmtM(Number(r.plata))} ${marcar ? 'salieron de' : 'volvieron a'} la deuda`, 'ok')
-          setMarcados(new Map()); setMotivoConsumible('')
+          setMarcados(new Map()); setMotivoConsumible(''); setConfirmando(null)
         },
-        onError: (e: Error) => toast(mensajeConsumible(e.message), 'err'),
+        onError: (e: Error) => { toast(mensajeConsumible(e.message), 'err'); setConfirmando(null) },
       },
     )
   }
@@ -411,8 +415,8 @@ export function CuentaCorrienteTab() {
               disabled={hayDesmarcables}
             />
             <Button size="sm" disabled={seleccionados.length === 0 || marcando}
-              onClick={() => confirmarConsumible(!hayDesmarcables)}>
-              {marcando ? 'Guardando…' : hayDesmarcables ? 'Devolver a la cuenta' : 'Marcar como propios'}
+              onClick={() => setConfirmando(!hayDesmarcables)}>
+              {hayDesmarcables ? 'Devolver a la cuenta' : 'Marcar como propios'}
             </Button>
           </div>
         )}
@@ -446,6 +450,38 @@ export function CuentaCorrienteTab() {
       {obraSel && (
         <ModalCargarPrecios open={modalPrecios} onClose={() => setModalPrecios(false)} obraCod={obraSel} obraNom={obraNom} />
       )}
+
+        {/* Confirmación de la tanda. Muestra la PLATA arriba y la LISTA abajo:
+            un monto raro se ve, y la lista es lo que evita marcar de más. */}
+        <Modal open={confirmando !== null} onClose={() => setConfirmando(null)}
+          title={confirmando ? 'Marcar como consumibles propios' : 'Devolver a la cuenta del cliente'}>
+          <div className="space-y-3">
+            <div className={`rounded-lg p-3 ${confirmando ? 'bg-azul-light/60' : 'bg-amarillo-light/60'}`}>
+              <div className="font-mono text-xl font-bold">{fmtM(plataMarcada)}</div>
+              <div className="text-xs text-gris-dark">
+                {seleccionados.length} renglón{seleccionados.length === 1 ? '' : 'es'}{' '}
+                {confirmando ? 'salen de la deuda del cliente y pasan a gasto de CADINC' : 'vuelven a la deuda del cliente'}
+              </div>
+            </div>
+            {confirmando && motivoConsumible && (
+              <div className="text-xs text-gris-dark">Motivo: <b>{motivoConsumible}</b></div>
+            )}
+            <div className="max-h-56 overflow-y-auto border border-gris rounded-lg divide-y divide-gris">
+              {seleccionados.map(r => (
+                <div key={r.item_id} className="px-3 py-1.5 flex items-center justify-between gap-2 text-xs">
+                  <span className="truncate">{r.descripcion}</span>
+                  <span className="font-mono shrink-0">{fmtM(Number(r.precio_total ?? 0))}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setConfirmando(null)} disabled={marcando}>Cancelar</Button>
+              <Button onClick={() => confirmarConsumible(confirmando!)} disabled={marcando}>
+                {marcando ? 'Guardando…' : 'Confirmar'}
+              </Button>
+            </div>
+          </div>
+        </Modal>
     </div>
   )
 }
