@@ -11,7 +11,7 @@ import { useProveedores } from '../../hooks/useProveedores'
 import { usePendientesDePrecio, useMarcarConsumible } from '../../hooks/useCuentaCliente'
 import { useCuentaRenglones, useCuentaResumen, fetchCuentaRenglonesTodos, type CuentaFiltro } from '../../hooks/useCuentaCorriente'
 import { exportarCuentaCorriente } from '../../utils/cuentaCorrienteExport'
-import type { CuentaEstado, CuentaGrupo } from '@/types/domain.types'
+import type { CuentaEstado, CuentaGrupo, CuentaRenglon } from '@/types/domain.types'
 import { FiltrosCuenta } from './FiltrosCuenta'
 import { ResumenTabla } from './ResumenTabla'
 import { RenglonesTabla, bloqueoConsumible } from './RenglonesTabla'
@@ -109,7 +109,14 @@ export function CuentaCorrienteTab() {
   // factura todo con %, y en las llave en mano ya es todo gasto propio. La base
   // rechaza las dos, esto sólo evita mostrar un botón que va a fallar.
   const [modoConsumible, setModoConsumible]   = useState(false)
-  const [marcados, setMarcados]               = useState<Set<number>>(new Set())
+  // Se guarda la FILA entera y no sólo el id. El listado pagina de a 50 en el
+  // server: con un Set de ids, la barra contaba lo tildado en todas las páginas
+  // pero el total y el POST salían de `items`, que es sólo la página visible.
+  // O sea que decía "15 renglones" y mandaba 5, y los otros 10 se borraban al
+  // guardar sin haber viajado nunca — se los seguía facturando al cliente.
+  // Hay 7 obras de presupuesto cerrado con más de 50 renglones, así que no era
+  // un borde.
+  const [marcados, setMarcados]               = useState<Map<number, CuentaRenglon>>(new Map())
   const [motivoConsumible, setMotivoConsumible] = useState('')
   const { mutate: marcarConsumible, isPending: marcando } = useMarcarConsumible()
 
@@ -154,7 +161,7 @@ export function CuentaCorrienteTab() {
   // mover la cuenta del cliente: el mismo flag que emitir certificado.
   const puedeMarcarConsumible = !!obra && !obra.por_administracion
     && obra.materiales_a_cargo_de !== 'cadinc' && (cargarPrecios || esAdmin)
-  const seleccionados = useMemo(() => items.filter(r => marcados.has(r.item_id)), [items, marcados])
+  const seleccionados = useMemo(() => [...marcados.values()], [marcados])
   const plataMarcada  = useMemo(() => seleccionados.reduce((s, r) => s + Number(r.precio_total ?? 0), 0), [seleccionados])
   // Una tanda va toda para el mismo lado. Si lo tildado ya está marcado, el
   // botón desmarca; si no, marca. Mezclar los dos sentidos en un solo click es
@@ -170,7 +177,7 @@ export function CuentaCorrienteTab() {
       {
         onSuccess: (r) => {
           toast(`✓ ${r.marcados} renglón(es) · ${fmtM(Number(r.plata))} ${marcar ? 'salieron de' : 'volvieron a'} la deuda`, 'ok')
-          setMarcados(new Set()); setMotivoConsumible('')
+          setMarcados(new Map()); setMotivoConsumible('')
         },
         onError: (e: Error) => toast(mensajeConsumible(e.message), 'err'),
       },
@@ -380,7 +387,7 @@ export function CuentaCorrienteTab() {
             <span>Total filtrado <b className="font-mono text-carbon">{fmtM(tot.total)}</b></span>
             {puedeMarcarConsumible && (
               <Button variant={modoConsumible ? 'secondary' : 'ghost'} size="sm"
-                onClick={() => { setModoConsumible(v => !v); setMarcados(new Set()) }}
+                onClick={() => { setModoConsumible(v => !v); setMarcados(new Map()); setMotivoConsumible('') }}
                 title="Marcar los materiales que pone CADINC para ejecutar y no se le cobran al cliente">
                 {modoConsumible ? '✕ Salir' : '🧰 Consumibles propios'}
               </Button>
@@ -393,7 +400,7 @@ export function CuentaCorrienteTab() {
         {modoConsumible && (
           <div className="px-4 py-3 bg-azul-light/60 border-y border-azul/20 flex flex-wrap items-center gap-3">
             <div className="text-xs">
-              <b className="font-mono">{marcados.size}</b> renglón{marcados.size === 1 ? '' : 'es'} ·{' '}
+              <b className="font-mono">{seleccionados.length}</b> renglón{seleccionados.length === 1 ? '' : 'es'} ·{' '}
               <b className="font-mono">{fmtM(plataMarcada)}</b>{' '}
               {hayDesmarcables ? 'vuelven a la deuda del cliente' : 'salen de la deuda del cliente'}
             </div>
@@ -403,7 +410,7 @@ export function CuentaCorrienteTab() {
               value={motivoConsumible} onChange={e => setMotivoConsumible(e.target.value)}
               disabled={hayDesmarcables}
             />
-            <Button size="sm" disabled={marcados.size === 0 || marcando}
+            <Button size="sm" disabled={seleccionados.length === 0 || marcando}
               onClick={() => confirmarConsumible(!hayDesmarcables)}>
               {marcando ? 'Guardando…' : hayDesmarcables ? 'Devolver a la cuenta' : 'Marcar como propios'}
             </Button>
@@ -420,9 +427,9 @@ export function CuentaCorrienteTab() {
             vacio={filtro.sin_precio && !filtro.q ? '✓ No hay renglones sin precio con estos filtros.' : 'No hay renglones con estos filtros.'}
             seleccion={modoConsumible ? {
               marcados,
-              alternar: (id: number) => setMarcados(s => {
-                const n = new Set(s)
-                if (n.has(id)) n.delete(id); else n.add(id)
+              alternar: (r: CuentaRenglon) => setMarcados(m => {
+                const n = new Map(m)
+                if (n.has(r.item_id)) n.delete(r.item_id); else n.set(r.item_id, r)
                 return n
               }),
               bloqueado: bloqueoConsumible,

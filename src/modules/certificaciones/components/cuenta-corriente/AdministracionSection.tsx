@@ -39,8 +39,21 @@ import type { Obra } from '@/types/domain.types'
  */
 export function AdministracionSection({ obra, modo = 'facturacion' }: { obra: Obra; modo?: ModoAdministracion }) {
   const esCostos = modo === 'costos'
+  const llaveEnMano = obra.materiales_a_cargo_de === 'cadinc'
   const { puedeAdministrarObras, esAdmin } = usePermisos('tarja')
-  const puedeConfigurar = puedeAdministrarObras || esAdmin
+  // OJO, esto salió de la revisión del 14/09 y es plata: guardar porcentajes NO
+  // es inocuo. El backend, en toda obra que no sea llave en mano, interpreta
+  // "cargar %" como "marcá esta obra por administración" y prende el flag
+  // (obras.service.ts, guardarAdminTarifa). Mientras el panel de costos se veía
+  // sólo en llave en mano eso no molestaba a nadie. Desde que se muestra también
+  // en las de presupuesto cerrado (7c1b56a), un click acá les cambiaría el
+  // RÉGIMEN y, de paso, devolvería todos sus consumibles propios a la deuda del
+  // cliente, en silencio y sin confirmación.
+  //
+  // Así que en modo costos el editor de % existe sólo donde es inofensivo: en
+  // llave en mano. Para pasar una obra a administración está su propio botón,
+  // que lo dice con todas las letras.
+  const puedeConfigurar = (puedeAdministrarObras || esAdmin) && (!esCostos || llaveEnMano)
   const [modalPct, setModalPct] = useState(false)
   // Los totales siempre a la vista; el detalle plegado. Una obra con meses de
   // historia mete decenas de semanas de jornales y sin esto la página no
@@ -79,7 +92,11 @@ export function AdministracionSection({ obra, modo = 'facturacion' }: { obra: Ob
           </p>
         </div>
         <Button variant="ghost" size="sm" onClick={() => setModalPct(true)} disabled={!puedeConfigurar}
-          title={puedeConfigurar ? 'Nueva versión de porcentajes, desde un viernes' : 'Sin permiso para administrar obras'}>
+          title={puedeConfigurar
+            ? 'Nueva versión de porcentajes, desde un viernes'
+            : esCostos && !llaveEnMano
+              ? 'Cargar porcentajes acá pasaría la obra a "por administración" y le cambiaría el régimen. Para eso está el botón "Marcar por administración".'
+              : 'Sin permiso para administrar obras'}>
           % Cambiar
         </Button>
         {!esCostos && (

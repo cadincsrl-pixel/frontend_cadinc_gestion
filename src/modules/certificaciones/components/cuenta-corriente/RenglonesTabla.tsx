@@ -14,8 +14,10 @@ interface Props {
   vacio:       string
   /** Modo "marcar consumibles" (20260914aa): prende la columna de tildes. */
   seleccion?: {
-    marcados:  Set<number>
-    alternar:  (itemId: number) => void
+    /** La fila entera y no sólo el id: la selección sobrevive al cambio de
+     *  página, así que el total y el envío no pueden depender de lo visible. */
+    marcados:  Map<number, CuentaRenglon>
+    alternar:  (r: CuentaRenglon) => void
     /** null = se puede marcar; string = por qué no, y va en el tooltip. */
     bloqueado: (r: CuentaRenglon) => string | null
   }
@@ -135,7 +137,7 @@ export function RenglonesTabla({ items, mostrarObra, vacio, seleccion }: Props) 
                     checked={todosMarcados}
                     disabled={marcables.length === 0}
                     onChange={() => marcables.forEach(r => {
-                      if (seleccion.marcados.has(r.item_id) === todosMarcados) seleccion.alternar(r.item_id)
+                      if (seleccion.marcados.has(r.item_id) === todosMarcados) seleccion.alternar(r)
                     })}
                     title={marcables.length ? `Tildar los ${marcables.length} de esta página` : 'Ningún renglón de esta página se puede marcar'}
                   />
@@ -166,7 +168,7 @@ export function RenglonesTabla({ items, mostrarObra, vacio, seleccion }: Props) 
                         type="checkbox"
                         checked={seleccion.marcados.has(r.item_id)}
                         disabled={!!motivo}
-                        onChange={() => seleccion.alternar(r.item_id)}
+                        onChange={() => seleccion.alternar(r)}
                         title={motivo ?? 'Marcar como consumible propio de CADINC'}
                       />
                     </td>
@@ -200,8 +202,26 @@ export function RenglonesTabla({ items, mostrarObra, vacio, seleccion }: Props) 
       {/* Tarjetas — móvil */}
       <div className="md:hidden divide-y divide-gris">
         {items.map(r => (
-          <div key={r.id} className={`p-3 ${Number(r.precio_unit) === 0 ? 'bg-naranja-light/15' : ''}`}>
+          <div key={r.id} className={`p-3 ${
+            seleccion?.marcados.has(r.item_id) ? 'bg-azul-light/40'
+            : Number(r.precio_unit) === 0 ? 'bg-naranja-light/15' : ''}`}>
             <div className="flex items-start justify-between gap-2">
+              {/* El tilde también acá: el que marca los consumibles es el dueño,
+                  y mira el sistema desde el teléfono. Sin esto el modo se
+                  prendía, la barra aparecía, y no había nada que seleccionar. */}
+              {seleccion && (() => {
+                const motivo = seleccion.bloqueado(r)
+                return (
+                  <input
+                    type="checkbox"
+                    className="mt-1 shrink-0"
+                    checked={seleccion.marcados.has(r.item_id)}
+                    disabled={!!motivo}
+                    onChange={() => seleccion.alternar(r)}
+                    title={motivo ?? 'Marcar como consumible propio de CADINC'}
+                  />
+                )
+              })()}
               <div className="min-w-0">
                 <div className="text-sm font-medium">{r.descripcion}</div>
                 <div className="text-[11px] text-gris-dark">
