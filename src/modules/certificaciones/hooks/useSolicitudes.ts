@@ -27,6 +27,8 @@ function invalidarResolucionItem(qc: ReturnType<typeof useQueryClient>) {
   // Devolver material con el renglón ya cobrado emite una nota de crédito
   // (20260913k): sin esto el saldo a favor no aparece hasta el próximo refetch.
   qc.invalidateQueries({ queryKey: ['cuenta-cliente-notas-credito'] })
+  // Y la lista de devoluciones de la obra (20260914ai), con o sin nota.
+  qc.invalidateQueries({ queryKey: ['cuenta-cliente-devoluciones'] })
 }
 
 export function useSolicitudes(obra_cod?: string) {

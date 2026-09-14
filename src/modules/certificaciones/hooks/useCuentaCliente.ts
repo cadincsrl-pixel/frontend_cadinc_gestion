@@ -150,6 +150,48 @@ export function useNotasCredito(obra_cod?: string, enabled = true) {
   })
 }
 
+// ── Devoluciones al depósito (20260914ai) ─────────────────────────────────
+//
+// TODAS las devoluciones de la obra, no solo las que dejaron nota de crédito.
+// Cuando el renglón no estaba cobrado, devolver lo descuenta de la cuenta (y
+// si vuelve todo, la fila desaparece): la cuenta corriente no dice nada. Esta
+// lista es lo que responde "¿me devolvieron algo?" sin recordar el pedido.
+
+export type EfectoDevolucion = 'nota_credito' | 'descontado' | 'cancelado'
+
+export interface DevolucionObra {
+  id:               number
+  fecha:            string
+  item_id:          number
+  solicitud_id:     number | null
+  descripcion:      string
+  unidad:           string
+  cantidad:         number
+  cantidad_antes:   number | null
+  cantidad_despues: number | null
+  precio_unit:      number | null
+  monto:            number | null
+  efecto:           EfectoDevolucion
+  nota_credito_id:  number | null
+  nota_anulada:     boolean
+  motivo:           string | null
+  user_id:          string | null
+  usuario:          string | null
+  item_estado:      string
+}
+
+const DEVOLUCIONES_KEY = (obra?: string) => ['cuenta-cliente-devoluciones', obra ?? 'all'] as const
+
+export function useDevolucionesObra(obra_cod?: string, enabled = true) {
+  return useQuery({
+    queryKey: DEVOLUCIONES_KEY(obra_cod),
+    queryFn:  () => apiGet<DevolucionObra[]>(`/api/cuenta-cliente/devoluciones?obra_cod=${encodeURIComponent(obra_cod ?? '')}`),
+    enabled:  enabled && !!obra_cod,
+    staleTime: 60_000,
+    retry: false,
+  })
+}
+
 // ── Cobros (pagos del cliente a cuenta de la obra) ───────────────────────
 
 const COBROS_KEY = (obra?: string) => ['cuenta-cliente-cobros', obra ?? 'all'] as const

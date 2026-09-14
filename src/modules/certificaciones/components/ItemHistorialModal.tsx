@@ -25,6 +25,10 @@ const ACCION_CFG: Record<string, { label: string; icono: string; dot: string }> 
   rechazado:       { label: 'Rechazado',              icono: '✕',  dot: 'bg-rojo-light text-rojo'          },
   revertido:       { label: 'Revertido',              icono: '↩',  dot: 'bg-amarillo-light text-[#7A5500]' },
   envio_revertido: { label: 'Envío deshecho',         icono: '↩',  dot: 'bg-gris text-gris-dark'           },
+  // Devoluciones al depósito (20260913k/p). Hasta el 14/09 caían al fallback y
+  // el evento decía "devuelto" a secas, sin ícono.
+  devuelto:        { label: 'Devuelto al depósito',   icono: '📦', dot: 'bg-amarillo-light text-[#7A5500]' },
+  cancelado:       { label: 'Cancelado antes de salir', icono: '↩', dot: 'bg-rojo-light text-rojo'        },
 }
 const ACCION_FALLBACK = { label: '', icono: '•', dot: 'bg-gris text-gris-dark' }
 

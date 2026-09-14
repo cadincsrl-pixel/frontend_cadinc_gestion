@@ -19,6 +19,7 @@ import { RenglonesTabla, bloqueoConsumible } from './RenglonesTabla'
 import { PagosCliente } from './PagosCliente'
 import { PreciosPropuestos } from './PreciosPropuestos'
 import { CertificadosSection } from './CertificadosSection'
+import { DevolucionesSection } from './DevolucionesSection'
 import { AdministracionSection, MarcarAdministracion } from './AdministracionSection'
 import { ModalExportar } from './ModalExportar'
 import { ModalCargarPrecios } from './ModalCargarPrecios'
@@ -408,6 +409,11 @@ export function CuentaCorrienteTab() {
         <>
           {obra && <CertificadosSection obra={obra} puedeEmitir={!!(cargarPrecios || esAdmin)} esAdmin={!!esAdmin} />}
           <PagosCliente obraCod={obraSel} obraNom={obraNom} puedeEditar={puedeEditar} puedeEliminar={puedeEliminar} porAdministracion={!!obra?.por_administracion} registrarSignal={registrarSignal} />
+          {/* Todo lo que volvió al depósito desde esta obra (20260914ai). Va
+              después de Pagos porque es donde se busca cuando un renglón "no
+              está": una devolución sin nota de crédito no deja marca en la
+              cuenta, y sin esto no había forma de verificarla desde acá. */}
+          <DevolucionesSection obraCod={obraSel} />
         </>
       )}
 
