@@ -152,6 +152,13 @@ export function CuentaCorrienteTab() {
     const t = totalizar(recortar(grupos, filtro.estados))
     return { material: t.porTipo.material.renglones, epp: t.porTipo.epp.renglones, consumible: t.porTipo.consumible.renglones }
   }, [grupos, filtro.estados])
+  // Cuanto hay en cada estado, EN PLATA. Se calcula sin recortar por estado a
+  // proposito: si un chip esta activo, `tot` ya viene filtrado y el desglose
+  // mostraria ceros en las otras tres columnas.
+  const desglose = useMemo(() => {
+    const t = totalizar(recortar(grupos, undefined, filtro.tipo))
+    return Object.fromEntries(ESTADOS.map(e => [e.key, t.porEstado[e.key].total])) as Record<CuentaEstado, number>
+  }, [grupos, filtro.tipo])
   const conteoTodos = conteoEstado.a_cobrar + conteoEstado.cobrado + conteoEstado.pago_directo + conteoEstado.gasto_cadinc
   const filas = useMemo(() => filasPorGrupo(gruposFiltrados, resumen?.pagos ?? [], grupo), [gruposFiltrados, resumen, grupo])
 
@@ -365,6 +372,36 @@ export function CuentaCorrienteTab() {
       )}
       {obra && !obra.por_administracion && !llaveEnMano && (
         <div className="flex justify-end -mt-2"><MarcarAdministracion obra={obra} /></div>
+      )}
+
+      {/* Desglose en plata de la obra elegida.
+          La tabla de resumen tiene estas mismas cuatro columnas, pero se
+          esconde justamente cuando hay UNA obra elegida y el agrupador es
+          "obra" (mostrarResumen), que es el caso normal. Resultado: para saber
+          cuanto era gasto propio y cuanto a cobrar habia que tocar un chip,
+          leer "Total filtrado", tocar otro y volver a leer. Ahora esta a la
+          vista, y cada numero filtra la lista al tocarlo. */}
+      {obraSel && hayDatos && !cargandoResumen && (
+        <div className="bg-white rounded-card shadow-card p-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {ESTADOS.map(e => {
+            const activo = filtro.estados?.length === 1 && filtro.estados[0] === e.key
+            return (
+              <button
+                key={e.key}
+                onClick={() => patch({ estados: activo ? undefined : [e.key] })}
+                title={`${e.hint}. Tocá para ver solo estos renglones.`}
+                className={`text-left rounded-lg px-3 py-2 border transition ${
+                  activo ? 'border-azul bg-azul-light/40' : 'border-gris hover:border-gris-mid'}`}
+              >
+                <div className="text-[10px] font-bold uppercase tracking-wider text-gris-dark">{e.label}</div>
+                <div className="font-mono text-base font-bold">{fmtM(desglose[e.key] ?? 0)}</div>
+                <div className="text-[10px] text-gris-dark">
+                  {conteoEstado[e.key]} renglón{conteoEstado[e.key] === 1 ? '' : 'es'}
+                </div>
+              </button>
+            )
+          })}
+        </div>
       )}
 
       {obraSel && (
