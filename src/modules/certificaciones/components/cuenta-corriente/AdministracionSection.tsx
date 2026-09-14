@@ -65,7 +65,13 @@ export function AdministracionSection({ obra, modo = 'facturacion' }: { obra: Ob
           <h3 className="font-display text-lg text-azul">{esCostos ? '🧮 COSTOS DE OBRA' : '🧮 POR ADMINISTRACIÓN'}</h3>
           <p className="text-[11px] text-gris-dark">
             {esCostos
-              ? 'Lo gastado por pata: jornales, contratistas y materiales. El % es un recargo informativo (p. ej. cargas sociales), no se factura.'
+              ? (obra.materiales_a_cargo_de === 'cadinc'
+                  // Llave en mano: todo el material salió de CADINC y ahí queda.
+                  ? 'Lo gastado por pata: jornales, contratistas y materiales. El % es un recargo informativo (p. ej. cargas sociales), no se factura.'
+                  // Presupuesto cerrado: la mano de obra se cobra por fuera de
+                  // la plataforma y parte del material se le recupera al
+                  // cliente. Decirlo acá evita leer el total como plata perdida.
+                  : 'Lo que salió de CADINC por pata: jornales, contratistas y materiales, incluido lo que después se le cobra al cliente. El % es un recargo informativo, no se factura.')
               : 'Costo + % pactado por pata.'}{' '}
             {vigente
               ? `Vigente: operarios ${Number(vigente.pct_operarios)}% · contratistas ${Number(vigente.pct_contratistas)}% · materiales ${Number(vigente.pct_materiales)}%`

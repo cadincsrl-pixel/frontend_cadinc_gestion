@@ -286,11 +286,20 @@ export function CuentaCorrienteTab() {
       {/* Obra por administración: costo + % por pata, con su PDF y su Excel.
           Solo si la obra está marcada — para el resto no cambia nada. */}
       {obra?.por_administracion && <AdministracionSection obra={obra} />}
-      {/* Llave en mano: la MISMA sección en modo costos — cuánto va gastando
-          CADINC en jornales, contratistas y materiales, con el % opcional
-          (cargas sociales) arriba del costo. Gateado por ver_costos: es
-          información de plata propia. */}
-      {obra && !obra.por_administracion && llaveEnMano && verCostos && veTarja && (
+      {/* Todo lo que NO es por administración: la MISMA sección en modo costos —
+          cuánto va gastando CADINC en jornales, contratistas y materiales, con
+          el % opcional (cargas sociales) arriba del costo. Gateado por
+          ver_costos: es información de plata propia.
+
+          Hasta el 14/09 esto se mostraba SOLO en las llave en mano. Pero el
+          dueño lo quiere también en las de presupuesto cerrado, que son las más
+          numerosas (26 obras): ahí la mano de obra se cobra por fuera de la
+          plataforma, así que esta sección es el único lugar del sistema donde
+          se ve cuánto costó la obra. La diferencia entre los dos casos está en
+          el subtítulo de la sección, no acá: en llave en mano todo el material
+          es gasto propio, en presupuesto cerrado una parte se le recupera al
+          cliente y la sección lo aclara. */}
+      {obra && !obra.por_administracion && verCostos && veTarja && (
         <AdministracionSection obra={obra} modo="costos" />
       )}
       {obra && !obra.por_administracion && !llaveEnMano && (
