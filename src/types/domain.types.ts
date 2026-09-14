@@ -1707,7 +1707,9 @@ export interface CertificadoEmitido {
 // proveedor), gasto_cadinc (llave en mano o EPP), cobrado, a_cobrar.
 
 export type CuentaEstado = 'a_cobrar' | 'cobrado' | 'pago_directo' | 'gasto_cadinc'
-export type CuentaTipo   = 'material' | 'epp'
+/** 'consumible' desde 20260914aa: lo pone CADINC para ejecutar y no se cobra. */
+export type CuentaTipo   = 'material' | 'epp' | 'consumible'
+export type MotivoCadinc = 'llave_en_mano' | 'epp' | 'consumible' | 'obra_interna'
 export type CuentaGrupo  = 'obra' | 'mes' | 'proveedor'
 
 export interface CuentaRenglon {
@@ -1756,7 +1758,11 @@ export interface CuentaRenglon {
   tipo:                CuentaTipo
   estado:              CuentaEstado
   /** Por qué es gasto de CADINC (solo si a_cargo_de = 'cadinc'). */
-  motivo_cadinc:       'llave_en_mano' | 'epp' | null
+  motivo_cadinc:       MotivoCadinc | null
+  /** Marcado a mano como consumible propio de CADINC (20260914aa). */
+  consumible_propio:   boolean
+  /** Texto corto del estilo "discos de corte". Null si se marcó sin motivo. */
+  consumible_motivo:   string | null
   created_at:          string
   updated_at:          string
 }

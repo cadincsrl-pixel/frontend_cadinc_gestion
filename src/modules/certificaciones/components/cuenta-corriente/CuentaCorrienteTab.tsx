@@ -8,13 +8,13 @@ import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useObrasTodas } from '@/modules/tarja/hooks/useObras'
 import { useProveedores } from '../../hooks/useProveedores'
-import { usePendientesDePrecio } from '../../hooks/useCuentaCliente'
+import { usePendientesDePrecio, useMarcarConsumible } from '../../hooks/useCuentaCliente'
 import { useCuentaRenglones, useCuentaResumen, fetchCuentaRenglonesTodos, type CuentaFiltro } from '../../hooks/useCuentaCorriente'
 import { exportarCuentaCorriente } from '../../utils/cuentaCorrienteExport'
 import type { CuentaEstado, CuentaGrupo } from '@/types/domain.types'
 import { FiltrosCuenta } from './FiltrosCuenta'
 import { ResumenTabla } from './ResumenTabla'
-import { RenglonesTabla } from './RenglonesTabla'
+import { RenglonesTabla, bloqueoConsumible } from './RenglonesTabla'
 import { PagosCliente } from './PagosCliente'
 import { PreciosPropuestos } from './PreciosPropuestos'
 import { CertificadosSection } from './CertificadosSection'
@@ -39,6 +39,19 @@ import { ESTADOS, ESTADO_META, fmtM, fmtFecha, recortar, totalizar, filasPorGrup
  */
 
 const PAGE_SIZE = 50
+
+/** Los códigos que devuelve la RPC, en castellano. */
+function mensajeConsumible(code?: string): string {
+  if (!code) return 'No se pudo guardar'
+  if (code.includes('OBRA_POR_ADMINISTRACION')) return 'En las obras por administración se factura todo con %, no hay consumibles propios.'
+  if (code.includes('OBRA_LLAVE_EN_MANO'))      return 'En las obras llave en mano ya es todo gasto de CADINC.'
+  if (code.includes('MCC_COBRADO'))             return 'Uno de los renglones ya está cobrado. Soltalo del pago primero. No se marcó ninguno.'
+  if (code.includes('MCC_CERTIFICADO'))         return 'Uno de los renglones ya entró en un certificado. No se marcó ninguno.'
+  if (code.includes('ITEM_PAGO_DIRECTO'))       return 'Uno lo pagó el cliente directo al proveedor. No se marcó ninguno.'
+  if (code.includes('ITEM_ES_EPP'))             return 'El EPP ya es gasto propio por su clase. No se marcó ninguno.'
+  if (code.includes('SIN_PERMISO_CARGAR_PRECIOS')) return 'Te falta el permiso de cargar precios.'
+  return code
+}
 
 export function CuentaCorrienteTab() {
   const toast = useToast()
@@ -90,6 +103,16 @@ export function CuentaCorrienteTab() {
   // mover el modal (usa los imputables y el estado del bloque).
   const [registrarSignal, setRegistrarSignal] = useState(0)
 
+  // ── Consumibles propios (20260914aa) ─────────────────────────────────────
+  // Marcar renglones que pone CADINC para ejecutar y no se le cobran al
+  // cliente. Sólo en obras de PRESUPUESTO CERRADO: en las de administración se
+  // factura todo con %, y en las llave en mano ya es todo gasto propio. La base
+  // rechaza las dos, esto sólo evita mostrar un botón que va a fallar.
+  const [modoConsumible, setModoConsumible]   = useState(false)
+  const [marcados, setMarcados]               = useState<Set<number>>(new Set())
+  const [motivoConsumible, setMotivoConsumible] = useState('')
+  const { mutate: marcarConsumible, isPending: marcando } = useMarcarConsumible()
+
   function patch(p: Partial<CuentaFiltro>) {
     setFiltro(f => ({ ...f, ...p }))
     setPage(1)
@@ -119,13 +142,40 @@ export function CuentaCorrienteTab() {
   }, [grupos, filtro.tipo])
   const conteoTipo = useMemo(() => {
     const t = totalizar(recortar(grupos, filtro.estados))
-    return { material: t.porTipo.material.renglones, epp: t.porTipo.epp.renglones }
+    return { material: t.porTipo.material.renglones, epp: t.porTipo.epp.renglones, consumible: t.porTipo.consumible.renglones }
   }, [grupos, filtro.estados])
   const conteoTodos = conteoEstado.a_cobrar + conteoEstado.cobrado + conteoEstado.pago_directo + conteoEstado.gasto_cadinc
   const filas = useMemo(() => filasPorGrupo(gruposFiltrados, resumen?.pagos ?? [], grupo), [gruposFiltrados, resumen, grupo])
 
-  const items = pagina?.items ?? []
+  const items = useMemo(() => pagina?.items ?? [], [pagina])
   const total = pagina?.total ?? 0
+
+  // El botón aparece sólo donde la marca tiene sentido y sólo para quien puede
+  // mover la cuenta del cliente: el mismo flag que emitir certificado.
+  const puedeMarcarConsumible = !!obra && !obra.por_administracion
+    && obra.materiales_a_cargo_de !== 'cadinc' && (cargarPrecios || esAdmin)
+  const seleccionados = useMemo(() => items.filter(r => marcados.has(r.item_id)), [items, marcados])
+  const plataMarcada  = useMemo(() => seleccionados.reduce((s, r) => s + Number(r.precio_total ?? 0), 0), [seleccionados])
+  // Una tanda va toda para el mismo lado. Si lo tildado ya está marcado, el
+  // botón desmarca; si no, marca. Mezclar los dos sentidos en un solo click es
+  // la forma más fácil de mover plata sin querer.
+  const hayDesmarcables = seleccionados.length > 0 && seleccionados.every(r => r.consumible_propio)
+
+  function confirmarConsumible(marcar: boolean) {
+    if (!obraSel || seleccionados.length === 0) return
+    const verbo = marcar ? 'saquen de la deuda del cliente' : 'vuelvan a la cuenta del cliente'
+    if (!window.confirm(`${seleccionados.length} renglón(es) por ${fmtM(plataMarcada)} ${verbo}.\n\n¿Confirmás?`)) return
+    marcarConsumible(
+      { obra_cod: obraSel, item_ids: seleccionados.map(r => r.item_id), marcar, motivo: motivoConsumible || undefined },
+      {
+        onSuccess: (r) => {
+          toast(`✓ ${r.marcados} renglón(es) · ${fmtM(Number(r.plata))} ${marcar ? 'salieron de' : 'volvieron a'} la deuda`, 'ok')
+          setMarcados(new Set()); setMotivoConsumible('')
+        },
+        onError: (e: Error) => toast(mensajeConsumible(e.message), 'err'),
+      },
+    )
+  }
   const mostrarResumen = !obraSel || grupo !== 'obra'
   // La alerta obedece al MISMO checkbox que el listado ("incluir obras
   // archivadas"). Antes sumaba todo junto y prometía un número que el listado
@@ -328,8 +378,37 @@ export function CuentaCorrienteTab() {
           <div className="flex items-center gap-3 text-[11px] text-gris-dark">
             {isFetching && <span className="w-3.5 h-3.5 border-2 border-naranja border-t-transparent rounded-full animate-spin" />}
             <span>Total filtrado <b className="font-mono text-carbon">{fmtM(tot.total)}</b></span>
+            {puedeMarcarConsumible && (
+              <Button variant={modoConsumible ? 'secondary' : 'ghost'} size="sm"
+                onClick={() => { setModoConsumible(v => !v); setMarcados(new Set()) }}
+                title="Marcar los materiales que pone CADINC para ejecutar y no se le cobran al cliente">
+                {modoConsumible ? '✕ Salir' : '🧰 Consumibles propios'}
+              </Button>
+            )}
           </div>
         </div>
+
+        {/* Barra de la tanda. Muestra la PLATA y no sólo la cantidad: un monto
+            raro se ve, "12 renglones" no. */}
+        {modoConsumible && (
+          <div className="px-4 py-3 bg-azul-light/60 border-y border-azul/20 flex flex-wrap items-center gap-3">
+            <div className="text-xs">
+              <b className="font-mono">{marcados.size}</b> renglón{marcados.size === 1 ? '' : 'es'} ·{' '}
+              <b className="font-mono">{fmtM(plataMarcada)}</b>{' '}
+              {hayDesmarcables ? 'vuelven a la deuda del cliente' : 'salen de la deuda del cliente'}
+            </div>
+            <input
+              className="flex-1 min-w-[180px] max-w-xs px-2 py-1 text-xs border border-gris-mid rounded"
+              placeholder="Motivo (ej: discos de corte)" maxLength={120}
+              value={motivoConsumible} onChange={e => setMotivoConsumible(e.target.value)}
+              disabled={hayDesmarcables}
+            />
+            <Button size="sm" disabled={marcados.size === 0 || marcando}
+              onClick={() => confirmarConsumible(!hayDesmarcables)}>
+              {marcando ? 'Guardando…' : hayDesmarcables ? 'Devolver a la cuenta' : 'Marcar como propios'}
+            </Button>
+          </div>
+        )}
         {cargandoLista && !pagina ? (
           <div className="p-8 flex items-center justify-center gap-3 text-gris-dark text-sm">
             <span className="w-5 h-5 border-2 border-naranja border-t-transparent rounded-full animate-spin" /> Cargando…
@@ -339,6 +418,15 @@ export function CuentaCorrienteTab() {
             items={items}
             mostrarObra={!obraSel}
             vacio={filtro.sin_precio && !filtro.q ? '✓ No hay renglones sin precio con estos filtros.' : 'No hay renglones con estos filtros.'}
+            seleccion={modoConsumible ? {
+              marcados,
+              alternar: (id: number) => setMarcados(s => {
+                const n = new Set(s)
+                if (n.has(id)) n.delete(id); else n.add(id)
+                return n
+              }),
+              bloqueado: bloqueoConsumible,
+            } : undefined}
           />
         )}
         {total > PAGE_SIZE && (

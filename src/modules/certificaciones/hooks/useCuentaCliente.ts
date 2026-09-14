@@ -297,3 +297,28 @@ export function useAnularCertificado() {
     },
   })
 }
+
+/**
+ * Marcar (o desmarcar) renglones como CONSUMIBLE PROPIO de CADINC.
+ *
+ * Lo que ponemos nosotros para ejecutar la tarea y no se le cobra al cliente:
+ * discos de corte, maderas de encofrado. Sólo en obras de presupuesto cerrado;
+ * la base rechaza las de administración y las llave en mano.
+ *
+ * Es todo o nada: si un renglón del lote no se puede marcar, no se marca
+ * ninguno y la respuesta dice cuál falló.
+ */
+export function useMarcarConsumible() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: { obra_cod: string; item_ids: number[]; marcar: boolean; motivo?: string }) =>
+      apiPost<{ obra_cod: string; marcados: number; marcar: boolean; plata: number }>(
+        '/api/cuenta-cliente/consumible', dto),
+    onSuccess: () => {
+      // Mueve plata de columna: hay que refrescar los renglones, el resumen por
+      // obra y mes, y el panel de costos que suma el gasto propio.
+      qc.invalidateQueries({ queryKey: ['cuenta-corriente'] })
+      qc.invalidateQueries({ queryKey: ['cuenta-cliente-pendientes'] })
+    },
+  })
+}

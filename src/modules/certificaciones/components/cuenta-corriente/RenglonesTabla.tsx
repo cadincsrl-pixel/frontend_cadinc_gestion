@@ -12,6 +12,27 @@ interface Props {
   items:       CuentaRenglon[]
   mostrarObra: boolean
   vacio:       string
+  /** Modo "marcar consumibles" (20260914aa): prende la columna de tildes. */
+  seleccion?: {
+    marcados:  Set<number>
+    alternar:  (itemId: number) => void
+    /** null = se puede marcar; string = por qué no, y va en el tooltip. */
+    bloqueado: (r: CuentaRenglon) => string | null
+  }
+}
+
+/**
+ * Por qué un renglón no se puede marcar como consumible. La regla real vive en
+ * la base (marcar_consumible_propio la repite y rechaza el lote entero); acá se
+ * adelanta para que el tilde salga gris con el motivo en vez de dejar tildar
+ * algo que después va a fallar.
+ */
+export function bloqueoConsumible(r: CuentaRenglon): string | null {
+  if (r.cobro_id != null)        return 'Ya está cobrado. Soltalo del pago primero.'
+  if (r.certificado_id != null)  return 'Ya entró en un certificado que tiene el cliente.'
+  if (r.pagado_por === 'cliente') return 'Lo pagó el cliente directo al proveedor: no salió de la caja de CADINC.'
+  if (r.clase === 'epp')         return 'El EPP ya es gasto propio por su clase, en todas las obras.'
+  return null
 }
 
 function EstadoBadge({ r }: { r: CuentaRenglon }) {
@@ -91,10 +112,15 @@ function Factura({ r }: { r: CuentaRenglon }) {
 const th = (align: 'left' | 'right' | 'center' = 'left') =>
   `text-${align} px-3 py-2 text-[10px] font-bold text-gris-dark uppercase tracking-wider whitespace-nowrap bg-gris`
 
-export function RenglonesTabla({ items, mostrarObra, vacio }: Props) {
+export function RenglonesTabla({ items, mostrarObra, vacio, seleccion }: Props) {
   if (items.length === 0) {
     return <div className="px-4 py-8 text-center text-sm text-gris-dark italic">{vacio}</div>
   }
+  // El tilde de la cabecera marca SÓLO lo que se está viendo. Marcar todo el
+  // filtro es otro botón, con el número escrito: nunca se marca algo que no se
+  // vio pasar por pantalla.
+  const marcables = seleccion ? items.filter(r => !seleccion.bloqueado(r)) : []
+  const todosMarcados = marcables.length > 0 && marcables.every(r => seleccion!.marcados.has(r.item_id))
   return (
     <>
       {/* Tabla — desktop */}
@@ -102,6 +128,19 @@ export function RenglonesTabla({ items, mostrarObra, vacio }: Props) {
         <table className="w-full text-sm min-w-[1000px]">
           <thead>
             <tr>
+              {seleccion && (
+                <th className={th('center')}>
+                  <input
+                    type="checkbox"
+                    checked={todosMarcados}
+                    disabled={marcables.length === 0}
+                    onChange={() => marcables.forEach(r => {
+                      if (seleccion.marcados.has(r.item_id) === todosMarcados) seleccion.alternar(r.item_id)
+                    })}
+                    title={marcables.length ? `Tildar los ${marcables.length} de esta página` : 'Ningún renglón de esta página se puede marcar'}
+                  />
+                </th>
+              )}
               <th className={th()}>Fecha</th>
               <th className={th()}>Pedido</th>
               <th className={th()}>Material{mostrarObra ? ' · obra' : ''}</th>
@@ -116,7 +155,23 @@ export function RenglonesTabla({ items, mostrarObra, vacio }: Props) {
           </thead>
           <tbody>
             {items.map(r => (
-              <tr key={r.id} className={`border-t border-gris ${Number(r.precio_unit) === 0 ? 'bg-naranja-light/15' : ''}`}>
+              <tr key={r.id} className={`border-t border-gris ${
+                seleccion?.marcados.has(r.item_id) ? 'bg-azul-light/40'
+                : Number(r.precio_unit) === 0 ? 'bg-naranja-light/15' : ''}`}>
+                {seleccion && (() => {
+                  const motivo = seleccion.bloqueado(r)
+                  return (
+                    <td className="px-3 py-2 text-center">
+                      <input
+                        type="checkbox"
+                        checked={seleccion.marcados.has(r.item_id)}
+                        disabled={!!motivo}
+                        onChange={() => seleccion.alternar(r.item_id)}
+                        title={motivo ?? 'Marcar como consumible propio de CADINC'}
+                      />
+                    </td>
+                  )
+                })()}
                 <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">{fmtFecha(r.fecha_resolucion)}</td>
                 <td className="px-3 py-2 font-mono text-xs text-gris-dark whitespace-nowrap">#{r.solicitud_id}</td>
                 <td className="px-3 py-2">

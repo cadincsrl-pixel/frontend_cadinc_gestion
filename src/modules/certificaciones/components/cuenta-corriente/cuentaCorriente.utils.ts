@@ -4,6 +4,7 @@
 
 import type {
   CuentaEstado, CuentaTipo, CuentaGrupo, CuentaResumenGrupo, CuentaResumenPagos, MaterialesACargoDe,
+  MotivoCadinc,
 } from '@/types/domain.types'
 
 export interface EstadoMeta {
@@ -25,9 +26,16 @@ export const ESTADOS: EstadoMeta[] = [
 
 export const ESTADO_META = Object.fromEntries(ESTADOS.map(e => [e.key, e])) as Record<CuentaEstado, EstadoMeta>
 
-export const MOTIVO_LABEL: Record<'llave_en_mano' | 'epp', string> = {
+/**
+ * Por qué un renglón es gasto de CADINC. Hasta el 14/09 había sólo dos motivos
+ * y por eso 200 renglones de obras internas figuraban como "llave en mano",
+ * que no lo eran. Son cuatro orígenes distintos y ahora tienen cuatro nombres.
+ */
+export const MOTIVO_LABEL: Record<MotivoCadinc, string> = {
   llave_en_mano: 'llave en mano',
   epp:           'EPP',
+  consumible:    'consumible propio',
+  obra_interna:  'obra interna',
 }
 
 export const GRUPOS: { key: CuentaGrupo; label: string }[] = [
@@ -61,6 +69,8 @@ export interface Totales extends Tot {
   porTipo:       Record<CuentaTipo, Tot>
   gastoMaterial: number
   gastoEpp:      number
+  /** Consumible propio marcado a mano (20260914aa): la plata que CADINC pone. */
+  gastoConsumible: number
 }
 
 /** Recorta las filas del resumen por estado y tipo (las dos dimensiones que el server no filtra). */
@@ -72,8 +82,8 @@ export function totalizar(grupos: CuentaResumenGrupo[]): Totales {
   const t: Totales = {
     ...tot0(),
     porEstado: { a_cobrar: tot0(), cobrado: tot0(), pago_directo: tot0(), gasto_cadinc: tot0() },
-    porTipo:   { material: tot0(), epp: tot0() },
-    gastoMaterial: 0, gastoEpp: 0,
+    porTipo:   { material: tot0(), epp: tot0(), consumible: tot0() },
+    gastoMaterial: 0, gastoEpp: 0, gastoConsumible: 0,
   }
   for (const g of grupos) {
     const n = Number(g.total)
@@ -83,7 +93,12 @@ export function totalizar(grupos: CuentaResumenGrupo[]): Totales {
       acc.sin_precio += g.sin_precio
     }
     if (g.estado === 'gasto_cadinc') {
-      if (g.tipo === 'epp') t.gastoEpp += n; else t.gastoMaterial += n
+      // Tres bolsas y no dos: el consumible propio es plata que CADINC pone a
+      // propósito para ejecutar, y es el número que el dueño quiere ver
+      // separado del EPP y de lo de llave en mano.
+      if (g.tipo === 'epp') t.gastoEpp += n
+      else if (g.tipo === 'consumible') t.gastoConsumible += n
+      else t.gastoMaterial += n
     }
   }
   return t
