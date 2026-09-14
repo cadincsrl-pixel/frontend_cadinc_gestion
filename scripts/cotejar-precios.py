@@ -29,7 +29,7 @@ import json, os, re, sys, unicodedata, urllib.request
 
 IVA_DEFAULT = 0.21
 PAQUETE = {'unid', 'rollo', 'lata', 'balde', 'bolsa', 'caja', 'par', 'juego', 'tira', 'pack'}
-UMBRAL_NOMBRE = 0.55      # cobertura mínima del texto del proveedor para proponer match
+UMBRAL_NOMBRE = 0.50      # cobertura ponderada mínima del texto del proveedor para proponer match
 UMBRAL_ALERTA = 0.20      # a partir de acá el cambio de precio se destaca
 
 
@@ -64,7 +64,50 @@ def traer_catalogo(url, key):
 def norm(s):
     s = unicodedata.normalize('NFD', str(s or '').lower())
     s = ''.join(c for c in s if unicodedata.category(c) != 'Mn')
-    return re.sub(r'[^a-z0-9]+', ' ', s).split()
+    # Las fracciones sobreviven como UN token: 1/2 -> 1|2, y 1-1/2 o 1.1/2 -> 1|1|2.
+    # Sin esto la medida se desarma en digitos sueltos y "1/2" matchea igual de
+    # bien a una ficha de 1-1/2 que a la de 1/2: fue exactamente lo que paso el
+    # 14/09 con las planchuelas, donde los precios de la 1/2 y la 3/4 se
+    # atribuyeron a la ficha de 1-1/2 (que ademas estaba en $0) y las dos fichas
+    # con precio nunca se compararon. En herreria y sanitaria la fraccion ES el
+    # producto.
+    s = re.sub(r'(\d+)\s*[-.]\s*(\d+)\s*/\s*(\d+)', r' \1|\2|\3 ', s)
+    s = re.sub(r'(\d+)\s*/\s*(\d+)', r' \1|\2 ', s)
+    return re.sub(r'[^a-z0-9|]+', ' ', s).split()
+
+
+def pesos_de(lista_tokens):
+    """Devuelve la función de peso para UN texto de proveedor.
+
+    Sin pesos todos los tokens valen igual y "PLANCHUELA 3/4 X 1/8" empata con
+    un ÁNGULO de 3/4 y con la planchuela correcta: los dos comparten tres
+    tokens, sólo que el ángulo comparte números y la planchuela comparte el
+    sustantivo. Ganaba el de id más bajo, o sea el ángulo.
+
+    Dos señales, en orden de importancia:
+      · el SUSTANTIVO (primer token alfabético) es QUÉ es la cosa. Un ángulo no
+        es una planchuela por más medidas que compartan.
+      · la MEDIDA en fracción: en herrería y sanitaria 1/2 no es 1-1/2.
+    Un dígito suelto o una letra sola ("x", "1", "92") no dicen nada.
+    """
+    sust = next((x for x in lista_tokens if x.isalpha() and len(x) >= 3), None)
+
+    def w(tok):
+        # Un código de producto (1tmf202006r1400p, ez9r36240, kd40710) es prueba
+        # dura: identifica la pieza exacta, incluida la marca. Sin esto el
+        # disyuntor ABB de la planilla se emparejaba con la ficha del SCHNEIDER
+        # equivalente, que cuesta distinto, aunque la ficha del ABB tuviera el
+        # código del renglón cargado como sinónimo.
+        if len(tok) >= 6 and not tok.isdigit() and not tok.isalpha() and '|' not in tok:
+            return 8
+        if tok == sust:
+            return 5
+        if '|' in tok:
+            return 3
+        if len(tok) == 1 or tok.isdigit():
+            return 1
+        return 2
+    return w
 
 
 def cantidades(texto):
@@ -111,6 +154,12 @@ def leer_planilla(ruta):
             desc=ws.cell(r, 5).value, unidad_base=ws.cell(r, 12).value, contenido=contenido,
             civa=round(neto * (1 + iva), 2),
             base_civa=round(neto * (1 + iva) / contenido, 2)
+            if isinstance(contenido, (int, float)) and contenido else None,
+            # El numero que se copia del comprobante tal cual, SIN bonificacion y
+            # SIN IVA. No sirve para tasar; sirve para detectar al que lo cargo
+            # asi, que es el error de carga mas comun (tornilleria 14/09).
+            lista_env=round(lista, 2),
+            lista_base=round(lista / contenido, 2)
             if isinstance(contenido, (int, float)) and contenido else None))
     return filas, iva
 
@@ -138,15 +187,27 @@ def cotejar(filas, fichas):
     for f in ultimo.values():
         ficha, via = (por_alias.get(f['cod'].lower()) if f['cod'] else None), 'codigo'
         if not ficha:
-            t, mejor, puntaje = set(norm(f['desc'])), None, 0
+            tl = norm(f['desc'])
+            t, mejor, puntaje = set(tl), None, 0
+            peso = pesos_de(tl)
+            total = sum(peso(x) for x in t) or 1
             for c in fichas:
                 ct = tokens[c['id']]
                 if not ct:
                     continue
-                # cobertura del texto del proveedor, NO Jaccard: una ficha con 20
-                # sinónimos tiene un blob enorme y el Jaccard la hunde sin motivo.
-                j = len(t & ct) / len(t)
-                if j > puntaje:
+                # cobertura PONDERADA del texto del proveedor, NO Jaccard: una ficha
+                # con 20 sinónimos tiene un blob enorme y el Jaccard la hunde sin
+                # motivo. Los pesos están en peso(): la medida vale más que un
+                # dígito suelto, que es lo que separa la ficha correcta del vecino
+                # que comparte números por casualidad.
+                j = sum(peso(x) for x in (t & ct)) / total
+                # Desempate: gana la que TIENE precio. Con puntaje igual, una ficha
+                # en $0 es casi siempre la que nadie usa, y elegirla deja el renglón
+                # en "sin_precio" — o sea que el cotejo da verde y la ficha que sí
+                # se factura nunca se compara (planchuelas, 14/09).
+                if j > puntaje or (j == puntaje and j > 0 and mejor is not None
+                                   and float(c['precio_ref'] or 0) > 0
+                                   and float(mejor['precio_ref'] or 0) == 0):
                     puntaje, mejor = j, c
             ficha, via = (mejor, f'nombre {puntaje:.0%}') if puntaje >= UMBRAL_NOMBRE else (None, None)
         if not ficha:
@@ -154,10 +215,36 @@ def cotejar(filas, fichas):
                                precio=f['civa']))
             continue
 
+        # 'unid' en la ficha es UNA pieza. Si la planilla cotiza la caja y su
+        # unidad base también son unidades, lo comparable es el precio de la
+        # pieza, no el de la caja: con la regla de PAQUETE sola, los seis
+        # tornillos de durlock daban +9.900% y quedaban en "revisar" para
+        # siempre, que es como el error de IVA del 14/09 sobrevivió al cotejo.
+        por_pieza = (str(f.get('unidad_base') or '').lower() in ('un', 'u', 'unid')
+                     and isinstance(f['contenido'], (int, float)) and f['contenido'] > 1)
+
         # la columna correcta depende de cómo se mide la ficha
-        nuevo = f['civa'] if ficha['unidad'] in PAQUETE else (f['base_civa'] or f['civa'])
+        if por_pieza and f['base_civa']:
+            nuevo, crudo = f['base_civa'], f['lista_base']
+        elif ficha['unidad'] in PAQUETE:
+            nuevo, crudo = f['civa'], f['lista_env']
+        else:
+            nuevo, crudo = (f['base_civa'] or f['civa']), (f['lista_base'] or f['lista_env'])
         actual = float(ficha['precio_ref'] or 0)
         dif = round((nuevo - actual) / actual * 100, 1) if actual and nuevo else None
+
+        # ¿La ficha quedó cargada con el número CRUDO del comprobante? Es el error
+        # de carga más caro y no se ve como error: el precio "existe" y parece
+        # razonable, sólo que le falta el IVA, la bonificación, o las dos. Buscar
+        # un +21% exacto no alcanza — con una bonificación del 2% la diferencia
+        # baja a +18,6% y se escapa (Hierro plano 1/2", 14/09).
+        # La tolerancia es del 0,1% y no más: el patrón es que alguien copió el
+        # número TAL CUAL, así que tiene que ser el mismo número, no uno parecido.
+        # Con 0,6% entraban dos fichas cuyo precio caía por casualidad a medio
+        # punto del lista de otro renglón, y las dos eran falsas alarmas.
+        es_crudo = bool(actual and crudo and nuevo
+                        and abs(actual - crudo) / crudo < 0.001
+                        and nuevo / actual > 1.02)
 
         # ¿hablan de la misma presentación? dos señales distintas
         ce, cf = cantidades(f['desc']), cantidades(ficha['nombre'])
@@ -167,7 +254,9 @@ def cotejar(filas, fichas):
         motivo = None
         if choque:
             motivo = 'la medida del envase no coincide (' + ', '.join(choque) + ')'
-        elif pack and ficha['unidad'] in ('unid', 'un'):
+        elif pack and not por_pieza and ficha['unidad'] in ('unid', 'un'):
+            # sólo avisa si NO se pudo bajar a precio por pieza; si la planilla
+            # declara el contenido de la caja, la comparación ya es correcta
             motivo = f'la planilla cotiza la caja de {pack} y la ficha va por unidad'
         # un salto grande sobre un match por nombre flojo es otro producto, no un aumento
         elif via != 'codigo' and dif is not None and abs(dif) >= UMBRAL_ALERTA * 100:
@@ -186,7 +275,7 @@ def cotejar(filas, fichas):
             estado=estado, via=via, cod=f['cod'], desc=f['desc'], prov=f['prov'],
             fecha=f['fecha'], rubro=f['rubro'], ficha=ficha['id'], nombre=ficha['nombre'],
             unidad=ficha['unidad'], clase=ficha['clase'], actual=actual, nuevo=nuevo,
-            dif=dif, motivo=motivo))
+            dif=dif, motivo=motivo, crudo=es_crudo))
     return salida
 
 
@@ -213,6 +302,16 @@ def main():
     print(f"  {len(revisar):4}  A REVISAR  el match no convence, ver el motivo de cada uno")
     print(f"  {len(cero):4}  SIN PRECIO la ficha está en $0, no hay contra qué comparar")
     print(f"  {len(sin):4}  SIN FICHA  no existe en el catálogo")
+
+    # Esto va PRIMERO y separado: no es un aumento a mirar, es un precio mal
+    # cargado. Se le está facturando al cliente menos de lo que costó.
+    crudas = [r for r in res if r.get('crudo')]
+    if crudas:
+        print(f"\n  ⚠ {len(crudas)} con el NÚMERO CRUDO DEL COMPROBANTE (le falta IVA "
+              f"y/o la bonificación):")
+        for r in sorted(crudas, key=lambda x: -(x['nuevo'] / x['actual'])):
+            print(f"    #{r['ficha']:<5} {r['nombre'][:38]:38} ${r['actual']:>10,.2f} -> "
+                  f"${r['nuevo']:>10,.2f}  (+{(r['nuevo'] / r['actual'] - 1) * 100:4.1f}%)  {r['prov']}")
 
     if mueven:
         print(f"\n  de los {len(comparables)} comparables, {len(mueven)} se mueven más de "
