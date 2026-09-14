@@ -29,7 +29,7 @@ import json, os, re, sys, unicodedata, urllib.request
 
 IVA_DEFAULT = 0.21
 PAQUETE = {'unid', 'rollo', 'lata', 'balde', 'bolsa', 'caja', 'par', 'juego', 'tira', 'pack'}
-UMBRAL_NOMBRE = 0.34      # similitud mínima para proponer un match por nombre
+UMBRAL_NOMBRE = 0.55      # cobertura mínima del texto del proveedor para proponer match
 UMBRAL_ALERTA = 0.20      # a partir de acá el cambio de precio se destaca
 
 
@@ -120,7 +120,14 @@ def cotejar(filas, fichas):
     for f in fichas:
         for a in (f.get('alias') or []):
             por_alias.setdefault(str(a).strip().lower(), f)
-    tokens = {f['id']: set(norm(f['nombre'])) for f in fichas}
+    # El emparejamiento por nombre mira TAMBIÉN los sinónimos. Sin esto se pierden
+    # todas las fichas cuyo nombre técnico no se parece al del proveedor: la jabalina
+    # ("Jabalina puesta a tierra" contra "JABALINA 1/2 X 1.5 M C/TOMACABLE"), las
+    # cuplas contra las "uniones", las "Terminal puntera" contra las "PUNTERA HUECA
+    # TUBULAR". Varias de esas fichas ya tenían el texto del proveedor cargado como
+    # sinónimo de una tanda anterior, y aun así no matcheaban.
+    tokens = {f['id']: set(norm(f['nombre'] + ' ' + ' '.join(f.get('alias') or [])))
+              for f in fichas}
 
     # un renglón por producto: el comprobante más nuevo gana
     ultimo = {}
@@ -136,7 +143,9 @@ def cotejar(filas, fichas):
                 ct = tokens[c['id']]
                 if not ct:
                     continue
-                j = len(t & ct) / len(t | ct)
+                # cobertura del texto del proveedor, NO Jaccard: una ficha con 20
+                # sinónimos tiene un blob enorme y el Jaccard la hunde sin motivo.
+                j = len(t & ct) / len(t)
                 if j > puntaje:
                     puntaje, mejor = j, c
             ficha, via = (mejor, f'nombre {puntaje:.0%}') if puntaje >= UMBRAL_NOMBRE else (None, None)
