@@ -25,7 +25,7 @@ import {
   freezeHeader,
   setColWidths,
 } from '../helpers/cells'
-import { FMT_FECHA, FMT_HORAS, FMT_MONEDA_CERO } from '../helpers/formatters'
+import { FMT_FECHA, FMT_HORAS, FMT_JORNALES, FMT_MONEDA_CERO } from '../helpers/formatters'
 import type { DetalleRow, ExportData } from '../types'
 
 export const DETALLE_SHEET_NAME = 'Detalle Semanal'
@@ -38,9 +38,10 @@ export const DETALLE_COL = {
   COBRO:    4,
   NOMBRE:   5,
   CAT_ESP:  6,
-  HORAS:    7,
-  MONTO:    8,
-  CIERRE:   9,
+  JORNALES: 7,
+  HORAS:    8,
+  MONTO:    9,
+  CIERRE:   10,
 } as const
 const HEADERS = [
   'Tipo',
@@ -49,6 +50,7 @@ const HEADERS = [
   'Cobro',
   'Nombre / Contratista',
   'Categoría / Especialidad',
+  'Jornales',
   'Horas',
   'Monto',
   'Cierre',
@@ -58,7 +60,7 @@ const HEADER_ROW = 3
 
 export function buildDetalleSemanalSheet(wb: ExcelJS.Workbook, data: ExportData): void {
   const ws = wb.addWorksheet(DETALLE_SHEET_NAME)
-  setColWidths(ws, [12, 10, 26, 12, 28, 24, 10, 16, 12])
+  setColWidths(ws, [12, 10, 26, 12, 28, 24, 10, 10, 16, 12])
 
   // ── Fila 1: título ────────────────────────────────────────────
   applyTitle(ws, `DETALLE SEMANAL — ${data.meta.obraNom} (${data.meta.obraCod})`, COL_COUNT)
@@ -135,6 +137,15 @@ function writeRow(ws: ExcelJS.Worksheet, rowIdx: number, r: DetalleRow): void {
 
   row.getCell(DETALLE_COL.CAT_ESP).value = r.catEspecialidad
   row.getCell(DETALLE_COL.CAT_ESP).alignment = { horizontal: 'left', vertical: 'middle' }
+
+  // Jornales (días con horas). null → "—" en contratistas.
+  if (r.jornales !== null) {
+    row.getCell(DETALLE_COL.JORNALES).value  = r.jornales
+    row.getCell(DETALLE_COL.JORNALES).numFmt = FMT_JORNALES
+  } else {
+    row.getCell(DETALLE_COL.JORNALES).value = '—'
+  }
+  row.getCell(DETALLE_COL.JORNALES).alignment = { horizontal: 'right', vertical: 'middle' }
 
   // Horas (null → "—").
   if (r.horas !== null) {

@@ -21,7 +21,7 @@ import {
   applyTotalRow,
   setColWidths,
 } from '../helpers/cells'
-import { FMT_HORAS, FMT_MONEDA } from '../helpers/formatters'
+import { FMT_HORAS, FMT_JORNALES, FMT_MONEDA } from '../helpers/formatters'
 import {
   C_AZUL_LIGHT,
   STYLE_DATA,
@@ -77,6 +77,10 @@ export function buildResumenSheet(wb: ExcelJS.Workbook, data: ExportData): void 
     formula: `B${opStart}+B${opStart + 1}`,
     result: data.totalesObra.hsTotal,
   }, FMT_HORAS)
+  row++
+  // Jornales = días-persona con horas. Va después del total de horas y no
+  // adentro de la suma: días y horas no se suman entre sí.
+  writeKpiRow(ws, row, 'Jornales (días trabajados)', data.totalesObra.jornales, FMT_JORNALES)
   row += 2
 
   // ── Sección: COSTOS DE LA OBRA ──────────────────────────────────

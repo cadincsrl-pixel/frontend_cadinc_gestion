@@ -57,6 +57,10 @@ export function collectData(input: ExportInput): ExportData {
   const horas = horasAll.filter(h =>
     h.obra_cod === obra.cod && semOk(toISO(getViernes(new Date(h.fecha + 'T12:00:00')))),
   )
+  // Jornales = días con horas regulares > 0. Una fila con 0 hs no es un día
+  // trabajado, y las hs extras (por semana, sin fecha) no suman días.
+  const jornalesLeg = (leg: string, fechasISO: string[]) =>
+    fechasISO.reduce((n, f) => n + ((horas.find(x => x.leg === leg && x.fecha === f)?.horas ?? 0) > 0 ? 1 : 0), 0)
   const hsExtras = hsExtrasAll.filter(x =>
     x.obra_cod === obra.cod && x.hs > 0 && semOk(x.sem_key),
   )
@@ -114,6 +118,7 @@ export function collectData(input: ExportInput): ExportData {
     let hsReg = 0
     let hsExt = 0
     let costoOp = 0
+    let jornales = 0
     for (const leg of legsEnObra) {
       const reg = fechasISO.reduce((sum, f) => {
         const h = horas.find(x => x.leg === leg && x.fecha === f)
@@ -122,6 +127,7 @@ export function collectData(input: ExportInput): ExportData {
       const ext = getHsExtrasLeg(hsExtras, obra.cod, leg, sk)
       hsReg += reg
       hsExt += ext
+      jornales += jornalesLeg(leg, fechasISO)
       // costoLegConCatObra ya incluye extras × VH efectivo.
       costoOp += Math.round(
         costoLegConCatObra(horas, hsExtras, personalAll, categorias, tarifasAll, catObraAll, obra.cod, leg, days) / 1000,
@@ -139,6 +145,7 @@ export function collectData(input: ExportInput): ExportData {
       periodoCorto:      fmtPeriodoCorto(sk),
       cobro:             getViernesCobro(vie),
       estadoCierre,
+      jornales,
       hsRegulares:       hsReg,
       hsExtras:          hsExt,
       hsTotal:           hsReg + hsExt,
@@ -153,6 +160,7 @@ export function collectData(input: ExportInput): ExportData {
     let hsReg = 0
     let hsExt = 0
     let monto = 0
+    let jornales = 0
     let semanasConVH = 0
     // Primera y última semana en que este leg realmente tarjó en el período:
     // son la referencia para la categoría, no la fecha de hoy.
@@ -175,6 +183,7 @@ export function collectData(input: ExportInput): ExportData {
 
       hsReg += reg
       hsExt += ext
+      jornales += jornalesLeg(pdo.leg, fechasISO)
       monto += Math.round(
         costoLegConCatObra(horas, hsExtras, personalAll, categorias, tarifasAll, catObraAll, obra.cod, pdo.leg, days) / 1000,
       ) * 1000
@@ -210,6 +219,7 @@ export function collectData(input: ExportInput): ExportData {
       nom:                pdo.nom,
       dni:                pdo.dni,
       catNomPeriodo,
+      jornales,
       hsRegulares:        hsReg,
       hsExtras:           hsExt,
       hsTotal:            hsReg + hsExt,
@@ -243,7 +253,7 @@ export function collectData(input: ExportInput): ExportData {
         ) * 1000
         const catId = getCatIdEfectivo(catObraAll, personalAll, obra.cod, pdo.leg, sem.semKey)
         const catNom = catId ? (categorias.find(c => c.id === catId)?.nom ?? '—') : '—'
-        return { pdo, hs, monto, catNom }
+        return { pdo, hs, monto, catNom, jornales: jornalesLeg(pdo.leg, fechasISO) }
       })
       .filter((x): x is NonNullable<typeof x> => x !== null)
 
@@ -256,6 +266,7 @@ export function collectData(input: ExportInput): ExportData {
         cobro:           sem.cobro,
         nombre:          op.pdo.nom,
         catEspecialidad: op.catNom,
+        jornales:        op.jornales,
         horas:           op.hs,
         monto:           op.monto,
         estadoCierre:    sem.estadoCierre,
@@ -280,6 +291,7 @@ export function collectData(input: ExportInput): ExportData {
         cobro:           sem.cobro,
         nombre:          c.nombre,
         catEspecialidad: c.especialidad,
+        jornales:        null,
         horas:           null,
         monto:           Math.round(c.cert.monto / 1000) * 1000,
         estadoCierre:    sem.estadoCierre,
@@ -295,6 +307,7 @@ export function collectData(input: ExportInput): ExportData {
       cobro:           null,
       nombre:          `Subtotal ${sem.periodoCorto}`,
       catEspecialidad: '',
+      jornales:        sem.jornales,
       horas:           sem.hsTotal,
       monto:           sem.costoOperarios + sem.costoContratistas,
       estadoCierre:    null,
@@ -336,6 +349,7 @@ export function collectData(input: ExportInput): ExportData {
         nom:         pdo.nom,
         catNom,
         horasPorDia,
+        jornales:    Object.keys(horasPorDia).length,
         hsExtras:    hsExt,
         totalHs:     hsReg + hsExt,
         monto,
@@ -410,6 +424,7 @@ export function collectData(input: ExportInput): ExportData {
 
   // ── 11. Totales globales de obra ───────────────────────────────
   const totalesObra = {
+    jornales:           semanas.reduce((s, sem) => s + sem.jornales, 0),
     hsRegulares:        semanas.reduce((s, sem) => s + sem.hsRegulares, 0),
     hsExtras:           semanas.reduce((s, sem) => s + sem.hsExtras, 0),
     hsTotal:            semanas.reduce((s, sem) => s + sem.hsTotal, 0),

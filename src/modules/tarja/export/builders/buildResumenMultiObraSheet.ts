@@ -16,7 +16,7 @@ import {
   freezeHeader,
   setColWidths,
 } from '../helpers/cells'
-import { FMT_HORAS, FMT_MONEDA_CERO } from '../helpers/formatters'
+import { FMT_HORAS, FMT_JORNALES, FMT_MONEDA_CERO } from '../helpers/formatters'
 import { sumRange } from '../helpers/formulas'
 import type { ExportData } from '../types'
 
@@ -25,6 +25,7 @@ const HEADERS = [
   'Código',
   'Obra',
   'Centro Costo',
+  'Jornales',
   'Horas reg.',
   'Hs extras',
   'Hs totales',
@@ -40,19 +41,20 @@ const COL = {
   COD:        1,
   OBRA:       2,
   CC:         3,
-  HS_REG:     4,
-  HS_EXT:     5,
-  HS_TOT:     6,
-  COSTO_OP:   7,
-  COSTO_CONT: 8,
-  OTORGADOS:  9,
-  DESCUENTOS: 10,
-  NETO:       11,
+  JORNALES:   4,
+  HS_REG:     5,
+  HS_EXT:     6,
+  HS_TOT:     7,
+  COSTO_OP:   8,
+  COSTO_CONT: 9,
+  OTORGADOS:  10,
+  DESCUENTOS: 11,
+  NETO:       12,
 } as const
 
 export function buildResumenMultiObraSheet(wb: ExcelJS.Workbook, datas: ExportData[]): void {
   const ws = wb.addWorksheet(SHEET_NAME)
-  setColWidths(ws, [12, 28, 16, 12, 12, 12, 18, 18, 14, 14, 18])
+  setColWidths(ws, [12, 28, 16, 10, 12, 12, 12, 18, 18, 14, 14, 18])
 
   // ── Fila 1: título ─────────────────────────────────────────────
   applyTitle(ws, `COMPARATIVA MULTI-OBRA — ${datas.length} obra${datas.length !== 1 ? 's' : ''}`, COL_COUNT)
@@ -81,6 +83,9 @@ export function buildResumenMultiObraSheet(wb: ExcelJS.Workbook, datas: ExportDa
 
     r.getCell(COL.CC).value = data.meta.obraCC ?? ''
     r.getCell(COL.CC).alignment = { horizontal: 'left', vertical: 'middle' }
+
+    r.getCell(COL.JORNALES).value  = data.totalesObra.jornales
+    r.getCell(COL.JORNALES).numFmt = FMT_JORNALES
 
     r.getCell(COL.HS_REG).value  = data.totalesObra.hsRegulares
     r.getCell(COL.HS_REG).numFmt = FMT_HORAS
@@ -123,6 +128,7 @@ export function buildResumenMultiObraSheet(wb: ExcelJS.Workbook, datas: ExportDa
   totalRow.getCell(COL.OBRA).alignment = { horizontal: 'left', vertical: 'middle', indent: 1 }
 
   const totalsByCol: Array<{ col: number; fmt: string; result: number }> = [
+    { col: COL.JORNALES,   fmt: FMT_JORNALES,     result: sumOf(datas, d => d.totalesObra.jornales) },
     { col: COL.HS_REG,     fmt: FMT_HORAS,        result: sumOf(datas, d => d.totalesObra.hsRegulares) },
     { col: COL.HS_EXT,     fmt: FMT_HORAS,        result: sumOf(datas, d => d.totalesObra.hsExtras) },
     { col: COL.HS_TOT,     fmt: FMT_HORAS,        result: sumOf(datas, d => d.totalesObra.hsTotal) },

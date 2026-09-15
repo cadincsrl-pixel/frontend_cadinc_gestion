@@ -61,6 +61,13 @@ export interface SemanaTotal {
   cobro:             Date
   /** Estado del CIERRE de la semana (tabla `cierres`), no de las certificaciones. */
   estadoCierre:      'pendiente' | 'cerrado'
+  /**
+   * Jornales de la semana: cuántos días-persona tuvieron horas regulares
+   * cargadas (> 0). Las hs extras van por semana, no por día, así que no
+   * suman jornales. Pedido del dueño (2026-09-14): el Excel decía las horas
+   * pero no cuántos días trabajó cada uno.
+   */
+  jornales:          number
   hsRegulares:       number
   hsExtras:          number
   hsTotal:           number
@@ -79,6 +86,8 @@ export interface OperarioTotal {
    * que etiqueta e importe se contradecían.
    */
   catNomPeriodo:      string
+  /** Días con horas regulares > 0 en la obra dentro del período. */
+  jornales:           number
   hsRegulares:        number
   hsExtras:           number
   hsTotal:            number
@@ -101,6 +110,8 @@ export interface DetalleRow {
   cobro:           Date | null
   nombre:          string
   catEspecialidad: string
+  /** Días con horas esa semana. `null` en contratistas; en subtotales, la suma de la semana. */
+  jornales:        number | null
   /** `null` para contratistas y subtotales sin horas. */
   horas:           number | null
   monto:           number
@@ -114,6 +125,8 @@ export interface PlanillaSemanaOperario {
   catNom:       string
   /** Mapa `ISO yyyy-mm-dd → horas regulares` (solo días con horas > 0). */
   horasPorDia:  Record<string, number>
+  /** Cantidad de días con horas esa semana (= claves de `horasPorDia`). */
+  jornales:     number
   hsExtras:     number
   totalHs:      number
   /** Costo de la semana incluyendo hs_extras × VH efectivo (`costoLegConCatObra`). */
@@ -170,6 +183,7 @@ export interface ExportData {
   semanas:        SemanaTotal[]
   operarios:      OperarioTotal[]
   totalesObra: {
+    jornales:           number
     hsRegulares:        number
     hsExtras:           number
     hsTotal:            number

@@ -3,7 +3,7 @@
  * sola pestaña, una abajo de la otra con un separador claro por semana.
  *
  * Formato familiar de la app TarjaTable y la planilla de papel:
- *   Leg | Nombre | Categoría | Vie | Sáb | Dom | Lun | Mar | Mié | Jue | HsExt | TOTAL | Costo
+ *   Leg | Nombre | Categoría | Vie | Sáb | Dom | Lun | Mar | Mié | Jue | HsExt | TOTAL | Jornales | Costo
  *
  * Cada bloque termina con una fila TOTAL (sumas por columna). El costo de
  * la semana se calcula en `collectData.planillas[].sem.costoOperarios`.
@@ -27,27 +27,28 @@ import {
   freezeHeader,
   setColWidths,
 } from '../helpers/cells'
-import { FMT_HORAS, FMT_MONEDA_CERO, fmtDiaSemana } from '../helpers/formatters'
+import { FMT_HORAS, FMT_JORNALES, FMT_MONEDA_CERO, fmtDiaSemana } from '../helpers/formatters'
 import { sumRange } from '../helpers/formulas'
 import { C_AZUL_LIGHT, C_CARBON } from '../helpers/styles'
 import { getSemDays, toISO } from '@/lib/utils/dates'
 import type { ExportData, PlanillaMatrix } from '../types'
 
 const SHEET_NAME = 'Planillas Tarja'
-const COL_COUNT = 13
+const COL_COUNT = 14
 const COL = {
-  LEG:    1,
-  NOMBRE: 2,
-  CAT:    3,
+  LEG:      1,
+  NOMBRE:   2,
+  CAT:      3,
   // D..J → 7 días (índices 4..10)
-  HS_EXT: 11,
-  TOTAL:  12,
-  COSTO:  13,
+  HS_EXT:   11,
+  TOTAL:    12,
+  JORNALES: 13,
+  COSTO:    14,
 } as const
 
 export function buildPlanillasTarjaSheet(wb: ExcelJS.Workbook, data: ExportData): void {
   const ws = wb.addWorksheet(SHEET_NAME)
-  setColWidths(ws, [8, 28, 18, 9, 9, 9, 9, 9, 9, 9, 10, 10, 14])
+  setColWidths(ws, [8, 28, 18, 9, 9, 9, 9, 9, 9, 9, 10, 10, 9, 14])
 
   // ── Fila 1: título ─────────────────────────────────────────────
   applyTitle(ws, `PLANILLAS DE TARJA — ${data.meta.obraNom} (${data.meta.obraCod})`, COL_COUNT)
@@ -108,6 +109,7 @@ function writeMatrix(ws: ExcelJS.Worksheet, startRow: number, matrix: PlanillaMa
     ...days.map(d => `${fmtDiaSemana(d)} ${d.getDate()}/${d.getMonth() + 1}`),
     'Hs Extras',
     'TOTAL',
+    'Jornales',
     'Costo',
   ]
   const headerRow = ws.getRow(headerRowIdx)
@@ -174,7 +176,16 @@ function writeMatrix(ws: ExcelJS.Worksheet, startRow: number, matrix: PlanillaMa
     totCell.font   = { name: 'Calibri', size: 10, bold: true }
     totCell.alignment = { horizontal: 'right', vertical: 'middle' }
 
-    // Costo (M) — viene pre-calculado de collectData.
+    // Jornales (M): cuántos de los 7 días tienen horas. Con fórmula
+    // =COUNT(D<row>:J<row>) — cuenta solo celdas numéricas, y los días sin
+    // horas van como "—" (texto), así que si el user pisa un día a mano el
+    // conteo sigue de pie.
+    const jornCell = r.getCell(COL.JORNALES)
+    jornCell.value  = { formula: `COUNT(${colLetter(4)}${row}:${colLetter(10)}${row})`, result: op.jornales }
+    jornCell.numFmt = FMT_JORNALES
+    jornCell.alignment = { horizontal: 'right', vertical: 'middle' }
+
+    // Costo (N) — viene pre-calculado de collectData.
     const costoCell = r.getCell(COL.COSTO)
     costoCell.value  = op.monto
     costoCell.numFmt = FMT_MONEDA_CERO
@@ -190,7 +201,7 @@ function writeMatrix(ws: ExcelJS.Worksheet, startRow: number, matrix: PlanillaMa
   totalRow.getCell(COL.NOMBRE).value = 'TOTAL'
   totalRow.getCell(COL.NOMBRE).alignment = { horizontal: 'left', vertical: 'middle', indent: 1 }
 
-  // Sumas por columna (D..K → horas; L → total; M → costo).
+  // Sumas por columna (D..K → horas; L → total; M → jornales; N → costo).
   for (let c = 4; c <= COL.COSTO; c++) {
     const letter = colLetter(c)
     const range = `${letter}${firstDataRow}:${letter}${lastDataRow}`
@@ -203,12 +214,14 @@ function writeMatrix(ws: ExcelJS.Worksheet, startRow: number, matrix: PlanillaMa
       result = operarios.reduce((s, op) => s + op.hsExtras, 0)
     } else if (c === COL.TOTAL) {
       result = sem.hsRegulares + sem.hsExtras
+    } else if (c === COL.JORNALES) {
+      result = sem.jornales
     } else if (c === COL.COSTO) {
       result = sem.costoOperarios
     }
     const cell = totalRow.getCell(c)
     cell.value  = { formula: sumRange(range), result }
-    cell.numFmt = c === COL.COSTO ? FMT_MONEDA_CERO : FMT_HORAS
+    cell.numFmt = c === COL.COSTO ? FMT_MONEDA_CERO : c === COL.JORNALES ? FMT_JORNALES : FMT_HORAS
     cell.alignment = { horizontal: 'right', vertical: 'middle' }
   }
   applyTotalRow(ws, row, COL_COUNT)

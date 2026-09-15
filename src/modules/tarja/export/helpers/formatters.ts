@@ -13,6 +13,8 @@ export const FMT_MONEDA_CERO = '"$"#,##0;[Red]"-$"#,##0;"—"'
 export const FMT_FECHA       = 'dd/mm/yyyy'
 export const FMT_HORAS       = '#,##0.##" hs"'
 export const FMT_HORAS_INT   = '#,##0" hs"'
+/** Jornales (días trabajados): entero, sin sufijo — el encabezado ya lo dice. */
+export const FMT_JORNALES    = '#,##0'
 
 // ── Parsers ───────────────────────────────────────────────────────
 

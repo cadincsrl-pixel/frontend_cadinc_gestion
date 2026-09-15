@@ -30,7 +30,7 @@ import {
   freezeHeader,
   setColWidths,
 } from '../helpers/cells'
-import { FMT_HORAS, FMT_MONEDA_CERO } from '../helpers/formatters'
+import { FMT_HORAS, FMT_JORNALES, FMT_MONEDA_CERO } from '../helpers/formatters'
 import { sumRange, sumifs } from '../helpers/formulas'
 import { STYLE_WARNING } from '../helpers/styles'
 import type { ExportData } from '../types'
@@ -42,6 +42,7 @@ const HEADERS = [
   'Legajo',
   'Nombre',
   'Categoría',
+  'Jornales',
   'Hs regulares',
   'Hs extras',
   'Monto bruto',
@@ -57,17 +58,18 @@ const COL = {
   LEG:        1,
   NOMBRE:     2,
   CAT:        3,
-  HS_REG:     4,
-  HS_EXT:     5,
-  MONTO:      6,
-  OTORGADOS:  7,
-  DESCUENTOS: 8,
-  NETO:       9,
+  JORNALES:   4,
+  HS_REG:     5,
+  HS_EXT:     6,
+  MONTO:      7,
+  OTORGADOS:  8,
+  DESCUENTOS: 9,
+  NETO:       10,
 } as const
 
 export function buildTotalesOperarioSheet(wb: ExcelJS.Workbook, data: ExportData): void {
   const ws = wb.addWorksheet(SHEET_NAME)
-  setColWidths(ws, [10, 28, 22, 12, 12, 16, 14, 14, 16])
+  setColWidths(ws, [10, 28, 22, 10, 12, 12, 16, 14, 14, 16])
 
   // ── Fila 1: título ─────────────────────────────────────────────
   applyTitle(ws, `TOTALES POR OPERARIO — ${data.meta.obraNom} (${data.meta.obraCod})`, COL_COUNT)
@@ -118,6 +120,12 @@ export function buildTotalesOperarioSheet(wb: ExcelJS.Workbook, data: ExportData
 
     r.getCell(COL.CAT).value       = op.catNomPeriodo
     r.getCell(COL.CAT).alignment   = { horizontal: 'left', vertical: 'middle' }
+
+    // Jornales: días con horas cargadas. Es lo que faltaba para saber cuántos
+    // días trabajó cada uno sin contar celdas en Planillas (pedido 2026-09-14).
+    r.getCell(COL.JORNALES).value  = op.jornales
+    r.getCell(COL.JORNALES).numFmt = FMT_JORNALES
+    r.getCell(COL.JORNALES).alignment = { horizontal: 'right', vertical: 'middle' }
 
     r.getCell(COL.HS_REG).value    = op.hsRegulares
     r.getCell(COL.HS_REG).numFmt   = FMT_HORAS
@@ -180,6 +188,7 @@ export function buildTotalesOperarioSheet(wb: ExcelJS.Workbook, data: ExportData
   totalRow.getCell(COL.CAT).value = ''
 
   const totalsByCol: Array<{ col: number; result: number; fmt: string }> = [
+    { col: COL.JORNALES,   result: data.totalesObra.jornales,           fmt: FMT_JORNALES },
     { col: COL.HS_REG,     result: data.totalesObra.hsRegulares,        fmt: FMT_HORAS },
     { col: COL.HS_EXT,     result: data.totalesObra.hsExtras,           fmt: FMT_HORAS },
     { col: COL.MONTO,      result: data.totalesObra.costoOperarios,     fmt: FMT_MONEDA_CERO },

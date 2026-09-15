@@ -21,7 +21,7 @@ import {
   freezeHeader,
   setColWidths,
 } from '../helpers/cells'
-import { FMT_HORAS, FMT_MONEDA_CERO } from '../helpers/formatters'
+import { FMT_HORAS, FMT_JORNALES, FMT_MONEDA_CERO } from '../helpers/formatters'
 import { sumRange } from '../helpers/formulas'
 import type { ExportData } from '../types'
 
@@ -32,6 +32,7 @@ const HEADERS = [
   'Obra',
   'Cód obra',
   'Categoría',
+  'Jornales',
   'Hs reg.',
   'Hs extras',
   'Hs totales',
@@ -48,13 +49,14 @@ const COL = {
   OBRA:       3,
   COD:        4,
   CAT:        5,
-  HS_REG:     6,
-  HS_EXT:     7,
-  HS_TOT:     8,
-  MONTO:      9,
-  OTORGADOS:  10,
-  DESCUENTOS: 11,
-  NETO:       12,
+  JORNALES:   6,
+  HS_REG:     7,
+  HS_EXT:     8,
+  HS_TOT:     9,
+  MONTO:      10,
+  OTORGADOS:  11,
+  DESCUENTOS: 12,
+  NETO:       13,
 } as const
 
 interface FilaConsolidada {
@@ -63,6 +65,7 @@ interface FilaConsolidada {
   obraNom:            string
   obraCod:            string
   catNomPeriodo:      string
+  jornales:           number
   hsRegulares:        number
   hsExtras:           number
   hsTotal:            number
@@ -74,7 +77,7 @@ interface FilaConsolidada {
 
 export function buildTotalesOperarioMultiObraSheet(wb: ExcelJS.Workbook, datas: ExportData[]): void {
   const ws = wb.addWorksheet(SHEET_NAME)
-  setColWidths(ws, [10, 28, 24, 12, 18, 10, 10, 10, 16, 14, 14, 16])
+  setColWidths(ws, [10, 28, 24, 12, 18, 10, 10, 10, 10, 16, 14, 14, 16])
 
   applyTitle(ws, `TOTALES POR OPERARIO — CONSOLIDADO MULTI-OBRA`, COL_COUNT)
   const filas = collectFilas(datas)
@@ -113,6 +116,9 @@ export function buildTotalesOperarioMultiObraSheet(wb: ExcelJS.Workbook, datas: 
     r.getCell(COL.CAT).value = f.catNomPeriodo
     r.getCell(COL.CAT).alignment = { horizontal: 'left', vertical: 'middle' }
 
+    r.getCell(COL.JORNALES).value  = f.jornales
+    r.getCell(COL.JORNALES).numFmt = FMT_JORNALES
+
     r.getCell(COL.HS_REG).value  = f.hsRegulares
     r.getCell(COL.HS_REG).numFmt = FMT_HORAS
 
@@ -149,6 +155,7 @@ export function buildTotalesOperarioMultiObraSheet(wb: ExcelJS.Workbook, datas: 
   totalRow.getCell(COL.NOMBRE).alignment = { horizontal: 'left', vertical: 'middle', indent: 1 }
 
   const totalsByCol: Array<{ col: number; result: number; fmt: string }> = [
+    { col: COL.JORNALES,   fmt: FMT_JORNALES,    result: sumOf(filas, f => f.jornales) },
     { col: COL.HS_REG,     fmt: FMT_HORAS,       result: sumOf(filas, f => f.hsRegulares) },
     { col: COL.HS_EXT,     fmt: FMT_HORAS,       result: sumOf(filas, f => f.hsExtras) },
     { col: COL.HS_TOT,     fmt: FMT_HORAS,       result: sumOf(filas, f => f.hsTotal) },
@@ -183,6 +190,7 @@ function collectFilas(datas: ExportData[]): FilaConsolidada[] {
         obraNom:            data.meta.obraNom,
         obraCod:            data.meta.obraCod,
         catNomPeriodo:      op.catNomPeriodo,
+        jornales:           op.jornales,
         hsRegulares:        op.hsRegulares,
         hsExtras:           op.hsExtras,
         hsTotal:            op.hsTotal,
