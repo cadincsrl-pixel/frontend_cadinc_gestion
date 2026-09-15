@@ -1,3 +1,7 @@
+-- NOTA DE NUMERACION: aplicada en la base como "20260915a_disco_dakton_dc100_y_pedido_deposito"; otra sesion tomo esa
+-- letra en paralelo (CLAUDE.md 10). El archivo se renombro; el ledger de
+-- Supabase conserva el nombre viejo, que ahi es etiqueta y no orden.
+
 -- Alta del disco Dakton DC100 verde + pedido de 10 para el depósito
 --
 -- Pedido del user el 15/09. Referencia que dio: "es como el aliafor verde pero
