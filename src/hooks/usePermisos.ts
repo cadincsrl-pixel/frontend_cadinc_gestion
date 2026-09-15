@@ -40,6 +40,12 @@ export function usePermisos(modulo: string) {
     verCostos:       flagCapacidad('ver_costos', true),       // back-compat: ve costos por default
     verPii:          flagCapacidad('ver_pii', false),         // mismo default que el backend: sin el flag no ve PII
     resolverItems:        flagCapacidad('resolver_items', false),
+    // Editar SOLO los pedidos propios, mientras el renglón siga pendiente. Es
+    // para el jefe de obra que carga su pedido y se equivocó en una cantidad,
+    // sin darle `actualizacion`, que es de todo el módulo (consumible propio,
+    // cobros, proveedores, facturas, stock). El backend chequea el dueño
+    // contra solicitud_compra.created_by.
+    editarPedidos:        flagCapacidad('editar_pedidos', false),
     forzarDespacho:       flagCapacidad('forzar_despacho', false),
     cargarPrecios:        flagCapacidad('cargar_precios', false),
     // Default TRUE: se apaga a propósito para quien maneja el depósito pero no

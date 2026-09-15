@@ -28,6 +28,7 @@ import { ItemHistorialModal } from './ItemHistorialModal'
 import { useObrasTodas } from '@/modules/tarja/hooks/useObras'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import { usePermisos } from '@/hooks/usePermisos'
+import { useSessionStore } from '@/store/session.store'
 import { useTabPermitido } from '@/hooks/useTabsPermitidos'
 import { UNIDADES } from '../constants'
 import { createClient } from '@/lib/supabase/client'
@@ -350,7 +351,14 @@ export function SolicitudesTab() {
   const perfiles = usePerfilesMap()
   // Permisos: deshabilitar (no ocultar) botones según capacidad. El backend
   // valida igual; esto evita clicks que rebotan con error feo (CLAUDE.md §6).
-  const { puedeCrear, puedeEditar, puedeEliminar, resolverItems, cargarPrecios, precioAlResolver } = usePermisos('certificaciones')
+  const { puedeCrear, puedeEditar, puedeEliminar, resolverItems, cargarPrecios, precioAlResolver, editarPedidos } = usePermisos('certificaciones')
+  // Editar un pedido: o se tiene `actualizacion` (edita cualquiera), o el flag
+  // `editar_pedidos`, que alcanza SOLO a los pedidos propios. Los renglones ya
+  // comprados o enviados no se tocan por ninguno de los dos caminos: el backend
+  // filtra por estado='pendiente'. Espejo de requireDuenoDelPedido.
+  const miId = useSessionStore(st => st.profile?.id)
+  const puedeEditarPedido = (s: SolicitudCompra) =>
+    puedeEditar || (editarPedidos && !!miId && s.created_by === miId)
   // Sumar filas al catálogo no es lo mismo que cargar un pedido (2026-09-07):
   // hace falta editar certificaciones Y la pestaña Catálogo, igual que en el
   // backend (POST /api/stock/materiales). Sin eso el buscador no ofrece
@@ -1611,7 +1619,7 @@ export function SolicitudesTab() {
                         <button disabled={!puedeEditar} onClick={() => rechazar(s.id)} className="text-xs font-bold px-3 py-1 rounded whitespace-nowrap bg-rojo-light text-rojo hover:opacity-80 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Rechazar</button>
                       </>
                     )}
-                    <button disabled={!puedeEditar} onClick={() => abrirEditar(s)} className="text-xs font-bold px-3 py-1 rounded whitespace-nowrap bg-gris text-gris-dark hover:bg-azul-light hover:text-azul transition-colors disabled:opacity-40 disabled:cursor-not-allowed">✏️ Editar</button>
+                    <button disabled={!puedeEditarPedido(s)} onClick={() => abrirEditar(s)} className="text-xs font-bold px-3 py-1 rounded whitespace-nowrap bg-gris text-gris-dark hover:bg-azul-light hover:text-azul transition-colors disabled:opacity-40 disabled:cursor-not-allowed">✏️ Editar</button>
                     <button disabled={!puedeEliminar} onClick={() => eliminar(s.id)} className="text-xs px-3 py-1 rounded whitespace-nowrap hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
                   </div>
                 </div>
@@ -2067,7 +2075,7 @@ export function SolicitudesTab() {
                       <button disabled={!puedeEditar} onClick={() => rechazar(s.id)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Rechazar</button>
                     </>
                   )}
-                  <button disabled={!puedeEditar} onClick={() => abrirEditar(s)} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-azul-light hover:text-azul min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✏️ Editar</button>
+                  <button disabled={!puedeEditarPedido(s)} onClick={() => abrirEditar(s)} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-azul-light hover:text-azul min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✏️ Editar</button>
                   <button disabled={!puedeEliminar} onClick={() => eliminar(s.id)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✕ Eliminar</button>
                 </div>
 

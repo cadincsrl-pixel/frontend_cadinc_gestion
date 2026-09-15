@@ -24,7 +24,7 @@ export const MODULOS_CON_OBRAS_SCOPE: ReadonlySet<string> = new Set([
 
 export type FlagBoolean =
   | 'ver_pii' | 'ver_costos' | 'administrar_obras' | 'resolver_items' | 'forzar_despacho'
-  | 'cargar_precios' | 'precio_al_resolver'
+  | 'cargar_precios' | 'precio_al_resolver' | 'editar_pedidos'
   | 'aprobar_ajustes_stock' | 'gestionar_cobros' | 'gestionar_docs' | 'anular_cobros'
   | 'costos_oficina' | 'asistente_ia'
 
@@ -60,6 +60,12 @@ export const FLAGS_BOOLEAN: FlagDef[] = [
     key: 'resolver_items',
     label: 'Resolver items',
     help: 'Comprar / despachar / enviar / rechazar items de solicitudes. Solo tiene efecto en certificaciones.',
+    modulos: ['certificaciones'],
+  },
+  {
+    key: 'editar_pedidos',
+    label: 'Editar sus propios pedidos',
+    help: 'Corregir un pedido que cargó él mismo: cantidades, descripción, sumar o sacar renglones. Solo los propios, y solo mientras el renglón siga pendiente — lo ya comprado o enviado no se toca. Es la alternativa a darle "actualización" del módulo entero, que además habilita consumible propio, cobros, proveedores, facturas y stock. Toda edición queda en Admin › Auditoría con el antes y el después.',
     modulos: ['certificaciones'],
   },
   {
