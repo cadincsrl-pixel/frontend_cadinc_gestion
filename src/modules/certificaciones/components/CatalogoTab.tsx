@@ -320,6 +320,7 @@ export function CatalogoTab() {
                           </button>
                           <button type="button" onClick={() => setHistorial(m)} className="text-left hover:underline hover:text-azul" title="Ver el historial de compras y precios">{m.nombre}</button>
                           {m.clase === 'herramienta' && <span className="text-[9px] font-bold bg-azul-light text-azul px-1.5 py-0.5 rounded" title="Herramienta: va al pañol, no a la cuenta del cliente">🔧</span>}
+                          {m.clase === 'servicio' && <span className="text-[9px] font-bold bg-azul-light text-azul px-1.5 py-0.5 rounded" title="Servicio: entra a la cuenta de la obra como cualquier renglón, pero no tiene stock ni pasa por el depósito">🧾</span>}
                           {!m.activo && <span className="text-[9px] font-bold bg-gris text-gris-dark px-1.5 py-0.5 rounded">BAJA</span>}
                           {m.uc_unidad_ok === false && (
                             <span className="text-[9px] font-bold bg-naranja-light text-naranja-dark px-1.5 py-0.5 rounded"
@@ -415,7 +416,7 @@ export function CatalogoTab() {
                       )}
                       <div className="min-w-0">
                         <div className="font-medium text-sm">
-                          <button type="button" onClick={() => setHistorial(m)} className="text-left hover:underline">{m.nombre}</button> {m.clase === 'herramienta' && '🔧'} {!m.activo && <span className="text-[9px] font-bold bg-gris text-gris-dark px-1.5 py-0.5 rounded">BAJA</span>}
+                          <button type="button" onClick={() => setHistorial(m)} className="text-left hover:underline">{m.nombre}</button> {m.clase === 'herramienta' && '🔧'}{m.clase === 'servicio' && '🧾'} {!m.activo && <span className="text-[9px] font-bold bg-gris text-gris-dark px-1.5 py-0.5 rounded">BAJA</span>}
                           {m.uc_unidad_ok === false && <span className="ml-1 text-[9px] font-bold bg-naranja-light text-naranja-dark px-1.5 py-0.5 rounded" title="La última compra está en otra unidad que la ficha">⚠ compra en {unidadLabel(m.uc_unidad ?? '')}</span>}
                         </div>
                         <div className="text-[11px] text-gris-dark">{m.rubro_icono} {m.rubro} · {unidadLabel(m.unidad)}</div>

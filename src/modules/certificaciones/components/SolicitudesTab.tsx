@@ -472,7 +472,9 @@ export function SolicitudesTab() {
       // un `??` jamas caeria al valor de la linea: elegir cualquiera de los 891
       // materiales comunes (o crear uno nuevo, que nace 'material') pisaba el
       // toggle Herramienta sin aviso. Lo cazo la revision adversarial.
-      clase:       m.clase === 'herramienta' ? 'herramienta' : x.clase,
+      // Igual que 'herramienta', 'servicio' (20260915j) lo manda la ficha y no el
+      // toggle: un flete o un volquete no es una cosa que la obra elija marcar.
+      clase:       m.clase === 'herramienta' ? 'herramienta' : m.clase === 'servicio' ? 'servicio' : x.clase,
       devuelve:    (m.clase === 'herramienta' ? 'herramienta' : x.clase) === 'herramienta' ? x.devuelve : false,
     })
     if (enEdicion) setLineasEdit(p => p.map(x => x._id === lineaId ? aplicar(x) : x))
@@ -1703,6 +1705,12 @@ export function SolicitudesTab() {
                                 {/* `clase` es el tilde manual (4 usos en 256 salidas reales);
                                     `es_herramienta` lo calcula el backend con el mismo predicado
                                     que el ledger, así el badge dice la verdad aunque nadie tildó. */}
+                                {item.clase === 'servicio' && (
+                                  <span className="ml-2 text-[11px] font-bold px-1.5 py-0.5 rounded bg-azul-light text-azul align-middle"
+                                        title="Servicio: va a la cuenta de la obra como cualquier renglón, pero no tiene stock ni pasa por el depósito.">
+                                    🧾 Servicio
+                                  </span>
+                                )}
                                 {(item.clase === 'herramienta' || item.es_herramienta) && (
                                   <span className="ml-2 text-[11px] font-bold px-1.5 py-0.5 rounded bg-carbon text-white align-middle"
                                         title={item.clase === 'herramienta' ? 'Marcada como herramienta en el pedido' : 'Detectada como herramienta: queda registrada en Salidas a obra'}>

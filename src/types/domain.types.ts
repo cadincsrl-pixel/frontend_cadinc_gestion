@@ -1501,7 +1501,7 @@ export interface FacturaCompra extends AuditFields {
 
 // ── Solicitudes de compra ──
 export type SolicitudEstado = 'pendiente' | 'aprobada' | 'rechazada'
-export type ItemClase = 'material' | 'herramienta'
+export type ItemClase = 'material' | 'herramienta' | 'servicio'
 
 export type ItemEstado =
   | 'pendiente'
@@ -1875,8 +1875,15 @@ export interface StockRubro {
 
 export type MaterialesACargoDe = 'cliente' | 'cadinc'
 
-/** Clase de un material del catálogo. 'epp' (20260904ak): costo de CADINC, nunca se cobra al cliente. */
-export type ClaseMaterial = 'material' | 'herramienta' | 'epp'
+/**
+ * Clase de un material del catálogo.
+ * - 'epp' (20260904ak): costo de CADINC, nunca se cobra al cliente.
+ * - 'servicio' (20260915j): fletes, envíos, volquetes, cortes y plegados de
+ *   taller. Entra por el pedido como cualquier renglón y cae en la cuenta de la
+ *   obra respetando a_cargo_de, pero NO tiene stock: una guarda en
+ *   stock_movimientos lo saca del despacho de depósito y de las devoluciones.
+ */
+export type ClaseMaterial = 'material' | 'herramienta' | 'epp' | 'servicio'
 
 
 /**
