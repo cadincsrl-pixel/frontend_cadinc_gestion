@@ -56,6 +56,12 @@ export function AltaRapidaMaterialModal({
   // "No sé el precio": nace en $0 y cae en la lista de tasar.
   const [sinPrecio, setSinPrecio] = useState(false)
   const [guardarSinonimo, setGuardarSinonimo] = useState(true)
+  // Servicio (20260915j): flete, volquete, corte y plegado, baño químico. No es
+  // una cosa que entre al depósito, así que la ficha no lleva stock y la unidad
+  // es siempre "unidad". El rubro y el precio se acomodan solos para que no haya
+  // que elegir nada: un flete no tiene precio de lista, sale lo que sale.
+  const [esServicio, setEsServicio] = useState(false)
+  const rubroServicios = rubros.find(r => r.nombre.toLowerCase() === 'servicios')
 
   const nombreLimpio    = nombre.trim()
   const nombreDebounced = useDebouncedValue(nombreLimpio, 300)
@@ -72,7 +78,7 @@ export function AltaRapidaMaterialModal({
   const precioNum  = Number(precio)
   const precioOk   = sinPrecio || (precio !== '' && Number.isFinite(precioNum) && precioNum > 0)
   const nombreOk   = nombreLimpio.length >= 3 && !esCodigo
-  const listo      = nombreOk && rubroId !== '' && unidad !== '' && precioOk
+  const listo      = nombreOk && rubroId !== '' && unidad !== '' && (esServicio || precioOk)
 
   const errorDeNombre = esCodigo ? MENSAJE_NOMBRE_ES_CODIGO : (errorNombre ?? undefined)
 
@@ -82,9 +88,10 @@ export function AltaRapidaMaterialModal({
       nombre:     nombreLimpio,
       rubro_id:   Number(rubroId),
       unidad,
-      precio_ref: sinPrecio ? 0 : precioNum,
+      precio_ref: sinPrecio || esServicio ? 0 : precioNum,
       alias:      sinonimoDistinto && guardarSinonimo ? [buscadoComo.trim()] : [],
       forzar:     parecidosAlDia,
+      ...(esServicio ? { clase: 'servicio' as const } : {}),
     })
   }
 
@@ -163,13 +170,36 @@ export function AltaRapidaMaterialModal({
           </div>
         )}
 
+        {rubroServicios && (
+          <label className="flex items-start gap-2 p-2.5 rounded-lg bg-gris-light cursor-pointer">
+            <input
+              type="checkbox"
+              checked={esServicio}
+              onChange={e => {
+                const on = e.target.checked
+                setEsServicio(on)
+                if (on) { setRubroId(rubroServicios.id); setUnidad('unid'); setPrecio(''); setSinPrecio(false) }
+              }}
+              className="mt-0.5 accent-naranja"
+            />
+            <span className="text-xs text-gris-dark">
+              <b className="text-carbon">Es un servicio</b>, no un material —{' '}
+              flete o envío, volquete, corte y plegado, baño químico.
+              <br />
+              Entra a la cuenta de la obra igual que cualquier renglón, pero no tiene
+              stock ni pasa por el depósito, y el precio lo pone la factura.
+            </span>
+          </label>
+        )}
+
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1">Rubro</label>
             <select
               value={rubroId}
+              disabled={esServicio}
               onChange={e => setRubroId(e.target.value ? Number(e.target.value) : '')}
-              className="w-full px-2 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white"
+              className="w-full px-2 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white disabled:bg-gris-light disabled:text-gris-dark"
             >
               <option value="">Elegí un rubro...</option>
               {rubros.map(r => <option key={r.id} value={r.id}>{r.nombre}</option>)}
@@ -179,8 +209,9 @@ export function AltaRapidaMaterialModal({
             <label className="block text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1">Unidad</label>
             <select
               value={unidad}
+              disabled={esServicio}
               onChange={e => setUnidad(e.target.value)}
-              className="w-full px-2 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white"
+              className="w-full px-2 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white disabled:bg-gris-light disabled:text-gris-dark"
             >
               <option value="">Elegí la unidad...</option>
               {UNIDADES.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
@@ -193,9 +224,11 @@ export function AltaRapidaMaterialModal({
           value={precio}
           onChange={v => { setPrecio(v); if (v !== '') setSinPrecio(false) }}
           placeholder="0,00"
-          disabled={sinPrecio}
+          disabled={sinPrecio || esServicio}
           error={precio !== '' && !precioOk ? 'Tiene que ser mayor a cero' : undefined}
-          hint={precio === '' && !sinPrecio ? 'Lo que se paga por una unidad, IVA incluido. Es lo que se cotiza a la obra.' : undefined}
+          hint={esServicio
+            ? 'Un servicio no tiene precio de lista: lo pone la factura al resolver la compra.'
+            : (precio === '' && !sinPrecio ? 'Lo que se paga por una unidad, IVA incluido. Es lo que se cotiza a la obra.' : undefined)}
         />
 
         {/* La salida honesta cuando no se sabe el precio. Sin esto, el campo
