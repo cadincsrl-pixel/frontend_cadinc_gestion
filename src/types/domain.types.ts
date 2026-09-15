@@ -489,6 +489,13 @@ export interface Camion extends AuditFields {
   anio: number | null
   estado: CamionEstado
   categoria: CamionCategoria
+  /**
+   * Configuración de la unidad para la solicitud de turno: escalable (hasta
+   * 35 tn) o estándar (hasta 31 tn). Dato INFORMATIVO: no valida ni calcula
+   * nada. Para cualquier cálculo, la capacidad que manda es `bateas.capacidad_tn`.
+   * null = sin definir.
+   */
+  tipo_carga: 'escalable' | 'estandar' | null
   km_actuales: number
   obs: string | null
   // GPS Mobile Quest (todos opcionales: solo se llenan si hay mapeo)

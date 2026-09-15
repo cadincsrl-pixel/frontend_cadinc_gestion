@@ -132,9 +132,16 @@ export function ModalSolicitudTurno({ open, onClose }: Props) {
     const bloques = choferesSel.map(ch => {
       const camion = camionDe(ch.id)
       const batea  = bateaDe(ch.id)
+      // El tipo de unidad lo pide la cantera. Se omite la línea si el camión
+      // no está clasificado: mejor que no diga nada que decir "—" y que del
+      // otro lado lo lean como estándar.
+      const tipo = camion?.tipo_carga
+        ? camion.tipo_carga === 'escalable' ? 'Escalable (hasta 35 tn)' : 'Estándar (hasta 31 tn)'
+        : null
       return [
         `Chofer: ${ch.nombre}${ch.cuil ? ` / CUIL ${ch.cuil}` : ''}`,
         `Camión: ${camion?.patente ?? '—'}`,
+        ...(tipo ? [`Tipo: ${tipo}`] : []),
         `Batea: ${batea?.patente ?? '—'}`,
       ].join('\n')
     })
@@ -146,9 +153,13 @@ export function ModalSolicitudTurno({ open, onClose }: Props) {
   const advertencias = useMemo(() => {
     const out: string[] = []
     for (const ch of choferesSel) {
+      const cam = camionDe(ch.id)
       if (!ch.cuil)          out.push(`${ch.nombre}: sin CUIL cargado.`)
-      if (!camionDe(ch.id))  out.push(`${ch.nombre}: sin camión preasignado.`)
+      if (!cam)              out.push(`${ch.nombre}: sin camión preasignado.`)
       if (!bateaDe(ch.id))   out.push(`${ch.nombre}: sin batea preasignada.`)
+      // Sin clasificar, la línea "Tipo" no sale del todo: mejor avisar acá que
+      // mandar una solicitud incompleta a la cantera.
+      if (cam && !cam.tipo_carga) out.push(`${ch.nombre}: el camión ${cam.patente} no dice si es escalable o estándar — cargalo en Camiones.`)
     }
     return out
   }, [choferesSel, choferes, camiones, bateas])

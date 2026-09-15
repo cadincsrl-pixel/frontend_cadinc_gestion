@@ -33,6 +33,15 @@ const CATEGORIA_OPTIONS = [
   { value: 'chasis',  label: '🚚 Chasis' },
 ]
 
+// Lo que pide la cantera en la solicitud de turno. Es un DATO: no valida, no
+// topea y no calcula. La capacidad que manda para cualquier cuenta sigue siendo
+// `bateas.capacidad_tn`. El tope va en la etiqueta para no tener que recordarlo.
+const TIPO_CARGA_OPTIONS = [
+  { value: '',          label: '— Sin definir —'        },
+  { value: 'escalable', label: 'Escalable (hasta 35 tn)' },
+  { value: 'estandar',  label: 'Estándar (hasta 31 tn)'  },
+]
+
 export function CamionesTab() {
   const toast = useToast()
   const { puedeCrear, puedeEditar } = usePermisos('logistica')
@@ -101,7 +110,7 @@ export function CamionesTab() {
   }
 
   function openEdit(c: Camion) {
-    formEdit.reset({ patente: c.patente, modelo: c.modelo ?? '', anio: c.anio ?? '', estado: c.estado, categoria: c.categoria ?? 'tractor', obs: c.obs ?? '', es_propio: c.es_propio ?? true })
+    formEdit.reset({ patente: c.patente, modelo: c.modelo ?? '', anio: c.anio ?? '', estado: c.estado, categoria: c.categoria ?? 'tractor', tipo_carga: c.tipo_carga ?? '', obs: c.obs ?? '', es_propio: c.es_propio ?? true })
     setEditando(c)
   }
 
@@ -115,7 +124,12 @@ export function CamionesTab() {
         <Input label="Año" type="number" placeholder="2020" disabled={disabled} {...form.register('anio')} />
         <Select label="Estado" options={ESTADO_OPTIONS} disabled={disabled} {...form.register('estado')} />
       </div>
-      <Select label="Categoría" options={CATEGORIA_OPTIONS} disabled={disabled} {...form.register('categoria')} />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Select label="Categoría" options={CATEGORIA_OPTIONS} disabled={disabled} {...form.register('categoria')} />
+        {/* Sale en la solicitud de turno, que es lo que pide la cantera. No
+            valida ni topea nada: es un dato. */}
+        <Select label="Configuración" options={TIPO_CARGA_OPTIONS} disabled={disabled} {...form.register('tipo_carga')} />
+      </div>
       <Input label="Observaciones" placeholder="Notas..." disabled={disabled} {...form.register('obs')} />
 
       {/* Propio vs fletero. Definido con el dueño el 29/07: los reportes de
@@ -201,6 +215,11 @@ export function CamionesTab() {
                   {c.categoria === 'chasis'
                     ? <span className="font-bold bg-naranja-light text-naranja-dark px-1.5 py-0.5 rounded">🚚 Chasis</span>
                     : <span className="text-gris-dark">🛻 Tractor</span>}
+                  {c.tipo_carga && (
+                    <span className="block text-[10px] text-gris-dark mt-0.5" title={c.tipo_carga === 'escalable' ? 'Escalable: hasta 35 tn' : 'Estándar: hasta 31 tn'}>
+                      {c.tipo_carga === 'escalable' ? 'Escalable' : 'Estándar'}
+                    </span>
+                  )}
                 </td>
                 <td
                   className="px-4 py-3 text-sm text-carbon"
