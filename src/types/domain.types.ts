@@ -1948,6 +1948,8 @@ export interface CatalogoMaterial {
   uc_obra:               string | null
   /** Foto principal de la ficha (20260912g). */
   foto_url?:             string | null
+  /** Código interno de CADINC, `C-0128` (20260915n/o). Generado en la base desde el id. */
+  codigo?:               string | null
   /** Unidad en que se cargó la última compra (20260911d). */
   uc_unidad?:            string | null
   /** La unidad de la última compra es compatible con la de la ficha (`unidad_compatible`). Null si no hay compra. */
@@ -2029,6 +2031,12 @@ export interface SugerenciaPrecio {
 
 export interface StockMaterial extends AuditFields {
   id:            number
+  /**
+   * Código interno de CADINC, `C-0128`. Columna generada desde el id
+   * (20260915n/o): se anota en el producto y se tipea en el pedido. Distinto
+   * del código de lista del proveedor, que vive en `alias[1]` en 674 fichas.
+   */
+  codigo?:       string | null
   rubro_id:      number
   nombre:        string
   unidad:        string

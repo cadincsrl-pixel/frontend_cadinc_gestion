@@ -42,6 +42,7 @@ import { Combobox, type ComboboxOption } from '@/components/ui/Combobox'
 import { useToast } from '@/components/ui/Toast'
 import { DevolverDepositoModal } from './DevolverDepositoModal'
 import type { SolicitudCompra, SolicitudCompraItem, SolicitudEstado, SolicitudProgreso, ItemEstado, ItemClase, Obra, Proveedor, StockMaterial, StockRubro, RemitoEnvio, StockClienteRow } from '@/types/domain.types'
+import { codigoMaterial } from '@/lib/utils/codigo'
 
 
 const ESTADO_SOL: Record<SolicitudEstado, { label: string; bg: string; text: string }> = {
@@ -444,7 +445,10 @@ export function SolicitudesTab() {
         // devolvía las 76 filas del rubro en vez de los 4 materiales que la
         // tienen en el nombre. Medido antes de sacarlo.
         sub:    hayStock ? `${m.stock_actual} ${m.unidad} en depósito` : undefined,
-        search: m.alias ?? [],
+        // El código interno entra a la búsqueda para poder cargar tipeando
+        // "C-0128" (20260915n/o). Va con relleno: sin él, C-128 encontraba
+        // también C-1280…C-1289.
+        search: [codigoMaterial(m.id), ...(m.alias ?? [])].filter(Boolean) as string[],
         group:  rubro,
         imgUrl: m.foto_url ?? undefined,
       }

@@ -12,6 +12,7 @@ import { HistorialPrecios } from './HistorialPrecios'
 import { MaterialFotosModal } from './MaterialFotosModal'
 import { UNIDADES } from '../constants'
 import type { CatalogoMaterial, CatalogoFiltroEstado, MaterialCompra, StockRubro } from '@/types/domain.types'
+import { codigoMaterial } from '@/lib/utils/codigo'
 
 /**
  * Catálogo de precios — pestaña aparte del Stock (2026-09-04).
@@ -306,6 +307,17 @@ export function CatalogoTab() {
                               <img src={m.foto_url} alt="" loading="lazy" className="w-9 h-9 rounded object-cover border border-gris-mid" />
                             </button>
                           )}
+                          {/* Código interno: es lo que se anota en el producto
+                              y lo que se tipea en el pedido para despachar
+                              seguro. Se puede copiar de un click. */}
+                          <button
+                            type="button"
+                            onClick={() => { void navigator.clipboard?.writeText(m.codigo ?? codigoMaterial(m.id) ?? '') }}
+                            title="Código interno — click para copiarlo"
+                            className="shrink-0 font-mono text-[10px] font-bold bg-gris text-gris-dark px-1.5 py-0.5 rounded hover:bg-azul-light hover:text-azul"
+                          >
+                            {m.codigo ?? codigoMaterial(m.id)}
+                          </button>
                           <button type="button" onClick={() => setHistorial(m)} className="text-left hover:underline hover:text-azul" title="Ver el historial de compras y precios">{m.nombre}</button>
                           {m.clase === 'herramienta' && <span className="text-[9px] font-bold bg-azul-light text-azul px-1.5 py-0.5 rounded" title="Herramienta: va al pañol, no a la cuenta del cliente">🔧</span>}
                           {!m.activo && <span className="text-[9px] font-bold bg-gris text-gris-dark px-1.5 py-0.5 rounded">BAJA</span>}
