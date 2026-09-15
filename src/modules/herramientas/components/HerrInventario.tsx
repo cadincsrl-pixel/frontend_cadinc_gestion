@@ -178,14 +178,19 @@ export function HerrInventario() {
 
   function payloadFromForm(data: HerrFormData) {
     return {
-      codigo:        data.codigo,
+      // Vacío = que lo asigne el backend, que mira la tabla COMPLETA. El cálculo
+      // en el cliente sólo veía las fichas activas, así que la primera baja del
+      // número más alto devolvía un código ya ocupado y trababa el alta.
+      codigo:        data.codigo?.trim() || undefined,
       nom:           data.nom,
       tipo_id:       data.tipo_id  ? Number(data.tipo_id)  : null,
       marca_id:      data.marca_id ? Number(data.marca_id) : null,
       modelo_id:     data.modelo_id ? Number(data.modelo_id) : null,
-      serie:         data.serie,
-      fecha_ingreso: data.fecha_ingreso,
-      obs:           data.obs,
+      // '' no es un dato: es "no lo sé". A la columna `date` le llegaba '' y
+      // reventaba con un 500 en inglés.
+      serie:         data.serie?.trim() || null,
+      fecha_ingreso: data.fecha_ingreso || null,
+      obs:           data.obs?.trim() || null,
     }
   }
 
@@ -225,7 +230,15 @@ export function HerrInventario() {
           formNuevo.reset()
           setFotosCola([])
         },
-        onError: (e: any) => toast(e.message ?? 'Error al crear', 'err'),
+        onError: (e: any) => {
+          const body = e?.body
+          if (body?.error === 'CODIGO_DUPLICADO') {
+            const libre = body?.detail?.libre
+            toast(`El código ${body?.detail?.codigo ?? ''} ya está usado por una ficha (puede estar dada de baja).${libre ? ` El próximo libre es ${libre}.` : ''} Cambialo o dejalo vacío para que lo asigne el sistema.`, 'err')
+            return
+          }
+          toast(e.message ?? 'Error al crear', 'err')
+        },
       }
     )
   }
@@ -275,29 +288,19 @@ export function HerrInventario() {
 
   const tipoOptions = (config?.tipos ?? []).map(t => ({ value: String(t.id), label: `${t.icono ?? ''} ${t.nom}` }))
 
-  function nextCodigo() {
-    const nums = herramientas
-      .map(h => h.codigo.match(/^HER-(\d+)$/))
-      .filter(Boolean)
-      .map(m => parseInt(m![1]))
-    const max = nums.length ? Math.max(...nums) : 0
-    return `HER-${String(max + 1).padStart(3, '0')}`
-  }
-
-  const HerrForm = ({ form, errors, codigoReadOnly }: { form: ReturnType<typeof useForm<HerrFormData>>; errors: ReturnType<typeof useForm<HerrFormData>>['formState']['errors']; codigoReadOnly?: boolean }) => (
+  const HerrForm = ({ form, errors, codigoAuto }: { form: ReturnType<typeof useForm<HerrFormData>>; errors: ReturnType<typeof useForm<HerrFormData>>['formState']['errors']; codigoAuto?: boolean }) => (
     // autoComplete="off" en cada input para que Chrome no sugiera valores
     // aprendidos en otros forms (p.ej. nombres de personal en el campo
     // "Nombre", que comparte el name `nom` con personal.nom).
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Input
-          label="Código *"
-          placeholder="HER-001"
+          label={codigoAuto ? 'Código' : 'Código *'}
+          placeholder={codigoAuto ? 'Se asigna solo' : 'HER-001'}
+          hint={codigoAuto ? 'Dejalo vacío y el sistema le pone el próximo libre' : undefined}
           autoComplete="off"
           error={errors.codigo?.message}
-          readOnly={codigoReadOnly}
-          className={codigoReadOnly ? 'bg-gris cursor-not-allowed' : ''}
-          {...form.register('codigo', { required: 'Requerido' })}
+          {...form.register('codigo', codigoAuto ? {} : { required: 'Requerido' })}
         />
         <Input
           label="Nombre *"
@@ -359,7 +362,7 @@ export function HerrInventario() {
         <Button
           variant="primary"
           size="sm"
-          onClick={() => { formNuevo.setValue('codigo', nextCodigo()); setModalNuevo(true) }}
+          onClick={() => setModalNuevo(true)}
           disabled={!puedeCrear}
           title={sinPermiso(puedeCrear, 'crear herramientas')}
         >
@@ -637,7 +640,7 @@ export function HerrInventario() {
           </>
         }
       >
-        <HerrForm form={formNuevo} errors={formNuevo.formState.errors} codigoReadOnly />
+        <HerrForm form={formNuevo} errors={formNuevo.formState.errors} codigoAuto />
 
         {/* Cola de fotos: se suben con el id resultante apenas se crea la herramienta. */}
         <div className="border-t border-gris-mid pt-4 mt-4">

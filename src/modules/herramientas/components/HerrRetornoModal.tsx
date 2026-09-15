@@ -40,20 +40,48 @@ export function HerrRetornoModal({ open, onClose, salidas, obraNom, onListo }: P
   // Solo confirmadas: la base rechaza devolver una salida sin revisar.
   const vivas = useMemo(() => salidas.filter(s => s.sentido === 'salida' && s.estado === 'confirmada' && Number(s.en_obra) > 0), [salidas])
 
+  /**
+   * Cuánto vuelve de esta salida. Devuelve NaN cuando la cantidad quedó SIN
+   * DECIDIR, que no es lo mismo que "vuelve todo".
+   *
+   * La distinción entre `undefined` (nunca se tocó el campo) y `''` (se vació a
+   * mano) no es teórica: el input nace con el máximo, así que para cargar un
+   * retorno parcial hay que pasar sí o sí por el campo vacío. Tratar ese estado
+   * como "vuelve todo" registraba la devolución COMPLETA mientras la celda se
+   * veía en blanco — y registrar un retorno no se puede deshacer desde la app.
+   */
   function cantidadDe(s: HerrEntrega): number {
     const raw = cant[s.id]
-    if (raw === undefined || raw === '') return Number(s.en_obra)
-    const v = Number(raw)
-    return Number.isFinite(v) ? v : 0
+    if (raw === undefined) return Number(s.en_obra)
+    if (raw.trim() === '') return NaN
+    const v = Number(raw.replace(',', '.'))
+    return Number.isFinite(v) ? v : NaN
   }
-  const invalidas = vivas.filter(s => cantidadDe(s) <= 0 || cantidadDe(s) > Number(s.en_obra))
+  /** 'unid' no se parte por la mitad; 'm' sí (hay salidas legítimas en metros). */
+  const fraccionable = (s: HerrEntrega) => (s.unidad ?? 'unid') !== 'unid'
+  function malaCantidad(s: HerrEntrega): boolean {
+    const v = cantidadDe(s)
+    if (!Number.isFinite(v)) return true
+    if (v <= 0 || v > Number(s.en_obra)) return true
+    return !fraccionable(s) && !Number.isInteger(v)
+  }
+  const invalidas = vivas.filter(malaCantidad)
+  // Unidades, no renglones: el toast de éxito cuenta salidas y eso escondía el
+  // desvío. Que el total esté a la vista ANTES de confirmar es la red que faltaba.
+  const totalUnidades = vivas.reduce((n, s) => n + (malaCantidad(s) ? 0 : cantidadDe(s)), 0)
 
   function cerrar() { setCant({}); setNota(''); setFecha(toISO(new Date())); onClose() }
 
   function guardar() {
     if (!fecha) { toast('Elegí la fecha del retorno', 'err'); return }
     if (vivas.length === 0) { toast('Ninguna de las elegidas sigue en obra', 'err'); return }
-    if (invalidas.length > 0) { toast('Hay cantidades mayores a lo que está en obra', 'err'); return }
+    if (invalidas.length > 0) {
+      const vacias = invalidas.filter(s => (cant[s.id] ?? '').trim() === '' && cant[s.id] !== undefined).length
+      toast(vacias > 0
+        ? `Completá cuánto vuelve en ${vacias} fila${vacias !== 1 ? 's' : ''}: dejarlo vacío no significa "vuelve todo"`
+        : 'Hay cantidades inválidas: revisá que no superen lo que está en obra y que sean enteras', 'err')
+      return
+    }
     registrar({
       items: vivas.map(s => ({ salida_id: s.id, ...(cantidadDe(s) !== Number(s.en_obra) ? { cantidad: cantidadDe(s) } : {}) })),
       fecha, nota: nota.trim() || null,
@@ -83,6 +111,13 @@ export function HerrRetornoModal({ open, onClose, salidas, obraNom, onListo }: P
         <p className="text-xs text-gris-dark">
           Se registra una devolución por cada salida. Por defecto vuelve todo lo que sigue en obra; bajá la cantidad si volvió una parte.
         </p>
+        {vivas.length > 0 && (
+          <div className={`text-xs rounded px-2 py-1.5 ${invalidas.length > 0 ? 'bg-rojo-light text-rojo' : 'bg-verde-light text-verde'}`}>
+            {invalidas.length > 0
+              ? <>Hay <b>{invalidas.length}</b> fila{invalidas.length !== 1 ? 's' : ''} sin una cantidad válida.</>
+              : <>Vuelven <b className="font-mono">{totalUnidades}</b> unidad{totalUnidades !== 1 ? 'es' : ''} de <b>{vivas.length}</b> salida{vivas.length !== 1 ? 's' : ''}.</>}
+          </div>
+        )}
         {salidas.length > vivas.length && (
           <div className="text-[11px] text-naranja-dark bg-naranja-light rounded px-2 py-1">
             {salidas.length - vivas.length} de las elegidas no se pueden devolver (sin confirmar, ya devueltas, archivadas o devoluciones) y se saltean.
@@ -100,8 +135,7 @@ export function HerrRetornoModal({ open, onClose, salidas, obraNom, onListo }: P
             </thead>
             <tbody>
               {vivas.map(s => {
-                const v = cantidadDe(s)
-                const mal = v <= 0 || v > Number(s.en_obra)
+                const mal = malaCantidad(s)
                 return (
                   <tr key={s.id} className="border-t border-gris">
                     <td className="px-3 py-2">{s.descripcion}</td>
@@ -110,7 +144,7 @@ export function HerrRetornoModal({ open, onClose, salidas, obraNom, onListo }: P
                     <td className="px-3 py-2 text-right">
                       {Number(s.en_obra) > 1 ? (
                         <input
-                          type="number" min={1} max={Number(s.en_obra)} step={1}
+                          type="number" min={fraccionable(s) ? 0 : 1} max={Number(s.en_obra)} step={fraccionable(s) ? 'any' : 1}
                           value={cant[s.id] ?? String(Number(s.en_obra))}
                           onChange={e => setCant(p => ({ ...p, [s.id]: e.target.value }))}
                           className={`w-20 text-right font-mono text-sm px-2 py-1 border-[1.5px] rounded-lg outline-none ${mal ? 'border-rojo' : 'border-gris-mid focus:border-naranja'}`}
