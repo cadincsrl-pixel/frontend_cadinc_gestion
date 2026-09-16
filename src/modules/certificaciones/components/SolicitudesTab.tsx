@@ -1824,7 +1824,11 @@ export function SolicitudesTab() {
                                               el despacho descuenta stock y el recibo no lo repone
                                               (sólo acredita los ítems comprados). Pedido #436, agosto 2026.
                                               Para "esto ya lo tengo", el renglón se rechaza. */}
-                                          {!obra?.es_deposito && (
+                                          {/* Un servicio no sale del depósito: no hay nada que sacar.
+                                              Sí o sí se compra, y la base lo ataja igual con
+                                              ES_SERVICIO_SIN_STOCK; acá se saca el botón para que
+                                              la pantalla no ofrezca algo que va a rebotar. */}
+                                          {!obra?.es_deposito && item.clase !== 'servicio' && (
                                             <button disabled={!resolverItems} onClick={() => abrirDespachar(item)} className="text-xs font-bold px-3 py-1 rounded whitespace-nowrap bg-naranja-light text-naranja hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed">Depósito</button>
                                           )}
                                           {stockClientePorObra.has(s.obra_cod) && (
@@ -1851,7 +1855,8 @@ export function SolicitudesTab() {
                                           renglones que YA son una devolución, y las obras depósito
                                           (devolver al depósito desde el depósito no es nada). */}
                                       {['comprado', 'de_deposito', 'retirado', 'enviado'].includes(item.estado as string)
-                                        && item.clase !== 'herramienta' && !item.devuelve && !obra?.es_deposito && (
+                                        && item.clase !== 'herramienta' && item.clase !== 'servicio'
+                                        && !item.devuelve && !obra?.es_deposito && (
                                         <button disabled={!resolverItems} onClick={() => setModalDevolver(item)}
                                           title={resolverItems ? 'La obra devuelve material que sobró' : 'Sin permiso para resolver ítems'}
                                           className="text-xs font-bold px-3 py-1 rounded whitespace-nowrap bg-naranja-light text-naranja hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed">📦 Devolver</button>
