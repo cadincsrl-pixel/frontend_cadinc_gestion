@@ -30,6 +30,7 @@ import { UNIDADES } from '../constants'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import { toISO } from '@/lib/utils/dates'
 import { matchesSearch, normalizeText } from '@/lib/utils/text'
+import { codigoMaterial } from '@/lib/utils/codigo'
 import type { StockMaterial, StockRubro, StockMovimiento, Proveedor, ClaseMaterial } from '@/types/domain.types'
 
 
@@ -170,7 +171,7 @@ export function StockTab() {
       // Los sinónimos entran al match: si la obra lo pide como "t1", buscar
       // "t1" tiene que traer "Tornillo T1 autoperforante".
       list = list.filter(m =>
-        matchesSearch(`${m.nombre} ${m.proveedores?.nombre ?? ''} ${(m.alias ?? []).join(' ')}`, busqueda)
+        matchesSearch(`${m.codigo ?? codigoMaterial(m.id) ?? ''} ${m.nombre} ${m.proveedores?.nombre ?? ''} ${(m.alias ?? []).join(' ')}`, busqueda)
       )
     }
     return list
@@ -594,7 +595,7 @@ export function StockTab() {
           <div className="relative flex-1 min-w-[140px] max-w-full sm:max-w-[350px]">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gris-dark text-sm">🔍</span>
             <input type="text" autoComplete="off" value={busqueda} onChange={e => setBusqueda(e.target.value)}
-              placeholder="Buscar material o proveedor..."
+              placeholder="Buscar por código, material o proveedor..."
               className="w-full pl-9 pr-10 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none bg-white focus:border-naranja" />
             {busqueda && <button onClick={() => setBusqueda('')} className="absolute right-1 top-1/2 -translate-y-1/2 p-2 text-gris-dark hover:text-carbon text-sm flex items-center justify-center">✕</button>}
           </div>
@@ -664,7 +665,19 @@ export function StockTab() {
                   return (
                     <tr key={m.id} className="border-b border-gris last:border-0 hover:bg-gris/30 transition-colors">
                       <td className="px-4 py-2.5 text-sm font-medium text-carbon">
-                        {m.nombre}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {/* Mismo chip que en Catálogo: el código es la forma corta
+                              de nombrar una ficha por teléfono o en un remito. */}
+                          <button
+                            type="button"
+                            onClick={() => { void navigator.clipboard?.writeText(m.codigo ?? codigoMaterial(m.id) ?? '') }}
+                            title="Código interno — click para copiarlo"
+                            className="shrink-0 font-mono text-[10px] font-bold bg-gris text-gris-dark px-1.5 py-0.5 rounded hover:bg-azul-light hover:text-azul"
+                          >
+                            {m.codigo ?? codigoMaterial(m.id)}
+                          </button>
+                          <span>{m.nombre}</span>
+                        </div>
                         <AliasChips alias={m.alias} compact />
                       </td>
                       <td className="px-4 py-2.5 text-xs text-gris-dark">{m.proveedores?.nombre ?? '—'}</td>
@@ -719,6 +732,8 @@ export function StockTab() {
                     <div className="flex-1 min-w-0">
                       <div className="font-bold text-sm text-carbon">{m.nombre}</div>
                       <div className="text-[11px] text-gris-dark mt-0.5">
+                        <span className="font-mono font-bold text-gris-dark">{m.codigo ?? codigoMaterial(m.id)}</span>
+                        {' · '}
                         {m.proveedores?.nombre ?? 'Sin proveedor'}
                       </div>
                       <AliasChips alias={m.alias} compact />
