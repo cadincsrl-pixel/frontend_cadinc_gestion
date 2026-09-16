@@ -133,7 +133,7 @@ function ObsRenglon({ obs }: { obs?: string | null }) {
 function ChipColor({ color }: { color?: string | null }) {
   if (!color) return null
   return (
-    <span className="ml-2 text-[11px] font-bold px-1.5 py-0.5 rounded bg-azul-light text-azul align-middle">
+    <span className="ml-2 text-[11px] font-bold px-1.5 py-0.5 rounded bg-azul-light text-azul align-middle inline-block whitespace-nowrap">
       {color}
     </span>
   )
@@ -1736,7 +1736,7 @@ export function SolicitudesTab() {
                                 {/* El color es parte de QUÉ se pide, no una nota al pie:
                                     si no se ve acá, el que compra no se entera. */}
                                 {item.color && (
-                                  <span className="ml-2 text-[11px] font-bold px-1.5 py-0.5 rounded bg-azul-light text-azul align-middle">
+                                  <span className="ml-2 text-[11px] font-bold px-1.5 py-0.5 rounded bg-azul-light text-azul align-middle inline-block whitespace-nowrap">
                                     {item.color}
                                   </span>
                                 )}
@@ -1744,13 +1744,13 @@ export function SolicitudesTab() {
                                     `es_herramienta` lo calcula el backend con el mismo predicado
                                     que el ledger, así el badge dice la verdad aunque nadie tildó. */}
                                 {item.clase === 'servicio' && (
-                                  <span className="ml-2 text-[11px] font-bold px-1.5 py-0.5 rounded bg-azul-light text-azul align-middle"
+                                  <span className="ml-2 text-[11px] font-bold px-1.5 py-0.5 rounded bg-azul-light text-azul align-middle inline-block whitespace-nowrap"
                                         title="Servicio: va a la cuenta de la obra como cualquier renglón, pero no tiene stock ni pasa por el depósito.">
                                     🧾 Servicio
                                   </span>
                                 )}
                                 {(item.clase === 'herramienta' || item.es_herramienta) && (
-                                  <span className="ml-2 text-[11px] font-bold px-1.5 py-0.5 rounded bg-carbon text-white align-middle"
+                                  <span className="ml-2 text-[11px] font-bold px-1.5 py-0.5 rounded bg-carbon text-white align-middle inline-block whitespace-nowrap"
                                         title={item.clase === 'herramienta' ? 'Marcada como herramienta en el pedido' : 'Detectada como herramienta: queda registrada en Salidas a obra'}>
                                     {item.devuelve ? '↩ Devuelve' : '🔧 Pañol'}
                                   </span>
@@ -1774,7 +1774,7 @@ export function SolicitudesTab() {
                                       )}
                                       {item.precio_unit != null && <span className="ml-2">× {fmtM(item.precio_unit)} = <strong>{fmtM(cantEfectiva * item.precio_unit)}</strong></span>}
                                       {item.esperando_precio && (
-                                        <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-amarillo-light text-[#7A5500] font-sans" title="Compra sin precio: el proveedor lo pasa después. Se carga desde Cargar precios en la cuenta corriente.">
+                                        <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-amarillo-light text-[#7A5500] font-sans inline-block whitespace-nowrap" title="Compra sin precio: el proveedor lo pasa después. Se carga desde Cargar precios en la cuenta corriente.">
                                           ⏳ esperando precio
                                         </span>
                                       )}
@@ -2208,7 +2208,7 @@ export function SolicitudesTab() {
                                 {/* El color es parte de QUÉ se pide, no una nota al pie:
                                     si no se ve acá, el que compra no se entera. */}
                                 {item.color && (
-                                  <span className="ml-2 text-[11px] font-bold px-1.5 py-0.5 rounded bg-azul-light text-azul align-middle">
+                                  <span className="ml-2 text-[11px] font-bold px-1.5 py-0.5 rounded bg-azul-light text-azul align-middle inline-block whitespace-nowrap">
                                     {item.color}
                                   </span>
                                 )}
@@ -2216,7 +2216,7 @@ export function SolicitudesTab() {
                                     `es_herramienta` lo calcula el backend con el mismo predicado
                                     que el ledger, así el badge dice la verdad aunque nadie tildó. */}
                                 {(item.clase === 'herramienta' || item.es_herramienta) && (
-                                  <span className="ml-2 text-[11px] font-bold px-1.5 py-0.5 rounded bg-carbon text-white align-middle"
+                                  <span className="ml-2 text-[11px] font-bold px-1.5 py-0.5 rounded bg-carbon text-white align-middle inline-block whitespace-nowrap"
                                         title={item.clase === 'herramienta' ? 'Marcada como herramienta en el pedido' : 'Detectada como herramienta: queda registrada en Salidas a obra'}>
                                     {item.devuelve ? '↩ Devuelve' : '🔧 Pañol'}
                                   </span>
@@ -2242,7 +2242,7 @@ export function SolicitudesTab() {
                                       <span className="ml-2">× {fmtM(item.precio_unit)} = <strong>{fmtM(cantEfectiva * item.precio_unit)}</strong></span>
                                     )}
                                     {item.esperando_precio && (
-                                      <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-amarillo-light text-[#7A5500] font-sans" title="Compra sin precio: el proveedor lo pasa después.">
+                                      <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-amarillo-light text-[#7A5500] font-sans inline-block whitespace-nowrap" title="Compra sin precio: el proveedor lo pasa después.">
                                         ⏳ esperando precio
                                       </span>
                                     )}
