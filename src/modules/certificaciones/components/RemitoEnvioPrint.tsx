@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { EMPRESA } from '@/lib/config/empresa'
 import type { RemitoEnvio, SolicitudCompra } from '@/types/domain.types'
+import { codigoMaterial } from '@/lib/utils/codigo'
 
 // ── Preferencia "solo lo que se envía" (2026-08-18) ─────────────────────────
 // El remito trae por defecto el estado del pedido completo (pedido/enviado/
@@ -52,6 +53,8 @@ export function SoloEnvioCheck({ value, onChange }: { value: boolean; onChange: 
 
 export interface EstadoPedidoItem {
   descripcion: string
+  /** Código interno de la ficha (C-0128). Null si el renglón es texto libre. */
+  codigo:      string | null
   unidad:      string
   pedida:      number   // cantidad efectiva (si se compró menos, la comprada)
   enviada:     number   // acumulado enviado
@@ -139,6 +142,7 @@ export function armarEstadoPedido(
     if (enviada > pedida) enviada = pedida
     return {
       descripcion: it.descripcion,
+      codigo:      codigoMaterial(it.material_id ?? null),
       unidad:      it.unidad,
       pedida,
       enviada,
@@ -340,7 +344,7 @@ export function htmlRemito(
           <tbody>
             ${estadoPedido.items.map(it => `
             <tr style="border-bottom:1px solid #eee${it.rechazado ? ';color:#999' : ''}">
-              <td style="padding:1px 4px;font-size:${fz.chico}">${it.descripcion}</td>
+              <td style="padding:1px 4px;font-size:${fz.chico}">${it.codigo ? `<span style="color:#999;font-family:monospace">${it.codigo}</span> ` : ''}${it.descripcion}</td>
               <td style="padding:1px 4px;text-align:center;font-size:${fz.chico}">${it.pedida} ${it.unidad}</td>
               <td style="padding:1px 4px;text-align:center;font-size:${fz.chico}">${it.rechazado ? '—' : it.enviada}</td>
               <td style="padding:1px 4px;text-align:center;font-size:${fz.chico};font-weight:bold">

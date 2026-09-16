@@ -644,6 +644,10 @@ export function SolicitudesTab() {
   // Estado UI
   const [modalNuevo, setModalNuevo] = useState(false)
   const [modalEditar, setModalEditar] = useState<SolicitudCompra | null>(null)
+  // Visor de la foto del renglón. Es SOLO lectura: el editor de fotos vive en
+  // Catálogo. Acá alcanza con verla grande, que es lo que pide el que compra
+  // o el que despacha cuando duda de cuál de dos fichas parecidas es.
+  const [fotoGrande, setFotoGrande] = useState<{ url: string; nombre: string } | null>(null)
   const [lineas, setLineas] = useState<LineaForm[]>([newLinea()])
   const [lineasEdit, setLineasEdit] = useState<(LineaForm & { itemId?: number; estado?: string })[]>([])
   const [itemsAEliminar, setItemsAEliminar] = useState<number[]>([])
@@ -1695,6 +1699,40 @@ export function SolicitudesTab() {
                               <td className="px-4 py-1.5">
                                 <div className="text-sm font-medium text-carbon">
                                 {item.descripcion}
+                                {/* Código y foto de la ficha. El código es la forma corta de nombrar
+                                    un material por teléfono o en un remito; la miniatura saca la
+                                    duda entre dos fichas que se llaman casi igual. Los dos salen
+                                    del catálogo vía stockMap, así que sólo aparecen si el renglón
+                                    está vinculado a una ficha. */}
+                                {item.material_id && (() => {
+                                  const ficha = stockMap.get(item.material_id)
+                                  const cod = ficha?.codigo ?? codigoMaterial(item.material_id)
+                                  return (
+                                    <>
+                                      {cod && (
+                                        <button
+                                          type="button"
+                                          onClick={() => { void navigator.clipboard?.writeText(cod) }}
+                                          title="Código interno — click para copiarlo"
+                                          className="ml-2 shrink-0 font-mono text-[10px] font-bold bg-gris text-gris-dark px-1.5 py-0.5 rounded hover:bg-azul-light hover:text-azul align-middle"
+                                        >
+                                          {cod}
+                                        </button>
+                                      )}
+                                      {ficha?.foto_url && (
+                                        <button
+                                          type="button"
+                                          onClick={() => setFotoGrande({ url: ficha.foto_url!, nombre: ficha.nombre })}
+                                          title="Ver la foto en grande"
+                                          className="ml-1.5 align-middle inline-block rounded border border-gris-mid overflow-hidden hover:border-azul"
+                                        >
+                                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                                          <img src={ficha.foto_url} alt={ficha.nombre} className="w-7 h-7 object-cover block" />
+                                        </button>
+                                      )}
+                                    </>
+                                  )
+                                })()}
                                 {/* El color es parte de QUÉ se pide, no una nota al pie:
                                     si no se ve acá, el que compra no se entera. */}
                                 {item.color && (
@@ -2133,6 +2171,40 @@ export function SolicitudesTab() {
                               <div className="text-xs text-gris-mid">#{i + 1}</div>
                               <div className="text-sm font-medium text-carbon">
                                 {item.descripcion}
+                                {/* Código y foto de la ficha. El código es la forma corta de nombrar
+                                    un material por teléfono o en un remito; la miniatura saca la
+                                    duda entre dos fichas que se llaman casi igual. Los dos salen
+                                    del catálogo vía stockMap, así que sólo aparecen si el renglón
+                                    está vinculado a una ficha. */}
+                                {item.material_id && (() => {
+                                  const ficha = stockMap.get(item.material_id)
+                                  const cod = ficha?.codigo ?? codigoMaterial(item.material_id)
+                                  return (
+                                    <>
+                                      {cod && (
+                                        <button
+                                          type="button"
+                                          onClick={() => { void navigator.clipboard?.writeText(cod) }}
+                                          title="Código interno — click para copiarlo"
+                                          className="ml-2 shrink-0 font-mono text-[10px] font-bold bg-gris text-gris-dark px-1.5 py-0.5 rounded hover:bg-azul-light hover:text-azul align-middle"
+                                        >
+                                          {cod}
+                                        </button>
+                                      )}
+                                      {ficha?.foto_url && (
+                                        <button
+                                          type="button"
+                                          onClick={() => setFotoGrande({ url: ficha.foto_url!, nombre: ficha.nombre })}
+                                          title="Ver la foto en grande"
+                                          className="ml-1.5 align-middle inline-block rounded border border-gris-mid overflow-hidden hover:border-azul"
+                                        >
+                                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                                          <img src={ficha.foto_url} alt={ficha.nombre} className="w-7 h-7 object-cover block" />
+                                        </button>
+                                      )}
+                                    </>
+                                  )
+                                })()}
                                 {/* El color es parte de QUÉ se pide, no una nota al pie:
                                     si no se ve acá, el que compra no se entera. */}
                                 {item.color && (
@@ -2336,6 +2408,34 @@ export function SolicitudesTab() {
 
       {/* ── Modal historial del ítem (timeline) ── */}
       <ItemHistorialModal item={modalHistorial} onClose={() => setModalHistorial(null)} />
+
+      {/* Visor de la foto del renglón. Sólo mirar: subir y borrar fotos vive en
+          Catálogo, que es donde está el permiso y el control de duplicados. */}
+      <Modal
+        open={!!fotoGrande}
+        onClose={() => setFotoGrande(null)}
+        title={fotoGrande?.nombre ?? ''}
+        width="max-w-2xl"
+      >
+        {fotoGrande && (
+          <div className="flex flex-col items-center gap-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={fotoGrande.url}
+              alt={fotoGrande.nombre}
+              className="max-h-[70vh] w-auto max-w-full rounded-lg object-contain"
+            />
+            <a
+              href={fotoGrande.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-bold text-azul hover:underline"
+            >
+              Abrir en una pestaña nueva
+            </a>
+          </div>
+        )}
+      </Modal>
 
       {/* ── Modal nueva solicitud ── */}
       <Modal open={modalNuevo} onClose={() => setModalNuevo(false)} title="🛒 NUEVA SOLICITUD" width="max-w-3xl"

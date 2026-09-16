@@ -2,6 +2,7 @@
 
 import type { CuentaRenglon } from '@/types/domain.types'
 import { ESTADO_META, MOTIVO_LABEL, fmtM, fmtFecha } from './cuentaCorriente.utils'
+import { codigoMaterial } from '@/lib/utils/codigo'
 
 /**
  * Lista de renglones (una página) con el estado de cada uno. En pantallas
@@ -177,7 +178,23 @@ export function RenglonesTabla({ items, mostrarObra, vacio, seleccion }: Props) 
                 <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">{fmtFecha(r.fecha_resolucion)}</td>
                 <td className="px-3 py-2 font-mono text-xs text-gris-dark whitespace-nowrap">#{r.solicitud_id}</td>
                 <td className="px-3 py-2">
-                  <div className="text-sm">{r.descripcion}</div>
+                  <div className="text-sm">
+                  {/* El código de la ficha, para rastrear un renglón de plata hasta el
+                      catálogo sin depender de cómo esté escrita la descripción. Sale
+                      del material_id que ya expone la vista; si el renglón es texto
+                      libre no hay ficha y no se muestra nada. */}
+                  {r.material_id && (
+                    <button
+                      type="button"
+                      onClick={() => { void navigator.clipboard?.writeText(codigoMaterial(r.material_id) ?? '') }}
+                      title="Código interno — click para copiarlo"
+                      className="mr-1.5 shrink-0 font-mono text-[10px] font-bold bg-gris text-gris-dark px-1.5 py-0.5 rounded hover:bg-azul-light hover:text-azul align-middle"
+                    >
+                      {codigoMaterial(r.material_id)}
+                    </button>
+                  )}
+                    {r.descripcion}
+                  </div>
                   {mostrarObra && <div className="text-[10px] text-gris-dark"><span className="font-bold">{r.obra_nom}</span> <span className="font-mono">{r.obra_cod}</span></div>}
                 </td>
                 <td className="px-3 py-2 text-right font-mono text-xs whitespace-nowrap">
@@ -223,7 +240,23 @@ export function RenglonesTabla({ items, mostrarObra, vacio, seleccion }: Props) 
                 )
               })()}
               <div className="min-w-0">
-                <div className="text-sm font-medium">{r.descripcion}</div>
+                <div className="text-sm font-medium">
+                {/* El código de la ficha, para rastrear un renglón de plata hasta el
+                      catálogo sin depender de cómo esté escrita la descripción. Sale
+                      del material_id que ya expone la vista; si el renglón es texto
+                      libre no hay ficha y no se muestra nada. */}
+                  {r.material_id && (
+                    <button
+                      type="button"
+                      onClick={() => { void navigator.clipboard?.writeText(codigoMaterial(r.material_id) ?? '') }}
+                      title="Código interno — click para copiarlo"
+                      className="mr-1.5 shrink-0 font-mono text-[10px] font-bold bg-gris text-gris-dark px-1.5 py-0.5 rounded hover:bg-azul-light hover:text-azul align-middle"
+                    >
+                      {codigoMaterial(r.material_id)}
+                    </button>
+                  )}
+                  {r.descripcion}
+                </div>
                 <div className="text-[11px] text-gris-dark">
                   {fmtFecha(r.fecha_resolucion)} · #{r.solicitud_id} · {Number(r.cantidad).toLocaleString('es-AR')} {r.unidad}
                   {' · '}{r.origen === 'deposito' ? 'Depósito' : (r.proveedor_nom ?? 'sin proveedor')}
