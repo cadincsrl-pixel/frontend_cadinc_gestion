@@ -2438,7 +2438,7 @@ export function SolicitudesTab() {
       </Modal>
 
       {/* ── Modal nueva solicitud ── */}
-      <Modal open={modalNuevo} onClose={() => setModalNuevo(false)} title="🛒 NUEVA SOLICITUD" width="max-w-3xl"
+      <Modal open={modalNuevo} onClose={() => setModalNuevo(false)} title="🛒 NUEVA SOLICITUD" width="max-w-5xl"
         footer={<>
           <Button variant="secondary" onClick={() => setModalNuevo(false)}>Cancelar</Button>
           <Button variant="primary" loading={creating} onClick={formCab.handleSubmit(handleCreate)}>Crear solicitud</Button>
@@ -2478,7 +2478,10 @@ export function SolicitudesTab() {
                 return (
                   <div key={l._id} className="border border-gris-mid rounded-lg p-3 bg-gris/20">
                     <div className="flex gap-2 items-start">
-                      <div className="flex-1">
+                      {/* min-w-0 para que el flex deje achicar el hijo: sin esto el
+                          Combobox toma el ancho de su contenido y empuja al resto
+                          en vez de usar el espacio que le dio el modal. */}
+                      <div className="flex-1 min-w-0">
                         <Combobox
                           placeholder="Buscar material del catálogo..."
                           options={stockOptions}
@@ -3184,7 +3187,7 @@ export function SolicitudesTab() {
       </Modal>
 
       {/* ── Modal editar solicitud ── */}
-      <Modal open={!!modalEditar} onClose={() => setModalEditar(null)} title={`✏️ EDITAR SOLICITUD #${modalEditar?.id ?? ''}`} width="max-w-3xl"
+      <Modal open={!!modalEditar} onClose={() => setModalEditar(null)} title={`✏️ EDITAR SOLICITUD #${modalEditar?.id ?? ''}`} width="max-w-5xl"
         footer={<>
           <Button variant="secondary" onClick={() => setModalEditar(null)}>Cancelar</Button>
           <Button variant="primary" loading={updating} onClick={formEdit.handleSubmit(handleEditar)}>Guardar cambios</Button>
@@ -3234,7 +3237,8 @@ export function SolicitudesTab() {
                   return (
                     <div key={l._id} className="border border-gris-mid rounded-lg p-3 bg-gris/20">
                       <div className="flex gap-2 items-start">
-                        <div className="flex-1">
+                        {/* min-w-0: ver el gemelo del modal de alta. */}
+                        <div className="flex-1 min-w-0">
                           <Combobox
                             placeholder="Buscar material del catálogo..."
                             options={stockOptions}
