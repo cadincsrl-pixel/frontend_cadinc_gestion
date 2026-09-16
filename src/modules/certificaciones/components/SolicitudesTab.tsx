@@ -1911,11 +1911,15 @@ export function SolicitudesTab() {
                       if (!set || set.size === 0) return null
                       const itemsLote = items.filter(it => it.estado === 'pendiente' && set.has(it.id!))
                       if (itemsLote.length === 0) return null
+                      // Un servicio no sale del depósito: no hay nada que sacar. Se
+                      // compra y listo. Acá se filtra aparte porque el lote es la
+                      // SEGUNDA puerta al despacho, además del botón del renglón.
+                      const itemsLoteDespachables = itemsLote.filter(it => it.clase !== 'servicio')
                       return (
                         <div className="border-t border-gris bg-azul-light/40 px-4 py-2.5">
                           <div className="flex items-center justify-between gap-2 flex-wrap">
                             <span className="text-sm font-bold text-azul">
-                              {itemsLote.length} ítem{itemsLote.length > 1 ? 's' : ''} seleccionado{itemsLote.length > 1 ? 's' : ''} · comprar al mismo proveedor o despachar de depósito
+                              {itemsLote.length} ítem{itemsLote.length > 1 ? 's' : ''} seleccionado{itemsLote.length > 1 ? 's' : ''} · comprar al mismo proveedor{itemsLoteDespachables.length > 0 ? ' o despachar de depósito' : ''}
                             </span>
                             <div className="flex gap-2">
                               <button
@@ -1929,13 +1933,16 @@ export function SolicitudesTab() {
                                   solo la primera estaba en lote. No se ofrece
                                   despachar hacia una obra depósito: el depósito
                                   no se despacha a sí mismo. */}
-                              {!obrasMap.get(s.obra_cod)?.es_deposito && (
+                              {!obrasMap.get(s.obra_cod)?.es_deposito && itemsLoteDespachables.length > 0 && (
                                 <button
                                   disabled={!resolverItems}
-                                  onClick={() => abrirDespacharLote(s.id, itemsLote)}
+                                  onClick={() => abrirDespacharLote(s.id, itemsLoteDespachables)}
+                                  title={itemsLoteDespachables.length < itemsLote.length
+                                    ? 'Los servicios seleccionados quedan afuera: no salen del depósito, se compran'
+                                    : undefined}
                                   className="text-xs font-bold px-3 py-1.5 rounded-lg bg-naranja text-white hover:opacity-90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                                 >
-                                  📦 Despachar {itemsLote.length} de depósito
+                                  📦 Despachar {itemsLoteDespachables.length} de depósito
                                 </button>
                               )}
                               <button

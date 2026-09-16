@@ -93,6 +93,31 @@ export function CatalogoTab() {
   const { data: stats } = useCatalogoStats()
   const { data: rubros = [] } = useStockRubros()
   const { mutate: updateMat, mutateAsync: updateAsync, isPending } = useUpdateStockMaterial()
+
+  /**
+   * Marcar una ficha como servicio, o devolverla a material. Hasta el 16/09 esto
+   * sólo se podía al CREAR la ficha (el tilde del alta rápida del pedido), así
+   * que una ficha vieja mal clasificada no tenía arreglo desde la pantalla.
+   *
+   * La base se defiende sola: `trg_servicio_sin_stock_previo` rechaza convertir
+   * una ficha que tenga movimientos de stock o saldo distinto de cero, porque
+   * ese stock quedaría huérfano — un servicio no puede moverse. Acá se avisa
+   * antes para no hacer viajar el error.
+   */
+  function alternarServicio(m: { id: number; nombre: string; clase?: string | null; stock_actual?: number | null }) {
+    const aServicio = m.clase !== 'servicio'
+    if (aServicio && Number(m.stock_actual ?? 0) !== 0) {
+      toast(`"${m.nombre}" tiene stock (${m.stock_actual}): un servicio no tiene existencias. Ajustalo a cero o dala de baja y creá el servicio aparte.`, 'err')
+      return
+    }
+    if (!confirm(aServicio
+      ? `¿Marcar "${m.nombre}" como servicio?\n\nDeja de tener stock y de poder despacharse del depósito. Se compra al proveedor y cae en la cuenta de la obra igual que cualquier renglón.`
+      : `¿Devolver "${m.nombre}" a material?\n\nVuelve a poder despacharse del depósito y a llevar stock.`)) return
+    updateMat({ id: m.id, dto: { clase: aServicio ? 'servicio' : 'material' } }, {
+      onSuccess: () => toast(aServicio ? 'Ahora es un servicio' : 'Vuelve a ser un material', 'ok'),
+      onError:   (e: Error) => toast(e.message, 'err'),
+    })
+  }
   const { mutate: marcarRef, isPending: marcando } = useMarcarPrecioReferencia()
 
   const items = useMemo(() => data?.items ?? [], [data])
@@ -383,6 +408,20 @@ export function CatalogoTab() {
                       <td className="px-4 py-2.5 text-right whitespace-nowrap">
                         <button onClick={() => setFotosDe(m)} className="text-xs font-bold px-2.5 py-1.5 rounded text-gris-dark hover:bg-azul-light hover:text-azul mr-1" title={m.foto_url ? 'Ver o cambiar las fotos de la ficha' : 'Esta ficha no tiene fotos: subí una'}>📷{m.foto_url ? '' : ' Foto'}</button>
                         <button onClick={() => setHistorial(m)} className="text-xs font-bold px-2.5 py-1.5 rounded text-gris-dark hover:bg-azul-light hover:text-azul mr-1" title="Historial de compras y precios por proveedor">📈 Historial</button>
+                        {m.clase !== 'herramienta' && (
+                          <button
+                            onClick={() => alternarServicio(m)}
+                            disabled={!puedeEditar || isPending}
+                            className="text-xs font-bold px-2.5 py-1.5 rounded text-gris-dark hover:bg-azul-light hover:text-azul mr-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                            title={!puedeEditar
+                              ? 'Sin permiso para editar el catálogo'
+                              : m.clase === 'servicio'
+                                ? 'Devolverla a material: vuelve a llevar stock y a poder despacharse'
+                                : 'Marcarla como servicio: flete, volquete, corte y plegado, baño químico. Deja de tener stock.'}
+                          >
+                            {m.clase === 'servicio' ? '📦 Es material' : '🧾 Es servicio'}
+                          </button>
+                        )}
                         {!editando && (
                           <button onClick={() => abrirEdicion(m)} disabled={!puedeEditar} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-gris-mid disabled:opacity-40 disabled:cursor-not-allowed" title={puedeEditar ? 'Editar el precio de referencia' : 'Sin permiso para editar precios'}>
                             ✏️ Precio
