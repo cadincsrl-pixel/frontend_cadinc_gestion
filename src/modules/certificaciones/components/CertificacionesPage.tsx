@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useTabsPermitidos } from '@/hooks/useTabsPermitidos'
+import { useInvalidacionEnVivo } from '@/hooks/useInvalidacionEnVivo'
 import { SolicitudesTab }     from './SolicitudesTab'
 import { StockTab }           from './StockTab'
 import { CatalogoTab }        from './CatalogoTab'
@@ -35,6 +36,11 @@ export function CertificacionesPage() {
   const allowedTabs = useTabsPermitidos('certificaciones')
   const tab = searchParams.get('tab') ?? 'solicitudes'
   const info = TABS.find(t => t.key === tab) ?? TABS[0]!
+
+  // Que la pantalla se entere cuando OTRO resuelve un pedido. Va acá, en el
+  // contenedor, y no en SolicitudesTab: los tabs de stock y cuenta corriente
+  // miran los mismos datos y se desactualizan igual. Una sola suscripción.
+  useInvalidacionEnVivo()
 
   // Si el tab del query param no está permitido, redirigir al primer tab
   // permitido. El sidebar oculta los items prohibidos pero un user podría
