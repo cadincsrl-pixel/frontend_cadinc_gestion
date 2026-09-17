@@ -48,6 +48,9 @@ export function usePermisos(modulo: string) {
     editarPedidos:        flagCapacidad('editar_pedidos', false),
     forzarDespacho:       flagCapacidad('forzar_despacho', false),
     cargarPrecios:        flagCapacidad('cargar_precios', false),
+    // Marcar consumibles propios SIN poder valuar la cuenta (20260917). Es
+    // la parte de `cargar_precios` que necesita quien decide qué pone CADINC.
+    marcarConsumibles:    flagCapacidad('marcar_consumibles', false),
     // Default TRUE: se apaga a propósito para quien maneja el depósito pero no
     // los números. Apagado, el pedido se resuelve sin precio y queda a tasar.
     precioAlResolver:     flagCapacidad('precio_al_resolver', true),

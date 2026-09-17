@@ -56,12 +56,13 @@ function mensajeConsumible(code?: string): string {
   if (code.includes('ITEM_PAGO_DIRECTO'))       return 'Uno lo pagó el cliente directo al proveedor. No se marcó ninguno.'
   if (code.includes('ITEM_ES_EPP'))             return 'El EPP ya es gasto propio por su clase. No se marcó ninguno.'
   if (code.includes('SIN_PERMISO_CARGAR_PRECIOS')) return 'Te falta el permiso de cargar precios.'
+  if (code.includes('SIN_PERMISO_MARCAR_CONSUMIBLES')) return 'Te falta el permiso de marcar consumibles propios.'
   return code
 }
 
 export function CuentaCorrienteTab() {
   const toast = useToast()
-  const { resolverItems, cargarPrecios, esAdmin, puedeCrear, puedeEditar, puedeEliminar, verCostos } = usePermisos('certificaciones')
+  const { resolverItems, cargarPrecios, marcarConsumibles, esAdmin, puedeCrear, puedeEditar, puedeEliminar, verCostos } = usePermisos('certificaciones')
   // Las patas de jornales y contratistas del panel de costos salen de
   // endpoints de TARJA (horas, tarifas, certificaciones — todos con guardia
   // tarja.lectura). Un usuario de certificaciones sin tarja recibiría 403s
@@ -214,7 +215,7 @@ export function CuentaCorrienteTab() {
   // El botón aparece sólo donde la marca tiene sentido y sólo para quien puede
   // mover la cuenta del cliente: el mismo flag que emitir certificado.
   const puedeMarcarConsumible = !!obra && !obra.por_administracion
-    && obra.materiales_a_cargo_de !== 'cadinc' && (cargarPrecios || esAdmin)
+    && obra.materiales_a_cargo_de !== 'cadinc' && (cargarPrecios || marcarConsumibles || esAdmin)
   const seleccionados = useMemo(() => [...marcados.values()], [marcados])
   const plataMarcada  = useMemo(() => seleccionados.reduce((s, r) => s + Number(r.precio_total ?? 0), 0), [seleccionados])
   // Una tanda va toda para el mismo lado. Si lo tildado ya está marcado, el

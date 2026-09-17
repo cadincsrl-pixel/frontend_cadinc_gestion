@@ -1141,6 +1141,7 @@ export type ModuloPermisos = { [K in Accion]?: boolean } & {
   resolver_items?:         boolean
   /** Editar SOLO los pedidos propios, y solo los renglones pendientes. */
   editar_pedidos?:         boolean
+  marcar_consumibles?:  boolean   // 20260917n: marcar consumibles propios sin cargar_precios
   forzar_despacho?:        boolean
   /** Editar precio y "quién lo pagó" de renglones resueltos: mueve la cuenta del cliente. Solo admin por default. */
   cargar_precios?:         boolean
