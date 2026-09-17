@@ -10,6 +10,7 @@ import {
   useResolverStockCliente,
   useEditarItem,
 } from '../hooks/useSolicitudes'
+import type { DestinoCompras } from '../hooks/useSolicitudes'
 import { useProveedores, useCreateProveedor } from '../hooks/useProveedores'
 import { useStockCliente } from '../hooks/useStockCliente'
 import { useFacturasCompra, useCreateFactura } from '../hooks/useFacturasCompra'
@@ -302,6 +303,20 @@ function esTabPorItem(cat: CategoriaSol): boolean {
 }
 function itemEnCategoria(estado: ItemEstado, cat: CategoriaSol): boolean {
   return ITEM_CAT[estado] === cat
+}
+
+// Compras del pedido que todavía no viajaron (20260917j). Al borrar hay que
+// decidir si quedan en depósito o vuelven al proveedor. Las herramientas no
+// mueven stock, así que no cuentan.
+function comprasSinEnviar(s: SolicitudCompra): SolicitudCompraItem[] {
+  return (s.items ?? []).filter(i =>
+    i.estado === 'comprado' && !i.es_herramienta &&
+    Number(i.cantidad_comprada ?? i.cantidad) - Number(i.cantidad_enviada ?? 0) > 0,
+  )
+}
+// Despachos de depósito sin enviar: al borrar vuelven al estante solos.
+function despachosSinEnviar(s: SolicitudCompra): number {
+  return (s.items ?? []).filter(i => i.estado === 'de_deposito' && !i.es_herramienta).length
 }
 
 function matchCategoria(s: SolicitudCompra, cat: CategoriaSol): boolean {
@@ -673,6 +688,11 @@ export function SolicitudesTab() {
   const [lineas, setLineas] = useState<LineaForm[]>([newLinea()])
   const [lineasEdit, setLineasEdit] = useState<(LineaForm & { itemId?: number; estado?: string })[]>([])
   const [itemsAEliminar, setItemsAEliminar] = useState<number[]>([])
+  // Borrar un pedido (20260917j): si tiene compras sin enviar hay que decir si
+  // quedan en depósito o vuelven al proveedor. Se elige en un modal, no en un
+  // confirm().
+  const [modalEliminar, setModalEliminar] = useState<SolicitudCompra | null>(null)
+  const [destinoCompras, setDestinoCompras] = useState<DestinoCompras | ''>('')
   const [obraNueva, setObraNueva] = useState('')
   const [obraEdit, setObraEdit] = useState('')
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
@@ -936,16 +956,40 @@ export function SolicitudesTab() {
       onError: (e: any) => toast(e.message || 'Error', 'err'),
     })
   }
-  function eliminar(id: number) {
-    if (!confirm('¿Eliminar esta solicitud?')) return
-    removeSol(id, {
-      onSuccess: () => toast('Eliminada', 'ok'),
+  function eliminar(s: SolicitudCompra) {
+    setDestinoCompras('')
+    setModalEliminar(s)
+  }
+  function confirmarEliminar() {
+    const s = modalEliminar
+    if (!s) return
+    const compras = comprasSinEnviar(s)
+    if (compras.length > 0 && !destinoCompras) { toast('Elegí qué pasa con las compras sin enviar', 'err'); return }
+    removeSol({ id: s.id, compras: compras.length > 0 && destinoCompras ? destinoCompras : undefined }, {
+      onSuccess: (r) => {
+        setModalEliminar(null)
+        const partes = ['Pedido eliminado']
+        if (r?.vueltos_al_estante) partes.push(`${r.vueltos_al_estante} vuelve${r.vueltos_al_estante === 1 ? '' : 'n'} al estante`)
+        if (r?.compras_a_deposito) partes.push(`${r.compras_a_deposito} compra${r.compras_a_deposito === 1 ? '' : 's'} al depósito`)
+        if (r?.compras_devueltas) partes.push(`${r.compras_devueltas} compra${r.compras_devueltas === 1 ? '' : 's'} devuelta${r.compras_devueltas === 1 ? '' : 's'} al proveedor`)
+        toast(partes.join(' · '), 'ok')
+      },
       onError: (e: any) => {
         const code = e?.body?.error || e?.code
+        const detail = e?.body?.detail
         if (code === 'SOLICITUD_TIENE_COBROS') {
           toast('Tiene materiales ya cobrados al cliente. Eliminá primero el pago en Cuenta del cliente.', 'err')
         } else if (code === 'SOLICITUD_TIENE_REMITOS') {
           toast('Tiene remitos de envío emitidos: no se puede eliminar.', 'err')
+        } else if (code === 'SOLICITUD_TIENE_ENVIOS') {
+          toast('Tiene renglones ya enviados a la obra: no se puede eliminar. Deshacé el envío en cada renglón o usá Devoluciones.', 'err')
+        } else if (code === 'SOLICITUD_TIENE_RETIROS') {
+          toast('Tiene retiros de stock en proveedor: no se puede eliminar.', 'err')
+        } else if (code === 'ELEGIR_DESTINO_COMPRAS') {
+          toast('Tiene compras sin enviar: elegí si quedan en depósito o vuelven al proveedor.', 'err')
+        } else if (code === 'COMPRA_SIN_FICHA') {
+          const lista = Array.isArray(detail?.renglones) ? detail.renglones.join(', ') : ''
+          toast(`Hay compras sin ficha de catálogo${lista ? ` (${lista})` : ''}: vinculalas antes o elegí devolverlas al proveedor.`, 'err')
         } else {
           toast(e.message || 'Error', 'err')
         }
@@ -1652,7 +1696,7 @@ export function SolicitudesTab() {
                       </>
                     )}
                     <button disabled={!puedeEditarPedido(s)} onClick={() => abrirEditar(s)} className="text-xs font-bold px-3 py-1 rounded whitespace-nowrap bg-gris text-gris-dark hover:bg-azul-light hover:text-azul transition-colors disabled:opacity-40 disabled:cursor-not-allowed">✏️ Editar</button>
-                    <button disabled={!puedeEliminar} onClick={() => eliminar(s.id)} className="text-xs px-3 py-1 rounded whitespace-nowrap hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
+                    <button disabled={!puedeEliminar} onClick={() => eliminar(s)} className="text-xs px-3 py-1 rounded whitespace-nowrap hover:bg-rojo-light text-gris-dark hover:text-rojo transition-colors disabled:opacity-40 disabled:cursor-not-allowed">✕</button>
                   </div>
                 </div>
 
@@ -2160,7 +2204,7 @@ export function SolicitudesTab() {
                     </>
                   )}
                   <button disabled={!puedeEditarPedido(s)} onClick={() => abrirEditar(s)} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-azul-light hover:text-azul min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✏️ Editar</button>
-                  <button disabled={!puedeEliminar} onClick={() => eliminar(s.id)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✕ Eliminar</button>
+                  <button disabled={!puedeEliminar} onClick={() => eliminar(s)} className="text-xs font-bold px-3 py-1.5 rounded bg-rojo-light text-rojo hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✕ Eliminar</button>
                 </div>
 
                 {/* Obs */}
@@ -2576,6 +2620,71 @@ export function SolicitudesTab() {
             <button onClick={() => setLineas(p => [...p, newLinea()])} className="mt-2 w-full sm:w-auto min-h-[40px] px-3 py-2 rounded-lg border border-dashed border-azul/50 text-xs font-bold text-azul hover:text-naranja hover:border-naranja transition-colors">+ Agregar material</button>
           </div>
         </div>
+      </Modal>
+
+      {/* ── Eliminar pedido: dos ciclos (20260917j) ──
+          Lo despachado de depósito vuelve al estante solo. Las compras sin
+          enviar necesitan una decisión: quedan en CADINC (entran al stock) o
+          vuelven al proveedor (no suman). Lo enviado bloquea: está en la obra. */}
+      <Modal open={!!modalEliminar} onClose={() => setModalEliminar(null)} title={`🗑 ELIMINAR PEDIDO #${modalEliminar?.id ?? ''}`}
+        footer={<>
+          <Button variant="secondary" onClick={() => setModalEliminar(null)}>Cancelar</Button>
+          <Button variant="danger" onClick={confirmarEliminar}
+            disabled={!!modalEliminar && comprasSinEnviar(modalEliminar).length > 0 && !destinoCompras}>
+            Eliminar pedido
+          </Button>
+        </>}>
+        {modalEliminar && (() => {
+          const s = modalEliminar
+          const compras   = comprasSinEnviar(s)
+          const despachos = despachosSinEnviar(s)
+          const enviados  = (s.items ?? []).filter(i => i.estado === 'enviado').length
+          const n         = s.items?.length ?? 0
+          return (
+            <div className="space-y-3 text-sm">
+              <p>
+                <b>{s.obra_nom ?? s.obra_cod}</b> · {n} renglón{n === 1 ? '' : 'es'}. Se borra el pedido con su
+                historial y sus renglones de la cuenta de la obra. No se puede deshacer.
+              </p>
+              {despachos > 0 && (
+                <p className="text-gris-dark">
+                  📦 {despachos} despacho{despachos === 1 ? '' : 's'} de depósito sin enviar vuelve{despachos === 1 ? '' : 'n'} al estante.
+                </p>
+              )}
+              {enviados > 0 && (
+                <p className="text-rojo font-bold">
+                  Tiene {enviados} renglón{enviados === 1 ? '' : 'es'} ya enviado{enviados === 1 ? '' : 's'} a la obra: no se va a
+                  poder borrar. Deshacé el envío en el renglón o usá Devoluciones.
+                </p>
+              )}
+              {compras.length > 0 && (
+                <div className="rounded-lg border border-naranja bg-naranja-light/40 p-3 space-y-2">
+                  <p className="font-bold text-naranja-dark">
+                    Hay {compras.length} compra{compras.length === 1 ? '' : 's'} sin enviar. ¿Qué pasa con esa mercadería?
+                  </p>
+                  <ul className="text-xs text-gris-dark space-y-0.5">
+                    {compras.map(i => (
+                      <li key={i.id ?? i.descripcion}>
+                        · {Number(i.cantidad_comprada ?? i.cantidad) - Number(i.cantidad_enviada ?? 0)} {i.unidad} {i.descripcion}
+                        {i.proveedores?.nombre ? ` · ${i.proveedores.nombre}` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input type="radio" name="destino_compras" value="a_deposito" checked={destinoCompras === 'a_deposito'}
+                      onChange={() => setDestinoCompras('a_deposito')} className="mt-0.5" />
+                    <span><b>Queda en depósito.</b> Se compró y está en CADINC: entra al stock como compra, con proveedor y precio anotados.</span>
+                  </label>
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input type="radio" name="destino_compras" value="devuelta_proveedor" checked={destinoCompras === 'devuelta_proveedor'}
+                      onChange={() => setDestinoCompras('devuelta_proveedor')} className="mt-0.5" />
+                    <span><b>Se devuelve al proveedor.</b> No suma stock. La compra desaparece del sistema junto con su costo.</span>
+                  </label>
+                </div>
+              )}
+            </div>
+          )
+        })()}
       </Modal>
 
       {/* ── Modal comprar a proveedor ── */}

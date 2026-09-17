@@ -84,11 +84,30 @@ export function useUpdateSolicitud() {
   })
 }
 
+// Qué pasa con las compras sin enviar al borrar un pedido (20260917j):
+// quedan en CADINC (entran al stock del depósito) o vuelven al proveedor.
+export type DestinoCompras = 'a_deposito' | 'devuelta_proveedor'
+
+export interface EliminarSolicitudResultado {
+  success:            boolean
+  solicitud_id:       number
+  compras:            DestinoCompras | null
+  vueltos_al_estante: number
+  compras_a_deposito: number
+  compras_devueltas:  number
+  omitidos_sin_stock: number
+}
+
 export function useDeleteSolicitud() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id: number) => apiDelete(`/api/solicitudes/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['solicitudes'] }),
+    mutationFn: ({ id, compras }: { id: number; compras?: DestinoCompras }) =>
+      apiDelete<EliminarSolicitudResultado>(`/api/solicitudes/${id}`, compras ? { compras } : undefined),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['solicitudes'] })
+      // Borrar puede mover stock (vuelve al estante / compra que queda).
+      qc.invalidateQueries({ queryKey: ['stock'] })
+    },
   })
 }
 
