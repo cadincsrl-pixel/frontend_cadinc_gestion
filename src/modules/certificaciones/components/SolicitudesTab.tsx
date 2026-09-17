@@ -346,6 +346,28 @@ type DespacharLoteForm = {
   esperando_precio: boolean
 }
 
+/**
+ * En qué estados se puede tocar el precio de un renglón.
+ *
+ * Es exactamente el conjunto que acepta el backend en `editarItem`
+ * (`.in('estado', ['comprado','de_deposito','enviado'])`), y hasta el 17/09 la
+ * pantalla solo mostraba el botón para `enviado`. O sea que quien cargaba mal
+ * el precio de una compra y todavía no la había enviado no tenía forma de
+ * corregirlo: las únicas opciones eran revertir el renglón a pendiente —
+ * perdiendo proveedor y factura y teniendo que recargar todo — o enviarlo mal a
+ * propósito para recién entonces poder editarlo. El caso que lo destapó: tres
+ * renglones de un kit solar cargados con el precio ~1000× arriba
+ * ($5.664.555 el metro de cable), comprados y sin enviar.
+ *
+ * `retirado` NO está: el backend no lo acepta, así que ofrecerlo sería un botón
+ * que tira error. Las obras depósito tampoco (no llevan cuenta de cliente).
+ *
+ * La guarda de plata sigue siendo del backend, que es donde tiene que estar:
+ * pide el flag `cargar_precios` y devuelve 409 si el renglón ya está cobrado o
+ * certificado.
+ */
+const ESTADOS_CON_PRECIO_EDITABLE = ['comprado', 'de_deposito', 'enviado']
+
 export function SolicitudesTab() {
   const toast = useToast()
   const queryClient = useQueryClient()
@@ -568,8 +590,8 @@ export function SolicitudesTab() {
   const { mutate: comprarFaltante } = useComprarFaltante()
   const { mutate: editarPrecioItem, isPending: guardandoPrecio } = useEditarItem()
   const { mutate: createRemito, isPending: enviandoRemito } = useCreateRemitoEnvio()
-  // Carga de precio inline para un ítem ya enviado que quedó sin precio.
-  // El input es string local; el handler valida y castea a number.
+  // Carga y CORRECCIÓN de precio inline. El input es string local; el handler
+  // valida y castea a number.
   const [precioItemId, setPrecioItemId] = useState<number | null>(null)
   const [precioDraft, setPrecioDraft] = useState('')
   function guardarPrecioItem(itemId: number) {
@@ -1902,7 +1924,7 @@ export function SolicitudesTab() {
                                       {item.estado === 'rechazado' && (
                                         <button disabled={!resolverItems} onClick={() => handleRevertir(item.id!)} className="text-xs font-bold px-3 py-1 rounded whitespace-nowrap bg-amarillo-light text-[#7A5500] hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed">Reactivar</button>
                                       )}
-                                      {item.estado === 'enviado' && !obra?.es_deposito && (
+                                      {ESTADOS_CON_PRECIO_EDITABLE.includes(item.estado as string) && !obra?.es_deposito && (
                                         precioItemId === item.id ? (
                                           <>
                                             <input
@@ -2352,7 +2374,7 @@ export function SolicitudesTab() {
                               {item.estado === 'rechazado' && (
                                 <button disabled={!resolverItems} onClick={() => handleRevertir(item.id!)} className="w-full text-xs font-bold px-3 py-1.5 rounded bg-amarillo-light text-[#7A5500] hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Reactivar</button>
                               )}
-                              {item.estado === 'enviado' && !obra?.es_deposito && (
+                              {ESTADOS_CON_PRECIO_EDITABLE.includes(item.estado as string) && !obra?.es_deposito && (
                                 <div className="mb-2">
                                   {precioItemId === item.id ? (
                                     <div className="flex items-center gap-2">
