@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
@@ -24,6 +24,9 @@ import { AdministracionSection, MarcarAdministracion } from './AdministracionSec
 import { ModalExportar } from './ModalExportar'
 import { ModalCargarPrecios } from './ModalCargarPrecios'
 import { ESTADOS, ESTADO_META, fmtM, fmtFecha, recortar, totalizar, filasPorGrupo } from './cuentaCorriente.utils'
+
+/** Que el resumen de todas las obras no haya que volver a pedirlo cada vez. */
+const MEMORIA_VER_TODAS = 'cadinc.cuenta-corriente.ver-todas'
 
 /**
  * Cuenta corriente de obras (20260904ap). Una sola vista para lo que se le
@@ -97,8 +100,38 @@ export function CuentaCorrienteTab() {
   const [modalPrecios, setModalPrecios] = useState(false)
   const [exportando, setExportando]     = useState(false)
   // Sin obra elegida no se carga nada: los totales de todas las obras juntas
-  // son información sensible, así que verlos es una decisión explícita.
-  const [verTodas, setVerTodas] = useState(false)
+  // son información sensible, así que verlos es una decisión EXPLÍCITA. Eso no
+  // cambia — lo que cambia (17/09) es que la decisión no haya que tomarla de
+  // nuevo cada vez que se abre la pantalla:
+  //
+  //  · `?todas=1` en el link la abre directo, así el resumen se puede marcar
+  //    como favorito;
+  //  · y si ya la abriste una vez, se recuerda en este navegador.
+  //
+  // El motivo del cambio: el user preguntó DOS VECES dónde se veía el resumen
+  // de todas las obras, teniéndolo a un click. El cartel de la pantalla vacía
+  // decía "Elegí una obra" y el botón del resumen quedaba abajo, gris y chico:
+  // la pantalla te mandaba a hacer otra cosa y el resumen parecía no existir.
+  // La memoria es per-navegador a propósito (`localStorage`): es una comodidad
+  // de quien mira, no un permiso — el backend sigue decidiendo qué ve cada uno.
+  const [verTodas, setVerTodas] = useState(searchParams.get('todas') === '1')
+  useEffect(() => {
+    if (verTodas) return
+    try {
+      if (localStorage.getItem(MEMORIA_VER_TODAS) === '1') setVerTodas(true)
+    } catch {
+      // Navegador privado o storage bloqueado: se abre vacía, como antes.
+    }
+  }, [verTodas])
+  function elegirVerTodas(valor: boolean) {
+    setVerTodas(valor)
+    try {
+      if (valor) localStorage.setItem(MEMORIA_VER_TODAS, '1')
+      else localStorage.removeItem(MEMORIA_VER_TODAS)
+    } catch {
+      // Sin storage funciona igual, solo no se recuerda.
+    }
+  }
   const [modalExportar, setModalExportar] = useState(false)
   // Señal para el modal de registrar pago, que vive adentro de PagosCliente:
   // cada incremento lo abre. Así el botón queda en la cabecera de la obra sin
@@ -287,10 +320,15 @@ export function CuentaCorrienteTab() {
       {!hayDatos && (
         <div className="bg-white rounded-card shadow-card p-8 flex flex-col items-center gap-3 text-center">
           <div className="text-sm text-gris-dark max-w-md">
-            Elegí una obra para ver su cuenta: qué se le cobra al cliente, qué pagó y qué es gasto de CADINC.
+            <b className="text-gris-darkest">¿Cuánto debe cada obra?</b> El resumen las muestra todas
+            juntas, ordenadas por deuda. Desde ahí hacés click en una para cargar precios,
+            registrar pagos y sacar el PDF del cliente.
             {filtro.q && <> Para buscar <b>&quot;{filtro.q}&quot;</b> en todas las obras, mostralas.</>}
           </div>
-          <Button variant="secondary" size="sm" onClick={() => setVerTodas(true)}>Ver todas las obras</Button>
+          <Button size="sm" onClick={() => elegirVerTodas(true)}>Ver el resumen de todas las obras</Button>
+          <div className="text-xs text-gris-dark">
+            O elegí una obra puntual en el filtro de arriba.
+          </div>
         </div>
       )}
 
@@ -340,7 +378,7 @@ export function CuentaCorrienteTab() {
           </p>
           <div className="flex items-center gap-2">
             <Button variant="secondary" size="sm" onClick={exportar} loading={exportando} disabled={total === 0}>📊 Exportar Excel</Button>
-            <Button variant="ghost" size="sm" onClick={() => setVerTodas(false)} title="Volver a la pantalla vacía">✕ Ocultar</Button>
+            <Button variant="ghost" size="sm" onClick={() => elegirVerTodas(false)} title="Volver a la pantalla vacía">✕ Ocultar</Button>
           </div>
         </div>
       )}
