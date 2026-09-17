@@ -37,6 +37,7 @@ import { toISO } from '@/lib/utils/dates'
 import { matchesSearch } from '@/lib/utils/text'
 import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
+import { Pagination } from '@/components/ui/Pagination'
 import { Input }    from '@/components/ui/Input'
 import { InputMonto } from '@/components/ui/InputMonto'
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox'
@@ -305,6 +306,11 @@ function itemEnCategoria(estado: ItemEstado, cat: CategoriaSol): boolean {
   return ITEM_CAT[estado] === cat
 }
 
+// La lista se pagina en el cliente (2026-09-17): viene entera del backend
+// (~800 pedidos con sus renglones) y hasta hoy se dibujaba toda en una
+// página. En Enviadas, con una búsqueda, eran cientos de pedidos abiertos.
+const PEDIDOS_POR_PAGINA = 25
+
 // Compras del pedido que todavía no viajaron (20260917j). Al borrar hay que
 // decidir si quedan en depósito o vuelven al proveedor. Las herramientas no
 // mueven stock, así que no cuentan.
@@ -569,6 +575,8 @@ export function SolicitudesTab() {
    * pedido por pedido. Vale en todos los tabs, no solo en Enviadas.
    */
   const [busquedaMat, setBusquedaMat] = useState('')
+  const [pagina, setPagina]       = useState(1)
+  const [porPagina, setPorPagina] = useState(PEDIDOS_POR_PAGINA)
   const router       = useRouter()
   const searchParams = useSearchParams()
   // Categoría activa: viene del query param `?categoria=...`. Si no hay,
@@ -854,6 +862,21 @@ export function SolicitudesTab() {
     if (a.prioridad !== b.prioridad) return a.prioridad === 'urgente' ? -1 : 1
     return b.fecha.localeCompare(a.fecha)
   })
+
+  // Paginado en el cliente. Cambiar de tab, de obra o de búsqueda vuelve a la
+  // primera página; si la lista se achica (un borrado, un envío), la página
+  // se acomoda sola en vez de quedar en blanco.
+  useEffect(() => { setPagina(1) }, [categoriaSel, buscaMat, obraFiltro])
+  const totalPaginas   = Math.max(1, Math.ceil(sorted.length / porPagina))
+  const paginaEfectiva = Math.min(pagina, totalPaginas)
+  const pedidosPagina  = sorted.slice((paginaEfectiva - 1) * porPagina, paginaEfectiva * porPagina)
+  const pager = sorted.length > 0 && (
+    <div className="bg-white rounded-card shadow-card px-3 py-2">
+      <Pagination page={paginaEfectiva} total={sorted.length} pageSize={porPagina}
+        onChange={p => { setPagina(p); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+        onPageSizeChange={n => { setPorPagina(n); setPagina(1) }} />
+    </div>
+  )
 
   function toggleExpand(id: number) {
     setExpanded(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
@@ -1593,6 +1616,8 @@ export function SolicitudesTab() {
         )}
       </div>
 
+      {pager}
+
       {/* Tabla */}
       {isLoading ? (
         <div className="bg-white rounded-card shadow-card p-8 flex items-center justify-center gap-3 text-gris-dark">
@@ -1609,7 +1634,7 @@ export function SolicitudesTab() {
                   : <>Ningún pedido de este tab tiene &ldquo;{buscaMat}&rdquo;. Probá en otro tab: los contadores de arriba te dicen dónde está.</>
                 : 'Sin solicitudes.'}
             </div>
-          ) : sorted.map(s => {
+          ) : pedidosPagina.map(s => {
             const obra = obrasMap.get(s.obra_cod)
             // Con búsqueda no hace falta abrir pedido por pedido.
             const isExp = expanded.has(s.id) || !!buscaMat
@@ -2102,7 +2127,7 @@ export function SolicitudesTab() {
                   : <>Ningún pedido de este tab tiene &ldquo;{buscaMat}&rdquo;. Probá en otro tab: los contadores de arriba te dicen dónde está.</>
                 : 'Sin solicitudes.'}
             </div>
-          ) : sorted.map(s => {
+          ) : pedidosPagina.map(s => {
             const obra = obrasMap.get(s.obra_cod)
             // Con búsqueda no hace falta abrir pedido por pedido.
             const isExp = expanded.has(s.id) || !!buscaMat
@@ -2471,6 +2496,8 @@ export function SolicitudesTab() {
           })}
         </div>
       )}
+
+      {pager}
 
       {/* ── Modal historial del ítem (timeline) ── */}
       <ItemHistorialModal item={modalHistorial} onClose={() => setModalHistorial(null)} />
