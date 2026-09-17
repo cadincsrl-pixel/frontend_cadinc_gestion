@@ -10,11 +10,12 @@ import { usePermisos } from '@/hooks/usePermisos'
 import { useObrasTodas } from '@/modules/tarja/hooks/useObras'
 import { useProveedores } from '../../hooks/useProveedores'
 import { usePendientesDePrecio, useMarcarConsumible } from '../../hooks/useCuentaCliente'
-import { useCuentaRenglones, useCuentaResumen, fetchCuentaRenglonesTodos, type CuentaFiltro } from '../../hooks/useCuentaCorriente'
-import { exportarCuentaCorriente } from '../../utils/cuentaCorrienteExport'
+import { useCuentaRenglones, useCuentaResumen, useResumenObras, fetchCuentaRenglonesTodos, type CuentaFiltro } from '../../hooks/useCuentaCorriente'
+import { exportarCuentaCorriente, exportarResumenObras } from '../../utils/cuentaCorrienteExport'
 import type { CuentaEstado, CuentaGrupo, CuentaRenglon } from '@/types/domain.types'
 import { FiltrosCuenta } from './FiltrosCuenta'
 import { ResumenTabla } from './ResumenTabla'
+import { ResumenObrasTabla } from './ResumenObrasTabla'
 import { RenglonesTabla, bloqueoConsumible } from './RenglonesTabla'
 import { PagosCliente } from './PagosCliente'
 import { PreciosPropuestos } from './PreciosPropuestos'
@@ -170,8 +171,19 @@ export function CuentaCorrienteTab() {
   )
 
   const hayDatos = !!obraSel || verTodas
-  const { data: resumen, isLoading: cargandoResumen, error: errorResumen } = useCuentaResumen(filtro, grupo, hayDatos)
-  const { data: pagina, isLoading: cargandoLista, isFetching } = useCuentaRenglones(filtro, page, PAGE_SIZE, hayDatos)
+  const hayOtrosFiltros = !!(filtro.q || filtro.estados?.length || filtro.tipo || filtro.sin_precio || filtro.proveedor_id || filtro.origen || filtro.desde || filtro.hasta)
+  // "Ver todas las obras" abre en el resumen financiero — cuánto debe cada
+  // una — y no en la lista de artículos: es lo que se busca cuando se mira
+  // todo junto (pedido del user, 17/09). Los renglones quedan a un click, y
+  // aparecen solos si se tipea una búsqueda o se pone un filtro: el resumen
+  // no filtra, la lista sí. Mientras se mira el resumen, las dos queries de
+  // renglones no se piden (son los ~400 KB que este resumen existe para no
+  // bajar).
+  const [vistaTodas, setVistaTodas] = useState<'obras' | 'renglones'>('obras')
+  const vistaFinanciera = verTodas && !obraSel && vistaTodas === 'obras' && !hayOtrosFiltros
+  const { data: resumen, isLoading: cargandoResumen, error: errorResumen } = useCuentaResumen(filtro, grupo, hayDatos && !vistaFinanciera)
+  const { data: pagina, isLoading: cargandoLista, isFetching } = useCuentaRenglones(filtro, page, PAGE_SIZE, hayDatos && !vistaFinanciera)
+  const { data: resumenObras, isLoading: cargandoObras, error: errorObras } = useResumenObras(vistaFinanciera)
 
   // El resumen baja sin recortar por estado ni tipo; acá se recorta para los
   // KPIs y la tabla, y se cuenta "cruzado" para los chips.
@@ -237,7 +249,6 @@ export function CuentaCorrienteTab() {
   const pendVisibles = filtro.archivadas ? pendientes : pendientes.filter(p => !p.obra_archivada)
   const pendientesTotal = pendVisibles.reduce((s, p) => s + p.sin_precio, 0)
 
-  const hayOtrosFiltros = !!(filtro.q || filtro.estados?.length || filtro.tipo || filtro.sin_precio || filtro.proveedor_id || filtro.origen || filtro.desde || filtro.hasta)
 
   function filtroTxt(): string {
     const partes: string[] = []
@@ -249,6 +260,19 @@ export function CuentaCorrienteTab() {
     if (filtro.desde || filtro.hasta) partes.push(`${filtro.desde ? 'desde ' + fmtFecha(filtro.desde) : ''} ${filtro.hasta ? 'hasta ' + fmtFecha(filtro.hasta) : ''}`.trim())
     if (filtro.q) partes.push(`"${filtro.q}"`)
     return partes.length ? partes.join(' · ') : 'todos los renglones'
+  }
+
+  async function exportarObras() {
+    if (!resumenObras?.filas.length) { toast('Nada para exportar', 'err'); return }
+    setExportando(true)
+    try {
+      await exportarResumenObras(resumenObras.filas.filter(f => !f.archivada || f.saldo !== 0), resumenObras.con_tarja)
+      toast('✓ Excel generado', 'ok')
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Error al exportar', 'err')
+    } finally {
+      setExportando(false)
+    }
   }
 
   async function exportar() {
@@ -374,13 +398,35 @@ export function CuentaCorrienteTab() {
       ) : (
         <div className="flex items-center justify-between gap-3 flex-wrap px-1">
           <p className="text-xs text-gris-dark">
-            Todas las obras. Precios finales, IVA incluido. Hacé click en una obra para cargar precios, registrar pagos y sacar el PDF para el cliente.
+            {vistaFinanciera
+              ? 'Todas las obras: cuánto debe cada una. Click en una obra para cargar precios, registrar pagos y sacar el PDF.'
+              : 'Todas las obras, renglón por renglón. Precios finales, IVA incluido.'}
           </p>
           <div className="flex items-center gap-2">
-            <Button variant="secondary" size="sm" onClick={exportar} loading={exportando} disabled={total === 0}>📊 Exportar Excel</Button>
+            {!hayOtrosFiltros && (
+              <Button variant="secondary" size="sm" onClick={() => setVistaTodas(v => (v === 'obras' ? 'renglones' : 'obras'))}
+                title={vistaTodas === 'obras' ? 'Ver los renglones de todas las obras' : 'Volver al resumen por obra'}>
+                {vistaTodas === 'obras' ? '☰ Ver renglones' : '📋 Ver resumen por obra'}
+              </Button>
+            )}
+            {vistaFinanciera
+              ? <Button variant="secondary" size="sm" onClick={exportarObras} loading={exportando} disabled={!resumenObras?.filas.length}>📊 Exportar Excel</Button>
+              : <Button variant="secondary" size="sm" onClick={exportar} loading={exportando} disabled={total === 0}>📊 Exportar Excel</Button>}
             <Button variant="ghost" size="sm" onClick={() => elegirVerTodas(false)} title="Volver a la pantalla vacía">✕ Ocultar</Button>
           </div>
         </div>
+      )}
+
+      {vistaFinanciera && (
+        cargandoObras && !resumenObras
+          ? <div className="bg-white rounded-card shadow-card p-8 text-center text-sm text-gris-dark">Calculando la cuenta de todas las obras…</div>
+          : errorObras
+            ? <div className="bg-rojo-light border border-rojo/30 rounded-card p-4 text-sm text-rojo">{errorObras instanceof Error ? errorObras.message : 'Error al cargar el resumen'}</div>
+            : <ResumenObrasTabla
+                filas={(resumenObras?.filas ?? []).filter(f => !f.archivada || f.saldo !== 0)}
+                conTarja={resumenObras?.con_tarja ?? false}
+                onElegirObra={cod => patch({ obra_cod: cod })}
+              />
       )}
 
       {/* El modal de exportar se arma solo: busca renglones, pagos y (si la
@@ -455,14 +501,14 @@ export function CuentaCorrienteTab() {
         </>
       )}
 
-      {hayDatos && mostrarResumen && (
+      {hayDatos && !vistaFinanciera && mostrarResumen && (
         cargandoResumen && !resumen
           ? <div className="bg-white rounded-card shadow-card p-8 text-center text-sm text-gris-dark">Cargando resumen…</div>
           : <ResumenTabla filas={filas} grupo={grupo} onElegirObra={cod => patch({ obra_cod: cod })} />
       )}
 
       {/* Renglones */}
-      {hayDatos && <div className="bg-white rounded-card shadow-card overflow-hidden">
+      {hayDatos && !vistaFinanciera && <div className="bg-white rounded-card shadow-card overflow-hidden">
         <div className="px-4 pt-3 pb-2 flex items-center justify-between gap-2 flex-wrap">
           <h3 className="text-xs font-bold text-gris-dark uppercase tracking-wider">
             Renglones <span className="font-mono normal-case tracking-normal">({total.toLocaleString('es-AR')})</span>

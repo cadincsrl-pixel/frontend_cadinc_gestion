@@ -2254,3 +2254,45 @@ export interface OficinaResumenMes {
   general:      number
   totalOficina: number
 }
+
+// ── Resumen de cuenta corriente de todas las obras (17/09) ─────────────
+// Una fila por obra de cliente: jornales, contratistas y materiales con su %,
+// total, pagado y saldo. Lo calcula el backend (resumen-obras.ts); acá sólo
+// el shape. El régimen decide qué entra al total: en presupuesto cerrado los
+// jornales y contratistas son costo (`en_cuenta = false`), no deuda.
+
+export type ResumenObraRegimen = 'administracion' | 'presupuesto_cerrado'
+
+export interface ResumenObraPata {
+  costo:      number
+  facturable: number
+  /** false en presupuesto cerrado: se muestra en gris y no suma al total. */
+  en_cuenta:  boolean
+  /** El % vigente hoy; null si la obra no tiene porcentajes cargados. */
+  pct:        number | null
+}
+
+export interface ResumenObraFila {
+  obra_cod:     string
+  obra_nom:     string
+  archivada:    boolean
+  regimen:      ResumenObraRegimen
+  /** null si quien mira no puede ver costos de tarja (`parcial = true`). */
+  jornales:     ResumenObraPata | null
+  contratistas: ResumenObraPata | null
+  materiales:   { costo: number; facturable: number; sin_precio: number; pct: number | null }
+  total:        number
+  pagado:       number
+  notas:        number
+  saldo:        number
+  /** Por administración sin porcentajes: está calculando al 0%. */
+  sin_pct:      boolean
+  /** Sin jornales ni contratistas por permisos: el total no es el total. */
+  parcial:      boolean
+}
+
+export interface ResumenObras {
+  filas:       ResumenObraFila[]
+  con_tarja:   boolean
+  generado_en: string
+}

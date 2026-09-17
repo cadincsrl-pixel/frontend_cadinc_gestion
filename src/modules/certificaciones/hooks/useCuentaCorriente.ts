@@ -7,7 +7,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api/client'
 import type {
   CuentaEstado, CuentaTipo, CuentaGrupo, CuentaRenglon, CuentaRenglonesPage, CuentaResumen,
-  GastoInterno,
+  GastoInterno, ResumenObras,
 } from '@/types/domain.types'
 
 export interface CuentaFiltro {
@@ -109,4 +109,18 @@ export async function fetchCuentaRenglonesTodos(f: CuentaFiltro): Promise<Cuenta
     if (page.items.length < PAGE) break
   }
   return all
+}
+
+// ── Resumen de todas las obras (17/09) ───────────────────────────────
+// Una fila por obra con jornales, contratistas, materiales, total, pagado y
+// saldo, calculada en el servidor. La clave arranca con 'cuenta-corriente'
+// para que las mutaciones del módulo (y el aviso en vivo) la refresquen.
+
+export function useResumenObras(enabled = true) {
+  return useQuery({
+    queryKey: [...CUENTA_CORRIENTE_KEY, 'resumen-obras'],
+    queryFn:  () => apiGet<ResumenObras>('/api/cuenta-cliente/resumen-obras'),
+    staleTime: 60_000,
+    enabled,
+  })
 }

@@ -10,7 +10,7 @@
 import ExcelJS from 'exceljs'
 import { toISO } from '@/lib/utils/dates'
 import { EMPRESA } from '@/lib/config/empresa'
-import type { CuentaRenglon, CuentaResumenPagos, CuentaEstado } from '@/types/domain.types'
+import type { CuentaRenglon, CuentaResumenPagos, CuentaEstado, ResumenObraFila } from '@/types/domain.types'
 import { ESTADO_META, MOTIVO_LABEL } from '../components/cuenta-corriente/cuentaCorriente.utils'
 
 const FMT_MONEDA = '"$"#,##0;[Red]"-$"#,##0;"—"'
@@ -236,4 +236,92 @@ function fmtFechaCorta(d: Date): string {
 }
 function sanitize(s: string): string {
   return s.replace(/[^a-z0-9_-]+/gi, '_').replace(/^_+|_+$/g, '')
+}
+
+// ── Resumen de todas las obras (17/09): cuánto debe cada una ─────────
+// Una hoja, una fila por obra, las tres patas con su %, total, pagado, notas
+// y saldo. En presupuesto cerrado jornales y contratistas van como costo y
+// NO suman al total — la misma regla que la pantalla.
+
+export async function exportarResumenObras(filas: ResumenObraFila[], conTarja: boolean): Promise<void> {
+  const generadoEn = new Date()
+  const wb = new ExcelJS.Workbook()
+  wb.creator = EMPRESA.nombre
+  wb.created = generadoEn
+  wb.modified = generadoEn
+
+  const ws = wb.addWorksheet('Cuánto debe cada obra')
+  const headers = ['Cód obra', 'Obra', 'Régimen', 'Jornales', '% jorn.', 'Contratistas', '% contr.', 'Materiales', '% mat.', 'Total', 'Pagado', 'Notas de crédito', 'Saldo', 'Sin precio']
+  const NCOLS = headers.length
+  setColWidths(ws, [14, 30, 20, 16, 8, 16, 8, 16, 8, 16, 16, 16, 16, 10])
+
+  ws.mergeCells(1, 1, 1, NCOLS)
+  const t = ws.getCell(1, 1)
+  t.value = 'CUENTA CORRIENTE — Cuánto debe cada obra'
+  t.font = { name: 'Calibri', size: 14, bold: true, color: { argb: C_BLANCO } }
+  t.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 }
+  t.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C_AZUL } }
+  ws.getRow(1).height = 26
+
+  ws.mergeCells(2, 1, 2, NCOLS)
+  const s = ws.getCell(2, 1)
+  const sinPrecio = filas.reduce((n, f) => n + f.materiales.sin_precio, 0)
+  s.value = `Generado: ${fmtFechaCorta(generadoEn)}  ·  Precios finales, IVA incluido`
+    + (conTarja ? '' : '  ·  Sin costos de tarja: jornales y contratistas no incluidos')
+    + (sinPrecio > 0 ? `  ·  ⚠ ${sinPrecio} renglones sin precio (valen $0 acá)` : '')
+    + '  ·  En presupuesto cerrado, jornales y contratistas son costo y no suman al total'
+  s.font = { name: 'Calibri', size: 10, italic: true, color: { argb: sinPrecio > 0 ? 'FFC05621' : C_CARBON } }
+  s.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 }
+  s.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C_AZUL_LIGHT } }
+
+  const headerRow = ws.getRow(3)
+  headers.forEach((h, i) => {
+    const c = headerRow.getCell(i + 1)
+    c.value = h
+    c.font = { name: 'Calibri', size: 10, bold: true, color: { argb: C_BLANCO } }
+    c.alignment = { horizontal: 'center', vertical: 'middle' }
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C_AZUL_HEADER } }
+  })
+  headerRow.height = 20
+
+  const gris = { argb: 'FF888888' }
+  let r = 4
+  for (const f of filas) {
+    const row = ws.getRow(r++)
+    const pata = (p: ResumenObraFila['jornales']) => p ? p.facturable : null
+    row.values = [
+      f.obra_cod, f.obra_nom + (f.archivada ? ' (archivada)' : ''),
+      f.regimen === 'administracion' ? 'Por administración' : 'Presupuesto cerrado',
+      pata(f.jornales), f.jornales?.pct ?? null,
+      pata(f.contratistas), f.contratistas?.pct ?? null,
+      f.materiales.facturable, f.materiales.pct,
+      f.total, f.pagado, f.notas, f.saldo,
+      f.materiales.sin_precio || null,
+    ]
+    for (const col of [4, 6, 8, 10, 11, 12, 13]) row.getCell(col).numFmt = FMT_MONEDA
+    for (const col of [5, 7, 9]) row.getCell(col).numFmt = '0"%"'
+    // Costo que no se factura: en gris, igual que en pantalla.
+    if (f.jornales && !f.jornales.en_cuenta) { row.getCell(4).font = { color: gris }; row.getCell(6).font = { color: gris } }
+    row.getCell(13).font = { bold: true, color: f.saldo < 0 ? { argb: 'FFC00000' } : undefined }
+    row.eachCell({ includeEmpty: true }, c => { c.border = { bottom: { style: 'thin', color: { argb: C_GRIS_BORDE } } } })
+  }
+
+  const totRow = ws.getRow(r)
+  const suma = (k: (f: ResumenObraFila) => number) => filas.reduce((s, f) => s + k(f), 0)
+  totRow.values = ['', 'TOTAL', '', null, null, null, null, null, null, suma(f => f.total), suma(f => f.pagado), suma(f => f.notas), suma(f => f.saldo), suma(f => f.materiales.sin_precio) || null]
+  for (const col of [10, 11, 12, 13]) totRow.getCell(col).numFmt = FMT_MONEDA
+  totRow.eachCell({ includeEmpty: true }, c => {
+    c.font = { bold: true }
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C_GRIS_MEDIUM } }
+  })
+  ws.views = [{ state: 'frozen', ySplit: 3 }]
+
+  const buffer = await wb.xlsx.writeBuffer()
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `CuentaCorriente_resumen-obras_${toISO(generadoEn)}.xlsx`
+  a.click()
+  URL.revokeObjectURL(url)
 }
