@@ -2275,6 +2275,8 @@ export interface ResumenObraPata {
 export interface ResumenObraFila {
   obra_cod:     string
   obra_nom:     string
+  /** El centro de costo (`obras.cc`): el cliente. Sin cc, la obra es su propio centro. */
+  centro_costo: string
   archivada:    boolean
   regimen:      ResumenObraRegimen
   /** null si quien mira no puede ver costos de tarja (`parcial = true`). */

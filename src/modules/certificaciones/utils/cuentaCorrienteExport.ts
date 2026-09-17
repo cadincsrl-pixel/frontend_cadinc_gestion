@@ -251,9 +251,9 @@ export async function exportarResumenObras(filas: ResumenObraFila[], conTarja: b
   wb.modified = generadoEn
 
   const ws = wb.addWorksheet('Cuánto debe cada obra')
-  const headers = ['Cód obra', 'Obra', 'Régimen', 'Jornales', '% jorn.', 'Contratistas', '% contr.', 'Materiales', '% mat.', 'Total', 'Pagado', 'Notas de crédito', 'Saldo', 'Sin precio']
+  const headers = ['Centro de costo', 'Cód obra', 'Obra', 'Régimen', 'Jornales', '% jorn.', 'Contratistas', '% contr.', 'Materiales', '% mat.', 'Total', 'Pagado', 'Notas de crédito', 'Saldo', 'Sin precio']
   const NCOLS = headers.length
-  setColWidths(ws, [14, 30, 20, 16, 8, 16, 8, 16, 8, 16, 16, 16, 16, 10])
+  setColWidths(ws, [18, 14, 30, 20, 16, 8, 16, 8, 16, 8, 16, 16, 16, 16, 10])
 
   ws.mergeCells(1, 1, 1, NCOLS)
   const t = ws.getCell(1, 1)
@@ -285,12 +285,15 @@ export async function exportarResumenObras(filas: ResumenObraFila[], conTarja: b
   headerRow.height = 20
 
   const gris = { argb: 'FF888888' }
+  // Agrupadas por centro de costo y, adentro, por saldo: así el Excel se lee
+  // como la pantalla agrupada, y un subtotal por cliente sale con un filtro.
+  const ordenadas = [...filas].sort((a, b) => a.centro_costo.localeCompare(b.centro_costo) || b.saldo - a.saldo)
   let r = 4
-  for (const f of filas) {
+  for (const f of ordenadas) {
     const row = ws.getRow(r++)
     const pata = (p: ResumenObraFila['jornales']) => p ? p.facturable : null
     row.values = [
-      f.obra_cod, f.obra_nom + (f.archivada ? ' (archivada)' : ''),
+      f.centro_costo, f.obra_cod, f.obra_nom + (f.archivada ? ' (archivada)' : ''),
       f.regimen === 'administracion' ? 'Por administración' : 'Presupuesto cerrado',
       pata(f.jornales), f.jornales?.pct ?? null,
       pata(f.contratistas), f.contratistas?.pct ?? null,
@@ -298,18 +301,18 @@ export async function exportarResumenObras(filas: ResumenObraFila[], conTarja: b
       f.total, f.pagado, f.notas, f.saldo,
       f.materiales.sin_precio || null,
     ]
-    for (const col of [4, 6, 8, 10, 11, 12, 13]) row.getCell(col).numFmt = FMT_MONEDA
-    for (const col of [5, 7, 9]) row.getCell(col).numFmt = '0"%"'
+    for (const col of [5, 7, 9, 11, 12, 13, 14]) row.getCell(col).numFmt = FMT_MONEDA
+    for (const col of [6, 8, 10]) row.getCell(col).numFmt = '0"%"'
     // Costo que no se factura: en gris, igual que en pantalla.
-    if (f.jornales && !f.jornales.en_cuenta) { row.getCell(4).font = { color: gris }; row.getCell(6).font = { color: gris } }
-    row.getCell(13).font = { bold: true, color: f.saldo < 0 ? { argb: 'FFC00000' } : undefined }
+    if (f.jornales && !f.jornales.en_cuenta) { row.getCell(5).font = { color: gris }; row.getCell(7).font = { color: gris } }
+    row.getCell(14).font = { bold: true, color: f.saldo < 0 ? { argb: 'FFC00000' } : undefined }
     row.eachCell({ includeEmpty: true }, c => { c.border = { bottom: { style: 'thin', color: { argb: C_GRIS_BORDE } } } })
   }
 
   const totRow = ws.getRow(r)
   const suma = (k: (f: ResumenObraFila) => number) => filas.reduce((s, f) => s + k(f), 0)
-  totRow.values = ['', 'TOTAL', '', null, null, null, null, null, null, suma(f => f.total), suma(f => f.pagado), suma(f => f.notas), suma(f => f.saldo), suma(f => f.materiales.sin_precio) || null]
-  for (const col of [10, 11, 12, 13]) totRow.getCell(col).numFmt = FMT_MONEDA
+  totRow.values = ['', '', 'TOTAL', '', null, null, null, null, null, null, suma(f => f.total), suma(f => f.pagado), suma(f => f.notas), suma(f => f.saldo), suma(f => f.materiales.sin_precio) || null]
+  for (const col of [11, 12, 13, 14]) totRow.getCell(col).numFmt = FMT_MONEDA
   totRow.eachCell({ includeEmpty: true }, c => {
     c.font = { bold: true }
     c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C_GRIS_MEDIUM } }
