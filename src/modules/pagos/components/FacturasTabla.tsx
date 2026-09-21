@@ -41,6 +41,22 @@ function Alertas({ f }: { f: PagosFactura }) {
         <span className="inline-block whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded bg-gris text-gris-dark"
               title="Todavía no se adjuntó el PDF de la factura">sin PDF</span>
       )}
+      {/* El control del comprobante, también acá (20260921k): «si está todo ok
+          y comprobado me debería aparecer en el menú principal también, con una
+          tilde». Verlo sólo al abrir la factura obligaba a entrar una por una,
+          que es justo lo que el control automático viene a evitar. */}
+      {f.control_estado === 'coincide' && (
+        <span className="inline-block whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded bg-verde-light text-verde font-bold"
+              title="El comprobante adjunto coincide con el número y el total cargados">✓ comprobante OK</span>
+      )}
+      {f.control_estado === 'difiere' && (
+        <span className="inline-block whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded bg-rojo-light text-rojo font-bold"
+              title={f.control_nota || 'El comprobante no coincide con lo cargado'}>⚠ no coincide con el papel</span>
+      )}
+      {(f.control_estado === 'ilegible' || f.control_estado === 'error') && (
+        <span className="inline-block whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded bg-amarillo-light text-[#7A5000]"
+              title={f.control_nota || 'No se pudo leer el comprobante: hay que revisarlo a mano'}>? sin controlar</span>
+      )}
       {f.acreditado > 0 && (
         <span className="inline-block whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded bg-[#EEE8FF] text-[#5A2D82]"
               title={`Notas de crédito aplicadas por ${fmtM(f.acreditado)}`}>NC {fmtM(f.acreditado)}</span>

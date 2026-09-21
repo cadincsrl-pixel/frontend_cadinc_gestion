@@ -2513,6 +2513,9 @@ export interface PagosFactura {
   todas_archivadas:    boolean | null
   tiene_factura_adj:   boolean
   sin_numero:          boolean
+  /** Último control automático del comprobante (20260921k). null = todavía no se controló. */
+  control_estado:      PagosEstadoControl | null
+  control_nota:        string | null
   /** «OP-0012» de la última orden vigente que la tocó. */
   ultima_op:           string | null
   ultimo_pago:         string | null
@@ -2589,9 +2592,11 @@ export interface PagosPagoAplicado {
  * datos: número y total. `null` si todavía no se controló (o si no hay key
  * de IA cargada: el módulo anda igual, simplemente no controla).
  */
+export type PagosEstadoControl = 'coincide' | 'difiere' | 'ilegible' | 'error'
+
 export interface PagosControlFactura {
   id:           number
-  estado:       'coincide' | 'difiere' | 'ilegible' | 'error'
+  estado:       PagosEstadoControl
   numero_leido: string | null
   total_leido:  number | null
   /** null = no se pudo leer ese dato, que NO es lo mismo que «está bien». */
