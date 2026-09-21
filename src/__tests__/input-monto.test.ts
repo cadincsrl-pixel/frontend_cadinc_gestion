@@ -145,3 +145,35 @@ describe('mientras se tipea, el monto se va acomodando solo', () => {
     expect(vistos).toEqual(['2', '24', '249', '2.499', '24.994', '24.994,', '24.994,5', '24.994,52'])
   })
 })
+
+describe('tipear el decimal cuando el campo YA muestra los miles (2026-09-21)', () => {
+  // El caso que reportó el dueño: el total mostraba "24.995" con su punto de
+  // miles, tipeó ".52" al final y quedó "24.995.52". La regla vieja leía dos
+  // separadores de miles: $2.499.552, cien veces de más. Con coma andaba.
+  it('el último punto es el decimal, los anteriores son miles', () => {
+    expect(aRaw('24.995.52', 2)).toBe('24995.52')
+    expect(aRaw('1.234.567.89', 2)).toBe('1234567.89')
+  })
+
+  it('y da lo mismo que tipearlo con coma', () => {
+    expect(aRaw('24.995.52', 2)).toBe(aRaw('24.995,52', 2))
+  })
+
+  it('tres dígitos detrás del último punto SIGUEN siendo miles', () => {
+    expect(aRaw('1.234.567', 2)).toBe('1234567')
+    expect(aRaw('24.995', 2)).toBe('24995')
+  })
+
+  it('el display lo acomoda mientras se teclea', () => {
+    expect(reformatear('24.995.', 2)).toBe('24.995,')
+    expect(reformatear('24.995.5', 2)).toBe('24.995,5')
+    expect(reformatear('24.995.52', 2)).toBe('24.995,52')
+  })
+
+  it('corregir un total ya cargado, tecla por tecla', () => {
+    // Parte de "24.995" en pantalla y agrega los centavos con el teclado numérico.
+    const pasos = ['24.995', '24.995.', '24.995.5', '24.995.52']
+    expect(pasos.map(p => reformatear(p, 2))).toEqual(['24.995', '24.995,', '24.995,5', '24.995,52'])
+    expect(aRaw('24.995.52', 2)).toBe('24995.52')
+  })
+})

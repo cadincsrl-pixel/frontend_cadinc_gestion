@@ -54,21 +54,29 @@ interface InputMontoProps {
  *
  * El punto es ambiguo en es-AR, así que se decide por la FORMA, no por gusto:
  *
- *   hay una coma             → la coma manda, los puntos son miles ("1.234,56")
- *   un punto, 3 dígitos
- *     detrás y algo adelante → miles, como se pega de es-AR ("1.234")
- *   un punto, cualquier otra
- *     cantidad detrás        → DECIMAL ("24994.52", "1.5", "1000.", "0.75")
- *   dos o más puntos         → miles ("1.234.567")
+ * La regla es UNA sola y se aplica al ÚLTIMO punto:
+ *
+ *   hay una coma          → la coma manda, TODOS los puntos son miles ("1.234,56")
+ *   el último punto tiene
+ *     3 dígitos detrás y
+ *     algo adelante       → es de miles, no hay decimal ("1.234", "1.234.567")
+ *   cualquier otro caso   → el último punto es el DECIMAL y los anteriores son
+ *                           de miles ("24994.52", "24.995.52", "1.5", "1000.")
+ *
+ * Mirar el ÚLTIMO, y no exigir que haya uno solo, es lo que arregla el caso
+ * que reportó el dueño el 2026-09-21: el campo ya mostraba "24.995" con su
+ * punto de miles, tipeó ".52" al final y quedó "24.995.52" — que la regla
+ * anterior leía como DOS separadores de miles, o sea $2.499.552. Cien veces de
+ * más, y justo en el total de una factura. Con la coma andaba; con el punto,
+ * que es el del teclado numérico, no.
  *
  * El caso feo sería "1.234" queriendo decir un peso con 234 milésimas, pero
  * los montos llevan dos decimales: no existe.
  */
 export function normalizarDecimal(texto: string): string {
   if (texto.includes(',')) return texto
-  const puntos = (texto.match(/\./g) ?? []).length
-  if (puntos !== 1) return texto
-  const i = texto.indexOf('.')
+  const i = texto.lastIndexOf('.')
+  if (i < 0) return texto
   const detras   = texto.slice(i + 1).replace(/\D/g, '')
   const adelante = texto.slice(0, i).replace(/\D/g, '')
   if (detras.length === 3 && adelante.length > 0) return texto   // "1.234" son mil doscientos treinta y cuatro
