@@ -11,7 +11,8 @@ import {
 import { useDatosPagoProveedor, useProveedorPagos } from '../hooks/useProveedoresPagos'
 import {
   FORMAS_CON_COMPROBANTE_OBLIGATORIO, FORMAS_CON_CUENTA_DESTINO, FORMAS_CON_FECHA_COBRO,
-  FORMAS_PAGO_OP, comprobanteTxt, fmtFecha, fmtM, hoyAR, partirEnPartes, sumarDiasISO,
+  FORMAS_PAGO_OP, PLAZOS_CHEQUE, comprobanteTxt, fechasEscalonadas, fmtFecha, fmtM, hoyAR,
+  partirEnPartes, plazoLabel, sumarDiasISO,
 } from '../utils/pagos.utils'
 import { mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
 import type { PagosAdjuntoPendiente, PagosFactura, PagosFormaPagoOP, PagosLineaOrdenInput } from '@/types/domain.types'
@@ -62,6 +63,11 @@ const n = (s: string) => {
   return Number.isFinite(v) ? v : 0
 }
 const r2 = (v: number) => Math.round(v * 100) / 100
+/** Entero de un input de texto; 0 si está vacío o es basura. */
+const nEntero = (s: string) => {
+  const v = parseInt(String(s), 10)
+  return Number.isFinite(v) ? v : 0
+}
 
 export function ModalRegistrarPago({ facturaIds, onClose }: Props) {
   const toast = useToast()
@@ -84,6 +90,12 @@ export function ModalRegistrarPago({ facturaIds, onClose }: Props) {
   const [forma, setForma] = useState<PagosFormaPagoOP>('transferencia')
   const [fecha, setFecha] = useState(hoyAR())
   const [cheques, setCheques] = useState<ChequeFila[]>([])
+  // Cómo se reparte el pago en cheques (2026-09-21). Son tres preguntas que el
+  // dueño hace en voz alta al entregar: en cuántos, a qué plazo el primero, y
+  // cada cuánto los demás. Antes estaba fijo en 30/60/90.
+  const [cantCheques, setCantCheques] = useState('3')
+  const [primerPlazo, setPrimerPlazo] = useState(30)
+  const [cadaDias, setCadaDias]       = useState('30')
   const [referencia, setReferencia] = useState('')
   const [obs, setObs] = useState('')
   const [comprobante, setComprobante] = useState<PagosAdjuntoPendiente | null>(null)
@@ -142,25 +154,43 @@ export function ModalRegistrarPago({ facturaIds, onClose }: Props) {
   }
 
   /**
-   * Parte lo que sale de plata en `k` cheques iguales, uno cada 30 días. Es la
-   * forma en que se pagan: «tres cheques a 30, 60 y 90». La última parte
-   * absorbe los centavos para que la suma cierre exacto.
+   * Parte lo que sale de plata en `k` cheques iguales y les pone las fechas de
+   * cobro según el plazo elegido: «tres a 30, 60 y 90», «dos al día y a 30»,
+   * «uno a 7». La última parte absorbe los centavos para que la suma cierre
+   * exacto — el backend compara por igualdad estricta.
+   *
+   * Conserva número, banco y librador de las filas que ya estaban: cambiar el
+   * plazo después de tipear los números no obliga a tipearlos de nuevo.
    */
-  function escalonar(k: number) {
-    if (totalPlata <= 0) return
+  function generarCheques() {
+    const k = Math.trunc(nEntero(cantCheques))
+    if (totalPlata <= 0 || k <= 0) return
     const partes = partirEnPartes(totalPlata, k)
+    const fechas = fechasEscalonadas(fecha, k, primerPlazo, nEntero(cadaDias))
     setCheques(cs => partes.map((m, i) => ({
       ...(cs[i] ?? chequeVacio('', '')),
-      fecha_cobro: sumarDiasISO(fecha, 30 * (i + 1)),
+      fecha_cobro: fechas[i] ?? fecha,
       monto: String(m),
     })))
   }
 
+  /** El plazo que quedó, en días desde la fecha del pago. Se lee al lado de
+   *  cada fecha para reconocer «el de 60» sin contar en el calendario. */
+  function plazoDe(fechaCobro: string): string | undefined {
+    if (!fechaCobro || fechaCobro < fecha) return undefined
+    const dias = Math.round(
+      (new Date(`${fechaCobro}T12:00:00`).getTime() - new Date(`${fecha}T12:00:00`).getTime()) / 86_400_000)
+    return plazoLabel(dias)
+  }
+
+  /** Uno más, siguiendo el paso elegido desde el último cargado. */
   function agregarCheque() {
-    setCheques(cs => [
-      ...cs,
-      chequeVacio(sumarDiasISO(fecha, 30 * (cs.length + 1)), String(Math.max(0, difCheques))),
-    ])
+    setCheques(cs => {
+      const paso = Math.max(0, nEntero(cadaDias))
+      const ultima = cs.length > 0 ? cs[cs.length - 1]!.fecha_cobro || fecha : null
+      const siguiente = ultima ? sumarDiasISO(ultima, paso) : sumarDiasISO(fecha, primerPlazo)
+      return [...cs, chequeVacio(siguiente, String(Math.max(0, difCheques)))]
+    })
   }
 
   /** Lo que falta o sobra va al último: evita el rebote por centavos. */
@@ -395,22 +425,44 @@ export function ModalRegistrarPago({ facturaIds, onClose }: Props) {
               <span className="text-xs font-bold uppercase tracking-wide text-gris-dark">
                 {forma === 'echeq' ? 'E-cheqs' : 'Cheques'}
               </span>
-              {/* Lo más común es escalonar a 30/60/90: un click en vez de tres filas a mano. */}
-              <div className="flex items-center gap-1 ml-auto">
+              {/* En cuántos se parte y a qué plazo. Un click en vez de tipear
+                  fila por fila, y sin el 30/60/90 fijo de antes. */}
+              <div className="flex items-center gap-1.5 ml-auto flex-wrap justify-end">
                 <span className="text-[11px] text-gris-dark">Partir en</span>
-                {[1, 2, 3, 4, 6].map(k => (
-                  <button key={k} type="button" onClick={() => escalonar(k)}
-                    className="px-1.5 py-0.5 text-[11px] rounded border border-gris-mid hover:bg-white"
-                    title={k === 1 ? 'Un solo cheque por el total' : `${k} cheques iguales, uno cada 30 días`}>
-                    {k}
-                  </button>
-                ))}
+                <input inputMode="numeric" value={cantCheques} aria-label="Cantidad de cheques"
+                  onChange={e => setCantCheques(e.target.value.replace(/\D/g, '').slice(0, 2))}
+                  className="w-11 px-1.5 py-0.5 text-[11px] text-right font-mono tabular-nums border border-gris-mid rounded bg-white" />
+                <span className="text-[11px] text-gris-dark">· primero</span>
+                <select value={primerPlazo} onChange={e => setPrimerPlazo(Number(e.target.value))}
+                  aria-label="Plazo del primer cheque"
+                  className="px-1.5 py-0.5 text-[11px] border border-gris-mid rounded bg-white">
+                  {PLAZOS_CHEQUE.map(d => <option key={d} value={d}>{plazoLabel(d)}</option>)}
+                </select>
+                <span className="text-[11px] text-gris-dark">· después cada</span>
+                <input inputMode="numeric" value={cadaDias} aria-label="Días entre cheques"
+                  onChange={e => setCadaDias(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                  className="w-11 px-1.5 py-0.5 text-[11px] text-right font-mono tabular-nums border border-gris-mid rounded bg-white" />
+                <span className="text-[11px] text-gris-dark">días</span>
+                <Button variant="secondary" size="sm" onClick={generarCheques}
+                  disabled={totalPlata <= 0 || nEntero(cantCheques) <= 0}
+                  title={totalPlata <= 0 ? 'Primero poné cuánto se paga' : 'Rehace las filas con estos plazos y el importe repartido'}>
+                  Generar
+                </Button>
               </div>
             </div>
 
             {cheques.length === 0 && (
               <div className="px-2.5 py-3 text-xs text-gris-dark">
-                Sin cheques cargados. Usá «Partir en» o agregá uno.
+                Sin cheques cargados. Poné en cuántos se parte y tocá «Generar», o agregá uno a mano.
+                {totalPlata > 0 && nEntero(cantCheques) > 0 && (
+                  <div className="mt-1 text-[11px]">
+                    Quedarían {nEntero(cantCheques)} de <b className="font-mono tabular-nums">
+                      {fmtM(totalPlata / nEntero(cantCheques))}</b>, el primero el{' '}
+                    <b>{fmtFecha(sumarDiasISO(fecha, primerPlazo))}</b>
+                    {nEntero(cantCheques) > 1 && <> y el último el{' '}
+                      <b>{fmtFecha(sumarDiasISO(fecha, primerPlazo + nEntero(cadaDias) * (nEntero(cantCheques) - 1)))}</b></>}.
+                  </div>
+                )}
               </div>
             )}
 
@@ -423,7 +475,7 @@ export function ModalRegistrarPago({ facturaIds, onClose }: Props) {
                 <Campo label="Banco" ancho="w-32">
                   <input value={c.banco} onChange={e => setCheque(i, { banco: e.target.value })} className={inputCls} />
                 </Campo>
-                <Campo label="Se cobra el" ancho="w-36">
+                <Campo label="Se cobra el" hint={plazoDe(c.fecha_cobro)} ancho="w-36">
                   <input type="date" value={c.fecha_cobro} min={fecha}
                     onChange={e => setCheque(i, { fecha_cobro: e.target.value })} className={inputCls} />
                 </Campo>

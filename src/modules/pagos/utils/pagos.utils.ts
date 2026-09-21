@@ -151,6 +151,35 @@ export function sumarDiasISO(iso: string, dias: number): string {
   return d.toISOString().slice(0, 10)
 }
 
+/**
+ * Plazos con los que se entregan los cheques, en días desde la fecha del pago.
+ * Los dijo el dueño (2026-09-21): «0 días cuando es al día, 7 días, 15 días, y
+ * cada 30 días así». `0` es un cheque al día — el backend acepta
+ * `fecha_cobro = fecha` y rechaza sólo lo anterior.
+ */
+export const PLAZOS_CHEQUE = [0, 7, 15, 30, 45, 60, 90] as const
+
+export function plazoLabel(dias: number): string {
+  return dias === 0 ? 'Al día' : `${dias} días`
+}
+
+/**
+ * Fechas de cobro de `cantidad` cheques: el primero a `primerPlazo` días de
+ * `fechaBase` y los siguientes cada `cadaDias`.
+ *
+ * Los dos plazos son parámetros y no una constante porque las dos formas de
+ * pagar conviven: «0, 30 y 60» (la primera entrega es al día) y «30, 60 y 90»
+ * (la primera ya es a plazo). Antes estaba fijo en 30·(i+1), así que un cheque
+ * al día o a 7 días había que corregirlo a mano fila por fila.
+ */
+export function fechasEscalonadas(
+  fechaBase: string, cantidad: number, primerPlazo: number, cadaDias: number,
+): string[] {
+  if (cantidad <= 0) return []
+  return Array.from({ length: cantidad }, (_, i) =>
+    sumarDiasISO(fechaBase, Math.max(0, primerPlazo) + Math.max(0, cadaDias) * i))
+}
+
 export function hoyAR(): string {
   const ahora = new Date()
   const ar = new Date(ahora.getTime() - 3 * 60 * 60 * 1000)
