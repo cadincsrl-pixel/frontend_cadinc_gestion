@@ -16,7 +16,7 @@ import {
   comprobanteTxt, facturaAnulada, fmtFecha, fmtM, formaPagoLabel,
 } from '../utils/pagos.utils'
 import { mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
-import type { PagosTipoAdjFactura } from '@/types/domain.types'
+import type { PagosControlFactura, PagosTipoAdjFactura } from '@/types/domain.types'
 
 /**
  * La ficha de una factura: todo lo que se sabe de ella y lo que se puede
@@ -297,6 +297,11 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
           </Bloque>
         )}
 
+        {/* Control automático del comprobante (20260921j). Va ANTES de los
+            adjuntos y con color fuerte cuando difiere: quien aprueba tiene que
+            tropezarse con esto, no encontrarlo si lo busca. */}
+        {f.control && <ControlComprobante c={f.control} />}
+
         {/* Adjuntos */}
         <Bloque titulo="Adjuntos">
           {f.adjuntos.length === 0 && <div className="text-xs text-gris-dark italic mb-2">Todavía no hay archivos.</div>}
@@ -381,6 +386,37 @@ function Dato({ label, valor, fuerte, alerta }: { label: string; valor: string; 
     <div>
       <div className="text-[10px] font-bold text-gris-dark uppercase tracking-wide">{label}</div>
       <div className={`${fuerte ? 'font-mono font-bold tabular-nums' : ''} ${alerta ? 'text-rojo' : ''}`}>{valor}</div>
+    </div>
+  )
+}
+
+/**
+ * El resultado de leer el comprobante y compararlo con lo tipeado.
+ *
+ * Los cuatro estados se muestran distinto A PROPÓSITO. «Ilegible» y «error»
+ * NO son un visto bueno: si se pintaran como «coincide» el control sería peor
+ * que no tenerlo, porque daría tranquilidad sin haber mirado nada.
+ */
+function ControlComprobante({ c }: { c: PagosControlFactura }) {
+  const meta = {
+    coincide: { icono: '✓', titulo: 'El comprobante coincide con lo cargado', clase: 'bg-verde-light border-verde/40 text-verde' },
+    difiere:  { icono: '⚠', titulo: 'El comprobante NO coincide con lo cargado', clase: 'bg-rojo-light border-rojo/40 text-rojo' },
+    ilegible: { icono: '?', titulo: 'No se pudo leer el comprobante', clase: 'bg-amarillo-light border-amarillo/40 text-[#7A5000]' },
+    error:    { icono: '?', titulo: 'No se pudo controlar el comprobante', clase: 'bg-gris border-gris-mid text-gris-dark' },
+  }[c.estado]
+  return (
+    <div className={`border rounded p-2.5 mb-3 text-xs ${meta.clase}`}>
+      <div className="font-bold">{meta.icono} {meta.titulo}</div>
+      {c.nota && <div className="mt-0.5">{c.nota}</div>}
+      {(c.numero_leido || c.total_leido != null) && (
+        <div className="mt-1 text-[11px] opacity-90">
+          Leído del papel:{' '}
+          {c.numero_leido && <>N° <b className="font-mono">{c.numero_leido}</b></>}
+          {c.numero_leido && c.total_leido != null && ' · '}
+          {c.total_leido != null && <>total <b className="font-mono tabular-nums">{fmtM(c.total_leido)}</b></>}
+        </div>
+      )}
+      <div className="mt-1 text-[10px] opacity-70">Control automático · {fmtFecha(c.created_at.slice(0, 10))}</div>
     </div>
   )
 }

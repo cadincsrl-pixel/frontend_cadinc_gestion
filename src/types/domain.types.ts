@@ -2584,10 +2584,28 @@ export interface PagosPagoAplicado {
   }
 }
 
+/**
+ * Control automático del comprobante contra lo tipeado (20260921j). Sólo dos
+ * datos: número y total. `null` si todavía no se controló (o si no hay key
+ * de IA cargada: el módulo anda igual, simplemente no controla).
+ */
+export interface PagosControlFactura {
+  id:           number
+  estado:       'coincide' | 'difiere' | 'ilegible' | 'error'
+  numero_leido: string | null
+  total_leido:  number | null
+  /** null = no se pudo leer ese dato, que NO es lo mismo que «está bien». */
+  numero_ok:    boolean | null
+  total_ok:     boolean | null
+  nota:         string
+  created_at:   string
+}
+
 export interface PagosFacturaDetalle extends PagosFactura {
   imputaciones: PagosImputacion[]
   adjuntos:     PagosAdjunto[]
   pagos:        PagosPagoAplicado[]
+  control:      PagosControlFactura | null
   aprobacion: {
     aprobada_por:        string | null
     aprobada_por_nombre: string | null
