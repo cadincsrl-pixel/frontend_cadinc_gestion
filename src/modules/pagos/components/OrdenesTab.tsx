@@ -13,7 +13,7 @@ import {
 } from '../hooks/usePagos'
 import { useProveedoresPagos } from '../hooks/useProveedoresPagos'
 import {
-  FORMAS_PAGO_OP, MAX_ADJUNTO_BYTES, MIME_ADJUNTOS, comprobanteTxt, fmtFecha, fmtM, formaPagoLabel,
+  FORMAS_PAGO_OP, MAX_ADJUNTO_BYTES, MIME_ADJUNTOS, comprobanteTxt, fmtFecha, fmtM, formaPagoLabel, hoyAR,
 } from '../utils/pagos.utils'
 import { mensajeErrorPagos } from '../utils/pagos.errores'
 
@@ -232,7 +232,9 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, verPii, toast }: {
           <Dato label="Forma" valor={formaPagoLabel(o.forma_pago)} />
           <Dato label="Salió del banco" valor={fmtM(o.monto_pagado)} fuerte />
           <Dato label="Notas de crédito" valor={o.monto_nc > 0 ? fmtM(o.monto_nc) : '—'} />
-          {o.fecha_cobro && <Dato label="Se cobra el" valor={fmtFecha(o.fecha_cobro)} />}
+          {o.fecha_cobro && (
+            <Dato label={o.cheques.length > 1 ? 'Primero se cobra el' : 'Se cobra el'} valor={fmtFecha(o.fecha_cobro)} />
+          )}
           {o.referencia && <Dato label="Referencia" valor={o.referencia} />}
           <Dato label="Registró" valor={`${o.created_by_nombre ?? '—'}, ${fmtFecha(o.created_at)}`} />
         </div>
@@ -241,6 +243,40 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, verPii, toast }: {
           <div className="bg-gris border border-gris-mid rounded p-2 text-xs">
             Se pagó a: <b className="font-mono">{verPii ? (o.cbu_destino ?? o.alias_destino) : (o.cbu_destino_ultimos4 ? `***${o.cbu_destino_ultimos4}` : o.alias_destino)}</b>
             <span className="block text-gris-dark mt-0.5">Es la cuenta que tenía el padrón al registrar el pago.</span>
+          </div>
+        )}
+
+        {/* Cheques: en el orden en que van a caer. */}
+        {o.cheques.length > 0 && (
+          <div className="border-t border-gris pt-2">
+            <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wide mb-1">
+              {o.forma_pago === 'echeq' ? 'E-cheqs' : 'Cheques'} entregados ({o.cheques.length})
+            </div>
+            <table className="w-full text-xs">
+              <tbody>
+                {o.cheques.map(c => {
+                  const vencido = c.fecha_cobro <= hoyAR()
+                  return (
+                    <tr key={c.id} className="border-b border-gris last:border-0">
+                      <td className="py-1 font-mono">{c.numero}</td>
+                      <td className="py-1 text-gris-dark">{c.banco || '—'}</td>
+                      <td className="py-1">
+                        {fmtFecha(c.fecha_cobro)}
+                        {!vencido && <span className="ml-1 text-[10px] px-1 rounded bg-amarillo-light text-[#7A5000] font-bold">en cartera</span>}
+                      </td>
+                      <td className="py-1">
+                        {!c.es_propio && (
+                          <span className="text-[10px] px-1 rounded bg-[#EEE8FF] text-[#5A2D82] font-bold" title={`Endosado, lo libró ${c.librador}`}>
+                            de {c.librador}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-1 text-right font-mono tabular-nums">{fmtM(c.monto)}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
         )}
 

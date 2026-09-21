@@ -11,7 +11,7 @@ import {
 import { useDatosPagoProveedor, useProveedorPagos } from '../hooks/useProveedoresPagos'
 import {
   FORMAS_CON_COMPROBANTE_OBLIGATORIO, FORMAS_CON_CUENTA_DESTINO, FORMAS_CON_FECHA_COBRO,
-  FORMAS_PAGO_OP, comprobanteTxt, fmtFecha, fmtM, hoyAR,
+  FORMAS_PAGO_OP, comprobanteTxt, fmtFecha, fmtM, hoyAR, partirEnPartes, sumarDiasISO,
 } from '../utils/pagos.utils'
 import { mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
 import type { PagosAdjuntoPendiente, PagosFactura, PagosFormaPagoOP, PagosLineaOrdenInput } from '@/types/domain.types'
@@ -44,6 +44,19 @@ interface FilaFactura {
   nc: { monto: string; numero: string; fecha: string; pdf: PagosAdjuntoPendiente | null } | null
 }
 
+/** Un cheque del formulario. `monto` es texto porque se tipea. */
+interface ChequeFila {
+  numero:      string
+  banco:       string
+  fecha_cobro: string
+  monto:       string
+  es_propio:   boolean
+  librador:    string
+}
+
+const chequeVacio = (fecha_cobro: string, monto: string): ChequeFila =>
+  ({ numero: '', banco: '', fecha_cobro, monto, es_propio: true, librador: '' })
+
 const n = (s: string) => {
   const v = Number(String(s).replace(/\./g, '').replace(',', '.'))
   return Number.isFinite(v) ? v : 0
@@ -70,7 +83,7 @@ export function ModalRegistrarPago({ facturaIds, onClose }: Props) {
   const [aCuenta, setACuenta] = useState('')
   const [forma, setForma] = useState<PagosFormaPagoOP>('transferencia')
   const [fecha, setFecha] = useState(hoyAR())
-  const [fechaCobro, setFechaCobro] = useState('')
+  const [cheques, setCheques] = useState<ChequeFila[]>([])
   const [referencia, setReferencia] = useState('')
   const [obs, setObs] = useState('')
   const [comprobante, setComprobante] = useState<PagosAdjuntoPendiente | null>(null)
@@ -97,7 +110,15 @@ export function ModalRegistrarPago({ facturaIds, onClose }: Props) {
   const necesitaCuenta = FORMAS_CON_CUENTA_DESTINO.includes(forma) && !soloNc
   const sinDatosPago   = necesitaCuenta && !proveedor?.cbu && !proveedor?.alias_cbu
   const pideComprobante = !soloNc && FORMAS_CON_COMPROBANTE_OBLIGATORIO.includes(forma)
-  const pideFechaCobro  = !soloNc && FORMAS_CON_FECHA_COBRO.includes(forma)
+  const pideCheques     = !soloNc && FORMAS_CON_FECHA_COBRO.includes(forma)
+
+  // El backend exige igualdad exacta: se compara en centavos para no arrastrar
+  // el error del punto flotante.
+  const totalCheques  = r2(cheques.reduce((s, c) => s + n(c.monto), 0))
+  const difCheques    = r2(totalPlata - totalCheques)
+  const chequesIncompletos = cheques.filter(c =>
+    !c.numero.trim() || !c.fecha_cobro || n(c.monto) <= 0 ||
+    c.fecha_cobro < fecha || (!c.es_propio && !c.librador.trim()))
 
   // Cada fila: plata + NC no puede pasarse del saldo.
   const filasConError = filas.filter(f => {
@@ -113,7 +134,39 @@ export function ModalRegistrarPago({ facturaIds, onClose }: Props) {
     ncIncompletas.length === 0 &&
     !sinDatosPago &&
     (!pideComprobante || !!comprobante) &&
-    (!pideFechaCobro || !!fechaCobro)
+    (!pideCheques || (cheques.length > 0 && chequesIncompletos.length === 0 && Math.abs(difCheques) < 0.005))
+
+  // ── Cheques ──
+  function setCheque(i: number, cambio: Partial<ChequeFila>) {
+    setCheques(cs => cs.map((c, j) => j === i ? { ...c, ...cambio } : c))
+  }
+
+  /**
+   * Parte lo que sale de plata en `k` cheques iguales, uno cada 30 días. Es la
+   * forma en que se pagan: «tres cheques a 30, 60 y 90». La última parte
+   * absorbe los centavos para que la suma cierre exacto.
+   */
+  function escalonar(k: number) {
+    if (totalPlata <= 0) return
+    const partes = partirEnPartes(totalPlata, k)
+    setCheques(cs => partes.map((m, i) => ({
+      ...(cs[i] ?? chequeVacio('', '')),
+      fecha_cobro: sumarDiasISO(fecha, 30 * (i + 1)),
+      monto: String(m),
+    })))
+  }
+
+  function agregarCheque() {
+    setCheques(cs => [
+      ...cs,
+      chequeVacio(sumarDiasISO(fecha, 30 * (cs.length + 1)), String(Math.max(0, difCheques))),
+    ])
+  }
+
+  /** Lo que falta o sobra va al último: evita el rebote por centavos. */
+  function ajustarUltimoCheque() {
+    setCheques(cs => cs.map((c, i) => i === cs.length - 1 ? { ...c, monto: String(r2(n(c.monto) + difCheques)) } : c))
+  }
 
   async function subir(file: File, destino: 'comprobante' | number) {
     setSubiendo(String(destino))
@@ -169,7 +222,14 @@ export function ModalRegistrarPago({ facturaIds, onClose }: Props) {
       const r = await registrar.mutateAsync({
         proveedor_id: proveedorId!,
         fecha,
-        fecha_cobro: pideFechaCobro ? (fechaCobro || null) : null,
+        // `fecha_cobro` de la orden la deriva el backend del cheque más próximo.
+        cheques: pideCheques
+          ? cheques.map(c => ({
+              numero: c.numero.trim(), banco: c.banco.trim(), fecha_cobro: c.fecha_cobro,
+              monto: n(c.monto), es_propio: c.es_propio,
+              librador: c.es_propio ? '' : c.librador.trim(), obs: '',
+            }))
+          : undefined,
         forma_pago: soloNc ? null : forma,
         referencia: referencia.trim() || undefined,
         obs: obs.trim() || undefined,
@@ -209,7 +269,9 @@ export function ModalRegistrarPago({ facturaIds, onClose }: Props) {
               : filasConError.length > 0 ? 'Hay montos que superan el saldo de su factura'
               : ncIncompletas.length > 0 ? 'Cada nota de crédito necesita número, fecha, monto y su PDF'
               : pideComprobante && !comprobante ? 'Una transferencia o e-cheq necesita el comprobante'
-              : pideFechaCobro && !fechaCobro ? 'Un cheque necesita la fecha en que se cobra'
+              : pideCheques && cheques.length === 0 ? 'Cargá al menos un cheque'
+              : pideCheques && chequesIncompletos.length > 0 ? 'Cada cheque necesita número, fecha de cobro e importe (y el librador si es de un tercero)'
+              : pideCheques && Math.abs(difCheques) >= 0.005 ? 'Los cheques no suman lo que sale de plata'
               : undefined
             }>
             {soloNc ? 'Aplicar nota de crédito' : 'Registrar pago'}
@@ -321,15 +383,86 @@ export function ModalRegistrarPago({ facturaIds, onClose }: Props) {
           <Campo label="Fecha del pago">
             <input type="date" value={fecha} max={hoyAR()} onChange={e => setFecha(e.target.value)} className={inputCls} />
           </Campo>
-          {pideFechaCobro && (
-            <Campo label="Se cobra el" hint="Queda en cartera">
-              <input type="date" value={fechaCobro} min={fecha} onChange={e => setFechaCobro(e.target.value)} className={inputCls} />
-            </Campo>
-          )}
+
           <Campo label="Referencia" hint="Nº de operación">
             <input value={referencia} onChange={e => setReferencia(e.target.value)} className={inputCls} />
           </Campo>
         </div>
+
+        {pideCheques && (
+          <div className="border border-gris-mid rounded">
+            <div className="flex items-center gap-2 flex-wrap px-2.5 py-2 bg-gris/40 border-b border-gris-mid">
+              <span className="text-xs font-bold uppercase tracking-wide text-gris-dark">
+                {forma === 'echeq' ? 'E-cheqs' : 'Cheques'}
+              </span>
+              {/* Lo más común es escalonar a 30/60/90: un click en vez de tres filas a mano. */}
+              <div className="flex items-center gap-1 ml-auto">
+                <span className="text-[11px] text-gris-dark">Partir en</span>
+                {[1, 2, 3, 4, 6].map(k => (
+                  <button key={k} type="button" onClick={() => escalonar(k)}
+                    className="px-1.5 py-0.5 text-[11px] rounded border border-gris-mid hover:bg-white"
+                    title={k === 1 ? 'Un solo cheque por el total' : `${k} cheques iguales, uno cada 30 días`}>
+                    {k}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {cheques.length === 0 && (
+              <div className="px-2.5 py-3 text-xs text-gris-dark">
+                Sin cheques cargados. Usá «Partir en» o agregá uno.
+              </div>
+            )}
+
+            {cheques.map((c, i) => (
+              <div key={i} className="border-b border-gris last:border-0 p-2.5 flex flex-wrap gap-2 items-end">
+                <Campo label="Número" ancho="w-28">
+                  <input value={c.numero} onChange={e => setCheque(i, { numero: e.target.value })}
+                    className={inputCls} placeholder="00012345" />
+                </Campo>
+                <Campo label="Banco" ancho="w-32">
+                  <input value={c.banco} onChange={e => setCheque(i, { banco: e.target.value })} className={inputCls} />
+                </Campo>
+                <Campo label="Se cobra el" ancho="w-36">
+                  <input type="date" value={c.fecha_cobro} min={fecha}
+                    onChange={e => setCheque(i, { fecha_cobro: e.target.value })} className={inputCls} />
+                </Campo>
+                <Campo label="Importe" ancho="w-32">
+                  <input inputMode="decimal" value={c.monto} onChange={e => setCheque(i, { monto: e.target.value })}
+                    className={`${inputCls} text-right font-mono tabular-nums`} />
+                </Campo>
+                <label className="flex items-center gap-1 text-xs pb-1.5 cursor-pointer select-none">
+                  <input type="checkbox" checked={!c.es_propio}
+                    onChange={e => setCheque(i, { es_propio: !e.target.checked, librador: e.target.checked ? c.librador : '' })} />
+                  De tercero
+                </label>
+                {!c.es_propio && (
+                  <Campo label="Librador" hint="De quién era" ancho="w-44">
+                    <input value={c.librador} onChange={e => setCheque(i, { librador: e.target.value })}
+                      className={inputCls} placeholder="Quién lo libró" />
+                  </Campo>
+                )}
+                <button type="button" onClick={() => setCheques(cs => cs.filter((_, j) => j !== i))}
+                  className="ml-auto text-xs text-rojo hover:underline pb-1.5">Quitar</button>
+              </div>
+            ))}
+
+            <div className="flex items-center gap-2 flex-wrap px-2.5 py-2 border-t border-gris-mid">
+              <Button variant="ghost" size="sm" onClick={agregarCheque}>+ Agregar cheque</Button>
+              <div className="ml-auto text-xs">
+                <span className="text-gris-dark">Suman </span>
+                <b className="font-mono tabular-nums">{fmtM(totalCheques)}</b>
+                <span className="text-gris-dark"> de {fmtM(totalPlata)}</span>
+                {Math.abs(difCheques) >= 0.005 && (
+                  <span className="ml-2 text-rojo">
+                    {difCheques > 0 ? `Faltan ${fmtM(difCheques)}` : `Sobran ${fmtM(-difCheques)}`}
+                    <button type="button" onClick={ajustarUltimoCheque} className="ml-1 underline">ajustar</button>
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {soloNc && (
           <div className="bg-[#EEE8FF] border border-[#C9B8E8] rounded p-2 text-xs text-[#5A2D82]">
@@ -399,9 +532,9 @@ export function ModalRegistrarPago({ facturaIds, onClose }: Props) {
 
 const inputCls = 'w-full px-2.5 py-2 border-[1.5px] border-gris-mid rounded text-sm bg-white outline-none focus:border-naranja disabled:bg-gris disabled:text-gris-dark'
 
-function Campo({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function Campo({ label, hint, ancho, children }: { label: string; hint?: string; ancho?: string; children: React.ReactNode }) {
   return (
-    <div>
+    <div className={ancho}>
       <label className="block text-xs font-semibold text-gris-dark mb-1">
         {label}{hint && <span className="font-normal"> · {hint}</span>}
       </label>

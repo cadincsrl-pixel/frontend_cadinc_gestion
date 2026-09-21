@@ -2599,7 +2599,7 @@ export interface PagosOrden {
   numero_fmt:        string
   proveedor_id:      number
   fecha:             string
-  /** Cheque / e-cheq: cuándo se cobra. */
+  /** Cheque / e-cheq: la PRIMERA fecha de cobro de sus cheques (la deriva la RPC). */
   fecha_cobro:       string | null
   /** `nota_credito` = la OP no movió plata; la UI lo muestra «Solo nota de crédito». */
   forma_pago:        PagosFormaPagoOPGuardada
@@ -2662,8 +2662,28 @@ export interface PagosOrdenLinea {
   } | null
 }
 
+/**
+ * Un cheque o e-cheq de la orden. Va uno por fila: lo que se pregunta (qué cae
+ * esta semana, cuánto hay en cartera, cuál rebotó) es por cheque, no por orden.
+ */
+export interface PagosCheque {
+  id:          number
+  numero:      string
+  banco:       string
+  fecha_cobro: string
+  monto:       number
+  /** false = endosado de un tercero, y entonces `librador` dice de quién era. */
+  es_propio:   boolean
+  librador:    string
+  obs:         string
+}
+
+/** Lo que se manda al registrar el pago (sin `id`, lo pone la base). */
+export type PagosChequeNuevo = Omit<PagosCheque, 'id'>
+
 export interface PagosOrdenDetalle extends PagosOrden {
   lineas:   PagosOrdenLinea[]
+  cheques:  PagosCheque[]
   adjuntos: PagosAdjunto[]
 }
 
@@ -2827,6 +2847,12 @@ export interface CrearOrdenInput {
   obs?:         string
   lineas:       PagosLineaOrdenInput[]
   adjuntos?:    PagosAdjuntoPendiente[]
+  /**
+   * Obligatorio con `cheque`/`echeq` y prohibido con el resto. La suma tiene
+   * que dar exactamente lo que sale de plata, y `fecha_cobro` de la orden sale
+   * del más próximo — no hace falta mandarla.
+   */
+  cheques?:     PagosChequeNuevo[]
 }
 
 /** De una OP emitida solo se corrigen estos dos: lo financiero no se edita, se anula. */

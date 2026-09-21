@@ -101,7 +101,30 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   FECHA_FUTURA:          () => 'La fecha no puede ser posterior a hoy.',
   VENCIMIENTO_INVALIDO:  () => 'El vencimiento no puede ser anterior a la fecha de la factura.',
   FECHA_COBRO_REQUERIDA: () => 'Un cheque o e-cheq necesita la fecha en que se cobra.',
-  FECHA_COBRO_INVALIDA:  () => 'La fecha de cobro no puede ser anterior a la del pago.',
+  FECHA_COBRO_INVALIDA:  d => {
+    const num = dato(d, 'numero')
+    return num !== undefined
+      ? `El cheque ${num} se cobraría antes de la fecha del pago.`
+      : 'La fecha de cobro no puede ser anterior a la del pago.'
+  },
+
+  // ── Cheques ──
+  CHEQUES_REQUERIDOS:  () => 'Pagar con cheque o e-cheq pide el detalle: número, fecha de cobro e importe de cada uno.',
+  CHEQUES_INESPERADOS: d => `No se cargan cheques en un pago por ${lista(dato(d, 'forma_pago')) || 'esta forma'}.`,
+  CHEQUE_INVALIDO:     d =>
+    `El cheque ${lista(dato(d, 'numero')) || 'cargado'} está incompleto: necesita número, fecha de cobro e importe.`,
+  CHEQUE_SIN_LIBRADOR: d =>
+    `El cheque ${lista(dato(d, 'numero')) || 'de tercero'} es endosado: falta de quién es. Si rebota, hay que saber a quién reclamarle.`,
+  CHEQUE_DUPLICADO:    d => {
+    const num   = lista(dato(d, 'numero'))
+    const banco = lista(dato(d, 'banco'))
+    const op    = dato(d, 'orden_numero')
+    return op !== undefined
+      ? `El cheque ${num}${banco ? ` del ${banco}` : ''} ya se entregó en la OP-${String(op).padStart(4, '0')}.`
+      : `El cheque ${num} ya está entregado en otra orden de pago.`
+  },
+  SUMA_CHEQUES_DISTINTA: d =>
+    `Los cheques suman ${money(dato(d, 'suma_cheques'))} y el pago es de ${money(dato(d, 'monto_pagado'))}. Tienen que dar igual.`,
 
   // ── Forma de pago y comprobantes ──
   FORMA_PAGO_REQUERIDA:  () => 'Elegí la forma de pago: solo una orden de únicamente notas de crédito puede ir sin forma.',

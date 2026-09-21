@@ -131,6 +131,26 @@ export function comprobanteTxt(tipo: PagosTipoComprobante, numero: string | null
  * propio `hoyAR()`: si el default del form sale del reloj local de una
  * notebook con otra zona, el POST rebota con `FECHA_FUTURA`.
  */
+/**
+ * Parte `total` en `n` partes de 2 decimales. La ÚLTIMA absorbe los centavos
+ * que no dividen, así que la suma da exacto: tanto el reparto por obra como
+ * los cheques se validan contra una igualdad estricta en el backend y un
+ * redondeo parejo los haría rebotar por $0,01.
+ */
+export function partirEnPartes(total: number, n: number): number[] {
+  if (n <= 0 || total <= 0) return []
+  const parte = Math.floor((total / n) * 100) / 100
+  return Array.from({ length: n }, (_, i) =>
+    i === n - 1 ? Math.round((total - parte * (n - 1)) * 100) / 100 : parte)
+}
+
+/** `iso` + `dias`, en ISO. Para escalonar cheques a 30 / 60 / 90. */
+export function sumarDiasISO(iso: string, dias: number): string {
+  const d = new Date(`${iso}T12:00:00`)
+  d.setDate(d.getDate() + dias)
+  return d.toISOString().slice(0, 10)
+}
+
 export function hoyAR(): string {
   const ahora = new Date()
   const ar = new Date(ahora.getTime() - 3 * 60 * 60 * 1000)
