@@ -270,6 +270,43 @@ export function vencimientoSugerido(fecha: string, prov: PlazoProveedor | null |
   return sumarDiasISO(fecha, dias)
 }
 
+/**
+ * El número de la factura son DOS cosas, como en el papel: el punto de venta
+ * y el número del comprobante, separados por un guion ("0013-00402141").
+ *
+ * Se cargan en dos campos a propósito (pedido del dueño, 2026-09-21). Con un
+ * solo campo cada uno lo escribía distinto: en las primeras 5 facturas
+ * cargadas convivían "0013-00402141", "0001100000194" y "0883700004557", tres
+ * formatos para la misma cosa. `normNumeroFactura` del backend los compara
+ * bien igual, pero el dato queda sucio y no se puede leer de un vistazo.
+ *
+ * Se guarda compuesto en `numero`, con el punto de venta a 4 dígitos y el
+ * comprobante a 8, que es como lo imprime AFIP.
+ */
+export function componerNumero(pv: string, nro: string): string {
+  const p = pv.replace(/\D/g, '').slice(0, 5)
+  const n = nro.replace(/\D/g, '').slice(0, 8)
+  if (!p && !n) return ''
+  return `${p.padStart(4, '0')}-${n.padStart(8, '0')}`
+}
+
+/**
+ * Al revés, para editar una factura ya cargada. Si no tiene guion (las viejas,
+ * tipeadas de corrido) se parte igual que `normNumeroFactura`: los últimos 8
+ * dígitos son el comprobante y lo de antes el punto de venta.
+ */
+export function partirNumero(numero: string | null | undefined): { pv: string; nro: string } {
+  const t = (numero ?? '').trim()
+  if (!t) return { pv: '', nro: '' }
+  if (t.includes('-')) {
+    const [a = '', ...resto] = t.split('-')
+    return { pv: a.replace(/\D/g, ''), nro: resto.join('').replace(/\D/g, '') }
+  }
+  const d = t.replace(/\D/g, '')
+  if (!d) return { pv: '', nro: '' }
+  return { pv: d.slice(0, -8), nro: d.slice(-8) }
+}
+
 export function hoyAR(): string {
   const ahora = new Date()
   const ar = new Date(ahora.getTime() - 3 * 60 * 60 * 1000)

@@ -13,7 +13,7 @@ import {
 import { useProveedoresPagos } from '../hooks/useProveedoresPagos'
 import {
   FORMAS_PAGADA_AL_CARGAR_COMPRAS, FORMAS_PAGO_OP, FORMAS_PREVISTAS, FORMAS_CON_FECHA_COBRO,
-  TIPOS_COMPROBANTE, fmtM, fmtMc, hoyAR,
+  TIPOS_COMPROBANTE, componerNumero, fmtM, fmtMc, hoyAR, partirNumero,
   vencimientoSugerido,
 } from '../utils/pagos.utils'
 import { mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
@@ -76,7 +76,10 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
 
   const [proveedorId, setProveedorId] = useState('')
   const [tipo, setTipo] = useState<PagosTipoComprobante>('A')
-  const [numero, setNumero] = useState('')
+  // Dos campos, como en el papel: punto de venta y número del comprobante.
+  // Se guardan compuestos en `numero` (20260921).
+  const [puntoVenta, setPuntoVenta] = useState('')
+  const [nroComprobante, setNroComprobante] = useState('')
   const [fecha, setFecha] = useState(hoyAR())
   const [venceEl, setVenceEl] = useState('')
   const [total, setTotal] = useState('')
@@ -111,7 +114,10 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
     if (!original) return
     setProveedorId(String(original.proveedor_id))
     setTipo(original.tipo_comprobante)
-    setNumero(original.numero ?? '')
+    {
+      const { pv, nro } = partirNumero(original.numero)
+      setPuntoVenta(pv); setNroComprobante(nro)
+    }
     setFecha(original.fecha.slice(0, 10))
     setVenceEl(original.vence_el?.slice(0, 10) ?? '')
     setTotal(String(original.total))
@@ -236,7 +242,9 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
 
   const tienePagos = !!original && (original.pagado > 0 || original.acreditado > 0)
   const congelado  = tienePagos   // proveedor, fecha e importes no se tocan con pagos
-  const listo = !!proveedorId && totalN > 0 && descripcion.trim().length >= 3 && repartoOk &&
+  const numeroCompleto = componerNumero(puntoVenta, nroComprobante)
+  const listo = !!proveedorId && !!puntoVenta && !!nroComprobante &&
+                totalN > 0 && descripcion.trim().length >= 3 && repartoOk &&
                 (!tienePagos || motivo.trim().length >= 3)
 
   async function subirComprobante(file: File) {
@@ -259,7 +267,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
     const comunes = {
       proveedor_id: Number(proveedorId),
       tipo_comprobante: tipo,
-      numero: numero.trim() || null,
+      numero: numeroCompleto || null,
       fecha,
       vence_el: venceEl || null,
       neto: neto ? n(neto) : null,
@@ -314,7 +322,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
         <div className="flex gap-2 justify-end">
           <Button variant="ghost" size="sm" onClick={onClose}>Cancelar</Button>
           <Button size="sm" onClick={guardar} loading={crear.isPending || editar.isPending} disabled={!listo}
-            title={!listo ? 'Faltan datos: proveedor, total, descripción y que el reparto cuadre' : undefined}>
+            title={!listo ? 'Faltan datos: proveedor, número de factura, total, descripción y que el reparto cuadre' : undefined}>
             {esEdicion ? 'Guardar cambios' : yaPagada ? 'Cargar y registrar el pago' : 'Cargar factura'}
           </Button>
         </div>
@@ -356,8 +364,16 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
               {TIPOS_COMPROBANTE.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
             </select>
           </Campo>
-          <Campo label="Número" hint="Si todavía no lo tenés, dejalo vacío">
-            <input value={numero} onChange={e => setNumero(e.target.value)} placeholder="0001-00012345" className={inputCls} />
+          <Campo label="Número" hint="Punto de venta y comprobante">
+            <div className="flex items-center gap-1">
+              <input inputMode="numeric" value={puntoVenta} placeholder="0001"
+                onChange={e => setPuntoVenta(e.target.value.replace(/\D/g, '').slice(0, 5))}
+                className={`${inputCls} w-16 text-center font-mono`} />
+              <span className="text-gris-dark">-</span>
+              <input inputMode="numeric" value={nroComprobante} placeholder="00012345"
+                onChange={e => setNroComprobante(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                className={`${inputCls} font-mono`} />
+            </div>
           </Campo>
           <Campo label="Emitida">
             <input type="date" value={fecha} max={hoyAR()} onChange={e => setFecha(e.target.value)} disabled={congelado} className={inputCls} />

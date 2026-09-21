@@ -8,7 +8,8 @@
  */
 import { describe, it, expect } from 'vitest'
 import {
-  fechaDeCierre, fmtM, fmtMc, ultimoDiaDelMes, ultimoDiaHabil, vencimientoSugerido,
+  componerNumero, fechaDeCierre, fmtM, fmtMc, partirNumero, ultimoDiaDelMes, ultimoDiaHabil,
+  vencimientoSugerido,
 } from '@/modules/pagos/utils/pagos.utils'
 
 const SILVA = { vencimiento_modo: 'cierre_mensual' as const, cierre_dia: null, plazo_pago_dias: 30 }
@@ -134,5 +135,44 @@ describe('los centavos del reparto por obra', () => {
 
   it('con el importe exacto, cuadra', () => {
     expect(Math.abs(r2(24994.52 - 24994.52)) < 0.005).toBe(true)
+  })
+})
+
+describe('punto de venta y número, como en el papel (2026-09-21)', () => {
+  it('compone con el formato de AFIP', () => {
+    expect(componerNumero('13', '402141')).toBe('0013-00402141')
+    expect(componerNumero('0013', '00402141')).toBe('0013-00402141')
+  })
+
+  it('ignora lo que no sea dígito', () => {
+    expect(componerNumero('A-13', 'Nº 402.141')).toBe('0013-00402141')
+  })
+
+  it('un punto de venta de 5 dígitos no se recorta', () => {
+    expect(componerNumero('08837', '4557')).toBe('08837-00004557')
+  })
+
+  it('vacío es vacío: no inventa 0000-00000000', () => {
+    expect(componerNumero('', '')).toBe('')
+  })
+
+  it('parte una factura ya cargada para poder editarla', () => {
+    expect(partirNumero('0013-00402141')).toEqual({ pv: '0013', nro: '00402141' })
+  })
+
+  it('parte también las viejas, tipeadas de corrido', () => {
+    expect(partirNumero('0001100000194')).toEqual({ pv: '00011', nro: '00000194' })
+    expect(partirNumero('0883700004557')).toEqual({ pv: '08837', nro: '00004557' })
+  })
+
+  it('sin número devuelve los dos campos vacíos', () => {
+    expect(partirNumero(null)).toEqual({ pv: '', nro: '' })
+    expect(partirNumero('')).toEqual({ pv: '', nro: '' })
+  })
+
+  it('componer y partir son inversas', () => {
+    for (const [pv, nro] of [['0013','00402141'], ['0001','00000194'], ['08837','00004557']]) {
+      expect(partirNumero(componerNumero(pv!, nro!))).toEqual({ pv, nro })
+    }
   })
 })
