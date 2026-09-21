@@ -1169,6 +1169,7 @@ export type ModuloPermisos = { [K in Accion]?: boolean } & {
   //   registrar_pagos solo se anula la propia del día).
   registrar_pagos?:        boolean
   aprobar_facturas?:       boolean
+  aprobar_propias?:     boolean   // 20260921f: aprobar lo propio, y que nazca aprobado
   anular_pagos?:           boolean
 }
 export type Permisos = Record<string, ModuloPermisos>

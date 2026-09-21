@@ -27,7 +27,7 @@ export type FlagBoolean =
   | 'cargar_precios' | 'precio_al_resolver' | 'editar_pedidos' | 'marcar_consumibles'
   | 'aprobar_ajustes_stock' | 'gestionar_cobros' | 'gestionar_docs' | 'anular_cobros'
   | 'costos_oficina' | 'asistente_ia'
-  | 'registrar_pagos' | 'aprobar_facturas' | 'anular_pagos'
+  | 'registrar_pagos' | 'aprobar_facturas' | 'anular_pagos' | 'aprobar_propias'
 
 export interface FlagDef {
   key:   FlagBoolean
@@ -129,6 +129,12 @@ export const FLAGS_BOOLEAN: FlagDef[] = [
     key: 'aprobar_facturas',
     label: '✅ Aprobar facturas de proveedor',
     help: 'Aprobar (de a una o en lote) las facturas que cargó compras, rechazarlas con motivo y revisar las que se cargaron como "ya pagadas". Nadie aprueba lo que cargó él mismo (salvo admin): si esta persona también carga facturas, las suyas las tiene que aprobar otro. Solo tiene efecto en pagos.',
+    modulos: ['pagos'],
+  },
+  {
+    key: 'aprobar_propias',
+    label: 'Aprobar también sus propias facturas',
+    help: 'Levanta la doble firma del circuito: normalmente quien carga una factura NO la aprueba, y con esto sí. Además, las facturas que cargue nacen ya aprobadas, sin esperar a nadie. Va junto con "Aprobar facturas": sin ese permiso no hace nada. NO habilita pagar: seguir sin poder emitir la orden de pago de lo que uno cargó o aprobó es lo que cuida la plata. Solo tiene efecto en pagos.',
     modulos: ['pagos'],
   },
   {

@@ -48,6 +48,8 @@ export function usePermisos(modulo: string) {
     editarPedidos:        flagCapacidad('editar_pedidos', false),
     forzarDespacho:       flagCapacidad('forzar_despacho', false),
     cargarPrecios:        flagCapacidad('cargar_precios', false),
+    // Pagos: aprobar lo que uno mismo cargó, y que nazca aprobado (20260921f).
+    aprobarPropias:       flagCapacidad('aprobar_propias', false),
     // Marcar consumibles propios SIN poder valuar la cuenta (20260917). Es
     // la parte de `cargar_precios` que necesita quien decide qué pone CADINC.
     marcarConsumibles:    flagCapacidad('marcar_consumibles', false),

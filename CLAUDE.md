@@ -283,6 +283,21 @@ El catálogo (`stock_materiales`, ~2.600 fichas) **no está vacío, está escond
 - **Borrar un pedido son dos ciclos** (`20260917j`). `eliminar_solicitud(p_solicitud_id, p_user_id, p_compras)` borra en cascada (renglones, historial y filas de la cuenta de la obra) y **decide el stock por dónde está la mercadería, no por el estado del renglón**: lo despachado de depósito y sin enviar **vuelve al estante** (solo la parte que no viajó); lo **enviado bloquea** (`SOLICITUD_TIENE_ENVIOS`, está en la obra: para eso es Devoluciones o "revertir envío"); y las **compras sin enviar exigen elegir** `p_compras`: `'a_deposito'` (la compra queda en CADINC → entrada `compra` con proveedor, precio y factura en la obs, que es lo único que sobrevive del renglón) o `'devuelta_proveedor'` (no toca stock). Sin destino y con compras → `ELEGIR_DESTINO_COMPRAS`; compra sin ficha con `a_deposito` → `COMPRA_SIN_FICHA`. Herramientas y servicios no mueven stock. Hasta ese día la RPC devolvía stock por `enviado` (inventaba mercadería que estaba en la obra) y no devolvía nada por `comprado` (la compra desaparecía con su costo): el pedido 548 de CASA OPERARIOS destapó las dos cosas.
 - **Fraccionar bultos** (`20260913n`/`o`). Abrir un tambor y que salgan litros. **El precio de venta NO se toca al fraccionar.** No hay conversión automática entre presentaciones: se compra un tambor de 200 lts y no se puede despachar 4.
 
+### 5.18 Pagos: la doble firma, y dónde cede (2026-09-18/21)
+
+El circuito es **cargar → aprobar → pagar**, y cada paso pide una persona distinta. Las tres reglas viven en la base:
+
+- `NO_PUEDE_APROBAR_PROPIA` (`pagos_aprobar_factura`) — no aprobás lo que cargaste.
+- `NO_PUEDE_PAGAR_PROPIA` y `NO_PUEDE_PAGAR_LO_QUE_APROBO` (`_pagos_emitir_orden`) — no pagás lo que cargaste ni lo que aprobaste.
+
+**La primera cede ante el flag `aprobar_propias`** (default false, `20260921f`): con él, quien carga puede aprobar lo suyo Y sus facturas **nacen aprobadas** (auto-aprobación en `crearFactura`, que exige `aprobar_facturas` **+** `aprobar_propias`). Nació porque Diego es el único aprobador y además carga: sin esto cada factura suya quedaba trabada esperando al único admin. **Las otras dos NO ceden**: la plata sigue necesitando otra persona, y ahí está el control real.
+
+La auto-aprobación es **best-effort a propósito**: si la factura no se puede aprobar (la paga el cliente, el proveedor quedó inactivo, nació `pagada`), queda como nació. Un error ahí no puede tirar abajo una carga ya guardada.
+
+`_pagos_flag(user, flag, default)` es el espejo en SQL de `flagPagos()` del backend. **Lleva un `coalesce` por afuera**: sin fila el subselect da NULL, `not NULL` es NULL, y el `if` del que cuelga la regla no entra por ninguna rama — un uuid inexistente se colaba. Mismo patrón que `_pagos_es_admin`.
+
+**Los tabs de `pagos` no son sólo la UI**: las rutas usan `requireTab('pagos', TAB_PAGO)` con `TAB_PAGO = ['facturas','pagos']`, así que con el tab `facturas` ya se pasa el guard de `GET /ordenes` y del `signed-url` que baja el comprobante. Y el **orden del array importa**: `useTabsPermitidos` los devuelve tal cual se guardan y `PagosPage` redirige a `allowedTabs[0]`.
+
 ### 5.17 Lo que se pide viaja en la DESCRIPCIÓN, no en columnas nuevas (2026-09-11/12)
 
 `materiales_a_cuenta_cliente` y los remitos llevan una `descripcion` desnormalizada, y **todos los documentos que importan imprimen esa descripción**. Por eso lo que distingue al producto se compone adentro al escribir, en vez de agregar una columna a cada tabla y a cada PDF.
