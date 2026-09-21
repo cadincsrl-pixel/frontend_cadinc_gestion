@@ -46,6 +46,7 @@ Comparten base de datos en Supabase.
 - `adelantos-logistica` (privado) — comprobantes de adelantos a choferes.
 - `remitos-retiro-proveedor` (privado) — comprobantes de retiro de stock en proveedores.
 - `cobros-docs` (privado) — adjuntos de cobros (líquido producto, comprobante de pago).
+- `pagos-docs` (privado) — PDFs de facturas de proveedor y comprobantes de pago del módulo Pagos.
 
 ⚠️ **Next.js 16 + React 19 son versiones recientes con breaking changes respecto al training data. Antes de asumir APIs, consultar `node_modules/next/dist/docs/` o los docs oficiales vía web.** (Este warning también está en `AGENTS.md` — ese archivo se carga automáticamente vía `@AGENTS.md` arriba.)
 
@@ -79,6 +80,7 @@ Cliente (Next.js)
 | **Caja** | Movimientos con centros de costo y conceptos | `/caja` |
 | **Ropa** | Entregas por categoría con vencimiento | `/tarja/ropa` |
 | **Préstamos** | Adelantos con descuento en semana | `/tarja/prestamos` |
+| **Pagos** | Facturas de proveedor, aprobación, órdenes de pago y padrón propio de proveedores (§5.18) | `/pagos` |
 | **Admin** | Usuarios, permisos, auditoría | `/admin` |
 
 ### 4.1 Sub-tabs de Logística (`/logistica?tab=...`)
@@ -102,6 +104,11 @@ Cliente (Next.js)
 - `adicionales`, `costos`, `gasto-interno` — extras de la obra, costo interno y gastos de CADINC.
 
 Los **certificados al cliente** (`certificados_cliente`) se emiten desde la cuenta corriente: congelan precio y cantidad de los renglones que abarcan, y el cobro se cuelga del certificado. Emitir usa `emitir_certificado_cliente`; anular es solo admin y no corre si ya hay cobros.
+
+### 4.2.1 Sub-tabs de Pagos (`/pagos?tab=...`)
+- `facturas` — la bandeja: qué se debe, a quién y para cuándo. Cargar, aprobar/rechazar (de a una o en lote), ficha completa, registrar pago de varias juntas. Acepta `&aviso=aprobar|vencidas|sin-revisar|observadas` (deep-link de la campana, §5.9).
+- `pagos` — órdenes de pago, con las notas de crédito como línea adentro de la OP.
+- `proveedores` — padrón propio (`pagos_proveedores`), **sin FK a `public.proveedores`**: se cargan de nuevo, con CUIT, alias y CBU.
 
 ### 4.3 Sub-tabs de Herramientas (`/herramientas/<tab>`)
 Rutas propias (no query string). Tabs en `profiles.permisos.herramientas.tabs`, orden y redirect al primero permitido en `src/app/(app)/herramientas/page.tsx`:
@@ -157,7 +164,8 @@ Esquema: `permisos: { modulo: { lectura, creacion, actualizacion, eliminacion, t
 - **Frontend**: `usePermisos('modulo')` → `{ puedeVer, puedeCrear, puedeEditar, puedeEliminar, verPii, verCostos, ...flags }`. Los botones se **deshabilitan** con tooltip, no se ocultan.
 - **Flags**: `ver_pii` default **false** en backend y frontend; `ver_costos` default true. Los condicionales al body se chequean inline en el handler (`forzar_despacho`).
 - **Alcance por obra**: `profiles.obras_scope` ('todas' | 'asignadas') con override por módulo en `permisos.<modulo>.obras_scope`; la lista de obras es UNA por usuario (`usuario_obras`). Helpers en `lib/obras-usuario.ts`: `getObrasDelUsuarioCached`, `validarObraDelUsuario`, `validarObraDeRegistro` (para PATCH/DELETE por id). Lo aplican tarja, solicitudes, cuenta corriente, materiales certificables, stock del cliente, stock en proveedor y remitos de envío.
-- **Catálogo de módulos**: `tarja, logistica, certificaciones, herramientas, caja, flota, alquiler, aridos, admin`, espejado en `lib/modulos.ts` de ambos repos. `personal`, `ropa`, `prestamos` y `configuracion` son **tabs de tarja**, no módulos: sus endpoints exigen `tarja.*`.
+- **Flags de Pagos** (en `permisos.pagos`, todos default **false**): `aprobar_facturas`, `registrar_pagos`, `anular_pagos`. Cargar facturas es `pagos.creacion`; ver la cuenta destino del proveedor pide además `ver_pii`. Ver §5.18.
+- **Catálogo de módulos**: `tarja, logistica, certificaciones, herramientas, caja, flota, alquiler, aridos, pagos, admin`, espejado en `lib/modulos.ts` de ambos repos. `personal`, `ropa`, `prestamos` y `configuracion` son **tabs de tarja**, no módulos: sus endpoints exigen `tarja.*`.
 
 ### 5.6 Auditoría automática
 `auditMiddleware` del backend corre **después** de la respuesta. Solo loguea POST/PATCH/PUT/DELETE con status 2xx. Extrae entidad/acción de la ruta. **No escribir auditoría manual en handlers**, ya está cubierta.
@@ -195,6 +203,8 @@ Hook `src/hooks/useNotificaciones.ts` calcula 4 secciones in-memory (sin tabla p
 - **Cumpleaños próximos 7 días** — informativo (punto azul).
 - **Papeles vencidos** (camiones/bateas) — usa vista `v_vehiculo_documentos_vencimientos`. Cuenta para el badge rojo.
 - **Papeles por vencer 30 días** — informativo.
+
+Además, el módulo Pagos suma 4 secciones (facturas vencidas, para aprobar, pagadas sin revisar y observadas). **El filtro del deep-link tiene que replicar exactamente la query del aviso**: el link va a `/pagos?tab=facturas&aviso=…` y `FILTRO_POR_AVISO` (en `FacturasTab.tsx`) traduce ese `aviso` al mismo filtro que usó el hook. Si se desincronizan, el badge dice un número y la pantalla muestra otro.
 
 `<NotificationsBell />` (en `Topbar.tsx`) muestra popover con las 4 secciones. Click en cumpleaño → `/personal?leg=XXX` (auto-abre modal). Click en papel → `/logistica?tab=camiones`. Endpoint backend: `GET /api/logistica/notificaciones/documentos`.
 
@@ -282,6 +292,19 @@ El catálogo (`stock_materiales`, ~2.600 fichas) **no está vacío, está escond
 - **La observación del renglón** (`solicitud_compra_item.obs`) se muestra pegada a la descripción en la fila, la tarjeta y los modales de comprar y despachar. Son 255 renglones y dicen "gris zócalo", "ALBA", "mallado": es parte de QUÉ se pide.
 - **Fotos del catálogo** (`20260912g`): tabla `stock_material_fotos` + `stock_materiales.foto_url` (la principal, la mantiene un trigger, **no escribirla a mano**). Bucket **público** `catalogo-fotos`, 5 MB, JPG/PNG/WEBP/HEIC. El duplicado se mira por `(material_id, file_hash)`: la misma foto en fichas distintas es válida a propósito (foto de familia). Para tandas, `scripts/subir-fotos-catalogo.mjs`.
 
+### 5.18 Pagos: módulo independiente, que solo comparte las obras (2026-09-18)
+
+**Por decisión explícita del user, Pagos NO se cruza con ningún otro módulo.** No lee ni escribe `materiales_a_cuenta_cliente`, no se engancha con las solicitudes de compra y no usa `public.proveedores`. Lo único compartido son las **obras**, que alimentan los centros de costo. Si en el futuro se conecta con compras, es una decisión nueva, no una consecuencia.
+
+- **Padrón propio**: `pagos_proveedores`. Un proveedor que ya existe en certificaciones se carga de nuevo acá, con su CUIT, alias y CBU. No hay FK ni matcheo automático.
+- **Tres separaciones de tareas**, todas validadas en el backend: no aprobás lo que cargaste, no pagás lo que cargaste, no pagás lo que aprobaste. El admin las saltea. En la UI los botones quedan **deshabilitados con tooltip** explicando cuál se aplica (§6, misma regla que el resto).
+- **Las percepciones NO son parte del precio y NO se reparten a las obras**: son crédito fiscal de CADINC. Lo que se imputa a los centros de costo es `total − percepciones`.
+- **El reparto por obra se cuadra en el cliente** (`repartirParejo()` + `ajustarUltima()` en `ModalCargarFactura`) para que la validación exacta del backend nunca rebote por centavos de redondeo.
+- **Una nota de crédito es una LÍNEA de la orden de pago**, no una OP aparte: si la solicitud de pago trae factura y NC juntas, se cargan las dos en el mismo documento.
+- **El centro de costo de una obra interna es su propio nombre** (`_pagos_centro_de(cc, nom, es_interna, es_deposito)`): sin eso, `CC PODA` — que tiene `cc = 'IGLESIAS'` — mandaría costo interno adentro del grupo de un cliente.
+- **Los errores del backend se traducen en `utils/pagos.errores.ts`** (~40 códigos). El `HttpError` del client trae `{ message: code, body: { error, detail } }`: leer `body.error`, no `message`.
+- **El módulo no emite broadcast de realtime** (`middleware/realtime.ts` del backend lo excluye a propósito): el volumen es bajo y el ancho de banda de Render es el cuello de botella conocido (§5.9 del backend / `useNotificaciones.ts`).
+
 ## 6. Convenciones de código (frontend)
 
 - **Feature-based folders**: `src/modules/<feature>/{components,hooks,store}`. Sin `services/` (los hooks de React Query encapsulan API).
@@ -316,6 +339,8 @@ El catálogo (`stock_materiales`, ~2.600 fichas) **no está vacío, está escond
 - **Retiro** — Acción de traer material desde stock en proveedor a la obra. Genera `remitos_retiro_proveedor`.
 - **Devolución** — Material que vuelve de la obra al depósito. Si ya estaba cobrado, genera nota de crédito (§5.16).
 - **Fraccionar** — Abrir un envase grande para despachar por unidad chica. No cambia el precio de venta (§5.16).
+- **Orden de pago (OP)** — El documento con el que se paga: agrupa una o varias facturas, sus notas de crédito como líneas y el comprobante.
+- **Percepción** — Impuesto que el proveedor retiene en la factura. Es crédito fiscal de CADINC: no se le reparte a las obras (§5.18).
 - **Modalidad de pago al chofer** — `km_jornal` (km × $/km + jornal × días) o `pct_jornal` (% sobre tarifa × ton + jornal × días).
 
 ## 8. Qué NO hacer
@@ -421,4 +446,4 @@ El frontend espera al backend en `http://localhost:3001` (configurable vía env)
 
 ---
 
-_Última actualización: 2026-09-12._
+_Última actualización: 2026-09-21._
