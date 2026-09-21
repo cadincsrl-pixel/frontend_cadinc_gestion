@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
+import { InputMonto, aRaw } from '@/components/ui/InputMonto'
 import { Combobox } from '@/components/ui/Combobox'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
@@ -50,8 +51,14 @@ interface FilaReparto {
   obs: string
 }
 
+/**
+ * Lo tipeado → número. Usa el MISMO parser que `InputMonto` (2026-09-21), así
+ * el punto del teclado numérico y la coma dan lo mismo en todo el sistema.
+ * Antes acá el punto era separador de MILES: tipear "24994.52" daba
+ * $2.499.452, cien veces de más y sin aviso.
+ */
 const n = (s: string) => {
-  const v = Number(String(s).replace(/\./g, '').replace(',', '.'))
+  const v = Number(aRaw(String(s), 2))
   return Number.isFinite(v) ? v : 0
 }
 const r2 = (v: number) => Math.round(v * 100) / 100
@@ -364,8 +371,8 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
             plegado a propósito (ver el comentario de `verDesglose`). */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 items-end">
           <Campo label="Total (con IVA)" hint="Lo que se le paga">
-            <input inputMode="decimal" value={total} onChange={e => setTotal(e.target.value)} disabled={congelado}
-              className={`${inputCls} font-mono font-bold`} />
+            <InputMonto value={total} onChange={setTotal} disabled={congelado}
+              className="font-mono font-bold py-2 rounded" />
           </Campo>
           {!verDesglose && (
             <div className="col-span-2 sm:col-span-2 pb-2">
@@ -388,12 +395,12 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
               </button>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <Campo label="Neto" hint="Opcional"><input inputMode="decimal" value={neto} onChange={e => setNeto(e.target.value)} disabled={congelado} className={inputCls} /></Campo>
-              <Campo label="IVA" hint="Opcional"><input inputMode="decimal" value={iva} onChange={e => setIva(e.target.value)} disabled={congelado} className={inputCls} /></Campo>
+              <Campo label="Neto" hint="Opcional"><InputMonto value={neto} onChange={setNeto} disabled={congelado} className="py-2 rounded" /></Campo>
+              <Campo label="IVA" hint="Opcional"><InputMonto value={iva} onChange={setIva} disabled={congelado} className="py-2 rounded" /></Campo>
               <Campo label="Percepciones" hint="No se reparten">
-                <input inputMode="decimal" value={percepciones} onChange={e => setPercepciones(e.target.value)} disabled={congelado} className={inputCls} />
+                <InputMonto value={percepciones} onChange={setPercepciones} disabled={congelado} className="py-2 rounded" />
               </Campo>
-              <Campo label="Otros" hint="Con signo"><input inputMode="decimal" value={otros} onChange={e => setOtros(e.target.value)} disabled={congelado} className={inputCls} /></Campo>
+              <Campo label="Otros" hint="Con signo"><InputMonto value={otros} onChange={setOtros} disabled={congelado} className="py-2 rounded" /></Campo>
             </div>
             <div className="text-[11px] text-gris-dark mt-1.5">
               Si cargás neto e IVA, tienen que sumar el total. Las percepciones no se reparten entre obras.
@@ -446,9 +453,9 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
                   abría con las 57 obras adentro pero medía 2px y no se veía
                   nada. Reportado el 2026-09-21. */}
               <div className="w-28 shrink-0">
-                <input inputMode="decimal" value={f.monto} placeholder="Monto"
-                  onChange={e => setReparto(rs => rs.map((x, j) => j === i ? { ...x, monto: e.target.value } : x))}
-                  className={`${inputCls} font-mono text-right`} />
+                <InputMonto value={f.monto} placeholder="Monto"
+                  onChange={v => setReparto(rs => rs.map((x, j) => j === i ? { ...x, monto: v } : x))}
+                  className="font-mono text-right py-2 rounded" />
               </div>
               {reparto.length > 1 && (
                 <button type="button" className="text-rojo hover:bg-rojo-light px-2 py-1.5 rounded text-xs"

@@ -79,3 +79,69 @@ describe('reformatear (lo tipeado → display, conservando coma colgante)', () =
     }
   })
 })
+
+describe('el punto del teclado numérico también separa decimales (2026-09-21)', () => {
+  // Pedido del dueño: «en el teclado numérico tenemos el punto, que se ponga
+  // punto o coma indistintamente». Y la incoherencia que lo destapó: comprar
+  // exigía coma, cargar el precio de un enviado exigía punto.
+
+  it('punto y coma dan el MISMO número', () => {
+    expect(aRaw('24994.52', 2)).toBe(aRaw('24994,52', 2))
+    expect(aRaw('24994.52', 2)).toBe('24994.52')
+  })
+
+  it('el caso de la factura que trabó a Nicolás', () => {
+    expect(Number(aRaw('24994.52', 2))).toBe(24994.52)
+  })
+
+  it('un decimal solo, y el cero adelante', () => {
+    expect(aRaw('1.5', 2)).toBe('1.5')
+    expect(aRaw('0.75', 2)).toBe('0.75')
+    expect(aRaw('.5', 2)).toBe('0.5')
+  })
+
+  it('tres dígitos detrás de un punto siguen siendo MILES (es-AR)', () => {
+    expect(aRaw('1.234', 2)).toBe('1234')
+    expect(aRaw('24.994', 2)).toBe('24994')
+  })
+
+  it('dos o más puntos son siempre miles', () => {
+    expect(aRaw('1.234.567', 2)).toBe('1234567')
+    expect(aRaw('1.234.567,89', 2)).toBe('1234567.89')
+  })
+
+  it('si hay coma, la coma manda y los puntos son miles', () => {
+    expect(aRaw('1.234,56', 2)).toBe('1234.56')
+  })
+
+  it('más de dos decimales se recortan, venga con punto o con coma', () => {
+    expect(aRaw('10.999', 2)).toBe('10999')     // 3 dígitos = miles
+    expect(aRaw('10.9999', 2)).toBe('10.99')    // 4 dígitos = decimal recortado
+    expect(aRaw('10,9999', 2)).toBe('10.99')
+  })
+
+  it('con decimales = 0 el punto sigue siendo miles', () => {
+    expect(aRaw('1.234', 0)).toBe('1234')
+    expect(aRaw('24994.52', 0)).toBe('2499452')
+  })
+})
+
+describe('mientras se tipea, el monto se va acomodando solo', () => {
+  it('el punto se ve como coma apenas se escribe', () => {
+    expect(reformatear('24994.', 2)).toBe('24.994,')
+    expect(reformatear('24994.5', 2)).toBe('24.994,5')
+    expect(reformatear('24994.52', 2)).toBe('24.994,52')
+  })
+
+  it('los miles aparecen solos mientras se tipea', () => {
+    expect(reformatear('1', 2)).toBe('1')
+    expect(reformatear('1234', 2)).toBe('1.234')
+    expect(reformatear('1234567', 2)).toBe('1.234.567')
+  })
+
+  it('tipear el número entero paso a paso nunca cambia lo que ya se puso', () => {
+    const pasos = ['2', '24', '249', '2499', '24994', '24994.', '24994.5', '24994.52']
+    const vistos = pasos.map(p => reformatear(p, 2))
+    expect(vistos).toEqual(['2', '24', '249', '2.499', '24.994', '24.994,', '24.994,5', '24.994,52'])
+  })
+})

@@ -1996,16 +1996,16 @@ export function SolicitudesTab() {
                                       {ESTADOS_CON_PRECIO_EDITABLE.includes(item.estado as string) && !obra?.es_deposito && (
                                         precioItemId === item.id ? (
                                           <>
-                                            <input
-                                              type="number"
-                                              inputMode="decimal"
-                                              autoFocus
-                                              value={precioDraft}
-                                              onChange={e => setPrecioDraft(e.target.value)}
-                                              onKeyDown={e => { if (e.key === 'Enter') guardarPrecioItem(item.id!) }}
-                                              placeholder="$/unid"
-                                              className="w-24 px-2 py-1 border-[1.5px] border-gris-mid rounded whitespace-nowrap text-xs outline-none bg-white font-semibold focus:border-naranja"
-                                            />
+                                            <div className="w-24">
+                                              <InputMonto
+                                                autoFocus
+                                                value={precioDraft}
+                                                onChange={setPrecioDraft}
+                                                onKeyDown={e => { if (e.key === 'Enter') guardarPrecioItem(item.id!) }}
+                                                placeholder="$/unid"
+                                                className="px-2 py-1 rounded text-xs font-semibold"
+                                              />
+                                            </div>
                                             <button disabled={guardandoPrecio} onClick={() => guardarPrecioItem(item.id!)} className="text-xs font-bold px-3 py-1 rounded whitespace-nowrap bg-verde-light text-verde hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed">✓</button>
                                             <button onClick={() => { setPrecioItemId(null); setPrecioDraft('') }} className="text-xs font-bold px-3 py-1 rounded whitespace-nowrap text-gris-dark hover:text-rojo hover:bg-rojo-light">✕</button>
                                           </>
@@ -2447,16 +2447,16 @@ export function SolicitudesTab() {
                                 <div className="mb-2">
                                   {precioItemId === item.id ? (
                                     <div className="flex items-center gap-2">
-                                      <input
-                                        type="number"
-                                        inputMode="decimal"
-                                        autoFocus
-                                        value={precioDraft}
-                                        onChange={e => setPrecioDraft(e.target.value)}
-                                        onKeyDown={e => { if (e.key === 'Enter') guardarPrecioItem(item.id!) }}
-                                        placeholder="$/unid"
-                                        className="w-24 px-2 py-1.5 border-[1.5px] border-gris-mid rounded text-xs outline-none bg-white font-semibold focus:border-naranja min-h-[36px]"
-                                      />
+                                      <div className="w-24">
+                                        <InputMonto
+                                          autoFocus
+                                          value={precioDraft}
+                                          onChange={setPrecioDraft}
+                                          onKeyDown={e => { if (e.key === 'Enter') guardarPrecioItem(item.id!) }}
+                                          placeholder="$/unid"
+                                          className="px-2 py-1.5 min-h-[36px] rounded text-xs font-semibold"
+                                        />
+                                      </div>
                                       <button disabled={guardandoPrecio} onClick={() => guardarPrecioItem(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✓</button>
                                       <button onClick={() => { setPrecioItemId(null); setPrecioDraft('') }} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo min-h-[36px]">✕</button>
                                     </div>

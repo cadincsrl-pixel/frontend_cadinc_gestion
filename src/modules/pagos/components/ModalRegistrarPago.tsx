@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
+import { InputMonto, aRaw } from '@/components/ui/InputMonto'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import {
@@ -58,8 +59,14 @@ interface ChequeFila {
 const chequeVacio = (fecha_cobro: string, monto: string): ChequeFila =>
   ({ numero: '', banco: '', fecha_cobro, monto, es_propio: true, librador: '' })
 
+/**
+ * Lo tipeado → número. Usa el MISMO parser que `InputMonto` (2026-09-21), así
+ * el punto del teclado numérico y la coma dan lo mismo en todo el sistema.
+ * Antes acá el punto era separador de MILES: tipear "24994.52" daba
+ * $2.499.452, cien veces de más y sin aviso.
+ */
 const n = (s: string) => {
-  const v = Number(String(s).replace(/\./g, '').replace(',', '.'))
+  const v = Number(aRaw(String(s), 2))
   return Number.isFinite(v) ? v : 0
 }
 const r2 = (v: number) => Math.round(v * 100) / 100
@@ -331,9 +338,9 @@ export function ModalRegistrarPago({ facturaIds, onClose }: Props) {
                   </div>
                   <div className="w-32">
                     <label className="block text-[10px] font-semibold text-gris-dark mb-0.5">Se paga</label>
-                    <input inputMode="decimal" value={f.monto}
-                      onChange={e => setFilas(fs => fs.map(x => x.factura.id === f.factura.id ? { ...x, monto: e.target.value } : x))}
-                      className={`${inputCls} font-mono text-right ${excede ? 'border-rojo' : ''}`} />
+                    <InputMonto value={f.monto}
+                      onChange={v => setFilas(fs => fs.map(x => x.factura.id === f.factura.id ? { ...x, monto: v } : x))}
+                      className={`font-mono text-right py-2 rounded ${excede ? '!border-rojo' : ''}`} />
                   </div>
                   <div className="w-28 text-right">
                     <div className="text-[10px] font-semibold text-gris-dark mb-0.5">Quedaría</div>
@@ -348,9 +355,9 @@ export function ModalRegistrarPago({ facturaIds, onClose }: Props) {
                   <div className="mt-2 ml-2 pl-2 border-l-2 border-[#C9B8E8] flex flex-wrap gap-2 items-end">
                     <div className="w-28">
                       <label className="block text-[10px] font-semibold text-[#5A2D82] mb-0.5">NC · monto</label>
-                      <input inputMode="decimal" value={f.nc.monto}
-                        onChange={e => setFilas(fs => fs.map(x => x.factura.id === f.factura.id && x.nc ? { ...x, nc: { ...x.nc, monto: e.target.value } } : x))}
-                        className={`${inputCls} font-mono text-right`} />
+                      <InputMonto value={f.nc.monto}
+                        onChange={v => setFilas(fs => fs.map(x => x.factura.id === f.factura.id && x.nc ? { ...x, nc: { ...x.nc, monto: v } } : x))}
+                        className="font-mono text-right py-2 rounded" />
                     </div>
                     <div className="w-32">
                       <label className="block text-[10px] font-semibold text-gris-dark mb-0.5">Número</label>
@@ -395,8 +402,8 @@ export function ModalRegistrarPago({ facturaIds, onClose }: Props) {
         <div className="flex gap-2 items-end flex-wrap">
           <div className="w-40">
             <label className="block text-xs font-semibold text-gris-dark mb-1">A cuenta · opcional</label>
-            <input inputMode="decimal" value={aCuenta} onChange={e => setACuenta(e.target.value)}
-              placeholder="0" className={`${inputCls} font-mono text-right`} />
+            <InputMonto value={aCuenta} onChange={setACuenta}
+              placeholder="0" className="font-mono text-right py-2 rounded" />
           </div>
           <div className="text-[11px] text-gris-dark flex-1 min-w-[200px] pb-2">
             Plata que se le adelanta al proveedor sin factura. Queda como saldo a favor para aplicar después.
@@ -480,8 +487,8 @@ export function ModalRegistrarPago({ facturaIds, onClose }: Props) {
                     onChange={e => setCheque(i, { fecha_cobro: e.target.value })} className={inputCls} />
                 </Campo>
                 <Campo label="Importe" ancho="w-32">
-                  <input inputMode="decimal" value={c.monto} onChange={e => setCheque(i, { monto: e.target.value })}
-                    className={`${inputCls} text-right font-mono tabular-nums`} />
+                  <InputMonto value={c.monto} onChange={v => setCheque(i, { monto: v })}
+                    className="text-right font-mono tabular-nums py-2 rounded" />
                 </Campo>
                 <label className="flex items-center gap-1 text-xs pb-1.5 cursor-pointer select-none">
                   <input type="checkbox" checked={!c.es_propio}
