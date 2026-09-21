@@ -108,6 +108,17 @@ export const MAX_ADJUNTO_BYTES = 10 * 1024 * 1024
 
 export const fmtM = (n: number | null | undefined) => '$' + Math.round(Number(n ?? 0)).toLocaleString('es-AR')
 
+/**
+ * Con centavos. Va en los pocos lugares donde el redondeo a pesos ESCONDE el
+ * problema en vez de simplificarlo: el reparto por obra se valida contra una
+ * igualdad exacta, así que una diferencia de $0,48 bloquea el guardado — y con
+ * `fmtM` se leía «Sobran $0», que es imposible de entender. Caso real del
+ * 2026-09-21: factura de $24.994,52, la pantalla mostraba «A repartir $24.995»,
+ * el usuario tipeaba 24995 y quedaba trabado sin saber por qué.
+ */
+export const fmtMc = (n: number | null | undefined) =>
+  '$' + Number(n ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
 export function fmtFecha(s: string | null | undefined): string {
   if (!s) return '—'
   const [a, m, d] = s.slice(0, 10).split('-')

@@ -8,7 +8,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import {
-  fechaDeCierre, ultimoDiaDelMes, ultimoDiaHabil, vencimientoSugerido,
+  fechaDeCierre, fmtM, fmtMc, ultimoDiaDelMes, ultimoDiaHabil, vencimientoSugerido,
 } from '@/modules/pagos/utils/pagos.utils'
 
 const SILVA = { vencimiento_modo: 'cierre_mensual' as const, cierre_dia: null, plazo_pago_dias: 30 }
@@ -109,5 +109,30 @@ describe('bordes', () => {
     for (const d of ['2026-01-05', '2026-02-28', '2026-05-31', '2026-12-31']) {
       expect(vencimientoSugerido(d, SILVA)! >= d).toBe(true)
     }
+  })
+})
+
+describe('los centavos del reparto por obra', () => {
+  // Caso real del 21/09: factura de $24.994,52 imputada a una sola obra.
+  // La pantalla mostraba "A repartir $24.995", el usuario tipeaba 24995 y el
+  // guardado quedaba bloqueado con el cartel "Sobran $0", que no se entiende.
+  const r2 = (v: number) => Math.round(v * 100) / 100
+
+  it('fmtM redondea a pesos: por eso escondía la diferencia', () => {
+    expect(fmtM(24994.52)).toBe('$24.995')
+    expect(fmtM(0.48)).toBe('$0')          // ← el cartel imposible de entender
+  })
+
+  it('fmtMc muestra los centavos, que es lo que bloquea', () => {
+    expect(fmtMc(24994.52)).toBe('$24.994,52')
+    expect(fmtMc(0.48)).toBe('$0,48')
+  })
+
+  it('una diferencia de 48 centavos bloquea de verdad', () => {
+    expect(Math.abs(r2(24994.52 - 24995)) < 0.005).toBe(false)
+  })
+
+  it('con el importe exacto, cuadra', () => {
+    expect(Math.abs(r2(24994.52 - 24994.52)) < 0.005).toBe(true)
   })
 })

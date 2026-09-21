@@ -12,7 +12,7 @@ import {
 import { useProveedoresPagos } from '../hooks/useProveedoresPagos'
 import {
   FORMAS_PAGADA_AL_CARGAR_COMPRAS, FORMAS_PAGO_OP, FORMAS_PREVISTAS, FORMAS_CON_FECHA_COBRO,
-  TIPOS_COMPROBANTE, fmtM, hoyAR,
+  TIPOS_COMPROBANTE, fmtM, fmtMc, hoyAR,
   vencimientoSugerido,
 } from '../utils/pagos.utils'
 import { mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
@@ -177,6 +177,17 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
     })),
     [proveedores.data, proveedorId],
   )
+
+  // Con UNA sola obra el reparto es todo el importe: no tiene sentido hacerlo
+  // tipear, y tipearlo a mano es justo donde se pierden los centavos (caso del
+  // 2026-09-21). Se completa solo al elegir la obra, y sólo si está vacío: si
+  // alguien lo edita a propósito, no se lo pisa.
+  useEffect(() => {
+    if (reparto.length !== 1 || imputable <= 0) return
+    const f = reparto[0]!
+    if (!f.obra_cod || f.monto.trim()) return
+    setReparto([{ ...f, monto: String(imputable) }])
+  }, [reparto, imputable])
 
   /** Repartir lo imputable en partes iguales; la última fila se queda con el resto. */
   function repartirParejo() {
@@ -415,8 +426,8 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
           <div className="flex items-center justify-between gap-2 flex-wrap mb-1">
             <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wide">Centro de costo — a qué obra se imputa</div>
             <div className="text-xs">
-              A repartir: <b className="font-mono tabular-nums">{fmtM(imputable)}</b>
-              {percN > 0 && <span className="text-gris-dark"> (total {fmtM(totalN)} − percepciones {fmtM(percN)})</span>}
+              A repartir: <b className="font-mono tabular-nums">{fmtMc(imputable)}</b>
+              {percN > 0 && <span className="text-gris-dark"> (total {fmtMc(totalN)} − percepciones {fmtMc(percN)})</span>}
             </div>
           </div>
 
@@ -454,7 +465,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
             {Math.abs(difReparto) >= 0.005 && imputable > 0 && (
               <>
                 <span className="text-xs text-rojo">
-                  {difReparto > 0 ? `Faltan ${fmtM(difReparto)}` : `Sobran ${fmtM(-difReparto)}`}
+                  {difReparto > 0 ? `Faltan ${fmtMc(difReparto)}` : `Sobran ${fmtMc(-difReparto)}`}
                 </span>
                 <Button variant="secondary" size="sm" onClick={ajustarUltima}>Ajustar la última fila</Button>
               </>
