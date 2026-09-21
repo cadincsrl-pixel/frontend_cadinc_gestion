@@ -10,7 +10,7 @@
 
 ## 0. Workflow del agente — al cerrar un turno
 
-**Antes de cerrar cualquier turno que haya generado uno o más commits, actualizar el diario de Obsidian** (`~/Documents/Notas-CADINC/Diario/YYYY-MM-DD.md`):
+**Antes de cerrar cualquier turno que haya generado uno o más commits, actualizar el diario de Obsidian** (`~/CADINC/Notas-CADINC/Diario/YYYY-MM-DD.md`):
 
 - Si el archivo del día no existe, crearlo siguiendo el formato del día anterior más reciente (frontmatter `type: diario` + `fecha` + tag, secciones 🎯 Foco / ✅ Hecho / 🚧 Pendientes / 🗒 Notas / 🔗 Links).
 - Sumar una sub-sección por cada commit no trivial con: causa, fix, link al commit hash.
