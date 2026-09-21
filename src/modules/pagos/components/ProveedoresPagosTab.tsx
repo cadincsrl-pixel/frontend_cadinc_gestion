@@ -70,7 +70,7 @@ export function ProveedoresPagosTab() {
         </form>
         <div className="flex gap-3 flex-wrap text-xs pb-2">
           <Tilde label="Sin CUIT"          on={!!filtro.sin_cuit}       set={v => patch({ sin_cuit: v || undefined })} />
-          <Tilde label="Sin datos de pago" on={!!filtro.sin_datos_pago} set={v => patch({ sin_datos_pago: v || undefined })} />
+          <Tilde label="Sin CBU ni alias" on={!!filtro.sin_datos_pago} set={v => patch({ sin_datos_pago: v || undefined })} />
           <Tilde label="Incluir dados de baja" on={!!filtro.inactivos}  set={v => patch({ inactivos: v || undefined })} />
         </div>
         <Button size="sm" onClick={() => setAlta(true)} disabled={!puedeCrear}
@@ -113,7 +113,9 @@ export function ProveedoresPagosTab() {
                         {p.cuit ?? <span className="text-naranja-dark">sin CUIT</span>}
                       </td>
                       <td className="px-3 py-2 text-xs font-mono">
-                        {p.cbu ?? p.alias_cbu ?? <span className="text-naranja-dark font-sans">sin datos de pago</span>}
+                        {/* Gris, no naranja: el CBU es opcional. Sólo hace falta
+                            para transferir; los cheques se emiten con el CUIT. */}
+                        {p.cbu ?? p.alias_cbu ?? <span className="text-gris-mid font-sans">—</span>}
                       </td>
                       <td className="px-3 py-2 text-right text-xs">{p.plazo_pago_dias} d</td>
                       <td className="px-3 py-2 text-right text-xs">{p.facturas}</td>
@@ -136,7 +138,7 @@ export function ProveedoresPagosTab() {
                     <div className="min-w-0">
                       <div className="font-semibold text-sm truncate">{p.razon_social}</div>
                       <div className="text-[11px] text-gris-dark font-mono">{p.cuit ?? 'sin CUIT'}</div>
-                      <div className="text-[11px] text-gris-dark font-mono">{p.cbu ?? p.alias_cbu ?? 'sin datos de pago'}</div>
+                      <div className="text-[11px] text-gris-dark font-mono">{p.cbu ?? p.alias_cbu ?? '—'}</div>
                     </div>
                     <div className="text-right">
                       <div className="font-mono font-bold tabular-nums text-sm">{p.saldo > 0 ? fmtM(p.saldo) : '—'}</div>

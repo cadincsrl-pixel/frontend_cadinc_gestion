@@ -110,7 +110,7 @@ export function AltaRapidaProveedor({ onClose, onCreado }: Props) {
         </Campo>
 
         <div className="text-[11px] text-gris-dark">
-          Sin CBU ni alias se puede cargar la factura igual, pero no se le puede transferir hasta completarlo.
+          El CBU y el alias son opcionales: sólo hacen falta para transferirle. Si le pagás con cheque o en cuenta corriente, alcanza con el CUIT.
         </div>
       </div>
     </Modal>

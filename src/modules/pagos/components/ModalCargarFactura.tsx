@@ -13,6 +13,7 @@ import {
 import { useProveedoresPagos } from '../hooks/useProveedoresPagos'
 import {
   FORMAS_PAGADA_AL_CARGAR_COMPRAS, FORMAS_PAGO_OP, FORMAS_PREVISTAS, FORMAS_CON_FECHA_COBRO,
+  FORMAS_CON_CUENTA_DESTINO,
   TIPOS_COMPROBANTE, componerNumero, fmtM, hoyAR, partirNumero,
   vencimientoSugerido,
 } from '../utils/pagos.utils'
@@ -185,7 +186,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
     () => (proveedores.data?.items ?? []).filter(p => p.activo || String(p.id) === proveedorId).map(p => ({
       value: String(p.id),
       label: p.razon_social,
-      sub:   [p.cuit, p.sin_datos_pago ? 'sin datos de pago' : null].filter(Boolean).join(' · ') || undefined,
+      sub:   p.cuit ?? undefined,
       search: [p.razon_social, p.cuit ?? ''],
     })),
     [proveedores.data, proveedorId],
@@ -351,9 +352,13 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
           </div>
           <Button variant="secondary" size="sm" onClick={() => setAltaProveedor(true)} disabled={congelado}>+ Nuevo</Button>
         </div>
-        {proveedor?.sin_datos_pago && (
+        {/* El CBU sólo hace falta para TRANSFERIR. Un proveedor al que se le
+            paga con cheque o en cuenta corriente no lo necesita nunca, y hasta
+            el 2026-09-21 este aviso salía siempre: parecía que faltaba un dato
+            obligatorio cuando no lo es. Los cheques se emiten con el CUIT. */}
+        {proveedor?.sin_datos_pago && FORMAS_CON_CUENTA_DESTINO.includes(formaPrevista as PagosFormaPagoOP) && (
           <div className="text-[11px] text-naranja-dark">
-            Este proveedor no tiene CBU ni alias cargado: se va a poder cargar la factura, pero no transferirle hasta completarlo.
+            Para transferirle hace falta el CBU o el alias, y este proveedor no los tiene. La factura se carga igual.
           </div>
         )}
 
