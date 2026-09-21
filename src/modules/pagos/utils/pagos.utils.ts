@@ -106,17 +106,16 @@ export const MAX_ADJUNTO_BYTES = 10 * 1024 * 1024
 
 // ── Formatos ──────────────────────────────────────────────────────────
 
-export const fmtM = (n: number | null | undefined) => '$' + Math.round(Number(n ?? 0)).toLocaleString('es-AR')
-
 /**
- * Con centavos. Va en los pocos lugares donde el redondeo a pesos ESCONDE el
- * problema en vez de simplificarlo: el reparto por obra se valida contra una
- * igualdad exacta, así que una diferencia de $0,48 bloquea el guardado — y con
- * `fmtM` se leía «Sobran $0», que es imposible de entender. Caso real del
- * 2026-09-21: factura de $24.994,52, la pantalla mostraba «A repartir $24.995»,
- * el usuario tipeaba 24995 y quedaba trabado sin saber por qué.
+ * Plata, SIEMPRE con centavos (2026-09-21).
+ *
+ * Redondeaba a pesos y eso escondía problemas en vez de simplificar: una
+ * factura de $24.994,52 se leía "$24.995", alguien repartía 24995 y el
+ * guardado se trababa avisando "Sobran $0". Y al revisar las 5 primeras
+ * facturas contra el papel, esos 48 centavos habían terminado cargados como
+ * total. En un módulo contable el centavo es el dato, no ruido.
  */
-export const fmtMc = (n: number | null | undefined) =>
+export const fmtM = (n: number | null | undefined) =>
   '$' + Number(n ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 export function fmtFecha(s: string | null | undefined): string {

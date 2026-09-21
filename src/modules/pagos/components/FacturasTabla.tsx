@@ -1,14 +1,15 @@
 'use client'
 
-import { ESTADO_FACTURA_META, comprobanteTxt, fmtFecha, fmtM } from '../utils/pagos.utils'
+import { ESTADO_FACTURA_META, FORMAS_PREVISTAS, comprobanteTxt, fmtFecha, fmtM } from '../utils/pagos.utils'
 import type { PagosFactura } from '@/types/domain.types'
 
 /**
  * La lista de facturas: tabla en pantalla grande, tarjetas en el celular.
  *
  * Lo que cada fila tiene que contestar de un vistazo: a quién, cuánto falta
- * pagar, para cuándo, en qué estado está y si hay algo raro (sin PDF, el CBU
- * cambió después de aprobarse, se cargó ya pagada y nadie la revisó).
+ * pagar, para cuándo, CÓMO se paga, en qué estado está y si hay algo raro
+ * (sin PDF, el CBU cambió después de aprobarse, se cargó ya pagada y nadie la
+ * revisó).
  */
 
 interface Props {
@@ -45,6 +46,28 @@ function Alertas({ f }: { f: PagosFactura }) {
               title={`Notas de crédito aplicadas por ${fmtM(f.acreditado)}`}>NC {fmtM(f.acreditado)}</span>
       )}
     </>
+  )
+}
+
+/**
+ * Cómo se va a pagar esta factura. Va en la LISTA y no sólo en la ficha
+ * (2026-09-21): «lo más importante para pagar es la forma de pago y no la veo
+ * muy a la vista». Quien mira la bandeja para pagar necesita saber, sin abrir
+ * una por una, cuáles van por transferencia, cuáles con cheque y cuáles
+ * quedaron en cuenta corriente: son circuitos distintos.
+ *
+ * Es la forma PREVISTA, la que se cargó con la factura. La real queda en la
+ * orden de pago.
+ */
+function FormaPago({ f }: { f: PagosFactura }) {
+  const label = FORMAS_PREVISTAS.find(x => x.key === f.forma_pago_prevista)?.label ?? f.forma_pago_prevista
+  // Cheque y e-cheq se destacan: son los que además arrastran fechas de cobro.
+  const conCheque = f.forma_pago_prevista === 'cheque' || f.forma_pago_prevista === 'echeq'
+  return (
+    <span className={`inline-block whitespace-nowrap text-[11px] font-bold px-2 py-0.5 rounded ${
+      conCheque ? 'bg-[#EEE8FF] text-[#5A2D82]' : 'bg-gris text-gris-dark'}`}>
+      {label}
+    </span>
   )
 }
 
@@ -87,7 +110,7 @@ export function FacturasTabla({ items, seleccion, onToggle, onToggleTodas, onAbr
                          onChange={onToggleTodas} title="Seleccionar toda la página" />
                 </th>
               )}
-              {['Proveedor / comprobante', 'Centro de costo', 'Emitida', 'Vence', 'Total', 'Saldo', 'Estado', ''].map((h, i) => (
+              {['Proveedor / comprobante', 'Centro de costo', 'Emitida', 'Vence', 'Total', 'Saldo', 'Cómo se paga', 'Estado', ''].map((h, i) => (
                 <th key={h + i}
                     className={`bg-gris text-gris-dark text-[10px] font-bold px-3 py-2 uppercase tracking-wide whitespace-nowrap ${i >= 2 && i <= 5 ? 'text-right' : 'text-left'}`}>
                   {h}
@@ -129,6 +152,9 @@ export function FacturasTabla({ items, seleccion, onToggle, onToggleTodas, onAbr
                     {f.saldo > 0 ? fmtM(f.saldo) : <span className="text-gris-mid">—</span>}
                   </td>
                   <td className="px-3 py-2 cursor-pointer" onClick={() => onAbrir(f.id)}>
+                    <FormaPago f={f} />
+                  </td>
+                  <td className="px-3 py-2 cursor-pointer" onClick={() => onAbrir(f.id)}>
                     <span className={`inline-block whitespace-nowrap text-[11px] font-bold px-2 py-0.5 rounded ${meta.badge}`} title={meta.hint}>
                       {meta.label}
                     </span>
@@ -163,7 +189,10 @@ export function FacturasTabla({ items, seleccion, onToggle, onToggleTodas, onAbr
                       <div className="font-semibold text-sm truncate">{f.proveedor_nom}</div>
                       <div className="text-[11px] text-gris-dark font-mono">{comprobanteTxt(f.tipo_comprobante, f.numero)}</div>
                     </div>
-                    <span className={`inline-block whitespace-nowrap text-[11px] font-bold px-2 py-0.5 rounded ${meta.badge}`}>{meta.label}</span>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <span className={`inline-block whitespace-nowrap text-[11px] font-bold px-2 py-0.5 rounded ${meta.badge}`}>{meta.label}</span>
+                      <FormaPago f={f} />
+                    </div>
                   </div>
                   {f.descripcion && <div className="text-[11px] text-gris-dark mt-0.5">{f.descripcion}</div>}
                   <div className="flex items-baseline justify-between gap-2 mt-1.5">

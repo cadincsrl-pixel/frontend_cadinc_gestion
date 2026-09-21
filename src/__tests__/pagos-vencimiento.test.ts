@@ -8,7 +8,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import {
-  componerNumero, fechaDeCierre, fmtM, fmtMc, partirNumero, ultimoDiaDelMes, ultimoDiaHabil,
+  componerNumero, fechaDeCierre, fmtM, partirNumero, ultimoDiaDelMes, ultimoDiaHabil,
   vencimientoSugerido,
 } from '@/modules/pagos/utils/pagos.utils'
 
@@ -119,14 +119,14 @@ describe('los centavos del reparto por obra', () => {
   // guardado quedaba bloqueado con el cartel "Sobran $0", que no se entiende.
   const r2 = (v: number) => Math.round(v * 100) / 100
 
-  it('fmtM redondea a pesos: por eso escondía la diferencia', () => {
-    expect(fmtM(24994.52)).toBe('$24.995')
-    expect(fmtM(0.48)).toBe('$0')          // ← el cartel imposible de entender
-  })
-
-  it('fmtMc muestra los centavos, que es lo que bloquea', () => {
-    expect(fmtMc(24994.52)).toBe('$24.994,52')
-    expect(fmtMc(0.48)).toBe('$0,48')
+  it('la plata SIEMPRE se muestra con centavos', () => {
+    // Antes redondeaba a pesos: 24994,52 se leía "$24.995" y 0,48 se leía
+    // "$0". De ahí salía el cartel "Sobran $0", imposible de entender.
+    expect(fmtM(24994.52)).toBe('$24.994,52')
+    expect(fmtM(0.48)).toBe('$0,48')
+    expect(fmtM(1234567.8)).toBe('$1.234.567,80')
+    expect(fmtM(0)).toBe('$0,00')
+    expect(fmtM(null)).toBe('$0,00')
   })
 
   it('una diferencia de 48 centavos bloquea de verdad', () => {
