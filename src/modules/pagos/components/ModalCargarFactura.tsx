@@ -83,6 +83,11 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
   const [reparto, setReparto] = useState<FilaReparto[]>([{ obra_cod: '', monto: '', obs: '' }])
   const [motivo, setMotivo] = useState('')
   const [altaProveedor, setAltaProveedor] = useState(false)
+  // El desglose arranca PLEGADO (2026-09-21): el dueño pidió que por ahora
+  // se cargue el monto final nomás, que las retenciones confunden hasta que
+  // agarren la mano. No se saca el campo: se esconde, y al editar una
+  // factura que ya lo tiene cargado se abre solo para no ocultar un dato.
+  const [verDesglose, setVerDesglose] = useState(false)
 
   // «Ya está pagada»
   const [yaPagada, setYaPagada] = useState(false)
@@ -106,6 +111,9 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
     setIva(original.iva != null ? String(original.iva) : '')
     setPercepciones(original.percepciones != null ? String(original.percepciones) : '')
     setOtros(original.otros != null ? String(original.otros) : '')
+    if ([original.neto, original.iva, original.percepciones, original.otros].some(v => v != null)) {
+      setVerDesglose(true)
+    }
     setFormaPrevista(original.forma_pago_prevista)
     setDescripcion(original.descripcion)
     setObs(original.obs)
@@ -140,15 +148,24 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
   const difReparto = r2(imputable - sumaReparto)
   const repartoOk = reparto.every(f => f.obra_cod) && Math.abs(difReparto) < 0.005 && imputable > 0
 
+  // El catálogo trae TODAS las obras, también las archivadas, porque la ficha
+  // de una factura vieja tiene que poder mostrar su obra. Pero imputar a una
+  // archivada NO se puede: `_pagos_reemplazar_imputaciones` rebota con
+  // OBRA_ARCHIVADA. Ofrecerlas era un callejón — 19 de las 57 fallaban recién
+  // al guardar. Se listan sólo las activas, más la que ya esté elegida en el
+  // reparto (que es el caso de editar una factura vieja).
+  const codsElegidos = useMemo(() => new Set(reparto.map(f => f.obra_cod).filter(Boolean)), [reparto])
   const obrasOpts = useMemo(
-    () => (obras.data ?? []).map(o => ({
-      value: o.cod,
-      label: o.nom,
-      sub:   o.cod + (o.archivada ? ' · archivada' : ''),
-      group: o.es_interna || o.es_deposito ? 'Estructura CADINC' : 'Obras',
-      search: [o.nom, o.cod, o.cc ?? ''],
-    })),
-    [obras.data],
+    () => (obras.data ?? [])
+      .filter(o => !o.archivada || codsElegidos.has(o.cod))
+      .map(o => ({
+        value: o.cod,
+        label: o.nom,
+        sub:   o.cod + (o.archivada ? ' · archivada' : ''),
+        group: o.es_interna || o.es_deposito ? 'Estructura CADINC' : 'Obras',
+        search: [o.nom, o.cod, o.cc ?? ''],
+      })),
+    [obras.data, codsElegidos],
   )
   const provOpts = useMemo(
     () => (proveedores.data?.items ?? []).filter(p => p.activo || String(p.id) === proveedorId).map(p => ({
@@ -331,19 +348,46 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
           </Campo>
         </div>
 
-        {/* Importes */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+        {/* Importes. Lo único obligatorio es el total; el desglose está
+            plegado a propósito (ver el comentario de `verDesglose`). */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 items-end">
           <Campo label="Total (con IVA)" hint="Lo que se le paga">
             <input inputMode="decimal" value={total} onChange={e => setTotal(e.target.value)} disabled={congelado}
               className={`${inputCls} font-mono font-bold`} />
           </Campo>
-          <Campo label="Neto" hint="Opcional"><input inputMode="decimal" value={neto} onChange={e => setNeto(e.target.value)} disabled={congelado} className={inputCls} /></Campo>
-          <Campo label="IVA" hint="Opcional"><input inputMode="decimal" value={iva} onChange={e => setIva(e.target.value)} disabled={congelado} className={inputCls} /></Campo>
-          <Campo label="Percepciones" hint="No se reparten">
-            <input inputMode="decimal" value={percepciones} onChange={e => setPercepciones(e.target.value)} disabled={congelado} className={inputCls} />
-          </Campo>
-          <Campo label="Otros" hint="Con signo"><input inputMode="decimal" value={otros} onChange={e => setOtros(e.target.value)} disabled={congelado} className={inputCls} /></Campo>
+          {!verDesglose && (
+            <div className="col-span-2 sm:col-span-2 pb-2">
+              <button type="button" onClick={() => setVerDesglose(true)}
+                className="text-[11px] text-azul hover:underline">
+                + Desglosar neto, IVA y percepciones
+              </button>
+              <div className="text-[11px] text-gris-dark">Opcional. Con el total alcanza para cargar y aprobar.</div>
+            </div>
+          )}
         </div>
+
+        {verDesglose && (
+          <div className="border border-gris rounded p-2 bg-gris/20">
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wide">Desglose · opcional</div>
+              <button type="button" onClick={() => { setVerDesglose(false); setNeto(''); setIva(''); setPercepciones(''); setOtros('') }}
+                className="text-[11px] text-gris-dark hover:text-rojo hover:underline">
+                Quitar el desglose
+              </button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <Campo label="Neto" hint="Opcional"><input inputMode="decimal" value={neto} onChange={e => setNeto(e.target.value)} disabled={congelado} className={inputCls} /></Campo>
+              <Campo label="IVA" hint="Opcional"><input inputMode="decimal" value={iva} onChange={e => setIva(e.target.value)} disabled={congelado} className={inputCls} /></Campo>
+              <Campo label="Percepciones" hint="No se reparten">
+                <input inputMode="decimal" value={percepciones} onChange={e => setPercepciones(e.target.value)} disabled={congelado} className={inputCls} />
+              </Campo>
+              <Campo label="Otros" hint="Con signo"><input inputMode="decimal" value={otros} onChange={e => setOtros(e.target.value)} disabled={congelado} className={inputCls} /></Campo>
+            </div>
+            <div className="text-[11px] text-gris-dark mt-1.5">
+              Si cargás neto e IVA, tienen que sumar el total. Las percepciones no se reparten entre obras.
+            </div>
+          </div>
+        )}
 
         <Campo label="Descripción" hint="Qué se compró: lo lee quien aprueba">
           <input value={descripcion} onChange={e => setDescripcion(e.target.value)} placeholder="Ej.: hierro del 8 y mallas para el techo" className={inputCls} />
@@ -381,9 +425,19 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
                 <Combobox placeholder="Elegí la obra…" options={obrasOpts} value={f.obra_cod}
                   onChange={v => setReparto(rs => rs.map((x, j) => j === i ? { ...x, obra_cod: v } : x))} />
               </div>
-              <input inputMode="decimal" value={f.monto} placeholder="Monto"
-                onChange={e => setReparto(rs => rs.map((x, j) => j === i ? { ...x, monto: e.target.value } : x))}
-                className={`${inputCls} w-28 font-mono text-right`} />
+              {/* El ancho va en un wrapper y no en el input: `inputCls` trae
+                  `w-full`, que en la hoja de estilos de Tailwind le gana a
+                  cualquier `w-28` del atributo (gana el orden del CSS, no el
+                  del className). Con `w-28` en el input, éste se estiraba al
+                  100% de la fila y dejaba al buscador de obra —que es
+                  `flex-1 min-w-0`— en CERO px de ancho: el desplegable se
+                  abría con las 57 obras adentro pero medía 2px y no se veía
+                  nada. Reportado el 2026-09-21. */}
+              <div className="w-28 shrink-0">
+                <input inputMode="decimal" value={f.monto} placeholder="Monto"
+                  onChange={e => setReparto(rs => rs.map((x, j) => j === i ? { ...x, monto: e.target.value } : x))}
+                  className={`${inputCls} font-mono text-right`} />
+              </div>
               {reparto.length > 1 && (
                 <button type="button" className="text-rojo hover:bg-rojo-light px-2 py-1.5 rounded text-xs"
                   onClick={() => setReparto(rs => rs.filter((_, j) => j !== i))}>✕</button>
