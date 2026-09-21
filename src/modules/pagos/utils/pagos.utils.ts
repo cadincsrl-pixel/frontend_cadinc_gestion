@@ -180,6 +180,85 @@ export function fechasEscalonadas(
     sumarDiasISO(fechaBase, Math.max(0, primerPlazo) + Math.max(0, cadaDias) * i))
 }
 
+/**
+ * Cómo se calcula el vencimiento de una factura de ese proveedor.
+ *
+ *  - `dias`: fecha de la factura + `plazo_pago_dias`. Cada factura arrastra
+ *    su propio vencimiento. Es como venía funcionando el módulo.
+ *  - `cierre_mensual`: la CUENTA CORRIENTE de verdad. Todo lo comprado en el
+ *    mes cierra junto y vence junto, así que dos facturas del 2 y del 28
+ *    vencen el MISMO día. Lo pidió el dueño el 2026-09-21 con el caso Silva:
+ *    «cierra el último día del mes y vence a los 30 días del último día hábil».
+ */
+export const VENCIMIENTO_MODOS = [
+  { key: 'dias',           label: 'A x días de cada factura' },
+  { key: 'cierre_mensual', label: 'Cierre mensual (cuenta corriente)' },
+] as const
+export type VencimientoModo = (typeof VENCIMIENTO_MODOS)[number]['key']
+
+/** Los tres datos del proveedor que entran al cálculo. */
+export interface PlazoProveedor {
+  vencimiento_modo?: VencimientoModo | null
+  /** Día del mes en que cierra la cuenta. `null` = el último día del mes. */
+  cierre_dia?:       number | null
+  plazo_pago_dias?:  number | null
+}
+
+/** Día de la semana en UTC: 0 domingo, 6 sábado. */
+function diaSemana(iso: string): number {
+  return new Date(iso + 'T12:00:00Z').getUTCDay()
+}
+
+/** Último día del mes al que pertenece `iso`. */
+export function ultimoDiaDelMes(iso: string): string {
+  const [a, m] = iso.split('-').map(Number)
+  return new Date(Date.UTC(a!, m!, 0)).toISOString().slice(0, 10)
+}
+
+/**
+ * El mismo día si es hábil; si cae sábado o domingo, retrocede al viernes.
+ *
+ * OJO: hábil acá es lunes a viernes y NADA MÁS. El sistema no tiene calendario
+ * de feriados (lo busqué en los dos repos y en la base: no existe), así que un
+ * cierre que cae en feriado no se corrige solo. El vencimiento queda editable
+ * a mano en el modal justamente por esto.
+ */
+export function ultimoDiaHabil(iso: string): string {
+  let d = iso
+  for (let i = 0; i < 7 && (diaSemana(d) === 0 || diaSemana(d) === 6); i++) {
+    d = sumarDiasISO(d, -1)
+  }
+  return d
+}
+
+/**
+ * Fecha en que cierra la cuenta de una factura emitida el `fecha`.
+ * Sin `cierre_dia`, cierra el último día de ese mes. Con un día fijo, cierra
+ * ese día; si la factura salió después, pasa al mes siguiente.
+ */
+export function fechaDeCierre(fecha: string, cierreDia?: number | null): string {
+  if (!cierreDia || cierreDia <= 0) return ultimoDiaDelMes(fecha)
+  const [a, m, d] = fecha.split('-').map(Number)
+  const dentro = d! <= cierreDia
+  const mes = dentro ? m! : m! + 1
+  const ultimo = Number(ultimoDiaDelMes(new Date(Date.UTC(a!, mes - 1, 1)).toISOString().slice(0, 10)).slice(8))
+  const dia = Math.min(cierreDia, ultimo)          // un cierre el 31 en febrero es el 28
+  return new Date(Date.UTC(a!, mes - 1, dia)).toISOString().slice(0, 10)
+}
+
+/**
+ * El vencimiento que se propone al cargar la factura. Devuelve null si no
+ * alcanzan los datos. Siempre es una SUGERENCIA: el campo queda editable.
+ */
+export function vencimientoSugerido(fecha: string, prov: PlazoProveedor | null | undefined): string | null {
+  if (!fecha || !prov) return null
+  const dias = prov.plazo_pago_dias ?? 30
+  if (prov.vencimiento_modo === 'cierre_mensual') {
+    return sumarDiasISO(ultimoDiaHabil(fechaDeCierre(fecha, prov.cierre_dia)), dias)
+  }
+  return sumarDiasISO(fecha, dias)
+}
+
 export function hoyAR(): string {
   const ahora = new Date()
   const ar = new Date(ahora.getTime() - 3 * 60 * 60 * 1000)

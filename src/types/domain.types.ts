@@ -2362,8 +2362,13 @@ export interface PagosProveedor {
   cbu:                string | null
   cbu_ultimos4:       string | null
   banco:              string
-  /** Sugiere el vencimiento al cargar (fecha + plazo); no toca facturas ya cargadas. */
+  /** Sugiere el vencimiento al cargar; no toca facturas ya cargadas. En modo
+   *  `dias` son los días desde la factura; en `cierre_mensual`, los días desde
+   *  el cierre (20260921g). */
   plazo_pago_dias:    number
+  vencimiento_modo:   'dias' | 'cierre_mensual'
+  /** Día del mes en que cierra la cuenta. null = el último día. Sólo con `cierre_mensual`. */
+  cierre_dia:         number | null
   contacto:           string
   telefono:           string
   email:              string
@@ -2870,6 +2875,8 @@ export interface CrearProveedorInput {
   cbu?:             string | null
   banco?:           string
   plazo_pago_dias?: number
+  vencimiento_modo?: 'dias' | 'cierre_mensual'
+  cierre_dia?:      number | null
   contacto?:        string
   telefono?:        string
   email?:           string

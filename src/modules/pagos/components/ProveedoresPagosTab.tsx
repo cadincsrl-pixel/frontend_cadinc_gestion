@@ -13,6 +13,7 @@ import {
 } from '../hooks/useProveedoresPagos'
 import { comprobanteTxt, fmtFecha, fmtM } from '../utils/pagos.utils'
 import { mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
+import { VENCIMIENTO_MODOS, type VencimientoModo } from '../utils/pagos.utils'
 import { exportarProveedoresPagos } from '../utils/pagosExport'
 import { AltaRapidaProveedor } from './AltaRapidaProveedor'
 
@@ -177,7 +178,7 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
   const reactivar = useReactivarProveedorPagos()
 
   const [editando, setEditando] = useState(false)
-  const [form, setForm] = useState({ razon_social: '', cuit: '', alias_cbu: '', cbu: '', banco: '', plazo_pago_dias: '30', contacto: '', telefono: '', email: '' })
+  const [form, setForm] = useState({ razon_social: '', cuit: '', alias_cbu: '', cbu: '', banco: '', plazo_pago_dias: '30', vencimiento_modo: 'dias' as VencimientoModo, cierre_dia: '', contacto: '', telefono: '', email: '' })
   const [pidiendoBaja, setPidiendoBaja] = useState(false)
   const [motivo, setMotivo] = useState('')
 
@@ -186,6 +187,7 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
     setForm({
       razon_social: p.razon_social, cuit: p.cuit ?? '', alias_cbu: p.alias_cbu ?? '', cbu: p.cbu ?? '',
       banco: p.banco ?? '', plazo_pago_dias: String(p.plazo_pago_dias ?? 30),
+      vencimiento_modo: p.vencimiento_modo ?? 'dias', cierre_dia: p.cierre_dia != null ? String(p.cierre_dia) : '',
       contacto: p.contacto ?? '', telefono: p.telefono ?? '', email: p.email ?? '',
     })
     setEditando(true)
@@ -206,6 +208,9 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
             id: p.id, razon_social: form.razon_social.trim(), cuit: form.cuit.trim() || null,
             cbu: form.cbu.trim() || null, alias_cbu: form.alias_cbu.trim() || null,
             banco: form.banco.trim(), plazo_pago_dias: Number(form.plazo_pago_dias) || 30,
+            vencimiento_modo: form.vencimiento_modo,
+            // Con cierre mensual, vacío = el último día del mes (el caso Silva).
+            cierre_dia: form.vencimiento_modo === 'cierre_mensual' ? (Number(form.cierre_dia) || null) : null,
             contacto: form.contacto.trim(), telefono: form.telefono.trim(), email: form.email.trim(),
           })
       toast('✓ Proveedor actualizado', 'ok')
@@ -267,7 +272,29 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
             <Campo label="CBU"><input value={form.cbu} onChange={e => setForm(f => ({ ...f, cbu: e.target.value }))} className={`${inputCls} font-mono`} /></Campo>
             <Campo label="Alias"><input value={form.alias_cbu} onChange={e => setForm(f => ({ ...f, alias_cbu: e.target.value }))} className={inputCls} /></Campo>
             <Campo label="Banco"><input value={form.banco} onChange={e => setForm(f => ({ ...f, banco: e.target.value }))} className={inputCls} /></Campo>
-            <Campo label="Plazo de pago (días)"><input inputMode="numeric" value={form.plazo_pago_dias} onChange={e => setForm(f => ({ ...f, plazo_pago_dias: e.target.value }))} className={inputCls} /></Campo>
+            {!soloDatosPago && (
+              <Campo label="Cómo vence">
+                <select value={form.vencimiento_modo} className={inputCls}
+                  onChange={e => setForm(f => ({ ...f, vencimiento_modo: e.target.value as VencimientoModo }))}>
+                  {VENCIMIENTO_MODOS.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                </select>
+              </Campo>
+            )}
+            <Campo label={form.vencimiento_modo === 'cierre_mensual' ? 'Días desde el cierre' : 'Plazo de pago (días)'}>
+              <input inputMode="numeric" value={form.plazo_pago_dias} onChange={e => setForm(f => ({ ...f, plazo_pago_dias: e.target.value }))} className={inputCls} />
+            </Campo>
+            {!soloDatosPago && form.vencimiento_modo === 'cierre_mensual' && (
+              <Campo label="Cierra el día (vacío = el último)">
+                <input inputMode="numeric" placeholder="último" value={form.cierre_dia}
+                  onChange={e => setForm(f => ({ ...f, cierre_dia: e.target.value.replace(/\D/g, '').slice(0, 2) }))}
+                  className={inputCls} />
+              </Campo>
+            )}
+            {!soloDatosPago && form.vencimiento_modo === 'cierre_mensual' && (
+              <div className="sm:col-span-2 text-[11px] text-gris-dark">
+                Todo lo comprado en el mes vence junto: cierra {form.cierre_dia ? `el ${form.cierre_dia}` : 'el último día del mes'}, se corre al último día hábil y vence {Number(form.plazo_pago_dias) || 30} días después.
+              </div>
+            )}
             <Campo label="Contacto"><input value={form.contacto} onChange={e => setForm(f => ({ ...f, contacto: e.target.value }))} className={inputCls} /></Campo>
             <Campo label="Teléfono"><input value={form.telefono} onChange={e => setForm(f => ({ ...f, telefono: e.target.value }))} className={inputCls} /></Campo>
             <Campo label="Email"><input value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className={inputCls} /></Campo>
@@ -284,7 +311,10 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
               <Dato label="CBU" valor={p.cbu ?? '—'} />
               <Dato label="Alias" valor={p.alias_cbu ?? '—'} />
               <Dato label="Banco" valor={p.banco || '—'} />
-              <Dato label="Plazo de pago" valor={`${p.plazo_pago_dias} días`} />
+              <Dato label="Cómo vence" valor={
+                p.vencimiento_modo === 'cierre_mensual'
+                  ? `Cierre ${p.cierre_dia ? 'el ' + p.cierre_dia : 'fin de mes'} + ${p.plazo_pago_dias} días`
+                  : `${p.plazo_pago_dias} días de cada factura`} />
               <Dato label="Saldo" valor={fmtM(p.saldo)} fuerte />
               <Dato label="Listo para pagar" valor={fmtM(p.saldo_aprobado)} />
               <Dato label="Último pago" valor={fmtFecha(p.ultimo_pago)} />

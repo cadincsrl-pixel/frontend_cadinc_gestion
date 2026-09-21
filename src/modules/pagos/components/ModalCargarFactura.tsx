@@ -13,6 +13,7 @@ import { useProveedoresPagos } from '../hooks/useProveedoresPagos'
 import {
   FORMAS_PAGADA_AL_CARGAR_COMPRAS, FORMAS_PAGO_OP, FORMAS_PREVISTAS, FORMAS_CON_FECHA_COBRO,
   TIPOS_COMPROBANTE, fmtM, hoyAR,
+  vencimientoSugerido,
 } from '../utils/pagos.utils'
 import { mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
 import { AltaRapidaProveedor } from './AltaRapidaProveedor'
@@ -130,15 +131,15 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
     [proveedores.data, proveedorId],
   )
 
-  // Vencimiento sugerido: fecha + plazo del proveedor, y SOLO en comprobantes
-  // fiscales que no son de contado. Un recibo o un ticket ya están pagados: no
-  // tienen vencimiento y ponérselo los mete en «vencidas» sin sentido.
+  // Vencimiento sugerido según cómo cierre ESE proveedor: a x días de la
+  // factura, o por cierre mensual de cuenta corriente (20260921g). SOLO en
+  // comprobantes fiscales: un recibo o un ticket ya están pagados, no tienen
+  // vencimiento y ponérselo los mete en «vencidas» sin sentido.
   useEffect(() => {
     if (esEdicion || venceEl || !proveedor || !fecha) return
     if (!['A', 'B', 'C'].includes(tipo)) return
-    const d = new Date(fecha + 'T12:00:00')
-    d.setDate(d.getDate() + (proveedor.plazo_pago_dias || 30))
-    setVenceEl(d.toISOString().slice(0, 10))
+    const sug = vencimientoSugerido(fecha, proveedor)
+    if (sug) setVenceEl(sug)
   }, [proveedor, fecha, tipo, esEdicion, venceEl])
 
   const totalN = n(total)
