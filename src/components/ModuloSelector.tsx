@@ -12,7 +12,7 @@ import { modulosOrdenados, type Modulo, type ModuloInfo } from '@/lib/config/mod
 // (no módulos): se entra por /tarja y el sidebar los ofrece según `tabs`.
 const HREF_MODULO: Record<Modulo, string> = {
   tarja: '/tarja', logistica: '/logistica', herramientas: '/herramientas', certificaciones: '/certificaciones',
-  caja: '/caja', flota: '/flota', alquiler: '/alquiler', aridos: '/aridos', admin: '/admin',
+  caja: '/caja', flota: '/flota', alquiler: '/alquiler', aridos: '/aridos', pagos: '/pagos', admin: '/admin',
 }
 
 // Página post-login: muestra solo los módulos a los que el user tiene acceso.

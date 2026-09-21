@@ -16,6 +16,7 @@ import {
   type SeguroMaquinaItem,
   type SolicitudPorComprarItem,
   type SinPrecioItem,
+  type FacturaPagosItem,
 } from '@/hooks/useNotificaciones'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useToast } from '@/components/ui/Toast'
@@ -40,6 +41,7 @@ function moduloFromPath(pathname: string | null): string | null {
   if (pathname.startsWith('/herramientas'))    return 'herramientas'
   if (pathname.startsWith('/flota'))           return 'flota'
   if (pathname.startsWith('/alquiler'))        return 'alquiler'
+  if (pathname.startsWith('/pagos'))           return 'pagos'
   if (pathname.startsWith('/admin'))           return 'admin'
   return null
 }
@@ -124,6 +126,7 @@ export function NotificationsBell() {
   const showLogistica =  modulo === null || modulo === 'logistica'
   const showCompras   =  modulo === null || modulo === 'certificaciones'
   const showAlquiler  =  modulo === null || modulo === 'alquiler'
+  const showPagos     =  modulo === null || modulo === 'pagos'
   // Pedidos por comprar visibles en la campana (scopeados al módulo de compras).
   const solicitudesPorComprar = showCompras ? solicitudesAll : []
   // Renglones sin precio en la cuenta corriente (solo quien carga precios los recibe).
@@ -140,6 +143,12 @@ export function NotificationsBell() {
   const gastosPendientes       = showLogistica ? notifs.gastosPendientes       : []
   const segurosVencidos        = showAlquiler  ? notifs.segurosVencidos        : []
   const segurosPorVencer       = showAlquiler  ? notifs.segurosPorVencer       : []
+  // Módulo Pagos. El hook ya gatea por permiso (aprobar_facturas, quien carga,
+  // quien paga): acá solo se recorta por la pantalla en la que estás.
+  const facturasParaAprobar    = showPagos     ? notifs.facturasParaAprobar    : []
+  const facturasVencidas       = showPagos     ? notifs.facturasVencidas       : []
+  const facturasSinRevisar     = showPagos     ? notifs.facturasSinRevisar     : []
+  const facturasObservadas     = showPagos     ? notifs.facturasObservadas     : []
 
   const [abierto, setAbierto] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -157,11 +166,18 @@ export function NotificationsBell() {
   const totalUrgente =
     hoy.length + papelesVencidos.length + papelesChoferVencidos.length +
     serviciosVencidos.length + gastosPendientes.length + segurosVencidos.length +
-    solicitudesPorComprar.length
+    solicitudesPorComprar.length + facturasVencidas.length + facturasParaAprobar.length
   const totalNoUrgentes =
     proximos.length + papelesPorVencer.length + papelesChoferPorVencer.length +
-    serviciosProximos.length + segurosPorVencer.length + sinPrecio.length
+    serviciosProximos.length + segurosPorVencer.length + sinPrecio.length +
+    facturasSinRevisar.length + facturasObservadas.length
   const sinNotifs = totalUrgente === 0 && totalNoUrgentes === 0
+
+  /** Abre la bandeja de Pagos con el filtro del aviso ya puesto (`FILTRO_POR_AVISO`). */
+  function abrirPagos(aviso: string) {
+    setAbierto(false)
+    router.push(`/pagos?tab=facturas&aviso=${aviso}`)
+  }
 
   function abrirPersonal(leg: string) {
     setAbierto(false)
@@ -293,6 +309,44 @@ export function NotificationsBell() {
                     Ver las {sinPrecio.length - 10} obras restantes →
                   </button>
                 )}
+              </Section>
+            )}
+
+            {/* ── Módulo Pagos ── */}
+
+            {facturasVencidas.length > 0 && (
+              <Section titulo={`💸 Facturas vencidas (${facturasVencidas.length})`} tono="rojo">
+                {facturasVencidas.map(f => (
+                  <FacturaPagosRow key={f.id} item={f} onClick={() => abrirPagos('vencidas')} />
+                ))}
+                <VerTodas onClick={() => abrirPagos('vencidas')} />
+              </Section>
+            )}
+
+            {facturasParaAprobar.length > 0 && (
+              <Section titulo={`✓ Facturas para aprobar (${facturasParaAprobar.length})`} tono="amarillo">
+                {facturasParaAprobar.map(f => (
+                  <FacturaPagosRow key={f.id} item={f} onClick={() => abrirPagos('aprobar')} />
+                ))}
+                <VerTodas onClick={() => abrirPagos('aprobar')} />
+              </Section>
+            )}
+
+            {facturasSinRevisar.length > 0 && (
+              <Section titulo={`🔎 Pagadas sin revisar (${facturasSinRevisar.length})`} tono="amarillo">
+                {facturasSinRevisar.map(f => (
+                  <FacturaPagosRow key={f.id} item={f} onClick={() => abrirPagos('sin-revisar')} />
+                ))}
+                <VerTodas onClick={() => abrirPagos('sin-revisar')} />
+              </Section>
+            )}
+
+            {facturasObservadas.length > 0 && (
+              <Section titulo={`✏️ Facturas observadas (${facturasObservadas.length})`} tono="amarillo">
+                {facturasObservadas.map(f => (
+                  <FacturaPagosRow key={f.id} item={f} onClick={() => abrirPagos('observadas')} />
+                ))}
+                <VerTodas onClick={() => abrirPagos('observadas')} />
               </Section>
             )}
 
@@ -564,6 +618,40 @@ function SinPrecioRow({ item, onClick }: { item: SinPrecioItem; onClick: () => v
         <span className="font-mono">{item.obra_cod}</span>
         {item.esperando > 0 && <> · ⏳ {item.esperando} esperando el precio del proveedor</>}
       </div>
+    </button>
+  )
+}
+
+/**
+ * Una factura en la campana. Se muestra el SALDO, no el total: es lo que
+ * falta pagar, que es de lo que trata el aviso.
+ */
+function FacturaPagosRow({ item, onClick }: { item: FacturaPagosItem; onClick: () => void }) {
+  const dias = item.dias_vencida
+  const cuando =
+    dias === null || dias === undefined ? 'sin vencimiento'
+    : dias > 0  ? `vencida hace ${dias} día${dias === 1 ? '' : 's'}`
+    : dias === 0 ? 'vence hoy'
+    : `vence en ${-dias} día${-dias === -1 ? '' : 's'}`
+  return (
+    <button onClick={onClick} className="w-full text-left px-3 py-2 hover:bg-gris/40 transition-colors">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="font-bold text-sm text-azul truncate">{item.proveedor_nom}</span>
+        <span className="font-mono text-sm font-bold tabular-nums shrink-0">
+          ${Math.round(item.saldo > 0 ? item.saldo : item.total).toLocaleString('es-AR')}
+        </span>
+      </div>
+      <div className="text-xs text-gris-dark mt-0.5">
+        <span className="font-mono">{item.comprobante}</span> · {cuando}
+      </div>
+    </button>
+  )
+}
+
+function VerTodas({ onClick }: { onClick: () => void }) {
+  return (
+    <button onClick={onClick} className="w-full text-center px-3 py-2 text-[11px] text-azul hover:underline">
+      Ver todas en Pagos →
     </button>
   )
 }

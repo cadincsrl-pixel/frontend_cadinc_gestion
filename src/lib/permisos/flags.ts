@@ -27,6 +27,7 @@ export type FlagBoolean =
   | 'cargar_precios' | 'precio_al_resolver' | 'editar_pedidos' | 'marcar_consumibles'
   | 'aprobar_ajustes_stock' | 'gestionar_cobros' | 'gestionar_docs' | 'anular_cobros'
   | 'costos_oficina' | 'asistente_ia'
+  | 'registrar_pagos' | 'aprobar_facturas' | 'anular_pagos'
 
 export interface FlagDef {
   key:   FlagBoolean
@@ -43,7 +44,9 @@ export const FLAGS_BOOLEAN: FlagDef[] = [
   {
     key: 'ver_pii',
     label: 'Ver datos personales (PII)',
-    help: 'Permite ver DNI, dirección, teléfono y fecha de nacimiento. Aplica principalmente a tarja.',
+    // El admin que arma la cuenta del contador tiene que ver acá que sin este
+    // flag el CBU llega enmascarado desde el backend y no va a poder pagar.
+    help: 'Permite ver DNI, dirección, teléfono y fecha de nacimiento. En Pagos es además el CBU y el alias completos del proveedor: sin el flag se ven como ***1234 y no se pueden cargar datos de pago.',
   },
   {
     key: 'ver_costos',
@@ -121,6 +124,24 @@ export const FLAGS_BOOLEAN: FlagDef[] = [
     label: '🏢 Costos de oficina (ver y administrar)',
     help: 'Habilita el tab "Costos oficina" del dashboard: da acceso a los sueldos del personal administrativo y a su prorrateo por obra, incluida la carga de personas, sueldos y asignaciones. Dato sensible — otorgar solo a quien deba ver esos montos. Solo tiene efecto en tarja.',
     modulos: ['tarja'],
+  },
+  {
+    key: 'aprobar_facturas',
+    label: '✅ Aprobar facturas de proveedor',
+    help: 'Aprobar (de a una o en lote) las facturas que cargó compras, rechazarlas con motivo y revisar las que se cargaron como "ya pagadas". Nadie aprueba lo que cargó él mismo (salvo admin): si esta persona también carga facturas, las suyas las tiene que aprobar otro. Solo tiene efecto en pagos.',
+    modulos: ['pagos'],
+  },
+  {
+    key: 'registrar_pagos',
+    label: '💸 Registrar pagos (órdenes de pago)',
+    help: 'Emitir órdenes de pago sobre facturas APROBADAS (transferencia, cheque, notas de crédito del proveedor), observar facturas mal cargadas y cargar el CBU/alias del proveedor. Necesita además "Ver datos personales" para ver la cuenta destino. No habilita cargar ni editar facturas. Solo tiene efecto en pagos.',
+    modulos: ['pagos'],
+  },
+  {
+    key: 'anular_pagos',
+    label: '🗑 Anular órdenes de pago ajenas',
+    help: 'Anular cualquier orden de pago, no solo la propia del día: las facturas vuelven a aprobada (o a pendiente si nadie las había aprobado) y los adjuntos quedan marcados como de OP anulada. Es el escape cuando la plata no salió como se registró. Solo tiene efecto en pagos.',
+    modulos: ['pagos'],
   },
   {
     key: 'asistente_ia',

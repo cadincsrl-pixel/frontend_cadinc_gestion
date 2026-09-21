@@ -60,6 +60,12 @@ export function usePermisos(modulo: string) {
     anularCobros:         flagCapacidad('anular_cobros', false),
     puedeAdministrarObras: flagCapacidad('administrar_obras', false),
     costosOficina:        flagCapacidad('costos_oficina', false),
+    // Pagos: los tres flags nacen apagados. El backend usa los mismos defaults
+    // (`flagPagos(perfil, flag, false)`), así que un botón habilitado de más
+    // acá termina en 403, no en un pago que no correspondía.
+    registrarPagos:       flagCapacidad('registrar_pagos', false),
+    aprobarFacturas:      flagCapacidad('aprobar_facturas', false),
+    anularPagos:          flagCapacidad('anular_pagos', false),
     asistenteIa:          flagCapacidad('asistente_ia', false),
     esCapataz,
     esJefeObra,

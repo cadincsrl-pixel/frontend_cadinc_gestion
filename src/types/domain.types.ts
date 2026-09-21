@@ -1161,6 +1161,15 @@ export type ModuloPermisos = { [K in Accion]?: boolean } & {
   anular_cobros?:          boolean
   costos_oficina?:         boolean
   asistente_ia?:           boolean
+  // - pagos.aprobar_facturas: aprobar/rechazar facturas de proveedor y revisar
+  //   las "pagadas al cargar". Nadie aprueba las propias salvo admin.
+  // - pagos.registrar_pagos: emitir órdenes de pago sobre facturas aprobadas,
+  //   observar y cargar los datos de pago del proveedor (con ver_pii).
+  // - pagos.anular_pagos: anular una OP ajena o de otro día (con
+  //   registrar_pagos solo se anula la propia del día).
+  registrar_pagos?:        boolean
+  aprobar_facturas?:       boolean
+  anular_pagos?:           boolean
 }
 export type Permisos = Record<string, ModuloPermisos>
 
@@ -2298,4 +2307,604 @@ export interface ResumenObras {
   filas:       ResumenObraFila[]
   con_tarja:   boolean
   generado_en: string
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// Módulo Pagos — facturas de proveedor, aprobación y órdenes de pago
+// ══════════════════════════════════════════════════════════════════════
+// Espejo de `pagos.schema.ts` del backend y de las cuatro vistas
+// (`v_pagos_facturas`, `v_pagos_ordenes`, `v_pagos_proveedores`,
+// `v_pagos_proveedor_saldo`). Si el backend cambia una lista cerrada, cambia
+// acá: el módulo NO comparte tipos con certificaciones ni con caja (padrón de
+// proveedores propio, a propósito).
+//
+// Tres reglas que se leen en los tipos:
+//   - Todos los importes son FINALES, con IVA incluido.
+//   - `imputable = total − percepciones` es lo que se reparte entre obras.
+//   - `saldo = total − pagado − acreditado(NC)`: una nota de crédito cancela
+//     deuda sin que salga plata.
+
+export type PagosTipoComprobante = 'A' | 'B' | 'C' | 'recibo' | 'ticket' | 'otro'
+export type PagosEstadoFactura   = 'pendiente' | 'observada' | 'aprobada' | 'pagada_parcial' | 'pagada' | 'anulada'
+/** Forma PREVISTA de la factura: incluye `cta_cte` (quedó en cuenta corriente = deuda). */
+export type PagosFormaPrevista =
+  | 'efectivo' | 'transferencia' | 'tarjeta' | 'cheque' | 'echeq' | 'debito_automatico' | 'cta_cte' | 'otro'
+/** Forma REAL que elige quien paga. Sin `cta_cte` y sin `nota_credito` (esa la pone el backend). */
+export type PagosFormaPagoOP =
+  | 'efectivo' | 'transferencia' | 'cheque' | 'echeq' | 'tarjeta' | 'debito_automatico' | 'otro'
+/** Lo que puede tener guardado una OP: las de entrada + `nota_credito` (OP sin plata). */
+export type PagosFormaPagoOPGuardada = PagosFormaPagoOP | 'nota_credito'
+export type PagosTipoLinea       = 'factura' | 'a_cuenta' | 'nota_credito'
+export type PagosEstadoOrden     = 'emitida' | 'anulada'
+export type PagosTipoAdjFactura  = 'factura' | 'remito' | 'orden_compra' | 'otro'
+export type PagosTipoAdjOrden    = 'comprobante_pago' | 'nota_credito' | 'otro'
+export type PagosEntidadAdjunto  = 'facturas' | 'ordenes'
+
+/**
+ * Avisos que NO bloquean y vuelven en el body de algunas mutaciones
+ * (`APROBACION_RETIRADA`, `FACTURA_POSIBLE_DUPLICADA`, `PROVEEDOR_PARECIDO`,
+ * `COMPROBANTE_YA_USADO`, `NC_POSIBLE_DUPLICADA`). Se muestran en el toast.
+ */
+export interface PagosAviso {
+  code: string
+  [k: string]: unknown
+}
+
+/** Fila de `v_pagos_proveedores` (el padrón propio del módulo). */
+export interface PagosProveedor {
+  id:                 number
+  razon_social:       string
+  razon_social_norm:  string
+  cuit:               string | null
+  /** Sin `ver_pii` llegan enmascarados (`***1234`): el front nunca decide qué tapar. */
+  alias_cbu:          string | null
+  cbu:                string | null
+  cbu_ultimos4:       string | null
+  banco:              string
+  /** Sugiere el vencimiento al cargar (fecha + plazo); no toca facturas ya cargadas. */
+  plazo_pago_dias:    number
+  contacto:           string
+  telefono:           string
+  email:              string
+  obs:                string
+  activo:             boolean
+  baja_motivo:        string | null
+  baja_por:           string | null
+  baja_at:            string | null
+  baja_por_nombre:    string | null
+  datos_pago_actualizados_at:         string | null
+  datos_pago_actualizados_por:        string | null
+  datos_pago_actualizados_por_nombre: string | null
+  saldo:              number
+  saldo_aprobado:     number
+  a_cuenta_sin_aplicar: number
+  ultimo_pago:        string | null
+  facturas:           number
+  sin_datos_pago:     boolean
+  created_at:         string
+  updated_at:         string
+  created_by:         string | null
+  updated_by:         string | null
+}
+
+/** Fila de `v_pagos_proveedor_saldo`: el bloque «Deuda por proveedor». */
+export interface PagosProveedorSaldo {
+  proveedor_id:       number
+  razon_social:       string
+  cuit:               string | null
+  activo:             boolean
+  alias_cbu:          string | null
+  cbu:                string | null
+  cbu_ultimos4:       string | null
+  facturas_abiertas:  number
+  para_aprobar:       number
+  saldo:              number
+  saldo_aprobado:     number
+  vencido:            number
+  /** Vencimiento más viejo sin pagar. */
+  mas_vieja:          string | null
+  a_cuenta_sin_aplicar: number
+  saldo_neto:         number
+  ultimo_pago:        string | null
+}
+
+/** Una línea del historial de cambios de CBU/alias (sale de `audit_log`, enmascarada). */
+export interface PagosHistorialDatosPago {
+  id:          number
+  created_at:  string
+  user_id:     string | null
+  user_nombre: string | null
+  detalle:     string
+}
+
+/** Factura abierta que muestra la ficha del proveedor (subset de la vista). */
+export interface PagosFacturaAbierta {
+  id:               number
+  tipo_comprobante: PagosTipoComprobante
+  numero:           string | null
+  fecha:            string
+  vence_el:         string | null
+  total:            number
+  saldo:            number
+  estado:           PagosEstadoFactura
+  vencida:          boolean
+  descripcion:      string
+}
+
+export interface PagosProveedorDetalle extends PagosProveedor {
+  historial_datos_pago: PagosHistorialDatosPago[]
+  facturas_abiertas:    PagosFacturaAbierta[]
+}
+
+/** Fila de `v_pagos_facturas`. */
+export interface PagosFactura {
+  id:                  number
+  proveedor_id:        number
+  tipo_comprobante:    PagosTipoComprobante
+  numero:              string | null
+  numero_norm:         string | null
+  fecha:               string
+  /** Opcional: una factura puede no tener vencimiento (recibo, ticket). */
+  vence_el:            string | null
+  neto:                number | null
+  iva:                 number | null
+  percepciones:        number | null
+  otros:               number | null
+  total:               number
+  /** `total − percepciones`: lo que se reparte entre obras. */
+  imputable:           number
+  forma_pago_prevista: PagosFormaPrevista
+  estado:              PagosEstadoFactura
+  paga_cliente:        boolean
+  pagada_al_cargar:    boolean
+  aprobada_por:        string | null
+  aprobada_at:         string | null
+  aprobada_por_nombre: string | null
+  motivo_observacion:  string | null
+  observada_por:       string | null
+  observada_at:        string | null
+  observada_por_nombre: string | null
+  motivo_anulacion:    string | null
+  anulado_por:         string | null
+  anulado_at:          string | null
+  anulado_por_nombre:  string | null
+  descripcion:         string
+  obs:                 string
+  created_at:          string
+  updated_at:          string
+  created_by:          string | null
+  created_by_nombre:   string | null
+  updated_by:          string | null
+  proveedor_nom:       string
+  proveedor_cuit:      string | null
+  proveedor_activo:    boolean
+  proveedor_alias:     string | null
+  proveedor_cbu:       string | null
+  proveedor_cbu_ultimos4: string | null
+  datos_pago_actualizados_at:  string | null
+  datos_pago_actualizados_por: string | null
+  /** ⚠ El CBU del proveedor cambió DESPUÉS de que se aprobó esta factura. */
+  cuenta_cambio_tras_aprobar: boolean
+  /** Plata aplicada (líneas `factura` de OP vigentes). */
+  pagado:              number
+  /** Notas de crédito aplicadas: bajan el saldo sin que salga plata. */
+  acreditado:          number
+  saldo:               number
+  vencida:             boolean
+  /** > 0 vencida, < 0 por vencer, null sin vencimiento. */
+  dias_vencida:        number | null
+  /** Pagada al cargar y todavía sin sello del aprobador. */
+  sin_revisar:         boolean
+  mes_emision:         string
+  /** Centro de la imputación más grande; null si la factura no tiene imputaciones. */
+  centro_costo:        string | null
+  /** Texto del reparto: «LAMADRID $120000 · CC CADINC $30000». */
+  centros:             string | null
+  obras_cod:           string[] | null
+  centros_cc:          string[] | null
+  /** Toca alguna obra interna o el depósito. */
+  es_interna:          boolean | null
+  todas_archivadas:    boolean | null
+  tiene_factura_adj:   boolean
+  sin_numero:          boolean
+  /** «OP-0012» de la última orden vigente que la tocó. */
+  ultima_op:           string | null
+  ultimo_pago:         string | null
+  busq:                string
+}
+
+/** Obra a la que se imputa parte de la factura (centro de costo). */
+export interface PagosImputacion {
+  id:         number
+  obra_cod:   string
+  monto:      number
+  obs:        string
+  created_at: string
+  updated_at: string
+  obra:       {
+    cod:         string
+    nom:         string
+    cc:          string | null
+    es_interna:  boolean | null
+    es_deposito: boolean | null
+    archivada:   boolean | null
+  } | null
+}
+
+/** Adjunto de factura o de OP (bucket privado `pagos-docs`, se abre con signed URL). */
+export interface PagosAdjunto {
+  id:             number
+  tipo:           PagosTipoAdjFactura | PagosTipoAdjOrden
+  storage_path:   string
+  nombre_archivo: string
+  mime_type:      string
+  size_bytes:     number
+  hash_sha256:    string
+  obs:            string
+  created_at:     string
+  created_by:     string | null
+  updated_at:     string
+  updated_by:     string | null
+  deleted_at:     string | null
+  /** El backend lo deriva de `deleted_at`: se muestra tachado, no se oculta. */
+  borrado:        boolean
+}
+
+/** Una línea de OP vista desde la ficha de la factura. */
+export interface PagosPagoAplicado {
+  id:         number
+  orden_id:   number
+  tipo:       PagosTipoLinea
+  monto:      number
+  nc_numero:  string | null
+  nc_fecha:   string | null
+  created_at: string
+  orden: {
+    id:                   number
+    numero:               number
+    numero_fmt:           string | null
+    fecha:                string
+    fecha_cobro:          string | null
+    forma_pago:           PagosFormaPagoOPGuardada
+    referencia:           string
+    estado:               PagosEstadoOrden
+    motivo_anulacion:     string | null
+    anulado_at:           string | null
+    cbu_destino:          string | null
+    alias_destino:        string | null
+    cbu_destino_ultimos4: string | null
+    monto_pagado:         number
+    anulada:              boolean
+  }
+}
+
+export interface PagosFacturaDetalle extends PagosFactura {
+  imputaciones: PagosImputacion[]
+  adjuntos:     PagosAdjunto[]
+  pagos:        PagosPagoAplicado[]
+  aprobacion: {
+    aprobada_por:        string | null
+    aprobada_por_nombre: string | null
+    aprobada_at:         string | null
+    cuenta_cambio_tras_aprobar: boolean
+    datos_pago_actualizados_at: string | null
+  }
+}
+
+/** Fila de `v_pagos_ordenes`. */
+export interface PagosOrden {
+  id:                number
+  numero:            number
+  /** «OP-0012». */
+  numero_fmt:        string
+  proveedor_id:      number
+  fecha:             string
+  /** Cheque / e-cheq: cuándo se cobra. */
+  fecha_cobro:       string | null
+  /** `nota_credito` = la OP no movió plata; la UI lo muestra «Solo nota de crédito». */
+  forma_pago:        PagosFormaPagoOPGuardada
+  referencia:        string
+  /** Foto del padrón al registrar (sin `ver_pii` llega enmascarado). */
+  cbu_destino:       string | null
+  alias_destino:     string | null
+  cbu_destino_ultimos4: string | null
+  /** Σ líneas `factura` + `a_cuenta`: lo que salió del banco. */
+  monto_pagado:      number
+  /** Σ líneas `nota_credito`. */
+  monto_nc:          number
+  monto_aplicado:    number
+  estado:            PagosEstadoOrden
+  motivo_anulacion:  string | null
+  anulado_por:       string | null
+  anulado_at:        string | null
+  anulado_por_nombre: string | null
+  obs:               string
+  created_at:        string
+  updated_at:        string
+  created_by:        string | null
+  created_by_nombre: string | null
+  updated_by:        string | null
+  proveedor_nom:     string
+  proveedor_cuit:    string | null
+  /** Texto de las líneas: «A 0001-00012345, NC 0003-1234 s/ A 0001-00012345». */
+  facturas:          string | null
+  cantidad_facturas: number
+  a_cuenta:          number
+  tiene_nc:          boolean
+  tiene_comprobante: boolean
+  tiene_nc_adjunto:  boolean
+  /** Transferencia o e-cheq con plata: el comprobante es obligatorio. */
+  comprobante_requerido: boolean
+  /** Cheque emitido cuya fecha de cobro todavía no llegó. */
+  en_cartera:        boolean
+  mes_pago:          string
+  busq:              string
+}
+
+/** Línea de OP con la factura embebida (ficha de la orden). */
+export interface PagosOrdenLinea {
+  id:         number
+  tipo:       PagosTipoLinea
+  factura_id: number | null
+  monto:      number
+  nc_numero:  string | null
+  nc_fecha:   string | null
+  created_at: string
+  factura: {
+    id:               number
+    tipo_comprobante: PagosTipoComprobante
+    numero:           string | null
+    fecha:            string
+    vence_el:         string | null
+    total:            number
+    estado:           PagosEstadoFactura
+    descripcion:      string
+  } | null
+}
+
+export interface PagosOrdenDetalle extends PagosOrden {
+  lineas:   PagosOrdenLinea[]
+  adjuntos: PagosAdjunto[]
+}
+
+/** Obra como centro de costo (`GET /api/pagos/catalogos/obras`, trae archivadas). */
+export interface PagosCatalogoObra {
+  cod:         string
+  nom:         string
+  cc:          string | null
+  es_interna:  boolean | null
+  es_deposito: boolean | null
+  archivada:   boolean | null
+}
+
+// ── Páginas y agregados ───────────────────────────────────────────────
+
+export interface PagosPage<T> {
+  items:   T[]
+  total:   number
+  limit:   number
+  offset:  number
+  hasMore: boolean
+}
+
+export type PagosFacturasPage    = PagosPage<PagosFactura>
+export type PagosProveedoresPage = PagosPage<PagosProveedor>
+
+export interface PagosOrdenesPage extends PagosPage<PagosOrden> {
+  /** Totales del filtro completo (no de la página): salen de la RPC de resumen. */
+  totales: { ordenes: number; monto_pagado: number; monto_nc: number }
+}
+
+export type PagosFacturasGrupo =
+  | 'proveedor' | 'centro_costo' | 'obra' | 'mes_emision' | 'estado' | 'vencimiento' | 'forma_pago'
+export type PagosOrdenesGrupo = 'mes_pago' | 'proveedor' | 'forma_pago' | 'centro_costo' | 'obra'
+/** Eje del resumen de OP: `op` = fecha de la orden, `cobro` = fecha de cobro del cheque. */
+export type PagosOrdenesEje = 'op' | 'cobro'
+
+/**
+ * Fila de `pagos_resumen` (eje EMISIÓN). Por obra/centro los importes vienen
+ * prorrateados por imputación: el total de facturas distintas no es la suma
+ * de las filas.
+ */
+export interface PagosResumenGrupo {
+  grupo:          string
+  grupo_nom:      string
+  es_interna:     boolean | null
+  estado:         string | null
+  facturas:       number
+  total:          number
+  imputable:      number
+  pagado:         number
+  acreditado:     number
+  saldo:          number
+  saldo_aprobado: number | null
+  vencido:        number | null
+  ultimo:         string | null
+}
+
+/** Fila de `pagos_ordenes_resumen` (eje FECHA DE PAGO). */
+export interface PagosOrdenesResumenGrupo {
+  grupo:        string
+  grupo_nom:    string
+  es_interna:   boolean | null
+  ordenes:      number
+  monto_pagado: number
+  monto_nc:     number
+  a_cuenta:     number
+  en_cartera:   number
+}
+
+export interface PagosFacturasResumen { grupos: PagosResumenGrupo[] }
+export interface PagosOrdenesResumen  { grupos: PagosOrdenesResumenGrupo[] }
+
+// ── Bodies de las mutaciones (espejo de los zod del backend) ───────────
+
+export interface PagosImputacionInput {
+  obra_cod: string
+  monto:    number
+  obs?:     string
+}
+
+/** Archivo ya subido con la signed URL; viaja en el body de la mutación. */
+export interface PagosAdjuntoPendiente {
+  tipo:           PagosTipoAdjOrden
+  storage_path:   string
+  nombre_archivo: string
+  mime_type:      string
+}
+
+/** La OP que nace junto con la factura cuando compras tilda «Ya está pagada». */
+export interface PagosOrdenAlCargarInput {
+  fecha:        string
+  forma_pago:   PagosFormaPagoOP
+  referencia?:  string
+  fecha_cobro?: string | null
+  obs?:         string
+  comprobante?: PagosAdjuntoPendiente | null
+}
+
+export interface CrearFacturaInput {
+  proveedor_id:         number
+  tipo_comprobante:     PagosTipoComprobante
+  numero?:              string | null
+  fecha:                string
+  vence_el?:            string | null
+  neto?:                number | null
+  iva?:                 number | null
+  percepciones?:        number | null
+  otros?:               number | null
+  /** Final, con IVA. */
+  total:                number
+  forma_pago_prevista?: PagosFormaPrevista
+  descripcion:          string
+  obs?:                 string
+  paga_cliente?:        boolean
+  /** Σ = `total − percepciones`, exacto (la última fila absorbe el redondeo). */
+  imputaciones:         PagosImputacionInput[]
+  orden?:               PagosOrdenAlCargarInput | null
+}
+
+/**
+ * PATCH estricto: una clave desconocida es 400. `imputaciones` reemplaza el
+ * set entero y `motivo` es obligatorio si la factura ya tiene pagos.
+ */
+export interface EditarFacturaInput {
+  proveedor_id?:        number
+  tipo_comprobante?:    PagosTipoComprobante
+  numero?:              string | null
+  fecha?:               string
+  vence_el?:            string | null
+  neto?:                number | null
+  iva?:                 number | null
+  percepciones?:        number | null
+  otros?:               number | null
+  total?:               number
+  forma_pago_prevista?: PagosFormaPrevista
+  descripcion?:         string
+  obs?:                 string
+  paga_cliente?:        boolean
+  imputaciones?:        PagosImputacionInput[]
+  motivo?:              string
+}
+
+export interface PagosLineaOrdenInput {
+  tipo:        PagosTipoLinea
+  /** null solo en las líneas `a_cuenta`. */
+  factura_id?: number | null
+  monto:       number
+  /** Obligatorios en las líneas `nota_credito`, prohibidos en las demás. */
+  nc_numero?:  string | null
+  nc_fecha?:   string | null
+}
+
+export interface CrearOrdenInput {
+  proveedor_id: number
+  fecha:        string
+  fecha_cobro?: string | null
+  /** null cuando la OP es solo notas de crédito: sin plata no hay forma de pago. */
+  forma_pago?:  PagosFormaPagoOP | null
+  referencia?:  string
+  obs?:         string
+  lineas:       PagosLineaOrdenInput[]
+  adjuntos?:    PagosAdjuntoPendiente[]
+}
+
+/** De una OP emitida solo se corrigen estos dos: lo financiero no se edita, se anula. */
+export interface EditarOrdenInput {
+  referencia?: string
+  obs?:        string
+}
+
+export interface CrearProveedorInput {
+  razon_social:     string
+  /** Se normaliza en el backend («30-57742861-8» → «30577428618») y valida el verificador. */
+  cuit?:            string | null
+  alias_cbu?:       string | null
+  cbu?:             string | null
+  banco?:           string
+  plazo_pago_dias?: number
+  contacto?:        string
+  telefono?:        string
+  email?:           string
+  obs?:             string
+}
+
+export type EditarProveedorInput = Partial<CrearProveedorInput>
+/** La puerta del contador: solo datos de pago, ni razón social ni CUIT ni obs. */
+export type PagosDatosPagoInput = Pick<CrearProveedorInput,
+  'alias_cbu' | 'cbu' | 'banco' | 'plazo_pago_dias' | 'contacto' | 'telefono' | 'email'>
+
+// ── Respuestas de las mutaciones ──────────────────────────────────────
+
+export interface CrearFacturaRes {
+  factura: PagosFactura
+  /** La OP que nació con la factura si se tildó «Ya está pagada». */
+  orden:   PagosOrden | null
+  avisos:  PagosAviso[]
+}
+
+export interface EditarFacturaRes {
+  factura:              PagosFactura
+  /** El cambio devolvió la factura a `pendiente`: hay que reaprobarla. */
+  aprobacion_retirada?: boolean
+  avisos:               PagosAviso[]
+}
+
+/**
+ * Anular factura: normalmente devuelve la fila; si era «pagada al cargar»
+ * devuelve `{ factura, orden }` porque anula las dos. `facturaAnulada()` de
+ * `src/modules/pagos/utils/pagos.utils.ts` resuelve las dos formas.
+ */
+export type AnularFacturaRes = PagosFactura | { factura: PagosFactura; orden: PagosOrden | null }
+
+export interface AprobarLoteRes {
+  aprobadas: number[]
+  /** Las que no se pudieron aprobar, con su código (`NO_PUEDE_APROBAR_PROPIA`, …). */
+  omitidas:  { id: number; code: string; detail?: unknown }[]
+}
+
+export interface RegistrarOrdenRes {
+  orden:    PagosOrden
+  /** Las facturas tocadas, ya recalculadas (`pagada_parcial` / `pagada`). */
+  facturas: PagosFactura[]
+  avisos:   PagosAviso[]
+}
+
+export interface AnularOrdenRes {
+  orden:    PagosOrden
+  /** Vuelven a `aprobada`, o a `pendiente` si nadie las había aprobado. */
+  facturas: PagosFactura[]
+}
+
+export interface ProveedorRes {
+  proveedor: PagosProveedor
+  avisos:    PagosAviso[]
+}
+
+/** Paso 1 del upload: el backend devuelve `storage_path` (NO `path`). */
+export interface PagosUploadUrlRes {
+  storage_path: string
+  signed_url:   string
+  token:        string
+  tipo:         string
 }

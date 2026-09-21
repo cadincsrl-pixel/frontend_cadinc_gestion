@@ -17,6 +17,7 @@ const MODULO_BRANDING: Record<string, { label: string; accent: string; icono: st
   caja:           { label: MARCA.label, accent: MARCA.accent, icono: '💵' },
   flota:          { label: MARCA.label, accent: MARCA.accent, icono: '🚙' },
   alquiler:       { label: MARCA.label, accent: MARCA.accent, icono: '🚜' },
+  pagos:          { label: MARCA.label, accent: MARCA.accent, icono: '🧾' },
   admin:          { label: MARCA.label, accent: MARCA.accent, icono: '⚙️' },
 }
 
@@ -27,6 +28,7 @@ function getModuloActual(pathname: string): string {
   if (pathname.startsWith('/caja'))           return 'caja'
   if (pathname.startsWith('/flota'))          return 'flota'
   if (pathname.startsWith('/alquiler'))       return 'alquiler'
+  if (pathname.startsWith('/pagos'))          return 'pagos'
   if (pathname.startsWith('/admin'))          return 'admin'
   return 'tarja'
 }

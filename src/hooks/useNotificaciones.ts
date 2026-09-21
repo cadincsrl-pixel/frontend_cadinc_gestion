@@ -8,7 +8,8 @@ import { GASTOS_NOTIF_KEY } from '@/modules/logistica/hooks/useLogistica'
 import { useSessionStore } from '@/store/session.store'
 import { usePermisos } from '@/hooks/usePermisos'
 import { usePendientesDePrecio } from '@/modules/certificaciones/hooks/useCuentaCliente'
-import type { Personal } from '@/types/domain.types'
+import { PAGOS_KEYS } from '@/modules/pagos/hooks/usePagos'
+import type { PagosFacturasPage, Personal } from '@/types/domain.types'
 
 // Cumpleañero precalculado, listo para renderizar.
 export interface CumpleanieroItem {
@@ -104,6 +105,21 @@ export interface SinPrecioItem {
   obra_archivada: boolean
 }
 
+/**
+ * Una factura del módulo Pagos que pide atención. Las cuatro secciones usan
+ * la misma forma: lo que cambia es POR QUÉ aparece.
+ */
+export interface FacturaPagosItem {
+  id:            number
+  proveedor_nom: string
+  comprobante:   string
+  total:         number
+  saldo:         number
+  vence_el:      string | null
+  /** > 0 vencida, < 0 por vencer, null sin vencimiento. */
+  dias_vencida:  number | null
+}
+
 interface NotificacionesResult {
   // Cumpleañeros del día (count → badge rojo).
   hoy:                 CumpleanieroItem[]
@@ -131,6 +147,15 @@ interface NotificacionesResult {
   solicitudesPorComprar: SolicitudPorComprarItem[]
   // Renglones sin precio en la cuenta corriente, por obra (para quien carga precios).
   sinPrecio:           SinPrecioItem[]
+  // ── Módulo Pagos ──
+  // Facturas esperando aprobación (solo para quien puede aprobar).
+  facturasParaAprobar: FacturaPagosItem[]
+  // Facturas ya vencidas que todavía deben plata.
+  facturasVencidas:    FacturaPagosItem[]
+  // Cargadas «ya pagadas» que ningún aprobador selló.
+  facturasSinRevisar:  FacturaPagosItem[]
+  // Rechazadas: compras las tiene que corregir.
+  facturasObservadas:  FacturaPagosItem[]
   // La lista de obras ya cargó: recién ahí el aviso puede mostrar el nombre.
   pedidosNombresListos: boolean
   // total de notificaciones "urgentes" (badge rojo).
@@ -224,6 +249,8 @@ export function useNotificaciones(): NotificacionesResult {
   // Solicitudes "por comprar": solo para quien resuelve ítems (compras/depósito).
   const tieneCertificaciones = hasModulo('certificaciones')
   const { resolverItems, cargarPrecios } = usePermisos('certificaciones')
+  const tienePagos = hasModulo('pagos')
+  const { aprobarFacturas, registrarPagos, puedeCrear: cargaFacturas, esAdmin } = usePermisos('pagos')
 
   const { data: personal = [] } = usePersonal()
   const { data: docsVenc = [] } = useQuery({
@@ -294,6 +321,34 @@ export function useNotificaciones(): NotificacionesResult {
   // (una fila por obra); las mutaciones del módulo invalidan
   // ['cuenta-cliente-pendientes'], así que cargar un precio lo refresca.
   const { data: pendPrecio = [] } = usePendientesDePrecio(tieneCertificaciones && cargarPrecios)
+  // ── Módulo Pagos ──
+  // Cuatro avisos, cada uno con su clave para que `invalidarPagos` los
+  // refresque (el prefijo del módulo NO alcanza: es el bug de la campana de
+  // gastos del 2026-09-07). Se piden con `limit=5`: lo que importa es el
+  // `total` que devuelve la página y las primeras filas para el popover, no
+  // bajar la bandeja entera cada vez que alguien abre la campana.
+  const qPagos = (clave: readonly unknown[], qs: string, activo: boolean) => ({
+    queryKey: clave,
+    queryFn:  () => apiGet<PagosFacturasPage>(`/api/pagos/facturas?${qs}&limit=5&offset=0`),
+    enabled:  activo,
+    retry: false,
+    staleTime: 60 * 1000,
+  })
+  // Aprobar es de quien tiene el flag; el admin pasa igual.
+  const puedeAprobarFacturas = tienePagos && !!(aprobarFacturas || esAdmin)
+  // «Sin revisar» le sirve al mismo que aprueba: es su cola de control.
+  const { data: paraAprobar } = useQuery(
+    qPagos(PAGOS_KEYS.notifAprobar, 'estado=pendiente&paga_cliente=0&orden=vencimiento', puedeAprobarFacturas))
+  const { data: sinRevisar } = useQuery(
+    qPagos(PAGOS_KEYS.notifSinRevisar, 'sin_revisar=1', puedeAprobarFacturas))
+  // Lo vencido le importa a quien paga y a quien carga.
+  const { data: vencidas } = useQuery(
+    qPagos(PAGOS_KEYS.notifVenc, 'vencimiento=vencidas&paga_cliente=0&orden=vencimiento',
+      tienePagos && !!(registrarPagos || cargaFacturas || esAdmin)))
+  // Lo observado vuelve a compras: lo ve quien carga.
+  const { data: observadas } = useQuery(
+    qPagos(PAGOS_KEYS.notifObs, 'estado=observada', tienePagos && !!(cargaFacturas || esAdmin)))
+
   // El nombre de la obra viene embebido desde el backend: alcanza con que la
   // query haya cargado para que el warmup del aviso pueda activarse.
   const pedidosNombresListos = pendientesQuery.isSuccess
@@ -438,6 +493,24 @@ export function useNotificaciones(): NotificacionesResult {
       .filter(p => !p.obra_archivada)
       .map(p => ({ obra_cod: p.obra_cod, obra_nom: p.obra_nom ?? p.obra_cod, sin_precio: p.sin_precio, esperando: p.esperando ?? 0, obra_archivada: p.obra_archivada }))
 
+    // Las cuatro secciones de Pagos comparten el mapeo: el backend ya filtró y
+    // ordenó, acá solo se recorta a lo que el popover muestra.
+    const aItemPagos = (p?: PagosFacturasPage): FacturaPagosItem[] =>
+      (p?.items ?? []).map(f => ({
+        id: f.id,
+        proveedor_nom: f.proveedor_nom,
+        comprobante: `${f.tipo_comprobante} ${f.numero?.trim() || 's/n'}`,
+        total: Number(f.total),
+        saldo: Number(f.saldo),
+        vence_el: f.vence_el,
+        dias_vencida: f.dias_vencida,
+      }))
+
+    const facturasParaAprobar = aItemPagos(paraAprobar)
+    const facturasVencidas    = aItemPagos(vencidas)
+    const facturasSinRevisar  = aItemPagos(sinRevisar)
+    const facturasObservadas  = aItemPagos(observadas)
+
     return {
       hoy,
       proximos,
@@ -452,7 +525,16 @@ export function useNotificaciones(): NotificacionesResult {
       segurosPorVencer,
       solicitudesPorComprar,
       sinPrecio,
+      facturasParaAprobar,
+      facturasVencidas,
+      facturasSinRevisar,
+      facturasObservadas,
       pedidosNombresListos,
+      // El badge rojo cuenta lo que FRENA algo o ya se pasó de fecha. Las
+      // facturas vencidas y las que esperan aprobación entran (sin aprobar no
+      // se puede pagar); «sin revisar» y «observadas» no: son control y
+      // corrección, no urgencias. Se usa el TOTAL del server, no las 5 filas
+      // que se bajaron para el popover.
       totalUrgente:
         hoy.length +
         papelesVencidos.length +
@@ -460,9 +542,11 @@ export function useNotificaciones(): NotificacionesResult {
         serviciosVencidos.length +
         gastosPendientes.length +
         segurosVencidos.length +
-        solicitudesPorComprar.length,
+        solicitudesPorComprar.length +
+        (vencidas?.total ?? 0) +
+        (paraAprobar?.total ?? 0),
     }
-  }, [personal, docsVenc, docsChofer, servicesNotif, gastosPend, segurosNotif, pendientes, pendPrecio, tieneTarja, pedidosNombresListos])
+  }, [personal, docsVenc, docsChofer, servicesNotif, gastosPend, segurosNotif, pendientes, pendPrecio, tieneTarja, pedidosNombresListos, paraAprobar, vencidas, sinRevisar, observadas])
 }
 
 // Helper para mostrar "hoy", "mañana", "en 3 días" en la lista de próximos.

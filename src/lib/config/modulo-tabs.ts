@@ -84,6 +84,14 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
     { key: 'clientes', label: 'Clientes', icon: '🧑‍💼', meta: 'Fichas de clientes' },
     { key: 'reportes', label: 'Reportes', icon: '📊', meta: 'Horas por máquina y por obra' },
   ],
+  // Fase 1 de Pagos. El tab 'resumen' (por proveedor, centro de costo y mes)
+  // es fase 2: no se declara hasta que exista la pantalla, así el sidebar no
+  // ofrece un tab que al entrar no rendera nada.
+  pagos: [
+    { key: 'facturas',    label: 'Facturas',    icon: '🧾', meta: 'Facturas de proveedor y vencimientos' },
+    { key: 'pagos',       label: 'Pagos',       icon: '💸', meta: 'Órdenes de pago y cheques' },
+    { key: 'proveedores', label: 'Proveedores', icon: '🏢', meta: 'CUIT, alias y CBU' },
+  ],
   aridos: [
     { key: 'ventas',     label: 'Ventas',     icon: '🛒', meta: 'Ventas por m³ y retiros de escombro' },
     { key: 'cuenta-corriente', label: 'Cuenta corriente', icon: '💰', meta: 'Vendido, cobrado y saldo por cliente' },
