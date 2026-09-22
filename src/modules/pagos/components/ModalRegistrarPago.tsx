@@ -13,7 +13,7 @@ import { useDatosPagoProveedor, useProveedorPagos } from '../hooks/useProveedore
 import {
   FORMAS_CON_COMPROBANTE_OBLIGATORIO, FORMAS_CON_CUENTA_DESTINO, FORMAS_CON_FECHA_COBRO,
   FORMAS_PAGO_OP, PLAZOS_CHEQUE, comprobanteTxt, fechasEscalonadas, fmtFecha, fmtM, hoyAR,
-  partirEnPartes, plazoLabel, sumarDiasISO,
+  partirEnPartes, plazoLabel, repartirPagoEntreFacturas, sumarDiasISO,
 } from '../utils/pagos.utils'
 import { mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
 import type { PagosAdjuntoPendiente, PagosFactura, PagosFormaPagoOP, PagosLineaOrdenInput } from '@/types/domain.types'
@@ -242,6 +242,37 @@ export function ModalRegistrarPago({ facturaIds, onClose }: Props) {
   /** Lo que falta o sobra va al último: evita el rebote por centavos. */
   function ajustarUltimoCheque() {
     setCheques(cs => cs.map((c, i) => i === cs.length - 1 ? { ...c, monto: String(r2(n(c.monto) + difCheques)) } : c))
+  }
+
+  /**
+   * Al revés: los CHEQUES mandan y el total los sigue (2026-09-21).
+   *
+   * Reclamo del dueño: «cuando cargo varios pagos distintos en la OP tengo que
+   * poner a mano arriba el "se paga", eso no sé qué sentido tiene». Tiene
+   * razón, y era la dirección al revés: cuando se paga con cheques, los
+   * cheques SON el pago —están escritos, ya se entregaron, cada uno con su
+   * importe—. El total de arriba es una consecuencia, no un dato a tipear.
+   *
+   * `ajustarUltimoCheque` iba para el otro lado: toca el cheque para que
+   * cierre contra el total. Sirve para los centavos del reparto automático,
+   * pero no para esto: acá el que está bien es el cheque.
+   *
+   * El reparto entre facturas es LO MÁS VIEJO PRIMERO, que es cómo se imputa
+   * un pago: se cancela la deuda más vieja y lo que sobra sigue para la
+   * siguiente. Lo que sobre después de cubrirlas todas va a «A cuenta», que es
+   * exactamente lo que es: plata entregada de más, que queda a favor.
+   *
+   * Respeta la nota de crédito de cada fila: si una factura tiene NC, el lugar
+   * que queda para plata es `saldo - NC`.
+   */
+  function usarTotalDeLosCheques() {
+    const { porFactura, aCuenta: sobra } = repartirPagoEntreFacturas(totalCheques, filas.map(f => ({
+      id: f.factura.id,
+      vence_el: f.factura.vence_el,
+      tope: r2(f.factura.saldo - (f.nc ? n(f.nc.monto) : 0)),
+    })))
+    setFilas(fs => fs.map(x => ({ ...x, monto: String(porFactura.get(x.factura.id) ?? 0) })))
+    setACuenta(sobra > 0.005 ? String(sobra) : '')
   }
 
   async function subir(file: File, destino: 'comprobante' | number) {
@@ -559,16 +590,48 @@ export function ModalRegistrarPago({ facturaIds, onClose }: Props) {
               </div>
             ))}
 
+            {/*
+              Las dos direcciones, y cuál usar. Antes había sólo «ajustar», que
+              toca el CHEQUE para que cierre contra el total de arriba — y el
+              dueño venía tipeando el total a mano porque es la dirección al
+              revés: los cheques ya están escritos. (2026-09-21)
+            */}
+            {Math.abs(difCheques) >= 0.005 && cheques.length > 0 && (
+              <div className="px-2.5 py-2 border-t border-gris-mid bg-rojo-light/40 flex flex-col gap-1.5">
+                <div className="text-xs text-carbon">
+                  Los cheques suman <b className="font-mono">{fmtM(totalCheques)}</b> y arriba se está
+                  pagando <b className="font-mono">{fmtM(totalPlata)}</b>. Tienen que dar igual.
+                </div>
+                <div className="flex gap-2 flex-wrap items-center">
+                  <Button variant="secondary" size="sm" onClick={usarTotalDeLosCheques}>
+                    Usar lo que suman los cheques
+                  </Button>
+                  <span className="text-[11px] text-gris-dark">
+                    {filas.length > 1
+                      ? 'Reparte entre las facturas empezando por la que vence primero; si sobra, va a «A cuenta».'
+                      : 'Pone ese importe arriba; si pasa del saldo, la diferencia va a «A cuenta».'}
+                  </span>
+                </div>
+                <div className="flex gap-2 flex-wrap items-center">
+                  <Button variant="ghost" size="sm" onClick={ajustarUltimoCheque}>
+                    Cambiar el último cheque
+                  </Button>
+                  <span className="text-[11px] text-gris-dark">
+                    Al revés: le suma {fmtM(difCheques)} al último cheque para que cierre. Para los centavos del reparto.
+                  </span>
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center gap-2 flex-wrap px-2.5 py-2 border-t border-gris-mid">
               <Button variant="ghost" size="sm" onClick={agregarCheque}>+ Agregar cheque</Button>
-              <div className="ml-auto text-xs">
+              <div className="ml-auto text-xs text-right">
                 <span className="text-gris-dark">Suman </span>
                 <b className="font-mono tabular-nums">{fmtM(totalCheques)}</b>
                 <span className="text-gris-dark"> de {fmtM(totalPlata)}</span>
                 {Math.abs(difCheques) >= 0.005 && (
-                  <span className="ml-2 text-rojo">
-                    {difCheques > 0 ? `Faltan ${fmtM(difCheques)}` : `Sobran ${fmtM(-difCheques)}`}
-                    <button type="button" onClick={ajustarUltimoCheque} className="ml-1 underline">ajustar</button>
+                  <span className="ml-2 text-rojo font-semibold">
+                    {difCheques > 0 ? `faltan ${fmtM(difCheques)}` : `sobran ${fmtM(-difCheques)}`}
                   </span>
                 )}
               </div>

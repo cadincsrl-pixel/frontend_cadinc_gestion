@@ -366,3 +366,46 @@ export function describirFiltroFacturas(
   if (f.archivadas) p.push('incluye archivadas')
   return p.length === 0 ? 'todas las facturas' : p.join(' · ')
 }
+
+/**
+ * Cómo se reparte un importe ya pagado entre las facturas que cubre
+ * (2026-09-21).
+ *
+ * Reclamo del dueño: «cuando cargo varios pagos distintos en la OP tengo que
+ * poner a mano arriba el "se paga", eso no sé qué sentido tiene». Cuando se
+ * paga con cheques, los cheques SON el pago: están escritos y entregados, cada
+ * uno con su importe. El total es una consecuencia, no un dato a tipear.
+ *
+ * El criterio es LO MÁS VIEJO PRIMERO, que es cómo se imputa un pago: se
+ * cancela la deuda más vieja y lo que sobra sigue para la siguiente. Lo que
+ * sobre después de cubrirlas todas es plata entregada de más y va «a cuenta»,
+ * que es exactamente lo que es.
+ *
+ * `tope` por factura es lo que queda para PLATA, o sea el saldo menos la nota
+ * de crédito que se le esté aplicando en la misma orden.
+ */
+export interface FacturaARepartir {
+  id:       number
+  /** Para ordenar. null = sin vencimiento, va al final. */
+  vence_el: string | null
+  /** Lo máximo que admite de plata: saldo − NC aplicada en esta orden. */
+  tope:     number
+}
+
+export function repartirPagoEntreFacturas(
+  importe: number, facturas: FacturaARepartir[],
+): { porFactura: Map<number, number>; aCuenta: number } {
+  const r2 = (v: number) => Math.round(v * 100) / 100
+  const porFactura = new Map<number, number>()
+  let resto = r2(Math.max(0, importe))
+
+  const masViejaPrimero = [...facturas].sort((a, b) =>
+    (a.vence_el ?? '9999-12-31').localeCompare(b.vence_el ?? '9999-12-31') || a.id - b.id)
+
+  for (const f of masViejaPrimero) {
+    const pone = r2(Math.min(Math.max(0, f.tope), resto))
+    porFactura.set(f.id, pone)
+    resto = r2(resto - pone)
+  }
+  return { porFactura, aCuenta: resto }
+}
