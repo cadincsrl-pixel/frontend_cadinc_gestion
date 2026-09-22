@@ -2729,6 +2729,53 @@ export interface PagosCheque {
 /** Lo que se manda al registrar el pago (sin `id`, lo pone la base). */
 export type PagosChequeNuevo = Omit<PagosCheque, 'id'>
 
+/**
+ * Una orden con sus cheques, como la devuelve `/ordenes/export`. El Excel
+ * necesita los cheques de todas las órdenes juntos —«qué cae esta semana»— y
+ * pedirlos de a uno por orden serían cientos de requests.
+ */
+/**
+ * El manifiesto del paquete para el contador: qué archivos hay y dónde
+ * bajarlos. El backend NO manda el ZIP — manda las URLs firmadas a 15 minutos
+ * y el navegador arma el ZIP, así el server no se come un mes de PDFs.
+ */
+export interface PagosPaqueteArchivo {
+  entidad:        'facturas' | 'ordenes'
+  entidad_id:     number
+  adjunto_id:     number
+  tipo:           string
+  /** 'factura' = papel de la factura; 'pago' = comprobante de la OP que la saldó. */
+  origen:         'factura' | 'pago'
+  /** Solo con origen 'pago'. */
+  op_numero:      number | null
+  nombre_archivo: string
+  mime_type:      string
+  size_bytes:     number
+  /** null si storage no la pudo firmar; el archivo se anota como faltante. */
+  url:            string | null
+}
+
+export interface PagosPaqueteFactura {
+  id:               number
+  tipo_comprobante: PagosTipoComprobante
+  numero:           string | null
+  fecha:            string
+  proveedor_nom:    string
+  proveedor_cuit:   string | null
+  total:            number
+  estado:           PagosEstadoFactura
+  archivos:         PagosPaqueteArchivo[]
+}
+
+export interface PagosPaquete {
+  generado_en: string
+  facturas:    PagosPaqueteFactura[]
+}
+
+export interface PagosOrdenExport extends PagosOrden {
+  cheques: PagosCheque[]
+}
+
 export interface PagosOrdenDetalle extends PagosOrden {
   lineas:   PagosOrdenLinea[]
   cheques:  PagosCheque[]

@@ -9,8 +9,9 @@ import { usePermisos } from '@/hooks/usePermisos'
 import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
 import {
   useOrdenes, useOrden, useAnularOrden, useSubirAdjuntoPagos, fetchPagosAdjuntoSignedUrl,
-  type PagosOrdenesFiltro,
+  fetchOrdenesExport, type PagosOrdenesFiltro,
 } from '../hooks/usePagos'
+import { exportarOrdenesPagos } from '../utils/pagosExport'
 import { useProveedoresPagos } from '../hooks/useProveedoresPagos'
 import {
   FORMAS_PAGO_OP, MAX_ADJUNTO_BYTES, MIME_ADJUNTOS, TIPOS_ADJ_FACTURA, comprobanteTxt, fmtFecha, fmtM, formaPagoLabel, hoyAR,
@@ -42,6 +43,21 @@ export function OrdenesTab() {
   const totales = lista.data?.totales
 
   function patch(p: Partial<PagosOrdenesFiltro>) { setFiltro(f => ({ ...f, ...p })); setPage(1) }
+
+  const [exportando, setExportando] = useState(false)
+
+  /** Exporta lo FILTRADO, no la página: las filas las trae `/ordenes/export`, que pagina en el server. */
+  async function exportar() {
+    if (total === 0) { toast('No hay órdenes para exportar con estos filtros', 'err'); return }
+    setExportando(true)
+    try {
+      await exportarOrdenesPagos(await fetchOrdenesExport(filtro))
+    } catch {
+      toast('No se pudo generar el Excel', 'err')
+    } finally {
+      setExportando(false)
+    }
+  }
 
   const enCartera = useMemo(() => items.filter(o => o.en_cartera).length, [items])
 
@@ -101,6 +117,12 @@ export function OrdenesTab() {
           <Tilde label="Sin comprobante" on={!!filtro.sin_comprobante} set={v => patch({ sin_comprobante: v || undefined })} />
           <Tilde label="Cheques en cartera" on={!!filtro.en_cartera} set={v => patch({ en_cartera: v || undefined })} />
           <Tilde label="Con nota de crédito" on={!!filtro.con_nota_credito} set={v => patch({ con_nota_credito: v || undefined })} />
+        </div>
+        <div className="ml-auto pb-2">
+          <Button variant="secondary" size="sm" onClick={exportar} loading={exportando} disabled={total === 0}
+            title="Baja TODAS las órdenes del filtro, no sólo esta página. Segunda hoja con los cheques por fecha de cobro.">
+            📊 Exportar Excel
+          </Button>
         </div>
       </div>
 

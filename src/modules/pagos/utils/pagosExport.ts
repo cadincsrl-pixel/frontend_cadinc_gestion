@@ -12,8 +12,8 @@
 import ExcelJS from 'exceljs'
 import { toISO } from '@/lib/utils/dates'
 import { EMPRESA } from '@/lib/config/empresa'
-import { ESTADO_FACTURA_META, FORMAS_PREVISTAS, comprobanteTxt } from './pagos.utils'
-import type { PagosFactura, PagosProveedor } from '@/types/domain.types'
+import { ESTADO_FACTURA_META, FORMAS_PREVISTAS, comprobanteTxt, formaPagoLabel, hoyAR } from './pagos.utils'
+import type { PagosFactura, PagosOrdenExport, PagosProveedor } from '@/types/domain.types'
 
 const FMT_MONEDA = '"$"#,##0;[Red]"-$"#,##0;"—"'
 const FMT_FECHA  = 'dd/mm/yyyy'
@@ -183,4 +183,132 @@ export async function exportarProveedoresPagos(filas: PagosProveedor[]): Promise
   ws.autoFilter = { from: { row: 3, column: 1 }, to: { row: 3, column: headers.length } }
 
   await descargar(wb, `Pagos_proveedores_${toISO(generadoEn)}.xlsx`)
+}
+
+// ── Órdenes de pago ───────────────────────────────────────────────────
+
+/**
+ * El Excel de lo PAGADO (2026-09-21).
+ *
+ * Pedido del dueño: «estaría bueno poder extraer un resumen Excel según lo
+ * filtrado». El de facturas ya existía; el tab de órdenes no tenía ninguno,
+ * así que no había forma de sacar qué se pagó, con qué y qué cheques salieron.
+ *
+ * Dos hojas, porque son dos preguntas distintas y meterlas en una sola tabla
+ * obliga a repetir la orden en cada cheque:
+ *   · «Órdenes» — una fila por OP: a quién, cuánto, con qué forma, qué cubre.
+ *   · «Cheques» — una fila por cheque, ordenada POR FECHA DE COBRO, que es la
+ *     pregunta real: qué cae esta semana y cuánto hay todavía en cartera.
+ *
+ * Las anuladas se exportan igual, marcadas: una OP que se anuló es parte de la
+ * historia y el contador la va a ver en el banco.
+ */
+export async function exportarOrdenesPagos(filas: PagosOrdenExport[]): Promise<void> {
+  const generadoEn = new Date()
+  const wb = new ExcelJS.Workbook()
+  wb.creator = EMPRESA.nombre
+  wb.created = generadoEn
+
+  const vigentes = filas.filter(o => o.estado !== 'anulada')
+  const anuladas = filas.length - vigentes.length
+  const sinComp  = vigentes.filter(o => o.comprobante_requerido && !o.tiene_comprobante).length
+
+  // ── Hoja 1: las órdenes ──
+  const ws = wb.addWorksheet('Órdenes')
+  const headers = [
+    'OP', 'Fecha', 'Proveedor', 'CUIT', 'Forma', 'Referencia',
+    'Pagado', 'Notas de crédito', 'Qué cubre', 'Facturas', 'A cuenta',
+    'Cheques', '1er cobro', 'Comprobante', 'Estado', 'Registró', 'Anuló', 'Motivo',
+  ]
+  setColWidths(ws, [10, 12, 28, 14, 16, 18, 15, 15, 40, 10, 13, 9, 12, 13, 12, 18, 18, 28])
+  cabecera(ws, 'PAGOS — Órdenes de pago', [
+    `Generado: ${generadoEn.toLocaleDateString('es-AR')}`,
+    'Los totales cuentan solo las órdenes vigentes',
+    anuladas > 0 ? `${anuladas} anulada(s), marcadas y sin sumar` : '',
+    sinComp > 0 ? `⚠ ${sinComp} sin comprobante` : '',
+  ].filter(Boolean).join('  ·  '), headers.length)
+  encabezados(ws, headers)
+
+  let r = 4
+  for (const o of filas) {
+    const anulada = o.estado === 'anulada'
+    const row = ws.getRow(r++)
+    row.values = [
+      o.numero_fmt, fecha(o.fecha), o.proveedor_nom, o.proveedor_cuit ?? '',
+      formaPagoLabel(o.forma_pago), o.referencia,
+      Number(o.monto_pagado) || null, Number(o.monto_nc) || null,
+      o.facturas ?? '', o.cantidad_facturas || null, Number(o.a_cuenta) || null,
+      o.cheques.length || null, o.cheques.length > 0 ? fecha(o.fecha_cobro) : null,
+      o.comprobante_requerido ? (o.tiene_comprobante ? 'Sí' : 'FALTA') : '—',
+      anulada ? 'Anulada' : 'Emitida',
+      o.created_by_nombre ?? '', o.anulado_por_nombre ?? '', o.motivo_anulacion ?? '',
+    ]
+    for (const c of [7, 8, 11]) row.getCell(c).numFmt = FMT_MONEDA
+    for (const c of [2, 13]) row.getCell(c).numFmt = FMT_FECHA
+    if (anulada) row.eachCell({ includeEmpty: true }, c => { c.font = { strike: true, color: { argb: 'FF999999' } } })
+    if (!anulada && o.comprobante_requerido && !o.tiene_comprobante) {
+      row.getCell(14).font = { color: { argb: 'FFC00000' }, bold: true }
+    }
+    row.eachCell({ includeEmpty: true }, c => {
+      c.border = { bottom: { style: 'thin', color: { argb: C_GRIS_BORDE } } }
+    })
+  }
+  const tot = ws.getRow(r)
+  const suma = (k: (o: PagosOrdenExport) => number) => vigentes.reduce((s, o) => s + Number(k(o) ?? 0), 0)
+  tot.values = ['TOTAL', null, `${vigentes.length} orden(es) vigente(s)`, '', '', '',
+    suma(o => o.monto_pagado), suma(o => o.monto_nc), '', null, suma(o => o.a_cuenta)]
+  for (const c of [7, 8, 11]) tot.getCell(c).numFmt = FMT_MONEDA
+  tot.eachCell({ includeEmpty: true }, c => {
+    c.font = { bold: true }
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C_GRIS_MEDIUM } }
+  })
+  ws.views = [{ state: 'frozen', ySplit: 3 }]
+  ws.autoFilter = { from: { row: 3, column: 1 }, to: { row: 3, column: headers.length } }
+
+  // ── Hoja 2: los cheques, por fecha de cobro ──
+  const chs = filas.flatMap(o => o.cheques.map(c => ({ o, c })))
+  if (chs.length > 0) {
+    chs.sort((a, b) => a.c.fecha_cobro.localeCompare(b.c.fecha_cobro))
+    const wc = wb.addWorksheet('Cheques')
+    const hc = ['Cobro', 'Número', 'Banco', 'Importe', 'Propio / endosado', 'Librador', 'Proveedor', 'OP', 'Fecha OP', 'Estado OP']
+    setColWidths(wc, [12, 16, 20, 15, 18, 26, 28, 10, 12, 12])
+    const hoy = hoyAR()
+    const enCartera = chs.filter(x => x.o.estado !== 'anulada' && x.c.fecha_cobro > hoy)
+    cabecera(wc, 'PAGOS — Cheques entregados', [
+      'Ordenados por fecha de cobro',
+      `En cartera (todavía no se cobraron): ${enCartera.length}`,
+      'Los de órdenes anuladas van tachados y no suman',
+    ].join('  ·  '), hc.length)
+    encabezados(wc, hc)
+
+    let rc = 4
+    for (const { o, c } of chs) {
+      const anulada = o.estado === 'anulada'
+      const row = wc.getRow(rc++)
+      row.values = [
+        fecha(c.fecha_cobro), c.numero, c.banco, Number(c.monto),
+        c.es_propio ? 'Propio' : 'Endosado', c.es_propio ? '' : c.librador,
+        o.proveedor_nom, o.numero_fmt, fecha(o.fecha), anulada ? 'Anulada' : 'Emitida',
+      ]
+      row.getCell(4).numFmt = FMT_MONEDA
+      for (const k of [1, 9]) row.getCell(k).numFmt = FMT_FECHA
+      if (anulada) row.eachCell({ includeEmpty: true }, x => { x.font = { strike: true, color: { argb: 'FF999999' } } })
+      else if (c.fecha_cobro > hoy) row.getCell(1).font = { bold: true, color: { argb: 'FF1F6FB2' } }
+      row.eachCell({ includeEmpty: true }, x => {
+        x.border = { bottom: { style: 'thin', color: { argb: C_GRIS_BORDE } } }
+      })
+    }
+    const tc = wc.getRow(rc)
+    tc.values = ['TOTAL', `${chs.filter(x => x.o.estado !== 'anulada').length} cheque(s)`, '',
+      chs.filter(x => x.o.estado !== 'anulada').reduce((s, x) => s + Number(x.c.monto), 0)]
+    tc.getCell(4).numFmt = FMT_MONEDA
+    tc.eachCell({ includeEmpty: true }, x => {
+      x.font = { bold: true }
+      x.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C_GRIS_MEDIUM } }
+    })
+    wc.views = [{ state: 'frozen', ySplit: 3 }]
+    wc.autoFilter = { from: { row: 3, column: 1 }, to: { row: 3, column: hc.length } }
+  }
+
+  await descargar(wb, `Pagos_ordenes_${toISO(generadoEn)}.xlsx`)
 }

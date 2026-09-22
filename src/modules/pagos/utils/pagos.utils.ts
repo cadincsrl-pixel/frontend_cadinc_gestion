@@ -8,6 +8,7 @@ import type {
   PagosEstadoFactura, PagosFormaPagoOP, PagosFormaPagoOPGuardada, PagosFormaPrevista,
   PagosTipoAdjFactura, PagosTipoAdjOrden, PagosTipoComprobante, PagosFactura, AnularFacturaRes,
 } from '@/types/domain.types'
+import type { PagosFacturasFiltro } from '../hooks/usePagos'
 
 // ── Estados de la factura ─────────────────────────────────────────────
 
@@ -321,4 +322,47 @@ export function hoyAR(): string {
  */
 export function facturaAnulada(res: AnularFacturaRes): PagosFactura {
   return 'factura' in res ? res.factura : res
+}
+
+/**
+ * El filtro de la bandeja, en castellano (2026-09-21).
+ *
+ * Va impreso arriba del resumen PDF y adentro del CONTENIDO.txt del paquete.
+ * Un resumen sin esta línea es una trampa: alguien lo imprime filtrado por
+ * «vencidas» y después lo lee como si fuera toda la deuda.
+ */
+export function describirFiltroFacturas(
+  f: PagosFacturasFiltro,
+  nombreProveedor?: (id: number) => string | undefined,
+): string {
+  const p: string[] = []
+  if (f.q?.trim()) p.push(`búsqueda «${f.q.trim()}»`)
+  if (f.proveedor_id) p.push(nombreProveedor?.(f.proveedor_id) ?? `proveedor #${f.proveedor_id}`)
+  if (f.estados?.length) {
+    p.push(f.estados.map(e => ESTADO_FACTURA_META[e]?.label ?? e).join(' o '))
+  }
+  if (f.tipo) p.push(`tipo ${f.tipo}`)
+  if (f.forma_pago) {
+    p.push(`a pagar con ${FORMAS_PREVISTAS.find(x => x.key === f.forma_pago)?.label ?? f.forma_pago}`)
+  }
+  const venc: Record<string, string> = {
+    vencidas: 'vencidas', '7': 'vencen dentro de 7 días', '30': 'vencen dentro de 30 días',
+  }
+  if (f.vencimiento && f.vencimiento !== 'todas') p.push(venc[f.vencimiento] ?? f.vencimiento)
+  if (f.obra_cod) p.push(`obra ${f.obra_cod}`)
+  if (f.centro_costo) p.push(`centro de costo ${f.centro_costo}`)
+  if (f.desde && f.hasta) p.push(`emitidas del ${fmtFecha(f.desde)} al ${fmtFecha(f.hasta)}`)
+  else if (f.desde) p.push(`emitidas desde el ${fmtFecha(f.desde)}`)
+  else if (f.hasta) p.push(`emitidas hasta el ${fmtFecha(f.hasta)}`)
+  if (f.sin_adjunto) p.push('sin comprobante adjunto')
+  if (f.sin_numero) p.push('sin número')
+  if (f.sin_revisar) p.push('pagadas sin revisar')
+  if (f.cuenta_cambiada) p.push('con la cuenta del proveedor cambiada')
+  if (f.paga_cliente === true) p.push('las paga el cliente')
+  if (f.paga_cliente === false) p.push('las paga CADINC')
+  if (f.pagada_al_cargar === true) p.push('cargadas ya pagadas')
+  if (f.es_interna === true) p.push('de obra interna')
+  if (f.anuladas) p.push('incluye anuladas')
+  if (f.archivadas) p.push('incluye archivadas')
+  return p.length === 0 ? 'todas las facturas' : p.join(' · ')
 }

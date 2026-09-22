@@ -15,7 +15,7 @@ import type {
   EditarFacturaInput, EditarFacturaRes, EditarOrdenInput, PagosAdjunto, PagosAdjuntoPendiente,
   PagosCatalogoObra, PagosEntidadAdjunto, PagosEstadoFactura, PagosEstadoOrden, PagosFactura, PagosFacturaDetalle,
   PagosFacturasGrupo, PagosFacturasPage, PagosFacturasResumen, PagosFormaPagoOPGuardada,
-  PagosFormaPrevista, PagosOrdenDetalle, PagosOrdenesEje, PagosOrdenesGrupo, PagosOrdenesPage,
+  PagosFormaPrevista, PagosOrdenDetalle, PagosOrdenesEje, PagosOrdenesGrupo, PagosOrdenesPage, PagosOrdenExport, PagosPaquete,
   PagosOrdenesResumen, PagosTipoAdjFactura, PagosTipoAdjOrden, PagosTipoComprobante, PagosUploadUrlRes,
   RegistrarOrdenRes,
 } from '@/types/domain.types'
@@ -186,6 +186,16 @@ export function useFactura(id: number | null, incluirBorrados = false) {
 /** Todas las filas del filtro, para el Excel. El backend pagina de a 1000 con orden estable. */
 export function fetchFacturasExport(f: PagosFacturasFiltro): Promise<PagosFactura[]> {
   return apiGet<PagosFactura[]>(`/api/pagos/facturas/export?${qsFacturas(f)}`)
+}
+
+/** El manifiesto del paquete para el contador: los archivos del filtro, con URL firmada. */
+export function fetchPaqueteContador(f: PagosFacturasFiltro): Promise<PagosPaquete> {
+  return apiGet<PagosPaquete>(`/api/pagos/facturas/paquete?${qsFacturas(f)}`)
+}
+
+/** Todas las órdenes del filtro, con sus cheques, para el Excel. */
+export function fetchOrdenesExport(f: PagosOrdenesFiltro): Promise<PagosOrdenExport[]> {
+  return apiGet<PagosOrdenExport[]>(`/api/pagos/ordenes/export?${qsOrdenes(f)}`)
 }
 
 export function useCrearFactura() {
