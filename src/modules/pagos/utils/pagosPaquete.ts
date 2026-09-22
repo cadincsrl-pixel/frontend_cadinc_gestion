@@ -2,33 +2,34 @@
  * El paquete para el contador (2026-09-21).
  *
  * Pedido del dueño: «exportar paquete de facturas y comprobantes para que el
- * contador pueda cargar en el otro sistema contable». El contador carga A MANO
- * mirando los papeles, así que lo que necesita son los ARCHIVOS ordenados, no
- * un layout de importación.
+ * contador pueda cargar en el otro sistema contable», y la corrección que
+ * cambia el eje entero: **«que sea sobre lo PAGADO»**.
  *
- * Cómo queda armado el ZIP:
+ * Por eso manda la ORDEN DE PAGO y no la factura. El contador no trabaja por
+ * mes de emisión: concilia lo que salió del banco en el período. Una factura
+ * de agosto pagada en septiembre entra en septiembre, y filtrando por emisión
+ * no aparecía.
+ *
+ * Cómo queda el ZIP:
  *
  *   2026-09/
- *     A-0011-00000194_NORTE_DISTRIBUCIONES.pdf      ← la factura
- *     A-0011-00000194_NORTE_DISTRIBUCIONES__OP-0008_comprobante.pdf
+ *     OP-0008_NORTE_DISTRIBUCIONES/
+ *       pago__comprobante_pago.pdf
+ *       factura__A-0011-00000194.jpg
  *   CONTENIDO.txt
  *
- * Las carpetas son por MES DE EMISIÓN de la factura, que es como el contador
- * arma sus períodos. El comprobante del pago va PEGADO a su factura y con el
- * mismo prefijo, no en una carpeta aparte: así quedan uno al lado del otro al
- * ordenar por nombre, que es la única forma de encontrarlos mirando.
+ * Una carpeta por OP porque así es como se carga a mano: cada OP es UN
+ * movimiento del banco, y adentro está el comprobante con el que salió y las
+ * facturas que cubrió. Abrir la carpeta es tener el asiento entero. La carpeta
+ * de arriba es el mes de PAGO, que es el período del contador.
  *
  * `CONTENIDO.txt` es la lista de lo que hay adentro —no una planilla de
  * importación—: sirve para saber qué falta sin abrir 80 PDFs.
- *
- * El backend manda el MANIFIESTO con URLs firmadas a 15 minutos; el ZIP se
- * arma acá. Bajar los archivos de a uno desde el navegador evita que el server
- * se coma un mes entero de PDFs en memoria.
  */
 import JSZip from 'jszip'
 import { EMPRESA } from '@/lib/config/empresa'
-import { comprobanteTxt, fmtM } from './pagos.utils'
-import type { PagosPaquete, PagosPaqueteArchivo, PagosPaqueteFactura } from '@/types/domain.types'
+import { comprobanteTxt, fmtM, fmtFecha, formaPagoLabel } from './pagos.utils'
+import type { PagosPaquete, PagosPaqueteArchivo, PagosPaqueteFactura, PagosPaqueteOrden } from '@/types/domain.types'
 
 /** Nombre de archivo utilizable en Windows, Mac y Linux. */
 function limpiar(s: string): string {
@@ -36,7 +37,7 @@ function limpiar(s: string): string {
     .normalize('NFD').replace(/[̀-ͯ]/g, '')   // sin tildes: no todos los unzip las respetan
     .replace(/[^A-Za-z0-9._-]+/g, '_')
     .replace(/_+/g, '_').replace(/^_|_$/g, '')
-    .slice(0, 80)
+    .slice(0, 60)
 }
 
 function extDe(nombre: string, mime: string): string {
@@ -49,21 +50,27 @@ function extDe(nombre: string, mime: string): string {
   return porMime[mime] ?? 'bin'
 }
 
-/** El prefijo que comparten la factura y los comprobantes de su pago. */
-export function prefijoDe(f: PagosPaqueteFactura): string {
-  const num = (f.numero ?? 's-n').replace(/\s+/g, '')
-  return limpiar(`${f.tipo_comprobante}-${num}_${f.proveedor_nom}`)
+/** `2026-09/OP-0008_NORTE_DISTRIBUCIONES` — mes de PAGO, y una carpeta por orden. */
+export function carpetaDeOrden(o: PagosPaqueteOrden): string {
+  const mes = (o.fecha ?? '').slice(0, 7) || 'sin-fecha'
+  return `${mes}/${o.numero_fmt}_${limpiar(o.proveedor_nom)}`
 }
 
-export function nombreEnZip(f: PagosPaqueteFactura, a: PagosPaqueteArchivo, usados: Set<string>): string {
-  const carpeta = (f.fecha ?? '').slice(0, 7) || 'sin-fecha'
-  const sufijo = a.origen === 'pago'
-    ? `__OP-${String(a.op_numero ?? 0).padStart(4, '0')}_${limpiar(a.tipo)}`
-    : a.tipo === 'factura' ? '' : `_${limpiar(a.tipo)}`
-  const base = `${carpeta}/${prefijoDe(f)}${sufijo}`
+/**
+ * El nombre adentro de la carpeta de la OP. Arranca con `pago__` o
+ * `factura__` para que el comprobante quede SIEMPRE primero al ordenar
+ * alfabéticamente: es el que dice cuánto salió.
+ */
+export function nombreEnZip(
+  o: PagosPaqueteOrden, a: PagosPaqueteArchivo, usados: Set<string>, f?: PagosPaqueteFactura,
+): string {
+  const etiqueta = a.origen === 'pago'
+    ? `pago__${limpiar(a.tipo)}`
+    : `factura__${limpiar(`${f?.tipo_comprobante ?? ''}-${(f?.numero ?? 's-n').replace(/\s+/g, '')}`)}${a.tipo === 'factura' ? '' : `_${limpiar(a.tipo)}`}`
+  const base = `${carpetaDeOrden(o)}/${etiqueta}`
   const ext = extDe(a.nombre_archivo, a.mime_type)
 
-  // Dos remitos en la misma factura, o dos comprobantes en la misma OP: se
+  // Dos remitos de la misma factura, o dos comprobantes de la misma OP: se
   // numeran en vez de pisarse.
   let nombre = `${base}.${ext}`
   let i = 2
@@ -73,9 +80,11 @@ export function nombreEnZip(f: PagosPaqueteFactura, a: PagosPaqueteArchivo, usad
 }
 
 export interface ResultadoPaquete {
-  archivos:  number
-  fallados:  number
-  sinPapeles: number
+  archivos:      number
+  fallados:      number
+  ordenes:       number
+  sinComprobante: number
+  facturasSinPapel: number
 }
 
 /**
@@ -93,57 +102,76 @@ export async function armarPaqueteContador(
   const zip = new JSZip()
   const usados = new Set<string>()
   const lineas: string[] = []
-  const fallados: string[] = []
   let archivos = 0
-  let sinPapeles = 0
+  let fallados = 0
+  let sinComprobante = 0
+  let facturasSinPapel = 0
 
-  const todos = paquete.facturas.flatMap(f => f.archivos.map(a => ({ f, a })))
-  const total = todos.length
+  const total = paquete.ordenes.reduce(
+    (s, o) => s + o.archivos.length + o.facturas.reduce((t, f) => t + f.archivos.length, 0), 0)
   let hechos = 0
 
-  for (const f of paquete.facturas) {
-    const comp = comprobanteTxt(f.tipo_comprobante, f.numero)
-    if (f.archivos.length === 0) {
-      sinPapeles++
-      lineas.push(`  ⚠ ${comp} · ${f.proveedor_nom} · ${fmtM(Number(f.total))} — SIN NINGÚN ARCHIVO`)
-      continue
+  const bajar = async (nombre: string, a: PagosPaqueteArchivo, sangria: string) => {
+    try {
+      if (!a.url) throw new Error('sin URL firmada')
+      const r = await fetch(a.url)
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+      zip.file(nombre, await r.blob())
+      archivos++
+      lineas.push(`${sangria}${nombre.split('/').pop()}`)
+    } catch {
+      fallados++
+      lineas.push(`${sangria}⚠ NO SE PUDO BAJAR: ${a.nombre_archivo}`)
     }
-    lineas.push(`  ${comp} · ${f.proveedor_nom} · ${fmtM(Number(f.total))}`)
-    for (const a of f.archivos) {
-      const nombre = nombreEnZip(f, a, usados)
-      try {
-        if (!a.url) throw new Error('sin URL firmada')
-        const r = await fetch(a.url)
-        if (!r.ok) throw new Error(`HTTP ${r.status}`)
-        zip.file(nombre, await r.blob())
-        archivos++
-        lineas.push(`      ${nombre}`)
-      } catch {
-        fallados.push(`${nombre} (${a.nombre_archivo})`)
-        lineas.push(`      ⚠ NO SE PUDO BAJAR: ${a.nombre_archivo}`)
+    onProgreso?.(++hechos, total)
+  }
+
+  for (const o of paquete.ordenes) {
+    const anulada = o.estado === 'anulada'
+    lineas.push('')
+    lineas.push(`${carpetaDeOrden(o)}/`)
+    lineas.push(`    ${fmtFecha(o.fecha)} · ${o.proveedor_nom} · ${formaPagoLabel(o.forma_pago)}`
+      + ` · ${fmtM(Number(o.monto_pagado))}${anulada ? '   ⚠ ANULADA' : ''}`)
+
+    if (o.archivos.length === 0) {
+      sinComprobante++
+      lineas.push('    ⚠ SIN COMPROBANTE DEL PAGO')
+    }
+    for (const a of o.archivos) await bajar(nombreEnZip(o, a, usados), a, '    ')
+
+    for (const f of o.facturas) {
+      const comp = comprobanteTxt(f.tipo_comprobante ?? 'A', f.numero)
+      // «Aplicado» y no el total: en un pago parcial esta OP cubrió una parte,
+      // y el contador tiene que ver cuánto entró acá.
+      const parcial = f.total != null && Math.abs(Number(f.aplicado) - Number(f.total)) > 0.005
+      lineas.push(`    ${comp} · ${fmtM(Number(f.aplicado))}`
+        + (parcial ? ` (parcial, la factura es de ${fmtM(Number(f.total))})` : ''))
+      if (f.archivos.length === 0) {
+        facturasSinPapel++
+        lineas.push('        ⚠ FACTURA SIN NINGÚN ARCHIVO')
       }
-      onProgreso?.(++hechos, total)
+      for (const a of f.archivos) await bajar(nombreEnZip(o, a, usados, f), a, '        ')
     }
   }
 
   const cab = [
-    `${EMPRESA.nombre} — Facturas de proveedor y comprobantes de pago`,
+    `${EMPRESA.nombre} — Comprobantes de pago y facturas`,
     `Generado: ${new Date(paquete.generado_en).toLocaleString('es-AR')}`,
     `Filtro aplicado: ${descripcionFiltro}`,
     '',
-    `Facturas: ${paquete.facturas.length}   ·   Archivos: ${archivos}`,
-    sinPapeles > 0 ? `Facturas sin ningún archivo adjunto: ${sinPapeles}` : '',
-    fallados.length > 0 ? `Archivos que no se pudieron bajar: ${fallados.length}` : '',
+    `Órdenes de pago: ${paquete.ordenes.length}   ·   Archivos: ${archivos}`,
+    sinComprobante > 0 ? `⚠ Órdenes sin comprobante del pago: ${sinComprobante}` : '',
+    facturasSinPapel > 0 ? `⚠ Facturas sin ningún archivo: ${facturasSinPapel}` : '',
+    fallados > 0 ? `⚠ Archivos que no se pudieron bajar: ${fallados}` : '',
     '',
-    'Las carpetas son por mes de emisión de la factura. El comprobante del pago',
-    'lleva el mismo prefijo que su factura y termina en __OP-XXXX, así quedan',
-    'juntos al ordenar por nombre.',
+    'Una carpeta por orden de pago: cada una es UN movimiento del banco, y',
+    'adentro está el comprobante con el que salió y las facturas que cubrió.',
+    'La carpeta de arriba es el MES DE PAGO, no el de emisión de la factura.',
     '',
     '─'.repeat(72),
-    '',
-  ].filter(l => l !== undefined).join('\n')
+  ].filter(l => l !== '').join('\n')
 
-  zip.file('CONTENIDO.txt', cab + lineas.join('\n') + '\n')
+  zip.file('CONTENIDO.txt', cab + '\n' + lineas.join('\n') + '\n')
 
   const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } })
   const url = URL.createObjectURL(blob)
@@ -153,5 +181,5 @@ export async function armarPaqueteContador(
   a.click()
   URL.revokeObjectURL(url)
 
-  return { archivos, fallados: fallados.length, sinPapeles }
+  return { archivos, fallados, ordenes: paquete.ordenes.length, sinComprobante, facturasSinPapel }
 }

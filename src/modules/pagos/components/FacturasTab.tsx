@@ -6,7 +6,7 @@ import { Pagination } from '@/components/ui/Pagination'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import {
-  useFacturas, useFacturasResumen, useAprobarFacturas, fetchFacturasExport, fetchPaqueteContador,
+  useFacturas, useFacturasResumen, useAprobarFacturas, fetchFacturasExport,
   type PagosFacturasFiltro,
 } from '../hooks/usePagos'
 import { useSaldosProveedores } from '../hooks/useProveedoresPagos'
@@ -14,7 +14,6 @@ import { fmtM, describirFiltroFacturas } from '../utils/pagos.utils'
 import { mensajeErrorPagos } from '../utils/pagos.errores'
 import { exportarFacturasPagos } from '../utils/pagosExport'
 import { exportarResumenPagosPdf } from '../utils/pagosResumenPdf'
-import { armarPaqueteContador } from '../utils/pagosPaquete'
 import { FiltrosFacturas } from './FiltrosFacturas'
 import { FacturasTabla } from './FacturasTabla'
 import { FichaFactura } from './FichaFactura'
@@ -69,8 +68,6 @@ export function FacturasTab({ aviso }: { aviso?: string | null }) {
   const [modalPago, setModalPago] = useState<{ open: boolean; facturaIds: number[] }>({ open: false, facturaIds: [] })
   const [exportando, setExportando] = useState(false)
   const [generandoPdf, setGenerandoPdf] = useState(false)
-  /** null = no hay paquete en curso; si no, el avance de la bajada. */
-  const [paquete, setPaquete] = useState<{ hechos: number; total: number } | null>(null)
 
   const lista   = useFacturas(filtro, page, PAGE_SIZE, puedeVer)
   // El resumen por estado alimenta los chips: se pide SIN `estados` (lo hace el
@@ -172,37 +169,7 @@ export function FacturasTab({ aviso }: { aviso?: string | null }) {
     }
   }
 
-  /**
-   * El paquete para el contador. Baja los archivos de a uno con la URL firmada
-   * que manda el backend y arma el ZIP acá: un mes entero de PDFs no pasa por
-   * la memoria del server. Puede tardar, así que muestra el avance.
-   */
-  async function bajarPaquete() {
-    if (total === 0) { toast('No hay facturas para empaquetar con estos filtros', 'err'); return }
-    setPaquete({ hechos: 0, total: 0 })
-    try {
-      const manifiesto = await fetchPaqueteContador(filtro)
-      const cuantos = manifiesto.facturas.reduce((s, f) => s + f.archivos.length, 0)
-      if (cuantos === 0) {
-        toast('Ninguna de esas facturas tiene archivos adjuntos', 'err')
-        return
-      }
-      setPaquete({ hechos: 0, total: cuantos })
-      const r = await armarPaqueteContador(manifiesto, descFiltro, (hechos, t) => setPaquete({ hechos, total: t }))
-      const avisos = [
-        r.fallados > 0 ? `${r.fallados} no se pudieron bajar` : '',
-        r.sinPapeles > 0 ? `${r.sinPapeles} factura(s) sin ningún archivo` : '',
-      ].filter(Boolean)
-      toast(
-        `✓ ${r.archivos} archivo(s) en el ZIP${avisos.length ? ' · ' + avisos.join(' · ') : ''}`,
-        avisos.length > 0 ? 'err' : 'ok',
-      )
-    } catch (e) {
-      toast(mensajeErrorPagos(e), 'err')
-    } finally {
-      setPaquete(null)
-    }
-  }
+
 
   if (!puedeVer) {
     return <div className="bg-white rounded-card shadow-card p-8 text-center text-sm text-gris-dark">
@@ -264,15 +231,6 @@ export function FacturasTab({ aviso }: { aviso?: string | null }) {
             title="Hoja para imprimir o mandar: cuánto se debe, a quién y para cuándo.">
             🖨 Resumen PDF
           </Button>
-          <Button variant="secondary" size="sm" onClick={bajarPaquete} loading={paquete !== null} disabled={total === 0}
-            title="ZIP con las facturas escaneadas y los comprobantes de pago, por mes, para pasarle al contador.">
-            🗂 Paquete contador
-          </Button>
-          {paquete !== null && paquete.total > 0 && (
-            <span className="text-xs text-gris-dark tabular-nums">
-              Bajando {paquete.hechos}/{paquete.total}…
-            </span>
-          )}
         </div>
       </div>
 

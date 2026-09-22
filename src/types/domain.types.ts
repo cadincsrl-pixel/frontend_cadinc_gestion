@@ -2737,17 +2737,17 @@ export type PagosChequeNuevo = Omit<PagosCheque, 'id'>
 /**
  * El manifiesto del paquete para el contador: qué archivos hay y dónde
  * bajarlos. El backend NO manda el ZIP — manda las URLs firmadas a 15 minutos
- * y el navegador arma el ZIP, así el server no se come un mes de PDFs.
+ * y el navegador arma el ZIP, así el server no se come un período de PDFs.
+ *
+ * El eje es la ORDEN DE PAGO, no la factura: el contador concilia por lo que
+ * salió del banco en el período. Una factura de agosto pagada en septiembre
+ * entra en septiembre.
  */
 export interface PagosPaqueteArchivo {
-  entidad:        'facturas' | 'ordenes'
-  entidad_id:     number
   adjunto_id:     number
   tipo:           string
-  /** 'factura' = papel de la factura; 'pago' = comprobante de la OP que la saldó. */
+  /** 'factura' = papel de la factura; 'pago' = comprobante con el que salió la plata. */
   origen:         'factura' | 'pago'
-  /** Solo con origen 'pago'. */
-  op_numero:      number | null
   nombre_archivo: string
   mime_type:      string
   size_bytes:     number
@@ -2755,21 +2755,39 @@ export interface PagosPaqueteArchivo {
   url:            string | null
 }
 
+/** Una factura cubierta por esa OP, con lo que ESTA OP le aplicó. */
 export interface PagosPaqueteFactura {
   id:               number
-  tipo_comprobante: PagosTipoComprobante
+  tipo_comprobante: PagosTipoComprobante | null
   numero:           string | null
-  fecha:            string
-  proveedor_nom:    string
-  proveedor_cuit:   string | null
-  total:            number
-  estado:           PagosEstadoFactura
+  fecha:            string | null
+  total:            number | null
+  estado:           PagosEstadoFactura | null
+  descripcion:      string
+  /** Lo aplicado por esta OP. En un pago parcial es menos que el total. */
+  aplicado:         number
   archivos:         PagosPaqueteArchivo[]
+}
+
+export interface PagosPaqueteOrden {
+  id:             number
+  numero:         number
+  numero_fmt:     string
+  fecha:          string
+  forma_pago:     PagosFormaPagoOPGuardada
+  estado:         PagosEstadoOrden
+  monto_pagado:   number
+  monto_nc:       number
+  proveedor_nom:  string
+  proveedor_cuit: string | null
+  /** Comprobantes del pago (y PDFs de notas de crédito). */
+  archivos:       PagosPaqueteArchivo[]
+  facturas:       PagosPaqueteFactura[]
 }
 
 export interface PagosPaquete {
   generado_en: string
-  facturas:    PagosPaqueteFactura[]
+  ordenes:     PagosPaqueteOrden[]
 }
 
 export interface PagosOrdenExport extends PagosOrden {

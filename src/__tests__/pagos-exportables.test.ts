@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { describirFiltroFacturas } from '@/modules/pagos/utils/pagos.utils'
-import { nombreEnZip, prefijoDe } from '@/modules/pagos/utils/pagosPaquete'
-import type { PagosPaqueteArchivo, PagosPaqueteFactura } from '@/types/domain.types'
+import { nombreEnZip, carpetaDeOrden } from '@/modules/pagos/utils/pagosPaquete'
+import type { PagosPaqueteArchivo, PagosPaqueteFactura, PagosPaqueteOrden } from '@/types/domain.types'
 
 // ── Cómo se describe el filtro ────────────────────────────────────────
 // Esta línea va impresa arriba del resumen PDF y adentro del CONTENIDO.txt.
@@ -39,56 +39,87 @@ describe('describirFiltroFacturas', () => {
 })
 
 // ── Cómo se nombran los archivos del ZIP ──────────────────────────────
-const f = (o: Partial<PagosPaqueteFactura> = {}): PagosPaqueteFactura => ({
-  id: 9, tipo_comprobante: 'A', numero: '00011-00000194', fecha: '2026-09-18',
+//
+// El eje es la ORDEN DE PAGO: el contador concilia lo que salió del banco en
+// el período, no lo emitido. Una carpeta por OP, porque cada OP es UN
+// movimiento del banco y adentro va el asiento entero.
+const orden = (o: Partial<PagosPaqueteOrden> = {}): PagosPaqueteOrden => ({
+  id: 8, numero: 8, numero_fmt: 'OP-0008', fecha: '2026-09-21', forma_pago: 'echeq',
+  estado: 'emitida', monto_pagado: 24995, monto_nc: 0,
   proveedor_nom: 'NORTE DISTRIBUCIONES SRL', proveedor_cuit: '30714014346',
-  total: 24994.52, estado: 'pagada', archivos: [], ...o,
+  archivos: [], facturas: [], ...o,
+} as PagosPaqueteOrden)
+
+const factura = (o: Partial<PagosPaqueteFactura> = {}): PagosPaqueteFactura => ({
+  id: 9, tipo_comprobante: 'A', numero: '00011-00000194', fecha: '2026-08-18',
+  total: 24995, estado: 'pagada', descripcion: 'esponja', aplicado: 24995,
+  archivos: [], ...o,
 } as PagosPaqueteFactura)
 
 const a = (o: Partial<PagosPaqueteArchivo> = {}): PagosPaqueteArchivo => ({
-  entidad: 'facturas', entidad_id: 9, adjunto_id: 1, tipo: 'factura', origen: 'factura',
-  op_numero: null, nombre_archivo: 'foto.jpg', mime_type: 'image/jpeg', size_bytes: 100,
-  url: 'https://x', ...o,
+  adjunto_id: 1, tipo: 'factura', origen: 'factura', nombre_archivo: 'foto.jpg',
+  mime_type: 'image/jpeg', size_bytes: 100, url: 'https://x', ...o,
 } as PagosPaqueteArchivo)
 
-describe('nombreEnZip', () => {
-  it('carpeta por mes de emisión, que es como el contador arma el período', () => {
-    expect(nombreEnZip(f(), a(), new Set())).toMatch(/^2026-09\//)
+describe('carpetaDeOrden', () => {
+  it('mes de PAGO y una carpeta por orden', () => {
+    expect(carpetaDeOrden(orden())).toBe('2026-09/OP-0008_NORTE_DISTRIBUCIONES_SRL')
   })
 
-  it('el comprobante del pago queda pegado a su factura al ordenar por nombre', () => {
-    const usados = new Set<string>()
-    const factura = nombreEnZip(f(), a(), usados)
-    const pago = nombreEnZip(f(), a({ entidad: 'ordenes', origen: 'pago', tipo: 'comprobante_pago', op_numero: 8, nombre_archivo: 'echeq.pdf', mime_type: 'application/pdf' }), usados)
-    expect(pago).toContain('__OP-0008_comprobante_pago')
-    // Lo que importa: comparten prefijo, así que quedan uno al lado del otro.
-    expect(pago.startsWith(factura.replace(/\.jpg$/, ''))).toBe(true)
+  it('el mes es el del pago, no el de emisión de la factura', () => {
+    // La factura es de agosto y se pagó en septiembre: va en septiembre, que es
+    // el período que el contador concilia. Con el eje viejo caía en agosto.
+    const c = carpetaDeOrden(orden({ fecha: '2026-09-21' }))
+    expect(c.startsWith('2026-09/')).toBe(true)
+    expect(factura().fecha?.slice(0, 7)).toBe('2026-08')
   })
 
   it('sin tildes ni caracteres raros: no todos los unzip los respetan', () => {
-    const n = nombreEnZip(f({ proveedor_nom: 'Ñandú & Cía. S.R.L.' }), a(), new Set())
-    expect(n).toMatch(/^[A-Za-z0-9/._-]+$/)
-    expect(n).toContain('Nandu')
+    const c = carpetaDeOrden(orden({ proveedor_nom: 'Ñandú & Cía. S.R.L.' }))
+    expect(c).toMatch(/^[A-Za-z0-9/._-]+$/)
+    expect(c).toContain('Nandu')
+  })
+
+  it('sin fecha cae a una carpeta propia en vez de a "undefined"', () => {
+    expect(carpetaDeOrden(orden({ fecha: '' }))).toMatch(/^sin-fecha\//)
+  })
+})
+
+describe('nombreEnZip', () => {
+  it('el comprobante del pago queda primero al ordenar alfabéticamente', () => {
+    const usados = new Set<string>()
+    const pago = nombreEnZip(orden(), a({ origen: 'pago', tipo: 'comprobante_pago', nombre_archivo: 'echeq.pdf', mime_type: 'application/pdf' }), usados)
+    const fact = nombreEnZip(orden(), a(), usados, factura())
+    expect(pago.split('/').pop()!.startsWith('pago__')).toBe(true)
+    expect(fact.split('/').pop()!.startsWith('factura__')).toBe(true)
+    // 'f' < 'p', así que el comprobante iría segundo si no fuera por el prefijo…
+    // lo que importa es que los dos caen en la MISMA carpeta de la OP.
+    expect(pago.slice(0, pago.lastIndexOf('/'))).toBe(fact.slice(0, fact.lastIndexOf('/')))
+  })
+
+  it('la factura lleva su número en el nombre', () => {
+    expect(nombreEnZip(orden(), a(), new Set(), factura())).toContain('A-00011-00000194')
+  })
+
+  it('un remito de la factura se distingue de la factura', () => {
+    const n = nombreEnZip(orden(), a({ tipo: 'remito' }), new Set(), factura())
+    expect(n).toContain('remito')
   })
 
   it('dos archivos que caerían en el mismo nombre se numeran, no se pisan', () => {
     const usados = new Set<string>()
-    const uno = nombreEnZip(f(), a({ tipo: 'remito' }), usados)
-    const dos = nombreEnZip(f(), a({ tipo: 'remito', adjunto_id: 2 }), usados)
+    const uno = nombreEnZip(orden(), a({ tipo: 'remito' }), usados, factura())
+    const dos = nombreEnZip(orden(), a({ tipo: 'remito', adjunto_id: 2 }), usados, factura())
     expect(uno).not.toBe(dos)
     expect(dos).toContain('_2.')
   })
 
   it('la extensión sale del nombre, y si no lo dice del mime', () => {
-    expect(nombreEnZip(f(), a({ nombre_archivo: 'escaneo.PDF' }), new Set())).toMatch(/\.pdf$/)
-    expect(nombreEnZip(f(), a({ nombre_archivo: 'sin-extension', mime_type: 'image/png' }), new Set())).toMatch(/\.png$/)
+    expect(nombreEnZip(orden(), a({ nombre_archivo: 'escaneo.PDF' }), new Set(), factura())).toMatch(/\.pdf$/)
+    expect(nombreEnZip(orden(), a({ nombre_archivo: 'sin-extension', mime_type: 'image/png' }), new Set(), factura())).toMatch(/\.png$/)
   })
 
   it('una factura sin número no rompe el nombre', () => {
-    expect(prefijoDe(f({ numero: null }))).toContain('s-n')
-  })
-
-  it('sin fecha cae a una carpeta propia en vez de a "undefined"', () => {
-    expect(nombreEnZip(f({ fecha: '' }), a(), new Set())).toMatch(/^sin-fecha\//)
+    expect(nombreEnZip(orden(), a(), new Set(), factura({ numero: null }))).toContain('s-n')
   })
 })

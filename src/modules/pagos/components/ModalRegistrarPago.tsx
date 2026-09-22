@@ -357,6 +357,18 @@ export function ModalRegistrarPago({ facturaIds, onClose }: Props) {
     >
       <div className="flex flex-col gap-3 text-sm">
 
+        {/*
+          El pago parcial ya se podía hacer —«Se paga» es editable y la factura
+          queda en «Pago parcial»— pero nadie lo sabía: el dueño preguntó cómo
+          se hacía. Una línea alcanza, y va arriba de los montos, que es donde
+          se mira. (2026-09-21)
+        */}
+        <div className="text-[11px] text-gris-dark bg-gris/40 border border-gris-mid rounded px-2.5 py-1.5">
+          Podés pagar <b>una parte</b>: cambiá «Se paga» y la factura queda en <b>Pago parcial</b> con el
+          saldo que muestra «Quedaría». El resto se paga después, y <b>puede ser con otra forma</b> — cada
+          orden de pago lleva una sola forma, así que dos formas son dos órdenes.
+        </div>
+
         {/* Facturas */}
         <div className="border border-gris-mid rounded overflow-hidden">
           {filas.map(f => {

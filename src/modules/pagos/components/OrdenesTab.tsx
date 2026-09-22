@@ -12,6 +12,7 @@ import {
   fetchOrdenesExport, type PagosOrdenesFiltro,
 } from '../hooks/usePagos'
 import { exportarOrdenesPagos } from '../utils/pagosExport'
+import { ModalPaqueteContador } from './ModalPaqueteContador'
 import { useProveedoresPagos } from '../hooks/useProveedoresPagos'
 import {
   FORMAS_PAGO_OP, MAX_ADJUNTO_BYTES, MIME_ADJUNTOS, TIPOS_ADJ_FACTURA, comprobanteTxt, fmtFecha, fmtM, formaPagoLabel, hoyAR,
@@ -45,6 +46,7 @@ export function OrdenesTab() {
   function patch(p: Partial<PagosOrdenesFiltro>) { setFiltro(f => ({ ...f, ...p })); setPage(1) }
 
   const [exportando, setExportando] = useState(false)
+  const [paquete, setPaquete] = useState(false)
 
   /** Exporta lo FILTRADO, no la página: las filas las trae `/ordenes/export`, que pagina en el server. */
   async function exportar() {
@@ -118,10 +120,16 @@ export function OrdenesTab() {
           <Tilde label="Cheques en cartera" on={!!filtro.en_cartera} set={v => patch({ en_cartera: v || undefined })} />
           <Tilde label="Con nota de crédito" on={!!filtro.con_nota_credito} set={v => patch({ con_nota_credito: v || undefined })} />
         </div>
-        <div className="ml-auto pb-2">
+        <div className="ml-auto pb-2 flex gap-2 flex-wrap">
           <Button variant="secondary" size="sm" onClick={exportar} loading={exportando} disabled={total === 0}
             title="Baja TODAS las órdenes del filtro, no sólo esta página. Segunda hoja con los cheques por fecha de cobro.">
             📊 Exportar Excel
+          </Button>
+          {/* Filtro propio, no el de la pantalla: el paquete se arma por
+              período cerrado para mandarlo, no por lo que uno está mirando. */}
+          <Button variant="secondary" size="sm" onClick={() => setPaquete(true)}
+            title="ZIP con los comprobantes de pago y las facturas que cubrieron, una carpeta por orden.">
+            🗂 Paquete contador
           </Button>
         </div>
       </div>
@@ -194,6 +202,8 @@ export function OrdenesTab() {
       )}
 
       {total > PAGE_SIZE && <Pagination page={page} total={total} pageSize={PAGE_SIZE} onChange={setPage} />}
+
+      {paquete && <ModalPaqueteContador onClose={() => setPaquete(false)} />}
 
       {detalleId !== null && (
         <DetalleOrden

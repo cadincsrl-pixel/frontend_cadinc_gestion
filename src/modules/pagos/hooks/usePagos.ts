@@ -188,14 +188,18 @@ export function fetchFacturasExport(f: PagosFacturasFiltro): Promise<PagosFactur
   return apiGet<PagosFactura[]>(`/api/pagos/facturas/export?${qsFacturas(f)}`)
 }
 
-/** El manifiesto del paquete para el contador: los archivos del filtro, con URL firmada. */
-export function fetchPaqueteContador(f: PagosFacturasFiltro): Promise<PagosPaquete> {
-  return apiGet<PagosPaquete>(`/api/pagos/facturas/paquete?${qsFacturas(f)}`)
-}
-
 /** Todas las órdenes del filtro, con sus cheques, para el Excel. */
 export function fetchOrdenesExport(f: PagosOrdenesFiltro): Promise<PagosOrdenExport[]> {
   return apiGet<PagosOrdenExport[]>(`/api/pagos/ordenes/export?${qsOrdenes(f)}`)
+}
+
+/**
+ * El manifiesto del paquete para el contador. Cuelga de ÓRDENES, no de
+ * facturas: va sobre lo PAGADO en el período, que es lo que el contador
+ * concilia contra el banco.
+ */
+export function fetchPaqueteContador(f: PagosOrdenesFiltro): Promise<PagosPaquete> {
+  return apiGet<PagosPaquete>(`/api/pagos/ordenes/paquete?${qsOrdenes(f)}`)
 }
 
 export function useCrearFactura() {
