@@ -2657,6 +2657,15 @@ export interface PagosOrden {
   proveedor_cuit:    string | null
   /** Texto de las líneas: «A 0001-00012345, NC 0003-1234 s/ A 0001-00012345». */
   facturas:          string | null
+  /**
+   * Si ya se avisó por mail (20260921m). Solo cuenta un envío que SALIÓ: un
+   * fallo o un «no había dirección» no son «ya se avisó».
+   */
+  aviso_proveedor:   boolean
+  aviso_contador:    boolean
+  aviso_ultimo_at:   string | null
+  /** El mail del padrón, para saber si se puede avisar sin ir a buscarlo. */
+  proveedor_email:   string | null
   cantidad_facturas: number
   a_cuenta:          number
   tiene_nc:          boolean
@@ -2788,6 +2797,30 @@ export interface PagosPaqueteOrden {
 export interface PagosPaquete {
   generado_en: string
   ordenes:     PagosPaqueteOrden[]
+}
+
+/** Aviso de pago por mail: el resultado de un intento (20260921m). */
+export interface PagosAvisoResultado {
+  destinatario: 'proveedor' | 'contador'
+  /** `omitido` = no había dirección. No es un fallo, pero tampoco es avisado. */
+  estado:       'enviado' | 'fallado' | 'omitido'
+  email:        string | null
+  adjuntos:     string[]
+  error:        string
+}
+
+/** Una fila del registro de avisos de una orden. */
+export interface PagosAviso extends PagosAvisoResultado {
+  id:          number
+  enviado_at:  string
+  enviado_por: string | null
+}
+
+/** ¿Este servidor puede mandar mail? Si no, la UI lo dice en vez de fallar. */
+export interface PagosMailEstado {
+  configurado: boolean
+  /** Las variables que faltan, para poder decirlo sin adivinar. */
+  falta:       string[]
 }
 
 export interface PagosOrdenExport extends PagosOrden {

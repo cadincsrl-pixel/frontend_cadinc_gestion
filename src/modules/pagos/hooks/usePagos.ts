@@ -17,6 +17,7 @@ import type {
   PagosFacturasGrupo, PagosFacturasPage, PagosFacturasResumen, PagosFormaPagoOPGuardada,
   PagosFormaPrevista, PagosOrdenDetalle, PagosOrdenesEje, PagosOrdenesGrupo, PagosOrdenesPage, PagosOrdenExport, PagosPaquete,
   PagosOrdenesResumen, PagosTipoAdjFactura, PagosTipoAdjOrden, PagosTipoComprobante, PagosUploadUrlRes,
+  PagosAviso, PagosAvisoResultado, PagosMailEstado,
   RegistrarOrdenRes,
 } from '@/types/domain.types'
 
@@ -200,6 +201,42 @@ export function fetchOrdenesExport(f: PagosOrdenesFiltro): Promise<PagosOrdenExp
  */
 export function fetchPaqueteContador(f: PagosOrdenesFiltro): Promise<PagosPaquete> {
   return apiGet<PagosPaquete>(`/api/pagos/ordenes/paquete?${qsOrdenes(f)}`)
+}
+
+// ── Aviso de pago por mail (20260921m) ────────────────────────────────
+
+/** ¿El servidor puede mandar mail? Si no, el botón lo dice en vez de fallar. */
+export function useMailEstado(enabled = true) {
+  return useQuery({
+    queryKey: [...PAGOS_KEY, 'mail-estado'],
+    queryFn:  () => apiGet<PagosMailEstado>('/api/pagos/mail/estado'),
+    staleTime: 300_000,
+    enabled,
+  })
+}
+
+/** Lo que ya se mandó de esa orden, para no repetirlo a ciegas. */
+export function useAvisosDeOrden(ordenId: number | null) {
+  return useQuery({
+    queryKey: [...PAGOS_KEY, 'avisos', ordenId],
+    queryFn:  () => apiGet<PagosAviso[]>(`/api/pagos/ordenes/${ordenId}/avisos`),
+    enabled:  ordenId !== null,
+  })
+}
+
+/**
+ * Manda el aviso. NO lanza por un fallo de correo: devuelve un resultado por
+ * destinatario, y la pantalla muestra cuál salió y cuál no.
+ */
+export function useAvisarPago() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...body }: {
+      id: number; a_proveedor?: boolean; a_contador?: boolean
+      email_proveedor?: string; guardar_email?: boolean
+    }) => apiPost<{ resultados: PagosAvisoResultado[] }>(`/api/pagos/ordenes/${id}/avisar`, body),
+    onSuccess: () => invalidarPagos(qc),
+  })
 }
 
 export function useCrearFactura() {

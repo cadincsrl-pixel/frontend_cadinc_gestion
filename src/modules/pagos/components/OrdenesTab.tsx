@@ -13,6 +13,7 @@ import {
 } from '../hooks/usePagos'
 import { exportarOrdenesPagos } from '../utils/pagosExport'
 import { ModalPaqueteContador } from './ModalPaqueteContador'
+import { ModalAvisarPago } from './ModalAvisarPago'
 import { useProveedoresPagos } from '../hooks/useProveedoresPagos'
 import {
   FORMAS_PAGO_OP, MAX_ADJUNTO_BYTES, MIME_ADJUNTOS, TIPOS_ADJ_FACTURA, comprobanteTxt, fmtFecha, fmtM, formaPagoLabel, hoyAR,
@@ -228,6 +229,7 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, verPii, toast }: {
   const subir  = useSubirAdjuntoPagos()
   const [motivo, setMotivo] = useState('')
   const [pidiendo, setPidiendo] = useState(false)
+  const [avisando, setAvisando] = useState(false)
 
   if (isLoading || !o) {
     return <Modal open onClose={onClose} title="Orden de pago" width="max-w-2xl">
@@ -389,7 +391,23 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, verPii, toast }: {
                 }} />
             </label>
           )}
+          {/* Avisar por mail. Con un clic, no automático al emitir: de 9
+              proveedores 1 tiene mail cargado, y un mail con datos de pago no
+              se desmanda. El modal muestra a qué dirección va. (20260921m) */}
+          {o.estado === 'emitida' && puedeSubir && (
+            <Button variant="secondary" size="sm" className="ml-2" onClick={() => setAvisando(true)}
+              title="Manda el comprobante al proveedor y el par completo al contador. Muestra antes a qué dirección.">
+              ✉ Avisar del pago
+              {(o.aviso_proveedor || o.aviso_contador) && (
+                <span className="ml-1 text-[10px] opacity-75">
+                  ({[o.aviso_proveedor && 'proveedor', o.aviso_contador && 'contador'].filter(Boolean).join(' y ')} ✓)
+                </span>
+              )}
+            </Button>
+          )}
         </div>
+
+        {avisando && <ModalAvisarPago orden={o} onClose={() => setAvisando(false)} />}
 
         {pidiendo && (
           <div className="border-t border-gris pt-3">
