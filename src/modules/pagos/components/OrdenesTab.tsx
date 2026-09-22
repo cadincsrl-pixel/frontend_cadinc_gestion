@@ -13,7 +13,7 @@ import {
 } from '../hooks/usePagos'
 import { useProveedoresPagos } from '../hooks/useProveedoresPagos'
 import {
-  FORMAS_PAGO_OP, MAX_ADJUNTO_BYTES, MIME_ADJUNTOS, comprobanteTxt, fmtFecha, fmtM, formaPagoLabel, hoyAR,
+  FORMAS_PAGO_OP, MAX_ADJUNTO_BYTES, MIME_ADJUNTOS, TIPOS_ADJ_FACTURA, comprobanteTxt, fmtFecha, fmtM, formaPagoLabel, hoyAR,
 } from '../utils/pagos.utils'
 import { mensajeErrorPagos } from '../utils/pagos.errores'
 
@@ -299,6 +299,21 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, verPii, toast }: {
                           </span>
                         )}
                         {l.factura?.descripcion && <span className="block text-[10px] text-gris-dark">{l.factura.descripcion}</span>}
+                        {/* La factura escaneada, acá mismo. Antes sólo se podía
+                            abrir el comprobante del PAGO (abajo, en la OP) y
+                            para ver la factura había que ir a buscarla al otro
+                            tab, que es justo el par que se mira junto. */}
+                        {(l.factura?.adjuntos ?? []).map(a => (
+                          <button key={a.id} type="button"
+                            className="mt-0.5 mr-2 text-[10px] text-azul hover:underline"
+                            title={`${a.nombre_archivo} · ${TIPOS_ADJ_FACTURA.find(t => t.key === a.tipo)?.label ?? a.tipo}`}
+                            onClick={() => abrirAdjuntoFirmado(
+                              () => fetchPagosAdjuntoSignedUrl('facturas', a.factura_id, a.id),
+                              () => toast('No se pudo abrir el archivo', 'err'),
+                            )}>
+                            📄 {TIPOS_ADJ_FACTURA.find(t => t.key === a.tipo)?.label ?? a.tipo}
+                          </button>
+                        ))}
                       </>
                     )}
                   </td>
@@ -311,7 +326,7 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, verPii, toast }: {
 
         {/* Adjuntos */}
         <div className="border-t border-gris pt-2">
-          <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wide mb-1">Comprobantes</div>
+          <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wide mb-1">Comprobantes del pago</div>
           {o.adjuntos.length === 0 && <div className="text-xs text-gris-dark italic mb-1">Sin archivos.</div>}
           <ul className="flex flex-col gap-1 mb-2">
             {o.adjuntos.map(a => (

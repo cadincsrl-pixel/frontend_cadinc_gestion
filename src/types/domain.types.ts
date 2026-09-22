@@ -2688,7 +2688,26 @@ export interface PagosOrdenLinea {
     total:            number
     estado:           PagosEstadoFactura
     descripcion:      string
+    /**
+     * Los papeles de LA FACTURA (20260921). No son los de la orden: el
+     * comprobante del pago y las notas de crédito cuelgan de la OP, la factura
+     * escaneada cuelga de la factura. Desde la OP hay que poder abrir las dos
+     * —es el par que se mira junto— y hasta hoy sólo se veía el comprobante.
+     * Shape reducido: lo justo para listarlos y pedir la URL firmada.
+     */
+    adjuntos: PagosAdjuntoDeFactura[]
   } | null
+}
+
+/** Un papel de la factura, visto desde la orden de pago. */
+export interface PagosAdjuntoDeFactura {
+  id:             number
+  factura_id:     number
+  tipo:           PagosTipoAdjFactura
+  nombre_archivo: string
+  mime_type:      string
+  size_bytes:     number
+  created_at:     string
 }
 
 /**

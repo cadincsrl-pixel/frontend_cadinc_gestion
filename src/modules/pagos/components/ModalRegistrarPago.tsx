@@ -60,6 +60,33 @@ const chequeVacio = (fecha_cobro: string, monto: string): ChequeFila =>
   ({ numero: '', banco: '', fecha_cobro, monto, es_propio: true, librador: '' })
 
 /**
+ * Con qué forma arranca el modal (2026-09-21).
+ *
+ * Pedido del dueño: «cuando cargo un pago no está por defecto el formulario
+ * según la solicitud de pago, está medio confuso». Tenía razón — arrancaba
+ * fijo en «Transferencia» aunque la factura dijera otra cosa, así que la
+ * forma prevista que se eligió al cargarla no servía para nada al pagar y
+ * había que volver a elegirla de memoria.
+ *
+ * Se usa la prevista SÓLO si todas las facturas de la OP coinciden. Una OP
+ * puede cubrir varias facturas, y si preveían formas distintas adivinar sería
+ * peor que no adivinar: queda el default y lo elige la persona.
+ *
+ * `cta_cte` no está en FORMAS_PAGO_OP a propósito (quedar en cuenta corriente
+ * no es un pago), así que cae al default. Es justamente la factura que llega
+ * al momento de pagarse y todavía no sabe con qué se va a pagar.
+ */
+const FORMA_POR_DEFECTO: PagosFormaPagoOP = 'transferencia'
+
+export function formaSegunLoPrevisto(facturas: PagosFactura[]): PagosFormaPagoOP {
+  if (facturas.length === 0) return FORMA_POR_DEFECTO
+  const previstas = new Set(facturas.map(f => f.forma_pago_prevista))
+  if (previstas.size !== 1) return FORMA_POR_DEFECTO
+  const unica = [...previstas][0]
+  return FORMAS_PAGO_OP.some(f => f.key === unica) ? (unica as PagosFormaPagoOP) : FORMA_POR_DEFECTO
+}
+
+/**
  * Lo tipeado → número. Usa el MISMO parser que `InputMonto` (2026-09-21), así
  * el punto del teclado numérico y la coma dan lo mismo en todo el sistema.
  * Antes acá el punto era separador de MILES: tipear "24994.52" daba
@@ -94,7 +121,9 @@ export function ModalRegistrarPago({ facturaIds, onClose }: Props) {
 
   const [filas, setFilas] = useState<FilaFactura[]>([])
   const [aCuenta, setACuenta] = useState('')
-  const [forma, setForma] = useState<PagosFormaPagoOP>('transferencia')
+  const [forma, setForma] = useState<PagosFormaPagoOP>(FORMA_POR_DEFECTO)
+  // Una vez que la persona elige, el default no vuelve a pisarla.
+  const [formaElegida, setFormaElegida] = useState(false)
   const [fecha, setFecha] = useState(hoyAR())
   const [cheques, setCheques] = useState<ChequeFila[]>([])
   // Cómo se reparte el pago en cheques (2026-09-21). Son tres preguntas que el
@@ -117,8 +146,18 @@ export function ModalRegistrarPago({ facturaIds, onClose }: Props) {
     setFilas(elegidas.map(f => ({ factura: f, monto: String(f.saldo), nc: null })))
   }, [elegidas, filas.length])
 
+  // Y con la forma que la factura ya tenía prevista. Las facturas llegan
+  // async, así que esto no puede ser el useState inicial.
+  useEffect(() => {
+    if (elegidas.length === 0 || formaElegida) return
+    setForma(formaSegunLoPrevisto(elegidas))
+  }, [elegidas, formaElegida])
+
   const proveedorId = elegidas[0]?.proveedor_id ?? null
   const { data: proveedor } = useProveedorPagos(proveedorId)
+
+  // Para avisar que la forma no la eligió la persona: la trajo la factura.
+  const vieneDeLoPrevisto = !formaElegida && elegidas.length > 0 && forma === formaSegunLoPrevisto(elegidas)
 
   const totalPlata = r2(filas.reduce((s, f) => s + n(f.monto), 0) + n(aCuenta))
   const totalNc    = r2(filas.reduce((s, f) => s + (f.nc ? n(f.nc.monto) : 0), 0))
@@ -412,8 +451,10 @@ export function ModalRegistrarPago({ facturaIds, onClose }: Props) {
 
         {/* Datos del pago */}
         <div className="border-t border-gris pt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <Campo label="Forma">
-            <select value={forma} onChange={e => setForma(e.target.value as PagosFormaPagoOP)} disabled={soloNc} className={inputCls}>
+          <Campo label="Forma" hint={vieneDeLoPrevisto ? 'Lo previsto en la factura' : undefined}>
+            <select value={forma}
+              onChange={e => { setFormaElegida(true); setForma(e.target.value as PagosFormaPagoOP) }}
+              disabled={soloNc} className={inputCls}>
               {FORMAS_PAGO_OP.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
             </select>
           </Campo>
