@@ -52,40 +52,56 @@ interface InputMontoProps {
  * el modal de comprar exigía coma y el de cargar el precio de un enviado
  * exigía punto, en el mismo módulo.
  *
- * El punto es ambiguo en es-AR, así que se decide por la FORMA, no por gusto:
- *
+ * El punto es ambiguo en es-AR, así que se decide por la FORMA, no por gusto.
  * La regla es UNA sola y se aplica al ÚLTIMO punto:
  *
  *   hay una coma          → la coma manda, TODOS los puntos son miles ("1.234,56")
- *   el último punto tiene
- *     3 dígitos detrás y
- *     algo adelante       → es de miles, no hay decimal ("1.234", "1.234.567")
+ *   detrás del último
+ *     punto hay MÁS
+ *     dígitos que
+ *     decimales permitidos
+ *     (y hay algo adelante) → ese punto es de MILES ("1.234", "2.5000")
  *   cualquier otro caso   → el último punto es el DECIMAL y los anteriores son
  *                           de miles ("24994.52", "24.995.52", "1.5", "1000.")
  *
- * Mirar el ÚLTIMO, y no exigir que haya uno solo, es lo que arregla el caso
- * que reportó el dueño el 2026-09-21: el campo ya mostraba "24.995" con su
- * punto de miles, tipeó ".52" al final y quedó "24.995.52" — que la regla
- * anterior leía como DOS separadores de miles, o sea $2.499.552. Cien veces de
- * más, y justo en el total de una factura. Con la coma andaba; con el punto,
- * que es el del teclado numérico, no.
+ * El criterio es ése y no otro porque detrás de un punto decimal no pueden
+ * entrar más dígitos que los decimales que el campo acepta. Si hay más, ese
+ * punto no puede ser el decimal: es de miles.
+ *
+ * DOS BUGS DEL MISMO DÍA, los dos por leer mal el punto, se arreglan acá:
+ *
+ * 1. Mirar el ÚLTIMO punto (y no exigir que haya uno solo). El campo mostraba
+ *    "24.995" con su punto de miles, el dueño tipeó ".52" y quedó
+ *    "24.995.52", que la regla vieja leía como DOS separadores de miles:
+ *    $2.499.552.
+ *
+ * 2. Contar los dígitos de atrás en vez de exigir EXACTAMENTE 3. Este es el
+ *    feo, porque rompía el caso más común que hay: tipear un monto de cinco
+ *    cifras desde cero. Al cuarto dígito el campo mete su propio punto de
+ *    miles ("2.500"); el quinto cae detrás ("2.5000"), y como 4 no es 3 la
+ *    regla lo tomaba por decimal y truncaba a dos: **$2,50**. O sea que TODO
+ *    monto de 10.000 para arriba tipeado de cero salía mal —25000 → 2,50,
+ *    138382 → 1,38— desde que existe este componente, esa misma mañana.
+ *    Lo encontró el dueño queriendo registrar un pago de 25.000.
  *
  * El caso feo sería "1.234" queriendo decir un peso con 234 milésimas, pero
  * los montos llevan dos decimales: no existe.
  */
-export function normalizarDecimal(texto: string): string {
+export function normalizarDecimal(texto: string, decimales = 2): string {
   if (texto.includes(',')) return texto
   const i = texto.lastIndexOf('.')
   if (i < 0) return texto
   const detras   = texto.slice(i + 1).replace(/\D/g, '')
   const adelante = texto.slice(0, i).replace(/\D/g, '')
-  if (detras.length === 3 && adelante.length > 0) return texto   // "1.234" son mil doscientos treinta y cuatro
+  // Más dígitos de los que entran como decimales ⇒ el punto es de miles.
+  // Cubre "1.234" (mil doscientos treinta y cuatro) y "2.5000" (veinticinco mil).
+  if (detras.length > decimales && adelante.length > 0) return texto
   return texto.slice(0, i) + ',' + texto.slice(i + 1)
 }
 
 /** "1.234,56" o "1234.56" (lo que sea que tipearon) → "1234.56" formato máquina. */
 export function aRaw(textoCrudo: string, decimales: number): string {
-  const texto = decimales > 0 ? normalizarDecimal(textoCrudo) : textoCrudo
+  const texto = decimales > 0 ? normalizarDecimal(textoCrudo, decimales) : textoCrudo
   // Los puntos que quedan son miles (se descartan); la coma es el decimal.
   const limpio = texto.replace(/\./g, '')
   const [ent, ...resto] = limpio.split(',')
@@ -110,7 +126,7 @@ export function aDisplay(value: string | number | null | undefined): string {
 export function reformatear(textoCrudo: string, decimales: number): string {
   // La normalización va primero: si tipearon "1234." ese punto ya es la coma
   // colgante, y sin esto el separador desaparecía apenas se escribía.
-  const texto = decimales > 0 ? normalizarDecimal(textoCrudo) : textoCrudo
+  const texto = decimales > 0 ? normalizarDecimal(textoCrudo, decimales) : textoCrudo
   const raw = aRaw(texto, decimales)
   const base = aDisplay(raw)
   const comaColgante = decimales > 0 && /,\D*$/.test(texto) && !raw.includes('.')

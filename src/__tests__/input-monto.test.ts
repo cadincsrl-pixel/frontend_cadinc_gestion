@@ -114,10 +114,19 @@ describe('el punto del teclado numérico también separa decimales (2026-09-21)'
     expect(aRaw('1.234,56', 2)).toBe('1234.56')
   })
 
-  it('más de dos decimales se recortan, venga con punto o con coma', () => {
-    expect(aRaw('10.999', 2)).toBe('10999')     // 3 dígitos = miles
-    expect(aRaw('10.9999', 2)).toBe('10.99')    // 4 dígitos = decimal recortado
+  it('más de dos decimales se recortan SOLO si el separador es la coma', () => {
     expect(aRaw('10,9999', 2)).toBe('10.99')
+  })
+
+  // Esta expectativa estaba al revés y era el bug: decía que 4 dígitos detrás
+  // del punto eran «decimal recortado» (10.9999 → 10,99). Detrás de un punto
+  // decimal no pueden entrar más dígitos que los decimales permitidos, así que
+  // 4 dígitos significan que ese punto es de MILES. Leerlo como decimal es lo
+  // que hacía que tipear 25000 diera $2,50.
+  it('más dígitos detrás del punto que decimales permitidos ⇒ el punto es de miles', () => {
+    expect(aRaw('10.999', 2)).toBe('10999')
+    expect(aRaw('10.9999', 2)).toBe('109999')
+    expect(aRaw('2.5000', 2)).toBe('25000')
   })
 
   it('con decimales = 0 el punto sigue siendo miles', () => {
@@ -175,5 +184,51 @@ describe('tipear el decimal cuando el campo YA muestra los miles (2026-09-21)', 
     const pasos = ['24.995', '24.995.', '24.995.5', '24.995.52']
     expect(pasos.map(p => reformatear(p, 2))).toEqual(['24.995', '24.995,', '24.995,5', '24.995,52'])
     expect(aRaw('24.995.52', 2)).toBe('24995.52')
+  })
+})
+
+// El test que faltaba: TIPEAR, tecla por tecla, que es lo que hace una
+// persona. Los casos de arriba prueban strings sueltos y por eso dejaron
+// pasar el bug de los 5 dígitos: el string intermedio "2.5000" nunca se
+// escribió a mano en un test porque nadie lo tipea a propósito — lo arma el
+// propio campo al meter su punto de miles al cuarto dígito.
+describe('tipear un monto desde cero, tecla por tecla', () => {
+  /**
+   * Lo que se ve en pantalla después de tipear `teclas` en un campo vacío.
+   * Usa `reformatear`, que es lo que el componente le pasa al input en cada
+   * tecla — `aDisplay(aRaw(...))` se come la coma colgante y no simula tipear.
+   */
+  const tipear = (teclas: string, decimales = 2) =>
+    [...teclas].reduce((display, t) => reformatear(display + t, decimales), '')
+
+  it('montos de cinco y seis cifras (el bug del 2026-09-21)', () => {
+    expect(tipear('25000')).toBe('25.000')     // daba "2,50"
+    expect(tipear('12345')).toBe('12.345')     // daba "1,23"
+    expect(tipear('138382')).toBe('138.382')   // daba "1,38"
+    expect(tipear('1500000')).toBe('1.500.000')
+  })
+
+  it('hasta cuatro cifras andaba, y tiene que seguir andando', () => {
+    expect(tipear('9')).toBe('9')
+    expect(tipear('99')).toBe('99')
+    expect(tipear('999')).toBe('999')
+    expect(tipear('9999')).toBe('9.999')
+  })
+
+  it('con centavos, tanto con punto como con coma', () => {
+    expect(tipear('24994.52')).toBe('24.994,52')
+    expect(tipear('24994,52')).toBe('24.994,52')
+    expect(tipear('138382.40')).toBe('138.382,40')
+  })
+
+  it('y el raw que viaja al form es el número de verdad', () => {
+    const raw = (teclas: string) =>
+      [...teclas].reduce((d, t) => reformatear(d + t, 2), '')
+    expect(aRaw(raw('25000'), 2)).toBe('25000')
+    expect(Number(aRaw(raw('138382.40'), 2))).toBe(138382.4)
+  })
+
+  it('en un campo de enteros (decimales = 0) el punto nunca es decimal', () => {
+    expect(tipear('25000', 0)).toBe('25.000')
   })
 })
