@@ -48,7 +48,13 @@ export interface ExportMeta {
   generadoEn:   Date
   obraCod:      string
   obraNom:      string
+  /**
+   * Centro de costo de la obra para Caja: desde el 2026-09-23 es la obra misma
+   * (su nombre, que es la opción que ofrece Caja), ya no `obras.cc`.
+   */
   obraCC:       string | null
+  /** El cliente de la obra (razón social), para los resúmenes. */
+  obraCliente?: string | null
   /** "Todo el historial" | "Semana del Vie 13/3" | "Vie 13/3 → Jue 19/3" */
   periodoLabel: string
   esRango:      boolean

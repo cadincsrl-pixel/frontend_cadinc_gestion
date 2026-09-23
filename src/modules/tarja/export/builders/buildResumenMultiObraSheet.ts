@@ -24,7 +24,7 @@ const SHEET_NAME = 'Resumen Multi-Obra'
 const HEADERS = [
   'Código',
   'Obra',
-  'Centro Costo',
+  'Cliente',
   'Jornales',
   'Horas reg.',
   'Hs extras',
@@ -81,7 +81,7 @@ export function buildResumenMultiObraSheet(wb: ExcelJS.Workbook, datas: ExportDa
     r.getCell(COL.OBRA).value = data.meta.obraNom
     r.getCell(COL.OBRA).alignment = { horizontal: 'left', vertical: 'middle' }
 
-    r.getCell(COL.CC).value = data.meta.obraCC ?? ''
+    r.getCell(COL.CC).value = data.meta.obraCliente ?? ''
     r.getCell(COL.CC).alignment = { horizontal: 'left', vertical: 'middle' }
 
     r.getCell(COL.JORNALES).value  = data.totalesObra.jornales

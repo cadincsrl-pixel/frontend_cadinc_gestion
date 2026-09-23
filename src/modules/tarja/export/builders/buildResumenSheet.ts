@@ -38,9 +38,9 @@ export function buildResumenSheet(wb: ExcelJS.Workbook, data: ExportData): void 
   const tituloObra = `RESUMEN — ${data.meta.obraNom} (${data.meta.obraCod})`
   applyTitle(ws, tituloObra, 2)
 
-  // Fila 2: subtítulo con CC + período + fecha generación.
+  // Fila 2: subtítulo con el cliente + período + fecha generación.
   const partesSub: string[] = []
-  if (data.meta.obraCC) partesSub.push(`CC ${data.meta.obraCC}`)
+  if (data.meta.obraCliente) partesSub.push(`Cliente ${data.meta.obraCliente}`)
   partesSub.push(`Período: ${data.meta.periodoLabel}`)
   partesSub.push(`Generado el ${formatGeneradoEn(data.meta.generadoEn)}`)
   applySubtitle(ws, partesSub.join('  ·  '), 2)
