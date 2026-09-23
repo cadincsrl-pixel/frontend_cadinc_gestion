@@ -93,18 +93,21 @@ const DROPDOWN_HEIGHT = 208
  * visible; y el ✕ de limpiar, sin tipo, borraba el valor del primer
  * Combobox del formulario.
  */
-export function OptionButton({ o, selected, onSelect }: {
+export function OptionButton({ o, selected, onSelect, onPress }: {
   o: ComboboxOption
   selected: boolean
-  onSelect: (v: string) => void
+  /** `teclado`: el click vino de Enter/Espacio sobre la opción (sin mouse). */
+  onSelect: (v: string, teclado: boolean) => void
+  /** Se llama en el mousedown: marca en qué opción se apretó. */
+  onPress?: (v: string) => void
 }) {
   return (
     <button
       type="button"
       // Sin esto el input pierde el foco en el mousedown y, en mobile, el
       // teclado se cierra y mueve todo antes del click.
-      onMouseDown={e => e.preventDefault()}
-      onClick={() => onSelect(o.value)}
+      onMouseDown={e => { e.preventDefault(); onPress?.(o.value) }}
+      onClick={e => onSelect(o.value, e.detail === 0)}
       className={`
         w-full text-left px-4 py-2.5 text-sm transition-colors border-b border-gris last:border-0
         hover:bg-naranja-light hover:text-naranja-dark
@@ -124,17 +127,30 @@ export function OptionButton({ o, selected, onSelect }: {
   )
 }
 
+/**
+ * ¿El click sobre `val` elige? Solo si el mouse se apretó sobre esa misma
+ * opción, o si vino del teclado (Enter/Espacio sobre la opción enfocada).
+ */
+export function clickElige(apretada: string | null, val: string, teclado: boolean): boolean {
+  return teclado || apretada === val
+}
+
 /** Suelta el foco del elemento activo (el input del Combobox tras elegir). */
 function soltarFoco() {
   const el = typeof document !== 'undefined' ? document.activeElement : null
   if (el instanceof HTMLElement) el.blur()
 }
 
-function renderOptions(filtered: ComboboxOption[], value: string, onSelect: (v: string) => void) {
+function ListaOpciones({ filtered, value, onSelect, onPress }: {
+  filtered: ComboboxOption[]
+  value: string
+  onSelect: (v: string, teclado: boolean) => void
+  onPress: (v: string) => void
+}) {
   const anyGrouped = filtered.some(o => o.group)
   if (!anyGrouped) {
     return filtered.map(o => (
-      <OptionButton key={o.value} o={o} selected={o.value === value} onSelect={onSelect} />
+      <OptionButton key={o.value} o={o} selected={o.value === value} onSelect={onSelect} onPress={onPress} />
     ))
   }
   // Agrupar manteniendo el orden de primera aparición de cada grupo.
@@ -151,7 +167,7 @@ function renderOptions(filtered: ComboboxOption[], value: string, onSelect: (v: 
         {g.name}
       </div>
       {g.items.map(o => (
-        <OptionButton key={o.value} o={o} selected={o.value === value} onSelect={onSelect} />
+        <OptionButton key={o.value} o={o} selected={o.value === value} onSelect={onSelect} onPress={onPress} />
       ))}
     </div>
   ))
@@ -166,6 +182,15 @@ export function Combobox({
   const [flipUp, setFlipUp] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLInputElement>(null)
+  // En qué opción se apretó el mouse. El click solo elige si cae sobre ESA
+  // misma opción (2026-09-23): si entre el mousedown y el click la lista se
+  // redibuja —el input pierde el foco un instante (un gestor de contraseñas,
+  // por ejemplo), el onFocus vacía el filtro y aparece la lista COMPLETA—, el
+  // click cae sobre la fila que quedó debajo del puntero, que es la primera de
+  // la lista completa. Así se eligieron «9 DE JULIO 882» en vez de «CLINICA
+  // HERAS» y «CLIENTE PRUEBA» en vez de «CONSUMIDOR FINAL PRUEBA» en
+  // Facturación. Mejor no elegir nada que elegir otra cosa.
+  const apretada = useRef<string | null>(null)
 
   // Texto visible: si hay valor seleccionado, mostrar su label.
   // En modo freeText, si el value no matchea ningún option, igual lo
@@ -230,6 +255,16 @@ export function Combobox({
     setFlipUp(spaceBelow < DROPDOWN_HEIGHT && spaceAbove > spaceBelow)
   }, [open])
 
+  function marcarApretada(val: string) {
+    apretada.current = val
+  }
+
+  function elegirDesdeLista(val: string, teclado: boolean) {
+    const ok = clickElige(apretada.current, val, teclado)
+    apretada.current = null
+    if (ok) handleSelect(val)
+  }
+
   function handleSelect(val: string) {
     onChange(val)
     setOpen(false)
@@ -292,7 +327,9 @@ export function Combobox({
           disabled={disabled}
           value={open ? query : (selected?.label ?? '')}
           onChange={handleInputChange}
-          onFocus={() => { setOpen(true); setQuery('') }}
+          // Si la lista ya está abierta (el foco se fue y volvió), no se vacía el
+          // filtro: eso redibujaba la lista completa debajo del puntero.
+          onFocus={() => { if (!open) { setOpen(true); setQuery('') } }}
           placeholder={placeholder}
           // Es un buscador, no un campo de formulario real: cortamos el autofill
           // del navegador y de los gestores de contraseñas (1Password/LastPass),
@@ -339,7 +376,7 @@ export function Combobox({
                   Nada coincide exacto. Lo más parecido:
                 </div>
               )}
-              {renderOptions(filtered, value, handleSelect)}
+              <ListaOpciones filtered={filtered} value={value} onSelect={elegirDesdeLista} onPress={marcarApretada} />
               {showCreate && (
                 <button
                   type="button"

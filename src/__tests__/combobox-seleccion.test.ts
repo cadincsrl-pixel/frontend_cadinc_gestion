@@ -4,18 +4,19 @@
 // Sin DOM en los tests: se inspecciona el elemento que devuelve el componente.
 import { describe, expect, it, vi } from 'vitest'
 import type { ReactElement } from 'react'
-import { OptionButton } from '@/components/ui/Combobox'
+import { OptionButton, clickElige } from '@/components/ui/Combobox'
 
 type Props = {
   type?: string
-  onClick?: () => void
+  onClick?: (e: { detail: number }) => void
   onMouseDown?: (e: { preventDefault: () => void }) => void
 }
 
 function render(value: string) {
   const onSelect = vi.fn()
-  const el = OptionButton({ o: { value, label: value }, selected: false, onSelect }) as ReactElement<Props>
-  return { el, onSelect }
+  const onPress = vi.fn()
+  const el = OptionButton({ o: { value, label: value }, selected: false, onSelect, onPress }) as ReactElement<Props>
+  return { el, onSelect, onPress }
 }
 
 describe('Combobox · OptionButton', () => {
@@ -23,17 +24,37 @@ describe('Combobox · OptionButton', () => {
     expect(render('CC CLINICA HERAS').el.props.type).toBe('button')
   })
 
-  it('el mousedown NO elige (solo evita que el input pierda el foco)', () => {
-    const { el, onSelect } = render('CC-013')
+  it('el mousedown NO elige: evita que el input pierda el foco y marca la opción apretada', () => {
+    const { el, onSelect, onPress } = render('CC-013')
     const preventDefault = vi.fn()
     el.props.onMouseDown?.({ preventDefault })
     expect(preventDefault).toHaveBeenCalled()
+    expect(onPress).toHaveBeenCalledWith('CC-013')
     expect(onSelect).not.toHaveBeenCalled()
   })
 
-  it('el click elige ESA opción', () => {
+  it('el click pasa ESA opción y si vino del mouse o del teclado', () => {
     const { el, onSelect } = render('CC CLINICA HERAS')
-    el.props.onClick?.()
-    expect(onSelect).toHaveBeenCalledWith('CC CLINICA HERAS')
+    el.props.onClick?.({ detail: 1 })
+    expect(onSelect).toHaveBeenCalledWith('CC CLINICA HERAS', false)
+    el.props.onClick?.({ detail: 0 })
+    expect(onSelect).toHaveBeenLastCalledWith('CC CLINICA HERAS', true)
+  })
+})
+
+describe('Combobox · el click solo elige la opción donde se apretó', () => {
+  // El bug: entre el mousedown y el click la lista se redibujaba completa y el
+  // click caía sobre la primera fila («9 DE JULIO 882», «CLIENTE PRUEBA»).
+  it('apretar en una opción y soltar sobre otra NO elige', () => {
+    expect(clickElige('CC CLINICA HERAS', 'CC-013', false)).toBe(false)
+  })
+  it('sin mousedown previo (lista redibujada) NO elige', () => {
+    expect(clickElige(null, 'CC-013', false)).toBe(false)
+  })
+  it('apretar y soltar sobre la misma opción elige', () => {
+    expect(clickElige('CC CLINICA HERAS', 'CC CLINICA HERAS', false)).toBe(true)
+  })
+  it('Enter o Espacio sobre la opción enfocada elige', () => {
+    expect(clickElige(null, 'CC-013', true)).toBe(true)
   })
 })
