@@ -92,6 +92,13 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
     { key: 'pagos',       label: 'Pagos',       icon: '💸', meta: 'Órdenes de pago y cheques' },
     { key: 'proveedores', label: 'Proveedores', icon: '🏢', meta: 'CUIT, alias y CBU' },
   ],
+  // Facturación electrónica de venta (fase 1, 20260924). El orden importa:
+  // `FacturacionPage` redirige al primer tab permitido.
+  facturacion: [
+    { key: 'facturas',  label: 'Facturas',  icon: '🧮', meta: 'Factura A y nota de crédito A contra ARCA' },
+    { key: 'clientes',  label: 'Clientes',  icon: '🏢', meta: 'CUIT, condición IVA y obras' },
+    { key: 'finnegans', label: 'Finnegans', icon: '📥', meta: 'Autorizadas pendientes de cargar' },
+  ],
   aridos: [
     { key: 'ventas',     label: 'Ventas',     icon: '🛒', meta: 'Ventas por m³ y retiros de escombro' },
     { key: 'cuenta-corriente', label: 'Cuenta corriente', icon: '💰', meta: 'Vendido, cobrado y saldo por cliente' },

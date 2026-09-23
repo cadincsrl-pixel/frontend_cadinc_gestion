@@ -1,0 +1,540 @@
+'use client'
+
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Controller, useFieldArray, useForm, useWatch, type FieldPath } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
+import { Select } from '@/components/ui/Select'
+import { Combobox } from '@/components/ui/Combobox'
+import { InputMonto } from '@/components/ui/InputMonto'
+import { useToast } from '@/components/ui/Toast'
+import { usePermisos } from '@/hooks/usePermisos'
+import { normalizeText } from '@/lib/utils/text'
+import {
+  useCentrosCosto, useCondicionesIva, useCrearFacturaVenta, useEditarFacturaVenta, useFacturaVenta,
+  useObrasFacturacion,
+} from '../hooks/useFacturacion'
+import { useClientesVenta } from '../hooks/useClientesFacturacion'
+import { calcularTotales } from '../utils/facturacion.calculos'
+import {
+  ALICUOTAS_UI, ALICUOTA_LABEL, CONDICIONES_IVA, CONDICION_PAGO_DEFAULT, PRODUCTOS, PROVINCIAS, PROVINCIA_DEFAULT,
+  UNIDAD_DEFAULT, admiteFacturaA, fmtCuit, fmtM, hoyAR,
+} from '../utils/facturacion.utils'
+import { codigoErrorFacturacion, errorDeCampoFacturacion, mensajeErrorFacturacion } from '../utils/facturacion.errores'
+import type {
+  VentasAlicuotaId, VentasCliente, VentasFacturaDetalle, VentasFacturaFJ, VentasFacturaInput,
+} from '@/types/domain.types'
+import { Aviso } from './FichaFactura'
+
+/**
+ * Cargar o editar el BORRADOR de una factura A, o de una nota de crédito A.
+ *
+ * Lo que el formulario tiene que hacer bien:
+ *  1. Los totales en vivo son los MISMOS que va a calcular la base
+ *     (`facturacion.calculos.ts`, espejo de `ventas_guardar_borrador`): neto
+ *     por renglón redondeado a centavos e IVA por alícuota agrupada.
+ *  2. El centro de costo es de lista cerrada y obligatorio con AVANCE DE OBRA;
+ *     con TRANSPORTE no va (Logística no tiene centro de costo).
+ *  3. Elegir la obra precarga el cliente (`obras.cliente_id`) y el centro de
+ *     costo (`obras.cc`), que es lo que el dueño quiere cuidar.
+ *  4. Modo NC: se abre desde una factura autorizada, el cliente queda fijo y se
+ *     ve el saldo que todavía se puede acreditar.
+ *
+ * Guardar NO emite: el borrador se revisa en la ficha y se emite desde ahí.
+ */
+
+const ALICUOTAS_VALIDAS = ['3', '4', '5', '6', '8', '9']
+
+const renglonSchema = z.object({
+  descripcion: z.string().refine(v => v.trim().length > 0, 'Escribí la descripción'),
+  cantidad:    z.string().refine(v => v !== '' && Number(v) > 0, 'Mayor a 0'),
+  unidad:      z.string(),
+  precio_unit: z.string().refine(v => v !== '' && Number.isFinite(Number(v)) && Number(v) >= 0, 'Poné el precio neto'),
+  alicuota_id: z.string().refine(v => ALICUOTAS_VALIDAS.includes(v), 'Elegí la alícuota'),
+})
+
+const schema = z.object({
+  cliente_id:        z.string().min(1, 'Elegí el cliente'),
+  obra_cod:          z.string(),
+  producto:          z.enum(['AVANCE DE OBRA', 'TRANSPORTE']),
+  centro_costo:      z.string(),
+  fecha_cbte:        z.string().min(1, 'Poné la fecha'),
+  provincia_origen:  z.string().min(1, 'Elegí la provincia'),
+  provincia_destino: z.string().min(1, 'Elegí la provincia'),
+  condicion_pago:    z.string().refine(v => v.trim().length > 0, 'Poné la condición de pago'),
+  remitos:           z.string(),
+  observaciones:     z.string(),
+  obs_interna:       z.string(),
+  renglones:         z.array(renglonSchema).min(1, 'Agregá al menos un renglón'),
+}).superRefine((d, ctx) => {
+  if (d.producto === 'AVANCE DE OBRA' && !d.centro_costo) {
+    ctx.addIssue({ code: 'custom', path: ['centro_costo'], message: 'Avance de obra lleva centro de costo' })
+  }
+})
+
+type FormData = z.infer<typeof schema>
+
+/** Rutas del form a las que el backend puede apuntar un error (el resto va arriba del botón). */
+const CAMPOS_FORM = /^(cliente_id|obra_cod|producto|centro_costo|fecha_cbte|provincia_origen|provincia_destino|condicion_pago|remitos|observaciones|obs_interna|renglones\.\d+\.(descripcion|cantidad|unidad|precio_unit|alicuota_id))$/
+type RenglonForm = FormData['renglones'][number]
+
+const RENGLON_VACIO: RenglonForm = { descripcion: '', cantidad: '1', unidad: UNIDAD_DEFAULT, precio_unit: '', alicuota_id: '5' }
+
+function defaultsNuevo(): FormData {
+  return {
+    cliente_id: '', obra_cod: '', producto: 'AVANCE DE OBRA', centro_costo: '', fecha_cbte: hoyAR(),
+    provincia_origen: PROVINCIA_DEFAULT, provincia_destino: PROVINCIA_DEFAULT,
+    condicion_pago: CONDICION_PAGO_DEFAULT, remitos: '', observaciones: '', obs_interna: '',
+    renglones: [RENGLON_VACIO],
+  }
+}
+
+function renglonesDe(fj: VentasFacturaFJ): RenglonForm[] {
+  return fj.renglones.map(r => ({
+    descripcion: r.descripcion,
+    cantidad:    String(r.cantidad),
+    unidad:      r.unidad || UNIDAD_DEFAULT,
+    precio_unit: String(r.precio_unit),
+    alicuota_id: String(r.alicuota_id),
+  }))
+}
+
+function defaultsDe(fj: VentasFacturaFJ, opts: { copiarRenglones: boolean; nc: boolean }): FormData {
+  const f = fj.factura
+  return {
+    cliente_id:        String(f.cliente_id),
+    obra_cod:          f.obra_cod ?? '',
+    producto:          f.producto,
+    centro_costo:      f.centro_costo ?? '',
+    fecha_cbte:        opts.nc ? hoyAR() : f.fecha_cbte,
+    provincia_origen:  f.provincia_origen || PROVINCIA_DEFAULT,
+    provincia_destino: f.provincia_destino || PROVINCIA_DEFAULT,
+    condicion_pago:    f.condicion_pago || CONDICION_PAGO_DEFAULT,
+    remitos:           opts.nc ? '' : f.remitos,
+    observaciones:     opts.nc ? '' : f.observaciones,
+    obs_interna:       opts.nc ? '' : f.obs_interna,
+    renglones:         opts.copiarRenglones ? renglonesDe(fj) : [RENGLON_VACIO],
+  }
+}
+
+/** La provincia del cliente (texto libre) llevada a la forma de la lista, si coincide. */
+function provinciaDeCliente(c: VentasCliente | undefined): string | null {
+  const p = c?.provincia?.trim()
+  if (!p) return null
+  const n = normalizeText(p)
+  return PROVINCIAS.find(x => normalizeText(x) === n) ?? p
+}
+
+interface Props {
+  editarId?:  number
+  /** Nota de crédito contra esta factura autorizada. */
+  ncDe?:      VentasFacturaFJ
+  onClose:    () => void
+  onGuardada: (fj: VentasFacturaFJ) => void
+}
+
+export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
+  const toast = useToast()
+  const { esAdmin } = usePermisos('facturacion')
+
+  const edicion   = useFacturaVenta(editarId ?? null)
+  const esNc      = !!ncDe || edicion.data?.factura.cbte_tipo === 3
+  const asociadaId = ncDe?.factura.id ?? edicion.data?.factura.asociada_id ?? null
+  // La factura que corrige la NC, para mostrar el saldo. Si vino por props no se pide.
+  const asociadaQ = useFacturaVenta(!ncDe && esNc ? asociadaId : null)
+  const asociada: VentasFacturaDetalle | VentasFacturaFJ | undefined = ncDe ?? asociadaQ.data
+
+  const clientes   = useClientesVenta('', true)
+  const obras      = useObrasFacturacion()
+  const centros    = useCentrosCosto()
+  const condiciones = useCondicionesIva()
+  const crear      = useCrearFacturaVenta()
+  const editar     = useEditarFacturaVenta()
+
+  const [errorServer, setErrorServer] = useState<{ msg: string; code: string | null } | null>(null)
+
+  const {
+    register, control, handleSubmit, reset, setValue, getValues, setError,
+    formState: { errors },
+  } = useForm<FormData>({
+    resolver: zodResolver(schema),
+    defaultValues: ncDe
+      ? defaultsDe(ncDe, {
+          nc: true,
+          // Copia los renglones solo si la factura está entera: si ya tiene NC,
+          // copiarla entera superaría el saldo.
+          copiarRenglones: Number(ncDe.factura.nc_autorizadas) === 0,
+        })
+      : defaultsNuevo(),
+  })
+  const { fields, append, remove } = useFieldArray({ control, name: 'renglones' })
+
+  // Al editar, el form se llena UNA vez cuando llega la factura (no en cada refetch).
+  const cargado = useRef(false)
+  useEffect(() => {
+    if (!editarId || cargado.current || !edicion.data) return
+    cargado.current = true
+    reset(defaultsDe(edicion.data, { copiarRenglones: true, nc: false }))
+  }, [editarId, edicion.data, reset])
+
+  const renglones   = useWatch({ control, name: 'renglones' })
+  const producto    = useWatch({ control, name: 'producto' })
+  const clienteId   = useWatch({ control, name: 'cliente_id' })
+  const obraCod     = useWatch({ control, name: 'obra_cod' })
+  const origen      = useWatch({ control, name: 'provincia_origen' })
+  const destino     = useWatch({ control, name: 'provincia_destino' })
+
+  const totales = useMemo(() => calcularTotales(renglones ?? []), [renglones])
+
+  const listaClientes = useMemo(() => clientes.data ?? [], [clientes.data])
+  const cliente = listaClientes.find(c => String(c.id) === clienteId)
+  const condCliente = cliente ? condiciones.data?.find(c => c.id === cliente.condicion_iva_id) : undefined
+  const clienteAdmiteA = cliente
+    ? cliente.doc_tipo === 80 && (condCliente ? condCliente.admite_a : admiteFacturaA(cliente.doc_tipo, cliente.condicion_iva_id))
+    : true
+
+  const saldoNc = asociada ? Number(asociada.factura.saldo_nc ?? 0) : null
+  const superaSaldo = esNc && saldoNc !== null && totales.total > saldoNc + 0.004
+
+  // ── Opciones ──
+  const opcionesCliente = useMemo(
+    () => listaClientes
+      .filter(c => c.activo || String(c.id) === clienteId)
+      .map(c => ({
+        value: String(c.id),
+        label: c.razon_social,
+        sub: [fmtCuit(c.doc_nro), CONDICIONES_IVA[c.condicion_iva_id], c.activo ? null : 'dado de baja'].filter(Boolean).join(' · '),
+        search: [c.razon_social, c.doc_nro],
+      })),
+    [listaClientes, clienteId],
+  )
+  const opcionesObra = useMemo(
+    () => (obras.data ?? []).map(o => ({
+      value: o.cod,
+      label: o.nom,
+      sub: [o.cod, o.cc ? `CC ${o.cc.trim()}` : null].filter(Boolean).join(' · '),
+      search: [o.nom, o.cod, o.cc ?? ''],
+    })),
+    [obras.data],
+  )
+  const opcionesCentro = useMemo(
+    () => (centros.data ?? []).map(cc => ({ value: cc, label: cc })),
+    [centros.data],
+  )
+  const provinciasCon = (actual: string) =>
+    (PROVINCIAS.includes(actual) || !actual ? PROVINCIAS : [actual, ...PROVINCIAS]).map(p => ({ value: p, label: p }))
+
+  // ── Precargas ──
+  function elegirCliente(v: string) {
+    // El destino sigue al cliente solo si nadie lo eligió a mano: si todavía
+    // dice el default o la provincia del cliente anterior.
+    const anterior = provinciaDeCliente(listaClientes.find(c => String(c.id) === getValues('cliente_id')))
+    const actual = getValues('provincia_destino')
+    setValue('cliente_id', v, { shouldValidate: true })
+    if (actual === PROVINCIA_DEFAULT || actual === anterior) {
+      const prov = provinciaDeCliente(listaClientes.find(c => String(c.id) === v))
+      if (prov) setValue('provincia_destino', prov)
+    }
+  }
+
+  function elegirObra(cod: string) {
+    setValue('obra_cod', cod)
+    const o = obras.data?.find(x => x.cod === cod)
+    if (!o) return
+    if (o.cliente_id && !esNc) elegirCliente(String(o.cliente_id))
+    const cc = o.cc?.trim()
+    if (cc && getValues('producto') === 'AVANCE DE OBRA' && (centros.data ?? []).includes(cc)) {
+      setValue('centro_costo', cc, { shouldValidate: true })
+    }
+  }
+
+  function elegirProducto(p: FormData['producto']) {
+    setValue('producto', p, { shouldValidate: true })
+    if (p === 'TRANSPORTE') setValue('centro_costo', '', { shouldValidate: true })
+    else {
+      const cc = obras.data?.find(x => x.cod === getValues('obra_cod'))?.cc?.trim()
+      if (cc && !getValues('centro_costo') && (centros.data ?? []).includes(cc)) setValue('centro_costo', cc, { shouldValidate: true })
+    }
+  }
+
+  // ── Guardar ──
+  const guardando = crear.isPending || editar.isPending
+
+  async function guardar(d: FormData, forzar = false) {
+    setErrorServer(null)
+    const body: VentasFacturaInput = {
+      factura: {
+        cbte_tipo:         esNc ? 3 : 1,
+        cliente_id:        Number(d.cliente_id),
+        producto:          d.producto,
+        centro_costo:      d.producto === 'TRANSPORTE' ? null : d.centro_costo,
+        obra_cod:          d.obra_cod || null,
+        fecha_cbte:        d.fecha_cbte,
+        provincia_origen:  d.provincia_origen,
+        provincia_destino: d.provincia_destino,
+        condicion_pago:    d.condicion_pago.trim(),
+        remitos:           d.remitos.trim(),
+        observaciones:     d.observaciones.trim(),
+        obs_interna:       d.obs_interna.trim(),
+        ...(esNc ? { asociada_id: asociadaId } : {}),
+      },
+      renglones: d.renglones.map(r => ({
+        descripcion: r.descripcion.trim(),
+        cantidad:    Number(r.cantidad),
+        unidad:      r.unidad.trim() || UNIDAD_DEFAULT,
+        precio_unit: Number(r.precio_unit),
+        alicuota_id: Number(r.alicuota_id) as VentasAlicuotaId,
+      })),
+      ...(forzar ? { forzar: true } : {}),
+    }
+    try {
+      const fj = editarId
+        ? await editar.mutateAsync({ id: editarId, ...body })
+        : await crear.mutateAsync(body)
+      toast(editarId ? '✓ Borrador guardado' : '✓ Borrador creado: revisalo y emitilo desde la ficha', 'ok')
+      onGuardada(fj)
+    } catch (e) {
+      const ce = errorDeCampoFacturacion(e)
+      if (ce && CAMPOS_FORM.test(ce.campo)) setError(ce.campo as FieldPath<FormData>, { message: ce.mensaje })
+      setErrorServer({ msg: mensajeErrorFacturacion(e), code: codigoErrorFacturacion(e) })
+    }
+  }
+
+  const titulo = esNc
+    ? `Nota de crédito A${asociada?.factura.numero_fmt ? ` · s/ FA ${asociada.factura.numero_fmt}` : ''}`
+    : editarId ? 'Editar factura A (borrador)' : 'Nueva factura A'
+
+  if (editarId && edicion.isLoading) {
+    return (
+      <Modal open onClose={onClose} title={titulo} width="max-w-5xl">
+        <div className="p-8 text-center text-sm text-gris-dark">Cargando…</div>
+      </Modal>
+    )
+  }
+  if (editarId && edicion.data && edicion.data.factura.estado !== 'borrador') {
+    return (
+      <Modal open onClose={onClose} title={titulo} width="max-w-lg">
+        <Aviso tono="rojo">Este comprobante ya no es un borrador: no se puede editar.</Aviso>
+      </Modal>
+    )
+  }
+
+  const errorRenglones = errors.renglones?.message ?? errors.renglones?.root?.message
+
+  return (
+    <Modal
+      open
+      onClose={guardando ? () => {} : onClose}
+      width="max-w-5xl"
+      title={titulo}
+      footer={
+        <div className="flex gap-2 flex-wrap justify-end items-center">
+          <Button variant="ghost" size="sm" onClick={onClose} disabled={guardando}>Cancelar</Button>
+          {errorServer?.code === 'NC_SUPERA_FACTURA' && esAdmin && (
+            <Button variant="danger" size="sm" loading={guardando}
+              onClick={handleSubmit(d => guardar(d, true))}
+              title="Solo admin: guardar aunque supere el saldo de la factura">
+              Guardar igual (forzar)
+            </Button>
+          )}
+          <Button size="sm" loading={guardando} onClick={handleSubmit(d => guardar(d))}>
+            {editarId ? 'Guardar borrador' : 'Crear borrador'}
+          </Button>
+        </div>
+      }
+    >
+      <form className="flex flex-col gap-4 text-sm" onSubmit={e => e.preventDefault()}>
+
+        {esNc && asociada && (
+          <Aviso tono="gris">
+            Corrige la <b>FA {asociada.factura.numero_fmt}</b> del {asociada.factura.fecha_cbte.split('-').reverse().join('/')}
+            {' '}por <b>{fmtM(asociada.factura.imp_total)}</b>.
+            {' '}Saldo que todavía se puede acreditar: <b className="font-mono">{fmtM(saldoNc)}</b>
+            {Number(asociada.factura.nc_autorizadas) > 0 && <> (ya tiene NC por {fmtM(asociada.factura.nc_autorizadas)})</>}.
+          </Aviso>
+        )}
+
+        {/* ── Cabecera ── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <Combobox
+              label="Cliente"
+              placeholder={clientes.isLoading ? 'Cargando clientes…' : 'Buscar por razón social o CUIT'}
+              options={opcionesCliente}
+              value={clienteId}
+              onChange={elegirCliente}
+              disabled={esNc}
+            />
+            {errors.cliente_id && <span className="text-xs text-rojo font-semibold">{errors.cliente_id.message}</span>}
+            {esNc && <span className="text-[11px] text-gris-dark">En una nota de crédito el cliente es el de la factura.</span>}
+            {cliente && (
+              <div className="text-[11px] text-gris-dark mt-0.5">
+                {fmtCuit(cliente.doc_nro)} · {CONDICIONES_IVA[cliente.condicion_iva_id] ?? cliente.condicion_iva_id}
+                {cliente.domicilio && <> · {cliente.domicilio}</>}
+              </div>
+            )}
+          </div>
+          <div>
+            <Combobox
+              label="Obra (opcional: precarga cliente y centro de costo)"
+              placeholder={obras.isLoading ? 'Cargando obras…' : 'Buscar obra'}
+              options={opcionesObra}
+              value={obraCod}
+              onChange={elegirObra}
+            />
+            {obraCod && (
+              <button type="button" className="text-[11px] text-azul hover:underline" onClick={() => setValue('obra_cod', '')}>
+                ✕ sin obra
+              </button>
+            )}
+          </div>
+        </div>
+
+        {cliente && !clienteAdmiteA && (
+          <Aviso tono="rojo">
+            A <b>{cliente.razon_social}</b> no se le puede hacer factura A: {cliente.doc_tipo !== 80 ? 'no tiene CUIT' : `es «${CONDICIONES_IVA[cliente.condicion_iva_id] ?? cliente.condicion_iva_id}»`}.
+            La A es solo para Responsable Inscripto o Monotributo con CUIT. Corregí su condición IVA en Clientes.
+          </Aviso>
+        )}
+        {cliente && !cliente.activo && (
+          <Aviso tono="naranja">El cliente está dado de baja: reactivalo en Clientes antes de emitir.</Aviso>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <Select
+            label="Producto"
+            options={PRODUCTOS.map(p => ({ value: p.key, label: p.label }))}
+            value={producto}
+            onChange={e => elegirProducto(e.target.value as FormData['producto'])}
+            title={PRODUCTOS.find(p => p.key === producto)?.hint}
+          />
+          <div>
+            <Controller
+              name="centro_costo"
+              control={control}
+              render={({ field }) => (
+                <Combobox
+                  label="Centro de costo"
+                  placeholder={producto === 'TRANSPORTE' ? 'No lleva (transporte)' : 'Elegí el centro de costo'}
+                  options={opcionesCentro}
+                  value={field.value}
+                  onChange={field.onChange}
+                  disabled={producto === 'TRANSPORTE'}
+                />
+              )}
+            />
+            {errors.centro_costo && <span className="text-xs text-rojo font-semibold">{errors.centro_costo.message}</span>}
+          </div>
+          <Input label="Fecha" type="date" {...register('fecha_cbte')} error={errors.fecha_cbte?.message}
+            hint="ARCA acepta hasta 10 días para atrás o adelante" />
+          <Input label="Condición de pago" {...register('condicion_pago')} error={errors.condicion_pago?.message} />
+          <Select label="Provincia de origen" options={provinciasCon(origen)} {...register('provincia_origen')}
+            error={errors.provincia_origen?.message} />
+          <Select label="Provincia de destino" options={provinciasCon(destino)}
+            {...register('provincia_destino')}
+            error={errors.provincia_destino?.message} />
+          <div className="sm:col-span-2">
+            <Input label="Remitos (opcional)" {...register('remitos')} placeholder="Ej.: R 0001-00001234" />
+          </div>
+        </div>
+
+        {/* ── Renglones ── */}
+        <div className="border-t border-gris pt-3 flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Renglones · precios NETOS (sin IVA)</span>
+            <Button type="button" variant="secondary" size="sm" onClick={() => append({ ...RENGLON_VACIO })}>+ Renglón</Button>
+          </div>
+          {errorRenglones && <span className="text-xs text-rojo font-semibold">{errorRenglones}</span>}
+
+          {fields.map((field, i) => {
+            const er = errors.renglones?.[i]
+            return (
+              <div key={field.id} className="border border-gris-mid rounded-lg p-2.5 flex flex-col gap-2 bg-blanco">
+                <div className="flex items-start gap-2">
+                  <span className="text-[11px] font-bold text-gris-dark mt-2 w-5 shrink-0">{i + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <textarea
+                      {...register(`renglones.${i}.descripcion`)}
+                      rows={2}
+                      placeholder="Descripción (ej.: Certificado N° 5 — avance de obra septiembre)"
+                      className={`w-full px-3 py-2 border-[1.5px] rounded-lg text-sm bg-white outline-none focus:border-naranja ${er?.descripcion ? 'border-rojo bg-rojo-light' : 'border-gris-mid'}`}
+                    />
+                    {er?.descripcion && <span className="text-xs text-rojo font-semibold">{er.descripcion.message}</span>}
+                  </div>
+                  <button type="button" onClick={() => remove(i)} disabled={fields.length === 1}
+                    title={fields.length === 1 ? 'La factura necesita al menos un renglón' : 'Quitar el renglón'}
+                    className="text-rojo hover:bg-rojo-light rounded w-8 h-8 shrink-0 disabled:opacity-30 disabled:hover:bg-transparent">✕</button>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pl-7">
+                  <Controller name={`renglones.${i}.cantidad`} control={control} render={({ field: fc }) => (
+                    <InputMonto label="Cantidad" decimales={4} value={fc.value} onChange={fc.onChange} onBlur={fc.onBlur}
+                      error={er?.cantidad?.message} />
+                  )} />
+                  <Input label="Unidad" {...register(`renglones.${i}.unidad`)} />
+                  <Controller name={`renglones.${i}.precio_unit`} control={control} render={({ field: fc }) => (
+                    <InputMonto label="Precio neto" decimales={3} value={fc.value} onChange={fc.onChange} onBlur={fc.onBlur}
+                      error={er?.precio_unit?.message} />
+                  )} />
+                  <Select label="IVA" {...register(`renglones.${i}.alicuota_id`)}
+                    options={ALICUOTAS_UI.map(a => ({ value: String(a.id), label: a.label }))}
+                    error={er?.alicuota_id?.message} />
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Subtotal neto</span>
+                    <span className="px-3 py-2 font-mono text-sm tabular-nums text-right bg-gris rounded-lg">
+                      {fmtM(totales.netos[i] ?? 0)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* ── Totales en vivo ── */}
+        <div className="bg-gris rounded-lg p-3 flex flex-col gap-1 sm:ml-auto sm:w-[340px] text-sm">
+          <Fila label="Neto gravado" valor={fmtM(totales.neto)} />
+          {totales.alicuotas.map(a => (
+            <Fila key={a.alicuota_id} label={`IVA ${ALICUOTA_LABEL[a.alicuota_id] ?? ''} s/ ${fmtM(a.base_imp)}`} valor={fmtM(a.importe)} chico />
+          ))}
+          <Fila label="IVA" valor={fmtM(totales.iva)} />
+          <div className="border-t border-gris-mid my-1" />
+          <Fila label="Total" valor={fmtM(totales.total)} fuerte />
+        </div>
+        {superaSaldo && (
+          <Aviso tono="rojo">
+            La nota de crédito ({fmtM(totales.total)}) supera el saldo de la factura ({fmtM(saldoNc)}).
+            {esAdmin ? ' Como admin podés forzarla, pero revisalo.' : ' Bajá el importe.'}
+          </Aviso>
+        )}
+
+        {/* ── Textos ── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Observaciones (se imprimen)</label>
+            <textarea {...register('observaciones')} rows={2} placeholder="Ej.: Orden de compra N° 5336694"
+              className="w-full px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm bg-white outline-none focus:border-naranja" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Nota interna (no se imprime)</label>
+            <textarea {...register('obs_interna')} rows={2}
+              className="w-full px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm bg-white outline-none focus:border-naranja" />
+          </div>
+        </div>
+
+        {errorServer && <Aviso tono="rojo">{errorServer.msg}</Aviso>}
+      </form>
+    </Modal>
+  )
+}
+
+function Fila({ label, valor, fuerte, chico }: { label: string; valor: string; fuerte?: boolean; chico?: boolean }) {
+  return (
+    <div className={`flex justify-between gap-3 ${chico ? 'text-[11px] text-gris-dark' : ''}`}>
+      <span className={fuerte ? 'font-bold' : ''}>{label}</span>
+      <span className={`font-mono tabular-nums ${fuerte ? 'font-bold text-azul text-base' : ''}`}>{valor}</span>
+    </div>
+  )
+}

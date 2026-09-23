@@ -24,6 +24,7 @@ export const MODULOS = [
   'alquiler',
   'aridos',
   'pagos',
+  'facturacion',
   'admin',
 ] as const
 
@@ -60,6 +61,7 @@ export const MODULO_INFO: Record<Modulo, ModuloInfo> = {
   alquiler:        { key: 'alquiler',        label: 'Alquiler de maquinaria', descripcion: 'Máquinas, obras y partes de horas', icono: '🚜', orden: 7 },
   aridos:          { key: 'aridos',          label: 'Áridos',           descripcion: 'Venta de áridos, stock y cuentas corrientes', icono: '⛰', orden: 8 },
   pagos:           { key: 'pagos',           label: 'Pagos',            descripcion: 'Facturas de proveedor y órdenes de pago', icono: '🧾', orden: 9 },
+  facturacion:     { key: 'facturacion',     label: 'Facturación',      descripcion: 'Facturas de venta y notas de crédito contra ARCA', icono: '🧮', orden: 10 },
   admin:           { key: 'admin',           label: 'Administración',   descripcion: 'Usuarios, permisos y auditoría',        icono: '⚙', orden: 0, noAsignable: true },
 }
 

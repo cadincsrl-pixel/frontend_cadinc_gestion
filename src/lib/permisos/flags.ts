@@ -28,6 +28,7 @@ export type FlagBoolean =
   | 'aprobar_ajustes_stock' | 'gestionar_cobros' | 'gestionar_docs' | 'anular_cobros'
   | 'costos_oficina' | 'asistente_ia'
   | 'registrar_pagos' | 'aprobar_facturas' | 'anular_pagos' | 'aprobar_propias'
+  | 'emitir_facturas' | 'emitir_notas_credito' | 'registrar_finnegans'
 
 export interface FlagDef {
   key:   FlagBoolean
@@ -148,6 +149,24 @@ export const FLAGS_BOOLEAN: FlagDef[] = [
     label: '🗑 Anular órdenes de pago ajenas',
     help: 'Anular cualquier orden de pago, no solo la propia del día: las facturas vuelven a aprobada (o a pendiente si nadie las había aprobado) y los adjuntos quedan marcados como de OP anulada. Es el escape cuando la plata no salió como se registró. Solo tiene efecto en pagos.',
     modulos: ['pagos'],
+  },
+  {
+    key: 'emitir_facturas',
+    label: '🧮 Emitir facturas contra ARCA',
+    help: 'Mandar a ARCA un borrador de factura para que le asigne número y CAE, y verificar en ARCA una emisión que quedó sin confirmar. Una factura emitida no se modifica nunca: solo se anula con nota de crédito. Cargar borradores es "Crear". Solo tiene efecto en facturación.',
+    modulos: ['facturacion'],
+  },
+  {
+    key: 'emitir_notas_credito',
+    label: '↩ Emitir notas de crédito',
+    help: 'Emitir contra ARCA una nota de crédito que anula total o parcialmente una factura autorizada. Va separado de "Emitir facturas" a propósito: anular una factura es otra decisión. Solo tiene efecto en facturación.',
+    modulos: ['facturacion'],
+  },
+  {
+    key: 'registrar_finnegans',
+    label: '📥 Registrar facturas en Finnegans',
+    help: 'Marcar una factura autorizada como cargada en Finnegans, con el número de allá, y deshacerlo. Necesita además el tab "Finnegans". Solo tiene efecto en facturación.',
+    modulos: ['facturacion'],
   },
   {
     key: 'asistente_ia',

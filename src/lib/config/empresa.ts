@@ -26,6 +26,20 @@ export const EMPRESA = {
   logoUrl: process.env.NEXT_PUBLIC_EMPRESA_LOGO    ?? '/marca/cadinc-oscuro.png',
   /** Logo para PAPEL (fondo blanco). El de arriba es blanco, para el fondo oscuro de la app. */
   logoPapelUrl: process.env.NEXT_PUBLIC_EMPRESA_LOGO_PAPEL ?? '/marca/cadinc-color.png',
+
+  // ── Datos del EMISOR en la factura de venta (20260924) ──
+  // Calcados de la factura A 00002-00001273 de Finnegans: es lo que el cliente
+  // ya está acostumbrado a leer. Ingresos Brutos es el mismo número del CUIT.
+  /** Razón social tal como se imprime en la factura. */
+  razonSocialFactura: process.env.NEXT_PUBLIC_EMPRESA_RAZON_SOCIAL ?? 'CADINC S.R.L.',
+  /** Domicilio de la factura, en dos renglones como en Finnegans. */
+  domicilioFactura1: process.env.NEXT_PUBLIC_EMPRESA_DOMICILIO_FACTURA_1 ?? 'Maipú 396 3 – San Miguel de Tucumán',
+  domicilioFactura2: process.env.NEXT_PUBLIC_EMPRESA_DOMICILIO_FACTURA_2 ?? '(4000) Tucumán Argentina',
+  tel:               process.env.NEXT_PUBLIC_EMPRESA_TEL               ?? '3815 02-5772',
+  condicionIva:      process.env.NEXT_PUBLIC_EMPRESA_CONDICION_IVA     ?? 'Responsable Inscripto',
+  iibb:              process.env.NEXT_PUBLIC_EMPRESA_IIBB              ?? '33-71719194-9',
+  /** DD/MM/YYYY */
+  inicioActividades: process.env.NEXT_PUBLIC_EMPRESA_INICIO_ACTIVIDADES ?? '14/08/2020',
 } as const
 
 /** Helper para labels tipo "Flota CADINC". */

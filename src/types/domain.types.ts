@@ -1171,6 +1171,15 @@ export type ModuloPermisos = { [K in Accion]?: boolean } & {
   aprobar_facturas?:       boolean
   aprobar_propias?:     boolean   // 20260921f: aprobar lo propio, y que nazca aprobado
   anular_pagos?:           boolean
+  // - facturacion.emitir_facturas: mandar a ARCA un borrador de factura y
+  //   verificar en ARCA una emisión incierta (/reconciliar).
+  // - facturacion.emitir_notas_credito: emitir NC (separado a propósito:
+  //   anular una factura es otra decisión).
+  // - facturacion.registrar_finnegans: registrar/deshacer el número de
+  //   Finnegans de una factura autorizada. Los tres default false (20260924b).
+  emitir_facturas?:        boolean
+  emitir_notas_credito?:   boolean
+  registrar_finnegans?:    boolean
 }
 export type Permisos = Record<string, ModuloPermisos>
 
@@ -3095,3 +3104,256 @@ export interface PagosUploadUrlRes {
   token:        string
   tipo:         string
 }
+
+// ══════════════════════════════════════════════════════════════════════
+// Facturación electrónica de venta contra ARCA (fase 1, 2026-09-24)
+// Migraciones 20260924a/b/c. Contrato de la API: /api/facturacion.
+// Módulo independiente como Pagos: padrón propio (`ventas_clientes`) y lo
+// único compartido son las obras (`obras.cliente_id` y `obras.cc`).
+// ══════════════════════════════════════════════════════════════════════
+
+export type VentasAmbiente = 'homo' | 'prod'
+export type VentasEstado =
+  | 'borrador' | 'emitiendo' | 'autorizada' | 'rechazada' | 'error_reconciliar' | 'descartada'
+/** Fase 1: 1 = Factura A, 3 = Nota de Crédito A. El schema admite 6, 8, 201 y 203. */
+export type VentasCbteTipo = 1 | 3 | 6 | 8 | 201 | 203
+export type VentasProducto = 'AVANCE DE OBRA' | 'TRANSPORTE'
+/** Ids de alícuota de ARCA: 3 = 0 %, 4 = 10,5 %, 5 = 21 %, 6 = 27 %, 8 = 5 %, 9 = 2,5 %. */
+export type VentasAlicuotaId = 3 | 4 | 5 | 6 | 8 | 9
+/** 80 CUIT, 86 CUIL, 96 DNI, 99 sin identificar. */
+export type VentasDocTipo = 80 | 86 | 96 | 99
+
+/** Lo que ARCA devuelve en Errors / Observaciones. El incierto guarda `{ error }`. */
+export interface VentasMensajeArca {
+  code?:  number | string
+  msg?:   string
+  error?: string
+}
+
+/** Fila de `ventas_clientes` + las obras que la apuntan. */
+export interface VentasCliente {
+  id:                number
+  razon_social:      string
+  doc_tipo:          VentasDocTipo
+  doc_nro:           string
+  condicion_iva_id:  number
+  domicilio:         string
+  provincia:         string
+  email:             string
+  activo:            boolean
+  obs:               string
+  created_at:        string
+  updated_at:        string
+  obras:             { cod: string; nom: string; cc: string | null }[]
+}
+
+export interface VentasClienteInput {
+  razon_social:     string
+  doc_tipo:         VentasDocTipo
+  doc_nro:          string
+  condicion_iva_id: number
+  domicilio?:       string
+  provincia?:       string
+  email?:           string
+  obs?:             string
+}
+
+export interface VentasCondicionIva {
+  id:          number
+  descripcion: string
+  admite_a:    boolean
+}
+
+export interface VentasObra {
+  cod:        string
+  nom:        string
+  cc:         string | null
+  cliente_id: number | null
+  archivada:  boolean
+}
+
+export interface VentasArcaEstado {
+  ambiente:   VentasAmbiente | null
+  configurado: boolean
+  falta:      string[]
+  pto_vta:    number
+  dummy:      { appServer: string; dbServer: string; authServer: string } | null
+  ultimo:     Record<string, number> | null
+  error:      string | null
+}
+
+/** Fila de `v_ventas_facturas`. Los numeric llegan como number (a veces string: usar Number()). */
+export interface VentasFactura {
+  id:                   number
+  ambiente:             VentasAmbiente
+  pto_vta:              number
+  cbte_tipo:            VentasCbteTipo
+  numero:               number | null
+  numero_intentado:     number | null
+  estado:               VentasEstado
+  concepto:             1 | 2 | 3
+  fecha_cbte:           string
+  fch_vto_pago:         string | null
+  cliente_id:           number
+  rec_razon_social:     string
+  rec_doc_tipo:         VentasDocTipo
+  rec_doc_nro:          string
+  rec_condicion_iva_id: number
+  rec_domicilio:        string
+  obra_cod:             string | null
+  producto:             VentasProducto
+  centro_costo:         string | null
+  provincia_origen:     string
+  provincia_destino:    string
+  condicion_pago:       string
+  remitos:              string
+  observaciones:        string
+  moneda:               string
+  cotizacion:           number
+  imp_neto:             number
+  imp_iva:              number
+  imp_trib:             number
+  imp_op_ex:            number
+  imp_tot_conc:         number
+  imp_total:            number
+  cae:                  string | null
+  cae_vto:              string | null
+  resultado:            'A' | 'R' | 'P' | null
+  observaciones_arca:   VentasMensajeArca[] | null
+  errores_arca:         VentasMensajeArca[] | null
+  intento_at:           string | null
+  intento_n:            number
+  emitida_por:          string | null
+  emitida_at:           string | null
+  numero_finnegans:     string | null
+  registrada_at:        string | null
+  registrada_por:       string | null
+  obs_interna:          string
+  created_at:           string
+  updated_at:           string
+  created_by:           string | null
+  updated_by:           string | null
+  // derivadas de la vista
+  letra:                'A' | 'B'
+  tipo_nombre:          string
+  cod_cbte:             string
+  es_nc:                boolean
+  numero_fmt:           string | null
+  numero_intentado_fmt: string | null
+  es_homologacion:      boolean
+  pendiente_finnegans:  boolean
+  mes:                  string
+  cliente_razon_social: string
+  cliente_activo:       boolean
+  cliente_email:        string
+  obra_nom:             string | null
+  created_by_nombre:    string | null
+  emitida_por_nombre:   string | null
+  registrada_por_nombre: string | null
+  nc_autorizadas:       number
+  /** Solo facturas autorizadas: total − NC autorizadas. null en NC y no autorizadas. */
+  saldo_nc:             number | null
+  asociada_id:          number | null
+  asociada_numero_fmt:  string | null
+  asociada_cbte_tipo:   VentasCbteTipo | null
+}
+
+export interface VentasRenglon {
+  id:           number
+  orden:        number
+  descripcion:  string
+  cantidad:     number
+  unidad:       string
+  precio_unit:  number
+  alicuota_id:  VentasAlicuotaId
+  tasa:         number
+  importe_neto: number
+}
+
+export interface VentasAlicuota {
+  alicuota_id: VentasAlicuotaId
+  tasa:        number
+  base_imp:    number
+  importe:     number
+}
+
+export interface VentasAsociado {
+  asociada_id: number
+  cbte_tipo:   VentasCbteTipo
+  pto_vta:     number
+  numero:      number
+  cuit:        string
+  fecha_cbte:  string
+}
+
+export interface VentasEvento {
+  id:             number
+  tipo:           string
+  estado_antes:   VentasEstado | null
+  estado_despues: VentasEstado | null
+  detalle:        Record<string, unknown>
+  user_id:        string | null
+  user_nombre:    string | null
+  created_at:     string
+}
+
+/** Forma FJ que devuelven las RPC y los endpoints de una factura. */
+export interface VentasFacturaFJ {
+  factura:   VentasFactura
+  renglones: VentasRenglon[]
+  alicuotas: VentasAlicuota[]
+  asociados: VentasAsociado[]
+}
+
+export interface VentasFacturaDetalle extends VentasFacturaFJ {
+  eventos: VentasEvento[]
+}
+
+export interface VentasFacturasPage {
+  rows:  VentasFactura[]
+  total: number
+}
+
+export interface VentasResumenFila {
+  mes:          string
+  centro_costo: string | null
+  producto:     VentasProducto
+  letra:        'A' | 'B'
+  cantidad:     number
+  neto:         number
+  iva:          number
+  total:        number
+}
+
+export interface VentasRenglonInput {
+  descripcion: string
+  cantidad:    number
+  unidad?:     string
+  precio_unit: number
+  alicuota_id: VentasAlicuotaId
+}
+
+export interface VentasFacturaInput {
+  factura: {
+    cbte_tipo:          1 | 3
+    cliente_id:         number
+    producto:           VentasProducto
+    centro_costo?:      string | null
+    obra_cod?:          string | null
+    fecha_cbte?:        string
+    provincia_origen?:  string
+    provincia_destino?: string
+    condicion_pago?:    string
+    remitos?:           string
+    observaciones?:     string
+    obs_interna?:       string
+    asociada_id?:       number | null
+  }
+  renglones: VentasRenglonInput[]
+  forzar?:   boolean
+}
+
+/** POST /emitir: 200 = FJ autorizada; 202 = incierta (la factura quedó error_reconciliar). */
+export type VentasEmitirRes =
+  | VentasFacturaFJ
+  | { error: 'EMISION_INCIERTA'; factura: VentasFacturaFJ; detail?: { numero_intentado?: number; mensaje?: string } }

@@ -138,6 +138,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const enAlquiler         = decodedPathname.startsWith('/alquiler')
   const enAridos           = decodedPathname.startsWith('/aridos')
   const enPagos            = decodedPathname.startsWith('/pagos')
+  const enFacturacion      = decodedPathname.startsWith('/facturacion')
 
   function navigate(href: string) {
     router.push(href)
@@ -170,6 +171,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     !enAlquiler &&
     !enAridos &&
     !enPagos &&
+    !enFacturacion &&
     decodedPathname.startsWith('/tarja') &&
     decodedPathname !== '/tarja/archivadas'
 
@@ -194,7 +196,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         {/* ── Nav principal ── */}
         <div className="pt-3">
           <div className="px-4 py-2 text-[10px] font-bold tracking-[2.5px] uppercase text-white/35">
-            {enAdmin ? 'Administración' : enHerramientas ? 'Herramientas' : enLogistica ? 'Logística' : enCertificaciones ? 'Compras y Stock' : enCaja ? 'Caja' : enFlota ? 'Flota interna' : enAlquiler ? 'Alquiler de maquinaria' : enAridos ? 'Áridos' : enPagos ? 'Pagos a proveedores' : 'Menú'}
+            {enAdmin ? 'Administración' : enHerramientas ? 'Herramientas' : enLogistica ? 'Logística' : enCertificaciones ? 'Compras y Stock' : enCaja ? 'Caja' : enFlota ? 'Flota interna' : enAlquiler ? 'Alquiler de maquinaria' : enAridos ? 'Áridos' : enPagos ? 'Pagos a proveedores' : enFacturacion ? 'Facturación' : 'Menú'}
           </div>
 
           {/* Módulos con ?tab=... — todos usan el mismo `<ModuloNav>`. */}
@@ -252,10 +254,16 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             </Suspense>
           )}
 
+          {enFacturacion && (
+            <Suspense fallback={null}>
+              <ModuloNav modulo="facturacion" basePath="/facturacion" defaultTab="facturas" navigate={navigate} />
+            </Suspense>
+          )}
+
           {/* TARJA nav — solo si NO estamos en otros módulos.
               El filtro por tabs[] ya limita lo visible (capataz tiene
               tabs:['tarja'], capataz_supervisor tabs:['tarja','personal']). */}
-          {!enHerramientas && !enLogistica && !enCertificaciones && !enCaja && !enAdmin && !enFlota && !enAlquiler && !enAridos && !enPagos && NAV_ITEMS_TARJA
+          {!enHerramientas && !enLogistica && !enCertificaciones && !enCaja && !enAdmin && !enFlota && !enAlquiler && !enAridos && !enPagos && !enFacturacion && NAV_ITEMS_TARJA
             .filter(item => item.href === '/costos-oficina'
               ? costosOficina
               : tarjaTabs.includes(item.tabKey))

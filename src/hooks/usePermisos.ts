@@ -68,6 +68,11 @@ export function usePermisos(modulo: string) {
     registrarPagos:       flagCapacidad('registrar_pagos', false),
     aprobarFacturas:      flagCapacidad('aprobar_facturas', false),
     anularPagos:          flagCapacidad('anular_pagos', false),
+    // Facturación (20260924b): los tres nacen apagados, igual que en el
+    // backend y en `_ventas_flag`. La NC va aparte de la factura a propósito.
+    emitirFacturas:       flagCapacidad('emitir_facturas', false),
+    emitirNotasCredito:   flagCapacidad('emitir_notas_credito', false),
+    registrarFinnegans:   flagCapacidad('registrar_finnegans', false),
     asistenteIa:          flagCapacidad('asistente_ia', false),
     esCapataz,
     esJefeObra,

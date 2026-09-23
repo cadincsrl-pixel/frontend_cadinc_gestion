@@ -13,7 +13,7 @@ const MAX_EXPORT = 10_000
 // el módulo buscado no aparezca en la página cargada.
 const MODULOS_CONOCIDOS = [
   'admin', 'alquiler', 'aridos', 'asignaciones', 'asistente', 'caja', 'cat-obra', 'categorias',
-  'certificaciones', 'cierres', 'contratistas', 'cuenta-cliente', 'facturas-compra', 'flota',
+  'certificaciones', 'cierres', 'contratistas', 'cuenta-cliente', 'facturacion', 'facturas-compra', 'flota',
   'herramientas', 'horas', 'hs-extras', 'logistica', 'obras', 'oficina', 'pagos', 'personal', 'prestamos',
   'proveedores', 'remitos-envio', 'ropa', 'solicitudes', 'stock', 'stock-cliente', 'stock-proveedor',
   'tarifas', 'usuarios',
