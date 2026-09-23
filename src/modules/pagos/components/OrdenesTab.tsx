@@ -15,6 +15,7 @@ import { exportarOrdenesPagos } from '../utils/pagosExport'
 import { descargarOrdenPagoPdf } from '../utils/ordenPagoPdf'
 import { ModalPaqueteContador } from './ModalPaqueteContador'
 import { ModalAvisarPago } from './ModalAvisarPago'
+import { ModalDevolucionProveedor } from './ModalDevolucionProveedor'
 import { useProveedoresPagos } from '../hooks/useProveedoresPagos'
 import {
   FORMAS_PAGO_OP, MAX_ADJUNTO_BYTES, MIME_ADJUNTOS, TIPOS_ADJ_FACTURA, comprobanteTxt, fmtFecha, fmtM, formaPagoLabel, hoyAR,
@@ -239,6 +240,7 @@ export function OrdenesTab() {
           puedeAnular={!!(anularPagos || registrarPagos || esAdmin)}
           puedeSubir={!!(registrarPagos || esAdmin)}
           puedeRegistrar={puedeRegistrar}
+          puedeDevolucion={!!(anularPagos || esAdmin)}
           onRegistrar={o => setRegistrando(o)}
           verPii={!!verPii}
           toast={toast}
@@ -251,9 +253,9 @@ export function OrdenesTab() {
   )
 }
 
-function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, puedeRegistrar, onRegistrar, verPii, toast }: {
+function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, puedeRegistrar, puedeDevolucion, onRegistrar, verPii, toast }: {
   id: number; onClose: () => void; puedeAnular: boolean; puedeSubir: boolean
-  puedeRegistrar: boolean; onRegistrar: (o: PagosOrden) => void; verPii: boolean
+  puedeRegistrar: boolean; puedeDevolucion: boolean; onRegistrar: (o: PagosOrden) => void; verPii: boolean
   toast: (m: string, t?: 'ok' | 'err' | 'warn') => void
 }) {
   const { data: o, isLoading } = useOrden(id)
@@ -264,6 +266,7 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, puedeRegistrar, on
   const [pidiendo, setPidiendo] = useState(false)
   const [avisando, setAvisando] = useState(false)
   const [generandoPdf, setGenerandoPdf] = useState(false)
+  const [devolviendo, setDevolviendo] = useState(false)
 
   if (isLoading || !o) {
     return <Modal open onClose={onClose} title="Orden de pago" width="max-w-2xl">
@@ -289,6 +292,20 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, puedeRegistrar, on
             }}>
             🖨 PDF
           </Button>
+          {/* Devolución del proveedor (20260923g): anula y rehace con la NC.
+              Sólo OP de facturas; con «a cuenta» o NC propias va a mano. */}
+          {o.estado === 'emitida' && (() => {
+            const soloFacturas = o.lineas.every(l => l.tipo === 'factura')
+            return (
+              <Button variant="secondary" size="sm" onClick={() => setDevolviendo(true)}
+                disabled={!puedeDevolucion || !soloFacturas}
+                title={!puedeDevolucion ? 'Hace falta el permiso para anular pagos'
+                  : !soloFacturas ? 'Esta orden tiene «a cuenta» o notas de crédito: la devolución se arma a mano'
+                  : 'El proveedor hizo una NC y devolvió la plata: anula esta orden y la rehace con la NC'}>
+                ↩ Devolución del proveedor
+              </Button>
+            )
+          })()}
           {o.estado === 'emitida' && (
             <Button variant="danger" size="sm" onClick={() => setPidiendo(true)} disabled={!puedeAnular}
               title={puedeAnular ? 'Anular: las facturas vuelven a su estado anterior' : 'No tenés permiso para anular órdenes'}>
@@ -491,6 +508,10 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, puedeRegistrar, on
         </div>
 
         {avisando && <ModalAvisarPago orden={o} onClose={() => setAvisando(false)} />}
+        {devolviendo && (
+          <ModalDevolucionProveedor orden={o} onClose={() => setDevolviendo(false)}
+            onHecho={() => { setDevolviendo(false); onClose() }} />
+        )}
 
         {pidiendo && (
           <div className="border-t border-gris pt-3">

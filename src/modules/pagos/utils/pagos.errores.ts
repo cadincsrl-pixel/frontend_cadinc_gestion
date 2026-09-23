@@ -144,6 +144,11 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   ORDEN_INMUTABLE:          () => 'Una orden de pago no se edita: anulala y registrá una nueva.',
   ORDEN_NO_ES_TUYA_O_VIEJA: () => 'Solo podés anular órdenes que registraste vos y en el mismo día. Pedile a un administrador que la anule.',
 
+  // ── Devolución del proveedor (20260923g) ──
+  DEVOLUCION_SOLO_FACTURAS:       () => 'Esta orden tiene «a cuenta» o notas de crédito: la devolución hay que armarla a mano (anular y pagar con la NC).',
+  DEVOLUCION_PARCIAL_CON_CHEQUES: () => 'Con cheques sólo se puede registrar la devolución total: el cheque vuelve entero.',
+  DEVOLUCION_INVALIDA:            () => 'Lo devuelto no puede ser cero ni pasar lo que se le pagó por cada factura.',
+
   // ── Registro en Finnegans (20260923c) ──
   NUMERO_FINNEGANS_REQUERIDO: () => 'Poné el número de la OP en Finnegans.',
   ORDEN_ANULADA:              () => 'La orden está anulada: no se registra en Finnegans.',

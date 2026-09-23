@@ -15,7 +15,7 @@ import type {
   EditarFacturaInput, EditarFacturaRes, EditarOrdenInput, PagosAdjunto, PagosAdjuntoPendiente,
   PagosCatalogoObra, PagosEntidadAdjunto, PagosEstadoFactura, PagosEstadoOrden, PagosFactura, PagosFacturaDetalle,
   PagosFacturasGrupo, PagosFacturasPage, PagosFacturasResumen, PagosFormaPagoOPGuardada,
-  PagosFormaPrevista, PagosOrdenDetalle, PagosOrdenesEje, PagosOrdenesGrupo, PagosOrdenesPage, PagosOrdenExport, PagosPaquete,
+  PagosFormaPrevista, PagosOrden, PagosOrdenDetalle, PagosOrdenesEje, PagosOrdenesGrupo, PagosOrdenesPage, PagosOrdenExport, PagosPaquete,
   PagosOrdenesResumen, PagosTipoAdjFactura, PagosTipoAdjOrden, PagosTipoComprobante, PagosUploadUrlRes,
   PagosAviso, PagosAvisoResultado, PagosMailEstado,
   RegistrarOrdenRes,
@@ -372,6 +372,28 @@ export function useEditarOrden() {
     mutationFn: ({ id, ...body }: EditarOrdenInput & { id: number }) =>
       apiPatch<{ id: number; numero: number; referencia: string; obs: string; estado: PagosEstadoOrden }>(
         `/api/pagos/ordenes/${id}`, body),
+    onSuccess:  () => invalidarPagos(qc),
+  })
+}
+
+/**
+ * Devolución del proveedor (20260923g): anula la OP y la rehace con la NC (y la
+ * plata que quedó si es parcial), en una transacción. Los archivos van
+ * subidos antes con `subirComprobantePendiente`.
+ */
+export interface DevolucionProveedorInput {
+  id:           number
+  devoluciones: { factura_id: number; monto: number }[]
+  nc_numero:    string
+  nc_fecha:     string
+  motivo:       string
+  adjuntos:     PagosAdjuntoPendiente[]
+}
+export function useDevolucionProveedor() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...body }: DevolucionProveedorInput) =>
+      apiPost<{ anulada: PagosOrden; orden: PagosOrden; facturas: PagosFactura[] }>(`/api/pagos/ordenes/${id}/devolucion`, body),
     onSuccess:  () => invalidarPagos(qc),
   })
 }
