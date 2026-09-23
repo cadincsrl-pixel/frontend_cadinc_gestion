@@ -405,9 +405,13 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
           </Campo>
           <Campo label="Número" hint="Punto de venta y comprobante">
             <div className="flex items-center gap-1">
-              <input inputMode="numeric" value={puntoVenta} placeholder="0001"
-                onChange={e => setPuntoVenta(e.target.value.replace(/\D/g, '').slice(0, 5))}
-                className={`${inputCls} w-16 text-center font-mono`} />
+              {/* El ancho va en el wrapper: `inputCls` trae `w-full`, que le gana
+                  a un `w-16` en el mismo className (ver el reparto por obra). */}
+              <div className="w-20 shrink-0">
+                <input inputMode="numeric" value={puntoVenta} placeholder="0001"
+                  onChange={e => setPuntoVenta(e.target.value.replace(/\D/g, '').slice(0, 5))}
+                  className={`${inputCls} text-center font-mono`} />
+              </div>
               <span className="text-gris-dark">-</span>
               <input inputMode="numeric" value={nroComprobante} placeholder="00012345"
                 onChange={e => setNroComprobante(e.target.value.replace(/\D/g, '').slice(0, 8))}
