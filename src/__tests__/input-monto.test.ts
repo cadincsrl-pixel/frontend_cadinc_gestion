@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { aRaw, aDisplay, reformatear } from '@/components/ui/InputMonto'
+import { aRaw, aDisplay, reformatear, interpretarCambio } from '@/components/ui/InputMonto'
 
 // El contrato del InputMonto: lo tipeado/pegado (es-AR) se convierte a
 // formato máquina ("1234567.89") y el display siempre muestra miles con
@@ -230,5 +230,65 @@ describe('tipear un monto desde cero, tecla por tecla', () => {
 
   it('en un campo de enteros (decimales = 0) el punto nunca es decimal', () => {
     expect(tipear('25000', 0)).toBe('25.000')
+  })
+})
+
+// El bug del NETO (2026-09-23): el casillero del precio neto de la compra
+// acepta 4 decimales, y su propio punto de miles ("2.500") entraba como
+// decimal. Estos tests simulan el componente de verdad: cada tecla pasa por
+// interpretarCambio(lo que se veía, lo que quedó) y después por reformatear.
+describe('el componente, tecla por tecla, sabiendo qué mostraba antes', () => {
+  const paso = (display: string, texto: string, dec: number) =>
+    reformatear(interpretarCambio(display, texto, dec), dec)
+  const tipear = (teclas: string, dec: number) =>
+    [...teclas].reduce((d, t) => paso(d, d + t, dec), '')
+  // Lo que viaja al form: el componente manda aRaw(texto interpretado), no el display.
+  const valor = (teclas: string, dec: number) => {
+    let d = '', raw = ''
+    for (const t of teclas) { const txt = interpretarCambio(d, d + t, dec); raw = aRaw(txt, dec); d = reformatear(txt, dec) }
+    return Number(raw)
+  }
+
+  it('el neto (4 decimales) ya no divide por mil', () => {
+    expect(valor('2500', 4)).toBe(2500)        // daba 2,5
+    expect(valor('25000', 4)).toBe(25000)      // daba 2,5
+    expect(valor('138382', 4)).toBe(138382)    // daba 1,3838
+    expect(tipear('138382', 4)).toBe('138.382')
+  })
+
+  it('el neto con decimales, con punto o con coma', () => {
+    expect(valor('4132.2314', 4)).toBe(4132.2314)
+    expect(valor('4132,23', 4)).toBe(4132.23)
+    expect(tipear('12500.5', 4)).toBe('12.500,5')
+  })
+
+  it('el final (2 decimales) sigue andando igual', () => {
+    expect(valor('25000', 2)).toBe(25000)
+    expect(valor('24994.52', 2)).toBe(24994.52)
+    expect(valor('1500000', 2)).toBe(1500000)
+  })
+
+  it('agregar los centavos a un total que ya muestra los miles', () => {
+    let d = '24.995'
+    for (const t of ['.', '5', '2']) d = paso(d, d + t, 2)
+    expect(d).toBe('24.995,52')
+    expect(aRaw(interpretarCambio('24.995,5', '24.995,52', 2), 2)).toBe('24995.52')
+  })
+
+  it('el backspace no convierte los miles en decimales', () => {
+    expect(paso('2.500', '2.50', 2)).toBe('250')
+    expect(paso('25.000', '25.00', 4)).toBe('2.500')
+    expect(paso('1.234,56', '1.234,5', 2)).toBe('1.234,5')
+  })
+
+  it('pegar o reemplazar todo usa la regla de siempre', () => {
+    expect(paso('', '24994.52', 2)).toBe('24.994,52')
+    expect(paso('2.500', '24994.52', 2)).toBe('24.994,52')
+    expect(paso('2.500', '1.234.567,89', 2)).toBe('1.234.567,89')
+    expect(paso('7', '1.234', 2)).toBe('1.234')
+  })
+
+  it('un segundo separador decimal se ignora', () => {
+    expect(paso('12,5', '12,5.', 4)).toBe('12,5')
   })
 })

@@ -122,6 +122,39 @@ export function aDisplay(value: string | number | null | undefined): string {
   return dec !== undefined && dec !== '' ? `${entFmt},${dec}` : entFmt
 }
 
+/**
+ * Lee un cambio del input sabiendo qué mostraba antes (2026-09-23).
+ *
+ * `normalizarDecimal` adivina por la forma, y con 4 decimales la forma no
+ * alcanza: el campo del precio NETO de la compra mostraba "2.500" (su propio
+ * punto de miles) y como 3 dígitos entran en 4 decimales lo releía como 2,5.
+ * Todo neto de 1.000 para arriba tipeado de cero se dividía por mil (25000 →
+ * 2,5; 138382 → 1,3838) y el final se calculaba sobre eso. Lo sufrió Nicolás.
+ *
+ * Acá no se adivina: los puntos que ya estaban en pantalla los puso el campo,
+ * así que son de MILES; un punto recién tipeado es la coma decimal. Solo lo
+ * que entra de golpe (pegar, autocompletar) pasa por `normalizarDecimal`.
+ * Devuelve el texto sin puntos: coma decimal y nada más, sin ambigüedad.
+ * De paso arregla el backspace: "2.500" → "2.50" era 2,5 en cualquier campo.
+ */
+export function interpretarCambio(anterior: string, texto: string, decimales: number): string {
+  if (decimales <= 0 || anterior === '') return texto
+  const max = Math.min(anterior.length, texto.length)
+  let p = 0
+  while (p < max && anterior[p] === texto[p]) p++
+  let s = 0
+  while (s < max - p && anterior[anterior.length - 1 - s] === texto[texto.length - 1 - s]) s++
+  // Reemplazo total (seleccionar todo y tipear/pegar): como un campo vacío.
+  if (p === 0 && s === 0) return texto
+
+  const sinPuntos = (t: string) => t.replace(/\./g, '')
+  let nuevo = texto.slice(p, texto.length - s)
+  if (anterior.includes(',')) nuevo = sinPuntos(nuevo)               // ya hay decimal: el punto sobra
+  else if (nuevo === '.') nuevo = ','                                 // la tecla del teclado numérico
+  else if (nuevo.length > 1) nuevo = sinPuntos(normalizarDecimal(nuevo, decimales)) // pegado
+  return sinPuntos(texto.slice(0, p)) + nuevo + sinPuntos(texto.slice(texto.length - s))
+}
+
 /** Reformatea lo tipeado conservando una coma colgante ("1234," → "1.234,"). */
 export function reformatear(textoCrudo: string, decimales: number): string {
   // La normalización va primero: si tipearon "1234." ese punto ya es la coma
@@ -169,9 +202,9 @@ export function InputMonto({
   }, [display])
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const texto = e.target.value
-    const caret = e.target.selectionStart ?? texto.length
-    caretDesdeDerecha.current = (texto.slice(caret).match(/[\d,]/g) ?? []).length
+    const caret = e.target.selectionStart ?? e.target.value.length
+    caretDesdeDerecha.current = (e.target.value.slice(caret).match(/[\d,]/g) ?? []).length
+    const texto = interpretarCambio(display, e.target.value, decimales)
     setDisplay(reformatear(texto, decimales))
     onChange(aRaw(texto, decimales))
   }
