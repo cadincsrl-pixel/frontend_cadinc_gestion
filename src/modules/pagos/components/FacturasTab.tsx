@@ -19,6 +19,7 @@ import { FacturasTabla } from './FacturasTabla'
 import { FichaFactura } from './FichaFactura'
 import { ModalCargarFactura } from './ModalCargarFactura'
 import { ModalRegistrarPago } from './ModalRegistrarPago'
+import { ModalExcelGalicia } from './ModalExcelGalicia'
 import { DeudaPorProveedor } from './DeudaPorProveedor'
 
 const PAGE_SIZE = 50
@@ -53,7 +54,7 @@ const FILTRO_INICIAL: PagosFacturasFiltro = {
  */
 export function FacturasTab({ aviso }: { aviso?: string | null }) {
   const toast = useToast()
-  const { puedeVer, puedeCrear, registrarPagos, aprobarFacturas, esAdmin } = usePermisos('pagos')
+  const { puedeVer, puedeCrear, registrarPagos, aprobarFacturas, esAdmin, verPii } = usePermisos('pagos')
   const puedeAprobar = !!(aprobarFacturas || esAdmin)
   const puedePagar   = !!(registrarPagos || esAdmin)
 
@@ -66,6 +67,7 @@ export function FacturasTab({ aviso }: { aviso?: string | null }) {
   const [fichaId, setFichaId] = useState<number | null>(null)
   const [modalCargar, setModalCargar] = useState<{ open: boolean; editarId?: number }>({ open: false })
   const [modalPago, setModalPago] = useState<{ open: boolean; facturaIds: number[] }>({ open: false, facturaIds: [] })
+  const [modalGalicia, setModalGalicia] = useState(false)
   const [exportando, setExportando] = useState(false)
   const [generandoPdf, setGenerandoPdf] = useState(false)
 
@@ -218,6 +220,20 @@ export function FacturasTab({ aviso }: { aviso?: string | null }) {
               >
                 💸 Pagar {pagables.length > 0 ? pagables.length : ''}
               </Button>
+              {/* La planilla del banco, precargada (2026-09-23). A diferencia de
+                  «Pagar», admite varios proveedores: es una fila por cada uno. */}
+              <Button
+                variant="secondary" size="sm"
+                onClick={() => setModalGalicia(true)}
+                disabled={!puedePagar || pagables.length === 0}
+                title={
+                  !puedePagar ? 'No tenés permiso para registrar pagos'
+                  : pagables.length === 0 ? 'De lo seleccionado, no hay nada aprobado con saldo'
+                  : `Planilla del Galicia con ${pagables.length} factura(s)`
+                }
+              >
+                🏦 Galicia {pagables.length > 0 ? pagables.length : ''}
+              </Button>
               <span className="text-xs text-gris-dark">{seleccionadas.length} seleccionada{seleccionadas.length === 1 ? '' : 's'}</span>
             </>
           )}
@@ -292,6 +308,10 @@ export function FacturasTab({ aviso }: { aviso?: string | null }) {
           editarId={modalCargar.editarId}
           onClose={() => setModalCargar({ open: false })}
         />
+      )}
+
+      {modalGalicia && (
+        <ModalExcelGalicia facturas={pagables} verPii={!!verPii} onClose={() => setModalGalicia(false)} />
       )}
 
       {/* Registrar pago */}
