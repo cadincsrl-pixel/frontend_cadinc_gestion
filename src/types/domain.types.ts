@@ -10,7 +10,15 @@ export interface AuditFields {
 export interface Obra extends AuditFields {
   cod: string
   nom: string
+  /**
+   * @deprecated Nombre del cliente tipeado a mano. Desde el 2026-09-23 cada
+   * obra es su propio centro de costo y el cliente sale de `cliente_id`.
+   */
   cc: string | null
+  /** El cliente de la obra (`ventas_clientes`). null = obra sin cliente cargado. */
+  cliente_id?: number | null
+  /** Su razón social, aplanada por el backend en GET /api/obras. */
+  cliente_nom?: string | null
   dir: string | null
   resp: string | null
   obs: string | null

@@ -646,9 +646,10 @@ export function ResumenHistoricoPage() {
                     {c.obra.cod}
                   </span>
                   <span className="font-bold text-sm text-azul truncate">{c.obra.nom}</span>
-                  {c.obra.cc && (
-                    <span className="text-[10px] font-bold bg-azul-light text-azul-mid px-1.5 py-0.5 rounded">
-                      {c.obra.cc}
+                  {c.obra.cliente_nom && (
+                    <span className="text-[10px] font-bold bg-azul-light text-azul-mid px-1.5 py-0.5 rounded truncate max-w-[200px]"
+                      title={`Cliente: ${c.obra.cliente_nom}`}>
+                      {c.obra.cliente_nom}
                     </span>
                   )}
                 </div>

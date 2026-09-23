@@ -126,7 +126,7 @@ export function FacturasTabla({ items, seleccion, onToggle, onToggleTodas, onAbr
                          onChange={onToggleTodas} title="Seleccionar toda la página" />
                 </th>
               )}
-              {['Proveedor / comprobante', 'Centro de costo', 'Emitida', 'Vence', 'Total', 'Saldo', 'Cómo se paga', 'Estado', ''].map((h, i) => (
+              {['Proveedor / comprobante', 'Cliente / obra', 'Emitida', 'Vence', 'Total', 'Saldo', 'Cómo se paga', 'Estado', ''].map((h, i) => (
                 <th key={h + i}
                     className={`bg-gris text-gris-dark text-[10px] font-bold px-3 py-2 uppercase tracking-wide whitespace-nowrap ${i >= 2 && i <= 5 ? 'text-right' : 'text-left'}`}>
                   {h}

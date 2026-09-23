@@ -348,7 +348,7 @@ export function describirFiltroFacturas(
   }
   if (f.vencimiento && f.vencimiento !== 'todas') p.push(venc[f.vencimiento] ?? f.vencimiento)
   if (f.obra_cod) p.push(`obra ${f.obra_cod}`)
-  if (f.centro_costo) p.push(`centro de costo ${f.centro_costo}`)
+  if (f.centro_costo) p.push(`cliente u obra ${f.centro_costo}`)
   if (f.desde && f.hasta) p.push(`emitidas del ${fmtFecha(f.desde)} al ${fmtFecha(f.hasta)}`)
   else if (f.desde) p.push(`emitidas desde el ${fmtFecha(f.desde)}`)
   else if (f.hasta) p.push(`emitidas hasta el ${fmtFecha(f.hasta)}`)

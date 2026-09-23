@@ -235,11 +235,17 @@ export function ModalEditarObra({ open, onClose, obra }: Props) {
             placeholder="Para casos sin login"
             {...register('resp')}
           />
-          <Input
-            label="Centro de Costo"
-            placeholder="Ej: García Hnos."
-            {...register('cc')}
-          />
+          {/* Sin «Centro de costo» (2026-09-23): cada obra ES su centro de
+              costo. El cliente se asigna desde Facturación › Clientes; acá se
+              muestra. `cc` sigue viajando con su valor de siempre, sin tocarlo. */}
+          <div>
+            <div className="block text-xs font-semibold text-gris-dark mb-1">Cliente</div>
+            <div className="px-3 py-2 rounded border border-gris-mid bg-gris/40 text-sm truncate"
+              title={obra?.cliente_nom ?? undefined}>
+              {obra?.cliente_nom ?? <span className="text-gris-dark italic">Sin cliente</span>}
+            </div>
+            <div className="text-[11px] text-gris-dark mt-0.5">Se asigna desde Facturación › Clientes.</div>
+          </div>
         </div>
         <Input
           label="Dirección"

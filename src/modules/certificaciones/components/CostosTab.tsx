@@ -212,7 +212,7 @@ export function CostosTab() {
   const { data: obras = [] }           = useObras('tarja')
   const { data: obrasArchivadas = [] } = useObrasArchivadas('tarja')
   const [vistaObras, setVistaObras] = useState<'activas' | 'archivadas' | 'todas'>('todas')
-  const [ccSel,      setCcSel]      = useState('')
+  const [clienteSel, setClienteSel] = useState('')
   const [obraSel,    setObraSel]    = useState('')
   const [contratSel, setContratSel] = useState('')
 
@@ -236,7 +236,7 @@ export function CostosTab() {
       v === 'archivadas' ? (obrasArchivadas as Obra[])
       : v === 'todas'    ? [...(obras as Obra[]), ...(obrasArchivadas as Obra[])]
       : (obras as Obra[])
-    if (obraSel && !nuevas.some(o => o.cod === obraSel)) { setObraSel(''); setContratSel(''); setCcSel('') }
+    if (obraSel && !nuevas.some(o => o.cod === obraSel)) { setObraSel(''); setContratSel(''); setClienteSel('') }
   }
 
   // Obra elegida y sus semanas a mostrar. Para una obra ARCHIVADA (terminada)
@@ -278,15 +278,15 @@ export function CostosTab() {
     ? (contratistaById.get(Number(contratSel))?.nom ?? 'Contratista')
     : 'Contratistas'
 
-  // Centros de costo únicos (excluye null/vacío). Varias obras pueden
-  // compartir el mismo CC → útil para acotar la búsqueda de obra.
-  const centrosCosto = Array.from(
-    new Set(obrasVisibles.map(o => o.cc).filter((cc): cc is string => !!cc?.trim()))
+  // Los clientes con obras en la vista (2026-09-23: antes era `obras.cc`, el
+  // nombre del cliente tipeado a mano). Cada obra es su centro de costo; el
+  // cliente sólo junta las de un mismo dueño para acotar la búsqueda.
+  const clientes = Array.from(
+    new Set(obrasVisibles.map(o => o.cliente_nom).filter((c): c is string => !!c?.trim()))
   ).sort()
 
-  // Si hay CC seleccionado, mostramos solo las obras de ese CC.
-  const obrasFiltradas = ccSel
-    ? obrasVisibles.filter(o => o.cc === ccSel)
+  const obrasFiltradas = clienteSel
+    ? obrasVisibles.filter(o => o.cliente_nom === clienteSel)
     : obrasVisibles
 
   return (
@@ -317,21 +317,20 @@ export function CostosTab() {
       <div className="flex flex-wrap gap-3">
         <div className="min-w-[200px]">
           <Combobox
-            label="Centro de costo"
-            placeholder="Todos los CC"
+            label="Cliente"
+            placeholder="Todos los clientes"
             options={[
               { value: '', label: '— Todos —' },
-              ...centrosCosto.map(cc => ({
-                value: cc,
-                label: cc,
-                sub: `${obrasVisibles.filter(o => o.cc === cc).length} obra${obrasVisibles.filter(o => o.cc === cc).length === 1 ? '' : 's'}`,
-              })),
+              ...clientes.map(c => {
+                const n = obrasVisibles.filter(o => o.cliente_nom === c).length
+                return { value: c, label: c, sub: `${n} obra${n === 1 ? '' : 's'}` }
+              }),
             ]}
-            value={ccSel}
+            value={clienteSel}
             onChange={(v) => {
-              setCcSel(v)
-              // Si la obra elegida no pertenece al nuevo CC, la limpiamos.
-              if (v && obraSel && !obrasVisibles.find(o => o.cod === obraSel && o.cc === v)) {
+              setClienteSel(v)
+              // Si la obra elegida no es de ese cliente, la limpiamos.
+              if (v && obraSel && !obrasVisibles.find(o => o.cod === obraSel && o.cliente_nom === v)) {
                 setObraSel('')
                 setContratSel('')
               }
@@ -341,11 +340,11 @@ export function CostosTab() {
         <div className="flex-1 max-w-md min-w-[260px]">
           <Combobox
             label="Obra"
-            placeholder={ccSel ? `Buscar obra de ${ccSel}...` : 'Buscar obra...'}
+            placeholder={clienteSel ? `Buscar obra de ${clienteSel}...` : 'Buscar obra...'}
             options={obrasFiltradas.map(o => ({
               value: o.cod,
               label: `${o.cod} — ${o.nom}${o.archivada ? '  📦' : ''}`,
-              sub: [o.archivada ? 'Archivada' : null, o.cc, o.resp].filter(Boolean).join(' · ') || undefined,
+              sub: [o.archivada ? 'Archivada' : null, o.cliente_nom, o.resp].filter(Boolean).join(' · ') || undefined,
             }))}
             value={obraSel}
             onChange={(v) => { setObraSel(v); setContratSel('') }}
@@ -373,8 +372,8 @@ export function CostosTab() {
 
       {!obraSel ? (
         <div className="bg-white rounded-card shadow-card p-8 text-center text-gris-dark text-sm italic">
-          {ccSel
-            ? `Mostrando ${obrasFiltradas.length} obra${obrasFiltradas.length === 1 ? '' : 's'} del CC "${ccSel}". Elegí una para ver el detalle semanal.`
+          {clienteSel
+            ? `Mostrando ${obrasFiltradas.length} obra${obrasFiltradas.length === 1 ? '' : 's'} de ${clienteSel}. Elegí una para ver el detalle semanal.`
             : 'Seleccioná una obra para ver el detalle de costos semana a semana.'}
         </div>
       ) : (

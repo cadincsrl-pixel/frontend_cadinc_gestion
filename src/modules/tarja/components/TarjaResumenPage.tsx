@@ -149,7 +149,7 @@ export function TarjaResumenPage() {
       o.cod.toLowerCase().includes(q) ||
       (o.dir ?? '').toLowerCase().includes(q) ||
       (o.resp ?? '').toLowerCase().includes(q) ||
-      (o.cc ?? '').toLowerCase().includes(q)
+      (o.cliente_nom ?? '').toLowerCase().includes(q)
     )
   }, [obrasEnCurso, busqueda])
 
@@ -362,9 +362,10 @@ export function TarjaResumenPage() {
                         {obra.cod}
                       </span>
                       <Badge variant="activo" label="Activa" />
-                      {obra.cc && (
-                        <span className="text-[10px] font-bold text-gris-dark bg-gris px-2 py-0.5 rounded uppercase tracking-wide">
-                          CC: {obra.cc}
+                      {obra.cliente_nom && (
+                        <span className="text-[10px] font-bold text-gris-dark bg-gris px-2 py-0.5 rounded uppercase tracking-wide truncate max-w-[220px]"
+                          title={`Cliente: ${obra.cliente_nom}`}>
+                          {obra.cliente_nom}
                         </span>
                       )}
                     </div>

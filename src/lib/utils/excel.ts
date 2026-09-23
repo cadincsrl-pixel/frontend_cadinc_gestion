@@ -243,7 +243,7 @@ export function exportarCSVResumenObras(
   obras: Obra[],
   resumen: ResumenObra[],
 ) {
-  let csv = 'Codigo,Obra,Centro de Costo,Direccion,Responsable,Trabajadores,Horas Totales,Ultima Actividad\n'
+  let csv = 'Codigo,Obra,Cliente,Direccion,Responsable,Trabajadores,Horas Totales,Ultima Actividad\n'
 
   // Totales históricos por obra calculados en la base (RPC obras_actividad);
   // antes se bajaba toda la tabla de horas para sumarlos acá.
@@ -253,7 +253,7 @@ export function exportarCSVResumenObras(
     csv += [
       obra.cod,
       `"${obra.nom}"`,
-      `"${obra.cc ?? ''}"`,
+      `"${obra.cliente_nom ?? ''}"`,
       `"${obra.dir ?? ''}"`,
       `"${obra.resp ?? ''}"`,
       r?.trabajadores_total ?? 0,
@@ -639,8 +639,8 @@ export function generarRecibos(
       const depChip = esDep
         ? `<span style="font-family:monospace;font-size:9px;background:#C96A2A;color:#fff;padding:1px 6px;border-radius:3px;font-weight:700;letter-spacing:.3px">DEPÓSITO</span>`
         : ''
-      const ccChip = c.obra.cc
-        ? `<span style="font-family:monospace;font-size:9px;background:#E8EDF5;color:#1D3F6E;padding:1px 6px;border-radius:3px;font-weight:700;letter-spacing:.3px">CC ${c.obra.cc}</span>`
+      const ccChip = c.obra.cliente_nom
+        ? `<span style="font-family:monospace;font-size:9px;background:#E8EDF5;color:#1D3F6E;padding:1px 6px;border-radius:3px;font-weight:700;letter-spacing:.3px">${c.obra.cliente_nom}</span>`
         : ''
       const respLine = (c.obra.dir || c.obra.resp)
         ? `<div style="font-size:10px;color:#8A8980;margin-top:6px">${c.obra.resp ? '👷 ' + c.obra.resp : ''}${c.obra.dir && c.obra.resp ? ' · ' : ''}${c.obra.dir ? '📍 ' + c.obra.dir : ''}</div>`

@@ -126,19 +126,14 @@ export function ModalNuevaObra({ open, onClose }: Props) {
           </span>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <Input
-            label="Nombre de la obra"
-            placeholder="Nombre de la obra"
-            error={errors.nom?.message}
-            {...register('nom')}
-          />
-          <Input
-            label="Centro de Costo"
-            placeholder="Ej: García Hnos."
-            {...register('cc')}
-          />
-        </div>
+        {/* Sin «Centro de costo» (2026-09-23): cada obra ES su centro de costo,
+            y el cliente se asigna desde Facturación › Clientes. */}
+        <Input
+          label="Nombre de la obra"
+          placeholder="Nombre de la obra"
+          error={errors.nom?.message}
+          {...register('nom')}
+        />
 
         <div className="grid grid-cols-2 gap-3">
           <Combobox

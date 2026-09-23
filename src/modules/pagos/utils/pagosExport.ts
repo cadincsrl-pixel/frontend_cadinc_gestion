@@ -87,7 +87,7 @@ export async function exportarFacturasPagos(filas: PagosFactura[]): Promise<void
     'Proveedor', 'CUIT', 'Tipo y número', 'Emitida', 'Vence', 'Días',
     'Total', 'Neto', 'IVA', 'Percepciones', 'Imputable',
     'Pagado', 'Notas de crédito', 'Saldo',
-    'Estado', 'Centro de costo', 'Reparto', 'Forma prevista', 'Descripción', 'Cargó', 'Aprobó', 'Última OP',
+    'Estado', 'Cliente / obra', 'Reparto', 'Forma prevista', 'Descripción', 'Cargó', 'Aprobó', 'Última OP',
   ]
   setColWidths(ws, [28, 14, 20, 12, 12, 8, 14, 13, 12, 13, 14, 14, 15, 14, 14, 22, 34, 16, 34, 18, 18, 12])
 
