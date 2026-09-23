@@ -12,6 +12,7 @@ import {
   fetchOrdenesExport, useRegistrarFinnegans, useDeshacerRegistroFinnegans, type PagosOrdenesFiltro,
 } from '../hooks/usePagos'
 import { exportarOrdenesPagos } from '../utils/pagosExport'
+import { descargarOrdenPagoPdf } from '../utils/ordenPagoPdf'
 import { ModalPaqueteContador } from './ModalPaqueteContador'
 import { ModalAvisarPago } from './ModalAvisarPago'
 import { useProveedoresPagos } from '../hooks/useProveedoresPagos'
@@ -262,6 +263,7 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, puedeRegistrar, on
   const [motivo, setMotivo] = useState('')
   const [pidiendo, setPidiendo] = useState(false)
   const [avisando, setAvisando] = useState(false)
+  const [generandoPdf, setGenerandoPdf] = useState(false)
 
   if (isLoading || !o) {
     return <Modal open onClose={onClose} title="Orden de pago" width="max-w-2xl">
@@ -276,6 +278,17 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, puedeRegistrar, on
       footer={
         <div className="flex gap-2 justify-end">
           <Button variant="ghost" size="sm" onClick={onClose}>Cerrar</Button>
+          {/* La OP impresa, con el formato de la de Finnegans (20260923). */}
+          <Button variant="secondary" size="sm" loading={generandoPdf}
+            title="La orden de pago en PDF, para imprimir, firmar o mandar"
+            onClick={async () => {
+              setGenerandoPdf(true)
+              try { await descargarOrdenPagoPdf(o, { verPii }) }
+              catch { toast('No se pudo generar el PDF', 'err') }
+              finally { setGenerandoPdf(false) }
+            }}>
+            🖨 PDF
+          </Button>
           {o.estado === 'emitida' && (
             <Button variant="danger" size="sm" onClick={() => setPidiendo(true)} disabled={!puedeAnular}
               title={puedeAnular ? 'Anular: las facturas vuelven a su estado anterior' : 'No tenés permiso para anular órdenes'}>

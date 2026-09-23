@@ -18,8 +18,12 @@ export const EMPRESA = {
   nombre:  process.env.NEXT_PUBLIC_EMPRESA_NOMBRE  ?? 'CADINC SRL',
   /** CUIT para solicitudes (turno/transferencia) y documentos formales. */
   cuit:    process.env.NEXT_PUBLIC_EMPRESA_CUIT    ?? '33-71719194-9',
+  /** Domicilio fiscal, para documentos impresos (orden de pago). Sale de las facturas de proveedor. */
+  domicilio: process.env.NEXT_PUBLIC_EMPRESA_DOMICILIO ?? 'Maipú 396, Dpto. 3 — San Miguel de Tucumán, Tucumán',
   /** Ruta/URL del logo (login, selector de módulos). */
   logoUrl: process.env.NEXT_PUBLIC_EMPRESA_LOGO    ?? '/logo-cadinc.png',
+  /** Logo para PAPEL (fondo blanco). El de arriba es blanco, para el fondo oscuro de la app. */
+  logoPapelUrl: process.env.NEXT_PUBLIC_EMPRESA_LOGO_PAPEL ?? '/icon-192.png',
 } as const
 
 /** Helper para labels tipo "Flota CADINC". */
