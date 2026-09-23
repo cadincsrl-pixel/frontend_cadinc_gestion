@@ -176,7 +176,7 @@ export function RemitoEnvioPrint({ remito, obraNom }: Props) {
           {/* Header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #E8621A', paddingBottom: '10px', marginBottom: '15px' }}>
             <div>
-              <img src={EMPRESA.logoUrl} alt={EMPRESA.nombre} style={{ height: '50px', marginBottom: '5px' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+              <img src={EMPRESA.logoPapelUrl} alt={EMPRESA.nombre} style={{ height: '50px', marginBottom: '5px' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
               <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#1A365D' }}>{EMPRESA.nombre}</div>
               <div style={{ fontSize: '10px', color: '#666' }}>Remito de envío de materiales</div>
             </div>

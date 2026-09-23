@@ -198,10 +198,13 @@ export function armarOrdenPagoDoc(
     // Encabezado
     {
       columns: [
+        // El logo va al lado de los datos, no arriba: es vertical (símbolo
+        // sobre «CADINC») y apilado se comía medio encabezado.
+        ...(logo ? [{ width: 50, image: logo, fit: [50, 68] as [number, number] }] : []),
         {
           width: '*',
+          margin: [logo ? 10 : 0, 14, 0, 0] as [number, number, number, number],
           stack: [
-            ...(logo ? [{ image: logo, fit: [40, 40] as [number, number], margin: [0, 0, 0, 6] as [number, number, number, number] }] : []),
             { text: EMPRESA.nombre, fontSize: 15, bold: true, color: AZUL },
             ...(EMPRESA.domicilio ? [{ text: EMPRESA.domicilio, fontSize: 8.5 }] : []),
             { text: `Responsable Inscripto   CUIT ${EMPRESA.cuit}`, fontSize: 8.5 },

@@ -65,7 +65,7 @@ export function imprimirRemitoAlquiler(remito: RemitoAlquiler) {
       <!-- Header -->
       <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #E8621A;padding-bottom:10px;margin-bottom:14px">
         <div>
-          <img src="${EMPRESA.logoUrl}" alt="${esc(EMPRESA.nombre)}" style="height:48px;margin-bottom:5px" onerror="this.style.display='none'" />
+          <img src="${EMPRESA.logoPapelUrl}" alt="${esc(EMPRESA.nombre)}" style="height:48px;margin-bottom:5px" onerror="this.style.display='none'" />
           <div style="font-size:18px;font-weight:bold;color:#1A365D">${esc(EMPRESA.nombre)}</div>
           <div style="font-size:10px;color:#666">Remito de alquiler de maquinaria</div>
         </div>

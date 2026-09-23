@@ -21,9 +21,11 @@ export const EMPRESA = {
   /** Domicilio fiscal, para documentos impresos (orden de pago). Sale de las facturas de proveedor. */
   domicilio: process.env.NEXT_PUBLIC_EMPRESA_DOMICILIO ?? 'Maipú 396, Dpto. 3 — San Miguel de Tucumán, Tucumán',
   /** Ruta/URL del logo (login, selector de módulos). */
-  logoUrl: process.env.NEXT_PUBLIC_EMPRESA_LOGO    ?? '/logo-cadinc.png',
+  // Símbolo naranja + «CADINC» en blanco, recortado al contenido (2026-09-23).
+  // Los originales del estudio de diseño están en `diseno/marca/`.
+  logoUrl: process.env.NEXT_PUBLIC_EMPRESA_LOGO    ?? '/marca/cadinc-oscuro.png',
   /** Logo para PAPEL (fondo blanco). El de arriba es blanco, para el fondo oscuro de la app. */
-  logoPapelUrl: process.env.NEXT_PUBLIC_EMPRESA_LOGO_PAPEL ?? '/icon-192.png',
+  logoPapelUrl: process.env.NEXT_PUBLIC_EMPRESA_LOGO_PAPEL ?? '/marca/cadinc-color.png',
 } as const
 
 /** Helper para labels tipo "Flota CADINC". */
