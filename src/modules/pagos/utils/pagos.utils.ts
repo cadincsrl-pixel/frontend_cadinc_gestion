@@ -78,8 +78,6 @@ export function formaPagoLabel(forma: PagosFormaPagoOPGuardada | null | undefine
   return FORMAS_PAGO_OP.find(f => f.key === forma)?.label ?? forma
 }
 
-/** «Ya está pagada» al cargar: compras solo con estas dos; admin con cualquiera. */
-export const FORMAS_PAGADA_AL_CARGAR_COMPRAS: PagosFormaPagoOP[] = ['tarjeta', 'efectivo']
 /** Si hay plata, sin comprobante el backend rebota con `COMPROBANTE_REQUERIDO`. */
 export const FORMAS_CON_COMPROBANTE_OBLIGATORIO: PagosFormaPagoOP[] = ['transferencia', 'echeq']
 /** Piden fecha de cobro (el cheque queda «en cartera» hasta ese día). */

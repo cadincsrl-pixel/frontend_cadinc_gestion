@@ -13,7 +13,7 @@ import {
 } from '../hooks/usePagos'
 import { useProveedoresPagos } from '../hooks/useProveedoresPagos'
 import {
-  FORMAS_PAGADA_AL_CARGAR_COMPRAS, FORMAS_PAGO_OP, FORMAS_PREVISTAS, FORMAS_CON_FECHA_COBRO,
+  FORMAS_PAGO_OP, FORMAS_PREVISTAS, FORMAS_CON_FECHA_COBRO,
   FORMAS_CON_CUENTA_DESTINO,
   TIPOS_COMPROBANTE, MAX_ADJUNTO_BYTES, MIME_ADJUNTOS, componerNumero, fmtM, hoyAR, partirNumero,
   vencimientoSugerido,
@@ -67,7 +67,10 @@ const r2 = (v: number) => Math.round(v * 100) / 100
 
 export function ModalCargarFactura({ editarId, onClose }: Props) {
   const toast = useToast()
-  const { esAdmin } = usePermisos('pagos')
+  const { esAdmin, registrarPagos } = usePermisos('pagos')
+  // «Ya está pagada» registra un pago: sólo quien puede registrar pagos
+  // (2026-09-23; antes Compras podía con tarjeta o efectivo).
+  const puedeMarcarPagada = !!(esAdmin || registrarPagos)
   const esEdicion = !!editarId
 
   const { data: original, isLoading } = useFactura(editarId ?? null)
@@ -239,7 +242,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
     setReparto(rs => rs.map((f, i) => i === real ? { ...f, monto: String(r2(n(f.monto) + difReparto)) } : f))
   }
 
-  const formasPagada = esAdmin ? FORMAS_PAGO_OP : FORMAS_PAGO_OP.filter(f => FORMAS_PAGADA_AL_CARGAR_COMPRAS.includes(f.key))
+  const formasPagada = FORMAS_PAGO_OP
 
   // Qué cambios le sacan la aprobación (espejo de CAMPOS_QUE_DESAPRUEBAN).
   const desaprueba = useMemo(() => {
@@ -553,11 +556,15 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
         {/* Ya está pagada */}
         {!esEdicion && (
           <div className="border-t border-gris pt-3">
-            <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
-              <input type="checkbox" className="accent-naranja" checked={yaPagada} onChange={e => setYaPagada(e.target.checked)} />
+            <label className={`flex items-center gap-2 text-sm select-none ${puedeMarcarPagada ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}
+              title={puedeMarcarPagada ? undefined : 'Registrar un pago lo hace quien tiene permiso de registrar pagos. Cargala pendiente.'}>
+              <input type="checkbox" className="accent-naranja" checked={yaPagada} disabled={!puedeMarcarPagada}
+                onChange={e => setYaPagada(e.target.checked)} />
               <b>Ya está pagada</b>
               <span className="text-xs text-gris-dark">
-                {esAdmin ? '(registra la orden de pago junto con la factura)' : '(tarjeta o efectivo: lo que se pagó en el mostrador)'}
+                {puedeMarcarPagada
+                  ? '(registra la orden de pago junto con la factura)'
+                  : '(sólo quien registra pagos: cargala pendiente y la paga quien corresponde)'}
               </span>
             </label>
 

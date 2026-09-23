@@ -135,6 +135,7 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
     return `Una ${forma === 'echeq' ? 'e-cheq' : 'transferencia'} necesita el comprobante de pago adjunto.`
   },
   NC_DATOS_REQUERIDOS: () => 'Cada nota de crédito necesita su número y su fecha.',
+  PAGADA_AL_CARGAR_SIN_PERMISO: () => 'Marcar una factura como ya pagada es registrar un pago: lo hace quien tiene permiso para registrar pagos. Cargala pendiente y que la pague quien corresponde.',
   PAGADA_AL_CARGAR_FORMA: () => 'Al cargar solo se puede marcar como ya pagada con tarjeta o efectivo. Para otra forma, cargala pendiente y que la registre quien paga.',
 
   // ── Órdenes de pago ──
