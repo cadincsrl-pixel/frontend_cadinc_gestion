@@ -26,6 +26,7 @@ import { DeclararAjusteModal } from './DeclararAjusteModal'
 import { AjustesPendientesSection } from './AjustesPendientesSection'
 import { MaterialParecidoModal } from './MaterialParecidoModal'
 import { AliasChips } from './AliasChips'
+import { MaterialFotosModal } from './MaterialFotosModal'
 import { UNIDADES } from '../constants'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import { toISO } from '@/lib/utils/dates'
@@ -131,6 +132,7 @@ export function StockTab() {
   const [rubroFiltro, setRubroFiltro] = useState<number | ''>('')
   const [stockFiltro, setStockFiltro] = useState<'' | 'con_stock' | 'sin_stock' | 'stock_bajo'>('con_stock')
   const [busqueda, setBusqueda] = useState('')
+  const [fotosDe, setFotosDe] = useState<StockMaterial | null>(null)
   const [modalNuevo, setModalNuevo] = useState(false)
   const [modalEntrada, setModalEntrada] = useState<StockMaterial | null>(null)
   const [modalHistorial, setModalHistorial] = useState<StockMaterial | null>(null)
@@ -666,6 +668,11 @@ export function StockTab() {
                     <tr key={m.id} className="border-b border-gris last:border-0 hover:bg-gris/30 transition-colors">
                       <td className="px-4 py-2.5 text-sm font-medium text-carbon">
                         <div className="flex items-center gap-1.5 flex-wrap">
+                          {m.foto_url && (
+                            <button type="button" onClick={() => setFotosDe(m)} className="shrink-0" title="Ver las fotos de la ficha">
+                              <img src={m.foto_url} alt="" loading="lazy" className="w-9 h-9 rounded object-cover border border-gris-mid" />
+                            </button>
+                          )}
                           {/* Mismo chip que en Catálogo: el código es la forma corta
                               de nombrar una ficha por teléfono o en un remito. */}
                           <button
@@ -729,6 +736,11 @@ export function StockTab() {
               return (
                 <div key={m.id} className="bg-white rounded-card shadow-sm border border-gris-mid p-3">
                   <div className="flex items-start justify-between gap-2">
+                    {m.foto_url && (
+                      <button type="button" onClick={() => setFotosDe(m)} className="shrink-0 mt-0.5" title="Ver las fotos de la ficha">
+                        <img src={m.foto_url} alt="" loading="lazy" className="w-10 h-10 rounded object-cover border border-gris-mid" />
+                      </button>
+                    )}
                     <div className="flex-1 min-w-0">
                       <div className="font-bold text-sm text-carbon">{m.nombre}</div>
                       <div className="text-[11px] text-gris-dark mt-0.5">
@@ -981,6 +993,7 @@ export function StockTab() {
           />
         )
       })()}
+      <MaterialFotosModal material={fotosDe ? { id: fotosDe.id, nombre: fotosDe.nombre } : null} onClose={() => setFotosDe(null)} puedeEditar={puedeEditar} />
       {modalAjuste && (
         <DeclararAjusteModal
           material={modalAjuste}
