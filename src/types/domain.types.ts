@@ -2669,6 +2669,14 @@ export interface PagosOrden {
   aviso_ultimo_at:   string | null
   /** El mail del padrón, para saber si se puede avisar sin ir a buscarlo. */
   proveedor_email:   string | null
+  /**
+   * Registro contable (20260923c): el número de la OP en Finnegans que carga
+   * el contador. null = todavía no la pasó. Si la OP se anula, el número queda
+   * para recordar que hay que anularla también allá.
+   */
+  numero_finnegans:      string | null
+  registrada_at:         string | null
+  registrada_por_nombre: string | null
   cantidad_facturas: number
   a_cuenta:          number
   tiene_nc:          boolean
@@ -2862,6 +2870,8 @@ export type PagosProveedoresPage = PagosPage<PagosProveedor>
 export interface PagosOrdenesPage extends PagosPage<PagosOrden> {
   /** Totales del filtro completo (no de la página): salen de la RPC de resumen. */
   totales: { ordenes: number; monto_pagado: number; monto_nc: number }
+  /** Emitidas sin número de Finnegans, SIN filtros: lo que le falta al contador. */
+  sin_registrar: number | null
 }
 
 export type PagosFacturasGrupo =
