@@ -9,18 +9,19 @@ import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import {
   useCatalogoObrasPagos, useCrearFactura, useEditarFactura, useFactura, subirComprobantePendiente,
+  useSubirAdjuntoPagos,
 } from '../hooks/usePagos'
 import { useProveedoresPagos } from '../hooks/useProveedoresPagos'
 import {
   FORMAS_PAGADA_AL_CARGAR_COMPRAS, FORMAS_PAGO_OP, FORMAS_PREVISTAS, FORMAS_CON_FECHA_COBRO,
   FORMAS_CON_CUENTA_DESTINO,
-  TIPOS_COMPROBANTE, componerNumero, fmtM, hoyAR, partirNumero,
+  TIPOS_COMPROBANTE, MAX_ADJUNTO_BYTES, MIME_ADJUNTOS, componerNumero, fmtM, hoyAR, partirNumero,
   vencimientoSugerido,
 } from '../utils/pagos.utils'
 import { mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
 import { AltaRapidaProveedor } from './AltaRapidaProveedor'
 import type {
-  PagosAdjuntoPendiente, PagosFormaPagoOP, PagosFormaPrevista, PagosImputacionInput, PagosTipoComprobante,
+  PagosAdjuntoPendiente, PagosControlFactura, PagosFormaPagoOP, PagosFormaPrevista, PagosImputacionInput, PagosTipoComprobante,
 } from '@/types/domain.types'
 
 /**
@@ -74,6 +75,21 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
   const proveedores = useProveedoresPagos({}, 1, 300)
   const crear  = useCrearFactura()
   const editar = useEditarFactura()
+  const subirAdj = useSubirAdjuntoPagos()
+
+  // La factura escaneada, elegida ANTES de guardar (2026-09-23). Se ve al lado
+  // del formulario mientras se tipea y se sube recién cuando la factura existe:
+  // así no quedan archivos huérfanos si se cancela la carga. Al subirla corre
+  // el control del comprobante, que avisa en el momento si algo no coincide.
+  const [archivo, setArchivo] = useState<File | null>(null)
+  const previewUrl = useMemo(() => (archivo ? URL.createObjectURL(archivo) : null), [archivo])
+  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl) }, [previewUrl])
+
+  function elegirArchivo(file: File | undefined) {
+    if (!file) return
+    if (file.size > MAX_ADJUNTO_BYTES) { toast('El archivo supera los 10 MB', 'err'); return }
+    setArchivo(file)
+  }
 
   const [proveedorId, setProveedorId] = useState('')
   const [tipo, setTipo] = useState<PagosTipoComprobante>('A')
@@ -302,6 +318,17 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
         })
         toast(r.orden ? `✓ Factura cargada y pagada (${r.orden.numero_fmt})` : '✓ Factura cargada', 'ok')
         for (const a of r.avisos) toast(mensajeAvisoPagos(a), 'warn')
+        if (archivo) {
+          // La factura ya quedó guardada: si el archivo falla, no se deshace
+          // nada, se avisa y se sube después desde la ficha.
+          try {
+            const adj = await subirAdj.mutateAsync({ entidad: 'facturas', id: r.factura.id, file: archivo, tipo: 'factura' })
+            const control = (adj as { control?: PagosControlFactura | null }).control
+            if (control?.estado === 'difiere') toast(`⚠ El papel no coincide: ${control.nota}`, 'warn')
+          } catch {
+            toast('La factura se cargó, pero el archivo no se pudo subir: subilo desde la ficha', 'warn')
+          }
+        }
       }
       onClose()
     } catch (e) {
@@ -317,19 +344,24 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
 
   return (
     <Modal
-      open onClose={onClose} width="max-w-3xl"
+      open onClose={onClose} width={esEdicion ? 'max-w-3xl' : 'max-w-6xl'}
       title={esEdicion ? 'Editar factura' : 'Cargar factura de proveedor'}
       footer={
         <div className="flex gap-2 justify-end">
           <Button variant="ghost" size="sm" onClick={onClose}>Cancelar</Button>
-          <Button size="sm" onClick={guardar} loading={crear.isPending || editar.isPending} disabled={!listo}
+          <Button size="sm" onClick={guardar} loading={crear.isPending || editar.isPending || subirAdj.isPending} disabled={!listo}
             title={!listo ? 'Faltan datos: proveedor, número de factura, total, descripción y que el reparto cuadre' : undefined}>
             {esEdicion ? 'Guardar cambios' : yaPagada ? 'Cargar y registrar el pago' : 'Cargar factura'}
           </Button>
         </div>
       }
     >
-      <div className="flex flex-col gap-3 text-sm">
+      <div className={esEdicion ? '' : 'grid gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]'}>
+      {!esEdicion && (
+        <PanelComprobante archivo={archivo} previewUrl={previewUrl}
+          onElegir={elegirArchivo} onQuitar={() => setArchivo(null)} />
+      )}
+      <div className="flex flex-col gap-3 text-sm min-w-0">
 
         {desaprueba && (
           <div className="bg-amarillo-light border border-amarillo/40 rounded p-2 text-xs text-[#7A5000]">
@@ -342,6 +374,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
           </div>
         )}
 
+        <Seccion titulo="Proveedor y comprobante" />
         {/* Proveedor */}
         <div className="flex gap-2 items-end">
           <div className="flex-1 min-w-0">
@@ -362,8 +395,9 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
           </div>
         )}
 
-        {/* Comprobante */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {/* Comprobante: tipo y número en una fila, las fechas en otra. En una
+            sola fila de cuatro el número (dos campos) quedaba apretado. */}
+        <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-2">
           <Campo label="Tipo">
             <select value={tipo} onChange={e => setTipo(e.target.value as PagosTipoComprobante)} disabled={congelado} className={inputCls}>
               {TIPOS_COMPROBANTE.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
@@ -380,6 +414,8 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
                 className={`${inputCls} font-mono`} />
             </div>
           </Campo>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
           <Campo label="Emitida">
             <input type="date" value={fecha} max={hoyAR()} onChange={e => setFecha(e.target.value)} disabled={congelado} className={inputCls} />
             {/* El campo arranca en hoy, y hasta el 23/09 las 13 facturas
@@ -394,6 +430,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
           </Campo>
         </div>
 
+        <Seccion titulo="Importes" />
         {/* Importes. Lo único obligatorio es el total; el desglose está
             plegado a propósito (ver el comentario de `verDesglose`). */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 items-end">
@@ -435,6 +472,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
           </div>
         )}
 
+        <Seccion titulo="Qué se compró y cómo se paga" />
         <Campo label="Descripción" hint="Qué se compró: lo lee quien aprueba">
           <input value={descripcion} onChange={e => setDescripcion(e.target.value)} placeholder="Ej.: hierro del 8 y mallas para el techo" className={inputCls} />
         </Campo>
@@ -564,6 +602,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
           </Campo>
         )}
       </div>
+      </div>
 
       {altaProveedor && (
         <AltaRapidaProveedor
@@ -584,6 +623,75 @@ function Campo({ label, hint, children }: { label: string; hint?: string; childr
         {label}{hint && <span className="font-normal"> · {hint}</span>}
       </label>
       {children}
+    </div>
+  )
+}
+
+function Seccion({ titulo }: { titulo: string }) {
+  return (
+    <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wide border-b border-gris pb-1 -mb-1 mt-1 first:mt-0">
+      {titulo}
+    </div>
+  )
+}
+
+/**
+ * La factura escaneada, a la izquierda del formulario: se tipea mirándola.
+ * Sin archivo es una zona para arrastrar o elegir; con archivo, la vista
+ * previa (imagen o PDF) queda fija mientras se scrollea el formulario.
+ */
+function PanelComprobante({ archivo, previewUrl, onElegir, onQuitar }: {
+  archivo: File | null; previewUrl: string | null
+  onElegir: (f: File | undefined) => void; onQuitar: () => void
+}) {
+  const [arrastrando, setArrastrando] = useState(false)
+  const esPdf = archivo?.type === 'application/pdf'
+  const esImagen = !!archivo?.type.startsWith('image/') && !/hei[cf]/i.test(archivo.type)
+
+  if (!archivo) {
+    return (
+      <label
+        onDragOver={e => { e.preventDefault(); setArrastrando(true) }}
+        onDragLeave={() => setArrastrando(false)}
+        onDrop={e => { e.preventDefault(); setArrastrando(false); onElegir(e.dataTransfer.files?.[0]) }}
+        className={`flex flex-col items-center justify-center gap-2 text-center rounded-card border-2 border-dashed p-6 min-h-[220px] lg:min-h-[480px] cursor-pointer transition-colors ${
+          arrastrando ? 'border-naranja bg-naranja/5' : 'border-gris-mid bg-gris/20 hover:border-naranja'}`}>
+        <span className="text-3xl">📄</span>
+        <span className="text-sm font-semibold text-azul">Adjuntá la factura</span>
+        <span className="text-xs text-gris-dark max-w-[240px]">
+          Arrastrá la foto o el PDF, o hacé clic para elegirlo. La vas a ver acá mientras cargás los datos.
+        </span>
+        <span className="text-[11px] text-gris-dark">Opcional · hasta 10 MB</span>
+        <input type="file" className="hidden" accept={MIME_ADJUNTOS} onChange={e => { onElegir(e.target.files?.[0]); e.target.value = '' }} />
+      </label>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-2 lg:sticky lg:top-0 lg:self-start">
+      <div className="flex items-center gap-2 text-xs">
+        <span className="truncate font-semibold min-w-0" title={archivo.name}>📎 {archivo.name}</span>
+        <label className="ml-auto shrink-0 text-azul hover:underline cursor-pointer">
+          Cambiar
+          <input type="file" className="hidden" accept={MIME_ADJUNTOS} onChange={e => { onElegir(e.target.files?.[0]); e.target.value = '' }} />
+        </label>
+        <button type="button" onClick={onQuitar} className="shrink-0 text-gris-dark hover:text-rojo hover:underline">Quitar</button>
+      </div>
+      <div className="rounded-card border border-gris-mid bg-gris/20 overflow-hidden">
+        {esImagen && previewUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={previewUrl} alt="Factura" className="w-full max-h-[70vh] object-contain" />
+        )}
+        {esPdf && previewUrl && (
+          <iframe src={previewUrl} title="Factura" className="w-full h-[70vh]" />
+        )}
+        {!esImagen && !esPdf && (
+          <div className="p-6 text-center text-xs text-gris-dark">
+            Este formato no se puede previsualizar, pero se adjunta igual al guardar.
+          </div>
+        )}
+      </div>
+      <div className="text-[11px] text-gris-dark">Se adjunta al guardar, y el sistema controla número, total y fecha contra lo que cargues.</div>
     </div>
   )
 }
