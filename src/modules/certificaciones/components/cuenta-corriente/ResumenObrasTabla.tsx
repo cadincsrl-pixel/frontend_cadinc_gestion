@@ -18,10 +18,12 @@ import { fmtM } from './cuentaCorriente.utils'
  * nunca se va a cobrar. Se muestran igual porque son el costo real de la
  * obra, que es lo que uno mira al lado del presupuesto.
  *
- * POR CENTRO DE COSTO (mismo día, un rato después). "A veces el cliente le
+ * POR CLIENTE (mismo día, un rato después). "A veces el cliente le
  * gusta ir cubriendo por obra": ANIMAR paga sus cuatro clínicas con un solo
- * saldo, BRADEL sus farmacias. El centro de costo es `obras.cc` (normalizado
- * en 20260917l); agrupado, cada cliente con más de una obra lleva una fila
+ * saldo, BRADEL sus farmacias. Hasta el 2026-09-23 se agrupaba por
+ * `obras.cc` (el nombre del cliente escrito a mano, con errores); ahora por
+ * el cliente de la obra (`obras.cliente_id`). Cada obra es su propio centro
+ * de costo; el cliente sólo junta las obras de un mismo dueño. Agrupado, cada cliente con más de una obra lleva una fila
  * de subtotal y sus obras debajo, ordenadas por saldo — así se ve a la vez
  * cuánto debe el cliente y cuánto de eso es cada obra. Los clientes de una
  * sola obra no llevan subtotal: sería repetir la fila. Y el selector de
@@ -66,17 +68,17 @@ const sumar = (fs: ResumenObraFila[]): Totales => fs.reduce((s, f) => ({
   sin_precio: s.sin_precio + f.materiales.sin_precio,
 }), { total: 0, pagado: 0, notas: 0, saldo: 0, sin_precio: 0 })
 
-/** Los centros con sus obras, el que más debe primero; adentro, por saldo. */
-function agruparPorCentro(filas: ResumenObraFila[]): { centro: string; obras: ResumenObraFila[]; tot: Totales }[] {
+/** Los clientes con sus obras, el que más debe primero; adentro, por saldo. */
+function agruparPorCliente(filas: ResumenObraFila[]): { cliente: string; obras: ResumenObraFila[]; tot: Totales }[] {
   const por = new Map<string, ResumenObraFila[]>()
   for (const f of filas) {
-    const lista = por.get(f.centro_costo)
+    const lista = por.get(f.cliente)
     if (lista) lista.push(f)
-    else por.set(f.centro_costo, [f])
+    else por.set(f.cliente, [f])
   }
   return [...por.entries()]
-    .map(([centro, obras]) => ({ centro, obras: [...obras].sort((a, b) => b.saldo - a.saldo), tot: sumar(obras) }))
-    .sort((a, b) => b.tot.saldo - a.tot.saldo || a.centro.localeCompare(b.centro))
+    .map(([cliente, obras]) => ({ cliente, obras: [...obras].sort((a, b) => b.saldo - a.saldo), tot: sumar(obras) }))
+    .sort((a, b) => b.tot.saldo - a.tot.saldo || a.cliente.localeCompare(b.cliente))
 }
 
 function FilaObra({ f, onElegir, sangria }: { f: ResumenObraFila; onElegir: (cod: string) => void; sangria: boolean }) {
@@ -84,7 +86,7 @@ function FilaObra({ f, onElegir, sangria }: { f: ResumenObraFila; onElegir: (cod
     <tr className="border-t border-gris hover:bg-azul-light/30 cursor-pointer" onClick={() => onElegir(f.obra_cod)}>
       <td className={`px-3 py-2 text-sm ${sangria ? 'pl-7' : ''}`}>
         <div className="font-semibold">{f.obra_nom}{f.archivada && <span className="ml-1 text-[10px] font-normal text-gris-dark uppercase">archivada</span>}</div>
-        <div className="text-[11px] text-gris-dark font-mono">{f.obra_cod}{!sangria && f.centro_costo !== f.obra_nom && <span className="font-sans"> · {f.centro_costo}</span>}</div>
+        <div className="text-[11px] text-gris-dark font-mono">{f.obra_cod}{!sangria && f.cliente !== f.obra_nom && <span className="font-sans"> · {f.cliente}</span>}</div>
       </td>
       <td className="px-3 py-2 text-xs whitespace-nowrap">
         {f.regimen === 'administracion'
@@ -111,11 +113,11 @@ function FilaObra({ f, onElegir, sangria }: { f: ResumenObraFila; onElegir: (cod
   )
 }
 
-function FilaCentro({ centro, n, tot }: { centro: string; n: number; tot: Totales }) {
+function FilaCliente({ cliente, n, tot }: { cliente: string; n: number; tot: Totales }) {
   return (
     <tr className="border-t-2 border-gris-mid bg-azul-light/40">
       <td className="px-3 py-2 text-sm font-bold" colSpan={5}>
-        {centro} <span className="font-normal text-[11px] text-gris-dark">· {n} obras</span>
+        {cliente} <span className="font-normal text-[11px] text-gris-dark">· {n} obras</span>
       </td>
       <Monto n={tot.total} bold />
       <Monto n={tot.pagado} bold />
@@ -128,11 +130,11 @@ function FilaCentro({ centro, n, tot }: { centro: string; n: number; tot: Totale
 
 export function ResumenObrasTabla({ filas, conTarja, onElegirObra }: Props) {
   const [agrupar, setAgrupar] = useState(true)
-  const [centroSel, setCentroSel] = useState<string>('')
+  const [clienteSel, setClienteSel] = useState<string>('')
 
-  const centros = useMemo(() => [...new Set(filas.map(f => f.centro_costo))].sort((a, b) => a.localeCompare(b)), [filas])
-  const visibles = useMemo(() => centroSel ? filas.filter(f => f.centro_costo === centroSel) : filas, [filas, centroSel])
-  const grupos = useMemo(() => agruparPorCentro(visibles), [visibles])
+  const clientes = useMemo(() => [...new Set(filas.map(f => f.cliente))].sort((a, b) => a.localeCompare(b)), [filas])
+  const visibles = useMemo(() => clienteSel ? filas.filter(f => f.cliente === clienteSel) : filas, [filas, clienteSel])
+  const grupos = useMemo(() => agruparPorCliente(visibles), [visibles])
   const tot = sumar(visibles)
   const sinPct = visibles.filter(f => f.sin_pct)
   const hayArchivadas = visibles.some(f => f.archivada)
@@ -141,21 +143,21 @@ export function ResumenObrasTabla({ filas, conTarja, onElegirObra }: Props) {
     <div className="bg-white rounded-card shadow-card overflow-hidden">
       <div className="px-4 pt-3 pb-2 flex items-center justify-between gap-2 flex-wrap">
         <h3 className="text-xs font-bold text-gris-dark uppercase tracking-wider">
-          Cuánto debe cada {centroSel ? 'obra de ' + centroSel : agrupar ? 'cliente' : 'obra'}
+          Cuánto debe cada {clienteSel ? 'obra de ' + clienteSel : agrupar ? 'cliente' : 'obra'}
         </h3>
         <div className="flex items-center gap-2 flex-wrap">
           <select
-            value={centroSel}
-            onChange={e => setCentroSel(e.target.value)}
+            value={clienteSel}
+            onChange={e => setClienteSel(e.target.value)}
             className="text-xs border-[1.5px] border-gris-mid rounded px-2 py-1 bg-white outline-none focus:border-naranja"
-            title="Quedarse con un solo centro de costo (cliente)"
+            title="Quedarse con un solo cliente"
           >
-            <option value="">Todos los centros de costo</option>
-            {centros.map(c => <option key={c} value={c}>{c}</option>)}
+            <option value="">Todos los clientes</option>
+            {clientes.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
           <label className="text-xs text-gris-dark flex items-center gap-1 cursor-pointer select-none">
             <input type="checkbox" className="accent-azul" checked={agrupar} onChange={e => setAgrupar(e.target.checked)} />
-            agrupar por centro de costo
+            agrupar por cliente
           </label>
           <span className="text-[11px] text-gris-dark">{visibles.length} obras{hayArchivadas ? ' (las archivadas, sólo si deben)' : ''}</span>
         </div>
@@ -193,9 +195,9 @@ export function ResumenObrasTabla({ filas, conTarja, onElegirObra }: Props) {
             {agrupar
               ? grupos.map(g => (
                   g.obras.length === 1
-                    ? <FilaObra key={g.centro} f={g.obras[0]!} onElegir={onElegirObra} sangria={false} />
+                    ? <FilaObra key={g.cliente} f={g.obras[0]!} onElegir={onElegirObra} sangria={false} />
                     : [
-                        <FilaCentro key={`c-${g.centro}`} centro={g.centro} n={g.obras.length} tot={g.tot} />,
+                        <FilaCliente key={`c-${g.cliente}`} cliente={g.cliente} n={g.obras.length} tot={g.tot} />,
                         ...g.obras.map(f => <FilaObra key={f.obra_cod} f={f} onElegir={onElegirObra} sangria />),
                       ]
                 ))
@@ -204,7 +206,7 @@ export function ResumenObrasTabla({ filas, conTarja, onElegirObra }: Props) {
           {visibles.length > 0 && (
             <tfoot>
               <tr className="border-t-2 border-gris-mid bg-gris/40">
-                <td className="px-3 py-2 text-xs font-bold uppercase" colSpan={5}>Total{centroSel ? ` ${centroSel}` : ''}</td>
+                <td className="px-3 py-2 text-xs font-bold uppercase" colSpan={5}>Total{clienteSel ? ` ${clienteSel}` : ''}</td>
                 <Monto n={tot.total} bold />
                 <Monto n={tot.pagado} bold />
                 <Monto n={tot.notas} bold />
@@ -217,7 +219,7 @@ export function ResumenObrasTabla({ filas, conTarja, onElegirObra }: Props) {
       </div>
       <p className="px-4 py-2 text-[11px] text-gris-dark">
         Precios finales, IVA incluido. Los renglones sin precio valen $0 acá: el saldo real de esas obras es mayor.
-        Click en una obra para cargar precios, registrar pagos y sacar el PDF. El centro de costo se edita en la ficha de la obra.
+        Click en una obra para cargar precios, registrar pagos y sacar el PDF. El cliente de cada obra se asigna desde Facturación › Clientes.
       </p>
     </div>
   )

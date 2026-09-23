@@ -251,7 +251,7 @@ export async function exportarResumenObras(filas: ResumenObraFila[], conTarja: b
   wb.modified = generadoEn
 
   const ws = wb.addWorksheet('Cuánto debe cada obra')
-  const headers = ['Centro de costo', 'Cód obra', 'Obra', 'Régimen', 'Jornales', '% jorn.', 'Contratistas', '% contr.', 'Materiales', '% mat.', 'Total', 'Pagado', 'Notas de crédito', 'Saldo', 'Sin precio']
+  const headers = ['Cliente', 'Cód obra', 'Obra', 'Régimen', 'Jornales', '% jorn.', 'Contratistas', '% contr.', 'Materiales', '% mat.', 'Total', 'Pagado', 'Notas de crédito', 'Saldo', 'Sin precio']
   const NCOLS = headers.length
   setColWidths(ws, [18, 14, 30, 20, 16, 8, 16, 8, 16, 8, 16, 16, 16, 16, 10])
 
@@ -285,15 +285,15 @@ export async function exportarResumenObras(filas: ResumenObraFila[], conTarja: b
   headerRow.height = 20
 
   const gris = { argb: 'FF888888' }
-  // Agrupadas por centro de costo y, adentro, por saldo: así el Excel se lee
+  // Agrupadas por cliente y, adentro, por saldo: así el Excel se lee
   // como la pantalla agrupada, y un subtotal por cliente sale con un filtro.
-  const ordenadas = [...filas].sort((a, b) => a.centro_costo.localeCompare(b.centro_costo) || b.saldo - a.saldo)
+  const ordenadas = [...filas].sort((a, b) => a.cliente.localeCompare(b.cliente) || b.saldo - a.saldo)
   let r = 4
   for (const f of ordenadas) {
     const row = ws.getRow(r++)
     const pata = (p: ResumenObraFila['jornales']) => p ? p.facturable : null
     row.values = [
-      f.centro_costo, f.obra_cod, f.obra_nom + (f.archivada ? ' (archivada)' : ''),
+      f.cliente, f.obra_cod, f.obra_nom + (f.archivada ? ' (archivada)' : ''),
       f.regimen === 'administracion' ? 'Por administración' : 'Presupuesto cerrado',
       pata(f.jornales), f.jornales?.pct ?? null,
       pata(f.contratistas), f.contratistas?.pct ?? null,
