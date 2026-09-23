@@ -408,12 +408,14 @@ function ControlComprobante({ c }: { c: PagosControlFactura }) {
     <div className={`border rounded p-2.5 mb-3 text-xs ${meta.clase}`}>
       <div className="font-bold">{meta.icono} {meta.titulo}</div>
       {c.nota && <div className="mt-0.5">{c.nota}</div>}
-      {(c.numero_leido || c.total_leido != null) && (
+      {(c.numero_leido || c.total_leido != null || c.fecha_leida) && (
         <div className="mt-1 text-[11px] opacity-90">
           Leído del papel:{' '}
-          {c.numero_leido && <>N° <b className="font-mono">{c.numero_leido}</b></>}
-          {c.numero_leido && c.total_leido != null && ' · '}
-          {c.total_leido != null && <>total <b className="font-mono tabular-nums">{fmtM(c.total_leido)}</b></>}
+          {[
+            c.numero_leido && <span key="n">N° <b className="font-mono">{c.numero_leido}</b></span>,
+            c.total_leido != null && <span key="t">total <b className="font-mono tabular-nums">{fmtM(c.total_leido)}</b></span>,
+            c.fecha_leida && <span key="f">emitida el <b className="font-mono">{fmtFecha(c.fecha_leida)}</b></span>,
+          ].filter(Boolean).flatMap((el, i) => (i === 0 ? [el] : [' · ', el]))}
         </div>
       )}
       <div className="mt-1 text-[10px] opacity-70">Control automático · {fmtFecha(c.created_at.slice(0, 10))}</div>

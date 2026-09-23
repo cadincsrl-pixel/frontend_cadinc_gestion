@@ -382,6 +382,12 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
           </Campo>
           <Campo label="Emitida">
             <input type="date" value={fecha} max={hoyAR()} onChange={e => setFecha(e.target.value)} disabled={congelado} className={inputCls} />
+            {/* El campo arranca en hoy, y hasta el 23/09 las 13 facturas
+                cargadas tenían la fecha del día de carga: nadie la cambiaba.
+                Una vez pagada queda congelada, así que conviene verlo acá. */}
+            {!esEdicion && fecha === hoyAR() && (
+              <div className="mt-1 text-[11px] text-[#7A5000]">Es la fecha de hoy: ¿es la que dice el papel?</div>
+            )}
           </Campo>
           <Campo label="Vence" hint="Opcional">
             <input type="date" value={venceEl} min={fecha} onChange={e => setVenceEl(e.target.value)} className={inputCls} />

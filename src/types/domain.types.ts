@@ -2588,8 +2588,8 @@ export interface PagosPagoAplicado {
 }
 
 /**
- * Control automático del comprobante contra lo tipeado (20260921j). Sólo dos
- * datos: número y total. `null` si todavía no se controló (o si no hay key
+ * Control automático del comprobante contra lo tipeado (20260921j). Tres
+ * datos: número, total y fecha de emisión (la fecha desde 20260923a). `null` si todavía no se controló (o si no hay key
  * de IA cargada: el módulo anda igual, simplemente no controla).
  */
 export type PagosEstadoControl = 'coincide' | 'difiere' | 'ilegible' | 'error'
@@ -2602,6 +2602,9 @@ export interface PagosControlFactura {
   /** null = no se pudo leer ese dato, que NO es lo mismo que «está bien». */
   numero_ok:    boolean | null
   total_ok:     boolean | null
+  /** ISO. Los controles anteriores al 23/09 no leían la fecha: null. */
+  fecha_leida?: string | null
+  fecha_ok?:    boolean | null
   nota:         string
   created_at:   string
 }

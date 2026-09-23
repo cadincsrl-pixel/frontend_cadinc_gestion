@@ -47,7 +47,7 @@ function Alertas({ f }: { f: PagosFactura }) {
           que es justo lo que el control automático viene a evitar. */}
       {f.control_estado === 'coincide' && (
         <span className="inline-block whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded bg-verde-light text-verde font-bold"
-              title="El comprobante adjunto coincide con el número y el total cargados">✓ comprobante OK</span>
+              title="El comprobante adjunto coincide con lo cargado (número, total y fecha)">✓ comprobante OK</span>
       )}
       {f.control_estado === 'difiere' && (
         <span className="inline-block whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded bg-rojo-light text-rojo font-bold"
