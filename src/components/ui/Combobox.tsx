@@ -75,14 +75,36 @@ interface ComboboxProps {
 // decidir si abrir hacia arriba o hacia abajo.
 const DROPDOWN_HEIGHT = 208
 
-function OptionButton({ o, selected, onSelect }: {
+/**
+ * Una opción de la lista. Se elige con CLICK (apretar Y soltar sobre la misma
+ * fila), no con mousedown: con mousedown bastaba que un apretón cayera sobre
+ * una fila que se acababa de dibujar debajo del puntero para elegirla sin
+ * querer. Pasó una vez en Facturación (2026-09-23): se buscó «CLINICA HERAS»
+ * recién abierto el modal y quedó elegida «9 DE JULIO 882», que es la primera
+ * fila de la lista COMPLETA — la que aparece pegada debajo del input cuando se
+ * abre sin filtro. No se pudo reproducir; la explicación más probable es un
+ * apretón (doble click, o durante los 200 ms en que el modal todavía se
+ * desliza 20 px al abrirse) que cayó sobre esa fila recién dibujada: el
+ * `onFocus` reabre la lista entera con el query vacío.
+ *
+ * `type="button"`: dentro de un <form>, un <button> sin tipo es submit, y
+ * Enter en cualquier input «clickea» el primer submit del form (submit
+ * implícito). Con la selección en onClick, eso elegiría la primera opción
+ * visible; y el ✕ de limpiar, sin tipo, borraba el valor del primer
+ * Combobox del formulario.
+ */
+export function OptionButton({ o, selected, onSelect }: {
   o: ComboboxOption
   selected: boolean
   onSelect: (v: string) => void
 }) {
   return (
     <button
-      onMouseDown={() => onSelect(o.value)}
+      type="button"
+      // Sin esto el input pierde el foco en el mousedown y, en mobile, el
+      // teclado se cierra y mueve todo antes del click.
+      onMouseDown={e => e.preventDefault()}
+      onClick={() => onSelect(o.value)}
       className={`
         w-full text-left px-4 py-2.5 text-sm transition-colors border-b border-gris last:border-0
         hover:bg-naranja-light hover:text-naranja-dark
@@ -100,6 +122,12 @@ function OptionButton({ o, selected, onSelect }: {
       </div>
     </button>
   )
+}
+
+/** Suelta el foco del elemento activo (el input del Combobox tras elegir). */
+function soltarFoco() {
+  const el = typeof document !== 'undefined' ? document.activeElement : null
+  if (el instanceof HTMLElement) el.blur()
 }
 
 function renderOptions(filtered: ComboboxOption[], value: string, onSelect: (v: string) => void) {
@@ -206,6 +234,9 @@ export function Combobox({
     onChange(val)
     setOpen(false)
     setQuery('')
+    // El input conservó el foco (preventDefault en el mousedown de la opción):
+    // se suelta para que el próximo click lo vuelva a abrir por onFocus.
+    soltarFoco()
   }
 
   async function handleCreate() {
@@ -215,6 +246,7 @@ export function Combobox({
     await onCreate(q)
     setOpen(false)
     setQuery('')
+    soltarFoco()
   }
 
   // Mostramos la opción de "crear" cuando hay query no vacío y ningún label
@@ -282,6 +314,7 @@ export function Combobox({
         />
         {selected && !open && (
           <button
+            type="button"
             onClick={() => { onChange(''); setQuery('') }}
             className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gris-mid hover:text-carbon text-xs"
           >
@@ -309,7 +342,9 @@ export function Combobox({
               {renderOptions(filtered, value, handleSelect)}
               {showCreate && (
                 <button
-                  onMouseDown={handleCreate}
+                  type="button"
+                  onMouseDown={e => e.preventDefault()}
+                  onClick={handleCreate}
                   className="w-full text-left px-4 py-2.5 text-sm transition-colors border-t border-gris-mid bg-naranja-light/30 hover:bg-naranja text-naranja-dark hover:text-white font-bold"
                 >
                   ＋ {createLabel}: <span className="font-mono">&ldquo;{queryTrim}&rdquo;</span>

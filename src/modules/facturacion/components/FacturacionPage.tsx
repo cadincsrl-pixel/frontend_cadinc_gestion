@@ -11,7 +11,7 @@ import { ClientesTab } from './ClientesTab'
 import { FinnegansTab } from './FinnegansTab'
 
 const TABS = [
-  { key: 'facturas',  icon: '🧮', label: 'Facturas',  sub: 'Factura A y nota de crédito A contra ARCA' },
+  { key: 'facturas',  icon: '🧮', label: 'Facturas',  sub: 'Facturas y notas de crédito A y B contra ARCA' },
   { key: 'clientes',  icon: '🏢', label: 'Clientes',  sub: 'Padrón propio: CUIT, condición IVA y obras que se le facturan' },
   { key: 'finnegans', icon: '📥', label: 'Finnegans', sub: 'Autorizadas que falta cargar a mano en Finnegans' },
 ]

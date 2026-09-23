@@ -1,7 +1,7 @@
 'use client'
 
 import { Button } from '@/components/ui/Button'
-import { ESTADO_META, fmtCuit, fmtFecha, fmtM, numeroTxt } from '../utils/facturacion.utils'
+import { ESTADO_META, cortoTipo, fmtDoc, fmtFecha, fmtM, numeroTxt } from '../utils/facturacion.utils'
 import type { VentasFactura } from '@/types/domain.types'
 
 /**
@@ -41,7 +41,7 @@ function Extras({ f }: { f: VentasFactura }) {
       )}
       {f.es_nc && f.asociada_numero_fmt && (
         <span className="inline-block text-[10px] px-1.5 py-0.5 rounded bg-[#EEE8FF] text-[#5A2D82] font-bold"
-              title="Factura que corrige esta nota de crédito">s/ FA {f.asociada_numero_fmt}</span>
+              title="Factura que corrige esta nota de crédito">s/ {cortoTipo(f.asociada_cbte_tipo)} {f.asociada_numero_fmt}</span>
       )}
       {!f.es_nc && Number(f.nc_autorizadas) > 0 && (
         <span className="inline-block text-[10px] px-1.5 py-0.5 rounded bg-[#EEE8FF] text-[#5A2D82] font-bold"
@@ -107,7 +107,7 @@ export function FacturasTabla({ items, onAbrir, onVerificar, verificandoId, emit
                 </td>
                 <td className="px-3 py-2 text-sm cursor-pointer" onClick={() => onAbrir(f.id)}>
                   <div className="font-semibold">{f.rec_razon_social}</div>
-                  <div className="text-[11px] text-gris-dark font-mono">{fmtCuit(f.rec_doc_nro)}</div>
+                  <div className="text-[11px] text-gris-dark font-mono">{fmtDoc(f.rec_doc_tipo, f.rec_doc_nro)}</div>
                   {f.obra_nom && <div className="text-[11px] text-gris-dark truncate max-w-[240px]">{f.obra_nom}</div>}
                 </td>
                 <td className="px-3 py-2 text-xs whitespace-nowrap cursor-pointer" onClick={() => onAbrir(f.id)}>{fmtFecha(f.fecha_cbte)}</td>

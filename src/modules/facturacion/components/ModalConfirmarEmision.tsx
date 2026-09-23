@@ -9,7 +9,7 @@ import {
   esEmisionIncierta, invalidarFacturacion, reconciliarFacturaVenta, useEmitirFacturaVenta,
 } from '../hooks/useFacturacion'
 import { codigoErrorFacturacion, leerCuerpoError, mensajeErrorFacturacion } from '../utils/facturacion.errores'
-import { fmtCuit, fmtFecha, fmtM, mensajesArca } from '../utils/facturacion.utils'
+import { cortoTipo, fmtDoc, fmtFecha, fmtM, mensajesArca, nombreTipo } from '../utils/facturacion.utils'
 import { descargarFacturaPdf } from '../utils/facturaPdf'
 import type { VentasArcaEstado, VentasFacturaFJ } from '@/types/domain.types'
 import { Aviso, MensajesArca } from './FichaFactura'
@@ -60,7 +60,7 @@ export function ModalConfirmarEmision({ fj, arca, onClose }: Props) {
 
   const f = fj.factura
   const ambiente = arca?.ambiente ?? f.ambiente
-  const titulo = f.es_nc ? 'Nota de crédito A' : 'Factura A'
+  const titulo = nombreTipo(f.cbte_tipo)
 
   /** Pregunta a ARCA cada 5 s hasta 1 minuto. */
   async function verificarHastaSaber() {
@@ -192,10 +192,10 @@ export function ModalConfirmarEmision({ fj, arca, onClose }: Props) {
             <div className="bg-gris rounded p-3 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
               <span className="text-gris-dark">Comprobante</span><span className="font-semibold">{titulo} · PV {String(f.pto_vta).padStart(5, '0')}</span>
               <span className="text-gris-dark">Cliente</span><span className="font-semibold">{f.rec_razon_social}</span>
-              <span className="text-gris-dark">CUIT</span><span className="font-mono">{fmtCuit(f.rec_doc_nro)}</span>
+              <span className="text-gris-dark">Documento</span><span className="font-mono">{fmtDoc(f.rec_doc_tipo, f.rec_doc_nro)}</span>
               <span className="text-gris-dark">Fecha</span><span>{fmtFecha(f.fecha_cbte)}</span>
               <span className="text-gris-dark">Producto</span><span>{f.producto === 'TRANSPORTE' ? 'Transporte' : `Avance de obra · ${f.centro_costo ?? ''}`}</span>
-              {f.es_nc && f.asociada_numero_fmt && (<><span className="text-gris-dark">Corrige</span><span className="font-mono">FA {f.asociada_numero_fmt}</span></>)}
+              {f.es_nc && f.asociada_numero_fmt && (<><span className="text-gris-dark">Corrige</span><span className="font-mono">{cortoTipo(f.asociada_cbte_tipo)} {f.asociada_numero_fmt}</span></>)}
               <span className="text-gris-dark">Neto</span><span className="font-mono tabular-nums">{fmtM(f.imp_neto)}</span>
               <span className="text-gris-dark">IVA</span><span className="font-mono tabular-nums">{fmtM(f.imp_iva)}</span>
               <span className="text-gris-dark font-bold">Total</span><span className="font-mono tabular-nums font-bold">{fmtM(f.imp_total)}</span>

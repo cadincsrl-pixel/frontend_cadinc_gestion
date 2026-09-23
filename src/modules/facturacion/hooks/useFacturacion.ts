@@ -40,7 +40,7 @@ export function invalidarFacturacion(qc: QueryClient) {
 
 export interface FacturasFiltro {
   estado?:       VentasEstado
-  cbte_tipo?:    1 | 3
+  cbte_tipo?:    1 | 3 | 6 | 8
   cliente_id?:   number
   centro_costo?: string
   producto?:     VentasProducto

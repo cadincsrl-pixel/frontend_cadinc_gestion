@@ -9,7 +9,7 @@ import {
   useBorrarFacturaVenta, useDescartarFacturaVenta, useFacturaVenta, useReconciliarFacturaVenta, useVolverABorrador,
 } from '../hooks/useFacturacion'
 import {
-  ALICUOTA_LABEL, CONDICIONES_IVA, ESTADO_META, fmtCant, fmtDoc, fmtFecha, fmtFechaHora, fmtM, fmtPrecio,
+  ALICUOTA_LABEL, CONDICIONES_IVA, ESTADO_META, cortoTipo, fmtCant, fmtDoc, fmtFecha, fmtFechaHora, fmtM, fmtPrecio,
   mensajesArca, numeroTxt, resultadoReconciliacion,
 } from '../utils/facturacion.utils'
 import { codigoErrorFacturacion, mensajeErrorFacturacion } from '../utils/facturacion.errores'
@@ -240,7 +240,7 @@ export function FichaFactura({ id, onClose, onEditar, onNotaCredito, onEmitir }:
 
         {f.es_nc && (f.asociada_numero_fmt || fj.asociados.length > 0) && (
           <Aviso tono="gris">
-            Corrige la factura <b className="font-mono">FA {f.asociada_numero_fmt ?? fj.asociados[0]?.numero}</b>
+            Corrige la factura <b className="font-mono">{cortoTipo(f.asociada_cbte_tipo)} {f.asociada_numero_fmt ?? fj.asociados[0]?.numero}</b>
             {fj.asociados[0] && <> del {fmtFecha(fj.asociados[0].fecha_cbte)}</>}.
           </Aviso>
         )}

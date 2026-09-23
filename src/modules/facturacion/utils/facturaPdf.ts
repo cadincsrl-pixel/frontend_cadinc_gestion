@@ -11,6 +11,13 @@
  *   3. Renglones: Descripción, Cantidad, Unidad, Precio, Subtotal, Alícuota IVA,
  *      Subtotal c/IVA.
  *   4. IVA por alícuota, "Son:" en letras, observaciones y la línea de totales.
+ *
+ * Factura B (fase 5): mismos datos, pero el IVA NO se discrimina por renglón.
+ * Precio y subtotal de cada renglón salen CON IVA, no van las líneas de IVA
+ * por alícuota ni la columna de IVA en los totales, y abajo va la leyenda del
+ * Régimen de Transparencia Fiscal al Consumidor (Ley 27.743): «IVA
+ * Contenido» y «Otros Impuestos Nacionales Indirectos». ARCA igual recibe el
+ * IVA discriminado (WSFEv1 lo exige también en la B): es solo la impresión.
  *   5. QR de ARCA + CAE + vencimiento del CAE. Sin código de barras: el QR lo
  *      reemplazó.
  *
@@ -25,11 +32,11 @@ import pdfFonts from 'pdfmake/build/vfs_fonts'
 import type { Content, TableCell, TDocumentDefinitions } from 'pdfmake/interfaces'
 import { EMPRESA } from '@/lib/config/empresa'
 import type { VentasFacturaFJ } from '@/types/domain.types'
-import { conIvaRenglon } from './facturacion.calculos'
+import { conIvaRenglon, precioConIva } from './facturacion.calculos'
 import { importeALetras } from './numeroALetras'
 import { urlQrArca } from './qrArca'
 import {
-  ALICUOTA_LABEL, CONDICIONES_IVA, DOC_TIPOS, TIPOS_CBTE, fmtCant, fmtCuit, fmtFecha, fmtN, fmtPrecio,
+  ALICUOTA_LABEL, CONDICIONES_IVA, DOC_TIPOS, TIPOS_CBTE, cortoTipo, fmtCant, fmtCuit, fmtFecha, fmtN, fmtPrecio,
 } from './facturacion.utils'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -85,11 +92,13 @@ const par = (label: string, valor: string, anchoLabel = 62): Content => ({
 export function armarFacturaDoc(fj: VentasFacturaFJ, opts: { logo: string | null }): TDocumentDefinitions {
   const f = fj.factura
   const esNc = f.es_nc
+  const esB = f.letra === 'B'
   const homo = f.es_homologacion
   const autorizada = f.estado === 'autorizada' && !!f.cae && !!f.numero
   const titulo = esNc ? 'NOTA DE CRÉDITO' : 'FACTURA'
   const docRec = DOC_TIPOS.find(d => d.id === f.rec_doc_tipo)
-  const docRecTxt = f.rec_doc_tipo === 80 || f.rec_doc_tipo === 86 ? fmtCuit(f.rec_doc_nro) : f.rec_doc_nro
+  const docRecTxt = f.rec_doc_tipo === 80 || f.rec_doc_tipo === 86 ? fmtCuit(f.rec_doc_nro)
+    : f.rec_doc_tipo === 99 ? 'Sin identificar' : f.rec_doc_nro
   const numero = f.numero_fmt ?? (f.numero_intentado_fmt ? `${f.numero_intentado_fmt} (sin autorizar)` : 'BORRADOR')
 
   // ── 1. Encabezado ──
@@ -152,7 +161,7 @@ export function armarFacturaDoc(fj: VentasFacturaFJ, opts: { logo: string | null
   const asoc = fj.asociados[0]
   const asocTxt = asoc
     ? `${TIPOS_CBTE.find(t => t.key === asoc.cbte_tipo)?.corto ?? 'FA'} ${String(asoc.pto_vta).padStart(5, '0')}-${String(asoc.numero).padStart(8, '0')} del ${fmtFecha(asoc.fecha_cbte)}`
-    : (f.asociada_numero_fmt ? `FA ${f.asociada_numero_fmt}` : null)
+    : (f.asociada_numero_fmt ? `${cortoTipo(f.asociada_cbte_tipo)} ${f.asociada_numero_fmt}` : null)
   const receptor: Content = {
     table: {
       widths: ['*', 190],
@@ -184,6 +193,14 @@ export function armarFacturaDoc(fj: VentasFacturaFJ, opts: { logo: string | null
   }
 
   // ── 3. Renglones ──
+  // B: precio y subtotal CON IVA, sin columnas de IVA.
+  const renglonesB: TableCell[][] = fj.renglones.map(r => [
+    td(r.descripcion),
+    td(fmtCant(r.cantidad), 'right'),
+    td(r.unidad),
+    td(fmtN(precioConIva(r.precio_unit, r.alicuota_id)), 'right'),
+    td(fmtN(conIvaRenglon(Number(r.importe_neto), r.alicuota_id)), 'right'),
+  ])
   const renglones: TableCell[][] = fj.renglones.map(r => [
     td(r.descripcion),
     td(fmtCant(r.cantidad), 'right'),
@@ -194,7 +211,14 @@ export function armarFacturaDoc(fj: VentasFacturaFJ, opts: { logo: string | null
     td(fmtN(conIvaRenglon(Number(r.importe_neto), r.alicuota_id)), 'right'),
   ])
   const tablaRenglones: Content = {
-    table: {
+    table: esB ? {
+      headerRows: 1,
+      widths: ['*', 50, 50, 80, 90],
+      body: [
+        [th('Descripción'), th('Cantidad', 'right'), th('Unidad'), th('Precio', 'right'), th('Subtotal', 'right')],
+        ...renglonesB,
+      ],
+    } : {
       headerRows: 1,
       widths: ['*', 44, 44, 62, 64, 38, 70],
       body: [
@@ -212,7 +236,7 @@ export function armarFacturaDoc(fj: VentasFacturaFJ, opts: { logo: string | null
   }
 
   // ── 4. IVA, Son, observaciones, totales ──
-  const ivas: Content[] = fj.alicuotas
+  const ivas: Content[] = esB ? [] : fj.alicuotas
     .filter(a => Number(a.importe) !== 0 || Number(a.base_imp) !== 0)
     .map(a => ({
       columns: [
@@ -223,8 +247,20 @@ export function armarFacturaDoc(fj: VentasFacturaFJ, opts: { logo: string | null
       margin: [0, 1, 0, 1],
     }))
 
+  const totalCell: TableCell = { text: `$ ${fmtN(f.imp_total)}`, bold: true, fontSize: 10, alignment: 'right', margin: [2, 3, 2, 3] }
   const totales: Content = {
-    table: {
+    table: esB ? {
+      widths: ['*', '*', '*', '*'],
+      body: [
+        [th('Subtotal', 'right'), th('Otros tributos', 'right'), th('Exento', 'right'), th('Total', 'right')],
+        [
+          td(fmtN(Number(f.imp_neto) + Number(f.imp_iva)), 'right'),
+          td(fmtN(f.imp_trib), 'right'),
+          td(fmtN(f.imp_op_ex), 'right'),
+          totalCell,
+        ],
+      ],
+    } : {
       widths: ['*', '*', '*', '*', '*'],
       body: [
         [th('Neto Gravado', 'right'), th('IVA', 'right'), th('Otros tributos', 'right'), th('Exento', 'right'), th('Total', 'right')],
@@ -233,7 +269,7 @@ export function armarFacturaDoc(fj: VentasFacturaFJ, opts: { logo: string | null
           td(fmtN(f.imp_iva), 'right'),
           td(fmtN(f.imp_trib), 'right'),
           td(fmtN(f.imp_op_ex), 'right'),
-          { text: `$ ${fmtN(f.imp_total)}`, bold: true, fontSize: 10, alignment: 'right', margin: [2, 3, 2, 3] },
+          totalCell,
         ],
       ],
     },
@@ -242,6 +278,24 @@ export function armarFacturaDoc(fj: VentasFacturaFJ, opts: { logo: string | null
     },
     margin: [0, 8, 0, 0],
   }
+
+  // Ley 27.743 (Régimen de Transparencia Fiscal al Consumidor): en la B se
+  // informa el IVA contenido y los otros impuestos nacionales indirectos.
+  const transparencia: Content | null = esB ? {
+    table: {
+      widths: ['*'],
+      body: [[{
+        margin: [4, 3, 4, 3],
+        stack: [
+          { text: 'Régimen de Transparencia Fiscal al Consumidor (Ley 27.743)', bold: true, fontSize: 8 },
+          { text: `IVA Contenido: $ ${fmtN(f.imp_iva)}`, fontSize: 8.5, margin: [0, 2, 0, 0] },
+          { text: 'Otros Impuestos Nacionales Indirectos: $ 0,00', fontSize: 8.5 },
+        ],
+      }]],
+    },
+    layout: { hLineWidth: () => 0.6, vLineWidth: () => 0.6, hLineColor: () => LINEA, vLineColor: () => LINEA },
+    margin: [0, 6, 0, 0],
+  } : null
 
   // ── 5. QR + CAE ──
   const pie: Content = autorizada
@@ -301,6 +355,7 @@ export function armarFacturaDoc(fj: VentasFacturaFJ, opts: { logo: string | null
       fontSize: 8.5, margin: [0, 6, 0, 0] as [number, number, number, number],
     }] : []),
     totales,
+    ...(transparencia ? [transparencia] : []),
     pie,
   ]
 

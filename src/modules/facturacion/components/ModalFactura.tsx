@@ -14,14 +14,15 @@ import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { normalizeText } from '@/lib/utils/text'
 import {
-  useCentrosCosto, useCondicionesIva, useCrearFacturaVenta, useEditarFacturaVenta, useFacturaVenta,
+  useCentrosCosto, useCrearFacturaVenta, useEditarFacturaVenta, useFacturaVenta,
   useObrasFacturacion,
 } from '../hooks/useFacturacion'
 import { useClientesVenta } from '../hooks/useClientesFacturacion'
 import { calcularTotales } from '../utils/facturacion.calculos'
 import {
   ALICUOTAS_UI, ALICUOTA_LABEL, CONDICIONES_IVA, CONDICION_PAGO_DEFAULT, PRODUCTOS, PROVINCIAS, PROVINCIA_DEFAULT,
-  UNIDAD_DEFAULT, admiteFacturaA, fmtCuit, fmtM, hoyAR,
+  TIPOS_CBTE, UNIDAD_DEFAULT, esTipoNc, fmtDoc, fmtM, hoyAR, letraDeCliente, letraDeTipo, requiereIdentificacion,
+  tipoPara, TOPE_CF_IDENTIFICACION,
 } from '../utils/facturacion.utils'
 import { codigoErrorFacturacion, errorDeCampoFacturacion, mensajeErrorFacturacion } from '../utils/facturacion.errores'
 import type {
@@ -30,7 +31,12 @@ import type {
 import { Aviso } from './FichaFactura'
 
 /**
- * Cargar o editar el BORRADOR de una factura A, o de una nota de crédito A.
+ * Cargar o editar el BORRADOR de una factura, o de una nota de crédito.
+ *
+ * La LETRA no la elige el usuario: sale del cliente (`letraDeCliente`, espejo
+ * de la base y del backend). A = CUIT y RI/monotributo; B = el resto
+ * (exento, consumidor final…). La NC toma la letra de la factura que corrige.
+ * El tipo (1/3/6/8) lo arma el formulario y el backend lo vuelve a derivar.
  *
  * Lo que el formulario tiene que hacer bien:
  *  1. Los totales en vivo son los MISMOS que va a calcular la base
@@ -141,7 +147,7 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
   const { esAdmin } = usePermisos('facturacion')
 
   const edicion   = useFacturaVenta(editarId ?? null)
-  const esNc      = !!ncDe || edicion.data?.factura.cbte_tipo === 3
+  const esNc      = !!ncDe || esTipoNc(edicion.data?.factura.cbte_tipo)
   const asociadaId = ncDe?.factura.id ?? edicion.data?.factura.asociada_id ?? null
   // La factura que corrige la NC, para mostrar el saldo. Si vino por props no se pide.
   const asociadaQ = useFacturaVenta(!ncDe && esNc ? asociadaId : null)
@@ -150,7 +156,6 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
   const clientes   = useClientesVenta('', true)
   const obras      = useObrasFacturacion()
   const centros    = useCentrosCosto()
-  const condiciones = useCondicionesIva()
   const crear      = useCrearFacturaVenta()
   const editar     = useEditarFacturaVenta()
 
@@ -191,10 +196,16 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
 
   const listaClientes = useMemo(() => clientes.data ?? [], [clientes.data])
   const cliente = listaClientes.find(c => String(c.id) === clienteId)
-  const condCliente = cliente ? condiciones.data?.find(c => c.id === cliente.condicion_iva_id) : undefined
-  const clienteAdmiteA = cliente
-    ? cliente.doc_tipo === 80 && (condCliente ? condCliente.admite_a : admiteFacturaA(cliente.doc_tipo, cliente.condicion_iva_id))
-    : true
+  const letraCliente = cliente ? letraDeCliente(cliente.doc_tipo, cliente.condicion_iva_id) : null
+  // En una NC manda la factura que corrige; si no, el cliente.
+  const letraAsociada = esNc
+    ? letraDeTipo(ncDe?.factura.cbte_tipo ?? asociadaQ.data?.factura.cbte_tipo ?? edicion.data?.factura.asociada_cbte_tipo ?? 0)
+    : null
+  const letra = esNc ? (letraAsociada ?? letraCliente) : letraCliente
+  const tipo = letra ? tipoPara(letra, esNc) : null
+  const tipoLabel = (t: number | null | undefined) => TIPOS_CBTE.find(x => x.key === t)?.label
+  const cortoDe = (t: number | null | undefined) => TIPOS_CBTE.find(x => x.key === t)?.corto ?? 'F'
+  const faltaIdentificar = !!cliente && requiereIdentificacion(letra, cliente.doc_tipo, totales.total)
 
   const saldoNc = asociada ? Number(asociada.factura.saldo_nc ?? 0) : null
   const superaSaldo = esNc && saldoNc !== null && totales.total > saldoNc + 0.004
@@ -206,7 +217,9 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
       .map(c => ({
         value: String(c.id),
         label: c.razon_social,
-        sub: [fmtCuit(c.doc_nro), CONDICIONES_IVA[c.condicion_iva_id], c.activo ? null : 'dado de baja'].filter(Boolean).join(' · '),
+        sub: [fmtDoc(c.doc_tipo, c.doc_nro), CONDICIONES_IVA[c.condicion_iva_id],
+          letraDeCliente(c.doc_tipo, c.condicion_iva_id) ? `Factura ${letraDeCliente(c.doc_tipo, c.condicion_iva_id)}` : 'sin letra: corregir',
+          c.activo ? null : 'dado de baja'].filter(Boolean).join(' · '),
         search: [c.razon_social, c.doc_nro],
       })),
     [listaClientes, clienteId],
@@ -265,9 +278,13 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
 
   async function guardar(d: FormData, forzar = false) {
     setErrorServer(null)
+    if (!tipo) {
+      setErrorServer({ msg: 'A este cliente no se le puede hacer ni factura A ni B: corregí su documento o su condición IVA en Clientes.', code: 'LETRA_INCOMPATIBLE' })
+      return
+    }
     const body: VentasFacturaInput = {
       factura: {
-        cbte_tipo:         esNc ? 3 : 1,
+        cbte_tipo:         tipo,
         cliente_id:        Number(d.cliente_id),
         producto:          d.producto,
         centro_costo:      d.producto === 'TRANSPORTE' ? null : d.centro_costo,
@@ -303,9 +320,10 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
     }
   }
 
+  const nombreTipo = tipoLabel(tipo) ?? (esNc ? 'Nota de crédito' : 'Factura')
   const titulo = esNc
-    ? `Nota de crédito A${asociada?.factura.numero_fmt ? ` · s/ FA ${asociada.factura.numero_fmt}` : ''}`
-    : editarId ? 'Editar factura A (borrador)' : 'Nueva factura A'
+    ? `${nombreTipo}${asociada?.factura.numero_fmt ? ` · s/ ${cortoDe(asociada.factura.cbte_tipo)} ${asociada.factura.numero_fmt}` : ''}`
+    : editarId ? `Editar ${nombreTipo.toLowerCase()} (borrador)` : `Nueva ${nombreTipo.toLowerCase()}`
 
   if (editarId && edicion.isLoading) {
     return (
@@ -350,7 +368,7 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
 
         {esNc && asociada && (
           <Aviso tono="gris">
-            Corrige la <b>FA {asociada.factura.numero_fmt}</b> del {asociada.factura.fecha_cbte.split('-').reverse().join('/')}
+            Corrige la <b>{cortoDe(asociada.factura.cbte_tipo)} {asociada.factura.numero_fmt}</b> del {asociada.factura.fecha_cbte.split('-').reverse().join('/')}
             {' '}por <b>{fmtM(asociada.factura.imp_total)}</b>.
             {' '}Saldo que todavía se puede acreditar: <b className="font-mono">{fmtM(saldoNc)}</b>
             {Number(asociada.factura.nc_autorizadas) > 0 && <> (ya tiene NC por {fmtM(asociada.factura.nc_autorizadas)})</>}.
@@ -372,7 +390,8 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
             {esNc && <span className="text-[11px] text-gris-dark">En una nota de crédito el cliente es el de la factura.</span>}
             {cliente && (
               <div className="text-[11px] text-gris-dark mt-0.5">
-                {fmtCuit(cliente.doc_nro)} · {CONDICIONES_IVA[cliente.condicion_iva_id] ?? cliente.condicion_iva_id}
+                {fmtDoc(cliente.doc_tipo, cliente.doc_nro)} · {CONDICIONES_IVA[cliente.condicion_iva_id] ?? cliente.condicion_iva_id}
+                {letraCliente && <> · le corresponde <b>factura {letraCliente}</b></>}
                 {cliente.domicilio && <> · {cliente.domicilio}</>}
               </div>
             )}
@@ -393,10 +412,28 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
           </div>
         </div>
 
-        {cliente && !clienteAdmiteA && (
+        {cliente && !letraCliente && (
           <Aviso tono="rojo">
-            A <b>{cliente.razon_social}</b> no se le puede hacer factura A: {cliente.doc_tipo !== 80 ? 'no tiene CUIT' : `es «${CONDICIONES_IVA[cliente.condicion_iva_id] ?? cliente.condicion_iva_id}»`}.
-            La A es solo para Responsable Inscripto o Monotributo con CUIT. Corregí su condición IVA en Clientes.
+            A <b>{cliente.razon_social}</b> no se le puede hacer ni factura A ni B: es «{CONDICIONES_IVA[cliente.condicion_iva_id] ?? cliente.condicion_iva_id}»
+            y no tiene CUIT. Un Responsable Inscripto o Monotributista solo recibe factura A, que exige CUIT. Corregilo en Clientes.
+          </Aviso>
+        )}
+        {cliente && esNc && letraCliente && letraAsociada && letraCliente !== letraAsociada && (
+          <Aviso tono="rojo">
+            La factura es {letraAsociada} pero hoy a <b>{cliente.razon_social}</b> le corresponde {letraCliente}: la nota de crédito tiene
+            que ser de la misma letra que la factura. Revisá la condición IVA del cliente.
+          </Aviso>
+        )}
+        {faltaIdentificar && (
+          <Aviso tono="rojo">
+            Desde {fmtM(TOPE_CF_IDENTIFICACION)} el consumidor final tiene que estar identificado (RG 5700):
+            cargale DNI o CUIT a <b>{cliente?.razon_social}</b> en Clientes, o elegí el cliente identificado.
+          </Aviso>
+        )}
+        {letra === 'B' && (
+          <Aviso tono="gris">
+            Factura B: acá se cargan precios <b>netos</b> como siempre; en el PDF cada renglón sale con IVA incluido y abajo
+            el «IVA contenido» (Ley 27.743).
           </Aviso>
         )}
         {cliente && !cliente.activo && (

@@ -6,7 +6,7 @@
 // El `HttpError` del client trae `{ message: code, body: { error, detail } }`:
 // se lee `body.error` (el código) y `body.detail` (el dato para el mensaje).
 
-import { fmtFecha } from './facturacion.utils'
+import { fmtFecha, fmtM } from './facturacion.utils'
 
 interface CuerpoError {
   error?:  string
@@ -98,7 +98,7 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   SOLO_AGREGAR:                 () => 'El historial no se puede modificar.',
 
   // ── Datos del comprobante ──
-  TIPO_NO_HABILITADO:     () => 'Por ahora solo se emiten Factura A y Nota de crédito A.',
+  TIPO_NO_HABILITADO:     () => 'Ese tipo de comprobante todavía no está habilitado (se emiten Factura A/B y Nota de crédito A/B).',
   TIPO_INVALIDO:          () => 'Tipo de comprobante inválido.',
   AMBIENTE_INVALIDO:      () => 'Ambiente de ARCA inválido.',
   AMBIENTE_NO_COINCIDE:   () => 'El comprobante es de otro ambiente de ARCA (homologación vs. producción).',
@@ -106,9 +106,16 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   CLIENTE_REQUERIDO:      () => 'Elegí el cliente.',
   CLIENTE_NO_EXISTE:      () => 'El cliente no existe.',
   CLIENTE_INACTIVO:       () => 'El cliente está dado de baja. Reactivalo en Clientes para facturarle.',
-  LETRA_INCOMPATIBLE:     d => dato(d, 'letra') === 'A'
-    ? 'A este cliente no se le puede hacer factura A: tiene que tener CUIT y ser Responsable Inscripto o Monotributista. Revisá su condición IVA en Clientes.'
-    : 'La letra del comprobante no corresponde a la condición IVA del cliente.',
+  LETRA_INCOMPATIBLE:     d => {
+    const pide = dato(d, 'letra'), cli = dato(d, 'letra_cliente')
+    if (d && typeof d === 'object' && 'letra_cliente' in d && cli == null) {
+      return 'A este cliente no se le puede hacer ni factura A ni B: un Responsable Inscripto o Monotributista necesita CUIT. Corregí su documento o su condición IVA en Clientes.'
+    }
+    if (pide === 'A') return `A este cliente le corresponde factura ${String(cli ?? 'B')}: la A es solo para Responsable Inscripto o Monotributista con CUIT.`
+    if (pide === 'B') return `A este cliente le corresponde factura ${String(cli ?? 'A')}: la B no es para Responsable Inscripto ni Monotributista.`
+    return 'La letra del comprobante no corresponde a la condición IVA del cliente.'
+  },
+  CF_REQUIERE_IDENTIFICACION: d => `Desde ${fmtM(Number(dato(d, 'tope') ?? 10_000_000))} el consumidor final tiene que estar identificado (RG 5700). Cargale DNI o CUIT al cliente en Clientes.`,
   PRODUCTO_INVALIDO:      () => 'El producto tiene que ser «Avance de obra» o «Transporte».',
   CENTRO_COSTO_REQUERIDO: () => 'Una factura de avance de obra necesita centro de costo.',
   CENTRO_COSTO_INVALIDO:  d => `«${String(dato(d, 'centro_costo') ?? '')}» no es un centro de costo de las obras.`,
@@ -175,6 +182,7 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   DOC_INVALIDO:           () => 'El número de documento no es válido.',
   CONDICION_IVA_INVALIDA: () => 'Elegí una condición IVA válida.',
   CLIENTE_INVALIDO:       () => 'El cliente no es válido para este comprobante.',
+  CLIENTE_SIN_LETRA:      () => 'Con esa condición IVA hace falta CUIT: un Responsable Inscripto o Monotributista solo puede recibir factura A, y la A exige CUIT.',
 
   // ── Genéricos ──
   DATOS_INVALIDOS:  d => {

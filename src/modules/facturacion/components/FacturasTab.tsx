@@ -61,6 +61,8 @@ export function FacturasTab() {
       iva:        filas.reduce((s, r) => s + Number(r.iva), 0),
       obra:       suma(r => r.producto === 'AVANCE DE OBRA'),
       transporte: suma(r => r.producto === 'TRANSPORTE'),
+      letraA:     suma(r => r.letra === 'A'),
+      letraB:     suma(r => r.letra === 'B'),
       cantidad:   filas.reduce((s, r) => s + Number(r.cantidad), 0),
     }
   }, [resumen.data])
@@ -99,7 +101,7 @@ export function FacturasTab() {
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex gap-2 flex-wrap items-center">
           <Button size="sm" onClick={() => setModal({ open: true })} disabled={!puedeCrear}
-            title={puedeCrear ? 'Cargar una factura A (queda en borrador hasta emitirla)' : 'No tenés permiso para cargar facturas'}>
+            title={puedeCrear ? 'Cargar una factura (la letra A o B sale del cliente; queda en borrador hasta emitirla)' : 'No tenés permiso para cargar facturas'}>
             + Nueva factura
           </Button>
         </div>
@@ -119,7 +121,8 @@ export function FacturasTab() {
       {/* KPI del mes */}
       <div className="flex gap-2 flex-wrap">
         <Kpi label={`Facturado ${mesLabel}`} valor={resumen.isLoading ? '…' : fmtM(kpi.total)}
-          sub={resumen.isLoading ? undefined : `${kpi.cantidad} comprobante${kpi.cantidad === 1 ? '' : 's'} · NC restan`} />
+          sub={resumen.isLoading ? undefined
+            : `${kpi.cantidad} comprobante${kpi.cantidad === 1 ? '' : 's'} · NC restan${kpi.letraB ? ` · A ${fmtM(kpi.letraA)} · B ${fmtM(kpi.letraB)}` : ''}`} />
         <Kpi label="Neto" valor={resumen.isLoading ? '…' : fmtM(kpi.neto)} sub={resumen.isLoading ? undefined : `IVA ${fmtM(kpi.iva)}`} />
         <Kpi label="Avance de obra" valor={resumen.isLoading ? '…' : fmtM(kpi.obra)} />
         <Kpi label="Transporte" valor={resumen.isLoading ? '…' : fmtM(kpi.transporte)} />

@@ -48,10 +48,54 @@ export const CONDICIONES_IVA: Record<number, string> = {
   16: 'Monotributo Trabajador Independiente Promovido',
 }
 export const CONDICIONES_ADMITEN_A = new Set([1, 6, 13, 16])
+/** FEParamGetCondicionIvaReceptor('B') en homologación (23/09/2026). Ninguna está en las dos. */
+export const CONDICIONES_ADMITEN_B = new Set([4, 5, 7, 8, 9, 10, 15])
 
 /** ¿Se le puede hacer factura A? Mismo criterio que `_ventas_validar_receptor`. */
 export function admiteFacturaA(docTipo: number, condicionIvaId: number): boolean {
   return docTipo === 80 && CONDICIONES_ADMITEN_A.has(condicionIvaId)
+}
+
+export type LetraVenta = 'A' | 'B'
+
+/**
+ * La letra la decide el cliente, no el usuario. Espejo de
+ * `_ventas_validar_receptor` (20260924d) y de `letraDe` del backend:
+ *   A → CUIT y condición 1, 6, 13 o 16;
+ *   B → condición 4, 5, 7, 8, 9, 10 o 15, con cualquier documento;
+ *   null → ninguna (RI o monotributo SIN CUIT): hay que corregir el cliente.
+ */
+export function letraDeCliente(docTipo: number, condicionIvaId: number): LetraVenta | null {
+  if (admiteFacturaA(docTipo, condicionIvaId)) return 'A'
+  if (CONDICIONES_ADMITEN_B.has(condicionIvaId)) return 'B'
+  return null
+}
+
+export function letraDeTipo(cbteTipo: number): LetraVenta | null {
+  if ([1, 3, 201, 203].includes(cbteTipo)) return 'A'
+  if ([6, 8].includes(cbteTipo)) return 'B'
+  return null
+}
+
+/** Factura o NC de esa letra: A → 1 / 3, B → 6 / 8. */
+export function tipoPara(letra: LetraVenta, nc: boolean): 1 | 3 | 6 | 8 {
+  if (letra === 'A') return nc ? 3 : 1
+  return nc ? 8 : 6
+}
+
+export const esTipoNc = (cbteTipo: number | null | undefined) => cbteTipo === 3 || cbteTipo === 8 || cbteTipo === 203
+
+/**
+ * Desde este total el consumidor final se identifica (RG ARCA 5700/2025,
+ * "igual o superior a $ 10.000.000"; en homologación ARCA rechaza con la
+ * observación 10015 justo en ese número). Espejo de `_ventas_tope_cf()` y
+ * de TOPE_CF_IDENTIFICACION del backend.
+ */
+export const TOPE_CF_IDENTIFICACION = 10_000_000
+
+/** Comprobante B, receptor sin identificar (99) y total ≥ tope. */
+export function requiereIdentificacion(letra: LetraVenta | null, docTipo: number, total: number): boolean {
+  return letra === 'B' && docTipo === 99 && Math.round(total * 100) >= TOPE_CF_IDENTIFICACION * 100
 }
 
 /**
@@ -90,10 +134,33 @@ export const ESTADOS: EstadoMeta[] = [
 ]
 export const ESTADO_META = Object.fromEntries(ESTADOS.map(e => [e.key, e])) as Record<VentasEstado, EstadoMeta>
 
-export const TIPOS_CBTE: { key: 1 | 3; label: string; corto: string }[] = [
+export const TIPOS_CBTE: { key: 1 | 3 | 6 | 8; label: string; corto: string }[] = [
   { key: 1, label: 'Factura A',          corto: 'FA' },
   { key: 3, label: 'Nota de crédito A',  corto: 'NCA' },
+  { key: 6, label: 'Factura B',          corto: 'FB' },
+  { key: 8, label: 'Nota de crédito B',  corto: 'NCB' },
 ]
+
+/**
+ * Lo que muestra el chip «Descripción» de la bandeja de Finnegans: el primer
+ * renglón (truncado) y, si hay más, "+N". El botón copia TODAS completas.
+ */
+export function muestraDescripcion(descs: string[], max = 60): string {
+  const primera = (descs[0] ?? '').replace(/\s+/g, ' ').trim()
+  if (!primera) return ''
+  const corta = primera.length > max ? `${primera.slice(0, max - 1).trimEnd()}…` : primera
+  return descs.length > 1 ? `${corta} +${descs.length - 1}` : corta
+}
+
+/** "FA", "NCB"… para el tipo; "F" si no se conoce. */
+export function cortoTipo(t: number | null | undefined): string {
+  return TIPOS_CBTE.find(x => x.key === t)?.corto ?? 'F'
+}
+
+/** "Factura B", "Nota de crédito A"… */
+export function nombreTipo(t: number | null | undefined): string {
+  return TIPOS_CBTE.find(x => x.key === t)?.label ?? 'Comprobante'
+}
 
 // ── Formatos ──────────────────────────────────────────────────────────
 

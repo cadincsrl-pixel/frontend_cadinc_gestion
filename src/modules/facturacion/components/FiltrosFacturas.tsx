@@ -92,7 +92,7 @@ export function FiltrosFacturas({ filtro, patch }: Props) {
             <div>
               <label className={lblCls}>Tipo</label>
               <select className={selCls} value={filtro.cbte_tipo ?? ''}
-                onChange={e => patch({ cbte_tipo: e.target.value ? (Number(e.target.value) as 1 | 3) : undefined })}>
+                onChange={e => patch({ cbte_tipo: e.target.value ? (Number(e.target.value) as 1 | 3 | 6 | 8) : undefined })}>
                 <option value="">Todos</option>
                 {TIPOS_CBTE.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
               </select>

@@ -44,7 +44,8 @@ export function jsonQrArca(d: DatosQrArca): string {
     moneda:     d.moneda ?? 'PES',
     ctz:        d.ctz ?? 1,
     tipoDocRec: d.tipoDocRec,
-    nroDocRec:  soloDigitos(d.nroDocRec),
+    // Consumidor final sin identificar (99): ARCA lo guarda con DocNro 0.
+    nroDocRec:  d.tipoDocRec === 99 ? 0 : soloDigitos(d.nroDocRec),
     tipoCodAut: 'E',
     codAut:     soloDigitos(d.codAut),
   })

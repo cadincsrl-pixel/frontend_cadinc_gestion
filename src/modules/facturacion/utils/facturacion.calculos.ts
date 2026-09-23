@@ -135,3 +135,16 @@ export function conIvaRenglon(importeNeto: number, alicuotaId: number): number {
   const c = BigInt(Math.round(importeNeto * 100))
   return aNumero(c + divRedondeo(c * BigInt(mil), B1000))
 }
+
+/**
+ * Precio unitario con IVA de un renglón, solo para mostrar en la B (donde el
+ * IVA no se discrimina por renglón): round(precio_neto × (1 + tasa), 2). El
+ * precio neto tiene hasta 3 decimales; se calcula en enteros.
+ */
+export function precioConIva(precioUnit: number | string, alicuotaId: number): number {
+  const p = aEscalado(typeof precioUnit === 'number' ? precioUnit : String(precioUnit), 3)   // × 10^3
+  if (p === null) return 0
+  const mil = BigInt(TASA_MILESIMAS[alicuotaId] ?? 0)
+  // p × (1000 + mil) está en 10^6 → a centavos: ÷ 10^4
+  return aNumero(divRedondeo(p * (B1000 + mil), BigInt(10000)))
+}

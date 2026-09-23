@@ -1,10 +1,13 @@
 // Facturación electrónica (20260924): la matemática que tiene que dar EXACTO
 // lo mismo que la base (`ventas_guardar_borrador`) y lo que va impreso.
 import { describe, expect, it } from 'vitest'
-import { calcularTotales, conIvaRenglon, netoRenglon } from '@/modules/facturacion/utils/facturacion.calculos'
+import { calcularTotales, conIvaRenglon, netoRenglon, precioConIva } from '@/modules/facturacion/utils/facturacion.calculos'
 import { enteroALetras, importeALetras } from '@/modules/facturacion/utils/numeroALetras'
 import { jsonQrArca, urlQrArca, URL_QR_ARCA } from '@/modules/facturacion/utils/qrArca'
-import { admiteFacturaA, cuitValido } from '@/modules/facturacion/utils/facturacion.utils'
+import {
+  TOPE_CF_IDENTIFICACION, admiteFacturaA, cuitValido, letraDeCliente, letraDeTipo, muestraDescripcion, requiereIdentificacion,
+  tipoPara,
+} from '@/modules/facturacion/utils/facturacion.utils'
 import type { VentasFacturaFJ } from '@/types/domain.types'
 
 describe('totales de la factura (espejo de la base)', () => {
@@ -156,5 +159,88 @@ describe('PDF de la factura (armado)', async () => {
     expect(json).toContain('FACTURA ORIGINAL')
     expect(json).toContain('Cinco Mil Quinientos Ochenta y Seis Con 48/100')
     expect(doc.watermark).toMatchObject({ text: 'HOMOLOGACIÓN — SIN VALIDEZ FISCAL' })
+  })
+
+  it('factura B: precio y subtotal con IVA, sin IVA por alícuota, IVA contenido (Ley 27.743) y QR con doc 99 → 0', () => {
+    const fb = {
+      ...fj,
+      factura: {
+        ...base, cbte_tipo: 6, letra: 'B', tipo_nombre: 'Factura B', cod_cbte: '006',
+        rec_doc_tipo: 99, rec_doc_nro: '0', rec_condicion_iva_id: 5, rec_razon_social: 'CONSUMIDOR FINAL',
+      },
+    }
+    const doc = armarFacturaDoc(fb as unknown as VentasFacturaFJ, { logo: null })
+    const json = JSON.stringify(doc.content)
+    expect(json).toContain('Cod.:006')
+    expect(json).toContain('"text":"B"')
+    expect(json).toContain('Sin identificar')
+    // 1234,567 × 1,21 = 1493,82607 → 1.493,83; subtotal 3703,70 + 777,78 = 4.481,48
+    expect(json).toContain('1.493,83')
+    expect(json).toContain('4.481,48')
+    expect(json).not.toContain('Alíc. IVA')
+    expect(json).not.toContain('IVA 21 % s/')
+    expect(json).toContain('IVA Contenido: $ 882,78')
+    expect(json).toContain('Otros Impuestos Nacionales Indirectos: $ 0,00')
+    const qr = json.match(/p=([A-Za-z0-9+/=]+)/)?.[1]
+    const datos = JSON.parse(atob(qr!))
+    expect(datos).toMatchObject({ tipoCmp: 6, tipoDocRec: 99, nroDocRec: 0 })
+  })
+
+  it('factura A no lleva la leyenda de transparencia fiscal', () => {
+    const json = JSON.stringify(armarFacturaDoc(fj as unknown as VentasFacturaFJ, { logo: null }).content)
+    expect(json).not.toContain('IVA Contenido')
+    expect(json).toContain('Alíc. IVA')
+  })
+})
+
+describe('letra B (fase 5): mismas reglas que la base y el backend', () => {
+  it('la letra sale del cliente', () => {
+    expect(letraDeCliente(80, 1)).toBe('A')
+    expect(letraDeCliente(80, 6)).toBe('A')
+    expect(letraDeCliente(80, 4)).toBe('B')
+    expect(letraDeCliente(96, 5)).toBe('B')
+    expect(letraDeCliente(99, 5)).toBe('B')
+    for (const c of [7, 8, 9, 10, 15]) expect(letraDeCliente(80, c)).toBe('B')
+    expect(letraDeCliente(96, 1)).toBeNull()   // RI sin CUIT: ni A ni B
+    expect(letraDeCliente(99, 6)).toBeNull()
+  })
+
+  it('tipo por letra; letra por tipo', () => {
+    expect([tipoPara('A', false), tipoPara('A', true), tipoPara('B', false), tipoPara('B', true)]).toEqual([1, 3, 6, 8])
+    expect([letraDeTipo(1), letraDeTipo(3), letraDeTipo(6), letraDeTipo(8)]).toEqual(['A', 'A', 'B', 'B'])
+  })
+
+  it('consumidor final sin identificar: desde $ 10.000.000 inclusive (RG 5700/2025)', () => {
+    expect(TOPE_CF_IDENTIFICACION).toBe(10_000_000)
+    expect(requiereIdentificacion('B', 99, 9_999_999.99)).toBe(false)
+    expect(requiereIdentificacion('B', 99, 10_000_000)).toBe(true)
+    expect(requiereIdentificacion('B', 96, 20_000_000)).toBe(false)
+    expect(requiereIdentificacion('A', 99, 20_000_000)).toBe(false)
+  })
+
+  it('precio con IVA del renglón (solo para mostrar en la B)', () => {
+    expect(precioConIva(1234.567, 5)).toBe(1493.83)
+    expect(precioConIva('1000', 4)).toBe(1105)
+    expect(precioConIva(100, 3)).toBe(100)
+    expect(precioConIva(0.005, 5)).toBe(0.01)
+  })
+
+  it('QR: consumidor final sin identificar va con nroDocRec 0', () => {
+    const j = JSON.parse(jsonQrArca({
+      fecha: '2026-09-23', cuit: '33717191949', ptoVta: 3, tipoCmp: 6, nroCmp: 2, importe: 6050.61,
+      tipoDocRec: 99, nroDocRec: '', codAut: '86380923718275',
+    }))
+    expect(j.nroDocRec).toBe(0)
+    expect(j.tipoDocRec).toBe(99)
+  })
+})
+
+describe('bandeja de Finnegans: chip de la descripción', () => {
+  it('primer renglón truncado y +N por los demás', () => {
+    expect(muestraDescripcion(['Flete'])).toBe('Flete')
+    expect(muestraDescripcion(['Flete', 'Espera', 'Peaje'])).toBe('Flete +2')
+    expect(muestraDescripcion(['Certificado N° 5  —\n avance de obra septiembre 2026 en la obra de calle Maipú'], 32))
+      .toBe('Certificado N° 5 — avance de ob…')   // 31 caracteres + «…»
+    expect(muestraDescripcion([])).toBe('')
   })
 })

@@ -11,7 +11,9 @@ import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 import { useCondicionesIva } from '../hooks/useFacturacion'
 import { useCrearClienteVenta, useEditarClienteVenta } from '../hooks/useClientesFacturacion'
-import { CONDICIONES_IVA, DOC_TIPOS, PROVINCIAS, admiteFacturaA, cuitValido } from '../utils/facturacion.utils'
+import {
+  CONDICIONES_IVA, DOC_TIPOS, PROVINCIAS, TOPE_CF_IDENTIFICACION, cuitValido, fmtM, letraDeCliente,
+} from '../utils/facturacion.utils'
 import { errorDeCampoFacturacion, mensajeErrorFacturacion } from '../utils/facturacion.errores'
 import type { VentasCliente, VentasClienteInput, VentasDocTipo } from '@/types/domain.types'
 import { Aviso } from './FichaFactura'
@@ -21,8 +23,10 @@ import { Aviso } from './FichaFactura'
  *
  * El CUIT se valida acá con el dígito verificador para avisar ANTES de mandar;
  * el backend valida igual (400 CUIT_INVALIDO) y rebota duplicados
- * (409 CLIENTE_DUPLICADO). La condición IVA decide la letra: si no admite A,
- * se avisa, porque en fase 1 solo se emite A.
+ * (409 CLIENTE_DUPLICADO). El documento y la condición IVA deciden la letra
+ * (`letraDeCliente`): A = CUIT y RI/monotributo; B = exento, consumidor
+ * final, etc. con DNI, CUIT o «sin identificar» (99). Un RI o monotributista
+ * sin CUIT no admite ninguna y no se deja guardar (400 CLIENTE_SIN_LETRA).
  */
 
 const schema = z.object({
@@ -42,6 +46,9 @@ const schema = z.object({
   } else if (d.doc_tipo === '96') {
     if (nro.length < 7 || nro.length > 8) ctx.addIssue({ code: 'custom', path: ['doc_nro'], message: 'DNI de 7 u 8 dígitos' })
   }
+  if (d.condicion_iva_id && !letraDeCliente(Number(d.doc_tipo), Number(d.condicion_iva_id))) {
+    ctx.addIssue({ code: 'custom', path: ['condicion_iva_id'], message: 'Con esta condición hace falta CUIT (solo puede recibir factura A)' })
+  }
 })
 
 type FormData = z.infer<typeof schema>
@@ -60,7 +67,7 @@ export function ModalCliente({ cliente, onClose }: Props) {
   const editar = useEditarClienteVenta()
   const [errorServer, setErrorServer] = useState<string | null>(null)
 
-  const { register, control, handleSubmit, setError, formState: { errors } } = useForm<FormData>({
+  const { register, control, handleSubmit, setError, setValue, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
       razon_social:     cliente?.razon_social ?? '',
@@ -78,10 +85,20 @@ export function ModalCliente({ cliente, onClose }: Props) {
   const condId  = useWatch({ control, name: 'condicion_iva_id' })
   const provincia = useWatch({ control, name: 'provincia' })
 
-  const opcionesCond = (condiciones.data ?? Object.entries(CONDICIONES_IVA).map(([id, descripcion]) => ({ id: Number(id), descripcion, admite_a: false })))
-    .map(c => ({ value: String(c.id), label: c.descripcion }))
-  const condSel = condiciones.data?.find(c => String(c.id) === condId)
-  const admiteA = docTipo === '80' && (condSel ? condSel.admite_a : admiteFacturaA(80, Number(condId)))
+  // Todas las condiciones de ARCA (11); la letra de cada una sale de letraDeCliente, igual que en la base.
+  const opcionesCond = (condiciones.data ?? Object.entries(CONDICIONES_IVA).map(([id, descripcion]) => ({ id: Number(id), descripcion })))
+    .map(c => {
+      const l = letraDeCliente(80, c.id)
+      return { value: String(c.id), label: `${c.descripcion}${l ? ` — factura ${l}` : ''}` }
+    })
+  const letra = condId ? letraDeCliente(Number(docTipo), Number(condId)) : null
+
+  /** Atajo: el «Consumidor Final» genérico, sin identificar (doc 99, condición 5). */
+  function consumidorFinalGenerico() {
+    setValue('doc_tipo', '99', { shouldValidate: true })
+    setValue('doc_nro', '', { shouldValidate: true })
+    setValue('condicion_iva_id', '5', { shouldValidate: true })
+  }
 
   const guardando = crear.isPending || editar.isPending
 
@@ -135,16 +152,27 @@ export function ModalCliente({ cliente, onClose }: Props) {
             options={DOC_TIPOS.map(d => ({ value: String(d.id), label: d.label }))} />
           <div className="sm:col-span-2">
             <Input label={docTipo === '80' ? 'CUIT' : docTipo === '86' ? 'CUIL' : docTipo === '96' ? 'DNI' : 'Número (opcional)'}
-              {...register('doc_nro')} inputMode="numeric" placeholder={docTipo === '80' ? '30-12345678-9' : ''}
-              error={errors.doc_nro?.message} hint="Con o sin guiones" />
+              {...register('doc_nro')} inputMode="numeric" placeholder={docTipo === '80' ? '30-12345678-9' : docTipo === '99' ? 'Va con 0' : ''}
+              readOnly={docTipo === '99'}
+              error={errors.doc_nro?.message} hint={docTipo === '99' ? 'Consumidor final sin identificar: ARCA lo recibe con documento 0' : 'Con o sin guiones'} />
           </div>
         </div>
         <Select label="Condición frente al IVA" {...register('condicion_iva_id')} options={opcionesCond}
           error={errors.condicion_iva_id?.message} />
-        {!admiteA && (
-          <Aviso tono="amarillo">
-            Con {docTipo !== '80' ? 'este documento' : 'esta condición IVA'} no se le puede hacer factura A, que es lo único que se emite por ahora.
-            La A es para Responsable Inscripto o Monotributo, con CUIT.
+        {!cliente && docTipo !== '99' && (
+          <button type="button" onClick={consumidorFinalGenerico} className="self-start text-[11px] text-azul hover:underline">
+            Cargar como «Consumidor Final» sin identificar
+          </button>
+        )}
+        {letra && (
+          <Aviso tono="gris">
+            A este cliente le corresponde <b>factura {letra}</b>
+            {letra === 'B' && docTipo === '99' && <> — sin identificar sirve hasta {fmtM(TOPE_CF_IDENTIFICACION - 0.01)}: desde {fmtM(TOPE_CF_IDENTIFICACION)} ARCA exige DNI o CUIT (RG 5700)</>}.
+          </Aviso>
+        )}
+        {condId && !letra && (
+          <Aviso tono="rojo">
+            Un Responsable Inscripto o Monotributista solo puede recibir factura A, y la A exige CUIT. Cargale el CUIT o corregí la condición IVA.
           </Aviso>
         )}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

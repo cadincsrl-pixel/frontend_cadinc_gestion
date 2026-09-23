@@ -11,7 +11,9 @@ import { useTabsPermitidos } from '@/hooks/useTabsPermitidos'
 import {
   FACTURACION_KEYS, fetchFacturaVenta, useDeshacerRegistroVenta, useFacturasVenta, useRegistrarFinnegansVenta,
 } from '../hooks/useFacturacion'
-import { fmtCuit, fmtFecha, fmtFechaHora, fmtM, numeroParaCopiar, numeroTxt } from '../utils/facturacion.utils'
+import {
+  cortoTipo, fmtDoc, fmtFecha, fmtFechaHora, fmtM, muestraDescripcion, numeroParaCopiar, numeroTxt,
+} from '../utils/facturacion.utils'
 import { mensajeErrorFacturacion } from '../utils/facturacion.errores'
 import type { VentasFactura } from '@/types/domain.types'
 
@@ -92,8 +94,11 @@ function FilaFinnegans({ f, vista, puedeRegistrar, onRegistrar }: {
   const qc = useQueryClient()
   const deshacer = useDeshacerRegistroVenta()
 
-  // La descripción no viene en la lista: se baja la ficha al copiarla (queda cacheada).
+  // La lista trae las descripciones (backend fase 5). Si viniera sin ellas
+  // (backend viejo), se baja la ficha al copiar (queda cacheada).
+  const descs = f.descripciones
   async function descripcion(): Promise<string> {
+    if (descs && descs.length) return descs.join('\n')
     const fj = await qc.fetchQuery({
       queryKey: FACTURACION_KEYS.factura(f.id),
       queryFn: () => fetchFacturaVenta(f.id),
@@ -139,10 +144,13 @@ function FilaFinnegans({ f, vista, puedeRegistrar, onRegistrar }: {
         <Copiar label="Fecha" valor={fmtFecha(f.fecha_cbte)} />
         <Copiar label="Número" valor={f.numero_fmt ?? ''} />
         <Copiar label="Cliente" valor={f.rec_razon_social} />
-        <Copiar label="CUIT" valor={f.rec_doc_nro} muestra={fmtCuit(f.rec_doc_nro)} />
+        <Copiar label="Letra" valor={f.letra} />
+        <Copiar label={f.rec_doc_tipo === 80 || f.rec_doc_tipo === 86 ? 'CUIT' : 'Documento'}
+          valor={f.rec_doc_tipo === 99 ? '0' : f.rec_doc_nro} muestra={fmtDoc(f.rec_doc_tipo, f.rec_doc_nro)} />
         <Copiar label="Producto" valor={f.producto} />
         <Copiar label="Centro de costo" valor={f.centro_costo ?? ''} />
-        <Copiar label="Descripción" valor={descripcion} muestra="renglones" />
+        <Copiar label="Descripción" valor={descs && descs.length ? descs.join('\n') : descripcion}
+          muestra={descs ? muestraDescripcion(descs, 32) : '(se baja al copiar)'} titulo={descs?.join('\n')} />
         <Copiar label="Neto" valor={signo + numeroParaCopiar(f.imp_neto)} muestra={fmtM(f.imp_neto)} />
         <Copiar label="IVA" valor={signo + numeroParaCopiar(f.imp_iva)} muestra={fmtM(f.imp_iva)} />
         <Copiar label="Total" valor={signo + numeroParaCopiar(f.imp_total)} muestra={fmtM(f.imp_total)} />
@@ -150,7 +158,7 @@ function FilaFinnegans({ f, vista, puedeRegistrar, onRegistrar }: {
       </div>
       <div className="text-[11px] text-gris-dark">
         {f.tipo_nombre} · {f.provincia_origen} → {f.provincia_destino} · {f.condicion_pago}
-        {f.es_nc && f.asociada_numero_fmt && <> · corrige FA {f.asociada_numero_fmt}</>}
+        {f.es_nc && f.asociada_numero_fmt && <> · corrige {cortoTipo(f.asociada_cbte_tipo)} {f.asociada_numero_fmt}</>}
       </div>
     </div>
   )
@@ -161,7 +169,9 @@ function FilaFinnegans({ f, vista, puedeRegistrar, onRegistrar }: {
  * `ClipboardItem` con una promesa: Safari solo deja escribir el portapapeles
  * dentro del gesto del usuario, y un `await` antes de `writeText` lo rompe.
  */
-function Copiar({ label, valor, muestra }: { label: string; valor: string | (() => Promise<string>); muestra?: string }) {
+function Copiar({ label, valor, muestra, titulo }: {
+  label: string; valor: string | (() => Promise<string>); muestra?: string; titulo?: string
+}) {
   const toast = useToast()
   const [ok, setOk] = useState(false)
   const vacio = typeof valor === 'string' && valor === ''
@@ -186,7 +196,7 @@ function Copiar({ label, valor, muestra }: { label: string; valor: string | (() 
   const texto = muestra ?? (typeof valor === 'string' ? valor : '')
   return (
     <button type="button" onClick={copiar} disabled={vacio}
-      title={vacio ? `${label}: vacío` : `Copiar ${label.toLowerCase()}`}
+      title={vacio ? `${label}: vacío` : titulo ? `Copiar ${label.toLowerCase()}:\n${titulo}` : `Copiar ${label.toLowerCase()}`}
       className={`text-left px-2 py-1 rounded border text-[11px] transition max-w-[260px] min-h-[36px]
         ${ok ? 'border-verde bg-verde-light' : 'border-gris-mid bg-white hover:bg-azul-light/40'} disabled:opacity-40`}>
       <span className="block text-[9px] font-bold uppercase tracking-wide text-gris-dark">{ok ? '✓ copiado' : `⧉ ${label}`}</span>

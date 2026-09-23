@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useBajaClienteVenta, useClientesVenta } from '../hooks/useClientesFacturacion'
-import { CONDICIONES_IVA, admiteFacturaA, fmtDoc } from '../utils/facturacion.utils'
+import { CONDICIONES_IVA, fmtDoc, letraDeCliente } from '../utils/facturacion.utils'
 import { mensajeErrorFacturacion } from '../utils/facturacion.errores'
 import type { VentasCliente } from '@/types/domain.types'
 import { ModalCliente } from './ModalCliente'
@@ -98,9 +98,9 @@ export function ClientesTab() {
                     <td className="px-3 py-2 text-xs font-mono whitespace-nowrap">{fmtDoc(c.doc_tipo, c.doc_nro)}</td>
                     <td className="px-3 py-2 text-xs">
                       {CONDICIONES_IVA[c.condicion_iva_id] ?? c.condicion_iva_id}
-                      {!admiteFacturaA(c.doc_tipo, c.condicion_iva_id) && (
-                        <span className="block text-[10px] text-naranja-dark font-bold" title="Fase 1 solo emite factura A">no admite factura A</span>
-                      )}
+                      {letraDeCliente(c.doc_tipo, c.condicion_iva_id)
+                        ? <span className="block text-[10px] text-gris-dark font-bold">Factura {letraDeCliente(c.doc_tipo, c.condicion_iva_id)}</span>
+                        : <span className="block text-[10px] text-rojo font-bold" title="RI o monotributo sin CUIT: no admite ni A ni B">sin letra: falta CUIT</span>}
                     </td>
                     <td className="px-3 py-2 text-xs">{c.provincia || '—'}</td>
                     <td className="px-3 py-2 text-xs" title={c.obras.map(o => o.nom).join(', ')}>

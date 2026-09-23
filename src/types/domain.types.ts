@@ -3162,6 +3162,8 @@ export interface VentasCondicionIva {
   id:          number
   descripcion: string
   admite_a:    boolean
+  /** Desde la fase 5 (backend 2026-09-23). Opcional por si el backend es viejo. */
+  admite_b?:   boolean
 }
 
 export interface VentasObra {
@@ -3256,6 +3258,8 @@ export interface VentasFactura {
   asociada_id:          number | null
   asociada_numero_fmt:  string | null
   asociada_cbte_tipo:   VentasCbteTipo | null
+  /** Solo en GET /facturas (fase 5): las descripciones de los renglones, en orden. */
+  descripciones?:       string[]
 }
 
 export interface VentasRenglon {
@@ -3335,7 +3339,8 @@ export interface VentasRenglonInput {
 
 export interface VentasFacturaInput {
   factura: {
-    cbte_tipo:          1 | 3
+    /** Lo calcula el sistema desde el cliente (y la asociada en una NC); el backend lo vuelve a derivar. */
+    cbte_tipo:          1 | 3 | 6 | 8
     cliente_id:         number
     producto:           VentasProducto
     centro_costo?:      string | null
