@@ -33,6 +33,7 @@ import { toISO } from '@/lib/utils/dates'
 import { matchesSearch, normalizeText } from '@/lib/utils/text'
 import { codigoMaterial } from '@/lib/utils/codigo'
 import type { StockMaterial, StockRubro, StockMovimiento, Proveedor, ClaseMaterial } from '@/types/domain.types'
+import { mensajeErrorCertificaciones } from '../utils/certificaciones.errores'
 
 
 function fmtM(n: number) { return '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 0 }) }
@@ -302,7 +303,7 @@ export function StockTab() {
       onError: (e: unknown) => {
         const c = parseMaterialConflicto(e)
         if (c) { setConflicto({ ...c, nombreIntentado: dto.nombre, dtoCreate: dto }); return }
-        toast(e instanceof Error ? e.message : 'Error', 'err')
+        toast(mensajeErrorCertificaciones(e, 'Error'), 'err')
       },
     })
   }
@@ -329,7 +330,7 @@ export function StockTab() {
       obs: data.obs || '',
     }, {
       onSuccess: () => { toast('Movimiento registrado', 'ok'); setModalEntrada(null) },
-      onError: (e: unknown) => toast(e instanceof Error ? e.message : 'Error', 'err'),
+      onError: (e: unknown) => toast(mensajeErrorCertificaciones(e, 'Error'), 'err'),
     })
   }
 
@@ -375,7 +376,7 @@ export function StockTab() {
         // "crearlo igual" posible: el nombre ya está tomado.
         const c = parseMaterialConflicto(e)
         if (c) { setConflicto({ ...c, nombreIntentado: nombre, dtoCreate: null }); return }
-        toast(e instanceof Error ? e.message : 'Error', 'err')
+        toast(mensajeErrorCertificaciones(e, 'Error'), 'err')
       },
     })
   }
@@ -402,7 +403,7 @@ export function StockTab() {
         cerrarConflicto()
         mostrarMaterial(existente)
       },
-      onError: (e: unknown) => toast(e instanceof Error ? e.message : 'Error', 'err'),
+      onError: (e: unknown) => toast(mensajeErrorCertificaciones(e, 'Error'), 'err'),
     })
   }
 
@@ -445,7 +446,7 @@ export function StockTab() {
     if (!nombre) { toast('Ingresá un nombre', 'err'); return }
     createRubro({ nombre, icono: data.icono.trim() }, {
       onSuccess: () => { toast('Rubro creado', 'ok'); setModalNuevoRubro(false) },
-      onError: (e: unknown) => toast(e instanceof Error ? e.message : 'Error', 'err'),
+      onError: (e: unknown) => toast(mensajeErrorCertificaciones(e, 'Error'), 'err'),
     })
   }
 

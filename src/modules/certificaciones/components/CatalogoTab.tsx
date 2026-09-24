@@ -13,6 +13,7 @@ import { MaterialFotosModal } from './MaterialFotosModal'
 import { UNIDADES } from '../constants'
 import type { CatalogoMaterial, CatalogoFiltroEstado, MaterialCompra, StockRubro } from '@/types/domain.types'
 import { codigoMaterial } from '@/lib/utils/codigo'
+import { mensajeErrorCertificaciones } from '../utils/certificaciones.errores'
 
 /**
  * Catálogo de precios — pestaña aparte del Stock (2026-09-04).
@@ -62,8 +63,14 @@ function fmtDif(p: number | null) {
   return `${p > 0 ? '+' : ''}${p}%`
 }
 
+const SIN_PERMISO_PRECIO = 'Cambiar el precio del catálogo pide el permiso «cargar precios»'
+
 export function CatalogoTab() {
-  const { puedeEditar } = usePermisos('certificaciones')
+  const { puedeEditar, cargarPrecios, esAdmin } = usePermisos('certificaciones')
+  // El precio de referencia pide además el flag cargar_precios (el backend
+  // responde 403 SIN_PERMISO_CATALOGO). Antes los botones quedaban activos
+  // para el encargado de depósito y fallaban con un error genérico.
+  const puedePrecios = puedeEditar && (cargarPrecios || esAdmin)
   const toast = useToast()
 
   const [busqueda, setBusqueda] = useState('')
@@ -115,7 +122,7 @@ export function CatalogoTab() {
       : `¿Devolver "${m.nombre}" a material?\n\nVuelve a poder despacharse del depósito y a llevar stock.`)) return
     updateMat({ id: m.id, dto: { clase: aServicio ? 'servicio' : 'material' } }, {
       onSuccess: () => toast(aServicio ? 'Ahora es un servicio' : 'Vuelve a ser un material', 'ok'),
-      onError:   (e: Error) => toast(e.message, 'err'),
+      onError:   (e: Error) => toast(mensajeErrorCertificaciones(e, 'No se pudo guardar'), 'err'),
     })
   }
   const { mutate: marcarRef, isPending: marcando } = useMarcarPrecioReferencia()
@@ -263,7 +270,7 @@ export function CatalogoTab() {
           </span>
           <div className="flex gap-2">
             <button onClick={() => setSel(new Map())} disabled={ocupado} className="text-xs font-bold px-3 py-1.5 rounded bg-white text-gris-dark hover:bg-gris/40 min-h-[36px]">Limpiar</button>
-            <button onClick={aplicarSeleccion} disabled={ocupado || !puedeEditar} title={puedeEditar ? undefined : 'Sin permiso para editar precios'} className="text-xs font-bold px-3 py-1.5 rounded bg-azul text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed min-h-[36px]">
+            <button onClick={aplicarSeleccion} disabled={ocupado || !puedePrecios} title={puedePrecios ? undefined : SIN_PERMISO_PRECIO} className="text-xs font-bold px-3 py-1.5 rounded bg-azul text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed min-h-[36px]">
               {aplicando ? 'Aplicando…' : `Aplicar última compra (${sel.size})`}
             </button>
           </div>
@@ -299,9 +306,9 @@ export function CatalogoTab() {
                     <input
                       type="checkbox"
                       checked={todosEnPagina}
-                      disabled={!puedeEditar || seleccionables.length === 0}
+                      disabled={!puedePrecios || seleccionables.length === 0}
                       onChange={togglePagina}
-                      title={puedeEditar ? 'Seleccionar los de esta página que tienen una última compra distinta al precio' : 'Sin permiso para editar precios'}
+                      title={puedePrecios ? 'Seleccionar los de esta página que tienen una última compra distinta al precio' : SIN_PERMISO_PRECIO}
                     />
                   </th>
                   {['Material', 'Rubro', 'Unidad', 'Precio ref.', 'Últ. compra', ''].map((h, i) => (
@@ -323,7 +330,7 @@ export function CatalogoTab() {
                   return (
                     <tr key={m.id} className={`border-t border-gris ${!m.activo ? 'opacity-60' : ''} ${sel.has(m.id) ? 'bg-azul-light/40' : ''}`}>
                       <td className="px-3 py-2.5">
-                        <input type="checkbox" checked={sel.has(m.id)} disabled={!puedeEditar || !seleccionable} onChange={() => toggleSel(m)} title={puedeEditar ? undefined : 'Sin permiso para editar precios'} />
+                        <input type="checkbox" checked={sel.has(m.id)} disabled={!puedePrecios || !seleccionable} onChange={() => toggleSel(m)} title={puedePrecios ? undefined : SIN_PERMISO_PRECIO} />
                       </td>
                       <td className="px-4 py-2.5">
                         <div className="font-medium text-sm flex items-center gap-1.5 flex-wrap">
@@ -388,10 +395,10 @@ export function CatalogoTab() {
                               )}
                               {!editando && seleccionable && (
                                 <button
-                                  disabled={ocupado || !puedeEditar}
+                                  disabled={ocupado || !puedePrecios}
                                   onClick={() => guardarPrecio(m, m.uc_precio!)}
                                   className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-azul-light text-azul hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed"
-                                  title={puedeEditar ? 'Copiar el precio de la última compra al precio de referencia' : 'Sin permiso para editar precios'}
+                                  title={puedePrecios ? 'Copiar el precio de la última compra al precio de referencia' : SIN_PERMISO_PRECIO}
                                 >
                                   usar
                                 </button>
@@ -423,7 +430,7 @@ export function CatalogoTab() {
                           </button>
                         )}
                         {!editando && (
-                          <button onClick={() => abrirEdicion(m)} disabled={!puedeEditar} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-gris-mid disabled:opacity-40 disabled:cursor-not-allowed" title={puedeEditar ? 'Editar el precio de referencia' : 'Sin permiso para editar precios'}>
+                          <button onClick={() => abrirEdicion(m)} disabled={!puedePrecios} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-gris-mid disabled:opacity-40 disabled:cursor-not-allowed" title={puedePrecios ? 'Editar el precio de referencia' : SIN_PERMISO_PRECIO}>
                             ✏️ Precio
                           </button>
                         )}
@@ -446,7 +453,7 @@ export function CatalogoTab() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-start gap-2 min-w-0">
                       {seleccionable && (
-                        <input type="checkbox" className="mt-1" checked={sel.has(m.id)} disabled={!puedeEditar} onChange={() => toggleSel(m)} title={puedeEditar ? undefined : 'Sin permiso para editar precios'} />
+                        <input type="checkbox" className="mt-1" checked={sel.has(m.id)} disabled={!puedePrecios} onChange={() => toggleSel(m)} title={puedePrecios ? undefined : SIN_PERMISO_PRECIO} />
                       )}
                       {m.foto_url && (
                         <button type="button" onClick={() => setFotosDe(m)} className="shrink-0 mt-0.5" title="Ver las fotos de la ficha">
@@ -490,9 +497,9 @@ export function CatalogoTab() {
                     <div className="flex gap-2 mt-2 flex-wrap">
                       <button onClick={() => setFotosDe(m)} className="text-xs font-bold px-3 py-1.5 rounded text-gris-dark hover:bg-azul-light hover:text-azul min-h-[36px]">📷 Fotos</button>
                       <button onClick={() => setHistorial(m)} className="text-xs font-bold px-3 py-1.5 rounded text-gris-dark hover:bg-azul-light hover:text-azul min-h-[36px]">📈 Historial</button>
-                      <button onClick={() => abrirEdicion(m)} disabled={!puedeEditar} title={puedeEditar ? undefined : 'Sin permiso para editar precios'} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark disabled:opacity-40 disabled:cursor-not-allowed min-h-[36px]">✏️ Precio</button>
+                      <button onClick={() => abrirEdicion(m)} disabled={!puedePrecios} title={puedePrecios ? undefined : SIN_PERMISO_PRECIO} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark disabled:opacity-40 disabled:cursor-not-allowed min-h-[36px]">✏️ Precio</button>
                       {seleccionable && (
-                        <button disabled={ocupado || !puedeEditar} title={puedeEditar ? undefined : 'Sin permiso para editar precios'} onClick={() => guardarPrecio(m, m.uc_precio!)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul disabled:opacity-40 disabled:cursor-not-allowed min-h-[36px]">Usar últ. compra</button>
+                        <button disabled={ocupado || !puedePrecios} title={puedePrecios ? undefined : SIN_PERMISO_PRECIO} onClick={() => guardarPrecio(m, m.uc_precio!)} className="text-xs font-bold px-3 py-1.5 rounded bg-azul-light text-azul disabled:opacity-40 disabled:cursor-not-allowed min-h-[36px]">Usar últ. compra</button>
                       )}
                     </div>
                   )}
@@ -512,7 +519,7 @@ export function CatalogoTab() {
           material={historial}
           onClose={() => setHistorial(null)}
           ocupado={ocupado}
-          onUsarPrecio={puedeEditar ? (p) => { guardarPrecio(historial, p); setHistorial(null) } : undefined}
+          onUsarPrecio={puedePrecios ? (p) => { guardarPrecio(historial, p); setHistorial(null) } : undefined}
           onDescartar={puedeEditar ? (c, descartar) => descartarPrecio(c, descartar) : undefined}
         />
       )}

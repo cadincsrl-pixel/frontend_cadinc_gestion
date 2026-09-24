@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { usePreciosPropuestos, useResolverPrecioPropuesto } from '../../hooks/useCuentaCliente'
+import { usePreciosPropuestos, useResolverPrecioPropuesto, useAprobarPrecios } from '../../hooks/useCuentaCliente'
+import { mensajeErrorCertificaciones } from '../../utils/certificaciones.errores'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import { useToast } from '@/components/ui/Toast'
 import { Button } from '@/components/ui/Button'
@@ -20,38 +21,69 @@ import { fmtM, fmtFecha } from './cuentaCorriente.utils'
 export function PreciosPropuestos() {
   const toast = useToast()
   const { data: propuestos = [], isLoading } = usePreciosPropuestos()
-  const { mutate: resolver, isPending } = useResolverPrecioPropuesto()
+  const { mutate: resolver } = useResolverPrecioPropuesto()
+  const { mutate: aprobarVarios, isPending: aprobandoTodos } = useAprobarPrecios()
+  // Cuál fila está en curso: antes un solo isPending ponía a cargar TODOS los
+  // botones de la lista cuando se aprobaba uno.
+  const [ocupado, setOcupado] = useState<number | null>(null)
   const nombres = usePerfilesMap()
   const [rechazando, setRechazando] = useState<number | null>(null)
   const [motivo, setMotivo] = useState('')
 
   if (isLoading || propuestos.length === 0) return null
 
+  const totalPropuesto = propuestos.reduce((s, p) => s + Number(p.precio_propuesto) * Number(p.cantidad), 0)
+
   function aprobar(itemId: number, desc: string, precio: number) {
+    setOcupado(itemId)
     resolver({ itemId, aprobar: true }, {
       onSuccess: () => toast(`✓ ${desc}: ${fmtM(precio)}`, 'ok'),
-      onError:   e => toast(e instanceof Error ? e.message : 'No se pudo aprobar', 'err'),
+      onError:   e => toast(mensajeErrorCertificaciones(e, 'No se pudo aprobar'), 'err'),
+      onSettled: () => setOcupado(null),
+    })
+  }
+
+  /** Cuando llega una factura entera de un proveedor, de a uno no se termina más. */
+  function aprobarTodos() {
+    if (!confirm(`¿Aprobar los ${propuestos.length} precios? La cuenta de los clientes sube ${fmtM(totalPropuesto)} en total.`)) return
+    aprobarVarios(propuestos.map(p => p.item_id), {
+      onSuccess: ({ total, fallas }) => {
+        if (fallas.length === 0) { toast(`✓ ${total} precios aprobados`, 'ok'); return }
+        const ejemplo = fallas[0]!.motivo
+        toast(`Aprobados ${total - fallas.length} de ${total}. ${fallas.length} no: ${ejemplo}`, 'err')
+      },
+      onError: e => toast(mensajeErrorCertificaciones(e, 'No se pudieron aprobar'), 'err'),
     })
   }
 
   function rechazar(itemId: number) {
     const m = motivo.trim()
     if (m.length < 3) { toast('Escribí por qué lo rechazás: el que lo cargó lo va a ver', 'err'); return }
+    setOcupado(itemId)
     resolver({ itemId, aprobar: false, motivo: m }, {
       onSuccess: () => { toast('Precio rechazado', 'ok'); setRechazando(null); setMotivo('') },
-      onError:   e => toast(e instanceof Error ? e.message : 'No se pudo rechazar', 'err'),
+      onError:   e => toast(mensajeErrorCertificaciones(e, 'No se pudo rechazar'), 'err'),
+      onSettled: () => setOcupado(null),
     })
   }
 
   return (
     <div className="bg-white rounded-xl shadow-sm overflow-hidden border-l-4 border-amarillo">
-      <div className="px-4 py-3 border-b border-gris-mid">
-        <h3 className="font-display text-lg text-azul">
-          💲 PRECIOS ESPERANDO TU OK <span className="font-mono text-sm text-gris-dark">({propuestos.length})</span>
-        </h3>
-        <p className="text-[11px] text-gris-dark">
-          Los cargó quien hizo la compra. Hasta que los apruebes, la cuenta del cliente no se mueve.
-        </p>
+      <div className="px-4 py-3 border-b border-gris-mid flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h3 className="font-display text-lg text-azul">
+            💲 PRECIOS ESPERANDO TU OK <span className="font-mono text-sm text-gris-dark">({propuestos.length})</span>
+          </h3>
+          <p className="text-[11px] text-gris-dark">
+            Los cargó quien hizo la compra. Hasta que los apruebes, la cuenta del cliente no se mueve.
+          </p>
+        </div>
+        {propuestos.length > 1 && (
+          <Button variant="primary" size="sm" loading={aprobandoTodos} disabled={ocupado != null} onClick={aprobarTodos}
+            title="Aprobar todas las propuestas de la lista">
+            ✓ Aprobar todos ({propuestos.length}) · {fmtM(totalPropuesto)}
+          </Button>
+        )}
       </div>
 
       <div className="divide-y divide-gris">
@@ -97,11 +129,11 @@ export function PreciosPropuestos() {
                     className="flex-1 min-w-[200px] px-2 py-1.5 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja"
                   />
                   <Button variant="secondary" size="sm" onClick={() => { setRechazando(null); setMotivo('') }}>Cancelar</Button>
-                  <Button variant="primary" size="sm" loading={isPending} onClick={() => rechazar(p.item_id)}>Rechazar</Button>
+                  <Button variant="primary" size="sm" loading={ocupado === p.item_id} onClick={() => rechazar(p.item_id)}>Rechazar</Button>
                 </div>
               ) : (
                 <div className="flex gap-2">
-                  <Button variant="primary" size="sm" loading={isPending}
+                  <Button variant="primary" size="sm" loading={ocupado === p.item_id} disabled={aprobandoTodos}
                     onClick={() => aprobar(p.item_id, p.descripcion, nuevo)}>
                     ✓ Aprobar
                   </Button>

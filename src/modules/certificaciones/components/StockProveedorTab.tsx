@@ -22,6 +22,7 @@ import { Badge }    from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
+import { mensajeErrorCertificaciones } from '../utils/certificaciones.errores'
 
 const fmtM   = (n: number | null) => n == null ? '—' : '$' + n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtNum = (n: number) => n.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
@@ -365,7 +366,7 @@ function ModalRetiro({ proveedorId, proveedorNombre, obraCodSugerida, stockDelPr
       else if (code === 'CANTIDAD_EXCEDE_PENDIENTE') toast('Una cantidad supera el pendiente — revisá', 'err')
       else if (code === 'ITEM_PROVEEDOR_DISTINTO') toast('Hay un item de otro proveedor — revisá', 'err')
       else if (code === 'ITEM_COBRADO') toast('Uno de los items ya está cobrado al cliente: su cuenta está congelada. Sacalo del retiro y resolvelo aparte', 'err')
-      else toast(e?.message || 'Error al crear el remito', 'err')
+      else toast(mensajeErrorCertificaciones(e, 'Error al crear el remito'), 'err')
     } finally {
       setSubiendo(false)
     }

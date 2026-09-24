@@ -5,41 +5,81 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPatch, apiPost, apiDelete } from '@/lib/api/client'
+import { mensajeErrorCertificaciones } from '../utils/certificaciones.errores'
 import type { CuentaClienteCobro, MedioCobro, CertificadoCliente, CertificadoDetalle, CertificadoEmitido } from '@/types/domain.types'
+
+/** Un renglón que no se pudo guardar, con el motivo ya en castellano. */
+export interface FallaPrecio { itemId: number; motivo: string }
+
+/**
+ * Corre `fn` sobre los ítems de a `tanda` por vez (no todos a la vez: una obra
+ * con 200 renglones eran 200 requests simultáneas a Render) y junta los que
+ * fallaron con su motivo.
+ */
+async function enTandas<T extends { itemId: number }, R>(
+  items: T[], fn: (it: T) => Promise<R>, tanda = 10,
+): Promise<{ ok: R[]; fallas: FallaPrecio[] }> {
+  const ok: R[] = []
+  const fallas: FallaPrecio[] = []
+  for (let i = 0; i < items.length; i += tanda) {
+    const lote = items.slice(i, i + tanda)
+    const res = await Promise.allSettled(lote.map(fn))
+    res.forEach((r, k) => {
+      if (r.status === 'fulfilled') ok.push(r.value)
+      else fallas.push({ itemId: lote[k]!.itemId, motivo: mensajeErrorCertificaciones(r.reason, 'No se pudo guardar') })
+    })
+  }
+  return { ok, fallas }
+}
 
 /**
  * Carga/corrige el precio de varios ítems de MCC de una sola vez. Reusa el
  * endpoint `PATCH /api/solicitudes/items/:itemId` (editarItem), que actualiza
  * el ítem de la solicitud Y recalcula su fila en materiales_a_cuenta_cliente
  * (precio_total = cantidad × precio_unit). Requiere el flag `resolver_items`
- * en el backend. Devuelve cuántos fallaron para reportarlo en la UI.
+ * en el backend. Devuelve cuáles fallaron y por qué, para marcarlos en la UI.
  */
 export function useGuardarPreciosMCC() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (items: { itemId: number; precio_unit?: number; pagado_por?: 'cadinc' | 'cliente'; actualizar_catalogo?: boolean }[]) => {
-      const res = await Promise.allSettled(
-        items.map(it => {
-          const body: Record<string, unknown> = {}
-          if (it.precio_unit !== undefined) body.precio_unit = it.precio_unit
-          if (it.pagado_por !== undefined) body.pagado_por = it.pagado_por
-          // Llevar el precio también a la ficha del catálogo (10/09). El
-          // backend lo valida ficha por ficha y es best-effort: si una no
-          // puede, el precio del renglón se guarda igual.
-          if (it.actualizar_catalogo) body.actualizar_catalogo = true
-          return apiPatch<{ catalogo?: { ok: boolean } }>(`/api/solicitudes/items/${it.itemId}`, body)
-        }),
-      )
-      const alCatalogo = res.filter(r => r.status === 'fulfilled' && (r.value as { catalogo?: { ok: boolean } })?.catalogo?.ok).length
-      return { total: items.length, fallidos: res.filter(r => r.status === 'rejected').length, alCatalogo }
+      const { ok, fallas } = await enTandas(items, it => {
+        const body: Record<string, unknown> = {}
+        if (it.precio_unit !== undefined) body.precio_unit = it.precio_unit
+        if (it.pagado_por !== undefined) body.pagado_por = it.pagado_por
+        // Llevar el precio también a la ficha del catálogo (10/09). El
+        // backend lo valida ficha por ficha y es best-effort: si una no
+        // puede, el precio del renglón se guarda igual.
+        if (it.actualizar_catalogo) body.actualizar_catalogo = true
+        return apiPatch<{ catalogo?: { ok: boolean } }>(`/api/solicitudes/items/${it.itemId}`, body)
+      })
+      const alCatalogo = ok.filter(v => v?.catalogo?.ok).length
+      return { total: items.length, fallas, alCatalogo }
     },
-    // Refetch de la cuenta corriente (listado y resumen) y del conteo de pendientes.
-    onSuccess: () => {
+    // Refetch de la cuenta corriente (listado y resumen) y del conteo de
+    // pendientes. También si falló una parte: las que pasaron se repintan.
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['cuenta-cliente-pendientes'] })
       qc.invalidateQueries({ queryKey: ['cuenta-corriente'] })
       // El catálogo pudo cambiar: que la pestaña y los sugeridos lo reflejen.
       qc.invalidateQueries({ queryKey: ['stock', 'materiales'] })
       qc.invalidateQueries({ queryKey: ['catalogo'] })
+    },
+  })
+}
+
+/** Propone varios precios de una (quien no tiene `cargar_precios`), en tandas. */
+export function useProponerPrecios() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (items: { itemId: number; precio_unit: number }[]) => {
+      const { fallas } = await enTandas(items, it =>
+        apiPost(`/api/solicitudes/items/${it.itemId}/proponer-precio`, { precio_unit: it.precio_unit }))
+      return { total: items.length, fallas }
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['precios-propuestos'] })
+      qc.invalidateQueries({ queryKey: ['cuenta-corriente'] })
     },
   })
 }
@@ -100,6 +140,23 @@ export function useResolverPrecioPropuesto() {
         ? apiPost(`/api/solicitudes/items/${itemId}/aprobar-precio`, {})
         : apiPost(`/api/solicitudes/items/${itemId}/rechazar-precio`, { motivo }),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['precios-propuestos'] })
+      qc.invalidateQueries({ queryKey: ['cuenta-corriente'] })
+      qc.invalidateQueries({ queryKey: ['cuenta-cliente-pendientes'] })
+    },
+  })
+}
+
+/** Aprueba varias propuestas de una («Aprobar todos»), en tandas. */
+export function useAprobarPrecios() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (itemIds: number[]) => {
+      const { fallas } = await enTandas(itemIds.map(itemId => ({ itemId })), it =>
+        apiPost(`/api/solicitudes/items/${it.itemId}/aprobar-precio`, {}))
+      return { total: itemIds.length, fallas }
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['precios-propuestos'] })
       qc.invalidateQueries({ queryKey: ['cuenta-corriente'] })
       qc.invalidateQueries({ queryKey: ['cuenta-cliente-pendientes'] })

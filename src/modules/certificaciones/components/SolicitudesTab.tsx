@@ -45,6 +45,7 @@ import { useToast } from '@/components/ui/Toast'
 import { DevolverDepositoModal } from './DevolverDepositoModal'
 import type { SolicitudCompra, SolicitudCompraItem, SolicitudEstado, SolicitudProgreso, ItemEstado, ItemClase, Obra, Proveedor, StockMaterial, StockRubro, RemitoEnvio, StockClienteRow } from '@/types/domain.types'
 import { codigoMaterial } from '@/lib/utils/codigo'
+import { mensajeErrorCertificaciones } from '../utils/certificaciones.errores'
 
 
 const ESTADO_SOL: Record<SolicitudEstado, { label: string; bg: string; text: string }> = {
@@ -542,7 +543,7 @@ export function SolicitudesTab() {
         if (c) { setConflictoMat({ ...c, nombreIntentado: dto.nombre, dtoCreate: dto, lineaId, enEdicion }); return }
         const msgNombre = parseNombreEsCodigo(e)
         if (msgNombre) { setErrorNombreMat(msgNombre); return }
-        toast(e instanceof Error ? e.message : 'Error', 'err')
+        toast(mensajeErrorCertificaciones(e, 'Error'), 'err')
       },
     })
   }
@@ -563,7 +564,7 @@ export function SolicitudesTab() {
         toast(`Guardado: buscando "${termino}" ahora aparece ${existente.nombre}`, 'ok')
         usarMaterialEnLinea(lineaId, enEdicion, m ?? existente)
       },
-      onError: (e: unknown) => toast(e instanceof Error ? e.message : 'Error', 'err'),
+      onError: (e: unknown) => toast(mensajeErrorCertificaciones(e, 'Error'), 'err'),
     })
   }
 
@@ -970,13 +971,13 @@ export function SolicitudesTab() {
   function aprobar(id: number) {
     updateSol({ id, dto: { estado: 'aprobada' } }, {
       onSuccess: () => toast('Solicitud aprobada', 'ok'),
-      onError: (e: any) => toast(e.message || 'Error', 'err'),
+      onError: (e: any) => toast(mensajeErrorCertificaciones(e, 'Error'), 'err'),
     })
   }
   function rechazar(id: number) {
     updateSol({ id, dto: { estado: 'rechazada' } }, {
       onSuccess: () => toast('Solicitud rechazada', 'ok'),
-      onError: (e: any) => toast(e.message || 'Error', 'err'),
+      onError: (e: any) => toast(mensajeErrorCertificaciones(e, 'Error'), 'err'),
     })
   }
   function eliminar(s: SolicitudCompra) {
@@ -1018,7 +1019,7 @@ export function SolicitudesTab() {
           const lista = Array.isArray(detail?.renglones) ? detail.renglones.join(', ') : ''
           toast(`Hay compras sin ficha de catálogo${lista ? ` (${lista})` : ''}: vinculalas antes o elegí devolverlas al proveedor.`, 'err')
         } else {
-          toast(e.message || 'Error', 'err')
+          toast(mensajeErrorCertificaciones(e, 'Error'), 'err')
         }
       },
     })
@@ -1067,7 +1068,7 @@ export function SolicitudesTab() {
         else toast(data.queda_en_proveedor ? 'Comprado (queda en proveedor)' : 'Compra registrada', 'ok')
         setModalComprar(null)
       },
-      onError: (e: any) => toast(e.message || 'Error', 'err'),
+      onError: (e: any) => toast(mensajeErrorCertificaciones(e, 'Error'), 'err'),
     })
   }
 
@@ -1286,21 +1287,21 @@ export function SolicitudesTab() {
   function handleRecibirDevolucion(itemId: number) {
     recibirDevolucion({ itemId }, {
       onSuccess: () => toast('Devolución recibida en el pañol', 'ok'),
-      onError:   (e: any) => toast(e.message || 'Error', 'err'),
+      onError:   (e: any) => toast(mensajeErrorCertificaciones(e, 'Error'), 'err'),
     })
   }
 
   function handleEnviar(itemId: number) {
     enviarItem({ itemId }, {
       onSuccess: () => toast('Marcado como enviado', 'ok'),
-      onError: (e: any) => toast(e.message || 'Error', 'err'),
+      onError: (e: any) => toast(mensajeErrorCertificaciones(e, 'Error'), 'err'),
     })
   }
 
   function handleRechazarItem(itemId: number) {
     rechazarItem(itemId, {
       onSuccess: () => toast('Ítem rechazado', 'ok'),
-      onError: (e: any) => toast(e.message || 'Error', 'err'),
+      onError: (e: any) => toast(mensajeErrorCertificaciones(e, 'Error'), 'err'),
     })
   }
 
@@ -1312,7 +1313,7 @@ export function SolicitudesTab() {
         const code = e?.body?.error || e?.code
         if (code === 'ITEM_COBRADO') toast('El material ya fue cobrado al cliente: liberá el cobro primero (Cuenta corriente)', 'err')
         else if (code === 'ITEM_CERTIFICADO') toast('El material está en un certificado al cliente: anulá el certificado primero (Cuenta corriente)', 'err')
-        else toast(e.message || 'Error', 'err')
+        else toast(mensajeErrorCertificaciones(e, 'Error'), 'err')
       },
     })
   }
@@ -1335,7 +1336,7 @@ export function SolicitudesTab() {
         const code = e?.body?.error || e?.code
         if (code === 'ITEM_COBRADO')  toast('El material ya fue cobrado al cliente: liberá el cobro primero (Cuenta del cliente)', 'err')
         else if (code === 'SIN_ENVIOS') toast('Este ítem no tiene envíos parciales: usá ↩ deshacer y resolvelo de nuevo como compra', 'err')
-        else toast(e.message || 'Error', 'err')
+        else toast(mensajeErrorCertificaciones(e, 'Error'), 'err')
       },
     })
   }
@@ -1345,7 +1346,7 @@ export function SolicitudesTab() {
     if (!confirm('¿Deshacer el envío? El ítem vuelve a "comprado/depósito" y se elimina el remito generado. La compra se mantiene.')) return
     revertirEnvio(itemId, {
       onSuccess: () => toast('Envío deshecho — ítem listo para reenviar', 'ok'),
-      onError: (e: any) => toast(e.message || 'Error', 'err'),
+      onError: (e: any) => toast(mensajeErrorCertificaciones(e, 'Error'), 'err'),
     })
   }
 
@@ -1507,7 +1508,7 @@ export function SolicitudesTab() {
           },
         })
       },
-      onError: (e: any) => toast(e.message || 'Error', 'err'),
+      onError: (e: any) => toast(mensajeErrorCertificaciones(e, 'Error'), 'err'),
     })
   }
 
@@ -1535,7 +1536,7 @@ export function SolicitudesTab() {
         seleccionarProveedor(p.id)
         setModalNuevoProveedor(null)
       },
-      onError: (e: any) => toast(e.message || 'Error', 'err'),
+      onError: (e: any) => toast(mensajeErrorCertificaciones(e, 'Error'), 'err'),
     })
   }
 
@@ -1556,7 +1557,7 @@ export function SolicitudesTab() {
         setAdjunto(null)
         formComprar.setValue('factura_id', String(f.id))
       },
-      onError: (e: any) => toast(e.message || 'Error', 'err'),
+      onError: (e: any) => toast(mensajeErrorCertificaciones(e, 'Error'), 'err'),
     })
   }
 

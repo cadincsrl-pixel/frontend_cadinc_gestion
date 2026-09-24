@@ -14,6 +14,7 @@ import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
 import { usePermisos } from '@/hooks/usePermisos'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
+import { mensajeErrorCertificaciones } from '../utils/certificaciones.errores'
 
 const SUB_MOTIVO_LABELS: Record<string, string> = {
   faltante_fisico:    'Faltante físico',
@@ -163,7 +164,7 @@ export function AjustesPendientesSection() {
       avisarResultado(res, 'aprobados')
       setSel(new Set(res.fallaron.map(f => f.id)))
     } catch (e) {
-      toast(e instanceof Error ? e.message : 'Error al aprobar', 'err')
+      toast(mensajeErrorCertificaciones(e, 'Error al aprobar'), 'err')
     } finally {
       setLote(null)
     }
@@ -184,7 +185,7 @@ export function AjustesPendientesSection() {
       setSel(new Set(res.fallaron.map(f => f.id)))
       setMotivoLote('')
     } catch (e) {
-      toast(e instanceof Error ? e.message : 'Error al rechazar', 'err')
+      toast(mensajeErrorCertificaciones(e, 'Error al rechazar'), 'err')
     } finally {
       setLote(null)
     }
@@ -193,7 +194,7 @@ export function AjustesPendientesSection() {
   function handleAprobar(id: number) {
     aprobar(id, {
       onSuccess: () => toast('✓ Ajuste aprobado, stock actualizado', 'ok'),
-      onError:   e => toast(e instanceof Error ? e.message : 'Error al aprobar', 'err'),
+      onError:   e => toast(mensajeErrorCertificaciones(e, 'Error al aprobar'), 'err'),
     })
   }
 
@@ -208,7 +209,7 @@ export function AjustesPendientesSection() {
         setRechazoOpen(null)
         setMotivoRechazo('')
       },
-      onError: e => toast(e instanceof Error ? e.message : 'Error al rechazar', 'err'),
+      onError: e => toast(mensajeErrorCertificaciones(e, 'Error al rechazar'), 'err'),
     })
   }
 

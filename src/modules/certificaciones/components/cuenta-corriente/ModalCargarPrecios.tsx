@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { InputMonto } from '@/components/ui/InputMonto'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
-import { useGuardarPreciosMCC, useProponerPrecio } from '../../hooks/useCuentaCliente'
+import { useGuardarPreciosMCC, useProponerPrecios } from '../../hooks/useCuentaCliente'
 import { useEditarItem } from '../../hooks/useSolicitudes'
 import { fetchCuentaRenglonesTodos, CUENTA_CORRIENTE_KEY } from '../../hooks/useCuentaCorriente'
 import { UNIDADES } from '../../constants'
@@ -18,8 +18,9 @@ const unidadLabel = (u: string | null | undefined) => UNIDADES.find(x => x.value
 
 /**
  * Carga masiva de precios de una obra. Cubre TODOS los renglones de la obra
- * (a cobrar, pagó directo y gasto de CADINC); solo los ya cobrados quedan
- * afuera porque el monto está congelado en el pago. Reusa el PATCH del ítem,
+ * (a cobrar, pagó directo y gasto de CADINC); los cobrados y los certificados
+ * se ven pero no se editan: su monto está congelado (en el pago o en el
+ * certificado, y la base lo rechaza con MCC_COBRADO / MCC_CERTIFICADO). Reusa el PATCH del ítem,
  * que recalcula la fila de la cuenta (total = cant × precio).
  *
  * Lo tipeado se guarda como "override" por ítem; el valor efectivo es el
@@ -32,9 +33,11 @@ interface Props {
   onClose: () => void
   obraCod: string
   obraNom: string
+  /** Abrir mostrando solo lo que falta tasar (atajo desde el aviso «sin precio»). */
+  inicialSoloSinPrecio?: boolean
 }
 
-export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
+export function ModalCargarPrecios({ open, onClose, obraCod, obraNom, inicialSoloSinPrecio = false }: Props) {
   const toast = useToast()
   // El PATCH del ítem exige `actualizacion` + flag `resolver_items` (solicitudes.routes.ts).
   const { puedeEditar, resolverItems, cargarPrecios, esAdmin } = usePermisos('certificaciones')
@@ -48,7 +51,11 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
     enabled:  open && !!obraCod,
   })
   const { mutate: guardarPrecios, isPending } = useGuardarPreciosMCC()
-  const { mutate: proponerPrecio, isPending: proponiendo } = useProponerPrecio()
+  const { mutate: proponerPrecios, isPending: proponiendo } = useProponerPrecios()
+  // Los que el backend rechazó en el último guardado, con el motivo. Se
+  // marcan en rojo en su fila y el modal no se cierra: antes decía «2
+  // fallaron» sin decir cuáles ni por qué (revisión 23/09).
+  const [fallas, setFallas] = useState<Record<number, string>>({})
   // Quien resuelve compras pero NO tiene `cargar_precios` (Nicolás: compra en
   // cuenta corriente y el proveedor le pasa la cuenta días después) igual sabe
   // el precio. En vez de un 403, PROPONE: el dueño aprueba desde la bandeja y
@@ -71,7 +78,7 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
   // real aparece tarde: se descubre que el cliente pagó algo cuando ya está
   // cargado como "CADINC adelantó".
   const [pagadores, setPagadores] = useState<Record<number, 'cadinc' | 'cliente'>>({})
-  const [soloSinPrecio, setSoloSinPrecio] = useState(false)
+  const [soloSinPrecio, setSoloSinPrecio] = useState(inicialSoloSinPrecio)
   // "Usar sugeridos" llenaba N casillas repartidas en una lista larga y no
   // había forma de ver cuáles ni con qué (user, 10/09: "no sé qué precios se
   // pusieron ni a qué"). Se marca cada renglón tocado y se puede ver solo eso.
@@ -79,8 +86,11 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
   const [desdeSugerido, setDesdeSugerido] = useState<Record<number, true>>({})
   const [busqueda, setBusqueda] = useState('')
 
-  const editables = useMemo(() => rows.filter(r => r.cobro_id == null), [rows])
-  const cobrados  = rows.length - editables.length
+  // Cobrado o certificado: congelado. Antes solo se miraba el cobro y los
+  // certificados aparecían editables para después fallar al guardar.
+  const congeladoDe = (r: CuentaRenglon) => r.cobro_id != null || r.certificado_id != null
+  const editables = useMemo(() => rows.filter(r => r.cobro_id == null && r.certificado_id == null), [rows])
+  const congelados = rows.length - editables.length
 
   function valorDe(r: CuentaRenglon): string {
     return overrides[r.item_id] ?? (Number(r.precio_unit) > 0 ? String(r.precio_unit) : '')
@@ -110,14 +120,14 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
   const cambiados     = new Set(cambios.map(r => r.item_id))
   const visibles      = rows
     .filter(r => !soloCambios || cambiados.has(r.item_id))
-    .filter(r => !soloSinPrecio || (r.cobro_id == null && Number(r.precio_unit) === 0))
+    .filter(r => !soloSinPrecio || (!congeladoDe(r) && Number(r.precio_unit) === 0))
     .filter(r => !q || r.descripcion.toLowerCase().includes(q))
   // Cuánto cambia la cuenta de la obra con lo que está tipeado, para poder
   // decirlo ANTES de guardar.
   const deltaTotal    = cambios.reduce((s, r) => s + Number(r.cantidad) * (precioVal(r) - Number(r.precio_unit)), 0)
 
   function cerrar() {
-    setOverrides({}); setPagadores({}); setSoloSinPrecio(false); setSoloCambios(false)
+    setOverrides({}); setPagadores({}); setSoloSinPrecio(false); setSoloCambios(false); setFallas({})
     setDesdeSugerido({}); setBusqueda(''); setConvertir(null); onClose()
   }
 
@@ -153,25 +163,25 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
     })
   }
 
-  /** Manda los precios tipeados como PROPUESTA, uno por uno. */
+  /** Manda los precios tipeados como PROPUESTA. El «quién pagó» no se propone. */
   function proponer() {
     if (cambios.length === 0) { toast('No cambiaste nada', 'err'); return }
     const conPrecio = cambios.filter(r => precioVal(r) > 0 && precioVal(r) !== Number(r.precio_unit))
     if (conPrecio.length === 0) { toast('Proponé al menos un precio mayor a cero', 'err'); return }
-    let ok = 0, fallo = 0
-    let pendientes = conPrecio.length
-    for (const r of conPrecio) {
-      proponerPrecio({ itemId: r.item_id, precio_unit: precioVal(r) }, {
-        onSuccess: () => { ok++ },
-        onError:   () => { fallo++ },
-        onSettled: () => {
-          if (--pendientes > 0) return
-          if (fallo > 0) { toast(`Propuestos ${ok}/${conPrecio.length} — ${fallo} fallaron`, 'err'); return }
-          toast(`✓ ${ok} precio${ok !== 1 ? 's' : ''} propuesto${ok !== 1 ? 's' : ''}: esperan aprobación`, 'ok')
-          cerrar()
-        },
-      })
-    }
+    setFallas({})
+    proponerPrecios(conPrecio.map(r => ({ itemId: r.item_id, precio_unit: precioVal(r) })), {
+      onSuccess: ({ total, fallas: f }) => {
+        if (f.length > 0) {
+          setFallas(Object.fromEntries(f.map(x => [x.itemId, x.motivo])))
+          setSoloCambios(true)
+          toast(`Propuestos ${total - f.length} de ${total}. ${f.length} no se pudo: están marcados en rojo con el motivo`, 'err')
+          return
+        }
+        toast(`✓ ${total} precio${total !== 1 ? 's' : ''} propuesto${total !== 1 ? 's' : ''}: esperan aprobación`, 'ok')
+        cerrar()
+      },
+      onError: () => toast('No se pudieron proponer los precios', 'err'),
+    })
   }
 
   function guardar() {
@@ -179,6 +189,7 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
     if (cambios.length === 0) { toast('No cambiaste nada', 'err'); return }
     const aCero = cambios.filter(r => Number(r.precio_unit) > 0 && precioVal(r) === 0).length
     if (aCero > 0 && !confirm(`Vas a dejar en $0 ${aCero} material(es) que tenían precio cargado.\n¿Continuar?`)) return
+    setFallas({})
     guardarPrecios(cambios.map(r => {
       const cambiaPrecio = precioVal(r) !== Number(r.precio_unit)
       return {
@@ -190,10 +201,13 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
         ...(alCatalogo && cambiaPrecio && precioVal(r) > 0 ? { actualizar_catalogo: true } : {}),
       }
     }), {
-      onSuccess: ({ total, fallidos, alCatalogo }) => {
-        if (fallidos > 0) {
-          // No cerramos: el refetch repinta los que pasaron y lo tipeado queda para reintentar.
-          toast(`Guardados ${total - fallidos}/${total} — ${fallidos} fallaron`, 'err')
+      onSuccess: ({ total, fallas: f, alCatalogo }) => {
+        if (f.length > 0) {
+          // No cerramos: el refetch repinta los que pasaron, y los que no
+          // quedan a la vista, en rojo y con el motivo, para corregir.
+          setFallas(Object.fromEntries(f.map(x => [x.itemId, x.motivo])))
+          setSoloCambios(true)
+          toast(`Guardados ${total - f.length} de ${total}. ${f.length} no se pudo: están marcados en rojo con el motivo`, 'err')
           return
         }
         toast(`✓ ${total} precio${total !== 1 ? 's' : ''} guardado${total !== 1 ? 's' : ''}${alCatalogo ? ` · ${alCatalogo} ficha${alCatalogo !== 1 ? 's' : ''} del catálogo actualizada${alCatalogo !== 1 ? 's' : ''}` : ''}`, 'ok')
@@ -232,7 +246,7 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
             {isLoading ? 'Cargando…' : <>
               {editables.length} {editables.length === 1 ? 'renglón' : 'renglones'} ·{' '}
               <span className="font-bold text-naranja-dark">{sinPrecio} sin precio</span>. Precio unitario final (IVA incluido); el total se calcula solo.
-              {cobrados > 0 && ` ${cobrados} ya cobrado${cobrados !== 1 ? 's' : ''} (en gris, congelados).`}
+              {congelados > 0 && ` ${congelados} cobrado${congelados !== 1 ? 's' : ''} o certificado${congelados !== 1 ? 's' : ''} (en gris, congelados).`}
             </>}
           </div>
           <div className="flex items-center gap-3 flex-wrap shrink-0">
@@ -335,14 +349,17 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
                   </tr>
                 )}
                 {visibles.map(r => {
-                  const congelado = r.cobro_id != null
+                  const congelado = congeladoDe(r)
                   const val = precioVal(r)
                   const total = Number(r.cantidad) * val
                   const sin = !congelado && Number(r.precio_unit) === 0
                   const m = ESTADO_META[r.estado]
                   if (congelado) {
                     return (
-                      <tr key={r.id} className="border-t border-gris opacity-55" title="Imputado a un pago: el precio quedó congelado. Para tocarlo hay que eliminar el pago.">
+                      <tr key={r.id} className="border-t border-gris opacity-55"
+                        title={r.cobro_id != null
+                          ? 'Imputado a un pago: el precio quedó congelado. Para tocarlo hay que sacarlo del pago.'
+                          : 'En un certificado: el precio quedó congelado. Para tocarlo hay que anular el certificado.'}>
                         <td className="px-3 py-2">
                           {r.descripcion}
                           <div className="text-[10px] text-gris-dark font-mono">#{r.solicitud_id} · {r.origen === 'deposito' ? 'Depósito' : (r.proveedor_nom ?? 'sin proveedor')}</div>
@@ -356,8 +373,9 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
                     )
                   }
                   const tocado = cambiados.has(r.item_id)
+                  const falla = fallas[r.item_id]
                   return (
-                    <tr key={r.id} className={`border-t border-gris ${tocado ? 'bg-azul-light/40' : sin ? 'bg-naranja-light/20' : ''}`}>
+                    <tr key={r.id} className={`border-t border-gris ${falla ? 'bg-rojo-light/60' : tocado ? 'bg-azul-light/40' : sin ? 'bg-naranja-light/20' : ''}`}>
                       <td className="px-3 py-2">
                         {r.descripcion}
                         {tocado && (
@@ -366,6 +384,7 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
                           </span>
                         )}
                         <div className="text-[10px] text-gris-dark font-mono">#{r.solicitud_id} · {r.origen === 'deposito' ? 'Depósito' : (r.proveedor_nom ?? 'sin proveedor')}</div>
+                        {falla && <div className="text-[11px] font-bold text-rojo mt-0.5">✕ {falla}</div>}
                       </td>
                       <td className="px-3 py-2 text-center">
                         <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap ${m.badge}`}>{m.label}</span>
@@ -374,12 +393,16 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom }: Props) {
                             que el user revirtiera un pago directo sin darse
                             cuenta — parecía una etiqueta, no un control. */}
                         <div className="flex items-center justify-center gap-0.5 mt-1"
-                          title="Quién le pagó al proveedor. 'Cliente' lo saca de la deuda: pasa a Pagó directo.">
+                          title={modoPropuesta
+                            ? 'Quién le pagó al proveedor lo cambia quien carga los precios, no se propone.'
+                            : "Quién le pagó al proveedor. 'Cliente' lo saca de la deuda: pasa a Pagó directo."}>
                           <span className="text-[9px] text-gris-dark mr-0.5">pagó</span>
                           {(['cadinc', 'cliente'] as const).map(op => (
                             <button key={op} type="button"
                               onClick={() => setPagadores(p => ({ ...p, [r.item_id]: op }))}
-                              className={`px-1.5 py-0.5 rounded text-[9px] font-bold whitespace-nowrap border transition-colors ${
+                              // En modo propuesta solo viaja el precio: el cambio se perdía en silencio.
+                              disabled={modoPropuesta}
+                              className={`disabled:opacity-50 disabled:cursor-not-allowed px-1.5 py-0.5 rounded text-[9px] font-bold whitespace-nowrap border transition-colors ${
                                 pagadorDe(r) === op
                                   ? (op === 'cliente' ? 'bg-verde-light text-verde border-verde' : 'bg-azul-light text-azul border-azul')
                                   : 'bg-white text-gris-mid border-gris-mid hover:text-gris-dark'}`}>

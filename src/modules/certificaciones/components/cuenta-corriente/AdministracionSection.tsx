@@ -29,6 +29,7 @@ import { Input } from '@/components/ui/Input'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import type { Obra } from '@/types/domain.types'
+import { mensajeErrorCertificaciones } from '../../utils/certificaciones.errores'
 
 /**
  * Con `modo="costos"` (obras llave en mano) la misma sección se vuelve el
@@ -308,7 +309,7 @@ function ModalImputar({ obraCod, onClose }: { obraCod: string; onClose: () => vo
           : 'No había nada nuevo para congelar: lo pagado ya estaba imputado.', 'ok')
         onClose()
       },
-      onError: (e) => toast(e instanceof Error ? e.message : 'No se pudo imputar', 'err'),
+      onError: (e) => toast(mensajeErrorCertificaciones(e, 'No se pudo imputar'), 'err'),
     })
   }
 
@@ -368,7 +369,7 @@ function ModalPorcentajes({ obraCod, vigente, historial, onClose }: {
       pct_materiales:   Number(data.pct_materiales),
     }, {
       onSuccess: () => { toast('Porcentajes guardados', 'ok'); onClose() },
-      onError:   (e) => toast(e instanceof Error ? e.message : 'No se pudo guardar', 'err'),
+      onError:   (e) => toast(mensajeErrorCertificaciones(e, 'No se pudo guardar'), 'err'),
     })
   }
 

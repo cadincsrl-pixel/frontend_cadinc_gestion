@@ -17,6 +17,7 @@ import {
 import { fetchCuentaRenglonesTodos, useCuentaResumen, CUENTA_CORRIENTE_KEY } from '../../hooks/useCuentaCorriente'
 import type { CuentaClienteCobro, MedioCobro } from '@/types/domain.types'
 import { fmtM, fmtFecha, totalizar } from './cuentaCorriente.utils'
+import { mensajeErrorCertificaciones } from '../../utils/certificaciones.errores'
 
 /**
  * Pagos del cliente de una obra: saldo, lista de pagos y el modal para
@@ -186,7 +187,7 @@ export function PagosCliente({ obraCod, obraNom, puedeEditar, puedeEliminar, por
         ...(comprobante_path ? { comprobante_path } : {}),
       }, cbs)
     } catch (e) {
-      toast(e instanceof Error ? e.message : 'Error al subir el comprobante', 'err')
+      toast(mensajeErrorCertificaciones(e, 'Error al subir el comprobante'), 'err')
     } finally {
       setSubiendo(false)
     }

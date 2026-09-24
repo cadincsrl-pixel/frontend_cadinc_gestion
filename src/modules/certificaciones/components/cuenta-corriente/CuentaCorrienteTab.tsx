@@ -63,6 +63,10 @@ function mensajeConsumible(code?: string): string {
 export function CuentaCorrienteTab() {
   const toast = useToast()
   const { resolverItems, cargarPrecios, marcarConsumibles, esAdmin, puedeCrear, puedeEditar, puedeEliminar, verCostos } = usePermisos('certificaciones')
+  // Fijar precios: resolver ítems + cargar_precios. Sin el flag se PROPONEN
+  // (el mismo modal, en modo propuesta) y el dueño los aprueba.
+  const puedeFijarPrecios = !!(puedeEditar && resolverItems && (cargarPrecios || esAdmin))
+  const puedeTasar        = !!(puedeEditar && resolverItems)
   // Las patas de jornales y contratistas del panel de costos salen de
   // endpoints de TARJA (horas, tarifas, certificaciones — todos con guardia
   // tarja.lectura). Un usuario de certificaciones sin tarja recibiría 403s
@@ -100,6 +104,8 @@ export function CuentaCorrienteTab() {
     setPage(1)
   }
   const [modalPrecios, setModalPrecios] = useState(false)
+  // Abierto desde el aviso «sin precio»: arranca mostrando solo lo que falta tasar.
+  const [preciosSoloSinPrecio, setPreciosSoloSinPrecio] = useState(false)
   const [exportando, setExportando]     = useState(false)
   // Sin obra elegida no se carga nada: los totales de todas las obras juntas
   // son información sensible, así que verlos es una decisión EXPLÍCITA. Eso no
@@ -315,7 +321,13 @@ export function CuentaCorrienteTab() {
           <div className="flex gap-1.5 flex-wrap">
             {pendVisibles.slice(0, 6).map(p => (
               <button key={p.obra_cod} type="button"
-                onClick={() => patch({ obra_cod: p.obra_cod, sin_precio: true, estados: undefined, tipo: undefined })}
+                onClick={() => {
+                  patch({ obra_cod: p.obra_cod, sin_precio: true, estados: undefined, tipo: undefined })
+                  // Quien puede tasar (o proponer) va directo al modal: antes
+                  // eran chip → Cargar precios → tildar «Solo sin precio».
+                  if (puedeTasar) { setPreciosSoloSinPrecio(true); setModalPrecios(true) }
+                }}
+                title={puedeTasar ? 'Abrir la obra y tasar lo que falta' : 'Ver los renglones sin precio de esta obra'}
                 className={`text-[11px] font-bold px-2 py-1 rounded-lg border transition-colors ${
                   p.obra_archivada
                     ? 'bg-gris border-gris-mid text-gris-dark hover:bg-white'
@@ -377,12 +389,18 @@ export function CuentaCorrienteTab() {
             <div className="text-[11px] text-gris-dark font-mono mt-0.5">{obraSel}</div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {/* Quien resuelve compras pero no tiene cargar_precios (Nicolás)
+                entra igual: el modal pasa a modo PROPUESTA y el dueño aprueba.
+                Antes el botón estaba trabado y el circuito entero no se podía
+                usar — ningún precio propuesto en la base (revisión 23/09). */}
             <Button
-              variant="primary" size="sm" onClick={() => setModalPrecios(true)}
-              disabled={!resolverItems || !(cargarPrecios || esAdmin)}
-              title={!(cargarPrecios || esAdmin) ? 'Los precios de la cuenta los carga el dueño (flag cargar_precios)' : !resolverItems ? 'No tenés permiso para cargar precios' : 'Cargar o corregir precios de todos los renglones de la obra'}
+              variant="primary" size="sm" onClick={() => { setPreciosSoloSinPrecio(false); setModalPrecios(true) }}
+              disabled={!puedeTasar}
+              title={!puedeTasar ? 'Cargar precios pide resolver ítems (y cargar_precios para fijarlos; sin ese flag se proponen)'
+                : puedeFijarPrecios ? 'Cargar o corregir precios de todos los renglones de la obra'
+                : 'Proponer precios: quedan esperando la aprobación del dueño'}
             >
-              💲 Cargar precios
+              {puedeFijarPrecios ? '💲 Cargar precios' : '💲 Proponer precios'}
             </Button>
             <Button variant="primary" size="sm" onClick={() => setRegistrarSignal(n => n + 1)}
               disabled={!puedeCrear}
@@ -575,8 +593,9 @@ export function CuentaCorrienteTab() {
         )}
       </div>}
 
-      {obraSel && (
-        <ModalCargarPrecios open={modalPrecios} onClose={() => setModalPrecios(false)} obraCod={obraSel} obraNom={obraNom} />
+      {/* Montado solo abierto: así arranca limpio y toma el filtro inicial. */}
+      {obraSel && modalPrecios && (
+        <ModalCargarPrecios open onClose={() => setModalPrecios(false)} obraCod={obraSel} obraNom={obraNom} inicialSoloSinPrecio={preciosSoloSinPrecio} />
       )}
 
         {/* Confirmación de la tanda. Muestra la PLATA arriba y la LISTA abajo:

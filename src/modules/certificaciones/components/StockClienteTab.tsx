@@ -20,6 +20,7 @@ import { Combobox } from '@/components/ui/Combobox'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import type { Obra, StockClienteRow, StockClienteMovimiento } from '@/types/domain.types'
+import { mensajeErrorCertificaciones } from '../utils/certificaciones.errores'
 
 const fmtNum   = (n: number) => n.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 const fmtFecha = (s: string | null) => {
@@ -164,7 +165,7 @@ export function StockClienteTab() {
           toast('Hay materiales repetidos en el lote', 'err')
           return
         }
-        toast(e.message || 'Error al registrar la entrega', 'err')
+        toast(mensajeErrorCertificaciones(e, 'Error al registrar la entrega'), 'err')
       },
     })
   }
@@ -185,7 +186,7 @@ export function StockClienteTab() {
       obs:      data.obs || undefined,
     }, {
       onSuccess: () => { toast('Salida registrada', 'ok'); setModalSalida(null) },
-      onError:   (e: Error) => toast(e.message || 'Error al registrar la salida', 'err'),
+      onError:   (e: Error) => toast(mensajeErrorCertificaciones(e, 'Error al registrar la salida'), 'err'),
     })
   }
 

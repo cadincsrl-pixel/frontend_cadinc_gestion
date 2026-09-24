@@ -10,6 +10,7 @@ import {
   subirComprobanteAjuste,
 } from '../hooks/useStock'
 import { usePermisos } from '@/hooks/usePermisos'
+import { mensajeErrorCertificaciones } from '../utils/certificaciones.errores'
 
 const SUB_MOTIVOS = [
   { value: 'faltante_fisico',    label: 'Faltante físico',                 sign: 'neg', help: 'No aparece. Potencial extravío o robo.' },
@@ -97,7 +98,7 @@ export function DeclararAjusteModal({ material, onClose, onSuccess }: Props) {
       comprobantePath = r.storage_path
       comprobanteHash = r.file_hash
     } catch (e: any) {
-      toast(e?.message ?? 'Error al subir el comprobante', 'err')
+      toast(mensajeErrorCertificaciones(e, 'Error al subir el comprobante'), 'err')
       setSubiendo(false)
       return
     } finally {
@@ -119,7 +120,7 @@ export function DeclararAjusteModal({ material, onClose, onSuccess }: Props) {
       onSuccess?.()
       onClose()
     } catch (e: any) {
-      toast(e?.message ?? 'Error al declarar la diferencia', 'err')
+      toast(mensajeErrorCertificaciones(e, 'Error al declarar la diferencia'), 'err')
     }
   }
 

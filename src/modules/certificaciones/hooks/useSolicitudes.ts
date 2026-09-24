@@ -104,7 +104,9 @@ export function useDeleteSolicitud() {
     mutationFn: ({ id, compras }: { id: number; compras?: DestinoCompras }) =>
       apiDelete<EliminarSolicitudResultado>(`/api/solicitudes/${id}`, compras ? { compras } : undefined),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['solicitudes'] })
+      // El borrado arrastra las filas de la cuenta de la obra (y del pañol):
+      // sin esto la cuenta corriente mostraba renglones que ya no existían.
+      invalidarResolucionItem(qc)
       // Borrar puede mover stock (vuelve al estante / compra que queda).
       qc.invalidateQueries({ queryKey: ['stock'] })
     },
