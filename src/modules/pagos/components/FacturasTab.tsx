@@ -10,6 +10,7 @@ import {
   type PagosFacturasFiltro,
 } from '../hooks/usePagos'
 import { useSaldosProveedores } from '../hooks/useProveedoresPagos'
+import { useConceptosPagos } from '../hooks/useConceptosPagos'
 import { fmtM, describirFiltroFacturas, esNC, topePagable } from '../utils/pagos.utils'
 import { mensajeErrorPagos } from '../utils/pagos.errores'
 import { exportarFacturasPagos } from '../utils/pagosExport'
@@ -22,6 +23,7 @@ import { ModalRegistrarPago } from './ModalRegistrarPago'
 import { ModalExcelGalicia } from './ModalExcelGalicia'
 import { PreguntarAvisoPago } from './PreguntarAvisoPago'
 import { DeudaPorProveedor } from './DeudaPorProveedor'
+import { ModalConceptosCompra } from './ModalConceptosCompra'
 
 const PAGE_SIZE = 50
 
@@ -55,7 +57,7 @@ const FILTRO_INICIAL: PagosFacturasFiltro = {
  */
 export function FacturasTab({ aviso }: { aviso?: string | null }) {
   const toast = useToast()
-  const { puedeVer, puedeCrear, registrarPagos, aprobarFacturas, esAdmin, verPii } = usePermisos('pagos')
+  const { puedeVer, puedeCrear, puedeEditar, registrarPagos, aprobarFacturas, esAdmin, verPii } = usePermisos('pagos')
   const puedeAprobar = !!(aprobarFacturas || esAdmin)
   const puedePagar   = !!(registrarPagos || esAdmin)
 
@@ -73,6 +75,8 @@ export function FacturasTab({ aviso }: { aviso?: string | null }) {
   const [avisoOrdenId, setAvisoOrdenId] = useState<number | null>(null)
   const [exportando, setExportando] = useState(false)
   const [generandoPdf, setGenerandoPdf] = useState(false)
+  const [modalConceptos, setModalConceptos] = useState(false)
+  const conceptos = useConceptosPagos(true, puedeVer)
 
   const lista   = useFacturas(filtro, page, PAGE_SIZE, puedeVer)
   // El resumen por estado alimenta los chips: se pide SIN `estados` (lo hace el
@@ -160,6 +164,7 @@ export function FacturasTab({ aviso }: { aviso?: string | null }) {
   /** Lo que se imprime arriba del PDF y adentro del CONTENIDO.txt del ZIP. */
   const descFiltro = describirFiltroFacturas(
     filtro, id => saldos.data?.find(p => p.proveedor_id === id)?.razon_social,
+    id => conceptos.data?.find(c => c.id === id)?.nombre,
   )
 
   async function exportarPdf() {
@@ -243,6 +248,11 @@ export function FacturasTab({ aviso }: { aviso?: string | null }) {
           )}
         </div>
         <div className="flex gap-2 flex-wrap items-center">
+          {/* La lista la ajusta el contador; verla la ve cualquiera con el tab. */}
+          <Button variant="ghost" size="sm" onClick={() => setModalConceptos(true)}
+            title={puedeEditar ? 'Conceptos de compra: alta, renombrar, orden y baja' : 'Ver los conceptos de compra (editarlos pide permiso de edición en Compras)'}>
+            🏷 Conceptos
+          </Button>
           <Button variant="secondary" size="sm" onClick={exportar} loading={exportando} disabled={total === 0}
             title="Planilla para trabajar: una fila por factura, con totales y autofiltro.">
             📊 Excel
@@ -313,6 +323,8 @@ export function FacturasTab({ aviso }: { aviso?: string | null }) {
           onClose={() => setModalCargar({ open: false })}
         />
       )}
+
+      {modalConceptos && <ModalConceptosCompra onClose={() => setModalConceptos(false)} />}
 
       {modalGalicia && (
         <ModalExcelGalicia facturas={pagables} verPii={!!verPii} onClose={() => setModalGalicia(false)} />

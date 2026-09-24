@@ -279,6 +279,17 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   CBU_INVALIDO:   () => 'El CBU no es válido: son 22 dígitos y no pasan los verificadores.',
   ALIAS_INVALIDO: () => 'El alias no es válido: entre 6 y 20 caracteres, letras, números, punto o guion.',
 
+  // ── Concepto de compra (20260925) ──
+  CONCEPTO_REQUERIDO:  () => 'Elegí el concepto de la compra (combustible, materiales…): es obligatorio.',
+  CONCEPTO_INVALIDO:   () => 'Ese concepto no existe o está dado de baja: elegí otro de la lista.',
+  CONCEPTO_DUPLICADO:  () => 'Ya hay un concepto con ese nombre (se comparan sin mayúsculas ni acentos).',
+  CONCEPTO_ULTIMO_ACTIVO: () => 'Es el único concepto activo: activá otro antes de dar de baja este.',
+  CONCEPTO_NO_EXISTE:  () => 'Ese concepto ya no existe: refrescá la lista.',
+  CODIGO_NO_EDITABLE:  d => {
+    const cod = dato(d, 'codigo')
+    return `El código del proveedor${cod ? ` (${String(cod)})` : ''} lo pone el sistema y no se cambia.`
+  },
+
   // ── Obras ──
   OBRA_ARCHIVADA: d => {
     const obra = dato(d, 'obra_cod')

@@ -9,8 +9,9 @@ import { useSessionStore } from '@/store/session.store'
 import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
 import {
   useFactura, useAprobarFactura, useObservarFactura, useMarcarCorregida, useAnularFactura,
-  useSubirAdjuntoPagos, useBorrarAdjuntoPagos, fetchPagosAdjuntoSignedUrl,
+  useSubirAdjuntoPagos, useBorrarAdjuntoPagos, fetchPagosAdjuntoSignedUrl, useEditarFactura,
 } from '../hooks/usePagos'
+import { useConceptosPagos } from '../hooks/useConceptosPagos'
 import {
   ESTADO_FACTURA_META, FORMAS_PREVISTAS, MAX_ADJUNTO_BYTES, MIME_ADJUNTOS, TIPOS_ADJ_FACTURA,
   aplicacionFirme, comprobanteTxt, contraparteAplicacion, esNC, estadoHint, estadoLabel, facturaAnulada, fmtFecha, fmtM, formaPagoLabel, topePagable,
@@ -288,11 +289,13 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
           <Dato label="Emitida" valor={fmtFecha(f.fecha)} />
           {!nc && <Dato label="Vence" valor={f.vence_el ? fmtFecha(f.vence_el) : 'sin vencimiento'} alerta={f.vencida} />}
           {!nc && <Dato label="Forma prevista" valor={FORMAS_PREVISTAS.find(x => x.key === f.forma_pago_prevista)?.label ?? f.forma_pago_prevista} />}
+          <Dato label="Proveedor" valor={f.proveedor_codigo ? `${f.proveedor_codigo} · ${f.proveedor_nom}` : f.proveedor_nom} />
           <Dato label="CUIT" valor={f.proveedor_cuit ?? '—'} />
           <Dato label="Cuenta del proveedor" valor={verPii ? (f.proveedor_cbu ?? f.proveedor_alias ?? '—') : (f.proveedor_cbu_ultimos4 ? `***${f.proveedor_cbu_ultimos4}` : '—')} />
           <Dato label="Cargó" valor={`${f.created_by_nombre ?? '—'}, ${fmtFecha(f.created_at)}`} />
         </div>
 
+        <ConceptoFicha f={f} puedeEditar={puedeEditar} />
         {f.descripcion && <div><span className="text-[11px] font-bold text-gris-dark uppercase">Descripción</span><div>{f.descripcion}</div></div>}
         {f.obs && <div><span className="text-[11px] font-bold text-gris-dark uppercase">Observaciones</span><div className="text-gris-dark">{f.obs}</div></div>}
 
@@ -481,6 +484,74 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
         )}
       </div>
     </Modal>
+  )
+}
+
+/**
+ * El concepto de compra (20260925), editable en el lugar. Es clasificación, no
+ * plata: se cambia aunque la factura esté aprobada o pagada y no le saca la
+ * aprobación. Una anulada no se edita (FACTURA_CERRADA). No se puede vaciar.
+ */
+function ConceptoFicha({ f, puedeEditar }: { f: PagosFacturaDetalle; puedeEditar: boolean }) {
+  const toast = useToast()
+  const [editando, setEditando] = useState(false)
+  const [valor, setValor] = useState('')
+  const conceptos = useConceptosPagos(false, editando)
+  const editar = useEditarFactura()
+  const anulada = f.estado === 'anulada'
+
+  function empezar() {
+    setValor(f.concepto_id ? String(f.concepto_id) : '')
+    setEditando(true)
+  }
+
+  async function guardar() {
+    if (!valor) return
+    if (Number(valor) === f.concepto_id) { setEditando(false); return }
+    try {
+      await editar.mutateAsync({ id: f.id, concepto_id: Number(valor) })
+      toast('✓ Concepto actualizado', 'ok')
+      setEditando(false)
+    } catch (e) {
+      toast(mensajeErrorPagos(e), 'err')
+    }
+  }
+
+  const activos = (conceptos.data ?? []).filter(c => c.activo)
+
+  return (
+    <div>
+      <span className="text-[11px] font-bold text-gris-dark uppercase">Concepto</span>
+      {!editando ? (
+        <div className="flex items-center gap-2 flex-wrap">
+          {f.concepto
+            ? <span className="text-xs font-semibold px-2 py-0.5 rounded bg-azul/10 text-azul">{f.concepto}</span>
+            : <span className="text-xs text-naranja-dark">Sin concepto</span>}
+          {!anulada && (
+            <button type="button" onClick={empezar} disabled={!puedeEditar}
+              title={puedeEditar ? 'Cambiar el concepto: no le saca la aprobación' : 'No tenés permiso para editar facturas'}
+              className="text-[11px] text-azul hover:underline disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline">
+              {f.concepto ? 'Cambiar' : 'Elegir'}
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 flex-wrap mt-0.5">
+          <select value={valor} onChange={e => setValor(e.target.value)} disabled={conceptos.isLoading}
+            aria-label="Concepto de compra"
+            className="px-2 py-1.5 border-[1.5px] border-gris-mid rounded text-sm bg-white outline-none focus:border-naranja">
+            <option value="">{conceptos.isLoading ? 'Cargando…' : 'Elegí el concepto…'}</option>
+            {activos.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+          </select>
+          <Button size="sm" onClick={guardar} loading={editar.isPending} disabled={!valor}
+            title={!valor ? 'Elegí un concepto: no se puede dejar vacío' : undefined}>
+            Guardar
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setEditando(false)}>Cancelar</Button>
+          {conceptos.isError && <span className="text-[11px] text-rojo">No se pudo traer la lista.</span>}
+        </div>
+      )}
+    </div>
   )
 }
 

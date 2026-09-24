@@ -159,7 +159,10 @@ export function OrdenesTab() {
                       {o.estado === 'anulada' && <span className="ml-1 text-[10px] px-1.5 rounded bg-gris text-gris-dark font-bold uppercase">anulada</span>}
                       {o.en_cartera && <span className="ml-1 text-[10px] px-1.5 rounded bg-amarillo-light text-[#7A5000] font-bold" title={`Se cobra el ${fmtFecha(o.fecha_cobro)}`}>en cartera</span>}
                     </td>
-                    <td className="px-3 py-2 text-sm">{o.proveedor_nom}</td>
+                    <td className="px-3 py-2 text-sm">
+                      {o.proveedor_nom}
+                      {o.proveedor_codigo && <span className="ml-1 font-mono text-[10px] text-gris-dark" title="Código del proveedor">{o.proveedor_codigo}</span>}
+                    </td>
                     <td className="px-3 py-2 text-xs whitespace-nowrap">{fmtFecha(o.fecha)}</td>
                     <td className="px-3 py-2 text-xs">
                       {formaPagoLabel(o.forma_pago)}
@@ -187,7 +190,10 @@ export function OrdenesTab() {
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <span className="font-mono font-bold text-sm">{o.numero_fmt}</span>
-                    <div className="text-sm">{o.proveedor_nom}</div>
+                    <div className="text-sm">
+                      {o.proveedor_nom}
+                      {o.proveedor_codigo && <span className="ml-1 font-mono text-[10px] text-gris-dark">{o.proveedor_codigo}</span>}
+                    </div>
                     <div className="text-[11px] text-gris-dark">{fmtFecha(o.fecha)} · {formaPagoLabel(o.forma_pago)}</div>
                   </div>
                   <div className="text-right">
@@ -274,6 +280,7 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, verPii, toast }: {
         )}
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <Dato label="Proveedor" valor={[o.proveedor_codigo, o.proveedor_cuit ? `CUIT ${o.proveedor_cuit}` : null].filter(Boolean).join(' · ') || '—'} />
           <Dato label="Fecha" valor={fmtFecha(o.fecha)} />
           <Dato label="Forma" valor={formaPagoLabel(o.forma_pago)} />
           <Dato label={salidaLabel(o.forma_pago)} valor={fmtM(o.monto_pagado)} fuerte />

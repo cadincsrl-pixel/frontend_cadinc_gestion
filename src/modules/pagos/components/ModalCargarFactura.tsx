@@ -17,6 +17,7 @@ import {
   ALICUOTAS, TIPOS_TRIBUTO, NOMBRE_CBTE_ARCA, ivaDe, ivaNoCuadra, pctDeAlicuota, resumirDesglose,
 } from '../utils/desglose'
 import { useProveedoresPagos } from '../hooks/useProveedoresPagos'
+import { useConceptosPagos } from '../hooks/useConceptosPagos'
 import {
   FORMAS_PAGO_OP, FORMAS_PREVISTAS, FORMAS_CON_FECHA_COBRO,
   FORMAS_CON_CUENTA_DESTINO,
@@ -25,7 +26,7 @@ import {
   vencimientoSugerido, CBTE_NC_POR_LETRA, esCodigoNC, repartoProrrateado,
 } from '../utils/pagos.utils'
 import { AcreditaA, aplicaADe, nMonto, validarAcredita, type MontosAcredita } from './AcreditaA'
-import { mensajeAvisoLectura, mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
+import { codigoErrorPagos, mensajeAvisoLectura, mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
 import { AltaRapidaProveedor } from './AltaRapidaProveedor'
 import type {
   PagosAdjuntoPendiente, PagosAlicuotaId, PagosAvisoLectura, PagosControlFactura, PagosFormaPagoOP, PagosFuenteCampo,
@@ -122,6 +123,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
   const { data: original, isLoading } = useFactura(editarId ?? null)
   const obras = useCatalogoObrasPagos()
   const proveedores = useProveedoresPagos({}, 1, 300)
+  const conceptos = useConceptosPagos()
   const crear  = useCrearFactura()
   const editar = useEditarFactura()
   const subirAdj = useSubirAdjuntoPagos()
@@ -206,6 +208,12 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
     if (p.cae) { setCae(p.cae); poner('cae', f.cae) }
     if (p.cae_vto) { setCaeVto(p.cae_vto); poner('cae_vto', f.cae_vto) }
     if (p.descripcion && !descripcion.trim()) { setDescripcion(p.descripcion); poner('descripcion', f.descripcion) }
+    // El concepto sugerido por la IA (20260925): solo si todavía no se eligió uno.
+    if (p.concepto_id_sugerido) {
+      const sug = String(p.concepto_id_sugerido)
+      setConceptoId(prev => prev || sug)
+      setConceptoSugeridoId(sug)
+    }
     const hayDesglose = p.iva.length > 0 || p.tributos.length > 0 || p.neto != null
     if (hayDesglose) {
       setVerDesglose(true)
@@ -280,6 +288,11 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
   const guardada = useRef(false)
   const [formaPrevista, setFormaPrevista] = useState<PagosFormaPrevista>('transferencia')
   const [descripcion, setDescripcion] = useState('')
+  // Concepto de compra (20260925): obligatorio. `conceptoSugeridoId` es el que
+  // propuso la lectura; la marca se ve mientras siga elegido ese.
+  const [conceptoId, setConceptoId] = useState('')
+  const [conceptoSugeridoId, setConceptoSugeridoId] = useState<string | null>(null)
+  const [errorConcepto, setErrorConcepto] = useState<string | null>(null)
   const [obs, setObs] = useState('')
   const [pagaCliente, setPagaCliente] = useState(false)
   // El plan de e-cheqs (20260923n): se anota al cargar para que el Excel del
@@ -354,6 +367,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
     setFormaPrevista(original.forma_pago_prevista)
     setPlan(original.plan_cheques ?? null)
     setDescripcion(original.descripcion)
+    setConceptoId(original.concepto_id ? String(original.concepto_id) : '')
     setObs(original.obs)
     setPagaCliente(original.paga_cliente)
     setReparto(
@@ -495,11 +509,23 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
     () => (proveedores.data?.items ?? []).filter(p => p.activo || String(p.id) === proveedorId).map(p => ({
       value: String(p.id),
       label: p.razon_social,
-      sub:   p.cuit ?? undefined,
-      search: [p.razon_social, p.cuit ?? ''],
+      sub:   [p.codigo, p.cuit].filter(Boolean).join(' · ') || undefined,
+      // «PRV-0001», «prv0001» y «0001»: que encuentre como sea que lo tipeen.
+      search: [p.razon_social, p.cuit ?? '', p.codigo ?? '', (p.codigo ?? '').replace('-', ''), (p.codigo ?? '').replace(/^PRV-/, '')],
     })),
     [proveedores.data, proveedorId],
   )
+
+  // Los activos, en su orden. Al editar una vieja con un concepto dado de baja
+  // se lo ofrece igual (marcado), para no mostrar el select vacío.
+  const conceptoOpts = useMemo(() => {
+    const activos = (conceptos.data ?? []).filter(c => c.activo)
+    if (original?.concepto_id && !activos.some(c => c.id === original.concepto_id)) {
+      return [...activos, { id: original.concepto_id, nombre: `${original.concepto ?? 'Concepto'} (dado de baja)`, orden: null, activo: false }]
+    }
+    return activos
+  }, [conceptos.data, original])
+  const conceptoOk = !!conceptoId
 
   // Con UNA sola obra el reparto es todo el importe: no tiene sentido hacerlo
   // tipear, y tipearlo a mano es justo donde se pierden los centavos (caso del
@@ -557,7 +583,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
     : (original.pagado > 0 || original.acreditado > 0))
   const congelado  = tienePagos   // proveedor, fecha e importes no se tocan con pagos
   const numeroCompleto = componerNumero(puntoVenta, nroComprobante)
-  const listo = !!proveedorId && !!puntoVenta && !!nroComprobante &&
+  const listo = !!proveedorId && !!puntoVenta && !!nroComprobante && conceptoOk &&
                 totalN > 0 && descripcion.trim().length >= 3 && repartoOk && desgloseOk && acreditaOk &&
                 (!tienePagos || motivo.trim().length >= 3)
   const leyendo = lectura?.fase === 'leyendo'
@@ -621,6 +647,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
       cbte_tipo_arca: cbte,
       total: totalN,
       descripcion: descripcion.trim(),
+      concepto_id: Number(conceptoId),
       obs: obs.trim(),
       imputaciones,
       // Una NC no lleva vencimiento, forma prevista, plan de cheques ni
@@ -677,7 +704,10 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
       }
       onClose()
     } catch (e) {
-      toast(mensajeErrorPagos(e), 'err')
+      const msg = mensajeErrorPagos(e)
+      const cod = codigoErrorPagos(e)
+      if (cod === 'CONCEPTO_REQUERIDO' || cod === 'CONCEPTO_INVALIDO') setErrorConcepto(msg)
+      toast(msg, 'err')
     }
   }
 
@@ -698,7 +728,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
             title={leyendo ? 'Esperá a que termine de leer la factura'
               : !listo ? (esNc && !acreditaOk
                   ? 'Elegí a qué facturas acredita la NC (sin pasarse de lo que les queda) o tildá «dejarla como crédito a favor»'
-                  : 'Faltan datos: proveedor, número, total, descripción, que el desglose cierre y que el reparto cuadre') : undefined}>
+                  : 'Faltan datos: proveedor, número, total, concepto, descripción, que el desglose cierre y que el reparto cuadre') : undefined}>
             {esEdicion ? 'Guardar cambios' : esNc ? 'Cargar nota de crédito' : yaPagada ? 'Cargar y registrar el pago' : 'Cargar factura'}
           </Button>
         </div>
@@ -890,6 +920,35 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
         )}
 
         <Seccion titulo={esNc ? 'Por qué es la nota de crédito' : 'Qué se compró y cómo se paga'} />
+        <div>
+          <label htmlFor="pagos-concepto" className="block text-xs font-semibold text-gris-dark mb-1">
+            Concepto <span className="font-normal">· Obligatorio: qué tipo de compra es</span>
+            {conceptoSugeridoId && conceptoId === conceptoSugeridoId && (
+              <span title="Lo propuso la lectura del comprobante: revisalo"
+                className="inline-block align-middle ml-1 px-1.5 py-px rounded border text-[10px] font-semibold leading-tight bg-azul/10 text-azul border-azul/30">
+                sugerido por la lectura
+              </span>
+            )}
+          </label>
+          <select id="pagos-concepto" value={conceptoId}
+            onChange={e => { setConceptoId(e.target.value); setErrorConcepto(null) }}
+            disabled={conceptos.isLoading || conceptos.isError}
+            aria-invalid={!!errorConcepto}
+            className={`${inputCls} ${errorConcepto ? 'border-rojo' : ''}`}>
+            <option value="">{conceptos.isLoading ? 'Cargando conceptos…' : 'Elegí el concepto…'}</option>
+            {conceptoOpts.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+          </select>
+          {conceptos.isError && (
+            <div className="mt-1 text-[11px] text-rojo">
+              No se pudo traer la lista de conceptos. <button type="button" className="underline" onClick={() => void conceptos.refetch()}>Reintentar</button>
+            </div>
+          )}
+          {errorConcepto
+            ? <div className="mt-1 text-[11px] text-rojo">{errorConcepto}</div>
+            : !conceptoId && !conceptos.isLoading && !conceptos.isError && (
+              <div className="mt-1 text-[11px] text-gris-dark">Elegí uno: combustible, materiales de obra, fletes… El detalle va en la descripción.</div>
+            )}
+        </div>
         <Campo label="Descripción" hint={esNc ? 'Por qué la hizo el proveedor: lo lee quien aprueba' : 'Qué se compró: lo lee quien aprueba'} fuente={fuentes.descripcion}>
           <input value={descripcion} onChange={e => { setDescripcion(e.target.value); tocar('descripcion') }}
             placeholder={esNc ? 'Ej.: devolución de 10 bolsas de cemento' : 'Ej.: hierro del 8 y mallas para el techo'} className={inputCls} />

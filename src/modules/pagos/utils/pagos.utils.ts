@@ -395,10 +395,12 @@ export function facturaAnulada(res: AnularFacturaRes): PagosFactura {
 export function describirFiltroFacturas(
   f: PagosFacturasFiltro,
   nombreProveedor?: (id: number) => string | undefined,
+  nombreConcepto?: (id: number) => string | undefined,
 ): string {
   const p: string[] = []
   if (f.q?.trim()) p.push(`búsqueda «${f.q.trim()}»`)
   if (f.proveedor_id) p.push(nombreProveedor?.(f.proveedor_id) ?? `proveedor #${f.proveedor_id}`)
+  if (f.concepto_id) p.push(`concepto ${nombreConcepto?.(f.concepto_id) ?? `#${f.concepto_id}`}`)
   if (f.estados?.length) {
     p.push(f.estados.map(e => ESTADO_FACTURA_META[e]?.label ?? e).join(' o '))
   }

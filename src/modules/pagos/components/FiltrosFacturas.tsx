@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Combobox } from '@/components/ui/Combobox'
 import { useProveedoresPagos } from '../hooks/useProveedoresPagos'
+import { useConceptosPagos } from '../hooks/useConceptosPagos'
 import { useCatalogoObrasPagos, type PagosFacturasFiltro, type PagosVencimiento } from '../hooks/usePagos'
 import { ESTADOS_FACTURA, FORMAS_PREVISTAS, TIPOS_COMPROBANTE, fmtM } from '../utils/pagos.utils'
 import type { PagosEstadoFactura, PagosResumenGrupo } from '@/types/domain.types'
@@ -36,6 +37,8 @@ export function FiltrosFacturas({ filtro, patch, grupos }: Props) {
 
   const proveedores = useProveedoresPagos({}, 1, 300)
   const obras = useCatalogoObrasPagos()
+  // Con los dados de baja: las facturas viejas los conservan y hay que poder filtrarlas.
+  const conceptos = useConceptosPagos(true)
 
   // Un mapa estado → {facturas, saldo} para los chips.
   const porEstado = useMemo(() => {
@@ -65,8 +68,8 @@ export function FiltrosFacturas({ filtro, patch, grupos }: Props) {
       .map(p => ({
         value: String(p.id),
         label: p.razon_social,
-        sub:   [p.cuit, p.activo ? null : 'dado de baja'].filter(Boolean).join(' · ') || undefined,
-        search: [p.razon_social, p.cuit ?? ''],
+        sub:   [p.codigo, p.cuit, p.activo ? null : 'dado de baja'].filter(Boolean).join(' · ') || undefined,
+        search: [p.razon_social, p.cuit ?? '', p.codigo ?? '', (p.codigo ?? '').replace('-', '')],
       })),
     [proveedores.data],
   )
@@ -85,7 +88,7 @@ export function FiltrosFacturas({ filtro, patch, grupos }: Props) {
   )
 
   const hayFiltrosExtra = !!(
-    filtro.q || filtro.clase || filtro.con_credito || filtro.obra_cod || filtro.centro_costo || filtro.tipo || filtro.forma_pago ||
+    filtro.q || filtro.clase || filtro.con_credito || filtro.concepto_id || filtro.obra_cod || filtro.centro_costo || filtro.tipo || filtro.forma_pago ||
     filtro.desde || filtro.hasta || filtro.sin_adjunto || filtro.sin_numero || filtro.sin_revisar || filtro.sin_desglose ||
     filtro.cuenta_cambiada || filtro.paga_cliente !== undefined || filtro.pagada_al_cargar !== undefined ||
     filtro.es_interna !== undefined || filtro.anuladas
@@ -146,7 +149,7 @@ export function FiltrosFacturas({ filtro, patch, grupos }: Props) {
           <input
             value={texto}
             onChange={e => setTexto(e.target.value)}
-            placeholder="Buscar por proveedor, número, descripción…"
+            placeholder="Buscar por proveedor, código, número, concepto, descripción…"
             className="flex-1 min-w-0 px-2.5 py-1.5 border-[1.5px] border-gris-mid rounded text-xs outline-none bg-white focus:border-naranja"
           />
           <Button type="submit" variant="secondary" size="sm">Buscar</Button>
@@ -178,6 +181,20 @@ export function FiltrosFacturas({ filtro, patch, grupos }: Props) {
               value={filtro.obra_cod ?? ''}
               onChange={v => patch({ obra_cod: v || undefined })}
             />
+            <div>
+              <label className="block text-xs font-semibold text-gris-dark mb-1">Concepto</label>
+              <select
+                value={filtro.concepto_id ? String(filtro.concepto_id) : ''}
+                onChange={e => patch({ concepto_id: e.target.value ? Number(e.target.value) : undefined })}
+                disabled={conceptos.isLoading}
+                className="w-full px-2.5 py-2 border-[1.5px] border-gris-mid rounded text-xs bg-white outline-none focus:border-naranja"
+              >
+                <option value="">{conceptos.isError ? 'No se pudo cargar la lista' : 'Todos'}</option>
+                {(conceptos.data ?? []).map(c => (
+                  <option key={c.id} value={c.id}>{c.nombre}{c.activo ? '' : ' (dado de baja)'}</option>
+                ))}
+              </select>
+            </div>
             <div>
               <label className="block text-xs font-semibold text-gris-dark mb-1">Clase</label>
               <select
@@ -262,7 +279,7 @@ export function FiltrosFacturas({ filtro, patch, grupos }: Props) {
           {hayFiltrosExtra && (
             <div>
               <Button variant="ghost" size="sm" onClick={() => { setTexto(''); patch({
-                q: undefined, clase: undefined, con_credito: undefined, obra_cod: undefined, centro_costo: undefined, tipo: undefined, forma_pago: undefined,
+                q: undefined, clase: undefined, con_credito: undefined, concepto_id: undefined, obra_cod: undefined, centro_costo: undefined, tipo: undefined, forma_pago: undefined,
                 desde: undefined, hasta: undefined, sin_adjunto: undefined, sin_numero: undefined,
                 sin_revisar: undefined, sin_desglose: undefined, cuenta_cambiada: undefined, paga_cliente: undefined,
                 pagada_al_cargar: undefined, es_interna: undefined, anuladas: undefined, archivadas: undefined,

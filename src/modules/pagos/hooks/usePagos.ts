@@ -43,6 +43,7 @@ export const PAGOS_KEYS = {
   saldos:          ['pagos', 'proveedores', 'saldos'] as const,
   adjuntos:        (entidad: PagosEntidadAdjunto, id: number) => ['pagos', 'adjuntos', entidad, id] as const,
   catalogoObras:   ['pagos', 'catalogos', 'obras'] as const,
+  conceptos:       ['pagos', 'conceptos'] as const,
   notifAprobar:    ['pagos', 'notificaciones', 'para-aprobar'] as const,
   notifSinRevisar: ['pagos', 'notificaciones', 'sin-revisar'] as const,
   notifVenc:       ['pagos', 'notificaciones', 'vencimientos'] as const,
@@ -92,6 +93,8 @@ export interface PagosFacturasFiltro {
   clase?:       PagosClaseComprobante
   /** Solo NC aprobadas con crédito sin aplicar (`nc_disponible > 0`). */
   con_credito?: boolean
+  /** Concepto de compra (20260925). */
+  concepto_id?: number
 }
 
 export interface PagosOrdenesFiltro {
@@ -134,6 +137,7 @@ function qsFacturas(f: PagosFacturasFiltro, extra: ExtraQuery = {}): string {
   if (f.orden)            p.set('orden', f.orden)
   if (f.clase)            p.set('clase', f.clase)
   if (f.con_credito)      p.set('con_credito', '1')
+  if (f.concepto_id)      p.set('concepto_id', String(f.concepto_id))
   for (const [k, v] of Object.entries(extra)) if (v !== undefined) p.set(k, String(v))
   return p.toString()
 }

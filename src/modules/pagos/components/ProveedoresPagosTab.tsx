@@ -66,7 +66,7 @@ export function ProveedoresPagosTab() {
       <div className="bg-white rounded-card shadow-card p-3 flex gap-2 flex-wrap items-end">
         <form className="flex gap-1 flex-1 min-w-[200px]"
               onSubmit={e => { e.preventDefault(); patch({ q: texto.trim() || undefined }) }}>
-          <input value={texto} onChange={e => setTexto(e.target.value)} placeholder="Buscar por razón social o CUIT…"
+          <input value={texto} onChange={e => setTexto(e.target.value)} placeholder="Buscar por razón social, CUIT o código (PRV-0001)…"
                  className="flex-1 min-w-0 px-2.5 py-2 border-[1.5px] border-gris-mid rounded text-xs bg-white outline-none focus:border-naranja" />
           <Button type="submit" variant="secondary" size="sm">Buscar</Button>
         </form>
@@ -97,8 +97,8 @@ export function ProveedoresPagosTab() {
               <table className="w-full border-collapse min-w-[860px]">
                 <thead>
                   <tr>
-                    {['Razón social', 'CUIT', 'Cuenta', 'Plazo', 'Facturas', 'Saldo', ''].map((h, i) => (
-                      <th key={h + i} className={`bg-gris text-gris-dark text-[10px] font-bold px-3 py-2 uppercase tracking-wide whitespace-nowrap ${i >= 3 && i <= 5 ? 'text-right' : 'text-left'}`}>{h}</th>
+                    {['Código', 'Razón social', 'CUIT', 'Cuenta', 'Plazo', 'Facturas', 'Saldo', ''].map((h, i) => (
+                      <th key={h + i} className={`bg-gris text-gris-dark text-[10px] font-bold px-3 py-2 uppercase tracking-wide whitespace-nowrap ${i >= 4 && i <= 6 ? 'text-right' : 'text-left'}`}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -106,6 +106,7 @@ export function ProveedoresPagosTab() {
                   {items.map(p => (
                     <tr key={p.id} className={`border-t border-gris hover:bg-azul-light/30 cursor-pointer ${p.activo ? '' : 'opacity-60'}`}
                         onClick={() => setFichaId(p.id)}>
+                      <td className="px-3 py-2 text-xs font-mono whitespace-nowrap text-gris-dark">{p.codigo ?? '—'}</td>
                       <td className="px-3 py-2 text-sm">
                         <span className="font-semibold">{p.razon_social}</span>
                         {!p.activo && <span className="ml-1 text-[10px] px-1.5 rounded bg-gris text-gris-dark font-bold uppercase">baja</span>}
@@ -139,7 +140,7 @@ export function ProveedoresPagosTab() {
                   <div className="flex justify-between gap-2">
                     <div className="min-w-0">
                       <div className="font-semibold text-sm truncate">{p.razon_social}</div>
-                      <div className="text-[11px] text-gris-dark font-mono">{p.cuit ?? 'sin CUIT'}</div>
+                      <div className="text-[11px] text-gris-dark font-mono">{p.codigo ? `${p.codigo} · ` : ''}{p.cuit ?? 'sin CUIT'}</div>
                       <div className="text-[11px] text-gris-dark font-mono">{p.cbu ?? p.alias_cbu ?? '—'}</div>
                     </div>
                     <div className="text-right">
@@ -251,7 +252,7 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
 
   return (
     <Modal
-      open onClose={onClose} width="max-w-2xl" title={p.razon_social}
+      open onClose={onClose} width="max-w-2xl" title={p.codigo ? `${p.codigo} · ${p.razon_social}` : p.razon_social}
       footer={
         <div className="flex gap-2 justify-end">
           <Button variant="ghost" size="sm" onClick={onClose}>Cerrar</Button>
@@ -333,6 +334,7 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
         ) : (
           <>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <Dato label="Código" valor={p.codigo ?? '—'} />
               <Dato label="CUIT" valor={p.cuit ?? '—'} />
               <Dato label="CBU" valor={p.cbu ?? '—'} />
               <Dato label="Alias" valor={p.alias_cbu ?? '—'} />

@@ -26,6 +26,21 @@ interface Props {
   puedeSeleccionar: boolean
 }
 
+/** El código del proveedor, chiquito al lado de la razón social. */
+function CodigoProveedor({ f }: { f: PagosFactura }) {
+  if (!f.proveedor_codigo) return null
+  return <span className="ml-1 font-mono text-[10px] font-normal text-gris-dark" title="Código del proveedor">{f.proveedor_codigo}</span>
+}
+
+/** El concepto de compra (20260925). Las viejas sin concepto no muestran nada. */
+function ChipConcepto({ f }: { f: PagosFactura }) {
+  if (!f.concepto) return null
+  return (
+    <span className="inline-block whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded bg-azul/10 text-azul font-semibold"
+          title="Concepto de la compra">{f.concepto}</span>
+  )
+}
+
 /** Los avisos de la fila. Van juntos para que la tabla y la tarjeta no se separen. */
 function Alertas({ f }: { f: PagosFactura }) {
   return (
@@ -182,13 +197,13 @@ export function FacturasTabla({ items, seleccion, onToggle, onToggleTodas, onAbr
                     </td>
                   )}
                   <td className="px-3 py-2 text-sm cursor-pointer" onClick={() => onAbrir(f.id)}>
-                    <div className="font-semibold">{f.proveedor_nom}</div>
+                    <div className="font-semibold">{f.proveedor_nom}<CodigoProveedor f={f} /></div>
                     <div className="text-[11px] text-gris-dark font-mono">
                       {comprobanteTxt(f.tipo_comprobante, f.numero, f.clase)}
                       {f.ultima_op && <span className="font-sans"> · {f.ultima_op}</span>}
                     </div>
                     {f.descripcion && <div className="text-[11px] text-gris-dark truncate max-w-[280px]">{f.descripcion}</div>}
-                    <div className="flex gap-1 flex-wrap mt-0.5"><Alertas f={f} /></div>
+                    <div className="flex gap-1 flex-wrap mt-0.5"><ChipConcepto f={f} /><Alertas f={f} /></div>
                   </td>
                   <td className="px-3 py-2 text-xs cursor-pointer" onClick={() => onAbrir(f.id)}
                       title={f.centros ?? undefined}>
@@ -240,7 +255,7 @@ export function FacturasTabla({ items, seleccion, onToggle, onToggleTodas, onAbr
                 <div className="flex-1 min-w-0" onClick={() => onAbrir(f.id)}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="font-semibold text-sm truncate">{f.proveedor_nom}</div>
+                      <div className="font-semibold text-sm truncate">{f.proveedor_nom}<CodigoProveedor f={f} /></div>
                       <div className="text-[11px] text-gris-dark font-mono">{comprobanteTxt(f.tipo_comprobante, f.numero, f.clase)}</div>
                     </div>
                     <div className="flex flex-col items-end gap-1 shrink-0">
@@ -268,7 +283,7 @@ export function FacturasTabla({ items, seleccion, onToggle, onToggleTodas, onAbr
                     )}
                   </div>
                   <div className="text-[11px] mt-0.5"><Vencimiento f={f} /></div>
-                  <div className="flex gap-1 flex-wrap mt-1"><Alertas f={f} /></div>
+                  <div className="flex gap-1 flex-wrap mt-1"><ChipConcepto f={f} /><Alertas f={f} /></div>
                 </div>
               </div>
               <button type="button" onClick={() => onAbrir(f.id)}

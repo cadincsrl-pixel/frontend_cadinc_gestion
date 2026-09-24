@@ -2389,9 +2389,33 @@ export interface PagosAviso {
   [k: string]: unknown
 }
 
+/**
+ * Concepto de compra (`pagos_conceptos`, 20260925i–m): UNO por factura
+ * (combustible, materiales…). La `descripcion` libre sigue siendo el detalle.
+ * Sin DELETE: se da de baja con `activo=false`.
+ */
+export interface PagosConcepto {
+  id:     number
+  nombre: string
+  orden:  number | null
+  activo: boolean
+}
+
+export interface CrearConceptoInput {
+  nombre: string
+  orden?: number | null
+}
+export interface EditarConceptoInput {
+  nombre?: string
+  orden?:  number | null
+  activo?: boolean
+}
+
 /** Fila de `v_pagos_proveedores` (el padrón propio del módulo). */
 export interface PagosProveedor {
   id:                 number
+  /** «PRV-0001». Lo pone la base (default): no se manda ni se edita (409 `CODIGO_NO_EDITABLE`). */
+  codigo:             string
   razon_social:       string
   razon_social_norm:  string
   cuit:               string | null
@@ -2440,6 +2464,7 @@ export interface PagosProveedor {
 export interface PagosProveedorSaldo {
   proveedor_id:       number
   razon_social:       string
+  proveedor_codigo?:  string | null
   cuit:               string | null
   activo:             boolean
   alias_cbu:          string | null
@@ -2536,6 +2561,8 @@ export interface PagosFactura {
   updated_by:          string | null
   proveedor_nom:       string
   proveedor_cuit:      string | null
+  /** «PRV-0001» (20260925). */
+  proveedor_codigo:    string | null
   proveedor_activo:    boolean
   proveedor_alias:     string | null
   proveedor_cbu:       string | null
@@ -2597,6 +2624,11 @@ export interface PagosFactura {
   saldo_pagable:       number
   /** Factura: «NC A 0003-00000012 $300.00 (sin aprobar)»; NC: «s/ A 0001-00000045, …». */
   nc_txt:              string | null
+  // ── Concepto de compra (20260925) ──
+  /** null solo en facturas viejas: el alta lo exige. */
+  concepto_id:         number | null
+  /** Nombre del concepto. */
+  concepto:            string | null
 }
 
 // ── Desglose de impuestos y lectura del comprobante (20260924u) ──
@@ -2661,6 +2693,9 @@ export interface PagosPropuestaLectura {
   comprobantes_asociados?: { letra: string | null; punto_venta: string | null; numero: string | null }[] | null
   /** También viene en la RAÍZ de la respuesta: usar la de la raíz (`PagosLecturaRes`). */
   aplica_a_sugerida?:  PagosAplicaNcSugerida[] | null
+  /** Concepto de compra que sugiere la IA según lo comprado (20260925). */
+  concepto_id_sugerido?: number | null
+  concepto_sugerido?:    string | null
 }
 /** Factura abierta del proveedor que la lectura cruzó con un comprobante asociado de la NC. */
 export interface PagosAplicaNcSugerida extends PagosAplicaNcInput {
@@ -2908,6 +2943,8 @@ export interface PagosOrden {
   updated_by:        string | null
   proveedor_nom:     string
   proveedor_cuit:    string | null
+  /** «PRV-0001» (20260925). */
+  proveedor_codigo:  string | null
   /** Texto de las líneas: «A 0001-00012345, NC 0003-1234 s/ A 0001-00012345». */
   facturas:          string | null
   /**
@@ -3237,6 +3274,8 @@ export interface CrearFacturaInput {
   /** Solo NC: a qué facturas acredita. Sin esto la NC queda como crédito a favor. */
   aplica_a?:            PagosAplicaNcInput[]
   proveedor_id:         number
+  /** Obligatorio (400 `CONCEPTO_REQUERIDO`). */
+  concepto_id:          number
   tipo_comprobante:     PagosTipoComprobante
   numero?:              string | null
   fecha:                string
@@ -3273,6 +3312,8 @@ export interface CrearFacturaInput {
  */
 export interface EditarFacturaInput {
   proveedor_id?:        number
+  /** Editable siempre (también pagada): es clasificación. No se puede vaciar. */
+  concepto_id?:         number
   tipo_comprobante?:    PagosTipoComprobante
   numero?:              string | null
   fecha?:               string

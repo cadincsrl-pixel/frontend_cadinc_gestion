@@ -176,6 +176,33 @@ describe('filaExcelFactura', () => {
     expect(t[col('Notas de crédito')]).toBe(300)
   })
 
+  it('lleva el código del proveedor y el concepto (20260925)', () => {
+    const r = filaExcelFactura(fila({ proveedor_codigo: 'PRV-0007', concepto_id: 1, concepto: 'Combustible' }))
+    expect(r[col('Código proveedor')]).toBe('PRV-0007')
+    expect(r[col('Concepto')]).toBe('Combustible')
+    // Las columnas nuevas no corren la plata: el total sigue en «Total».
+    expect(r[col('Total')]).toBe(1000)
+    expect(r).toHaveLength(HEADERS_FACTURAS.length)
+  })
+
+  it('una factura vieja sin concepto ni código deja las celdas vacías', () => {
+    const r = filaExcelFactura(fila({ proveedor_codigo: null, concepto_id: null, concepto: null }))
+    expect(r[col('Código proveedor')]).toBe('')
+    expect(r[col('Concepto')]).toBe('')
+  })
+
+  it('la fila TOTAL cae en las mismas columnas que los encabezados', () => {
+    const t = totalesExcelFacturas([fila()])
+    expect(t[col('Total')]).toBe(1000)
+    expect(t[col('Crédito NC')]).toBe(0)
+    expect(t).toHaveLength(col('Crédito NC') + 1)
+  })
+
+  it('el describir del filtro nombra el concepto', () => {
+    expect(describirFiltroFacturas({ concepto_id: 1 }, undefined, id => (id === 1 ? 'Combustible' : undefined))).toContain('concepto Combustible')
+    expect(describirFiltroFacturas({ concepto_id: 9 })).toContain('concepto #9')
+  })
+
   it('el describir del filtro nombra la clase', () => {
     expect(describirFiltroFacturas({ clase: 'nota_credito' })).toContain('notas de crédito')
     expect(describirFiltroFacturas({ clase: 'nota_credito', con_credito: true })).toContain('crédito disponible')

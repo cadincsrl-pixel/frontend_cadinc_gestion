@@ -242,7 +242,10 @@ export function armarOrdenPagoDoc(
     // Proveedor
     {
       columns: [
-        { width: '*', stack: [dato('Razón social:', o.proveedor_nom)] },
+        { width: '*', stack: [
+          dato('Razón social:', o.proveedor_nom),
+          ...(o.proveedor_codigo ? [dato('Código:', o.proveedor_codigo)] : []),
+        ] },
         { width: 200, stack: [dato('CUIT:', fmtCuit(o.proveedor_cuit))] },
       ],
     },
