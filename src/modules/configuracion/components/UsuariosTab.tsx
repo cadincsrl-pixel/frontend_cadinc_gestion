@@ -8,6 +8,7 @@ import { modulosOrdenados } from '@/lib/config/modulos'
 import { Modal }    from '@/components/ui/Modal'
 import { UsuarioObrasSection } from './UsuarioObrasSection'
 import { PermisosWizard, type WizardData } from './PermisosWizard'
+import { CamposClave, problemaDeClave } from './CamposClave'
 import { Button }   from '@/components/ui/Button'
 import { Input }    from '@/components/ui/Input'
 import { useToast } from '@/components/ui/Toast'
@@ -26,7 +27,11 @@ function addonLabel(key: string): string {
 interface NuevoUsuario {
   email:         string
   password:      string
+  password2:     string
+  // Nombre y apellido se cargan por separado pero se guardan juntos en
+  // `profiles.nombre` ("Nombre Apellido"), que es lo que lee todo el sistema.
   nombre:        string
+  apellido:      string
   rol:           'admin' | 'operador'
   permisos:      Permisos
   rol_base:      RolBase | null
@@ -41,7 +46,9 @@ interface NuevoUsuario {
 const EMPTY_NUEVO: NuevoUsuario = {
   email:         '',
   password:      '',
+  password2:     '',
   nombre:        '',
+  apellido:      '',
   rol:           'operador',
   permisos:      {},
   rol_base:      null,
@@ -94,7 +101,32 @@ function permisosDto(
 }
 
 function payloadCrear(f: NuevoUsuario): CrearUsuarioDto {
-  return { email: f.email, password: f.password, nombre: f.nombre, ...permisosDto(f) }
+  return { email: f.email.trim().toLowerCase(), password: f.password, nombre: unirNombre(f.nombre, f.apellido), ...permisosDto(f) }
+}
+
+// ── Nombre y apellido ──
+const limpio = (t: string) => t.trim().replace(/\s+/g, ' ')
+function unirNombre(nombre: string, apellido: string): string {
+  return [limpio(nombre), limpio(apellido)].filter(Boolean).join(' ')
+}
+// Para editar un perfil que ya existe: la última palabra se toma como apellido.
+// Con dos apellidos queda uno en cada campo; se corrige a mano y se guarda
+// igual unido, así que no se pierde nada.
+function separarNombre(completo: string): { nombre: string; apellido: string } {
+  const partes = limpio(completo ?? '').split(' ')
+  if (partes.length < 2) return { nombre: partes[0] ?? '', apellido: '' }
+  return { nombre: partes.slice(0, -1).join(' '), apellido: partes[partes.length - 1] }
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+/** null = se puede crear. Si no, el primer dato que falta, en palabras. */
+function problemaDeAlta(f: NuevoUsuario): string | null {
+  if (!limpio(f.nombre))   return 'Falta el nombre.'
+  if (!limpio(f.apellido)) return 'Falta el apellido.'
+  if (!f.email.trim())     return 'Falta el email.'
+  if (!EMAIL_RE.test(f.email.trim())) return 'El email no tiene un formato válido.'
+  return problemaDeClave(f.password, f.password2)
 }
 
 // Perfiles anteriores a los roles editables no traen rol_key/personalizado:
@@ -121,7 +153,9 @@ export function UsuariosTab() {
   // El estado de edición extiende Profile con `addons` (no se persiste en
   // DB; lo derivamos de los permisos al abrir el modal y lo usa el wizard
   // para mostrar qué add-ons tiene activos).
-  type EditandoState = Profile & { addons: string[]; email?: string }
+  // `nombre` guarda solo el/los nombres mientras se edita; se une con
+  // `apellido` al guardar.
+  type EditandoState = Profile & { addons: string[]; email?: string; apellido: string }
   const [editando,    setEditando]    = useState<EditandoState | null>(null)
   const [rolOriginal, setRolOriginal] = useState<string | null>(null)
   const [modalNuevo,  setModalNuevo]  = useState(false)
@@ -129,7 +163,6 @@ export function UsuariosTab() {
   const [resetId,        setResetId]        = useState<string | null>(null)
   const [newPass,        setNewPass]        = useState('')
   const [newPassConfirm, setNewPassConfirm] = useState('')
-  const [showPass,       setShowPass]       = useState(false)
   const [busqueda,    setBusqueda]    = useState('')
 
   // Modal de confirmación cuando se está promocionando a un usuario a admin.
@@ -146,7 +179,6 @@ export function UsuariosTab() {
     setResetId(null)
     setNewPass('')
     setNewPassConfirm('')
-    setShowPass(false)
   }
 
   const { mutate: resetPassword, isPending: resetting } = useMutation({
@@ -408,6 +440,7 @@ export function UsuariosTab() {
                         const addons  = deriveAddons(rolBase, u.permisos)
                         setEditando({
                           ...u,
+                          ...separarNombre(u.nombre),
                           rol_base:      rolBase,
                           obras_scope:   u.obras_scope ?? 'todas',
                           rol_key:       rolKeyDe(u),
@@ -533,6 +566,7 @@ export function UsuariosTab() {
                     const addonsList = deriveAddons(rolBase, u.permisos)
                     setEditando({
                       ...u,
+                      ...separarNombre(u.nombre),
                       rol_base:      rolBase,
                       obras_scope:   u.obras_scope ?? 'todas',
                       rol_key:       rolKeyDe(u),
@@ -595,14 +629,15 @@ export function UsuariosTab() {
                 // Si se está creando directo como admin, pedir confirmación.
                 if (nuevoForm.rol === 'admin') {
                   setConfirmAdmin({
-                    nombre: nuevoForm.nombre || nuevoForm.email,
+                    nombre: unirNombre(nuevoForm.nombre, nuevoForm.apellido) || nuevoForm.email,
                     onConfirm: doCreate,
                   })
                 } else {
                   doCreate()
                 }
               }}
-              disabled={!nuevoForm.email || !nuevoForm.password || !nuevoForm.nombre}
+              disabled={!!problemaDeAlta(nuevoForm)}
+              title={problemaDeAlta(nuevoForm) ?? undefined}
             >
               ✓ Crear usuario
             </Button>
@@ -615,6 +650,9 @@ export function UsuariosTab() {
           onChange={(d) => setNuevoForm(d as NuevoUsuario)}
           showPassword
         />
+        {problemaDeAlta(nuevoForm) && (nuevoForm.nombre || nuevoForm.email || nuevoForm.password) && (
+          <p className="mt-3 text-xs text-gris-dark">Para crear el usuario: {problemaDeAlta(nuevoForm)}</p>
+        )}
         {/* Aviso si el usuario va a quedar con scope='asignadas' (global o por
             override de algún addon). En creación no podemos asignar obras
             todavía (no existe el id), así que dirigimos al admin a
@@ -650,13 +688,15 @@ export function UsuariosTab() {
               <Button
                 variant="primary"
                 loading={updating}
+                disabled={!limpio(editando.nombre)}
+                title={!limpio(editando.nombre) ? 'Falta el nombre.' : undefined}
                 onClick={() => {
                   // `permisosDto` limpia todo si el rol final es admin
                   // (defensa en profundidad aunque el wizard ya lo haga al
                   // elegir la card "Administrador") y normaliza
                   // rol_key/personalizado. Sin `modulos` ni `tipo_usuario`.
                   const dto: ActualizarUsuarioDto = {
-                    nombre: editando.nombre,
+                    nombre: unirNombre(editando.nombre, editando.apellido),
                     email:  editando.email || undefined,
                     activo: editando.activo,
                     ...permisosDto(editando),
@@ -667,7 +707,7 @@ export function UsuariosTab() {
                   // dentro del mismo rol).
                   if (editando.rol === 'admin' && rolOriginal !== 'admin') {
                     setConfirmAdmin({
-                      nombre: editando.nombre,
+                      nombre: unirNombre(editando.nombre, editando.apellido),
                       onConfirm: doUpdate,
                     })
                   } else {
@@ -697,23 +737,21 @@ export function UsuariosTab() {
 
       {/* Modal cambiar contraseña */}
       {(() => {
-        const passLargoOk     = newPass.length >= 6
-        const coincide        = newPass === newPassConfirm
-        const confirmTocado   = newPassConfirm.length > 0
-        const puedeGuardar    = passLargoOk && coincide && confirmTocado
-        const errorConfirm    = confirmTocado && !coincide ? 'No coincide con la nueva contraseña.' : undefined
+        const problema = problemaDeClave(newPass, newPassConfirm)
         return (
           <Modal
             open={!!resetId}
             onClose={cerrarModalPassword}
             title="🔑 CAMBIAR CONTRASEÑA"
+            width="max-w-xl"
             footer={
               <>
                 <Button variant="secondary" onClick={cerrarModalPassword}>Cancelar</Button>
                 <Button
                   variant="primary"
                   loading={resetting}
-                  disabled={!puedeGuardar}
+                  disabled={!!problema}
+                  title={problema ?? undefined}
                   onClick={() => resetId && resetPassword({ id: resetId, password: newPass })}
                 >
                   Cambiar
@@ -725,52 +763,13 @@ export function UsuariosTab() {
               <p className="text-sm text-gris-dark">
                 Usuario: <strong>{(usuarios as Profile[]).find(u => u.id === resetId)?.nombre ?? ''}</strong>
               </p>
-
-              {/* Wrapper relativo para superponer el botón ojo al input.
-                  El padding-right del input deja espacio para el botón. */}
-              <div className="relative">
-                <Input
-                  label="Nueva contraseña"
-                  type={showPass ? 'text' : 'password'}
-                  placeholder="Mínimo 6 caracteres"
-                  value={newPass}
-                  onChange={e => setNewPass(e.target.value)}
-                  hint={!passLargoOk && newPass.length > 0 ? `Faltan ${6 - newPass.length} caracteres.` : undefined}
-                  className="pr-10"
-                  autoComplete="new-password"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPass(v => !v)}
-                  aria-label={showPass ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                  title={showPass ? 'Ocultar' : 'Mostrar'}
-                  className="absolute right-2 top-[26px] h-9 w-9 flex items-center justify-center rounded hover:bg-gris transition-colors text-base"
-                >
-                  {showPass ? '🙈' : '👁'}
-                </button>
-              </div>
-
-              <div className="relative">
-                <Input
-                  label="Confirmar contraseña"
-                  type={showPass ? 'text' : 'password'}
-                  placeholder="Repetí la contraseña"
-                  value={newPassConfirm}
-                  onChange={e => setNewPassConfirm(e.target.value)}
-                  error={errorConfirm}
-                  className="pr-10"
-                  autoComplete="new-password"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPass(v => !v)}
-                  aria-label={showPass ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                  title={showPass ? 'Ocultar' : 'Mostrar'}
-                  className="absolute right-2 top-[26px] h-9 w-9 flex items-center justify-center rounded hover:bg-gris transition-colors text-base"
-                >
-                  {showPass ? '🙈' : '👁'}
-                </button>
-              </div>
+              <CamposClave
+                labelClave="Nueva contraseña"
+                clave={newPass}
+                confirmacion={newPassConfirm}
+                onClave={setNewPass}
+                onConfirmacion={setNewPassConfirm}
+              />
             </div>
           </Modal>
         )
@@ -836,9 +835,9 @@ export function UsuariosTab() {
 function UsuarioForm({
   data, modulos, onChange, showPassword = false,
 }: {
-  data:         NuevoUsuario | (Profile & { addons: string[]; email?: string })
+  data:         NuevoUsuario | (Profile & { addons: string[]; email?: string; apellido: string })
   modulos:      Modulo[]
-  onChange:     (d: NuevoUsuario | (Profile & { addons: string[]; email?: string })) => void
+  onChange:     (d: NuevoUsuario | (Profile & { addons: string[]; email?: string; apellido: string })) => void
   showPassword?: boolean
 }) {
   // Adapter: el wizard recibe/emite WizardData; el form maneja un superset.
@@ -858,13 +857,21 @@ function UsuarioForm({
   return (
     <div className="flex flex-col gap-4">
 
-      {/* Nombre */}
-      <Input
-        label="Nombre"
-        placeholder="Juan Pérez"
-        value={data.nombre}
-        onChange={e => onChange({ ...data, nombre: e.target.value })}
-      />
+      {/* Nombre y apellido: se guardan juntos en `profiles.nombre`. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Input
+          label="Nombre"
+          placeholder="Juan"
+          value={data.nombre}
+          onChange={e => onChange({ ...data, nombre: e.target.value })}
+        />
+        <Input
+          label="Apellido"
+          placeholder="Pérez"
+          value={data.apellido}
+          onChange={e => onChange({ ...data, apellido: e.target.value })}
+        />
+      </div>
 
       {/* Email + Contraseña — en creación */}
       {showPassword && (
@@ -875,15 +882,15 @@ function UsuarioForm({
             placeholder="juan@empresa.com"
             value={(data as NuevoUsuario).email}
             onChange={e => onChange({ ...data, email: e.target.value } as typeof data)}
+            hint="Es con lo que va a entrar al sistema"
           />
-          <Input
-            label="Contraseña"
-            type="password"
-            placeholder="Mínimo 6 caracteres"
-            value={(data as NuevoUsuario).password}
-            onChange={e => onChange({ ...data, password: e.target.value } as typeof data)}
-            hint="El usuario podrá cambiarla después"
+          <CamposClave
+            clave={(data as NuevoUsuario).password}
+            confirmacion={(data as NuevoUsuario).password2}
+            onClave={v => onChange({ ...data, password: v } as typeof data)}
+            onConfirmacion={v => onChange({ ...data, password2: v } as typeof data)}
           />
+          <p className="-mt-2 text-xs text-gris-dark">El usuario la puede cambiar después desde su perfil.</p>
         </>
       )}
 
