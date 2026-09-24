@@ -1455,6 +1455,8 @@ export interface RopaCategoria {
   icono:              string | null
   activo:             boolean
   meses_vencimiento:  number
+  /** De qué talle de la ficha del trabajador sale la precarga (20260923o). */
+  talle_de?:          'pantalon' | 'botines' | 'camisa' | null
 }
 
 export interface RopaEntrega {
@@ -1463,6 +1465,10 @@ export interface RopaEntrega {
   categoria_id:  number
   fecha_entrega: string
   obs:           string | null
+  /** Unidades entregadas (20260923o; las viejas quedaron en 1). */
+  cantidad?:     number
+  /** Talle entregado (20260923o; '' = no se anotó). */
+  talle?:        string
   created_by:    string | null
   created_at:    string
 }

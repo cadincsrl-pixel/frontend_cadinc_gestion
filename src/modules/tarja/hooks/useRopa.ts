@@ -104,16 +104,36 @@ export function useCreateRopaEntrega() {
   })
 }
 
+/** Una prenda de una entrega: qué, cuántas y de qué talle. */
+export interface ItemEntregaRopa {
+  categoria_id: number
+  cantidad:     number
+  talle:        string
+}
+
 /** Varias prendas al mismo trabajador en un request (atómico en el backend). */
 export function useCreateRopaEntregasLote() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (dto: {
       leg:           string
-      categoria_ids: number[]
+      items:         ItemEntregaRopa[]
       fecha_entrega: string
       obs?:          string | null
     }) => apiPost<RopaEntrega[]>('/api/ropa/entregas/lote', dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY_ENTREGAS }),
+  })
+}
+
+/** Entrega por obra: varios trabajadores en un solo request (todo o nada). */
+export function useCreateRopaEntregasTanda() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: {
+      fecha_entrega: string
+      obs?:          string | null
+      entregas:      { leg: string; items: ItemEntregaRopa[] }[]
+    }) => apiPost<RopaEntrega[]>('/api/ropa/entregas/tanda', dto),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY_ENTREGAS }),
   })
 }

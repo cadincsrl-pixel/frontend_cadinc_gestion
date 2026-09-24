@@ -7,15 +7,19 @@ import {
   useRopaEntregasPorLeg,
   useCreateRopaEntregasLote,
   useDeleteRopaEntrega,
+  type ItemEntregaRopa,
   useCreateRopaCategoria,
   useUpdateRopaCategoria,
   useDeleteRopaCategoria,
 } from '../hooks/useRopa'
 import { usePersonal } from '../hooks/usePersonal'
 import { toISO } from '@/lib/utils/dates'
-import { venceEl, entregaVencida } from '@/lib/utils/ropa'
+import { venceEl, entregaVencida, talleDeFicha } from '@/lib/utils/ropa'
 import { esActivo, esOperario } from '@/lib/utils/personal'
 import { useActividadPersonal, legsActivosDe } from '../hooks/useActividadPersonal'
+import { useCategorias } from '../hooks/useCategorias'
+import { descargarConstanciaRopa, trabajadorConstancia } from '../utils/constanciaRopaPdf'
+import { ModalEntregaObra } from './RopaEntregaObraModal'
 import { Button }     from '@/components/ui/Button'
 import { Modal }      from '@/components/ui/Modal'
 import { Input }      from '@/components/ui/Input'
@@ -87,18 +91,24 @@ interface ModalEntregaProps {
   personal:   Personal[]
   legsActivos: ReadonlySet<string>
   onClose:    () => void
+  /** Imprimir la constancia de lo que se acaba de entregar. */
+  onConstancia: (p: Personal, entregas: RopaEntrega[]) => void
 }
 
-function ModalEntrega({ open, legInicial, personal, legsActivos, onClose }: ModalEntregaProps) {
+function ModalEntrega({ open, legInicial, personal, legsActivos, onClose, onConstancia }: ModalEntregaProps) {
   const toast = useToast()
   const { data: categorias = [] } = useRopaCategorias()
   const { mutateAsync: crearLote, isPending } = useCreateRopaEntregasLote()
 
   const [leg,    setLeg]    = useState(legInicial)
-  const [catIds, setCatIds] = useState<number[]>([])
+  // Prendas elegidas, con su cantidad y talle (20260923o).
+  const [items,  setItems]  = useState<ItemEntregaRopa[]>([])
   const [fecha,  setFecha]  = useState(hoy)
   const [obs,    setObs]    = useState('')
+  const [imprimir, setImprimir] = useState(true)
   const [saving, setSaving] = useState(false)
+
+  const persona = personal.find(p => p.leg === leg) ?? null
 
   const opPersonal = useMemo(() => {
     const orden = [...personal].sort((a, b) => {
@@ -112,27 +122,45 @@ function ModalEntrega({ open, legInicial, personal, legsActivos, onClose }: Moda
     }))
   }, [personal, legsActivos])
 
+  /** El talle sale de la ficha: cambiar de trabajador lo vuelve a precargar. */
+  function cambiarLeg(nuevo: string) {
+    setLeg(nuevo)
+    const p = personal.find(x => x.leg === nuevo)
+    setItems(prev => prev.map(it => ({
+      ...it, talle: talleDeFicha(p, categorias.find(c => c.id === it.categoria_id)?.talle_de),
+    })))
+  }
+
   function toggleCat(id: number) {
-    setCatIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+    setItems(prev => prev.some(it => it.categoria_id === id)
+      ? prev.filter(it => it.categoria_id !== id)
+      : [...prev, { categoria_id: id, cantidad: 1, talle: talleDeFicha(persona, categorias.find(c => c.id === id)?.talle_de) }])
+  }
+
+  function editarItem(id: number, cambio: Partial<ItemEntregaRopa>) {
+    setItems(prev => prev.map(it => it.categoria_id === id ? { ...it, ...cambio } : it))
   }
 
   async function handleSubmit() {
-    if (!leg)           { toast('Seleccioná un trabajador', 'err'); return }
-    if (!catIds.length) { toast('Seleccioná al menos un elemento', 'err'); return }
-    if (fecha > hoy())  { toast('No se puede registrar una entrega con fecha futura', 'err'); return }
+    if (!leg || !persona) { toast('Seleccioná un trabajador', 'err'); return }
+    if (!items.length)    { toast('Seleccioná al menos un elemento', 'err'); return }
+    if (items.some(it => !(it.cantidad >= 1 && it.cantidad <= 20))) { toast('La cantidad va de 1 a 20', 'err'); return }
+    if (fecha > hoy())    { toast('No se puede registrar una entrega con fecha futura', 'err'); return }
     setSaving(true)
+    let creadas: RopaEntrega[]
     try {
       // Un solo request: entran todas las prendas o ninguna (antes eran N POST
       // y un reintento duplicaba las que sí habían entrado).
-      await crearLote({ leg, categoria_ids: catIds, fecha_entrega: fecha, obs: obs || null })
+      creadas = await crearLote({ leg, items, fecha_entrega: fecha, obs: obs || null })
     } catch (e) {
       setSaving(false)
       toast(`No se pudo registrar la entrega: ${e instanceof Error ? e.message : 'error de red'}`, 'err')
       return
     }
     setSaving(false)
-    toast(`✓ ${catIds.length} entrega${catIds.length > 1 ? 's' : ''} registrada${catIds.length > 1 ? 's' : ''}`, 'ok')
-    setCatIds([]); setObs('')
+    toast(`✓ ${items.length} entrega${items.length > 1 ? 's' : ''} registrada${items.length > 1 ? 's' : ''}`, 'ok')
+    if (imprimir) onConstancia(persona, creadas)
+    setItems([]); setObs('')
     onClose()
   }
 
@@ -145,7 +173,7 @@ function ModalEntrega({ open, legInicial, personal, legsActivos, onClose }: Moda
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
           <Button variant="primary" loading={isPending || saving} onClick={handleSubmit}>
-            ✓ Guardar{catIds.length > 1 ? ` (${catIds.length})` : ''}
+            ✓ Guardar{items.length > 1 ? ` (${items.length})` : ''}
           </Button>
         </>
       }
@@ -156,7 +184,7 @@ function ModalEntrega({ open, legInicial, personal, legsActivos, onClose }: Moda
           placeholder="Buscar por nombre o legajo..."
           options={opPersonal}
           value={leg}
-          onChange={setLeg}
+          onChange={cambiarLeg}
         />
 
         <div>
@@ -165,7 +193,7 @@ function ModalEntrega({ open, legInicial, personal, legsActivos, onClose }: Moda
           </label>
           <div className="flex flex-wrap gap-2">
             {categorias.map(c => {
-              const sel = catIds.includes(c.id)
+              const sel = items.some(it => it.categoria_id === c.id)
               return (
                 <button
                   key={c.id}
@@ -186,10 +214,37 @@ function ModalEntrega({ open, legInicial, personal, legsActivos, onClose }: Moda
               )
             })}
           </div>
-          {catIds.length === 0 && (
+          {items.length === 0 && (
             <p className="text-[11px] text-gris-dark mt-1">Tocá los elementos que se entregaron.</p>
           )}
         </div>
+
+        {/* Cantidad y talle de cada prenda. El talle viene de la ficha; si se
+            entrega otro, se corrige acá y queda anotado en la entrega. */}
+        {items.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            {items.map(it => {
+              const c = categorias.find(x => x.id === it.categoria_id)
+              return (
+                <div key={it.categoria_id} className="flex items-center gap-2 bg-gris rounded-lg px-3 py-2">
+                  <span className="flex-1 text-sm font-semibold text-carbon">{c?.icono ?? '📦'} {c?.nombre}</span>
+                  <label className="text-[10px] font-bold text-gris-dark uppercase">Cant.</label>
+                  <input
+                    type="number" min={1} max={20} value={it.cantidad}
+                    onChange={e => editarItem(it.categoria_id, { cantidad: Math.trunc(Number(e.target.value)) || 0 })}
+                    className="w-14 px-1.5 py-1 border-[1.5px] border-gris-mid rounded text-sm text-center outline-none focus:border-naranja bg-white"
+                  />
+                  <label className="text-[10px] font-bold text-gris-dark uppercase">Talle</label>
+                  <input
+                    type="text" maxLength={12} value={it.talle} placeholder="—"
+                    onChange={e => editarItem(it.categoria_id, { talle: e.target.value })}
+                    className="w-16 px-1.5 py-1 border-[1.5px] border-gris-mid rounded text-sm text-center outline-none focus:border-naranja bg-white"
+                  />
+                </div>
+              )
+            })}
+          </div>
+        )}
 
         {/* Sin fecha futura: una entrega adelantada nunca vence (el vencimiento
             se calcula sumándole los meses) y la prenda queda "al día" para
@@ -202,7 +257,11 @@ function ModalEntrega({ open, legInicial, personal, legsActivos, onClose }: Moda
           error={fecha > hoy() ? 'No se puede registrar una entrega con fecha futura.' : undefined}
           onChange={e => setFecha(e.target.value)}
         />
-        <Input label="Observaciones (opcional)" placeholder="Talle, marca, etc." value={obs} onChange={e => setObs(e.target.value)} />
+        <Input label="Observaciones (opcional)" placeholder="Marca, modelo, etc." value={obs} onChange={e => setObs(e.target.value)} />
+        <label className="flex items-center gap-2 text-sm text-carbon cursor-pointer">
+          <input type="checkbox" checked={imprimir} onChange={e => setImprimir(e.target.checked)} />
+          Descargar la constancia para firmar (Res. SRT 299/11)
+        </label>
       </div>
     </Modal>
   )
@@ -334,9 +393,11 @@ interface ModalHistorialProps {
   catMap:    Map<number, { nombre: string; icono: string | null; meses_vencimiento: number }>
   puedeElim: boolean
   onDelete:  (id: number) => void
+  /** La constancia con TODO el historial: la hoja que se archiva firmada. */
+  onConstancia: (entregas: RopaEntrega[]) => void
 }
 
-function ModalHistorial({ open, onClose, leg, nombre, catMap, puedeElim, onDelete }: ModalHistorialProps) {
+function ModalHistorial({ open, onClose, leg, nombre, catMap, puedeElim, onDelete, onConstancia }: ModalHistorialProps) {
   const { data: entregas = [] } = useRopaEntregasPorLeg(open ? leg : '')
 
   const porCategoria = new Map<number, RopaEntrega[]>()
@@ -347,7 +408,19 @@ function ModalHistorial({ open, onClose, leg, nombre, catMap, puedeElim, onDelet
 
   return (
     <Modal open={open} onClose={onClose} title={`📋 HISTORIAL — ${nombre}`} width="max-w-lg"
-      footer={<Button variant="secondary" onClick={onClose}>Cerrar</Button>}
+      footer={
+        <>
+          <Button
+            variant="secondary"
+            onClick={() => onConstancia(entregas)}
+            disabled={entregas.length === 0}
+            title="Constancia de entrega (Res. SRT 299/11) con todo el historial, para imprimir y firmar"
+          >
+            🖨 Constancia
+          </Button>
+          <Button variant="secondary" onClick={onClose}>Cerrar</Button>
+        </>
+      }
     >
       <div className="flex flex-col gap-4">
         {[...porCategoria.entries()].map(([catId, movs]) => {
@@ -365,7 +438,11 @@ function ModalHistorial({ open, onClose, leg, nombre, catMap, puedeElim, onDelet
                   return (
                     <div key={e.id} className={`flex items-center justify-between px-3 py-2 rounded-lg ${idx === 0 ? 'bg-azul-light' : 'bg-gris'}`}>
                       <div>
-                        <div className="text-sm font-semibold text-carbon">{fmtFecha(e.fecha_entrega)}</div>
+                        <div className="text-sm font-semibold text-carbon">
+                          {fmtFecha(e.fecha_entrega)}
+                          {(e.cantidad ?? 1) > 1 && <span className="ml-2 text-xs text-gris-dark">× {e.cantidad}</span>}
+                          {e.talle && <span className="ml-2 text-xs text-azul">talle {e.talle}</span>}
+                        </div>
                         {e.obs && <div className="text-[11px] text-gris-dark italic">{e.obs}</div>}
                         {idx === 0 && (
                           <div className="flex items-center gap-2 flex-wrap">
@@ -408,6 +485,7 @@ export function RopaPage() {
   const { data: categorias = [] } = useRopaCategorias()
   const { data: personal   = [] } = usePersonal()
   const { mutate: deleteEntrega } = useDeleteRopaEntrega()
+  const { data: catsPersonal = [] } = useCategorias()
 
   // Actividad por legajo (RPC): antes se bajaba toda la tabla de horas.
   const { data: actividad = [] } = useActividadPersonal()
@@ -415,6 +493,7 @@ export function RopaPage() {
   const [modalEntrega,   setModalEntrega]   = useState<string | null>(null)
   const [modalHistorial, setModalHistorial] = useState<string | null>(null)
   const [modalCats,      setModalCats]      = useState(false)
+  const [modalObra,      setModalObra]      = useState(false)
   const [filtro,         setFiltro]         = useState<'todos' | EstadoRopa>('todos')
   // Por defecto se ven TODOS, con los activos arriba. El toggle deja la lista
   // corta cuando solo interesa a quién hay que entregarle hoy.
@@ -537,6 +616,20 @@ export function RopaPage() {
     setPage(1)
   }
 
+  /**
+   * Descarga la constancia (Res. SRT 299/11) de uno o varios trabajadores. El
+   * puesto es su categoría de tarja; los elementos, las prendas que entrega
+   * la empresa.
+   */
+  function imprimirConstancia(hojas: { p: Personal; entregas: RopaEntrega[] }[], archivo: string) {
+    const puesto = (p: Personal) => catsPersonal.find(c => c.id === p.cat_id)?.nom ?? null
+    const elementos = categorias.map(c => c.nombre).join(', ')
+    descargarConstanciaRopa(
+      hojas.map(h => trabajadorConstancia(h.p, puesto(h.p), h.entregas, id => catMap.get(id)?.nombre ?? `Categoría #${id}`)),
+      elementos, archivo,
+    ).catch(e => toast(`No se pudo armar la constancia: ${e instanceof Error ? e.message : 'error'}`, 'err'))
+  }
+
   function handleDeleteEntrega(id: number) {
     if (!confirm('¿Eliminar esta entrega?')) return
     deleteEntrega(id, {
@@ -565,6 +658,15 @@ export function RopaPage() {
         <div className="flex gap-2 flex-wrap">
           <Button variant="secondary" size="sm" onClick={() => setModalCats(true)}>
             ⚙️ Categorías
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setModalObra(true)}
+            disabled={!puedeCrear}
+            title={sinPermiso(puedeCrear, 'registrar entregas') ?? 'Entregar a toda la cuadrilla de una obra de una vez'}
+          >
+            🏗 Entrega por obra
           </Button>
           <Button
             variant="primary"
@@ -755,6 +857,7 @@ export function RopaPage() {
           personal={personal as Personal[]}
           legsActivos={legsActivosSet}
           onClose={() => setModalEntrega(null)}
+          onConstancia={(p, entregas) => imprimirConstancia([{ p, entregas }], `Constancia ropa ${p.leg} ${p.nom}.pdf`)}
         />
       )}
       {modalHistorial !== null && (
@@ -766,6 +869,21 @@ export function RopaPage() {
           catMap={catMap}
           puedeElim={!!puedeEliminar}
           onDelete={handleDeleteEntrega}
+          onConstancia={entregas => {
+            const p = (personal as Personal[]).find(x => x.leg === modalHistorial)
+            if (p) imprimirConstancia([{ p, entregas }], `Constancia ropa ${p.leg} ${p.nom}.pdf`)
+          }}
+        />
+      )}
+      {modalObra && (
+        <ModalEntregaObra
+          open
+          onClose={() => setModalObra(false)}
+          personal={personal as Personal[]}
+          actividad={actividad}
+          legsActivos={legsActivosSet}
+          ultimaEntrega={(leg, catId) => ultimaEntrega.get(`${leg}|${catId}`)?.fecha_entrega}
+          onConstancia={(hojas, obra) => imprimirConstancia(hojas, `Constancias ropa ${obra}.pdf`)}
         />
       )}
       {modalCats && (

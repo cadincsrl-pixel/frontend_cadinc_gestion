@@ -27,3 +27,39 @@ export function entregaVencida(
   const v = venceEl(ultimaEntregaISO, mesesVencimiento)
   return v !== null && v <= hoyISO
 }
+
+/** Lo que hace falta de la ficha del trabajador para precargar el talle. */
+export interface TallesFicha {
+  talle_pantalon?: string | null
+  talle_botines?:  string | null
+  talle_camisa?:   string | null
+}
+
+/**
+ * El talle con el que se precarga una prenda: el de la ficha del trabajador
+ * según `talle_de` de la categoría (20260923o). Una categoría sin `talle_de`
+ * (guantes, casco) arranca vacía.
+ */
+export function talleDeFicha(
+  p: TallesFicha | null | undefined,
+  talleDe: 'pantalon' | 'botines' | 'camisa' | null | undefined,
+): string {
+  if (!p || !talleDe) return ''
+  const t = talleDe === 'pantalon' ? p.talle_pantalon : talleDe === 'botines' ? p.talle_botines : p.talle_camisa
+  return (t ?? '').toString().trim()
+}
+
+/**
+ * Las prendas que le tocan a un trabajador hoy: las que nunca recibió y las
+ * vencidas. Es lo que la entrega por obra deja tildado de entrada.
+ */
+export function prendasQueLeFaltan(
+  leg: string,
+  categorias: ReadonlyArray<{ id: number; meses_vencimiento: number }>,
+  ultima: (leg: string, catId: number) => string | null | undefined,
+  hoyISO: string = toISO(new Date()),
+): number[] {
+  return categorias
+    .filter(c => entregaVencida(ultima(leg, c.id), c.meses_vencimiento ?? 6, hoyISO))
+    .map(c => c.id)
+}
