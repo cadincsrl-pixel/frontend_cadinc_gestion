@@ -145,6 +145,9 @@ export function CuentaCorrienteTab() {
   // cada incremento lo abre. Así el botón queda en la cabecera de la obra sin
   // mover el modal (usa los imputables y el estado del bloque).
   const [registrarSignal, setRegistrarSignal] = useState(0)
+  // «Registrar cobro» en la fila de un certificado (24/09: presentar y cobrar
+  // en una sola tarjeta). Lo recibe PagosCliente, dueño del modal.
+  const [cobrarCert, setCobrarCert] = useState<{ id: number; n: number } | null>(null)
 
   // ── Consumibles propios (20260914aa) ─────────────────────────────────────
   // Marcar renglones que pone CADINC para ejecutar y no se le cobran al
@@ -404,8 +407,8 @@ export function CuentaCorrienteTab() {
             </Button>
             <Button variant="primary" size="sm" onClick={() => setRegistrarSignal(n => n + 1)}
               disabled={!puedeCrear}
-              title={puedeCrear ? 'Registrar un pago del cliente' : 'Sin permiso para registrar pagos'}>
-              💲 Registrar pago
+              title={puedeCrear ? 'Registrar un cobro del cliente (de un certificado o sin certificado)' : 'Sin permiso para registrar cobros'}>
+              💰 Registrar cobro
             </Button>
             <Button variant="secondary" size="sm" onClick={() => setModalExportar(true)}
               title="PDF para el cliente o Excel para trabajar, todo en un lugar">
@@ -510,8 +513,19 @@ export function CuentaCorrienteTab() {
 
       {obraSel && (
         <>
-          {obra && <CertificadosSection obra={obra} puedeEmitir={!!(cargarPrecios || esAdmin)} esAdmin={!!esAdmin} />}
-          <PagosCliente obraCod={obraSel} obraNom={obraNom} puedeEditar={puedeEditar} puedeEliminar={puedeEliminar} porAdministracion={!!obra?.por_administracion} registrarSignal={registrarSignal} />
+          {/* Certificados y cobros en UNA tarjeta (24/09, "es medio confuso"):
+              arriba presentar, en cada certificado su cobro; abajo el saldo, el
+              historial y el pago sin certificado como opción secundaria. */}
+          <section className="bg-white rounded-card shadow-card p-4 flex flex-col gap-4">
+            {obra && (
+              <CertificadosSection embebido obra={obra} puedeEmitir={!!(cargarPrecios || esAdmin)} esAdmin={!!esAdmin}
+                puedeCobrar={puedeCrear} onCobrar={id => setCobrarCert({ id, n: Date.now() })} />
+            )}
+            <div className="border-t border-gris pt-3">
+              <PagosCliente embebido obraCod={obraSel} obraNom={obraNom} puedeEditar={puedeEditar} puedeEliminar={puedeEliminar}
+                porAdministracion={!!obra?.por_administracion} registrarSignal={registrarSignal} cobrarCert={cobrarCert} />
+            </div>
+          </section>
           {/* Todo lo que volvió al depósito desde esta obra (20260914ai). Va
               después de Pagos porque es donde se busca cuando un renglón "no
               está": una devolución sin nota de crédito no deja marca en la

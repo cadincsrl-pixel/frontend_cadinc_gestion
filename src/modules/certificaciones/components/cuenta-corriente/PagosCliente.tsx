@@ -43,9 +43,22 @@ interface Props {
    * incremento abre el modal en modo nuevo.
    */
   registrarSignal?: number
+  /**
+   * Cobrar un certificado puntual (botón «Registrar cobro» de su fila): el
+   * modal abre con ese certificado y su saldo ya cargados. `n` cambia en cada
+   * pedido para que tocar dos veces el mismo certificado vuelva a abrir.
+   */
+  cobrarCert?: { id: number; n: number } | null
+  /** Va adentro de la tarjeta «Certificados y cobros»: sin marco propio. */
+  embebido?: boolean
 }
 
-export function PagosCliente({ obraCod, obraNom, puedeEditar, puedeEliminar, porAdministracion, registrarSignal }: Props) {
+// Desde dónde se abrió el modal. 'cert' = desde la fila de un certificado (no
+// se elige nada más); 'suelto' = «Otro pago sin certificado» (renglones o a
+// cuenta); 'general' = botón de la cabecera, con todas las opciones.
+type ModoPago = 'general' | 'cert' | 'suelto'
+
+export function PagosCliente({ obraCod, obraNom, puedeEditar, puedeEliminar, porAdministracion, registrarSignal, cobrarCert, embebido = false }: Props) {
   const toast = useToast()
   const { data: cobros = [] } = useCobrosCliente(obraCod)
   const { data: resumenObra } = useCuentaResumen({ obra_cod: obraCod }, 'obra')
@@ -54,6 +67,7 @@ export function PagosCliente({ obraCod, obraNom, puedeEditar, puedeEliminar, por
   const { mutate: eliminarCobro } = useEliminarCobroCliente()
 
   const [modal, setModal] = useState(false)
+  const [modo, setModo] = useState<ModoPago>('general')
   // La lista arranca plegada: en una obra con meses de pagos ocupaba media
   // página. Los números del encabezado quedan siempre a la vista.
   const [verPagos, setVerPagos] = useState(false)
@@ -126,18 +140,27 @@ export function PagosCliente({ obraCod, obraNom, puedeEditar, puedeEliminar, por
   const sinPrecio = tot.porEstado.a_cobrar.sin_precio
   const esLlaveEnMano = deuda === 0 && cobros.length === 0 && tot.porEstado.gasto_cadinc.renglones > 0
 
-  function abrirNuevo() {
+  function abrirNuevo(m: ModoPago = 'general') {
     setEditandoCobro(null)
-    setForm({ fecha: toISO(new Date()), monto: '', medio: 'efectivo', obs: '' })
+    setModo(m)
+    setForm({ fecha: toISO(new Date()), monto: '', medio: 'transferencia', obs: '' })
     setSel(new Set()); setArchivo(null); setCertId(''); setManoDeObra(''); setModal(true)
   }
   // El botón de la cabecera manda una señal; acá se traduce en abrir el modal.
   useEffect(() => {
-    if (registrarSignal) abrirNuevo()
+    if (registrarSignal) abrirNuevo('general')
   }, [registrarSignal])
+  // «Registrar cobro» en la fila de un certificado.
+  useEffect(() => {
+    if (!cobrarCert) return
+    abrirNuevo('cert')
+    elegirCertificado(cobrarCert.id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cobrarCert?.n])
 
   function abrirEditar(c: CuentaClienteCobro) {
     setEditandoCobro(c)
+    setModo('general')
     setForm({ fecha: c.fecha, monto: String(c.monto), medio: c.medio, obs: c.obs ?? '' })
     setSel(new Set()); setArchivo(null); setModal(true)
   }
@@ -211,10 +234,10 @@ export function PagosCliente({ obraCod, obraNom, puedeEditar, puedeEliminar, por
   const sumaSel = imputables.filter(r => sel.has(r.id)).reduce((s, r) => s + Number(r.precio_total ?? 0), 0)
 
   return (
-    <div className="bg-white rounded-card shadow-card p-4">
+    <div className={embebido ? '' : 'bg-white rounded-card shadow-card p-4'}>
       <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
         <div>
-          <h3 className="text-xs font-bold text-gris-dark uppercase tracking-wider">Pagos del cliente</h3>
+          <h3 className="text-xs font-bold text-gris-dark uppercase tracking-wider">Cobros del cliente</h3>
           {porAdministracion ? (
             // En una obra por administración este bloque NO muestra deuda ni
             // saldo propios: los calcularía solo con materiales, y con un pago
@@ -250,15 +273,24 @@ export function PagosCliente({ obraCod, obraNom, puedeEditar, puedeEliminar, por
             </div>
           )}
         </div>
-        {cobros.length > 0 && (
-          <button onClick={() => setVerPagos(v => !v)}
-            className="text-[11px] font-bold px-2 py-1 rounded bg-gris text-gris-dark hover:bg-gris-mid transition-colors shrink-0">
-            {verPagos ? '▾' : '▸'} {cobros.length} pago{cobros.length !== 1 ? 's' : ''}
-          </button>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          {!esLlaveEnMano && (
+            <button onClick={() => abrirNuevo('suelto')} disabled={!puedeEditar}
+              title={puedeEditar ? 'Pago que no va contra un certificado: se tildan renglones sueltos o queda a cuenta' : 'Sin permiso para registrar pagos'}
+              className="text-[11px] font-bold text-azul hover:underline disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed">
+              Otro pago sin certificado…
+            </button>
+          )}
+          {cobros.length > 0 && (
+            <button onClick={() => setVerPagos(v => !v)}
+              className="text-[11px] font-bold px-2 py-1 rounded bg-gris text-gris-dark hover:bg-gris-mid transition-colors">
+              {verPagos ? '▾' : '▸'} {cobros.length} cobro{cobros.length !== 1 ? 's' : ''}
+            </button>
+          )}
+        </div>
       </div>
       {cobros.length === 0 ? (
-        (porAdministracion || !esLlaveEnMano) && <p className="text-xs text-gris-mid italic">Sin pagos registrados para esta obra.</p>
+        (porAdministracion || !esLlaveEnMano) && <p className="text-xs text-gris-mid italic">Sin cobros registrados para esta obra.</p>
       ) : !verPagos ? null : (
         <div className="divide-y divide-gris">
           {cobros.map(c => {
@@ -267,7 +299,11 @@ export function PagosCliente({ obraCod, obraNom, puedeEditar, puedeEliminar, por
               <div key={c.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
                 <span className="font-mono text-xs text-gris-dark w-[72px] shrink-0">{fmtFecha(c.fecha)}</span>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-azul-light text-azul capitalize shrink-0">{c.medio}</span>
-                {n > 0
+                {c.certificado_id != null
+                  ? <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-azul-light text-azul shrink-0" title="Cobro de un certificado">
+                      Cert. N° {certificados.find(x => x.id === c.certificado_id)?.numero ?? '?'}
+                    </span>
+                  : n > 0
                   ? <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-verde-light text-verde shrink-0" title="Renglones que este pago cubre">{n} item{n !== 1 ? 's' : ''}</span>
                   : <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gris text-gris-dark shrink-0" title="Pago sin items imputados">a cuenta</span>}
                 <span className="basis-full order-last sm:basis-auto sm:order-none sm:flex-1 text-gris-dark truncate min-w-0">{c.obs}</span>
@@ -289,7 +325,10 @@ export function PagosCliente({ obraCod, obraNom, puedeEditar, puedeEliminar, por
       <Modal
         open={modal}
         onClose={() => setModal(false)}
-        title={editandoCobro ? '✏️ EDITAR PAGO' : '💲 REGISTRAR PAGO DEL CLIENTE'}
+        title={editandoCobro ? '✏️ EDITAR COBRO'
+          : modo === 'cert' && certElegido ? `💰 COBRO DEL CERTIFICADO N° ${certElegido.numero}`
+          : modo === 'suelto' ? '💲 PAGO SIN CERTIFICADO'
+          : '💲 REGISTRAR COBRO'}
         footer={
           <>
             <Button variant="secondary" onClick={() => setModal(false)}>Cancelar</Button>
@@ -300,7 +339,19 @@ export function PagosCliente({ obraCod, obraNom, puedeEditar, puedeEliminar, por
         <div className="flex flex-col gap-3">
           <div className="text-xs text-gris-dark">Obra: <span className="font-bold text-carbon">{obraNom}</span></div>
 
-          {!editandoCobro && certsConSaldo.length > 0 && (
+          {!editandoCobro && modo === 'cert' && certElegido && (
+            <div className="flex flex-col gap-2">
+              <div className="bg-azul-light/60 rounded-lg px-3 py-2 text-xs">
+                Certificado <b>N° {certElegido.numero}</b> · corte {fmtFecha(certElegido.fecha_corte)} · total {fmtM(Number(certElegido.total))}
+                {(cobradoPorCert.get(certElegido.id) ?? 0) > 0 && <> · ya cobrado {fmtM(cobradoPorCert.get(certElegido.id) ?? 0)}</>}
+                <div className="text-gris-dark mt-0.5">Se imputan todos sus renglones. El monto viene con el saldo; cambialo si pagó una parte.</div>
+              </div>
+              {Number(certElegido.mano_de_obra) > 0 && (
+                <InputMonto label="De este pago, mano de obra ($)" placeholder="0" value={manoDeObra} onChange={setManoDeObra} />
+              )}
+            </div>
+          )}
+          {!editandoCobro && modo === 'general' && certsConSaldo.length > 0 && (
             <div className="flex flex-col gap-2">
               <Select
                 label="Imputar contra un certificado" value={certId === '' ? '' : String(certId)}

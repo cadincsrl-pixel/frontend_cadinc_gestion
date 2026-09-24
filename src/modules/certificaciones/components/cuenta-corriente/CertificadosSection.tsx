@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/Input'
 import { InputMonto } from '@/components/ui/InputMonto'
 import { useToast } from '@/components/ui/Toast'
 import { toISO } from '@/lib/utils/dates'
-import { useCertificados, useEmitirCertificado, useAnularCertificado, fetchCertificado } from '../../hooks/useCuentaCliente'
+import { useCertificados, useEmitirCertificado, useAnularCertificado, fetchCertificado, useCobrosCliente } from '../../hooks/useCuentaCliente'
 import { fetchCuentaRenglonesTodos, CUENTA_CORRIENTE_KEY } from '../../hooks/useCuentaCorriente'
 import { descargarPdfCertificado } from '../../utils/exportCertificado'
 import { fmtM, fmtFecha } from './cuentaCorriente.utils'
@@ -16,14 +16,30 @@ import type { Obra, CertificadoCliente, CuentaRenglon } from '@/types/domain.typ
 
 /**
  * Certificados al cliente (20260911h): la "presentacion" de la cuenta con
- * nombre propio. Emitir = cortar por fecha, congelar los renglones hasta ahi,
- * llevar el precio de deposito al catalogo del dia y sumar la mano de obra por
- * avance. Despues, el pago se imputa contra el certificado (PagosCliente).
+ * nombre propio. Emitir = cortar por fecha, congelar los renglones hasta ahi
+ * con el precio que tienen cargado y sumar la mano de obra por avance. Desde
+ * 20260928a no se sube nada al catalogo: se AVISA antes de emitir cuales estan
+ * por debajo, para revisarlos mientras todavia se pueden corregir. Despues, el pago se imputa contra el certificado (PagosCliente).
  * Anular es de admin: deshace una presentacion que el cliente puede tener.
  */
-export function CertificadosSection({ obra, puedeEmitir, esAdmin }: { obra: Obra; puedeEmitir: boolean; esAdmin: boolean }) {
+export function CertificadosSection({ obra, puedeEmitir, esAdmin, puedeCobrar = false, onCobrar, embebido = false }: {
+  obra: Obra; puedeEmitir: boolean; esAdmin: boolean
+  /** Registrar el cobro de un certificado (24/09: presentar y cobrar en un solo lugar). */
+  puedeCobrar?: boolean
+  onCobrar?: (certificadoId: number) => void
+  /** Va adentro de la tarjeta «Certificados y cobros»: sin marco propio. */
+  embebido?: boolean
+}) {
   const toast = useToast()
   const { data: certificados = [], isLoading } = useCertificados(obra.cod)
+  // Lo cobrado de cada certificado, para decir si está por cobrar, parcial o
+  // cobrado sin tener que cruzarlo a ojo con la lista de pagos.
+  const { data: cobros = [] } = useCobrosCliente(obra.cod)
+  const cobradoPorCert = useMemo(() => {
+    const m = new Map<number, number>()
+    for (const c of cobros) if (c.certificado_id != null) m.set(c.certificado_id, (m.get(c.certificado_id) ?? 0) + Number(c.monto ?? 0))
+    return m
+  }, [cobros])
   const { mutate: emitir, isPending: emitiendo } = useEmitirCertificado()
   const { mutate: anular, isPending: anulando } = useAnularCertificado()
   const [modal, setModal] = useState(false)
@@ -53,22 +69,20 @@ export function CertificadosSection({ obra, puedeEmitir, esAdmin }: { obra: Obra
   const [destildados, setDestildados] = useState<Set<number>>(new Set())
   const seleccionados = elegibles.filter(r => !destildados.has(r.id))
   /**
-   * Lo que va a valer cada renglón en el certificado. La RPC sube al precio
-   * del catálogo todo renglón con ficha, en unidad compatible, que esté por
-   * DEBAJO de ese precio (sea de depósito o de compra). Antes la vista previa
-   * sumaba el precio actual y el certificado salía por más: la sorpresa
-   * llegaba en el toast, con el certificado ya congelado (revisión 23/09).
-   * Usa el precio de catálogo de hoy; la RPC usa el de la fecha de corte, así
-   * que con un corte viejo es una estimación.
+   * El certificado sale con el precio cargado (20260928a: el dueño, 24/09,
+   * "deberían salir con los precios que se cargó en el sistema"). Lo que se
+   * marca es el renglón con ficha, en unidad compatible, que está por DEBAJO
+   * del catálogo: puede ser una compra barata (está bien) o un precio mal
+   * cargado. Se avisa ANTES de emitir porque después queda congelado.
+   * Usa el catálogo de hoy; la RPC informa con el de la fecha de corte.
    */
-  const precioCert = (r: CuentaRenglon): number => {
+  const catalogoDe = (r: CuentaRenglon): number | null => {
     const ref = Number(r.ficha_precio_ref ?? 0)
-    const actual = Number(r.precio_unit)
-    return r.ficha_unidad_ok === true && ref > actual ? ref : actual
+    return r.ficha_unidad_ok === true && ref > Number(r.precio_unit) ? ref : null
   }
-  const totalSel = seleccionados.reduce((s, r) => s + Math.round(Number(r.cantidad) * precioCert(r) * 100) / 100, 0)
-  const suben = seleccionados.filter(r => precioCert(r) > Number(r.precio_unit))
-  const subaTotal = suben.reduce((s, r) => s + Number(r.cantidad) * (precioCert(r) - Number(r.precio_unit)), 0)
+  const totalSel = seleccionados.reduce((s, r) => s + Number(r.precio_total ?? 0), 0)
+  const bajoCatalogo = seleccionados.filter(r => catalogoDe(r) != null)
+  const bajoDif = bajoCatalogo.reduce((s, r) => s + Number(r.cantidad) * ((catalogoDe(r) ?? 0) - Number(r.precio_unit)), 0)
   const corteEsHoy = form.fecha_corte === toISO(new Date())
   function toggle(id: number) {
     setDestildados(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
@@ -91,7 +105,8 @@ export function CertificadosSection({ obra, puedeEmitir, esAdmin }: { obra: Obra
       onSuccess: r => {
         setModal(false)
         const partes = [`Certificado N° ${r.numero} emitido: ${r.renglones} renglones, ${fmtM(Number(r.total))}`]
-        if (r.retasados > 0) partes.push(`${r.retasados} pasaron al precio del catálogo`)
+        const bajo = (r as typeof r & { bajo_catalogo?: number }).bajo_catalogo ?? 0
+        if (bajo > 0) partes.push(`${bajo} con precio por debajo del catálogo`)
         if (r.sin_precio_excluidos > 0) partes.push(`${r.sin_precio_excluidos} quedaron afuera por estar en $0`)
         toast(partes.join(' · '), r.sin_precio_excluidos > 0 ? 'warn' : 'ok')
       },
@@ -129,16 +144,21 @@ export function CertificadosSection({ obra, puedeEmitir, esAdmin }: { obra: Obra
 
   const emitidos = certificados.filter(c => c.estado === 'emitido')
   const totalCertificado = emitidos.reduce((s, c) => s + Number(c.total), 0)
+  const saldoDe = (c: CertificadoCliente) => Math.max(0, Number(c.total) - (cobradoPorCert.get(c.id) ?? 0))
+  const porCobrar = emitidos.reduce((s, c) => s + saldoDe(c), 0)
 
   return (
-    <section className="bg-white rounded-card shadow-card p-4 flex flex-col gap-3">
+    <section className={embebido ? 'flex flex-col gap-3' : 'bg-white rounded-card shadow-card p-4 flex flex-col gap-3'}>
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h3 className="text-sm font-bold text-carbon">Certificados al cliente</h3>
+          <h3 className="text-sm font-bold text-carbon">Certificados y cobros</h3>
           <p className="text-[11px] text-gris-dark">
             {emitidos.length === 0
-              ? 'Todavía no se presentó ningún certificado de esta obra.'
-              : `${emitidos.length} emitido${emitidos.length !== 1 ? 's' : ''} · ${fmtM(totalCertificado)} certificados en total`}
+              ? 'Todavía no se presentó ningún certificado de esta obra. 1) Presentar certificado → 2) Registrar su cobro.'
+              : <>{emitidos.length} emitido{emitidos.length !== 1 ? 's' : ''} · {fmtM(totalCertificado)} certificados ·{' '}
+                  {porCobrar > 0.01
+                    ? <b className="text-naranja-dark">{fmtM(porCobrar)} por cobrar</b>
+                    : <b className="text-verde">todo cobrado</b>}</>}
           </p>
         </div>
         <Button variant="primary" size="sm" onClick={abrir} disabled={!puedeEmitir}
@@ -156,7 +176,7 @@ export function CertificadosSection({ obra, puedeEmitir, esAdmin }: { obra: Obra
               <tr className="text-[10px] uppercase tracking-wider text-gris-dark text-left">
                 <th className="py-1 pr-2">N°</th><th className="py-1 pr-2">Corte</th><th className="py-1 pr-2">Emitido</th>
                 <th className="py-1 pr-2 text-right">Mano de obra</th><th className="py-1 pr-2 text-right">Materiales</th>
-                <th className="py-1 pr-2 text-right">Total</th><th className="py-1 pr-2">Estado</th><th className="py-1"></th>
+                <th className="py-1 pr-2 text-right">Total</th><th className="py-1 pr-2 text-right">Cobrado</th><th className="py-1 pr-2">Estado</th><th className="py-1"></th>
               </tr>
             </thead>
             <tbody>
@@ -168,10 +188,15 @@ export function CertificadosSection({ obra, puedeEmitir, esAdmin }: { obra: Obra
                   <td className="py-1.5 pr-2 text-right font-mono">{fmtM(Number(c.mano_de_obra))}</td>
                   <td className="py-1.5 pr-2 text-right font-mono">{fmtM(Number(c.total_materiales))} <span className="text-gris-dark">({c.renglones})</span></td>
                   <td className="py-1.5 pr-2 text-right font-mono font-bold">{fmtM(Number(c.total))}</td>
-                  <td className="py-1.5 pr-2">
-                    <span className={'px-2 py-0.5 rounded-full text-[10px] font-bold ' + (c.estado === 'emitido' ? 'bg-azul-light text-azul' : 'bg-gris text-gris-dark')}>{c.estado}</span>
-                  </td>
+                  <td className="py-1.5 pr-2 text-right font-mono text-verde">{fmtM(cobradoPorCert.get(c.id) ?? 0)}</td>
+                  <td className="py-1.5 pr-2"><EstadoCert c={c} cobrado={cobradoPorCert.get(c.id) ?? 0} /></td>
                   <td className="py-1.5 text-right whitespace-nowrap">
+                    {c.estado === 'emitido' && saldoDe(c) > 0.01 && onCobrar && (
+                      <Button variant="primary" size="sm" onClick={() => onCobrar(c.id)} disabled={!puedeCobrar}
+                        title={puedeCobrar ? `Registrar el pago de este certificado (saldo ${fmtM(saldoDe(c))})` : 'Sin permiso para registrar cobros'}>
+                        💰 Registrar cobro
+                      </Button>
+                    )}
                     <Button variant="ghost" size="sm" onClick={() => pdf(c)} loading={descargando === c.id} title="PDF del certificado">⬇ PDF</Button>
                     {c.estado === 'emitido' && (
                       <Button variant="ghost" size="sm" onClick={() => { setAnulandoCert(c); setMotivo('') }}
@@ -188,7 +213,7 @@ export function CertificadosSection({ obra, puedeEmitir, esAdmin }: { obra: Obra
       <Modal open={modal} onClose={() => setModal(false)} title={`Presentar certificado · ${obra.nom}`}>
         <div className="flex flex-col gap-3">
           <p className="text-xs text-gris-dark">
-            Al emitir, los materiales tildados se congelan en este certificado. Los que tienen ficha y están por debajo del precio del catálogo a la fecha de corte suben a ese precio.
+            Al emitir, los materiales tildados se congelan en este certificado con el precio que tienen cargado. Después ya no se les puede cambiar el precio.
           </p>
           <Input label="Fecha de corte" type="date" value={form.fecha_corte} onChange={e => setForm(f => ({ ...f, fecha_corte: e.target.value }))} />
 
@@ -211,10 +236,10 @@ export function CertificadosSection({ obra, puedeEmitir, esAdmin }: { obra: Obra
                     <input type="checkbox" checked={!destildados.has(r.id)} onChange={() => toggle(r.id)} />
                     <span className="text-gris-dark shrink-0 font-mono">{fmtFecha(r.fecha_resolucion)}</span>
                     <span className="flex-1 truncate">{r.descripcion} <span className="text-gris-dark">· {Number(r.cantidad)} {r.unidad}</span></span>
-                    {precioCert(r) > Number(r.precio_unit) ? (
-                      <span className="font-mono shrink-0 text-right" title="Sube al precio del catálogo al emitir">
-                        <s className="text-gris-mid">{fmtM(Number(r.precio_total ?? 0))}</s>{' '}
-                        <b className="text-naranja-dark">{fmtM(Number(r.cantidad) * precioCert(r))}</b>
+                    {catalogoDe(r) != null ? (
+                      <span className="font-mono shrink-0 text-right"
+                        title={`Por debajo del catálogo: cargado ${fmtM(Number(r.precio_unit))} c/u, catálogo ${fmtM(catalogoDe(r) ?? 0)} c/u. Se certifica con el cargado.`}>
+                        <b className="text-naranja-dark">⚠ {fmtM(Number(r.precio_total ?? 0))}</b>
                       </span>
                     ) : (
                       <b className="font-mono shrink-0">{fmtM(Number(r.precio_total ?? 0))}</b>
@@ -225,12 +250,13 @@ export function CertificadosSection({ obra, puedeEmitir, esAdmin }: { obra: Obra
             )}
             <div className="flex justify-between text-[11px] text-gris-dark">
               <span>{sinPrecio > 0 ? `${sinPrecio} renglón${sinPrecio !== 1 ? 'es' : ''} en $0 quedan afuera` : ''}</span>
-              <span>{seleccionados.length} de {elegibles.length} · materiales {corteEsHoy ? '' : '≈ '}{fmtM(totalSel)}</span>
+              <span>{seleccionados.length} de {elegibles.length} · materiales {fmtM(totalSel)}</span>
             </div>
-            {suben.length > 0 && (
+            {bajoCatalogo.length > 0 && (
               <p className="text-[11px] text-naranja-dark bg-naranja-light rounded px-2 py-1">
-                {suben.length} renglón{suben.length !== 1 ? 'es' : ''} sube{suben.length !== 1 ? 'n' : ''} al precio del catálogo: +{fmtM(subaTotal)}.
-                {!corteEsHoy && ' Estimado con el precio de hoy; se valúa con el de la fecha de corte.'}
+                ⚠ {bajoCatalogo.length} renglón{bajoCatalogo.length !== 1 ? 'es tienen' : ' tiene'} precio por debajo del catálogo
+                ({fmtM(bajoDif)} menos en total). Se certifican con el precio cargado: si alguno está mal, corregilo en «Cargar precios» antes de emitir.
+                {!corteEsHoy && ' Comparado con el catálogo de hoy.'}
               </p>
             )}
           </div>
@@ -256,4 +282,14 @@ export function CertificadosSection({ obra, puedeEmitir, esAdmin }: { obra: Obra
       </Modal>
     </section>
   )
+}
+
+/** Estado del certificado mirado desde la plata: qué falta cobrar. */
+function EstadoCert({ c, cobrado }: { c: CertificadoCliente; cobrado: number }) {
+  const base = 'px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap '
+  if (c.estado !== 'emitido') return <span className={base + 'bg-gris text-gris-dark'}>anulado</span>
+  const saldo = Number(c.total) - cobrado
+  if (saldo <= 0.01) return <span className={base + 'bg-verde-light text-verde'}>✓ Cobrado</span>
+  if (cobrado > 0)   return <span className={base + 'bg-amarillo-light text-[#7A5500]'} title={`Falta ${fmtM(saldo)}`}>Parcial</span>
+  return <span className={base + 'bg-naranja-light text-naranja-dark'}>Por cobrar</span>
 }
