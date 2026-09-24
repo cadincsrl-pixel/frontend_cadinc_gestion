@@ -6,8 +6,8 @@ import { useToast } from '@/components/ui/Toast'
 import { useLibroIvaVentas } from '../../hooks/useFacturacion'
 import { fmtM } from '../../utils/facturacion.utils'
 import { mensajeErrorFacturacion } from '../../utils/facturacion.errores'
-import { descargarTxtLid, exportarExcelLid, nombreArchivoLid } from '../../utils/lidVentas'
-import { AvisoErrores, TablaValidaciones, TablasResumen, Tarjeta, contarSeveridades } from './LidComun'
+import { descargarTxtLid, exportarExcelLid, nombreArchivoLid, nombreMes } from '../../utils/lidVentas'
+import { AvisoErrores, AvisoParcial, LibroVacio, TablaValidaciones, TablasResumen, Tarjeta, contarSeveridades } from './LidComun'
 
 /**
  * Libro IVA Digital de Ventas (RG 4597) para el contador: los dos archivos de
@@ -53,6 +53,7 @@ export function LibroIvaVentas({ periodo, incluirCvlp }: { periodo: string; incl
           Windows. Incluye lo emitido por el sistema (autorizado en producción) y lo importado de ARCA «Mis Comprobantes». Al importar en el LID
           elegí «Los importes están expresados en Pesos Argentinos».
         </p>
+        <AvisoParcial periodo={periodo} />
         {libro && <AvisoErrores errores={contarSeveridades(libro.validaciones).error} />}
       </div>
 
@@ -63,6 +64,8 @@ export function LibroIvaVentas({ periodo, incluirCvlp }: { periodo: string; incl
           <span>{mensajeErrorFacturacion(q.error)}</span>
           <Button size="sm" variant="secondary" onClick={() => q.refetch()}>Reintentar</Button>
         </div>
+      ) : libro && libro.detalle.length === 0 ? (
+        <LibroVacio texto={`No hay comprobantes de venta con fecha de ${nombreMes(periodo)}: ni emitidos por el sistema ni importados de ARCA.`} />
       ) : libro ? (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

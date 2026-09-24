@@ -7,7 +7,8 @@ import { useLibroIvaCompras } from '../../hooks/useFacturacion'
 import { fmtM } from '../../utils/facturacion.utils'
 import { mensajeErrorFacturacion } from '../../utils/facturacion.errores'
 import { descargarTxtLidCompras, exportarExcelLidCompras, nombreArchivoLidCompras } from '../../utils/lidCompras'
-import { AvisoErrores, TablaValidaciones, TablasResumen, Tarjeta, contarSeveridades } from './LidComun'
+import { AvisoErrores, AvisoParcial, LibroVacio, TablaValidaciones, TablasResumen, Tarjeta, contarSeveridades } from './LidComun'
+import { nombreMes } from '../../utils/lidVentas'
 
 /**
  * Libro IVA Digital de Compras (RG 4597): las facturas de proveedor cargadas en
@@ -53,6 +54,7 @@ export function LibroIvaCompras({ periodo }: { periodo: string }) {
           Windows. Salen de las facturas de proveedor cargadas en Compras, por la fecha del comprobante. Crédito fiscal sin prorrateo (igual al IVA
           liquidado); las facturas B y C no llevan alícuotas ni dan crédito.
         </p>
+        <AvisoParcial periodo={periodo} />
         {libro && <AvisoErrores errores={contarSeveridades(libro.validaciones).error} />}
       </div>
 
@@ -63,6 +65,8 @@ export function LibroIvaCompras({ periodo }: { periodo: string }) {
           <span>{mensajeErrorFacturacion(q.error)}</span>
           <Button size="sm" variant="secondary" onClick={() => q.refetch()}>Reintentar</Button>
         </div>
+      ) : libro && r && libro.detalle.length === 0 ? (
+        <LibroVacio texto={`No hay facturas de compra cargadas con fecha de ${nombreMes(periodo)}. El módulo Compras se usa desde el 18/09/2026: lo anterior está en Finnegans.`} />
       ) : libro && r ? (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

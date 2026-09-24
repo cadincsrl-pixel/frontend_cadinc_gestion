@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { usePermisos } from '@/hooks/usePermisos'
 import { mesesRecientes, nombreMes } from '../../utils/lidVentas'
+import { hoyCorto, mesEnCurso } from './LidComun'
 import { LibroIvaCompras } from './LibroIvaCompras'
 import { LibroIvaVentas } from './LibroIvaVentas'
 import { PosicionIva } from './PosicionIva'
@@ -52,7 +53,7 @@ export function ImpuestosTab() {
           <label className="block text-[11px] font-bold text-gris-dark uppercase tracking-wider mb-1">Período</label>
           <select value={periodo} onChange={e => setPeriodo(e.target.value)}
             className="px-3 py-2 border-[1.5px] border-gris-mid rounded-lg text-sm outline-none focus:border-naranja bg-white capitalize">
-            {meses.map(m => <option key={m} value={m}>{nombreMes(m)}</option>)}
+            {meses.map(m => <option key={m} value={m}>{nombreMes(m)}{mesEnCurso(m) ? ` (parcial, al ${hoyCorto()})` : ''}</option>)}
           </select>
         </div>
         {vista !== 'compras' && (

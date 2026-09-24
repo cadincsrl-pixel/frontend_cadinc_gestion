@@ -122,3 +122,28 @@ export function AvisoErrores({ errores }: { errores: number }) {
     </div>
   )
 }
+
+/** El mes en curso se ve «parcial»: lo cargado hasta hoy, todavía no se declara. */
+export function mesEnCurso(periodo: string, hoy = new Date()): boolean {
+  return periodo === `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`
+}
+
+export function hoyCorto(hoy = new Date()): string {
+  return `${String(hoy.getDate()).padStart(2, '0')}/${String(hoy.getMonth() + 1).padStart(2, '0')}`
+}
+
+/** Cartel del mes en curso: los números son parciales y el mes no se declara todavía. */
+export function AvisoParcial({ periodo }: { periodo: string }) {
+  if (!mesEnCurso(periodo)) return null
+  return (
+    <div className="bg-azul-light border border-azul/20 rounded p-2 text-xs text-azul">
+      <b>Parcial, al {hoyCorto()}:</b> es el mes en curso. Los números son lo cargado hasta hoy y van a cambiar;
+      el libro de este mes se presenta recién el mes que viene.
+    </div>
+  )
+}
+
+/** Libro sin ningún comprobante en el mes: se explica en vez de mostrar todo en cero. */
+export function LibroVacio({ texto }: { texto: string }) {
+  return <div className="bg-white rounded-card shadow-card p-8 text-center text-sm text-gris-dark">{texto}</div>
+}

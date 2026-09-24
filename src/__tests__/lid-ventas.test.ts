@@ -16,3 +16,13 @@ describe('Libro IVA ventas (frontend)', () => {
     expect(nombreMes('2026-09')).toBe('septiembre 2026')
   })
 })
+
+import { hoyCorto, mesEnCurso } from '@/modules/facturacion/components/impuestos/LidComun'
+describe('mes en curso (parcial)', () => {
+  it('solo el mes de hoy es parcial', () => {
+    const hoy = new Date(2026, 8, 24)
+    expect(mesEnCurso('2026-09', hoy)).toBe(true)
+    expect(mesEnCurso('2026-08', hoy)).toBe(false)
+    expect(hoyCorto(hoy)).toBe('24/09')
+  })
+})

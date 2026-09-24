@@ -5,7 +5,7 @@ import { usePosicionIva } from '../../hooks/useFacturacion'
 import { fmtM } from '../../utils/facturacion.utils'
 import { mensajeErrorFacturacion } from '../../utils/facturacion.errores'
 import { nombreMes } from '../../utils/lidVentas'
-import { Tarjeta } from './LidComun'
+import { AvisoParcial, Tarjeta, hoyCorto, mesEnCurso } from './LidComun'
 
 /**
  * Posición de IVA del mes: débito fiscal (libro de ventas) − crédito fiscal
@@ -31,11 +31,13 @@ export function PosicionIva({ periodo, incluirCvlp, onVer }: {
   if (!p) return null
 
   const incompleta = p.excluidos_ventas > 0 || p.excluidos_compras > 0
+  const parcial = mesEnCurso(p.periodo)
   return (
     <div className="flex flex-col gap-4">
+      <AvisoParcial periodo={p.periodo} />
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Tarjeta titulo="A pagar" valor={fmtM(p.a_pagar)} tono={p.a_pagar > 0 ? 'rojo' : 'azul'}
-          sub={incompleta ? 'posición incompleta: ver avisos' : `IVA de ${nombreMes(p.periodo)}`} />
+          sub={parcial ? `parcial, al ${hoyCorto()}` : incompleta ? 'posición incompleta: ver avisos' : `IVA de ${nombreMes(p.periodo)}`} />
         <Tarjeta titulo="Saldo técnico a favor" valor={fmtM(p.saldo_tecnico_a_favor)} tono={p.saldo_tecnico_a_favor > 0 ? 'verde' : 'azul'}
           sub="crédito fiscal mayor que el débito" />
         <Tarjeta titulo="Libre disponibilidad" valor={fmtM(p.libre_disponibilidad)} tono={p.libre_disponibilidad > 0 ? 'verde' : 'azul'}
