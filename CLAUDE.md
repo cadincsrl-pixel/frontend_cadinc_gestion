@@ -84,6 +84,7 @@ Cliente (Next.js)
 | **Préstamos** | Adelantos con descuento en semana | `/tarja/prestamos` |
 | **Pagos** (se muestra «Compras») | Facturas de proveedor, aprobación, órdenes de pago y padrón propio de proveedores (§5.18) | `/pagos` |
 | **Facturación** (se muestra «Ventas») | Facturas de venta contra ARCA (A, B, FCE MiPyME y sus NC), clientes con padrón ARCA, cobranzas y la tab **Impuestos** (§5.19) | `/facturacion` |
+| **Contabilidad** | Plan de cuentas, asientos (partida doble), diario, mayor, sumas y saldos, períodos y cuentas de tesorería (§5.20) | `/contabilidad` |
 | **Admin** | Usuarios, permisos, auditoría | `/admin` |
 
 ### 4.1 Sub-tabs de Logística (`/logistica?tab=...`)
@@ -340,6 +341,20 @@ La auto-aprobación es **best-effort a propósito**: si la factura no se puede a
 - **CVLP (060) de Casilda Combustibles**: fletes de camiones de CADINC que Casilda cobra por cuenta y orden y liquida con su comisión descontada. Anexo VII: CADINC es el VENDEDOR → van en el libro de VENTAS con el neto, el IVA y el total del papel; la comisión descontada no va a ningún libro. Sin facturas de CADINC a Casilda que las dupliquen (verificado 24/09). En Impuestos van **incluidas por defecto**.
 - **Las NC de proveedor** entran solas al libro de compras (restan); ya no existen NC como línea de OP (CHECK `pagos_orden_lineas_sin_nc_chk`).
 
+### 5.20 Contabilidad (fase 1, 2026-09-24)
+
+El ejercicio de CADINC va de **julio a junio**; la contabilidad se lleva en el ERP desde el **01/07/2026** (decisión del dueño, 24/09). Diseño y spec en Obsidian `Proyectos/Contabilidad en el ERP — diseño (2026-09-24).md` y `… fase 1 — spec`.
+
+- **Tablas** `cont_ejercicios`, `cont_periodos`, `cont_cuentas`, `cont_asientos`, `cont_asiento_lineas` (20260926a–f). Única puerta: RPC `cont_*` (security definer, `p_user_id`, solo service_role). Partida doble con constraint trigger diferido; el guard `PERIODO_CERRADO` frena tocar un mes cerrado.
+- **Anular**: borrador → se borra; confirmado con período abierto → `anulado`; período cerrado → **contraasiento** en un período abierto (`revierte_id`).
+- **Numeración del diario**: al CERRAR el período, correlativa por ejercicio en orden (fecha, id). Se cierra en orden y solo se reabre el último cerrado (desnumera).
+- **Tesorería** (`tesoreria_cuentas`, 20260926b): bancos, caja y valores de CADINC. Tabla propia, NO `ventas_cuentas_bancarias` (esa exige CBU y alimenta la FCE). `pagos_ordenes.cuenta_origen_id` (20260926g) = de qué cuenta salió la plata; opcional, entra por `p_orden -> 'cuenta_origen_id'`.
+- **Contabilidad es la integradora**: sus líneas referencian `ventas_clientes`, `pagos_proveedores` y `obras` (excepción explícita a §5.18).
+- **Flags** (default false): `asientos_manuales`, `cerrar_periodos`, `editar_plan`. Todo flag nuevo va TAMBIÉN en `ModuloPermisosSchema` de `usuarios.routes.ts`: si no, Admin lo borra al guardar el usuario (pasó con 6 flags de Ventas/Pagos hasta el 24/09).
+- **Plan provisorio** en `supabase/seeds/cont_plan_provisorio_2026.csv` (172 cuentas): NO se aplica solo, se importa desde Contabilidad › Plan con vista previa. Pendiente la decisión del contador sobre el plan.
+- **Hay un solo ejercicio sembrado**: crear el 2027/28 antes de junio de 2027 o las fechas dan `FECHA_SIN_PERIODO`.
+- Fases siguientes (esperan las respuestas del contador): apertura al 01/07, puente jul–sep, asientos automáticos de Ventas y Compras, conciliación bancaria, cierre de ejercicio.
+
 ## 6. Convenciones de código (frontend)
 
 - **Feature-based folders**: `src/modules/<feature>/{components,hooks,store}`. Sin `services/` (los hooks de React Query encapsulan API).
@@ -482,4 +497,4 @@ El frontend espera al backend en `http://localhost:3001` (configurable vía env)
 
 ---
 
-_Última actualización: 2026-09-24._
+_Última actualización: 2026-09-24 (contabilidad fase 1)._
