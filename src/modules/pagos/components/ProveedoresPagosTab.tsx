@@ -7,7 +7,7 @@ import { Pagination } from '@/components/ui/Pagination'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import {
-  useProveedoresPagos, useProveedorPagos, useEditarProveedorPagos, useDatosPagoProveedor,
+  useProveedoresPagos, useProveedorPagos, useEditarProveedorPagos, useDatosPagoProveedor, useGuardarContactosProveedor,
   useBajaProveedorPagos, useReactivarProveedorPagos, fetchProveedoresExport,
   type PagosProveedoresFiltro,
 } from '../hooks/useProveedoresPagos'
@@ -16,6 +16,8 @@ import { mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
 import { VENCIMIENTO_MODOS, type VencimientoModo } from '../utils/pagos.utils'
 import { exportarProveedoresPagos } from '../utils/pagosExport'
 import { AltaRapidaProveedor } from './AltaRapidaProveedor'
+import { ContactosEditor, contactosDesde, contactosParaGuardar, validarContactos } from '@/components/contactos/ContactosEditor'
+import { ETIQUETA_ROL, type ContactoInput } from '@/types/contactos'
 
 const PAGE_SIZE = 50
 
@@ -178,9 +180,14 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
   const datosPago = useDatosPagoProveedor()
   const baja      = useBajaProveedorPagos()
   const reactivar = useReactivarProveedorPagos()
+  const guardarContactos = useGuardarContactosProveedor()
+  // Contactos (20260925e): varios por proveedor (vendedor, administración…).
+  // Los edita quien edita la ficha; el contador (solo datos de pago) los ve.
+  const [contactos, setContactos] = useState<ContactoInput[]>([])
+  const [errorContactos, setErrorContactos] = useState<{ i: number; mensaje: string } | null>(null)
 
   const [editando, setEditando] = useState(false)
-  const [form, setForm] = useState({ razon_social: '', cuit: '', alias_cbu: '', cbu: '', banco: '', plazo_pago_dias: '30', vencimiento_modo: 'dias' as VencimientoModo, cierre_dia: '', contacto: '', telefono: '', email: '' })
+  const [form, setForm] = useState({ razon_social: '', cuit: '', alias_cbu: '', cbu: '', banco: '', plazo_pago_dias: '30', vencimiento_modo: 'dias' as VencimientoModo, cierre_dia: '' })
   const [pidiendoBaja, setPidiendoBaja] = useState(false)
   const [motivo, setMotivo] = useState('')
 
@@ -190,13 +197,19 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
       razon_social: p.razon_social, cuit: p.cuit ?? '', alias_cbu: p.alias_cbu ?? '', cbu: p.cbu ?? '',
       banco: p.banco ?? '', plazo_pago_dias: String(p.plazo_pago_dias ?? 30),
       vencimiento_modo: p.vencimiento_modo ?? 'dias', cierre_dia: p.cierre_dia != null ? String(p.cierre_dia) : '',
-      contacto: p.contacto ?? '', telefono: p.telefono ?? '', email: p.email ?? '',
     })
+    setContactos(contactosDesde(p.contactos, p.email))
+    setErrorContactos(null)
     setEditando(true)
   }
 
   async function guardar() {
     if (!p) return
+    if (!soloDatosPago) {
+      const errC = validarContactos(contactos)
+      setErrorContactos(errC)
+      if (errC) return
+    }
     try {
       // El contador solo puede tocar los datos de pago: es otra ruta, con su
       // propio permiso. Elegir la correcta acá evita un 403 confuso.
@@ -204,7 +217,6 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
         ? await datosPago.mutateAsync({
             id: p.id, cbu: form.cbu.trim() || null, alias_cbu: form.alias_cbu.trim() || null,
             banco: form.banco.trim(), plazo_pago_dias: Number(form.plazo_pago_dias) || 30,
-            contacto: form.contacto.trim(), telefono: form.telefono.trim(), email: form.email.trim(),
           })
         : await editar.mutateAsync({
             id: p.id, razon_social: form.razon_social.trim(), cuit: form.cuit.trim() || null,
@@ -213,10 +225,20 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
             vencimiento_modo: form.vencimiento_modo,
             // Con cierre mensual, vacío = el último día del mes (el caso Silva).
             cierre_dia: form.vencimiento_modo === 'cierre_mensual' ? (Number(form.cierre_dia) || null) : null,
-            contacto: form.contacto.trim(), telefono: form.telefono.trim(), email: form.email.trim(),
           })
-      toast('✓ Proveedor actualizado', 'ok')
+      // Los avisos del PATCH primero (p. ej. «le quitó la aprobación» por cambio de CBU):
+      // no se pueden perder aunque después fallen los contactos.
       for (const a of r.avisos) toast(mensajeAvisoPagos(a), 'warn')
+      if (!soloDatosPago) {
+        try {
+          await guardarContactos.mutateAsync({ id: p.id, contactos: contactosParaGuardar(contactos) })
+        } catch (e) {
+          // La ficha ya quedó guardada: se avisa y la edición queda abierta para reintentar.
+          toast(`La ficha se guardó, pero los contactos no: ${mensajeErrorPagos(e)}`, 'err')
+          return
+        }
+      }
+      toast('✓ Proveedor actualizado', 'ok')
       setEditando(false)
     } catch (e) { toast(mensajeErrorPagos(e), 'err') }
   }
@@ -244,7 +266,7 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
                 </Button>
               )}
               {editando && (
-                <Button size="sm" onClick={guardar} loading={editar.isPending || datosPago.isPending}>Guardar</Button>
+                <Button size="sm" onClick={guardar} loading={editar.isPending || datosPago.isPending || guardarContactos.isPending}>Guardar</Button>
               )}
             </>
           ) : (
@@ -297,9 +319,11 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
                 Todo lo comprado en el mes vence junto: cierra {form.cierre_dia ? `el ${form.cierre_dia}` : 'el último día del mes'}, se corre al último día hábil y vence {Number(form.plazo_pago_dias) || 30} días después.
               </div>
             )}
-            <Campo label="Contacto"><input value={form.contacto} onChange={e => setForm(f => ({ ...f, contacto: e.target.value }))} className={inputCls} /></Campo>
-            <Campo label="Teléfono"><input value={form.telefono} onChange={e => setForm(f => ({ ...f, telefono: e.target.value }))} className={inputCls} /></Campo>
-            <Campo label="Email"><input value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className={inputCls} /></Campo>
+            <div className="sm:col-span-2">
+              {soloDatosPago
+                ? <ListaContactos contactos={p.contactos} nota="Los contactos los edita quien puede editar la ficha." />
+                : <ContactosEditor value={contactos} onChange={v => { setContactos(v); setErrorContactos(null) }} error={errorContactos} />}
+            </div>
             {!soloDatosPago && (
               <div className="sm:col-span-2 text-[11px] text-naranja-dark">
                 Cambiar el CBU o el alias le quita la aprobación a las facturas aprobadas sin pagar de este proveedor: hay que volver a aprobarlas.
@@ -320,12 +344,12 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
               <Dato label="Saldo" valor={fmtM(p.saldo)} fuerte />
               <Dato label="Listo para pagar" valor={fmtM(p.saldo_aprobado)} />
               <Dato label="Último pago" valor={fmtFecha(p.ultimo_pago)} />
+              {Number(p.nc_disponible ?? 0) > 0 && <Dato label="NC sin aplicar" valor={fmtM(p.nc_disponible)} />}
+              {p.saldo_neto != null && Number(p.saldo_neto) !== Number(p.saldo) && (
+                <Dato label="Neto (− a cuenta − NC)" valor={fmtM(p.saldo_neto)} fuerte />
+              )}
             </div>
-            {(p.contacto || p.telefono || p.email) && (
-              <div className="text-xs text-gris-dark">
-                {[p.contacto, p.telefono, p.email].filter(Boolean).join(' · ')}
-              </div>
-            )}
+            <ListaContactos contactos={p.contactos} />
             {p.datos_pago_actualizados_at && (
               <div className="text-[11px] text-gris-dark">
                 Datos de pago actualizados el {fmtFecha(p.datos_pago_actualizados_at)}
@@ -345,6 +369,7 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
                     <td className="py-1">
                       {comprobanteTxt(f.tipo_comprobante, f.numero)}
                       <span className="block text-[10px] text-gris-dark">{f.descripcion}</span>
+                      {f.nc_txt && <span className="block text-[10px] text-[#5A2D82]">{f.nc_txt}</span>}
                     </td>
                     <td className={`py-1 text-right text-[11px] ${f.vencida ? 'text-rojo font-bold' : 'text-gris-dark'}`}>{fmtFecha(f.vence_el)}</td>
                     <td className="py-1 text-right font-mono tabular-nums">{fmtM(f.saldo)}</td>
@@ -404,5 +429,27 @@ function Tilde({ label, on, set }: { label: string; on: boolean; set: (v: boolea
       <input type="checkbox" className="accent-naranja" checked={on} onChange={e => set(e.target.checked)} />
       {label}
     </label>
+  )
+}
+
+/** Contactos de solo lectura; «✉ avisos» marca los que reciben el aviso de pago. */
+function ListaContactos({ contactos, nota }: { contactos?: import('@/types/contactos').Contacto[]; nota?: string }) {
+  if (!contactos?.length) {
+    return <div className="text-xs text-gris-dark italic">Sin contactos cargados.{nota ? ` ${nota}` : ''}</div>
+  }
+  return (
+    <div className="flex flex-col gap-0.5">
+      <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wide">Contactos</div>
+      {contactos.map(k => (
+        <div key={k.id} className="text-xs flex gap-1.5 flex-wrap items-center">
+          <b>{k.nombre || ETIQUETA_ROL[k.rol]}</b>
+          {k.nombre && <span className="text-gris-dark">({ETIQUETA_ROL[k.rol]})</span>}
+          {k.email && <span className="font-mono">{k.email}</span>}
+          {k.telefono && <span className="text-gris-dark">{k.telefono}</span>}
+          {k.recibe_avisos && k.email && <span className="text-[10px] px-1 rounded bg-verde-light text-verde font-bold">✉ avisos</span>}
+        </div>
+      ))}
+      {nota && <div className="text-[11px] text-gris-dark">{nota}</div>}
+    </div>
   )
 }

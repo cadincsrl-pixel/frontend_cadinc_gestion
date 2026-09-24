@@ -499,7 +499,8 @@ export function useNotificaciones(): NotificacionesResult {
       (p?.items ?? []).map(f => ({
         id: f.id,
         proveedor_nom: f.proveedor_nom,
-        comprobante: `${f.tipo_comprobante} ${f.numero?.trim() || 's/n'}`,
+        // «Para aprobar» también trae notas de crédito (20260925): que se note.
+        comprobante: `${f.clase === 'nota_credito' ? 'NC ' : ''}${f.tipo_comprobante} ${f.numero?.trim() || 's/n'}`,
         total: Number(f.total),
         saldo: Number(f.saldo),
         vence_el: f.vence_el,

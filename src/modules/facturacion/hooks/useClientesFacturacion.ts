@@ -10,6 +10,7 @@ import type {
   VentasActualizarDesdeArca, VentasCliente, VentasClienteInput, VentasCuentaBancaria, VentasCuentaInput, VentasInfoFce, VentasPadronResultado,
 } from '@/types/domain.types'
 import { FACTURACION_KEYS, invalidarFacturacion } from './useFacturacion'
+import type { contactosParaGuardar } from '@/components/contactos/ContactosEditor'
 
 const BASE = '/api/facturacion/clientes'
 
@@ -59,6 +60,16 @@ export function useAsignarObrasCliente() {
   return useMutation({
     mutationFn: ({ id, obra_cods }: { id: number; obra_cods: string[] }) =>
       apiPut<VentasCliente>(`${BASE}/${id}/obras`, { obra_cods }),
+    onSuccess:  () => invalidarFacturacion(qc),
+  })
+}
+
+/** Reemplaza la lista de contactos (20260925f): actualiza, agrega y borra en una transacción. */
+export function useGuardarContactosCliente() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, contactos }: { id: number; contactos: ReturnType<typeof contactosParaGuardar> }) =>
+      apiPut<VentasCliente>(`${BASE}/${id}/contactos`, { contactos }),
     onSuccess:  () => invalidarFacturacion(qc),
   })
 }

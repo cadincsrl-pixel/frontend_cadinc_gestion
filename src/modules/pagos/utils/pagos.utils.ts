@@ -7,6 +7,7 @@
 import type {
   PagosEstadoFactura, PagosFormaPagoOP, PagosFormaPagoOPGuardada, PagosFormaPrevista,
   PagosTipoAdjFactura, PagosTipoAdjOrden, PagosTipoComprobante, PagosFactura, AnularFacturaRes,
+  PagosClaseComprobante, PagosAplicacionNc,
 } from '@/types/domain.types'
 import type { PagosFacturasFiltro } from '../hooks/usePagos'
 
@@ -31,6 +32,54 @@ export const ESTADOS_FACTURA: EstadoFacturaMeta[] = [
 
 export const ESTADO_FACTURA_META =
   Object.fromEntries(ESTADOS_FACTURA.map(e => [e.key, e])) as Record<PagosEstadoFactura, EstadoFacturaMeta>
+
+/**
+ * Una NC usa los mismos estados que una factura pero significan otra cosa
+ * (20260925): `aprobada` = tiene crédito disponible, `pagada_parcial` =
+ * aplicada en parte, `pagada` = aplicada entera.
+ */
+export const ESTADO_NC_META: Partial<Record<PagosEstadoFactura, { label: string; hint: string }>> = {
+  pendiente:      { label: 'Pendiente',        hint: 'Cargada, esperando aprobación: lo que declara acreditar queda reservado' },
+  observada:      { label: 'Observada',        hint: 'Rechazada con motivo: compras la tiene que corregir' },
+  aprobada:       { label: 'Crédito disponible', hint: 'Aprobada y sin aplicar: queda como crédito a favor del proveedor' },
+  pagada_parcial: { label: 'Aplicada en parte', hint: 'Aprobada y aplicada a una parte: todavía queda crédito' },
+  pagada:         { label: 'Aplicada',         hint: 'Todo su importe ya bajó deuda de facturas' },
+  anulada:        { label: 'Anulada',          hint: 'Se anuló: la deuda volvió a las facturas' },
+}
+
+/** La etiqueta del estado según sea factura o NC. */
+export function estadoLabel(estado: PagosEstadoFactura, clase?: PagosClaseComprobante | null): string {
+  if (clase === 'nota_credito') return ESTADO_NC_META[estado]?.label ?? ESTADO_FACTURA_META[estado]?.label ?? estado
+  return ESTADO_FACTURA_META[estado]?.label ?? estado
+}
+export function estadoHint(estado: PagosEstadoFactura, clase?: PagosClaseComprobante | null): string {
+  if (clase === 'nota_credito') return ESTADO_NC_META[estado]?.hint ?? ''
+  return ESTADO_FACTURA_META[estado]?.hint ?? ''
+}
+
+export const esNC = (f: { clase?: PagosClaseComprobante | null }) => f.clase === 'nota_credito'
+
+/**
+ * Lo máximo que se puede pagar con plata de una factura: `saldo_pagable`
+ * (saldo − lo reservado por NC sin aprobar). Si la fila vino de un backend
+ * viejo sin la columna, cae al saldo.
+ */
+export function topePagable(f: Pick<PagosFactura, 'saldo'> & { saldo_pagable?: number | null }): number {
+  const v = f.saldo_pagable
+  return Math.max(0, Number(v ?? f.saldo) || 0)
+}
+
+/** Un importe con el signo de su clase: la NC resta en totales y KPIs. */
+export function conSigno(monto: number | null | undefined, clase?: PagosClaseComprobante | null): number {
+  const v = Number(monto ?? 0) || 0
+  return clase === 'nota_credito' ? -v : v
+}
+
+/** Códigos ARCA de NC → letra (y al revés, para mandar el código al backend). */
+export const CBTE_NC_POR_LETRA: Record<'A' | 'B' | 'C', number> = { A: 3, B: 8, C: 13 }
+export function esCodigoNC(cbte: number | null | undefined): boolean {
+  return cbte != null && [3, 8, 13, 53, 203, 208, 213].includes(Number(cbte))
+}
 
 /** Los que todavía deben plata: los que cuentan para «vencida» y para la deuda. */
 export const ESTADOS_ABIERTOS: PagosEstadoFactura[] = ['pendiente', 'observada', 'aprobada', 'pagada_parcial']
@@ -145,8 +194,8 @@ export function fmtMes(s: string): string {
 }
 
 /** Tipo + número como se lee en el papel: «A 0001-00012345», «B s/n». */
-export function comprobanteTxt(tipo: PagosTipoComprobante, numero: string | null): string {
-  return `${tipo} ${numero?.trim() || 's/n'}`
+export function comprobanteTxt(tipo: PagosTipoComprobante, numero: string | null, clase?: PagosClaseComprobante | null): string {
+  return `${clase === 'nota_credito' ? 'NC ' : ''}${tipo} ${numero?.trim() || 's/n'}`
 }
 
 /**
@@ -353,6 +402,8 @@ export function describirFiltroFacturas(
   if (f.estados?.length) {
     p.push(f.estados.map(e => ESTADO_FACTURA_META[e]?.label ?? e).join(' o '))
   }
+  if (f.clase === 'nota_credito') p.push(f.con_credito ? 'notas de crédito con crédito disponible' : 'solo notas de crédito')
+  if (f.clase === 'factura') p.push('solo facturas')
   if (f.tipo) p.push(`tipo ${f.tipo}`)
   if (f.forma_pago) {
     p.push(`a pagar con ${FORMAS_PREVISTAS.find(x => x.key === f.forma_pago)?.label ?? f.forma_pago}`)
@@ -394,14 +445,14 @@ export function describirFiltroFacturas(
  * sobre después de cubrirlas todas es plata entregada de más y va «a cuenta»,
  * que es exactamente lo que es.
  *
- * `tope` por factura es lo que queda para PLATA, o sea el saldo menos la nota
- * de crédito que se le esté aplicando en la misma orden.
+ * `tope` por factura es lo que queda para PLATA: su `saldo_pagable` (el saldo
+ * menos lo reservado por una NC todavía sin aprobar, 20260925).
  */
 export interface FacturaARepartir {
   id:       number
   /** Para ordenar. null = sin vencimiento, va al final. */
   vence_el: string | null
-  /** Lo máximo que admite de plata: saldo − NC aplicada en esta orden. */
+  /** Lo máximo que admite de plata: `saldo_pagable`. */
   tope:     number
 }
 
@@ -421,4 +472,72 @@ export function repartirPagoEntreFacturas(
     resto = r2(resto - pone)
   }
   return { porFactura, aCuenta: resto }
+}
+
+/**
+ * El reparto por obra por defecto de una NOTA DE CRÉDITO (20260925): el de las
+ * facturas que acredita, prorrateado por lo que se le aplica a cada una.
+ *
+ * Una NC de $300 sobre una factura imputada 2/3 a LAMADRID y 1/3 a CC CADINC
+ * reparte $200 y $100. Si acredita varias, se suman las partes por obra. Al
+ * final se escala a `imputableNc` (total − percepciones de la NC) y la ÚLTIMA
+ * obra absorbe los centavos: el backend valida la suma al centavo.
+ *
+ * Devuelve [] si no hay con qué prorratear (sin facturas, o ninguna imputada).
+ */
+export function repartoProrrateado(
+  facturas: { aplicado: number; imputable: number; imputaciones: { obra_cod: string; monto: number }[] }[],
+  imputableNc: number,
+): { obra_cod: string; monto: number }[] {
+  const r2 = (v: number) => Math.round(v * 100) / 100
+  const peso = new Map<string, number>()
+  for (const f of facturas) {
+    const base = f.imputaciones.reduce((s, im) => s + Number(im.monto || 0), 0) || Number(f.imputable || 0)
+    if (!(f.aplicado > 0) || !(base > 0)) continue
+    for (const im of f.imputaciones) {
+      const parte = (Number(im.monto || 0) / base) * f.aplicado
+      if (parte > 0) peso.set(im.obra_cod, (peso.get(im.obra_cod) ?? 0) + parte)
+    }
+  }
+  const total = [...peso.values()].reduce((s, v) => s + v, 0)
+  if (!(total > 0) || !(imputableNc > 0)) return []
+  const obras = [...peso.entries()]
+  let acumulado = 0
+  return obras.map(([obra_cod, p], i) => {
+    if (i === obras.length - 1) return { obra_cod, monto: r2(imputableNc - acumulado) }
+    const m = r2((p / total) * imputableNc)
+    acumulado = r2(acumulado + m)
+    return { obra_cod, monto: m }
+  })
+}
+
+/**
+ * La contraparte de una aplicación de NC: vista desde la NC es la factura,
+ * vista desde la factura es la NC. Tolera la forma anidada (`nc`/`factura`) y
+ * la plana, porque la del backend todavía no está cerrada.
+ */
+export function contraparteAplicacion(a: PagosAplicacionNc, desde: 'nc' | 'factura'): {
+  id: number
+  tipo_comprobante: PagosTipoComprobante | null
+  numero: string | null
+  fecha: string | null
+  estado: PagosEstadoFactura | null
+  total: number | null
+} {
+  const anidada = desde === 'nc' ? a.factura : a.nc
+  return {
+    id:               desde === 'nc' ? a.factura_id : a.nc_id,
+    tipo_comprobante: anidada?.tipo_comprobante ?? a.tipo_comprobante ?? null,
+    numero:           anidada?.numero ?? a.numero ?? null,
+    fecha:            anidada?.fecha ?? a.fecha ?? null,
+    estado:           anidada?.estado ?? a.estado ?? null,
+    total:            anidada?.total ?? a.total ?? null,
+  }
+}
+
+/** ¿La NC de esta aplicación ya bajó deuda? (aprobada y vigente). */
+export function aplicacionFirme(a: PagosAplicacionNc): boolean {
+  if (a.vigente === false || a.nc?.estado === 'anulada') return false
+  if (a.aprobada != null) return !!a.aprobada
+  return !!a.nc?.aprobada_at
 }

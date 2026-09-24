@@ -16,7 +16,7 @@
  * cada plantilla; si una fila no los cumple, el banco la rebota al importar,
  * así que se frena antes.
  */
-import { fechasEscalonadas, partirEnPartes } from './pagos.utils'
+import { fechasEscalonadas, partirEnPartes, topePagable } from './pagos.utils'
 import type { FilaPlantilla } from './xlsxPlantilla'
 
 /** Lo que hace falta de una factura (un subconjunto de `PagosFactura`). */
@@ -32,6 +32,8 @@ export interface FacturaAPagar {
   numero:             string | null
   vence_el:           string | null
   saldo:              number
+  /** Tope de plata (20260925): saldo − lo reservado por NC sin aprobar. Sin él, el saldo. */
+  saldo_pagable?:     number | null
   /** El plan de e-cheqs anotado al cargarla (20260923n). */
   plan_cheques?:      { cantidad: number; primer_cobro: string; cada_dias: number } | null
 }
@@ -75,7 +77,8 @@ export function agruparPorProveedor(
       porProv.set(f.proveedor_id, g)
     }
     g.facturas.push(f)
-    g.total = r2(g.total + Number(f.saldo))
+    // Lo que se transfiere es lo PAGABLE: lo reservado por una NC sin aprobar no sale.
+    g.total = r2(g.total + topePagable(f))
     if (f.cuenta_cambio_tras_aprobar) g.cuentaCambio = true
     if (!g.plan && f.plan_cheques) g.plan = f.plan_cheques
     if (f.vence_el && (!g.primerVence || f.vence_el < g.primerVence)) g.primerVence = f.vence_el.slice(0, 10)

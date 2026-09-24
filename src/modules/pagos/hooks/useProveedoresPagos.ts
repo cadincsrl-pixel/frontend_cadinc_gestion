@@ -7,12 +7,14 @@
 // manda como `***1234` y el front los muestra tal cual los recibe.
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { apiGet, apiPatch, apiPost } from '@/lib/api/client'
+import { apiPut, apiGet, apiPatch, apiPost } from '@/lib/api/client'
 import type {
   CrearProveedorInput, EditarProveedorInput, PagosDatosPagoInput, PagosProveedor,
   PagosProveedorDetalle, PagosProveedorSaldo, PagosProveedoresPage, ProveedorRes,
 } from '@/types/domain.types'
 import { PAGOS_KEYS, invalidarPagos } from './usePagos'
+import type { contactosParaGuardar } from '@/components/contactos/ContactosEditor'
+import type { Contacto } from '@/types/contactos'
 
 export interface PagosProveedoresFiltro {
   q?:              string
@@ -92,6 +94,16 @@ export function useEditarProveedorPagos() {
   return useMutation({
     mutationFn: ({ id, ...body }: EditarProveedorInput & { id: number }) =>
       apiPatch<ProveedorRes>(`/api/pagos/proveedores/${id}`, body),
+    onSuccess:  () => invalidarPagos(qc),
+  })
+}
+
+/** Reemplaza la lista de contactos (20260925f): actualiza, agrega y borra en una transacción. */
+export function useGuardarContactosProveedor() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, contactos }: { id: number; contactos: ReturnType<typeof contactosParaGuardar> }) =>
+      apiPut<{ contactos: Contacto[] }>(`/api/pagos/proveedores/${id}/contactos`, { contactos }),
     onSuccess:  () => invalidarPagos(qc),
   })
 }

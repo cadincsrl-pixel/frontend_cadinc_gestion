@@ -144,3 +144,10 @@ describe('llenar la hoja sin reescribir el archivo', () => {
     })
   }
 })
+
+describe('galicia con notas de crédito pendientes (20260925)', () => {
+  it('suma lo pagable, no el saldo: lo reservado por una NC sin aprobar no se transfiere', () => {
+    const g = agruparPorProveedor([f({ saldo: 1000, saldo_pagable: 700 })])
+    expect(g[0]!.total).toBe(700)
+  })
+})

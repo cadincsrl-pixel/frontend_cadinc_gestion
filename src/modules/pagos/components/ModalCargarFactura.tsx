@@ -10,6 +10,7 @@ import { usePermisos } from '@/hooks/usePermisos'
 import {
   useCatalogoObrasPagos, useCrearFactura, useEditarFactura, useFactura, subirComprobantePendiente,
   useSubirAdjuntoPagos, subirFacturaParaLeer, leerFactura, descartarLecturaFactura,
+  useFacturasAcreditables, useFacturasDetalle,
 } from '../hooks/usePagos'
 import { leerQrDelArchivo } from '../utils/qrFactura'
 import {
@@ -21,13 +22,15 @@ import {
   FORMAS_CON_CUENTA_DESTINO,
   TIPOS_COMPROBANTE, MAX_ADJUNTO_BYTES, MIME_ADJUNTOS, componerNumero, fechasEscalonadas, fmtFecha, fmtM, hoyAR,
   partirEnPartes, partirNumero, sumarDiasISO,
-  vencimientoSugerido,
+  vencimientoSugerido, CBTE_NC_POR_LETRA, esCodigoNC, repartoProrrateado,
 } from '../utils/pagos.utils'
-import { mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
+import { AcreditaA, aplicaADe, nMonto, validarAcredita, type MontosAcredita } from './AcreditaA'
+import { mensajeAvisoLectura, mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
 import { AltaRapidaProveedor } from './AltaRapidaProveedor'
 import type {
   PagosAdjuntoPendiente, PagosAlicuotaId, PagosAvisoLectura, PagosControlFactura, PagosFormaPagoOP, PagosFuenteCampo,
   PagosLecturaRes, PagosPlanCheques, PagosFormaPrevista, PagosImputacionInput, PagosTipoComprobante, PagosTributoTipo,
+  PagosClaseComprobante,
 } from '@/types/domain.types'
 
 /**
@@ -53,6 +56,14 @@ import type {
  * de dónde salió (QR / leído / a mano). Los avisos (no cierra, proveedor
  * nuevo, receptor distinto, repetida) se muestran arriba. Nada se guarda sin
  * que la persona lo mire, y sin archivo se sigue cargando a mano.
+ *
+ * NOTA DE CRÉDITO (20260925). El mismo formulario carga la NC del proveedor
+ * como comprobante (`clase = 'nota_credito'`): sin vencimiento, forma
+ * prevista, plan de cheques ni «ya está pagada» (una NC no se paga), con
+ * «Acredita a…» (a qué facturas abiertas baja deuda, tope `saldo_pagable`) o
+ * «dejar como crédito a favor». La lectura la detecta sola por el código de
+ * ARCA y precarga las facturas asociadas. El reparto por obra arranca con el
+ * de las facturas que acredita, prorrateado. La clase no se edita después.
  */
 
 interface Props {
@@ -175,6 +186,18 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
     if (p.proveedor_nuevo) setAltaInicial(p.proveedor_nuevo)
     if (p.tipo_comprobante) { setTipo(p.tipo_comprobante); poner('tipo_comprobante', f.tipo_comprobante ?? f.cbte_tipo_arca) }
     setCbteArca(p.cbte_tipo_arca)
+    // La clase la fija la lectura si el código es de NC (20260925).
+    // Si no se pudo saber (sin código ni clase), queda lo que eligió la persona.
+    const leidaNc = p.clase === 'nota_credito' || esCodigoNC(p.cbte_tipo_arca)
+    if (leidaNc) setClase('nota_credito')
+    else if (p.clase === 'factura' || p.cbte_tipo_arca != null) setClase('factura')
+    if (leidaNc) {
+      poner('clase', f.cbte_tipo_arca ?? f.tipo_comprobante)
+      // La sugerencia viene en la raíz de la respuesta (y repetida en la propuesta).
+      const sug = res.aplica_a_sugerida ?? p.aplica_a_sugerida ?? []
+      setAcredita(Object.fromEntries(sug.filter(x => x.monto > 0).map(x => [String(x.factura_id), String(x.monto)])))
+      setComoCredito(sug.length === 0)
+    }
     if (p.punto_venta) { setPuntoVenta(p.punto_venta.replace(/\D/g, '').slice(-5)); poner('punto_venta', f.punto_venta) }
     if (p.numero_comprobante) { setNroComprobante(p.numero_comprobante.replace(/\D/g, '').slice(-8)); poner('numero_comprobante', f.numero_comprobante) }
     if (p.fecha) { setFecha(p.fecha); poner('fecha', f.fecha) }
@@ -223,6 +246,13 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
   }
 
   const [proveedorId, setProveedorId] = useState('')
+  const [clase, setClase] = useState<PagosClaseComprobante>('factura')
+  const esNc = clase === 'nota_credito'
+  // «Acredita a…» de la NC: monto por factura (id → texto). Vacío + tilde = crédito a favor.
+  const [acredita, setAcredita] = useState<MontosAcredita>({})
+  const [comoCredito, setComoCredito] = useState(false)
+  // El reparto por obra lo tocó la persona: el prorrateo automático ya no lo pisa.
+  const [repartoTocado, setRepartoTocado] = useState(false)
   const [tipo, setTipo] = useState<PagosTipoComprobante>('A')
   // Dos campos, como en el papel: punto de venta y número del comprobante.
   // Se guardan compuestos en `numero` (20260921).
@@ -277,6 +307,13 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
   useEffect(() => {
     if (!original) return
     setProveedorId(String(original.proveedor_id))
+    setClase(original.clase ?? 'factura')
+    if (original.clase === 'nota_credito') {
+      const aps = (original.aplicaciones ?? []).filter(a => a.nc_id === original.id)
+      setAcredita(Object.fromEntries(aps.map(a => [String(a.factura_id), String(a.monto)])))
+      setComoCredito(aps.length === 0)
+    }
+    setRepartoTocado(original.imputaciones.length > 0)
     setTipo(original.tipo_comprobante)
     {
       const { pv, nro } = partirNumero(original.numero)
@@ -336,11 +373,11 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
   // comprobantes fiscales: un recibo o un ticket ya están pagados, no tienen
   // vencimiento y ponérselo los mete en «vencidas» sin sentido.
   useEffect(() => {
-    if (esEdicion || venceEl || !proveedor || !fecha) return
+    if (esEdicion || esNc || venceEl || !proveedor || !fecha) return
     if (!['A', 'B', 'C'].includes(tipo)) return
     const sug = vencimientoSugerido(fecha, proveedor)
     if (sug) setVenceEl(sug)
-  }, [proveedor, fecha, tipo, esEdicion, venceEl])
+  }, [proveedor, fecha, tipo, esEdicion, esNc, venceEl])
 
   const totalN = n(total)
   const conCheques = formaPrevista === 'echeq' || formaPrevista === 'cheque'
@@ -360,6 +397,80 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
   const sumaReparto = r2(reparto.reduce((s, f) => s + n(f.monto), 0))
   const difReparto = r2(imputable - sumaReparto)
   const repartoOk = reparto.every(f => f.obra_cod) && Math.abs(difReparto) < 0.005 && imputable > 0
+
+  // ── Acredita a… (solo NC) ──
+  // Lo que declara aplicar solo se cambia mientras la NC está pendiente u
+  // observada (NC_APLICACION_CONGELADA si no); aprobada, se usa «Aplicar crédito».
+  const acreditaEditable = !esEdicion || (!!original && ['pendiente', 'observada'].includes(original.estado))
+  const candidatas = useFacturasAcreditables(proveedorId ? Number(proveedorId) : null, esNc)
+  // Al editar, la vista ya le restó a cada factura lo que reserva ESTA NC: se
+  // le devuelve al tope (el backend valida «excluyendo la propia NC»).
+  const topeExtra = useMemo(() => {
+    if (!original || original.clase !== 'nota_credito') return undefined
+    return Object.fromEntries((original.aplicaciones ?? []).filter(a => a.nc_id === original.id)
+      .map(a => [a.factura_id, Number(a.monto)])) as Record<number, number>
+  }, [original])
+  const facturasAcreditables = useMemo(
+    () => (candidatas.data?.items ?? []).filter(f => f.clase !== 'nota_credito' && String(f.proveedor_id) === proveedorId),
+    [candidatas.data, proveedorId],
+  )
+  const valAcredita = validarAcredita(comoCredito ? {} : acredita, facturasAcreditables, totalN, topeExtra)
+  const acreditaOk = !esNc || !acreditaEditable || comoCredito ||
+    (valAcredita.suma > 0 && !valAcredita.excedeTotal && Object.keys(valAcredita.errores).length === 0)
+
+  // Reparto por defecto de la NC: el de las facturas que acredita, prorrateado
+  // por lo aplicado a cada una. Solo mientras la persona no lo tocó.
+  const idsAcreditadas = useMemo(
+    () => (esNc && !comoCredito ? aplicaADe(acredita).map(x => x.factura_id).sort((a, b) => a - b) : []),
+    [esNc, comoCredito, acredita],
+  )
+  const detalles = useFacturasDetalle(idsAcreditadas)
+  const detallesData = detalles.map(d => d.data)
+  const sugeridoNc = esNc && idsAcreditadas.length > 0 && detallesData.every(Boolean)
+    ? repartoProrrateado(detallesData.map(d => ({
+        aplicado: nMonto(acredita[String(d!.id)]),
+        imputable: Number(d!.imputable),
+        imputaciones: d!.imputaciones.map(im => ({ obra_cod: im.obra_cod, monto: Number(im.monto) })),
+      })), imputable)
+    : []
+  // El efecto depende de un string: el array se rearma en cada render.
+  const claveSugerido = sugeridoNc.map(x => `${x.obra_cod}:${x.monto}`).join('|')
+  useEffect(() => {
+    if (!esNc || repartoTocado || !claveSugerido) return
+    setReparto(claveSugerido.split('|').map(par => {
+      const i = par.lastIndexOf(':')
+      return { obra_cod: par.slice(0, i), monto: par.slice(i + 1), obs: '' }
+    }))
+  }, [esNc, repartoTocado, claveSugerido])
+
+  /**
+   * Cambiar de proveedor: en una NC, lo que acreditaba (y el reparto que salió
+   * de esas facturas) era del proveedor anterior — mandarlo daría
+   * NC_OTRO_PROVEEDOR, o peor, una NC imputada a obras de otro. Se limpia.
+   */
+  function cambiarProveedor(v: string) {
+    if (v !== proveedorId && esNc) {
+      setAcredita({})
+      if (!repartoTocado) setReparto([{ obra_cod: '', monto: '', obs: '' }])
+    }
+    setProveedorId(v)
+    tocar('proveedor')
+  }
+
+  /** Cambiar entre factura y NC antes de guardar. Limpia lo que no aplica a la otra clase. */
+  function cambiarClase(c: PagosClaseComprobante) {
+    if (c === clase || esEdicion) return
+    setClase(c)
+    tocar('clase')
+    if (c === 'nota_credito') {
+      if (!['A', 'B', 'C'].includes(tipo)) setTipo('A')
+      if (!esCodigoNC(cbteArca)) setCbteArca(null)
+      setVenceEl(''); setPlan(null); setPagaCliente(false); setYaPagada(false)
+    } else {
+      if (esCodigoNC(cbteArca)) setCbteArca(null)
+      setAcredita({}); setComoCredito(false)
+    }
+  }
 
   // El catálogo trae TODAS las obras, también las archivadas, porque la ficha
   // de una factura vieja tiene que poder mostrar su obra. Pero imputar a una
@@ -440,11 +551,14 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
     )
   }, [original, proveedorId, fecha, totalN, percN, verDesglose, resumen.iva, venceEl, formaPrevista, pagaCliente, reparto])
 
-  const tienePagos = !!original && (original.pagado > 0 || original.acreditado > 0)
+  // Una NC no tiene pagos: lo que la congela es estar aprobada con algo aplicado.
+  const tienePagos = !!original && (original.clase === 'nota_credito'
+    ? !!original.aprobada_at && Number(original.nc_aplicado ?? 0) > 0
+    : (original.pagado > 0 || original.acreditado > 0))
   const congelado  = tienePagos   // proveedor, fecha e importes no se tocan con pagos
   const numeroCompleto = componerNumero(puntoVenta, nroComprobante)
   const listo = !!proveedorId && !!puntoVenta && !!nroComprobante &&
-                totalN > 0 && descripcion.trim().length >= 3 && repartoOk && desgloseOk &&
+                totalN > 0 && descripcion.trim().length >= 3 && repartoOk && desgloseOk && acreditaOk &&
                 (!tienePagos || motivo.trim().length >= 3)
   const leyendo = lectura?.fase === 'leyendo'
   const lecturaId = !esEdicion && lectura?.fase === 'lista' ? lectura.res?.lectura_id ?? null : null
@@ -490,38 +604,53 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
           // Quitar el desglose de una que lo tenía: se vacía el detalle.
           ...(teniaDetalle ? { iva_detalle: [], tributos: [] } : {}),
         }
-    const cbte = cbteArca ?? ({ A: 1, B: 6, C: 11 } as Partial<Record<PagosTipoComprobante, number>>)[tipo] ?? null
+    // El código de ARCA tiene que ser de la clase: NC → 3/8/13 (o el leído si
+    // ya es de NC); factura → 1/6/11 (o el leído si no es de NC).
+    const cbte = esNc
+      ? (esCodigoNC(cbteArca) ? cbteArca : (CBTE_NC_POR_LETRA as Partial<Record<PagosTipoComprobante, number>>)[tipo] ?? null)
+      : ((cbteArca != null && !esCodigoNC(cbteArca)) ? cbteArca : ({ A: 1, B: 6, C: 11 } as Partial<Record<PagosTipoComprobante, number>>)[tipo] ?? null)
 
     const comunes = {
       proveedor_id: Number(proveedorId),
       tipo_comprobante: tipo,
       numero: numeroCompleto || null,
       fecha,
-      vence_el: venceEl || null,
       ...desglose,
       cae: cae.trim() || null,
       cae_vto: caeVto || null,
       cbte_tipo_arca: cbte,
       total: totalN,
-      forma_pago_prevista: formaPrevista,
       descripcion: descripcion.trim(),
       obs: obs.trim(),
-      paga_cliente: pagaCliente,
-      plan_cheques: conCheques ? plan : null,
       imputaciones,
+      // Una NC no lleva vencimiento, forma prevista, plan de cheques ni
+      // «la paga el cliente» (NC_TIPO_INVALIDO): esas claves ni viajan.
+      ...(esNc ? {} : {
+        vence_el: venceEl || null,
+        forma_pago_prevista: formaPrevista,
+        paga_cliente: pagaCliente,
+        plan_cheques: conCheques ? plan : null,
+      }),
     }
+    // Sin `aplica_a` (o con el tilde) la NC queda como crédito a favor.
+    const aplicaA = esNc && !comoCredito ? aplicaADe(acredita) : []
 
     try {
       if (esEdicion && editarId) {
-        const r = await editar.mutateAsync({ id: editarId, ...comunes, ...(tienePagos ? { motivo: motivo.trim() } : {}) })
-        toast('✓ Factura actualizada', 'ok')
+        const r = await editar.mutateAsync({
+          id: editarId, ...comunes,
+          ...(tienePagos ? { motivo: motivo.trim() } : {}),
+          ...(esNc && acreditaEditable ? { aplica_a: aplicaA } : {}),
+        })
+        toast(esNc ? '✓ Nota de crédito actualizada' : '✓ Factura actualizada', 'ok')
         if (r.aprobacion_retirada) toast('Le quitó la aprobación: hay que aprobarla de nuevo', 'warn')
         for (const a of r.avisos) toast(mensajeAvisoPagos(a), 'warn')
       } else {
         const r = await crear.mutateAsync({
           ...comunes,
           lectura_id: lecturaId,
-          orden: yaPagada ? {
+          ...(esNc ? { clase: 'nota_credito' as const, ...(aplicaA.length ? { aplica_a: aplicaA } : {}) } : { clase: 'factura' as const }),
+          orden: !esNc && yaPagada ? {
             fecha: opFecha,
             forma_pago: opForma,
             referencia: opRef.trim() || undefined,
@@ -530,7 +659,8 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
           } : null,
         })
         guardada.current = true
-        toast(r.orden ? `✓ Factura cargada y pagada (${r.orden.numero_fmt})` : '✓ Factura cargada', 'ok')
+        toast(esNc ? `✓ Nota de crédito cargada${aplicaA.length ? '' : ' como crédito a favor'}`
+          : r.orden ? `✓ Factura cargada y pagada (${r.orden.numero_fmt})` : '✓ Factura cargada', 'ok')
         for (const a of r.avisos) toast(mensajeAvisoPagos(a), 'warn')
         // Con lectura, el archivo ya quedó adjunto del lado del servidor.
         if (archivo && !lecturaId) {
@@ -552,7 +682,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
   }
 
   if (esEdicion && isLoading) {
-    return <Modal open onClose={cerrar} title="Editar factura" width="max-w-3xl">
+    return <Modal open onClose={cerrar} title="Editar comprobante" width="max-w-3xl">
       <div className="p-8 text-center text-sm text-gris-dark">Cargando…</div>
     </Modal>
   }
@@ -560,14 +690,16 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
   return (
     <Modal
       open onClose={cerrar} width={esEdicion ? 'max-w-3xl' : 'max-w-6xl'}
-      title={esEdicion ? 'Editar factura' : 'Cargar factura de proveedor'}
+      title={esEdicion ? (esNc ? 'Editar nota de crédito' : 'Editar factura') : (esNc ? 'Cargar nota de crédito de proveedor' : 'Cargar factura de proveedor')}
       footer={
         <div className="flex gap-2 justify-end">
           <Button variant="ghost" size="sm" onClick={cerrar}>Cancelar</Button>
           <Button size="sm" onClick={guardar} loading={crear.isPending || editar.isPending || subirAdj.isPending} disabled={!listo || leyendo}
             title={leyendo ? 'Esperá a que termine de leer la factura'
-              : !listo ? 'Faltan datos: proveedor, número de factura, total, descripción, que el desglose cierre y que el reparto cuadre' : undefined}>
-            {esEdicion ? 'Guardar cambios' : yaPagada ? 'Cargar y registrar el pago' : 'Cargar factura'}
+              : !listo ? (esNc && !acreditaOk
+                  ? 'Elegí a qué facturas acredita la NC (sin pasarse de lo que les queda) o tildá «dejarla como crédito a favor»'
+                  : 'Faltan datos: proveedor, número, total, descripción, que el desglose cierre y que el reparto cuadre') : undefined}>
+            {esEdicion ? 'Guardar cambios' : esNc ? 'Cargar nota de crédito' : yaPagada ? 'Cargar y registrar el pago' : 'Cargar factura'}
           </Button>
         </div>
       }
@@ -595,13 +727,37 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
             onUsar={usarAlternativa} onAlta={() => setAltaProveedor(true)} />
         )}
 
+        {/* Factura o nota de crédito (20260925). La lectura lo fija sola; al
+            editar no se cambia (CAMPO_NO_EDITABLE). */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="inline-flex rounded border border-gris-mid overflow-hidden" role="radiogroup" aria-label="Clase de comprobante">
+            {([['factura', 'Factura'], ['nota_credito', 'Nota de crédito']] as const).map(([k, l]) => (
+              <button key={k} type="button" role="radio" aria-checked={clase === k}
+                onClick={() => cambiarClase(k)} disabled={esEdicion}
+                title={esEdicion ? 'La clase no se cambia: si se cargó mal, anulala y cargala de nuevo' : undefined}
+                className={`px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed ${
+                  clase === k
+                    ? (k === 'nota_credito' ? 'bg-[#5A2D82] text-white' : 'bg-azul text-white')
+                    : 'bg-white text-gris-dark hover:bg-gris disabled:opacity-60'}`}>
+                {l}
+              </button>
+            ))}
+          </div>
+          <MarcaFuente f={fuentes.clase} />
+          {esNc && (
+            <span className="text-[11px] text-[#5A2D82]">
+              No se paga: al aprobarla baja la deuda de las facturas que acredita, o queda como crédito a favor.
+            </span>
+          )}
+        </div>
+
         <Seccion titulo="Proveedor y comprobante" />
         {/* Proveedor */}
         <div className="flex gap-2 items-end">
           <div className="flex-1 min-w-0">
             <Combobox
               label="Proveedor" placeholder="Buscar por razón social o CUIT…"
-              options={provOpts} value={proveedorId} onChange={v => { setProveedorId(v); tocar('proveedor') }} disabled={congelado}
+              options={provOpts} value={proveedorId} onChange={v => cambiarProveedor(v)} disabled={congelado}
             />
           </div>
           <Button variant="secondary" size="sm" onClick={() => setAltaProveedor(true)} disabled={congelado}>+ Nuevo</Button>
@@ -622,7 +778,8 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
         <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-2">
           <Campo label="Tipo" fuente={fuentes.tipo_comprobante}>
             <select value={tipo} onChange={e => { setTipo(e.target.value as PagosTipoComprobante); setCbteArca(null); tocar('tipo_comprobante') }} disabled={congelado} className={inputCls}>
-              {TIPOS_COMPROBANTE.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+              {TIPOS_COMPROBANTE.filter(t => !esNc || ['A', 'B', 'C'].includes(t.key))
+                .map(t => <option key={t.key} value={t.key}>{esNc ? `NC ${t.key}` : t.label}</option>)}
             </select>
           </Campo>
           <Campo label="Número" hint="Punto de venta y comprobante" fuente={fuentes.numero_comprobante ?? fuentes.punto_venta}>
@@ -641,7 +798,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
             </div>
           </Campo>
         </div>
-        <div className="grid grid-cols-2 gap-2">
+        <div className={`grid gap-2 ${esNc ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-2'}`}>
           <Campo label="Emitida" fuente={fuentes.fecha}>
             <input type="date" value={fecha} max={hoyAR()} onChange={e => { setFecha(e.target.value); tocar('fecha') }} disabled={congelado} className={inputCls} />
             {/* El campo arranca en hoy, y hasta el 23/09 las 13 facturas
@@ -651,9 +808,11 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
               <div className="mt-1 text-[11px] text-[#7A5000]">Es la fecha de hoy: ¿es la que dice el papel?</div>
             )}
           </Campo>
-          <Campo label="Vence" hint="Opcional" fuente={fuentes.vence_el}>
-            <input type="date" value={venceEl} min={fecha} onChange={e => { setVenceEl(e.target.value); tocar('vence_el') }} className={inputCls} />
-          </Campo>
+          {!esNc && (
+            <Campo label="Vence" hint="Opcional" fuente={fuentes.vence_el}>
+              <input type="date" value={venceEl} min={fecha} onChange={e => { setVenceEl(e.target.value); tocar('vence_el') }} className={inputCls} />
+            </Campo>
+          )}
         </div>
         {/* CAE: lo pide el Libro IVA. Viene del QR o del papel; a mano es opcional. */}
         <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2 items-end">
@@ -677,7 +836,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
         {/* Importes. Lo único obligatorio es el total; el desglose está
             plegado a propósito (ver el comentario de `verDesglose`). */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 items-end">
-          <Campo label="Total (con IVA)" hint="Lo que se le paga" fuente={fuentes.total}>
+          <Campo label={esNc ? 'Total de la NC (con IVA)' : 'Total (con IVA)'} hint={esNc ? 'Lo que acredita' : 'Lo que se le paga'} fuente={fuentes.total}>
             <InputMonto value={total} onChange={v => { setTotal(v); tocar('total') }} disabled={congelado}
               className="font-mono font-bold py-2 rounded" />
           </Campo>
@@ -704,13 +863,40 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
           />
         )}
 
-        <Seccion titulo="Qué se compró y cómo se paga" />
-        <Campo label="Descripción" hint="Qué se compró: lo lee quien aprueba" fuente={fuentes.descripcion}>
-          <input value={descripcion} onChange={e => { setDescripcion(e.target.value); tocar('descripcion') }} placeholder="Ej.: hierro del 8 y mallas para el techo" className={inputCls} />
+        {esNc && (
+          <>
+            <Seccion titulo="Acredita a" />
+            <label className={`flex items-center gap-2 text-xs select-none ${acreditaEditable ? 'cursor-pointer' : 'opacity-60 cursor-not-allowed'}`}>
+              <input type="checkbox" className="accent-naranja" checked={comoCredito} disabled={!acreditaEditable}
+                onChange={e => setComoCredito(e.target.checked)} />
+              <span>Dejarla como <b>crédito a favor</b> del proveedor <span className="text-gris-dark">(no acredita ninguna factura ahora; se aplica después desde su ficha)</span></span>
+            </label>
+            {!acreditaEditable && (
+              <div className="text-[11px] text-gris-dark">
+                La NC ya está aprobada: lo que acredita no se cambia desde acá. El crédito que le quede se aplica con «Aplicar crédito» en su ficha.
+              </div>
+            )}
+            {!comoCredito && (
+              !proveedorId
+                ? <div className="text-xs text-gris-dark italic">Elegí el proveedor para ver sus facturas abiertas.</div>
+                : <AcreditaA facturas={facturasAcreditables} cargando={candidatas.isLoading}
+                    montos={acredita} onChange={setAcredita} totalMax={totalN} topeExtra={topeExtra}
+                    disabled={!acreditaEditable} />
+            )}
+            {!comoCredito && acreditaEditable && valAcredita.suma <= 0 && proveedorId && facturasAcreditables.length > 0 && (
+              <div className="text-[11px] text-[#7A5000]">Elegí a qué factura(s) acredita, o tildá «crédito a favor».</div>
+            )}
+          </>
+        )}
+
+        <Seccion titulo={esNc ? 'Por qué es la nota de crédito' : 'Qué se compró y cómo se paga'} />
+        <Campo label="Descripción" hint={esNc ? 'Por qué la hizo el proveedor: lo lee quien aprueba' : 'Qué se compró: lo lee quien aprueba'} fuente={fuentes.descripcion}>
+          <input value={descripcion} onChange={e => { setDescripcion(e.target.value); tocar('descripcion') }}
+            placeholder={esNc ? 'Ej.: devolución de 10 bolsas de cemento' : 'Ej.: hierro del 8 y mallas para el techo'} className={inputCls} />
         </Campo>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <Campo label="Forma de pago prevista">
+          {!esNc && <Campo label="Forma de pago prevista">
             <select value={formaPrevista} onChange={e => {
               const f = e.target.value as PagosFormaPrevista
               setFormaPrevista(f)
@@ -720,13 +906,13 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
             }} className={inputCls}>
               {FORMAS_PREVISTAS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
             </select>
-          </Campo>
+          </Campo>}
           <Campo label="Observaciones" hint="Opcional">
             <input value={obs} onChange={e => setObs(e.target.value)} className={inputCls} />
           </Campo>
         </div>
 
-        {conCheques && (plan
+        {!esNc && conCheques && (plan
           ? <PlanCheques plan={plan} total={totalN} onChange={setPlan}
               etiqueta={formaPrevista === 'echeq' ? 'e-cheqs' : 'cheques'} />
           : <button type="button" onClick={() => setPlan(planAlDia())}
@@ -734,10 +920,12 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
               + Anotar cómo se van a pagar los {formaPrevista === 'echeq' ? 'e-cheqs' : 'cheques'} (al día, 30/60/90…)
             </button>)}
 
-        <label className="flex items-center gap-2 text-xs cursor-pointer select-none">
-          <input type="checkbox" className="accent-naranja" checked={pagaCliente} onChange={e => setPagaCliente(e.target.checked)} />
-          <span>La paga el cliente directo al proveedor <span className="text-gris-dark">(no es deuda de CADINC: queda fuera de la bandeja)</span></span>
-        </label>
+        {!esNc && (
+          <label className="flex items-center gap-2 text-xs cursor-pointer select-none">
+            <input type="checkbox" className="accent-naranja" checked={pagaCliente} onChange={e => setPagaCliente(e.target.checked)} />
+            <span>La paga el cliente directo al proveedor <span className="text-gris-dark">(no es deuda de CADINC: queda fuera de la bandeja)</span></span>
+          </label>
+        )}
 
         {/* Reparto por obra */}
         <div className="border-t border-gris pt-3">
@@ -753,7 +941,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
             <div key={i} className="flex gap-2 items-end mb-1.5">
               <div className="flex-1 min-w-0">
                 <Combobox placeholder="Elegí la obra…" options={obrasOpts} value={f.obra_cod}
-                  onChange={v => setReparto(rs => rs.map((x, j) => j === i ? { ...x, obra_cod: v } : x))} />
+                  onChange={v => { setRepartoTocado(true); setReparto(rs => rs.map((x, j) => j === i ? { ...x, obra_cod: v } : x)) }} />
               </div>
               {/* El ancho va en un wrapper y no en el input: `inputCls` trae
                   `w-full`, que en la hoja de estilos de Tailwind le gana a
@@ -765,18 +953,26 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
                   nada. Reportado el 2026-09-21. */}
               <div className="w-28 shrink-0">
                 <InputMonto value={f.monto} placeholder="Monto"
-                  onChange={v => setReparto(rs => rs.map((x, j) => j === i ? { ...x, monto: v } : x))}
+                  onChange={v => { setRepartoTocado(true); setReparto(rs => rs.map((x, j) => j === i ? { ...x, monto: v } : x)) }}
                   className="font-mono text-right py-2 rounded" />
               </div>
               {reparto.length > 1 && (
                 <button type="button" className="text-rojo hover:bg-rojo-light px-2 py-1.5 rounded text-xs"
-                  onClick={() => setReparto(rs => rs.filter((_, j) => j !== i))}>✕</button>
+                  onClick={() => { setRepartoTocado(true); setReparto(rs => rs.filter((_, j) => j !== i)) }}>✕</button>
               )}
             </div>
           ))}
 
           <div className="flex gap-2 items-center flex-wrap mt-1">
-            <Button variant="ghost" size="sm" onClick={() => setReparto(rs => [...rs, { obra_cod: '', monto: '', obs: '' }])}>+ Otra obra</Button>
+            <Button variant="ghost" size="sm" onClick={() => { setRepartoTocado(true); setReparto(rs => [...rs, { obra_cod: '', monto: '', obs: '' }]) }}>+ Otra obra</Button>
+            {esNc && sugeridoNc.length > 0 && (
+              <Button variant="ghost" size="sm" onClick={() => {
+                setRepartoTocado(false)
+                setReparto(sugeridoNc.map(x => ({ obra_cod: x.obra_cod, monto: String(x.monto), obs: '' })))
+              }} title="El reparto de las facturas que acredita, prorrateado por lo que se le aplica a cada una">
+                Repartir como las facturas
+              </Button>
+            )}
             {reparto.filter(f => f.obra_cod).length > 1 && (
               <Button variant="ghost" size="sm" onClick={repartirParejo}>Repartir en partes iguales</Button>
             )}
@@ -792,8 +988,8 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
           </div>
         </div>
 
-        {/* Ya está pagada */}
-        {!esEdicion && (
+        {/* Ya está pagada (una NC no se paga) */}
+        {!esEdicion && !esNc && (
           <div className="border-t border-gris pt-3">
             <label className={`flex items-center gap-2 text-sm select-none ${puedeMarcarPagada ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}
               title={puedeMarcarPagada ? undefined : 'Registrar un pago lo hace quien tiene permiso de registrar pagos. Cargala pendiente.'}>
@@ -1059,7 +1255,7 @@ function AvisosLectura({ lectura, avisos, onUsar, onAlta }: {
       {avisos.map(({ a, i }) => (
         <div key={i} className={`rounded border px-2 py-1.5 text-xs flex items-start gap-2 ${estilo[a.severidad]}`}>
           <span className="shrink-0">{a.severidad === 'error' ? '⛔' : a.severidad === 'advertencia' ? '⚠' : 'ℹ'}</span>
-          <span className="flex-1 min-w-0">{a.mensaje}</span>
+          <span className="flex-1 min-w-0">{mensajeAvisoLectura(a)}</span>
           {a.alternativa != null && (
             <button type="button" onClick={() => onUsar(i, a)} className="shrink-0 underline font-semibold">
               Usar el del papel

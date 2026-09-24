@@ -12,10 +12,9 @@ import {
   fetchOrdenesExport, type PagosOrdenesFiltro,
 } from '../hooks/usePagos'
 import { exportarOrdenesPagos } from '../utils/pagosExport'
-import { descargarOrdenPagoPdf } from '../utils/ordenPagoPdf'
+import { descargarOrdenPagoPdf, ncAplicadasTxt } from '../utils/ordenPagoPdf'
 import { ModalPaqueteContador } from './ModalPaqueteContador'
 import { ModalAvisarPago } from './ModalAvisarPago'
-import { ModalDevolucionProveedor } from './ModalDevolucionProveedor'
 import { PreguntarAvisoPago } from './PreguntarAvisoPago'
 import { useProveedoresPagos } from '../hooks/useProveedoresPagos'
 import {
@@ -81,7 +80,6 @@ export function OrdenesTab() {
         <div className="flex gap-2 flex-wrap">
           <Kpi label="Órdenes" valor={String(totales.ordenes)} />
           <Kpi label="Pagado" valor={fmtM(totales.monto_pagado)} sub="todas las formas" />
-          <Kpi label="Notas de crédito" valor={fmtM(totales.monto_nc)} sub="no es plata que salió" />
           {enCartera > 0 && <Kpi label="Cheques en cartera" valor={String(enCartera)} sub="en esta página" tono="alerta" />}
         </div>
       )}
@@ -100,7 +98,6 @@ export function OrdenesTab() {
           <select value={filtro.forma_pago ?? ''} onChange={e => patch({ forma_pago: (e.target.value || undefined) as PagosOrdenesFiltro['forma_pago'] })} className={inputCls}>
             <option value="">Todas</option>
             {FORMAS_PAGO_OP.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
-            <option value="nota_credito">Solo nota de crédito</option>
           </select>
         </div>
         <div className="w-36">
@@ -122,7 +119,6 @@ export function OrdenesTab() {
         <div className="flex gap-3 flex-wrap text-xs pb-2">
           <Tilde label="Sin comprobante" on={!!filtro.sin_comprobante} set={v => patch({ sin_comprobante: v || undefined })} />
           <Tilde label="Cheques en cartera" on={!!filtro.en_cartera} set={v => patch({ en_cartera: v || undefined })} />
-          <Tilde label="Con nota de crédito" on={!!filtro.con_nota_credito} set={v => patch({ con_nota_credito: v || undefined })} />
         </div>
         <div className="ml-auto pb-2 flex gap-2 flex-wrap">
           <Button variant="secondary" size="sm" onClick={exportar} loading={exportando} disabled={total === 0}
@@ -149,8 +145,8 @@ export function OrdenesTab() {
             <table className="w-full border-collapse min-w-[900px]">
               <thead>
                 <tr>
-                  {['Orden', 'Proveedor', 'Fecha', 'Forma', 'Pagado', 'NC', 'Facturas', ''].map((h, i) => (
-                    <th key={h + i} className={`bg-gris text-gris-dark text-[10px] font-bold px-3 py-2 uppercase tracking-wide whitespace-nowrap ${i >= 4 && i <= 5 ? 'text-right' : 'text-left'}`}>{h}</th>
+                  {['Orden', 'Proveedor', 'Fecha', 'Forma', 'Pagado', 'Facturas', ''].map((h, i) => (
+                    <th key={h + i} className={`bg-gris text-gris-dark text-[10px] font-bold px-3 py-2 uppercase tracking-wide whitespace-nowrap ${i === 4 ? 'text-right' : 'text-left'}`}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -172,7 +168,6 @@ export function OrdenesTab() {
                       )}
                     </td>
                     <td className="px-3 py-2 text-right font-mono text-xs tabular-nums font-bold">{o.monto_pagado > 0 ? fmtM(o.monto_pagado) : <span className="text-gris-mid">—</span>}</td>
-                    <td className="px-3 py-2 text-right font-mono text-xs tabular-nums text-[#5A2D82]">{o.monto_nc > 0 ? fmtM(o.monto_nc) : <span className="text-gris-mid">—</span>}</td>
                     <td className="px-3 py-2 text-[11px] text-gris-dark truncate max-w-[220px]" title={o.facturas ?? undefined}>{o.facturas ?? '—'}</td>
                     <td className="px-3 py-2 text-right">
                       <button type="button" className="text-xs px-2 py-1 rounded text-azul hover:bg-azul-light font-semibold" onClick={() => setDetalleId(o.id)}>Ver</button>
@@ -197,7 +192,6 @@ export function OrdenesTab() {
                   </div>
                   <div className="text-right">
                     <div className="font-mono font-bold tabular-nums">{fmtM(o.monto_pagado)}</div>
-                    {o.monto_nc > 0 && <div className="text-[11px] text-[#5A2D82]">NC {fmtM(o.monto_nc)}</div>}
                   </div>
                 </div>
               </div>
@@ -216,7 +210,6 @@ export function OrdenesTab() {
           onClose={() => setDetalleId(null)}
           puedeAnular={!!(anularPagos || registrarPagos || esAdmin)}
           puedeSubir={!!(registrarPagos || esAdmin)}
-          puedeDevolucion={!!(anularPagos || esAdmin)}
           verPii={!!verPii}
           toast={toast}
         />
@@ -225,9 +218,9 @@ export function OrdenesTab() {
   )
 }
 
-function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, puedeDevolucion, verPii, toast }: {
+function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, verPii, toast }: {
   id: number; onClose: () => void; puedeAnular: boolean; puedeSubir: boolean
-  puedeDevolucion: boolean; verPii: boolean
+  verPii: boolean
   toast: (m: string, t?: 'ok' | 'err' | 'warn') => void
 }) {
   const { data: o, isLoading } = useOrden(id)
@@ -237,7 +230,6 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, puedeDevolucion, v
   const [pidiendo, setPidiendo] = useState(false)
   const [avisando, setAvisando] = useState(false)
   const [generandoPdf, setGenerandoPdf] = useState(false)
-  const [devolviendo, setDevolviendo] = useState(false)
   const [preguntarAviso, setPreguntarAviso] = useState(false)
 
   if (isLoading || !o) {
@@ -264,20 +256,6 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, puedeDevolucion, v
             }}>
             🖨 PDF
           </Button>
-          {/* Devolución del proveedor (20260923g): anula y rehace con la NC.
-              Sólo OP de facturas; con «a cuenta» o NC propias va a mano. */}
-          {o.estado === 'emitida' && (() => {
-            const soloFacturas = o.lineas.every(l => l.tipo === 'factura')
-            return (
-              <Button variant="secondary" size="sm" onClick={() => setDevolviendo(true)}
-                disabled={!puedeDevolucion || !soloFacturas}
-                title={!puedeDevolucion ? 'Hace falta el permiso para anular pagos'
-                  : !soloFacturas ? 'Esta orden tiene «a cuenta» o notas de crédito: la devolución se arma a mano'
-                  : 'El proveedor hizo una NC y devolvió la plata: anula esta orden y la rehace con la NC'}>
-                ↩ Devolución del proveedor
-              </Button>
-            )
-          })()}
           {o.estado === 'emitida' && (
             <Button variant="danger" size="sm" onClick={() => setPidiendo(true)} disabled={!puedeAnular}
               title={puedeAnular ? 'Anular: las facturas vuelven a su estado anterior' : 'No tenés permiso para anular órdenes'}>
@@ -299,7 +277,8 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, puedeDevolucion, v
           <Dato label="Fecha" valor={fmtFecha(o.fecha)} />
           <Dato label="Forma" valor={formaPagoLabel(o.forma_pago)} />
           <Dato label={salidaLabel(o.forma_pago)} valor={fmtM(o.monto_pagado)} fuerte />
-          <Dato label="Notas de crédito" valor={o.monto_nc > 0 ? fmtM(o.monto_nc) : '—'} />
+          {/* Solo las OP viejas: desde 20260925 la NC es un comprobante aparte. */}
+          {o.monto_nc > 0 && <Dato label="Notas de crédito (circuito viejo)" valor={fmtM(o.monto_nc)} />}
           {o.fecha_cobro && (
             <Dato label={o.cheques.length > 1 ? 'Primero se cobra el' : 'Se cobra el'} valor={fmtFecha(o.fecha_cobro)} />
           )}
@@ -382,6 +361,23 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, puedeDevolucion, v
                             📄 {TIPOS_ADJ_FACTURA.find(t => t.key === a.tipo)?.label ?? a.tipo}
                           </button>
                         ))}
+                        {/* Las NC que acreditan la factura (20260925): informativo,
+                            no es plata de esta orden. */}
+                        {(l.factura?.notas_credito ?? []).filter(a => a.vigente !== false).map((a, i) => (
+                          <span key={a.id ?? i} className="block text-[10px] text-[#5A2D82]">
+                            {ncAplicadasTxt({ ...l, factura: l.factura ? { ...l.factura, notas_credito: [a] } : null })}
+                            {(a.adjuntos ?? []).map(adj => (
+                              <button key={adj.id} type="button" className="ml-2 text-azul hover:underline"
+                                title={adj.nombre_archivo}
+                                onClick={() => abrirAdjuntoFirmado(
+                                  () => fetchPagosAdjuntoSignedUrl('facturas', adj.factura_id, adj.id),
+                                  () => toast('No se pudo abrir el archivo', 'err'),
+                                )}>
+                                📄 NC
+                              </button>
+                            ))}
+                          </span>
+                        ))}
                       </>
                     )}
                   </td>
@@ -448,10 +444,6 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, puedeDevolucion, v
         {avisando && <ModalAvisarPago orden={o} onClose={() => setAvisando(false)} />}
         {preguntarAviso && (
           <PreguntarAvisoPago ordenId={o.id} titulo="Comprobante subido" onClose={() => setPreguntarAviso(false)} />
-        )}
-        {devolviendo && (
-          <ModalDevolucionProveedor orden={o} onClose={() => setDevolviendo(false)}
-            onHecho={() => { setDevolviendo(false); onClose() }} />
         )}
 
         {pidiendo && (

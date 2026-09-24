@@ -2355,8 +2355,15 @@ export interface ResumenObras {
 //   - `imputable = total − percepciones` es lo que se reparte entre obras.
 //   - `saldo = total − pagado − acreditado(NC)`: una nota de crédito cancela
 //     deuda sin que salga plata.
+//   - Desde 20260925 la NC de proveedor es un COMPROBANTE (`clase =
+//     'nota_credito'` en `pagos_facturas`), no una línea de la OP. Su `saldo`
+//     es 0 (nunca es deuda) y sus importes se RESTAN en totales y KPIs.
 
 export type PagosTipoComprobante = 'A' | 'B' | 'C' | 'recibo' | 'ticket' | 'otro'
+/** Qué es la fila de `pagos_facturas` (20260925a). La NC solo admite A/B/C. */
+export type PagosClaseComprobante = 'factura' | 'nota_credito'
+/** Códigos ARCA de nota de crédito (3 A, 8 B, 13 C, 53 M, 203/208/213 FCE). */
+export const PAGOS_CBTE_NC = [3, 8, 13, 53, 203, 208, 213] as const
 export type PagosEstadoFactura   = 'pendiente' | 'observada' | 'aprobada' | 'pagada_parcial' | 'pagada' | 'anulada'
 /** Forma PREVISTA de la factura: incluye `cta_cte` (quedó en cuenta corriente = deuda). */
 export type PagosFormaPrevista =
@@ -2416,8 +2423,13 @@ export interface PagosProveedor {
   saldo_aprobado:     number
   a_cuenta_sin_aplicar: number
   ultimo_pago:        string | null
+  /** Solo `clase='factura'`. */
   facturas:           number
   sin_datos_pago:     boolean
+  /** Crédito de NC aprobadas sin aplicar (20260925). Opcional hasta el deploy. */
+  nc_disponible?:     number
+  /** saldo − a cuenta − NC disponible. */
+  saldo_neto?:        number
   created_at:         string
   updated_at:         string
   created_by:         string | null
@@ -2441,8 +2453,11 @@ export interface PagosProveedorSaldo {
   /** Vencimiento más viejo sin pagar. */
   mas_vieja:          string | null
   a_cuenta_sin_aplicar: number
+  /** saldo − a cuenta sin aplicar − NC disponible (20260925). */
   saldo_neto:         number
   ultimo_pago:        string | null
+  /** Crédito de NC aprobadas todavía sin aplicar a ninguna factura. */
+  nc_disponible?:     number
 }
 
 /** Una línea del historial de cambios de CBU/alias (sale de `audit_log`, enmascarada). */
@@ -2466,11 +2481,18 @@ export interface PagosFacturaAbierta {
   estado:           PagosEstadoFactura
   vencida:          boolean
   descripcion:      string
+  clase?:           PagosClaseComprobante
+  saldo_pagable?:   number
+  nc_pendiente?:    number
+  acreditado?:      number
+  nc_txt?:          string | null
 }
 
 export interface PagosProveedorDetalle extends PagosProveedor {
   historial_datos_pago: PagosHistorialDatosPago[]
   facturas_abiertas:    PagosFacturaAbierta[]
+  /** Contactos (20260925e): varios por proveedor, con «recibe avisos de pago». */
+  contactos?:           import('./contactos').Contacto[]
 }
 
 /** Fila de `v_pagos_facturas`. */
@@ -2563,6 +2585,18 @@ export interface PagosFactura {
   /** De dónde salieron los datos al cargarla. */
   lectura_estado?:     PagosLecturaEstado
   desglose_a_revisar?: boolean
+  // ── NC como comprobante (20260925) ──
+  clase:               PagosClaseComprobante
+  /** NC: lo que ya aplicó a facturas. En una factura, 0. */
+  nc_aplicado:         number
+  /** NC aprobada y no anulada: total − aplicado. Si no, 0. */
+  nc_disponible:       number
+  /** Factura: lo reservado por NC todavía sin aprobar. */
+  nc_pendiente:        number
+  /** Factura: max(saldo − nc_pendiente, 0). Es el tope de una orden de pago. */
+  saldo_pagable:       number
+  /** Factura: «NC A 0003-00000012 $300.00 (sin aprobar)»; NC: «s/ A 0001-00000045, …». */
+  nc_txt:              string | null
 }
 
 // ── Desglose de impuestos y lectura del comprobante (20260924u) ──
@@ -2621,6 +2655,18 @@ export interface PagosPropuestaLectura {
   proveedor_id:        number | null
   proveedor_nombre:    string | null
   proveedor_nuevo:     { razon_social: string | null; cuit: string } | null
+  /** Si el código leído es de NC, 'nota_credito' (20260925). */
+  clase?:              PagosClaseComprobante | null
+  /** Comprobantes que la NC dice acreditar, como vienen en el papel. */
+  comprobantes_asociados?: { letra: string | null; punto_venta: string | null; numero: string | null }[] | null
+  /** También viene en la RAÍZ de la respuesta: usar la de la raíz (`PagosLecturaRes`). */
+  aplica_a_sugerida?:  PagosAplicaNcSugerida[] | null
+}
+/** Factura abierta del proveedor que la lectura cruzó con un comprobante asociado de la NC. */
+export interface PagosAplicaNcSugerida extends PagosAplicaNcInput {
+  tipo_comprobante?: PagosTipoComprobante | null
+  numero?:           string | null
+  saldo_pagable?:    number | null
 }
 export interface PagosLecturaRes {
   lectura_id:       number
@@ -2629,6 +2675,8 @@ export interface PagosLecturaRes {
   propuesta:        PagosPropuestaLectura
   fuente_por_campo: Record<string, PagosFuenteCampo>
   avisos:           PagosAvisoLectura[]
+  /** Solo NC: a qué facturas abiertas acredita, cruzado por número (20260925). */
+  aplica_a_sugerida?: PagosAplicaNcSugerida[] | null
 }
 
 /** POST /facturas/:id/leer-adjunto (20260924v): la propuesta de desglose del adjunto ya guardado. No guarda nada. */
@@ -2760,8 +2808,56 @@ export interface PagosControlFactura {
   created_at:   string
 }
 
+/** Un comprobante (NC o factura) visto desde una aplicación. */
+export interface PagosComprobanteAplicado {
+  id:               number
+  clase?:           PagosClaseComprobante | null
+  tipo_comprobante: PagosTipoComprobante
+  cbte_tipo_arca?:  number | null
+  numero:           string | null
+  fecha:            string
+  total:            number
+  estado:           PagosEstadoFactura
+  aprobada_at?:     string | null
+  saldo?:           number | null
+  saldo_pagable?:   number | null
+  nc_disponible?:   number | null
+}
+
+/**
+ * Una aplicación de NC a factura (`pagos_nc_aplicaciones`), vista desde la
+ * ficha: en la NC, a qué facturas acredita; en la factura, qué NC la acreditan.
+ *
+ * ⚠ La forma exacta la confirma el backend. Al 24/09 el service
+ * (`aplicacionesDe`) manda los dos comprobantes anidados en `nc` y `factura`,
+ * más `vigente`/`aprobada`; se aceptan también los campos planos de la
+ * contraparte por si cambia. Leerla SIEMPRE con `contraparteAplicacion()`.
+ */
+export interface PagosAplicacionNc {
+  id?:               number
+  nc_id:             number
+  factura_id:        number
+  monto:             number
+  created_at?:       string | null
+  /** La NC no está anulada. */
+  vigente?:          boolean | null
+  /** La NC está aprobada: ya bajó la deuda (si no, es reserva). */
+  aprobada?:         boolean | null
+  nc?:               PagosComprobanteAplicado | null
+  factura?:          PagosComprobanteAplicado | null
+  // Forma plana alternativa (contraparte).
+  numero?:           string | null
+  tipo_comprobante?: PagosTipoComprobante | null
+  fecha?:            string | null
+  estado?:           PagosEstadoFactura | null
+  total?:            number | null
+  clase_contraparte?: PagosClaseComprobante | null
+}
+
 export interface PagosFacturaDetalle extends PagosFactura {
   imputaciones: PagosImputacion[]
+  /** NC ↔ facturas (20260925). Puede faltar hasta el deploy del backend. */
+  aplicaciones?: PagosAplicacionNc[]
   /** IVA por alícuota y percepciones/tributos (20260924u). Vacíos = sin discriminar. */
   iva_detalle?: PagosIvaDetalle[]
   tributos?:    PagosTributo[]
@@ -2870,6 +2966,11 @@ export interface PagosOrdenLinea {
      * Shape reducido: lo justo para listarlos y pedir la URL firmada.
      */
     adjuntos: PagosAdjuntoDeFactura[]
+    /**
+     * Las NC vigentes aplicadas a esta factura (20260925), con sus papeles.
+     * Informativo: la OP es solo plata, esto NO suma a sus totales.
+     */
+    notas_credito?: (PagosAplicacionNc & { adjuntos?: PagosAdjuntoDeFactura[] })[]
   } | null
 }
 
@@ -2920,8 +3021,8 @@ export type PagosChequeNuevo = Omit<PagosCheque, 'id'>
 export interface PagosPaqueteArchivo {
   adjunto_id:     number
   tipo:           string
-  /** 'factura' = papel de la factura; 'pago' = comprobante con el que salió la plata. */
-  origen:         'factura' | 'pago'
+  /** 'factura' = papel de la factura; 'pago' = comprobante con el que salió la plata; 'nota_credito' = papel de una NC aplicada a la factura. */
+  origen:         'factura' | 'pago' | 'nota_credito'
   nombre_archivo: string
   mime_type:      string
   size_bytes:     number
@@ -2940,6 +3041,20 @@ export interface PagosPaqueteFactura {
   descripcion:      string
   /** Lo aplicado por esta OP. En un pago parcial es menos que el total. */
   aplicado:         number
+  archivos:         PagosPaqueteArchivo[]
+  /** NC vigentes aplicadas a la factura (no son plata de esta OP), con sus archivos. */
+  notas_credito?:   PagosPaqueteNc[]
+}
+
+export interface PagosPaqueteNc {
+  nc_id:            number
+  tipo_comprobante: PagosTipoComprobante | null
+  numero:           string | null
+  fecha:            string | null
+  total:            number | null
+  estado:           PagosEstadoFactura | null
+  aprobada:         boolean
+  monto_aplicado:   number
   archivos:         PagosPaqueteArchivo[]
 }
 
@@ -3044,8 +3159,13 @@ export interface PagosResumenGrupo {
   grupo_nom:      string
   es_interna:     boolean | null
   estado:         string | null
+  /** Solo facturas (las NC van en `notas_credito`). */
   facturas:       number
+  /** Cantidad de NC del grupo (20260925). */
+  notas_credito?: number
+  /** Con signo: la NC resta. */
   total:          number
+  /** Con signo: la NC resta. */
   imputable:      number
   pagado:         number
   acreditado:     number
@@ -3107,7 +3227,17 @@ export interface PagosPlanCheques {
   cada_dias:    number
 }
 
+/** Cuánto de una NC se aplica a una factura. */
+export interface PagosAplicaNcInput {
+  factura_id: number
+  monto:      number
+}
+
 export interface CrearFacturaInput {
+  /** Default 'factura'. La NC no lleva orden, vencimiento, plan de cheques ni paga_cliente. */
+  clase?:               PagosClaseComprobante
+  /** Solo NC: a qué facturas acredita. Sin esto la NC queda como crédito a favor. */
+  aplica_a?:            PagosAplicaNcInput[]
   proveedor_id:         number
   tipo_comprobante:     PagosTipoComprobante
   numero?:              string | null
@@ -3169,10 +3299,13 @@ export interface EditarFacturaInput {
   /** Manda el detalle: reemplaza el guardado y la base deriva neto, IVA, percepciones y otros. */
   iva_detalle?:         PagosIvaDetalle[] | null
   tributos?:            Omit<PagosTributo, 'id'>[] | null
+  /** Solo NC pendiente/observada: reemplaza las aplicaciones (`clase` no se edita). */
+  aplica_a?:            PagosAplicaNcInput[]
 }
 
 export interface PagosLineaOrdenInput {
-  tipo:        PagosTipoLinea
+  /** La OP ya no acepta `nota_credito` (20260925): la NC es un comprobante. */
+  tipo:        Exclude<PagosTipoLinea, 'nota_credito'>
   /** null solo en las líneas `a_cuenta`. */
   factura_id?: number | null
   monto:       number
@@ -3255,6 +3388,12 @@ export interface AprobarLoteRes {
   omitidas:  { id: number; code: string; detail?: unknown }[]
 }
 
+/** POST /facturas/:id/aplicar-nc. */
+export interface AplicarNcRes {
+  nc:       PagosFactura
+  facturas: PagosFactura[]
+}
+
 export interface RegistrarOrdenRes {
   orden:    PagosOrden
   /** Las facturas tocadas, ya recalculadas (`pagada_parcial` / `pagada`). */
@@ -3323,6 +3462,8 @@ export interface VentasCliente {
   created_at:        string
   updated_at:        string
   obras:             { cod: string; nom: string }[]
+  /** Contactos (20260925e): nombre, rol, email, teléfono, recibe avisos. `email` suelto queda de antes. */
+  contactos?:        import('./contactos').Contacto[]
   /** Cuenta de CADINC que el cliente quiere en la FCE (null = la de por defecto). Fase 6. */
   cuenta_fce_id?:     number | null
   /** Cache de WSFECRED (30 días): obligado a recibir FCE y desde qué monto. */

@@ -39,10 +39,16 @@ export function FiltrosFacturas({ filtro, patch, grupos }: Props) {
 
   // Un mapa estado → {facturas, saldo} para los chips.
   const porEstado = useMemo(() => {
-    const m = new Map<string, { facturas: number; saldo: number }>()
+    // `facturas` cuenta solo facturas; las NC vienen aparte en `notas_credito`
+    // y su saldo es 0 (nunca son deuda).
+    const m = new Map<string, { facturas: number; nc: number; saldo: number }>()
     for (const g of grupos) {
-      const prev = m.get(g.grupo) ?? { facturas: 0, saldo: 0 }
-      m.set(g.grupo, { facturas: prev.facturas + g.facturas, saldo: prev.saldo + Number(g.saldo ?? 0) })
+      const prev = m.get(g.grupo) ?? { facturas: 0, nc: 0, saldo: 0 }
+      m.set(g.grupo, {
+        facturas: prev.facturas + g.facturas,
+        nc:       prev.nc + Number(g.notas_credito ?? 0),
+        saldo:    prev.saldo + Number(g.saldo ?? 0),
+      })
     }
     return m
   }, [grupos])
@@ -79,7 +85,7 @@ export function FiltrosFacturas({ filtro, patch, grupos }: Props) {
   )
 
   const hayFiltrosExtra = !!(
-    filtro.q || filtro.obra_cod || filtro.centro_costo || filtro.tipo || filtro.forma_pago ||
+    filtro.q || filtro.clase || filtro.con_credito || filtro.obra_cod || filtro.centro_costo || filtro.tipo || filtro.forma_pago ||
     filtro.desde || filtro.hasta || filtro.sin_adjunto || filtro.sin_numero || filtro.sin_revisar || filtro.sin_desglose ||
     filtro.cuenta_cambiada || filtro.paga_cliente !== undefined || filtro.pagada_al_cargar !== undefined ||
     filtro.es_interna !== undefined || filtro.anuladas
@@ -105,7 +111,10 @@ export function FiltrosFacturas({ filtro, patch, grupos }: Props) {
             >
               <div className={`text-[11px] font-bold ${e.badge} inline-block px-1.5 rounded`}>{e.label}</div>
               <div className="font-mono text-xs font-bold tabular-nums mt-0.5">{fmtM(datos?.saldo ?? 0)}</div>
-              <div className="text-[10px] text-gris-dark">{datos?.facturas ?? 0} factura{(datos?.facturas ?? 0) === 1 ? '' : 's'}</div>
+              <div className="text-[10px] text-gris-dark">
+                {datos?.facturas ?? 0} factura{(datos?.facturas ?? 0) === 1 ? '' : 's'}
+                {(datos?.nc ?? 0) > 0 && <> · {datos!.nc} NC</>}
+              </div>
             </button>
           )
         })}
@@ -170,6 +179,18 @@ export function FiltrosFacturas({ filtro, patch, grupos }: Props) {
               onChange={v => patch({ obra_cod: v || undefined })}
             />
             <div>
+              <label className="block text-xs font-semibold text-gris-dark mb-1">Clase</label>
+              <select
+                value={filtro.clase ?? ''}
+                onChange={e => patch({ clase: (e.target.value || undefined) as PagosFacturasFiltro['clase'], con_credito: undefined })}
+                className="w-full px-2.5 py-2 border-[1.5px] border-gris-mid rounded text-xs bg-white outline-none focus:border-naranja"
+              >
+                <option value="">Facturas y notas de crédito</option>
+                <option value="factura">Solo facturas</option>
+                <option value="nota_credito">Solo notas de crédito</option>
+              </select>
+            </div>
+            <div>
               <label className="block text-xs font-semibold text-gris-dark mb-1">Tipo</label>
               <select
                 value={filtro.tipo ?? ''}
@@ -230,6 +251,8 @@ export function FiltrosFacturas({ filtro, patch, grupos }: Props) {
                    on={filtro.paga_cliente === true} set={v => patch({ paga_cliente: v ? true : undefined })} />
             <Tilde label="Solo internas"         hint="Imputadas a una obra interna o al depósito"
                    on={filtro.es_interna === true} set={v => patch({ es_interna: v ? true : undefined })} />
+            <Tilde label="NC con crédito"        hint="Notas de crédito aprobadas que todavía tienen crédito sin aplicar"
+                   on={!!filtro.con_credito}     set={v => patch({ con_credito: v || undefined, clase: v ? 'nota_credito' : filtro.clase })} />
             <Tilde label="Incluir anuladas"      hint="Por default no se muestran"
                    on={!!filtro.anuladas}        set={v => patch({ anuladas: v || undefined })} />
             <Tilde label="Incluir obras archivadas" hint="Facturas de obras ya cerradas"
@@ -239,7 +262,7 @@ export function FiltrosFacturas({ filtro, patch, grupos }: Props) {
           {hayFiltrosExtra && (
             <div>
               <Button variant="ghost" size="sm" onClick={() => { setTexto(''); patch({
-                q: undefined, obra_cod: undefined, centro_costo: undefined, tipo: undefined, forma_pago: undefined,
+                q: undefined, clase: undefined, con_credito: undefined, obra_cod: undefined, centro_costo: undefined, tipo: undefined, forma_pago: undefined,
                 desde: undefined, hasta: undefined, sin_adjunto: undefined, sin_numero: undefined,
                 sin_revisar: undefined, sin_desglose: undefined, cuenta_cambiada: undefined, paga_cliente: undefined,
                 pagada_al_cargar: undefined, es_interna: undefined, anuladas: undefined, archivadas: undefined,

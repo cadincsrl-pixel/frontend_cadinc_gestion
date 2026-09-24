@@ -30,7 +30,7 @@ export function PosicionIva({ periodo, incluirCvlp, onVer }: {
   }
   if (!p) return null
 
-  const incompleta = p.excluidos_ventas > 0 || p.excluidos_compras > 0 || p.nc_en_ordenes > 0
+  const incompleta = p.excluidos_ventas > 0 || p.excluidos_compras > 0
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -49,10 +49,7 @@ export function PosicionIva({ periodo, incluirCvlp, onVer }: {
             <Fila label="Débito fiscal (IVA de las ventas)" valor={p.debito_fiscal} onClick={() => onVer('ventas')}
               nota={p.excluidos_ventas ? `${p.excluidos_ventas} comprobante(s) quedaron fuera del libro de ventas` : undefined} />
             <Fila signo="−" label="Crédito fiscal (IVA de las compras)" valor={p.credito_fiscal} onClick={() => onVer('compras')}
-              nota={[
-                p.excluidos_compras ? `${p.excluidos_compras} comprobante(s) quedaron fuera del libro de compras` : '',
-                p.nc_en_ordenes ? `${p.nc_en_ordenes} NC de proveedor en órdenes de pago no entran: el crédito real es menor` : '',
-              ].filter(Boolean).join(' · ') || undefined} />
+              nota={p.excluidos_compras ? `${p.excluidos_compras} comprobante(s) quedaron fuera del libro de compras` : undefined} />
             <Fila signo="=" label={p.impuesto_determinado >= 0 ? 'Impuesto determinado' : 'Saldo técnico a favor'} valor={Math.abs(p.impuesto_determinado)} fuerte />
             <Fila signo="−" label="Percepciones de IVA sufridas" valor={p.percepciones_iva} nota="las de las facturas de proveedor del mes" />
             <Fila signo="−" label="Retenciones de IVA sufridas" valor={p.retenciones_iva} nota="las que hicieron los clientes en las cobranzas del mes" />

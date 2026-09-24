@@ -25,6 +25,8 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
 import { useAvisarPago, useAvisosDeOrden, useMailEstado } from '../hooks/usePagos'
+import { useProveedorPagos } from '../hooks/useProveedoresPagos'
+import { ETIQUETA_ROL } from '@/types/contactos'
 import { fmtFecha, fmtM } from '../utils/pagos.utils'
 import { mensajeErrorPagos } from '../utils/pagos.errores'
 import type { PagosOrdenDetalle } from '@/types/domain.types'
@@ -48,18 +50,39 @@ export function ModalAvisarPago({ orden, onClose }: Props) {
   const avisos = useAvisosDeOrden(orden.id)
   const avisar = useAvisarPago()
 
-  const emailPadron = (orden.proveedor_email ?? '').trim()
+  // Contactos del proveedor (20260925e): vienen tildados los que «reciben
+  // avisos»; se pueden destildar o sumar otra dirección solo para este envío.
+  const prov = useProveedorPagos(orden.proveedor_id)
+  const contactos = (prov.data?.contactos ?? []).filter(k => !!k.email)
+  const emailPadron = (orden.proveedor_email ?? '').trim().toLowerCase()
   const [aProveedor, setAProveedor] = useState(true)
   const [aContador, setAContador] = useState(true)
-  const [email, setEmail] = useState(emailPadron)
+  /** null = todavía no tocó nada: los de «recibe avisos» (o el email viejo del padrón). */
+  const [elegidos, setElegidos] = useState<Set<string> | null>(null)
+  const [otro, setOtro] = useState('')
   const [guardar, setGuardar] = useState(true)
+  const porDefecto = new Set(contactos.length
+    ? contactos.filter(k => k.recibe_avisos).map(k => k.email!.toLowerCase())
+    : emailPadron ? [emailPadron] : [])
+  const marcados = elegidos ?? porDefecto
+  const alternar = (e: string) => {
+    const n = new Set(marcados)
+    if (n.has(e)) n.delete(e); else n.add(e)
+    setElegidos(n)
+  }
+  const otroTrim = otro.trim().toLowerCase()
+  const emails = [...new Set([...marcados, ...(otroTrim ? [otroTrim] : [])])]
 
   // Los comprobantes del pago que se van a adjuntar. Si no hay ninguno, el
   // aviso pierde el sentido: se está avisando de un pago sin mostrarlo.
   const comprobantes = orden.adjuntos.filter(a => a.tipo === 'comprobante_pago' && !a.borrado)
   const facturasAdj = orden.lineas.flatMap(l => l.factura?.adjuntos ?? []).filter(a => a.tipo === 'factura')
 
-  const emailMal = aProveedor && !/^[^\s@,;]+@[^\s@,;.]+(\.[^\s@,;.]+)+$/.test(email.trim())
+  const EMAIL_RE = /^[^\s@,;]+@[^\s@,;.]+(\.[^\s@,;.]+)+$/
+  const otroMal = aProveedor && otroTrim !== '' && !EMAIL_RE.test(otroTrim)
+  const sinDestino = aProveedor && emails.length === 0
+  const demasiados = aProveedor && emails.length > 10 // el backend acepta hasta 10 por envío
+  const emailMal = otroMal || sinDestino || demasiados
   const noConfigurado = mail.data && !mail.data.configurado
   const listo = (aProveedor || aContador) && !emailMal && !noConfigurado
 
@@ -69,7 +92,7 @@ export function ModalAvisarPago({ orden, onClose }: Props) {
         id: orden.id,
         a_proveedor: aProveedor,
         a_contador: aContador,
-        email_proveedor: aProveedor && email.trim() !== emailPadron ? email.trim() : undefined,
+        emails_proveedor: aProveedor && emails.length ? emails : undefined,
         guardar_email: guardar,
       })
       const enviados = r.resultados.filter(x => x.estado === 'enviado')
@@ -121,20 +144,38 @@ export function ModalAvisarPago({ orden, onClose }: Props) {
           </label>
           {aProveedor && (
             <>
-              <div>
-                <label className="block text-[10px] font-semibold text-gris-dark mb-0.5 uppercase tracking-wider">
-                  Dirección {emailPadron ? '· del padrón' : '· el padrón no la tiene'}
+              <div className="flex flex-col gap-1">
+                <label className="block text-[10px] font-semibold text-gris-dark uppercase tracking-wider">
+                  A quién {contactos.length ? '· contactos del proveedor' : emailPadron ? '· del padrón' : '· el proveedor no tiene contactos con email'}
                 </label>
-                <input value={email} onChange={e => setEmail(e.target.value)} className={inputCls}
-                  placeholder="proveedor@ejemplo.com" inputMode="email" autoComplete="off" />
-                {emailMal && <span className="text-xs text-rojo font-semibold">Esa dirección no tiene forma de dirección.</span>}
+                {prov.isLoading && <span className="text-xs text-gris-dark">Cargando contactos…</span>}
+                {prov.error && <span className="text-xs text-rojo font-semibold">No se pudieron traer los contactos del proveedor: escribí la dirección a mano.</span>}
+                {contactos.map(k => (
+                  <label key={k.id} className="flex items-center gap-2 text-xs cursor-pointer">
+                    <input type="checkbox" checked={marcados.has(k.email!.toLowerCase())} onChange={() => alternar(k.email!.toLowerCase())} />
+                    <span className="font-mono">{k.email}</span>
+                    <span className="text-gris-dark">{k.nombre ? `${k.nombre} · ` : ''}{ETIQUETA_ROL[k.rol]}</span>
+                  </label>
+                ))}
+                {!contactos.length && emailPadron && (
+                  <label className="flex items-center gap-2 text-xs cursor-pointer">
+                    <input type="checkbox" checked={marcados.has(emailPadron)} onChange={() => alternar(emailPadron)} />
+                    <span className="font-mono">{emailPadron}</span>
+                  </label>
+                )}
+                <input value={otro} onChange={e => setOtro(e.target.value)} className={inputCls}
+                  placeholder="Otra dirección (opcional)" inputMode="email" autoComplete="off" />
+                {otroMal && <span className="text-xs text-rojo font-semibold">Esa dirección no tiene forma de dirección.</span>}
+                {sinDestino && <span className="text-xs text-rojo font-semibold">Elegí al menos una dirección o escribí otra.</span>}
+                {demasiados && <span className="text-xs text-rojo font-semibold">Hasta 10 direcciones por envío.</span>}
               </div>
-              {email.trim() !== emailPadron && email.trim() !== '' && !emailMal && (
+              {otroTrim !== '' && !otroMal && !contactos.some(k => k.email!.toLowerCase() === otroTrim) && (
                 <label className="flex items-center gap-2 text-xs cursor-pointer">
                   <input type="checkbox" checked={guardar} onChange={e => setGuardar(e.target.checked)} />
-                  <span>Guardarla en el padrón — el próximo aviso no la vuelve a pedir</span>
+                  <span>Guardarla como contacto del proveedor — el próximo aviso ya la trae tildada</span>
                 </label>
               )}
+              {emails.length > 1 && <div className="text-[11px] text-gris-dark">Sale un mail a cada dirección ({emails.length}).</div>}
               <div className="text-[11px] text-gris-dark">
                 Recibe el <b>comprobante del pago</b>
                 {comprobantes.length > 0 ? `: ${comprobantes.map(a => a.nombre_archivo).join(', ')}` : ' (no hay ninguno adjunto)'}.

@@ -25,8 +25,48 @@ function leerCuerpo(e: unknown): CuerpoError {
   if (body && typeof body === 'object') {
     const b = body as Record<string, unknown>
     if (typeof b.error === 'string') return { error: b.error, detail: b.detail }
+    // 400 de zod (`zValidator`): varias reglas de la NC viajan como el
+    // `message` de un issue (20260925), no como `{ error: CODE }`.
+    const deZod = codigoDeZod(b)
+    if (deZod) return deZod
   }
   return { error: e.message }
+}
+
+const ES_CODIGO = /^[A-Z][A-Z0-9_]{2,}$/
+
+interface IssueZod { path?: unknown; message?: unknown }
+
+/**
+ * Saca el código de negocio de un 400 de validación. Acepta las dos formas
+ * que puede tomar: `{ issues: [...] }` o el `{ success: false, error: {
+ * name: 'ZodError', message: '<issues en JSON>' } }` que devuelve
+ * `@hono/zod-validator` con zod v4. El mensaje del issue puede ser el código
+ * pelado (`NC_NO_SE_PAGA`) o `campo:CODIGO`. El campo va en `detail.campo`.
+ */
+function codigoDeZod(b: Record<string, unknown>): CuerpoError | null {
+  let issues: IssueZod[] | null = null
+  if (Array.isArray(b.issues)) issues = b.issues as IssueZod[]
+  else if (b.error && typeof b.error === 'object') {
+    const err = b.error as Record<string, unknown>
+    if (Array.isArray(err.issues)) issues = err.issues as IssueZod[]
+    else if (typeof err.message === 'string') {
+      try {
+        const parsed: unknown = JSON.parse(err.message)
+        if (Array.isArray(parsed)) issues = parsed as IssueZod[]
+      } catch { /* no era JSON */ }
+    }
+  }
+  if (!issues) return null
+  for (const is of issues) {
+    if (typeof is.message !== 'string') continue
+    const [a, bb] = is.message.includes(':') ? is.message.split(':', 2) : [null, is.message]
+    const code = (bb ?? '').trim()
+    if (!ES_CODIGO.test(code)) continue
+    const campo = a?.trim() || (Array.isArray(is.path) ? is.path.join('.') : undefined)
+    return { error: code, detail: campo ? { campo } : undefined }
+  }
+  return null
 }
 
 const money = (n: unknown) => '$' + Math.round(Number(n ?? 0)).toLocaleString('es-AR')
@@ -107,11 +147,18 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
     const id = dato(d, 'factura_id')
     return `Esa factura ya se cargó${id !== undefined ? ` (#${String(id)})` : ''}: el archivo leído no se puede usar dos veces.`
   },
+  // Desde 20260925 `saldo` = saldo_pagable: descuenta lo reservado por NC sin aprobar.
   MONTO_SUPERA_SALDO: d => {
-    const saldo = dato(d, 'saldo')
+    const saldo = dato(d, 'saldo_pagable') ?? dato(d, 'saldo')
     return saldo !== undefined
-      ? `El monto supera el saldo de la factura (${money(saldo)}).`
+      ? `El monto supera lo que se puede pagar de la factura (${money(saldo)}). Si tiene una nota de crédito pendiente de aprobar, esa parte no se paga con plata.`
       : 'El monto supera el saldo de la factura.'
+  },
+  FACTURA_NO_PAGABLE: d => {
+    if (dato(d, 'clase') === 'nota_credito') return 'Una nota de crédito no se paga ni se acredita a otra NC: elegí una factura.'
+    if (dato(d, 'paga_cliente') === true) return 'Esa factura la paga el cliente: no entra en el circuito de pagos ni recibe notas de crédito.'
+    if (dato(d, 'estado') === 'anulada') return 'Esa factura está anulada.'
+    return 'Esa factura no se puede pagar ni acreditar.'
   },
   LINEA_DUPLICADA: () => 'La misma factura aparece dos veces con el mismo tipo de línea.',
   ORDEN_SIN_LINEAS: () => 'La orden de pago no tiene ninguna línea.',
@@ -146,14 +193,61 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
     `Los cheques suman ${money(dato(d, 'suma_cheques'))} y el pago es de ${money(dato(d, 'monto_pagado'))}. Tienen que dar igual.`,
 
   // ── Forma de pago y comprobantes ──
-  FORMA_PAGO_REQUERIDA:  () => 'Elegí la forma de pago: solo una orden de únicamente notas de crédito puede ir sin forma.',
+  FORMA_PAGO_REQUERIDA:  () => 'Elegí la forma de pago.',
   COMPROBANTE_REQUERIDO: d => {
     const forma = dato(d, 'forma_pago')
-    const tipo  = dato(d, 'tipo')
-    if (tipo === 'nota_credito') return 'Cada nota de crédito necesita su PDF adjunto.'
     return `Una ${forma === 'echeq' ? 'e-cheq' : 'transferencia'} necesita el comprobante de pago adjunto.`
   },
-  NC_DATOS_REQUERIDOS: () => 'Cada nota de crédito necesita su número y su fecha.',
+
+  // ── Nota de crédito como comprobante (20260925) ──
+  NC_TIPO_INVALIDO: d => {
+    const campo = dato(d, 'campo')
+    const porCampo: Record<string, string> = {
+      clase:            'La clase del comprobante no es válida: factura o nota de crédito.',
+      tipo_comprobante: 'Una nota de crédito tiene que ser A, B o C.',
+      cbte_tipo_arca:   'El código de ARCA no corresponde a la clase: una NC lleva código de NC (3, 8, 13…) y una factura no.',
+      paga_cliente:     'Una nota de crédito no puede estar marcada como «la paga el cliente».',
+      vence_el:         'Una nota de crédito no lleva vencimiento.',
+      plan_cheques:     'Una nota de crédito no lleva plan de cheques: no se paga.',
+      aplica_a:         'Solo una nota de crédito acredita facturas.',
+      nc_id:            'El comprobante elegido no es una nota de crédito.',
+    }
+    return porCampo[String(campo ?? '')] ?? 'El comprobante no es una nota de crédito válida.'
+  },
+  NC_APLICACION_INVALIDA: () => 'Lo que acredita la NC está mal armado: cada factura una sola vez y con un monto mayor a cero.',
+  NC_ES_COMPROBANTE: () => 'La nota de crédito ya no va dentro de la orden de pago: cargala como comprobante en Facturas y aplicala desde su ficha.',
+  NC_SUPERA_TOTAL: d => {
+    const total = dato(d, 'total'), aplicado = dato(d, 'aplicado')
+    return total !== undefined
+      ? `La nota de crédito es por ${money(total)} y se le quiere aplicar ${money(aplicado)}: no puede acreditar más que su total.`
+      : 'La nota de crédito no puede acreditar más que su total.'
+  },
+  NC_NO_SE_PAGA: () => 'Una nota de crédito no se paga: baja la deuda de las facturas que acredita, o queda como crédito a favor.',
+  NC_SUPERA_SALDO: d => {
+    const saldo = dato(d, 'saldo_pagable')
+    const monto = dato(d, 'monto') ?? dato(d, 'total')
+    const id = dato(d, 'factura_id')
+    return saldo !== undefined
+      ? `A la factura${id !== undefined ? ` #${String(id)}` : ''} le quedan ${money(saldo)} y se le quiere acreditar ${money(monto)}. Bajá el monto (lo que sobra queda como crédito a favor).`
+      : 'La nota de crédito acredita más de lo que le queda a la factura.'
+  },
+  NC_OTRO_PROVEEDOR: () => 'La nota de crédito y la factura tienen que ser del mismo proveedor.',
+  NC_APLICACION_CONGELADA: d => {
+    const estado = dato(d, 'estado')
+    return estado !== undefined
+      ? `La nota de crédito ya está ${String(estado) === 'anulada' ? 'anulada' : 'aprobada'}: lo que acredita no se cambia. El crédito que le quede se aplica con «Aplicar crédito».`
+      : 'Esa aplicación de la nota de crédito ya está firme: no se cambia ni se borra.'
+  },
+  NC_NO_APROBADA: () => 'La nota de crédito todavía no está aprobada: el crédito se aplica recién cuando la aprueban.',
+  NC_SIN_CREDITO: d => {
+    const disp = dato(d, 'nc_disponible')
+    return `La nota de crédito no tiene crédito disponible${disp !== undefined ? ` (${money(disp)})` : ''}: ya está aplicada entera.`
+  },
+  FACTURA_CON_NC: d => {
+    const campos = lista(dato(d, 'campos'))
+    if (campos) return `La factura tiene notas de crédito aplicadas: no se puede cambiar ${campos.replace('proveedor_id', 'el proveedor').replace('paga_cliente', '«la paga el cliente»')}.`
+    return 'La factura tiene notas de crédito aplicadas: anulá esas NC primero.'
+  },
   PAGADA_AL_CARGAR_SIN_PERMISO: () => 'Marcar una factura como ya pagada es registrar un pago: lo hace quien tiene permiso para registrar pagos. Cargala pendiente y que la pague quien corresponde.',
   PAGADA_AL_CARGAR_FORMA: () => 'Al cargar solo se puede marcar como ya pagada con tarjeta o efectivo. Para otra forma, cargala pendiente y que la registre quien paga.',
 
@@ -162,11 +256,6 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   ORDEN_YA_ANULADA:         () => 'La orden de pago ya estaba anulada.',
   ORDEN_INMUTABLE:          () => 'Una orden de pago no se edita: anulala y registrá una nueva.',
   ORDEN_NO_ES_TUYA_O_VIEJA: () => 'Solo podés anular órdenes que registraste vos y en el mismo día. Pedile a un administrador que la anule.',
-
-  // ── Devolución del proveedor (20260923g) ──
-  DEVOLUCION_SOLO_FACTURAS:       () => 'Esta orden tiene «a cuenta» o notas de crédito: la devolución hay que armarla a mano (anular y pagar con la NC).',
-  DEVOLUCION_PARCIAL_CON_CHEQUES: () => 'Con cheques sólo se puede registrar la devolución total: el cheque vuelve entero.',
-  DEVOLUCION_INVALIDA:            () => 'Lo devuelto no puede ser cero ni pasar lo que se le pagó por cada factura.',
 
   // Lo dispara, por ejemplo, el aviso de pago sobre una OP anulada.
   ORDEN_ANULADA: () => 'La orden está anulada.',
@@ -243,4 +332,21 @@ const AVISOS: Record<string, (d: Record<string, unknown>) => string> = {
 export function mensajeAvisoPagos(aviso: { code: string; [k: string]: unknown }): string {
   const fn = AVISOS[aviso.code]
   return fn ? fn(aviso) : aviso.code
+}
+
+/**
+ * Avisos de la LECTURA del comprobante (POST /facturas/leer). El backend ya
+ * manda `mensaje` en castellano y con el dato concreto (qué factura, cuánto):
+ * se usa ese. El texto local es el respaldo si llegara vacío.
+ */
+const AVISOS_LECTURA: Record<string, string> = {
+  ES_NOTA_DE_CREDITO:        'Es una nota de crédito: se carga como NC y se indica a qué factura(s) acredita, o queda como crédito a favor.',
+  NC_SIN_ASOCIADOS:          'La nota de crédito no dice a qué factura corresponde: elegí a cuál acredita o dejala como crédito a favor.',
+  NC_ASOCIADO_NO_ENCONTRADO: 'La nota de crédito menciona una factura que no está cargada para este proveedor: cargala primero o dejala como crédito a favor.',
+  NC_ASOCIADO_SIN_SALDO:     'La factura que menciona la nota de crédito ya no tiene saldo para acreditar: lo que sobre queda como crédito a favor.',
+  NC_SOBRANTE:               'La nota de crédito es por más de lo que les queda a sus facturas: el sobrante queda como crédito a favor del proveedor.',
+}
+
+export function mensajeAvisoLectura(a: { codigo: string; mensaje?: string | null }): string {
+  return a.mensaje?.trim() || AVISOS_LECTURA[a.codigo] || a.codigo
 }

@@ -14,12 +14,16 @@
  * Y dice ARRIBA con qué filtro se generó. Un resumen sin esa línea es una
  * trampa: alguien lo imprime filtrado por «vencidas» y después lo lee como si
  * fuera toda la deuda.
+ *
+ * Las NOTAS DE CRÉDITO (20260925) restan en «facturado» (van con signo), no
+ * suman al saldo (su saldo es 0: nunca son deuda) y el crédito que les queda
+ * sin aplicar se muestra aparte.
  */
 import pdfMake from 'pdfmake/build/pdfmake'
 import pdfFonts from 'pdfmake/build/vfs_fonts'
 import type { TDocumentDefinitions, Content, TableCell } from 'pdfmake/interfaces'
 import { EMPRESA } from '@/lib/config/empresa'
-import { ESTADO_FACTURA_META, comprobanteTxt, fmtM, hoyAR } from './pagos.utils'
+import { comprobanteTxt, conSigno, esNC, estadoLabel, fmtM, hoyAR } from './pagos.utils'
 import type { PagosFactura } from '@/types/domain.types'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -74,11 +78,17 @@ export async function exportarResumenPagosPdf(
   const hoy = hoyAR()
   const emision = new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
 
-  const saldo = (f: PagosFactura) => Number(f.saldo) || 0
-  const total     = filas.reduce((s, f) => s + Number(f.total), 0)
+  // Una NC nunca es deuda: su saldo no suma aunque viniera distinto de 0.
+  const saldo = (f: PagosFactura) => (esNC(f) ? 0 : Number(f.saldo) || 0)
+  const firmado = (f: PagosFactura) => conSigno(f.total, f.clase)
+  const nFacturas = filas.filter(f => !esNC(f)).length
+  const nNc       = filas.length - nFacturas
+  const creditoNc = filas.filter(esNC).reduce((s, f) => s + (Number(f.nc_disponible) || 0), 0)
+  const total     = filas.reduce((s, f) => s + firmado(f), 0)
   const deuda     = filas.reduce((s, f) => s + saldo(f), 0)
   const vencido   = filas.filter(f => f.vencida).reduce((s, f) => s + saldo(f), 0)
   const sinPapel  = filas.filter(f => !f.tiene_factura_adj).length
+  // (las NC también cuentan: su papel también lo pide el Libro IVA)
 
   // ── Por proveedor, el que más debe primero ──
   const porProv = new Map<string, { cuit: string; n: number; total: number; saldo: number; vencido: number }>()
@@ -86,7 +96,7 @@ export async function exportarResumenPagosPdf(
     const k = f.proveedor_nom
     const a = porProv.get(k) ?? { cuit: f.proveedor_cuit ?? '', n: 0, total: 0, saldo: 0, vencido: 0 }
     a.n += 1
-    a.total += Number(f.total)
+    a.total += firmado(f)
     a.saldo += saldo(f)
     if (f.vencida) a.vencido += saldo(f)
     porProv.set(k, a)
@@ -103,10 +113,10 @@ export async function exportarResumenPagosPdf(
   // ── Por estado ──
   const porEstado = new Map<string, { n: number; monto: number }>()
   for (const f of filas) {
-    const k = ESTADO_FACTURA_META[f.estado]?.label ?? f.estado
+    const k = (esNC(f) ? 'NC · ' : '') + estadoLabel(f.estado, f.clase)
     const a = porEstado.get(k) ?? { n: 0, monto: 0 }
     a.n += 1
-    a.monto += Number(f.total)
+    a.monto += firmado(f)
     porEstado.set(k, a)
   }
 
@@ -132,12 +142,13 @@ export async function exportarResumenPagosPdf(
 
     bloque('Lo que se debe', {
       table: {
-        widths: ['*', '*', '*', '*'],
+        widths: creditoNc > 0 ? ['*', '*', '*', '*', '*'] : ['*', '*', '*', '*'],
         body: [[
-          { stack: [{ text: 'Facturas', fontSize: 8, color: '#666' }, { text: String(filas.length), fontSize: 16, bold: true, color: AZUL }], margin: [6, 6, 6, 6] },
-          { stack: [{ text: 'Total facturado', fontSize: 8, color: '#666' }, { text: fmtM(total), fontSize: 14, bold: true }], margin: [6, 6, 6, 6] },
+          { stack: [{ text: 'Facturas', fontSize: 8, color: '#666' }, { text: String(nFacturas) + (nNc ? ` + ${nNc} NC` : ''), fontSize: 16, bold: true, color: AZUL }], margin: [6, 6, 6, 6] },
+          { stack: [{ text: nNc ? 'Total facturado (neto de NC)' : 'Total facturado', fontSize: 8, color: '#666' }, { text: fmtM(total), fontSize: 14, bold: true }], margin: [6, 6, 6, 6] },
           { stack: [{ text: 'Saldo a pagar', fontSize: 8, color: '#666' }, { text: fmtM(deuda), fontSize: 16, bold: true, color: NARANJA }], margin: [6, 6, 6, 6] },
           { stack: [{ text: 'De eso, vencido', fontSize: 8, color: '#666' }, { text: fmtM(vencido), fontSize: 16, bold: true, color: vencido > 0 ? ROJO : '#666' }], margin: [6, 6, 6, 6] },
+          ...(creditoNc > 0 ? [{ stack: [{ text: 'NC sin aplicar (a favor)', fontSize: 8, color: '#666' }, { text: fmtM(creditoNc), fontSize: 14, bold: true, color: '#5A2D82' }], margin: [6, 6, 6, 6] as [number, number, number, number] }] : []),
         ]],
       },
       layout: { fillColor: () => '#F4F6F9', hLineColor: () => '#DDD', vLineColor: () => '#DDD' },
@@ -208,12 +219,12 @@ export async function exportarResumenPagosPdf(
           [th('Proveedor'), th('Comprobante'), th('Emitida'), th('Vence'), th('Total', 'right'), th('Saldo', 'right'), th('Estado')],
           ...orden.map(f => [
             td(f.proveedor_nom),
-            td(comprobanteTxt(f.tipo_comprobante, f.numero)),
+            td(comprobanteTxt(f.tipo_comprobante, f.numero, f.clase)),
             td(fmtFecha(f.fecha)),
             td(fmtFecha(f.vence_el), 'left', f.vencida ? { color: ROJO, bold: true } : {}),
-            td(fmtM(Number(f.total)), 'right'),
+            td(fmtM(firmado(f)), 'right', esNC(f) ? { color: '#5A2D82' } : {}),
             td(saldo(f) > 0.005 ? fmtM(saldo(f)) : '—', 'right', saldo(f) > 0.005 ? { bold: true } : { color: '#999' }),
-            td(ESTADO_FACTURA_META[f.estado]?.label ?? f.estado),
+            td(estadoLabel(f.estado, f.clase)),
           ]),
         ],
       },

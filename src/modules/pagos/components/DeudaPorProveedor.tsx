@@ -14,6 +14,11 @@ import type { PagosProveedorSaldo } from '@/types/domain.types'
  *
  * `saldo_aprobado` es lo que el contador YA puede pagar; la diferencia con
  * `saldo` está esperando aprobación.
+ *
+ * Desde 20260925 la nota de crédito aprobada y sin aplicar es crédito a favor
+ * (`nc_disponible`), igual que un pago a cuenta: NO baja el saldo de las
+ * facturas hasta que se aplica a mano. Por eso se muestra aparte y el «Neto»
+ * (`saldo_neto` = saldo − a cuenta − NC disponible) es lo que se debe de verdad.
  */
 
 interface Props {
@@ -28,7 +33,7 @@ const TOPE_INICIAL = 5
 export function DeudaPorProveedor({ filas, cargando, proveedorSel, onElegir }: Props) {
   const [verTodos, setVerTodos] = useState(false)
 
-  const conDeuda = filas.filter(f => f.saldo > 0 || f.a_cuenta_sin_aplicar > 0)
+  const conDeuda = filas.filter(f => f.saldo > 0 || f.a_cuenta_sin_aplicar > 0 || Number(f.nc_disponible ?? 0) > 0)
   if (cargando && filas.length === 0) {
     return <div className="bg-white rounded-card shadow-card p-4 text-center text-xs text-gris-dark">Calculando la deuda por proveedor…</div>
   }
@@ -39,7 +44,9 @@ export function DeudaPorProveedor({ filas, cargando, proveedorSel, onElegir }: P
     saldo:    s.saldo + Number(f.saldo ?? 0),
     aprobado: s.aprobado + Number(f.saldo_aprobado ?? 0),
     vencido:  s.vencido + Number(f.vencido ?? 0),
-  }), { saldo: 0, aprobado: 0, vencido: 0 })
+    credito:  s.credito + Number(f.nc_disponible ?? 0),
+    neto:     s.neto + Number(f.saldo_neto ?? 0),
+  }), { saldo: 0, aprobado: 0, vencido: 0, credito: 0, neto: 0 })
 
   return (
     <div className="bg-white rounded-card shadow-card overflow-hidden">
@@ -49,13 +56,19 @@ export function DeudaPorProveedor({ filas, cargando, proveedorSel, onElegir }: P
           <span className="text-gris-dark">Total <b className="font-mono tabular-nums text-carbon">{fmtM(tot.saldo)}</b></span>
           <span className="text-gris-dark">Listo para pagar <b className="font-mono tabular-nums text-azul">{fmtM(tot.aprobado)}</b></span>
           {tot.vencido > 0 && <span className="text-rojo">Vencido <b className="font-mono tabular-nums">{fmtM(tot.vencido)}</b></span>}
+          {tot.credito > 0 && (
+            <span className="text-[#5A2D82]" title="Notas de crédito aprobadas que todavía no se aplicaron a ninguna factura">
+              NC sin aplicar <b className="font-mono tabular-nums">{fmtM(tot.credito)}</b>
+            </span>
+          )}
+          <span className="text-gris-dark" title="Saldo − pagos a cuenta − notas de crédito sin aplicar">Neto <b className="font-mono tabular-nums text-carbon">{fmtM(tot.neto)}</b></span>
         </div>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full border-collapse min-w-[680px]">
+        <table className="w-full border-collapse min-w-[860px]">
           <thead>
             <tr>
-              {['Proveedor', 'Facturas', 'Saldo', 'Listo para pagar', 'Vencido', 'Más vieja', 'A cuenta'].map((h, i) => (
+              {['Proveedor', 'Facturas', 'Saldo', 'Listo para pagar', 'Vencido', 'Más vieja', 'A cuenta', 'NC sin aplicar', 'Neto'].map((h, i) => (
                 <th key={h} className={`bg-gris text-gris-dark text-[10px] font-bold px-3 py-1.5 uppercase tracking-wide whitespace-nowrap ${i === 0 ? 'text-left' : 'text-right'}`}>{h}</th>
               ))}
             </tr>
@@ -74,7 +87,7 @@ export function DeudaPorProveedor({ filas, cargando, proveedorSel, onElegir }: P
                     <span className="font-semibold">{f.razon_social}</span>
                     {!f.activo && <span className="ml-1 text-[10px] text-gris-dark uppercase">dado de baja</span>}
                     {f.para_aprobar > 0 && (
-                      <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-azul-light text-azul font-bold" title="Facturas esperando aprobación">
+                      <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-azul-light text-azul font-bold" title="Facturas y notas de crédito esperando aprobación">
                         {f.para_aprobar} p/ aprobar
                       </span>
                     )}
@@ -88,6 +101,12 @@ export function DeudaPorProveedor({ filas, cargando, proveedorSel, onElegir }: P
                   <td className="px-3 py-2 text-right text-xs whitespace-nowrap">{fmtFecha(f.mas_vieja)}</td>
                   <td className="px-3 py-2 text-right font-mono text-xs tabular-nums" title="Pagos a cuenta todavía sin aplicar a una factura">
                     {f.a_cuenta_sin_aplicar > 0 ? <span className="text-verde">{fmtM(f.a_cuenta_sin_aplicar)}</span> : <span className="text-gris-mid">—</span>}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono text-xs tabular-nums" title="Notas de crédito aprobadas sin aplicar: se aplican a mano desde la ficha de la NC">
+                    {Number(f.nc_disponible ?? 0) > 0 ? <span className="text-[#5A2D82]">{fmtM(f.nc_disponible)}</span> : <span className="text-gris-mid">—</span>}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono text-xs tabular-nums font-bold" title="Saldo − a cuenta − NC sin aplicar">
+                    {fmtM(f.saldo_neto)}
                   </td>
                 </tr>
               )

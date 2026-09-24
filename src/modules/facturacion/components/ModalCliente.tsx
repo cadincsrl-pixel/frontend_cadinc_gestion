@@ -12,7 +12,7 @@ import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useCondicionesIva } from '../hooks/useFacturacion'
 import {
-  useConsultarPadron, useCrearClienteVenta, useCuentasFce, useEditarClienteVenta, useRefrescarFceCliente,
+  useConsultarPadron, useCrearClienteVenta, useCuentasFce, useEditarClienteVenta, useGuardarContactosCliente, useRefrescarFceCliente,
 } from '../hooks/useClientesFacturacion'
 import {
   CONDICIONES_IVA, DOC_TIPOS, MONTO_MINIMO_FCE, PROVINCIAS, TOPE_CF_IDENTIFICACION, cuitValido, fmtFecha, fmtM, letraDeCliente,
@@ -20,6 +20,8 @@ import {
 import { errorDeCampoFacturacion, mensajeErrorFacturacion } from '../utils/facturacion.errores'
 import type { VentasCliente, VentasClienteInput, VentasDocTipo, VentasPadronResultado } from '@/types/domain.types'
 import { Aviso } from './FichaFactura'
+import { ContactosEditor, contactosDesde, contactosParaGuardar, validarContactos } from '@/components/contactos/ContactosEditor'
+import type { ContactoInput } from '@/types/contactos'
 
 /**
  * Alta / edición de un cliente de Facturación.
@@ -45,7 +47,6 @@ const schema = z.object({
   condicion_iva_id: z.string().min(1, 'Elegí la condición IVA'),
   domicilio:        z.string(),
   provincia:        z.string(),
-  email:            z.string().refine(v => v.trim() === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()), 'Email inválido'),
   obs:              z.string(),
   cuenta_fce_id:    z.string(),
 }).superRefine((d, ctx) => {
@@ -63,7 +64,7 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>
 
-const CAMPOS_CLIENTE = ['razon_social', 'doc_tipo', 'doc_nro', 'condicion_iva_id', 'domicilio', 'provincia', 'email', 'obs', 'cuenta_fce_id']
+const CAMPOS_CLIENTE = ['razon_social', 'doc_tipo', 'doc_nro', 'condicion_iva_id', 'domicilio', 'provincia', 'obs', 'cuenta_fce_id']
 
 interface Props {
   cliente?: VentasCliente
@@ -78,7 +79,13 @@ export function ModalCliente({ cliente, onClose }: Props) {
   const cuentas = useCuentasFce()
   const refrescarFce = useRefrescarFceCliente()
   const consultarPadron = useConsultarPadron()
+  const guardarContactos = useGuardarContactosCliente()
   const { puedeCrear } = usePermisos('facturacion')
+  // Contactos (20260925e): varios por cliente; el email suelto de antes pasa a ser el primero.
+  const [contactos, setContactos] = useState<ContactoInput[]>(() => contactosDesde(cliente?.contactos, cliente?.email))
+  const [errorContactos, setErrorContactos] = useState<{ i: number; mensaje: string } | null>(null)
+  /** Id del cliente recién creado, por si hay que reintentar solo los contactos. */
+  const [creadoId, setCreadoId] = useState<number | null>(null)
   const [errorServer, setErrorServer] = useState<string | null>(null)
   const [padron, setPadron] = useState<VentasPadronResultado | null>(null)
   const [errorPadron, setErrorPadron] = useState<string | null>(null)
@@ -92,7 +99,6 @@ export function ModalCliente({ cliente, onClose }: Props) {
       condicion_iva_id: cliente ? String(cliente.condicion_iva_id) : '1',
       domicilio:        cliente?.domicilio ?? '',
       provincia:        cliente?.provincia ?? '',
-      email:            cliente?.email ?? '',
       obs:              cliente?.obs ?? '',
       cuenta_fce_id:    cliente?.cuenta_fce_id ? String(cliente.cuenta_fce_id) : '',
     },
@@ -149,10 +155,13 @@ export function ModalCliente({ cliente, onClose }: Props) {
     setValue('condicion_iva_id', '5', { shouldValidate: true })
   }
 
-  const guardando = crear.isPending || editar.isPending
+  const guardando = crear.isPending || editar.isPending || guardarContactos.isPending
 
   async function guardar(d: FormData) {
     setErrorServer(null)
+    const errC = validarContactos(contactos)
+    setErrorContactos(errC)
+    if (errC) return
     const body: VentasClienteInput = {
       razon_social:     d.razon_social.trim(),
       doc_tipo:         Number(d.doc_tipo) as VentasDocTipo,
@@ -160,13 +169,29 @@ export function ModalCliente({ cliente, onClose }: Props) {
       condicion_iva_id: Number(d.condicion_iva_id),
       domicilio:        d.domicilio.trim(),
       provincia:        d.provincia.trim(),
-      email:            d.email.trim(),
       obs:              d.obs.trim(),
       cuenta_fce_id:    d.cuenta_fce_id ? Number(d.cuenta_fce_id) : null,
     }
     try {
-      if (cliente) await editar.mutateAsync({ id: cliente.id, ...body })
-      else await crear.mutateAsync(body)
+      // Si el alta ya salió y fallaron los contactos, el reintento NO vuelve a
+      // crear el cliente (daría duplicado): edita el que ya existe.
+      let id: number
+      if (cliente) {
+        await editar.mutateAsync({ id: cliente.id, ...body })
+        id = cliente.id
+      } else if (creadoId) {
+        id = creadoId // reintento: el cliente ya está creado, faltan solo los contactos
+      } else {
+        id = (await crear.mutateAsync(body)).id
+        setCreadoId(id)
+      }
+      try {
+        await guardarContactos.mutateAsync({ id, contactos: contactosParaGuardar(contactos) })
+      } catch (e) {
+        // El cliente ya quedó guardado: se avisa y el modal queda abierto para reintentar los contactos.
+        setErrorServer(`El cliente se guardó, pero los contactos no: ${mensajeErrorFacturacion(e)}`)
+        return
+      }
       toast(cliente ? '✓ Cliente actualizado' : '✓ Cliente creado', 'ok')
       onClose()
     } catch (e) {
@@ -256,7 +281,8 @@ export function ModalCliente({ cliente, onClose }: Props) {
           </div>
           <Select label={deArca.provincia ? 'Provincia · de ARCA' : 'Provincia'} {...register('provincia')} options={provincias} />
         </div>
-        <Input label="Email" type="email" {...register('email')} error={errors.email?.message} />
+        <ContactosEditor value={contactos} onChange={v => { setContactos(v); setErrorContactos(null) }} error={errorContactos}
+          textoAvisos="Recibe avisos (estado de cuenta, facturas)" />
         {letra === 'A' && (
           <div className="border border-gris-mid rounded-lg p-3 flex flex-col gap-2">
             <span className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Factura de Crédito MiPyME (FCE)</span>

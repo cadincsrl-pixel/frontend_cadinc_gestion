@@ -8,16 +8,16 @@
 // Los proveedores viven en `useProveedoresPagos.ts`, contra el padrón PROPIO
 // del módulo (`pagos_proveedores`): no es el de Compras y no se cruzan.
 
-import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { apiDelete, apiGet, apiPatch, apiPost } from '@/lib/api/client'
 import type {
-  AnularFacturaRes, AnularOrdenRes, AprobarLoteRes, CrearFacturaInput, CrearFacturaRes, CrearOrdenInput,
+  AnularFacturaRes, AnularOrdenRes, AplicarNcRes, AprobarLoteRes, CrearFacturaInput, CrearFacturaRes, CrearOrdenInput,
   EditarFacturaInput, EditarFacturaRes, EditarOrdenInput, PagosAdjunto, PagosAdjuntoPendiente,
   PagosCatalogoObra, PagosEntidadAdjunto, PagosEstadoFactura, PagosEstadoOrden, PagosFactura, PagosFacturaDetalle,
   PagosFacturasGrupo, PagosFacturasPage, PagosFacturasResumen, PagosFormaPagoOPGuardada,
-  PagosFormaPrevista, PagosOrden, PagosOrdenDetalle, PagosOrdenesEje, PagosOrdenesGrupo, PagosOrdenesPage, PagosOrdenExport, PagosPaquete,
+  PagosFormaPrevista, PagosOrdenDetalle, PagosOrdenesEje, PagosOrdenesGrupo, PagosOrdenesPage, PagosOrdenExport, PagosPaquete,
   PagosOrdenesResumen, PagosTipoAdjFactura, PagosTipoAdjOrden, PagosTipoComprobante, PagosUploadUrlRes,
-  PagosAviso, PagosAvisoResultado, PagosMailEstado, PagosLecturaRes,
+  PagosAviso, PagosAvisoResultado, PagosMailEstado, PagosLecturaRes, PagosAplicaNcInput, PagosClaseComprobante,
   PagosDesgloseInput, PagosDesgloseLeidoRes, PagosCompletarDesgloseRes,
   RegistrarOrdenRes,
 } from '@/types/domain.types'
@@ -88,6 +88,10 @@ export interface PagosFacturasFiltro {
   anuladas?:    boolean
   archivadas?:  boolean
   orden?:       PagosOrdenFacturas
+  /** Factura o nota de crédito (20260925). Sin definir trae las dos. */
+  clase?:       PagosClaseComprobante
+  /** Solo NC aprobadas con crédito sin aplicar (`nc_disponible > 0`). */
+  con_credito?: boolean
 }
 
 export interface PagosOrdenesFiltro {
@@ -100,7 +104,6 @@ export interface PagosOrdenesFiltro {
   hasta?:        string
   sin_comprobante?:  boolean
   en_cartera?:       boolean
-  con_nota_credito?: boolean
 }
 
 type ExtraQuery = Record<string, string | number | undefined>
@@ -129,6 +132,8 @@ function qsFacturas(f: PagosFacturasFiltro, extra: ExtraQuery = {}): string {
   if (f.anuladas)         p.set('anuladas', '1')
   if (f.archivadas)       p.set('archivadas', '1')
   if (f.orden)            p.set('orden', f.orden)
+  if (f.clase)            p.set('clase', f.clase)
+  if (f.con_credito)      p.set('con_credito', '1')
   for (const [k, v] of Object.entries(extra)) if (v !== undefined) p.set(k, String(v))
   return p.toString()
 }
@@ -143,7 +148,6 @@ function qsOrdenes(f: PagosOrdenesFiltro, extra: ExtraQuery = {}): string {
   if (f.hasta)             p.set('hasta', f.hasta)
   if (f.sin_comprobante)   p.set('sin_comprobante', '1')
   if (f.en_cartera)        p.set('en_cartera', '1')
-  if (f.con_nota_credito)  p.set('con_nota_credito', '1')
   for (const [k, v] of Object.entries(extra)) if (v !== undefined) p.set(k, String(v))
   return p.toString()
 }
@@ -178,6 +182,38 @@ export function useFacturasResumen(f: PagosFacturasFiltro, grupo: PagosFacturasG
   })
 }
 
+/**
+ * NC del proveedor con crédito sin aplicar (aprobadas, `nc_disponible > 0`).
+ * Alimenta el aviso de «Registrar pago»: el crédito NO se aplica solo, se
+ * aplica a mano desde la ficha de la NC.
+ */
+export function useNcDisponibles(proveedorId: number | null | undefined, enabled = true) {
+  const qs = qsFacturas({ proveedor_id: proveedorId ?? undefined, clase: 'nota_credito', con_credito: true }, { limit: 50, offset: 0 })
+  return useQuery({
+    queryKey: [...PAGOS_KEYS.facturas, 'nc-disponibles', proveedorId ?? 0],
+    queryFn:  () => apiGet<PagosFacturasPage>(`/api/pagos/facturas?${qs}`),
+    enabled:  enabled && !!proveedorId,
+    staleTime: 30_000,
+  })
+}
+
+/**
+ * Facturas abiertas del proveedor a las que una NC puede acreditar
+ * («Acredita a…»). El tope de cada una es su `saldo_pagable`.
+ */
+export function useFacturasAcreditables(proveedorId: number | null | undefined, enabled = true) {
+  const qs = qsFacturas({
+    proveedor_id: proveedorId ?? undefined, clase: 'factura',
+    estados: ['pendiente', 'observada', 'aprobada', 'pagada_parcial'], paga_cliente: false, orden: 'fecha',
+  }, { limit: 200, offset: 0 })
+  return useQuery({
+    queryKey: [...PAGOS_KEYS.facturas, 'acreditables', proveedorId ?? 0],
+    queryFn:  () => apiGet<PagosFacturasPage>(`/api/pagos/facturas?${qs}`),
+    enabled:  enabled && !!proveedorId,
+    staleTime: 30_000,
+  })
+}
+
 export function useFactura(id: number | null, incluirBorrados = false) {
   return useQuery({
     queryKey: [...PAGOS_KEYS.factura(id ?? 0), incluirBorrados],
@@ -185,6 +221,20 @@ export function useFactura(id: number | null, incluirBorrados = false) {
       `/api/pagos/facturas/${id}${incluirBorrados ? '?borrados=1' : ''}`),
     enabled:  !!id,
     staleTime: 30_000,
+  })
+}
+
+/**
+ * El detalle de varias facturas a la vez (mismo cache que `useFactura`). Lo
+ * usa la NC para prorratear su reparto por obra según las facturas que acredita.
+ */
+export function useFacturasDetalle(ids: number[]) {
+  return useQueries({
+    queries: ids.map(id => ({
+      queryKey: [...PAGOS_KEYS.factura(id), false],
+      queryFn:  () => apiGet<PagosFacturaDetalle>(`/api/pagos/facturas/${id}`),
+      staleTime: 30_000,
+    })),
   })
 }
 
@@ -237,7 +287,7 @@ export function useAvisarPago() {
   return useMutation({
     mutationFn: ({ id, ...body }: {
       id: number; a_proveedor?: boolean; a_contador?: boolean
-      email_proveedor?: string; guardar_email?: boolean
+      email_proveedor?: string; emails_proveedor?: string[]; guardar_email?: boolean
     }) => apiPost<{ resultados: PagosAvisoResultado[] }>(`/api/pagos/ordenes/${id}/avisar`, body),
     onSuccess: () => invalidarPagos(qc),
   })
@@ -277,6 +327,20 @@ export function useCompletarDesglose() {
 /** Lee el comprobante ya adjunto (QR del navegador + IA) y propone el desglose. No guarda nada. */
 export function leerAdjuntoFactura(id: number, body: { adjunto_id?: number | null; qr_texto: string | null }): Promise<PagosDesgloseLeidoRes> {
   return apiPost<PagosDesgloseLeidoRes>(`/api/pagos/facturas/${id}/leer-adjunto`, body)
+}
+
+/**
+ * Aplicar el crédito de una NC aprobada a facturas del proveedor. Solo AGREGA
+ * (si ya había aplicación a esa factura, suma). Permiso: `aprobar_facturas` o
+ * `registrar_pagos`.
+ */
+export function useAplicarNc() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, aplica_a }: { id: number; aplica_a: PagosAplicaNcInput[] }) =>
+      apiPost<AplicarNcRes>(`/api/pagos/facturas/${id}/aplicar-nc`, { aplica_a }),
+    onSuccess:  () => invalidarPagos(qc),
+  })
 }
 
 /** Aprobar una, o sellar una «pagada al cargar» que estaba sin revisar. */
@@ -395,28 +459,6 @@ export function useEditarOrden() {
   })
 }
 
-/**
- * Devolución del proveedor (20260923g): anula la OP y la rehace con la NC (y la
- * plata que quedó si es parcial), en una transacción. Los archivos van
- * subidos antes con `subirComprobantePendiente`.
- */
-export interface DevolucionProveedorInput {
-  id:           number
-  devoluciones: { factura_id: number; monto: number }[]
-  nc_numero:    string
-  nc_fecha:     string
-  motivo:       string
-  adjuntos:     PagosAdjuntoPendiente[]
-}
-export function useDevolucionProveedor() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({ id, ...body }: DevolucionProveedorInput) =>
-      apiPost<{ anulada: PagosOrden; orden: PagosOrden; facturas: PagosFactura[] }>(`/api/pagos/ordenes/${id}/devolucion`, body),
-    onSuccess:  () => invalidarPagos(qc),
-  })
-}
-
 export function useAnularOrden() {
   const qc = useQueryClient()
   return useMutation({
@@ -495,7 +537,7 @@ export async function fetchPagosAdjuntoSignedUrl(
 }
 
 /**
- * Comprobante de pago / PDF de nota de crédito ANTES de que exista la OP: el
+ * Comprobante de pago ANTES de que exista la OP: el
  * archivo va a `ordenes/pendientes/` y lo que devuelve esta función viaja en
  * `adjuntos[]` del POST. El form tiene que GUARDAR el resultado: si el POST
  * rebota (saldo, permisos), se reintenta sin volver a subir.

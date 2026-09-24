@@ -7,13 +7,13 @@ import { InputMonto, aRaw } from '@/components/ui/InputMonto'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import {
-  useFacturas, useRegistrarOrden, subirComprobantePendiente, borrarComprobantePendiente,
+  useFacturas, useNcDisponibles, useRegistrarOrden, subirComprobantePendiente, borrarComprobantePendiente,
 } from '../hooks/usePagos'
 import { useDatosPagoProveedor, useProveedorPagos } from '../hooks/useProveedoresPagos'
 import {
   FORMAS_CON_COMPROBANTE_OBLIGATORIO, FORMAS_CON_CUENTA_DESTINO, FORMAS_CON_FECHA_COBRO,
   FORMAS_PAGO_OP, PLAZOS_CHEQUE, comprobanteTxt, fechasEscalonadas, fmtFecha, fmtM, hoyAR,
-  partirEnPartes, plazoLabel, repartirPagoEntreFacturas, salidaLabel, sumarDiasISO,
+  partirEnPartes, plazoLabel, repartirPagoEntreFacturas, salidaLabel, sumarDiasISO, topePagable,
 } from '../utils/pagos.utils'
 import { mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
 import type { PagosAdjuntoPendiente, PagosFactura, PagosFormaPagoOP, PagosLineaOrdenInput } from '@/types/domain.types'
@@ -24,9 +24,11 @@ import type { PagosAdjuntoPendiente, PagosFactura, PagosFormaPagoOP, PagosLineaO
  *
  * Tres reglas que la pantalla tiene que dejar obvias:
  *
- *  - La NOTA DE CRÉDITO baja el saldo de la factura pero NO es plata que sale.
- *    Por eso «Total a pagar» y «Acreditado por NC» son dos números distintos y
- *    el comprobante se exige solo si sale plata.
+ *  - Acá sale SOLO PLATA. La nota de crédito del proveedor es un comprobante
+ *    aparte (20260925): se carga en Facturas y se aplica desde su ficha. El
+ *    tope de cada factura es `saldo_pagable` (saldo menos lo que reserva una
+ *    NC todavía sin aprobar). Si el proveedor tiene crédito de NC sin usar,
+ *    se avisa arriba: no se aplica solo.
  *  - La CUENTA DESTINO no se tipea: sale del padrón. Si el proveedor no tiene
  *    CBU ni alias, se carga desde acá y recién ahí se puede transferir.
  *  - Es TODO O NADA. Si el POST rebota, los archivos ya subidos se conservan
@@ -47,8 +49,6 @@ interface FilaFactura {
   factura: PagosFactura
   /** Lo que se paga con plata. */
   monto: string
-  /** Nota de crédito que se aplica a esta misma factura. */
-  nc: { monto: string; numero: string; fecha: string; pdf: PagosAdjuntoPendiente | null } | null
 }
 
 /** Un cheque del formulario. `monto` es texto porque se tipea. */
@@ -117,7 +117,7 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
   // Se traen por id: el modal puede abrirse desde la ficha (una) o desde la
   // selección de la bandeja (varias).
   const { data: pagina, isLoading } = useFacturas(
-    { estados: ['aprobada', 'pagada_parcial'], archivadas: true }, 1, 200, facturaIds.length > 0,
+    { estados: ['aprobada', 'pagada_parcial'], archivadas: true, clase: 'factura' }, 1, 200, facturaIds.length > 0,
   )
   const elegidas = useMemo(
     () => (pagina?.items ?? []).filter(f => facturaIds.includes(f.id)),
@@ -148,7 +148,7 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
   // Precargar con el saldo de cada factura: es lo que se paga el 90 % de las veces.
   useEffect(() => {
     if (elegidas.length === 0 || filas.length > 0) return
-    setFilas(elegidas.map(f => ({ factura: f, monto: String(f.saldo), nc: null })))
+    setFilas(elegidas.map(f => ({ factura: f, monto: String(topePagable(f)) })))
   }, [elegidas, filas.length])
 
   // Y con la forma que la factura ya tenía prevista. Las facturas llegan
@@ -160,20 +160,25 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
 
   const proveedorId = elegidas[0]?.proveedor_id ?? null
   const { data: proveedor } = useProveedorPagos(proveedorId)
+  // Crédito de NC aprobadas sin aplicar: no se usa solo, pero hay que verlo
+  // antes de mandar plata (decisión del dueño, 20260925).
+  const ncDisp = useNcDisponibles(proveedorId)
+  const ncSinAplicar = useMemo(() => {
+    const items = ncDisp.data?.items ?? []
+    return { cant: items.length, total: r2(items.reduce((s, f) => s + Number(f.nc_disponible ?? 0), 0)) }
+  }, [ncDisp.data])
 
   // Para avisar que la forma no la eligió la persona: la trajo la factura.
   const vieneDeLoPrevisto = !formaElegida && elegidas.length > 0 && forma === formaSegunLoPrevisto(elegidas)
 
   const totalPlata = r2(filas.reduce((s, f) => s + n(f.monto), 0) + n(aCuenta))
-  const totalNc    = r2(filas.reduce((s, f) => s + (f.nc ? n(f.nc.monto) : 0), 0))
-  const soloNc     = totalPlata === 0 && totalNc > 0
 
   // El backend copia la cuenta del padrón; si falta, rebota. Mejor avisarlo
   // acá que después del POST.
-  const necesitaCuenta = FORMAS_CON_CUENTA_DESTINO.includes(forma) && !soloNc
+  const necesitaCuenta = FORMAS_CON_CUENTA_DESTINO.includes(forma)
   const sinDatosPago   = necesitaCuenta && !proveedor?.cbu && !proveedor?.alias_cbu
-  const pideComprobante = !soloNc && FORMAS_CON_COMPROBANTE_OBLIGATORIO.includes(forma)
-  const pideCheques     = !soloNc && FORMAS_CON_FECHA_COBRO.includes(forma)
+  const pideComprobante = FORMAS_CON_COMPROBANTE_OBLIGATORIO.includes(forma)
+  const pideCheques     = FORMAS_CON_FECHA_COBRO.includes(forma)
 
   // El backend exige igualdad exacta: se compara en centavos para no arrastrar
   // el error del punto flotante.
@@ -183,18 +188,13 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
     !c.numero.trim() || !c.fecha_cobro || n(c.monto) <= 0 ||
     c.fecha_cobro < fecha || (!c.es_propio && !c.librador.trim()))
 
-  // Cada fila: plata + NC no puede pasarse del saldo.
-  const filasConError = filas.filter(f => {
-    const aplicado = n(f.monto) + (f.nc ? n(f.nc.monto) : 0)
-    return aplicado - f.factura.saldo > 0.005
-  })
-  const ncIncompletas = filas.filter(f => f.nc && (n(f.nc.monto) <= 0 || !f.nc.numero.trim() || !f.nc.fecha || !f.nc.pdf))
+  // Cada fila: la plata no puede pasarse de lo pagable (saldo − NC reservada).
+  const filasConError = filas.filter(f => n(f.monto) - topePagable(f.factura) > 0.005)
 
   const listo =
     filas.length > 0 &&
-    (totalPlata > 0 || totalNc > 0) &&
+    totalPlata > 0 &&
     filasConError.length === 0 &&
-    ncIncompletas.length === 0 &&
     !sinDatosPago &&
     (!pideComprobante || !!comprobante) &&
     (!pideCheques || (cheques.length > 0 && chequesIncompletos.length === 0 && Math.abs(difCheques) < 0.005))
@@ -284,25 +284,24 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
    * siguiente. Lo que sobre después de cubrirlas todas va a «A cuenta», que es
    * exactamente lo que es: plata entregada de más, que queda a favor.
    *
-   * Respeta la nota de crédito de cada fila: si una factura tiene NC, el lugar
-   * que queda para plata es `saldo - NC`.
+   * El tope de cada factura es su `saldo_pagable`: lo reservado por una NC
+   * sin aprobar no se paga con plata.
    */
   function usarTotalDeLosCheques() {
     const { porFactura, aCuenta: sobra } = repartirPagoEntreFacturas(totalCheques, filas.map(f => ({
       id: f.factura.id,
       vence_el: f.factura.vence_el,
-      tope: r2(f.factura.saldo - (f.nc ? n(f.nc.monto) : 0)),
+      tope: topePagable(f.factura),
     })))
     setFilas(fs => fs.map(x => ({ ...x, monto: String(porFactura.get(x.factura.id) ?? 0) })))
     setACuenta(sobra > 0.005 ? String(sobra) : '')
   }
 
-  async function subir(file: File, destino: 'comprobante' | number) {
-    setSubiendo(String(destino))
+  async function subir(file: File) {
+    setSubiendo('comprobante')
     try {
-      const adj = await subirComprobantePendiente(file, destino === 'comprobante' ? 'comprobante_pago' : 'nota_credito')
-      if (destino === 'comprobante') setComprobante(adj)
-      else setFilas(fs => fs.map(f => f.factura.id === destino && f.nc ? { ...f, nc: { ...f.nc, pdf: adj } } : f))
+      const adj = await subirComprobantePendiente(file, 'comprobante_pago')
+      setComprobante(adj)
       toast('Archivo listo', 'ok')
     } catch (e) {
       toast(mensajeErrorPagos(e), 'err')
@@ -313,8 +312,7 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
 
   /** Cerrar sin guardar: limpiar lo que quedó colgado en el bucket. */
   async function cerrar() {
-    const huerfanos = [comprobante, ...filas.map(f => f.nc?.pdf ?? null)].filter(Boolean) as PagosAdjuntoPendiente[]
-    for (const a of huerfanos) borrarComprobantePendiente(a.storage_path).catch(() => {})
+    if (comprobante) borrarComprobantePendiente(comprobante.storage_path).catch(() => {})
     onClose()
   }
 
@@ -336,16 +334,10 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
     const lineas: PagosLineaOrdenInput[] = []
     for (const f of filas) {
       if (n(f.monto) > 0) lineas.push({ tipo: 'factura', factura_id: f.factura.id, monto: n(f.monto) })
-      if (f.nc && n(f.nc.monto) > 0) {
-        lineas.push({
-          tipo: 'nota_credito', factura_id: f.factura.id, monto: n(f.nc.monto),
-          nc_numero: f.nc.numero.trim(), nc_fecha: f.nc.fecha,
-        })
-      }
     }
     if (n(aCuenta) > 0) lineas.push({ tipo: 'a_cuenta', factura_id: null, monto: n(aCuenta) })
 
-    const adjuntos = [comprobante, ...filas.map(f => f.nc?.pdf ?? null)].filter(Boolean) as PagosAdjuntoPendiente[]
+    const adjuntos: PagosAdjuntoPendiente[] = comprobante ? [comprobante] : []
 
     try {
       const r = await registrar.mutateAsync({
@@ -359,7 +351,7 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
               librador: c.es_propio ? '' : c.librador.trim(), obs: '',
             }))
           : undefined,
-        forma_pago: soloNc ? null : forma,
+        forma_pago: forma,
         referencia: referencia.trim() || undefined,
         obs: obs.trim() || undefined,
         lineas,
@@ -390,21 +382,20 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
         <div className="flex gap-2 justify-end items-center flex-wrap">
           <div className="text-xs text-gris-dark mr-auto">
             {totalPlata > 0 && <>{salidaLabel(forma, 'presente')}: <b className="font-mono tabular-nums text-carbon">{fmtM(totalPlata)}</b></>}
-            {totalNc > 0 && <span className="ml-2">Acreditado por NC: <b className="font-mono tabular-nums text-[#5A2D82]">{fmtM(totalNc)}</b></span>}
           </div>
           <Button variant="ghost" size="sm" onClick={cerrar}>Cancelar</Button>
           <Button size="sm" onClick={guardar} loading={registrar.isPending} disabled={!listo}
             title={
               sinDatosPago ? 'El proveedor no tiene CBU ni alias: cargalos primero'
               : filasConError.length > 0 ? 'Hay montos que superan el saldo de su factura'
-              : ncIncompletas.length > 0 ? 'Cada nota de crédito necesita número, fecha, monto y su PDF'
+              : totalPlata <= 0 ? 'No hay nada para pagar'
               : pideComprobante && !comprobante ? 'Una transferencia o e-cheq necesita el comprobante'
               : pideCheques && cheques.length === 0 ? 'Cargá al menos un cheque'
               : pideCheques && chequesIncompletos.length > 0 ? 'Cada cheque necesita número, fecha de cobro e importe (y el librador si es de un tercero)'
               : pideCheques && Math.abs(difCheques) >= 0.005 ? 'Los cheques no suman lo que sale de plata'
               : undefined
             }>
-            {soloNc ? 'Aplicar nota de crédito' : 'Registrar pago'}
+            Registrar pago
           </Button>
         </div>
       }
@@ -423,12 +414,21 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
           orden de pago lleva una sola forma, así que dos formas son dos órdenes.
         </div>
 
+        {ncSinAplicar.total > 0 && (
+          <div className="bg-[#EEE8FF] border border-[#C9B8E8] rounded p-2 text-xs text-[#5A2D82]">
+            El proveedor tiene <b className="font-mono">{fmtM(ncSinAplicar.total)}</b> en{' '}
+            {ncSinAplicar.cant === 1 ? 'una nota de crédito' : `${ncSinAplicar.cant} notas de crédito`} sin aplicar.
+            {' '}No se descuenta solo: si corresponde, aplicala desde la ficha de la NC (Facturas) antes de pagar.
+          </div>
+        )}
+
         {/* Facturas */}
         <div className="border border-gris-mid rounded overflow-hidden">
           {filas.map(f => {
-            const aplicado = n(f.monto) + (f.nc ? n(f.nc.monto) : 0)
-            const excede = aplicado - f.factura.saldo > 0.005
-            const quedaria = r2(f.factura.saldo - aplicado)
+            const tope = topePagable(f.factura)
+            const excede = n(f.monto) - tope > 0.005
+            const quedaria = r2(f.factura.saldo - n(f.monto))
+            const reservado = Number(f.factura.nc_pendiente ?? 0)
             return (
               <div key={f.factura.id} className="border-b border-gris last:border-0 p-2.5">
                 <div className="flex items-start gap-2 flex-wrap">
@@ -440,6 +440,12 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
                     <div className="text-[11px] text-gris-dark">
                       Saldo <b className="font-mono">{fmtM(f.factura.saldo)}</b> de {fmtM(f.factura.total)}
                     </div>
+                    {reservado > 0 && (
+                      <div className="text-[11px] text-[#5A2D82]"
+                        title="Una nota de crédito sin aprobar declara acreditar esa parte: no se puede pagar con plata mientras esté pendiente.">
+                        NC pendiente de aprobar {fmtM(reservado)} · se puede pagar hasta <b className="font-mono">{fmtM(tope)}</b>
+                      </div>
+                    )}
                   </div>
                   <div className="w-32">
                     <label className="block text-[10px] font-semibold text-gris-dark mb-0.5">Se paga</label>
@@ -455,52 +461,9 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
                   </div>
                 </div>
 
-                {/* Nota de crédito de esta factura */}
-                {f.nc ? (
-                  <div className="mt-2 ml-2 pl-2 border-l-2 border-[#C9B8E8] flex flex-wrap gap-2 items-end">
-                    <div className="w-28">
-                      <label className="block text-[10px] font-semibold text-[#5A2D82] mb-0.5">NC · monto</label>
-                      <InputMonto value={f.nc.monto}
-                        onChange={v => setFilas(fs => fs.map(x => x.factura.id === f.factura.id && x.nc ? { ...x, nc: { ...x.nc, monto: v } } : x))}
-                        className="font-mono text-right py-2 rounded" />
-                    </div>
-                    <div className="w-32">
-                      <label className="block text-[10px] font-semibold text-gris-dark mb-0.5">Número</label>
-                      <input value={f.nc.numero}
-                        onChange={e => setFilas(fs => fs.map(x => x.factura.id === f.factura.id && x.nc ? { ...x, nc: { ...x.nc, numero: e.target.value } } : x))}
-                        className={inputCls} />
-                    </div>
-                    <div className="w-36">
-                      <label className="block text-[10px] font-semibold text-gris-dark mb-0.5">Fecha</label>
-                      <input type="date" value={f.nc.fecha} max={hoyAR()}
-                        onChange={e => setFilas(fs => fs.map(x => x.factura.id === f.factura.id && x.nc ? { ...x, nc: { ...x.nc, fecha: e.target.value } } : x))}
-                        className={inputCls} />
-                    </div>
-                    <label className="text-xs px-2.5 py-1.5 rounded border border-gris-mid bg-white hover:bg-gris cursor-pointer font-semibold">
-                      {subiendo === String(f.factura.id) ? 'Subiendo…' : f.nc.pdf ? '✓ PDF listo' : '📎 PDF de la NC'}
-                      <input type="file" className="hidden" accept="image/*,application/pdf"
-                        onChange={e => { const file = e.target.files?.[0]; if (file) subir(file, f.factura.id); e.target.value = '' }} />
-                    </label>
-                    <button type="button" className="text-rojo hover:bg-rojo-light px-2 py-1.5 rounded text-xs"
-                      onClick={() => setFilas(fs => fs.map(x => x.factura.id === f.factura.id ? { ...x, nc: null } : x))}>
-                      Quitar NC
-                    </button>
-                  </div>
-                ) : (
-                  <button type="button"
-                    className="mt-1.5 ml-2 text-xs text-[#5A2D82] hover:underline"
-                    onClick={() => setFilas(fs => fs.map(x => x.factura.id === f.factura.id
-                      ? { ...x, nc: { monto: '', numero: '', fecha: hoyAR(), pdf: null } } : x))}>
-                    + Nota de crédito
-                  </button>
-                )}
               </div>
             )
           })}
-        </div>
-
-        <div className="text-[11px] text-gris-dark">
-          Una nota de crédito cancela deuda <b>sin que salga plata</b>: baja el saldo de la factura y no entra en el total transferido.
         </div>
 
         {/* A cuenta */}
@@ -520,7 +483,7 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
           <Campo label="Forma" hint={vieneDeLoPrevisto ? 'Lo previsto en la factura' : undefined}>
             <select value={forma}
               onChange={e => { setFormaElegida(true); setForma(e.target.value as PagosFormaPagoOP) }}
-              disabled={soloNc} className={inputCls}>
+              className={inputCls}>
               {FORMAS_PAGO_OP.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
             </select>
           </Campo>
@@ -662,12 +625,6 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
           </div>
         )}
 
-        {soloNc && (
-          <div className="bg-[#EEE8FF] border border-[#C9B8E8] rounded p-2 text-xs text-[#5A2D82]">
-            No sale plata: esta orden solo aplica notas de crédito, así que no lleva forma de pago ni comprobante.
-          </div>
-        )}
-
         {/* Cuenta destino */}
         {necesitaCuenta && (
           <div className={`border rounded p-2 text-xs ${sinDatosPago ? 'bg-rojo-light border-rojo/30' : 'bg-gris border-gris-mid'}`}>
@@ -705,20 +662,18 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
         )}
 
         {/* Comprobante */}
-        {!soloNc && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <label className={`text-xs px-3 py-1.5 rounded border cursor-pointer font-semibold
-              ${pideComprobante && !comprobante ? 'border-rojo text-rojo bg-rojo-light' : 'border-gris-mid bg-white hover:bg-gris'}`}>
-              {subiendo === 'comprobante' ? 'Subiendo…' : comprobante ? '✓ Comprobante listo' : `📎 Comprobante${pideComprobante ? ' (obligatorio)' : ' (opcional)'}`}
-              <input type="file" className="hidden" accept="image/*,application/pdf"
-                onChange={e => { const file = e.target.files?.[0]; if (file) subir(file, 'comprobante'); e.target.value = '' }} />
-            </label>
-            {comprobante && <span className="text-xs text-gris-dark truncate max-w-[240px]">{comprobante.nombre_archivo}</span>}
-            {pideComprobante && !comprobante && (
-              <span className="text-[11px] text-rojo">Una transferencia o e-cheq necesita el comprobante.</span>
-            )}
-          </div>
-        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          <label className={`text-xs px-3 py-1.5 rounded border cursor-pointer font-semibold
+            ${pideComprobante && !comprobante ? 'border-rojo text-rojo bg-rojo-light' : 'border-gris-mid bg-white hover:bg-gris'}`}>
+            {subiendo === 'comprobante' ? 'Subiendo…' : comprobante ? '✓ Comprobante listo' : `📎 Comprobante${pideComprobante ? ' (obligatorio)' : ' (opcional)'}`}
+            <input type="file" className="hidden" accept="image/*,application/pdf"
+              onChange={e => { const file = e.target.files?.[0]; if (file) subir(file); e.target.value = '' }} />
+          </label>
+          {comprobante && <span className="text-xs text-gris-dark truncate max-w-[240px]">{comprobante.nombre_archivo}</span>}
+          {pideComprobante && !comprobante && (
+            <span className="text-[11px] text-rojo">Una transferencia o e-cheq necesita el comprobante.</span>
+          )}
+        </div>
 
         <Campo label="Observaciones" hint="Opcional">
           <input value={obs} onChange={e => setObs(e.target.value)} className={inputCls} />

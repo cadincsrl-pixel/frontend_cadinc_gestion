@@ -1,6 +1,6 @@
 'use client'
 
-import { ESTADO_FACTURA_META, FORMAS_PREVISTAS, comprobanteTxt, fmtFecha, fmtM } from '../utils/pagos.utils'
+import { ESTADO_FACTURA_META, FORMAS_PREVISTAS, comprobanteTxt, esNC, estadoHint, estadoLabel, fmtFecha, fmtM } from '../utils/pagos.utils'
 import type { PagosFactura } from '@/types/domain.types'
 import { sinDesglose } from '../utils/desglose'
 
@@ -11,6 +11,10 @@ import { sinDesglose } from '../utils/desglose'
  * pagar, para cuándo, CÓMO se paga, en qué estado está y si hay algo raro
  * (sin PDF, el CBU cambió después de aprobarse, se cargó ya pagada y nadie la
  * revisó).
+ *
+ * Una NOTA DE CRÉDITO (20260925) va en la misma lista con su chip «NC», el
+ * total en negativo y, en vez de saldo, el crédito que le queda sin aplicar:
+ * nunca es deuda.
  */
 
 interface Props {
@@ -64,9 +68,21 @@ function Alertas({ f }: { f: PagosFactura }) {
         <span className="inline-block whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded bg-amarillo-light text-[#7A5000]"
               title={f.control_nota || 'No se pudo leer el comprobante: hay que revisarlo a mano'}>? sin controlar</span>
       )}
-      {f.acreditado > 0 && (
+      {esNC(f) && (
+        <span className="inline-block whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded bg-[#EEE8FF] text-[#5A2D82] font-bold"
+              title={f.nc_txt ? `Nota de crédito ${f.nc_txt}` : 'Nota de crédito: queda como crédito a favor del proveedor'}>
+          NC{f.nc_txt ? ` ${f.nc_txt}` : ''}
+        </span>
+      )}
+      {!esNC(f) && Number(f.nc_pendiente ?? 0) > 0 && (
         <span className="inline-block whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded bg-[#EEE8FF] text-[#5A2D82]"
-              title={`Notas de crédito aplicadas por ${fmtM(f.acreditado)}`}>NC {fmtM(f.acreditado)}</span>
+              title={`Una NC sin aprobar reserva ${fmtM(f.nc_pendiente)}: esa parte no se puede pagar con plata${f.nc_txt ? ` (${f.nc_txt})` : ''}`}>
+          NC pendiente de aprobar {fmtM(f.nc_pendiente)}
+        </span>
+      )}
+      {!esNC(f) && f.acreditado > 0 && (
+        <span className="inline-block whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded bg-[#EEE8FF] text-[#5A2D82]"
+              title={`Notas de crédito aplicadas por ${fmtM(f.acreditado)}${f.nc_txt ? ` · ${f.nc_txt}` : ''}`}>NC {fmtM(f.acreditado)}</span>
       )}
     </>
   )
@@ -83,6 +99,8 @@ function Alertas({ f }: { f: PagosFactura }) {
  * orden de pago.
  */
 function FormaPago({ f }: { f: PagosFactura }) {
+  // Una NC no se paga: no tiene forma prevista.
+  if (esNC(f)) return <span className="text-gris-mid text-[11px]">no se paga</span>
   const label = FORMAS_PREVISTAS.find(x => x.key === f.forma_pago_prevista)?.label ?? f.forma_pago_prevista
   // Cheque y e-cheq se destacan: son los que además arrastran fechas de cobro.
   const conCheque = f.forma_pago_prevista === 'cheque' || f.forma_pago_prevista === 'echeq'
@@ -92,6 +110,17 @@ function FormaPago({ f }: { f: PagosFactura }) {
       {label}
     </span>
   )
+}
+
+/** Saldo de la fila. En la NC no hay deuda: se muestra el crédito sin aplicar. */
+function Saldo({ f }: { f: PagosFactura }) {
+  if (esNC(f)) {
+    const disp = Number(f.nc_disponible ?? 0)
+    return disp > 0
+      ? <span className="text-[#5A2D82]" title="Crédito a favor del proveedor todavía sin aplicar">crédito {fmtM(disp)}</span>
+      : <span className="text-gris-mid">—</span>
+  }
+  return f.saldo > 0 ? <>{fmtM(f.saldo)}</> : <span className="text-gris-mid">—</span>
 }
 
 function Vencimiento({ f }: { f: PagosFactura }) {
@@ -113,7 +142,7 @@ export function FacturasTabla({ items, seleccion, onToggle, onToggleTodas, onAbr
   if (items.length === 0) {
     return (
       <div className="bg-white rounded-card shadow-card p-8 text-center text-sm text-gris-dark italic">
-        No hay facturas con estos filtros.
+        No hay comprobantes con estos filtros.
       </div>
     )
   }
@@ -155,7 +184,7 @@ export function FacturasTabla({ items, seleccion, onToggle, onToggleTodas, onAbr
                   <td className="px-3 py-2 text-sm cursor-pointer" onClick={() => onAbrir(f.id)}>
                     <div className="font-semibold">{f.proveedor_nom}</div>
                     <div className="text-[11px] text-gris-dark font-mono">
-                      {comprobanteTxt(f.tipo_comprobante, f.numero)}
+                      {comprobanteTxt(f.tipo_comprobante, f.numero, f.clase)}
                       {f.ultima_op && <span className="font-sans"> · {f.ultima_op}</span>}
                     </div>
                     {f.descripcion && <div className="text-[11px] text-gris-dark truncate max-w-[280px]">{f.descripcion}</div>}
@@ -170,16 +199,18 @@ export function FacturasTabla({ items, seleccion, onToggle, onToggleTodas, onAbr
                   </td>
                   <td className="px-3 py-2 text-right text-xs whitespace-nowrap cursor-pointer" onClick={() => onAbrir(f.id)}>{fmtFecha(f.fecha)}</td>
                   <td className="px-3 py-2 text-right text-xs whitespace-nowrap cursor-pointer" onClick={() => onAbrir(f.id)}><Vencimiento f={f} /></td>
-                  <td className="px-3 py-2 text-right font-mono text-xs tabular-nums cursor-pointer" onClick={() => onAbrir(f.id)}>{fmtM(f.total)}</td>
+                  <td className="px-3 py-2 text-right font-mono text-xs tabular-nums cursor-pointer" onClick={() => onAbrir(f.id)}>
+                    {esNC(f) ? <span className="text-[#5A2D82]">−{fmtM(f.total)}</span> : fmtM(f.total)}
+                  </td>
                   <td className="px-3 py-2 text-right font-mono text-xs tabular-nums font-bold cursor-pointer" onClick={() => onAbrir(f.id)}>
-                    {f.saldo > 0 ? fmtM(f.saldo) : <span className="text-gris-mid">—</span>}
+                    <Saldo f={f} />
                   </td>
                   <td className="px-3 py-2 cursor-pointer" onClick={() => onAbrir(f.id)}>
                     <FormaPago f={f} />
                   </td>
                   <td className="px-3 py-2 cursor-pointer" onClick={() => onAbrir(f.id)}>
-                    <span className={`inline-block whitespace-nowrap text-[11px] font-bold px-2 py-0.5 rounded ${meta.badge}`} title={meta.hint}>
-                      {meta.label}
+                    <span className={`inline-block whitespace-nowrap text-[11px] font-bold px-2 py-0.5 rounded ${meta.badge}`} title={estadoHint(f.estado, f.clase)}>
+                      {estadoLabel(f.estado, f.clase)}
                     </span>
                   </td>
                   <td className="px-3 py-2 text-right">
@@ -210,10 +241,10 @@ export function FacturasTabla({ items, seleccion, onToggle, onToggleTodas, onAbr
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="font-semibold text-sm truncate">{f.proveedor_nom}</div>
-                      <div className="text-[11px] text-gris-dark font-mono">{comprobanteTxt(f.tipo_comprobante, f.numero)}</div>
+                      <div className="text-[11px] text-gris-dark font-mono">{comprobanteTxt(f.tipo_comprobante, f.numero, f.clase)}</div>
                     </div>
                     <div className="flex flex-col items-end gap-1 shrink-0">
-                      <span className={`inline-block whitespace-nowrap text-[11px] font-bold px-2 py-0.5 rounded ${meta.badge}`}>{meta.label}</span>
+                      <span className={`inline-block whitespace-nowrap text-[11px] font-bold px-2 py-0.5 rounded ${meta.badge}`}>{estadoLabel(f.estado, f.clase)}</span>
                       <FormaPago f={f} />
                     </div>
                   </div>
@@ -222,10 +253,19 @@ export function FacturasTabla({ items, seleccion, onToggle, onToggleTodas, onAbr
                     <div className="text-[11px] text-gris-dark">
                       {f.centro_costo ?? 'sin imputar'} · emitida {fmtFecha(f.fecha)}
                     </div>
-                    <div className="text-right">
-                      <div className="font-mono text-sm font-bold tabular-nums">{f.saldo > 0 ? fmtM(f.saldo) : fmtM(f.total)}</div>
-                      <div className="text-[10px] text-gris-dark">{f.saldo > 0 ? `de ${fmtM(f.total)}` : 'sin saldo'}</div>
-                    </div>
+                    {esNC(f) ? (
+                      <div className="text-right">
+                        <div className="font-mono text-sm font-bold tabular-nums text-[#5A2D82]">−{fmtM(f.total)}</div>
+                        <div className="text-[10px] text-gris-dark">
+                          {Number(f.nc_disponible ?? 0) > 0 ? `crédito ${fmtM(f.nc_disponible)}` : 'nota de crédito'}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-right">
+                        <div className="font-mono text-sm font-bold tabular-nums">{f.saldo > 0 ? fmtM(f.saldo) : fmtM(f.total)}</div>
+                        <div className="text-[10px] text-gris-dark">{f.saldo > 0 ? `de ${fmtM(f.total)}` : 'sin saldo'}</div>
+                      </div>
+                    )}
                   </div>
                   <div className="text-[11px] mt-0.5"><Vencimiento f={f} /></div>
                   <div className="flex gap-1 flex-wrap mt-1"><Alertas f={f} /></div>

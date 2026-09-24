@@ -6,13 +6,18 @@
  *    aplicadas, porque sin eso el saldo no se entiende.
  *  - «Proveedores»: el padrón con sus datos de pago y su saldo.
  *
+ * Las NOTAS DE CRÉDITO (20260925) van en la misma hoja con la columna
+ * «Clase» y los importes EN NEGATIVO: el total de la hoja es lo que se debe
+ * neto de lo que el proveedor acreditó. Su saldo es 0 (nunca son deuda) y el
+ * crédito que les queda va en «Crédito NC».
+ *
  * Las filas vienen del endpoint `/export`, que pagina en el server de a 1000
  * con orden estable: nunca se exporta «la página que estoy viendo».
  */
 import ExcelJS from 'exceljs'
 import { toISO } from '@/lib/utils/dates'
 import { EMPRESA } from '@/lib/config/empresa'
-import { ESTADO_FACTURA_META, FORMAS_PREVISTAS, comprobanteTxt, formaPagoLabel, hoyAR } from './pagos.utils'
+import { FORMAS_PREVISTAS, comprobanteTxt, conSigno, esNC, estadoLabel, formaPagoLabel, hoyAR } from './pagos.utils'
 import type { PagosFactura, PagosOrdenExport, PagosProveedor } from '@/types/domain.types'
 
 const FMT_MONEDA = '"$"#,##0;[Red]"-$"#,##0;"—"'
@@ -76,6 +81,50 @@ async function descargar(wb: ExcelJS.Workbook, nombre: string) {
 
 // ── Facturas ──────────────────────────────────────────────────────────
 
+export const HEADERS_FACTURAS = [
+  'Proveedor', 'CUIT', 'Tipo y número', 'Clase', 'Emitida', 'Vence', 'Días',
+  'Total', 'Neto', 'IVA', 'Percepciones', 'Imputable',
+  'Pagado', 'Notas de crédito', 'Saldo', 'Crédito NC',
+  'Estado', 'Cliente / obra', 'Reparto', 'Forma prevista', 'Descripción', 'Cargó', 'Aprobó', 'Última OP',
+] as const
+/** Columnas (base 1) con plata y con fecha, para el formato. */
+const COLS_MONEDA_FACT = [8, 9, 10, 11, 12, 13, 14, 15, 16]
+const COLS_FECHA_FACT  = [5, 6]
+
+type Celda = string | number | Date | null
+const nulo = (v: number | null | undefined, clase: PagosFactura['clase']) =>
+  v != null ? conSigno(v, clase) : null
+
+/**
+ * Una fila de la hoja «Facturas». Pura, para poder testearla: la NC va con
+ * los importes en negativo y sin forma prevista.
+ */
+export function filaExcelFactura(f: PagosFactura): Celda[] {
+  const nc = esNC(f)
+  return [
+    f.proveedor_nom, f.proveedor_cuit ?? '', comprobanteTxt(f.tipo_comprobante, f.numero),
+    nc ? 'Nota de crédito' : 'Factura',
+    fecha(f.fecha), fecha(f.vence_el), nc ? null : (f.dias_vencida ?? null),
+    conSigno(f.total, f.clase), nulo(f.neto, f.clase), nulo(f.iva, f.clase),
+    nulo(f.percepciones, f.clase), conSigno(f.imputable, f.clase),
+    Number(f.pagado) || null, Number(f.acreditado) || null, nc ? null : (Number(f.saldo) || null),
+    nc ? (Number(f.nc_disponible) || null) : null,
+    estadoLabel(f.estado, f.clase),
+    f.centro_costo ?? '', f.centros ?? '',
+    nc ? '—' : (FORMAS_PREVISTAS.find(x => x.key === f.forma_pago_prevista)?.label ?? f.forma_pago_prevista),
+    f.descripcion, f.created_by_nombre ?? '', f.aprobada_por_nombre ?? '', f.ultima_op ?? '',
+  ]
+}
+
+/** La fila TOTAL: total e imputable con signo (la NC resta); saldo solo de facturas. */
+export function totalesExcelFacturas(filas: PagosFactura[]): Celda[] {
+  const suma = (k: (f: PagosFactura) => number) => Math.round(filas.reduce((s, f) => s + (Number(k(f)) || 0), 0) * 100) / 100
+  return ['TOTAL', '', '', '', null, null, null,
+    suma(f => conSigno(f.total, f.clase)), null, null, null, suma(f => conSigno(f.imputable, f.clase)),
+    suma(f => f.pagado), suma(f => f.acreditado), suma(f => (esNC(f) ? 0 : f.saldo)),
+    suma(f => (esNC(f) ? f.nc_disponible : 0))]
+}
+
 export async function exportarFacturasPagos(filas: PagosFactura[]): Promise<void> {
   const generadoEn = new Date()
   const wb = new ExcelJS.Workbook()
@@ -83,19 +132,16 @@ export async function exportarFacturasPagos(filas: PagosFactura[]): Promise<void
   wb.created = generadoEn
 
   const ws = wb.addWorksheet('Facturas')
-  const headers = [
-    'Proveedor', 'CUIT', 'Tipo y número', 'Emitida', 'Vence', 'Días',
-    'Total', 'Neto', 'IVA', 'Percepciones', 'Imputable',
-    'Pagado', 'Notas de crédito', 'Saldo',
-    'Estado', 'Cliente / obra', 'Reparto', 'Forma prevista', 'Descripción', 'Cargó', 'Aprobó', 'Última OP',
-  ]
-  setColWidths(ws, [28, 14, 20, 12, 12, 8, 14, 13, 12, 13, 14, 14, 15, 14, 14, 22, 34, 16, 34, 18, 18, 12])
+  const headers = [...HEADERS_FACTURAS]
+  setColWidths(ws, [28, 14, 20, 15, 12, 12, 8, 14, 13, 12, 13, 14, 14, 15, 14, 14, 16, 22, 34, 16, 34, 18, 18, 12])
 
   const sinPDF = filas.filter(f => !f.tiene_factura_adj).length
   const vencidas = filas.filter(f => f.vencida).length
+  const ncs = filas.filter(esNC).length
   cabecera(ws, 'PAGOS — Facturas de proveedor', [
     `Generado: ${generadoEn.toLocaleDateString('es-AR')}`,
     'Importes finales con IVA',
+    ncs > 0 ? `${ncs} nota(s) de crédito, en negativo` : '',
     'El reparto por obra se hace sobre el total menos las percepciones',
     vencidas > 0 ? `⚠ ${vencidas} vencida(s)` : '',
     sinPDF > 0 ? `${sinPDF} sin PDF adjunto` : '',
@@ -105,32 +151,19 @@ export async function exportarFacturasPagos(filas: PagosFactura[]): Promise<void
   let r = 4
   for (const f of filas) {
     const row = ws.getRow(r++)
-    row.values = [
-      f.proveedor_nom, f.proveedor_cuit ?? '', comprobanteTxt(f.tipo_comprobante, f.numero),
-      fecha(f.fecha), fecha(f.vence_el), f.dias_vencida ?? null,
-      Number(f.total), f.neto != null ? Number(f.neto) : null, f.iva != null ? Number(f.iva) : null,
-      f.percepciones != null ? Number(f.percepciones) : null, Number(f.imputable),
-      Number(f.pagado) || null, Number(f.acreditado) || null, Number(f.saldo) || null,
-      ESTADO_FACTURA_META[f.estado]?.label ?? f.estado,
-      f.centro_costo ?? '', f.centros ?? '',
-      FORMAS_PREVISTAS.find(x => x.key === f.forma_pago_prevista)?.label ?? f.forma_pago_prevista,
-      f.descripcion, f.created_by_nombre ?? '', f.aprobada_por_nombre ?? '', f.ultima_op ?? '',
-    ]
-    for (const c of [7, 8, 9, 10, 11, 12, 13, 14]) row.getCell(c).numFmt = FMT_MONEDA
-    for (const c of [4, 5]) row.getCell(c).numFmt = FMT_FECHA
-    if (f.vencida) row.getCell(5).font = { color: { argb: 'FFC00000' }, bold: true }
-    row.getCell(14).font = { bold: true }
+    row.values = filaExcelFactura(f)
+    for (const c of COLS_MONEDA_FACT) row.getCell(c).numFmt = FMT_MONEDA
+    for (const c of COLS_FECHA_FACT) row.getCell(c).numFmt = FMT_FECHA
+    if (f.vencida) row.getCell(6).font = { color: { argb: 'FFC00000' }, bold: true }
+    row.getCell(15).font = { bold: true }
     row.eachCell({ includeEmpty: true }, c => {
       c.border = { bottom: { style: 'thin', color: { argb: C_GRIS_BORDE } } }
     })
   }
 
   const tot = ws.getRow(r)
-  const suma = (k: (f: PagosFactura) => number) => filas.reduce((s, f) => s + Number(k(f) ?? 0), 0)
-  tot.values = ['TOTAL', '', '', null, null, null,
-    suma(f => f.total), null, null, null, suma(f => f.imputable),
-    suma(f => f.pagado), suma(f => f.acreditado), suma(f => f.saldo)]
-  for (const c of [7, 11, 12, 13, 14]) tot.getCell(c).numFmt = FMT_MONEDA
+  tot.values = totalesExcelFacturas(filas)
+  for (const c of [8, 12, 13, 14, 15, 16]) tot.getCell(c).numFmt = FMT_MONEDA
   tot.eachCell({ includeEmpty: true }, c => {
     c.font = { bold: true }
     c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C_GRIS_MEDIUM } }
@@ -150,8 +183,8 @@ export async function exportarProveedoresPagos(filas: PagosProveedor[]): Promise
   wb.created = generadoEn
 
   const ws = wb.addWorksheet('Proveedores')
-  const headers = ['Razón social', 'CUIT', 'CBU', 'Alias', 'Banco', 'Plazo (días)', 'Facturas', 'Saldo', 'Listo para pagar', 'Último pago', 'Estado', 'Contacto', 'Teléfono', 'Email']
-  setColWidths(ws, [30, 14, 26, 20, 18, 12, 10, 14, 16, 13, 12, 20, 16, 24])
+  const headers = ['Razón social', 'CUIT', 'CBU', 'Alias', 'Banco', 'Plazo (días)', 'Facturas', 'Saldo', 'Listo para pagar', 'Último pago', 'Estado', 'Contacto', 'Teléfono', 'Email', 'Crédito NC']
+  setColWidths(ws, [30, 14, 26, 20, 18, 12, 10, 14, 16, 13, 12, 20, 16, 24, 14])
 
   const sinCuit = filas.filter(f => !f.cuit).length
   const sinDatos = filas.filter(f => f.sin_datos_pago).length
@@ -170,8 +203,9 @@ export async function exportarProveedoresPagos(filas: PagosProveedor[]): Promise
       p.razon_social, p.cuit ?? '', p.cbu ?? '', p.alias_cbu ?? '', p.banco ?? '',
       p.plazo_pago_dias, p.facturas, Number(p.saldo) || null, Number(p.saldo_aprobado) || null,
       fecha(p.ultimo_pago), p.activo ? 'Activo' : 'Baja', p.contacto ?? '', p.telefono ?? '', p.email ?? '',
+      Number(p.nc_disponible ?? 0) || null,
     ]
-    for (const c of [8, 9]) row.getCell(c).numFmt = FMT_MONEDA
+    for (const c of [8, 9, 15]) row.getCell(c).numFmt = FMT_MONEDA
     row.getCell(10).numFmt = FMT_FECHA
     row.getCell(3).font = { name: 'Consolas', size: 10 }
     if (!p.activo) row.eachCell({ includeEmpty: true }, c => { c.font = { ...(c.font ?? {}), color: { argb: 'FF888888' } } })
@@ -217,10 +251,10 @@ export async function exportarOrdenesPagos(filas: PagosOrdenExport[]): Promise<v
   const ws = wb.addWorksheet('Órdenes')
   const headers = [
     'OP', 'Fecha', 'Proveedor', 'CUIT', 'Forma', 'Referencia',
-    'Pagado', 'Notas de crédito', 'Qué cubre', 'Facturas', 'A cuenta',
+    'Pagado', 'Qué cubre', 'Facturas', 'A cuenta',
     'Cheques', '1er cobro', 'Comprobante', 'Estado', 'Registró', 'Anuló', 'Motivo',
   ]
-  setColWidths(ws, [10, 12, 28, 14, 16, 18, 15, 15, 40, 10, 13, 9, 12, 13, 12, 18, 18, 28])
+  setColWidths(ws, [10, 12, 28, 14, 16, 18, 15, 40, 10, 13, 9, 12, 13, 12, 18, 18, 28])
   cabecera(ws, 'PAGOS — Órdenes de pago', [
     `Generado: ${generadoEn.toLocaleDateString('es-AR')}`,
     'Los totales cuentan solo las órdenes vigentes',
@@ -236,18 +270,18 @@ export async function exportarOrdenesPagos(filas: PagosOrdenExport[]): Promise<v
     row.values = [
       o.numero_fmt, fecha(o.fecha), o.proveedor_nom, o.proveedor_cuit ?? '',
       formaPagoLabel(o.forma_pago), o.referencia,
-      Number(o.monto_pagado) || null, Number(o.monto_nc) || null,
+      Number(o.monto_pagado) || null,
       o.facturas ?? '', o.cantidad_facturas || null, Number(o.a_cuenta) || null,
       o.cheques.length || null, o.cheques.length > 0 ? fecha(o.fecha_cobro) : null,
       o.comprobante_requerido ? (o.tiene_comprobante ? 'Sí' : 'FALTA') : '—',
       anulada ? 'Anulada' : 'Emitida',
       o.created_by_nombre ?? '', o.anulado_por_nombre ?? '', o.motivo_anulacion ?? '',
     ]
-    for (const c of [7, 8, 11]) row.getCell(c).numFmt = FMT_MONEDA
-    for (const c of [2, 13]) row.getCell(c).numFmt = FMT_FECHA
+    for (const c of [7, 10]) row.getCell(c).numFmt = FMT_MONEDA
+    for (const c of [2, 12]) row.getCell(c).numFmt = FMT_FECHA
     if (anulada) row.eachCell({ includeEmpty: true }, c => { c.font = { strike: true, color: { argb: 'FF999999' } } })
     if (!anulada && o.comprobante_requerido && !o.tiene_comprobante) {
-      row.getCell(14).font = { color: { argb: 'FFC00000' }, bold: true }
+      row.getCell(13).font = { color: { argb: 'FFC00000' }, bold: true }
     }
     row.eachCell({ includeEmpty: true }, c => {
       c.border = { bottom: { style: 'thin', color: { argb: C_GRIS_BORDE } } }
@@ -256,8 +290,8 @@ export async function exportarOrdenesPagos(filas: PagosOrdenExport[]): Promise<v
   const tot = ws.getRow(r)
   const suma = (k: (o: PagosOrdenExport) => number) => vigentes.reduce((s, o) => s + Number(k(o) ?? 0), 0)
   tot.values = ['TOTAL', null, `${vigentes.length} orden(es) vigente(s)`, '', '', '',
-    suma(o => o.monto_pagado), suma(o => o.monto_nc), '', null, suma(o => o.a_cuenta)]
-  for (const c of [7, 8, 11]) tot.getCell(c).numFmt = FMT_MONEDA
+    suma(o => o.monto_pagado), '', null, suma(o => o.a_cuenta)]
+  for (const c of [7, 10]) tot.getCell(c).numFmt = FMT_MONEDA
   tot.eachCell({ includeEmpty: true }, c => {
     c.font = { bold: true }
     c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C_GRIS_MEDIUM } }

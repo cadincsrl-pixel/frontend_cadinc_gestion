@@ -29,7 +29,7 @@
 import JSZip from 'jszip'
 import { EMPRESA } from '@/lib/config/empresa'
 import { comprobanteTxt, fmtM, fmtFecha, formaPagoLabel } from './pagos.utils'
-import type { PagosPaquete, PagosPaqueteArchivo, PagosPaqueteFactura, PagosPaqueteOrden } from '@/types/domain.types'
+import type { PagosPaquete, PagosPaqueteArchivo, PagosPaqueteFactura, PagosPaqueteNc, PagosPaqueteOrden } from '@/types/domain.types'
 
 /** Nombre de archivo utilizable en Windows, Mac y Linux. */
 function limpiar(s: string): string {
@@ -62,10 +62,13 @@ export function carpetaDeOrden(o: PagosPaqueteOrden): string {
  * alfabéticamente: es el que dice cuánto salió.
  */
 export function nombreEnZip(
-  o: PagosPaqueteOrden, a: PagosPaqueteArchivo, usados: Set<string>, f?: PagosPaqueteFactura,
+  o: PagosPaqueteOrden, a: PagosPaqueteArchivo, usados: Set<string>, f?: PagosPaqueteFactura, nc?: PagosPaqueteNc,
 ): string {
+  // El papel de una NC aplicada a la factura (20260925): va al lado, con su número.
   const etiqueta = a.origen === 'pago'
     ? `pago__${limpiar(a.tipo)}`
+    : a.origen === 'nota_credito'
+    ? `nc__${limpiar(`${nc?.tipo_comprobante ?? ''}-${(nc?.numero ?? 's-n').replace(/\s+/g, '')}`)}`
     : `factura__${limpiar(`${f?.tipo_comprobante ?? ''}-${(f?.numero ?? 's-n').replace(/\s+/g, '')}`)}${a.tipo === 'factura' ? '' : `_${limpiar(a.tipo)}`}`
   const base = `${carpetaDeOrden(o)}/${etiqueta}`
   const ext = extDe(a.nombre_archivo, a.mime_type)
@@ -108,7 +111,8 @@ export async function armarPaqueteContador(
   let facturasSinPapel = 0
 
   const total = paquete.ordenes.reduce(
-    (s, o) => s + o.archivos.length + o.facturas.reduce((t, f) => t + f.archivos.length, 0), 0)
+    (s, o) => s + o.archivos.length + o.facturas.reduce((t, f) => t + f.archivos.length
+      + (f.notas_credito ?? []).reduce((u, n) => u + n.archivos.length, 0), 0), 0)
   let hechos = 0
 
   const bajar = async (nombre: string, a: PagosPaqueteArchivo, sangria: string) => {
@@ -151,6 +155,13 @@ export async function armarPaqueteContador(
         lineas.push('        ⚠ FACTURA SIN NINGÚN ARCHIVO')
       }
       for (const a of f.archivos) await bajar(nombreEnZip(o, a, usados, f), a, '        ')
+      // Las NC que acreditan esta factura: no son plata de esta OP, pero
+      // explican por qué se pagó menos que el total.
+      for (const n of f.notas_credito ?? []) {
+        lineas.push(`        NC ${comprobanteTxt(n.tipo_comprobante ?? 'A', n.numero)} · acredita ${fmtM(Number(n.monto_aplicado))}`
+          + (n.aprobada ? '' : ' (sin aprobar)'))
+        for (const a of n.archivos) await bajar(nombreEnZip(o, a, usados, f, n), a, '            ')
+      }
     }
   }
 

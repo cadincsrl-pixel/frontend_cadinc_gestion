@@ -10,7 +10,7 @@ import {
   type PagosFacturasFiltro,
 } from '../hooks/usePagos'
 import { useSaldosProveedores } from '../hooks/useProveedoresPagos'
-import { fmtM, describirFiltroFacturas } from '../utils/pagos.utils'
+import { fmtM, describirFiltroFacturas, esNC, topePagable } from '../utils/pagos.utils'
 import { mensajeErrorPagos } from '../utils/pagos.errores'
 import { exportarFacturasPagos } from '../utils/pagosExport'
 import { exportarResumenPagosPdf } from '../utils/pagosResumenPdf'
@@ -135,9 +135,10 @@ export function FacturasTab({ aviso }: { aviso?: string | null }) {
 
   // Pagar: todas del mismo proveedor y aprobadas (o con saldo). El modal
   // vuelve a validar; acá solo se evita ofrecer el botón cuando no tiene
-  // sentido.
+  // sentido. Una NC NUNCA se paga (se aprueba, sí), y el tope es
+  // `saldo_pagable`: lo reservado por una NC sin aprobar no se paga con plata.
   const pagables = useMemo(
-    () => seleccionadas.filter(f => ['aprobada', 'pagada_parcial'].includes(f.estado) && !f.paga_cliente && f.saldo > 0),
+    () => seleccionadas.filter(f => !esNC(f) && ['aprobada', 'pagada_parcial'].includes(f.estado) && !f.paga_cliente && topePagable(f) > 0),
     [seleccionadas],
   )
   const unSoloProveedor = pagables.length > 0 && new Set(pagables.map(f => f.proveedor_id)).size === 1
@@ -191,9 +192,9 @@ export function FacturasTab({ aviso }: { aviso?: string | null }) {
           <Button
             size="sm" onClick={() => setModalCargar({ open: true })}
             disabled={!puedeCrear}
-            title={puedeCrear ? 'Cargar una factura de proveedor' : 'No tenés permiso para cargar facturas'}
+            title={puedeCrear ? 'Cargar una factura o una nota de crédito de proveedor' : 'No tenés permiso para cargar facturas'}
           >
-            + Cargar factura
+            + Cargar factura / NC
           </Button>
           {seleccionadas.length > 0 && (
             <>
@@ -205,7 +206,7 @@ export function FacturasTab({ aviso }: { aviso?: string | null }) {
                 title={
                   !puedeAprobar ? 'No tenés permiso para aprobar'
                   : aprobables.length === 0 ? 'De lo seleccionado, no hay nada pendiente de aprobar'
-                  : `Aprobar ${aprobables.length} factura(s)`
+                  : `Aprobar ${aprobables.length} comprobante(s)`
                 }
               >
                 ✓ Aprobar {aprobables.length > 0 ? aprobables.length : ''}
@@ -216,7 +217,7 @@ export function FacturasTab({ aviso }: { aviso?: string | null }) {
                 disabled={!puedePagar || pagables.length === 0 || !unSoloProveedor}
                 title={
                   !puedePagar ? 'No tenés permiso para registrar pagos'
-                  : pagables.length === 0 ? 'De lo seleccionado, no hay nada aprobado con saldo'
+                  : pagables.length === 0 ? 'De lo seleccionado, no hay facturas aprobadas con saldo (las notas de crédito no se pagan)'
                   : !unSoloProveedor ? 'Una orden de pago es de un solo proveedor: elegí facturas de uno solo'
                   : `Pagar ${pagables.length} factura(s)`
                 }
@@ -289,7 +290,7 @@ export function FacturasTab({ aviso }: { aviso?: string | null }) {
             <Pagination page={page} total={total} pageSize={PAGE_SIZE} onChange={setPage} />
           )}
           <p className="text-[11px] text-gris-dark px-1">
-            {total.toLocaleString('es-AR')} factura{total === 1 ? '' : 's'} · importes finales con IVA ·
+            {total.toLocaleString('es-AR')} comprobante{total === 1 ? '' : 's'} · importes finales con IVA · las NC restan ·
             {' '}el reparto por obra se hace sobre el total menos las percepciones
           </p>
         </>

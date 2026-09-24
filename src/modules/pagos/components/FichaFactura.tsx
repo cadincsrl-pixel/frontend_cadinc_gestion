@@ -13,12 +13,13 @@ import {
 } from '../hooks/usePagos'
 import {
   ESTADO_FACTURA_META, FORMAS_PREVISTAS, MAX_ADJUNTO_BYTES, MIME_ADJUNTOS, TIPOS_ADJ_FACTURA,
-  comprobanteTxt, facturaAnulada, fmtFecha, fmtM, formaPagoLabel,
+  aplicacionFirme, comprobanteTxt, contraparteAplicacion, esNC, estadoHint, estadoLabel, facturaAnulada, fmtFecha, fmtM, formaPagoLabel, topePagable,
 } from '../utils/pagos.utils'
 import { mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
-import type { PagosControlFactura, PagosFacturaDetalle, PagosTipoAdjFactura } from '@/types/domain.types'
+import type { PagosAplicacionNc, PagosControlFactura, PagosFacturaDetalle, PagosTipoAdjFactura } from '@/types/domain.types'
 import { ALICUOTAS, NOMBRE_CBTE_ARCA, labelTributo, sinDesglose } from '../utils/desglose'
 import { ModalCompletarDesglose } from './ModalCompletarDesglose'
+import { ModalAplicarNc } from './ModalAplicarNc'
 
 /**
  * La ficha de una factura: todo lo que se sabe de ella y lo que se puede
@@ -27,6 +28,10 @@ import { ModalCompletarDesglose } from './ModalCompletarDesglose'
  * Las acciones se DESHABILITAN con el motivo en el tooltip, no se esconden
  * (§6 del CLAUDE.md): quien no puede aprobar tiene que entender por qué, y las
  * tres separaciones de funciones son justamente lo que hay que explicar.
+ *
+ * Una NOTA DE CRÉDITO (20260925) usa la misma ficha: se aprueba igual (doble
+ * firma), no se paga, y muestra a qué facturas acredita y el crédito que le
+ * queda, con «Aplicar crédito» para usarlo a mano.
  */
 
 interface Props {
@@ -53,6 +58,7 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
   const [motivo, setMotivo] = useState('')
   const [tipoAdj, setTipoAdj] = useState<PagosTipoAdjFactura>('factura')
   const [completando, setCompletando] = useState(false)
+  const [aplicando, setAplicando] = useState(false)
 
   if (isLoading || !f) {
     return (
@@ -63,6 +69,8 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
   }
 
   const meta = ESTADO_FACTURA_META[f.estado]
+  const nc = esNC(f)
+  const nombre = nc ? 'nota de crédito' : 'factura'
   const esMia = !!miId && f.created_by === miId
   const puedeAprobar = !!(aprobarFacturas || esAdmin)
   const puedePagar   = !!(registrarPagos || esAdmin)
@@ -76,9 +84,17 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
 
   const aprobable = f.estado === 'pendiente' && !f.paga_cliente
   const sellable  = f.sin_revisar                       // pagada al cargar, sin revisar
-  const pagable   = ['aprobada', 'pagada_parcial'].includes(f.estado) && !f.paga_cliente && f.saldo > 0
+  const pagable   = !nc && ['aprobada', 'pagada_parcial'].includes(f.estado) && !f.paga_cliente && topePagable(f) > 0
   const editable  = !['anulada'].includes(f.estado)
-  const anulable  = ['pendiente', 'observada'].includes(f.estado) || f.sin_revisar
+  // Una NC se puede anular en cualquier estado vigente: la deuda vuelve a las
+  // facturas que acreditaba (la base lo permite; una factura con NC aplicadas
+  // rebota con FACTURA_CON_NC).
+  const anulable  = nc ? f.estado !== 'anulada' : (['pendiente', 'observada'].includes(f.estado) || f.sin_revisar)
+  // Aplicar el crédito sobrante: aprobar_facturas O registrar_pagos.
+  const puedeAplicarNc = !!(aprobarFacturas || registrarPagos || esAdmin)
+  const ncDisponible   = Number(f.nc_disponible ?? 0)
+  const aplicable      = nc && !!f.aprobada_at && f.estado !== 'anulada' && ncDisponible > 0
+  const aplicaciones: PagosAplicacionNc[] = f.aplicaciones ?? []
 
   async function accion(fn: () => Promise<unknown>, ok: string) {
     try {
@@ -110,7 +126,7 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
       open
       onClose={onClose}
       width="max-w-3xl"
-      title={`${comprobanteTxt(f.tipo_comprobante, f.numero)} · ${f.proveedor_nom}`}
+      title={`${comprobanteTxt(f.tipo_comprobante, f.numero, f.clase)} · ${f.proveedor_nom}`}
       footer={
         <div className="flex gap-2 flex-wrap justify-end">
           <Button variant="ghost" size="sm" onClick={onClose}>Cerrar</Button>
@@ -119,8 +135,8 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
             <Button variant="danger" size="sm" onClick={() => setPidiendo('anular')}
               disabled={!(puedeEliminar || (puedeEditar && esMia))}
               title={puedeEliminar || (puedeEditar && esMia)
-                ? 'Anular la factura con un motivo'
-                : 'Solo podés anular facturas que cargaste vos'}>
+                ? (nc ? 'Anular la nota de crédito: lo que acreditaba vuelve a ser deuda de esas facturas' : 'Anular la factura con un motivo')
+                : `Solo podés anular ${nc ? 'notas de crédito' : 'facturas'} que cargaste vos`}>
               Anular
             </Button>
           )}
@@ -128,7 +144,7 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
           {editable && (
             <Button variant="secondary" size="sm" onClick={() => onEditar(f.id)}
               disabled={!puedeEditar}
-              title={puedeEditar ? 'Editar la factura' : 'No tenés permiso para editar facturas'}>
+              title={puedeEditar ? `Editar la ${nombre}` : 'No tenés permiso para editar facturas'}>
               ✏️ Editar
             </Button>
           )}
@@ -156,12 +172,24 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
                 disabled={!puedeAprobar || noApruebaPropia}
                 title={
                   !puedeAprobar ? 'No tenés permiso para aprobar'
-                  : noApruebaPropia ? 'No podés aprobar una factura que cargaste vos: la tiene que aprobar otra persona'
-                  : sellable ? 'Revisada: sale de «pagadas sin revisar»' : 'Aprobar: queda lista para pagar'
+                  : noApruebaPropia ? `No podés aprobar una ${nombre} que cargaste vos: la tiene que aprobar otra persona`
+                  : sellable ? 'Revisada: sale de «pagadas sin revisar»'
+                  : nc ? 'Aprobar: baja la deuda de las facturas que acredita (o queda como crédito a favor)'
+                  : 'Aprobar: queda lista para pagar'
                 }>
                 ✓ {sellable ? 'Marcar revisada' : 'Aprobar'}
               </Button>
             </>
+          )}
+
+          {aplicable && (
+            <Button size="sm" onClick={() => setAplicando(true)}
+              disabled={!puedeAplicarNc}
+              title={puedeAplicarNc
+                ? `Acreditar los ${fmtM(ncDisponible)} que le quedan a facturas del proveedor`
+                : 'Aplicar crédito lo hace quien aprueba facturas o registra pagos'}>
+              Aplicar crédito
+            </Button>
           )}
 
           {pagable && (
@@ -183,8 +211,15 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
 
         {/* Estado y avisos */}
         <div className="flex items-center gap-2 flex-wrap">
-          <span className={`text-xs font-bold px-2 py-0.5 rounded ${meta.badge}`}>{meta.label}</span>
-          <span className="text-xs text-gris-dark">{meta.hint}</span>
+          {nc && <span className="text-xs font-bold px-2 py-0.5 rounded bg-[#EEE8FF] text-[#5A2D82]">Nota de crédito</span>}
+          <span className={`text-xs font-bold px-2 py-0.5 rounded ${meta.badge}`}>{estadoLabel(f.estado, f.clase)}</span>
+          <span className="text-xs text-gris-dark">{estadoHint(f.estado, f.clase)}</span>
+          {!nc && Number(f.nc_pendiente ?? 0) > 0 && (
+            <span className="text-xs font-bold px-2 py-0.5 rounded bg-[#EEE8FF] text-[#5A2D82]"
+              title="Una nota de crédito sin aprobar reserva esta parte: no se puede pagar con plata hasta que se apruebe o se anule">
+              NC pendiente de aprobar {fmtM(f.nc_pendiente)}
+            </span>
+          )}
         </div>
 
         {f.cuenta_cambio_tras_aprobar && (
@@ -216,12 +251,20 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
         )}
 
         {/* Importes */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <Dato label="Total" valor={fmtM(f.total)} fuerte />
-          <Dato label="Pagado" valor={f.pagado > 0 ? fmtM(f.pagado) : '—'} />
-          <Dato label="Notas de crédito" valor={f.acreditado > 0 ? fmtM(f.acreditado) : '—'} />
-          <Dato label="Saldo" valor={f.saldo > 0 ? fmtM(f.saldo) : '—'} fuerte />
-        </div>
+        {nc ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <Dato label="Total de la NC" valor={`−${fmtM(f.total)}`} fuerte />
+            <Dato label={f.aprobada_at ? 'Aplicado' : 'Declara acreditar'} valor={Number(f.nc_aplicado ?? 0) > 0 ? fmtM(f.nc_aplicado) : '—'} />
+            <Dato label="Crédito disponible" valor={f.aprobada_at ? (ncDisponible > 0 ? fmtM(ncDisponible) : '—') : 'al aprobarla'} fuerte />
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <Dato label="Total" valor={fmtM(f.total)} fuerte />
+            <Dato label="Pagado" valor={f.pagado > 0 ? fmtM(f.pagado) : '—'} />
+            <Dato label="Notas de crédito" valor={f.acreditado > 0 ? fmtM(f.acreditado) : '—'} />
+            <Dato label="Saldo" valor={f.saldo > 0 ? fmtM(f.saldo) : '—'} fuerte />
+          </div>
+        )}
         <DesgloseFicha f={f} />
         {/* Completar el desglose (20260924v): también en una PAGADA, porque no
             cambia la plata (total y percepciones quedan iguales; lo valida la base). */}
@@ -243,8 +286,8 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
         {/* Datos */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           <Dato label="Emitida" valor={fmtFecha(f.fecha)} />
-          <Dato label="Vence" valor={f.vence_el ? fmtFecha(f.vence_el) : 'sin vencimiento'} alerta={f.vencida} />
-          <Dato label="Forma prevista" valor={FORMAS_PREVISTAS.find(x => x.key === f.forma_pago_prevista)?.label ?? f.forma_pago_prevista} />
+          {!nc && <Dato label="Vence" valor={f.vence_el ? fmtFecha(f.vence_el) : 'sin vencimiento'} alerta={f.vencida} />}
+          {!nc && <Dato label="Forma prevista" valor={FORMAS_PREVISTAS.find(x => x.key === f.forma_pago_prevista)?.label ?? f.forma_pago_prevista} />}
           <Dato label="CUIT" valor={f.proveedor_cuit ?? '—'} />
           <Dato label="Cuenta del proveedor" valor={verPii ? (f.proveedor_cbu ?? f.proveedor_alias ?? '—') : (f.proveedor_cbu_ultimos4 ? `***${f.proveedor_cbu_ultimos4}` : '—')} />
           <Dato label="Cargó" valor={`${f.created_by_nombre ?? '—'}, ${fmtFecha(f.created_at)}`} />
@@ -282,6 +325,54 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
               </table>
             )}
         </Bloque>
+
+        {/* NC ↔ facturas (20260925). En la NC: a qué facturas acredita; en la
+            factura: qué NC la acreditan. La forma de `aplicaciones` la confirma
+            el backend: se muestra lo que venga, tolerando faltantes. */}
+        {(nc || aplicaciones.length > 0) && (
+          <Bloque titulo={nc ? 'Acredita a' : 'Notas de crédito aplicadas'}>
+            {aplicaciones.length === 0 ? (
+              <div className="text-xs text-gris-dark italic">
+                {nc
+                  ? (f.nc_txt ? f.nc_txt : 'No acredita ninguna factura: queda como crédito a favor del proveedor.')
+                  : '—'}
+              </div>
+            ) : (
+              <table className="w-full text-xs">
+                <tbody>
+                  {aplicaciones.map((a, i) => {
+                    const c = contraparteAplicacion(a, nc ? 'nc' : 'factura')
+                    const anulada = a.vigente === false || (!nc && c.estado === 'anulada')
+                    // En la factura: la NC que la acredita todavía no está aprobada (es reserva).
+                    const sinAprobar = !nc && !anulada && !aplicacionFirme(a)
+                    return (
+                      <tr key={a.id ?? `${a.nc_id}-${a.factura_id}-${i}`}
+                        className={`border-b border-gris last:border-0 ${anulada ? 'opacity-50 line-through' : ''}`}>
+                        <td className="py-1">
+                          <span className="font-mono">
+                            {nc ? '' : 'NC '}
+                            {c.tipo_comprobante ? comprobanteTxt(c.tipo_comprobante, c.numero) : `#${c.id}`}
+                          </span>
+                          {sinAprobar && <span className="ml-1 text-[10px] px-1 rounded bg-[#EEE8FF] text-[#5A2D82] font-bold">sin aprobar</span>}
+                          <span className="block text-[10px] text-gris-dark">
+                            {c.fecha ? fmtFecha(c.fecha) : ''}
+                            {c.estado ? `${c.fecha ? ' · ' : ''}${estadoLabel(c.estado, nc ? 'factura' : 'nota_credito')}` : ''}
+                          </span>
+                        </td>
+                        <td className="py-1 text-right font-mono tabular-nums text-[#5A2D82]">{fmtM(a.monto)}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+            {nc && !f.aprobada_at && aplicaciones.length > 0 && (
+              <div className="text-[11px] text-gris-dark mt-1">
+                Mientras no se apruebe, esa parte queda <b>reservada</b>: no se puede pagar con plata. Baja la deuda recién al aprobarla.
+              </div>
+            )}
+          </Bloque>
+        )}
 
         {/* Pagos aplicados */}
         {f.pagos.length > 0 && (
@@ -352,6 +443,7 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
         </Bloque>
 
         {completando && <ModalCompletarDesglose factura={f} onClose={() => setCompletando(false)} />}
+        {aplicando && <ModalAplicarNc nc={f} onClose={() => setAplicando(false)} />}
 
         {/* Pedir motivo */}
         {pidiendo && (
@@ -378,7 +470,7 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
                     accion(async () => {
                       const r = await anular.mutateAsync({ id: f.id, motivo: motivo.trim() })
                       return facturaAnulada(r)
-                    }, '✓ Factura anulada')
+                    }, nc ? '✓ Nota de crédito anulada' : '✓ Factura anulada')
                     onClose()
                   }
                 }}>

@@ -8,12 +8,15 @@
  *   1. Encabezado: quién paga, número y fecha.
  *   2. A quién se le paga.
  *   3. VALORES ENTREGADOS: con qué se pagó. Un cheque por renglón, con su
- *      número y fecha de cobro. Las notas de crédito van acá también, como en
- *      Finnegans van las retenciones: no es plata, pero cancela deuda.
- *   4. CANCELACIÓN DE DOCUMENTOS: qué facturas cubre y cuánto de cada una.
+ *      número y fecha de cobro. SOLO PLATA: desde 20260925 la nota de crédito
+ *      es un comprobante aparte y no entra en la OP.
+ *   4. CANCELACIÓN DE DOCUMENTOS: qué facturas cubre y cuánto de cada una,
+ *      con una columna informativa «NC aplicadas» (las NC que acreditan esa
+ *      factura, para que se entienda por qué se paga menos que el total). Esa
+ *      columna NO suma: lo cancelado por esta OP es plata.
  *   5. Firmas.
  *
- * Los dos totales tienen que dar lo mismo (valores = pagado + NC = lo que se
+ * Los dos totales tienen que dar lo mismo (valores = pagado = lo que se
  * cancela). Si no dieran, el papel mostraría una OP que no cierra: por eso se
  * suman de las mismas líneas y no de campos distintos.
  *
@@ -24,7 +27,7 @@ import pdfMake from 'pdfmake/build/pdfmake'
 import pdfFonts from 'pdfmake/build/vfs_fonts'
 import type { TDocumentDefinitions, Content, TableCell } from 'pdfmake/interfaces'
 import { EMPRESA } from '@/lib/config/empresa'
-import { TIPOS_COMPROBANTE, comprobanteTxt, fmtM, formaPagoLabel } from './pagos.utils'
+import { TIPOS_COMPROBANTE, aplicacionFirme, comprobanteTxt, contraparteAplicacion, fmtM, formaPagoLabel } from './pagos.utils'
 import type { PagosOrdenDetalle, PagosOrdenLinea } from '@/types/domain.types'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -75,6 +78,20 @@ function nombreDocumento(l: PagosOrdenLinea): string {
   return t && ['A', 'B', 'C'].includes(t.key) ? 'Factura de compra' : (t?.label ?? 'Comprobante')
 }
 
+/**
+ * Las NC vigentes que acreditan la factura, en una línea: «NC A 0003-00000012
+ * $300,00». Informativo (no suma). Las sin aprobar se marcan: todavía son
+ * reserva, no bajaron la deuda.
+ */
+export function ncAplicadasTxt(l: PagosOrdenLinea): string {
+  const ncs = (l.factura?.notas_credito ?? []).filter(a => a.vigente !== false)
+  return ncs.map(a => {
+    const c = contraparteAplicacion(a, 'factura')
+    const comp = c.tipo_comprobante ? comprobanteTxt(c.tipo_comprobante, c.numero) : `#${c.id}`
+    return `NC ${comp} ${fmtM(a.monto)}${aplicacionFirme(a) ? '' : ' (sin aprobar)'}`
+  }).join('\n')
+}
+
 export async function descargarOrdenPagoPdf(o: PagosOrdenDetalle, opts: { verPii: boolean }): Promise<void> {
   const doc = armarOrdenPagoDoc(o, { ...opts, logo: await logoDataUrl() })
   const archivo = `${o.numero_fmt}_${o.proveedor_nom.replace(/[^\w]+/g, '_').replace(/^_|_$/g, '').toUpperCase()}.pdf`
@@ -87,7 +104,9 @@ export function armarOrdenPagoDoc(
 ): TDocumentDefinitions {
   const logo = opts.logo
   const anulada = o.estado === 'anulada'
-  const lineasNC = o.lineas.filter(l => l.tipo === 'nota_credito')
+  // Solo plata: una línea `nota_credito` vieja (circuito anterior al 25/09,
+  // no quedó ninguna) no entra ni en valores ni en lo cancelado.
+  const lineasPlata = o.lineas.filter(l => l.tipo !== 'nota_credito')
 
   // ── Valores entregados ──
   const valores: TableCell[][] = []
@@ -116,22 +135,12 @@ export function armarOrdenPagoDoc(
       td(fmtM(o.monto_pagado), 'right'),
     ])
   }
-  for (const l of lineasNC) {
-    valores.push([
-      td('Nota de crédito'),
-      td(''),
-      td(l.nc_numero ?? ''),
-      td(fmtFecha(l.nc_fecha)),
-      td(l.factura ? `s/ ${comprobanteTxt(l.factura.tipo_comprobante, l.factura.numero)}` : ''),
-      td(fmtM(l.monto), 'right'),
-    ])
-  }
-  const totalValores = Number(o.monto_pagado) + lineasNC.reduce((s, l) => s + Number(l.monto), 0)
+  const totalValores = Number(o.monto_pagado)
 
-  // ── Cancelación: una fila por factura (pago + NC de esa factura juntos) ──
+  // ── Cancelación: una fila por factura ──
   const porFactura = new Map<number, { l: PagosOrdenLinea; cancelado: number }>()
   const aCuenta: PagosOrdenLinea[] = []
-  for (const l of o.lineas) {
+  for (const l of lineasPlata) {
     if (l.tipo === 'a_cuenta' || l.factura_id == null) { aCuenta.push(l); continue }
     const prev = porFactura.get(l.factura_id)
     if (prev) prev.cancelado += Number(l.monto)
@@ -143,10 +152,11 @@ export function armarOrdenPagoDoc(
     td(fmtFecha(l.factura?.fecha)),
     td(fmtFecha(l.factura?.vence_el)),
     td(l.factura ? fmtM(l.factura.total) : '', 'right'),
+    td(ncAplicadasTxt(l), 'right', { fontSize: 7, color: '#5A2D82' }),
     td(fmtM(cancelado), 'right'),
   ])
   for (const l of aCuenta) {
-    cancelacion.push([td('Anticipo a cuenta'), td(''), td(''), td(''), td(''), td(fmtM(l.monto), 'right')])
+    cancelacion.push([td('Anticipo a cuenta'), td(''), td(''), td(''), td(''), td(''), td(fmtM(l.monto), 'right')])
   }
   const totalCancelado = [...porFactura.values()].reduce((s, x) => s + x.cancelado, 0)
     + aCuenta.reduce((s, l) => s + Number(l.monto), 0)
@@ -259,8 +269,8 @@ export function armarOrdenPagoDoc(
     // Cancelación
     { text: 'EN CONCEPTO DE CANCELACIÓN DE DOCUMENTOS Y ADELANTOS', bold: true, fontSize: 9, margin: [0, 16, 0, 4] },
     tabla(
-      [th('Documento'), th('Comprobante'), th('Fecha'), th('F. vto.'), th('Imp. compr.', 'right'), th('Cancelado', 'right')],
-      ['*', 95, 50, 50, 70, 70],
+      [th('Documento'), th('Comprobante'), th('Fecha'), th('F. vto.'), th('Imp. compr.', 'right'), th('NC aplicadas', 'right'), th('Cancelado', 'right')],
+      ['*', 90, 45, 45, 62, 80, 62],
       cancelacion,
       'Sin documentos.',
     ),

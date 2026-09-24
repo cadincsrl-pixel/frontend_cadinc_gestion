@@ -113,7 +113,11 @@ export function ClientesTab() {
                     <td className="px-3 py-2 text-sm">
                       <div className="font-semibold">{c.razon_social}</div>
                       {!c.activo && <span className="text-[10px] px-1.5 py-0.5 rounded bg-gris text-gris-dark font-bold">dado de baja</span>}
-                      {c.email && <div className="text-[11px] text-gris-dark">{c.email}</div>}
+                      {(() => {
+                        const mails = (c.contactos ?? []).map(k => k.email).filter(Boolean)
+                        const txt = mails.length ? mails.join(' · ') : c.email
+                        return txt ? <div className="text-[11px] text-gris-dark">{txt}</div> : null
+                      })()}
                     </td>
                     <td className="px-3 py-2 text-xs font-mono whitespace-nowrap">{fmtDoc(c.doc_tipo, c.doc_nro)}</td>
                     <td className="px-3 py-2 text-xs">

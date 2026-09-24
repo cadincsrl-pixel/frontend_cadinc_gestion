@@ -27,7 +27,6 @@ export interface LibroIvaCompras {
     por_alicuota: Array<{ codigo: number; alicuota: string; neto: number; iva: number; registros: number }>
     por_tipo: Array<{ cbte_tipo: number; tipo: string; cantidad: number; neto: number; iva: number; total: number }>
     excluidos: number
-    nc_en_ordenes: number
     lineas_cbte: number; lineas_alicuotas: number
   }
   validaciones: ValidacionLid[]
@@ -47,7 +46,6 @@ export interface PosicionIva {
   libre_disponibilidad: number
   excluidos_ventas: number
   excluidos_compras: number
-  nc_en_ordenes: number
   avisos: string[]
 }
 
