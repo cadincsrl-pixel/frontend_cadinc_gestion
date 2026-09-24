@@ -127,6 +127,7 @@ export function NotificationsBell() {
   const showCompras   =  modulo === null || modulo === 'certificaciones'
   const showAlquiler  =  modulo === null || modulo === 'alquiler'
   const showPagos     =  modulo === null || modulo === 'pagos'
+  const showVentas    =  modulo === null || modulo === 'facturacion'
   // Pedidos por comprar visibles en la campana (scopeados al módulo de compras).
   const solicitudesPorComprar = showCompras ? solicitudesAll : []
   // Renglones sin precio en la cuenta corriente (solo quien carga precios los recibe).
@@ -149,6 +150,8 @@ export function NotificationsBell() {
   const facturasVencidas       = showPagos     ? notifs.facturasVencidas       : []
   const facturasSinRevisar     = showPagos     ? notifs.facturasSinRevisar     : []
   const facturasObservadas     = showPagos     ? notifs.facturasObservadas     : []
+  // Ventas: clientes con facturas vencidas sin cobrar (el hook gatea por la tab Deudores).
+  const ventasVencidas         = showVentas    ? notifs.ventasVencidas         : []
 
   const [abierto, setAbierto] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -166,7 +169,8 @@ export function NotificationsBell() {
   const totalUrgente =
     hoy.length + papelesVencidos.length + papelesChoferVencidos.length +
     serviciosVencidos.length + gastosPendientes.length + segurosVencidos.length +
-    solicitudesPorComprar.length + facturasVencidas.length + facturasParaAprobar.length
+    solicitudesPorComprar.length + facturasVencidas.length + facturasParaAprobar.length +
+    ventasVencidas.length
   const totalNoUrgentes =
     proximos.length + papelesPorVencer.length + papelesChoferPorVencer.length +
     serviciosProximos.length + segurosPorVencer.length + sinPrecio.length +
@@ -177,6 +181,12 @@ export function NotificationsBell() {
   function abrirPagos(aviso: string) {
     setAbierto(false)
     router.push(`/pagos?tab=facturas&aviso=${aviso}`)
+  }
+
+  /** Deudores con «Solo con vencido» prendido: el MISMO filtro (`conVencido`) que armó este aviso. */
+  function abrirVentasVencidas() {
+    setAbierto(false)
+    router.push('/facturacion?tab=deudores&aviso=vencidas')
   }
 
   function abrirPersonal(leg: string) {
@@ -309,6 +319,28 @@ export function NotificationsBell() {
                     Ver las {sinPrecio.length - 10} obras restantes →
                   </button>
                 )}
+              </Section>
+            )}
+
+            {/* ── Ventas ── */}
+
+            {ventasVencidas.length > 0 && (
+              <Section titulo={`🧾 Facturas vencidas sin cobrar (${ventasVencidas.length} cliente${ventasVencidas.length === 1 ? '' : 's'})`} tono="rojo">
+                {ventasVencidas.slice(0, 5).map(v => (
+                  <button key={v.cliente_id} onClick={abrirVentasVencidas} className="w-full text-left px-3 py-2 hover:bg-gris/40 transition-colors">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="font-bold text-sm text-azul truncate">{v.razon_social}</span>
+                      <span className="font-mono text-sm font-bold tabular-nums shrink-0 text-rojo">${Math.round(v.vencido).toLocaleString('es-AR')}</span>
+                    </div>
+                    <div className="text-xs text-gris-dark mt-0.5">
+                      vencido{v.d90_mas > 0 ? ` · $${Math.round(v.d90_mas).toLocaleString('es-AR')} a más de 90 días` : ''}
+                      {v.saldo_a_revisar > 0 && ` · incluye saldos iniciales a revisar`}
+                    </div>
+                  </button>
+                ))}
+                <button onClick={abrirVentasVencidas} className="w-full text-center px-3 py-2 text-[11px] text-azul hover:underline">
+                  {ventasVencidas.length > 5 ? `Ver los ${ventasVencidas.length} en Deudores →` : 'Ver en Deudores →'}
+                </button>
               </Section>
             )}
 

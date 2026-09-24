@@ -3,6 +3,7 @@
 import { Button } from '@/components/ui/Button'
 import { ESTADO_META, cortoTipo, fmtDoc, fmtFecha, fmtM, numeroTxt, obraDeFactura } from '../utils/facturacion.utils'
 import type { VentasFactura } from '@/types/domain.types'
+import { EstadoCobroBadge } from './cobranzas/Comun'
 
 /**
  * La lista de comprobantes: tabla en pantalla grande, tarjetas en el celular.
@@ -56,6 +57,22 @@ function Extras({ f }: { f: VentasFactura }) {
   )
 }
 
+/**
+ * Vence y saldo de cobro (v_ventas_facturas.cobro_*, 20260924m). Solo en
+ * autorizadas: un borrador no se debe todavía. En una NC, el saldo es el
+ * crédito libre (lo que su factura no absorbió).
+ */
+export function CobroCelda({ f }: { f: VentasFactura }) {
+  if (f.estado !== 'autorizada' || f.cobro_saldo == null) return <span className="text-gris-mid">—</span>
+  const saldo = Number(f.cobro_saldo)
+  if (f.es_nc) {
+    return saldo > 0
+      ? <span className="text-[11px] text-naranja-dark font-semibold" title="Crédito libre: se compensa contra otra factura">{fmtM(saldo)} libre</span>
+      : <span className="text-gris-mid">—</span>
+  }
+  return <span className="font-mono tabular-nums">{fmtM(saldo)}</span>
+}
+
 function Verificar({ f, onVerificar, verificandoId, emitirFacturas, emitirNotasCredito }: {
   f: VentasFactura; onVerificar: (id: number) => void; verificandoId: number | null
   emitirFacturas: boolean; emitirNotasCredito: boolean
@@ -87,12 +104,12 @@ export function FacturasTabla({ items, onAbrir, onVerificar, verificandoId, emit
     <div className="bg-white rounded-card shadow-card overflow-hidden">
       {/* ── Tabla (md o más) ── */}
       <div className="hidden md:block overflow-x-auto">
-        <table className="w-full border-collapse min-w-[960px]">
+        <table className="w-full border-collapse min-w-[1120px]">
           <thead>
             <tr>
-              {['Comprobante', 'Cliente', 'Fecha', 'Producto / obra', 'Neto', 'Total', 'Estado', ''].map((h, i) => (
+              {['Comprobante', 'Cliente', 'Fecha', 'Producto / obra', 'Neto', 'Total', 'Vence', 'Saldo', 'Estado', ''].map((h, i) => (
                 <th key={h + i}
-                  className={`bg-gris text-gris-dark text-[10px] font-bold px-3 py-2 uppercase tracking-wide whitespace-nowrap ${i === 4 || i === 5 ? 'text-right' : 'text-left'}`}>
+                  className={`bg-gris text-gris-dark text-[10px] font-bold px-3 py-2 uppercase tracking-wide whitespace-nowrap ${i === 4 || i === 5 || i === 7 ? 'text-right' : 'text-left'}`}>
                   {h}
                 </th>
               ))}
@@ -120,7 +137,18 @@ export function FacturasTabla({ items, onAbrir, onVerificar, verificandoId, emit
                 <td className="px-3 py-2 text-right font-mono text-xs tabular-nums font-bold cursor-pointer" onClick={() => onAbrir(f.id)}>
                   {f.es_nc ? '−' : ''}{fmtM(f.imp_total)}
                 </td>
-                <td className="px-3 py-2 cursor-pointer" onClick={() => onAbrir(f.id)}><EstadoBadge f={f} /></td>
+                <td className={`px-3 py-2 text-xs whitespace-nowrap cursor-pointer ${f.cobro_estado === 'vencida' ? 'text-rojo font-semibold' : ''}`}
+                    onClick={() => onAbrir(f.id)}
+                    title={f.cobro_estado === 'vencida' ? `Vencida hace ${f.cobro_dias_vencido} días` : f.vence_el_manual ? 'Vencimiento fijado a mano' : undefined}>
+                  {f.estado === 'autorizada' && !f.es_nc ? fmtFecha(f.vence_el) : ''}
+                </td>
+                <td className="px-3 py-2 text-right text-xs cursor-pointer" onClick={() => onAbrir(f.id)}><CobroCelda f={f} /></td>
+                <td className="px-3 py-2 cursor-pointer" onClick={() => onAbrir(f.id)}>
+                  <div className="flex flex-col gap-0.5 items-start">
+                    <EstadoBadge f={f} />
+                    {f.estado === 'autorizada' && !f.es_nc && <EstadoCobroBadge estado={f.cobro_estado} />}
+                  </div>
+                </td>
                 <td className="px-3 py-2 text-right whitespace-nowrap">
                   <div className="flex gap-1 justify-end items-center">
                     <Verificar f={f} onVerificar={onVerificar} verificandoId={verificandoId} emitirFacturas={emitirFacturas} emitirNotasCredito={emitirNotasCredito} />
@@ -146,8 +174,16 @@ export function FacturasTabla({ items, onAbrir, onVerificar, verificandoId, emit
                   <div className="font-mono text-sm font-semibold">{numeroTxt(f)}</div>
                   <div className="font-semibold text-sm truncate">{f.rec_razon_social}</div>
                 </div>
-                <EstadoBadge f={f} />
+                <div className="flex flex-col gap-0.5 items-end">
+                  <EstadoBadge f={f} />
+                  {f.estado === 'autorizada' && !f.es_nc && <EstadoCobroBadge estado={f.cobro_estado} />}
+                </div>
               </div>
+              {f.estado === 'autorizada' && !f.es_nc && f.cobro_saldo != null && Number(f.cobro_saldo) > 0 && (
+                <div className={`text-[11px] mt-1 ${f.cobro_estado === 'vencida' ? 'text-rojo font-semibold' : 'text-gris-dark'}`}>
+                  Debe {fmtM(f.cobro_saldo)} · vence {fmtFecha(f.vence_el)}
+                </div>
+              )}
               <div className="flex items-baseline justify-between gap-2 mt-1.5">
                 <div className="text-[11px] text-gris-dark">
                   {fmtFecha(f.fecha_cbte)} · {f.producto === 'TRANSPORTE' ? 'Transporte' : (obraDeFactura(f) ?? 'Avance de obra')}

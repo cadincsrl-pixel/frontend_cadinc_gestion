@@ -14,8 +14,10 @@ import {
 } from '../utils/facturacion.utils'
 import { codigoErrorFacturacion, mensajeErrorFacturacion } from '../utils/facturacion.errores'
 import { descargarFacturaPdf } from '../utils/facturaPdf'
-import type { VentasEvento, VentasFacturaFJ } from '@/types/domain.types'
+import type { VentasEvento, VentasFacturaFJ, VentasImputacion } from '@/types/domain.types'
 import { EstadoBadge } from './FacturasTabla'
+import { useCambiarVencimiento, useImputacionesDe } from '../hooks/useCobranzas'
+import { EstadoCobroBadge } from './cobranzas/Comun'
 
 /**
  * La ficha de un comprobante: todo lo que se sabe de él y lo que se le puede
@@ -29,6 +31,8 @@ interface Props {
   onEditar:      (id: number) => void
   onNotaCredito: (fj: VentasFacturaFJ) => void
   onEmitir:      (fj: VentasFacturaFJ) => void
+  /** NC con crédito libre → «Compensación de comprobantes» con esta NC arriba. */
+  onCompensar?:  (fj: VentasFacturaFJ) => void
 }
 
 const EVENTO_LABEL: Record<string, string> = {
@@ -38,10 +42,10 @@ const EVENTO_LABEL: Record<string, string> = {
   registro_deshecho: 'Registro de Finnegans deshecho',
 }
 
-export function FichaFactura({ id, onClose, onEditar, onNotaCredito, onEmitir }: Props) {
+export function FichaFactura({ id, onClose, onEditar, onNotaCredito, onEmitir, onCompensar }: Props) {
   const toast = useToast()
   const {
-    puedeCrear, puedeEditar, puedeEliminar, emitirFacturas, emitirNotasCredito,
+    puedeCrear, puedeEditar, puedeEliminar, emitirFacturas, emitirNotasCredito, registrarCobros,
   } = usePermisos('facturacion')
 
   const { data, isLoading, error, refetch } = useFacturaVenta(id)
@@ -54,6 +58,12 @@ export function FichaFactura({ id, onClose, onEditar, onNotaCredito, onEmitir }:
   const [motivo, setMotivo] = useState('')
   const [confirmBorrar, setConfirmBorrar] = useState(false)
   const [generandoPdf, setGenerandoPdf] = useState(false)
+  const [editVence, setEditVence] = useState<string | null>(null)
+  const cambiarVence = useCambiarVencimiento()
+  const autorizada = data?.factura.estado === 'autorizada'
+  const imputaciones = useImputacionesDe(
+    data && autorizada ? (data.factura.es_nc ? { nc_factura_id: data.factura.id } : { factura_id: data.factura.id }) : null,
+  )
 
   if (isLoading || (!data && !error)) {
     return (
@@ -239,6 +249,26 @@ export function FichaFactura({ id, onClose, onEditar, onNotaCredito, onEmitir }:
               <span className="sm:col-span-3 text-[#7A5000]">Observaciones de ARCA: {observaciones.join(' · ')}</span>
             )}
           </div>
+        )}
+
+        {f.estado === 'autorizada' && f.cobro_saldo != null && (
+          <BloqueCobranza
+            fj={fj}
+            editVence={editVence}
+            setEditVence={setEditVence}
+            guardandoVence={cambiarVence.isPending}
+            puedeEditar={puedeEditar}
+            registrarCobros={registrarCobros}
+            onCompensar={onCompensar}
+            imputaciones={(imputaciones.data ?? []).filter(i => !i.anulada)}
+            onGuardarVence={async (v) => {
+              try {
+                await cambiarVence.mutateAsync({ id: f.id, vence_el: v })
+                toast(v ? `✓ Vence el ${fmtFecha(v)}` : '✓ Vencimiento automático', 'ok')
+                setEditVence(null)
+              } catch (e) { toast(mensajeErrorFacturacion(e), 'err') }
+            }}
+          />
         )}
 
         {f.es_nc && (f.asociada_numero_fmt || fj.asociados.length > 0) && (
@@ -444,4 +474,81 @@ export function Aviso({ tono, children }: { tono: 'rojo' | 'naranja' | 'amarillo
     gris:     'bg-gris border-gris-mid text-gris-dark',
   }[tono]
   return <div className={`border rounded p-2 text-xs ${clases}`}>{children}</div>
+}
+
+/**
+ * Cobranza de una factura autorizada: vence, saldo, estado y lo que la
+ * canceló. El vencimiento se cambia por `ventas_cambiar_vencimiento` (no es
+ * dato fiscal); en la FCE es el vencimiento del pago informado a ARCA y no se
+ * toca. En una NC: el crédito libre y el botón de compensar.
+ */
+function BloqueCobranza({ fj, editVence, setEditVence, guardandoVence, onGuardarVence, puedeEditar, registrarCobros, onCompensar, imputaciones }: {
+  fj:              VentasFacturaFJ
+  editVence:       string | null
+  setEditVence:    (v: string | null) => void
+  guardandoVence:  boolean
+  onGuardarVence:  (v: string | null) => void
+  puedeEditar:     boolean
+  registrarCobros: boolean
+  onCompensar?:    (fj: VentasFacturaFJ) => void
+  imputaciones:    VentasImputacion[]
+}) {
+  const f = fj.factura
+  const saldo = Number(f.cobro_saldo ?? 0)
+  const fce = f.cbte_tipo === 201
+  if (f.es_nc) {
+    return (
+      <div className="border border-gris-mid rounded p-2 text-xs flex items-center gap-2 flex-wrap">
+        <span className="font-bold text-gris-dark uppercase text-[10px]">Crédito libre</span>
+        <span className="font-mono font-bold">{fmtM(saldo)}</span>
+        <span className="text-gris-dark">
+          {saldo > 0 ? 'Lo que la factura corregida no absorbió: se compensa contra otra factura del cliente.' : 'La NC se usó entera.'}
+        </span>
+        {saldo > 0 && onCompensar && (
+          <Button size="sm" variant="secondary" className="ml-auto" onClick={() => onCompensar(fj)} disabled={!registrarCobros}
+            title={registrarCobros ? 'Aplicar el crédito libre a otra factura' : 'Hace falta el permiso «Registrar cobros»'}>
+            Compensar
+          </Button>
+        )}
+        {imputaciones.length > 0 && (
+          <div className="w-full text-gris-dark">Aplicada a: {imputaciones.map(i => `${i.destino_fmt} ${fmtM(i.importe)}`).join(' · ')}</div>
+        )}
+      </div>
+    )
+  }
+  const bloqueo = !puedeEditar ? 'No tenés permiso para editar comprobantes'
+    : fce ? 'En la FCE el vencimiento es el del pago informado a ARCA' : null
+  return (
+    <div className="border border-gris-mid rounded p-2 text-xs flex flex-col gap-1.5">
+      <div className="flex items-center gap-3 flex-wrap">
+        <span className="font-bold text-gris-dark uppercase text-[10px]">Cobranza</span>
+        <EstadoCobroBadge estado={f.cobro_estado} />
+        <span>Saldo <b className="font-mono">{fmtM(saldo)}</b></span>
+        {Number(f.cobro_aplicado) > 0 && <span className="text-gris-dark">cobrado/NC {fmtM(f.cobro_aplicado)}</span>}
+        {editVence === null ? (
+          <span className="flex items-center gap-1">
+            Vence <b className={f.cobro_estado === 'vencida' ? 'text-rojo' : ''}>{fmtFecha(f.vence_el)}</b>
+            {f.vence_el_manual && <span className="text-gris-dark">(a mano)</span>}
+            {f.cobro_estado === 'vencida' && <span className="text-rojo">· hace {f.cobro_dias_vencido} días</span>}
+            <button type="button" onClick={() => setEditVence(f.vence_el ?? f.fecha_cbte)} disabled={!!bloqueo}
+              className="text-azul hover:underline disabled:text-gris-mid disabled:no-underline disabled:cursor-not-allowed ml-1"
+              title={bloqueo ?? 'Cambiar el vencimiento de cobro (no es dato fiscal)'}>cambiar</button>
+          </span>
+        ) : (
+          <span className="flex items-center gap-1.5">
+            <input type="date" value={editVence} min={f.fecha_cbte} onChange={e => setEditVence(e.target.value)}
+              className="px-2 py-1 border border-gris-mid rounded text-xs" />
+            <Button size="sm" loading={guardandoVence} disabled={!editVence || editVence < f.fecha_cbte} onClick={() => onGuardarVence(editVence)}>Guardar</Button>
+            {f.vence_el_manual && <Button size="sm" variant="ghost" disabled={guardandoVence} onClick={() => onGuardarVence(null)} title="Fecha + plazo del cliente">Automático</Button>}
+            <Button size="sm" variant="ghost" onClick={() => setEditVence(null)} disabled={guardandoVence}>Cancelar</Button>
+          </span>
+        )}
+      </div>
+      {imputaciones.length > 0 && (
+        <div className="text-gris-dark">
+          Cancelada por: {imputaciones.map(i => `${i.origen_fmt} ${fmtM(i.importe)} (${fmtFecha(i.fecha)})`).join(' · ')}
+        </div>
+      )}
+    </div>
+  )
 }

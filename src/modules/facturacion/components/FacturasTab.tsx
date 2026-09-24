@@ -17,6 +17,7 @@ import { FichaFactura } from './FichaFactura'
 import { ModalFactura } from './ModalFactura'
 import { ModalConfirmarEmision } from './ModalConfirmarEmision'
 import { IndicadorArca } from './EstadoArca'
+import { ModalCompensacion } from './cobranzas/ModalCompensacion'
 
 const PAGE_SIZE = 50
 
@@ -37,6 +38,7 @@ export function FacturasTab() {
   const [modal, setModal] = useState<{ open: boolean; editarId?: number; ncDe?: VentasFacturaFJ }>({ open: false })
   const [emitir, setEmitir] = useState<VentasFacturaFJ | null>(null)
   const [verificandoId, setVerificandoId] = useState<number | null>(null)
+  const [compensar, setCompensar] = useState<VentasFacturaFJ | null>(null)
 
   const hoy = hoyAR()
   const desdeMes = primerDiaDelMes(hoy)
@@ -166,6 +168,7 @@ export function FacturasTab() {
           onEditar={id => { setFichaId(null); setModal({ open: true, editarId: id }) }}
           onNotaCredito={fj => { setFichaId(null); setModal({ open: true, ncDe: fj }) }}
           onEmitir={fj => setEmitir(fj)}
+          onCompensar={fj => setCompensar(fj)}
         />
       )}
 
@@ -176,6 +179,11 @@ export function FacturasTab() {
           onClose={() => setModal({ open: false })}
           onGuardada={fj => { setModal({ open: false }); setFichaId(fj.factura.id) }}
         />
+      )}
+
+      {compensar && (
+        <ModalCompensacion clienteId={compensar.factura.cliente_id} creditoInicial={{ factura_id: compensar.factura.id }}
+          onClose={() => setCompensar(null)} />
       )}
 
       {emitir && (

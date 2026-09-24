@@ -12,7 +12,7 @@ import type {
   VentasCobroDetalle, VentasCobroInput, VentasCobrosPage, VentasCompensacionInput, VentasDestinoImputacion,
   VentasDeudor, VentasEstadoCuenta, VentasEstadoCuentaMov, VentasExterno, VentasExternoAccion, VentasExternoInput,
   VentasExternosPage, VentasFactura, VentasImportarFilaInput, VentasImportarRes, VentasSaldo, VentasCliente,
-  VentasUploadUrlRes, VentasAmbiente, VentasPendientesCliente,
+  VentasUploadUrlRes, VentasAmbiente, VentasPendientesCliente, VentasImputacion,
 } from '@/types/domain.types'
 import { aPagina } from '../utils/cobranzas.utils'
 import { invalidarFacturacion, useArcaAmbiente } from './useFacturacion'
@@ -141,6 +141,22 @@ export function useAnularImputacion() {
     mutationFn: ({ id, motivo }: { id: number; motivo?: string }) =>
       apiPost<unknown>(`${BASE}/imputaciones/${id}/anular`, motivo ? { motivo } : {}),
     onSuccess:  () => invalidarFacturacion(qc),
+  })
+}
+
+/** Imputaciones vigentes de un comprobante (qué cobros / NC lo cancelaron, o a qué se aplicó una NC). */
+export function useImputacionesDe(
+  f: { factura_id?: number; externo_id?: number; nc_factura_id?: number; nc_externo_id?: number } | null,
+  enabled = true,
+) {
+  const p = new URLSearchParams()
+  for (const [k, v] of Object.entries(f ?? {})) if (v) p.set(k, String(v))
+  const qs = p.toString()
+  return useQuery({
+    queryKey: ['facturacion', 'imputaciones', qs],
+    queryFn:  async () => aPagina(await apiGet<VentasImputacion[] | { rows: VentasImputacion[] }>(`${BASE}/imputaciones?${qs}`)).rows,
+    enabled:  enabled && !!qs,
+    staleTime: 30_000,
   })
 }
 
