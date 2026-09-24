@@ -59,6 +59,8 @@ const MARGEN_X = 28
 const ANCHO = 595.28 - 2 * MARGEN_X   // A4 menos márgenes
 /** Alto reservado abajo para el cierre (totales, Son, QR, CAE). */
 export const MARGEN_PIE = 230
+/** Lo que suma al pie la leyenda roja de la FCE (va abajo, como en el modelo de ARCA). */
+const EXTRA_PIE_FCE = 34
 /** Observaciones más largas que esto van en el cuerpo, no en el cierre (no entrarían). */
 const OBS_MAX_EN_PIE = 280
 
@@ -251,7 +253,6 @@ export function armarFacturaDoc(fj: VentasFacturaFJ, opts: { logo: string | null
       layout: cajaFina,
       margin: [0, 6, 0, 0],
     })
-    bloqueFce.push({ text: LEYENDA_FCE, color: ROJO, fontSize: 7.5, margin: [0, 4, 0, 0] })
   } else if (ncFce) {
     bloqueFce.push({
       table: {
@@ -362,9 +363,11 @@ export function armarFacturaDoc(fj: VentasFacturaFJ, opts: { logo: string | null
     margin: [0, 4, 0, 0],
   })
 
+  const margenPie = MARGEN_PIE + (f.cbte_tipo === 201 ? EXTRA_PIE_FCE : 0)
+
   return {
     pageSize: 'A4',
-    pageMargins: [MARGEN_X, MARGEN_X, MARGEN_X, MARGEN_PIE],
+    pageMargins: [MARGEN_X, MARGEN_X, MARGEN_X, margenPie],
     defaultStyle: { font: 'Roboto', fontSize: 8.5, color: CARBON },
     ...(!definitiva
       ? { watermark: { text: homo ? 'BORRADOR — HOMOLOGACIÓN — SIN VALIDEZ FISCAL' : 'BORRADOR — SIN VALIDEZ FISCAL', color: ROJO, opacity: 0.13, bold: true, fontSize: homo ? 26 : 34 } }
@@ -372,7 +375,7 @@ export function armarFacturaDoc(fj: VentasFacturaFJ, opts: { logo: string | null
     footer: (pag: number, total: number): Content => {
       if (pag < total) {
         return {
-          margin: [MARGEN_X, MARGEN_PIE - 34, MARGEN_X, 0],
+          margin: [MARGEN_X, margenPie - 34, MARGEN_X, 0],
           stack: [
             { canvas: [{ type: 'line', x1: 0, y1: 0, x2: ANCHO, y2: 0, lineWidth: 0.5, lineColor: BORDE }] },
             { text: 'Continúa en la página siguiente', italics: true, fontSize: 8, color: TENUE, alignment: 'center', margin: [0, 4, 0, 0] as Margen },
@@ -496,6 +499,12 @@ function cierre(
       ],
     },
     { text: [{ text: 'Son: ', bold: true }, importeALetras(Number(f.imp_total))], fontSize: 8.5, margin: [0, 6, 0, 0] as Margen },
+    // FCE: la leyenda roja va abajo, antes del QR y el CAE, como en el modelo de ARCA.
+    ...(f.cbte_tipo === 201 ? [{
+      table: { widths: ['*'], body: [[{ text: LEYENDA_FCE, color: ROJO, fontSize: 7, alignment: 'center' as const, margin: [6, 3, 6, 3] as Margen }]] },
+      layout: { hLineColor: () => ROJO, vLineColor: () => ROJO, hLineWidth: () => 0.6, vLineWidth: () => 0.6 },
+      margin: [0, 6, 0, 0] as Margen,
+    }] : []),
     { canvas: [{ type: 'line', x1: 0, y1: 0, x2: ANCHO, y2: 0, lineWidth: 0.5, lineColor: BORDE }], margin: [0, 6, 0, 6] as Margen },
     qrOCae,
     o.pieDeAbajo(o.pag, o.total, false),
