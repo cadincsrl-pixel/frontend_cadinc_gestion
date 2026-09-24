@@ -66,6 +66,9 @@ const MENSAJES: Record<string, string> = {
   MATERIAL_INEXISTENTE:  'La ficha del catálogo ya no existe.',
   COMPRA_SIN_FICHA:      'Hay compras sin ficha del catálogo: vinculalas antes, o elegí devolverlas al proveedor.',
   ELEGIR_DESTINO_COMPRAS:'Hay compras sin enviar: elegí si quedan en el depósito o vuelven al proveedor.',
+  ITEM_DE_OTRA_OBRA:     'Algún renglón es de un pedido de otra obra: cada retiro va a la obra de su pedido.',
+  CANTIDAD_EXCEDE_PENDIENTE: 'Querés retirar más de lo que queda en el proveedor.',
+  PAGADO_POR_INVALIDO:   'Quién pagó tiene que ser CADINC o el cliente.',
   // Obras y cobros.
   OBRA_ARCHIVADA:          'La obra está archivada.',
   OBRA_ES_DEPOSITO:        'El depósito no tiene cuenta de cliente.',
