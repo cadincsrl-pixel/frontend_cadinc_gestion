@@ -25,9 +25,17 @@ import type { CuentaAdministracion } from '../components/cuenta-corriente/useAdm
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ;(pdfMake as any).vfs = (pdfFonts as any)?.vfs ?? (pdfFonts as any)?.pdfMake?.vfs ?? pdfFonts
 
-export const AZUL = '#1A365D'
-export const NARANJA = '#E8621A'
-export const fmtM = (n: number) => '$' + Math.round(n).toLocaleString('es-AR')
+// Paleta del logo (24/09): pizarra #293F3F para títulos y cabeceras, naranja
+// #F96115 solo de acento. `AZUL` conserva el nombre por los que ya lo importan,
+// pero es el pizarra de la marca: el azul marino de antes no era de CADINC.
+export const AZUL = '#293F3F'
+export const PIZARRA = AZUL
+export const NARANJA = '#F96115'
+const GRIS = '#5E6B6B'
+const LINEA = '#D9DEDE'
+const CEBRA = '#F4F6F6'
+const NARANJA_SOFT = '#FEEDE3'
+export const fmtM = (n: number) => (n < 0 ? '-$' : '$') + Math.abs(Math.round(n)).toLocaleString('es-AR')
 export const fmtFecha = (s: string | null | undefined) => {
   if (!s) return '—'
   const [y, m, d] = s.split('-')
@@ -96,17 +104,86 @@ const nombreArchivo = (obra: Obra, ext: string) =>
 export const celda = (texto: string, extra: Partial<TableCell> = {}): TableCell =>
   ({ text: texto, fontSize: 8, ...extra } as TableCell)
 export const cabecera = (textos: string[]): TableCell[] =>
-  textos.map(t => celda(t, { bold: true, color: '#fff', fillColor: AZUL }))
+  textos.map(t => celda(t, { bold: true, color: '#fff', fillColor: PIZARRA, margin: [2, 3, 2, 3] }))
 export const derecha = (texto: string, extra: Partial<TableCell> = {}): TableCell =>
   celda(texto, { alignment: 'right', ...extra })
 
-export function descargarPdfCuenta(sel: SeleccionExport, datos: DatosExport): void {
+/** Tablas: cabecera pizarra, cebra suave, líneas finas horizontales, sin verticales. */
+export const LAYOUT_TABLA = {
+  hLineWidth: (i: number, node: { table: { body: unknown[] } }) => (i === 0 || i === node.table.body.length ? 0 : 0.5),
+  vLineWidth: () => 0,
+  hLineColor: () => LINEA,
+  fillColor: (row: number) => (row > 0 && row % 2 === 0 ? CEBRA : null),
+  paddingTop: () => 3, paddingBottom: () => 3,
+}
+/** Resumen: sin cebra, con líneas finas. */
+export const LAYOUT_RESUMEN = {
+  hLineWidth: (i: number, node: { table: { body: unknown[] } }) => (i === 0 || i === node.table.body.length ? 0 : 0.5),
+  vLineWidth: () => 0,
+  hLineColor: () => LINEA,
+  paddingTop: () => 4, paddingBottom: () => 4,
+}
+
+/** El logo en data URL para pdfmake; null si no se pudo bajar (el PDF sale igual). */
+export async function logoPdf(): Promise<string | null> {
+  try {
+    const res = await fetch(EMPRESA.logoPapelUrl)
+    if (!res.ok) return null
+    const blob = await res.blob()
+    return await new Promise<string>((ok, mal) => {
+      const r = new FileReader()
+      r.onload = () => ok(String(r.result))
+      r.onerror = () => mal(r.error)
+      r.readAsDataURL(blob)
+    })
+  } catch {
+    return null
+  }
+}
+
+/** Cabecera de un PDF de CADINC: logo, título, obra y detalle; fecha a la derecha; línea naranja. */
+export function cabeceraPdf(logo: string | null, titulo: string, lineaObra: string, detalle?: string): Content[] {
+  return [
+    {
+      columnGap: 14,
+      columns: [
+        ...(logo ? [{ image: logo, width: 34 }] : []),
+        {
+          width: '*',
+          stack: [
+            { text: titulo.toUpperCase(), color: PIZARRA, bold: true, fontSize: 15, characterSpacing: 0.4 },
+            { text: lineaObra, color: '#1F2A2A', bold: true, fontSize: 10, margin: [0, 3, 0, 0] },
+            ...(detalle ? [{ text: detalle, color: GRIS, fontSize: 8, margin: [0, 2, 0, 0] as [number, number, number, number] }] : []),
+          ],
+        },
+        {
+          width: 'auto',
+          stack: [
+            { text: `Al ${new Date().toLocaleDateString('es-AR')}`, color: GRIS, fontSize: 8, alignment: 'right' },
+            { text: EMPRESA.nombre, color: PIZARRA, bold: true, fontSize: 8, alignment: 'right', margin: [0, 3, 0, 0] },
+          ],
+        },
+      ],
+    } as Content,
+    { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 1.5, lineColor: NARANJA }], margin: [0, 8, 0, 14] } as Content,
+  ]
+}
+
+/** Título de sección: pizarra, chico y espaciado. */
+export const tituloSeccion = (texto: string): Content =>
+  ({ text: texto, color: PIZARRA, bold: true, fontSize: 9, characterSpacing: 0.6, margin: [0, 4, 0, 5] })
+
+const detalleObra = (obra: Obra) => [
+  obra.cliente_nom ? `Cliente: ${obra.cliente_nom}` : null,
+  obra.por_administracion ? 'Obra por administración' : obra.materiales_a_cargo_de === 'cadinc' ? 'Llave en mano' : null,
+].filter(Boolean).join('  ·  ')
+
+export async function descargarPdfCuenta(sel: SeleccionExport, datos: DatosExport): Promise<void> {
   const { obra } = datos
   const tot = totales(datos)
+  const logo = await logoPdf()
   const contenido: Content[] = [
-    { text: EMPRESA.nombre, color: NARANJA, bold: true, fontSize: 16 },
-    { text: 'CUENTA CORRIENTE DE OBRA', color: AZUL, bold: true, fontSize: 11, margin: [0, 2, 0, 0] },
-    { text: `${obra.nom} (${obra.cod}) · al ${new Date().toLocaleDateString('es-AR')}`, fontSize: 9, color: '#555', margin: [0, 2, 0, 12] },
+    ...cabeceraPdf(logo, 'Cuenta corriente de obra', `${obra.nom}  ·  ${obra.cod}`, detalleObra(obra) || undefined),
   ]
 
   if (sel.resumen) {
@@ -130,11 +207,12 @@ export function descargarPdfCuenta(sel: SeleccionExport, datos: DatosExport): vo
       ])
     }
     filas.push(
-      [celda('SALDO', { fontSize: 9, bold: true, color: NARANJA }), derecha(fmtM(tot.saldo), { fontSize: 9, bold: true, color: NARANJA })],
+      [celda('SALDO', { fontSize: 10, bold: true, color: NARANJA, fillColor: NARANJA_SOFT, margin: [2, 3, 2, 3] }),
+       derecha(fmtM(tot.saldo), { fontSize: 10, bold: true, color: NARANJA, fillColor: NARANJA_SOFT, margin: [2, 3, 2, 3] })],
     )
     contenido.push(
-      { text: 'RESUMEN', color: AZUL, bold: true, fontSize: 10, margin: [0, 0, 0, 4] },
-      { table: { widths: ['*', 'auto'], body: filas }, layout: 'lightHorizontalLines', margin: [0, 0, 0, 14] },
+      tituloSeccion('RESUMEN'),
+      { table: { widths: ['*', 'auto'], body: filas }, layout: LAYOUT_RESUMEN, margin: [0, 0, 0, 16] },
     )
   }
 
@@ -143,8 +221,8 @@ export function descargarPdfCuenta(sel: SeleccionExport, datos: DatosExport): vo
       .filter(s => s.moFacturable > 0)
       .map(s => [celda(getSemLabel(new Date(s.semKey + 'T12:00:00'))), derecha(fmtM(s.moFacturable), { bold: true })])
     contenido.push(
-      { text: 'MANO DE OBRA, POR SEMANA', color: AZUL, bold: true, fontSize: 10, margin: [0, 0, 0, 4] },
-      { table: { headerRows: 1, widths: ['*', 'auto'], body: [cabecera(['Semana', 'Importe']), ...filas] }, layout: 'lightHorizontalLines', margin: [0, 0, 0, 14] },
+      tituloSeccion('MANO DE OBRA, POR SEMANA'),
+      { table: { headerRows: 1, widths: ['*', 'auto'], body: [cabecera(['Semana', 'Importe']), ...filas] }, layout: LAYOUT_TABLA, margin: [0, 0, 0, 16] },
     )
   }
 
@@ -153,8 +231,8 @@ export function descargarPdfCuenta(sel: SeleccionExport, datos: DatosExport): vo
       .filter(s => s.contFacturable > 0)
       .map(s => [celda(getSemLabel(new Date(s.semKey + 'T12:00:00'))), derecha(fmtM(s.contFacturable), { bold: true })])
     contenido.push(
-      { text: 'CONTRATISTAS, POR SEMANA', color: AZUL, bold: true, fontSize: 10, margin: [0, 0, 0, 4] },
-      { table: { headerRows: 1, widths: ['*', 'auto'], body: [cabecera(['Semana', 'Importe']), ...filas] }, layout: 'lightHorizontalLines', margin: [0, 0, 0, 14] },
+      tituloSeccion('CONTRATISTAS, POR SEMANA'),
+      { table: { headerRows: 1, widths: ['*', 'auto'], body: [cabecera(['Semana', 'Importe']), ...filas] }, layout: LAYOUT_TABLA, margin: [0, 0, 0, 16] },
     )
   }
 
@@ -168,7 +246,8 @@ export function descargarPdfCuenta(sel: SeleccionExport, datos: DatosExport): vo
         derecha(`${Number(r.cantidad)} ${r.unidad}`),
         derecha(Number(r.precio_unit) > 0 ? fmtM(importe) : 'sin precio', { bold: true }),
       ]
-      if (sel.modoMateriales === 'todo') fila.push(celda(r.estado === 'cobrado' ? 'Pagado' : 'Adeudado'))
+      if (sel.modoMateriales === 'todo') fila.push(celda(r.estado === 'cobrado' ? 'Pagado' : 'Adeudado',
+        { bold: true, color: r.estado === 'cobrado' ? '#1A6B3C' : NARANJA }))
       return fila
     })
     const cab = sel.modoMateriales === 'todo'
@@ -176,24 +255,24 @@ export function descargarPdfCuenta(sel: SeleccionExport, datos: DatosExport): vo
       : cabecera(['Fecha', 'Material', 'Cantidad', 'Importe'])
     const widths = sel.modoMateriales === 'todo' ? ['auto', '*', 'auto', 'auto', 'auto'] : ['auto', '*', 'auto', 'auto']
     contenido.push(
-      { text: sel.modoMateriales === 'deuda' ? 'MATERIALES ADEUDADOS' : 'MATERIALES', color: AZUL, bold: true, fontSize: 10, margin: [0, 0, 0, 4] },
+      tituloSeccion(sel.modoMateriales === 'deuda' ? 'MATERIALES ADEUDADOS' : 'MATERIALES'),
       filas.length
-        ? { table: { headerRows: 1, widths, body: [cab, ...filas] }, layout: 'lightHorizontalLines', margin: [0, 0, 0, 14] }
-        : { text: 'Sin renglones.', fontSize: 8, color: '#777', margin: [0, 0, 0, 14] },
+        ? { table: { headerRows: 1, widths, body: [cab, ...filas] }, layout: LAYOUT_TABLA, margin: [0, 0, 0, 16] }
+        : { text: 'Sin renglones.', fontSize: 8, color: GRIS, margin: [0, 0, 0, 16] },
     )
   }
 
   if (sel.pagos) {
     const filas = datos.cobros.map(c => [
       celda(fmtFecha(c.fecha)),
-      celda(c.medio ?? '—'),
+      celda(c.medio ? c.medio[0].toUpperCase() + c.medio.slice(1) : '—'),
       derecha(fmtM(Number(c.monto ?? 0))),
     ])
     contenido.push(
-      { text: 'PAGOS RECIBIDOS', color: AZUL, bold: true, fontSize: 10, margin: [0, 0, 0, 4] },
+      tituloSeccion('PAGOS RECIBIDOS'),
       filas.length
-        ? { table: { headerRows: 1, widths: ['auto', '*', 'auto'], body: [cabecera(['Fecha', 'Medio', 'Monto']), ...filas] }, layout: 'lightHorizontalLines' }
-        : { text: 'Sin pagos registrados.', fontSize: 8, color: '#777' },
+        ? { table: { headerRows: 1, widths: ['auto', '*', 'auto'], body: [cabecera(['Fecha', 'Medio', 'Monto']), ...filas] }, layout: LAYOUT_TABLA }
+        : { text: 'Sin pagos registrados.', fontSize: 8, color: GRIS },
     )
   }
 
@@ -201,95 +280,264 @@ export function descargarPdfCuenta(sel: SeleccionExport, datos: DatosExport): vo
     pageSize: 'A4',
     pageMargins: [40, 40, 40, 50],
     footer: (page, total) => ({
-      text: `${EMPRESA.nombre} · ${obra.nom} · página ${page} de ${total}`,
-      alignment: 'center', fontSize: 7, color: '#999', margin: [0, 10, 0, 0],
+      columns: [
+        { text: `${EMPRESA.nombre} · ${obra.nom}`, fontSize: 7, color: GRIS },
+        { text: `Página ${page} de ${total}`, fontSize: 7, color: GRIS, alignment: 'right' },
+      ],
+      margin: [40, 12, 40, 0],
     }),
+    defaultStyle: { color: '#1F2A2A' },
     content: contenido,
   }
   pdfMake.createPdf(doc).download(nombreArchivo(obra, 'pdf'))
 }
 
 // ═════════════════════════════ Excel ═════════════════════════════
+//
+// El Excel es interno pero se reenvía: tiene que verse como un papel de
+// CADINC. Paleta del logo (24/09): pizarra #293F3F para logo, títulos y
+// cabeceras; naranja #F96115 SOLO como acento (la línea bajo el encabezado y
+// el saldo); grises suaves para el resto. Antes usaba un azul marino que no es
+// de la marca y mezclaba dos colores fuertes.
 
-const FMT_MONEDA = '"$"#,##0;[Red]"-$"#,##0;"—"'
-const C_AZUL = 'FF1F3A66'
-const C_BLANCO = 'FFFFFFFF'
+const X = {
+  pizarra:     'FF293F3F',
+  naranja:     'FFF96115',
+  naranjaSoft: 'FFFEEDE3',
+  texto:       'FF1F2A2A',
+  gris:        'FF5E6B6B',
+  linea:       'FFD9DEDE',
+  cebra:       'FFF4F6F6',
+  blanco:      'FFFFFFFF',
+  verde:       'FF1A6B3C',
+} as const
+const FMT_PESOS = '"$ "#,##0.00;[Red]-"$ "#,##0.00;"—"'
+/** Sin rojo: en el resumen un pago resta, no es una deuda. */
+const FMT_PESOS_NEUTRO = '"$ "#,##0.00;-"$ "#,##0.00;"$ 0,00"'
+const FMT_FECHA = 'dd/mm/yyyy'
+const FUENTE = 'Calibri'
+
+/** 'AAAA-MM-DD' → Date a mediodía (sin corrimiento por huso), o el texto si no parsea. */
+const fechaXl = (s: string | null | undefined): Date | string => {
+  if (!s) return ''
+  const d = new Date(s.slice(0, 10) + 'T12:00:00')
+  return Number.isNaN(d.getTime()) ? s : d
+}
+
+async function cargarLogo(wb: ExcelJS.Workbook): Promise<number | null> {
+  try {
+    const res = await fetch(EMPRESA.logoPapelUrl)
+    if (!res.ok) return null
+    return wb.addImage({ buffer: await res.arrayBuffer(), extension: 'png' })
+  } catch {
+    return null   // sin logo el Excel sale igual
+  }
+}
+
+interface Col { titulo: string; ancho: number; tipo?: 'texto' | 'fecha' | 'pesos' | 'pesosNeutro' | 'num' | 'pct'; total?: boolean }
+
+/**
+ * Una hoja con la cabecera de CADINC y una tabla: logo, título, obra y fecha,
+ * la línea naranja, la tabla con cebra y, si alguna columna lo pide, la fila
+ * de totales con SUMA (fórmula, para que siga cuadrando si se filtra o edita).
+ */
+function hoja(wb: ExcelJS.Workbook, logo: number | null, nombre: string, titulo: string, obra: Obra, cols: Col[],
+              filas: (string | number | Date | null)[][], opts: { apaisada?: boolean; estado?: (v: unknown) => Partial<ExcelJS.Font> | null } = {}) {
+  const ws = wb.addWorksheet(nombre, {
+    views: [{ showGridLines: false }],
+    pageSetup: {
+      paperSize: 9, orientation: opts.apaisada ? 'landscape' : 'portrait',
+      fitToPage: true, fitToWidth: 1, fitToHeight: 0,
+      margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.6, header: 0.2, footer: 0.3 },
+    },
+    headerFooter: { oddFooter: `&L&8${EMPRESA.nombre} · ${obra.nom}&R&8Página &P de &N` },
+  })
+  const n = cols.length
+  ws.columns = cols.map(c => ({ width: c.ancho }))
+
+  // ── Cabecera: filas 1–4 ──
+  ;[26, 20, 18, 10].forEach((h, i) => { ws.getRow(i + 1).height = h })
+  if (logo != null) ws.addImage(logo, { tl: { col: 0.15, row: 0.15 }, ext: { width: 50, height: 68 } })
+  // Los textos van en la columna A con sangría, a la derecha del logo: así no
+  // dependen del ancho de la columna B (en Resumen la A es la ancha).
+  const junto = { indent: 8, vertical: 'middle' as const }
+  const t = ws.getCell(1, 1)
+  t.value = titulo.toUpperCase()
+  t.font = { name: FUENTE, size: 16, bold: true, color: { argb: X.pizarra } }
+  t.alignment = junto
+  const o = ws.getCell(2, 1)
+  o.value = `${obra.nom}  ·  ${obra.cod}`
+  o.font = { name: FUENTE, size: 12, bold: true, color: { argb: X.texto } }
+  o.alignment = junto
+  const detalle = [
+    obra.cliente_nom ? `Cliente: ${obra.cliente_nom}` : null,
+    obra.por_administracion ? 'Obra por administración' : obra.materiales_a_cargo_de === 'cadinc' ? 'Llave en mano' : 'Materiales a cargo del cliente',
+  ].filter(Boolean).join('  ·  ')
+  const d = ws.getCell(3, 1)
+  d.value = detalle
+  d.font = { name: FUENTE, size: 9, color: { argb: X.gris } }
+  d.alignment = junto
+  const f = ws.getCell(1, n)
+  f.value = `Al ${new Date().toLocaleDateString('es-AR')}`
+  f.font = { name: FUENTE, size: 9, color: { argb: X.gris } }
+  f.alignment = { horizontal: 'right', vertical: 'middle' }
+  const e = ws.getCell(2, n)
+  e.value = EMPRESA.nombre
+  e.font = { name: FUENTE, size: 9, bold: true, color: { argb: X.pizarra } }
+  e.alignment = { horizontal: 'right' }
+  // El único naranja fuerte: la línea que cierra la cabecera.
+  for (let c = 1; c <= n; c++) ws.getCell(4, c).border = { bottom: { style: 'medium', color: { argb: X.naranja } } }
+
+  // ── Tabla: cabecera en la fila 6 ──
+  const FILA_CAB = 6
+  const cab = ws.getRow(FILA_CAB)
+  cab.values = cols.map(c => c.titulo)
+  cab.height = 20
+  cab.eachCell((c, i) => {
+    c.font = { name: FUENTE, size: 10, bold: true, color: { argb: X.blanco } }
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: X.pizarra } }
+    c.alignment = { vertical: 'middle', horizontal: ['pesos', 'pesosNeutro', 'num', 'pct'].includes(cols[i - 1].tipo ?? '') ? 'right' : 'left', indent: 1 }
+  })
+
+  filas.forEach((valores, k) => {
+    const r = ws.getRow(FILA_CAB + 1 + k)
+    r.values = valores
+    r.height = 17
+    cols.forEach((col, j) => {
+      const c = r.getCell(j + 1)
+      c.font = { name: FUENTE, size: 10, color: { argb: X.texto } }
+      c.alignment = { vertical: 'middle', horizontal: ['pesos', 'pesosNeutro', 'num', 'pct'].includes(col.tipo ?? '') ? 'right' : 'left', indent: 1, wrapText: col.ancho >= 30 }
+      c.border = { bottom: { style: 'thin', color: { argb: X.linea } } }
+      if (k % 2 === 1) c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: X.cebra } }
+      if (col.tipo === 'pesos') c.numFmt = FMT_PESOS
+      if (col.tipo === 'pesosNeutro') c.numFmt = FMT_PESOS_NEUTRO
+      if (col.tipo === 'fecha') c.numFmt = FMT_FECHA
+      if (col.tipo === 'pct')   c.numFmt = '0.0%'
+      if (col.tipo === 'num')   c.numFmt = 'General'
+      const extra = opts.estado && j === n - 1 ? opts.estado(c.value) : null
+      if (extra) c.font = { ...c.font, ...extra }
+    })
+  })
+
+  const ultima = FILA_CAB + filas.length
+  if (filas.length === 0) {
+    const c = ws.getCell(FILA_CAB + 1, 1)
+    c.value = 'Sin renglones.'
+    c.font = { name: FUENTE, size: 10, italic: true, color: { argb: X.gris } }
+  } else if (cols.some(c => c.total)) {
+    const r = ws.getRow(ultima + 1)
+    r.height = 20
+    cols.forEach((col, j) => {
+      const c = r.getCell(j + 1)
+      c.border = { top: { style: 'medium', color: { argb: X.pizarra } } }
+      c.font = { name: FUENTE, size: 10, bold: true, color: { argb: X.pizarra } }
+      c.alignment = { vertical: 'middle', horizontal: col.total ? 'right' : 'left', indent: 1 }
+      if (j === 0) c.value = 'TOTAL'
+      if (col.total) {
+        const letra = ws.getColumn(j + 1).letter
+        const suma = filas.reduce((s, v) => s + (typeof v[j] === 'number' ? (v[j] as number) : 0), 0)
+        c.value = { formula: `SUBTOTAL(9,${letra}${FILA_CAB + 1}:${letra}${ultima})`, result: suma }
+        c.numFmt = FMT_PESOS
+      }
+    })
+  }
+
+  ws.views = [{ state: 'frozen', ySplit: FILA_CAB, showGridLines: false }]
+  if (filas.length > 0) ws.autoFilter = { from: { row: FILA_CAB, column: 1 }, to: { row: ultima, column: n } }
+  return ws
+}
 
 export async function descargarExcelCuenta(sel: SeleccionExport, datos: DatosExport): Promise<void> {
   const { obra } = datos
   const tot = totales(datos)
   const wb = new ExcelJS.Workbook()
   wb.creator = EMPRESA.nombre
-
-  const head = (fila: ExcelJS.Row) => {
-    fila.font = { bold: true, color: { argb: C_BLANCO } }
-    fila.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C_AZUL } } })
-  }
-  const titulo = (ws: ExcelJS.Worksheet) => {
-    const r = ws.addRow([`${obra.nom} (${obra.cod}) — al ${toISO(new Date())}`])
-    r.font = { bold: true, size: 13, color: { argb: C_AZUL } }
-    ws.addRow([])
-  }
+  wb.created = new Date()
+  const logo = await cargarLogo(wb)
 
   if (sel.resumen) {
-    const ws = wb.addWorksheet('Resumen')
-    ws.columns = [{ width: 22 }, { width: 16 }]
-    titulo(ws)
-    // Misma línea de devoluciones que el PDF, y solo si hubo.
-    const devol: [string, number][] = tot.notas > 0 ? [['Devoluciones (material reintegrado)', -tot.notas]] : []
     const filas: [string, number][] = tot.admin
-      ? [['Mano de obra', tot.mo], ['Contratistas', tot.cont], ['Materiales', tot.mat], ['Total', tot.total], ['Pagos recibidos', tot.pagado], ...devol, ['SALDO', tot.saldo]]
-      : [['Materiales', tot.mat], ['Pagos recibidos', tot.pagado], ...devol, ['SALDO', tot.saldo]]
-    for (const [etiqueta, monto] of filas) {
-      const r = ws.addRow([etiqueta, monto])
-      r.getCell(2).numFmt = FMT_MONEDA
-      if (etiqueta === 'Total' || etiqueta === 'SALDO') r.font = { bold: true }
-    }
+      ? [['Mano de obra', tot.mo], ['Contratistas', tot.cont], ['Materiales', tot.mat], ['Total de la obra', tot.total]]
+      : [['Materiales', tot.mat]]
+    filas.push(['Pagos recibidos', -tot.pagado])
+    // Misma línea de devoluciones que el PDF, y solo si hubo.
+    if (tot.notas > 0) filas.push(['Devoluciones (material reintegrado)', -tot.notas])
+    const ws = hoja(wb, logo, 'Resumen', 'Cuenta corriente', obra,
+      [{ titulo: 'Concepto', ancho: 40 }, { titulo: 'Importe', ancho: 20, tipo: 'pesosNeutro' }], filas)
+    // El saldo, destacado: la única fila con fondo naranja.
+    const r = ws.getRow(6 + filas.length + 1)
+    r.height = 24
+    r.values = ['SALDO', tot.saldo]
+    r.eachCell((c, j) => {
+      c.font = { name: FUENTE, size: 12, bold: true, color: { argb: X.naranja } }
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: X.naranjaSoft } }
+      c.border = { top: { style: 'medium', color: { argb: X.naranja } } }
+      c.alignment = { vertical: 'middle', horizontal: j === 2 ? 'right' : 'left', indent: 1 }
+      if (j === 2) c.numFmt = FMT_PESOS_NEUTRO
+    })
+    const nota = ws.getCell(6 + filas.length + 3, 1)
+    nota.value = tot.saldo > 0 ? 'Saldo a cobrar al cliente.' : tot.saldo < 0 ? 'Saldo a favor del cliente.' : 'Cuenta saldada.'
+    nota.font = { name: FUENTE, size: 9, italic: true, color: { argb: X.gris } }
   }
 
   if ((sel.jornales || sel.contratistas) && datos.admin) {
-    // El Excel es interno: costo, % y facturable a la vista.
-    const ws = wb.addWorksheet('Jornales y contratistas')
-    ws.columns = [{ width: 14 }, { width: 15 }, { width: 8 }, { width: 15 }, { width: 15 }, { width: 8 }, { width: 15 }]
-    titulo(ws)
-    head(ws.addRow(['Semana', 'Mano de obra', '%', 'Facturable', 'Contratistas', '%', 'Facturable']))
-    for (const s of [...datos.admin.semanas].sort((a, b) => a.semKey.localeCompare(b.semKey))) {
-      const r = ws.addRow([
-        s.semKey,
-        sel.jornales ? s.moCosto : null, sel.jornales ? s.moPct / 100 : null, sel.jornales ? s.moFacturable : null,
-        sel.contratistas ? s.contCosto : null, sel.contratistas ? s.contPct / 100 : null, sel.contratistas ? s.contFacturable : null,
-      ])
-      ;[2, 4, 5, 7].forEach(i => { r.getCell(i).numFmt = FMT_MONEDA })
-      ;[3, 6].forEach(i => { r.getCell(i).numFmt = '0.0%' })
-    }
+    // Interno: costo, % y facturable a la vista.
+    const semanas = [...datos.admin.semanas].sort((a, b) => a.semKey.localeCompare(b.semKey))
+    hoja(wb, logo, 'Jornales y contratistas', 'Jornales y contratistas', obra, [
+      { titulo: 'Semana', ancho: 14, tipo: 'fecha' },
+      { titulo: 'Mano de obra', ancho: 16, tipo: 'pesos', total: true }, { titulo: '%', ancho: 8, tipo: 'pct' },
+      { titulo: 'Facturable', ancho: 16, tipo: 'pesos', total: true },
+      { titulo: 'Contratistas', ancho: 16, tipo: 'pesos', total: true }, { titulo: '%', ancho: 8, tipo: 'pct' },
+      { titulo: 'Facturable', ancho: 16, tipo: 'pesos', total: true },
+    ], semanas.map(s => [
+      fechaXl(s.semKey),
+      sel.jornales ? s.moCosto : null, sel.jornales ? s.moPct / 100 : null, sel.jornales ? s.moFacturable : null,
+      sel.contratistas ? s.contCosto : null, sel.contratistas ? s.contPct / 100 : null, sel.contratistas ? s.contFacturable : null,
+    ]), { apaisada: true })
   }
 
   if (sel.materiales) {
-    const ws = wb.addWorksheet('Materiales')
-    ws.columns = [{ width: 12 }, { width: 44 }, { width: 10 }, { width: 8 }, { width: 14 }, { width: 7 }, { width: 14 }, { width: 11 }]
-    titulo(ws)
-    head(ws.addRow(['Fecha', 'Material', 'Cantidad', 'Unidad', 'Precio', '%', 'Facturable', 'Estado']))
-    for (const r of materialesSeleccionados(sel, datos)) {
+    // El % y el facturable solo existen en obras por administración: en las
+    // demás eran dos columnas siempre en 0 %.
+    const conPct = !!datos.admin
+    const cols: Col[] = [
+      { titulo: 'Fecha', ancho: 12, tipo: 'fecha' },
+      { titulo: 'Pedido', ancho: 9 },
+      { titulo: 'Material', ancho: 46 },
+      { titulo: 'Cant.', ancho: 9, tipo: 'num' },
+      { titulo: 'Unidad', ancho: 9 },
+      { titulo: 'Precio unit.', ancho: 15, tipo: 'pesos' },
+      { titulo: 'Importe', ancho: 16, tipo: 'pesos', total: true },
+      ...(conPct ? [{ titulo: '%', ancho: 8, tipo: 'pct' as const }, { titulo: 'Facturable', ancho: 16, tipo: 'pesos' as const, total: true }] : []),
+      { titulo: 'Estado', ancho: 16 },
+    ]
+    const filas = materialesSeleccionados(sel, datos).map(r => {
       const pct = pctMaterial(datos, r.fecha_resolucion)
-      const fila = ws.addRow([
-        r.fecha_resolucion, r.descripcion, Number(r.cantidad), r.unidad,
-        Number(r.precio_total ?? 0), pct / 100, Number(r.precio_total ?? 0) * (1 + pct / 100),
-        r.estado === 'cobrado' ? 'Pagado' : 'Adeudado',
-      ])
-      ;[5, 7].forEach(i => { fila.getCell(i).numFmt = FMT_MONEDA })
-      fila.getCell(6).numFmt = '0.0%'
-    }
+      const importe = Number(r.precio_total ?? 0)
+      const estado = r.estado === 'cobrado' ? 'Pagado'
+        : r.certificado_numero ? `Certificado N° ${r.certificado_numero}` : 'Adeudado'
+      return [
+        fechaXl(r.fecha_resolucion), `#${r.solicitud_id}`, r.descripcion, Number(r.cantidad), r.unidad,
+        Number(r.precio_unit ?? 0), importe,
+        ...(conPct ? [pct / 100, importe * (1 + pct / 100)] : []),
+        estado,
+      ]
+    })
+    hoja(wb, logo, 'Materiales', sel.modoMateriales === 'deuda' ? 'Materiales adeudados' : 'Materiales', obra, cols, filas, {
+      apaisada: true,
+      estado: v => v === 'Pagado' ? { color: { argb: X.verde }, bold: true }
+        : v === 'Adeudado' ? { color: { argb: X.naranja }, bold: true }
+        : { color: { argb: X.pizarra }, bold: true },
+    })
   }
 
   if (sel.pagos) {
-    const ws = wb.addWorksheet('Pagos')
-    ws.columns = [{ width: 12 }, { width: 18 }, { width: 16 }, { width: 40 }]
-    titulo(ws)
-    head(ws.addRow(['Fecha', 'Medio', 'Monto', 'Obs']))
-    for (const c of datos.cobros) {
-      const r = ws.addRow([c.fecha, c.medio ?? '—', Number(c.monto ?? 0), c.obs ?? ''])
-      r.getCell(3).numFmt = FMT_MONEDA
-    }
+    hoja(wb, logo, 'Pagos', 'Pagos recibidos', obra, [
+      { titulo: 'Fecha', ancho: 12, tipo: 'fecha' },
+      { titulo: 'Medio', ancho: 16 },
+      { titulo: 'Observación', ancho: 50 },
+      { titulo: 'Monto', ancho: 18, tipo: 'pesos', total: true },
+    ], datos.cobros.map(c => [fechaXl(c.fecha), c.medio ? c.medio[0].toUpperCase() + c.medio.slice(1) : '—', c.obs ?? '', Number(c.monto ?? 0)]))
   }
 
   const buffer = await wb.xlsx.writeBuffer()

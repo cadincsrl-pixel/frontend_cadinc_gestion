@@ -123,7 +123,7 @@ export function CertificadosSection({ obra, puedeEmitir, esAdmin, puedeCobrar = 
 
   async function pdf(c: CertificadoCliente) {
     setDescargando(c.id)
-    try { descargarPdfCertificado(await fetchCertificado(c.id), obra) }
+    try { await descargarPdfCertificado(await fetchCertificado(c.id), obra) }
     catch { toast('No se pudo armar el PDF', 'err') }
     finally { setDescargando(null) }
   }

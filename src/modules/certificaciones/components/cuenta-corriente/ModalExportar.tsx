@@ -84,7 +84,7 @@ function Cuerpo({ obra, onClose, admin }: {
     setExportando(true)
     try {
       const datos = { obra, renglones, cobros: cobros as CuentaClienteCobro[], notas, admin }
-      if (formato === 'pdf') descargarPdfCuenta(sel, datos)
+      if (formato === 'pdf') await descargarPdfCuenta(sel, datos)
       else await descargarExcelCuenta(sel, datos)
       onClose()
     } catch (e) {
