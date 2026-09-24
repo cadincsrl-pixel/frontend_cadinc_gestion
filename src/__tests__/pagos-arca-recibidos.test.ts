@@ -84,3 +84,21 @@ describe('separadorCsv', () => {
     expect(separadorCsv('Fecha,Tipo,Imp. Total\n')).toBe(',')
   })
 })
+
+describe('«Comprobantes de Compras» (dice Vendedor, sin columna de otros tributos)', () => {
+  const enc = ['Fecha', 'Tipo', 'Punto de Venta', 'Número Desde', 'Número Hasta', 'Tipo Doc. Vendedor', 'Nro. Doc. Vendedor', 'Denominación Vendedor', 'Tipo Cambio', 'Moneda', 'Neto Gravado', 'No Gravado', 'Exento', 'IVA', 'Total']
+  it('lee al vendedor y la diferencia con el total va a otros tributos (salvo en C)', () => {
+    const r = leerFilasRecibidos([
+      ['Comprobantes de Compras - CUIT 33717191949'], enc,
+      ['01/07/2026', '1 - Factura A', 123, 10143, null, 'CUIT', 33717354899, 'EMPRESA MAYORISTA', 1, '$', 3171356.69, 0, 0, 665984.9, 3876983.55],
+      ['02/07/2026', '11 - Factura C', 1, 523, null, 'CUIT', 30626453593, 'CAMARA TUCUMANA', 1, '$', 0, 0, 0, 0, 145000],
+      ['01/07/2026', '1 - Factura A', 2, 45154, null, 'CUIT', 30709370401, 'MINDEO S A', 1, '$', 53195.41, 0, 0, 11171.04, 64366.45],
+    ], 'jul.xlsx')
+    expect(r.errores).toEqual([])
+    expect(r.filas.map(f => f.emisor_doc_nro)).toEqual(['33717354899', '30626453593', '30709370401'])
+    expect(r.filas[0]!.emisor_razon_social).toBe('EMPRESA MAYORISTA')
+    expect(r.filas[0]!.otros_tributos).toBe(39641.96)
+    expect(r.filas[1]!.otros_tributos).toBe(0)
+    expect(r.filas[2]!.otros_tributos).toBe(0)
+  })
+})

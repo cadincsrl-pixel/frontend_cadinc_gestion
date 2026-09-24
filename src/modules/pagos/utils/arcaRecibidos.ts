@@ -63,9 +63,10 @@ const ENCABEZADOS: Record<Campo, string[]> = {
   numero:              ['numero desde', 'numero', 'numero de comprobante'],
   numero_hasta:        ['numero hasta'],
   cod_autorizacion:    ['cod. autorizacion', 'codigo de autorizacion'],
-  emisor_doc_tipo:     ['tipo doc. emisor'],
-  emisor_doc_nro:      ['nro. doc. emisor'],
-  emisor_razon_social: ['denominacion emisor'],
+  // «Comprobantes de Compras» (el que baja el estudio) dice «Vendedor».
+  emisor_doc_tipo:     ['tipo doc. emisor', 'tipo doc. vendedor'],
+  emisor_doc_nro:      ['nro. doc. emisor', 'nro. doc. vendedor'],
+  emisor_razon_social: ['denominacion emisor', 'denominacion vendedor'],
   tipo_cambio:         ['tipo cambio', 'tipo de cambio'],
   moneda:              ['moneda'],
   neto_gravado:        ['imp. neto gravado', 'imp. neto gravado total', 'total neto gravado', 'neto gravado'],
@@ -159,6 +160,7 @@ export function leerFilasRecibidos(filas: unknown[][], archivo: string, hoja = '
   }
   const m = mapa
   const formato: ResultadoParseoRecibidos['formato'] = m.alicuotas.size > 0 ? 'por_alicuota' : 'clasico'
+  const sinColumnaOtros = m.campos.otros_tributos === undefined
   const col = (fila: unknown[], c: Campo): unknown => (m.campos[c] === undefined ? undefined : fila[m.campos[c]!])
 
   const out: FilaRecibidaArchivo[] = []
@@ -200,6 +202,20 @@ export function leerFilasRecibidos(filas: unknown[][], archivo: string, hoja = '
         .filter(a => a.base_imp > 0 || a.importe > 0)
     }
     const tc = numeroDeCelda(col(fila, 'tipo_cambio'))
+    // «Comprobantes de Compras» no trae la columna de otros tributos: las
+    // percepciones quedan escondidas en la diferencia con el total. En A/B/M
+    // esa diferencia entra como «otros tributos» (a revisar, como pidió el
+    // contador) en vez de romper el cierre y sacar el comprobante del libro.
+    // En C no se toca: ahí el total no se discrimina.
+    const netoG = abs2(numeroDeCelda(col(fila, 'neto_gravado')))
+    const noG   = abs2(numeroDeCelda(col(fila, 'no_gravado')))
+    const exe   = abs2(numeroDeCelda(col(fila, 'exento')))
+    const ivaF  = abs2(numeroDeCelda(col(fila, 'iva')))
+    let otros   = abs2(numeroDeCelda(col(fila, 'otros_tributos')))
+    if (sinColumnaOtros && !esLetraC(cbte)) {
+      const dif = Math.round((abs2(total) - netoG - noG - exe - ivaF) * 100) / 100
+      if (dif > 0.01) otros = dif
+    }
 
     out.push({
       archivo, filaExcel, tipoTexto,
@@ -216,16 +232,21 @@ export function leerFilasRecibidos(filas: unknown[][], archivo: string, hoja = '
       moneda:              monedaDeCelda(col(fila, 'moneda')),
       tipo_cambio:         tc && tc > 0 ? tc : 1,
       // Algunas exportaciones traen las NC en negativo: el signo lo pone el tipo.
-      neto_gravado:        abs2(numeroDeCelda(col(fila, 'neto_gravado'))),
-      no_gravado:          abs2(numeroDeCelda(col(fila, 'no_gravado'))),
-      exento:              abs2(numeroDeCelda(col(fila, 'exento'))),
-      otros_tributos:      abs2(numeroDeCelda(col(fila, 'otros_tributos'))),
-      iva:                 abs2(numeroDeCelda(col(fila, 'iva'))),
+      neto_gravado:        netoG,
+      no_gravado:          noG,
+      exento:              exe,
+      otros_tributos:      otros,
+      iva:                 ivaF,
       total:               abs2(total),
       alicuotas,
     })
   }
   return { hoja, formato, filas: out, errores }
+}
+
+/** Facturas, ND y NC C (11, 12, 13) y recibo C (15): no discriminan IVA. */
+function esLetraC(cbte: number | null): boolean {
+  return cbte !== null && [11, 12, 13, 15].includes(cbte)
 }
 
 /** Separador de un CSV: `;` si la primera línea tiene más `;` que `,`. */
