@@ -56,7 +56,7 @@ export const MODULO_INFO: Record<Modulo, ModuloInfo> = {
   logistica:       { key: 'logistica',       label: 'Logística',        descripcion: 'Transporte de camiones',                icono: '🚛', orden: 2 },
   herramientas:    { key: 'herramientas',    label: 'Herramientas',     descripcion: 'Control de herramientas y equipos',     icono: '🔧', orden: 3 },
   certificaciones: { key: 'certificaciones', label: 'Pedidos y Stock',  descripcion: 'Pedidos de materiales, depósito y stock',       icono: '🛒', orden: 4 },
-  caja:            { key: 'caja',            label: 'Caja',             descripcion: 'Efectivo y movimientos',                icono: '💵', orden: 5 },
+  caja:            { key: 'caja',            label: 'Caja',             descripcion: 'Efectivo y movimientos',                icono: '💵', orden: 11 },  // al final: hoy no se usa (dueño, 23/09)
   flota:           { key: 'flota',           label: 'Flota CADINC',     descripcion: 'Vehículos internos (autos, camionetas)', icono: '🚙', orden: 6 },
   alquiler:        { key: 'alquiler',        label: 'Alquiler de maquinaria', descripcion: 'Máquinas, obras y partes de horas', icono: '🚜', orden: 7 },
   aridos:          { key: 'aridos',          label: 'Áridos',           descripcion: 'Venta de áridos, stock y cuentas corrientes', icono: '⛰', orden: 8 },
