@@ -68,6 +68,16 @@ const CAMPO_RENGLON: Record<string, string> = {
   descripcion: 'la descripción', cantidad: 'la cantidad', precio_unit: 'el precio', alicuota_id: 'la alícuota',
 }
 
+const CAMPO_MEDIO: Record<string, string> = {
+  forma: 'la forma', importe: 'el importe', cuenta_bancaria_id: 'la cuenta de CADINC', cheque_numero: 'el número del cheque',
+  cheque_banco: 'el banco del cheque', cheque_librador: 'el librador del cheque', cheque_fecha_cobro: 'la fecha de cobro del cheque',
+}
+
+const CAMPO_RETENCION: Record<string, string> = {
+  tipo: 'el tipo', importe: 'el importe', fecha: 'la fecha (no puede ser futura)', adjunto: 'el certificado adjunto',
+  adjunto_hash: 'el certificado adjunto', certificado_numero: 'el número de certificado',
+}
+
 const MENSAJES: Record<string, (d: unknown) => string> = {
   // ── Permisos ──
   SIN_PERMISO:           () => 'No tenés permiso para esta acción.',
@@ -232,6 +242,69 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   CLIENTE_INVALIDO:       () => 'El cliente no es válido para este comprobante.',
   CLIENTE_SIN_LETRA:      () => 'Con esa condición IVA hace falta CUIT: un Responsable Inscripto o Monotributista solo puede recibir factura A, y la A exige CUIT.',
 
+  // ── Cobranzas (20260924k…o) ──
+  SIN_PERMISO_COBROS:       () => 'No tenés permiso para registrar cobros, imputar ni compensar (hace falta «Registrar cobros»).',
+  SIN_PERMISO_ANULAR:       () => 'No tenés permiso para anular cobros ni imputaciones (hace falta «Anular cobros»).',
+  FECHA_FUTURA:             d => `La fecha no puede ser posterior a hoy${dato(d, 'hoy') ? ` (${fmtFecha(String(dato(d, 'hoy')))})` : ''}.`,
+  COBRO_TOTAL_CERO:         () => 'El cobro tiene que tener al menos un medio o una retención con importe.',
+  MEDIO_INVALIDO:           d => {
+    const i = Number(dato(d, 'indice'))
+    const campo = CAMPO_MEDIO[String(dato(d, 'campo') ?? '')] ?? 'un dato'
+    return `Revisá ${campo} del medio de cobro${Number.isFinite(i) ? ` ${i}` : ''}.`
+  },
+  CHEQUE_DUPLICADO:         d => `El cheque N° ${String(dato(d, 'cheque_numero') ?? '')} de ese banco ya está cargado en otro cobro${dato(d, 'cobro_id') ? ` (#${String(dato(d, 'cobro_id'))})` : ''}.`,
+  RETENCION_INVALIDA:       d => {
+    const i = Number(dato(d, 'indice'))
+    const campo = CAMPO_RETENCION[String(dato(d, 'campo') ?? '')] ?? 'un dato'
+    return `Revisá ${campo} de la retención${Number.isFinite(i) ? ` ${i}` : ''}.`
+  },
+  RETENCION_DUPLICADA:      d => `El certificado ${String(dato(d, 'certificado_numero') ?? '')} ya está cargado en otro cobro${dato(d, 'cobro_id') ? ` (#${String(dato(d, 'cobro_id'))})` : ''}.`,
+  RETENCION_ADJUNTO_DUPLICADO: () => 'Ese archivo ya está adjunto a una retención de otro cobro vigente. ¿Es el certificado correcto?',
+  SIN_IMPUTACIONES:         () => 'Aplicá algún importe a al menos un comprobante.',
+  IMPUTACION_INVALIDA:      () => 'Cada imputación va a UNA factura (o comprobante externo) con importe mayor a cero.',
+  ORIGEN_INVALIDO:          () => 'El crédito a aplicar no es válido (un cobro, una NC del sistema o una NC externa).',
+  ORIGEN_NO_EXISTE:         () => 'El crédito a aplicar ya no existe.',
+  COBRO_NO_EXISTE:          () => 'El cobro no existe.',
+  COBRO_ANULADO:            () => 'El cobro está anulado: no se le puede aplicar nada.',
+  COBRO_YA_ANULADO:         () => 'El cobro ya estaba anulado.',
+  COBRO_NO_BORRABLE:        () => 'Un cobro no se borra: se anula (queda en el historial).',
+  DESTINO_NO_EXISTE:        () => 'Uno de los comprobantes a cancelar ya no existe. Actualizá la lista.',
+  DESTINO_INVALIDO:         d => {
+    const m = dato(d, 'motivo')
+    if (m === 'nc') return 'Una nota de crédito no se cancela con un cobro: se compensa contra una factura.'
+    if (m === 'no_autorizada') return 'Solo se cancelan facturas autorizadas por ARCA.'
+    return 'Uno de los comprobantes no se puede cancelar.'
+  },
+  OTRO_CLIENTE:             () => 'Hay un comprobante de otro cliente: todo tiene que ser del mismo.',
+  NC_A_SU_FACTURA:          () => 'Esa NC ya baja sola su propia factura: la compensación es para aplicar lo que sobra contra OTRA factura.',
+  IMPUTACION_SUPERA_SALDO:  d => {
+    const cbte = dato(d, 'comprobante') ?? dato(d, 'destino')
+    return `Lo aplicado${cbte ? ` a ${String(cbte)}` : ''} (${money(dato(d, 'importe'))}) supera su saldo (${money(dato(d, 'saldo'))}). Actualizá: alguien pudo haberla cobrado recién.`
+  },
+  IMPUTACION_SUPERA_COBRO:  d => `Lo aplicado supera lo que queda del cobro${dato(d, 'disponible') !== undefined ? ` (${money(dato(d, 'disponible'))})` : ''}.`,
+  IMPUTACION_SUPERA_CREDITO: d => `Lo aplicado supera el crédito libre de la nota de crédito${dato(d, 'disponible') !== undefined ? ` (${money(dato(d, 'disponible'))})` : ''}.`,
+  MOTIVO_REQUERIDO:         () => 'Escribí el motivo.',
+  IMPUTACION_NO_EXISTE:     () => 'La imputación no existe.',
+  IMPUTACION_YA_ANULADA:    () => 'La imputación ya estaba anulada.',
+  VENCE_NO_APLICA_A_NC:     () => 'Una nota de crédito no tiene vencimiento de cobro.',
+  VENCIMIENTO_NO_EDITABLE:  () => 'El vencimiento de este comprobante no se puede cambiar en su estado.',
+  VENCE_ES_EL_DE_LA_FCE:    () => 'En la Factura de Crédito MiPyME el vencimiento es el del pago informado a ARCA: no se cambia acá.',
+  VENCE_ANTERIOR_A_FECHA:   () => 'El vencimiento no puede ser anterior a la fecha del comprobante.',
+  ACCION_INVALIDA:          () => 'Acción inválida.',
+  SIN_IDS:                  () => 'Elegí al menos un comprobante.',
+  EXTERNO_NO_EXISTE:        () => 'Uno de los comprobantes ya no existe. Actualizá la lista.',
+  EXTERNO_CON_IMPUTACIONES: d => `El comprobante tiene cobros o compensaciones aplicados${dato(d, 'imputado') !== undefined ? ` (${money(dato(d, 'imputado'))})` : ''}: anulalos antes de borrarlo o de cambiarle el cliente o el tipo.`,
+  EXTERNO_SALDO_MENOR_QUE_IMPUTADO: d => `El saldo inicial no puede quedar por debajo de lo ya aplicado (${money(dato(d, 'imputado'))}).`,
+  EXTERNO_DUPLICA_FACTURA_ERP: () => 'Ese comprobante ya fue emitido por el sistema: no se carga como saldo inicial.',
+  EXTERNO_DUPLICADO:        () => 'Ese comprobante (tipo, punto de venta y número) ya está cargado.',
+  SIN_FILAS:                () => 'El archivo no tiene comprobantes para importar.',
+  DEMASIADAS_FILAS:         d => `Son demasiadas filas de una vez: el máximo es ${String(dato(d, 'max') ?? 2000)}. Partí el archivo.`,
+  IMPORTACION_CON_ERRORES:  d => {
+    const errs = dato(d, 'errores')
+    const n = Array.isArray(errs) ? errs.length : 0
+    return `No se importó nada: ${n || 'hay'} fila${n === 1 ? '' : 's'} con error. Corregilas o sacalas del archivo y volvé a probar.`
+  },
+
   // ── Genéricos ──
   DATOS_INVALIDOS:  d => {
     const campo = dato(d, 'campo'), msg = dato(d, 'mensaje')
@@ -282,4 +355,32 @@ export function errorDeCampoFacturacion(e: unknown): { campo: string; mensaje: s
   const msgDetail = dato(detail, 'mensaje')
   const mensaje = error === 'DATOS_INVALIDOS' && typeof msgDetail === 'string' ? msgDetail : mensajeErrorFacturacion(e)
   return { campo: campo.replace(/^factura\./, ''), mensaje }
+}
+
+/** Error de UNA fila del importador de ARCA (`ventas_importar_externos`), en castellano. */
+export function mensajeErrorFilaImport(code: string | null, detalle?: unknown): string {
+  switch (code) {
+    case null: case undefined: return ''
+    case 'TIPO_INVALIDO':          return `Tipo de comprobante no admitido (${String(dato(detalle, 'cbte_tipo') ?? '')}). Se importan FA, FB, NC, ND, CVLP y FCE.`
+    case 'PTO_VTA_INVALIDO':       return 'Punto de venta inválido.'
+    case 'NUMERO_INVALIDO':        return 'Número de comprobante inválido.'
+    case 'FECHA_INVALIDA':         return `Fecha inválida o futura (${String(dato(detalle, 'fecha') ?? '')}).`
+    case 'TOTAL_INVALIDO':         return 'El total tiene que ser mayor a cero.'
+    case 'DOC_TIPO_INVALIDO':      return 'Tipo de documento del comprador no admitido (CUIT, CUIL, DNI o sin identificar).'
+    case 'DOC_NRO_INVALIDO':       return 'Número de documento del comprador inválido (el CUIT va con 11 dígitos).'
+    case 'RAZON_SOCIAL_REQUERIDA': return 'Falta la denominación del comprador para darlo de alta.'
+    case 'SALDO_INVALIDO':         return 'El saldo tiene que estar entre 0 y el total.'
+    case 'VENCE_ANTERIOR_A_FECHA': return 'El vencimiento es anterior a la fecha.'
+    case 'FILA_INVALIDA':          return `Fila inválida${dato(detalle, 'mensaje') ? `: ${String(dato(detalle, 'mensaje'))}` : ''}.`
+    default:                       return mensajeCodigoFacturacion(code, detalle)
+  }
+}
+
+/** Por qué una fila del importador quedó como duplicada. */
+export function motivoDuplicada(detalle: unknown): string {
+  const m = dato(detalle, 'motivo')
+  if (m === 'ya_importada') return 'Ya estaba importado'
+  if (m === 'emitida_por_el_erp') return 'Lo emitió el sistema'
+  if (m === 'repetida_en_el_archivo') return 'Repetido en el archivo'
+  return 'Duplicado'
 }

@@ -1188,6 +1188,10 @@ export type ModuloPermisos = { [K in Accion]?: boolean } & {
   emitir_facturas?:        boolean
   emitir_notas_credito?:   boolean
   registrar_finnegans?:    boolean
+  // - facturacion.registrar_cobros: registrar cobros (recibos), imputar a
+  //   cuenta y compensar NC. `anular_cobros` (de arriba) en facturación anula
+  //   cobros e imputaciones. Los dos default false (20260924o).
+  registrar_cobros?:       boolean
 }
 export type Permisos = Record<string, ModuloPermisos>
 
@@ -3189,6 +3193,8 @@ export interface VentasCliente {
   /** Último resultado del padrón de ARCA (fase 7). Solo lo escribe «Actualizar desde ARCA». */
   padron_json?:          VentasPadronPersona | null
   padron_consultado_at?: string | null
+  /** Días para el vencimiento de cobro por defecto (0–365, default 30). 20260924k. */
+  plazo_pago_dias?:      number
 }
 
 /** Una persona según el padrón de ARCA (getPersona_v2), resumida por el backend. */
@@ -3270,6 +3276,8 @@ export interface VentasClienteInput {
   email?:           string
   obs?:             string
   cuenta_fce_id?:   number | null
+  /** Días para el vencimiento de cobro (0–365). 20260924k. */
+  plazo_pago_dias?: number
 }
 
 export interface VentasCondicionIva {
@@ -3396,6 +3404,15 @@ export interface VentasFactura {
   nc_anulacion?:        'S' | 'N' | null
   es_fce?:              boolean
   asociada_fecha_cbte?: string | null
+  // Cobranzas (20260924m). Solo autorizadas; en una NC, cobro_saldo = crédito libre.
+  /** Vencimiento de COBRO (no fiscal). Automático = fecha + plazo del cliente; FCE = fch_vto_pago. */
+  vence_el?:            string | null
+  /** true = lo fijó alguien a mano y ya no se recalcula. */
+  vence_el_manual?:     boolean
+  cobro_saldo?:         number | null
+  cobro_aplicado?:      number | null
+  cobro_estado?:        VentasCobroEstadoDeuda | VentasCreditoEstado | null
+  cobro_dias_vencido?:  number | null
 }
 
 export interface VentasRenglon {
@@ -3506,3 +3523,427 @@ export interface VentasFacturaInput {
 export type VentasEmitirRes =
   | VentasFacturaFJ
   | { error: 'EMISION_INCIERTA'; factura: VentasFacturaFJ; detail?: { numero_intentado?: number; mensaje?: string } }
+
+// ══════════════════════════════════════════════════════════════════════
+// Ventas › Cobranzas, deudores y saldos iniciales (2026-09-24)
+// Migraciones 20260924k…o. Contrato: /api/facturacion/{cobros,compensaciones,
+// imputaciones,deudores,externos,clientes/:id/pendientes|estado-cuenta}.
+// Los numeric llegan como number o string: siempre pasar por Number().
+// ══════════════════════════════════════════════════════════════════════
+
+/** Débito: 'pagada' | 'parcial' | 'pendiente' (+ 'vencida' en v_ventas_facturas). */
+export type VentasCobroEstadoDeuda = 'pagada' | 'parcial' | 'pendiente' | 'vencida'
+/** Crédito (NC libre, cobro a cuenta): 'usado' | 'parcial' | 'disponible'. */
+export type VentasCreditoEstado = 'usado' | 'parcial' | 'disponible'
+
+export type VentasCobroForma = 'transferencia' | 'cheque' | 'echeq' | 'efectivo' | 'otro'
+export type VentasRetencionTipo = 'iibb' | 'tem' | 'suss' | 'ganancias' | 'iva' | 'otra'
+/** Códigos de ARCA que admite un comprobante externo. */
+export type VentasCbteTipoExterno = 1 | 2 | 3 | 6 | 7 | 8 | 60 | 61 | 201 | 202 | 203
+
+/** Fila de `ventas_saldos_al` / `v_ventas_saldos` / `v_ventas_creditos`: LA fuente del saldo. */
+export interface VentasSaldo {
+  origen:          'erp' | 'externo' | 'cobro'
+  naturaleza:      'debito' | 'credito'
+  factura_id:      number | null
+  externo_id:      number | null
+  cobro_id:        number | null
+  ambiente:        VentasAmbiente
+  cliente_id:      number
+  cbte_tipo:       number | null
+  tipo:            'FC' | 'ND' | 'NC' | 'RC'
+  letra:           'A' | 'B' | null
+  pto_vta:         number
+  numero:          number
+  /** 'FA', 'FCE A', 'NCA', 'CVLP A', 'RC'… */
+  tipo_abrev:      string
+  /** '00004-00000001' | 'RC 0001-00000001' */
+  numero_fmt:      string
+  /** 'FA 00004-00000001' | 'RC 0001-00000001' */
+  comprobante:     string
+  fecha:           string
+  vence_el:        string
+  total:           number
+  saldo_inicial:   number
+  nc_aplicadas:    number
+  cobrado:         number
+  compensado:      number
+  aplicado:        number
+  saldo:           number
+  saldo_a_revisar: boolean
+  estado:          VentasCobroEstadoDeuda | VentasCreditoEstado
+  dias_vencido:    number
+  cliente_razon_social?: string
+  cliente_doc_nro?:      string
+}
+
+/** Retenciones por tipo en la lista de cobros (`retenciones_resumen`). */
+export interface VentasRetencionResumen {
+  tipo:    VentasRetencionTipo
+  importe: number
+}
+
+/** Fila de `v_ventas_cobros` (el recibo, RC 0001-NNNNNNNN). */
+export interface VentasCobro {
+  id:                    number
+  ambiente:              VentasAmbiente
+  numero:                number
+  numero_fmt:            string
+  fecha:                 string
+  cliente_id:            number
+  cliente_razon_social:  string
+  cliente_doc_nro:       string
+  total_medios:          number
+  total_retenciones:     number
+  total:                 number
+  aplicado:              number
+  a_cuenta:              number
+  estado:                'vigente' | 'anulado'
+  anulado_motivo:        string | null
+  anulado_por:           string | null
+  anulado_por_nombre:    string | null
+  anulado_el:            string | null
+  obs:                   string
+  created_at:            string
+  updated_at:            string
+  created_by:            string | null
+  created_by_nombre:     string | null
+  updated_by:            string | null
+  es_homologacion:       boolean
+  cantidad_imputaciones: number
+  cantidad_medios:       number
+  medios_formas:         VentasCobroForma[]
+  cantidad_retenciones:  number
+  retenciones_resumen:   VentasRetencionResumen[]
+}
+
+export interface VentasCobrosPage {
+  rows:  VentasCobro[]
+  total: number
+}
+
+/** Fila de `ventas_cobro_medios` + los datos de la cuenta de CADINC. */
+export interface VentasCobroMedio {
+  id:                 number
+  cobro_id:           number
+  orden:              number
+  forma:              VentasCobroForma
+  importe:            number
+  cuenta_bancaria_id: number | null
+  cheque_numero:      string | null
+  cheque_banco:       string | null
+  cheque_librador:    string | null
+  cheque_fecha_cobro: string | null
+  obs:                string
+  cuenta_banco?:      string | null
+  cuenta_alias?:      string | null
+  cuenta_cbu?:        string | null
+}
+
+/** Fila de `ventas_cobro_retenciones`. */
+export interface VentasCobroRetencion {
+  id:                 number
+  cobro_id:           number
+  orden:              number
+  tipo:               VentasRetencionTipo
+  jurisdiccion:       string
+  certificado_numero: string
+  fecha:              string
+  importe:            number
+  adjunto_path:       string | null
+  adjunto_nombre:     string | null
+  adjunto_hash:       string | null
+  adjunto_mime:       string | null
+  adjunto_size:       number | null
+  obs:                string
+}
+
+/** Fila de `v_ventas_imputaciones`. */
+export interface VentasImputacion {
+  id:                   number
+  cobro_id:             number | null
+  nc_factura_id:        number | null
+  nc_externo_id:        number | null
+  factura_id:           number | null
+  externo_id:           number | null
+  importe:              number
+  fecha:                string
+  anulada:              boolean
+  anulada_por:          string | null
+  anulada_el:           string | null
+  anulada_motivo:       string | null
+  created_at:           string
+  created_by:           string | null
+  created_by_nombre:    string | null
+  anulada_por_nombre:   string | null
+  origen_tipo:          'cobro' | 'nc' | 'nc_externa'
+  origen_fmt:           string
+  destino_tipo:         'factura' | 'externo'
+  cliente_id:           number
+  ambiente:             VentasAmbiente
+  destino_fmt:          string
+  destino_fecha:        string
+  destino_vence_el:     string
+  destino_total:        number
+  destino_saldo_actual: number | null
+}
+
+/** GET /cobros/:id y la respuesta de POST /cobros. */
+export interface VentasCobroDetalle {
+  cobro:        VentasCobro
+  medios:       VentasCobroMedio[]
+  retenciones:  VentasCobroRetencion[]
+  imputaciones: VentasImputacion[]
+}
+
+/** Destino de una imputación: una factura del ERP o un comprobante externo. */
+export type VentasDestinoImputacion =
+  | { factura_id: number; importe: number }
+  | { externo_id: number; importe: number }
+
+export interface VentasCobroMedioInput {
+  forma:               VentasCobroForma
+  importe:             number
+  cuenta_bancaria_id?: number | null
+  cheque_numero?:      string
+  cheque_banco?:       string
+  cheque_librador?:    string
+  cheque_fecha_cobro?: string | null
+  obs?:                string
+}
+
+export interface VentasCobroRetencionInput {
+  tipo:                VentasRetencionTipo
+  jurisdiccion?:       string
+  certificado_numero?: string
+  fecha?:              string
+  importe:             number
+  /** storage_path que devolvió upload-url. El sha256 lo calcula el backend. */
+  adjunto_path?:       string | null
+  adjunto_nombre?:     string | null
+  adjunto_mime?:       string | null
+  adjunto_size?:       number | null
+  obs?:                string
+}
+
+/** POST /cobros */
+export interface VentasCobroInput {
+  cobro:        { fecha: string; cliente_id: number; obs?: string; ambiente?: VentasAmbiente }
+  medios:       VentasCobroMedioInput[]
+  retenciones:  VentasCobroRetencionInput[]
+  imputaciones: VentasDestinoImputacion[]
+}
+
+/** POST /compensaciones: una NC (del ERP o externa) contra débitos del mismo cliente. */
+export interface VentasCompensacionInput {
+  nc:     { factura_id: number } | { externo_id: number }
+  items:  VentasDestinoImputacion[]
+  fecha?: string
+}
+
+/** POST /cobros/retenciones/upload-url */
+export interface VentasUploadUrlRes {
+  storage_path:    string
+  signed_url:      string
+  token?:          string
+  nombre_archivo?: string
+}
+
+/** Fila de `ventas_deudores_al` / `v_ventas_deudores`. */
+export interface VentasDeudor {
+  ambiente:              VentasAmbiente
+  cliente_id:            number
+  cliente_razon_social:  string
+  cliente_doc_nro:       string
+  saldo:                 number
+  a_cuenta:              number
+  nc_disponible:         number
+  saldo_neto:            number
+  al_dia:                number
+  d1_30:                 number
+  d31_60:                number
+  d61_90:                number
+  d90_mas:               number
+  vencido:               number
+  saldo_a_revisar:       number
+  comprobantes:          number
+  ultima_cobranza:       string | null
+  ultima_cobranza_total: number | null
+}
+
+export type VentasMovimientoTipo =
+  | 'saldo_anterior' | 'factura' | 'nota_debito' | 'nota_credito' | 'externo' | 'externo_nc' | 'cobro' | 'retencion'
+
+/** Fila de `ventas_estado_cuenta`: debe − haber con saldo corrido. */
+export interface VentasEstadoCuentaMov {
+  orden:        number
+  fecha:        string | null
+  movimiento:   VentasMovimientoTipo
+  comprobante:  string | null
+  detalle:      string | null
+  vence_el:     string | null
+  debe:         number
+  haber:        number
+  saldo:        number
+  factura_id:   number | null
+  externo_id:   number | null
+  cobro_id:     number | null
+  retencion_id: number | null
+}
+
+/** GET /clientes/:id/estado-cuenta (normalizado por el hook). */
+export interface VentasEstadoCuenta {
+  cliente:         VentasCliente | null
+  desde:           string | null
+  hasta:           string | null
+  movimientos:     VentasEstadoCuentaMov[]
+  saldo_anterior?: number | null
+  /** Coincide con el saldo corrido de la última fila y con el `saldo_neto` de Deudores. */
+  saldo_final?:    number | null
+  totales?:        { debe: number; haber: number } | null
+}
+
+/** GET /clientes/:id/pendientes */
+export interface VentasPendientesCliente {
+  cliente?:  VentasCliente | null
+  ambiente?: VentasAmbiente
+  al?:       string | null
+  /** Facturas y externos con saldo, más viejo primero. */
+  debitos:   VentasSaldo[]
+  /** NC libres (ERP y externas) y cobros con saldo a cuenta. */
+  creditos:  VentasSaldo[]
+  totales?:  { debitos: number; vencido: number; creditos: number; a_cuenta: number; nc_disponible: number }
+}
+
+/** Fila de `v_ventas_externos` (saldos iniciales + libro de ventas jul–sep 2026). */
+export interface VentasExterno {
+  id:                    number
+  cliente_id:            number
+  cbte_tipo:             VentasCbteTipoExterno
+  tipo:                  'FC' | 'ND' | 'NC'
+  letra:                 'A' | 'B'
+  pto_vta:               number
+  numero:                number
+  fecha:                 string
+  vence_el:              string
+  neto:                  number
+  no_gravado:            number
+  exento:                number
+  iva:                   number
+  total:                 number
+  moneda:                string
+  tipo_cambio:           number
+  rec_doc_tipo:          number | null
+  rec_doc_nro:           string | null
+  rec_razon_social:      string | null
+  saldo_inicial:         number
+  saldo_a_revisar:       boolean
+  saldo_confirmado_por:  string | null
+  saldo_confirmado_el:   string | null
+  saldo_motivo:          string
+  saldo_cobrado_el:      string | null
+  origen:                'finnegans' | 'portal' | 'otro'
+  obs:                   string
+  created_at:            string
+  updated_at:            string
+  tipo_abrev:            string
+  tipo_nombre:           string
+  numero_fmt:            string
+  comprobante:           string
+  cliente_razon_social:  string
+  cliente_doc_nro:       string
+  saldo_confirmado_por_nombre: string | null
+  aplicado:              number
+  saldo:                 number
+  estado:                VentasCobroEstadoDeuda | VentasCreditoEstado | null
+  dias_vencido:          number | null
+  cantidad_imputaciones: number
+}
+
+export interface VentasExternosPage {
+  rows:  VentasExterno[]
+  total: number
+}
+
+/** POST / PATCH /externos */
+export interface VentasExternoInput {
+  cliente_id:     number
+  cbte_tipo:      VentasCbteTipoExterno
+  pto_vta:        number
+  numero:         number
+  fecha:          string
+  vence_el:       string
+  total:          number
+  saldo_inicial:  number
+  neto?:          number
+  iva?:           number
+  origen?:        'finnegans' | 'portal' | 'otro'
+  obs?:           string
+}
+
+/** Acciones masivas sobre saldos iniciales (`ventas_externos_marcar`). */
+export type VentasExternoAccion = 'cobrada' | 'impaga' | 'revisar'
+
+/** Una fila del Excel de ARCA lista para `ventas_importar_externos`. */
+export interface VentasImportarFilaInput {
+  cbte_tipo:        number
+  pto_vta:          number
+  numero:           number
+  /** YYYY-MM-DD */
+  fecha:            string
+  rec_doc_tipo:     number | string
+  rec_doc_nro:      string
+  rec_razon_social: string
+  neto:             number
+  no_gravado:       number
+  exento:           number
+  iva:              number
+  total:            number
+  moneda:           string
+  tipo_cambio:      number
+  saldo?:           number
+  vence_el?:        string
+  obs?:             string
+}
+
+export interface VentasImportarFilaRes {
+  indice:           number
+  estado:           'nueva' | 'duplicada' | 'error'
+  error:            string | null
+  detalle:          Record<string, unknown> | null
+  cbte_tipo:        number | null
+  pto_vta:          number | null
+  numero:           number | null
+  fecha:            string | null
+  vence_el:         string | null
+  total:            number | null
+  cliente_id:       number | null
+  cliente_nuevo:    boolean
+  rec_doc_nro:      string | null
+  rec_razon_social: string | null
+  saldo_inicial:    number | null
+  saldo_a_revisar:  boolean | null
+  saldo_motivo:     string | null
+  externo_id:       number | null
+}
+
+export interface VentasImportarClienteNuevo {
+  cliente_id:            number | null
+  razon_social:          string
+  doc_tipo:              number
+  doc_nro:               string
+  condicion_iva_id:      number
+  revisar_condicion_iva: boolean
+}
+
+/** POST /externos/importar (vista previa con confirmar:false; alta con confirmar:true). */
+export interface VentasImportarRes {
+  confirmado:      boolean
+  total_filas:     number
+  nuevas:          number
+  duplicadas:      number
+  errores:         number
+  a_revisar:       number
+  clientes_nuevos: VentasImportarClienteNuevo[]
+  filas:           VentasImportarFilaRes[]
+}

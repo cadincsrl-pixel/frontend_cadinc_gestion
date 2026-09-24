@@ -73,6 +73,9 @@ export function usePermisos(modulo: string) {
     emitirFacturas:       flagCapacidad('emitir_facturas', false),
     emitirNotasCredito:   flagCapacidad('emitir_notas_credito', false),
     registrarFinnegans:   flagCapacidad('registrar_finnegans', false),
+    // Ventas › Cobranzas (20260924o): registrar/imputar/compensar. Anular usa
+    // `anularCobros` (misma clave que logística, leída en este módulo).
+    registrarCobros:      flagCapacidad('registrar_cobros', false),
     asistenteIa:          flagCapacidad('asistente_ia', false),
     esCapataz,
     esJefeObra,

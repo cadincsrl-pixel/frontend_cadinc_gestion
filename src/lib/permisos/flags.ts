@@ -28,7 +28,7 @@ export type FlagBoolean =
   | 'aprobar_ajustes_stock' | 'gestionar_cobros' | 'gestionar_docs' | 'anular_cobros'
   | 'costos_oficina' | 'asistente_ia'
   | 'registrar_pagos' | 'aprobar_facturas' | 'anular_pagos' | 'aprobar_propias'
-  | 'emitir_facturas' | 'emitir_notas_credito' | 'registrar_finnegans'
+  | 'emitir_facturas' | 'emitir_notas_credito' | 'registrar_finnegans' | 'registrar_cobros'
 
 export interface FlagDef {
   key:   FlagBoolean
@@ -116,9 +116,9 @@ export const FLAGS_BOOLEAN: FlagDef[] = [
   },
   {
     key: 'anular_cobros',
-    label: '🗑 Anular cobros (facturación)',
-    help: 'Eliminar cobros PENDIENTES de facturación (los tramos vuelven a quedar por cobrar) sin tener eliminación de todo el módulo logística. Los cobros ya marcados como cobrados no se pueden borrar: primero hay que revertirlos a pendiente. Solo tiene efecto en logística.',
-    modulos: ['logistica'],
+    label: '🗑 Anular cobros',
+    help: 'Logística: eliminar cobros PENDIENTES de facturación (los tramos vuelven a quedar por cobrar) sin tener eliminación de todo el módulo; los ya cobrados primero se revierten a pendiente. Ventas: anular un recibo de cobranza (RC) o una imputación/compensación; el recibo no se borra, queda anulado con su motivo.',
+    modulos: ['logistica', 'facturacion'],
   },
   {
     key: 'costos_oficina',
@@ -166,6 +166,12 @@ export const FLAGS_BOOLEAN: FlagDef[] = [
     key: 'registrar_finnegans',
     label: '📥 Registrar facturas en Finnegans',
     help: 'Marcar una factura autorizada como cargada en Finnegans, con el número de allá, y deshacerlo. Necesita además el tab "Finnegans". Solo tiene efecto en facturación.',
+    modulos: ['facturacion'],
+  },
+  {
+    key: 'registrar_cobros',
+    label: '💰 Registrar cobros',
+    help: 'Ventas: cargar recibos de cobranza (medios, retenciones y aplicación a facturas), aplicar a cuenta después y compensar notas de crédito contra facturas. Necesita además el tab "Cobranzas". Anularlos es otro permiso ("Anular cobros"). Solo tiene efecto en facturación.',
     modulos: ['facturacion'],
   },
   {

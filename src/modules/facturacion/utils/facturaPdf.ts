@@ -66,7 +66,8 @@ const OBS_MAX_EN_PIE = 280
 
 type Margen = [number, number, number, number]
 
-async function logoDataUrl(): Promise<string | null> {
+/** El logo de papel como data URL (pdfmake no baja URLs). null si no carga: el PDF sale igual. */
+export async function logoDataUrl(): Promise<string | null> {
   try {
     const r = await fetch(EMPRESA.logoPapelUrl)
     if (!r.ok) return null
