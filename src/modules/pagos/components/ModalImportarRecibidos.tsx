@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useImportarRecibidos } from '../hooks/usePagos'
-import { fmtFecha, fmtM, fmtMes } from '../utils/pagos.utils'
+import { fmtFecha, fmtM, fmtMes, hoyAR } from '../utils/pagos.utils'
 import { NOMBRE_CBTE_ARCA } from '../utils/desglose'
 import {
   detalleErrorPagos, mensajeAvisoRecibida, mensajeErrorFilaRecibida, mensajeErrorPagos, motivoDuplicadaRecibida,
@@ -31,6 +31,11 @@ import type { PagosImportarRecibidosFila, PagosImportarRecibidosRes } from '@/ty
  *
  * Las facturas entran IMPAGAS y SIN IMPUTAR (sin concepto ni reparto): no se
  * aprueban ni se pagan hasta imputarlas desde la bandeja.
+ *
+ * «De meses ya pagados» (20260928, `historica`): entran con
+ * `pago_a_reconstruir` y no son deuda, ni se aprueban, ni avisan; el pago se
+ * reconstruye con los extractos. Arranca tildado cuando TODAS las fechas de
+ * los archivos son anteriores al mes actual.
  */
 
 type Filtro = 'todas' | 'nueva' | 'duplicada' | 'error' | 'revisar'
@@ -64,6 +69,8 @@ export function ModalImportarRecibidos({ onClose, onVerImportadas }: {
   const [leyendo, setLeyendo] = useState(false)
   const [trabajando, setTrabajando] = useState<'previa' | 'importar' | null>(null)
   const [filtro, setFiltro] = useState<Filtro>('todas')
+  /** null = todavía no lo tocó: vale el default por las fechas. */
+  const [historicaElegida, setHistoricaElegida] = useState<boolean | null>(null)
 
   const sinPermiso = !puedeCrear && !esAdmin ? 'No tenés permiso para cargar facturas'
     : !puede ? 'No tenés permiso para importar comprobantes de ARCA (hace falta «Importar comprobantes de ARCA»)' : null
@@ -81,6 +88,7 @@ export function ModalImportarRecibidos({ onClose, onVerImportadas }: {
       })
     }
     setArchivos(nuevos)
+    setHistoricaElegida(null)
     setActual(0)
     setFiltro('todas')
     setLeyendo(false)
@@ -92,7 +100,7 @@ export function ModalImportarRecibidos({ onClose, onVerImportadas }: {
 
   async function llamar(a: Archivo, confirmar: boolean) {
     return importar.mutateAsync({
-      filas: a.filas.map(filaRecibidaParaApi), archivo: a.nombre.slice(0, 255), hash_sha256: a.hash, confirmar,
+      filas: a.filas.map(filaRecibidaParaApi), archivo: a.nombre.slice(0, 255), hash_sha256: a.hash, confirmar, historica,
     })
   }
 
@@ -141,7 +149,8 @@ export function ModalImportarRecibidos({ onClose, onVerImportadas }: {
       }
     }
     setTrabajando(null)
-    if (total > 0) toast(`✓ ${total} comprobante${total === 1 ? '' : 's'} importado${total === 1 ? '' : 's'}: quedan sin imputar`, 'ok')
+    if (total > 0) toast(`✓ ${total} comprobante${total === 1 ? '' : 's'} importado${total === 1 ? '' : 's'}: quedan sin imputar`
+      + (historica ? ' (de meses ya pagados: no cuentan como deuda)' : ''), 'ok')
   }
 
   const a = archivos[actual] ?? null
@@ -152,6 +161,10 @@ export function ModalImportarRecibidos({ onClose, onVerImportadas }: {
   const todasHechas = archivos.length > 0 && archivos.every(x => x.hecho || (x.previa && x.previa.nuevas === 0) || x.filas.length === 0)
   const hechos = archivos.filter(x => x.hecho)
   const filasLeidas = archivos.reduce((s, x) => s + x.filas.length, 0)
+  // Default del tilde: todo el archivo es de meses anteriores al actual.
+  const mesActual = `${hoyAR().slice(0, 7)}-01`
+  const todasAnteriores = filasLeidas > 0 && archivos.every(x => x.filas.every(f => f.fecha < mesActual))
+  const historica = historicaElegida ?? todasAnteriores
 
   const bloqueoImportar = sinPermiso
     ?? (conPrevia.length < archivos.filter(x => x.filas.length > 0).length ? 'Primero mirá la vista previa de todos los archivos'
@@ -194,6 +207,24 @@ export function ModalImportarRecibidos({ onClose, onVerImportadas }: {
             ? <><b>{archivos.length} archivo{archivos.length === 1 ? '' : 's'}:</b> {archivos.map(x => x.nombre).join(', ')} — <span className="text-azul underline">cambiar</span></>
             : <span className="text-azul font-semibold">Elegir el/los archivos de ARCA (uno por mes)</span>}
         </label>
+
+        {/* Compras de meses ya pagados (20260928): no son deuda. Una vez
+            importado algún archivo no se cambia (los demás irían distinto). */}
+        {archivos.length > 0 && filasLeidas > 0 && (
+          <label className={`flex items-start gap-2 text-xs border rounded p-2 ${historica ? 'bg-gris border-gris-mid' : 'bg-white border-gris-mid'}`}
+            title={hechos.length > 0 ? 'Ya se importó algún archivo: se mantiene lo elegido para todos'
+              : sinPermiso ?? 'Tildado: entran como pagos a reconstruir (fuera de la deuda, sin aprobación ni avisos). Siguen yendo al Libro IVA y a la contabilidad'}>
+            <input type="checkbox" className="mt-0.5" checked={historica}
+              disabled={!!sinPermiso || !!trabajando || hechos.length > 0}
+              onChange={e => setHistoricaElegida(e.target.checked)} />
+            <span>
+              <b>Son de meses ya pagados (reconstrucción): no cuentan como deuda.</b>{' '}
+              No se aprueban ni aparecen en los avisos; el pago se reconstruye después con los extractos bancarios.
+              {' '}Siguen yendo al Libro IVA, a la contabilidad y se imputan igual.
+              {todasAnteriores && historicaElegida === null && <span className="text-gris-dark"> (tildado porque todas las fechas son anteriores a este mes)</span>}
+            </span>
+          </label>
+        )}
 
         {/* Un archivo por pestaña: cada uno se importa por separado (todo o nada por archivo). */}
         {archivos.length > 1 && (

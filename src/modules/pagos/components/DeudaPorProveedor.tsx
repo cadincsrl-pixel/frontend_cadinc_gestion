@@ -19,6 +19,10 @@ import type { PagosProveedorSaldo } from '@/types/domain.types'
  * (`nc_disponible`), igual que un pago a cuenta: NO baja el saldo de las
  * facturas hasta que se aplica a mano. Por eso se muestra aparte y el «Neto»
  * (`saldo_neto` = saldo − a cuenta − NC disponible) es lo que se debe de verdad.
+ *
+ * Las compras de meses ya pagados (20260928, `pago_a_reconstruir`) NO son
+ * deuda: la vista no las suma en saldo, listo para pagar ni vencido. Si trae
+ * `a_reconstruir`, se muestra aparte y discreto, solo como total.
  */
 
 interface Props {
@@ -39,6 +43,8 @@ export function DeudaPorProveedor({ filas, cargando, proveedorSel, onElegir }: P
   }
   if (conDeuda.length === 0) return null
 
+  // Sobre TODOS los proveedores: uno puede no deber nada y tener históricas.
+  const aReconstruir = filas.reduce((s, f) => s + Number(f.a_reconstruir ?? 0), 0)
   const visibles = verTodos ? conDeuda : conDeuda.slice(0, TOPE_INICIAL)
   const tot = conDeuda.reduce((s, f) => ({
     saldo:    s.saldo + Number(f.saldo ?? 0),
@@ -59,6 +65,11 @@ export function DeudaPorProveedor({ filas, cargando, proveedorSel, onElegir }: P
           {tot.credito > 0 && (
             <span className="text-[#5A2D82]" title="Notas de crédito aprobadas que todavía no se aplicaron a ninguna factura">
               NC sin aplicar <b className="font-mono tabular-nums">{fmtM(tot.credito)}</b>
+            </span>
+          )}
+          {aReconstruir > 0 && (
+            <span className="text-gris-dark" title="Compras de meses ya pagados: el pago se reconstruye con los extractos bancarios. NO es deuda y no está en estos totales">
+              A reconstruir <b className="font-mono tabular-nums">{fmtM(aReconstruir)}</b>
             </span>
           )}
           <span className="text-gris-dark" title="Saldo − pagos a cuenta − notas de crédito sin aplicar">Neto <b className="font-mono tabular-nums text-carbon">{fmtM(tot.neto)}</b></span>

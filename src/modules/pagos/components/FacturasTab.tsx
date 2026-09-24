@@ -38,13 +38,18 @@ const PAGE_SIZE = 50
 export const FILTRO_POR_AVISO: Record<string, PagosFacturasFiltro> = {
   // Sin las importadas sin imputar (20260927b): no se pueden aprobar hasta
   // imputarlas, y con mil importadas el aviso diría «1000 para aprobar».
-  aprobar:      { estados: ['pendiente'], paga_cliente: false, sin_imputar: false, orden: 'vencimiento' },
-  vencidas:     { vencimiento: 'vencidas', paga_cliente: false, orden: 'vencimiento' },
-  'sin-revisar':{ sin_revisar: true,  orden: 'vencimiento' },
-  observadas:   { estados: ['observada'], orden: 'vencimiento' },
+  // Ninguno de los cuatro avisos cuenta las compras de meses ya pagados
+  // (20260928, `pago_a_reconstruir`): no son deuda ni se aprueban.
+  aprobar:      { estados: ['pendiente'], paga_cliente: false, sin_imputar: false, pago_a_reconstruir: false, orden: 'vencimiento' },
+  vencidas:     { vencimiento: 'vencidas', paga_cliente: false, pago_a_reconstruir: false, orden: 'vencimiento' },
+  'sin-revisar':{ sin_revisar: true, pago_a_reconstruir: false, orden: 'vencimiento' },
+  observadas:   { estados: ['observada'], pago_a_reconstruir: false, orden: 'vencimiento' },
   // Importadas de ARCA que faltan imputar (20260927b). Lo usan el chip
   // «Sin imputar (N)» y el link del importador: el mismo filtro para los dos.
-  'sin-imputar':{ sin_imputar: true, estados: ['pendiente', 'observada'], orden: 'fecha' },
+  // Incluye las de meses ya pagados: también se imputan (contabilidad).
+  'sin-imputar':{ sin_imputar: true, pago_a_reconstruir: undefined, estados: ['pendiente', 'observada'], orden: 'fecha' },
+  // Compras de meses ya pagados (20260928): el chip «Pagos a reconstruir (N)».
+  'a-reconstruir':{ pago_a_reconstruir: true, sin_imputar: undefined, estados: undefined, vencimiento: undefined, orden: 'fecha' },
 }
 
 /**
@@ -55,6 +60,8 @@ export const FILTRO_POR_AVISO: Record<string, PagosFacturasFiltro> = {
 const FILTRO_INICIAL: PagosFacturasFiltro = {
   estados: ['pendiente', 'observada', 'aprobada', 'pagada_parcial'],
   sin_imputar: false,
+  // Las de meses ya pagados (20260928) no son deuda: chip «Pagos a reconstruir».
+  pago_a_reconstruir: false,
   orden:   'vencimiento',
 }
 
@@ -116,6 +123,9 @@ export function FacturasTab({ aviso, importacion, ficha }: {
   // Chip «Sin imputar (N)»: el MISMO filtro que el deep-link (§5.9).
   const sinImputar = useContarFacturas(FILTRO_POR_AVISO['sin-imputar']!, puedeVer)
   const verSinImputar = filtro.sin_imputar === true
+  // Chip «Pagos a reconstruir (N)»: mismo filtro que la lista que abre.
+  const aReconstruir = useContarFacturas(FILTRO_POR_AVISO['a-reconstruir']!, puedeVer)
+  const verAReconstruir = filtro.pago_a_reconstruir === true
 
   const items = useMemo(() => lista.data?.items ?? [], [lista.data])
   const total = lista.data?.total ?? 0
@@ -146,7 +156,7 @@ export function FacturasTab({ aviso, importacion, ficha }: {
   // devuelve `omitidas` con el motivo (típicamente, las que cargó el propio
   // aprobador). Hay que mostrarlas o la persona cree que aprobó todo.
   const aprobables = useMemo(
-    () => seleccionadas.filter(f => f.estado === 'pendiente' && !f.paga_cliente),
+    () => seleccionadas.filter(f => f.estado === 'pendiente' && !f.paga_cliente && !f.pago_a_reconstruir),
     [seleccionadas],
   )
   async function handleAprobarLote() {
@@ -255,6 +265,16 @@ export function FacturasTab({ aviso, importacion, ficha }: {
               className={`text-xs px-2.5 py-1.5 rounded border font-semibold transition ${verSinImputar
                 ? 'border-naranja bg-naranja-light text-naranja-dark' : 'border-amarillo/60 bg-amarillo-light text-[#7A5000] hover:brightness-95'}`}>
               {verSinImputar ? '✕ ' : ''}Sin imputar ({sinImputar.data})
+            </button>
+          )}
+          {(aReconstruir.data ?? 0) > 0 && (
+            <button type="button"
+              onClick={() => patch(verAReconstruir ? FILTRO_INICIAL_PATCH : { ...FILTRO_POR_AVISO['a-reconstruir'], importacion_id: undefined })}
+              title={verAReconstruir ? 'Volver a la bandeja'
+                : 'Importadas de meses ya pagados: no son deuda ni se aprueban. El pago se reconstruye con los extractos bancarios'}
+              className={`text-xs px-2.5 py-1.5 rounded border font-semibold transition ${verAReconstruir
+                ? 'border-naranja bg-naranja-light text-naranja-dark' : 'border-gris-mid bg-gris text-carbon hover:brightness-95'}`}>
+              {verAReconstruir ? '✕ ' : ''}Pagos a reconstruir ({aReconstruir.data})
             </button>
           )}
           {seleccionadas.length > 0 && (

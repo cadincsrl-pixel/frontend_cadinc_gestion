@@ -122,6 +122,11 @@ export interface PagosFacturasFiltro {
    * trae solo esas.
    */
   sin_imputar?:          boolean
+  /**
+   * Importadas de meses ya pagados (20260928). Tri-estado como `sin_imputar`:
+   * la bandeja y la campana mandan `false` (no son deuda); `true` las muestra.
+   */
+  pago_a_reconstruir?:   boolean
   /** «Otros tributos» de ARCA sin clasificar. */
   tributos_a_revisar?:   boolean
   origen_carga?:         PagosOrigenCarga
@@ -175,6 +180,7 @@ function qsFacturas(f: PagosFacturasFiltro, extra: ExtraQuery = {}): string {
   if (f.periodo_iva)      p.set('periodo_iva', f.periodo_iva.slice(0, 7))
   if (f.periodo_iva_distinto) p.set('periodo_iva_distinto', '1')
   if (f.sin_imputar !== undefined) p.set('sin_imputar', f.sin_imputar ? '1' : '0')
+  if (f.pago_a_reconstruir !== undefined) p.set('pago_a_reconstruir', f.pago_a_reconstruir ? '1' : '0')
   if (f.tributos_a_revisar) p.set('tributos_a_revisar', '1')
   if (f.origen_carga)     p.set('origen_carga', f.origen_carga)
   if (f.importacion_id)   p.set('importacion_id', String(f.importacion_id))

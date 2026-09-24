@@ -173,9 +173,10 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
               <Button size="sm"
                 onClick={() => accion(() => aprobar.mutateAsync(f.id), sellable ? '✓ Revisada' : '✓ Aprobada')}
                 loading={aprobar.isPending}
-                disabled={!puedeAprobar || noApruebaPropia || f.sin_imputar}
+                disabled={!puedeAprobar || noApruebaPropia || f.sin_imputar || f.pago_a_reconstruir}
                 title={
                   !puedeAprobar ? 'No tenés permiso para aprobar'
+                  : f.pago_a_reconstruir ? 'Importada de un mes ya pagado: no se aprueba. El pago se reconstruye con los extractos bancarios'
                   : f.sin_imputar ? 'Falta imputar: primero el concepto y el reparto por obra'
                   : noApruebaPropia ? `No podés aprobar una ${nombre} que cargaste vos: la tiene que aprobar otra persona`
                   : sellable ? 'Revisada: sale de «pagadas sin revisar»'
@@ -241,6 +242,14 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
             </span>
           )}
         </div>
+
+        {/* Compra de un mes ya pagado (20260928): no es deuda ni se aprueba. */}
+        {f.pago_a_reconstruir && f.estado !== 'anulada' && (
+          <div className="border rounded p-2 text-xs bg-gris border-gris-mid text-carbon">
+            <b>Importada de un mes ya pagado:</b> el pago se reconstruye con los extractos bancarios.
+            {' '}No cuenta como deuda ni se aprueba; sí va al Libro IVA y a la contabilidad.
+          </div>
+        )}
 
         {/* Importada de ARCA sin imputar (20260927b): primero los tributos, después el reparto. */}
         {f.sin_imputar && f.estado !== 'anulada' && (

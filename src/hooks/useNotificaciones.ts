@@ -340,16 +340,19 @@ export function useNotificaciones(): NotificacionesResult {
   const { data: paraAprobar } = useQuery(
     // Sin las importadas sin imputar (20260927b): no se pueden aprobar hasta
     // imputarlas. Mismo filtro que `FILTRO_POR_AVISO.aprobar` de FacturasTab.
-    qPagos(PAGOS_KEYS.notifAprobar, 'estado=pendiente&paga_cliente=0&sin_imputar=0&orden=vencimiento', puedeAprobarFacturas))
+    // Tampoco las de meses ya pagados (20260928): no se aprueban.
+    qPagos(PAGOS_KEYS.notifAprobar, 'estado=pendiente&paga_cliente=0&sin_imputar=0&pago_a_reconstruir=0&orden=vencimiento', puedeAprobarFacturas))
+  // Los cuatro avisos van con `pago_a_reconstruir=0`: las compras de meses ya
+  // pagados no avisan nada (el pago se reconstruye con los extractos).
   const { data: sinRevisar } = useQuery(
-    qPagos(PAGOS_KEYS.notifSinRevisar, 'sin_revisar=1', puedeAprobarFacturas))
+    qPagos(PAGOS_KEYS.notifSinRevisar, 'sin_revisar=1&pago_a_reconstruir=0', puedeAprobarFacturas))
   // Lo vencido le importa a quien paga y a quien carga.
   const { data: vencidas } = useQuery(
-    qPagos(PAGOS_KEYS.notifVenc, 'vencimiento=vencidas&paga_cliente=0&orden=vencimiento',
+    qPagos(PAGOS_KEYS.notifVenc, 'vencimiento=vencidas&paga_cliente=0&pago_a_reconstruir=0&orden=vencimiento',
       tienePagos && !!(registrarPagos || cargaFacturas || esAdmin)))
   // Lo observado vuelve a compras: lo ve quien carga.
   const { data: observadas } = useQuery(
-    qPagos(PAGOS_KEYS.notifObs, 'estado=observada', tienePagos && !!(cargaFacturas || esAdmin)))
+    qPagos(PAGOS_KEYS.notifObs, 'estado=observada&pago_a_reconstruir=0', tienePagos && !!(cargaFacturas || esAdmin)))
 
   // El nombre de la obra viene embebido desde el backend: alcanza con que la
   // query haya cargado para que el warmup del aviso pueda activarse.

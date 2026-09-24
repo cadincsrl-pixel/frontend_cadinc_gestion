@@ -92,7 +92,7 @@ export function FiltrosFacturas({ filtro, patch, grupos }: Props) {
     filtro.desde || filtro.hasta || filtro.sin_adjunto || filtro.sin_numero || filtro.sin_revisar || filtro.sin_desglose ||
     filtro.cuenta_cambiada || filtro.paga_cliente !== undefined || filtro.pagada_al_cargar !== undefined ||
     filtro.es_interna !== undefined || filtro.anuladas ||
-    filtro.periodo_iva || filtro.periodo_iva_distinto || filtro.sin_imputar !== false || filtro.tributos_a_revisar ||
+    filtro.periodo_iva || filtro.periodo_iva_distinto || filtro.sin_imputar !== false || filtro.pago_a_reconstruir !== false || filtro.tributos_a_revisar ||
     filtro.origen_carga || filtro.importacion_id
   )
 
@@ -261,6 +261,19 @@ export function FiltrosFacturas({ filtro, patch, grupos }: Props) {
               </select>
             </div>
             <div>
+              <label className="block text-xs font-semibold text-gris-dark mb-1">De meses ya pagados</label>
+              <select
+                value={filtro.pago_a_reconstruir === undefined ? 'todas' : filtro.pago_a_reconstruir ? 'solo' : 'ocultar'}
+                onChange={e => patch({ pago_a_reconstruir: e.target.value === 'todas' ? undefined : e.target.value === 'solo' })}
+                title="Importadas de meses ya pagados: el pago se reconstruye con los extractos. No son deuda ni se aprueban"
+                className="w-full px-2.5 py-2 border-[1.5px] border-gris-mid rounded text-xs bg-white outline-none focus:border-naranja"
+              >
+                <option value="ocultar">Ocultarlas</option>
+                <option value="solo">Solo esas</option>
+                <option value="todas">Mostrar todas</option>
+              </select>
+            </div>
+            <div>
               <label className="block text-xs font-semibold text-gris-dark mb-1">Ordenar por</label>
               <select
                 value={filtro.orden ?? 'vencimiento'}
@@ -314,7 +327,7 @@ export function FiltrosFacturas({ filtro, patch, grupos }: Props) {
                 desde: undefined, hasta: undefined, sin_adjunto: undefined, sin_numero: undefined,
                 sin_revisar: undefined, sin_desglose: undefined, cuenta_cambiada: undefined, paga_cliente: undefined,
                 pagada_al_cargar: undefined, es_interna: undefined, anuladas: undefined, archivadas: undefined,
-                periodo_iva: undefined, periodo_iva_distinto: undefined, sin_imputar: false, tributos_a_revisar: undefined,
+                periodo_iva: undefined, periodo_iva_distinto: undefined, sin_imputar: false, pago_a_reconstruir: false, tributos_a_revisar: undefined,
                 origen_carga: undefined, importacion_id: undefined,
               }) }}>
                 ✕ Limpiar filtros

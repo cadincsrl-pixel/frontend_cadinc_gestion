@@ -288,6 +288,8 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   FACTURA_SIN_IMPUTAR: d => dato(d, 'usar') === 'imputar'
     ? 'Es una factura importada de ARCA: el concepto y el reparto se cargan con «Imputar», desde su ficha.'
     : 'Primero hay que imputarla (concepto y obras).',
+  // ── Compras de meses ya pagados (20260928) ──
+  FACTURA_A_RECONSTRUIR: () => 'Es de un mes ya pagado: no se aprueba. El pago se reconstruye con los extractos bancarios.',
   FACTURA_YA_IMPUTADA: () => 'La factura ya está imputada: el reparto se corrige editándola.',
   TRIBUTOS_A_REVISAR:  () => 'Clasificá los otros tributos antes de repartir (con «Completar desglose»).',
   IMPUTACION_REQUERIDA: () => 'Falta el reparto por obra.',

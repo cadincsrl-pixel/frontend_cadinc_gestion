@@ -239,6 +239,7 @@ export const ETIQUETA_CLAVE_MAPEO: Record<string, string> = {
   'compras.proveedores':  'Proveedores',
   'ventas.producto':      'Ventas por producto',
   'ventas.externo':       'Ventas de comprobantes externos',
+  'ventas.cliente':       'Ventas por cliente',
   'ventas.iva_df':        'IVA débito fiscal',
   'ventas.tributo':       'Tributos de ventas',
   'ventas.deudores':      'Deudores por ventas',

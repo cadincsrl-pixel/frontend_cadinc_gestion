@@ -2508,6 +2508,8 @@ export interface PagosProveedorSaldo {
   ultimo_pago:        string | null
   /** Crédito de NC aprobadas todavía sin aplicar a ninguna factura. */
   nc_disponible?:     number
+  /** Saldo de compras de meses ya pagados (20260928): informativo, NO es deuda. */
+  a_reconstruir?:     number
 }
 
 /** Una línea del historial de cambios de CBU/alias (sale de `audit_log`, enmascarada). */
@@ -2666,6 +2668,13 @@ export interface PagosFactura {
   tributos_a_revisar:   boolean
   origen_carga:         PagosOrigenCarga
   importacion_id:       number | null
+  // ── Compras de meses ya pagados (20260928) ──
+  /**
+   * Importada como histórica: el pago ya ocurrió y se reconstruye con los
+   * extractos. No es deuda, no vence, no se aprueba ni avisa. Sí cuenta para
+   * el Libro IVA, la contabilidad y la imputación.
+   */
+  pago_a_reconstruir:   boolean
 }
 
 export type PagosOrigenCarga = 'manual' | 'arca_recibidos'
@@ -2700,6 +2709,8 @@ export interface PagosImportarRecibidosInput {
   archivo?:      string
   hash_sha256?:  string | null
   confirmar:     boolean
+  /** De meses ya pagados (20260928): entran con `pago_a_reconstruir`. */
+  historica?:    boolean
 }
 
 export interface PagosImportarAviso {

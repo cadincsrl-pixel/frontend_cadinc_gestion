@@ -471,6 +471,7 @@ export function describirFiltroFacturas(
   if (f.periodo_iva) p.push(`informadas en el IVA de ${fmtMesLargo(f.periodo_iva)}`)
   if (f.periodo_iva_distinto) p.push('informadas en otro mes que el de la fecha')
   if (f.sin_imputar === true) p.push('importadas sin imputar')
+  if (f.pago_a_reconstruir === true) p.push('de meses ya pagados (pago a reconstruir)')
   if (f.tributos_a_revisar) p.push('con otros tributos sin clasificar')
   if (f.origen_carga === 'arca_recibidos') p.push('importadas de ARCA')
   if (f.importacion_id) p.push(`de la importación #${f.importacion_id}`)
