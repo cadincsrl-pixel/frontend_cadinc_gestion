@@ -48,11 +48,6 @@ function Extras({ f }: { f: VentasFactura }) {
         <span className="inline-block text-[10px] px-1.5 py-0.5 rounded bg-[#EEE8FF] text-[#5A2D82] font-bold"
               title="Notas de crédito autorizadas contra esta factura">NC {fmtM(f.nc_autorizadas)}</span>
       )}
-      {f.estado === 'autorizada' && (f.numero_finnegans
-        ? <span className="inline-block text-[10px] px-1.5 py-0.5 rounded bg-verde-light text-verde font-bold"
-                title={`Registrada en Finnegans${f.registrada_por_nombre ? ` por ${f.registrada_por_nombre}` : ''}`}>✓ Finnegans {f.numero_finnegans}</span>
-        : <span className="inline-block text-[10px] px-1.5 py-0.5 rounded bg-gris text-gris-dark"
-                title="Falta cargarla en Finnegans">sin Finnegans</span>)}
     </>
   )
 }

@@ -9,7 +9,7 @@ import { usePermisos } from '@/hooks/usePermisos'
 import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
 import {
   useOrdenes, useOrden, useAnularOrden, useSubirAdjuntoPagos, fetchPagosAdjuntoSignedUrl,
-  fetchOrdenesExport, useRegistrarFinnegans, useDeshacerRegistroFinnegans, type PagosOrdenesFiltro,
+  fetchOrdenesExport, type PagosOrdenesFiltro,
 } from '../hooks/usePagos'
 import { exportarOrdenesPagos } from '../utils/pagosExport'
 import { descargarOrdenPagoPdf } from '../utils/ordenPagoPdf'
@@ -22,7 +22,6 @@ import {
   FORMAS_PAGO_OP, MAX_ADJUNTO_BYTES, salidaLabel, MIME_ADJUNTOS, TIPOS_ADJ_FACTURA, comprobanteTxt, fmtFecha, fmtM, formaPagoLabel, hoyAR,
 } from '../utils/pagos.utils'
 import { mensajeErrorPagos } from '../utils/pagos.errores'
-import type { PagosOrden } from '@/types/domain.types'
 
 const PAGE_SIZE = 50
 
@@ -40,10 +39,6 @@ export function OrdenesTab() {
   const [filtro, setFiltro] = useState<PagosOrdenesFiltro>({ estado: 'emitida' })
   const [page, setPage] = useState(1)
   const [detalleId, setDetalleId] = useState<number | null>(null)
-  const [registrando, setRegistrando] = useState<PagosOrden | null>(null)
-  // Registrar en Finnegans (20260923c): mismo flag que registrar pagos, que es
-  // el que tiene el contador.
-  const puedeRegistrar = !!(registrarPagos || esAdmin)
 
   const proveedores = useProveedoresPagos({}, 1, 300, puedeVer)
   const lista = useOrdenes(filtro, page, PAGE_SIZE, puedeVer)
@@ -51,7 +46,6 @@ export function OrdenesTab() {
   const items = useMemo(() => lista.data?.items ?? [], [lista.data])
   const total = lista.data?.total ?? 0
   const totales = lista.data?.totales
-  const sinRegistrar = lista.data?.sin_registrar ?? null
 
   function patch(p: Partial<PagosOrdenesFiltro>) { setFiltro(f => ({ ...f, ...p })); setPage(1) }
 
@@ -89,17 +83,6 @@ export function OrdenesTab() {
           <Kpi label="Pagado" valor={fmtM(totales.monto_pagado)} sub="todas las formas" />
           <Kpi label="Notas de crédito" valor={fmtM(totales.monto_nc)} sub="no es plata que salió" />
           {enCartera > 0 && <Kpi label="Cheques en cartera" valor={String(enCartera)} sub="en esta página" tono="alerta" />}
-          {/* Lo que el contador todavía no pasó a Finnegans, de TODAS las
-              órdenes vigentes (no del filtro). Un clic las filtra. */}
-          {sinRegistrar !== null && (
-            <button type="button" className="flex-1 min-w-[130px] text-left"
-              onClick={() => patch({ sin_registrar: filtro.sin_registrar ? undefined : true, estado: 'emitida' })}
-              title={filtro.sin_registrar ? 'Ver todas' : 'Ver sólo las que faltan registrar en Finnegans'}>
-              <Kpi label="Sin registrar en Finnegans" valor={String(sinRegistrar)}
-                sub={filtro.sin_registrar ? 'mostrando sólo estas · clic para ver todas' : sinRegistrar > 0 ? 'clic para verlas' : 'todo registrado ✓'}
-                tono={sinRegistrar > 0 ? 'alerta' : undefined} />
-            </button>
-          )}
         </div>
       )}
 
@@ -140,7 +123,6 @@ export function OrdenesTab() {
           <Tilde label="Sin comprobante" on={!!filtro.sin_comprobante} set={v => patch({ sin_comprobante: v || undefined })} />
           <Tilde label="Cheques en cartera" on={!!filtro.en_cartera} set={v => patch({ en_cartera: v || undefined })} />
           <Tilde label="Con nota de crédito" on={!!filtro.con_nota_credito} set={v => patch({ con_nota_credito: v || undefined })} />
-          <Tilde label="Sin registrar en Finnegans" on={!!filtro.sin_registrar} set={v => patch({ sin_registrar: v || undefined })} />
         </div>
         <div className="ml-auto pb-2 flex gap-2 flex-wrap">
           <Button variant="secondary" size="sm" onClick={exportar} loading={exportando} disabled={total === 0}
@@ -167,7 +149,7 @@ export function OrdenesTab() {
             <table className="w-full border-collapse min-w-[900px]">
               <thead>
                 <tr>
-                  {['Orden', 'Proveedor', 'Fecha', 'Forma', 'Pagado', 'NC', 'Facturas', 'Finnegans', ''].map((h, i) => (
+                  {['Orden', 'Proveedor', 'Fecha', 'Forma', 'Pagado', 'NC', 'Facturas', ''].map((h, i) => (
                     <th key={h + i} className={`bg-gris text-gris-dark text-[10px] font-bold px-3 py-2 uppercase tracking-wide whitespace-nowrap ${i >= 4 && i <= 5 ? 'text-right' : 'text-left'}`}>{h}</th>
                   ))}
                 </tr>
@@ -192,9 +174,6 @@ export function OrdenesTab() {
                     <td className="px-3 py-2 text-right font-mono text-xs tabular-nums font-bold">{o.monto_pagado > 0 ? fmtM(o.monto_pagado) : <span className="text-gris-mid">—</span>}</td>
                     <td className="px-3 py-2 text-right font-mono text-xs tabular-nums text-[#5A2D82]">{o.monto_nc > 0 ? fmtM(o.monto_nc) : <span className="text-gris-mid">—</span>}</td>
                     <td className="px-3 py-2 text-[11px] text-gris-dark truncate max-w-[220px]" title={o.facturas ?? undefined}>{o.facturas ?? '—'}</td>
-                    <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
-                      <EstadoFinnegans o={o} puedeRegistrar={puedeRegistrar} onRegistrar={() => setRegistrando(o)} />
-                    </td>
                     <td className="px-3 py-2 text-right">
                       <button type="button" className="text-xs px-2 py-1 rounded text-azul hover:bg-azul-light font-semibold" onClick={() => setDetalleId(o.id)}>Ver</button>
                     </td>
@@ -215,9 +194,6 @@ export function OrdenesTab() {
                     <span className="font-mono font-bold text-sm">{o.numero_fmt}</span>
                     <div className="text-sm">{o.proveedor_nom}</div>
                     <div className="text-[11px] text-gris-dark">{fmtFecha(o.fecha)} · {formaPagoLabel(o.forma_pago)}</div>
-                    <div className="mt-1" onClick={e => e.stopPropagation()}>
-                      <EstadoFinnegans o={o} puedeRegistrar={puedeRegistrar} onRegistrar={() => setRegistrando(o)} />
-                    </div>
                   </div>
                   <div className="text-right">
                     <div className="font-mono font-bold tabular-nums">{fmtM(o.monto_pagado)}</div>
@@ -240,29 +216,23 @@ export function OrdenesTab() {
           onClose={() => setDetalleId(null)}
           puedeAnular={!!(anularPagos || registrarPagos || esAdmin)}
           puedeSubir={!!(registrarPagos || esAdmin)}
-          puedeRegistrar={puedeRegistrar}
           puedeDevolucion={!!(anularPagos || esAdmin)}
-          onRegistrar={o => setRegistrando(o)}
           verPii={!!verPii}
           toast={toast}
         />
       )}
-
-      {/* Después del detalle, para quedar arriba cuando se abre desde ahí. */}
-      {registrando && <ModalRegistrarFinnegans orden={registrando} onClose={() => setRegistrando(null)} toast={toast} />}
     </div>
   )
 }
 
-function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, puedeRegistrar, puedeDevolucion, onRegistrar, verPii, toast }: {
+function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, puedeDevolucion, verPii, toast }: {
   id: number; onClose: () => void; puedeAnular: boolean; puedeSubir: boolean
-  puedeRegistrar: boolean; puedeDevolucion: boolean; onRegistrar: (o: PagosOrden) => void; verPii: boolean
+  puedeDevolucion: boolean; verPii: boolean
   toast: (m: string, t?: 'ok' | 'err' | 'warn') => void
 }) {
   const { data: o, isLoading } = useOrden(id)
   const anular = useAnularOrden()
   const subir  = useSubirAdjuntoPagos()
-  const deshacer = useDeshacerRegistroFinnegans()
   const [motivo, setMotivo] = useState('')
   const [pidiendo, setPidiendo] = useState(false)
   const [avisando, setAvisando] = useState(false)
@@ -336,44 +306,6 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, puedeRegistrar, pu
           {o.referencia && <Dato label="Referencia" valor={o.referencia} />}
           <Dato label="Registró" valor={`${o.created_by_nombre ?? '—'}, ${fmtFecha(o.created_at)}`} />
         </div>
-
-        {/* Registro en Finnegans (20260923c). */}
-        {(o.estado === 'emitida' || o.numero_finnegans) && (
-          <div className={`border rounded p-2 text-xs flex items-center gap-2 flex-wrap ${
-            o.numero_finnegans
-              ? (o.estado === 'anulada' ? 'bg-rojo-light border-rojo/40 text-rojo' : 'bg-verde-light border-verde/40 text-verde')
-              : 'bg-amarillo-light border-amarillo/40 text-[#7A5000]'}`}>
-            {o.numero_finnegans ? (
-              <>
-                <span>
-                  {o.estado === 'anulada' ? '⚠ Anulada acá, pero registrada en Finnegans con el ' : '✓ Registrada en Finnegans: '}
-                  <b className="font-mono">N° {o.numero_finnegans}</b>
-                  {o.estado === 'anulada' && ' — anulala también allá.'}
-                  {o.registrada_por_nombre && <span className="opacity-80"> · {o.registrada_por_nombre}, {fmtFecha(o.registrada_at?.slice(0, 10))}</span>}
-                </span>
-                {o.estado === 'emitida' && (
-                  <button type="button" className="ml-auto text-[11px] underline disabled:opacity-50"
-                    disabled={!puedeRegistrar || deshacer.isPending}
-                    title={puedeRegistrar ? 'Por si se cargó mal el número' : 'No tenés permiso'}
-                    onClick={async () => {
-                      try { await deshacer.mutateAsync(o.id); toast('Registro deshecho', 'ok') }
-                      catch (e) { toast(mensajeErrorPagos(e), 'err') }
-                    }}>
-                    Deshacer
-                  </button>
-                )}
-              </>
-            ) : (
-              <>
-                <span><b>Sin registrar en Finnegans.</b> Cuando la pases, cargá acá el número de la OP de allá.</span>
-                <Button size="sm" className="ml-auto" onClick={() => onRegistrar(o)} disabled={!puedeRegistrar}
-                  title={puedeRegistrar ? undefined : 'Lo registra el contador (hace falta el permiso de registrar pagos)'}>
-                  Registrar
-                </Button>
-              </>
-            )}
-          </div>
-        )}
 
         {(o.cbu_destino || o.alias_destino) && (
           <div className="bg-gris border border-gris-mid rounded p-2 text-xs">
@@ -579,75 +511,5 @@ function Tilde({ label, on, set }: { label: string; on: boolean; set: (v: boolea
       <input type="checkbox" className="accent-naranja" checked={on} onChange={e => set(e.target.checked)} />
       {label}
     </label>
-  )
-}
-
-/**
- * La celda «Finnegans» de la lista. Tres estados que se tienen que distinguir
- * de un vistazo: registrada (el número), sin registrar (el botón, que es lo
- * que el contador busca) y anulada-pero-registrada (hay que anularla allá).
- */
-function EstadoFinnegans({ o, puedeRegistrar, onRegistrar }: {
-  o: PagosOrden; puedeRegistrar: boolean; onRegistrar: () => void
-}) {
-  if (o.numero_finnegans) {
-    return o.estado === 'anulada'
-      ? <span className="text-[10px] px-1.5 py-0.5 rounded bg-rojo-light text-rojo font-bold whitespace-nowrap"
-              title="La OP se anuló después de registrarla: anulala también en Finnegans">⚠ N° {o.numero_finnegans} · anular allá</span>
-      : <span className="text-[11px] font-mono text-verde font-bold whitespace-nowrap"
-              title={o.registrada_por_nombre ? `Registró ${o.registrada_por_nombre}, ${fmtFecha(o.registrada_at?.slice(0, 10))}` : undefined}>✓ {o.numero_finnegans}</span>
-  }
-  if (o.estado === 'anulada') return <span className="text-gris-mid text-xs">—</span>
-  return (
-    <button type="button" onClick={onRegistrar} disabled={!puedeRegistrar}
-      className="text-[11px] px-2 py-1 rounded border border-naranja text-naranja font-bold hover:bg-naranja hover:text-white disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-naranja whitespace-nowrap"
-      title={puedeRegistrar ? 'Cargar el número de la OP en Finnegans' : 'Lo registra el contador (hace falta el permiso de registrar pagos)'}>
-      Registrar
-    </button>
-  )
-}
-
-function ModalRegistrarFinnegans({ orden, onClose, toast }: {
-  orden: PagosOrden; onClose: () => void
-  toast: (m: string, t?: 'ok' | 'err' | 'warn') => void
-}) {
-  const registrar = useRegistrarFinnegans()
-  const [numero, setNumero] = useState('')
-  const [error, setError] = useState<string | null>(null)
-
-  async function guardar() {
-    const n = numero.trim()
-    if (!n) { setError('Poné el número de la OP en Finnegans.'); return }
-    setError(null)
-    try {
-      await registrar.mutateAsync({ id: orden.id, numero_finnegans: n })
-      toast(`✓ ${orden.numero_fmt} registrada en Finnegans (N° ${n})`, 'ok')
-      onClose()
-    } catch (e) { setError(mensajeErrorPagos(e)) }
-  }
-
-  return (
-    <Modal open onClose={onClose} width="max-w-md" title={`Registrar ${orden.numero_fmt} en Finnegans`}
-      footer={
-        <div className="flex gap-2 justify-end">
-          <Button variant="ghost" size="sm" onClick={onClose}>Cancelar</Button>
-          <Button size="sm" onClick={guardar} loading={registrar.isPending} disabled={!numero.trim()}>Registrar</Button>
-        </div>
-      }>
-      <div className="flex flex-col gap-3 text-sm">
-        <div className="bg-gris rounded p-2 text-xs">
-          <b>{orden.proveedor_nom}</b> · {fmtFecha(orden.fecha)} · {formaPagoLabel(orden.forma_pago)} · <b className="font-mono">{fmtM(orden.monto_pagado)}</b>
-          {orden.facturas && <div className="text-gris-dark mt-0.5">Cubre: {orden.facturas}</div>}
-        </div>
-        <div>
-          <label className={lblCls}>Número de OP en Finnegans</label>
-          <input value={numero} autoFocus onChange={e => { setNumero(e.target.value); setError(null) }}
-            onKeyDown={e => { if (e.key === 'Enter') void guardar() }}
-            placeholder="Ej.: 0001-00001234" maxLength={40}
-            className={`${inputCls} font-mono text-sm ${error ? 'border-rojo' : ''}`} />
-          {error && <div className="text-[11px] text-rojo mt-1">{error}</div>}
-        </div>
-      </div>
-    </Modal>
   )
 }

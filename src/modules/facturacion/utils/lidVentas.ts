@@ -55,7 +55,7 @@ export function aAnsi(texto: string): Uint8Array<ArrayBuffer> {
   return out
 }
 
-function bajar(blob: Blob, nombre: string) {
+export function bajar(blob: Blob, nombre: string) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url

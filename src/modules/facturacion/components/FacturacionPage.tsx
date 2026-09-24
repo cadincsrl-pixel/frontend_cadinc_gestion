@@ -8,7 +8,7 @@ import { useArcaAmbiente } from '../hooks/useFacturacion'
 import { BannerHomologacion } from './EstadoArca'
 import { FacturasTab } from './FacturasTab'
 import { ClientesTab } from './ClientesTab'
-import { FinnegansTab } from './FinnegansTab'
+import { ImpuestosTab } from './impuestos/ImpuestosTab'
 import { CobranzasTab } from './cobranzas/CobranzasTab'
 import { DeudoresTab } from './cobranzas/DeudoresTab'
 import { SaldosInicialesTab } from './cobranzas/SaldosInicialesTab'
@@ -16,7 +16,7 @@ import { SaldosInicialesTab } from './cobranzas/SaldosInicialesTab'
 const TABS = [
   { key: 'facturas',  icon: '🧮', label: 'Facturas',  sub: 'Facturas y notas de crédito A y B contra ARCA' },
   { key: 'clientes',  icon: '🏢', label: 'Clientes',  sub: 'Padrón propio: CUIT, condición IVA y obras que se le facturan' },
-  { key: 'finnegans', icon: '📥', label: 'Finnegans', sub: 'Autorizadas que falta cargar a mano en Finnegans, y el Libro IVA Digital de ventas' },
+  { key: 'impuestos', icon: '🏛', label: 'Impuestos', sub: 'Posición de IVA del mes y Libro IVA Digital de ventas y de compras para ARCA' },
   { key: 'cobranzas', icon: '💰', label: 'Cobranzas', sub: 'Recibos (RC): medios, retenciones y aplicación a facturas; compensación de notas de crédito' },
   { key: 'deudores',  icon: '📒', label: 'Deudores',  sub: 'Qué debe cada cliente, desde cuándo, y su estado de cuenta' },
   { key: 'saldos_iniciales', icon: '📂', label: 'Saldos iniciales', sub: 'Facturas emitidas en Finnegans o en ARCA antes del sistema que siguen abiertas' },
@@ -29,10 +29,13 @@ export function FacturacionPage() {
 
   const allowedTabs = useMemo(() => {
     const declarados = new Set((TABS_POR_MODULO.facturacion ?? []).map(t => t.key))
-    return permitidos.filter(t => declarados.has(t))
+    // Puente hasta la migración 20260924x: quien tenga la vieja `finnegans` ve Impuestos.
+    return [...new Set(permitidos.map(t => (t === 'finnegans' ? 'impuestos' : t)))].filter(t => declarados.has(t))
   }, [permitidos])
 
-  const tab = searchParams.get('tab') ?? 'facturas'
+  // `finnegans` era la tab del libro de ventas hasta el 24/09: los links viejos caen en Impuestos.
+  const tabPedida = searchParams.get('tab') ?? 'facturas'
+  const tab = tabPedida === 'finnegans' ? 'impuestos' : tabPedida
   const info = TABS.find(t => t.key === tab) ?? TABS[0]!
   const permitido = allowedTabs.length === 0 || allowedTabs.includes(tab)
 
@@ -63,7 +66,7 @@ export function FacturacionPage() {
       <div className="flex flex-col gap-4">
         {tab === 'facturas'  && <FacturasTab />}
         {tab === 'clientes'  && <ClientesTab />}
-        {tab === 'finnegans' && <FinnegansTab />}
+        {tab === 'impuestos' && <ImpuestosTab />}
         {tab === 'cobranzas' && <CobranzasTab />}
         {/* La key re-monta al llegar desde la campana (?aviso=vencidas) estando ya en la tab. */}
         {tab === 'deudores'  && <DeudoresTab key={searchParams.get('aviso') ?? ''} />}

@@ -46,7 +46,6 @@ export function FacturasTab() {
   const lista      = useFacturasVenta(filtro, page, PAGE_SIZE, puedeVer)
   const resumen    = useResumenFacturas(desdeMes, hoy, puedeVer)
   const sinConf    = useFacturasVenta({ estado: 'error_reconciliar' }, 1, 1, puedeVer)
-  const pendFinn   = useFacturasVenta({ finnegans: 'pendiente' }, 1, 1, puedeVer)
   const arca       = useArcaEstado(puedeVer)
   const reconciliar = useReconciliarFacturaVenta()
 
@@ -128,8 +127,6 @@ export function FacturasTab() {
         <Kpi label="Neto" valor={resumen.isLoading ? '…' : fmtM(kpi.neto)} sub={resumen.isLoading ? undefined : `IVA ${fmtM(kpi.iva)}`} />
         <Kpi label="Avance de obra" valor={resumen.isLoading ? '…' : fmtM(kpi.obra)} />
         <Kpi label="Transporte" valor={resumen.isLoading ? '…' : fmtM(kpi.transporte)} />
-        <Kpi label="Falta cargar en Finnegans" valor={pendFinn.isLoading ? '…' : String(pendFinn.data?.total ?? 0)}
-          tono={(pendFinn.data?.total ?? 0) > 0 ? 'alerta' : 'ok'} />
       </div>
       {resumen.error && (
         <div className="text-xs text-rojo px-1">No se pudo cargar el resumen del mes: {mensajeErrorFacturacion(resumen.error)}</div>

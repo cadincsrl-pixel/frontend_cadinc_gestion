@@ -28,7 +28,7 @@ export type FlagBoolean =
   | 'aprobar_ajustes_stock' | 'gestionar_cobros' | 'gestionar_docs' | 'anular_cobros'
   | 'costos_oficina' | 'asistente_ia'
   | 'registrar_pagos' | 'aprobar_facturas' | 'anular_pagos' | 'aprobar_propias'
-  | 'emitir_facturas' | 'emitir_notas_credito' | 'registrar_finnegans' | 'registrar_cobros'
+  | 'emitir_facturas' | 'emitir_notas_credito' | 'registrar_cobros'
 
 export interface FlagDef {
   key:   FlagBoolean
@@ -160,12 +160,6 @@ export const FLAGS_BOOLEAN: FlagDef[] = [
     key: 'emitir_notas_credito',
     label: '↩ Emitir notas de crédito',
     help: 'Emitir contra ARCA una nota de crédito que anula total o parcialmente una factura autorizada. Va separado de "Emitir facturas" a propósito: anular una factura es otra decisión. Solo tiene efecto en facturación.',
-    modulos: ['facturacion'],
-  },
-  {
-    key: 'registrar_finnegans',
-    label: '📥 Registrar facturas en Finnegans',
-    help: 'Marcar una factura autorizada como cargada en Finnegans, con el número de allá, y deshacerlo. Necesita además el tab "Finnegans". Solo tiene efecto en facturación.',
     modulos: ['facturacion'],
   },
   {

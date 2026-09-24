@@ -11,10 +11,11 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { apiDelete, apiGet, apiPost, apiPatch } from '@/lib/api/client'
 import type {
-  VentasCbteTipo, VentasArcaEstado, VentasCondicionIva, VentasEmitirRes, VentasEstado, VentasFactura, VentasFacturaDetalle,
+  VentasCbteTipo, VentasArcaEstado, VentasCondicionIva, VentasEmitirRes, VentasEstado, VentasFacturaDetalle,
   VentasFacturaFJ, VentasFacturaInput, VentasFacturasPage, VentasObra, VentasProducto, VentasResumenFila,
 } from '@/types/domain.types'
 import type { LibroIvaVentas } from '../utils/lidVentas'
+import type { LibroIvaCompras, PosicionIva } from '../utils/lidCompras'
 
 const BASE = '/api/facturacion'
 
@@ -50,7 +51,6 @@ export interface FacturasFiltro {
   producto?:     VentasProducto
   desde?:        string
   hasta?:        string
-  finnegans?:    'pendiente' | 'registrada'
   q?:            string
 }
 
@@ -63,7 +63,6 @@ function qsFacturas(f: FacturasFiltro, page: number, pageSize: number): string {
   if (f.producto)        p.set('producto', f.producto)
   if (f.desde)           p.set('desde', f.desde)
   if (f.hasta)           p.set('hasta', f.hasta)
-  if (f.finnegans)       p.set('finnegans', f.finnegans)
   if (f.q?.trim())       p.set('q', f.q.trim())
   p.set('page', String(page))
   p.set('pageSize', String(pageSize))
@@ -240,25 +239,6 @@ export function useReconciliarFacturaVenta() {
   })
 }
 
-// ── Finnegans ─────────────────────────────────────────────────────────
-
-export function useRegistrarFinnegansVenta() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({ id, numero_finnegans }: { id: number; numero_finnegans: string }) =>
-      apiPost<VentasFactura>(`${BASE}/facturas/${id}/registrar-finnegans`, { numero_finnegans }),
-    onSuccess:  () => invalidarFacturacion(qc),
-  })
-}
-
-export function useDeshacerRegistroVenta() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (id: number) => apiPost<VentasFactura>(`${BASE}/facturas/${id}/deshacer-registro`, {}),
-    onSuccess:  () => invalidarFacturacion(qc),
-  })
-}
-
 // ── Libro IVA Digital de Ventas (RG 4597) ─────────────────────────────
 
 /** El libro del mes: ERP (prod, autorizadas) + importados de ARCA. Lo arma el backend. */
@@ -266,6 +246,28 @@ export function useLibroIvaVentas(periodo: string, incluirCvlp: boolean, enabled
   return useQuery({
     queryKey: ['facturacion', 'lid-ventas', periodo, incluirCvlp] as const,
     queryFn:  () => apiGet<LibroIvaVentas>(`${BASE}/lid-ventas?periodo=${periodo}&incluir_cvlp=${incluirCvlp ? 1 : 0}`),
+    enabled:  enabled && /^\d{4}-\d{2}$/.test(periodo),
+    staleTime: 60_000,
+  })
+}
+
+// ── Libro IVA Digital de Compras y posición de IVA ────────────────────
+
+/** Las facturas de proveedor del mes (módulo Compras) con su desglose. Lo arma el backend. */
+export function useLibroIvaCompras(periodo: string, enabled = true) {
+  return useQuery({
+    queryKey: ['facturacion', 'lid-compras', periodo] as const,
+    queryFn:  () => apiGet<LibroIvaCompras>(`${BASE}/lid-compras?periodo=${periodo}`),
+    enabled:  enabled && /^\d{4}-\d{2}$/.test(periodo),
+    staleTime: 60_000,
+  })
+}
+
+/** Débito − crédito − percepciones − retenciones del mes. */
+export function usePosicionIva(periodo: string, incluirCvlp: boolean, enabled = true) {
+  return useQuery({
+    queryKey: ['facturacion', 'posicion-iva', periodo, incluirCvlp] as const,
+    queryFn:  () => apiGet<PosicionIva>(`${BASE}/posicion-iva?periodo=${periodo}&incluir_cvlp=${incluirCvlp ? 1 : 0}`),
     enabled:  enabled && /^\d{4}-\d{2}$/.test(periodo),
     staleTime: 60_000,
   })

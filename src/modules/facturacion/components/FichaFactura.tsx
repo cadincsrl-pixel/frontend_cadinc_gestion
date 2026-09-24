@@ -339,16 +339,6 @@ export function FichaFactura({ id, onClose, onEditar, onNotaCredito, onEmitir, o
           )}
         </Bloque>
 
-        {/* Finnegans */}
-        {f.estado === 'autorizada' && (
-          <Bloque titulo="Finnegans">
-            {f.numero_finnegans
-              ? <div className="text-xs">✓ Registrada con el N° <b className="font-mono">{f.numero_finnegans}</b>
-                  {f.registrada_por_nombre && <> por {f.registrada_por_nombre}</>}{f.registrada_at && <>, {fmtFechaHora(f.registrada_at)}</>}.</div>
-              : <div className="text-xs text-gris-dark">Todavía no se cargó en Finnegans (se registra desde el tab Finnegans).</div>}
-          </Bloque>
-        )}
-
         {/* Eventos */}
         <Bloque titulo="Historia">
           <Eventos eventos={data.eventos ?? []} />

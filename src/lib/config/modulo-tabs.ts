@@ -97,7 +97,8 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
   facturacion: [
     { key: 'facturas',  label: 'Facturas',  icon: '🧮', meta: 'Factura A y nota de crédito A contra ARCA' },
     { key: 'clientes',  label: 'Clientes',  icon: '🏢', meta: 'CUIT, condición IVA y obras' },
-    { key: 'finnegans', label: 'Finnegans', icon: '📥', meta: 'Autorizadas pendientes de cargar · Libro IVA ventas' },
+    // Impuestos (24/09) reemplazó a la tab `finnegans`: CADINC dejó Finnegans.
+    { key: 'impuestos', label: 'Impuestos', icon: '🏛', meta: 'Posición de IVA · Libro IVA ventas y compras' },
     // Cobranzas (20260924k…o).
     { key: 'cobranzas',        label: 'Cobranzas',        icon: '💰', meta: 'Recibos, retenciones y aplicación a facturas' },
     { key: 'deudores',         label: 'Deudores',         icon: '📒', meta: 'Saldo por cliente, antigüedad y estado de cuenta' },

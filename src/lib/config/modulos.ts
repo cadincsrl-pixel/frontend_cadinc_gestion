@@ -61,7 +61,7 @@ export const MODULO_INFO: Record<Modulo, ModuloInfo> = {
   alquiler:        { key: 'alquiler',        label: 'Alquiler de maquinaria', descripcion: 'Máquinas, obras y partes de horas', icono: '🚜', orden: 7 },
   aridos:          { key: 'aridos',          label: 'Áridos',           descripcion: 'Venta de áridos, stock y cuentas corrientes', icono: '⛰', orden: 8 },
   pagos:           { key: 'pagos',           label: 'Compras',          descripcion: 'Facturas de proveedor, órdenes de pago y cheques', icono: '🧾', orden: 9 },
-  facturacion:     { key: 'facturacion',     label: 'Ventas',           descripcion: 'Facturas de venta contra ARCA, clientes y registro en Finnegans', icono: '🧮', orden: 10 },
+  facturacion:     { key: 'facturacion',     label: 'Ventas',           descripcion: 'Facturas de venta contra ARCA, clientes, cobranzas e impuestos', icono: '🧮', orden: 10 },
   admin:           { key: 'admin',           label: 'Administración',   descripcion: 'Usuarios, permisos y auditoría',        icono: '⚙', orden: 0, noAsignable: true },
 }
 

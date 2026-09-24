@@ -168,20 +168,8 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   DEVOLUCION_PARCIAL_CON_CHEQUES: () => 'Con cheques sólo se puede registrar la devolución total: el cheque vuelve entero.',
   DEVOLUCION_INVALIDA:            () => 'Lo devuelto no puede ser cero ni pasar lo que se le pagó por cada factura.',
 
-  // ── Registro en Finnegans (20260923c) ──
-  NUMERO_FINNEGANS_REQUERIDO: () => 'Poné el número de la OP en Finnegans.',
-  ORDEN_ANULADA:              () => 'La orden está anulada: no se registra en Finnegans.',
-  ORDEN_YA_REGISTRADA: d => {
-    const n = dato(d, 'numero_finnegans')
-    return n ? `Ya estaba registrada en Finnegans con el N° ${String(n)}.` : 'Ya estaba registrada en Finnegans.'
-  },
-  ORDEN_NO_REGISTRADA:        () => 'La orden no estaba registrada en Finnegans.',
-  FINNEGANS_DUPLICADO: d => {
-    const n = dato(d, 'numero')
-    return n
-      ? `Ese número de Finnegans ya está cargado en la OP-${String(n).padStart(4, '0')}. Revisá cuál es el correcto.`
-      : 'Ese número de Finnegans ya está cargado en otra orden.'
-  },
+  // Lo dispara, por ejemplo, el aviso de pago sobre una OP anulada.
+  ORDEN_ANULADA: () => 'La orden está anulada.',
 
   // ── Proveedores ──
   PROVEEDOR_NO_EXISTE:  () => 'El proveedor no existe.',

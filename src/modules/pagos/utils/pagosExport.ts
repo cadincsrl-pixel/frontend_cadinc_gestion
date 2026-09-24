@@ -218,9 +218,9 @@ export async function exportarOrdenesPagos(filas: PagosOrdenExport[]): Promise<v
   const headers = [
     'OP', 'Fecha', 'Proveedor', 'CUIT', 'Forma', 'Referencia',
     'Pagado', 'Notas de crédito', 'Qué cubre', 'Facturas', 'A cuenta',
-    'Cheques', '1er cobro', 'Comprobante', 'Estado', 'Registró', 'Anuló', 'Motivo', 'OP Finnegans',
+    'Cheques', '1er cobro', 'Comprobante', 'Estado', 'Registró', 'Anuló', 'Motivo',
   ]
-  setColWidths(ws, [10, 12, 28, 14, 16, 18, 15, 15, 40, 10, 13, 9, 12, 13, 12, 18, 18, 28, 14])
+  setColWidths(ws, [10, 12, 28, 14, 16, 18, 15, 15, 40, 10, 13, 9, 12, 13, 12, 18, 18, 28])
   cabecera(ws, 'PAGOS — Órdenes de pago', [
     `Generado: ${generadoEn.toLocaleDateString('es-AR')}`,
     'Los totales cuentan solo las órdenes vigentes',
@@ -242,7 +242,6 @@ export async function exportarOrdenesPagos(filas: PagosOrdenExport[]): Promise<v
       o.comprobante_requerido ? (o.tiene_comprobante ? 'Sí' : 'FALTA') : '—',
       anulada ? 'Anulada' : 'Emitida',
       o.created_by_nombre ?? '', o.anulado_por_nombre ?? '', o.motivo_anulacion ?? '',
-      o.numero_finnegans ?? (anulada ? '' : 'SIN REGISTRAR'),
     ]
     for (const c of [7, 8, 11]) row.getCell(c).numFmt = FMT_MONEDA
     for (const c of [2, 13]) row.getCell(c).numFmt = FMT_FECHA

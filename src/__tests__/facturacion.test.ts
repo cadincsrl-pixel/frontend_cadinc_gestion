@@ -5,7 +5,7 @@ import { calcularTotales, conIvaRenglon, netoRenglon, precioConIva } from '@/mod
 import { enteroALetras, importeALetras } from '@/modules/facturacion/utils/numeroALetras'
 import { jsonQrArca, urlQrArca, URL_QR_ARCA } from '@/modules/facturacion/utils/qrArca'
 import {
-  TOPE_CF_IDENTIFICACION, admiteFacturaA, cuitValido, letraDeCliente, letraDeTipo, muestraDescripcion, requiereIdentificacion,
+  TOPE_CF_IDENTIFICACION, admiteFacturaA, cuitValido, letraDeCliente, letraDeTipo, requiereIdentificacion,
   tipoPara,
 } from '@/modules/facturacion/utils/facturacion.utils'
 import type { VentasFacturaFJ } from '@/types/domain.types'
@@ -328,16 +328,6 @@ describe('letra B (fase 5): mismas reglas que la base y el backend', () => {
     }))
     expect(j.nroDocRec).toBe(0)
     expect(j.tipoDocRec).toBe(99)
-  })
-})
-
-describe('bandeja de Finnegans: chip de la descripción', () => {
-  it('primer renglón truncado y +N por los demás', () => {
-    expect(muestraDescripcion(['Flete'])).toBe('Flete')
-    expect(muestraDescripcion(['Flete', 'Espera', 'Peaje'])).toBe('Flete +2')
-    expect(muestraDescripcion(['Certificado N° 5  —\n avance de obra septiembre 2026 en la obra de calle Maipú'], 32))
-      .toBe('Certificado N° 5 — avance de ob…')   // 31 caracteres + «…»
-    expect(muestraDescripcion([])).toBe('')
   })
 })
 

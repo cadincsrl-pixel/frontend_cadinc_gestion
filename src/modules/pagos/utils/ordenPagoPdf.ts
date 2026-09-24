@@ -5,8 +5,7 @@
  * de Finnegans de la otra razón social como modelo. Se respeta su estructura
  * porque es la que el contador y los proveedores ya saben leer:
  *
- *   1. Encabezado: quién paga, número y fecha (y el N° de Finnegans si ya se
- *      registró, que es el que el contador busca allá).
+ *   1. Encabezado: quién paga, número y fecha.
  *   2. A quién se le paga.
  *   3. VALORES ENTREGADOS: con qué se pagó. Un cheque por renglón, con su
  *      número y fecha de cobro. Las notas de crédito van acá también, como en
@@ -224,7 +223,6 @@ export function armarOrdenPagoDoc(
             { text: 'Orden de pago', fontSize: 15, margin: [0, 6, 0, 10] },
             dato('Número:', o.numero_fmt),
             dato('Fecha:', fmtFecha(o.fecha)),
-            ...(o.numero_finnegans ? [dato('N° Finnegans:', o.numero_finnegans)] : []),
           ],
         },
       ],

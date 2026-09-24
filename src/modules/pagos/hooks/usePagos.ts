@@ -101,8 +101,6 @@ export interface PagosOrdenesFiltro {
   sin_comprobante?:  boolean
   en_cartera?:       boolean
   con_nota_credito?: boolean
-  /** Emitidas que el contador todavía no pasó a Finnegans. */
-  sin_registrar?:    boolean
 }
 
 type ExtraQuery = Record<string, string | number | undefined>
@@ -146,7 +144,6 @@ function qsOrdenes(f: PagosOrdenesFiltro, extra: ExtraQuery = {}): string {
   if (f.sin_comprobante)   p.set('sin_comprobante', '1')
   if (f.en_cartera)        p.set('en_cartera', '1')
   if (f.con_nota_credito)  p.set('con_nota_credito', '1')
-  if (f.sin_registrar)     p.set('sin_registrar', '1')
   for (const [k, v] of Object.entries(extra)) if (v !== undefined) p.set(k, String(v))
   return p.toString()
 }
@@ -425,24 +422,6 @@ export function useAnularOrden() {
   return useMutation({
     mutationFn: ({ id, motivo }: { id: number; motivo: string }) =>
       apiPost<AnularOrdenRes>(`/api/pagos/ordenes/${id}/anular`, { motivo }),
-    onSuccess:  () => invalidarPagos(qc),
-  })
-}
-
-/** El contador marca la OP como pasada a Finnegans, con el número de allá (20260923c). */
-export function useRegistrarFinnegans() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({ id, numero_finnegans }: { id: number; numero_finnegans: string }) =>
-      apiPost<{ id: number; numero_finnegans: string }>(`/api/pagos/ordenes/${id}/registrar-finnegans`, { numero_finnegans }),
-    onSuccess:  () => invalidarPagos(qc),
-  })
-}
-
-export function useDeshacerRegistroFinnegans() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (id: number) => apiPost<{ id: number }>(`/api/pagos/ordenes/${id}/deshacer-registro`, {}),
     onSuccess:  () => invalidarPagos(qc),
   })
 }

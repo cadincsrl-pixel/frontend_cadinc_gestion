@@ -202,17 +202,6 @@ export const TIPOS_CBTE: { key: 1 | 3 | 6 | 8 | 201 | 203; label: string; corto:
   { key: 203, label: 'NC de Crédito MiPyME A',      corto: 'NC FCE A' },
 ]
 
-/**
- * Lo que muestra el chip «Descripción» de la bandeja de Finnegans: el primer
- * renglón (truncado) y, si hay más, "+N". El botón copia TODAS completas.
- */
-export function muestraDescripcion(descs: string[], max = 60): string {
-  const primera = (descs[0] ?? '').replace(/\s+/g, ' ').trim()
-  if (!primera) return ''
-  const corta = primera.length > max ? `${primera.slice(0, max - 1).trimEnd()}…` : primera
-  return descs.length > 1 ? `${corta} +${descs.length - 1}` : corta
-}
-
 /** "FA", "NCB"… para el tipo; "F" si no se conoce. */
 export function cortoTipo(t: number | null | undefined): string {
   return TIPOS_CBTE.find(x => x.key === t)?.corto ?? 'F'
@@ -311,11 +300,6 @@ export function hoyAR(): string {
 
 export function primerDiaDelMes(iso: string): string {
   return iso.slice(0, 8) + '01'
-}
-
-/** Número como lo tipea Finnegans: sin separador de miles, coma decimal ("4703,70"). */
-export function numeroParaCopiar(n: number | string | null | undefined): string {
-  return Number(n ?? 0).toFixed(2).replace('.', ',')
 }
 
 /**
