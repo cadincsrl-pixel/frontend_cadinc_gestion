@@ -3139,8 +3139,6 @@ export type PagosProveedoresPage = PagosPage<PagosProveedor>
 export interface PagosOrdenesPage extends PagosPage<PagosOrden> {
   /** Totales del filtro completo (no de la página): salen de la RPC de resumen. */
   totales: { ordenes: number; monto_pagado: number; monto_nc: number }
-  /** Emitidas sin número de Finnegans, SIN filtros: lo que le falta al contador. */
-  sin_registrar: number | null
 }
 
 export type PagosFacturasGrupo =
@@ -4068,7 +4066,7 @@ export interface VentasUploadUrlRes {
   nombre_archivo?: string
 }
 
-/** Fila de `ventas_deudores_al` / `v_ventas_deudores`. */
+/** Fila de `ventas_deudores_antiguedad_al` (GET /api/facturacion/deudores). */
 export interface VentasDeudor {
   ambiente:              VentasAmbiente
   cliente_id:            number
