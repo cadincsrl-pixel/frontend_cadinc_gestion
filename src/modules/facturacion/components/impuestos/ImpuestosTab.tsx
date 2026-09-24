@@ -12,9 +12,13 @@ import { PosicionIva } from './PosicionIva'
  * Finnegans. El mes (default: el anterior, que es el que se declara) y la
  * opción de la CVLP se eligen una vez y valen para las tres vistas.
  *
- * CVLP (060, la cuenta de venta y líquido producto que emite CASILDA por
- * cuenta de CADINC): el Anexo VII del LID dice que el comitente la registra en
- * Ventas, pero queda apagada hasta que el contador confirme cómo la carga.
+ * CVLP (060, la cuenta de venta y líquido producto): Casilda Combustibles
+ * (Logística Integral) cobra fletes de camiones de CADINC por cuenta y orden y
+ * le liquida con su comisión ya descontada. Según el Anexo VII del LID, CADINC
+ * es el VENDEDOR y la registra en Ventas (modalidad general: subtotal neto, IVA
+ * y total del papel; la comisión descontada no va a ningún libro). Verificado
+ * con la 0010-00000254 el 24/09 y sin facturas de CADINC a Casilda que la
+ * dupliquen: va incluida por defecto; el tilde queda para verlo sin ellas.
  */
 
 type Vista = 'posicion' | 'ventas' | 'compras'
@@ -34,7 +38,7 @@ export function ImpuestosTab() {
   const { puedeVer } = usePermisos('facturacion')
   const meses = useMemo(() => mesesRecientes(new Date()), [])
   const [periodo, setPeriodo] = useState(mesAnterior)
-  const [incluirCvlp, setIncluirCvlp] = useState(false)
+  const [incluirCvlp, setIncluirCvlp] = useState(true)
   const [vista, setVista] = useState<Vista>('posicion')
 
   if (!puedeVer) {
@@ -53,7 +57,7 @@ export function ImpuestosTab() {
         </div>
         {vista !== 'compras' && (
           <label className="flex items-center gap-2 text-sm py-2 cursor-pointer"
-            title="Cuenta de venta y líquido producto (tipo 060) que emite el comisionista por cuenta de CADINC. Según el Anexo VII del Libro IVA Digital, el comitente la registra en Ventas; confirmalo con el contador antes de incluirla.">
+            title="Cuentas de venta y líquido producto (060) de Casilda: fletes cobrados por cuenta de CADINC con la comisión descontada. Según el Anexo VII del Libro IVA Digital, CADINC (vendedor) las registra en Ventas con el neto, el IVA y el total del papel.">
             <input type="checkbox" checked={incluirCvlp} onChange={e => setIncluirCvlp(e.target.checked)} className="accent-naranja w-4 h-4" />
             Incluir CVLP (060)
           </label>
