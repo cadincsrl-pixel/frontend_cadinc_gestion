@@ -268,6 +268,8 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
 
   // Lo dispara, por ejemplo, el aviso de pago sobre una OP anulada.
   ORDEN_ANULADA: () => 'La orden está anulada.',
+  // «Sale de la cuenta» (20260926g)
+  CUENTA_ORIGEN_INVALIDA: () => 'La cuenta de origen no existe o está dada de baja.',
 
   // ── Proveedores ──
   PROVEEDOR_NO_EXISTE:  () => 'El proveedor no existe.',

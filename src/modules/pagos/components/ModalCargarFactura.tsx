@@ -28,6 +28,7 @@ import {
 import { AcreditaA, aplicaADe, nMonto, validarAcredita, type MontosAcredita } from './AcreditaA'
 import { codigoAviso, codigoErrorPagos, mensajeAvisoLectura, mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
 import { AltaRapidaProveedor } from './AltaRapidaProveedor'
+import { SelectCuentaOrigen, cuentaOrigenId } from './SelectCuentaOrigen'
 import type {
   PagosAdjuntoPendiente, PagosAlicuotaId, PagosAvisoLectura, PagosControlFactura, PagosFormaPagoOP, PagosFuenteCampo,
   PagosLecturaRes, PagosPlanCheques, PagosFormaPrevista, PagosImputacionInput, PagosTipoComprobante, PagosTributoTipo,
@@ -312,6 +313,8 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
   const [opForma, setOpForma] = useState<PagosFormaPagoOP>('efectivo')
   const [opFecha, setOpFecha] = useState(hoyAR())
   const [opRef, setOpRef] = useState('')
+  // «Sale de la cuenta» (20260926g): opcional, '' = sin indicar.
+  const [opCuentaOrigen, setOpCuentaOrigen] = useState('')
   const [opFechaCobro, setOpFechaCobro] = useState('')
   const [opComprobante, setOpComprobante] = useState<PagosAdjuntoPendiente | null>(null)
   const [subiendo, setSubiendo] = useState(false)
@@ -690,6 +693,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
             referencia: opRef.trim() || undefined,
             fecha_cobro: FORMAS_CON_FECHA_COBRO.includes(opForma) ? (opFechaCobro || null) : null,
             comprobante: opComprobante,
+            cuenta_origen_id: cuentaOrigenId(opCuentaOrigen),
           } : null,
         })
         guardada.current = true
@@ -1091,6 +1095,9 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
                   </Campo>
                   <Campo label="Referencia" hint="Opcional">
                     <input value={opRef} onChange={e => setOpRef(e.target.value)} className={inputCls} />
+                  </Campo>
+                  <Campo label="Sale de la cuenta" hint="Opcional">
+                    <SelectCuentaOrigen value={opCuentaOrigen} onChange={setOpCuentaOrigen} forma={opForma} className={inputCls} />
                   </Campo>
                   {FORMAS_CON_FECHA_COBRO.includes(opForma) && (
                     <Campo label="Se cobra el">

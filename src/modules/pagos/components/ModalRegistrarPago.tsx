@@ -10,6 +10,7 @@ import {
   useFacturas, useNcDisponibles, useRegistrarOrden, subirComprobantePendiente, borrarComprobantePendiente, leerCheque,
 } from '../hooks/usePagos'
 import { useDatosPagoProveedor, useProveedorPagos } from '../hooks/useProveedoresPagos'
+import { SelectCuentaOrigen, cuentaOrigenId } from './SelectCuentaOrigen'
 import {
   FORMAS_CON_COMPROBANTE_OBLIGATORIO, FORMAS_CON_CUENTA_DESTINO, FORMAS_CON_FECHA_COBRO,
   FORMAS_PAGO_OP, MAX_ADJUNTO_BYTES, PLAZOS_CHEQUE, comprobanteTxt, fechasEscalonadas, fmtFecha, fmtM, hoyAR,
@@ -157,6 +158,8 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
   const [primerPlazo, setPrimerPlazo] = useState(30)
   const [cadaDias, setCadaDias]       = useState('30')
   const [referencia, setReferencia] = useState('')
+  // «Sale de la cuenta» (20260926g): opcional, '' = sin indicar.
+  const [cuentaOrigen, setCuentaOrigen] = useState('')
   const [obs, setObs] = useState('')
   const [comprobante, setComprobante] = useState<PagosAdjuntoPendiente | null>(null)
   const [subiendo, setSubiendo] = useState<string | null>(null)
@@ -463,6 +466,7 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
         obs: obs.trim() || undefined,
         lineas,
         adjuntos,
+        cuenta_origen_id: cuentaOrigenId(cuentaOrigen),
       })
       const pagadas = r.facturas.filter(f => f.estado === 'pagada').length
       toast(`✓ ${r.orden.numero_fmt} registrada${pagadas > 0 ? ` · ${pagadas} factura${pagadas === 1 ? '' : 's'} saldada${pagadas === 1 ? '' : 's'}` : ''}`, 'ok')
@@ -603,6 +607,9 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
 
           <Campo label="Referencia" hint="Nº de operación">
             <input value={referencia} onChange={e => setReferencia(e.target.value)} className={inputCls} />
+          </Campo>
+          <Campo label="Sale de la cuenta" hint="opcional">
+            <SelectCuentaOrigen value={cuentaOrigen} onChange={setCuentaOrigen} forma={forma} className={inputCls} />
           </Campo>
         </div>
 

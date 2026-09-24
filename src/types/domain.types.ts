@@ -1195,6 +1195,11 @@ export type ModuloPermisos = { [K in Accion]?: boolean } & {
   //   cuenta y compensar NC. `anular_cobros` (de arriba) en facturación anula
   //   cobros e imputaciones. Los dos default false (20260924o).
   registrar_cobros?:       boolean
+  // Contabilidad (20260926), todos default false: cargar/confirmar/anular
+  // asientos manuales, cerrar y reabrir períodos, editar el plan de cuentas.
+  asientos_manuales?:      boolean
+  cerrar_periodos?:        boolean
+  editar_plan?:            boolean
 }
 export type Permisos = Record<string, ModuloPermisos>
 
@@ -2988,8 +2993,23 @@ export interface PagosOrden {
   en_cartera:        boolean
   /** Tiene un adjunto vigente tipo `recibo_proveedor` (20260925q). Opcional hasta el deploy. */
   tiene_recibo?:     boolean
+  /**
+   * De qué cuenta propia (tesorería) salió la plata (20260926g). null = sin
+   * indicar: todas las OP anteriores. Opcionales hasta el deploy del backend.
+   */
+  cuenta_origen_id?:     number | null
+  cuenta_origen_nombre?: string | null
   mes_pago:          string
   busq:              string
+}
+
+/** Cuenta propia de CADINC para «Sale de la cuenta» (GET /api/pagos/cuentas-origen). */
+export interface PagosCuentaOrigen {
+  id:     number
+  tipo:   'banco' | 'caja' | 'valores'
+  nombre: string
+  banco:  string
+  moneda: 'ARS' | 'USD'
 }
 
 /** Línea de OP con la factura embebida (ficha de la orden). */
@@ -3290,6 +3310,8 @@ export interface PagosOrdenAlCargarInput {
   fecha_cobro?: string | null
   obs?:         string
   comprobante?: PagosAdjuntoPendiente | null
+  /** De qué cuenta de tesorería sale (20260926g). Opcional. */
+  cuenta_origen_id?: number | null
 }
 
 /**
@@ -3410,12 +3432,18 @@ export interface CrearOrdenInput {
    * del más próximo — no hace falta mandarla.
    */
   cheques?:     PagosChequeNuevo[]
+  /** De qué cuenta de tesorería sale (20260926g). Opcional. */
+  cuenta_origen_id?: number | null
 }
 
-/** De una OP emitida solo se corrigen estos dos: lo financiero no se edita, se anula. */
+/**
+ * De una OP emitida solo se corrigen estos: lo financiero no se edita, se
+ * anula. `cuenta_origen_id` es clasificación (20260926g), no plata.
+ */
 export interface EditarOrdenInput {
   referencia?: string
   obs?:        string
+  cuenta_origen_id?: number | null
 }
 
 export interface CrearProveedorInput {

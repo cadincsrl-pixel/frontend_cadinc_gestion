@@ -104,6 +104,16 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
     { key: 'deudores',         label: 'Deudores',         icon: '📒', meta: 'Saldo por cliente, antigüedad y estado de cuenta' },
     { key: 'saldos_iniciales', label: 'Saldos iniciales', icon: '📂', meta: 'Facturas de Finnegans / ARCA que siguen abiertas' },
   ],
+  // Contabilidad fase 1 (20260926). El orden importa: `ContabilidadPage`
+  // redirige al primer tab permitido.
+  contabilidad: [
+    { key: 'asientos',     label: 'Asientos',        icon: '📝', meta: 'Carga manual, borradores y anulación' },
+    { key: 'diario',       label: 'Libro diario',    icon: '📖' },
+    { key: 'mayor',        label: 'Mayor',           icon: '📒' },
+    { key: 'sumas-saldos', label: 'Sumas y saldos',  icon: '⚖️' },
+    { key: 'plan',         label: 'Plan de cuentas', icon: '🗂', meta: 'Cuentas y cuentas de tesorería' },
+    { key: 'periodos',     label: 'Períodos',        icon: '🔒' },
+  ],
   aridos: [
     { key: 'ventas',     label: 'Ventas',     icon: '🛒', meta: 'Ventas por m³ y retiros de escombro' },
     { key: 'cuenta-corriente', label: 'Cuenta corriente', icon: '💰', meta: 'Vendido, cobrado y saldo por cliente' },

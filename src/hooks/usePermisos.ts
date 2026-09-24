@@ -76,6 +76,10 @@ export function usePermisos(modulo: string) {
     // Ventas › Cobranzas (20260924o): registrar/imputar/compensar. Anular usa
     // `anularCobros` (misma clave que logística, leída en este módulo).
     registrarCobros:      flagCapacidad('registrar_cobros', false),
+    // Contabilidad (20260926): nacen apagados, igual que `_cont_flag`.
+    asientosManuales:     flagCapacidad('asientos_manuales', false),
+    cerrarPeriodos:       flagCapacidad('cerrar_periodos', false),
+    editarPlan:           flagCapacidad('editar_plan', false),
     asistenteIa:          flagCapacidad('asistente_ia', false),
     esCapataz,
     esJefeObra,

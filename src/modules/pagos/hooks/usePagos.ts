@@ -13,7 +13,7 @@ import { apiDelete, apiGet, apiPatch, apiPost } from '@/lib/api/client'
 import type {
   AnularFacturaRes, AnularOrdenRes, AplicarNcRes, AprobarLoteRes, CrearFacturaInput, CrearFacturaRes, CrearOrdenInput,
   EditarFacturaInput, EditarFacturaRes, EditarOrdenInput, PagosAdjunto, PagosAdjuntoPendiente,
-  PagosCatalogoObra, PagosEntidadAdjunto, PagosEstadoFactura, PagosEstadoOrden, PagosFactura, PagosFacturaDetalle,
+  PagosCatalogoObra, PagosCuentaOrigen, PagosEntidadAdjunto, PagosEstadoFactura, PagosEstadoOrden, PagosFactura, PagosFacturaDetalle,
   PagosFacturasGrupo, PagosFacturasPage, PagosFacturasResumen, PagosFormaPagoOPGuardada,
   PagosFormaPrevista, PagosOrdenDetalle, PagosOrdenesEje, PagosOrdenesGrupo, PagosOrdenesPage, PagosOrdenExport, PagosPaquete,
   PagosOrdenesResumen, PagosTipoAdjFactura, PagosTipoAdjOrden, PagosTipoComprobante, PagosUploadUrlRes,
@@ -43,6 +43,7 @@ export const PAGOS_KEYS = {
   saldos:          ['pagos', 'proveedores', 'saldos'] as const,
   adjuntos:        (entidad: PagosEntidadAdjunto, id: number) => ['pagos', 'adjuntos', entidad, id] as const,
   catalogoObras:   ['pagos', 'catalogos', 'obras'] as const,
+  cuentasOrigen:   ['pagos', 'catalogos', 'cuentas-origen'] as const,
   conceptos:       ['pagos', 'conceptos'] as const,
   notifAprobar:    ['pagos', 'notificaciones', 'para-aprobar'] as const,
   notifSinRevisar: ['pagos', 'notificaciones', 'sin-revisar'] as const,
@@ -615,6 +616,19 @@ export function useCatalogoObrasPagos(enabled = true) {
   return useQuery({
     queryKey: PAGOS_KEYS.catalogoObras,
     queryFn:  () => apiGet<PagosCatalogoObra[]>('/api/pagos/catalogos/obras'),
+    staleTime: 300_000,
+    enabled,
+  })
+}
+
+/**
+ * Cuentas propias de CADINC (tesorería) para «Sale de la cuenta» (20260926g).
+ * Solo las activas. Se cargan en Contabilidad › Plan › Cuentas de tesorería.
+ */
+export function useCuentasOrigen(enabled = true) {
+  return useQuery({
+    queryKey: PAGOS_KEYS.cuentasOrigen,
+    queryFn:  () => apiGet<PagosCuentaOrigen[]>('/api/pagos/cuentas-origen'),
     staleTime: 300_000,
     enabled,
   })

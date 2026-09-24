@@ -8,7 +8,7 @@ import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
 import {
-  useOrdenes, useOrden, useAnularOrden, useSubirAdjuntoPagos, fetchPagosAdjuntoSignedUrl,
+  useOrdenes, useOrden, useAnularOrden, useEditarOrden, useSubirAdjuntoPagos, fetchPagosAdjuntoSignedUrl,
   fetchOrdenesExport, type PagosOrdenesFiltro,
 } from '../hooks/usePagos'
 import { exportarOrdenesPagos } from '../utils/pagosExport'
@@ -17,11 +17,12 @@ import { ModalPaqueteContador } from './ModalPaqueteContador'
 import { ModalAvisarPago } from './ModalAvisarPago'
 import { PreguntarAvisoPago } from './PreguntarAvisoPago'
 import { useProveedoresPagos } from '../hooks/useProveedoresPagos'
+import { SelectCuentaOrigen, cuentaOrigenId } from './SelectCuentaOrigen'
 import {
   FORMAS_PAGO_OP, MAX_ADJUNTO_BYTES, salidaLabel, MIME_ADJUNTOS, TIPOS_ADJ_FACTURA, comprobanteTxt, fmtFecha, fmtM, formaPagoLabel, hoyAR,
   TIPOS_ADJ_ORDEN_SUBIBLES, tipoAdjOrdenLabel,
 } from '../utils/pagos.utils'
-import type { PagosTipoAdjOrden } from '@/types/domain.types'
+import type { PagosOrden, PagosTipoAdjOrden } from '@/types/domain.types'
 import { mensajeErrorPagos } from '../utils/pagos.errores'
 
 const PAGE_SIZE = 50
@@ -169,6 +170,7 @@ export function OrdenesTab() {
                     <td className="px-3 py-2 text-xs whitespace-nowrap">{fmtFecha(o.fecha)}</td>
                     <td className="px-3 py-2 text-xs">
                       {formaPagoLabel(o.forma_pago)}
+                      {o.cuenta_origen_nombre && <span className="block text-[10px] text-gris-dark" title="Sale de la cuenta">de {o.cuenta_origen_nombre}</span>}
                       {o.comprobante_requerido && !o.tiene_comprobante && (
                         <span className="block text-[10px] text-rojo font-bold">sin comprobante</span>
                       )}
@@ -296,6 +298,7 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, verPii, toast }: {
             <Dato label={o.cheques.length > 1 ? 'Primero se cobra el' : 'Se cobra el'} valor={fmtFecha(o.fecha_cobro)} />
           )}
           {o.referencia && <Dato label="Referencia" valor={o.referencia} />}
+          <CuentaOrigenOP o={o} puedeEditar={puedeSubir} toast={toast} />
           <Dato label="Registró" valor={`${o.created_by_nombre ?? '—'}, ${fmtFecha(o.created_at)}`} />
         </div>
 
@@ -525,6 +528,59 @@ function Kpi({ label, valor, sub, tono }: { label: string; valor: string; sub?: 
       <div className="text-[10px] font-bold text-gris-dark uppercase tracking-wide">{label}</div>
       <div className={`font-mono font-bold text-lg tabular-nums ${tono === 'alerta' ? 'text-rojo' : 'text-azul'}`}>{valor}</div>
       {sub && <div className="text-[10px] text-gris-dark">{sub}</div>}
+    </div>
+  )
+}
+
+/**
+ * «Sale de la cuenta» (20260926g). Es clasificación, no plata: se corrige con
+ * el PATCH de la OP mientras no esté anulada (misma guardia que referencia/obs).
+ */
+function CuentaOrigenOP({ o, puedeEditar, toast }: {
+  o: PagosOrden
+  puedeEditar: boolean
+  toast: (m: string, t?: 'ok' | 'err' | 'warn') => void
+}) {
+  const editar = useEditarOrden()
+  const [editando, setEditando] = useState(false)
+  const [valor, setValor] = useState(o.cuenta_origen_id ? String(o.cuenta_origen_id) : '')
+  const anulada = o.estado === 'anulada'
+
+  async function guardar() {
+    try {
+      await editar.mutateAsync({ id: o.id, cuenta_origen_id: cuentaOrigenId(valor) })
+      toast('✓ Cuenta de origen actualizada', 'ok')
+      setEditando(false)
+    } catch (e) {
+      toast(mensajeErrorPagos(e), 'err')
+    }
+  }
+
+  if (editando) {
+    return (
+      <div className="col-span-2">
+        <div className="text-[10px] font-bold text-gris-dark uppercase tracking-wide">Sale de la cuenta</div>
+        <div className="flex gap-1 items-center">
+          <SelectCuentaOrigen value={valor} onChange={setValor} actualNombre={o.cuenta_origen_nombre} forma={o.forma_pago === 'nota_credito' ? null : o.forma_pago}
+            className="flex-1 min-w-0 px-2 py-1 border border-gris-mid rounded text-xs bg-white" />
+          <Button size="sm" onClick={guardar} loading={editar.isPending}>OK</Button>
+          <Button size="sm" variant="ghost" onClick={() => setEditando(false)} disabled={editar.isPending}>✕</Button>
+        </div>
+      </div>
+    )
+  }
+  const bloqueo = !puedeEditar ? 'Hace falta el permiso de registrar pagos' : anulada ? 'La orden está anulada' : null
+  return (
+    <div>
+      <div className="text-[10px] font-bold text-gris-dark uppercase tracking-wide">Sale de la cuenta</div>
+      <div className="flex items-center gap-1">
+        <span>{o.cuenta_origen_nombre ?? '—'}</span>
+        <button type="button" disabled={!!bloqueo} title={bloqueo ?? 'Cambiar la cuenta de origen'}
+          onClick={() => { setValor(o.cuenta_origen_id ? String(o.cuenta_origen_id) : ''); setEditando(true) }}
+          className="text-[11px] text-azul hover:underline disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed">
+          cambiar
+        </button>
+      </div>
     </div>
   )
 }

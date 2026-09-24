@@ -29,6 +29,7 @@ export type FlagBoolean =
   | 'costos_oficina' | 'asistente_ia'
   | 'registrar_pagos' | 'aprobar_facturas' | 'anular_pagos' | 'aprobar_propias'
   | 'emitir_facturas' | 'emitir_notas_credito' | 'registrar_cobros'
+  | 'asientos_manuales' | 'cerrar_periodos' | 'editar_plan'
 
 export interface FlagDef {
   key:   FlagBoolean
@@ -173,6 +174,25 @@ export const FLAGS_BOOLEAN: FlagDef[] = [
     label: '💰 Registrar cobros',
     help: 'Ventas: cargar recibos de cobranza (medios, retenciones y aplicación a facturas), aplicar a cuenta después y compensar notas de crédito contra facturas. Necesita además el tab "Cobranzas". Anularlos es otro permiso ("Anular cobros"). Solo tiene efecto en facturación.',
     modulos: ['facturacion'],
+  },
+  // Contabilidad (20260926): los tres nacen apagados, igual que `_cont_flag`.
+  {
+    key: 'asientos_manuales',
+    label: '📝 Cargar asientos manuales',
+    help: 'Crear, editar, confirmar, borrar borradores y anular asientos manuales. En un período cerrado, anular genera un contraasiento. Solo tiene efecto en contabilidad.',
+    modulos: ['contabilidad'],
+  },
+  {
+    key: 'cerrar_periodos',
+    label: '🔒 Cerrar y reabrir períodos',
+    help: 'Cerrar numera el libro diario y congela el mes; reabrir desnumera el último período cerrado. Solo tiene efecto en contabilidad.',
+    modulos: ['contabilidad'],
+  },
+  {
+    key: 'editar_plan',
+    label: '🗂 Editar plan de cuentas',
+    help: 'Alta, edición, baja e importación de cuentas contables y de las cuentas de tesorería. Solo tiene efecto en contabilidad.',
+    modulos: ['contabilidad'],
   },
   {
     key: 'asistente_ia',
