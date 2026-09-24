@@ -32,6 +32,8 @@ export interface FacturaAPagar {
   numero:             string | null
   vence_el:           string | null
   saldo:              number
+  /** El plan de e-cheqs anotado al cargarla (20260923n). */
+  plan_cheques?:      { cantidad: number; primer_cobro: string; cada_dias: number } | null
 }
 
 export interface GrupoProveedor {
@@ -44,8 +46,10 @@ export interface GrupoProveedor {
   cuentaCambio: boolean
   facturas:     FacturaAPagar[]
   total:        number
-  /** El vencimiento más próximo: de ahí arranca el primer e-cheq. */
+  /** El vencimiento más próximo: de ahí arranca el primer e-cheq si no hay plan. */
   primerVence:  string | null
+  /** El plan anotado en la factura (el de la primera que tenga uno). */
+  plan:         { cantidad: number; primer_cobro: string; cada_dias: number } | null
 }
 
 export const GALICIA = {
@@ -66,13 +70,14 @@ export function agruparPorProveedor(
         proveedor_id: f.proveedor_id, razon_social: f.proveedor_nom, cuit: f.proveedor_cuit,
         cbu: f.proveedor_cbu, alias: f.proveedor_alias,
         email: emails.get(f.proveedor_id)?.trim() || null,
-        cuentaCambio: false, facturas: [], total: 0, primerVence: null,
+        cuentaCambio: false, facturas: [], total: 0, primerVence: null, plan: null,
       }
       porProv.set(f.proveedor_id, g)
     }
     g.facturas.push(f)
     g.total = r2(g.total + Number(f.saldo))
     if (f.cuenta_cambio_tras_aprobar) g.cuentaCambio = true
+    if (!g.plan && f.plan_cheques) g.plan = f.plan_cheques
     if (f.vence_el && (!g.primerVence || f.vence_el < g.primerVence)) g.primerVence = f.vence_el.slice(0, 10)
   }
   return [...porProv.values()].sort((a, b) => a.razon_social.localeCompare(b.razon_social))
@@ -151,7 +156,20 @@ export interface PlanEcheq {
   cadaDias:    number
 }
 
+/**
+ * Con qué arranca cada proveedor: el plan anotado en la factura al cargarla
+ * (20260923n) o, sin plan, un e-cheq al vencimiento. Una fecha que ya pasó
+ * (el plan decía «mañana» y el Excel se saca tres días después) arranca hoy:
+ * el banco no emite cheques con fecha pasada.
+ */
 export function planPorDefecto(g: GrupoProveedor, hoy: string): PlanEcheq {
+  if (g.plan) {
+    return {
+      cantidad: g.plan.cantidad,
+      primerCobro: g.plan.primer_cobro > hoy ? g.plan.primer_cobro : hoy,
+      cadaDias: g.plan.cada_dias,
+    }
+  }
   const vence = g.primerVence && g.primerVence > hoy ? g.primerVence : hoy
   return { cantidad: 1, primerCobro: vence, cadaDias: 30 }
 }

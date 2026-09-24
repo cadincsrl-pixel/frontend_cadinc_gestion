@@ -15,13 +15,14 @@ import { useProveedoresPagos } from '../hooks/useProveedoresPagos'
 import {
   FORMAS_PAGO_OP, FORMAS_PREVISTAS, FORMAS_CON_FECHA_COBRO,
   FORMAS_CON_CUENTA_DESTINO,
-  TIPOS_COMPROBANTE, MAX_ADJUNTO_BYTES, MIME_ADJUNTOS, componerNumero, fmtM, hoyAR, partirNumero,
+  TIPOS_COMPROBANTE, MAX_ADJUNTO_BYTES, MIME_ADJUNTOS, componerNumero, fechasEscalonadas, fmtFecha, fmtM, hoyAR,
+  partirEnPartes, partirNumero, sumarDiasISO,
   vencimientoSugerido,
 } from '../utils/pagos.utils'
 import { mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
 import { AltaRapidaProveedor } from './AltaRapidaProveedor'
 import type {
-  PagosAdjuntoPendiente, PagosControlFactura, PagosFormaPagoOP, PagosFormaPrevista, PagosImputacionInput, PagosTipoComprobante,
+  PagosAdjuntoPendiente, PagosControlFactura, PagosFormaPagoOP, PagosPlanCheques, PagosFormaPrevista, PagosImputacionInput, PagosTipoComprobante,
 } from '@/types/domain.types'
 
 /**
@@ -111,6 +112,9 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
   const [descripcion, setDescripcion] = useState('')
   const [obs, setObs] = useState('')
   const [pagaCliente, setPagaCliente] = useState(false)
+  // El plan de e-cheqs (20260923n): se anota al cargar para que el Excel del
+  // Galicia y el modal de pago salgan precargados. Sólo con cheque / e-cheq.
+  const [plan, setPlan] = useState<PagosPlanCheques | null>(null)
   const [reparto, setReparto] = useState<FilaReparto[]>([{ obra_cod: '', monto: '', obs: '' }])
   const [motivo, setMotivo] = useState('')
   const [altaProveedor, setAltaProveedor] = useState(false)
@@ -149,6 +153,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
       setVerDesglose(true)
     }
     setFormaPrevista(original.forma_pago_prevista)
+    setPlan(original.plan_cheques ?? null)
     setDescripcion(original.descripcion)
     setObs(original.obs)
     setPagaCliente(original.paga_cliente)
@@ -176,6 +181,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
   }, [proveedor, fecha, tipo, esEdicion, venceEl])
 
   const totalN = n(total)
+  const conCheques = formaPrevista === 'echeq' || formaPrevista === 'cheque'
   const percN  = n(percepciones)
   const imputable = r2(totalN - percN)
   const sumaReparto = r2(reparto.reduce((s, f) => s + n(f.monto), 0))
@@ -299,6 +305,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
       descripcion: descripcion.trim(),
       obs: obs.trim(),
       paga_cliente: pagaCliente,
+      plan_cheques: conCheques ? plan : null,
       imputaciones,
     }
 
@@ -486,7 +493,13 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <Campo label="Forma de pago prevista">
-            <select value={formaPrevista} onChange={e => setFormaPrevista(e.target.value as PagosFormaPrevista)} className={inputCls}>
+            <select value={formaPrevista} onChange={e => {
+              const f = e.target.value as PagosFormaPrevista
+              setFormaPrevista(f)
+              // Al elegir cheque o e-cheq arranca «al día»: el total, al día
+              // siguiente de la carga (el caso más común, dijo el dueño).
+              if ((f === 'echeq' || f === 'cheque') && !plan) setPlan(planAlDia())
+            }} className={inputCls}>
               {FORMAS_PREVISTAS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
             </select>
           </Campo>
@@ -494,6 +507,14 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
             <input value={obs} onChange={e => setObs(e.target.value)} className={inputCls} />
           </Campo>
         </div>
+
+        {conCheques && (plan
+          ? <PlanCheques plan={plan} total={totalN} onChange={setPlan}
+              etiqueta={formaPrevista === 'echeq' ? 'e-cheqs' : 'cheques'} />
+          : <button type="button" onClick={() => setPlan(planAlDia())}
+              className="self-start text-[11px] text-[#5A2D82] hover:underline">
+              + Anotar cómo se van a pagar los {formaPrevista === 'echeq' ? 'e-cheqs' : 'cheques'} (al día, 30/60/90…)
+            </button>)}
 
         <label className="flex items-center gap-2 text-xs cursor-pointer select-none">
           <input type="checkbox" className="accent-naranja" checked={pagaCliente} onChange={e => setPagaCliente(e.target.checked)} />
@@ -703,6 +724,70 @@ function PanelComprobante({ archivo, previewUrl, onElegir, onQuitar }: {
         )}
       </div>
       <div className="text-[11px] text-gris-dark">Se adjunta al guardar, y el sistema controla número, total y fecha contra lo que cargues.</div>
+    </div>
+  )
+}
+
+/** «Al día»: el total en un solo cheque, al día siguiente de la carga. */
+function planAlDia(): PagosPlanCheques {
+  return { cantidad: 1, primer_cobro: sumarDiasISO(hoyAR(), 1), cada_dias: 30 }
+}
+
+/**
+ * El plan de cheques de la factura (20260923n). Atajos para los casos de
+ * siempre —al día, 30/60/90, seis cada 30— y los tres números a mano. Muestra
+ * cómo quedaría cada cheque con el total de la factura; lo que se paga de
+ * verdad se confirma al registrar el pago.
+ */
+function PlanCheques({ plan, total, onChange, etiqueta }: {
+  plan: PagosPlanCheques; total: number; onChange: (p: PagosPlanCheques) => void; etiqueta: string
+}) {
+  const base = hoyAR()
+  const atajos: { label: string; plan: PagosPlanCheques }[] = [
+    { label: 'Al día', plan: planAlDia() },
+    { label: '30 / 60 / 90', plan: { cantidad: 3, primer_cobro: sumarDiasISO(base, 30), cada_dias: 30 } },
+    { label: '6 cada 30', plan: { cantidad: 6, primer_cobro: sumarDiasISO(base, 30), cada_dias: 30 } },
+  ]
+  const igual = (a: PagosPlanCheques, b: PagosPlanCheques) =>
+    a.cantidad === b.cantidad && a.primer_cobro === b.primer_cobro && a.cada_dias === b.cada_dias
+  const partes = total > 0 ? partirEnPartes(total, plan.cantidad) : []
+  const fechas = fechasEscalonadas(plan.primer_cobro, plan.cantidad, 0, plan.cada_dias)
+  const num = (v: string, min: number, max: number) => Math.max(min, Math.min(max, Math.trunc(Number(v) || min)))
+  const chico = 'px-2 py-1 border-[1.5px] border-gris-mid rounded text-xs bg-white outline-none focus:border-naranja'
+
+  return (
+    <div className="border border-[#5A2D82]/30 bg-[#EEE8FF]/40 rounded p-2.5 flex flex-col gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-[11px] font-bold text-[#5A2D82] uppercase tracking-wide">Cómo se van a pagar los {etiqueta}</span>
+        {atajos.map(a => (
+          <button key={a.label} type="button" onClick={() => onChange(a.plan)}
+            className={`text-[11px] px-2 py-0.5 rounded-full border ${igual(a.plan, plan)
+              ? 'bg-[#5A2D82] text-white border-[#5A2D82]' : 'bg-white text-[#5A2D82] border-[#5A2D82]/40 hover:bg-[#EEE8FF]'}`}>
+            {a.label}
+          </button>
+        ))}
+      </div>
+      <div className="flex items-end gap-2 flex-wrap text-xs">
+        <label className="flex flex-col gap-0.5"><span className="text-gris-dark">Cuántos</span>
+          <input inputMode="numeric" value={plan.cantidad} className={`${chico} w-14`}
+            onChange={e => onChange({ ...plan, cantidad: num(e.target.value, 1, 24) })} /></label>
+        <label className="flex flex-col gap-0.5"><span className="text-gris-dark">El primero</span>
+          <input type="date" value={plan.primer_cobro} min={base} className={chico}
+            onChange={e => onChange({ ...plan, primer_cobro: e.target.value || plan.primer_cobro })} /></label>
+        {plan.cantidad > 1 && (
+          <label className="flex flex-col gap-0.5"><span className="text-gris-dark">Cada (días)</span>
+            <input inputMode="numeric" value={plan.cada_dias} className={`${chico} w-14`}
+              onChange={e => onChange({ ...plan, cada_dias: num(e.target.value, 1, 365) })} /></label>
+        )}
+      </div>
+      <div className="text-[11px] text-gris-dark">
+        {fechas.map((f, i) => (
+          <span key={i} className="inline-block mr-3">
+            {fmtFecha(f)}{partes[i] != null && <>: <b className="font-mono tabular-nums">{fmtM(partes[i]!)}</b></>}
+          </span>
+        ))}
+        <div className="mt-0.5">Se precargan en el Excel del Galicia y al registrar el pago; ahí se pueden ajustar.</div>
+      </div>
     </div>
   )
 }

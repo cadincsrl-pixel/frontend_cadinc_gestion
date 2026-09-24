@@ -199,6 +199,23 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
     (!pideComprobante || !!comprobante) &&
     (!pideCheques || (cheques.length > 0 && chequesIncompletos.length === 0 && Math.abs(difCheques) < 0.005))
 
+  // El plan anotado en la factura al cargarla (20260923n): con cheque o
+  // e-cheq, las filas arrancan armadas con esas fechas. Una sola vez, y sólo
+  // si todavía no se cargó ningún cheque: no pisa lo que se tipeó. Una fecha
+  // que ya pasó arranca en la fecha del pago.
+  const planFactura = elegidas.find(f => f.plan_cheques)?.plan_cheques ?? null
+  const [planAplicado, setPlanAplicado] = useState(false)
+  useEffect(() => {
+    if (planAplicado || !planFactura || !pideCheques || cheques.length > 0 || totalPlata <= 0) return
+    const k = planFactura.cantidad
+    const primero = planFactura.primer_cobro > fecha ? planFactura.primer_cobro : fecha
+    const fechas = fechasEscalonadas(primero, k, 0, planFactura.cada_dias)
+    setCantCheques(String(k))
+    setCadaDias(String(planFactura.cada_dias))
+    setCheques(partirEnPartes(totalPlata, k).map((m, i) => chequeVacio(fechas[i] ?? primero, String(m))))
+    setPlanAplicado(true)
+  }, [planAplicado, planFactura, pideCheques, cheques.length, totalPlata, fecha])
+
   // ── Cheques ──
   function setCheque(i: number, cambio: Partial<ChequeFila>) {
     setCheques(cs => cs.map((c, j) => j === i ? { ...c, ...cambio } : c))

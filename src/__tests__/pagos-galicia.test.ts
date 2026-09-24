@@ -76,6 +76,14 @@ describe('e-cheqs', () => {
     expect(planPorDefecto(agruparPorProveedor([f({ vence_el: '2026-09-01' })])[0]!, HOY).primerCobro).toBe(HOY)
   })
 
+  it('el plan anotado en la factura manda; si su primera fecha ya pasó, arranca hoy', () => {
+    const plan = { cantidad: 6, primer_cobro: '2026-10-23', cada_dias: 30 }
+    expect(planPorDefecto(agruparPorProveedor([f({ plan_cheques: plan })])[0]!, HOY))
+      .toEqual({ cantidad: 6, primerCobro: '2026-10-23', cadaDias: 30 })
+    expect(planPorDefecto(agruparPorProveedor([f({ plan_cheques: { ...plan, primer_cobro: '2026-09-20' } })])[0]!, HOY).primerCobro)
+      .toBe(HOY)
+  })
+
   it('partido en 3 cada 30 días: la suma da exacto y la última absorbe los centavos', () => {
     const ch = chequesDelPlan(1000, { cantidad: 3, primerCobro: '2026-10-01', cadaDias: 30 })
     expect(ch.map(c => c.fecha)).toEqual(['2026-10-01', '2026-10-31', '2026-11-30'])

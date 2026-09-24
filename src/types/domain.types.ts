@@ -2541,6 +2541,8 @@ export interface PagosFactura {
   ultima_op:           string | null
   ultimo_pago:         string | null
   busq:                string
+  /** El plan de e-cheqs anotado al cargarla (20260923n). */
+  plan_cheques?:       PagosPlanCheques | null
 }
 
 /** Obra a la que se imputa parte de la factura (centro de costo). */
@@ -2963,6 +2965,17 @@ export interface PagosOrdenAlCargarInput {
   comprobante?: PagosAdjuntoPendiente | null
 }
 
+/**
+ * Cómo se piensa pagar con cheques / e-cheqs (20260923n): cuántos, la fecha
+ * del primero y cada cuántos días los siguientes. No es plata: precarga el
+ * Excel del Galicia y el modal de pago.
+ */
+export interface PagosPlanCheques {
+  cantidad:     number
+  primer_cobro: string
+  cada_dias:    number
+}
+
 export interface CrearFacturaInput {
   proveedor_id:         number
   tipo_comprobante:     PagosTipoComprobante
@@ -2982,6 +2995,7 @@ export interface CrearFacturaInput {
   /** Σ = `total − percepciones`, exacto (la última fila absorbe el redondeo). */
   imputaciones:         PagosImputacionInput[]
   orden?:               PagosOrdenAlCargarInput | null
+  plan_cheques?:        PagosPlanCheques | null
 }
 
 /**
@@ -3005,6 +3019,7 @@ export interface EditarFacturaInput {
   paga_cliente?:        boolean
   imputaciones?:        PagosImputacionInput[]
   motivo?:              string
+  plan_cheques?:        PagosPlanCheques | null
 }
 
 export interface PagosLineaOrdenInput {
