@@ -9,11 +9,17 @@ import { BannerHomologacion } from './EstadoArca'
 import { FacturasTab } from './FacturasTab'
 import { ClientesTab } from './ClientesTab'
 import { FinnegansTab } from './FinnegansTab'
+import { CobranzasTab } from './cobranzas/CobranzasTab'
+import { DeudoresTab } from './cobranzas/DeudoresTab'
+import { SaldosInicialesTab } from './cobranzas/SaldosInicialesTab'
 
 const TABS = [
   { key: 'facturas',  icon: '🧮', label: 'Facturas',  sub: 'Facturas y notas de crédito A y B contra ARCA' },
   { key: 'clientes',  icon: '🏢', label: 'Clientes',  sub: 'Padrón propio: CUIT, condición IVA y obras que se le facturan' },
   { key: 'finnegans', icon: '📥', label: 'Finnegans', sub: 'Autorizadas que falta cargar a mano en Finnegans' },
+  { key: 'cobranzas', icon: '💰', label: 'Cobranzas', sub: 'Recibos (RC): medios, retenciones y aplicación a facturas; compensación de notas de crédito' },
+  { key: 'deudores',  icon: '📒', label: 'Deudores',  sub: 'Qué debe cada cliente, desde cuándo, y su estado de cuenta' },
+  { key: 'saldos_iniciales', icon: '📂', label: 'Saldos iniciales', sub: 'Facturas emitidas en Finnegans o en ARCA antes del sistema que siguen abiertas' },
 ]
 
 export function FacturacionPage() {
@@ -58,6 +64,9 @@ export function FacturacionPage() {
         {tab === 'facturas'  && <FacturasTab />}
         {tab === 'clientes'  && <ClientesTab />}
         {tab === 'finnegans' && <FinnegansTab />}
+        {tab === 'cobranzas' && <CobranzasTab />}
+        {tab === 'deudores'  && <DeudoresTab />}
+        {tab === 'saldos_iniciales' && <SaldosInicialesTab />}
       </div>
     </div>
   )

@@ -73,6 +73,10 @@ export function useCobros(f: CobrosFiltro, page = 1, pageSize = 50, enabled = tr
   })
 }
 
+export function fetchCobro(id: number): Promise<VentasCobroDetalle> {
+  return apiGet<VentasCobroDetalle>(`${BASE}/cobros/${id}`)
+}
+
 export function useCobro(id: number | null) {
   return useQuery({
     queryKey: COBRANZAS_KEYS.cobro(id ?? 0),
@@ -116,8 +120,8 @@ export function useRegistrarCobro() {
 export function useImputarCobro() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, items }: { id: number; items: VentasDestinoImputacion[] }) =>
-      apiPost<VentasCobroDetalle>(`${BASE}/cobros/${id}/imputar`, { items }),
+    mutationFn: ({ id, items, fecha }: { id: number; items: VentasDestinoImputacion[]; fecha?: string }) =>
+      apiPost<VentasCobroDetalle>(`${BASE}/cobros/${id}/imputar`, fecha ? { items, fecha } : { items }),
     onSuccess:  () => invalidarFacturacion(qc),
   })
 }
