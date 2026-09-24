@@ -69,18 +69,21 @@ Cliente (Next.js)
 
 ## 4. Dominios (10 módulos)
 
+> **Nombre visible ≠ clave** (2026-09-23): en la UI, `certificaciones` se llama «Pedidos y Stock», `pagos` se llama «Compras» y `facturacion` se llama «Ventas». Las claves (permisos, rutas, API, auditoría) NO cambiaron: no renombrarlas sin migrar `profiles.permisos`, `roles` y los links.
+
 | Módulo | Qué hace | Ruta frontend |
 |---|---|---|
 | **Tarja** | Horas por operario/obra/semana, cierre semanal, recibos PDF | `/tarja`, `/tarja/[obraCod]` |
 | **Personal** | CRUD trabajadores, categorías, fecha_nacimiento, documentos (DNI, alta temprana, etc.) | `/personal` (tab de tarja) |
 | **Logística** | Tramos, liquidaciones, choferes, **camiones y bateas**, lugares, facturación, gastos, **rentabilidad** (simulador) | `/logistica` |
-| **Certificaciones** | Solicitudes de compra workflow granular (§5.1), stock interno, **stock en proveedores** (§5.8), materiales facturables | `/certificaciones` |
+| **Certificaciones** (se muestra «Pedidos y Stock») | Solicitudes de compra workflow granular (§5.1), stock interno, **stock en proveedores** (§5.8), materiales facturables | `/certificaciones` |
 | **Stock** | Inventario depósito central, entradas/salidas, import/export Excel | (integrado en certificaciones) |
 | **Herramientas** | Inventario + trazabilidad entre obras | `/herramientas/*` |
 | **Caja** | Movimientos con centros de costo y conceptos | `/caja` |
 | **Ropa** | Entregas por categoría con vencimiento | `/tarja/ropa` |
 | **Préstamos** | Adelantos con descuento en semana | `/tarja/prestamos` |
-| **Pagos** | Facturas de proveedor, aprobación, órdenes de pago y padrón propio de proveedores (§5.18) | `/pagos` |
+| **Pagos** (se muestra «Compras») | Facturas de proveedor, aprobación, órdenes de pago y padrón propio de proveedores (§5.18) | `/pagos` |
+| **Facturación** (se muestra «Ventas») | Facturas de venta contra ARCA (A, B, FCE MiPyME y sus NC), clientes con padrón ARCA, bandeja de registro en Finnegans | `/facturacion` |
 | **Admin** | Usuarios, permisos, auditoría | `/admin` |
 
 ### 4.1 Sub-tabs de Logística (`/logistica?tab=...`)

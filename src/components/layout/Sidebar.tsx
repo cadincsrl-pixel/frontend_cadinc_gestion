@@ -196,7 +196,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         {/* ── Nav principal ── */}
         <div className="pt-3">
           <div className="px-4 py-2 text-[10px] font-bold tracking-[2.5px] uppercase text-white/35">
-            {enAdmin ? 'Administración' : enHerramientas ? 'Herramientas' : enLogistica ? 'Logística' : enCertificaciones ? 'Compras y Stock' : enCaja ? 'Caja' : enFlota ? 'Flota interna' : enAlquiler ? 'Alquiler de maquinaria' : enAridos ? 'Áridos' : enPagos ? 'Pagos a proveedores' : enFacturacion ? 'Facturación' : 'Menú'}
+            {enAdmin ? 'Administración' : enHerramientas ? 'Herramientas' : enLogistica ? 'Logística' : enCertificaciones ? 'Pedidos y Stock' : enCaja ? 'Caja' : enFlota ? 'Flota interna' : enAlquiler ? 'Alquiler de maquinaria' : enAridos ? 'Áridos' : enPagos ? 'Compras' : enFacturacion ? 'Ventas' : 'Menú'}
           </div>
 
           {/* Módulos con ?tab=... — todos usan el mismo `<ModuloNav>`. */}

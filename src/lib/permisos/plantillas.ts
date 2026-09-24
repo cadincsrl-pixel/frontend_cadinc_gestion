@@ -68,7 +68,7 @@ export const PRESETS_FALLBACK: PresetBase[] = [
   {
     key:   'compras',
     label: 'Compras',
-    descripcion: 'Solo Compras y Stock (todas las tabs). Resuelve compras y despachos, carga precios y actualiza el catálogo.',
+    descripcion: 'Solo Pedidos y Stock (todas las tabs). Resuelve compras y despachos, carga precios y actualiza el catálogo.',
     modulos: ['certificaciones'],
     permisos: {
       certificaciones: {

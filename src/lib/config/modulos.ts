@@ -55,13 +55,13 @@ export const MODULO_INFO: Record<Modulo, ModuloInfo> = {
   tarja:           { key: 'tarja',           label: 'Tarja de Obra',    descripcion: 'Control de horas y personal',           icono: '📋', orden: 1 },
   logistica:       { key: 'logistica',       label: 'Logística',        descripcion: 'Transporte de camiones',                icono: '🚛', orden: 2 },
   herramientas:    { key: 'herramientas',    label: 'Herramientas',     descripcion: 'Control de herramientas y equipos',     icono: '🔧', orden: 3 },
-  certificaciones: { key: 'certificaciones', label: 'Compras y Stock',  descripcion: 'Solicitudes, materiales y stock',       icono: '🛒', orden: 4 },
+  certificaciones: { key: 'certificaciones', label: 'Pedidos y Stock',  descripcion: 'Pedidos de materiales, depósito y stock',       icono: '🛒', orden: 4 },
   caja:            { key: 'caja',            label: 'Caja',             descripcion: 'Efectivo y movimientos',                icono: '💵', orden: 5 },
   flota:           { key: 'flota',           label: 'Flota CADINC',     descripcion: 'Vehículos internos (autos, camionetas)', icono: '🚙', orden: 6 },
   alquiler:        { key: 'alquiler',        label: 'Alquiler de maquinaria', descripcion: 'Máquinas, obras y partes de horas', icono: '🚜', orden: 7 },
   aridos:          { key: 'aridos',          label: 'Áridos',           descripcion: 'Venta de áridos, stock y cuentas corrientes', icono: '⛰', orden: 8 },
-  pagos:           { key: 'pagos',           label: 'Pagos',            descripcion: 'Facturas de proveedor y órdenes de pago', icono: '🧾', orden: 9 },
-  facturacion:     { key: 'facturacion',     label: 'Facturación',      descripcion: 'Facturas de venta y notas de crédito contra ARCA', icono: '🧮', orden: 10 },
+  pagos:           { key: 'pagos',           label: 'Compras',          descripcion: 'Facturas de proveedor, órdenes de pago y cheques', icono: '🧾', orden: 9 },
+  facturacion:     { key: 'facturacion',     label: 'Ventas',           descripcion: 'Facturas de venta contra ARCA, clientes y registro en Finnegans', icono: '🧮', orden: 10 },
   admin:           { key: 'admin',           label: 'Administración',   descripcion: 'Usuarios, permisos y auditoría',        icono: '⚙', orden: 0, noAsignable: true },
 }
 
