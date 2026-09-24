@@ -80,6 +80,11 @@ export function usePermisos(modulo: string) {
     asientosManuales:     flagCapacidad('asientos_manuales', false),
     cerrarPeriodos:       flagCapacidad('cerrar_periodos', false),
     editarPlan:           flagCapacidad('editar_plan', false),
+    // Contabilidad fase 3 (20260927): motor de asientos automáticos y mapeos.
+    contabilizar:         flagCapacidad('contabilizar', false),
+    editarMapeos:         flagCapacidad('editar_mapeos', false),
+    // Pagos: importar «Mis Comprobantes Recibidos» de ARCA (20260927c).
+    importarComprobantes: flagCapacidad('importar_comprobantes', false),
     asistenteIa:          flagCapacidad('asistente_ia', false),
     esCapataz,
     esJefeObra,

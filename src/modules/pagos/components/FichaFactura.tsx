@@ -15,12 +15,14 @@ import { useConceptosPagos } from '../hooks/useConceptosPagos'
 import {
   ESTADO_FACTURA_META, FORMAS_PREVISTAS, MAX_ADJUNTO_BYTES, MIME_ADJUNTOS, TIPOS_ADJ_FACTURA,
   aplicacionFirme, comprobanteTxt, contraparteAplicacion, esNC, estadoHint, estadoLabel, facturaAnulada, fmtFecha, fmtM, formaPagoLabel, topePagable,
+  fmtMesLargo, mesesDesde,
 } from '../utils/pagos.utils'
 import { mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
 import type { PagosAplicacionNc, PagosControlFactura, PagosFacturaDetalle, PagosTipoAdjFactura } from '@/types/domain.types'
 import { ALICUOTAS, NOMBRE_CBTE_ARCA, labelTributo, sinDesglose } from '../utils/desglose'
 import { ModalCompletarDesglose } from './ModalCompletarDesglose'
 import { ModalAplicarNc } from './ModalAplicarNc'
+import { ModalImputarFactura } from './ModalImputarFactura'
 
 /**
  * La ficha de una factura: todo lo que se sabe de ella y lo que se puede
@@ -60,6 +62,7 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
   const [tipoAdj, setTipoAdj] = useState<PagosTipoAdjFactura>('factura')
   const [completando, setCompletando] = useState(false)
   const [aplicando, setAplicando] = useState(false)
+  const [imputando, setImputando] = useState(false)
 
   if (isLoading || !f) {
     return (
@@ -170,9 +173,10 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
               <Button size="sm"
                 onClick={() => accion(() => aprobar.mutateAsync(f.id), sellable ? '✓ Revisada' : '✓ Aprobada')}
                 loading={aprobar.isPending}
-                disabled={!puedeAprobar || noApruebaPropia}
+                disabled={!puedeAprobar || noApruebaPropia || f.sin_imputar}
                 title={
                   !puedeAprobar ? 'No tenés permiso para aprobar'
+                  : f.sin_imputar ? 'Falta imputar: primero el concepto y el reparto por obra'
                   : noApruebaPropia ? `No podés aprobar una ${nombre} que cargaste vos: la tiene que aprobar otra persona`
                   : sellable ? 'Revisada: sale de «pagadas sin revisar»'
                   : nc ? 'Aprobar: baja la deuda de las facturas que acredita (o queda como crédito a favor)'
@@ -215,6 +219,21 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
           {nc && <span className="text-xs font-bold px-2 py-0.5 rounded bg-[#EEE8FF] text-[#5A2D82]">Nota de crédito</span>}
           <span className={`text-xs font-bold px-2 py-0.5 rounded ${meta.badge}`}>{estadoLabel(f.estado, f.clase)}</span>
           <span className="text-xs text-gris-dark">{estadoHint(f.estado, f.clase)}</span>
+          {f.origen_carga === 'arca_recibidos' && (
+            <span className="text-xs font-bold px-2 py-0.5 rounded bg-azul-light text-azul" title="Importada de «Mis Comprobantes Recibidos» de ARCA">ARCA</span>
+          )}
+          {f.tributos_a_revisar && (
+            <span className="text-xs font-bold px-2 py-0.5 rounded bg-naranja-light text-naranja-dark"
+              title="ARCA informa «otros tributos» sin decir cuáles: hasta clasificarlos, una percepción de IVA no se computa">
+              Otros tributos sin clasificar
+            </span>
+          )}
+          {f.periodo_iva_distinto && (
+            <span className="text-xs font-bold px-2 py-0.5 rounded bg-gris text-gris-dark"
+              title="Se informa en el Libro IVA de ese mes, no en el de la fecha del comprobante">
+              IVA: {fmtMesLargo(f.periodo_iva)}
+            </span>
+          )}
           {!nc && Number(f.nc_pendiente ?? 0) > 0 && (
             <span className="text-xs font-bold px-2 py-0.5 rounded bg-[#EEE8FF] text-[#5A2D82]"
               title="Una nota de crédito sin aprobar reserva esta parte: no se puede pagar con plata hasta que se apruebe o se anule">
@@ -223,6 +242,30 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
           )}
         </div>
 
+        {/* Importada de ARCA sin imputar (20260927b): primero los tributos, después el reparto. */}
+        {f.sin_imputar && f.estado !== 'anulada' && (
+          f.tributos_a_revisar ? (
+            <div className="flex items-center gap-2 flex-wrap border rounded p-2 text-xs bg-naranja-light border-naranja/30 text-naranja-dark">
+              <span className="flex-1 min-w-[200px]">
+                <b>Importada de ARCA.</b> Primero clasificá los otros tributos (si alguno es percepción, no se reparte a las obras); después se imputa.
+              </span>
+              <Button variant="secondary" size="sm" onClick={() => setCompletando(true)} disabled={!puedeEditar}
+                title={puedeEditar ? 'Clasificar los otros tributos de ARCA' : 'No tenés permiso para editar facturas'}>
+                Completar desglose
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 flex-wrap border rounded p-2 text-xs bg-amarillo-light border-amarillo/40 text-[#7A5000]">
+              <span className="flex-1 min-w-[200px]">
+                <b>Importada de ARCA: falta concepto y reparto por obra.</b> Hasta imputarla no se aprueba ni se paga.
+              </span>
+              <Button size="sm" onClick={() => setImputando(true)} disabled={!puedeEditar}
+                title={puedeEditar ? 'Elegir el concepto y repartirla por obra' : 'No tenés permiso para editar facturas'}>
+                Imputar
+              </Button>
+            </div>
+          )
+        )}
         {f.cuenta_cambio_tras_aprobar && (
           <Aviso tono="rojo">
             ⚠ El CBU o alias del proveedor cambió <b>después</b> de que se aprobó esta factura
@@ -269,7 +312,7 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
         <DesgloseFicha f={f} />
         {/* Completar el desglose (20260924v): también en una PAGADA, porque no
             cambia la plata (total y percepciones quedan iguales; lo valida la base). */}
-        {sinDesglose(f) && (
+        {sinDesglose(f) && !(f.sin_imputar && f.tributos_a_revisar) && (
           <div className="flex items-center gap-2 flex-wrap border rounded p-2 text-xs bg-naranja-light border-naranja/30 text-naranja-dark">
             <span className="flex-1 min-w-[200px]">
               {f.desglose_a_revisar ? 'El desglose de impuestos está marcado a revisar.' : 'Falta el IVA discriminado: lo necesita el Libro IVA de compras.'}
@@ -295,7 +338,10 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
           <Dato label="Cargó" valor={`${f.created_by_nombre ?? '—'}, ${fmtFecha(f.created_at)}`} />
         </div>
 
-        <ConceptoFicha f={f} puedeEditar={puedeEditar} />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <ConceptoFicha f={f} puedeEditar={puedeEditar} />
+          <PeriodoIvaEnLugar f={f} puedeEditar={puedeEditar} />
+        </div>
         {f.descripcion && <div><span className="text-[11px] font-bold text-gris-dark uppercase">Descripción</span><div>{f.descripcion}</div></div>}
         {f.obs && <div><span className="text-[11px] font-bold text-gris-dark uppercase">Observaciones</span><div className="text-gris-dark">{f.obs}</div></div>}
 
@@ -447,6 +493,7 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
 
         {completando && <ModalCompletarDesglose factura={f} onClose={() => setCompletando(false)} />}
         {aplicando && <ModalAplicarNc nc={f} onClose={() => setAplicando(false)} />}
+        {imputando && <ModalImputarFactura factura={f} onClose={() => setImputando(false)} />}
 
         {/* Pedir motivo */}
         {pidiendo && (
@@ -549,6 +596,65 @@ function ConceptoFicha({ f, puedeEditar }: { f: PagosFacturaDetalle; puedeEditar
           </Button>
           <Button variant="ghost" size="sm" onClick={() => setEditando(false)}>Cancelar</Button>
           {conceptos.isError && <span className="text-[11px] text-rojo">No se pudo traer la lista.</span>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * El período IVA (20260927a), editable en el lugar como el concepto: es
+ * clasificación fiscal, se cambia aunque esté aprobada o pagada y NO le saca
+ * la aprobación. Del mes de la fecha a 12 meses después (nunca antes). Si el
+ * mes de origen o el de destino están cerrados en Contabilidad, la base
+ * rebota con PERIODO_IVA_CERRADO.
+ */
+function PeriodoIvaEnLugar({ f, puedeEditar }: { f: PagosFacturaDetalle; puedeEditar: boolean }) {
+  const toast = useToast()
+  const [editando, setEditando] = useState(false)
+  const [valor, setValor] = useState('')
+  const editar = useEditarFactura()
+  const anulada = f.estado === 'anulada'
+  const actual = (f.periodo_iva ?? f.fecha).slice(0, 7)
+  const meses = mesesDesde(f.fecha.slice(0, 7), 13)
+
+  async function guardar() {
+    if (!valor || valor === actual) { setEditando(false); return }
+    try {
+      await editar.mutateAsync({ id: f.id, periodo_iva: `${valor}-01` })
+      toast(`✓ Se informa en el IVA de ${fmtMesLargo(valor)}`, 'ok')
+      setEditando(false)
+    } catch (e) {
+      toast(mensajeErrorPagos(e), 'err')
+    }
+  }
+
+  return (
+    <div>
+      <span className="text-[11px] font-bold text-gris-dark uppercase">Período IVA</span>
+      {!editando ? (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className={`text-xs font-semibold px-2 py-0.5 rounded ${f.periodo_iva_distinto ? 'bg-amarillo-light text-[#7A5000]' : 'bg-gris text-gris-dark'}`}>
+            {fmtMesLargo(actual)}
+          </span>
+          {f.periodo_iva_distinto && <span className="text-[11px] text-gris-dark">(la fecha es de {fmtMesLargo(f.fecha)})</span>}
+          {!anulada && (
+            <button type="button" onClick={() => { setValor(actual); setEditando(true) }} disabled={!puedeEditar}
+              title={puedeEditar ? 'Cambiar el mes del Libro IVA. Cambiarlo no le saca la aprobación' : 'No tenés permiso para editar facturas'}
+              className="text-[11px] text-azul hover:underline disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline">
+              Cambiar
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 flex-wrap mt-0.5">
+          <select value={valor} onChange={e => setValor(e.target.value)} aria-label="Período IVA"
+            className="px-2 py-1.5 border-[1.5px] border-gris-mid rounded text-sm bg-white outline-none focus:border-naranja">
+            {!meses.includes(actual) && <option value={actual}>{fmtMesLargo(actual)}</option>}
+            {meses.map(m => <option key={m} value={m}>{fmtMesLargo(m)}</option>)}
+          </select>
+          <Button size="sm" onClick={guardar} loading={editar.isPending} title="Cambiarlo no le saca la aprobación">Guardar</Button>
+          <Button variant="ghost" size="sm" onClick={() => setEditando(false)}>Cancelar</Button>
         </div>
       )}
     </div>

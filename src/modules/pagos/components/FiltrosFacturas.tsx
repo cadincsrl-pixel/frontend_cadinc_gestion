@@ -91,7 +91,9 @@ export function FiltrosFacturas({ filtro, patch, grupos }: Props) {
     filtro.q || filtro.clase || filtro.con_credito || filtro.concepto_id || filtro.obra_cod || filtro.centro_costo || filtro.tipo || filtro.forma_pago ||
     filtro.desde || filtro.hasta || filtro.sin_adjunto || filtro.sin_numero || filtro.sin_revisar || filtro.sin_desglose ||
     filtro.cuenta_cambiada || filtro.paga_cliente !== undefined || filtro.pagada_al_cargar !== undefined ||
-    filtro.es_interna !== undefined || filtro.anuladas
+    filtro.es_interna !== undefined || filtro.anuladas ||
+    filtro.periodo_iva || filtro.periodo_iva_distinto || filtro.sin_imputar !== false || filtro.tributos_a_revisar ||
+    filtro.origen_carga || filtro.importacion_id
   )
 
   return (
@@ -240,6 +242,25 @@ export function FiltrosFacturas({ filtro, patch, grupos }: Props) {
                 className="w-full px-2.5 py-2 border-[1.5px] border-gris-mid rounded text-xs bg-white outline-none focus:border-naranja" />
             </div>
             <div>
+              <label className="block text-xs font-semibold text-gris-dark mb-1">Período IVA</label>
+              <input type="month" value={filtro.periodo_iva?.slice(0, 7) ?? ''} onChange={e => patch({ periodo_iva: e.target.value || undefined })}
+                title="Mes en que se informan en el Libro IVA compras (puede no ser el de la fecha)"
+                className="w-full px-2.5 py-2 border-[1.5px] border-gris-mid rounded text-xs bg-white outline-none focus:border-naranja" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gris-dark mb-1">Importadas sin imputar</label>
+              <select
+                value={filtro.sin_imputar === undefined ? 'todas' : filtro.sin_imputar ? 'solo' : 'ocultar'}
+                onChange={e => patch({ sin_imputar: e.target.value === 'todas' ? undefined : e.target.value === 'solo' })}
+                title="Las importadas de ARCA sin concepto ni obra: no se aprueban ni se pagan hasta imputarlas"
+                className="w-full px-2.5 py-2 border-[1.5px] border-gris-mid rounded text-xs bg-white outline-none focus:border-naranja"
+              >
+                <option value="ocultar">Ocultarlas</option>
+                <option value="solo">Solo esas</option>
+                <option value="todas">Mostrar todas</option>
+              </select>
+            </div>
+            <div>
               <label className="block text-xs font-semibold text-gris-dark mb-1">Ordenar por</label>
               <select
                 value={filtro.orden ?? 'vencimiento'}
@@ -270,6 +291,16 @@ export function FiltrosFacturas({ filtro, patch, grupos }: Props) {
                    on={filtro.es_interna === true} set={v => patch({ es_interna: v ? true : undefined })} />
             <Tilde label="NC con crédito"        hint="Notas de crédito aprobadas que todavía tienen crédito sin aplicar"
                    on={!!filtro.con_credito}     set={v => patch({ con_credito: v || undefined, clase: v ? 'nota_credito' : filtro.clase })} />
+            <Tilde label="Informadas en otro mes" hint="El período IVA no es el mes de la fecha (se corrió a un mes posterior)"
+                   on={!!filtro.periodo_iva_distinto} set={v => patch({ periodo_iva_distinto: v || undefined })} />
+            <Tilde label="Tributos a revisar"    hint="«Otros tributos» de ARCA sin clasificar: se clasifican con «Completar desglose»"
+                   on={!!filtro.tributos_a_revisar} set={v => patch({ tributos_a_revisar: v || undefined })} />
+            <Tilde label="Importadas de ARCA"    hint="Cargadas desde «Mis Comprobantes Recibidos»"
+                   on={filtro.origen_carga === 'arca_recibidos'} set={v => patch({ origen_carga: v ? 'arca_recibidos' : undefined })} />
+            {filtro.importacion_id && (
+              <Tilde label={`De la importación #${filtro.importacion_id}`} hint="Solo las de esa importación: destildá para ver todas"
+                     on set={() => patch({ importacion_id: undefined })} />
+            )}
             <Tilde label="Incluir anuladas"      hint="Por default no se muestran"
                    on={!!filtro.anuladas}        set={v => patch({ anuladas: v || undefined })} />
             <Tilde label="Incluir obras archivadas" hint="Facturas de obras ya cerradas"
@@ -283,6 +314,8 @@ export function FiltrosFacturas({ filtro, patch, grupos }: Props) {
                 desde: undefined, hasta: undefined, sin_adjunto: undefined, sin_numero: undefined,
                 sin_revisar: undefined, sin_desglose: undefined, cuenta_cambiada: undefined, paga_cliente: undefined,
                 pagada_al_cargar: undefined, es_interna: undefined, anuladas: undefined, archivadas: undefined,
+                periodo_iva: undefined, periodo_iva_distinto: undefined, sin_imputar: false, tributos_a_revisar: undefined,
+                origen_carga: undefined, importacion_id: undefined,
               }) }}>
                 ✕ Limpiar filtros
               </Button>

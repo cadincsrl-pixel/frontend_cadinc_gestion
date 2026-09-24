@@ -203,6 +203,36 @@ export function fmtMes(s: string): string {
   return nombre ? `${nombre} ${a}` : s
 }
 
+const MESES_LARGOS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+
+/** «2026-09» o «2026-09-01» → «septiembre de 2026». */
+export function fmtMesLargo(s: string | null | undefined): string {
+  if (!s) return ''
+  const [a, m] = s.split('-')
+  const nombre = MESES_LARGOS[Number(m) - 1]
+  return nombre ? `${nombre} de ${a}` : s
+}
+
+/** «2026-09-01» → «sep». Para el chip «IVA sep» de la lista. */
+export function mesCorto(s: string | null | undefined): string {
+  if (!s) return ''
+  return MESES[Number(s.split('-')[1]) - 1] ?? ''
+}
+
+/**
+ * Los meses (`YYYY-MM`) desde el de `desde` hasta `cantidad − 1` después.
+ * El período IVA se puede correr hacia adelante, nunca antes de la fecha.
+ */
+export function mesesDesde(desde: string, cantidad = 13): string[] {
+  const [y, m] = desde.split('-').map(Number) as [number, number]
+  const out: string[] = []
+  for (let i = 0; i < cantidad; i++) {
+    const t = (m - 1) + i
+    out.push(`${y + Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, '0')}`)
+  }
+  return out
+}
+
 /** Tipo + número como se lee en el papel: «A 0001-00012345», «B s/n». */
 export function comprobanteTxt(tipo: PagosTipoComprobante, numero: string | null, clase?: PagosClaseComprobante | null): string {
   return `${clase === 'nota_credito' ? 'NC ' : ''}${tipo} ${numero?.trim() || 's/n'}`
@@ -438,6 +468,12 @@ export function describirFiltroFacturas(
   if (f.paga_cliente === false) p.push('las paga CADINC')
   if (f.pagada_al_cargar === true) p.push('cargadas ya pagadas')
   if (f.es_interna === true) p.push('de obra interna')
+  if (f.periodo_iva) p.push(`informadas en el IVA de ${fmtMesLargo(f.periodo_iva)}`)
+  if (f.periodo_iva_distinto) p.push('informadas en otro mes que el de la fecha')
+  if (f.sin_imputar === true) p.push('importadas sin imputar')
+  if (f.tributos_a_revisar) p.push('con otros tributos sin clasificar')
+  if (f.origen_carga === 'arca_recibidos') p.push('importadas de ARCA')
+  if (f.importacion_id) p.push(`de la importación #${f.importacion_id}`)
   if (f.anuladas) p.push('incluye anuladas')
   if (f.archivadas) p.push('incluye archivadas')
   return p.length === 0 ? 'todas las facturas' : p.join(' · ')

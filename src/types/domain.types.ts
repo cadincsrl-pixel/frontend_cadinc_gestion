@@ -1200,6 +1200,13 @@ export type ModuloPermisos = { [K in Accion]?: boolean } & {
   asientos_manuales?:      boolean
   cerrar_periodos?:        boolean
   editar_plan?:            boolean
+  // Contabilidad fase 3 (20260927): generar asientos automáticos y editar
+  // los mapeos (qué cuenta usa cada concepto). Default false.
+  contabilizar?:           boolean
+  editar_mapeos?:          boolean
+  // - pagos.importar_comprobantes: alta masiva de facturas recibidas desde
+  //   «Mis Comprobantes» de ARCA (quedan sin imputar). Default false.
+  importar_comprobantes?:  boolean
 }
 export type Permisos = Record<string, ModuloPermisos>
 
@@ -2647,6 +2654,150 @@ export interface PagosFactura {
   concepto_id:         number | null
   /** Nombre del concepto. */
   concepto:            string | null
+  // ── Período IVA (20260927a) ──
+  /** Mes (día 1, `YYYY-MM-01`) en que se informa en el Libro IVA compras. Default = mes de `fecha`. */
+  periodo_iva:          string
+  /** El período IVA no es el mes de la fecha (se corrió). */
+  periodo_iva_distinto: boolean
+  // ── Importadas de ARCA «Mis Comprobantes Recibidos» (20260927b/c) ──
+  /** Falta concepto y reparto por obra: no se aprueba ni se paga hasta imputarla. */
+  sin_imputar:          boolean
+  /** «Otros tributos» de ARCA sin clasificar: se clasifican con «Completar desglose» antes de imputar. */
+  tributos_a_revisar:   boolean
+  origen_carga:         PagosOrigenCarga
+  importacion_id:       number | null
+}
+
+export type PagosOrigenCarga = 'manual' | 'arca_recibidos'
+
+// ── Importador de «Mis Comprobantes Recibidos» (20260927c) ──
+
+/** Una fila del archivo de ARCA, ya normalizada (espejo de `FilaRecibidaSchema` del backend). */
+export interface PagosFilaRecibida {
+  fecha:               string
+  cbte_tipo:           number
+  pto_vta:             number
+  numero:              number
+  numero_hasta?:       number | null
+  cod_autorizacion?:   string | null
+  emisor_doc_tipo:     number | string
+  emisor_doc_nro:      string
+  emisor_razon_social: string
+  moneda:              string
+  tipo_cambio:         number
+  neto_gravado:        number
+  no_gravado:          number
+  exento:              number
+  otros_tributos:      number
+  iva:                 number
+  total:               number
+  /** null = formato clásico (sin columnas por alícuota). */
+  alicuotas?:          { alicuota_id: PagosAlicuotaId; base_imp: number; importe: number }[] | null
+}
+
+export interface PagosImportarRecibidosInput {
+  filas:         PagosFilaRecibida[]
+  archivo?:      string
+  hash_sha256?:  string | null
+  confirmar:     boolean
+}
+
+export interface PagosImportarAviso {
+  codigo:  string
+  detalle: Record<string, unknown> | null
+}
+
+export interface PagosImportarRecibidosFila {
+  indice:                number
+  estado:                'nueva' | 'duplicada' | 'error'
+  error:                 string | null
+  detalle:               Record<string, unknown> | null
+  avisos:                PagosImportarAviso[]
+  fecha:                 string | null
+  cbte_tipo:             number | null
+  tipo_comprobante:      PagosTipoComprobante | null
+  clase:                 PagosClaseComprobante | null
+  numero:                string | null
+  cuit:                  string | null
+  razon_social:          string | null
+  proveedor_id:          number | null
+  proveedor_nuevo:       boolean
+  neto:                  number | null
+  iva:                   number | null
+  no_gravado:            number | null
+  exento:                number | null
+  otros_tributos:        number | null
+  total:                 number | null
+  iva_detalle:           PagosIvaDetalle[] | null
+  desglose_a_revisar:    boolean
+  tributos_a_revisar:    boolean
+  factura_id:            number | null
+  factura_id_existente:  number | null
+}
+
+export interface PagosImportarRecibidosRes {
+  confirmado:          boolean
+  importacion_id:      number | null
+  total_filas:         number
+  nuevas:              number
+  duplicadas:          number
+  errores:             number
+  a_revisar_desglose:  number
+  a_revisar_tributos:  number
+  moneda_extranjera:   number
+  proveedores_nuevos:  { cuit: string; razon_social: string; proveedor_id: number | null }[]
+  por_mes:             { periodo: string; nuevas: number; total: number }[]
+  filas:               PagosImportarRecibidosFila[]
+}
+
+export interface PagosImportacion {
+  id:                 number
+  archivo:            string
+  hash_sha256:        string | null
+  fecha_desde:        string | null
+  fecha_hasta:        string | null
+  filas:              number
+  nuevas:             number
+  duplicadas:         number
+  proveedores_nuevos: number
+  created_at:         string
+  created_by_nombre:  string | null
+}
+
+export interface PagosImputarFacturaInput {
+  concepto_id:   number
+  imputaciones:  PagosImputacionInput[]
+  descripcion?:  string
+}
+
+export interface PagosImputarLoteInput {
+  ids:          number[]
+  concepto_id:  number
+  obra_cod:     string
+}
+
+/** `GET /facturas/periodo-iva-sugerido?fecha=` */
+export interface PagosPeriodoIvaSugerido {
+  periodo_iva: string
+  /** Difiere del mes de la fecha: ese mes ya está cerrado en Contabilidad. */
+  corrido:     boolean
+}
+
+/**
+ * «Marcar pagadas» (20260927h): compras ya pagadas con la tarjeta de la
+ * empresa o con saldo de Mercado Pago. Una OP POR FACTURA, cada una a su
+ * proveedor. `forma_pago` sale del tipo de la cuenta (tarjeta → 'tarjeta',
+ * billetera → 'otro'). Sin `fecha`, cada una en la fecha de su factura.
+ */
+export interface PagosMarcarPagadasInput {
+  factura_ids:      number[]
+  cuenta_origen_id: number
+  forma_pago:       'tarjeta' | 'otro'
+  fecha?:           string
+}
+export interface PagosMarcarPagadasRes {
+  ordenes: { factura_id: number; orden_id: number; numero: number }[]
+  total:   number
 }
 
 // ── Desglose de impuestos y lectura del comprobante (20260924u) ──
@@ -3006,7 +3157,8 @@ export interface PagosOrden {
 /** Cuenta propia de CADINC para «Sale de la cuenta» (GET /api/pagos/cuentas-origen). */
 export interface PagosCuentaOrigen {
   id:     number
-  tipo:   'banco' | 'caja' | 'valores'
+  /** `tarjeta` y `billetera` desde 20260927h (compras pagadas con tarjeta o Mercado Pago). */
+  tipo:   'banco' | 'caja' | 'valores' | 'tarjeta' | 'billetera'
   nombre: string
   banco:  string
   moneda: 'ARS' | 'USD'
@@ -3367,6 +3519,8 @@ export interface CrearFacturaInput {
   tributos?:            Omit<PagosTributo, 'id'>[] | null
   /** La lectura del comprobante (POST /facturas/leer): el archivo se adjunta solo. */
   lectura_id?:          number | null
+  /** `YYYY-MM-01`. Sin mandar (o null) la base pone el sugerido (20260927a). */
+  periodo_iva?:         string | null
 }
 
 /**
@@ -3403,6 +3557,8 @@ export interface EditarFacturaInput {
   tributos?:            Omit<PagosTributo, 'id'>[] | null
   /** Solo NC pendiente/observada: reemplaza las aplicaciones (`clase` no se edita). */
   aplica_a?:            PagosAplicaNcInput[]
+  /** Clasificación fiscal (20260927a): editable siempre, no desaprueba. No admite null. */
+  periodo_iva?:         string
 }
 
 export interface PagosLineaOrdenInput {
@@ -4311,6 +4467,11 @@ export interface VentasExterno {
   saldo_confirmado_el:   string | null
   saldo_motivo:          string
   saldo_cobrado_el:      string | null
+  /**
+   * Solo CVLP (060/061, 20260927d): lo que liquidó el comisionista (Casilda)
+   * después de su comisión. El asiento automático va por este neto.
+   */
+  liquido?:              number | null
   origen:                'finnegans' | 'portal' | 'otro'
   obs:                   string
   created_at:            string

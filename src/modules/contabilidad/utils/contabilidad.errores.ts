@@ -5,7 +5,8 @@
 // Si el error apunta a una línea del asiento, el backend manda
 // `campo: 'lineas.<indice>.<campo>'`.
 
-import { fmtFecha, fmtM } from './contabilidad.utils'
+import { ETIQUETA_CLAVE_MAPEO, etiquetaSubclave, fmtFecha, fmtM } from './contabilidad.utils'
+import type { CtbMotivo } from '@/types/contabilidad.types'
 
 interface CuerpoError {
   error?:  string
@@ -114,12 +115,13 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   // ── Plan de cuentas ──
   CODIGO_INVALIDO:         () => 'El código tiene que ser del tipo 1, 1.1, 1.1.01 o 1.1.01.001 (números separados por punto, el primero de 1 a 9).',
   NOMBRE_INVALIDO:         () => 'El nombre tiene que tener al menos 2 caracteres.',
-  RUBRO_REQUERIDO:         () => 'Una cuenta de primer nivel necesita el rubro.',
-  RUBRO_INVALIDO:          () => 'Rubro inválido (activo, pasivo, patrimonio neto, ingreso o egreso).',
+  RUBRO_REQUERIDO:         () => 'Falta el rubro: lo lleva una cuenta de primer nivel, y también una subcuenta de «Resultado» (ingreso o egreso: no se hereda).',
+  RESULTADO_SOLO_TITULO:   () => 'El rubro «Resultado» es solo para títulos: una cuenta imputable tiene que ser de ingreso o de egreso.',
+  RUBRO_INVALIDO:          () => 'Rubro inválido (activo, pasivo, patrimonio neto, ingreso, egreso o resultado).',
   AUXILIAR_INVALIDO:       () => 'Auxiliar inválido (ninguno, cliente, proveedor o tesorería).',
   PADRE_NO_EXISTE:         d => `No existe la cuenta madre${dato(d, 'padre_codigo') ? ` ${String(dato(d, 'padre_codigo'))}` : ''}: cargala primero.`,
   PADRE_IMPUTABLE:         () => 'La cuenta madre es imputable: una cuenta que recibe movimientos no puede tener subcuentas.',
-  RUBRO_DISTINTO_AL_PADRE: () => 'El rubro tiene que ser el mismo que el de la cuenta madre.',
+  RUBRO_DISTINTO_AL_PADRE: () => 'El rubro tiene que ser el mismo que el de la cuenta madre (salvo debajo de «Resultado», que admite ingreso, egreso o resultado).',
   AUXILIAR_SOLO_IMPUTABLE: () => 'Solo una cuenta imputable puede llevar auxiliar.',
   IMPUTABLE_CON_HIJAS:     () => 'La cuenta tiene subcuentas: no puede ser imputable.',
   CODIGO_DUPLICADO:        () => 'Ya existe una cuenta con ese código.',
@@ -132,7 +134,7 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   PADRE_INACTIVO:          () => 'La cuenta madre está dada de baja: reactivala primero.',
   CUENTA_EN_USO:           () => 'La cuenta está vinculada a una cuenta de tesorería: desvinculala primero.',
   SIN_FILAS:               () => 'El archivo no tiene cuentas para importar.',
-  DEMASIADAS_FILAS:        () => 'Son demasiadas filas de una vez: el máximo es 2000.',
+  DEMASIADAS_FILAS:        d => `Son demasiadas filas de una vez: el máximo es ${String(dato(d, 'max') ?? 2000)}.`,
   IMPORTACION_CON_ERRORES: d => {
     const errs = dato(d, 'errores')
     const n = Array.isArray(errs) ? errs.length : 0
@@ -140,10 +142,30 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   },
 
   // ── Tesorería ──
-  CUENTA_TESORERIA_INVALIDA: () => 'La cuenta contable de una cuenta de tesorería tiene que ser imputable, activa y del Activo.',
+  CUENTA_TESORERIA_INVALIDA: () => 'La cuenta contable de una cuenta de tesorería tiene que ser imputable, activa y del Activo (del Pasivo si es una tarjeta de crédito).',
   CBU_INVALIDO:              () => 'El CBU no es válido: 22 dígitos con sus verificadores.',
   ALIAS_INVALIDO:            () => 'El alias tiene que tener de 6 a 20 caracteres: letras, números, punto o guion.',
   TESORERIA_DUPLICADA:       () => 'Ya hay una cuenta de tesorería activa con ese nombre o ese CBU.',
+
+  // ── Asientos automáticos y mapeos (fase 3, 20260927) ──
+  SIN_PERMISO_CONTABILIZAR: () => 'No tenés permiso para contabilizar (hace falta «Contabilizar automáticos»).',
+  SIN_PERMISO_MAPEOS:       () => 'No tenés permiso para editar los mapeos (hace falta «Editar mapeos contables»).',
+  CLAVE_INVALIDA:           () => 'Ese tipo de mapeo no existe.',
+  SUBCLAVE_INVALIDA:        d => `«${String(dato(d, 'subclave') ?? '')}» no es una opción válida para ${String(ETIQUETA_CLAVE_MAPEO[String(dato(d, 'clave') ?? '')] ?? dato(d, 'clave') ?? 'ese mapeo')}.`,
+  MAPEO_CUENTA_INCOMPATIBLE: d => {
+    const perm = dato(d, 'permitidos')
+    const lista = perm && typeof perm === 'object' ? Object.values(perm as Record<string, unknown>).flat().map(String).join(', ') : ''
+    return `Esa cuenta no sirve para este mapeo${dato(d, 'rubro') ? ` (es del rubro ${String(dato(d, 'rubro'))})` : ''}${lista ? `: se acepta ${lista}` : ''}.`
+  },
+  CONFIG_INVALIDA:          d => `Valor inválido en la configuración${dato(d, 'clave') ? ` («${String(dato(d, 'clave'))}»)` : ''}.`,
+  ORIGEN_INVALIDO:          () => 'Origen inválido.',
+  ORIGEN_NO_EXISTE:         () => 'El comprobante de origen no existe o ya no está.',
+  FECHA_FUTURA:             () => 'La fecha no puede ser posterior a hoy.',
+  CONTABILIZADOR_OCUPADO:   () => 'Otra persona está contabilizando en este momento. Probá de nuevo en un minuto.',
+  HAY_PENDIENTES_AUTOMATICOS: d => {
+    const n = Number(dato(d, 'cantidad'))
+    return `El mes tiene ${Number.isFinite(n) && n > 0 ? n : 'algunos'} comprobante${n === 1 ? '' : 's'} de Ventas o Compras sin contabilizar o desactualizado${n === 1 ? '' : 's'}.`
+  },
 
   // ── Guardas internas (no deberían llegar) ──
   ASIENTO_SOLO_RPC:            () => 'Error interno: el asiento solo se modifica por el circuito de contabilidad. Avisá al administrador.',
@@ -198,6 +220,38 @@ export function errorDeCampoCtb(e: unknown): { campo: string; mensaje: string } 
   const msgDetail = dato(detail, 'mensaje')
   const mensaje = error === 'DATOS_INVALIDOS' && typeof msgDetail === 'string' ? msgDetail : mensajeErrorCtb(e)
   return { campo, mensaje }
+}
+
+/**
+ * Los motivos por los que un origen no se contabiliza (fase 3). No son
+ * errores HTTP: viajan en `motivos[]` de los pendientes y de la propuesta.
+ * `etiqueta` resuelve el nombre de la clave con el catálogo de mapeos si está
+ * a mano; si no, el fijo.
+ */
+const MOTIVOS: Record<string, (d: Record<string, unknown>, etq: (clave: string) => string) => string> = {
+  SIN_MAPEO: (d, etq) => {
+    const clave = String(d.clave ?? '')
+    const sub = etiquetaSubclave(clave, d.subclave == null ? '' : String(d.subclave))
+    return `Falta la cuenta para ${etq(clave) || clave}${sub ? ` · ${sub}` : ''}.`
+  },
+  AUXILIAR_REQUERIDO:          () => 'La cuenta mapeada pide un auxiliar (cliente, proveedor o tesorería) y el comprobante no lo trae.',
+  MAPEO_AUXILIAR_INCOMPATIBLE: () => 'La cuenta mapeada pide un auxiliar de otro tipo: revisá el mapeo.',
+  DESGLOSE_A_REVISAR:          () => 'La factura tiene el desglose de IVA a revisar: completalo en Compras.',
+  PAGA_CLIENTE_SIN_CRITERIO:   () => 'La paga el cliente: falta definir cómo se contabiliza (pregunta al contador).',
+  CVLP_SIN_LIQUIDO:            () => 'Es una CVLP y falta el líquido (lo que pagó Casilda): cargalo en Ventas › Saldos iniciales.',
+  CVLP_LIQUIDO_INVALIDO:       () => 'El líquido de la CVLP no alcanza a cubrir el IVA: revisalo.',
+  TESORERIA_SIN_VINCULO:       () => 'La cuenta bancaria del cobro no está vinculada a una cuenta de tesorería.',
+  TESORERIA_SIN_CUENTA:        () => 'La cuenta de tesorería no tiene cuenta contable vinculada (Plan › Cuentas de tesorería).',
+  PERIODO_CERRADO:             d => `El período${d.fecha ? ` del ${fmtFecha(String(d.fecha))}` : ''} está cerrado.`,
+  FECHA_SIN_PERIODO:           d => `No hay período contable para el ${fmtFecha(String(d.fecha ?? '')) || 'día del comprobante'}.`,
+  DESCUADRE_ORIGEN:            d => `El asiento no cuadra${d.diferencia !== undefined ? ` por ${fmtM(Math.abs(Number(d.diferencia)))}` : ''} (y no hay cuenta de redondeo, o la diferencia es grande).`,
+  ERROR_INTERNO:               d => `Error al calcularlo${d.mensaje ? `: ${String(d.mensaje)}` : ''}. Avisá al administrador.`,
+}
+
+export function mensajeMotivo(m: Pick<CtbMotivo, 'codigo' | 'detalle'>, etiquetaClave?: (clave: string) => string | undefined): string {
+  const etq = (c: string) => etiquetaClave?.(c) ?? ETIQUETA_CLAVE_MAPEO[c] ?? c
+  const fn = MOTIVOS[m.codigo]
+  return fn ? fn(m.detalle ?? {}, etq) : mensajeCodigoCtb(m.codigo, m.detalle)
 }
 
 /** Error de UNA fila del importador del plan. */

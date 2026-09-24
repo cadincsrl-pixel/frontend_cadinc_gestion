@@ -20,6 +20,8 @@ import type {
   PagosAviso, PagosAvisoResultado, PagosMailEstado, PagosLecturaRes, PagosAplicaNcInput, PagosClaseComprobante,
   PagosDesgloseInput, PagosDesgloseLeidoRes, PagosCompletarDesgloseRes,
   RegistrarOrdenRes, PagosChequeLecturaRes,
+  PagosImportacion, PagosImportarRecibidosInput, PagosImportarRecibidosRes, PagosImputarFacturaInput,
+  PagosImputarLoteInput, PagosOrigenCarga, PagosPeriodoIvaSugerido, PagosMarcarPagadasInput, PagosMarcarPagadasRes,
 } from '@/types/domain.types'
 
 // ── Claves ────────────────────────────────────────────────────────────
@@ -45,18 +47,32 @@ export const PAGOS_KEYS = {
   catalogoObras:   ['pagos', 'catalogos', 'obras'] as const,
   cuentasOrigen:   ['pagos', 'catalogos', 'cuentas-origen'] as const,
   conceptos:       ['pagos', 'conceptos'] as const,
+  /** Período IVA sugerido para una fecha (20260927a). */
+  periodoIva:      (fecha: string) => ['pagos', 'periodo-iva', fecha] as const,
+  /** Cuántas importadas faltan imputar (chip de la bandeja). */
+  sinImputar:      ['pagos', 'facturas', 'sin-imputar-count'] as const,
+  importaciones:   ['pagos', 'importaciones'] as const,
   notifAprobar:    ['pagos', 'notificaciones', 'para-aprobar'] as const,
   notifSinRevisar: ['pagos', 'notificaciones', 'sin-revisar'] as const,
   notifVenc:       ['pagos', 'notificaciones', 'vencimientos'] as const,
   notifObs:        ['pagos', 'notificaciones', 'observadas'] as const,
 }
 
-/** Invalida TODO el módulo más las cuatro secciones de la campana. Una sola puerta. */
+/**
+ * Invalida TODO el módulo más las cuatro secciones de la campana. Una sola puerta.
+ *
+ * También los pendientes del motor de asientos de Contabilidad (20260927):
+ * imputar o corregir una factura cambia su propuesta, y quien vuelve desde
+ * «Ir al origen» tiene que ver la fila al día. Es solo lectura del otro
+ * módulo: la clave va literal para no importar sus hooks.
+ */
 export function invalidarPagos(qc: QueryClient) {
   qc.invalidateQueries({ queryKey: PAGOS_KEYS.todo })
   for (const k of [PAGOS_KEYS.notifAprobar, PAGOS_KEYS.notifSinRevisar, PAGOS_KEYS.notifVenc, PAGOS_KEYS.notifObs]) {
     qc.invalidateQueries({ queryKey: k })
   }
+  qc.invalidateQueries({ queryKey: ['contabilidad', 'automaticos'] })
+  qc.invalidateQueries({ queryKey: ['contabilidad', 'propuesta'] })
 }
 
 // ── Filtros ───────────────────────────────────────────────────────────
@@ -96,6 +112,21 @@ export interface PagosFacturasFiltro {
   con_credito?: boolean
   /** Concepto de compra (20260925). */
   concepto_id?: number
+  /** Mes del Libro IVA, `YYYY-MM` (20260927a). */
+  periodo_iva?:          string
+  /** Informadas en otro mes que el de la fecha. */
+  periodo_iva_distinto?: boolean
+  /**
+   * Importadas de ARCA sin concepto ni reparto (20260927b). Tri-estado: sin
+   * definir no filtra, `false` las esconde (la bandeja arranca así) y `true`
+   * trae solo esas.
+   */
+  sin_imputar?:          boolean
+  /** «Otros tributos» de ARCA sin clasificar. */
+  tributos_a_revisar?:   boolean
+  origen_carga?:         PagosOrigenCarga
+  /** Las de una importación puntual (link del importador). */
+  importacion_id?:       number
 }
 
 export interface PagosOrdenesFiltro {
@@ -141,8 +172,19 @@ function qsFacturas(f: PagosFacturasFiltro, extra: ExtraQuery = {}): string {
   if (f.clase)            p.set('clase', f.clase)
   if (f.con_credito)      p.set('con_credito', '1')
   if (f.concepto_id)      p.set('concepto_id', String(f.concepto_id))
+  if (f.periodo_iva)      p.set('periodo_iva', f.periodo_iva.slice(0, 7))
+  if (f.periodo_iva_distinto) p.set('periodo_iva_distinto', '1')
+  if (f.sin_imputar !== undefined) p.set('sin_imputar', f.sin_imputar ? '1' : '0')
+  if (f.tributos_a_revisar) p.set('tributos_a_revisar', '1')
+  if (f.origen_carga)     p.set('origen_carga', f.origen_carga)
+  if (f.importacion_id)   p.set('importacion_id', String(f.importacion_id))
   for (const [k, v] of Object.entries(extra)) if (v !== undefined) p.set(k, String(v))
   return p.toString()
+}
+
+/** El query string de un filtro de facturas (lo usa la campana para contar igual que la bandeja). */
+export function queryFacturas(f: PagosFacturasFiltro): string {
+  return qsFacturas(f)
 }
 
 function qsOrdenes(f: PagosOrdenesFiltro, extra: ExtraQuery = {}): string {
@@ -243,6 +285,37 @@ export function useFacturasDetalle(ids: number[]) {
       queryFn:  () => apiGet<PagosFacturaDetalle>(`/api/pagos/facturas/${id}`),
       staleTime: 30_000,
     })),
+  })
+}
+
+/**
+ * Cuántas facturas coinciden con un filtro, sin bajar la lista: `limit=1` y
+ * se toma el `total`. Lo usa el chip «Sin imputar (N)», con EL MISMO filtro
+ * que el deep-link `aviso=sin-imputar` (§5.9: el número y la pantalla no
+ * pueden diferir).
+ */
+export function useContarFacturas(f: PagosFacturasFiltro, enabled = true) {
+  const qs = qsFacturas(f, { limit: 1, offset: 0 })
+  return useQuery({
+    queryKey: [...PAGOS_KEYS.sinImputar, qs],
+    queryFn:  async () => (await apiGet<PagosFacturasPage>(`/api/pagos/facturas?${qs}`)).total,
+    staleTime: 60_000,
+    enabled,
+  })
+}
+
+/**
+ * Período IVA sugerido para la fecha (20260927a): el mes de la fecha, o el
+ * primero abierto si ese mes ya está cerrado en Contabilidad.
+ */
+export function usePeriodoIvaSugerido(fecha: string | null | undefined, enabled = true) {
+  const valida = !!fecha && /^\d{4}-\d{2}-\d{2}$/.test(fecha)
+  return useQuery({
+    queryKey: PAGOS_KEYS.periodoIva(fecha ?? ''),
+    queryFn:  () => apiGet<PagosPeriodoIvaSugerido>(`/api/pagos/facturas/periodo-iva-sugerido?fecha=${fecha}`),
+    enabled:  enabled && valida,
+    staleTime: 5 * 60_000,
+    retry: false,
   })
 }
 
@@ -395,6 +468,64 @@ export function useAnularFactura() {
   return useMutation({
     mutationFn: ({ id, motivo }: { id: number; motivo: string }) =>
       apiPost<AnularFacturaRes>(`/api/pagos/facturas/${id}/anular`, { motivo }),
+    onSuccess:  () => invalidarPagos(qc),
+  })
+}
+
+// ── Importar «Mis Comprobantes Recibidos» e imputar (20260927b/c) ─────
+
+/**
+ * Vista previa (`confirmar:false`, no escribe nada) o importación (todo o
+ * nada). Solo la confirmada invalida: la vista previa no cambió nada.
+ */
+export function useImportarRecibidos() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: PagosImportarRecibidosInput) =>
+      apiPost<PagosImportarRecibidosRes>('/api/pagos/facturas/importar-arca', body),
+    onSuccess:  (r) => { if (r.confirmado) invalidarPagos(qc) },
+  })
+}
+
+export function useImportaciones(enabled = true) {
+  return useQuery({
+    queryKey: PAGOS_KEYS.importaciones,
+    queryFn:  () => apiGet<PagosImportacion[]>('/api/pagos/importaciones'),
+    staleTime: 60_000,
+    enabled,
+  })
+}
+
+/** Concepto + reparto por obra de UNA importada. Después se aprueba como cualquier otra. */
+export function useImputarFactura() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...body }: PagosImputarFacturaInput & { id: number }) =>
+      apiPost<{ factura: PagosFactura }>(`/api/pagos/facturas/${id}/imputar`, body),
+    onSuccess:  () => invalidarPagos(qc),
+  })
+}
+
+/** Imputar varias al 100 % a una obra con un concepto. Todo o nada (máx. 200). */
+export function useImputarLote() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: PagosImputarLoteInput) =>
+      apiPost<{ imputadas: number; ids: number[] }>('/api/pagos/facturas/imputar-lote', body),
+    onSuccess:  () => invalidarPagos(qc),
+  })
+}
+
+/**
+ * «Marcar pagadas (tarjeta / Mercado Pago)» (20260927h): una OP por factura,
+ * todo o nada. Mueve facturas, órdenes, saldos por proveedor y la campana:
+ * `invalidarPagos` cubre las cuatro.
+ */
+export function useMarcarPagadas() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: PagosMarcarPagadasInput) =>
+      apiPost<PagosMarcarPagadasRes>('/api/pagos/facturas/marcar-pagadas', body),
     onSuccess:  () => invalidarPagos(qc),
   })
 }

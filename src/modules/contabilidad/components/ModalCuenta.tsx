@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
 import type { CtbCuenta, CtbCuentaInput } from '@/types/contabilidad.types'
 import { useGuardarCuenta } from '../hooks/useContabilidad'
-import { AUXILIARES, RUBROS, rubroLabel } from '../utils/contabilidad.utils'
+import { AUXILIARES, RUBROS, rubroLabel, rubrosHija } from '../utils/contabilidad.utils'
 import { errorDeCampoCtb, mensajeErrorCtb } from '../utils/contabilidad.errores'
 import { Aviso, Campo, inputCls } from './Comun'
 
@@ -18,7 +18,9 @@ import { Aviso, Campo, inputCls } from './Comun'
  *
  * El código arma el árbol: «1.1.01» es hija de «1.1». La madre la deriva la
  * base; acá solo se muestra. El rubro se elige en el nivel 1 y las
- * subcuentas lo heredan. Una cuenta con movimientos no cambia código, rubro,
+ * subcuentas lo heredan, salvo debajo de un título «Resultado» (plan de
+ * Finnegans, 20260927): ahí cada hija dice si es ingreso, egreso o otro
+ * título de resultado. `resultado` es solo para títulos (no imputables). Una cuenta con movimientos no cambia código, rubro,
  * imputable ni auxiliar (se ven, bloqueados): solo el nombre y la obs.
  */
 
@@ -27,13 +29,14 @@ const CODIGO_RE = /^[1-9](\.[0-9]{1,3}){0,5}$/
 const schema = z.object({
   codigo:    z.string().trim().regex(CODIGO_RE, 'Números separados por punto: 1, 1.1, 1.1.01, 1.1.01.001'),
   nombre:    z.string().trim().min(2, 'Al menos 2 caracteres').max(120, 'Hasta 120 caracteres'),
-  rubro:     z.enum(['', 'activo', 'pasivo', 'pn', 'ingreso', 'egreso']),
+  rubro:     z.enum(['', 'activo', 'pasivo', 'pn', 'ingreso', 'egreso', 'resultado']),
   imputable: z.boolean(),
   auxiliar:  z.enum(['none', 'cliente', 'proveedor', 'tesoreria']),
   obs:       z.string().max(500, 'Hasta 500 caracteres'),
 }).superRefine((d, ctx) => {
   if (!d.codigo.includes('.') && !d.rubro) ctx.addIssue({ code: 'custom', path: ['rubro'], message: 'Una cuenta de primer nivel lleva el rubro' })
   if (!d.imputable && d.auxiliar !== 'none') ctx.addIssue({ code: 'custom', path: ['auxiliar'], message: 'Solo una cuenta imputable lleva auxiliar' })
+  if (d.imputable && d.rubro === 'resultado') ctx.addIssue({ code: 'custom', path: ['rubro'], message: '«Resultado» es solo para títulos: una imputable es ingreso o egreso' })
 })
 type FormData = z.infer<typeof schema>
 
@@ -64,6 +67,11 @@ export function ModalCuenta({ cuenta, codigoInicial, cuentas, onClose }: {
   const nivel = codigoLimpio ? codigoLimpio.split('.').length : 1
   const padreCodigo = nivel > 1 ? codigoLimpio.split('.').slice(0, -1).join('.') : null
   const padre = padreCodigo ? cuentas.find(c => c.codigo === padreCodigo) : undefined
+  // Debajo de «Resultado» la hija elige (ingreso, egreso o resultado): no hereda.
+  const opcionesHija = rubrosHija(padre?.rubro)
+  const eligeRubro = nivel === 1 || !!opcionesHija
+  const opcionesRubro = (opcionesHija ? RUBROS.filter(r => opcionesHija.includes(r.key)) : RUBROS)
+    .filter(r => r.key !== 'resultado' || !imputable)
 
   const conMov = !!cuenta?.tiene_movimientos
   const conHijas = (cuenta?.cant_hijas ?? 0) > 0
@@ -73,10 +81,14 @@ export function ModalCuenta({ cuenta, codigoInicial, cuentas, onClose }: {
 
   async function enviar(d: FormData) {
     setErrorServer(null)
+    if (opcionesHija && (!d.rubro || !opcionesHija.includes(d.rubro))) {
+      setError('rubro', { message: 'Debajo de «Resultado» elegí si es ingreso, egreso o resultado' })
+      return
+    }
     const body: Partial<CtbCuentaInput> = { nombre: d.nombre.trim(), obs: d.obs.trim() }
     if (!conMov) {
       if (!lockCodigo) body.codigo = d.codigo.trim()
-      if (nivel === 1 && d.rubro) body.rubro = d.rubro
+      if (eligeRubro && d.rubro) body.rubro = d.rubro
       if (!lockImputable) body.imputable = d.imputable
       body.auxiliar = d.imputable ? d.auxiliar : 'none'
     }
@@ -115,12 +127,13 @@ export function ModalCuenta({ cuenta, codigoInicial, cuentas, onClose }: {
           </Campo>
         </div>
 
-        {nivel === 1 ? (
-          <Campo label="Rubro" error={errors.rubro?.message}>
+        {eligeRubro ? (
+          <Campo label="Rubro" hint={opcionesHija && padre ? `subcuenta de ${padre.codigo} (Resultado)` : undefined} error={errors.rubro?.message}>
             <select {...register('rubro')} disabled={!!lockMov} title={lockMov ?? undefined} className={inputCls}>
               <option value="">— Elegí —</option>
-              {RUBROS.map(r => <option key={r.key} value={r.key}>{r.label}</option>)}
+              {opcionesRubro.map(r => <option key={r.key} value={r.key}>{r.label}</option>)}
             </select>
+            {imputable && !opcionesHija && <span className="text-[11px] text-gris-dark">«Resultado» se ofrece solo para títulos (no imputables).</span>}
           </Campo>
         ) : (
           <div className="text-xs text-gris-dark">

@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
 import { Pagination } from '@/components/ui/Pagination'
 import { useToast } from '@/components/ui/Toast'
@@ -34,7 +35,12 @@ export function FacturasTab() {
 
   const [filtro, setFiltro] = useState<FacturasFiltro>({})
   const [page, setPage] = useState(1)
-  const [fichaId, setFichaId] = useState<number | null>(null)
+  // `&ficha=<id>` (Contabilidad › Automáticos › «Ir al origen») abre esa factura.
+  const sp = useSearchParams()
+  const [fichaId, setFichaId] = useState<number | null>(() => {
+    const n = Number(sp.get('ficha'))
+    return Number.isInteger(n) && n > 0 ? n : null
+  })
   const [modal, setModal] = useState<{ open: boolean; editarId?: number; ncDe?: VentasFacturaFJ }>({ open: false })
   const [emitir, setEmitir] = useState<VentasFacturaFJ | null>(null)
   const [verificandoId, setVerificandoId] = useState<number | null>(null)

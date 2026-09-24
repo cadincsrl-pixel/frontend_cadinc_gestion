@@ -6,7 +6,7 @@ import { Pagination } from '@/components/ui/Pagination'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import {
-  useFacturas, useFacturasResumen, useAprobarFacturas, fetchFacturasExport,
+  useFacturas, useFacturasResumen, useAprobarFacturas, fetchFacturasExport, useContarFacturas,
   type PagosFacturasFiltro,
 } from '../hooks/usePagos'
 import { useSaldosProveedores } from '../hooks/useProveedoresPagos'
@@ -24,6 +24,9 @@ import { ModalExcelGalicia } from './ModalExcelGalicia'
 import { PreguntarAvisoPago } from './PreguntarAvisoPago'
 import { DeudaPorProveedor } from './DeudaPorProveedor'
 import { ModalConceptosCompra } from './ModalConceptosCompra'
+import { ModalImportarRecibidos } from './ModalImportarRecibidos'
+import { ModalImputarLote } from './ModalImputarLote'
+import { ModalMarcarPagadas, marcablesComoPagadas } from './ModalMarcarPagadas'
 
 const PAGE_SIZE = 50
 
@@ -32,16 +35,32 @@ const PAGE_SIZE = 50
  * Cada uno replica EXACTAMENTE la query de su aviso en `useNotificaciones`:
  * si no coincidieran, el aviso diría "3" y la pantalla mostraría otra cosa.
  */
-const FILTRO_POR_AVISO: Record<string, PagosFacturasFiltro> = {
-  aprobar:      { estados: ['pendiente'], paga_cliente: false, orden: 'vencimiento' },
+export const FILTRO_POR_AVISO: Record<string, PagosFacturasFiltro> = {
+  // Sin las importadas sin imputar (20260927b): no se pueden aprobar hasta
+  // imputarlas, y con mil importadas el aviso diría «1000 para aprobar».
+  aprobar:      { estados: ['pendiente'], paga_cliente: false, sin_imputar: false, orden: 'vencimiento' },
   vencidas:     { vencimiento: 'vencidas', paga_cliente: false, orden: 'vencimiento' },
   'sin-revisar':{ sin_revisar: true,  orden: 'vencimiento' },
   observadas:   { estados: ['observada'], orden: 'vencimiento' },
+  // Importadas de ARCA que faltan imputar (20260927b). Lo usan el chip
+  // «Sin imputar (N)» y el link del importador: el mismo filtro para los dos.
+  'sin-imputar':{ sin_imputar: true, estados: ['pendiente', 'observada'], orden: 'fecha' },
 }
 
+/**
+ * «Abiertas, por vencimiento», SIN las importadas sin imputar: la bandeja «a
+ * pagar» no se llena con mil comprobantes de ARCA. Esas se ven con el chip
+ * «Sin imputar» o con el filtro.
+ */
 const FILTRO_INICIAL: PagosFacturasFiltro = {
   estados: ['pendiente', 'observada', 'aprobada', 'pagada_parcial'],
+  sin_imputar: false,
   orden:   'vencimiento',
+}
+
+function filtroDeUrl(aviso: string | null | undefined, importacion: number | null | undefined): PagosFacturasFiltro {
+  const base = (aviso ? FILTRO_POR_AVISO[aviso] : undefined) ?? FILTRO_INICIAL
+  return aviso === 'sin-imputar' && importacion ? { ...base, importacion_id: importacion } : base
 }
 
 /**
@@ -55,19 +74,29 @@ const FILTRO_INICIAL: PagosFacturasFiltro = {
  * El filtro arranca en «abiertas, por vencimiento»: lo primero que alguien
  * quiere ver al entrar es qué hay que pagar, no el historial.
  */
-export function FacturasTab({ aviso }: { aviso?: string | null }) {
+export function FacturasTab({ aviso, importacion, ficha }: {
+  aviso?:       string | null
+  /** `&importacion=<id>` junto con `aviso=sin-imputar`: las de una importación. */
+  importacion?: number | null
+  /** `&ficha=<id>`: abre la ficha de esa factura (lo usa Contabilidad › Automáticos). */
+  ficha?:       number | null
+}) {
   const toast = useToast()
-  const { puedeVer, puedeCrear, puedeEditar, registrarPagos, aprobarFacturas, esAdmin, verPii } = usePermisos('pagos')
+  const { puedeVer, puedeCrear, puedeEditar, registrarPagos, aprobarFacturas, esAdmin, verPii, importarComprobantes } = usePermisos('pagos')
   const puedeAprobar = !!(aprobarFacturas || esAdmin)
   const puedePagar   = !!(registrarPagos || esAdmin)
+  const puedeImportar = !!(esAdmin || (puedeCrear && importarComprobantes))
+  const puedeMarcarPagadas = !!(puedeCrear || esAdmin)
 
   // `aviso` sólo decide el estado INICIAL: una vez adentro el usuario manda,
   // y no se reescribe la URL para no pelearse con el historial del navegador.
-  const [filtro, setFiltro] = useState<PagosFacturasFiltro>(
-    () => (aviso ? FILTRO_POR_AVISO[aviso] : undefined) ?? FILTRO_INICIAL)
+  const [filtro, setFiltro] = useState<PagosFacturasFiltro>(() => filtroDeUrl(aviso, importacion))
   const [page, setPage] = useState(1)
   const [seleccion, setSeleccion] = useState<Set<number>>(new Set())
-  const [fichaId, setFichaId] = useState<number | null>(null)
+  const [fichaId, setFichaId] = useState<number | null>(ficha ?? null)
+  const [modalImportar, setModalImportar] = useState(false)
+  const [modalImputarLote, setModalImputarLote] = useState(false)
+  const [modalMarcarPagadas, setModalMarcarPagadas] = useState(false)
   const [modalCargar, setModalCargar] = useState<{ open: boolean; editarId?: number }>({ open: false })
   const [modalPago, setModalPago] = useState<{ open: boolean; facturaIds: number[] }>({ open: false, facturaIds: [] })
   const [modalGalicia, setModalGalicia] = useState(false)
@@ -84,6 +113,9 @@ export function FacturasTab({ aviso }: { aviso?: string | null }) {
   const resumen = useFacturasResumen(filtro, 'estado', puedeVer)
   const saldos  = useSaldosProveedores(puedeVer)
   const aprobarLote = useAprobarFacturas()
+  // Chip «Sin imputar (N)»: el MISMO filtro que el deep-link (§5.9).
+  const sinImputar = useContarFacturas(FILTRO_POR_AVISO['sin-imputar']!, puedeVer)
+  const verSinImputar = filtro.sin_imputar === true
 
   const items = useMemo(() => lista.data?.items ?? [], [lista.data])
   const total = lista.data?.total ?? 0
@@ -147,6 +179,11 @@ export function FacturasTab({ aviso }: { aviso?: string | null }) {
   )
   const unSoloProveedor = pagables.length > 0 && new Set(pagables.map(f => f.proveedor_id)).size === 1
 
+  // Imputar en lote: importadas sin imputar. Marcar pagadas: cualquier
+  // proveedor, sin aprobar (hecho consumado con tarjeta o billetera).
+  const imputables = useMemo(() => seleccionadas.filter(f => f.sin_imputar && f.estado !== 'anulada'), [seleccionadas])
+  const marcables  = useMemo(() => marcablesComoPagadas(seleccionadas), [seleccionadas])
+
   async function exportar() {
     if (total === 0) { toast('No hay facturas para exportar con estos filtros', 'err'); return }
     setExportando(true)
@@ -201,6 +238,25 @@ export function FacturasTab({ aviso }: { aviso?: string | null }) {
           >
             + Cargar factura / NC
           </Button>
+          <Button
+            variant="secondary" size="sm" onClick={() => setModalImportar(true)}
+            disabled={!puedeImportar}
+            title={puedeImportar
+              ? 'Alta masiva desde «Mis Comprobantes Recibidos» de ARCA, con vista previa: entran impagas y sin imputar'
+              : !puedeCrear ? 'No tenés permiso para cargar facturas'
+              : 'No tenés permiso para importar comprobantes de ARCA (hace falta «Importar comprobantes de ARCA»)'}
+          >
+            📥 Importar de ARCA
+          </Button>
+          {(sinImputar.data ?? 0) > 0 && (
+            <button type="button"
+              onClick={() => patch(verSinImputar ? FILTRO_INICIAL_PATCH : { ...FILTRO_POR_AVISO['sin-imputar'], importacion_id: undefined })}
+              title={verSinImputar ? 'Volver a la bandeja' : 'Importadas de ARCA que faltan imputar (concepto y obra): no se aprueban ni se pagan hasta imputarlas'}
+              className={`text-xs px-2.5 py-1.5 rounded border font-semibold transition ${verSinImputar
+                ? 'border-naranja bg-naranja-light text-naranja-dark' : 'border-amarillo/60 bg-amarillo-light text-[#7A5000] hover:brightness-95'}`}>
+              {verSinImputar ? '✕ ' : ''}Sin imputar ({sinImputar.data})
+            </button>
+          )}
           {seleccionadas.length > 0 && (
             <>
               <Button
@@ -228,6 +284,32 @@ export function FacturasTab({ aviso }: { aviso?: string | null }) {
                 }
               >
                 💸 Pagar {pagables.length > 0 ? pagables.length : ''}
+              </Button>
+              <Button
+                variant="secondary" size="sm"
+                onClick={() => setModalImputarLote(true)}
+                disabled={!puedeEditar || imputables.length === 0}
+                title={
+                  !puedeEditar ? 'No tenés permiso para editar facturas'
+                  : imputables.length === 0 ? 'De lo seleccionado, no hay importadas sin imputar'
+                  : `Ponerle concepto y obra a ${imputables.length} importada(s)`
+                }
+              >
+                🏷 Imputar… {imputables.length > 0 ? imputables.length : ''}
+              </Button>
+              {/* Compras de Mercado Libre y similares (20260927h): vendedores
+                  distintos, ya pagadas con la tarjeta o con Mercado Pago. */}
+              <Button
+                variant="secondary" size="sm"
+                onClick={() => setModalMarcarPagadas(true)}
+                disabled={!puedeMarcarPagadas || marcables.length === 0}
+                title={
+                  !puedeMarcarPagadas ? 'No tenés permiso para cargar facturas'
+                  : marcables.length === 0 ? 'De lo seleccionado, no hay facturas con saldo (las NC, anuladas y las que paga el cliente no cuentan)'
+                  : `Registrar que ${marcables.length} factura(s) se pagaron con la tarjeta o con Mercado Pago (una orden por factura)`
+                }
+              >
+                💳 Marcar pagadas {marcables.length > 0 ? marcables.length : ''}
               </Button>
               {/* La planilla del banco, precargada (2026-09-23). A diferencia de
                   «Pagar», admite varios proveedores: es una fila por cada uno. */}
@@ -294,7 +376,7 @@ export function FacturasTab({ aviso }: { aviso?: string | null }) {
             onToggle={toggle}
             onToggleTodas={toggleTodas}
             onAbrir={id => setFichaId(id)}
-            puedeSeleccionar={puedeAprobar || puedePagar}
+            puedeSeleccionar={puedeAprobar || puedePagar || puedeEditar || puedeMarcarPagadas}
           />
           {total > PAGE_SIZE && (
             <Pagination page={page} total={total} pageSize={PAGE_SIZE} onChange={setPage} />
@@ -326,6 +408,24 @@ export function FacturasTab({ aviso }: { aviso?: string | null }) {
 
       {modalConceptos && <ModalConceptosCompra onClose={() => setModalConceptos(false)} />}
 
+      {modalImportar && (
+        <ModalImportarRecibidos
+          onClose={() => setModalImportar(false)}
+          onVerImportadas={id => {
+            setModalImportar(false)
+            patch({ ...FILTRO_POR_AVISO['sin-imputar'], importacion_id: id ?? undefined })
+          }}
+        />
+      )}
+
+      {modalImputarLote && (
+        <ModalImputarLote facturas={imputables} onClose={() => setModalImputarLote(false)} onHecho={() => setSeleccion(new Set())} />
+      )}
+
+      {modalMarcarPagadas && (
+        <ModalMarcarPagadas facturas={marcables} onClose={() => setModalMarcarPagadas(false)} onHecho={() => setSeleccion(new Set())} />
+      )}
+
       {modalGalicia && (
         <ModalExcelGalicia facturas={pagables} verPii={!!verPii} onClose={() => setModalGalicia(false)} />
       )}
@@ -344,6 +444,11 @@ export function FacturasTab({ aviso }: { aviso?: string | null }) {
       )}
     </div>
   )
+}
+
+/** Volver de «Sin imputar» a la bandeja: pisa todas las claves que puso el aviso. */
+const FILTRO_INICIAL_PATCH: Partial<PagosFacturasFiltro> = {
+  ...FILTRO_INICIAL, importacion_id: undefined,
 }
 
 /** Barrita de KPI reutilizable: el número grande y qué significa. */

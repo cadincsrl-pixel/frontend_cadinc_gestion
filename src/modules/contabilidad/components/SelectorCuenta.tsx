@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react'
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox'
-import type { CtbCuenta, CtbRubro } from '@/types/contabilidad.types'
+import type { CtbAuxiliarTipo, CtbCuenta, CtbRubro } from '@/types/contabilidad.types'
 import { useCuentas } from '../hooks/useContabilidad'
 import { rubroLabel } from '../utils/contabilidad.utils'
 
@@ -20,7 +20,7 @@ import { rubroLabel } from '../utils/contabilidad.utils'
  *     sus descendientes, y las dadas de baja (su historia sigue ahí).
  */
 export function SelectorCuenta({
-  value, onChange, modo = 'imputables', rubros, label, placeholder, disabled, className,
+  value, onChange, modo = 'imputables', rubros, auxiliares, label, placeholder, disabled, className,
 }: {
   /** id como string; '' = ninguna. */
   value:        string
@@ -28,6 +28,8 @@ export function SelectorCuenta({
   modo?:        'imputables' | 'todas'
   /** Restringe a esos rubros (tesorería: solo activo). */
   rubros?:      CtbRubro[]
+  /** Restringe al tipo de auxiliar de la cuenta (mapeos: lo que acepta cada clave). */
+  auxiliares?:  CtbAuxiliarTipo[]
   label?:       string
   placeholder?: string
   disabled?:    boolean
@@ -42,6 +44,7 @@ export function SelectorCuenta({
     .filter(c => String(c.id) === value || (
       (modo === 'todas' || (c.activo && c.imputable))
       && (!rubros || rubros.includes(c.rubro))
+      && (!auxiliares || auxiliares.includes(c.auxiliar))
     ))
     .map(c => ({
       value:  String(c.id),
@@ -52,7 +55,7 @@ export function SelectorCuenta({
         !c.activo ? 'dada de baja' : null,
       ].filter(Boolean).join(' · ') || undefined,
       search: [c.codigo, c.nombre],
-    })), [cuentas, value, modo, rubros])
+    })), [cuentas, value, modo, rubros, auxiliares])
 
   const ph = isLoading ? 'Cargando cuentas…'
     : isError ? 'No se pudo traer el plan'

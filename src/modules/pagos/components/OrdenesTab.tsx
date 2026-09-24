@@ -34,13 +34,14 @@ const PAGE_SIZE = 50
  * Los totales del pie salen de la RPC sobre el filtro COMPLETO (vienen en
  * `totales`), no de sumar la página: con más de 1000 filas sumar acá mentiría.
  */
-export function OrdenesTab() {
+/** `ficha` = `&ficha=<id>` de la URL: abre esa orden (lo usa Contabilidad › Automáticos). */
+export function OrdenesTab({ ficha }: { ficha?: number | null } = {}) {
   const toast = useToast()
   const { puedeVer, registrarPagos, anularPagos, esAdmin, verPii } = usePermisos('pagos')
 
   const [filtro, setFiltro] = useState<PagosOrdenesFiltro>({ estado: 'emitida' })
   const [page, setPage] = useState(1)
-  const [detalleId, setDetalleId] = useState<number | null>(null)
+  const [detalleId, setDetalleId] = useState<number | null>(ficha ?? null)
 
   const proveedores = useProveedoresPagos({}, 1, 300, puedeVer)
   const lista = useOrdenes(filtro, page, PAGE_SIZE, puedeVer)

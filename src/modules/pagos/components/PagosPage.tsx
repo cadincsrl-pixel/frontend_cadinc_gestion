@@ -14,6 +14,12 @@ const TABS = [
   { key: 'proveedores', icon: '🏢', label: 'Proveedores', sub: 'Padrón propio: CUIT, alias y CBU' },
 ]
 
+/** «123» → 123; cualquier otra cosa → null. */
+function idDeUrl(v: string | null): number | null {
+  const n = Number(v)
+  return v && Number.isInteger(n) && n > 0 ? n : null
+}
+
 export function PagosPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -28,6 +34,9 @@ export function PagosPage() {
   }, [permitidos])
 
   const tab = searchParams.get('tab') ?? 'facturas'
+  const aviso = searchParams.get('aviso')
+  const importacion = idDeUrl(searchParams.get('importacion'))
+  const ficha = idDeUrl(searchParams.get('ficha'))
   const info = TABS.find(t => t.key === tab) ?? TABS[0]!
   const permitido = allowedTabs.length === 0 || allowedTabs.includes(tab)
 
@@ -52,8 +61,14 @@ export function PagosPage() {
 
       {/* Contenido */}
       <div className="flex flex-col gap-4">
-        {tab === 'facturas'    && <FacturasTab aviso={searchParams.get('aviso')} />}
-        {tab === 'pagos'       && <OrdenesTab />}
+        {/* La `key` hace que un deep-link nuevo (campana, importador,
+            Contabilidad › «Ir al origen») re-arme el filtro aunque ya se
+            esté en la pantalla: el estado inicial sale de la URL. */}
+        {tab === 'facturas'    && (
+          <FacturasTab key={`${aviso ?? ''}|${importacion ?? ''}|${ficha ?? ''}`}
+            aviso={aviso} importacion={importacion} ficha={ficha} />
+        )}
+        {tab === 'pagos'       && <OrdenesTab key={ficha ?? ''} ficha={ficha} />}
         {tab === 'proveedores' && <ProveedoresPagosTab />}
       </div>
     </div>

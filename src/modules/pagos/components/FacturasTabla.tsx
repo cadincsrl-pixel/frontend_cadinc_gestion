@@ -1,6 +1,6 @@
 'use client'
 
-import { ESTADO_FACTURA_META, FORMAS_PREVISTAS, comprobanteTxt, esNC, estadoHint, estadoLabel, fmtFecha, fmtM } from '../utils/pagos.utils'
+import { ESTADO_FACTURA_META, FORMAS_PREVISTAS, comprobanteTxt, esNC, estadoHint, estadoLabel, fmtFecha, fmtM, fmtMesLargo, mesCorto } from '../utils/pagos.utils'
 import type { PagosFactura } from '@/types/domain.types'
 import { sinDesglose } from '../utils/desglose'
 
@@ -45,6 +45,23 @@ function ChipConcepto({ f }: { f: PagosFactura }) {
 function Alertas({ f }: { f: PagosFactura }) {
   return (
     <>
+      {/* Importadas de ARCA (20260927b/c) y período IVA corrido (20260927a). */}
+      {f.sin_imputar && (
+        <span className="inline-block whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded bg-amarillo-light text-[#7A5000] font-bold"
+              title="Importada de ARCA: falta el concepto y el reparto por obra. No se aprueba ni se paga hasta imputarla">sin imputar</span>
+      )}
+      {f.origen_carga === 'arca_recibidos' && (
+        <span className="inline-block whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded bg-azul-light text-azul"
+              title="Importada de «Mis Comprobantes Recibidos» de ARCA">ARCA</span>
+      )}
+      {f.tributos_a_revisar && (
+        <span className="inline-block whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded bg-naranja-light text-naranja-dark"
+              title="ARCA informa «otros tributos» sin decir cuáles: clasificalos con «Completar desglose»">otros tributos sin clasificar</span>
+      )}
+      {f.periodo_iva_distinto && (
+        <span className="inline-block whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded bg-gris text-gris-dark"
+              title={`Se informa en el Libro IVA de ${fmtMesLargo(f.periodo_iva)}, no en el mes de la fecha`}>IVA {mesCorto(f.periodo_iva)}</span>
+      )}
       {f.sin_revisar && (
         <span className="inline-block whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded bg-amarillo-light text-[#7A5000] font-bold"
               title="Se cargó ya pagada y ningún aprobador la revisó todavía">sin revisar</span>

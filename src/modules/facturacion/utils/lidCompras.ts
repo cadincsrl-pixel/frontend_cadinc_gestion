@@ -15,6 +15,10 @@ export interface DetalleLidCompras {
   perc_iva: number; perc_iibb: number; perc_otras: number; otros_tributos: number; total: number
   estado: string
   incluido: boolean; motivo_exclusion: string | null
+  /** Mes (`YYYY-MM-01`) en que se informa: el libro va por período IVA, no por fecha (20260927a). */
+  periodo_iva: string
+  /** La fecha del comprobante es de otro mes: el período IVA se corrió. */
+  fuera_de_mes: boolean
 }
 
 export interface LibroIvaCompras {
@@ -97,6 +101,8 @@ export async function exportarExcelLidCompras(libro: LibroIvaCompras) {
     { header: 'Estado', key: 'estado', width: 11 },
     { header: 'En el archivo', key: 'incluido', width: 12 },
     { header: 'Motivo', key: 'motivo_exclusion', width: 50 },
+    { header: 'Período IVA', key: 'periodo_iva', width: 11 },
+    { header: 'De otro mes', key: 'fuera_de_mes', width: 11 },
   ]
   for (const d of libro.detalle) {
     const [y, m, dd] = d.fecha.split('-')
@@ -109,11 +115,13 @@ export async function exportarExcelLidCompras(libro: LibroIvaCompras) {
       total: conSigno(d, d.total),
       incluido: d.incluido ? 'Sí' : 'NO',
       motivo_exclusion: d.motivo_exclusion ?? '',
+      periodo_iva: d.periodo_iva ? `${d.periodo_iva.slice(5, 7)}/${d.periodo_iva.slice(0, 4)}` : '',
+      fuera_de_mes: d.fuera_de_mes ? 'Sí' : '',
     })
     if (!d.incluido) row.font = { color: { argb: 'FF9B2C2C' } }
   }
   encabezado(det)
-  det.autoFilter = { from: 'A1', to: 'U1' }
+  det.autoFilter = { from: 'A1', to: 'W1' }
 
   const res = wb.addWorksheet('Resumen')
   res.columns = [

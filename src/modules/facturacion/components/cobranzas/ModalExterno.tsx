@@ -11,7 +11,7 @@ import { InputMonto } from '@/components/ui/InputMonto'
 import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
-import { useBorrarExterno, useCrearExterno, useEditarExterno } from '../../hooks/useCobranzas'
+import { useBorrarExterno, useCrearExterno, useEditarExterno, useGuardarLiquidoExterno } from '../../hooks/useCobranzas'
 import { fmtM, hoyAR } from '../../utils/facturacion.utils'
 import { ORIGENES_EXTERNO, TIPOS_EXTERNO, aCent, esTipoCredito } from '../../utils/cobranzas.utils'
 import { errorDeCampoFacturacion, mensajeErrorFacturacion } from '../../utils/facturacion.errores'
@@ -166,6 +166,60 @@ export function ModalExterno({ externo, onClose }: { externo?: VentasExterno; on
           </Aviso>
         )}
       </form>
+      {/* Fuera del form de arriba: es otra acción (PATCH …/liquido) y no se anidan forms. */}
+      {externo && (externo.cbte_tipo === 60 || externo.cbte_tipo === 61) && (
+        <LiquidoCvlp externo={externo} puede={puedeEditar} />
+      )}
     </Modal>
+  )
+}
+
+/**
+ * CVLP de Casilda (20260927d): lo que liquidó después de su comisión. El
+ * asiento automático de Contabilidad va por este neto; sin él, la CVLP queda
+ * pendiente («falta el líquido»). No toca el saldo de la cuenta del cliente,
+ * que sigue siendo el total del papel.
+ */
+const liquidoSchema = (total: number) => z.object({
+  liquido: z.string().refine(v => v === '' || (Number(v) > 0 && Number(v) <= total), `Mayor a cero y hasta ${fmtM(total)}`),
+})
+type LiquidoForm = { liquido: string }
+
+function LiquidoCvlp({ externo, puede }: { externo: VentasExterno; puede: boolean }) {
+  const toast = useToast()
+  const guardar = useGuardarLiquidoExterno()
+  const { control, handleSubmit, setError, formState: { errors, isDirty } } = useForm<LiquidoForm>({
+    resolver: zodResolver(liquidoSchema(Number(externo.total))),
+    defaultValues: { liquido: externo.liquido != null ? String(externo.liquido) : '' },
+  })
+
+  async function enviar(d: LiquidoForm) {
+    try {
+      await guardar.mutateAsync({ id: externo.id, liquido: d.liquido === '' ? null : Number(d.liquido) })
+      toast(d.liquido === '' ? '✓ Líquido borrado' : '✓ Líquido guardado', 'ok')
+    } catch (e) {
+      setError('liquido', { message: mensajeErrorFacturacion(e) })
+    }
+  }
+
+  return (
+    <div className="mt-3 border-t border-gris pt-3 flex flex-col gap-2">
+      <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Líquido (lo que pagó Casilda)</div>
+      <div className="flex gap-2 items-start flex-wrap">
+        <div className="w-48">
+          <Controller control={control} name="liquido" render={({ field }) => (
+            <InputMonto value={field.value} onChange={field.onChange} disabled={!puede} error={errors.liquido?.message} placeholder="Sin cargar" />
+          )} />
+        </div>
+        <Button size="sm" variant="secondary" onClick={handleSubmit(enviar)} loading={guardar.isPending} disabled={!puede || !isDirty}
+          title={!puede ? 'No tenés permiso para editar' : !isDirty ? 'No hay cambios' : 'Guardar el líquido de la CVLP'}>
+          Guardar líquido
+        </Button>
+      </div>
+      <span className="text-[11px] text-gris-dark">
+        Total del papel {fmtM(externo.total)}. El asiento va por el neto liquidado: Casilda al Debe por el líquido, el IVA del papel y la
+        venta por la diferencia. Vacío = sin cargar (el asiento queda pendiente).
+      </span>
+    </div>
   )
 }

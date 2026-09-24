@@ -10,6 +10,8 @@ import { MayorTab } from './MayorTab'
 import { SumasSaldosTab } from './SumasSaldosTab'
 import { PlanTab } from './PlanTab'
 import { PeriodosTab } from './PeriodosTab'
+import { AutomaticosTab } from './AutomaticosTab'
+import { MapeosTab } from './MapeosTab'
 
 const TABS = [
   { key: 'asientos',     icon: '📝', label: 'Asientos',        sub: 'Carga manual, borradores, confirmación y anulación de asientos' },
@@ -18,6 +20,8 @@ const TABS = [
   { key: 'sumas-saldos', icon: '⚖️', label: 'Sumas y saldos',  sub: 'Balance de sumas y saldos por cuenta, con control de que cuadre' },
   { key: 'plan',         icon: '🗂', label: 'Plan de cuentas', sub: 'Cuentas contables y cuentas de tesorería (bancos, caja y valores)' },
   { key: 'periodos',     icon: '🔒', label: 'Períodos',        sub: 'Cierre mensual: numera el libro diario y congela el mes' },
+  { key: 'automaticos',  icon: '⚙️', label: 'Automáticos',     sub: 'Asientos de Ventas y Compras: qué falta contabilizar, por qué, y contabilizar hasta una fecha' },
+  { key: 'mapeos',       icon: '🔗', label: 'Mapeos',          sub: 'Qué cuenta usa cada concepto, alícuota, tributo y medio de cobro' },
 ]
 
 export function ContabilidadPage() {
@@ -58,6 +62,8 @@ export function ContabilidadPage() {
         {tab === 'sumas-saldos' && <SumasSaldosTab />}
         {tab === 'plan'         && <PlanTab />}
         {tab === 'periodos'     && <PeriodosTab />}
+        {tab === 'automaticos'  && <AutomaticosTab />}
+        {tab === 'mapeos'       && <MapeosTab />}
       </div>
     </div>
   )

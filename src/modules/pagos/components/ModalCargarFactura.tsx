@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { InputMonto, aRaw } from '@/components/ui/InputMonto'
@@ -8,10 +8,11 @@ import { Combobox } from '@/components/ui/Combobox'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import {
-  useCatalogoObrasPagos, useCrearFactura, useEditarFactura, useFactura, subirComprobantePendiente,
+  useCrearFactura, useEditarFactura, useFactura, subirComprobantePendiente,
   useSubirAdjuntoPagos, subirFacturaParaLeer, leerFactura, descartarLecturaFactura,
-  useFacturasAcreditables, useFacturasDetalle,
+  useFacturasAcreditables, useFacturasDetalle, usePeriodoIvaSugerido,
 } from '../hooks/usePagos'
+import { FILA_REPARTO_VACIA, RepartoPorObra, repartoCuadra, type FilaReparto } from './RepartoPorObra'
 import { leerQrDelArchivo } from '../utils/qrFactura'
 import {
   ALICUOTAS, TIPOS_TRIBUTO, NOMBRE_CBTE_ARCA, ivaDe, ivaNoCuadra, pctDeAlicuota, resumirDesglose,
@@ -21,7 +22,7 @@ import { useConceptosPagos } from '../hooks/useConceptosPagos'
 import {
   FORMAS_PAGO_OP, FORMAS_PREVISTAS, FORMAS_CON_FECHA_COBRO,
   FORMAS_CON_CUENTA_DESTINO,
-  TIPOS_COMPROBANTE, MAX_ADJUNTO_BYTES, MIME_ADJUNTOS, componerNumero, fechasEscalonadas, fmtFecha, fmtM, hoyAR,
+  TIPOS_COMPROBANTE, MAX_ADJUNTO_BYTES, MIME_ADJUNTOS, componerNumero, fechasEscalonadas, fmtFecha, fmtM, fmtMesLargo, hoyAR,
   partirEnPartes, partirNumero, sumarDiasISO,
   vencimientoSugerido, CBTE_NC_POR_LETRA, esCodigoNC, repartoProrrateado, avisoLetraCondicion,
 } from '../utils/pagos.utils'
@@ -73,13 +74,6 @@ interface Props {
   onClose:   () => void
 }
 
-interface FilaReparto {
-  obra_cod: string
-  /** Texto libre mientras se tipea; se parsea al guardar. */
-  monto: string
-  obs: string
-}
-
 /**
  * Lo tipeado → número. Usa el MISMO parser que `InputMonto` (2026-09-21), así
  * el punto del teclado numérico y la coma dan lo mismo en todo el sistema.
@@ -122,7 +116,6 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
   const esEdicion = !!editarId
 
   const { data: original, isLoading } = useFactura(editarId ?? null)
-  const obras = useCatalogoObrasPagos()
   const proveedores = useProveedoresPagos({}, 1, 300)
   const conceptos = useConceptosPagos()
   const crear  = useCrearFactura()
@@ -299,7 +292,14 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
   // El plan de e-cheqs (20260923n): se anota al cargar para que el Excel del
   // Galicia y el modal de pago salgan precargados. Sólo con cheque / e-cheq.
   const [plan, setPlan] = useState<PagosPlanCheques | null>(null)
-  const [reparto, setReparto] = useState<FilaReparto[]>([{ obra_cod: '', monto: '', obs: '' }])
+  const [reparto, setReparto] = useState<FilaReparto[]>([{ ...FILA_REPARTO_VACIA }])
+  // Período IVA (20260927a): `YYYY-MM`. Mientras no se toque sigue a la fecha
+  // (al cargar, con el sugerido del backend: el mes de la fecha, o el primero
+  // abierto si ese está cerrado en Contabilidad). Solo viaja si se tocó; si
+  // no, lo pone o lo ajusta la base (misma regla que acá).
+  const [periodoIva, setPeriodoIva] = useState('')
+  const [periodoTocado, setPeriodoTocado] = useState(false)
+  const [errorPeriodo, setErrorPeriodo] = useState<string | null>(null)
   const [motivo, setMotivo] = useState('')
   const [altaProveedor, setAltaProveedor] = useState(false)
   // El desglose arranca PLEGADO (2026-09-21): el dueño pidió que por ahora
@@ -336,6 +336,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
       setPuntoVenta(pv); setNroComprobante(nro)
     }
     setFecha(original.fecha.slice(0, 10))
+    setPeriodoIva((original.periodo_iva ?? original.fecha).slice(0, 7))
     setVenceEl(original.vence_el?.slice(0, 10) ?? '')
     setTotal(String(original.total))
     {
@@ -376,9 +377,33 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
     setReparto(
       original.imputaciones.length
         ? original.imputaciones.map(im => ({ obra_cod: im.obra_cod, monto: String(im.monto), obs: im.obs ?? '' }))
-        : [{ obra_cod: '', monto: '', obs: '' }],
+        : [{ ...FILA_REPARTO_VACIA }],
     )
   }, [original])
+
+  // Período IVA sugerido: sigue a la fecha mientras nadie lo toque.
+  const sugeridoIva = usePeriodoIvaSugerido(fecha, !periodoTocado && (!esEdicion || !!original))
+  const mesFecha = fecha ? fecha.slice(0, 7) : ''
+  const mesOriginal = original ? (original.periodo_iva ?? original.fecha).slice(0, 7) : ''
+  const corridoOriginal = !!original?.periodo_iva_distinto
+  useEffect(() => {
+    if (periodoTocado || !mesFecha) return
+    const sug = sugeridoIva.data?.periodo_iva.slice(0, 7) ?? mesFecha
+    // Al editar, la regla del trigger: si no estaba corrido sigue a la fecha;
+    // si estaba corrido, se queda salvo que la fecha nueva lo pase.
+    if (esEdicion) {
+      if (!mesOriginal) return
+      // Sin tocar la fecha, se muestra lo guardado (el sugerido puede ser otro
+      // si ese mes se cerró después).
+      const fechaOriginal = original ? original.fecha.slice(0, 7) : ''
+      setPeriodoIva(corridoOriginal ? (mesOriginal > mesFecha ? mesOriginal : mesFecha)
+        : mesFecha === fechaOriginal ? mesOriginal : sug)
+    } else {
+      setPeriodoIva(sug)
+    }
+  }, [esEdicion, periodoTocado, sugeridoIva.data, mesFecha, mesOriginal, corridoOriginal])
+  const periodoCorrido = !periodoTocado && !!sugeridoIva.data?.corrido && !(esEdicion && corridoOriginal)
+  const periodoOk = !periodoTocado || !periodoIva || !mesFecha || periodoIva >= mesFecha
 
   const proveedor = useMemo(
     () => (proveedores.data?.items ?? []).find(p => String(p.id) === proveedorId),
@@ -411,9 +436,14 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
   // El desglose cierra si está vacío (sólo el total) o si suma el total.
   const desgloseVacio = !ivaValidas.length && !tributosValidos.length && !n(neto) && !n(noGravado) && !n(exento)
   const desgloseOk = !verDesglose || desgloseVacio || resumen.cierra
-  const sumaReparto = r2(reparto.reduce((s, f) => s + n(f.monto), 0))
-  const difReparto = r2(imputable - sumaReparto)
-  const repartoOk = reparto.every(f => f.obra_cod) && Math.abs(difReparto) < 0.005 && imputable > 0
+  // Una importada de ARCA sin imputar (20260927b) no lleva reparto al editar:
+  // concepto y obras se cargan con «Imputar» desde la ficha.
+  const sinImputar = !!original?.sin_imputar
+  const repartoOk = sinImputar || repartoCuadra(reparto, imputable)
+  const cambiarReparto = useCallback((filas: FilaReparto[], manual: boolean) => {
+    if (manual) setRepartoTocado(true)
+    setReparto(filas)
+  }, [])
 
   // ── Acredita a… (solo NC) ──
   // Lo que declara aplicar solo se cambia mientras la NC está pendiente u
@@ -468,7 +498,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
   function cambiarProveedor(v: string) {
     if (v !== proveedorId && esNc) {
       setAcredita({})
-      if (!repartoTocado) setReparto([{ obra_cod: '', monto: '', obs: '' }])
+      if (!repartoTocado) setReparto([{ ...FILA_REPARTO_VACIA }])
     }
     setProveedorId(v)
     tocar('proveedor')
@@ -489,25 +519,6 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
     }
   }
 
-  // El catálogo trae TODAS las obras, también las archivadas, porque la ficha
-  // de una factura vieja tiene que poder mostrar su obra. Pero imputar a una
-  // archivada NO se puede: `_pagos_reemplazar_imputaciones` rebota con
-  // OBRA_ARCHIVADA. Ofrecerlas era un callejón — 19 de las 57 fallaban recién
-  // al guardar. Se listan sólo las activas, más la que ya esté elegida en el
-  // reparto (que es el caso de editar una factura vieja).
-  const codsElegidos = useMemo(() => new Set(reparto.map(f => f.obra_cod).filter(Boolean)), [reparto])
-  const obrasOpts = useMemo(
-    () => (obras.data ?? [])
-      .filter(o => !o.archivada || codsElegidos.has(o.cod))
-      .map(o => ({
-        value: o.cod,
-        label: o.nom,
-        sub:   o.cod + (o.archivada ? ' · archivada' : ''),
-        group: o.es_interna || o.es_deposito ? 'Estructura CADINC' : 'Obras',
-        search: [o.nom, o.cod, o.cc ?? ''],
-      })),
-    [obras.data, codsElegidos],
-  )
   const provOpts = useMemo(
     () => (proveedores.data?.items ?? []).filter(p => p.activo || String(p.id) === proveedorId).map(p => ({
       value: String(p.id),
@@ -528,38 +539,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
     }
     return activos
   }, [conceptos.data, original])
-  const conceptoOk = !!conceptoId
-
-  // Con UNA sola obra el reparto es todo el importe: no tiene sentido hacerlo
-  // tipear, y tipearlo a mano es justo donde se pierden los centavos (caso del
-  // 2026-09-21). Se completa solo al elegir la obra, y sólo si está vacío: si
-  // alguien lo edita a propósito, no se lo pisa.
-  useEffect(() => {
-    if (reparto.length !== 1 || imputable <= 0) return
-    const f = reparto[0]!
-    if (!f.obra_cod || f.monto.trim()) return
-    setReparto([{ ...f, monto: String(imputable) }])
-  }, [reparto, imputable])
-
-  /** Repartir lo imputable en partes iguales; la última fila se queda con el resto. */
-  function repartirParejo() {
-    const filas = reparto.filter(f => f.obra_cod)
-    if (filas.length === 0 || imputable <= 0) return
-    const parte = Math.floor((imputable / filas.length) * 100) / 100
-    const nuevas = filas.map((f, i) => ({
-      ...f,
-      monto: String(i === filas.length - 1 ? r2(imputable - parte * (filas.length - 1)) : parte),
-    }))
-    setReparto(nuevas)
-  }
-
-  /** Lo que falta va a la última fila con obra: evita el rebote por centavos. */
-  function ajustarUltima() {
-    const idx = [...reparto].reverse().findIndex(f => f.obra_cod)
-    if (idx === -1) return
-    const real = reparto.length - 1 - idx
-    setReparto(rs => rs.map((f, i) => i === real ? { ...f, monto: String(r2(n(f.monto) + difReparto)) } : f))
-  }
+  const conceptoOk = !!conceptoId || sinImputar
 
   const formasPagada = FORMAS_PAGO_OP
 
@@ -587,7 +567,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
   const congelado  = tienePagos   // proveedor, fecha e importes no se tocan con pagos
   const numeroCompleto = componerNumero(puntoVenta, nroComprobante)
   const listo = !!proveedorId && !!puntoVenta && !!nroComprobante && conceptoOk &&
-                totalN > 0 && descripcion.trim().length >= 3 && repartoOk && desgloseOk && acreditaOk &&
+                totalN > 0 && descripcion.trim().length >= 3 && repartoOk && desgloseOk && acreditaOk && periodoOk &&
                 (!tienePagos || motivo.trim().length >= 3)
   const leyendo = lectura?.fase === 'leyendo'
   const lecturaId = !esEdicion && lectura?.fase === 'lista' ? lectura.res?.lectura_id ?? null : null
@@ -657,9 +637,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
       cbte_tipo_arca: cbte,
       total: totalN,
       descripcion: descripcion.trim(),
-      concepto_id: Number(conceptoId),
       obs: obs.trim(),
-      imputaciones,
       // Una NC no lleva vencimiento, forma prevista, plan de cheques ni
       // «la paga el cliente» (NC_TIPO_INVALIDO): esas claves ni viajan.
       ...(esNc ? {} : {
@@ -672,10 +650,20 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
     // Sin `aplica_a` (o con el tilde) la NC queda como crédito a favor.
     const aplicaA = esNc && !comoCredito ? aplicaADe(acredita) : []
 
+    // Una sin imputar no manda reparto (FACTURA_SIN_IMPUTAR) y el concepto
+    // solo si se eligió: los dos se cargan con «Imputar».
+    const clasificacion = sinImputar
+      ? (conceptoId ? { concepto_id: Number(conceptoId) } : {})
+      : { concepto_id: Number(conceptoId), imputaciones }
+    // Período IVA: al cargar, solo si se tocó; al editar, solo si cambió.
+    const periodoIvaISO = periodoIva ? `${periodoIva}-01` : null
+    const periodoCambio = periodoTocado && !!original && !!periodoIvaISO && (original.periodo_iva ?? '').slice(0, 7) !== periodoIva
+
     try {
       if (esEdicion && editarId) {
         const r = await editar.mutateAsync({
-          id: editarId, ...comunes,
+          id: editarId, ...comunes, ...clasificacion,
+          ...(periodoCambio && periodoIvaISO ? { periodo_iva: periodoIvaISO } : {}),
           ...(tienePagos ? { motivo: motivo.trim() } : {}),
           ...(esNc && acreditaEditable ? { aplica_a: aplicaA } : {}),
         })
@@ -685,6 +673,9 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
       } else {
         const r = await crear.mutateAsync({
           ...comunes,
+          concepto_id: Number(conceptoId),
+          imputaciones,
+          ...(periodoTocado && periodoIvaISO ? { periodo_iva: periodoIvaISO } : {}),
           lectura_id: lecturaId,
           ...(esNc ? { clase: 'nota_credito' as const, ...(aplicaA.length ? { aplica_a: aplicaA } : {}) } : { clase: 'factura' as const }),
           orden: !esNc && yaPagada ? {
@@ -718,6 +709,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
       const msg = mensajeErrorPagos(e)
       const cod = codigoErrorPagos(e)
       if (cod === 'CONCEPTO_REQUERIDO' || cod === 'CONCEPTO_INVALIDO') setErrorConcepto(msg)
+      if (cod?.startsWith('PERIODO_IVA_')) setErrorPeriodo(msg)
       toast(msg, 'err')
     }
   }
@@ -845,7 +837,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
             </div>
           </Campo>
         </div>
-        <div className={`grid gap-2 ${esNc ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-2'}`}>
+        <div className={`grid gap-2 ${esNc ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-2 sm:grid-cols-3'}`}>
           <Campo label="Emitida" fuente={fuentes.fecha}>
             <input type="date" value={fecha} max={hoyAR()} onChange={e => { setFecha(e.target.value); tocar('fecha') }} disabled={congelado} className={inputCls} />
             {/* El campo arranca en hoy, y hasta el 23/09 las 13 facturas
@@ -860,6 +852,22 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
               <input type="date" value={venceEl} min={fecha} onChange={e => { setVenceEl(e.target.value); tocar('vence_el') }} className={inputCls} />
             </Campo>
           )}
+          {/* Período IVA (20260927a): en qué mes se informa en el Libro IVA
+              compras. Es clasificación fiscal: se puede correr a un mes
+              posterior, nunca a uno anterior al de la fecha. */}
+          <Campo label="Período IVA" hint="Libro IVA compras">
+            <input type="month" value={periodoIva} min={mesFecha || undefined}
+              onChange={e => { setPeriodoIva(e.target.value); setPeriodoTocado(true); setErrorPeriodo(null) }}
+              title="Mes en que el comprobante se informa en el Libro IVA compras. Por defecto, el de la fecha."
+              className={inputCls} />
+            {periodoCorrido && (
+              <div className="mt-1 text-[11px] text-[#7A5000]">
+                El mes de la fecha ya está cerrado: se informa en {fmtMesLargo(periodoIva)}.
+              </div>
+            )}
+            {!periodoOk && <div className="mt-1 text-[11px] text-rojo">No puede ser anterior al mes del comprobante.</div>}
+            {errorPeriodo && <div className="mt-1 text-[11px] text-rojo">{errorPeriodo}</div>}
+          </Campo>
         </div>
         {/* CAE: lo pide el Libro IVA. Viene del QR o del papel; a mano es opcional. */}
         <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2 items-end">
@@ -1004,44 +1012,17 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
         )}
 
         {/* Reparto por obra */}
-        <div className="border-t border-gris pt-3">
-          <div className="flex items-center justify-between gap-2 flex-wrap mb-1">
-            <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wide">Centro de costo — a qué obra se imputa</div>
-            <div className="text-xs">
-              A repartir: <b className="font-mono tabular-nums">{fmtM(imputable)}</b>
-              {percN > 0 && <span className="text-gris-dark"> (total {fmtM(totalN)} − percepciones {fmtM(percN)})</span>}
-            </div>
+        {sinImputar ? (
+          <div className="border-t border-gris pt-3 text-xs text-gris-dark">
+            <b>Importada de ARCA, sin imputar:</b> el concepto y el reparto por obra se cargan con «Imputar», desde la ficha de la factura.
           </div>
-
-          {reparto.map((f, i) => (
-            <div key={i} className="flex gap-2 items-end mb-1.5">
-              <div className="flex-1 min-w-0">
-                <Combobox placeholder="Elegí la obra…" options={obrasOpts} value={f.obra_cod}
-                  onChange={v => { setRepartoTocado(true); setReparto(rs => rs.map((x, j) => j === i ? { ...x, obra_cod: v } : x)) }} />
-              </div>
-              {/* El ancho va en un wrapper y no en el input: `inputCls` trae
-                  `w-full`, que en la hoja de estilos de Tailwind le gana a
-                  cualquier `w-28` del atributo (gana el orden del CSS, no el
-                  del className). Con `w-28` en el input, éste se estiraba al
-                  100% de la fila y dejaba al buscador de obra —que es
-                  `flex-1 min-w-0`— en CERO px de ancho: el desplegable se
-                  abría con las 57 obras adentro pero medía 2px y no se veía
-                  nada. Reportado el 2026-09-21. */}
-              <div className="w-28 shrink-0">
-                <InputMonto value={f.monto} placeholder="Monto"
-                  onChange={v => { setRepartoTocado(true); setReparto(rs => rs.map((x, j) => j === i ? { ...x, monto: v } : x)) }}
-                  className="font-mono text-right py-2 rounded" />
-              </div>
-              {reparto.length > 1 && (
-                <button type="button" className="text-rojo hover:bg-rojo-light px-2 py-1.5 rounded text-xs"
-                  onClick={() => { setRepartoTocado(true); setReparto(rs => rs.filter((_, j) => j !== i)) }}>✕</button>
-              )}
-            </div>
-          ))}
-
-          <div className="flex gap-2 items-center flex-wrap mt-1">
-            <Button variant="ghost" size="sm" onClick={() => { setRepartoTocado(true); setReparto(rs => [...rs, { obra_cod: '', monto: '', obs: '' }]) }}>+ Otra obra</Button>
-            {esNc && sugeridoNc.length > 0 && (
+        ) : (
+          <RepartoPorObra
+            filas={reparto}
+            onChange={cambiarReparto}
+            imputable={imputable}
+            detalleImputable={percN > 0 && <span className="text-gris-dark"> (total {fmtM(totalN)} − percepciones {fmtM(percN)})</span>}
+            extraAcciones={esNc && sugeridoNc.length > 0 && (
               <Button variant="ghost" size="sm" onClick={() => {
                 setRepartoTocado(false)
                 setReparto(sugeridoNc.map(x => ({ obra_cod: x.obra_cod, monto: String(x.monto), obs: '' })))
@@ -1049,20 +1030,8 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
                 Repartir como las facturas
               </Button>
             )}
-            {reparto.filter(f => f.obra_cod).length > 1 && (
-              <Button variant="ghost" size="sm" onClick={repartirParejo}>Repartir en partes iguales</Button>
-            )}
-            {Math.abs(difReparto) >= 0.005 && imputable > 0 && (
-              <>
-                <span className="text-xs text-rojo">
-                  {difReparto > 0 ? `Faltan ${fmtM(difReparto)}` : `Sobran ${fmtM(-difReparto)}`}
-                </span>
-                <Button variant="secondary" size="sm" onClick={ajustarUltima}>Ajustar la última fila</Button>
-              </>
-            )}
-            {repartoOk && <span className="text-xs text-verde">✓ El reparto cuadra</span>}
-          </div>
-        </div>
+          />
+        )}
 
         {/* Ya está pagada (una NC no se paga) */}
         {!esEdicion && !esNc && (

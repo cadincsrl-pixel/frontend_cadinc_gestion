@@ -115,7 +115,7 @@ export function ModalImportarPlan({ onClose }: { onClose: () => void }) {
       <div className="flex flex-col gap-3 text-sm">
         <Aviso tono="gris">
           Excel o CSV (separado por <b>;</b>, <b>,</b> o tabulación) con las columnas <b>codigo</b>, <b>nombre</b> y, si querés,{' '}
-          <b>rubro</b> (activo, pasivo, pn, ingreso, egreso), <b>imputable</b> (S/N) y <b>auxiliar</b> (none, cliente, proveedor,
+          <b>rubro</b> (activo, pasivo, pn, ingreso, egreso, resultado; resultado solo en títulos, y sus hijas lo dicen explícito), <b>imputable</b> (S/N) y <b>auxiliar</b> (none, cliente, proveedor,
           tesoreria). Las líneas que empiezan con # se ignoran. Las cuentas que ya existen se saltean: importar dos veces no duplica.
         </Aviso>
 

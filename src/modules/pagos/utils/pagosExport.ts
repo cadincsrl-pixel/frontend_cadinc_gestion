@@ -86,6 +86,8 @@ export const HEADERS_FACTURAS = [
   'Total', 'Neto', 'IVA', 'Percepciones', 'Imputable',
   'Pagado', 'Notas de crédito', 'Saldo', 'Crédito NC',
   'Estado', 'Cliente / obra', 'Reparto', 'Forma prevista', 'Descripción', 'Cargó', 'Aprobó', 'Última OP',
+  // Al final para no correr las columnas de formato (20260927a).
+  'Período IVA',
 ] as const
 /** Columnas (base 1) con plata y con fecha, para el formato. */
 const COLS_MONEDA_FACT = [10, 11, 12, 13, 14, 15, 16, 17, 18]
@@ -115,7 +117,15 @@ export function filaExcelFactura(f: PagosFactura): Celda[] {
     f.centro_costo ?? '', f.centros ?? '',
     nc ? '—' : (FORMAS_PREVISTAS.find(x => x.key === f.forma_pago_prevista)?.label ?? f.forma_pago_prevista),
     f.descripcion, f.created_by_nombre ?? '', f.aprobada_por_nombre ?? '', f.ultima_op ?? '',
+    periodoIva(f.periodo_iva),
   ]
+}
+
+/** «2026-09-01» → «09/2026». Vacío si la fila todavía no lo trae. */
+function periodoIva(s: string | null | undefined): string {
+  if (!s) return ''
+  const [a, m] = s.split('-')
+  return a && m ? `${m}/${a}` : ''
 }
 
 /** La fila TOTAL: total e imputable con signo (la NC resta); saldo solo de facturas. */
@@ -135,7 +145,7 @@ export async function exportarFacturasPagos(filas: PagosFactura[]): Promise<void
 
   const ws = wb.addWorksheet('Facturas')
   const headers = [...HEADERS_FACTURAS]
-  setColWidths(ws, [28, 12, 14, 20, 15, 22, 12, 12, 8, 14, 13, 12, 13, 14, 14, 15, 14, 14, 16, 22, 34, 16, 34, 18, 18, 12])
+  setColWidths(ws, [28, 12, 14, 20, 15, 22, 12, 12, 8, 14, 13, 12, 13, 14, 14, 15, 14, 14, 16, 22, 34, 16, 34, 18, 18, 12, 11])
 
   const sinPDF = filas.filter(f => !f.tiene_factura_adj).length
   const vencidas = filas.filter(f => f.vencida).length

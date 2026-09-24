@@ -8,8 +8,8 @@ import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import type { CtbPeriodo } from '@/types/contabilidad.types'
 import { useCerrarPeriodo, useEjercicios, usePeriodos } from '../hooks/useContabilidad'
-import { bloqueoCerrarTxt, bloqueoReabrirTxt, fmtFecha, fmtFechaHora, fmtM, hoyAR, nombreMes } from '../utils/contabilidad.utils'
-import { mensajeErrorCtb } from '../utils/contabilidad.errores'
+import { bloqueoCerrarTxt, bloqueoReabrirTxt, estadoPendiente, fmtFecha, fmtFechaHora, fmtM, hoyAR, nombreMes } from '../utils/contabilidad.utils'
+import { codigoErrorCtb, leerCuerpoError, mensajeErrorCtb } from '../utils/contabilidad.errores'
 import { Aviso, Campo, Cargando, ErrorCarga, Tarjeta, Th, Vacio, inputCls } from './Comun'
 import { ModalReabrirPeriodo } from './ModalReabrirPeriodo'
 
@@ -36,22 +36,37 @@ export function PeriodosTab() {
   const { data, isLoading, isError, error, refetch } = usePeriodos(ejercicioId)
   const cerrar = useCerrarPeriodo()
   const [aCerrar, setACerrar] = useState<CtbPeriodo | null>(null)
+  // 409 HAY_PENDIENTES_AUTOMATICOS (fase 3): cuántos quedan y por estado.
+  const [pendientesAuto, setPendientesAuto] = useState<{ cantidad: number; por_estado: Record<string, number> } | null>(null)
   const [aReabrir, setAReabrir] = useState<CtbPeriodo | null>(null)
 
   const sinPermiso = !cerrarPeriodos ? 'No tenés permiso (hace falta «Cerrar y reabrir períodos»)'
     : !puedeEditar ? 'No tenés permiso de Editar en Contabilidad' : null
 
-  async function hacerCierre() {
+  async function hacerCierre(forzar = false) {
     if (!aCerrar) return
     try {
-      const r = await cerrar.mutateAsync(aCerrar.id)
+      const r = await cerrar.mutateAsync({ id: aCerrar.id, forzar })
       toast(r.numerados > 0
         ? `✓ ${nombreMes(aCerrar.desde)} cerrado · ${r.numerados} asiento${r.numerados === 1 ? '' : 's'} numerado${r.numerados === 1 ? '' : 's'} (N° ${r.desde_numero} a ${r.hasta_numero})`
         : `✓ ${nombreMes(aCerrar.desde)} cerrado (no tenía asientos)`, 'ok')
       setACerrar(null)
+      setPendientesAuto(null)
     } catch (e) {
+      if (codigoErrorCtb(e) === 'HAY_PENDIENTES_AUTOMATICOS') {
+        const d = leerCuerpoError(e).detail
+        const obj = d && typeof d === 'object' ? d as Record<string, unknown> : {}
+        const porEstado = obj.por_estado && typeof obj.por_estado === 'object' ? obj.por_estado as Record<string, number> : {}
+        setPendientesAuto({ cantidad: Number(obj.cantidad) || 0, por_estado: porEstado })
+        return
+      }
       toast(mensajeErrorCtb(e), 'err')
     }
+  }
+
+  function cerrarModal() {
+    setACerrar(null)
+    setPendientesAuto(null)
   }
 
   const periodos = data ?? []
@@ -140,10 +155,16 @@ export function PeriodosTab() {
         )}
 
       {aCerrar && (
-        <Modal open onClose={cerrar.isPending ? () => {} : () => setACerrar(null)} width="max-w-md" title={`Cerrar ${nombreMes(aCerrar.desde)}`}
-          footer={<>
-            <Button variant="ghost" size="sm" onClick={() => setACerrar(null)} disabled={cerrar.isPending}>Cancelar</Button>
-            <Button size="sm" loading={cerrar.isPending} onClick={hacerCierre}>Cerrar el período</Button>
+        <Modal open onClose={cerrar.isPending ? () => {} : cerrarModal} width="max-w-md" title={`Cerrar ${nombreMes(aCerrar.desde)}`}
+          footer={pendientesAuto ? <>
+            <Button variant="ghost" size="sm" onClick={cerrarModal} disabled={cerrar.isPending}>Cancelar</Button>
+            <Link href="/contabilidad?tab=automaticos" className="text-xs px-3 py-1.5 rounded border border-gris-mid bg-white text-azul font-semibold hover:bg-gris">
+              Ver pendientes
+            </Link>
+            <Button size="sm" variant="danger" loading={cerrar.isPending} onClick={() => void hacerCierre(true)}>Cerrar igual</Button>
+          </> : <>
+            <Button variant="ghost" size="sm" onClick={cerrarModal} disabled={cerrar.isPending}>Cancelar</Button>
+            <Button size="sm" loading={cerrar.isPending} onClick={() => void hacerCierre()}>Cerrar el período</Button>
           </>}>
           <div className="flex flex-col gap-3 text-sm">
             <p>
@@ -155,6 +176,15 @@ export function PeriodosTab() {
               Para corregir algo después: anular el asiento (se genera un contraasiento en un mes abierto) o reabrir el período,
               que borra los números y se vuelven a asignar al cerrarlo de nuevo.
             </Aviso>
+            {pendientesAuto && (
+              <Aviso tono="naranja">
+                <b>Quedan {pendientesAuto.cantidad} comprobante{pendientesAuto.cantidad === 1 ? '' : 's'} de Ventas o Compras sin contabilizar o desactualizado{pendientesAuto.cantidad === 1 ? '' : 's'} en el mes</b>
+                {Object.keys(pendientesAuto.por_estado).length > 0 && (
+                  <> ({Object.entries(pendientesAuto.por_estado).map(([k, v]) => `${estadoPendiente(k).label.toLowerCase()}: ${v}`).join(' · ')})</>
+                )}.
+                Si lo cerrás igual, después se corrigen con contraasientos en un mes abierto.
+              </Aviso>
+            )}
           </div>
         </Modal>
       )}

@@ -270,6 +270,64 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   ORDEN_ANULADA: () => 'La orden está anulada.',
   // «Sale de la cuenta» (20260926g)
   CUENTA_ORIGEN_INVALIDA: () => 'La cuenta de origen no existe o está dada de baja.',
+  // «Marcar pagadas» con tarjeta o billetera (20260927h)
+  FACTURA_YA_APROBADA: () => 'Hay facturas ya aprobadas en la selección: esas se pagan con una orden de pago normal, no con «Marcar pagadas».',
+  FORMA_NO_COINCIDE_CUENTA: () => 'La cuenta elegida no es una tarjeta ni una billetera: para pagar así, elegí una tarjeta de crédito o una billetera (Mercado Pago).',
+
+  // ── Período IVA (20260927a) ──
+  PERIODO_IVA_INVALIDO:         () => 'El período IVA tiene que ser un mes.',
+  PERIODO_IVA_ANTERIOR_A_FECHA: () => 'El período IVA no puede ser anterior al mes del comprobante.',
+  PERIODO_IVA_CERRADO: d => {
+    const lado = dato(d, 'lado')
+    return lado === 'origen'
+      ? 'Ese mes ya está cerrado en Contabilidad: la factura se informó en un mes cerrado y no se puede mover.'
+      : 'Ese mes ya está cerrado en Contabilidad.'
+  },
+
+  // ── Importadas de ARCA sin imputar (20260927b/c) ──
+  FACTURA_SIN_IMPUTAR: d => dato(d, 'usar') === 'imputar'
+    ? 'Es una factura importada de ARCA: el concepto y el reparto se cargan con «Imputar», desde su ficha.'
+    : 'Primero hay que imputarla (concepto y obras).',
+  FACTURA_YA_IMPUTADA: () => 'La factura ya está imputada: el reparto se corrige editándola.',
+  TRIBUTOS_A_REVISAR:  () => 'Clasificá los otros tributos antes de repartir (con «Completar desglose»).',
+  IMPUTACION_REQUERIDA: () => 'Falta el reparto por obra.',
+  IMPUTACION_INVALIDA:  () => 'El reparto por obra está mal armado: cada fila con una obra y un monto mayor a cero.',
+  IMPUTACION_DUPLICADA: d => {
+    const obra = dato(d, 'obra_cod')
+    return `La obra${obra ? ` ${String(obra)}` : ''} aparece dos veces en el reparto: dejá una sola fila.`
+  },
+  OBRA_INEXISTENTE:     d => `La obra${dato(d, 'obra_cod') ? ` ${String(dato(d, 'obra_cod'))}` : ''} no existe.`,
+  DESCRIPCION_REQUERIDA: () => 'La descripción tiene que tener al menos 3 caracteres.',
+  SIN_FILAS:            () => 'El archivo no tiene comprobantes para importar.',
+  DEMASIADAS_FILAS: d => {
+    const max = dato(d, 'max')
+    return `Son demasiados de una vez${max !== undefined ? ` (máximo ${String(max)})` : ''}: importá un archivo por mes.`
+  },
+  IMPORTACION_CON_ERRORES: d => {
+    const errs = dato(d, 'errores')
+    const n = Array.isArray(errs) ? errs.length : 0
+    return `No se importó nada: ${n || 'hay'} comprobante${n === 1 ? '' : 's'} con error. Es todo o nada: corregí esas filas (o sacalas del archivo) y volvé a probar.`
+  },
+  SIN_IMPUTAR_SOLO_IMPORTADOR: () => 'Error interno: solo el importador marca facturas sin imputar. Avisá al administrador.',
+  IMPUTAR_SOLO_RPC:            () => 'Error interno: una importada se imputa solo con «Imputar». Avisá al administrador.',
+  // Errores por fila del importador (vienen en `filas[].error`)
+  TIPO_NO_SOPORTADO: d => `Tipo de comprobante ${dato(d, 'cbte_tipo') !== undefined ? `${String(dato(d, 'cbte_tipo'))} ` : ''}no soportado: cargalo a mano.`,
+  RANGO_DE_NUMEROS: d => `Es un rango (${String(dato(d, 'desde') ?? '')} a ${String(dato(d, 'hasta') ?? '')}): cargalos a mano uno por uno.`,
+  EMISOR_SIN_CUIT: d => `El emisor no tiene CUIT${dato(d, 'doc_nro') ? ` (${String(dato(d, 'doc_tipo') ?? 'doc')} ${String(dato(d, 'doc_nro'))})` : ''}: cargalo a mano.`,
+  POSIBLE_DUPLICADA: d => {
+    const id = dato(d, 'factura_id')
+    return `Parece ya cargada${id !== undefined ? ` (#${String(id)})` : ''}: mismo número y total, de un proveedor sin CUIT. Cargale el CUIT a ese proveedor y volvé a probar.`
+  },
+  ALICUOTAS_NO_CUADRAN: d => `Las alícuotas no cuadran con el neto y el IVA del archivo (bases ${money(dato(d, 'suma_base'))} vs. neto ${money(dato(d, 'neto'))}; IVA ${money(dato(d, 'suma_iva'))} vs. ${money(dato(d, 'iva'))}).`,
+  MONEDA_SIN_COTIZACION: () => 'Está en moneda extranjera y el archivo no trae el tipo de cambio.',
+  NUMERO_COMPARTIDO_OTRO_TIPO: d => `Ya hay un comprobante con ese número (#${String(dato(d, 'factura_id') ?? '?')}) cargado sin tipo de ARCA: no se sabe si es el mismo papel. Cargale el tipo a ese comprobante y volvé a importar.`,
+  DUPLICADA_AL_CONFIRMAR: d => `Al importar chocó con un comprobante que se cargó mientras tanto (#${String(dato(d, 'factura_id') ?? '?')}): no se importó nada. Volvé a hacer la vista previa.`,
+  RAZON_SOCIAL_REQUERIDA: () => 'El emisor no está en el padrón y el archivo no trae su razón social.',
+  PTO_VTA_INVALIDO: () => 'Punto de venta inválido.',
+  NUMERO_INVALIDO:  () => 'Número de comprobante inválido.',
+  FECHA_INVALIDA:   () => 'Fecha inválida o futura.',
+  TOTAL_INVALIDO:   () => 'El total tiene que ser mayor a cero.',
+  FILA_INVALIDA: d => `No se pudo procesar${dato(d, 'mensaje') ? `: ${String(dato(d, 'mensaje'))}` : ''}.`,
 
   // ── Proveedores ──
   PROVEEDOR_NO_EXISTE:  () => 'El proveedor no existe.',
@@ -344,6 +402,12 @@ export function mensajeErrorPagos(e: unknown): string {
   return fn ? fn(detail) : error
 }
 
+/** El `detail` del error (lo que acompaña al código: la factura que falló, el saldo…). */
+export function detalleErrorPagos(e: unknown): Record<string, unknown> | null {
+  const d = leerCuerpo(e).detail
+  return d && typeof d === 'object' ? d as Record<string, unknown> : null
+}
+
 /** El código pelado, para decidir a qué input apuntar. */
 export function codigoErrorPagos(e: unknown): string | null {
   return leerCuerpo(e).error ?? null
@@ -375,6 +439,43 @@ const AVISOS: Record<string, (d: Record<string, unknown>) => string> = {
 export function mensajeAvisoPagos(aviso: { code: string; [k: string]: unknown }): string {
   const fn = AVISOS[aviso.code]
   return fn ? fn(aviso) : aviso.code
+}
+
+/**
+ * El error de UNA fila del importador de ARCA recibidos (20260927c). Un
+ * código desconocido sale tal cual.
+ */
+export function mensajeErrorFilaRecibida(codigo: string | null | undefined, detalle?: unknown): string {
+  if (!codigo) return ''
+  const fn = MENSAJES[codigo]
+  return fn ? fn(detalle) : codigo
+}
+
+/** Por qué una fila es «duplicada» (no es error: no se importa y listo). */
+export function motivoDuplicadaRecibida(detalle: unknown): string {
+  const motivo = dato(detalle, 'motivo')
+  if (motivo === 'repetida_en_el_archivo') return 'Repetida en el archivo'
+  const id = dato(detalle, 'factura_id_existente') ?? dato(detalle, 'factura_id')
+  return `Ya cargada${id !== undefined && id !== null ? ` (#${String(id)})` : ''}`
+}
+
+/** Avisos (no bloquean) de una fila importada. */
+export function mensajeAvisoRecibida(a: { codigo: string; detalle?: Record<string, unknown> | null }): string {
+  const d = a.detalle ?? {}
+  switch (a.codigo) {
+    case 'alicuota_no_inferida':
+      return `No se pudo deducir la alícuota${d.razon ? ` (${String(d.razon)})` : ''}: entra con el desglose a revisar.`
+    case 'no_cuadra':
+      return `Neto + IVA + no gravado + exento + otros no da el total${d.suma !== undefined ? ` (${money(d.suma)} vs. ${money(d.total)})` : ''}: entra con el desglose a revisar.`
+    case 'moneda_extranjera':
+      return `En ${String(d.moneda ?? 'moneda extranjera')}${d.tipo_cambio ? ` a ${String(d.tipo_cambio)}` : ''}: se convierte a pesos con el tipo de cambio de ARCA.`
+    case 'proveedor_inactivo':
+      return 'El proveedor está dado de baja: se usa igual.'
+    case 'numero_compartido_otro_tipo':
+      return `Tiene el mismo número que ${String(d.nombre_existente ?? 'otro comprobante')} del mismo proveedor (#${String(d.factura_id ?? '?')}): ARCA numera cada tipo aparte, entra igual.`
+    default:
+      return a.codigo
+  }
 }
 
 /**

@@ -3,7 +3,12 @@
 // Archivo propio para no pisar domain.types. Los nombres de campo son el
 // contrato con el backend (spec §C.4): JSON en snake_case, montos como number.
 
-export type CtbRubro = 'activo' | 'pasivo' | 'pn' | 'ingreso' | 'egreso'
+/**
+ * `resultado` (20260927, plan de Finnegans): SOLO para títulos, como la
+ * 4000000 «RESULTADO DEL PERIODO», que agrupa hijas de ingreso y de egreso.
+ * No tiene naturaleza (null): su saldo es el neto.
+ */
+export type CtbRubro = 'activo' | 'pasivo' | 'pn' | 'ingreso' | 'egreso' | 'resultado'
 export type CtbAuxiliarTipo = 'none' | 'cliente' | 'proveedor' | 'tesoreria'
 export type CtbAsientoTipo = 'apertura' | 'manual' | 'automatico' | 'ajuste' | 'cierre'
 export type CtbAsientoEstado = 'borrador' | 'confirmado' | 'anulado'
@@ -76,7 +81,8 @@ export interface CtbCuenta {
   padre_id:          number | null
   padre_codigo:      string | null
   rubro:             CtbRubro
-  naturaleza:        CtbNaturaleza
+  /** null en los títulos de rubro `resultado`. */
+  naturaleza:        CtbNaturaleza | null
   imputable:         boolean
   auxiliar:          CtbAuxiliarTipo
   activo:            boolean
@@ -247,7 +253,7 @@ export interface CtbMayorRes {
     codigo:     string
     nombre:     string
     rubro:      CtbRubro
-    naturaleza: CtbNaturaleza
+    naturaleza: CtbNaturaleza | null
     imputable:  boolean
     auxiliar:   CtbAuxiliarTipo
   }
@@ -294,7 +300,12 @@ export interface CtbSumasSaldosRes {
   items: CtbSumasFila[]
 }
 
-export type TesoreriaTipo = 'banco' | 'caja' | 'valores'
+/**
+ * `tarjeta` (20260927h) = tarjeta de crédito de la empresa: es un PASIVO, sin
+ * CBU ni alias (`banco` = el emisor, «Visa Galicia»). `billetera` = Mercado
+ * Pago u otra: admite CVU (22 dígitos, se valida como CBU) y alias.
+ */
+export type TesoreriaTipo = 'banco' | 'caja' | 'valores' | 'tarjeta' | 'billetera'
 
 export interface TesoreriaCuenta {
   id:               number
@@ -337,4 +348,119 @@ export interface CtbObra {
   cod:       string
   nom:       string
   archivada: boolean
+}
+
+// ── Fase 3 (20260927d–f): motor de asientos automáticos y mapeos ────────
+
+export type CtbFuente = 'ventas_facturas' | 'ventas_comprobantes_externos' | 'ventas_cobros' | 'pagos_facturas' | 'pagos_ordenes'
+export type CtbPendienteEstado = 'sin_contabilizar' | 'pendiente' | 'desactualizado' | 'a_revertir'
+
+export interface CtbMotivo {
+  codigo:  string
+  detalle: Record<string, unknown> | null
+}
+
+export interface CtbPendiente {
+  origen_tabla:           CtbFuente
+  origen_id:              number
+  fecha:                  string
+  fuente:                 string
+  descripcion:            string
+  importe:                number
+  estado:                 CtbPendienteEstado
+  motivos:                CtbMotivo[]
+  asiento_id:             number | null
+  asiento_periodo_estado: CtbPeriodoEstado | null
+}
+
+export interface CtbAutomaticosResumen {
+  por_estado: Partial<Record<CtbPendienteEstado, number>>
+  por_fuente: Partial<Record<CtbFuente, number>>
+  por_motivo: { codigo: string; clave: string | null; subclave: string | null; cantidad: number }[]
+}
+
+export type CtbPendientesRes = CtbPage<CtbPendiente> & { resumen: CtbAutomaticosResumen }
+
+export interface CtbContabilizarRes {
+  procesados:      number
+  creados:         number
+  regenerados:     number
+  anulados:        number
+  revertidos:      number
+  sin_cambios:     number
+  pendientes:      number
+  desactualizados: number
+  errores:         number
+  hay_mas:         boolean
+  cursor:          unknown | null
+  detalle_errores: { origen_tabla: CtbFuente; origen_id: number; codigo: string; mensaje: string }[]
+}
+
+export interface CtbContabilizarInput {
+  hasta:              string
+  fuentes?:           CtbFuente[]
+  revertir_cerrados?: boolean
+}
+
+export interface CtbPropuestaLinea {
+  cuenta_id:     number
+  cuenta_codigo: string
+  cuenta_nombre: string
+  debe:          number
+  haber:         number
+  aux_tipo:      CtbAuxiliarTipo
+  aux_id:        number | null
+  aux_nombre:    string | null
+  obra_cod:      string | null
+  obra_nom:      string | null
+  glosa:         string
+}
+
+export interface CtbPropuesta {
+  origen_tabla:   CtbFuente
+  origen_id:      number
+  vigente:        boolean
+  fecha:          string
+  glosa:          string
+  importe:        number
+  lineas:         CtbPropuestaLinea[]
+  motivos:        CtbMotivo[]
+  hash:           string
+  estado:         CtbPendienteEstado | 'al_dia'
+  asiento_actual: CtbAsiento | null
+  diferente:      boolean
+}
+
+export interface CtbMapeoSub {
+  subclave:      string
+  etiqueta:      string
+  mapeo_id:      number | null
+  cuenta_id:     number | null
+  cuenta_codigo: string | null
+  cuenta_nombre: string | null
+  en_uso:        number
+}
+
+export interface CtbMapeoClave {
+  clave:       string
+  etiqueta:    string
+  descripcion: string
+  rubros:      CtbRubro[]
+  auxiliares:  CtbAuxiliarTipo[]
+  subclaves:   CtbMapeoSub[]
+}
+
+export interface CtbMapeosCatalogo { claves: CtbMapeoClave[] }
+
+export interface CtbMapeoInput {
+  clave:     string
+  subclave:  string
+  cuenta_id: number | null
+}
+
+export interface CtbConfig {
+  automaticos_desde:      string
+  cvlp_modo:              'neto_liquidado' | 'bruto'
+  compras_fecha_contable: 'fecha' | 'mes_iva'
+  paga_cliente_modo:      string | null
 }

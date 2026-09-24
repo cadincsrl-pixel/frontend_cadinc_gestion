@@ -7,7 +7,7 @@
 
 import type {
   CtbAsientoEstado, CtbAsientoTipo, CtbAuxiliarTipo, CtbBloqueoCerrar, CtbBloqueoReabrir, CtbNaturaleza, CtbRubro,
-  TesoreriaTipo,
+  TesoreriaTipo, CtbFuente, CtbPendienteEstado,
 } from '@/types/contabilidad.types'
 
 const TZ = 'America/Argentina/Buenos_Aires'
@@ -99,7 +99,14 @@ export const RUBROS: { key: CtbRubro; label: string }[] = [
   { key: 'pn',      label: 'Patrimonio neto' },
   { key: 'ingreso', label: 'Ingresos' },
   { key: 'egreso',  label: 'Egresos' },
+  // Solo títulos (20260927): agrupa ingresos y egresos, como la 4000000 de Finnegans.
+  { key: 'resultado', label: 'Resultado (título)' },
 ]
+
+/** Los rubros que puede tener una hija según el de su madre. */
+export function rubrosHija(rubroMadre: CtbRubro | null | undefined): CtbRubro[] | null {
+  return rubroMadre === 'resultado' ? ['resultado', 'ingreso', 'egreso'] : null
+}
 
 export function rubroLabel(r: CtbRubro | null | undefined): string {
   return RUBROS.find(x => x.key === r)?.label ?? String(r ?? '')
@@ -145,7 +152,22 @@ export const TESORERIA_TIPOS: { key: TesoreriaTipo; label: string }[] = [
   { key: 'banco',   label: 'Banco' },
   { key: 'caja',    label: 'Caja' },
   { key: 'valores', label: 'Valores' },
+  { key: 'tarjeta',   label: 'Tarjeta de crédito' },
+  { key: 'billetera', label: 'Billetera (Mercado Pago)' },
 ]
+
+/** Banco y billetera llevan CBU/CVU y alias; tarjeta, caja y valores no. */
+export function tesoreriaConCbu(t: TesoreriaTipo): boolean {
+  return t === 'banco' || t === 'billetera'
+}
+
+/**
+ * La cuenta contable que se le puede vincular: la tarjeta es una deuda
+ * («Tarjeta de crédito a pagar», Pasivo); el resto, plata propia (Activo).
+ */
+export function rubrosTesoreria(t: TesoreriaTipo): CtbRubro[] {
+  return t === 'tarjeta' ? ['pasivo'] : ['activo']
+}
 
 export function tesoreriaTipoLabel(t: TesoreriaTipo): string {
   return TESORERIA_TIPOS.find(x => x.key === t)?.label ?? t
@@ -181,4 +203,59 @@ export function bloqueoReabrirTxt(b: CtbBloqueoReabrir | null): string | null {
     case 'PERIODO_POSTERIOR_CERRADO':  return 'Hay un período posterior cerrado: solo se reabre el último cerrado'
     case 'EJERCICIO_CERRADO':          return 'El ejercicio está cerrado'
   }
+}
+
+// ── Asientos automáticos (fase 3, 20260927) ───────────────────────────
+
+export const FUENTES_CTB: { key: CtbFuente; label: string; corto: string }[] = [
+  { key: 'ventas_facturas',              label: 'Facturas de venta',          corto: 'Venta' },
+  { key: 'ventas_comprobantes_externos', label: 'Comprobantes externos',      corto: 'Externo' },
+  { key: 'ventas_cobros',                label: 'Cobros',                     corto: 'Cobro' },
+  { key: 'pagos_facturas',               label: 'Facturas de compra',         corto: 'Compra' },
+  { key: 'pagos_ordenes',                label: 'Órdenes de pago',            corto: 'Pago' },
+]
+
+export function fuenteLabel(f: string): string {
+  return FUENTES_CTB.find(x => x.key === f)?.label ?? f
+}
+
+export const ESTADOS_PENDIENTE: { key: CtbPendienteEstado; label: string; hint: string; clase: string }[] = [
+  { key: 'sin_contabilizar', label: 'Sin contabilizar', hint: 'Se puede contabilizar: falta correr «Contabilizar hasta…»', clase: 'bg-azul-light text-azul' },
+  { key: 'pendiente',        label: 'Pendiente',        hint: 'No se puede contabilizar todavía: mirá el motivo', clase: 'bg-naranja-light text-naranja-dark' },
+  { key: 'desactualizado',   label: 'Desactualizado',   hint: 'El origen o un mapeo cambió después de contabilizarlo', clase: 'bg-amarillo-light text-[#7A5000]' },
+  { key: 'a_revertir',       label: 'A revertir',       hint: 'El origen se anuló y su asiento sigue vigente', clase: 'bg-rojo-light text-rojo' },
+]
+
+export function estadoPendiente(e: string) {
+  return ESTADOS_PENDIENTE.find(x => x.key === e) ?? { key: e, label: e, hint: '', clase: 'bg-gris text-gris-dark' }
+}
+
+/** Nombre corto de cada clave de mapeo (la pantalla de mapeos trae el suyo; este es el respaldo). */
+export const ETIQUETA_CLAVE_MAPEO: Record<string, string> = {
+  'compras.concepto':     'Compras por concepto',
+  'compras.sin_imputar':  'Compras a clasificar (sin imputar)',
+  'compras.iva_cf':       'IVA crédito fiscal',
+  'compras.tributo':      'Percepciones y tributos de compras',
+  'compras.proveedores':  'Proveedores',
+  'ventas.producto':      'Ventas por producto',
+  'ventas.externo':       'Ventas de comprobantes externos',
+  'ventas.iva_df':        'IVA débito fiscal',
+  'ventas.tributo':       'Tributos de ventas',
+  'ventas.deudores':      'Deudores por ventas',
+  'cobros.medio':         'Medios de cobro',
+  'cobros.retencion':     'Retenciones sufridas',
+  'pagos.puente':         'Pagos sin cuenta de origen (puente)',
+  'pagos.cheque_propio':  'Cheques propios emitidos',
+  'pagos.cheque_tercero': 'Cheques de terceros entregados',
+  'general.redondeo':     'Diferencias de redondeo',
+}
+
+/** «5» → «IVA 21 %»; «» → «todas». Para las subclaves de alícuota. */
+const ALICUOTA_TXT: Record<string, string> = { '3': '0 %', '4': '10,5 %', '5': '21 %', '6': '27 %', '8': '5 %', '9': '2,5 %' }
+
+export function etiquetaSubclave(clave: string | null | undefined, sub: string | null | undefined): string {
+  if (!sub) return clave && /iva_|externo|tributo|retencion/.test(clave) ? 'general' : ''
+  if (clave?.endsWith('iva_cf') || clave?.endsWith('iva_df')) return ALICUOTA_TXT[sub] ? `alícuota ${ALICUOTA_TXT[sub]}` : sub
+  if (clave === 'ventas.externo' && (sub === '60' || sub === '61')) return `CVLP (${sub})`
+  return sub.replace('|', ' · ')
 }

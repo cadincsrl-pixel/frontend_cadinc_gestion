@@ -30,6 +30,7 @@ export type FlagBoolean =
   | 'registrar_pagos' | 'aprobar_facturas' | 'anular_pagos' | 'aprobar_propias'
   | 'emitir_facturas' | 'emitir_notas_credito' | 'registrar_cobros'
   | 'asientos_manuales' | 'cerrar_periodos' | 'editar_plan'
+  | 'contabilizar' | 'editar_mapeos' | 'importar_comprobantes'
 
 export interface FlagDef {
   key:   FlagBoolean
@@ -146,6 +147,12 @@ export const FLAGS_BOOLEAN: FlagDef[] = [
     modulos: ['pagos'],
   },
   {
+    key: 'importar_comprobantes',
+    label: '📥 Importar comprobantes de ARCA',
+    help: 'Alta masiva de facturas recibidas desde «Mis Comprobantes Recibidos» de ARCA, con vista previa. Entran impagas y SIN IMPUTAR (sin concepto ni reparto por obra): no se aprueban ni se pagan hasta imputarlas. Crea los proveedores que no existan, por CUIT. Va junto con "Crear" en pagos. Solo tiene efecto en pagos.',
+    modulos: ['pagos'],
+  },
+  {
     key: 'registrar_pagos',
     label: '💸 Registrar pagos (órdenes de pago)',
     help: 'Emitir órdenes de pago sobre facturas APROBADAS (transferencia, cheque, notas de crédito del proveedor), observar facturas mal cargadas y cargar el CBU/alias del proveedor. Necesita además "Ver datos personales" para ver la cuenta destino. No habilita cargar ni editar facturas. Solo tiene efecto en pagos.',
@@ -192,6 +199,18 @@ export const FLAGS_BOOLEAN: FlagDef[] = [
     key: 'editar_plan',
     label: '🗂 Editar plan de cuentas',
     help: 'Alta, edición, baja e importación de cuentas contables y de las cuentas de tesorería. Solo tiene efecto en contabilidad.',
+    modulos: ['contabilidad'],
+  },
+  {
+    key: 'contabilizar',
+    label: '⚙️ Contabilizar automáticos',
+    help: 'Generar y regenerar los asientos automáticos de Ventas y Compras («Contabilizar hasta…»). Corregir en períodos cerrados (contraasientos) pide además "Cerrar y reabrir períodos". Solo tiene efecto en contabilidad.',
+    modulos: ['contabilidad'],
+  },
+  {
+    key: 'editar_mapeos',
+    label: '🔗 Editar mapeos contables',
+    help: 'Elegir qué cuenta usa cada concepto de compra, alícuota, tributo, medio de cobro y producto, y la configuración de los asientos automáticos. Solo tiene efecto en contabilidad.',
     modulos: ['contabilidad'],
   },
   {

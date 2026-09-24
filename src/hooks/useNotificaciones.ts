@@ -338,7 +338,9 @@ export function useNotificaciones(): NotificacionesResult {
   const puedeAprobarFacturas = tienePagos && !!(aprobarFacturas || esAdmin)
   // «Sin revisar» le sirve al mismo que aprueba: es su cola de control.
   const { data: paraAprobar } = useQuery(
-    qPagos(PAGOS_KEYS.notifAprobar, 'estado=pendiente&paga_cliente=0&orden=vencimiento', puedeAprobarFacturas))
+    // Sin las importadas sin imputar (20260927b): no se pueden aprobar hasta
+    // imputarlas. Mismo filtro que `FILTRO_POR_AVISO.aprobar` de FacturasTab.
+    qPagos(PAGOS_KEYS.notifAprobar, 'estado=pendiente&paga_cliente=0&sin_imputar=0&orden=vencimiento', puedeAprobarFacturas))
   const { data: sinRevisar } = useQuery(
     qPagos(PAGOS_KEYS.notifSinRevisar, 'sin_revisar=1', puedeAprobarFacturas))
   // Lo vencido le importa a quien paga y a quien carga.

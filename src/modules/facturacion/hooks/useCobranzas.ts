@@ -406,6 +406,24 @@ export function useEditarExterno() {
   })
 }
 
+/**
+ * El líquido de una CVLP (lo que pagó Casilda, 20260927d). `null` lo borra.
+ * 400 `NO_ES_CVLP` / `LIQUIDO_INVALIDO`. Invalida también los pendientes del
+ * motor de asientos de Contabilidad (la CVLP sin líquido queda pendiente).
+ */
+export function useGuardarLiquidoExterno() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, liquido }: { id: number; liquido: number | null }) =>
+      apiPatch<VentasExterno>(`${BASE}/externos/${id}/liquido`, { liquido }),
+    onSuccess:  () => {
+      invalidarFacturacion(qc)
+      qc.invalidateQueries({ queryKey: ['contabilidad', 'automaticos'] })
+      qc.invalidateQueries({ queryKey: ['contabilidad', 'propuesta'] })
+    },
+  })
+}
+
 /** Solo si no tiene imputaciones (si no, 409 EXTERNO_CON_IMPUTACIONES). */
 export function useBorrarExterno() {
   const qc = useQueryClient()

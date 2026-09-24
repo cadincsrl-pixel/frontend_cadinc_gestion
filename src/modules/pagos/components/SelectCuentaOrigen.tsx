@@ -5,21 +5,22 @@ import { useCuentasOrigen } from '../hooks/usePagos'
 import type { PagosCuentaOrigen, PagosFormaPagoOP } from '@/types/domain.types'
 
 /**
- * «Sale de la cuenta» (20260926g): de qué cuenta propia de CADINC (banco, caja
- * o valores) salió la plata de la OP. Opcional: «— sin indicar —» manda null,
+ * «Sale de la cuenta» (20260926g): de qué cuenta propia de CADINC (banco, caja,
+ * valores, tarjeta o billetera, 20260927h) salió la plata de la OP. Opcional: «— sin indicar —» manda null,
  * igual que todas las OP anteriores.
  *
  * No filtra por la forma de pago, solo ORDENA: las del tipo que sugiere la
- * forma van primero (efectivo → caja; transferencia, cheque, e-cheq y débito →
- * banco). Las cuentas se cargan en Contabilidad › Plan de cuentas.
+ * forma van primero (efectivo → caja; tarjeta → tarjetas; transferencia,
+ * cheque, e-cheq y débito → banco). Las cuentas se cargan en Contabilidad › Plan de cuentas.
  */
 
-const TIPO_LABEL: Record<PagosCuentaOrigen['tipo'], string> = {
-  banco: 'Bancos', caja: 'Caja', valores: 'Valores',
+export const TIPO_CUENTA_ORIGEN_LABEL: Record<PagosCuentaOrigen['tipo'], string> = {
+  banco: 'Bancos', caja: 'Caja', valores: 'Valores', tarjeta: 'Tarjetas', billetera: 'Billeteras',
 }
 
-function tipoSugerido(forma: PagosFormaPagoOP | null | undefined): PagosCuentaOrigen['tipo'] | null {
+export function tipoSugerido(forma: PagosFormaPagoOP | null | undefined): PagosCuentaOrigen['tipo'] | null {
   if (forma === 'efectivo') return 'caja'
+  if (forma === 'tarjeta') return 'tarjeta'
   if (forma === 'transferencia' || forma === 'cheque' || forma === 'echeq' || forma === 'debito_automatico') return 'banco'
   return null
 }
@@ -39,7 +40,7 @@ export function SelectCuentaOrigen({ value, onChange, forma, className, disabled
   const grupos = useMemo(() => {
     const lista = data ?? []
     const sug = tipoSugerido(forma)
-    const orden: PagosCuentaOrigen['tipo'][] = ['banco', 'caja', 'valores']
+    const orden: PagosCuentaOrigen['tipo'][] = ['banco', 'caja', 'valores', 'tarjeta', 'billetera']
     const tipos = sug ? [sug, ...orden.filter(t => t !== sug)] : orden
     return tipos
       .map(t => ({ tipo: t, items: lista.filter(c => c.tipo === t) }))
@@ -64,7 +65,7 @@ export function SelectCuentaOrigen({ value, onChange, forma, className, disabled
       <option value="">{isLoading ? 'Cargando…' : '— sin indicar —'}</option>
       {huerfana && <option value={value}>{actualNombre ?? `Cuenta #${value}`} (dada de baja)</option>}
       {grupos.map(g => (
-        <optgroup key={g.tipo} label={TIPO_LABEL[g.tipo]}>
+        <optgroup key={g.tipo} label={TIPO_CUENTA_ORIGEN_LABEL[g.tipo]}>
           {g.items.map(c => (
             <option key={c.id} value={String(c.id)}>
               {c.nombre}{c.moneda !== 'ARS' ? ` (${c.moneda})` : ''}

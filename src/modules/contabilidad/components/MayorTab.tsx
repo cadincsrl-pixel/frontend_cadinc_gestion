@@ -93,7 +93,7 @@ export function MayorTab() {
               <div className="text-sm">
                 <span className="font-mono font-bold text-azul">{data.cuenta.codigo}</span>{' '}
                 <span className="font-semibold">{data.cuenta.nombre}</span>
-                <span className="text-xs text-gris-dark"> · {rubroLabel(data.cuenta.rubro)} · naturaleza {naturalezaLabel(data.cuenta.naturaleza).toLowerCase()}</span>
+                <span className="text-xs text-gris-dark"> · {rubroLabel(data.cuenta.rubro)}{data.cuenta.naturaleza ? ` · naturaleza ${naturalezaLabel(data.cuenta.naturaleza).toLowerCase()}` : ''}</span>
                 {esTitulo && <span className="text-xs text-gris-dark"> · cuenta título: suma sus subcuentas</span>}
               </div>
               <div className="text-xs text-gris-dark">Del {fmtFecha(data.desde)} al {fmtFecha(data.hasta)}</div>

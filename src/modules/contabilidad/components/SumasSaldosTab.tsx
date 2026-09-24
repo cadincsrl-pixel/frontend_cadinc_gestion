@@ -69,6 +69,12 @@ export function SumasSaldosTab() {
                       className={`border-t border-gris hover:bg-azul-light/30 cursor-pointer ${f.imputable ? '' : 'font-bold bg-blanco'}`}>
                       <td className="px-3 py-1.5 text-xs" style={{ paddingLeft: `${12 + (f.nivel - 1) * 16}px` }}>
                         <span className="font-mono">{f.codigo}</span> {f.nombre}
+                        {f.rubro === 'resultado' && (
+                          <span className="ml-1 text-[10px] font-normal px-1 rounded bg-gris text-gris-dark"
+                            title="Título de Resultado: agrupa ingresos y egresos; su saldo es el neto (deudor si hay pérdida, acreedor si hay ganancia)">
+                            resultado
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-1.5 text-xs text-right font-mono tabular-nums">{fmtN(f.saldo_anterior)}</td>
                       <td className="px-3 py-1.5 text-xs text-right font-mono tabular-nums">{fmtN(f.debe)}</td>

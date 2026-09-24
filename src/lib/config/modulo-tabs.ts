@@ -113,6 +113,8 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
     { key: 'sumas-saldos', label: 'Sumas y saldos',  icon: '⚖️' },
     { key: 'plan',         label: 'Plan de cuentas', icon: '🗂', meta: 'Cuentas y cuentas de tesorería' },
     { key: 'periodos',     label: 'Períodos',        icon: '🔒' },
+    { key: 'automaticos',  label: 'Automáticos',     icon: '⚙️', meta: 'Asientos de Ventas y Compras, pendientes y contabilizar' },
+    { key: 'mapeos',       label: 'Mapeos',          icon: '🔗', meta: 'Qué cuenta usa cada concepto, alícuota, tributo y medio' },
   ],
   aridos: [
     { key: 'ventas',     label: 'Ventas',     icon: '🛒', meta: 'Ventas por m³ y retiros de escombro' },

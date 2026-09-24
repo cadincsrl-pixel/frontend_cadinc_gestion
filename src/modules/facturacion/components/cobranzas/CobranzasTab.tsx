@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -33,7 +34,12 @@ export function CobranzasTab() {
   const [page, setPage] = useState(1)
   const [nuevo, setNuevo] = useState(false)
   const [compensar, setCompensar] = useState(false)
-  const [fichaId, setFichaId] = useState<number | null>(null)
+  // `&ficha=<id>` (Contabilidad › Automáticos › «Ir al origen») abre ese cobro.
+  const sp = useSearchParams()
+  const [fichaId, setFichaId] = useState<number | null>(() => {
+    const n = Number(sp.get('ficha'))
+    return Number.isInteger(n) && n > 0 ? n : null
+  })
   const [anulando, setAnulando] = useState<VentasCobro | null>(null)
   const [pdfId, setPdfId] = useState<number | null>(null)
   const anular = useAnularCobro()

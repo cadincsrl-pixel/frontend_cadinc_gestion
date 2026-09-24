@@ -10,12 +10,15 @@
 // de los períodos; cerrar un período numera asientos. Se invalida el prefijo
 // entero del módulo.
 
+import { useState } from 'react'
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
-import { apiDelete, apiGet, apiPatch, apiPost } from '@/lib/api/client'
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '@/lib/api/client'
 import type {
   CtbAnularRes, CtbAsiento, CtbAsientoEstado, CtbAsientoFila, CtbAsientoInput, CtbAsientoTipo, CtbAuxiliar,
   CtbCerrarPeriodoRes, CtbCuenta, CtbCuentaInput, CtbDiarioRes, CtbEjercicio, CtbImportarPlanRes, CtbMayorRes,
   CtbObra, CtbPage, CtbPeriodo, CtbReabrirPeriodoRes, CtbSumasSaldosRes, TesoreriaCuenta, TesoreriaInput,
+  CtbConfig, CtbContabilizarInput, CtbContabilizarRes, CtbFuente, CtbMapeoInput, CtbMapeosCatalogo, CtbPendienteEstado,
+  CtbPendientesRes, CtbPropuesta,
 } from '@/types/contabilidad.types'
 
 const BASE = '/api/contabilidad'
@@ -35,6 +38,11 @@ export const CTB_KEYS = {
   tesoreria:   ['contabilidad', 'tesoreria'] as const,
   obras:       ['contabilidad', 'obras'] as const,
   auxiliares:  ['contabilidad', 'auxiliares'] as const,
+  // Fase 3 (20260927): motor de asientos automáticos y mapeos.
+  automaticos: ['contabilidad', 'automaticos'] as const,
+  propuesta:   (tabla: CtbFuente, id: number) => ['contabilidad', 'propuesta', tabla, id] as const,
+  mapeos:      ['contabilidad', 'mapeos'] as const,
+  config:      ['contabilidad', 'config'] as const,
 }
 
 /** Una sola puerta: el prefijo entero. Las cuentas de origen de Pagos también (salen de tesorería). */
@@ -247,10 +255,16 @@ export function useAnularAsiento() {
 
 // ── Períodos ──────────────────────────────────────────────────────────
 
+/**
+ * Cerrar un período. Desde la fase 3, si quedan orígenes sin contabilizar (o
+ * desactualizados) en el mes, el backend responde 409
+ * `HAY_PENDIENTES_AUTOMATICOS {cantidad, por_estado}` y `forzar` cierra igual.
+ */
 export function useCerrarPeriodo() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id: number) => apiPost<CtbCerrarPeriodoRes>(`${BASE}/periodos/${id}/cerrar`, {}),
+    mutationFn: ({ id, forzar }: { id: number; forzar?: boolean }) =>
+      apiPost<CtbCerrarPeriodoRes>(`${BASE}/periodos/${id}/cerrar`, forzar ? { forzar: true } : {}),
     onSuccess: () => invalidarContabilidad(qc),
   })
 }
@@ -338,6 +352,144 @@ export function useAltaTesoreria() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: number) => apiPost<TesoreriaCuenta>(`${BASE}/tesoreria/${id}/alta`, {}),
+    onSuccess: () => invalidarContabilidad(qc),
+  })
+}
+
+// ── Asientos automáticos (fase 3, 20260927d–f) ────────────────────────
+// Los pendientes se calculan en el server (`cont_pendientes`): un solo jsonb
+// con la página y el resumen por estado, fuente y motivo.
+
+export interface PendientesFiltro {
+  desde?:  string
+  hasta?:  string
+  fuente?: CtbFuente | ''
+  estado?: CtbPendienteEstado | ''
+  motivo?: string
+}
+
+export function usePendientes(f: PendientesFiltro, page = 1, pageSize = 50, enabled = true) {
+  const p = new URLSearchParams()
+  if (f.desde)  p.set('desde', f.desde)
+  if (f.hasta)  p.set('hasta', f.hasta)
+  if (f.fuente) p.set('fuente', f.fuente)
+  if (f.estado) p.set('estado', f.estado)
+  if (f.motivo) p.set('motivo', f.motivo)
+  p.set('limit', String(pageSize))
+  p.set('offset', String((page - 1) * pageSize))
+  const qs = p.toString()
+  return useQuery({
+    queryKey: [...CTB_KEYS.automaticos, 'pendientes', qs],
+    queryFn:  () => apiGet<CtbPendientesRes>(`${BASE}/automaticos/pendientes?${qs}`),
+    placeholderData: keepPreviousData,
+    staleTime: STALE,
+    enabled,
+  })
+}
+
+/** El asiento que generaría el origen, contra el que tiene hoy. No escribe nada. */
+export function usePropuesta(tabla: CtbFuente | null, id: number | null) {
+  return useQuery({
+    queryKey: CTB_KEYS.propuesta(tabla ?? 'pagos_facturas', id ?? 0),
+    queryFn:  () => apiGet<CtbPropuesta>(`${BASE}/automaticos/propuesta?origen_tabla=${tabla}&origen_id=${id}`),
+    enabled:  !!tabla && !!id,
+    staleTime: STALE,
+  })
+}
+
+export interface ProgresoContabilizar {
+  vueltas: number
+  acumulado: CtbContabilizarRes
+}
+
+const RES_VACIO: CtbContabilizarRes = {
+  procesados: 0, creados: 0, regenerados: 0, anulados: 0, revertidos: 0, sin_cambios: 0,
+  pendientes: 0, desactualizados: 0, errores: 0, hay_mas: false, cursor: null, detalle_errores: [],
+}
+
+function sumarRes(a: CtbContabilizarRes, b: CtbContabilizarRes): CtbContabilizarRes {
+  return {
+    procesados:      a.procesados + b.procesados,
+    creados:         a.creados + b.creados,
+    regenerados:     a.regenerados + b.regenerados,
+    anulados:        a.anulados + b.anulados,
+    revertidos:      a.revertidos + b.revertidos,
+    sin_cambios:     a.sin_cambios + b.sin_cambios,
+    pendientes:      a.pendientes + b.pendientes,
+    desactualizados: a.desactualizados + b.desactualizados,
+    errores:         a.errores + b.errores,
+    hay_mas:         b.hay_mas,
+    cursor:          b.cursor,
+    detalle_errores: [...a.detalle_errores, ...b.detalle_errores].slice(0, 50),
+  }
+}
+
+/**
+ * «Contabilizar hasta…». El backend procesa hasta ~25 s por llamada y
+ * devuelve `hay_mas`: acá se vuelve a llamar hasta terminar (el cursor lo
+ * lleva el server; la llamada es idempotente) y se va sumando. `progreso`
+ * sirve para mostrar cuánto va. Tope de vueltas por las dudas.
+ */
+export function useContabilizar() {
+  const qc = useQueryClient()
+  const [progreso, setProgreso] = useState<ProgresoContabilizar | null>(null)
+  const mut = useMutation({
+    mutationFn: async (body: CtbContabilizarInput) => {
+      let acum = RES_VACIO
+      let cursor: unknown = null
+      setProgreso({ vueltas: 0, acumulado: acum })
+      for (let vuelta = 1; vuelta <= 60; vuelta++) {
+        // El cursor de la vuelta anterior: sigue donde quedó en vez de
+        // reprocesar desde el principio (contrato: el backend lo devuelve).
+        const r = await apiPost<CtbContabilizarRes>(`${BASE}/automaticos/contabilizar`,
+          cursor ? { ...body, cursor } : body)
+        acum = sumarRes(acum, r)
+        setProgreso({ vueltas: vuelta, acumulado: acum })
+        // Sin avance no se insiste: evita un bucle si el server no progresa.
+        if (!r.hay_mas || r.procesados === 0) break
+        cursor = r.cursor
+      }
+      return acum
+    },
+    onSettled: () => invalidarContabilidad(qc),
+  })
+  return { ...mut, progreso, limpiar: () => setProgreso(null) }
+}
+
+// ── Mapeos y configuración ────────────────────────────────────────────
+
+export function useMapeos(enabled = true) {
+  return useQuery({
+    queryKey: CTB_KEYS.mapeos,
+    queryFn:  () => apiGet<CtbMapeosCatalogo>(`${BASE}/mapeos`),
+    staleTime: STALE,
+    enabled,
+  })
+}
+
+/** Solo lo que cambió. `cuenta_id: null` borra el mapeo. */
+export function useGuardarMapeos() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (mapeos: CtbMapeoInput[]) => apiPut<CtbMapeosCatalogo>(`${BASE}/mapeos`, { mapeos }),
+    onSuccess: () => invalidarContabilidad(qc),
+  })
+}
+
+export function useConfigCtb(enabled = true) {
+  return useQuery({
+    queryKey: CTB_KEYS.config,
+    queryFn:  () => apiGet<CtbConfig>(`${BASE}/config`),
+    staleTime: STALE,
+    enabled,
+  })
+}
+
+export function useGuardarConfig() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (cambios: Partial<Pick<CtbConfig, 'automaticos_desde' | 'cvlp_modo' | 'compras_fecha_contable'>>) =>
+      apiPatch<CtbConfig>(`${BASE}/config`, cambios),
     onSuccess: () => invalidarContabilidad(qc),
   })
 }

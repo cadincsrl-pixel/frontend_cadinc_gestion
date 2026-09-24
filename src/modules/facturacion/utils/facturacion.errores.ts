@@ -79,6 +79,9 @@ const CAMPO_RETENCION: Record<string, string> = {
 }
 
 const MENSAJES: Record<string, (d: unknown) => string> = {
+  // ── Líquido de la CVLP (20260927d) ──
+  NO_ES_CVLP:       () => 'El líquido solo se carga en una cuenta de venta y líquido producto (CVLP 060/061).',
+  LIQUIDO_INVALIDO: () => 'El líquido tiene que ser mayor a cero y no puede superar el total del comprobante.',
   // ── Permisos ──
   SIN_PERMISO:           () => 'No tenés permiso para esta acción.',
   SIN_TAB:               () => 'No tenés acceso a esta pantalla de Facturación.',
