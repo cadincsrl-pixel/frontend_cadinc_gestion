@@ -1163,6 +1163,9 @@ export type ModuloPermisos = { [K in Accion]?: boolean } & {
   //   backend limita al no-admin con este flag a los campos de seguro; el
   //   resto del ABM de flota sigue admin-only. Solo tiene efecto en alquiler.
   gestionar_docs?:         boolean
+  // - alquiler.gestionar_abm: dar de alta y editar máquinas, clientes, obras y
+  //   asignaciones sin ser admin. Borrar sigue admin-only.
+  gestionar_abm?:          boolean
   // - logistica.anular_cobros: eliminar cobros PENDIENTES de facturación sin
   //   eliminación del módulo entero. Los ya cobrados siguen bloqueados por el
   //   service (COBRO_YA_COBRADO). Solo tiene efecto en logística.

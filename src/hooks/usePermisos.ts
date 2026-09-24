@@ -59,6 +59,7 @@ export function usePermisos(modulo: string) {
     aprobarAjustesStock:  flagCapacidad('aprobar_ajustes_stock', false),
     gestionarCobros:      flagCapacidad('gestionar_cobros', false),
     gestionarDocs:        flagCapacidad('gestionar_docs', false),
+    gestionarAbm:         flagCapacidad('gestionar_abm', false),
     anularCobros:         flagCapacidad('anular_cobros', false),
     puedeAdministrarObras: flagCapacidad('administrar_obras', false),
     costosOficina:        flagCapacidad('costos_oficina', false),

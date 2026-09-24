@@ -63,9 +63,10 @@ function estadoBadgeLabel(e: MaquinaEstado): string {
 
 export function MaquinasTab() {
   const toast = useToast()
-  // gestionarDocs: cargar/renovar seguro y póliza sin ser admin (el backend
-  // limita al no-admin con flag a los campos de seguro en el PATCH).
-  const { puedeCrear, puedeEditar, puedeEliminar, esAdmin, gestionarDocs } = usePermisos('alquiler')
+  // gestionarAbm: editar la ficha entera sin ser admin. gestionarDocs: solo
+  // seguro y póliza (el backend limita al no-admin con ese flag a esos campos).
+  const { puedeCrear, puedeEditar, puedeEliminar, esAdmin, gestionarDocs, gestionarAbm } = usePermisos('alquiler')
+  const editaFicha = esAdmin || gestionarAbm
   const { data: maquinas = [], isLoading, isError, refetch } = useMaquinas()
   const { mutate: create, isPending: creating } = useCreateMaquina()
   const { mutate: update, isPending: updating } = useUpdateMaquina()
@@ -274,30 +275,30 @@ export function MaquinasTab() {
         }
       >
         <div className="flex flex-col gap-3">
-          {/* Ficha de la máquina: admin-only en el backend. Los campos de
-              seguro sí se habilitan con el flag gestionar_docs. */}
-          <Input label="Nombre" placeholder="Ej: Hidrogrúa Palfinger" disabled={!esAdmin} error={errors.nombre?.message} {...register('nombre')} />
+          {/* Ficha de la máquina: admin o flag gestionar_abm en el backend.
+              Los campos de seguro también se habilitan con gestionar_docs. */}
+          <Input label="Nombre" placeholder="Ej: Hidrogrúa Palfinger" disabled={!editaFicha} error={errors.nombre?.message} {...register('nombre')} />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Select label="Tipo" options={MAQUINA_TIPO_OPTIONS} disabled={!esAdmin} error={errors.tipo?.message} {...register('tipo')} />
-            <Select label="Estado" options={MAQUINA_ESTADO_OPTIONS} disabled={!esAdmin} error={errors.estado?.message} {...register('estado')} />
+            <Select label="Tipo" options={MAQUINA_TIPO_OPTIONS} disabled={!editaFicha} error={errors.tipo?.message} {...register('tipo')} />
+            <Select label="Estado" options={MAQUINA_ESTADO_OPTIONS} disabled={!editaFicha} error={errors.estado?.message} {...register('estado')} />
           </div>
           <Input
             label="Identificación (patente / nº interno)"
             placeholder="Opcional"
-            disabled={!esAdmin}
+            disabled={!editaFicha}
             {...register('identificacion')}
           />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input
               label="Seguro"
               placeholder="Compañía / nº de póliza (opcional)"
-              disabled={!gestionarDocs}
+              disabled={!(gestionarDocs || editaFicha)}
               {...register('seguro')}
             />
             <Input
               label="Vencimiento del seguro"
               type="date"
-              disabled={!gestionarDocs}
+              disabled={!(gestionarDocs || editaFicha)}
               {...register('seguro_vence')}
             />
           </div>
