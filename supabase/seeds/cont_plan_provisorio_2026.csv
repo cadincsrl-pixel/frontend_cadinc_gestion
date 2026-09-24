@@ -1,0 +1,174 @@
+# PROVISORIO — propuesta para revisar con Mariana (decisión pendiente #2). No se aplica solo: importar desde Contabilidad › Plan › Importar (vista previa primero).
+codigo;nombre;rubro;imputable;auxiliar
+1;ACTIVO;activo;N;none
+1.1;ACTIVO CORRIENTE;activo;N;none
+1.1.01;Caja y bancos;activo;N;none
+1.1.01.001;Caja en pesos;activo;S;none
+1.1.01.002;Fondos fijos de obra;activo;S;none
+1.1.01.003;Banco Galicia cuenta corriente;activo;S;none
+1.1.01.004;Banco Macro cuenta corriente;activo;S;none
+1.1.01.005;Valores a depositar (cheques de terceros);activo;S;none
+1.1.02;Créditos por ventas;activo;N;none
+1.1.02.001;Deudores por ventas;activo;S;cliente
+1.1.02.002;Documentos y cheques diferidos a cobrar;activo;S;cliente
+1.1.02.003;Fondos de reparo retenidos por clientes;activo;S;cliente
+1.1.02.004;Obras ejecutadas a certificar;activo;S;cliente
+1.1.02.005;Previsión para deudores incobrables (regularizadora);activo;S;none
+1.1.03;Créditos fiscales;activo;N;none
+1.1.03.001;IVA crédito fiscal;activo;S;none
+1.1.03.002;IVA percepciones sufridas;activo;S;none
+1.1.03.003;IVA retenciones sufridas;activo;S;none
+1.1.03.004;IVA saldo técnico a favor;activo;S;none
+1.1.03.005;IIBB percepciones sufridas;activo;S;none
+1.1.03.006;IIBB retenciones sufridas (incl. SIRCREB);activo;S;none
+1.1.03.007;IIBB anticipos y saldo a favor;activo;S;none
+1.1.03.008;Ganancias retenciones y anticipos;activo;S;none
+1.1.03.009;Impuesto a los débitos y créditos bancarios a computar;activo;S;none
+1.1.04;Otros créditos;activo;N;none
+1.1.04.001;Anticipos a proveedores;activo;S;proveedor
+1.1.04.002;Anticipos y préstamos al personal;activo;S;none
+1.1.04.003;Adelantos a choferes;activo;S;none
+1.1.04.004;Seguros pagados por adelantado;activo;S;none
+1.1.04.005;Depósitos en garantía;activo;S;none
+1.1.04.006;Deudores varios;activo;S;none
+1.1.05;Bienes de cambio;activo;N;none
+1.1.05.001;Materiales en depósito;activo;S;none
+1.1.05.002;Combustibles y lubricantes en stock;activo;S;none
+1.1.05.003;Áridos en stock;activo;S;none
+1.1.05.004;Obras en curso (costos a imputar);activo;S;none
+1.2;ACTIVO NO CORRIENTE;activo;N;none
+1.2.01;Bienes de uso;activo;N;none
+1.2.01.001;Inmuebles y terrenos;activo;S;none
+1.2.01.002;Camiones;activo;S;none
+1.2.01.003;Semirremolques y bateas;activo;S;none
+1.2.01.004;Utilitarios y camionetas;activo;S;none
+1.2.01.005;Maquinaria y equipos viales;activo;S;none
+1.2.01.006;Herramientas y equipos de obra;activo;S;none
+1.2.01.007;Muebles, útiles e instalaciones;activo;S;none
+1.2.01.008;Equipos de computación;activo;S;none
+1.2.02;Amortizaciones acumuladas (regularizadoras);activo;N;none
+1.2.02.001;Amortización acumulada inmuebles;activo;S;none
+1.2.02.002;Amortización acumulada rodados;activo;S;none
+1.2.02.003;Amortización acumulada maquinaria y herramientas;activo;S;none
+1.2.02.004;Amortización acumulada muebles y equipos;activo;S;none
+2;PASIVO;pasivo;N;none
+2.1;PASIVO CORRIENTE;pasivo;N;none
+2.1.01;Deudas comerciales;pasivo;N;none
+2.1.01.001;Proveedores;pasivo;S;proveedor
+2.1.01.002;Cheques diferidos emitidos;pasivo;S;none
+2.1.01.003;Fondos de reparo retenidos a subcontratistas;pasivo;S;proveedor
+2.1.01.004;Facturas a recibir;pasivo;S;none
+2.1.01.005;Fleteros y choferes a pagar;pasivo;S;none
+2.1.01.006;Anticipos de clientes;pasivo;S;cliente
+2.1.02;Deudas bancarias y financieras;pasivo;N;none
+2.1.02.001;Préstamos bancarios;pasivo;S;none
+2.1.02.002;Tarjetas de crédito a pagar;pasivo;S;none
+2.1.03;Remuneraciones y cargas sociales;pasivo;N;none
+2.1.03.001;Sueldos y jornales a pagar;pasivo;S;none
+2.1.03.002;Cargas sociales a pagar (F.931);pasivo;S;none
+2.1.03.003;Fondo de cese laboral a depositar (UOCRA);pasivo;S;none
+2.1.03.004;Sindicatos, IERIC y seguros a pagar;pasivo;S;none
+2.1.03.005;ART a pagar;pasivo;S;none
+2.1.03.006;Provisión SAC y vacaciones;pasivo;S;none
+2.1.04;Deudas fiscales;pasivo;N;none
+2.1.04.001;IVA débito fiscal;pasivo;S;none
+2.1.04.002;IVA a pagar;pasivo;S;none
+2.1.04.003;IIBB a pagar (Convenio Multilateral);pasivo;S;none
+2.1.04.004;Impuesto a las ganancias a pagar;pasivo;S;none
+2.1.04.005;Retenciones y percepciones a depositar;pasivo;S;none
+2.1.04.006;Tasas municipales a pagar;pasivo;S;none
+2.1.04.007;Planes de pago ARCA;pasivo;S;none
+2.1.05;Otras deudas;pasivo;N;none
+2.1.05.001;Acreedores varios;pasivo;S;none
+2.1.05.002;Cuentas particulares de socios;pasivo;S;none
+2.1.05.003;Honorarios a pagar;pasivo;S;none
+2.2;PASIVO NO CORRIENTE;pasivo;N;none
+2.2.01;Deudas no corrientes;pasivo;N;none
+2.2.01.001;Préstamos bancarios a largo plazo;pasivo;S;none
+2.2.01.002;Planes de pago ARCA a largo plazo;pasivo;S;none
+3;PATRIMONIO NETO;pn;N;none
+3.1;Aportes de los propietarios;pn;N;none
+3.1.01;Capital;pn;N;none
+3.1.01.001;Capital social;pn;S;none
+3.1.01.002;Ajuste de capital;pn;S;none
+3.2;Resultados acumulados;pn;N;none
+3.2.01;Reservas y resultados;pn;N;none
+3.2.01.001;Reserva legal;pn;S;none
+3.2.01.002;Resultados no asignados;pn;S;none
+3.2.01.003;Resultado del ejercicio;pn;S;none
+4;INGRESOS;ingreso;N;none
+4.1;Ventas y servicios;ingreso;N;none
+4.1.01;Construcción;ingreso;N;none
+4.1.01.001;Obras y certificaciones;ingreso;S;none
+4.1.01.002;Adicionales de obra;ingreso;S;none
+4.1.01.003;Materiales facturados a clientes;ingreso;S;none
+4.1.02;Transporte;ingreso;N;none
+4.1.02.001;Fletes;ingreso;S;none
+4.1.02.002;Fletes por cuenta y orden (CVLP);ingreso;S;none
+4.1.02.003;Estadías;ingreso;S;none
+4.1.03;Otros servicios;ingreso;N;none
+4.1.03.001;Alquiler de maquinaria;ingreso;S;none
+4.1.03.002;Venta de áridos;ingreso;S;none
+4.1.04;Deducciones de ventas;ingreso;N;none
+4.1.04.001;Descuentos y bonificaciones otorgados;ingreso;S;none
+4.2;Otros ingresos;ingreso;N;none
+4.2.01;Ingresos financieros y varios;ingreso;N;none
+4.2.01.001;Intereses ganados;ingreso;S;none
+4.2.01.002;Diferencia de cambio positiva;ingreso;S;none
+4.2.01.003;Resultado por venta de bienes de uso;ingreso;S;none
+4.2.01.004;Recupero de gastos;ingreso;S;none
+4.2.01.005;Ingresos varios;ingreso;S;none
+5;EGRESOS;egreso;N;none
+5.1;Costo de obras y servicios;egreso;N;none
+5.1.01;Costo de construcción;egreso;N;none
+5.1.01.001;Materiales de obra;egreso;S;none
+5.1.01.002;Sueldos y jornales de obra;egreso;S;none
+5.1.01.003;Cargas sociales de obra;egreso;S;none
+5.1.01.004;Fondo de cese laboral;egreso;S;none
+5.1.01.005;Subcontratistas;egreso;S;none
+5.1.01.006;Alquiler de equipos a terceros;egreso;S;none
+5.1.01.007;Herramientas, EPP y ropa de trabajo;egreso;S;none
+5.1.01.008;Fletes y acarreos de compras;egreso;S;none
+5.1.01.009;Seguros de obra;egreso;S;none
+5.1.01.010;Otros costos de obra;egreso;S;none
+5.1.02;Costo de transporte;egreso;N;none
+5.1.02.001;Combustibles y lubricantes;egreso;S;none
+5.1.02.002;Cubiertas;egreso;S;none
+5.1.02.003;Reparaciones y mantenimiento de flota;egreso;S;none
+5.1.02.004;Peajes;egreso;S;none
+5.1.02.005;Viáticos de choferes;egreso;S;none
+5.1.02.006;Sueldos y cargas sociales de choferes;egreso;S;none
+5.1.02.007;Fleteros subcontratados;egreso;S;none
+5.1.02.008;Seguros de flota;egreso;S;none
+5.1.02.009;Patentes, RTO y habilitaciones;egreso;S;none
+5.1.02.010;Comisiones por cuenta y orden (CVLP);egreso;S;none
+5.1.03;Costo de áridos y alquiler;egreso;N;none
+5.1.03.001;Costo de áridos (cantera);egreso;S;none
+5.1.03.002;Costo de maquinaria de alquiler;egreso;S;none
+5.2;Gastos de administración;egreso;N;none
+5.2.01;Estructura;egreso;N;none
+5.2.01.001;Sueldos de administración;egreso;S;none
+5.2.01.002;Cargas sociales de administración;egreso;S;none
+5.2.01.003;Honorarios profesionales;egreso;S;none
+5.2.01.004;Alquileres;egreso;S;none
+5.2.01.005;Servicios (luz, gas, agua, internet, teléfono);egreso;S;none
+5.2.01.006;Papelería, sistemas y suscripciones;egreso;S;none
+5.2.01.007;Seguros generales;egreso;S;none
+5.2.01.008;Movilidad y viáticos;egreso;S;none
+5.2.01.009;Gastos y comisiones bancarias;egreso;S;none
+5.2.01.010;Amortizaciones de bienes de uso;egreso;S;none
+5.2.01.011;Gastos varios de administración;egreso;S;none
+5.3;Gastos de comercialización;egreso;N;none
+5.3.01;Impuestos y gastos comerciales;egreso;N;none
+5.3.01.001;Impuesto sobre los Ingresos Brutos;egreso;S;none
+5.3.01.002;Tasa de seguridad e higiene;egreso;S;none
+5.3.01.003;Deudores incobrables;egreso;S;none
+5.4;Resultados financieros e impuestos;egreso;N;none
+5.4.01;Financieros;egreso;N;none
+5.4.01.001;Intereses bancarios;egreso;S;none
+5.4.01.002;Intereses fiscales y resarcitorios;egreso;S;none
+5.4.01.003;Impuesto a los débitos y créditos bancarios (no computable);egreso;S;none
+5.4.01.004;Diferencia de cambio negativa;egreso;S;none
+5.4.01.005;Resultado por exposición a la inflación (RECPAM);egreso;S;none
+5.4.02;Impuesto a las ganancias;egreso;N;none
+5.4.02.001;Impuesto a las ganancias del ejercicio;egreso;S;none
