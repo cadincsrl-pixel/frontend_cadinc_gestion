@@ -223,7 +223,7 @@ export const ESTADOS_PENDIENTE: { key: CtbPendienteEstado; label: string; hint: 
   { key: 'sin_contabilizar', label: 'Sin contabilizar', hint: 'Se puede contabilizar: falta correr «Contabilizar hasta…»', clase: 'bg-azul-light text-azul' },
   { key: 'pendiente',        label: 'Pendiente',        hint: 'No se puede contabilizar todavía: mirá el motivo', clase: 'bg-naranja-light text-naranja-dark' },
   { key: 'desactualizado',   label: 'Desactualizado',   hint: 'El origen o un mapeo cambió después de contabilizarlo', clase: 'bg-amarillo-light text-[#7A5000]' },
-  { key: 'a_revertir',       label: 'A revertir',       hint: 'El origen se anuló y su asiento sigue vigente', clase: 'bg-rojo-light text-rojo' },
+  { key: 'a_revertir',       label: 'A revertir',       hint: 'El origen se anuló (o dejó de ser contabilizable) y su asiento sigue vigente', clase: 'bg-rojo-light text-rojo' },
 ]
 
 export function estadoPendiente(e: string) {

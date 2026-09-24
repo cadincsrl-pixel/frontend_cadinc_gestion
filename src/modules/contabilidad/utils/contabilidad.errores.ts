@@ -236,7 +236,7 @@ const MOTIVOS: Record<string, (d: Record<string, unknown>, etq: (clave: string) 
   },
   AUXILIAR_REQUERIDO:          () => 'La cuenta mapeada pide un auxiliar (cliente, proveedor o tesorería) y el comprobante no lo trae.',
   MAPEO_AUXILIAR_INCOMPATIBLE: () => 'La cuenta mapeada pide un auxiliar de otro tipo: revisá el mapeo.',
-  DESGLOSE_A_REVISAR:          () => 'La factura tiene el desglose de IVA a revisar: completalo en Compras.',
+  DESGLOSE_A_REVISAR:          () => 'Factura A sin alícuotas de IVA identificadas (desglose a revisar): queda pendiente, igual que en el Libro IVA, hasta completar el desglose en Compras.',
   PAGA_CLIENTE_SIN_CRITERIO:   () => 'La paga el cliente: falta definir cómo se contabiliza (pregunta al contador).',
   CVLP_SIN_LIQUIDO:            () => 'Es una CVLP y falta el líquido (lo que pagó Casilda): cargalo en Ventas › Saldos iniciales.',
   CVLP_LIQUIDO_INVALIDO:       () => 'El líquido de la CVLP no alcanza a cubrir el IVA: revisalo.',
