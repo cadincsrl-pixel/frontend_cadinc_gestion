@@ -12,7 +12,7 @@ import { useCertificados, useEmitirCertificado, useAnularCertificado, fetchCerti
 import { fetchCuentaRenglonesTodos, CUENTA_CORRIENTE_KEY } from '../../hooks/useCuentaCorriente'
 import { descargarPdfCertificado } from '../../utils/exportCertificado'
 import { fmtM, fmtFecha } from './cuentaCorriente.utils'
-import type { Obra, CertificadoCliente } from '@/types/domain.types'
+import type { Obra, CertificadoCliente, CuentaRenglon } from '@/types/domain.types'
 
 /**
  * Certificados al cliente (20260911h): la "presentacion" de la cuenta con
@@ -52,7 +52,24 @@ export function CertificadosSection({ obra, puedeEmitir, esAdmin }: { obra: Obra
   )
   const [destildados, setDestildados] = useState<Set<number>>(new Set())
   const seleccionados = elegibles.filter(r => !destildados.has(r.id))
-  const totalSel = seleccionados.reduce((s, r) => s + Number(r.precio_total ?? 0), 0)
+  /**
+   * Lo que va a valer cada renglón en el certificado. La RPC sube al precio
+   * del catálogo todo renglón con ficha, en unidad compatible, que esté por
+   * DEBAJO de ese precio (sea de depósito o de compra). Antes la vista previa
+   * sumaba el precio actual y el certificado salía por más: la sorpresa
+   * llegaba en el toast, con el certificado ya congelado (revisión 23/09).
+   * Usa el precio de catálogo de hoy; la RPC usa el de la fecha de corte, así
+   * que con un corte viejo es una estimación.
+   */
+  const precioCert = (r: CuentaRenglon): number => {
+    const ref = Number(r.ficha_precio_ref ?? 0)
+    const actual = Number(r.precio_unit)
+    return r.ficha_unidad_ok === true && ref > actual ? ref : actual
+  }
+  const totalSel = seleccionados.reduce((s, r) => s + Math.round(Number(r.cantidad) * precioCert(r) * 100) / 100, 0)
+  const suben = seleccionados.filter(r => precioCert(r) > Number(r.precio_unit))
+  const subaTotal = suben.reduce((s, r) => s + Number(r.cantidad) * (precioCert(r) - Number(r.precio_unit)), 0)
+  const corteEsHoy = form.fecha_corte === toISO(new Date())
   function toggle(id: number) {
     setDestildados(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
   }
@@ -156,8 +173,9 @@ export function CertificadosSection({ obra, puedeEmitir, esAdmin }: { obra: Obra
                   </td>
                   <td className="py-1.5 text-right whitespace-nowrap">
                     <Button variant="ghost" size="sm" onClick={() => pdf(c)} loading={descargando === c.id} title="PDF del certificado">⬇ PDF</Button>
-                    {esAdmin && c.estado === 'emitido' && (
-                      <Button variant="ghost" size="sm" onClick={() => { setAnulandoCert(c); setMotivo('') }} title="Anular (solo admin)">✕</Button>
+                    {c.estado === 'emitido' && (
+                      <Button variant="ghost" size="sm" onClick={() => { setAnulandoCert(c); setMotivo('') }}
+                        disabled={!esAdmin} title={esAdmin ? 'Anular certificado' : 'Anular un certificado es de admin'}>✕</Button>
                     )}
                   </td>
                 </tr>
@@ -170,7 +188,7 @@ export function CertificadosSection({ obra, puedeEmitir, esAdmin }: { obra: Obra
       <Modal open={modal} onClose={() => setModal(false)} title={`Presentar certificado · ${obra.nom}`}>
         <div className="flex flex-col gap-3">
           <p className="text-xs text-gris-dark">
-            Al emitir, los materiales tildados se congelan en este certificado y los de depósito pasan al precio del catálogo de ese día.
+            Al emitir, los materiales tildados se congelan en este certificado. Los que tienen ficha y están por debajo del precio del catálogo a la fecha de corte suben a ese precio.
           </p>
           <Input label="Fecha de corte" type="date" value={form.fecha_corte} onChange={e => setForm(f => ({ ...f, fecha_corte: e.target.value }))} />
 
@@ -193,15 +211,28 @@ export function CertificadosSection({ obra, puedeEmitir, esAdmin }: { obra: Obra
                     <input type="checkbox" checked={!destildados.has(r.id)} onChange={() => toggle(r.id)} />
                     <span className="text-gris-dark shrink-0 font-mono">{fmtFecha(r.fecha_resolucion)}</span>
                     <span className="flex-1 truncate">{r.descripcion} <span className="text-gris-dark">· {Number(r.cantidad)} {r.unidad}</span></span>
-                    <b className="font-mono shrink-0">{fmtM(Number(r.precio_total ?? 0))}</b>
+                    {precioCert(r) > Number(r.precio_unit) ? (
+                      <span className="font-mono shrink-0 text-right" title="Sube al precio del catálogo al emitir">
+                        <s className="text-gris-mid">{fmtM(Number(r.precio_total ?? 0))}</s>{' '}
+                        <b className="text-naranja-dark">{fmtM(Number(r.cantidad) * precioCert(r))}</b>
+                      </span>
+                    ) : (
+                      <b className="font-mono shrink-0">{fmtM(Number(r.precio_total ?? 0))}</b>
+                    )}
                   </label>
                 ))}
               </div>
             )}
             <div className="flex justify-between text-[11px] text-gris-dark">
               <span>{sinPrecio > 0 ? `${sinPrecio} renglón${sinPrecio !== 1 ? 'es' : ''} en $0 quedan afuera` : ''}</span>
-              <span>{seleccionados.length} de {elegibles.length} · materiales {fmtM(totalSel)}</span>
+              <span>{seleccionados.length} de {elegibles.length} · materiales {corteEsHoy ? '' : '≈ '}{fmtM(totalSel)}</span>
             </div>
+            {suben.length > 0 && (
+              <p className="text-[11px] text-naranja-dark bg-naranja-light rounded px-2 py-1">
+                {suben.length} renglón{suben.length !== 1 ? 'es' : ''} sube{suben.length !== 1 ? 'n' : ''} al precio del catálogo: +{fmtM(subaTotal)}.
+                {!corteEsHoy && ' Estimado con el precio de hoy; se valúa con el de la fecha de corte.'}
+              </p>
+            )}
           </div>
 
           <InputMonto label="Mano de obra por avance ($)" placeholder="0" value={form.mano_de_obra} onChange={raw => setForm(f => ({ ...f, mano_de_obra: raw }))} />

@@ -1008,6 +1008,10 @@ export function SolicitudesTab() {
           toast('Tiene renglones ya enviados a la obra: no se puede eliminar. Deshacé el envío en cada renglón o usá Devoluciones.', 'err')
         } else if (code === 'SOLICITUD_TIENE_RETIROS') {
           toast('Tiene retiros de stock en proveedor: no se puede eliminar.', 'err')
+        } else if (code === 'SOLICITUD_TIENE_CERTIFICADOS') {
+          toast('Tiene materiales en un certificado al cliente: anulá el certificado primero (Cuenta corriente).', 'err')
+        } else if (code === 'SOLICITUD_TIENE_EN_PROVEEDOR') {
+          toast('Tiene compras que siguen en el galpón del proveedor: retiralas o resolvelas antes de eliminar el pedido.', 'err')
         } else if (code === 'ELEGIR_DESTINO_COMPRAS') {
           toast('Tiene compras sin enviar: elegí si quedan en depósito o vuelven al proveedor.', 'err')
         } else if (code === 'COMPRA_SIN_FICHA') {
@@ -1304,7 +1308,12 @@ export function SolicitudesTab() {
     if (!confirm('¿Revertir este ítem a pendiente?')) return
     revertirItem(itemId, {
       onSuccess: () => toast('Revertido a pendiente', 'ok'),
-      onError: (e: any) => toast(e.message || 'Error', 'err'),
+      onError: (e: any) => {
+        const code = e?.body?.error || e?.code
+        if (code === 'ITEM_COBRADO') toast('El material ya fue cobrado al cliente: liberá el cobro primero (Cuenta corriente)', 'err')
+        else if (code === 'ITEM_CERTIFICADO') toast('El material está en un certificado al cliente: anulá el certificado primero (Cuenta corriente)', 'err')
+        else toast(e.message || 'Error', 'err')
+      },
     })
   }
 

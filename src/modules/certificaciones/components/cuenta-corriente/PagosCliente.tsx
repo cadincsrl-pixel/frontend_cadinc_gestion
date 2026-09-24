@@ -61,7 +61,8 @@ export function PagosCliente({ obraCod, obraNom, puedeEditar, puedeEliminar, por
   const [sel, setSel] = useState<Set<number>>(new Set())
   // Pago contra un certificado (20260911j): se imputan todos sus renglones sin
   // cobrar y el monto se reparte en materiales + mano de obra.
-  const { data: certificados = [] } = useCertificados(obraCod, modal && !editandoCobro)
+  // Siempre, no solo con el modal abierto: la mano de obra certificada entra en la deuda.
+  const { data: certificados = [] } = useCertificados(obraCod)
   const [certId, setCertId] = useState<number | ''>('')
   const [manoDeObra, setManoDeObra] = useState('')
   const certElegido = certId === '' ? null : certificados.find(c => c.id === certId) ?? null
@@ -107,7 +108,13 @@ export function PagosCliente({ obraCod, obraNom, puedeEditar, puedeEliminar, por
   }, [cobrados])
 
   const tot = useMemo(() => totalizar(resumenObra?.grupos ?? []), [resumenObra])
-  const deuda   = tot.porEstado.a_cobrar.total + tot.porEstado.cobrado.total
+  // La mano de obra de los certificados (presupuesto cerrado) también se le
+  // debe: el cobro contra el certificado la trae en su monto. Sin sumarla, el
+  // saldo bajaba de más y podía decir "a favor del cliente" (revisión 23/09).
+  // Por administración la mano de obra va por las semanas, no por acá.
+  const manoDeObraCert = porAdministracion ? 0
+    : certificados.filter(c => c.estado === 'emitido').reduce((s, c) => s + Number(c.mano_de_obra ?? 0), 0)
+  const deuda   = tot.porEstado.a_cobrar.total + tot.porEstado.cobrado.total + manoDeObraCert
   const pagado  = cobros.reduce((s, c) => s + Number(c.monto ?? 0), 0)
   // Devoluciones sobre renglones ya cobrados (20260913k): el renglón queda como
   // está y el cliente recibe una nota de crédito. Es deuda que baja, así que va
@@ -221,7 +228,10 @@ export function PagosCliente({ obraCod, obraNom, puedeEditar, puedeEliminar, por
             <div className="text-[11px] text-gris-dark">Obra llave en mano: no hay nada para cobrarle al cliente.</div>
           ) : (
             <div className="text-sm mt-0.5 flex flex-wrap gap-x-4 gap-y-0.5">
-              <span>Deuda <b className="font-mono">{fmtM(deuda)}</b></span>
+              <span title={manoDeObraCert > 0 ? `Incluye ${fmtM(manoDeObraCert)} de mano de obra certificada` : undefined}>
+                Deuda <b className="font-mono">{fmtM(deuda)}</b>
+                {manoDeObraCert > 0 && <span className="text-[11px] text-gris-dark"> (con {fmtM(manoDeObraCert)} de mano de obra)</span>}
+              </span>
               <span>Pagado <b className="font-mono text-verde">{fmtM(pagado)}</b></span>
               {/* Solo si hubo devoluciones: la línea no aparece en la mayoría
                   de las obras y no vale la pena un "$0" permanente. */}
