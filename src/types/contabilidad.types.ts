@@ -106,7 +106,8 @@ export interface CtbCuentaInput {
 
 export interface CtbImportarFila {
   indice:       number
-  estado:       'nueva' | 'duplicada' | 'error'
+  /** `omitida`: deshabilitada en Finnegans, no se importa (20260928). */
+  estado:       'nueva' | 'duplicada' | 'error' | 'omitida'
   error:        string | null
   detalle:      Record<string, unknown> | null
   codigo:       string | null
@@ -117,6 +118,8 @@ export interface CtbImportarFila {
   nivel:        number | null
   padre_codigo: string | null
   cuenta_id:    number | null
+  /** El código como vino en el archivo (formato Finnegans: 1110101). */
+  codigo_original?: string | null
 }
 
 export interface CtbImportarPlanRes {
@@ -125,6 +128,9 @@ export interface CtbImportarPlanRes {
   nuevas:      number
   duplicadas:  number
   errores:     number
+  /** Filas deshabilitadas en Finnegans (no se importan). */
+  omitidas?:   number
+  formato?:    'estandar' | 'finnegans'
   filas:       CtbImportarFila[]
 }
 

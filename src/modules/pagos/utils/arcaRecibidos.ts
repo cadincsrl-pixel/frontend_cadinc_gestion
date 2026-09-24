@@ -298,6 +298,29 @@ export function parsearRecibidos(data: ArrayBuffer | Uint8Array, archivo: string
   return primero ?? { hoja: '', formato: 'clasico', filas: [], errores: [{ archivo, filaExcel: 0, motivo: 'El archivo no tiene hojas.' }] }
 }
 
+/**
+ * Período IVA del archivo (20260928g). El del contador viene por PERÍODO DE
+ * IVA: el de julio trae una factura del 07/06 que se informó en julio. El mes
+ * predominante es el que más comprobantes tiene (empate: el más nuevo) y
+ * `anteriores` cuenta los de meses previos. Sin fechas → null.
+ */
+export function periodoIvaDelArchivo(fechas: string[]): { mes: string; anteriores: number } | null {
+  const porMes = new Map<string, number>()
+  for (const f of fechas) {
+    if (!/^\d{4}-\d{2}/.test(f)) continue
+    const m = `${f.slice(0, 7)}-01`
+    porMes.set(m, (porMes.get(m) ?? 0) + 1)
+  }
+  let mes: string | null = null
+  for (const [m, n] of porMes) {
+    const actual = mes ? porMes.get(mes)! : -1
+    if (n > actual || (n === actual && mes !== null && m > mes)) mes = m
+  }
+  if (!mes) return null
+  const anteriores = [...porMes].filter(([m]) => m < mes!).reduce((s, [, n]) => s + n, 0)
+  return { mes, anteriores }
+}
+
 /** Lo que viaja al backend: la fila sin los datos de pantalla. */
 export function filaRecibidaParaApi(f: FilaRecibidaArchivo): PagosFilaRecibida {
   return {

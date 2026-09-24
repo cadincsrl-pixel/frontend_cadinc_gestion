@@ -409,7 +409,7 @@ export function useEditarExterno() {
 /**
  * El líquido de una CVLP (lo que pagó Casilda, 20260927d). `null` lo borra.
  * 400 `NO_ES_CVLP` / `LIQUIDO_INVALIDO`. Invalida también los pendientes del
- * motor de asientos de Contabilidad (la CVLP sin líquido queda pendiente).
+ * motor de asientos de Contabilidad (sin líquido, la CVLP va por su total: 20260928f).
  */
 export function useGuardarLiquidoExterno() {
   const qc = useQueryClient()

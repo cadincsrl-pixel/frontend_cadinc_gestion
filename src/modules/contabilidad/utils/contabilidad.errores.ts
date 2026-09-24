@@ -62,7 +62,7 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   // ── Datos del asiento ──
   ID_INVALIDO:            () => 'Identificador inválido.',
   FECHA_REQUERIDA:        () => 'Poné la fecha del asiento.',
-  FECHA_SIN_PERIODO:      d => `No hay un período contable para el ${fmtFecha(String(dato(d, 'fecha') ?? '')) || 'día elegido'}: el ejercicio cargado va del 01/07/2026 al 30/06/2027.`,
+  FECHA_SIN_PERIODO:      d => `No hay un período contable para el ${fmtFecha(String(dato(d, 'fecha') ?? '')) || 'día elegido'}. Si es del ejercicio que viene, abrilo desde Contabilidad › Períodos («Abrir ejercicio siguiente»).`,
   TIPO_NO_PERMITIDO:      () => 'A mano solo se cargan asientos manuales, de ajuste o de apertura.',
   ESTADO_INVALIDO:        () => 'Estado del asiento inválido.',
   GLOSA_REQUERIDA:        () => 'Escribí la glosa del asiento (al menos 3 caracteres).',
@@ -104,6 +104,8 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
 
   // ── Períodos ──
   PERIODO_YA_CERRADO:        () => 'El período ya estaba cerrado.',
+  EJERCICIO_NO_EXISTE:       () => 'El ejercicio no existe.',
+  EJERCICIO_SIGUIENTE_YA_EXISTE: d => `El ejercicio siguiente ya está abierto${dato(d, 'nombre') ? ` (${String(dato(d, 'nombre'))})` : ''}: el próximo se abre cuando ese empiece.`,
   PERIODO_NO_CERRADO:        () => 'El período no está cerrado.',
   PERIODO_ANTERIOR_ABIERTO:  d => `Hay un período anterior abierto${dato(d, 'numero') ? ` (el ${String(dato(d, 'numero'))})` : ''}: los períodos se cierran en orden.`,
   PERIODO_POSTERIOR_CERRADO: () => 'Hay un período posterior cerrado: solo se puede reabrir el último cerrado.',
@@ -119,7 +121,9 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   RESULTADO_SOLO_TITULO:   () => 'El rubro «Resultado» es solo para títulos: una cuenta imputable tiene que ser de ingreso o de egreso.',
   RUBRO_INVALIDO:          () => 'Rubro inválido (activo, pasivo, patrimonio neto, ingreso, egreso o resultado).',
   AUXILIAR_INVALIDO:       () => 'Auxiliar inválido (ninguno, cliente, proveedor o tesorería).',
-  PADRE_NO_EXISTE:         d => `No existe la cuenta madre${dato(d, 'padre_codigo') ? ` ${String(dato(d, 'padre_codigo'))}` : ''}: cargala primero.`,
+  PADRE_NO_EXISTE:         d => dato(d, 'motivo') === 'padre_deshabilitado'
+    ? `La cuenta madre ${String(dato(d, 'padre_codigo') ?? '')} está deshabilitada en el archivo y no se importa: habilitala en Finnegans o sacá esta fila.`
+    : `No existe la cuenta madre${dato(d, 'padre_codigo') ? ` ${String(dato(d, 'padre_codigo'))}` : ''}: cargala primero.`,
   PADRE_IMPUTABLE:         () => 'La cuenta madre es imputable: una cuenta que recibe movimientos no puede tener subcuentas.',
   RUBRO_DISTINTO_AL_PADRE: () => 'El rubro tiene que ser el mismo que el de la cuenta madre (salvo debajo de «Resultado», que admite ingreso, egreso o resultado).',
   AUXILIAR_SOLO_IMPUTABLE: () => 'Solo una cuenta imputable puede llevar auxiliar.',
@@ -133,7 +137,9 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   CUENTA_CON_HIJAS_ACTIVAS: () => 'La cuenta tiene subcuentas activas: dalas de baja primero.',
   PADRE_INACTIVO:          () => 'La cuenta madre está dada de baja: reactivala primero.',
   CUENTA_EN_USO:           () => 'La cuenta está vinculada a una cuenta de tesorería: desvinculala primero.',
-  SIN_FILAS:               () => 'El archivo no tiene cuentas para importar.',
+  SIN_FILAS:               d => dato(d, 'motivo') === 'todas_deshabilitadas'
+    ? 'Todas las cuentas del archivo están deshabilitadas en Finnegans: no hay nada para importar.'
+    : 'El archivo no tiene cuentas para importar.',
   DEMASIADAS_FILAS:        d => `Son demasiadas filas de una vez: el máximo es ${String(dato(d, 'max') ?? 2000)}.`,
   IMPORTACION_CON_ERRORES: d => {
     const errs = dato(d, 'errores')
@@ -238,7 +244,8 @@ const MOTIVOS: Record<string, (d: Record<string, unknown>, etq: (clave: string) 
   MAPEO_AUXILIAR_INCOMPATIBLE: () => 'La cuenta mapeada pide un auxiliar de otro tipo: revisá el mapeo.',
   DESGLOSE_A_REVISAR:          () => 'Factura A sin alícuotas de IVA identificadas (desglose a revisar): queda pendiente, igual que en el Libro IVA, hasta completar el desglose en Compras.',
   PAGA_CLIENTE_SIN_CRITERIO:   () => 'La paga el cliente: falta definir cómo se contabiliza (pregunta al contador).',
-  CVLP_SIN_LIQUIDO:            () => 'Es una CVLP y falta el líquido (lo que pagó Casilda): cargalo en Ventas › Saldos iniciales.',
+  // Desde 20260928f la CVLP sin líquido va por su total: este motivo ya no se genera (queda por las filas viejas).
+  CVLP_SIN_LIQUIDO:            () => 'Es una CVLP sin líquido cargado: volvé a contabilizar (desde el 28/09 va por el total del comprobante).',
   CVLP_LIQUIDO_INVALIDO:       () => 'El líquido de la CVLP no alcanza a cubrir el IVA: revisalo.',
   TESORERIA_SIN_VINCULO:       () => 'La cuenta bancaria del cobro no está vinculada a una cuenta de tesorería.',
   TESORERIA_SIN_CUENTA:        () => 'La cuenta de tesorería no tiene cuenta contable vinculada (Plan › Cuentas de tesorería).',
@@ -254,11 +261,24 @@ export function mensajeMotivo(m: Pick<CtbMotivo, 'codigo' | 'detalle'>, etiqueta
   return fn ? fn(m.detalle ?? {}, etq) : mensajeCodigoCtb(m.codigo, m.detalle)
 }
 
+/** Errores que solo aparecen en una fila del importador (formato Finnegans, 20260928). */
+const MENSAJES_FILA_PLAN: Record<string, (d: unknown) => string> = {
+  CODIGO_FINNEGANS_INVALIDO: d => `El código de Finnegans ${String(dato(d, 'codigo') ?? '')} no se puede convertir${dato(d, 'nivel') ? ` con nivel ${String(dato(d, 'nivel'))}` : ''}: tienen que ser 7 dígitos (1-1-1-2-2) con ceros solo después del nivel.`,
+  MADRE_NO_COINCIDE:         d => {
+    const madre = dato(d, 'cuenta_madre'), conv = dato(d, 'madre_convertida'), esperada = dato(d, 'padre_codigo')
+    return `La cuenta madre del archivo (${madre ? `${String(madre)}${conv ? ` → ${String(conv)}` : ''}` : 'vacía'}) no coincide con la del código (${esperada ? String(esperada) : 'ninguna: es de primer nivel'}).`
+  },
+  HABILITADA_INVALIDA:       d => `«Habilitada» tiene que ser SI o NO (vino «${String(dato(d, 'valor') ?? '')}»).`,
+  IMPUTABLE_INVALIDO:        d => `«Imputable» tiene que ser SI o NO (vino «${String(dato(d, 'valor') ?? '')}»).`,
+  CUENTA_DESHABILITADA:      () => 'Deshabilitada en Finnegans: no se importa.',
+}
+
 /** Error de UNA fila del importador del plan. */
 export function mensajeErrorFilaPlan(code: string | null, detalle?: unknown): string {
   if (!code) return ''
   if (code === 'DUPLICADA') {
     return dato(detalle, 'motivo') === 'repetida_en_el_archivo' ? 'El código está repetido en el archivo.' : 'Ya existe en el plan.'
   }
-  return mensajeCodigoCtb(code, detalle)
+  const fn = MENSAJES_FILA_PLAN[code]
+  return fn ? fn(detalle) : mensajeCodigoCtb(code, detalle)
 }

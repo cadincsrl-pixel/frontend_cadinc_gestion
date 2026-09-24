@@ -12,7 +12,7 @@ import {
   detalleErrorPagos, mensajeAvisoRecibida, mensajeErrorFilaRecibida, mensajeErrorPagos, motivoDuplicadaRecibida,
 } from '../utils/pagos.errores'
 import {
-  filaRecibidaParaApi, hashArchivo, parsearRecibidos,
+  filaRecibidaParaApi, hashArchivo, parsearRecibidos, periodoIvaDelArchivo,
   type ErrorParseoRecibidos, type FilaRecibidaArchivo,
 } from '../utils/arcaRecibidos'
 import type { PagosImportarRecibidosFila, PagosImportarRecibidosRes } from '@/types/domain.types'
@@ -36,6 +36,13 @@ import type { PagosImportarRecibidosFila, PagosImportarRecibidosRes } from '@/ty
  * `pago_a_reconstruir` y no son deuda, ni se aprueban, ni avisan; el pago se
  * reconstruye con los extractos. Arranca tildado cuando TODAS las fechas de
  * los archivos son anteriores al mes actual.
+ *
+ * Período IVA (20260928g): el archivo del contador viene por período de IVA
+ * y puede traer comprobantes de meses anteriores (una factura del 07/06
+ * informada en julio). Si un archivo los trae, se ofrece «Período IVA de
+ * todos los comprobantes: <mes predominante>» (tildado por defecto, por
+ * archivo) y viaja como `periodo_iva`: vale para las filas de ese mes o
+ * anteriores; las posteriores conservan su mes.
  */
 
 type Filtro = 'todas' | 'nueva' | 'duplicada' | 'error' | 'revisar'
@@ -50,7 +57,14 @@ interface Archivo {
   /** Resultado de la importación confirmada. */
   hecho:   PagosImportarRecibidosRes | null
   errorServer: string | null
+  /** Mes predominante y cuántos comprobantes son de meses anteriores (null sin fechas). */
+  periodo: { mes: string; anteriores: number } | null
+  /** Usar el mes predominante como período IVA de todo el archivo (default true). */
+  periodoTodos: boolean
 }
+
+/** El período IVA que viaja: solo si el archivo trae meses anteriores y está tildado. */
+const periodoIvaDe = (a: Archivo): string | null => (a.periodo && a.periodo.anteriores > 0 && a.periodoTodos ? a.periodo.mes : null)
 
 const aRevisar = (f: PagosImportarRecibidosFila) => f.estado === 'nueva' && (f.desglose_a_revisar || f.tributos_a_revisar)
 
@@ -85,6 +99,7 @@ export function ModalImportarRecibidos({ onClose, onVerImportadas }: {
       nuevos.push({
         nombre: f.name, hash: await hashArchivo(buf), formato: r.formato, filas: r.filas, errores: r.errores,
         previa: null, hecho: null, errorServer: null,
+        periodo: periodoIvaDelArchivo(r.filas.map(x => x.fecha)), periodoTodos: true,
       })
     }
     setArchivos(nuevos)
@@ -101,7 +116,25 @@ export function ModalImportarRecibidos({ onClose, onVerImportadas }: {
   async function llamar(a: Archivo, confirmar: boolean) {
     return importar.mutateAsync({
       filas: a.filas.map(filaRecibidaParaApi), archivo: a.nombre.slice(0, 255), hash_sha256: a.hash, confirmar, historica,
+      periodo_iva: periodoIvaDe(a),
     })
+  }
+
+  /** Cambiar el período IVA de un archivo: si ya tenía vista previa, se vuelve a pedir con el nuevo valor. */
+  async function cambiarPeriodo(i: number, periodoTodos: boolean) {
+    const a = archivos[i]
+    if (!a) return
+    const b: Archivo = { ...a, periodoTodos }
+    actualizar(i, { periodoTodos, errorServer: null })
+    if (!a.previa) return
+    setTrabajando('previa')
+    try {
+      actualizar(i, { previa: await llamar(b, false) })
+    } catch (e) {
+      actualizar(i, { previa: null, errorServer: mensajeErrorPagos(e) })
+    } finally {
+      setTrabajando(null)
+    }
   }
 
   async function vistaPrevia() {
@@ -249,6 +282,21 @@ export function ModalImportarRecibidos({ onClose, onVerImportadas }: {
                 {fmtFecha(a.filas.map(f => f.fecha).sort().at(-1))} · formato {a.formato === 'por_alicuota' ? 'con IVA por alícuota' : 'clásico'}
               </div>
             )}
+            {/* Período IVA del archivo (20260928g): solo si trae comprobantes de meses anteriores al predominante. */}
+            {a.periodo && a.periodo.anteriores > 0 && (
+              <label className={`flex items-start gap-2 text-xs border rounded p-2 ${a.periodoTodos ? 'bg-gris border-gris-mid' : 'bg-white border-gris-mid'}`}
+                title={a.hecho ? 'Este archivo ya se importó'
+                  : sinPermiso ?? 'Tildado: los comprobantes de meses anteriores entran en el Libro IVA de este mes (como los informó el contador). Destildado: cada uno en el mes de su fecha'}>
+                <input type="checkbox" className="mt-0.5" checked={a.periodoTodos}
+                  disabled={!!sinPermiso || !!trabajando || !!a.hecho}
+                  onChange={e => void cambiarPeriodo(actual, e.target.checked)} />
+                <span>
+                  <b>Período IVA de todos los comprobantes: <span className="capitalize">{fmtMes(a.periodo.mes.slice(0, 7))}</span>.</b>{' '}
+                  El archivo trae {a.periodo.anteriores} comprobante{a.periodo.anteriores === 1 ? '' : 's'} de meses anteriores
+                  (informado{a.periodo.anteriores === 1 ? '' : 's'} en este período). Destildado, cada uno va al Libro IVA del mes de su fecha.
+                </span>
+              </label>
+            )}
             {a.errores.length > 0 && (
               <Aviso tono="naranja">
                 <b>{a.errores.length} fila{a.errores.length === 1 ? '' : 's'} no se pudieron leer: corregí el archivo antes de importar (si faltara uno, el Libro IVA quedaría incompleto):</b>
@@ -346,7 +394,12 @@ export function ModalImportarRecibidos({ onClose, onVerImportadas }: {
                             <td className="px-2 py-1 font-mono whitespace-nowrap">
                               {f.numero ?? (o ? `${String(o.pto_vta).padStart(5, '0')}-${String(o.numero).padStart(8, '0')}` : '')}
                             </td>
-                            <td className="px-2 py-1 whitespace-nowrap">{fmtFecha(f.fecha ?? o?.fecha)}</td>
+                            <td className="px-2 py-1 whitespace-nowrap">
+                              {fmtFecha(f.fecha ?? o?.fecha)}
+                              {f.periodo_iva && f.fecha && f.periodo_iva.slice(0, 7) !== f.fecha.slice(0, 7) && (
+                                <span className="block text-[10px] font-bold text-azul capitalize">IVA {fmtMes(f.periodo_iva.slice(0, 7))}</span>
+                              )}
+                            </td>
                             <td className="px-2 py-1">
                               {f.razon_social ?? o?.emisor_razon_social}
                               <span className="block text-[10px] text-gris-dark font-mono">{f.cuit ?? o?.emisor_doc_nro}</span>

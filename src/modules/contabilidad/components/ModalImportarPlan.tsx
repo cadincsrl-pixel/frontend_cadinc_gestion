@@ -7,7 +7,7 @@ import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import type { CtbImportarFila, CtbImportarPlanRes } from '@/types/contabilidad.types'
 import { useImportarPlan, type CeldaPlan } from '../hooks/useContabilidad'
-import { leerArchivoPlan } from '../utils/planImport'
+import { leerArchivoPlan, resumenFinnegans, type FormatoPlan } from '../utils/planImport'
 import { auxiliarLabel, rubroLabel } from '../utils/contabilidad.utils'
 import { leerCuerpoError, mensajeErrorCtb, mensajeErrorFilaPlan } from '../utils/contabilidad.errores'
 import { Aviso, Cifra } from './Comun'
@@ -23,9 +23,14 @@ import { Aviso, Cifra } from './Comun'
  *
  * Columnas: codigo; nombre; rubro; imputable; auxiliar (solo código y nombre
  * son obligatorias: el rubro se hereda y el imputable se deduce).
+ *
+ * También acepta el export de Finnegans (20260928:
+ * codigo;descripcion;nivel;cuenta_madre;imputable;capitulo;saldo_normal;habilitada):
+ * el backend convierte 1110101 → 1.1.1.01.01, valida la madre por fila y no
+ * importa las deshabilitadas. La vista previa muestra el código original.
  */
 
-type Filtro = 'todas' | 'nueva' | 'duplicada' | 'error'
+type Filtro = 'todas' | 'nueva' | 'duplicada' | 'error' | 'omitida'
 
 export function ModalImportarPlan({ onClose }: { onClose: () => void }) {
   const toast = useToast()
@@ -36,6 +41,7 @@ export function ModalImportarPlan({ onClose }: { onClose: () => void }) {
   const [archivo, setArchivo] = useState<string | null>(null)
   const [filas, setFilas] = useState<Record<string, CeldaPlan>[]>([])
   const [errorLectura, setErrorLectura] = useState<string | null>(null)
+  const [formato, setFormato] = useState<FormatoPlan>('estandar')
   const [leyendo, setLeyendo] = useState(false)
   const [previa, setPrevia] = useState<CtbImportarPlanRes | null>(null)
   const [errorServer, setErrorServer] = useState<string | null>(null)
@@ -49,9 +55,11 @@ export function ModalImportarPlan({ onClose }: { onClose: () => void }) {
       const r = await leerArchivoPlan(f)
       setArchivo(f.name)
       setFilas(r.filas)
+      setFormato(r.formato)
       setErrorLectura(r.error)
     } catch {
       setFilas([])
+      setFormato('estandar')
       setErrorLectura('No se pudo leer el archivo. ¿Es un Excel o un CSV?')
     } finally {
       setLeyendo(false)
@@ -87,6 +95,10 @@ export function ModalImportarPlan({ onClose }: { onClose: () => void }) {
     }
   }
 
+  const finnegans = useMemo(() => (formato === 'finnegans' ? resumenFinnegans(filas) : null), [formato, filas])
+  const conOriginal = (previa?.filas ?? []).some(f => f.codigo_original != null)
+  const omitidas = previa?.omitidas ?? (previa?.filas ?? []).filter(f => f.estado === 'omitida').length
+
   const visibles = useMemo(
     () => (previa?.filas ?? []).filter(f => filtro === 'todas' || f.estado === filtro),
     [previa, filtro],
@@ -117,6 +129,7 @@ export function ModalImportarPlan({ onClose }: { onClose: () => void }) {
           Excel o CSV (separado por <b>;</b>, <b>,</b> o tabulación) con las columnas <b>codigo</b>, <b>nombre</b> y, si querés,{' '}
           <b>rubro</b> (activo, pasivo, pn, ingreso, egreso, resultado; resultado solo en títulos, y sus hijas lo dicen explícito), <b>imputable</b> (S/N) y <b>auxiliar</b> (none, cliente, proveedor,
           tesoreria). Las líneas que empiezan con # se ignoran. Las cuentas que ya existen se saltean: importar dos veces no duplica.
+          {' '}También sirve el <b>export del plan de Finnegans</b> (codigo; descripcion; nivel; cuenta_madre; imputable; capitulo; saldo_normal; habilitada).
         </Aviso>
 
         <label className={`border-2 border-dashed rounded-lg p-4 text-center ${permitido ? 'border-gris-mid hover:border-naranja cursor-pointer' : 'border-gris opacity-60 cursor-not-allowed'}`}>
@@ -129,16 +142,28 @@ export function ModalImportarPlan({ onClose }: { onClose: () => void }) {
 
         {errorLectura && <Aviso tono="naranja">{errorLectura}</Aviso>}
 
+        {finnegans && !previa && (
+          <Aviso tono="gris">
+            <b>Formato Finnegans detectado</b>: {finnegans.total} cuenta{finnegans.total === 1 ? '' : 's'}. Los códigos se convierten a puntos
+            {finnegans.ejemplo && <> (por ejemplo <span className="font-mono">{finnegans.ejemplo.original} → {finnegans.ejemplo.convertido}</span>)</>},
+            el rubro sale del capítulo (en Resultados, del saldo normal: acreedor = ingreso, deudor = egreso) y se controla que la cuenta madre coincida.
+            {finnegans.deshabilitadas > 0 && <> Las <b>{finnegans.deshabilitadas} deshabilitadas</b> no se importan.</>}
+            {finnegans.conError > 0 && <> <b className="text-rojo">{finnegans.conError} fila{finnegans.conError === 1 ? '' : 's'} no cuadra{finnegans.conError === 1 ? '' : 'n'}</b> (código o madre): la vista previa dice cuál.</>}
+          </Aviso>
+        )}
+
         {previa && (
           <>
             <div className="flex gap-2 flex-wrap">
               <Cifra label="Nuevas" valor={String(previa.nuevas)} tono="verde" />
               <Cifra label="Ya existen" valor={String(previa.duplicadas)} sub="se saltean" />
               <Cifra label="Con error" valor={String(previa.errores)} tono={previa.errores > 0 ? 'rojo' : 'normal'} />
+              {omitidas > 0 && <Cifra label="Deshabilitadas" valor={String(omitidas)} sub="no se importan" />}
             </div>
             <div className="flex gap-1 flex-wrap">
               {([['todas', 'Todas', previa.filas.length], ['nueva', 'Nuevas', previa.nuevas],
-                 ['duplicada', 'Ya existen', previa.duplicadas], ['error', 'Errores', previa.errores]] as [Filtro, string, number][]).map(([k, l, n]) => (
+                 ['duplicada', 'Ya existen', previa.duplicadas], ['error', 'Errores', previa.errores],
+                 ...(omitidas > 0 ? [['omitida', 'Deshabilitadas', omitidas]] : [])] as [Filtro, string, number][]).map(([k, l, n]) => (
                 <button key={k} type="button" onClick={() => setFiltro(k)}
                   className={`text-xs px-2.5 py-1 rounded-full border ${filtro === k ? 'bg-azul text-white border-azul' : 'bg-white border-gris-mid text-azul'}`}>
                   {l} ({n})
@@ -149,15 +174,16 @@ export function ModalImportarPlan({ onClose }: { onClose: () => void }) {
               <table className="w-full border-collapse min-w-[900px] text-xs">
                 <thead className="sticky top-0">
                   <tr>
-                    {['Fila', 'Código', 'Nombre', 'Rubro', 'Imputable', 'Auxiliar', 'Madre', 'Resultado'].map(h => (
+                    {['Fila', ...(conOriginal ? ['Cód. Finnegans'] : []), 'Código', 'Nombre', 'Rubro', 'Imputable', 'Auxiliar', 'Madre', 'Resultado'].map(h => (
                       <th key={h} className="bg-gris text-gris-dark text-[10px] font-bold px-2 py-1.5 uppercase tracking-wide text-left">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {visibles.map(f => (
-                    <tr key={f.indice} className={`border-t border-gris ${f.estado === 'error' ? 'bg-rojo-light/50' : f.estado === 'duplicada' ? 'text-gris-dark' : ''}`}>
+                    <tr key={f.indice} className={`border-t border-gris ${f.estado === 'error' ? 'bg-rojo-light/50' : f.estado === 'duplicada' || f.estado === 'omitida' ? 'text-gris-dark' : ''}`}>
                       <td className="px-2 py-1 text-gris-dark tabular-nums">{f.indice}</td>
+                      {conOriginal && <td className="px-2 py-1 font-mono text-gris-dark whitespace-nowrap">{f.codigo_original ?? ''}</td>}
                       <td className="px-2 py-1 font-mono whitespace-nowrap" style={{ paddingLeft: `${8 + Math.max(0, (f.nivel ?? 1) - 1) * 10}px` }}>{f.codigo ?? ''}</td>
                       <td className={`px-2 py-1 ${f.imputable === false ? 'font-bold' : ''}`}>{f.nombre ?? ''}</td>
                       <td className="px-2 py-1">{f.rubro ? rubroLabel(f.rubro) : ''}</td>
@@ -168,6 +194,7 @@ export function ModalImportarPlan({ onClose }: { onClose: () => void }) {
                         {f.estado === 'nueva' && <span className="font-bold text-verde">Nueva</span>}
                         {f.estado === 'duplicada' && <span>{mensajeErrorFilaPlan('DUPLICADA', f.detalle)}</span>}
                         {f.estado === 'error' && <span className="font-bold text-rojo">{mensajeErrorFilaPlan(f.error, f.detalle)}</span>}
+                        {f.estado === 'omitida' && <span className="italic">{mensajeErrorFilaPlan(f.error ?? 'CUENTA_DESHABILITADA', f.detalle)}</span>}
                       </td>
                     </tr>
                   ))}

@@ -269,6 +269,15 @@ export function useCerrarPeriodo() {
   })
 }
 
+/** Abre el ejercicio que sigue al último, con sus 12 períodos (20260928e). */
+export function useAbrirEjercicioSiguiente() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => apiPost<{ ejercicio: CtbEjercicio; periodos: number }>(`${BASE}/ejercicios/siguiente`, {}),
+    onSuccess: () => invalidarContabilidad(qc),
+  })
+}
+
 export function useReabrirPeriodo() {
   const qc = useQueryClient()
   return useMutation({

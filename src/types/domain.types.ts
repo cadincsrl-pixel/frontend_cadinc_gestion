@@ -2711,6 +2711,8 @@ export interface PagosImportarRecibidosInput {
   confirmar:     boolean
   /** De meses ya pagados (20260928): entran con `pago_a_reconstruir`. */
   historica?:    boolean
+  /** Período IVA (primer día del mes) de las filas con fecha de ese mes o anterior (20260928g). */
+  periodo_iva?:  string | null
 }
 
 export interface PagosImportarAviso {
@@ -2725,6 +2727,8 @@ export interface PagosImportarRecibidosFila {
   detalle:               Record<string, unknown> | null
   avisos:                PagosImportarAviso[]
   fecha:                 string | null
+  /** Período IVA con el que entra (20260928g; ausente en respuestas viejas). */
+  periodo_iva?:          string | null
   cbte_tipo:             number | null
   tipo_comprobante:      PagosTipoComprobante | null
   clase:                 PagosClaseComprobante | null

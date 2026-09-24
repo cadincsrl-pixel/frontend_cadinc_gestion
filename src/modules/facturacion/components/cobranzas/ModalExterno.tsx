@@ -176,9 +176,10 @@ export function ModalExterno({ externo, onClose }: { externo?: VentasExterno; on
 
 /**
  * CVLP de Casilda (20260927d): lo que liquidó después de su comisión. El
- * asiento automático de Contabilidad va por este neto; sin él, la CVLP queda
- * pendiente («falta el líquido»). No toca el saldo de la cuenta del cliente,
- * que sigue siendo el total del papel.
+ * total del comprobante que viene de ARCA YA es ese neto, así que el asiento
+ * automático va por el total; el líquido es solo una corrección opcional
+ * (20260928f: `coalesce(liquido, total)`). No toca el saldo de la cuenta del
+ * cliente, que sigue siendo el total del papel.
  */
 const liquidoSchema = (total: number) => z.object({
   liquido: z.string().refine(v => v === '' || (Number(v) > 0 && Number(v) <= total), `Mayor a cero y hasta ${fmtM(total)}`),
@@ -204,11 +205,11 @@ function LiquidoCvlp({ externo, puede }: { externo: VentasExterno; puede: boolea
 
   return (
     <div className="mt-3 border-t border-gris pt-3 flex flex-col gap-2">
-      <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Líquido (lo que pagó Casilda)</div>
+      <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Líquido (lo que pagó Casilda) · opcional</div>
       <div className="flex gap-2 items-start flex-wrap">
         <div className="w-48">
           <Controller control={control} name="liquido" render={({ field }) => (
-            <InputMonto value={field.value} onChange={field.onChange} disabled={!puede} error={errors.liquido?.message} placeholder="Sin cargar" />
+            <InputMonto value={field.value} onChange={field.onChange} disabled={!puede} error={errors.liquido?.message} placeholder={`Igual al total (${fmtM(externo.total)})`} />
           )} />
         </div>
         <Button size="sm" variant="secondary" onClick={handleSubmit(enviar)} loading={guardar.isPending} disabled={!puede || !isDirty}
@@ -217,8 +218,9 @@ function LiquidoCvlp({ externo, puede }: { externo: VentasExterno; puede: boolea
         </Button>
       </div>
       <span className="text-[11px] text-gris-dark">
-        Total del papel {fmtM(externo.total)}. El asiento va por el neto liquidado: Casilda al Debe por el líquido, el IVA del papel y la
-        venta por la diferencia. Vacío = sin cargar (el asiento queda pendiente).
+        Total del comprobante {fmtM(externo.total)}: el que viene de ARCA ya es el neto de la comisión de Casilda, así que el asiento va por
+        ese total (Casilda al Debe, el IVA del papel y la venta por la diferencia). Cargá un líquido solo si Casilda liquidó otro importe;
+        vacío = se usa el total.
       </span>
     </div>
   )

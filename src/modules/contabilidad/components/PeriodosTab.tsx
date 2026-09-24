@@ -7,7 +7,7 @@ import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import type { CtbPeriodo } from '@/types/contabilidad.types'
-import { useCerrarPeriodo, useEjercicios, usePeriodos } from '../hooks/useContabilidad'
+import { useAbrirEjercicioSiguiente, useCerrarPeriodo, useEjercicios, usePeriodos } from '../hooks/useContabilidad'
 import { bloqueoCerrarTxt, bloqueoReabrirTxt, estadoPendiente, fmtFecha, fmtFechaHora, fmtM, hoyAR, nombreMes } from '../utils/contabilidad.utils'
 import { codigoErrorCtb, leerCuerpoError, mensajeErrorCtb } from '../utils/contabilidad.errores'
 import { Aviso, Campo, Cargando, ErrorCarga, Tarjeta, Th, Vacio, inputCls } from './Comun'
@@ -18,6 +18,10 @@ import { ModalReabrirPeriodo } from './ModalReabrirPeriodo'
  * asientos confirmados (correlativos en el ejercicio, por fecha) y lo congela:
  * ya no se carga, edita ni borra nada con fecha en ese mes. Se cierran en
  * orden y sin borradores. Solo se reabre el último cerrado.
+ *
+ * «Abrir ejercicio siguiente» (20260928e) crea el ejercicio de julio a junio
+ * que sigue al último, con sus 12 meses abiertos. Solo se puede cuando el
+ * último ya empezó (espejo de EJERCICIO_SIGUIENTE_YA_EXISTE de la RPC).
  */
 export function PeriodosTab() {
   const toast = useToast()
@@ -39,6 +43,8 @@ export function PeriodosTab() {
   // 409 HAY_PENDIENTES_AUTOMATICOS (fase 3): cuántos quedan y por estado.
   const [pendientesAuto, setPendientesAuto] = useState<{ cantidad: number; por_estado: Record<string, number> } | null>(null)
   const [aReabrir, setAReabrir] = useState<CtbPeriodo | null>(null)
+  const abrirSiguiente = useAbrirEjercicioSiguiente()
+  const [confirmarSiguiente, setConfirmarSiguiente] = useState(false)
 
   const sinPermiso = !cerrarPeriodos ? 'No tenés permiso (hace falta «Cerrar y reabrir períodos»)'
     : !puedeEditar ? 'No tenés permiso de Editar en Contabilidad' : null
@@ -64,6 +70,35 @@ export function PeriodosTab() {
     }
   }
 
+  // El siguiente al último: desde = hasta + 1 día, 12 meses.
+  const ultimo = useMemo(() => [...(ejerciciosQ.data ?? [])].sort((a, b) => (a.hasta < b.hasta ? 1 : a.hasta > b.hasta ? -1 : 0))[0] ?? null,
+    [ejerciciosQ.data])
+  const siguiente = useMemo(() => {
+    if (!ultimo) return null
+    const d = new Date(`${ultimo.hasta}T12:00:00Z`)
+    d.setUTCDate(d.getUTCDate() + 1)
+    const desde = d.toISOString().slice(0, 10)
+    const h = new Date(Date.UTC(d.getUTCFullYear() + 1, d.getUTCMonth(), d.getUTCDate() - 1, 12))
+    const hasta = h.toISOString().slice(0, 10)
+    return { desde, hasta, nombre: `${desde.slice(0, 4)}/${hasta.slice(2, 4)}` }
+  }, [ultimo])
+  const bloqueoSiguiente = sinPermiso
+    ?? (ejerciciosQ.isLoading ? 'Cargando los ejercicios…'
+    : !ultimo ? 'No hay un ejercicio cargado del cual seguir'
+    : ultimo.desde > hoyAR() ? `El ejercicio siguiente ya está abierto (${ultimo.nombre}): el próximo se abre cuando ese empiece`
+    : null)
+
+  async function hacerAbrirSiguiente() {
+    try {
+      const r = await abrirSiguiente.mutateAsync()
+      toast(`✓ Ejercicio ${r.ejercicio.nombre} abierto (${fmtFecha(r.ejercicio.desde)} – ${fmtFecha(r.ejercicio.hasta)}, ${r.periodos} períodos)`, 'ok')
+      setConfirmarSiguiente(false)
+      setEjercicioElegido(r.ejercicio.id)
+    } catch (e) {
+      toast(mensajeErrorCtb(e), 'err')
+    }
+  }
+
   function cerrarModal() {
     setACerrar(null)
     setPendientesAuto(null)
@@ -85,6 +120,10 @@ export function PeriodosTab() {
         <p className="text-xs text-gris-dark flex-1 min-w-[240px]">
           Cerrar un mes numera sus asientos y lo congela. Se cierran en orden y sin borradores; solo se reabre el último cerrado.
         </p>
+        <Button size="sm" variant="secondary" disabled={!!bloqueoSiguiente} onClick={() => setConfirmarSiguiente(true)}
+          title={bloqueoSiguiente ?? `Abrir el ejercicio ${siguiente?.nombre ?? 'siguiente'} con sus 12 meses`}>
+          Abrir ejercicio siguiente{siguiente && !bloqueoSiguiente ? ` (${siguiente.nombre})` : ''}
+        </Button>
       </Tarjeta>
 
       {ejerciciosQ.isError ? <ErrorCarga mensaje={mensajeErrorCtb(ejerciciosQ.error)} onReintentar={() => void ejerciciosQ.refetch()} />
@@ -185,6 +224,22 @@ export function PeriodosTab() {
                 Si lo cerrás igual, después se corrigen con contraasientos en un mes abierto.
               </Aviso>
             )}
+          </div>
+        </Modal>
+      )}
+      {confirmarSiguiente && siguiente && (
+        <Modal open onClose={abrirSiguiente.isPending ? () => {} : () => setConfirmarSiguiente(false)} width="max-w-md"
+          title={`Abrir el ejercicio ${siguiente.nombre}`}
+          footer={<>
+            <Button variant="ghost" size="sm" onClick={() => setConfirmarSiguiente(false)} disabled={abrirSiguiente.isPending}>Cancelar</Button>
+            <Button size="sm" loading={abrirSiguiente.isPending} onClick={() => void hacerAbrirSiguiente()}>Abrir el ejercicio</Button>
+          </>}>
+          <div className="flex flex-col gap-3 text-sm">
+            <p>
+              Se crea el ejercicio <b>{siguiente.nombre}</b>, del {fmtFecha(siguiente.desde)} al {fmtFecha(siguiente.hasta)}, con sus
+              {' '}<b>12 períodos abiertos</b>. Desde ahí se pueden cargar asientos y contabilizar comprobantes con fecha en esos meses.
+            </p>
+            <Aviso tono="gris">No hace falta cerrar el ejercicio actual: los dos quedan abiertos a la vez.</Aviso>
           </div>
         </Modal>
       )}
