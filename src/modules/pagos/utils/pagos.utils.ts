@@ -78,6 +78,20 @@ export function formaPagoLabel(forma: PagosFormaPagoOPGuardada | null | undefine
   return FORMAS_PAGO_OP.find(f => f.key === forma)?.label ?? forma
 }
 
+/**
+ * Cómo se nombra la plata que salió, según la forma (2026-09-23). «Salió del
+ * banco» sólo es verdad para lo que pasa por el banco: el efectivo sale de la
+ * caja y la tarjeta se debita después. El dueño lo marcó en una OP en efectivo.
+ */
+const FORMAS_BANCO = ['transferencia', 'cheque', 'echeq', 'debito_automatico'] as const
+export function salidaLabel(forma: PagosFormaPagoOPGuardada | null | undefined, tiempo: 'pasado' | 'presente' = 'pasado'): string {
+  const p = tiempo === 'pasado'
+  if (forma && (FORMAS_BANCO as readonly string[]).includes(forma)) return p ? 'Salió del banco' : 'Sale del banco'
+  if (forma === 'efectivo') return p ? 'Se pagó en efectivo' : 'Se paga en efectivo'
+  if (forma === 'tarjeta') return p ? 'Se pagó con tarjeta' : 'Se paga con tarjeta'
+  return p ? 'Se pagó' : 'Se paga'
+}
+
 /** Si hay plata, sin comprobante el backend rebota con `COMPROBANTE_REQUERIDO`. */
 export const FORMAS_CON_COMPROBANTE_OBLIGATORIO: PagosFormaPagoOP[] = ['transferencia', 'echeq']
 /** Piden fecha de cobro (el cheque queda «en cartera» hasta ese día). */

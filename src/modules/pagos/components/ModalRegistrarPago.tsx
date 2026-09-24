@@ -13,7 +13,7 @@ import { useDatosPagoProveedor, useProveedorPagos } from '../hooks/useProveedore
 import {
   FORMAS_CON_COMPROBANTE_OBLIGATORIO, FORMAS_CON_CUENTA_DESTINO, FORMAS_CON_FECHA_COBRO,
   FORMAS_PAGO_OP, PLAZOS_CHEQUE, comprobanteTxt, fechasEscalonadas, fmtFecha, fmtM, hoyAR,
-  partirEnPartes, plazoLabel, repartirPagoEntreFacturas, sumarDiasISO,
+  partirEnPartes, plazoLabel, repartirPagoEntreFacturas, salidaLabel, sumarDiasISO,
 } from '../utils/pagos.utils'
 import { mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
 import type { PagosAdjuntoPendiente, PagosFactura, PagosFormaPagoOP, PagosLineaOrdenInput } from '@/types/domain.types'
@@ -36,6 +36,11 @@ import type { PagosAdjuntoPendiente, PagosFactura, PagosFormaPagoOP, PagosLineaO
 interface Props {
   facturaIds: number[]
   onClose:    () => void
+  /**
+   * Al registrar: la OP nueva y si salió con comprobante de pago. Con
+   * comprobante, quien llama ofrece avisar al proveedor en el momento.
+   */
+  onRegistrado?: (ordenId: number, conComprobante: boolean) => void
 }
 
 interface FilaFactura {
@@ -103,7 +108,7 @@ const nEntero = (s: string) => {
   return Number.isFinite(v) ? v : 0
 }
 
-export function ModalRegistrarPago({ facturaIds, onClose }: Props) {
+export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props) {
   const toast = useToast()
   const { verPii } = usePermisos('pagos')
   const registrar = useRegistrarOrden()
@@ -346,6 +351,7 @@ export function ModalRegistrarPago({ facturaIds, onClose }: Props) {
       const pagadas = r.facturas.filter(f => f.estado === 'pagada').length
       toast(`✓ ${r.orden.numero_fmt} registrada${pagadas > 0 ? ` · ${pagadas} factura${pagadas === 1 ? '' : 's'} saldada${pagadas === 1 ? '' : 's'}` : ''}`, 'ok')
       for (const a of r.avisos) toast(mensajeAvisoPagos(a), 'warn')
+      onRegistrado?.(Number(r.orden.id), !!comprobante)
       onClose()   // sin limpiar: los archivos ya quedaron en la OP
     } catch (e) {
       // NO se borran los adjuntos: el reintento los reusa.
@@ -366,7 +372,7 @@ export function ModalRegistrarPago({ facturaIds, onClose }: Props) {
       footer={
         <div className="flex gap-2 justify-end items-center flex-wrap">
           <div className="text-xs text-gris-dark mr-auto">
-            {totalPlata > 0 && <>Sale del banco: <b className="font-mono tabular-nums text-carbon">{fmtM(totalPlata)}</b></>}
+            {totalPlata > 0 && <>{salidaLabel(forma, 'presente')}: <b className="font-mono tabular-nums text-carbon">{fmtM(totalPlata)}</b></>}
             {totalNc > 0 && <span className="ml-2">Acreditado por NC: <b className="font-mono tabular-nums text-[#5A2D82]">{fmtM(totalNc)}</b></span>}
           </div>
           <Button variant="ghost" size="sm" onClick={cerrar}>Cancelar</Button>

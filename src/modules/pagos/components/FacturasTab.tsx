@@ -20,6 +20,7 @@ import { FichaFactura } from './FichaFactura'
 import { ModalCargarFactura } from './ModalCargarFactura'
 import { ModalRegistrarPago } from './ModalRegistrarPago'
 import { ModalExcelGalicia } from './ModalExcelGalicia'
+import { PreguntarAvisoPago } from './PreguntarAvisoPago'
 import { DeudaPorProveedor } from './DeudaPorProveedor'
 
 const PAGE_SIZE = 50
@@ -68,6 +69,8 @@ export function FacturasTab({ aviso }: { aviso?: string | null }) {
   const [modalCargar, setModalCargar] = useState<{ open: boolean; editarId?: number }>({ open: false })
   const [modalPago, setModalPago] = useState<{ open: boolean; facturaIds: number[] }>({ open: false, facturaIds: [] })
   const [modalGalicia, setModalGalicia] = useState(false)
+  // Después de pagar con comprobante: «¿le avisás al proveedor ahora?»
+  const [avisoOrdenId, setAvisoOrdenId] = useState<number | null>(null)
   const [exportando, setExportando] = useState(false)
   const [generandoPdf, setGenerandoPdf] = useState(false)
 
@@ -319,7 +322,12 @@ export function FacturasTab({ aviso }: { aviso?: string | null }) {
         <ModalRegistrarPago
           facturaIds={modalPago.facturaIds}
           onClose={() => { setModalPago({ open: false, facturaIds: [] }); setSeleccion(new Set()) }}
+          onRegistrado={(id, conComprobante) => { if (conComprobante) setAvisoOrdenId(id) }}
         />
+      )}
+
+      {avisoOrdenId !== null && (
+        <PreguntarAvisoPago ordenId={avisoOrdenId} titulo="Pago registrado" onClose={() => setAvisoOrdenId(null)} />
       )}
     </div>
   )

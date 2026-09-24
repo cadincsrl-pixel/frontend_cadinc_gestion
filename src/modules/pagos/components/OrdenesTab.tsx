@@ -16,9 +16,10 @@ import { descargarOrdenPagoPdf } from '../utils/ordenPagoPdf'
 import { ModalPaqueteContador } from './ModalPaqueteContador'
 import { ModalAvisarPago } from './ModalAvisarPago'
 import { ModalDevolucionProveedor } from './ModalDevolucionProveedor'
+import { PreguntarAvisoPago } from './PreguntarAvisoPago'
 import { useProveedoresPagos } from '../hooks/useProveedoresPagos'
 import {
-  FORMAS_PAGO_OP, MAX_ADJUNTO_BYTES, MIME_ADJUNTOS, TIPOS_ADJ_FACTURA, comprobanteTxt, fmtFecha, fmtM, formaPagoLabel, hoyAR,
+  FORMAS_PAGO_OP, MAX_ADJUNTO_BYTES, salidaLabel, MIME_ADJUNTOS, TIPOS_ADJ_FACTURA, comprobanteTxt, fmtFecha, fmtM, formaPagoLabel, hoyAR,
 } from '../utils/pagos.utils'
 import { mensajeErrorPagos } from '../utils/pagos.errores'
 import type { PagosOrden } from '@/types/domain.types'
@@ -85,7 +86,7 @@ export function OrdenesTab() {
       {totales && (
         <div className="flex gap-2 flex-wrap">
           <Kpi label="Órdenes" valor={String(totales.ordenes)} />
-          <Kpi label="Salió del banco" valor={fmtM(totales.monto_pagado)} />
+          <Kpi label="Pagado" valor={fmtM(totales.monto_pagado)} sub="todas las formas" />
           <Kpi label="Notas de crédito" valor={fmtM(totales.monto_nc)} sub="no es plata que salió" />
           {enCartera > 0 && <Kpi label="Cheques en cartera" valor={String(enCartera)} sub="en esta página" tono="alerta" />}
           {/* Lo que el contador todavía no pasó a Finnegans, de TODAS las
@@ -267,6 +268,7 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, puedeRegistrar, pu
   const [avisando, setAvisando] = useState(false)
   const [generandoPdf, setGenerandoPdf] = useState(false)
   const [devolviendo, setDevolviendo] = useState(false)
+  const [preguntarAviso, setPreguntarAviso] = useState(false)
 
   if (isLoading || !o) {
     return <Modal open onClose={onClose} title="Orden de pago" width="max-w-2xl">
@@ -326,7 +328,7 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, puedeRegistrar, pu
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <Dato label="Fecha" valor={fmtFecha(o.fecha)} />
           <Dato label="Forma" valor={formaPagoLabel(o.forma_pago)} />
-          <Dato label="Salió del banco" valor={fmtM(o.monto_pagado)} fuerte />
+          <Dato label={salidaLabel(o.forma_pago)} valor={fmtM(o.monto_pagado)} fuerte />
           <Dato label="Notas de crédito" valor={o.monto_nc > 0 ? fmtM(o.monto_nc) : '—'} />
           {o.fecha_cobro && (
             <Dato label={o.cheques.length > 1 ? 'Primero se cobra el' : 'Se cobra el'} valor={fmtFecha(o.fecha_cobro)} />
@@ -486,7 +488,11 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, puedeRegistrar, pu
                   const file = e.target.files?.[0]; e.target.value = ''
                   if (!file) return
                   if (file.size > MAX_ADJUNTO_BYTES) { toast('El archivo supera los 10 MB', 'err'); return }
-                  try { await subir.mutateAsync({ entidad: 'ordenes', id: o.id, file, tipo: 'comprobante_pago' }); toast('✓ Comprobante subido', 'ok') }
+                  try {
+                    await subir.mutateAsync({ entidad: 'ordenes', id: o.id, file, tipo: 'comprobante_pago' })
+                    toast('✓ Comprobante subido', 'ok')
+                    setPreguntarAviso(true)
+                  }
                   catch (err) { toast(mensajeErrorPagos(err), 'err') }
                 }} />
             </label>
@@ -508,6 +514,9 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, puedeRegistrar, pu
         </div>
 
         {avisando && <ModalAvisarPago orden={o} onClose={() => setAvisando(false)} />}
+        {preguntarAviso && (
+          <PreguntarAvisoPago ordenId={o.id} titulo="Comprobante subido" onClose={() => setPreguntarAviso(false)} />
+        )}
         {devolviendo && (
           <ModalDevolucionProveedor orden={o} onClose={() => setDevolviendo(false)}
             onHecho={() => { setDevolviendo(false); onClose() }} />
