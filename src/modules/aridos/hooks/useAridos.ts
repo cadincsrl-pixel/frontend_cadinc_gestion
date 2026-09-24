@@ -55,6 +55,10 @@ function invalidarDerivados(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: STOCK_KEY })
   qc.invalidateQueries({ queryKey: CTACTE_KEY })
   qc.invalidateQueries({ queryKey: ['aridos', 'cuenta-corriente-canteras'] })
+  // Sacar un viaje del cobro cambia lo imputado del cobro, y cualquier venta
+  // mueve el resultado del mes.
+  qc.invalidateQueries({ queryKey: ['aridos', 'cobros'] })
+  qc.invalidateQueries({ queryKey: ['aridos', 'resultado'] })
 }
 
 // ─────────────────────────── Materiales ───────────────────────────
@@ -234,6 +238,17 @@ export function useDeleteMovimiento() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: number) => apiDelete(`/api/aridos/movimientos/${id}`),
+    onSuccess:  () => invalidarDerivados(qc),
+  })
+}
+
+// Saca un viaje de su cobro: vuelve a pendientes y la plata queda a favor en
+// el cobro. Es el paso previo a cambiarle el cliente o el importe (la base no
+// deja tocarlos mientras está cobrado, 20260926h).
+export function useSoltarViajeDeCobro() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiPatch<MovimientoArido>(`/api/aridos/movimientos/${id}`, { cobro_id: null }),
     onSuccess:  () => invalidarDerivados(qc),
   })
 }
@@ -468,6 +483,21 @@ export function useCreateCobroArido() {
   return useMutation({
     mutationFn: (dto: { cliente_id: number; fecha: string; monto: number; medio: string; obs?: string; venta_ids?: number[] }) =>
       apiPost<CobroArido>('/api/aridos/cobros', dto),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['aridos', 'cobros'] })
+      qc.invalidateQueries({ queryKey: CTACTE_KEY })
+      qc.invalidateQueries({ queryKey: ['aridos', 'movimientos'] })
+    },
+  })
+}
+
+// Aplica la plata a favor de un cobro ya registrado a viajes pendientes del
+// mismo cliente.
+export function useImputarCobroArido() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ cobroId, venta_ids }: { cobroId: number; venta_ids: number[] }) =>
+      apiPost<{ imputados: number }>(`/api/aridos/cobros/${cobroId}/imputar`, { venta_ids }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['aridos', 'cobros'] })
       qc.invalidateQueries({ queryKey: CTACTE_KEY })

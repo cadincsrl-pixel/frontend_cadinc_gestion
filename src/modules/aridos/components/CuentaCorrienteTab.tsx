@@ -12,7 +12,7 @@ import { usePermisos } from '@/hooks/usePermisos'
 import { toISO } from '@/lib/utils/dates'
 import { apiGet } from '@/lib/api/client'
 import {
-  useCuentaCorrienteAridos, useCobrosAridos, useCreateCobroArido, useDeleteCobroArido,
+  useCuentaCorrienteAridos, useCobrosAridos, useCreateCobroArido, useDeleteCobroArido, useImputarCobroArido,
   useCuentaCorrienteCanteras, usePagosCantera, useCreatePagoCantera, useDeletePagoCantera,
   useMovimientos,
 } from '../hooks/useAridos'
@@ -450,34 +450,142 @@ function CuentaRow({ cuenta, expandido, onToggle, onCobrar, puedeCrear }: {
 
 function CobrosDelCliente({ clienteId }: { clienteId: number }) {
   const toast = useToast()
-  const { puedeEliminar } = usePermisos('aridos')
+  const { puedeCrear, puedeEliminar } = usePermisos('aridos')
   const { data: cobros = [], isLoading } = useCobrosAridos(clienteId)
   const { mutate: borrar } = useDeleteCobroArido()
+  const [aplicando, setAplicando] = useState<CobroArido | null>(null)
 
   if (isLoading) return <p className="text-xs text-gris-dark">Cargando cobros...</p>
   if (cobros.length === 0) return <p className="text-xs text-gris-dark italic">Sin cobros registrados para este cliente.</p>
 
+  function handleBorrar(c: CobroArido) {
+    // El FK es ON DELETE SET NULL: los viajes del cobro vuelven a pendientes.
+    const n = c.viajes_ids?.length ?? 0
+    const libera = n > 0 ? `\n\nLos ${n} viaje${n !== 1 ? 's' : ''} que pagaba (${fmtM(Number(c.imputado ?? 0))}) vuelven a quedar pendientes.` : ''
+    if (!confirm(`¿Eliminar el cobro de ${fmtM(Number(c.monto))} del ${fmtDate(c.fecha)}?${libera}`)) return
+    borrar(c.id, {
+      onSuccess: () => toast('✓ Cobro eliminado', 'ok'),
+      onError:   (err: unknown) => toast((err as { message?: string })?.message || 'No se pudo eliminar el cobro', 'err'),
+    })
+  }
+
   return (
     <div className="flex flex-col gap-1">
       <p className="text-[10px] font-bold uppercase tracking-wide text-gris-dark mb-1">Cobros registrados</p>
-      {cobros.map((c: CobroArido) => (
-        <div key={c.id} className="flex items-center justify-between text-xs bg-white rounded px-3 py-1.5">
-          <span className="text-carbon">
-            {fmtDate(c.fecha)} · <b>{MEDIO_LABEL[c.medio] ?? c.medio}</b>
-            {c.obs && <span className="text-gris-dark"> · {c.obs}</span>}
-          </span>
-          <div className="flex items-center gap-2">
-            <span className="font-mono font-bold text-verde">{fmtM(Number(c.monto))}</span>
-            {puedeEliminar && (
+      {cobros.map((c: CobroArido) => {
+        const aFavor = Number(c.monto) - Number(c.imputado ?? 0)
+        return (
+          <div key={c.id} className="flex items-center justify-between text-xs bg-white rounded px-3 py-1.5">
+            <span className="text-carbon">
+              {fmtDate(c.fecha)} · <b>{MEDIO_LABEL[c.medio] ?? c.medio}</b>
+              {c.obs && <span className="text-gris-dark"> · {c.obs}</span>}
+              {aFavor > 0.005 && (
+                <span className="ml-2 text-[10px] font-bold bg-azul-light text-azul-mid px-1.5 py-0.5 rounded" title="Parte del cobro que todavía no se aplicó a ningún viaje">
+                  {fmtM(aFavor)} a favor sin aplicar
+                </span>
+              )}
+            </span>
+            <div className="flex items-center gap-2">
+              {aFavor > 0.005 && (
+                <Button variant="ghost" size="sm" disabled={!puedeCrear}
+                  title={puedeCrear ? 'Usar la plata a favor para pagar viajes pendientes' : 'No tenés permiso para registrar cobros'}
+                  onClick={() => setAplicando(c)}>Aplicar a viajes</Button>
+              )}
+              <span className="font-mono font-bold text-verde">{fmtM(Number(c.monto))}</span>
               <button
-                onClick={() => { if (confirm(`¿Eliminar el cobro de ${fmtM(Number(c.monto))} del ${fmtDate(c.fecha)}?`)) borrar(c.id, { onSuccess: () => toast('✓ Cobro eliminado', 'ok') }) }}
-                className="hover:text-rojo text-gris-dark"
+                disabled={!puedeEliminar}
+                title={puedeEliminar ? 'Eliminar cobro' : 'No tenés permiso para eliminar cobros'}
+                onClick={() => handleBorrar(c)}
+                className="hover:text-rojo text-gris-dark disabled:opacity-40 disabled:hover:text-gris-dark disabled:cursor-not-allowed"
               >✕</button>
-            )}
+            </div>
           </div>
-        </div>
-      ))}
+        )
+      })}
+      <AplicarCobroModal key={aplicando?.id ?? 'cerrado'} cobro={aplicando} onClose={() => setAplicando(null)} />
     </div>
+  )
+}
+
+// Aplica la plata a favor de un cobro a viajes pendientes del mismo cliente.
+// La base valida cliente y saldo; acá solo se evita tildar más de lo que queda.
+function AplicarCobroModal({ cobro, onClose }: { cobro: CobroArido | null; onClose: () => void }) {
+  const toast = useToast()
+  const { mutate: imputar, isPending } = useImputarCobroArido()
+  const { data: ventas = [] } = useMovimientos({ tipo: 'venta', cliente_id: cobro?.cliente_id }, !!cobro)
+  const pendientes = ventas.filter(v => v.cobro_id == null)
+  // Se monta con key = id del cobro: cada cobro arranca sin nada tildado.
+  const [seleccion, setSeleccion] = useState<Set<number>>(new Set())
+
+  const disponible = cobro ? Number(cobro.monto) - Number(cobro.imputado ?? 0) : 0
+  const tildado    = pendientes.filter(v => seleccion.has(v.id)).reduce((s, v) => s + Number(v.importe ?? 0), 0)
+  const resto      = disponible - tildado
+
+  function toggle(id: number) {
+    const next = new Set(seleccion)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    setSeleccion(next)
+  }
+
+  function onAplicar() {
+    if (!cobro || seleccion.size === 0) return
+    imputar({ cobroId: cobro.id, venta_ids: Array.from(seleccion) }, {
+      onSuccess: () => {
+        toast(`✓ ${seleccion.size} viaje${seleccion.size !== 1 ? 's' : ''} pagado${seleccion.size !== 1 ? 's' : ''} con el cobro del ${fmtDate(cobro.fecha)}`, 'ok')
+        onClose()
+      },
+      onError: (err: unknown) => toast((err as { message?: string })?.message || 'No se pudo aplicar el cobro', 'err'),
+    })
+  }
+
+  return (
+    <Modal
+      open={!!cobro}
+      onClose={onClose}
+      title="APLICAR COBRO A VIAJES"
+      width="max-w-md"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button variant="primary" loading={isPending} disabled={seleccion.size === 0 || resto < -0.005} onClick={onAplicar}>✓ Aplicar</Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3">
+        {cobro && (
+          <div className="bg-gris/30 rounded-card px-3 py-2 text-xs text-gris-dark">
+            Cobro del {fmtDate(cobro.fecha)} por {fmtM(Number(cobro.monto))} · a favor <b className="font-mono text-azul-mid">{fmtM(disponible)}</b>
+            {seleccion.size > 0 && <> · queda <b className={`font-mono ${resto < -0.005 ? 'text-rojo' : 'text-carbon'}`}>{fmtM(resto)}</b></>}
+          </div>
+        )}
+        {pendientes.length === 0 ? (
+          <p className="text-xs text-gris-dark italic">Este cliente no tiene viajes pendientes.</p>
+        ) : (
+          <div className="border border-gris rounded-card max-h-64 overflow-y-auto divide-y divide-gris">
+            {pendientes.map(v => {
+              const importe = Number(v.importe ?? 0)
+              const noAlcanza = !seleccion.has(v.id) && importe > resto + 0.005
+              return (
+                <label key={v.id} className={`flex items-center gap-2 px-3 py-1.5 text-xs ${noAlcanza ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-gris/20'}`}
+                  title={noAlcanza ? 'Lo que queda a favor no alcanza para este viaje' : undefined}>
+                  <input type="checkbox" checked={seleccion.has(v.id)} disabled={noAlcanza} onChange={() => toggle(v.id)} className="accent-azul" />
+                  <span className="flex-1 text-carbon">
+                    {fmtDate(v.fecha)} · {v.aridos_materiales?.nombre ?? '—'}
+                    {v.entrega_direccion && <span className="text-gris-dark"> · {v.entrega_direccion}</span>}
+                    {v.remito_numero && <span className="font-mono text-naranja ml-1">{v.remito_numero}</span>}
+                  </span>
+                  <span className="font-mono font-bold text-carbon">{v.importe != null ? fmtM(importe) : '—'}</span>
+                </label>
+              )
+            })}
+          </div>
+        )}
+        <p className="text-[11px] text-gris-dark">
+          Se aplica a viajes enteros. Si lo que queda a favor no alcanza para ninguno, la plata sigue a favor del cliente: el saldo de la cuenta ya la descuenta.
+        </p>
+      </div>
+    </Modal>
   )
 }
 

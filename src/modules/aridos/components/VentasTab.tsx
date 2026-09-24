@@ -11,7 +11,7 @@ import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { toISO } from '@/lib/utils/dates'
 import {
-  useMovimientos, useCreateMovimiento, useUpdateMovimiento, useDeleteMovimiento,
+  useMovimientos, useCreateMovimiento, useUpdateMovimiento, useDeleteMovimiento, useSoltarViajeDeCobro,
   useClientesAridos, useMateriales, usePreciosCliente, useStockAridos, useMunicipios,
   useCanterasAridos, useUnidades, useUnidadEta, useEmitirRemitoVenta,
   usePreciosGlobal, useCostosCantera,
@@ -122,6 +122,7 @@ export function VentasTab() {
   const { mutate: crear, isPending: creando }       = useCreateMovimiento()
   const { mutate: actualizar, isPending: editando } = useUpdateMovimiento()
   const { mutate: borrar } = useDeleteMovimiento()
+  const { mutate: soltarDeCobro, isPending: soltando } = useSoltarViajeDeCobro()
   const { mutate: consultarEta, isPending: consultandoEta } = useUnidadEta()
   const { mutate: emitirRemito, isPending: emitiendoRemito } = useEmitirRemitoVenta()
 
@@ -337,6 +338,20 @@ export function VentasTab() {
         onError:   (err: unknown) => toast(mensajeError(err, 'Error al actualizar'), 'err'),
       })
     }
+  }
+
+  // Un viaje cobrado no cambia de cliente ni de importe (la base lo frena,
+  // 20260926h): primero sale del cobro, vuelve a pendientes y la plata queda
+  // a favor en el cobro, que después se aplica desde Cuenta corriente.
+  function handleSoltarDeCobro(v: MovimientoArido) {
+    if (!confirm('¿Sacar este viaje del cobro?\n\nEl viaje vuelve a quedar pendiente y la plata de ese cobro queda a favor del cliente, para aplicarla a otro viaje desde Cuenta corriente.')) return
+    soltarDeCobro(v.id, {
+      onSuccess: () => {
+        toast('✓ Viaje sacado del cobro: ya se puede editar', 'ok')
+        setEditMov(m => (m && m.id === v.id ? { ...m, cobro_id: null } : m))
+      },
+      onError: (err: unknown) => toast(mensajeError(err, 'No se pudo sacar del cobro'), 'err'),
+    })
   }
 
   function handleEliminar(v: MovimientoArido) {
@@ -559,6 +574,17 @@ export function VentasTab() {
         }
       >
         <div className="flex flex-col gap-3">
+          {editMov?.cobro_id != null && (
+            <div className="bg-verde-light border border-verde/30 rounded-card px-3 py-2 text-xs text-carbon flex items-center justify-between gap-3">
+              <span>
+                <b className="text-verde">✓ Viaje cobrado.</b> Se puede corregir la fecha, la dirección o las observaciones.
+                Para cambiarle el <b>cliente</b>, la <b>cantidad</b> o el <b>precio</b>, primero sacalo del cobro.
+              </span>
+              <Button variant="secondary" size="sm" loading={soltando} disabled={!puedeEditar}
+                title={puedeEditar ? 'El viaje vuelve a pendientes y la plata queda a favor en el cobro' : 'No tenés permiso para editar ventas'}
+                onClick={() => handleSoltarDeCobro(editMov)}>Sacar del cobro</Button>
+            </div>
+          )}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <Input label="Fecha" type="date" error={errors.fecha?.message}
               {...register('fecha', {

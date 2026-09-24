@@ -191,6 +191,9 @@ export interface CobroArido {
   obs: string | null
   created_at: string
   aridos_clientes?: { nombre: string }
+  /** Lo aplicado a viajes. monto − imputado = plata a favor sin aplicar. */
+  imputado?: number
+  viajes_ids?: number[]
 }
 
 export interface CuentaCorrienteArido {
