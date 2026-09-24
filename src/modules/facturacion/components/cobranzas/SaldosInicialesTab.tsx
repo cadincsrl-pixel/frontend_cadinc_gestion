@@ -75,7 +75,7 @@ export function SaldosInicialesTab() {
             onChange={v => patch({ cliente_id: v ? Number(v) : undefined })} />
         </div>
         <Select label="Saldo" value={filtro.saldo ?? ''} onChange={e => patch({ saldo: (e.target.value || undefined) as ExternosFiltro['saldo'] })}
-          options={[{ value: 'abiertos', label: 'Con saldo' }, { value: 'cobrados', label: 'Saldados' }, { value: '', label: 'Todos (libro de ventas)' }]} />
+          options={[{ value: 'abiertos', label: 'Con saldo' }, { value: '', label: 'Todos (libro de ventas)' }]} />
         <Select label="Tipo" value={filtro.cbte_tipo ? String(filtro.cbte_tipo) : ''} onChange={e => patch({ cbte_tipo: e.target.value ? Number(e.target.value) : undefined })}
           options={[{ value: '', label: 'Todos' }, ...TIPOS_EXTERNO.map(t => ({ value: String(t.key), label: t.corto }))]} />
         <Input label="Desde" type="date" value={filtro.desde ?? ''} onChange={e => patch({ desde: e.target.value || undefined })} />

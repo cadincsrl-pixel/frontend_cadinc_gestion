@@ -45,6 +45,8 @@ export interface CobrosFiltro {
   desde?:      string
   hasta?:      string
   estado?:     'vigente' | 'anulado'
+  /** Solo vigentes con saldo a cuenta sin aplicar. */
+  con_a_cuenta?: boolean
   q?:          string
   ambiente?:   VentasAmbiente
 }
@@ -55,6 +57,7 @@ function qsCobros(f: CobrosFiltro, page: number, pageSize: number): string {
   if (f.desde)      p.set('desde', f.desde)
   if (f.hasta)      p.set('hasta', f.hasta)
   if (f.estado)     p.set('estado', f.estado)
+  if (f.con_a_cuenta) p.set('con_a_cuenta', '1')
   if (f.q?.trim())  p.set('q', f.q.trim())
   if (f.ambiente)   p.set('ambiente', f.ambiente)
   p.set('page', String(page))
@@ -299,8 +302,8 @@ export interface ExternosFiltro {
   q?:          string
   /** Solo los «a revisar». */
   a_revisar?:  boolean
-  /** 'abiertos' = saldo > 0; 'cobrados' = saldo 0. */
-  saldo?:      'abiertos' | 'cobrados'
+  /** 'abiertos' = saldo > 0 (el backend no tiene el filtro inverso). */
+  saldo?:      'abiertos'
   cbte_tipo?:  number
   desde?:      string
   hasta?:      string
@@ -311,7 +314,7 @@ function qsExternos(f: ExternosFiltro, page: number, pageSize: number): string {
   if (f.cliente_id) p.set('cliente_id', String(f.cliente_id))
   if (f.q?.trim())  p.set('q', f.q.trim())
   if (f.a_revisar)  p.set('a_revisar', '1')
-  if (f.saldo)      p.set('con_saldo', f.saldo === 'abiertos' ? '1' : '0')
+  if (f.saldo === 'abiertos') p.set('con_saldo', '1')
   if (f.cbte_tipo)  p.set('cbte_tipo', String(f.cbte_tipo))
   if (f.desde)      p.set('desde', f.desde)
   if (f.hasta)      p.set('hasta', f.hasta)

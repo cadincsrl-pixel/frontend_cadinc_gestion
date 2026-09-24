@@ -82,10 +82,14 @@ export function CobranzasTab() {
         <Input label="Hasta" type="date" value={filtro.hasta ?? ''} onChange={e => patch({ hasta: e.target.value || undefined })} />
         <Select label="Estado" value={filtro.estado ?? ''} onChange={e => patch({ estado: (e.target.value || undefined) as CobrosFiltro['estado'] })}
           options={[{ value: '', label: 'Todos' }, { value: 'vigente', label: 'Vigentes' }, { value: 'anulado', label: 'Anulados' }]} />
-        <div className="sm:col-span-2 lg:col-span-5">
+        <div className="sm:col-span-2 lg:col-span-4">
           <Input placeholder="Buscar: número de recibo, cliente, cheque, certificado…" value={filtro.q ?? ''}
             onChange={e => patch({ q: e.target.value })} />
         </div>
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <input type="checkbox" checked={!!filtro.con_a_cuenta} onChange={e => patch({ con_a_cuenta: e.target.checked || undefined })} />
+          Con saldo a cuenta
+        </label>
       </div>
 
       {lista.isLoading && !lista.data ? (
