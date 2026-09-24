@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Combobox } from '@/components/ui/Combobox'
-import { useCentrosCosto, type FacturasFiltro } from '../hooks/useFacturacion'
+import { useObrasFacturacion, type FacturasFiltro } from '../hooks/useFacturacion'
 import { useClientesVenta } from '../hooks/useClientesFacturacion'
 import { ESTADOS, PRODUCTOS, TIPOS_CBTE, fmtCuit } from '../utils/facturacion.utils'
 import type { VentasCbteTipo, VentasEstado, VentasProducto } from '@/types/domain.types'
@@ -26,7 +26,7 @@ export function FiltrosFacturas({ filtro, patch }: Props) {
   const [texto, setTexto] = useState(filtro.q ?? '')
 
   const clientes = useClientesVenta('', true)
-  const centros = useCentrosCosto()
+  const obras = useObrasFacturacion()
 
   const opcionesCliente = useMemo(
     () => (clientes.data ?? []).map(c => ({
@@ -37,12 +37,18 @@ export function FiltrosFacturas({ filtro, patch }: Props) {
     })),
     [clientes.data],
   )
-  const opcionesCentro = useMemo(
-    () => (centros.data ?? []).map(cc => ({ value: cc, label: cc })),
-    [centros.data],
+  // La obra es el centro de costo (23/09).
+  const opcionesObra = useMemo(
+    () => (obras.data ?? []).map(o => ({
+      value: o.cod,
+      label: `${o.cod} — ${o.nom}`,
+      sub: o.cliente_nom ?? undefined,
+      search: [o.nom, o.cod, o.cliente_nom ?? ''],
+    })),
+    [obras.data],
   )
 
-  const hayExtra = !!(filtro.cbte_tipo || filtro.cliente_id || filtro.centro_costo || filtro.producto || filtro.desde || filtro.hasta)
+  const hayExtra = !!(filtro.cbte_tipo || filtro.cliente_id || filtro.obra_cod || filtro.producto || filtro.desde || filtro.hasta)
 
   return (
     <div className="bg-white rounded-card shadow-card p-3 flex flex-col gap-3">
@@ -86,9 +92,9 @@ export function FiltrosFacturas({ filtro, patch }: Props) {
             <Combobox label="Cliente" placeholder="Todos" options={opcionesCliente}
               value={filtro.cliente_id ? String(filtro.cliente_id) : ''}
               onChange={v => patch({ cliente_id: v ? Number(v) : undefined })} />
-            <Combobox label="Centro de costo" placeholder="Todos" options={opcionesCentro}
-              value={filtro.centro_costo ?? ''}
-              onChange={v => patch({ centro_costo: v || undefined })} />
+            <Combobox label="Obra" placeholder="Todas" options={opcionesObra}
+              value={filtro.obra_cod ?? ''}
+              onChange={v => patch({ obra_cod: v || undefined })} />
             <div>
               <label className={lblCls}>Tipo</label>
               <select className={selCls} value={filtro.cbte_tipo ?? ''}
@@ -119,7 +125,7 @@ export function FiltrosFacturas({ filtro, patch }: Props) {
           {hayExtra && (
             <div>
               <Button variant="ghost" size="sm" onClick={() => patch({
-                cbte_tipo: undefined, cliente_id: undefined, centro_costo: undefined, producto: undefined,
+                cbte_tipo: undefined, cliente_id: undefined, obra_cod: undefined, producto: undefined,
                 desde: undefined, hasta: undefined,
               })}>
                 ✕ Limpiar filtros

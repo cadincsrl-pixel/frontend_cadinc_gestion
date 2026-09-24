@@ -10,7 +10,7 @@ import {
 } from '../hooks/useFacturacion'
 import {
   ALICUOTA_LABEL, CONDICIONES_IVA, ESTADO_META, cortoTipo, fmtCant, fmtDoc, fmtFecha, fmtFechaHora, fmtM, fmtPrecio,
-  mensajesArca, numeroTxt, resultadoReconciliacion,
+  mensajesArca, numeroTxt, resultadoReconciliacion, obraDeFactura,
 } from '../utils/facturacion.utils'
 import { codigoErrorFacturacion, mensajeErrorFacturacion } from '../utils/facturacion.errores'
 import { descargarFacturaPdf } from '../utils/facturaPdf'
@@ -257,8 +257,7 @@ export function FichaFactura({ id, onClose, onEditar, onNotaCredito, onEmitir }:
           <Dato label="Condición IVA" valor={CONDICIONES_IVA[f.rec_condicion_iva_id] ?? String(f.rec_condicion_iva_id)} />
           <Dato label="Domicilio" valor={f.rec_domicilio || '—'} />
           <Dato label="Producto" valor={f.producto === 'TRANSPORTE' ? 'Transporte' : 'Avance de obra'} />
-          <Dato label="Centro de costo" valor={f.centro_costo ?? '—'} />
-          <Dato label="Obra" valor={f.obra_nom ? `${f.obra_nom} (${f.obra_cod})` : '—'} />
+          <Dato label="Obra / centro de costo" valor={obraDeFactura(f) ?? '—'} />
           <Dato label="Provincias" valor={`${f.provincia_origen} → ${f.provincia_destino}`} />
           <Dato label="Condición de pago" valor={f.condicion_pago} />
           <Dato label="Remitos" valor={f.remitos || '—'} />

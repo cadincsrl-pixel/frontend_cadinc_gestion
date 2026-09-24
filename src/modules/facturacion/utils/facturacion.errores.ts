@@ -41,6 +41,14 @@ function dato(detail: unknown, clave: string): unknown {
   return undefined
 }
 
+/** « (CC-026, CC-031)» con la obra o las obras del detalle (factura u obras del cliente). */
+function obrasDe(d: unknown): string {
+  const una = dato(d, 'obra_cod')
+  const varias = dato(d, 'obra_cods')
+  const cods = Array.isArray(varias) ? varias.map(String) : una ? [String(una)] : []
+  return cods.length ? ` (${cods.join(', ')})` : ''
+}
+
 /** ISO → "HH:MM" en hora argentina. */
 function horaAR(v: unknown): string | null {
   if (typeof v !== 'string' || !v) return null
@@ -117,9 +125,10 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   },
   CF_REQUIERE_IDENTIFICACION: d => `Desde ${fmtM(Number(dato(d, 'tope') ?? 10_000_000))} el consumidor final tiene que estar identificado (RG 5700). Cargale DNI o CUIT al cliente en Clientes.`,
   PRODUCTO_INVALIDO:      () => 'El producto tiene que ser «Avance de obra» o «Transporte».',
-  CENTRO_COSTO_REQUERIDO: () => 'Una factura de avance de obra necesita centro de costo.',
-  CENTRO_COSTO_INVALIDO:  d => `«${String(dato(d, 'centro_costo') ?? '')}» no es un centro de costo de las obras.`,
-  OBRA_NO_EXISTE:         () => 'La obra no existe.',
+  OBRA_REQUERIDA:         () => 'Una factura de avance de obra necesita la obra: es su centro de costo.',
+  OBRA_NO_EXISTE:         d => `No existe la obra${obrasDe(d)}.`,
+  OBRA_INTERNA:           d => `No se factura a una obra interna de CADINC${obrasDe(d)}.`,
+  OBRA_DEPOSITO:          d => `El depósito no se factura${obrasDe(d)}.`,
   CONCEPTO_INVALIDO:      () => 'Concepto de ARCA inválido.',
   SIN_RENGLONES:          () => 'Agregá al menos un renglón.',
   RENGLON_INVALIDO:       d => {

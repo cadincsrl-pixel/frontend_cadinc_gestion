@@ -25,7 +25,6 @@ export const FACTURACION_KEYS = {
   factura:        (id: number) => ['facturacion', 'facturas', 'detalle', id] as const,
   resumen:        ['facturacion', 'facturas', 'resumen'] as const,
   arcaEstado:     ['facturacion', 'arca', 'estado'] as const,
-  centrosCosto:   ['facturacion', 'catalogos', 'centros-costo'] as const,
   condicionesIva: ['facturacion', 'catalogos', 'condiciones-iva'] as const,
   obras:          ['facturacion', 'catalogos', 'obras'] as const,
   clientes:       ['facturacion', 'clientes'] as const,
@@ -44,7 +43,8 @@ export interface FacturasFiltro {
   estado?:       VentasEstado
   cbte_tipo?:    VentasCbteTipo
   cliente_id?:   number
-  centro_costo?: string
+  /** La obra es el centro de costo (23/09). */
+  obra_cod?:     string
   producto?:     VentasProducto
   desde?:        string
   hasta?:        string
@@ -57,7 +57,7 @@ function qsFacturas(f: FacturasFiltro, page: number, pageSize: number): string {
   if (f.estado)          p.set('estado', f.estado)
   if (f.cbte_tipo)       p.set('cbte_tipo', String(f.cbte_tipo))
   if (f.cliente_id)      p.set('cliente_id', String(f.cliente_id))
-  if (f.centro_costo)    p.set('centro_costo', f.centro_costo)
+  if (f.obra_cod)        p.set('obra_cod', f.obra_cod)
   if (f.producto)        p.set('producto', f.producto)
   if (f.desde)           p.set('desde', f.desde)
   if (f.hasta)           p.set('hasta', f.hasta)
@@ -116,15 +116,6 @@ export function useArcaEstado(enabled = true) {
     staleTime: 60_000,
     refetchInterval: 5 * 60_000,
     retry: false,
-    enabled,
-  })
-}
-
-export function useCentrosCosto(enabled = true) {
-  return useQuery({
-    queryKey: FACTURACION_KEYS.centrosCosto,
-    queryFn:  () => apiGet<string[]>(`${BASE}/centros-costo`),
-    staleTime: 5 * 60_000,
     enabled,
   })
 }

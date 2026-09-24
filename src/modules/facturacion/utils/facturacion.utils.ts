@@ -11,9 +11,20 @@ import type {
 } from '@/types/domain.types'
 
 export const PRODUCTOS: { key: VentasProducto; label: string; hint: string }[] = [
-  { key: 'AVANCE DE OBRA', label: 'Avance de obra', hint: 'Obra: lleva centro de costo. Concepto ARCA 3 (productos y servicios).' },
-  { key: 'TRANSPORTE',     label: 'Transporte',     hint: 'Logística: sin centro de costo. Concepto ARCA 2 (servicios).' },
+  { key: 'AVANCE DE OBRA', label: 'Avance de obra', hint: 'Obra: la obra es obligatoria (es el centro de costo). Concepto ARCA 3 (productos y servicios).' },
+  { key: 'TRANSPORTE',     label: 'Transporte',     hint: 'Logística: la obra es opcional. Concepto ARCA 2 (servicios).' },
 ]
+
+/**
+ * La obra de la factura, «COD — Nombre»: es su centro de costo (23/09). Con el
+ * nombre de hoy de la obra; si no tiene obra, la foto que guardó la base
+ * (`centro_costo`: en las viejas de homologación, el `cc` de antes). null =
+ * sin obra (transporte).
+ */
+export function obraDeFactura(f: Pick<VentasFactura, 'obra_cod' | 'obra_nom' | 'centro_costo'>): string | null {
+  if (f.obra_cod) return f.obra_nom ? `${f.obra_cod} — ${f.obra_nom}` : f.obra_cod
+  return f.centro_costo?.trim() || null
+}
 
 /** Las que ofrece la UI en fase 1. 21 % por defecto. */
 export const ALICUOTAS_UI: { id: VentasAlicuotaId; label: string }[] = [

@@ -3173,7 +3173,7 @@ export interface VentasCliente {
   obs:               string
   created_at:        string
   updated_at:        string
-  obras:             { cod: string; nom: string; cc: string | null }[]
+  obras:             { cod: string; nom: string }[]
   /** Cuenta de CADINC que el cliente quiere en la FCE (null = la de por defecto). Fase 6. */
   cuenta_fce_id?:     number | null
   /** Cache de WSFECRED (30 días): obligado a recibir FCE y desde qué monto. */
@@ -3236,12 +3236,18 @@ export interface VentasCondicionIva {
   admite_b?:   boolean
 }
 
+/**
+ * Obra facturable (GET /api/facturacion/obras): cada obra es su propio centro
+ * de costo (23/09). Vienen solo las no archivadas, ni internas ni depósito.
+ */
 export interface VentasObra {
-  cod:        string
-  nom:        string
-  cc:         string | null
-  cliente_id: number | null
-  archivada:  boolean
+  cod:         string
+  nom:         string
+  cliente_id:  number | null
+  /** Razón social del cliente que agrupa la obra (`ventas_clientes`). */
+  cliente_nom: string | null
+  es_interna:  boolean
+  archivada:   boolean
 }
 
 export interface VentasArcaEstado {
@@ -3274,6 +3280,10 @@ export interface VentasFactura {
   rec_domicilio:        string
   obra_cod:             string | null
   producto:             VentasProducto
+  /**
+   * Foto «COD — Nombre» de la obra que guarda la base al guardar (20260924h).
+   * No se manda: la deriva la RPC. En las viejas de homologación es el `cc`.
+   */
   centro_costo:         string | null
   provincia_origen:     string
   provincia_destino:    string
@@ -3402,7 +3412,9 @@ export interface VentasFacturasPage {
 
 export interface VentasResumenFila {
   mes:          string
-  centro_costo: string | null
+  /** La obra es el centro de costo. null = sin obra (transporte). */
+  obra_cod:     string | null
+  obra_nom:     string | null
   producto:     VentasProducto
   letra:        'A' | 'B'
   cantidad:     number
@@ -3425,7 +3437,7 @@ export interface VentasFacturaInput {
     cbte_tipo:          VentasCbteTipo
     cliente_id:         number
     producto:           VentasProducto
-    centro_costo?:      string | null
+    /** La obra es el centro de costo: obligatoria con AVANCE DE OBRA. */
     obra_cod?:          string | null
     fecha_cbte?:        string
     provincia_origen?:  string

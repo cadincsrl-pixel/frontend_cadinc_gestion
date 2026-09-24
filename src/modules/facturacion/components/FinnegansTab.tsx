@@ -12,7 +12,7 @@ import {
   FACTURACION_KEYS, fetchFacturaVenta, useDeshacerRegistroVenta, useFacturasVenta, useRegistrarFinnegansVenta,
 } from '../hooks/useFacturacion'
 import {
-  cortoTipo, fmtDoc, fmtFecha, fmtFechaHora, fmtM, muestraDescripcion, numeroParaCopiar, numeroTxt,
+  cortoTipo, fmtDoc, fmtFecha, fmtFechaHora, fmtM, muestraDescripcion, numeroParaCopiar, numeroTxt, obraDeFactura,
 } from '../utils/facturacion.utils'
 import { mensajeErrorFacturacion } from '../utils/facturacion.errores'
 import type { VentasFactura } from '@/types/domain.types'
@@ -149,7 +149,8 @@ function FilaFinnegans({ f, vista, puedeRegistrar, onRegistrar }: {
         <Copiar label={f.rec_doc_tipo === 80 || f.rec_doc_tipo === 86 ? 'CUIT' : 'Documento'}
           valor={f.rec_doc_tipo === 99 ? '0' : f.rec_doc_nro} muestra={fmtDoc(f.rec_doc_tipo, f.rec_doc_nro)} />
         <Copiar label="Producto" valor={f.producto} />
-        <Copiar label="Centro de costo" valor={f.centro_costo ?? ''} />
+        <Copiar label="Obra" valor={obraDeFactura(f) ?? ''}
+          titulo="En Finnegans el centro de costo lo elige el contador a su criterio: esto es la obra (código y nombre)" />
         <Copiar label="Descripción" valor={descs && descs.length ? descs.join('\n') : descripcion}
           muestra={descs ? muestraDescripcion(descs, 32) : '(se baja al copiar)'} titulo={descs?.join('\n')} />
         <Copiar label="Neto" valor={signo + numeroParaCopiar(f.imp_neto)} muestra={fmtM(f.imp_neto)} />

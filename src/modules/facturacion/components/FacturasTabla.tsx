@@ -1,14 +1,14 @@
 'use client'
 
 import { Button } from '@/components/ui/Button'
-import { ESTADO_META, cortoTipo, fmtDoc, fmtFecha, fmtM, numeroTxt } from '../utils/facturacion.utils'
+import { ESTADO_META, cortoTipo, fmtDoc, fmtFecha, fmtM, numeroTxt, obraDeFactura } from '../utils/facturacion.utils'
 import type { VentasFactura } from '@/types/domain.types'
 
 /**
  * La lista de comprobantes: tabla en pantalla grande, tarjetas en el celular.
  *
  * Lo que cada fila contesta de un vistazo: qué comprobante, a quién, cuánto,
- * de qué (obra o transporte, y el centro de costo) y en qué estado. El estado
+ * de qué (obra o transporte, y qué obra: es el centro de costo) y en qué estado. El estado
  * «sin confirmar» (error_reconciliar) va en ROJO con su botón: mientras exista,
  * el talonario está trabado y nadie más puede emitir.
  */
@@ -90,7 +90,7 @@ export function FacturasTabla({ items, onAbrir, onVerificar, verificandoId, emit
         <table className="w-full border-collapse min-w-[960px]">
           <thead>
             <tr>
-              {['Comprobante', 'Cliente', 'Fecha', 'Producto / centro de costo', 'Neto', 'Total', 'Estado', ''].map((h, i) => (
+              {['Comprobante', 'Cliente', 'Fecha', 'Producto / obra', 'Neto', 'Total', 'Estado', ''].map((h, i) => (
                 <th key={h + i}
                   className={`bg-gris text-gris-dark text-[10px] font-bold px-3 py-2 uppercase tracking-wide whitespace-nowrap ${i === 4 || i === 5 ? 'text-right' : 'text-left'}`}>
                   {h}
@@ -108,12 +108,11 @@ export function FacturasTabla({ items, onAbrir, onVerificar, verificandoId, emit
                 <td className="px-3 py-2 text-sm cursor-pointer" onClick={() => onAbrir(f.id)}>
                   <div className="font-semibold">{f.rec_razon_social}</div>
                   <div className="text-[11px] text-gris-dark font-mono">{fmtDoc(f.rec_doc_tipo, f.rec_doc_nro)}</div>
-                  {f.obra_nom && <div className="text-[11px] text-gris-dark truncate max-w-[240px]">{f.obra_nom}</div>}
                 </td>
                 <td className="px-3 py-2 text-xs whitespace-nowrap cursor-pointer" onClick={() => onAbrir(f.id)}>{fmtFecha(f.fecha_cbte)}</td>
                 <td className="px-3 py-2 text-xs cursor-pointer" onClick={() => onAbrir(f.id)}>
                   <div className="font-semibold">{f.producto === 'TRANSPORTE' ? 'Transporte' : 'Avance de obra'}</div>
-                  <div className="text-gris-dark">{f.centro_costo ?? '—'}</div>
+                  <div className="text-gris-dark truncate max-w-[260px]" title={obraDeFactura(f) ?? undefined}>{obraDeFactura(f) ?? '—'}</div>
                 </td>
                 <td className="px-3 py-2 text-right font-mono text-xs tabular-nums cursor-pointer" onClick={() => onAbrir(f.id)}>
                   {f.es_nc ? '−' : ''}{fmtM(f.imp_neto)}
@@ -151,7 +150,7 @@ export function FacturasTabla({ items, onAbrir, onVerificar, verificandoId, emit
               </div>
               <div className="flex items-baseline justify-between gap-2 mt-1.5">
                 <div className="text-[11px] text-gris-dark">
-                  {fmtFecha(f.fecha_cbte)} · {f.producto === 'TRANSPORTE' ? 'Transporte' : (f.centro_costo ?? 'Avance de obra')}
+                  {fmtFecha(f.fecha_cbte)} · {f.producto === 'TRANSPORTE' ? 'Transporte' : (obraDeFactura(f) ?? 'Avance de obra')}
                 </div>
                 <div className="font-mono text-sm font-bold tabular-nums">{f.es_nc ? '−' : ''}{fmtM(f.imp_total)}</div>
               </div>

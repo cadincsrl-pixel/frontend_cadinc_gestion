@@ -14,8 +14,7 @@ import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { normalizeText } from '@/lib/utils/text'
 import {
-  useCentrosCosto, useCrearFacturaVenta, useEditarFacturaVenta, useFacturaVenta,
-  useObrasFacturacion,
+  useCrearFacturaVenta, useEditarFacturaVenta, useFacturaVenta, useObrasFacturacion,
 } from '../hooks/useFacturacion'
 import { useClientesVenta, useCuentasFce, useFceCliente } from '../hooks/useClientesFacturacion'
 import { calcularTotales } from '../utils/facturacion.calculos'
@@ -42,10 +41,12 @@ import { Aviso } from './FichaFactura'
  *  1. Los totales en vivo son los MISMOS que va a calcular la base
  *     (`facturacion.calculos.ts`, espejo de `ventas_guardar_borrador`): neto
  *     por renglón redondeado a centavos e IVA por alícuota agrupada.
- *  2. El centro de costo es de lista cerrada y obligatorio con AVANCE DE OBRA;
- *     con TRANSPORTE no va (Logística no tiene centro de costo).
- *  3. Elegir la obra precarga el cliente (`obras.cliente_id`) y el centro de
- *     costo (`obras.cc`), que es lo que el dueño quiere cuidar.
+ *  2. La OBRA es el centro de costo (decisión del 23/09; `obras.cc` en
+ *     desuso): obligatoria con AVANCE DE OBRA, opcional con TRANSPORTE. El
+ *     selector solo trae obras facturables (ni internas ni depósito). La base
+ *     guarda en `centro_costo` la foto «COD — Nombre».
+ *  3. Elegir la obra precarga su cliente (`obras.cliente_id`). Si después se
+ *     elige otro cliente, se avisa (no se bloquea).
  *  4. Modo NC: se abre desde una factura autorizada, el cliente queda fijo y se
  *     ve el saldo que todavía se puede acreditar.
  *  5. FCE MiPyME (fase 6): con letra A se elige «Factura A» o «Factura de
@@ -74,7 +75,6 @@ const schema = z.object({
   cliente_id:        z.string().min(1, 'Elegí el cliente'),
   obra_cod:          z.string(),
   producto:          z.enum(['AVANCE DE OBRA', 'TRANSPORTE']),
-  centro_costo:      z.string(),
   fecha_cbte:        z.string().min(1, 'Poné la fecha'),
   provincia_origen:  z.string().min(1, 'Elegí la provincia'),
   provincia_destino: z.string().min(1, 'Elegí la provincia'),
@@ -91,8 +91,8 @@ const schema = z.object({
   nc_anulacion:      z.enum(['S', 'N']),
   renglones:         z.array(renglonSchema).min(1, 'Agregá al menos un renglón'),
 }).superRefine((d, ctx) => {
-  if (d.producto === 'AVANCE DE OBRA' && !d.centro_costo) {
-    ctx.addIssue({ code: 'custom', path: ['centro_costo'], message: 'Avance de obra lleva centro de costo' })
+  if (d.producto === 'AVANCE DE OBRA' && !d.obra_cod) {
+    ctx.addIssue({ code: 'custom', path: ['obra_cod'], message: 'Avance de obra lleva la obra (es el centro de costo)' })
   }
   if (d.fce && d.fch_vto_pago && d.fecha_cbte && d.fch_vto_pago < d.fecha_cbte) {
     ctx.addIssue({ code: 'custom', path: ['fch_vto_pago'], message: 'No puede ser antes de la fecha de la factura' })
@@ -102,14 +102,14 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>
 
 /** Rutas del form a las que el backend puede apuntar un error (el resto va arriba del botón). */
-const CAMPOS_FORM = /^(cliente_id|obra_cod|producto|centro_costo|fecha_cbte|provincia_origen|provincia_destino|condicion_pago|remitos|observaciones|obs_interna|fce_cuenta_id|fch_vto_pago|fce_transmision|fce_referencia|nc_anulacion|renglones\.\d+\.(descripcion|cantidad|unidad|precio_unit|alicuota_id))$/
+const CAMPOS_FORM = /^(cliente_id|obra_cod|producto|fecha_cbte|provincia_origen|provincia_destino|condicion_pago|remitos|observaciones|obs_interna|fce_cuenta_id|fch_vto_pago|fce_transmision|fce_referencia|nc_anulacion|renglones\.\d+\.(descripcion|cantidad|unidad|precio_unit|alicuota_id))$/
 type RenglonForm = FormData['renglones'][number]
 
 const RENGLON_VACIO: RenglonForm = { descripcion: '', cantidad: '1', unidad: UNIDAD_DEFAULT, precio_unit: '', alicuota_id: '5' }
 
 function defaultsNuevo(): FormData {
   return {
-    cliente_id: '', obra_cod: '', producto: 'AVANCE DE OBRA', centro_costo: '', fecha_cbte: hoyAR(),
+    cliente_id: '', obra_cod: '', producto: 'AVANCE DE OBRA', fecha_cbte: hoyAR(),
     provincia_origen: PROVINCIA_DEFAULT, provincia_destino: PROVINCIA_DEFAULT,
     condicion_pago: CONDICION_PAGO_DEFAULT, remitos: '', observaciones: '', obs_interna: '',
     fce: false, fce_cuenta_id: '', fch_vto_pago: '', fce_transmision: 'SCA', fce_referencia: '', nc_anulacion: 'N',
@@ -133,7 +133,6 @@ function defaultsDe(fj: VentasFacturaFJ, opts: { copiarRenglones: boolean; nc: b
     cliente_id:        String(f.cliente_id),
     obra_cod:          f.obra_cod ?? '',
     producto:          f.producto,
-    centro_costo:      f.centro_costo ?? '',
     fecha_cbte:        opts.nc ? hoyAR() : f.fecha_cbte,
     provincia_origen:  f.provincia_origen || PROVINCIA_DEFAULT,
     provincia_destino: f.provincia_destino || PROVINCIA_DEFAULT,
@@ -182,7 +181,6 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
   const clientes   = useClientesVenta('', true)
   const cuentas    = useCuentasFce()
   const obras      = useObrasFacturacion()
-  const centros    = useCentrosCosto()
   const crear      = useCrearFacturaVenta()
   const editar     = useEditarFacturaVenta()
 
@@ -289,16 +287,15 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
   const opcionesObra = useMemo(
     () => (obras.data ?? []).map(o => ({
       value: o.cod,
-      label: o.nom,
-      sub: [o.cod, o.cc ? `CC ${o.cc.trim()}` : null].filter(Boolean).join(' · '),
-      search: [o.nom, o.cod, o.cc ?? ''],
+      label: `${o.cod} — ${o.nom}`,
+      sub: o.cliente_nom ?? 'sin cliente cargado',
+      search: [o.nom, o.cod, o.cliente_nom ?? ''],
     })),
     [obras.data],
   )
-  const opcionesCentro = useMemo(
-    () => (centros.data ?? []).map(cc => ({ value: cc, label: cc })),
-    [centros.data],
-  )
+  const obraSel = obras.data?.find(o => o.cod === obraCod)
+  // La obra es de otro cliente: se avisa, no se bloquea (puede facturarse a un tercero).
+  const clienteDistinto = !!obraSel?.cliente_id && !!clienteId && String(obraSel.cliente_id) !== clienteId
   const provinciasCon = (actual: string) =>
     (PROVINCIAS.includes(actual) || !actual ? PROVINCIAS : [actual, ...PROVINCIAS]).map(p => ({ value: p, label: p }))
 
@@ -319,23 +316,13 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
   }
 
   function elegirObra(cod: string) {
-    setValue('obra_cod', cod)
+    setValue('obra_cod', cod, { shouldValidate: true })
     const o = obras.data?.find(x => x.cod === cod)
-    if (!o) return
-    if (o.cliente_id && !esNc) elegirCliente(String(o.cliente_id))
-    const cc = o.cc?.trim()
-    if (cc && getValues('producto') === 'AVANCE DE OBRA' && (centros.data ?? []).includes(cc)) {
-      setValue('centro_costo', cc, { shouldValidate: true })
-    }
+    if (o?.cliente_id && !esNc) elegirCliente(String(o.cliente_id))
   }
 
   function elegirProducto(p: FormData['producto']) {
     setValue('producto', p, { shouldValidate: true })
-    if (p === 'TRANSPORTE') setValue('centro_costo', '', { shouldValidate: true })
-    else {
-      const cc = obras.data?.find(x => x.cod === getValues('obra_cod'))?.cc?.trim()
-      if (cc && !getValues('centro_costo') && (centros.data ?? []).includes(cc)) setValue('centro_costo', cc, { shouldValidate: true })
-    }
   }
 
   // ── Guardar ──
@@ -352,7 +339,6 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
         cbte_tipo:         tipo,
         cliente_id:        Number(d.cliente_id),
         producto:          d.producto,
-        centro_costo:      d.producto === 'TRANSPORTE' ? null : d.centro_costo,
         obra_cod:          d.obra_cod || null,
         fecha_cbte:        d.fecha_cbte,
         provincia_origen:  d.provincia_origen,
@@ -472,20 +458,30 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
           </div>
           <div>
             <Combobox
-              label="Obra (opcional: precarga cliente y centro de costo)"
-              placeholder={obras.isLoading ? 'Cargando obras…' : 'Buscar obra'}
+              label={producto === 'TRANSPORTE' ? 'Obra / centro de costo (opcional)' : 'Obra / centro de costo'}
+              placeholder={obras.isLoading ? 'Cargando obras…' : 'Buscar obra por nombre o código'}
               options={opcionesObra}
               value={obraCod}
               onChange={elegirObra}
             />
+            {errors.obra_cod && <span className="text-xs text-rojo font-semibold">{errors.obra_cod.message}</span>}
+            {!errors.obra_cod && !obraCod && (
+              <span className="text-[11px] text-gris-dark">Al elegirla se precarga su cliente.</span>
+            )}
             {obraCod && (
-              <button type="button" className="text-[11px] text-azul hover:underline" onClick={() => setValue('obra_cod', '')}>
+              <button type="button" className="text-[11px] text-azul hover:underline" onClick={() => setValue('obra_cod', '', { shouldValidate: true })}>
                 ✕ sin obra
               </button>
             )}
           </div>
         </div>
 
+        {clienteDistinto && obraSel && cliente && (
+          <Aviso tono="naranja">
+            La obra <b>{obraSel.cod} — {obraSel.nom}</b> es de <b>{obraSel.cliente_nom ?? 'otro cliente'}</b> y la factura va a
+            {' '}<b>{cliente.razon_social}</b>. Si está bien, seguí; si no, cambiá el cliente o la obra.
+          </Aviso>
+        )}
         {cliente && !letraCliente && (
           <Aviso tono="rojo">
             A <b>{cliente.razon_social}</b> no se le puede hacer ni factura A ni B: es «{CONDICIONES_IVA[cliente.condicion_iva_id] ?? cliente.condicion_iva_id}»
@@ -522,23 +518,6 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
             onChange={e => elegirProducto(e.target.value as FormData['producto'])}
             title={PRODUCTOS.find(p => p.key === producto)?.hint}
           />
-          <div>
-            <Controller
-              name="centro_costo"
-              control={control}
-              render={({ field }) => (
-                <Combobox
-                  label="Centro de costo"
-                  placeholder={producto === 'TRANSPORTE' ? 'No lleva (transporte)' : 'Elegí el centro de costo'}
-                  options={opcionesCentro}
-                  value={field.value}
-                  onChange={field.onChange}
-                  disabled={producto === 'TRANSPORTE'}
-                />
-              )}
-            />
-            {errors.centro_costo && <span className="text-xs text-rojo font-semibold">{errors.centro_costo.message}</span>}
-          </div>
           <Input label="Fecha" type="date" {...register('fecha_cbte')} error={errors.fecha_cbte?.message}
             hint="ARCA acepta hasta 10 días para atrás o adelante" />
           <Input label="Condición de pago" {...register('condicion_pago')} error={errors.condicion_pago?.message} />
