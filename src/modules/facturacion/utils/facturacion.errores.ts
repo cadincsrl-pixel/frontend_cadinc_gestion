@@ -265,7 +265,19 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   ORIGEN_INVALIDO:          () => 'El crédito a aplicar no es válido (un cobro, una NC del sistema o una NC externa).',
   ORIGEN_NO_EXISTE:         () => 'El crédito a aplicar ya no existe.',
   COBRO_NO_EXISTE:          () => 'El cobro no existe.',
-  COBRO_ANULADO:            () => 'El cobro está anulado: no se le puede aplicar nada.',
+  COBRO_ANULADO:            d => dato(d, 'adjunto_id') !== undefined
+    ? 'El cobro está anulado: sus adjuntos quedan como respaldo y no se borran.'
+    : 'El cobro está anulado: no se le puede aplicar nada.',
+  // Documentación del cliente en el cobro (20260924q)
+  ADJUNTO_DUPLICADO:        d => dato(d, 'mismo_que_indice') !== undefined
+    ? 'Elegiste el mismo archivo dos veces.'
+    : 'Ese archivo ya está adjunto a este cobro.',
+  ADJUNTO_NO_EXISTE:        () => 'El adjunto ya no existe. Actualizá la ficha.',
+  ADJUNTO_INMUTABLE:        () => 'El adjunto no se puede cambiar de cobro ni de archivo: borralo y subilo de nuevo.',
+  ARCHIVO_NO_SUBIDO:        () => 'El archivo no llegó a subirse. Volvé a elegirlo.',
+  PATH_INVALIDO:            () => 'El archivo no es válido. Volvé a elegirlo.',
+  MIME_NO_PERMITIDO:        () => 'Solo PDF o imagen (JPG, PNG, WEBP, HEIC).',
+  TAMANO_INVALIDO:          () => 'El archivo supera los 10 MB.',
   COBRO_YA_ANULADO:         () => 'El cobro ya estaba anulado.',
   COBRO_NO_BORRABLE:        () => 'Un cobro no se borra: se anula (queda en el historial).',
   DESTINO_NO_EXISTE:        () => 'Uno de los comprobantes a cancelar ya no existe. Actualizá la lista.',

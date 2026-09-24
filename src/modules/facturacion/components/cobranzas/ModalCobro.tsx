@@ -12,8 +12,8 @@ import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import {
-  descartarAdjuntoPendiente, subirAdjuntoRetencion, useAmbienteCobranzas, usePendientesCliente, useRegistrarCobro,
-  type AdjuntoRetencion,
+  ADJUNTO_COBRO_TIPOS, descartarAdjuntoCobroPendiente, descartarAdjuntoPendiente, subirAdjuntoCobro, subirAdjuntoRetencion,
+  useAmbienteCobranzas, usePendientesCliente, useRegistrarCobro, type AdjuntoRetencion,
 } from '../../hooks/useCobranzas'
 import { useCuentasFce } from '../../hooks/useClientesFacturacion'
 import { fmtM, hoyAR } from '../../utils/facturacion.utils'
@@ -21,7 +21,9 @@ import {
   FORMAS_COBRO, RETENCION_TIPOS, aCent, aplicarAutomatico, claveSaldo, esFormaCheque, imputacionesDe, validarAplicacion,
 } from '../../utils/cobranzas.utils'
 import { errorDeCampoFacturacion, leerCuerpoError, mensajeErrorFacturacion } from '../../utils/facturacion.errores'
-import type { VentasCobroDetalle, VentasCobroForma, VentasCobroInput, VentasRetencionTipo } from '@/types/domain.types'
+import type {
+  VentasCobroAdjuntoInput, VentasCobroAdjuntoTipo, VentasCobroDetalle, VentasCobroForma, VentasCobroInput, VentasRetencionTipo,
+} from '@/types/domain.types'
 import { Aviso } from '../FichaFactura'
 import { ClienteCombobox, GrillaAplicacion, Seccion, TotalesAplicacion, type FilaPendiente } from './Comun'
 
@@ -33,6 +35,8 @@ import { ClienteCombobox, GrillaAplicacion, Seccion, TotalesAplicacion, type Fil
  *     con sus datos, efectivo u otro.
  *   · Retenciones: IIBB, TEM, SUSS, Ganancias, IVA u otra, con jurisdicción,
  *     certificado, fecha, importe y el PDF del certificado.
+ *   · Documentación del cliente: comprobante de pago, orden de pago del
+ *     cliente u otro. Se suben apenas se eligen y se registran con el cobro.
  *   · Aplicación de comprobantes: las facturas con saldo del cliente, más
  *     vieja primero, con el importe «Aplicado» editable y «Aplicar automático».
  * Total cobro = medios + retenciones; A cuenta = total − aplicado.
@@ -113,6 +117,16 @@ type EstadoAdjunto =
   | { estado: 'ok'; adj: AdjuntoRetencion }
   | { estado: 'error'; nombre: string; error: string }
 
+/** Un papel del cliente (comprobante, orden de pago…): se sube apenas se elige; el tipo se puede cambiar hasta guardar. */
+interface DocCliente {
+  key:     string
+  tipo:    VentasCobroAdjuntoTipo
+  nombre:  string
+  estado:  'subiendo' | 'ok' | 'error'
+  adj?:    VentasCobroAdjuntoInput
+  error?:  string
+}
+
 const CAMPOS_FORM = /^(fecha|cliente_id|obs|medios\.\d+\.(forma|importe|cuenta_bancaria_id|cheque_numero|cheque_banco|cheque_librador|cheque_fecha_cobro|obs)|retenciones\.\d+\.(tipo|jurisdiccion|certificado_numero|fecha|importe|obs))$/
 
 interface Props {
@@ -129,10 +143,16 @@ export function ModalCobro({ clienteInicial, onClose, onGuardado }: Props) {
   const registrar = useRegistrarCobro()
   const cuentas = useCuentasFce()
 
-  const [abierta, setAbierta] = useState({ medios: true, retenciones: false, aplicacion: true })
+  const [abierta, setAbierta] = useState({ medios: true, retenciones: false, documentacion: false, aplicacion: true })
   // La aplicación es DEL cliente elegido: si cambia el cliente, la anterior no sirve (se descarta sola).
   const [aplic, setAplic] = useState<{ cliente: string; map: Record<string, string> }>({ cliente: '', map: {} })
   const [adjuntos, setAdjuntos] = useState<Record<string, EstadoAdjunto>>({})
+  const [docs, setDocs] = useState<DocCliente[]>([])
+  const [tipoDoc, setTipoDoc] = useState<VentasCobroAdjuntoTipo>('comprobante_pago')
+  // Lo subido que sigue en cobros/pendientes/ (para descartar al cerrar sin guardar, aunque el estado no se haya refrescado).
+  const docsSubidos = useRef<Set<string>>(new Set())
+  // Claves quitadas mientras su archivo subía: al terminar, se descarta.
+  const docsQuitados = useRef<Set<string>>(new Set())
   const [errorServer, setErrorServer] = useState<string | null>(null)
   const guardado = useRef(false)
 
@@ -165,7 +185,7 @@ export function ModalCobro({ clienteInicial, onClose, onGuardado }: Props) {
   const totalCent = mediosCent + retCent
   const val = validarAplicacion(filas, aplicado, totalCent)
   const hayErrorGrilla = Object.keys(val.errores).length > 0 || val.superaTotal
-  const subiendo = Object.values(adjuntos).some(a => a.estado === 'subiendo')
+  const subiendo = Object.values(adjuntos).some(a => a.estado === 'subiendo') || docs.some(x => x.estado === 'subiendo')
 
   const listaCuentas = (cuentas.data ?? []).filter(c => c.activo)
   const opcionesCuenta = [
@@ -173,14 +193,18 @@ export function ModalCobro({ clienteInicial, onClose, onGuardado }: Props) {
     ...listaCuentas.map(c => ({ value: String(c.id), label: `${c.banco} · ${c.alias || c.cbu}${c.es_default ? ' (por defecto)' : ''}` })),
   ]
 
-  // Una sola cuenta: se elige sola (lo más común es que entre siempre al mismo banco).
-  const cuentaUnica = listaCuentas.length === 1 ? String(listaCuentas[0]!.id) : null
+  // Transferencia: arranca en la cuenta marcada «por defecto» (o en la única que haya);
+  // lo más común es que entre siempre al mismo banco. Se puede cambiar.
+  const cuentaDefault = (() => {
+    const d = listaCuentas.find(c => c.es_default) ?? (listaCuentas.length === 1 ? listaCuentas[0] : undefined)
+    return d ? String(d.id) : null
+  })()
   useEffect(() => {
-    if (!cuentaUnica) return
+    if (!cuentaDefault) return
     ;(mediosW ?? []).forEach((m, i) => {
-      if (m.forma === 'transferencia' && !m.cuenta_bancaria_id) setValue(`medios.${i}.cuenta_bancaria_id`, cuentaUnica)
+      if (m.forma === 'transferencia' && !m.cuenta_bancaria_id) setValue(`medios.${i}.cuenta_bancaria_id`, cuentaDefault)
     })
-  }, [cuentaUnica, mediosW, setValue])
+  }, [cuentaDefault, mediosW, setValue])
 
   async function elegirAdjunto(key: string, file: File | undefined) {
     if (!file) return
@@ -201,11 +225,45 @@ export function ModalCobro({ clienteInicial, onClose, onGuardado }: Props) {
     setAdjuntos(x => { const n = { ...x }; delete n[key]; return n })
   }
 
+  async function elegirDocs(files: FileList | null) {
+    const lista = Array.from(files ?? [])
+    if (lista.length === 0) return
+    const tipo = tipoDoc
+    const nuevos: DocCliente[] = lista.map(f => ({ key: `${Date.now()}-${Math.random().toString(36).slice(2)}`, tipo, nombre: f.name, estado: 'subiendo' }))
+    setDocs(d => [...d, ...nuevos])
+    await Promise.all(lista.map(async (file, i) => {
+      const key = nuevos[i]!.key
+      try {
+        const adj = await subirAdjuntoCobro(file, tipo)
+        if (docsQuitados.current.has(key)) {
+          void descartarAdjuntoCobroPendiente(adj.storage_path)
+          return
+        }
+        docsSubidos.current.add(adj.storage_path)
+        setDocs(d => d.map(x => (x.key === key ? { ...x, estado: 'ok', adj } : x)))
+      } catch (e) {
+        const msg = e instanceof Error && !('body' in e) ? e.message : mensajeErrorFacturacion(e)
+        setDocs(d => d.map(x => (x.key === key ? { ...x, estado: 'error', error: msg } : x)))
+      }
+    }))
+  }
+
+  function quitarDoc(key: string) {
+    const d = docs.find(x => x.key === key)
+    docsQuitados.current.add(key)
+    if (d?.adj) {
+      docsSubidos.current.delete(d.adj.storage_path)
+      void descartarAdjuntoCobroPendiente(d.adj.storage_path)
+    }
+    setDocs(x => x.filter(y => y.key !== key))
+  }
+
   function cerrar() {
     if (registrar.isPending) return
     // Lo que se subió y no llegó a un cobro queda colgado en el bucket.
     if (!guardado.current) {
       Object.values(adjuntos).forEach(a => { if (a.estado === 'ok') void descartarAdjuntoPendiente(a.adj.adjunto_path) })
+      docsSubidos.current.forEach(p => { void descartarAdjuntoCobroPendiente(p) })
     }
     onClose()
   }
@@ -221,7 +279,7 @@ export function ModalCobro({ clienteInicial, onClose, onGuardado }: Props) {
       setErrorServer(val.superaTotal ? 'Lo aplicado supera el total del cobro.' : 'Hay importes aplicados que superan el saldo del comprobante.')
       return
     }
-    if (subiendo) { setErrorServer('Esperá a que termine de subir el certificado.'); return }
+    if (subiendo) { setErrorServer('Esperá a que terminen de subir los archivos.'); return }
     const body: VentasCobroInput = {
       cobro: { fecha: d.fecha, cliente_id: Number(d.cliente_id), obs: d.obs.trim(), ambiente },
       medios: d.medios.map(m => ({
@@ -243,11 +301,15 @@ export function ModalCobro({ clienteInicial, onClose, onGuardado }: Props) {
         }
       }),
       imputaciones: imputacionesDe(filas, aplicado),
+      adjuntos: docs.filter(x => x.estado === 'ok' && x.adj).map(x => ({ ...x.adj!, tipo: x.tipo })),
     }
     try {
       const det = await registrar.mutateAsync(body)
       guardado.current = true
       toast(`✓ Cobro ${det.cobro?.numero_fmt ?? ''} registrado${Number(det.cobro?.a_cuenta) > 0 ? ` · ${fmtM(det.cobro.a_cuenta)} a cuenta` : ''}`, 'ok')
+      if (det.adjuntos_error?.length) {
+        toast(`El cobro quedó registrado, pero no se guardaron ${det.adjuntos_error.length} archivo(s): ${det.adjuntos_error.map(x => x.nombre_archivo).join(', ')}. Adjuntalos desde la ficha.`, 'err')
+      }
       onGuardado(det)
     } catch (e) {
       const { error, detail } = leerCuerpoError(e)
@@ -288,7 +350,7 @@ export function ModalCobro({ clienteInicial, onClose, onGuardado }: Props) {
             title={!registrarCobros ? 'Hace falta el permiso «Registrar cobros»'
               : totalCent <= 0 ? 'Cargá al menos un medio de cobro o una retención'
               : hayErrorGrilla ? 'Corregí los importes aplicados'
-              : subiendo ? 'Subiendo el certificado…' : 'Registrar el cobro'}>
+              : subiendo ? 'Subiendo archivos…' : 'Registrar el cobro'}>
             Registrar cobro {totalCent > 0 ? fmtM(totalCent / 100) : ''}
           </Button>
         </div>
@@ -402,6 +464,49 @@ export function ModalCobro({ clienteInicial, onClose, onGuardado }: Props) {
               </div>
             )
           })}
+        </Seccion>
+
+        {/* ── Documentación del cliente ── */}
+        <Seccion titulo="Documentación del cliente" abierta={abierta.documentacion}
+          onToggle={() => setAbierta(a => ({ ...a, documentacion: !a.documentacion }))}
+          resumen={docs.length ? `${docs.length} archivo${docs.length === 1 ? '' : 's'}` : 'ninguna'}
+          acciones={
+            <div className="flex gap-1.5 items-center">
+              <select value={tipoDoc} onChange={e => setTipoDoc(e.target.value as VentasCobroAdjuntoTipo)} aria-label="Tipo de documento"
+                className="text-xs border border-gris-mid rounded px-1.5 py-1 bg-white">
+                {ADJUNTO_COBRO_TIPOS.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+              </select>
+              <label className={`text-xs font-semibold px-2.5 py-1 rounded border ${registrarCobros ? 'border-azul text-azul cursor-pointer hover:bg-azul/5' : 'border-gris-mid text-gris-mid cursor-not-allowed'}`}
+                title={registrarCobros ? 'PDF o foto, hasta 10 MB. Podés elegir varios.' : 'Hace falta el permiso «Registrar cobros»'}>
+                + Adjuntar
+                <input type="file" multiple accept="application/pdf,image/*" className="hidden" disabled={!registrarCobros}
+                  onChange={ev => { void elegirDocs(ev.target.files); ev.target.value = ''; setAbierta(a => ({ ...a, documentacion: true })) }} />
+              </label>
+            </div>
+          }>
+          {docs.length === 0 ? (
+            <span className="text-xs text-gris-dark italic">
+              El comprobante de la transferencia o depósito, la orden de pago del cliente (qué facturas paga y qué retiene) u otro papel.
+              Los certificados de retención van en cada retención.
+            </span>
+          ) : (
+            <ul className="flex flex-col gap-1.5">
+              {docs.map(x => (
+                <li key={x.key} className="flex items-center gap-2 text-xs border-b border-gris pb-1.5 last:border-0 last:pb-0 min-w-0">
+                  <select value={x.tipo} aria-label="Tipo"
+                    onChange={e => { const t = e.target.value as VentasCobroAdjuntoTipo; setDocs(d => d.map(y => (y.key === x.key ? { ...y, tipo: t } : y))) }}
+                    className="text-xs border border-gris-mid rounded px-1 py-0.5 bg-white shrink-0">
+                    {ADJUNTO_COBRO_TIPOS.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+                  </select>
+                  <span className="truncate min-w-0" title={x.nombre}>📎 {x.nombre}</span>
+                  {x.estado === 'subiendo' && <span className="text-gris-dark shrink-0">Subiendo…</span>}
+                  {x.estado === 'error' && <span className="text-rojo shrink-0">{x.error}</span>}
+                  <button type="button" className="text-rojo hover:underline ml-auto shrink-0" onClick={() => quitarDoc(x.key)}
+                    title="Quitar el archivo">Quitar</button>
+                </li>
+              ))}
+            </ul>
+          )}
         </Seccion>
 
         {/* ── Aplicación de comprobantes ── */}

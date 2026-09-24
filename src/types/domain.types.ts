@@ -3694,6 +3694,44 @@ export interface VentasCobroDetalle {
   medios:       VentasCobroMedio[]
   retenciones:  VentasCobroRetencion[]
   imputaciones: VentasImputacion[]
+  /** Documentación del cliente (20260924q). */
+  adjuntos?:    VentasCobroAdjunto[]
+  /** Solo en el POST /cobros: adjuntos que no se registraron (el cobro quedó igual). */
+  adjuntos_error?: VentasCobroAdjuntoError[]
+}
+
+/** Qué papel del cliente es: comprobante de la transferencia/depósito, su orden de pago u otro. */
+export type VentasCobroAdjuntoTipo = 'comprobante_pago' | 'orden_pago' | 'otro'
+
+/** Fila de `ventas_cobro_adjuntos` (bucket privado ventas-docs, cobros/<id>/). */
+export interface VentasCobroAdjunto {
+  id:             number
+  cobro_id:       number
+  tipo:           VentasCobroAdjuntoTipo
+  storage_path:   string
+  nombre_archivo: string
+  mime:           string | null
+  size_bytes:     number | null
+  file_hash:      string
+  obs:            string
+  created_at:     string
+  created_by:     string | null
+}
+
+/** Lo que viaja en `adjuntos` del POST /cobros y en POST /cobros/:id/adjuntos. */
+export interface VentasCobroAdjuntoInput {
+  tipo:           VentasCobroAdjuntoTipo
+  storage_path:   string
+  nombre_archivo: string
+  mime?:          string | null
+  obs?:           string | null
+}
+
+export interface VentasCobroAdjuntoError {
+  indice:         number
+  nombre_archivo: string
+  error:          string
+  detail?:        unknown
 }
 
 /** Destino de una imputación: una factura del ERP o un comprobante externo. */
@@ -3732,6 +3770,7 @@ export interface VentasCobroInput {
   medios:       VentasCobroMedioInput[]
   retenciones:  VentasCobroRetencionInput[]
   imputaciones: VentasDestinoImputacion[]
+  adjuntos?:    VentasCobroAdjuntoInput[]
 }
 
 /** POST /compensaciones: una NC (del ERP o externa) contra débitos del mismo cliente. */

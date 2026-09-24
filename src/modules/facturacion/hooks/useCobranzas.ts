@@ -13,6 +13,7 @@ import type {
   VentasDeudor, VentasEstadoCuenta, VentasEstadoCuentaMov, VentasExterno, VentasExternoAccion, VentasExternoInput,
   VentasExternosPage, VentasFactura, VentasImportarFilaInput, VentasImportarRes, VentasSaldo, VentasCliente,
   VentasUploadUrlRes, VentasAmbiente, VentasPendientesCliente, VentasImputacion,
+  VentasCobroAdjunto, VentasCobroAdjuntoInput, VentasCobroAdjuntoTipo,
 } from '@/types/domain.types'
 import { aPagina } from '../utils/cobranzas.utils'
 import { invalidarFacturacion, useArcaAmbiente } from './useFacturacion'
@@ -231,6 +232,72 @@ export async function urlAdjuntoRetencion(retencionId: number): Promise<string> 
   const url = r.url ?? r.signed_url
   if (!url) throw new Error('El servidor no devolvió la URL del certificado')
   return url
+}
+
+// ── Documentación del cliente en el cobro (20260924q) ─────────────────
+// Comprobante de pago (transferencia/depósito), orden de pago del cliente u
+// otro. Mismo molde que los certificados: se sube a `cobros/pendientes/…`
+// apenas se elige, y el backend lo hashea y lo mueve a `cobros/<id>/` al
+// registrarlo (en el POST /cobros o después, desde la ficha).
+
+export const ADJUNTO_COBRO_TIPOS: { key: VentasCobroAdjuntoTipo; label: string }[] = [
+  { key: 'comprobante_pago', label: 'Comprobante de pago' },
+  { key: 'orden_pago',       label: 'Orden de pago del cliente' },
+  { key: 'otro',             label: 'Otro' },
+]
+export const ADJUNTO_COBRO_LABEL: Record<VentasCobroAdjuntoTipo, string> = {
+  comprobante_pago: 'Comprobante de pago', orden_pago: 'Orden de pago del cliente', otro: 'Otro',
+}
+
+/** Sube el archivo a `cobros/pendientes/` y devuelve lo que viaja en `adjuntos`. */
+export async function subirAdjuntoCobro(file: File, tipo: VentasCobroAdjuntoTipo): Promise<VentasCobroAdjuntoInput> {
+  if (file.size > MAX_ADJUNTO_RETENCION) throw new Error('El archivo supera los 10 MB')
+  if (file.type && !MIME_ADJUNTO_RETENCION.includes(file.type)) throw new Error('Solo PDF o imagen (JPG, PNG, WEBP, HEIC)')
+  const mime = file.type || 'application/pdf'
+  const up = await apiPost<VentasUploadUrlRes>(`${BASE}/cobros/adjuntos/upload-url`, {
+    nombre_archivo: file.name, mime_type: mime, size_bytes: file.size,
+  })
+  const put = await fetch(up.signed_url, { method: 'PUT', body: file, headers: { 'content-type': mime } })
+  if (!put.ok) throw new Error(`No se pudo subir el archivo (${put.status})`)
+  return { tipo, storage_path: up.storage_path, nombre_archivo: file.name, mime }
+}
+
+/** El modal se cerró sin guardar (o se quitó el archivo): limpiar `cobros/pendientes/`. Nunca tira. */
+export async function descartarAdjuntoCobroPendiente(storage_path: string): Promise<void> {
+  try { await apiPost<unknown>(`${BASE}/cobros/adjuntos/descartar-pendiente`, { storage_path }) } catch { /* best-effort */ }
+}
+
+/** Sumar un adjunto a un cobro ya registrado (también anulado: queda de respaldo). */
+export function useAdjuntarCobro() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ cobroId, file, tipo, obs }: { cobroId: number; file: File; tipo: VentasCobroAdjuntoTipo; obs?: string }) => {
+      const adj = await subirAdjuntoCobro(file, tipo)
+      try {
+        return await apiPost<VentasCobroAdjunto>(`${BASE}/cobros/${cobroId}/adjuntos`, { ...adj, obs: obs ?? '' })
+      } catch (e) {
+        await descartarAdjuntoCobroPendiente(adj.storage_path)
+        throw e
+      }
+    },
+    onSuccess: (_r, v) => qc.invalidateQueries({ queryKey: COBRANZAS_KEYS.cobro(v.cobroId) }),
+  })
+}
+
+/** Borra fila y archivo (de un cobro anulado no: COBRO_ANULADO). */
+export function useBorrarAdjuntoCobro() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id }: { id: number; cobroId: number }) => apiDelete<{ ok: true }>(`${BASE}/cobros/adjuntos/${id}`),
+    onSuccess: (_r, v) => qc.invalidateQueries({ queryKey: COBRANZAS_KEYS.cobro(v.cobroId) }),
+  })
+}
+
+/** URL firmada (15 min) para ver/bajar un adjunto del cobro. */
+export async function urlAdjuntoCobro(id: number): Promise<string> {
+  const r = await apiGet<{ url?: string }>(`${BASE}/cobros/adjuntos/${id}/url`)
+  if (!r.url) throw new Error('El servidor no devolvió la URL del archivo')
+  return r.url
 }
 
 // ── Deudores y estado de cuenta ───────────────────────────────────────

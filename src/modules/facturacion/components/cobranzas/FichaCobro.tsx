@@ -6,20 +6,22 @@ import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import {
-  urlAdjuntoRetencion, useAdjuntarRetencion, useAnularCobro, useAnularImputacion, useCobro,
+  ADJUNTO_COBRO_LABEL, ADJUNTO_COBRO_TIPOS, urlAdjuntoCobro, urlAdjuntoRetencion, useAdjuntarCobro, useAdjuntarRetencion,
+  useAnularCobro, useAnularImputacion, useBorrarAdjuntoCobro, useCobro,
 } from '../../hooks/useCobranzas'
 import { fmtCuit, fmtFecha, fmtFechaHora, fmtM } from '../../utils/facturacion.utils'
 import { FORMA_LABEL, RETENCION_CORTO } from '../../utils/cobranzas.utils'
 import { mensajeErrorFacturacion } from '../../utils/facturacion.errores'
 import { descargarReciboPdf, detalleMedio } from '../../utils/reciboPdf'
-import type { VentasImputacion } from '@/types/domain.types'
+import type { VentasCobroAdjuntoTipo, VentasImputacion } from '@/types/domain.types'
 import { Aviso } from '../FichaFactura'
 import { Cifra, ModalMotivo } from './Comun'
 import { ModalCompensacion } from './ModalCompensacion'
 
 /**
  * La ficha de un recibo: qué entró (medios y retenciones), a qué se aplicó y
- * lo que quedó a cuenta. Acciones: PDF del recibo, aplicar lo que queda a
+ * lo que quedó a cuenta, y la documentación que mandó el cliente (comprobante
+ * de pago, orden de pago, otros; se puede sumar también a un anulado). Acciones: PDF del recibo, aplicar lo que queda a
  * cuenta, anular una imputación o el cobro entero. Se deshabilitan con el
  * motivo en el tooltip, no se esconden.
  */
@@ -30,6 +32,10 @@ export function FichaCobro({ id, onClose }: { id: number; onClose: () => void })
   const anular = useAnularCobro()
   const anularImp = useAnularImputacion()
   const adjuntar = useAdjuntarRetencion()
+  const adjuntarDoc = useAdjuntarCobro()
+  const borrarDoc = useBorrarAdjuntoCobro()
+  const [tipoDoc, setTipoDoc] = useState<VentasCobroAdjuntoTipo>('comprobante_pago')
+  const [confirmandoBorrar, setConfirmandoBorrar] = useState<number | null>(null)
 
   const [pidiendoAnular, setPidiendoAnular] = useState(false)
   const [anulandoImp, setAnulandoImp] = useState<VentasImputacion | null>(null)
@@ -60,17 +66,8 @@ export function FichaCobro({ id, onClose }: { id: number; onClose: () => void })
     try { await descargarReciboPdf(d) } catch { toast('No se pudo generar el PDF', 'err') } finally { setGenerando(false) }
   }
 
-  async function verCertificado(retId: number) {
-    // La ventana se abre ANTES del await: si no, el navegador la bloquea como popup.
-    const w = window.open('', '_blank')
-    try {
-      const url = await urlAdjuntoRetencion(retId)
-      if (w) w.location.href = url
-      else window.open(url, '_blank')
-    } catch (e) {
-      w?.close()
-      toast(e instanceof Error && !('body' in e) ? e.message : mensajeErrorFacturacion(e), 'err')
-    }
+  function verCertificado(retId: number) {
+    return abrirUrl(() => urlAdjuntoRetencion(retId))
   }
 
   async function subirCertificado(retId: number, file: File | undefined) {
@@ -82,6 +79,46 @@ export function FichaCobro({ id, onClose }: { id: number; onClose: () => void })
       toast(e instanceof Error && !('body' in e) ? e.message : mensajeErrorFacturacion(e), 'err')
     }
   }
+
+  async function abrirUrl(obtener: () => Promise<string>) {
+    // La ventana se abre ANTES del await: si no, el navegador la bloquea como popup.
+    const w = window.open('', '_blank')
+    try {
+      const url = await obtener()
+      if (w) w.location.href = url
+      else window.open(url, '_blank')
+    } catch (e) {
+      w?.close()
+      toast(e instanceof Error && !('body' in e) ? e.message : mensajeErrorFacturacion(e), 'err')
+    }
+  }
+
+  async function subirDocs(files: FileList | null) {
+    const lista = Array.from(files ?? [])
+    let ok = 0
+    for (const file of lista) {
+      try {
+        await adjuntarDoc.mutateAsync({ cobroId: c.id, file, tipo: tipoDoc })
+        ok++
+      } catch (e) {
+        toast(`${file.name}: ${e instanceof Error && !('body' in e) ? e.message : mensajeErrorFacturacion(e)}`, 'err')
+      }
+    }
+    if (ok > 0) toast(`✓ ${ok === 1 ? 'Archivo adjuntado' : `${ok} archivos adjuntados`}`, 'ok')
+  }
+
+  async function borrarAdjunto(id: number) {
+    try {
+      await borrarDoc.mutateAsync({ id, cobroId: c.id })
+      toast('✓ Archivo borrado', 'ok')
+    } catch (e) { toast(mensajeErrorFacturacion(e), 'err') }
+    setConfirmandoBorrar(null)
+  }
+
+  const docs = d.adjuntos ?? []
+  const puedeBorrarDoc = registrarCobros || anularCobros
+  const motivoNoBorrar = !puedeBorrarDoc ? 'Hace falta el permiso «Registrar cobros» o «Anular cobros»'
+    : !vigente ? 'El cobro está anulado: sus adjuntos quedan como respaldo' : null
 
   const imputacionesVig = d.imputaciones.filter(i => !i.anulada)
   const imputacionesAnul = d.imputaciones.filter(i => i.anulada)
@@ -179,6 +216,56 @@ export function FichaCobro({ id, onClose }: { id: number; onClose: () => void })
           )}
         </Bloque>
 
+        <Bloque titulo="Documentación" acciones={
+          <div className="flex gap-1.5 items-center">
+            <select value={tipoDoc} onChange={e => setTipoDoc(e.target.value as VentasCobroAdjuntoTipo)} aria-label="Tipo de documento"
+              className="text-xs border border-gris-mid rounded px-1.5 py-0.5 bg-white">
+              {ADJUNTO_COBRO_TIPOS.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+            </select>
+            <label className={`text-xs ${registrarCobros && !adjuntarDoc.isPending ? 'text-azul hover:underline cursor-pointer' : 'text-gris-mid cursor-not-allowed'}`}
+              title={registrarCobros ? 'PDF o foto, hasta 10 MB. Podés elegir varios.' : 'Hace falta el permiso «Registrar cobros»'}>
+              {adjuntarDoc.isPending ? 'Subiendo…' : '+ Adjuntar'}
+              <input type="file" multiple accept="application/pdf,image/*" className="hidden" disabled={!registrarCobros || adjuntarDoc.isPending}
+                onChange={ev => { void subirDocs(ev.target.files); ev.target.value = '' }} />
+            </label>
+          </div>
+        }>
+          {docs.length === 0 ? (
+            <Nada>Sin documentación: el comprobante de pago, la orden de pago del cliente u otro papel se adjuntan acá.</Nada>
+          ) : (
+            <Tabla cabeza={['Tipo', 'Archivo', 'Subido', '']} derecha={[3]}>
+              {docs.map(a => (
+                <tr key={a.id} className="border-t border-gris">
+                  <td className="px-2 py-1.5 whitespace-nowrap">{ADJUNTO_COBRO_LABEL[a.tipo] ?? a.tipo}</td>
+                  <td className="px-2 py-1.5 max-w-[260px]">
+                    <button type="button" className="text-azul hover:underline text-xs truncate max-w-full text-left" title={a.nombre_archivo}
+                      onClick={() => abrirUrl(() => urlAdjuntoCobro(a.id))}>📎 {a.nombre_archivo}</button>
+                    {a.obs && <div className="text-[11px] text-gris-dark">{a.obs}</div>}
+                  </td>
+                  <td className="px-2 py-1.5 whitespace-nowrap text-xs">{fmtFechaHora(a.created_at)}</td>
+                  <td className="px-2 py-1.5 text-right whitespace-nowrap">
+                    {confirmandoBorrar === a.id ? (
+                      <span className="text-xs">
+                        ¿Borrar?{' '}
+                        <button type="button" className="text-rojo font-semibold hover:underline" disabled={borrarDoc.isPending}
+                          onClick={() => borrarAdjunto(a.id)}>{borrarDoc.isPending ? 'Borrando…' : 'Sí'}</button>
+                        {' · '}
+                        <button type="button" className="text-gris-dark hover:underline" onClick={() => setConfirmandoBorrar(null)}>No</button>
+                      </span>
+                    ) : (
+                      <button type="button" onClick={() => setConfirmandoBorrar(a.id)} disabled={!!motivoNoBorrar}
+                        className="text-xs text-rojo hover:underline disabled:text-gris-mid disabled:no-underline disabled:cursor-not-allowed"
+                        title={motivoNoBorrar ?? 'Borrar el archivo'}>
+                        Borrar
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </Tabla>
+          )}
+        </Bloque>
+
         <Bloque titulo="Comprobantes aplicados">
           {imputacionesVig.length === 0 ? <Nada>No se aplicó a ningún comprobante{vigente ? ': todo queda a cuenta' : ''}.</Nada> : (
             <Tabla cabeza={['Comprobante', 'Emisión', 'Vence', 'Aplicado', 'Saldo hoy', '']} derecha={[3, 4]}>
@@ -262,10 +349,13 @@ function Etiqueta({ children }: { children: ReactNode }) {
   return <span className="text-[11px] font-bold text-gris-dark uppercase">{children}</span>
 }
 
-function Bloque({ titulo, children }: { titulo: string; children: ReactNode }) {
+function Bloque({ titulo, acciones, children }: { titulo: string; acciones?: ReactNode; children: ReactNode }) {
   return (
     <div className="border-t border-gris pt-2">
-      <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wide mb-1">{titulo}</div>
+      <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+        <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wide">{titulo}</div>
+        {acciones}
+      </div>
       {children}
     </div>
   )
