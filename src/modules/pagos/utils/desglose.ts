@@ -78,6 +78,15 @@ export function resumirDesglose(p: {
   }
 }
 
+/**
+ * Le falta el desglose para el Libro IVA de compras (20260924v): neto o IVA
+ * vacíos, o marcado a revisar. Mismo criterio que el filtro `sin_desglose`
+ * del backend. Las anuladas no cuentan.
+ */
+export function sinDesglose(f: { estado: string; neto: number | null; iva: number | null; desglose_a_revisar?: boolean }): boolean {
+  return f.estado !== 'anulada' && (f.neto == null || f.iva == null || !!f.desglose_a_revisar)
+}
+
 /** IVA que corresponde a una base (para sugerir el importe al tipear la base). */
 export function ivaDe(base: number, alicuotaId: number): number {
   return r2(base * pctDeAlicuota(alicuotaId) / 100)

@@ -18,6 +18,7 @@ import type {
   PagosFormaPrevista, PagosOrden, PagosOrdenDetalle, PagosOrdenesEje, PagosOrdenesGrupo, PagosOrdenesPage, PagosOrdenExport, PagosPaquete,
   PagosOrdenesResumen, PagosTipoAdjFactura, PagosTipoAdjOrden, PagosTipoComprobante, PagosUploadUrlRes,
   PagosAviso, PagosAvisoResultado, PagosMailEstado, PagosLecturaRes,
+  PagosDesgloseInput, PagosDesgloseLeidoRes, PagosCompletarDesgloseRes,
   RegistrarOrdenRes,
 } from '@/types/domain.types'
 
@@ -77,6 +78,8 @@ export interface PagosFacturasFiltro {
   sin_adjunto?:     boolean
   sin_numero?:      boolean
   sin_revisar?:     boolean
+  /** Sin IVA discriminado o marcadas a revisar: lo que le falta al Libro IVA (20260924v). */
+  sin_desglose?:    boolean
   cuenta_cambiada?: boolean
   /** Tri-estado: sin definir no filtra, `false` trae solo las que NO lo son. */
   paga_cliente?:     boolean
@@ -119,6 +122,7 @@ function qsFacturas(f: PagosFacturasFiltro, extra: ExtraQuery = {}): string {
   if (f.sin_adjunto)      p.set('sin_adjunto', '1')
   if (f.sin_numero)       p.set('sin_numero', '1')
   if (f.sin_revisar)      p.set('sin_revisar', '1')
+  if (f.sin_desglose)     p.set('sin_desglose', '1')
   if (f.cuenta_cambiada)  p.set('cuenta_cambiada', '1')
   // Tri-estado: el backend distingue "no filtrar" de "false".
   if (f.paga_cliente     !== undefined) p.set('paga_cliente',     f.paga_cliente     ? '1' : '0')
@@ -258,6 +262,24 @@ export function useEditarFactura() {
       apiPatch<EditarFacturaRes>(`/api/pagos/facturas/${id}`, body),
     onSuccess:  () => invalidarPagos(qc),
   })
+}
+
+/**
+ * Completar el desglose impositivo (20260924v): aunque esté pagada, sin
+ * cambiar total ni percepciones (lo valida la base). `forzar` sólo admin.
+ */
+export function useCompletarDesglose() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...body }: PagosDesgloseInput & { id: number; forzar?: boolean }) =>
+      apiPost<PagosCompletarDesgloseRes>(`/api/pagos/facturas/${id}/desglose`, body),
+    onSuccess:  () => invalidarPagos(qc),
+  })
+}
+
+/** Lee el comprobante ya adjunto (QR del navegador + IA) y propone el desglose. No guarda nada. */
+export function leerAdjuntoFactura(id: number, body: { adjunto_id?: number | null; qr_texto: string | null }): Promise<PagosDesgloseLeidoRes> {
+  return apiPost<PagosDesgloseLeidoRes>(`/api/pagos/facturas/${id}/leer-adjunto`, body)
 }
 
 /** Aprobar una, o sellar una «pagada al cargar» que estaba sin revisar. */

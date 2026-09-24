@@ -369,6 +369,7 @@ export function describirFiltroFacturas(
   if (f.sin_adjunto) p.push('sin comprobante adjunto')
   if (f.sin_numero) p.push('sin número')
   if (f.sin_revisar) p.push('pagadas sin revisar')
+  if (f.sin_desglose) p.push('sin desglose de impuestos')
   if (f.cuenta_cambiada) p.push('con la cuenta del proveedor cambiada')
   if (f.paga_cliente === true) p.push('las paga el cliente')
   if (f.paga_cliente === false) p.push('las paga CADINC')

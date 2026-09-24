@@ -17,7 +17,8 @@ import {
 } from '../utils/pagos.utils'
 import { mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
 import type { PagosControlFactura, PagosFacturaDetalle, PagosTipoAdjFactura } from '@/types/domain.types'
-import { ALICUOTAS, NOMBRE_CBTE_ARCA, labelTributo } from '../utils/desglose'
+import { ALICUOTAS, NOMBRE_CBTE_ARCA, labelTributo, sinDesglose } from '../utils/desglose'
+import { ModalCompletarDesglose } from './ModalCompletarDesglose'
 
 /**
  * La ficha de una factura: todo lo que se sabe de ella y lo que se puede
@@ -51,6 +52,7 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
   const [pidiendo, setPidiendo] = useState<null | 'observar' | 'anular'>(null)
   const [motivo, setMotivo] = useState('')
   const [tipoAdj, setTipoAdj] = useState<PagosTipoAdjFactura>('factura')
+  const [completando, setCompletando] = useState(false)
 
   if (isLoading || !f) {
     return (
@@ -221,6 +223,22 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
           <Dato label="Saldo" valor={f.saldo > 0 ? fmtM(f.saldo) : '—'} fuerte />
         </div>
         <DesgloseFicha f={f} />
+        {/* Completar el desglose (20260924v): también en una PAGADA, porque no
+            cambia la plata (total y percepciones quedan iguales; lo valida la base). */}
+        {sinDesglose(f) && (
+          <div className="flex items-center gap-2 flex-wrap border rounded p-2 text-xs bg-naranja-light border-naranja/30 text-naranja-dark">
+            <span className="flex-1 min-w-[200px]">
+              {f.desglose_a_revisar ? 'El desglose de impuestos está marcado a revisar.' : 'Falta el IVA discriminado: lo necesita el Libro IVA de compras.'}
+            </span>
+            <Button variant="secondary" size="sm" onClick={() => setCompletando(true)}
+              disabled={!puedeEditar}
+              title={puedeEditar
+                ? 'Cargar IVA por alícuota, percepciones y CAE sin cambiar el total ni lo pagado'
+                : 'No tenés permiso para editar facturas'}>
+              Completar desglose
+            </Button>
+          </div>
+        )}
 
         {/* Datos */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -332,6 +350,8 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
             </div>
           )}
         </Bloque>
+
+        {completando && <ModalCompletarDesglose factura={f} onClose={() => setCompletando(false)} />}
 
         {/* Pedir motivo */}
         {pidiendo && (

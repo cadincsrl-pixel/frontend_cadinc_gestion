@@ -2,6 +2,7 @@
 
 import { ESTADO_FACTURA_META, FORMAS_PREVISTAS, comprobanteTxt, fmtFecha, fmtM } from '../utils/pagos.utils'
 import type { PagosFactura } from '@/types/domain.types'
+import { sinDesglose } from '../utils/desglose'
 
 /**
  * La lista de facturas: tabla en pantalla grande, tarjetas en el celular.
@@ -36,6 +37,12 @@ function Alertas({ f }: { f: PagosFactura }) {
       {f.paga_cliente && (
         <span className="inline-block whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded bg-gris text-gris-dark"
               title="La paga el cliente directo al proveedor: no es deuda de CADINC">la paga el cliente</span>
+      )}
+      {sinDesglose(f) && (
+        <span className="inline-block whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded bg-naranja-light text-naranja-dark"
+              title={f.desglose_a_revisar ? 'El desglose de impuestos está marcado a revisar' : 'Falta el IVA discriminado: lo necesita el Libro IVA de compras'}>
+          {f.desglose_a_revisar ? 'desglose a revisar' : 'sin desglose'}
+        </span>
       )}
       {!f.tiene_factura_adj && (
         <span className="inline-block whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded bg-gris text-gris-dark"

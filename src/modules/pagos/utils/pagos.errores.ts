@@ -89,6 +89,19 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
     return `El desglose no cuadra con el total${total !== undefined ? ` de ${money(total)}` : ''}. Revisá neto, IVA por alícuota, no gravado, exento y percepciones — o quitá el desglose.`
   },
   DESGLOSE_INCONSISTENTE: () => 'El detalle de IVA y percepciones no coincide con los totales guardados. Volvé a abrir la factura y guardala de nuevo.',
+  // ── Completar el desglose de una factura ya cargada (20260924v) ──
+  DESGLOSE_CAMBIA_PERCEPCIONES: d => {
+    const act = dato(d, 'actuales'), nue = dato(d, 'nuevas')
+    const base = `El comprobante trae ${money(nue)} de percepciones y la factura tiene ${money(act)}.`
+    return dato(d, 'forzable') === true
+      ? `${base} Cambiarlas cambia lo imputado a las obras (total menos percepciones), y la factura ya tiene reparto o pagos: sólo un administrador puede forzarlo.`
+      : `${base} Las percepciones cargadas no se cambian desde acá: corregí el detalle para que sumen lo mismo.`
+  },
+  DESGLOSE_SIN_IVA: () => 'Una factura A tiene que llevar al menos una alícuota de IVA (o el importe exento / no gravado).',
+  DESGLOSE_INVALIDO: () => 'Hay un importe inválido en el desglose (negativo, alícuota repetida o tipo de tributo desconocido).',
+  DESGLOSE_REQUERIDO: () => 'Falta el detalle de IVA y de percepciones.',
+  CAE_INVALIDO: () => 'El CAE tiene que tener 14 dígitos.',
+  ADJUNTO_FACTURA_NO_EXISTE: () => 'La factura no tiene el comprobante adjunto (tipo «Factura»): subilo primero o cargá el desglose a mano.',
   LECTURA_NO_EXISTE: () => 'La lectura de la factura ya no está. Volvé a soltar el archivo.',
   LECTURA_YA_USADA: d => {
     const id = dato(d, 'factura_id')

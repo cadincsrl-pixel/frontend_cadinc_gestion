@@ -79,20 +79,20 @@ const n = (s: string) => {
 }
 const r2 = (v: number) => Math.round(v * 100) / 100
 
-interface FilaIva {
+export interface FilaIva {
   alicuota_id: PagosAlicuotaId
   base: string
   importe: string
   /** El importe todavía es el sugerido (base × %): cambia solo al tocar la base. */
   auto: boolean
 }
-interface FilaTributo {
+export interface FilaTributo {
   tipo: PagosTributoTipo
   jurisdiccion: string
   descripcion: string
   importe: string
 }
-type Fuente = PagosFuenteCampo | 'manual'
+export type Fuente = PagosFuenteCampo | 'manual'
 interface EstadoLectura {
   fase: 'leyendo' | 'lista' | 'error'
   storagePath?: string
@@ -1081,7 +1081,7 @@ const chico = 'w-full px-2 py-1.5 border-[1.5px] border-gris-mid rounded text-xs
  * percepciones/tributos con su jurisdicción, con el cierre contra el total en
  * vivo. Es lo que después arma el Libro IVA de compras.
  */
-function DesgloseArca(p: {
+export function DesgloseArca(p: {
   filasIva: FilaIva[]; setFilasIva: (v: FilaIva[]) => void
   tributos: FilaTributo[]; setTributos: (v: FilaTributo[]) => void
   neto: string; setNeto: (v: string) => void

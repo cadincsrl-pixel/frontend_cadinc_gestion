@@ -80,7 +80,7 @@ export function FiltrosFacturas({ filtro, patch, grupos }: Props) {
 
   const hayFiltrosExtra = !!(
     filtro.q || filtro.obra_cod || filtro.centro_costo || filtro.tipo || filtro.forma_pago ||
-    filtro.desde || filtro.hasta || filtro.sin_adjunto || filtro.sin_numero || filtro.sin_revisar ||
+    filtro.desde || filtro.hasta || filtro.sin_adjunto || filtro.sin_numero || filtro.sin_revisar || filtro.sin_desglose ||
     filtro.cuenta_cambiada || filtro.paga_cliente !== undefined || filtro.pagada_al_cargar !== undefined ||
     filtro.es_interna !== undefined || filtro.anuladas
   )
@@ -222,6 +222,8 @@ export function FiltrosFacturas({ filtro, patch, grupos }: Props) {
                    on={!!filtro.sin_numero}      set={v => patch({ sin_numero: v || undefined })} />
             <Tilde label="Pagadas sin revisar"   hint="Se cargaron ya pagadas y ningún aprobador las selló"
                    on={!!filtro.sin_revisar}     set={v => patch({ sin_revisar: v || undefined })} />
+            <Tilde label="Sin desglose"          hint="Sin IVA discriminado (o marcado a revisar): le falta al Libro IVA de compras"
+                   on={!!filtro.sin_desglose}    set={v => patch({ sin_desglose: v || undefined })} />
             <Tilde label="Cambió el CBU"         hint="El CBU del proveedor cambió después de que se aprobó"
                    on={!!filtro.cuenta_cambiada} set={v => patch({ cuenta_cambiada: v || undefined })} />
             <Tilde label="Las paga el cliente"   hint="No son deuda de CADINC"
@@ -239,7 +241,7 @@ export function FiltrosFacturas({ filtro, patch, grupos }: Props) {
               <Button variant="ghost" size="sm" onClick={() => { setTexto(''); patch({
                 q: undefined, obra_cod: undefined, centro_costo: undefined, tipo: undefined, forma_pago: undefined,
                 desde: undefined, hasta: undefined, sin_adjunto: undefined, sin_numero: undefined,
-                sin_revisar: undefined, cuenta_cambiada: undefined, paga_cliente: undefined,
+                sin_revisar: undefined, sin_desglose: undefined, cuenta_cambiada: undefined, paga_cliente: undefined,
                 pagada_al_cargar: undefined, es_interna: undefined, anuladas: undefined, archivadas: undefined,
               }) }}>
                 ✕ Limpiar filtros

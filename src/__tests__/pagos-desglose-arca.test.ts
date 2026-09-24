@@ -1,7 +1,7 @@
 // El desglose de la factura como lo pide ARCA (20260924u): mismas cuentas que
 // la base (`_pagos_guardar_desglose`) y el backend (`importesEfectivos`).
 import { describe, it, expect } from 'vitest'
-import { resumirDesglose, ivaDe, ivaNoCuadra, esPercepcion } from '@/modules/pagos/utils/desglose'
+import { resumirDesglose, ivaDe, ivaNoCuadra, esPercepcion, sinDesglose } from '@/modules/pagos/utils/desglose'
 
 describe('resumirDesglose', () => {
   it('factura A con IVA 21 % y dos percepciones (ABC, 21/09)', () => {
@@ -55,5 +55,14 @@ describe('IVA por alícuota', () => {
   it('percepciones', () => {
     expect(esPercepcion('percepcion_municipal')).toBe(true)
     expect(esPercepcion('impuestos_internos')).toBe(false)
+  })
+})
+
+describe('sinDesglose (20260924v)', () => {
+  it('sin neto o IVA, o marcada a revisar: le falta; anulada no cuenta', () => {
+    expect(sinDesglose({ estado: 'pagada', neto: null, iva: null })).toBe(true)
+    expect(sinDesglose({ estado: 'pagada', neto: 100, iva: 21 })).toBe(false)
+    expect(sinDesglose({ estado: 'pagada', neto: 100, iva: 21, desglose_a_revisar: true })).toBe(true)
+    expect(sinDesglose({ estado: 'anulada', neto: null, iva: null })).toBe(false)
   })
 })

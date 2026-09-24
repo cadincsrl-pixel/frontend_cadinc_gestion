@@ -2631,6 +2631,48 @@ export interface PagosLecturaRes {
   avisos:           PagosAvisoLectura[]
 }
 
+/** POST /facturas/:id/leer-adjunto (20260924v): la propuesta de desglose del adjunto ya guardado. No guarda nada. */
+export interface PagosDesgloseInput {
+  iva_detalle:     { alicuota_id: PagosAlicuotaId; base_imp: number; importe: number }[]
+  tributos:        { tipo: PagosTributoTipo; jurisdiccion: string | null; descripcion: string; alicuota: number | null; base_imp: number | null; importe: number }[]
+  no_gravado:      number | null
+  exento:          number | null
+  /** Sólo sin alícuotas (B/C). */
+  neto:            number | null
+  cae:             string | null
+  cae_vto:         string | null
+  cbte_tipo_arca:  number | null
+}
+export interface PagosCierreDesglose {
+  total_papel:          number | null
+  total_factura:        number
+  total_igual:          boolean
+  suma_desglose:        number
+  cuadra_con_total:     boolean
+  percepciones_papel:   number
+  percepciones_factura: number
+  percepciones_iguales: boolean
+  sin_iva:              boolean
+}
+export interface PagosDesgloseLeidoRes {
+  adjunto_id:       number
+  nombre_archivo:   string
+  estado:           PagosLecturaEstado
+  modelo:           string | null
+  qr_leido:         boolean
+  desglose:         PagosDesgloseInput
+  cierre:           PagosCierreDesglose
+  /** Total igual, cierra y percepciones iguales: se puede guardar tal cual. */
+  completable:      boolean
+  fuente_por_campo: Record<string, PagosFuenteCampo>
+  avisos:           PagosAvisoLectura[]
+}
+export interface PagosCompletarDesgloseRes {
+  factura:                PagosFactura
+  percepciones_cambiadas: boolean
+  imputacion_ajustada:    boolean
+}
+
 /** Obra a la que se imputa parte de la factura (centro de costo). */
 export interface PagosImputacion {
   id:         number
