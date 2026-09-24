@@ -9,13 +9,16 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
+import { usePermisos } from '@/hooks/usePermisos'
 import { useCondicionesIva } from '../hooks/useFacturacion'
-import { useCrearClienteVenta, useCuentasFce, useEditarClienteVenta, useRefrescarFceCliente } from '../hooks/useClientesFacturacion'
+import {
+  useConsultarPadron, useCrearClienteVenta, useCuentasFce, useEditarClienteVenta, useRefrescarFceCliente,
+} from '../hooks/useClientesFacturacion'
 import {
   CONDICIONES_IVA, DOC_TIPOS, MONTO_MINIMO_FCE, PROVINCIAS, TOPE_CF_IDENTIFICACION, cuitValido, fmtFecha, fmtM, letraDeCliente,
 } from '../utils/facturacion.utils'
 import { errorDeCampoFacturacion, mensajeErrorFacturacion } from '../utils/facturacion.errores'
-import type { VentasCliente, VentasClienteInput, VentasDocTipo } from '@/types/domain.types'
+import type { VentasCliente, VentasClienteInput, VentasDocTipo, VentasPadronResultado } from '@/types/domain.types'
 import { Aviso } from './FichaFactura'
 
 /**
@@ -27,6 +30,12 @@ import { Aviso } from './FichaFactura'
  * (`letraDeCliente`): A = CUIT y RI/monotributo; B = exento, consumidor
  * final, etc. con DNI, CUIT o «sin identificar» (99). Un RI o monotributista
  * sin CUIT no admite ninguna y no se deja guardar (400 CLIENTE_SIN_LETRA).
+ *
+ * «Buscar en ARCA» (fase 7) trae razón social, domicilio, provincia y la
+ * condición IVA del padrón (GET /clientes/padron/:cuit, no guarda nada) y los
+ * precarga: siguen siendo editables, y cada campo dice «de ARCA» mientras
+ * conserve el valor que vino. La condición IVA es una DEDUCCIÓN del backend
+ * a partir de los impuestos inscriptos: si es dudosa, se avisa.
  */
 
 const schema = z.object({
@@ -68,9 +77,13 @@ export function ModalCliente({ cliente, onClose }: Props) {
   const editar = useEditarClienteVenta()
   const cuentas = useCuentasFce()
   const refrescarFce = useRefrescarFceCliente()
+  const consultarPadron = useConsultarPadron()
+  const { puedeCrear } = usePermisos('facturacion')
   const [errorServer, setErrorServer] = useState<string | null>(null)
+  const [padron, setPadron] = useState<VentasPadronResultado | null>(null)
+  const [errorPadron, setErrorPadron] = useState<string | null>(null)
 
-  const { register, control, handleSubmit, setError, setValue, formState: { errors } } = useForm<FormData>({
+  const { register, control, handleSubmit, setError, setValue, getValues, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
       razon_social:     cliente?.razon_social ?? '',
@@ -88,6 +101,38 @@ export function ModalCliente({ cliente, onClose }: Props) {
   const docTipo = useWatch({ control, name: 'doc_tipo' })
   const condId  = useWatch({ control, name: 'condicion_iva_id' })
   const provincia = useWatch({ control, name: 'provincia' })
+  const docNro    = useWatch({ control, name: 'doc_nro' })
+  const razon     = useWatch({ control, name: 'razon_social' })
+  const domicilio = useWatch({ control, name: 'domicilio' })
+
+  const cuitParaArca = docNro.replace(/\D/g, '')
+  const puedeBuscarArca = (docTipo === '80' || docTipo === '86') && cuitParaArca.length === 11 && cuitValido(cuitParaArca)
+  /** ¿El campo conserva lo que trajo ARCA? (si el usuario lo cambia, deja de decirlo). */
+  const deArca = {
+    razon_social:     !!padron && razon === padron.precarga.razon_social,
+    domicilio:        !!padron && !!padron.precarga.domicilio && domicilio === padron.precarga.domicilio,
+    provincia:        !!padron && !!padron.precarga.provincia && provincia === padron.precarga.provincia,
+    condicion_iva_id: !!padron && condId === String(padron.precarga.condicion_iva_id),
+  }
+
+  async function buscarEnArca() {
+    setErrorPadron(null)
+    try {
+      const r = await consultarPadron.mutateAsync(cuitParaArca)
+      setPadron(r)
+      const opts = { shouldValidate: true, shouldDirty: true }
+      if (r.precarga.razon_social) setValue('razon_social', r.precarga.razon_social, opts)
+      if (r.precarga.domicilio) setValue('domicilio', r.precarga.domicilio, opts)
+      if (r.precarga.provincia) setValue('provincia', r.precarga.provincia, opts)
+      // La condición solo si deja al cliente con letra (siempre, con CUIT).
+      if (letraDeCliente(Number(getValues('doc_tipo')), r.precarga.condicion_iva_id)) {
+        setValue('condicion_iva_id', String(r.precarga.condicion_iva_id), opts)
+      }
+    } catch (e) {
+      setPadron(null)
+      setErrorPadron(mensajeErrorFacturacion(e))
+    }
+  }
 
   // Todas las condiciones de ARCA (11); la letra de cada una sale de letraDeCliente, igual que en la base.
   const opcionesCond = (condiciones.data ?? Object.entries(CONDICIONES_IVA).map(([id, descripcion]) => ({ id: Number(id), descripcion })))
@@ -151,7 +196,7 @@ export function ModalCliente({ cliente, onClose }: Props) {
       }
     >
       <form className="flex flex-col gap-3" onSubmit={e => e.preventDefault()}>
-        <Input label="Razón social" {...register('razon_social')} error={errors.razon_social?.message} autoFocus />
+        <Input label={deArca.razon_social ? 'Razón social · de ARCA' : 'Razón social'} {...register('razon_social')} error={errors.razon_social?.message} autoFocus />
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Select label="Documento" {...register('doc_tipo')}
             options={DOC_TIPOS.map(d => ({ value: String(d.id), label: d.label }))} />
@@ -160,9 +205,34 @@ export function ModalCliente({ cliente, onClose }: Props) {
               {...register('doc_nro')} inputMode="numeric" placeholder={docTipo === '80' ? '30-12345678-9' : docTipo === '99' ? 'Va con 0' : ''}
               readOnly={docTipo === '99'}
               error={errors.doc_nro?.message} hint={docTipo === '99' ? 'Consumidor final sin identificar: ARCA lo recibe con documento 0' : 'Con o sin guiones'} />
+            {(docTipo === '80' || docTipo === '86') && (
+              <Button type="button" variant="secondary" size="sm" className="mt-1.5"
+                loading={consultarPadron.isPending} onClick={buscarEnArca}
+                disabled={!puedeCrear || !puedeBuscarArca}
+                title={!puedeCrear ? 'No tenés permiso para cargar clientes'
+                  : !puedeBuscarArca ? 'Cargá un CUIT válido de 11 dígitos'
+                  : 'Trae razón social, domicilio, provincia y condición IVA del padrón de ARCA'}>
+                Buscar en ARCA
+              </Button>
+            )}
           </div>
         </div>
-        <Select label="Condición frente al IVA" {...register('condicion_iva_id')} options={opcionesCond}
+        {errorPadron && <Aviso tono="rojo">{errorPadron}</Aviso>}
+        {padron && (
+          <Aviso tono={padron.padron.condicion_iva_dudosa ? 'amarillo' : 'gris'}>
+            <b>Datos de ARCA</b> ({padron.padron.tipo_persona === 'FISICA' ? 'persona física' : padron.padron.tipo_persona === 'JURIDICA' ? 'persona jurídica' : padron.padron.tipo_persona || 'sin tipo'}
+            {padron.padron.estado_clave && padron.padron.estado_clave !== 'ACTIVO' ? `, clave ${padron.padron.estado_clave}` : ''}):
+            {' '}se precargaron los campos marcados «de ARCA»; podés corregirlos.
+            {' '}Condición IVA sugerida: <b>{CONDICIONES_IVA[padron.padron.condicion_iva_id] ?? padron.padron.condicion_iva_id}</b> — {padron.padron.condicion_iva_motivo}
+            {padron.padron.condicion_iva_dudosa && <> <b>Revisala antes de guardar.</b></>}
+            {!padron.precarga.domicilio && <> ARCA no trajo domicilio fiscal.</>}
+            {padron.padron.actividades[0] && <span className="block mt-1">Actividad principal: {padron.padron.actividades[0].descripcion}</span>}
+          </Aviso>
+        )}
+        {!padron && cliente?.padron_consultado_at && (
+          <span className="text-[11px] text-gris-dark -mt-1">Domicilio traído del padrón de ARCA el {fmtFecha(cliente.padron_consultado_at)}.</span>
+        )}
+        <Select label={deArca.condicion_iva_id ? 'Condición frente al IVA · sugerida por ARCA' : 'Condición frente al IVA'} {...register('condicion_iva_id')} options={opcionesCond}
           error={errors.condicion_iva_id?.message} />
         {!cliente && docTipo !== '99' && (
           <button type="button" onClick={consumidorFinalGenerico} className="self-start text-[11px] text-azul hover:underline">
@@ -182,9 +252,9 @@ export function ModalCliente({ cliente, onClose }: Props) {
         )}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="sm:col-span-2">
-            <Input label="Domicilio" {...register('domicilio')} placeholder="Calle, número, localidad" />
+            <Input label={deArca.domicilio ? 'Domicilio · de ARCA' : 'Domicilio'} {...register('domicilio')} placeholder="Calle, número, localidad" />
           </div>
-          <Select label="Provincia" {...register('provincia')} options={provincias} />
+          <Select label={deArca.provincia ? 'Provincia · de ARCA' : 'Provincia'} {...register('provincia')} options={provincias} />
         </div>
         <Input label="Email" type="email" {...register('email')} error={errors.email?.message} />
         {letra === 'A' && (

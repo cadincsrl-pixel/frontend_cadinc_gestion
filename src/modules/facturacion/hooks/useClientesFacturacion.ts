@@ -6,7 +6,9 @@
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPatch, apiPost, apiPut } from '@/lib/api/client'
-import type { VentasCliente, VentasClienteInput, VentasCuentaBancaria, VentasCuentaInput, VentasInfoFce } from '@/types/domain.types'
+import type {
+  VentasActualizarDesdeArca, VentasCliente, VentasClienteInput, VentasCuentaBancaria, VentasCuentaInput, VentasInfoFce, VentasPadronResultado,
+} from '@/types/domain.types'
 import { FACTURACION_KEYS, invalidarFacturacion } from './useFacturacion'
 
 const BASE = '/api/facturacion/clientes'
@@ -57,6 +59,28 @@ export function useAsignarObrasCliente() {
   return useMutation({
     mutationFn: ({ id, obra_cods }: { id: number; obra_cods: string[] }) =>
       apiPut<VentasCliente>(`${BASE}/${id}/obras`, { obra_cods }),
+    onSuccess:  () => invalidarFacturacion(qc),
+  })
+}
+
+// ── Padrón de ARCA (fase 7) ─────────────────────────────────────────
+
+/** Los datos de un CUIT según ARCA, para precargar el alta. NO guarda nada. */
+export function useConsultarPadron() {
+  return useMutation({
+    mutationFn: (cuit: string) => apiGet<VentasPadronResultado>(`${BASE}/padron/${cuit.replace(/\D/g, '')}`),
+  })
+}
+
+/**
+ * Pisa domicilio y provincia del cliente con los de ARCA; razón social y
+ * condición IVA solo si están vacías o con `todo`.
+ */
+export function useActualizarDesdeArca() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, todo }: { id: number; todo?: boolean }) =>
+      apiPost<VentasActualizarDesdeArca>(`${BASE}/${id}/actualizar-desde-arca${todo ? '?todo=1' : ''}`, {}),
     onSuccess:  () => invalidarFacturacion(qc),
   })
 }

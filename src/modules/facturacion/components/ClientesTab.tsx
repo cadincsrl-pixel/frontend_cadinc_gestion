@@ -4,8 +4,8 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
-import { useBajaClienteVenta, useClientesVenta } from '../hooks/useClientesFacturacion'
-import { CONDICIONES_IVA, fmtDoc, letraDeCliente } from '../utils/facturacion.utils'
+import { useActualizarDesdeArca, useBajaClienteVenta, useClientesVenta } from '../hooks/useClientesFacturacion'
+import { CONDICIONES_IVA, fmtDoc, fmtFecha, letraDeCliente } from '../utils/facturacion.utils'
 import { mensajeErrorFacturacion } from '../utils/facturacion.errores'
 import type { VentasCliente } from '@/types/domain.types'
 import { ModalCliente } from './ModalCliente'
@@ -28,6 +28,25 @@ export function ClientesTab() {
 
   const lista = useClientesVenta(q, inactivos, puedeVer)
   const baja = useBajaClienteVenta()
+  const desdeArca = useActualizarDesdeArca()
+
+  /**
+   * Trae domicilio y provincia del padrón de ARCA. Razón social y condición
+   * IVA no se tocan si ya están cargadas: si ARCA dice otra cosa, se avisa.
+   */
+  async function actualizarDesdeArca(c: VentasCliente) {
+    try {
+      const r = await desdeArca.mutateAsync({ id: c.id })
+      const aplicados = r.diferencias.filter(d => d.aplicado).map(d => NOMBRE_CAMPO[d.campo] ?? d.campo)
+      const avisos = r.diferencias.filter(d => !d.aplicado).map(d => d.campo === 'condicion_iva_id'
+        ? `ARCA sugiere ${CONDICIONES_IVA[Number(d.arca)] ?? d.arca}${r.padron.condicion_iva_dudosa ? ' (dudoso)' : ''}, no se cambió`
+        : `razón social en ARCA: «${String(d.arca)}», no se cambió`)
+      const base = aplicados.length ? `✓ ${c.razon_social}: se actualizó ${aplicados.join(' y ')}` : `✓ ${c.razon_social}: ya coincidía con ARCA`
+      toast(avisos.length ? `${base}. ${avisos.join('; ')}.` : base, 'ok')
+    } catch (e) {
+      toast(mensajeErrorFacturacion(e), 'err')
+    }
+  }
 
   async function cambiarActivo(c: VentasCliente) {
     try {
@@ -114,6 +133,8 @@ export function ClientesTab() {
                         onEditar={() => setEditando({ open: true, cliente: c })}
                         onObras={() => setObrasDe(c)}
                         onActivo={() => cambiarActivo(c)}
+                        onArca={() => actualizarDesdeArca(c)}
+                        cargandoArca={desdeArca.isPending && desdeArca.variables?.id === c.id}
                         cargando={baja.isPending && baja.variables?.id === c.id} />
                     </td>
                   </tr>
@@ -132,6 +153,8 @@ export function ClientesTab() {
                     onEditar={() => setEditando({ open: true, cliente: c })}
                     onObras={() => setObrasDe(c)}
                     onActivo={() => cambiarActivo(c)}
+                    onArca={() => actualizarDesdeArca(c)}
+                    cargandoArca={desdeArca.isPending && desdeArca.variables?.id === c.id}
                     cargando={baja.isPending && baja.variables?.id === c.id} />
                 </div>
               </div>
@@ -148,13 +171,25 @@ export function ClientesTab() {
   )
 }
 
-function Acciones({ c, puedeEditar, tip, onEditar, onObras, onActivo, cargando }: {
+const NOMBRE_CAMPO: Record<string, string> = {
+  domicilio: 'el domicilio', provincia: 'la provincia', razon_social: 'la razón social', condicion_iva_id: 'la condición IVA',
+}
+
+function Acciones({ c, puedeEditar, tip, onEditar, onObras, onActivo, onArca, cargandoArca, cargando }: {
   c: VentasCliente; puedeEditar: boolean; tip?: string
-  onEditar: () => void; onObras: () => void; onActivo: () => void; cargando: boolean
+  onEditar: () => void; onObras: () => void; onActivo: () => void; onArca: () => void
+  cargandoArca: boolean; cargando: boolean
 }) {
+  const conCuit = c.doc_tipo === 80 || c.doc_tipo === 86
   return (
     <div className="flex gap-1 justify-end flex-wrap">
       <Button variant="ghost" size="sm" onClick={onEditar} disabled={!puedeEditar} title={tip ?? 'Editar el cliente'}>✏️ Editar</Button>
+      <Button variant="ghost" size="sm" onClick={onArca} disabled={!puedeEditar || !conCuit || !c.activo} loading={cargandoArca}
+        title={tip ?? (!conCuit ? 'Solo para clientes con CUIT o CUIL'
+          : !c.activo ? 'Reactivalo para actualizarlo'
+          : `Actualizar desde ARCA: trae domicilio y provincia del padrón${c.padron_consultado_at ? ` (última vez: ${fmtFecha(c.padron_consultado_at)})` : ''}. Razón social y condición IVA no se tocan.`)}>
+        ↻ Actualizar desde ARCA
+      </Button>
       <Button variant="ghost" size="sm" onClick={onObras} disabled={!puedeEditar || !c.activo}
         title={tip ?? (!c.activo ? 'Reactivalo para asignarle obras' : 'Qué obras se le facturan (precarga el cliente)')}>🏗 Obras</Button>
       <Button variant="ghost" size="sm" onClick={onActivo} disabled={!puedeEditar} loading={cargando}

@@ -57,6 +57,13 @@ function horaAR(v: unknown): string | null {
   return d.toLocaleTimeString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit' })
 }
 
+/** « (ARCA dice: …)» con los errores textuales del padrón, si vinieron. */
+function arcaDice(d: unknown): string {
+  const errs = dato(d, 'errores')
+  const txt = Array.isArray(errs) ? errs.map(String).filter(x => !x.startsWith('(')).join(' / ') : ''
+  return txt ? ` (ARCA dice: ${txt})` : ''
+}
+
 const CAMPO_RENGLON: Record<string, string> = {
   descripcion: 'la descripción', cantidad: 'la cantidad', precio_unit: 'el precio', alicuota_id: 'la alícuota',
 }
@@ -185,6 +192,14 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   CUENTA_DEFAULT_DUPLICADA: () => 'Ya hay otra cuenta marcada por defecto. Probá de nuevo.',
   CUENTA_DEFAULT_REQUERIDA: () => 'Esta es la cuenta por defecto: marcá otra como predeterminada antes de sacarle la marca o darla de baja.',
   CUENTA_INACTIVA:          () => 'La cuenta está dada de baja: reactivala antes de marcarla por defecto.',
+
+  // ── Padrón de ARCA (fase 7) ──
+  PADRON_CUIT_INEXISTENTE: () => 'ARCA no tiene a nadie con ese CUIT. Revisá el número.',
+  PADRON_NO_ALCANZADO:     d => `ARCA no da la constancia de inscripción de ese CUIT${arcaDice(d)}. Cargá los datos a mano.`,
+  PADRON_CLAVE_INACTIVA:   d => `Ese CUIT figura cancelado, inactivo o dado de baja en ARCA${arcaDice(d)}.`,
+  PADRON_SIN_DATOS:        d => `ARCA no da la constancia de ese CUIT${arcaDice(d)}. Cargá los datos a mano.`,
+  PADRON_SIN_AUTORIZACION: () => 'El ERP no está autorizado a consultar el padrón de ARCA. Avisá al administrador.',
+  PADRON_SOLO_CUIT:        () => 'Solo se puede traer de ARCA un cliente con CUIT o CUIL.',
 
   // ── Numeración (errores internos de la emisión) ──
   NUMERO_INVALIDO:    () => 'Número de comprobante inválido.',

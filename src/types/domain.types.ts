@@ -3180,6 +3180,44 @@ export interface VentasCliente {
   fce_obligado?:      boolean | null
   fce_monto_desde?:   number | null
   fce_consultado_at?: string | null
+  /** Último resultado del padrón de ARCA (fase 7). Solo lo escribe «Actualizar desde ARCA». */
+  padron_json?:          VentasPadronPersona | null
+  padron_consultado_at?: string | null
+}
+
+/** Una persona según el padrón de ARCA (getPersona_v2), resumida por el backend. */
+export interface VentasPadronPersona {
+  cuit:           string
+  razon_social:   string
+  tipo_persona:   string
+  estado_clave:   string
+  domicilio_fiscal: { direccion: string; localidad: string; cod_postal: string; provincia: string; id_provincia: number | null } | null
+  /** Condición IVA DEDUCIDA de los impuestos inscriptos. */
+  condicion_iva_id:     number
+  /** true = la deducción no es segura: revisarla a mano. */
+  condicion_iva_dudosa: boolean
+  condicion_iva_motivo: string
+  es_monotributo: boolean
+  es_exento:      boolean
+  categoria_monotributo: string | null
+  impuestos:   { id: number; descripcion: string; estado: string; periodo: number | null }[]
+  actividades: { id: number; descripcion: string; orden: number | null }[]
+  avisos:      string[]
+}
+
+/** GET /clientes/padron/:cuit — lo que dice ARCA, listo para precargar. No guarda nada. */
+export interface VentasPadronResultado {
+  cuit:          string
+  precarga:      { razon_social: string; domicilio: string; provincia: string; condicion_iva_id: number }
+  padron:        VentasPadronPersona
+  consultado_at: string
+}
+
+/** POST /clientes/:id/actualizar-desde-arca */
+export interface VentasActualizarDesdeArca {
+  cliente:     VentasCliente
+  diferencias: { campo: string; actual: unknown; arca: unknown; aplicado: boolean }[]
+  padron:      VentasPadronPersona
 }
 
 /** GET /clientes/:id/fce — ¿el cliente está obligado a recibir FCE MiPyME? */
