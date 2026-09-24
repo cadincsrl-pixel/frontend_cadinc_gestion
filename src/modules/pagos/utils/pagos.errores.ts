@@ -7,6 +7,8 @@
 // Cada mensaje dice QUÉ pasó y QUÉ hacer. Los que dependen de un dato del
 // `detail` lo usan (cuánto es el saldo, qué campos están congelados).
 
+import { CONDICIONES_IVA } from '@/lib/utils/arca'
+
 /** Lo que devuelve el backend en el body de un error: `{ error, detail? }`. */
 interface CuerpoError {
   error?:  string
@@ -85,6 +87,13 @@ function dato(detail: unknown, clave: string): unknown {
     return (detail as Record<string, unknown>)[clave]
   }
   return undefined
+}
+
+/** El texto que devolvió ARCA en `detail.errores`, si vino. */
+function arcaDice(d: unknown): string {
+  const errs = dato(d, 'errores')
+  const txt = Array.isArray(errs) ? errs.map(String).filter(x => !x.startsWith('(')).join(' / ') : ''
+  return txt ? ` (ARCA dice: ${txt})` : ''
 }
 
 const MENSAJES: Record<string, (d: unknown) => string> = {
@@ -290,6 +299,18 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
     return `El código del proveedor${cod ? ` (${String(cod)})` : ''} lo pone el sistema y no se cambia.`
   },
 
+  // ── Padrón de ARCA (20260925o) ──
+  PADRON_CUIT_INEXISTENTE: () => 'ARCA no tiene a nadie con ese CUIT. Revisá el número.',
+  PADRON_NO_ALCANZADO:     d => `ARCA no da la constancia de inscripción de ese CUIT${arcaDice(d)}. Cargá los datos a mano.`,
+  PADRON_CLAVE_INACTIVA:   d => `Ese CUIT figura cancelado, inactivo o dado de baja en ARCA${arcaDice(d)}.`,
+  PADRON_SIN_DATOS:        d => `ARCA no da la constancia de ese CUIT${arcaDice(d)}. Cargá los datos a mano.`,
+  PADRON_SIN_AUTORIZACION: () => 'El ERP no está autorizado a consultar el padrón de ARCA. Avisá al administrador.',
+  ARCA_NO_DISPONIBLE:      () => 'ARCA no está respondiendo. Probá de nuevo en unos minutos o cargá los datos a mano.',
+  PROVEEDOR_SIN_CUIT:      () => 'El proveedor no tiene CUIT: cargáselo para poder traer sus datos de ARCA.',
+
+  // ── Cheques (20260925) ──
+  CHEQUE_ILEGIBLE: () => 'No se pudo leer el cheque en la foto. Sacala de nuevo con más luz y de frente, o cargá los datos a mano.',
+
   // ── Obras ──
   OBRA_ARCHIVADA: d => {
     const obra = dato(d, 'obra_cod')
@@ -338,6 +359,15 @@ const AVISOS: Record<string, (d: Record<string, unknown>) => string> = {
   NC_POSIBLE_DUPLICADA:      () => 'Ojo: ya se aplicó una nota de crédito con ese número a este proveedor.',
   CUENTA_CAMBIO_TRAS_APROBAR: () => 'Ojo: el CBU del proveedor cambió después de que se aprobó la factura.',
   ADJUNTO_NO_GUARDADO:       () => 'La factura se cargó, pero el archivo no quedó adjunto: subilo desde la ficha.',
+  LETRA_NO_COINCIDE_CONDICION: d => {
+    const letra = d.letra ? ` ${String(d.letra)}` : ''
+    // `condicion` puede venir como id de ARCA o ya como texto.
+    const c = d.condicion ?? d.condicion_iva_id
+    const cond = typeof c === 'number' || (typeof c === 'string' && /^\d+$/.test(c))
+      ? (CONDICIONES_IVA[Number(c)] ?? String(c))
+      : (c != null ? String(c) : '')
+    return `Ojo: la factura${letra} no coincide con la condición frente al IVA del proveedor${cond ? ` («${cond}»)` : ''}. Revisá la letra o la ficha del proveedor.`
+  },
 }
 
 export function mensajeAvisoPagos(aviso: { code: string; [k: string]: unknown }): string {
@@ -358,6 +388,16 @@ const AVISOS_LECTURA: Record<string, string> = {
   NC_SOBRANTE:               'La nota de crédito es por más de lo que les queda a sus facturas: el sobrante queda como crédito a favor del proveedor.',
 }
 
-export function mensajeAvisoLectura(a: { codigo: string; mensaje?: string | null }): string {
-  return a.mensaje?.trim() || AVISOS_LECTURA[a.codigo] || a.codigo
+export function mensajeAvisoLectura(a: { codigo?: string; code?: string; mensaje?: string | null }): string {
+  const codigo = a.codigo ?? a.code ?? ''
+  if (a.mensaje?.trim()) return a.mensaje.trim()
+  if (AVISOS_LECTURA[codigo]) return AVISOS_LECTURA[codigo]
+  // Los avisos secos (`{ code, … }`) que también viajan en la lectura.
+  if (AVISOS[codigo]) return AVISOS[codigo](Object.fromEntries(Object.entries(a)))
+  return codigo
+}
+
+/** Código del aviso, venga como `codigo` (lectura) o `code` (aviso seco). */
+export function codigoAviso(a: { codigo?: string; code?: string }): string {
+  return a.codigo ?? a.code ?? ''
 }

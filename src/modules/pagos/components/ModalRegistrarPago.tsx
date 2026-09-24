@@ -1,21 +1,21 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { InputMonto, aRaw } from '@/components/ui/InputMonto'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import {
-  useFacturas, useNcDisponibles, useRegistrarOrden, subirComprobantePendiente, borrarComprobantePendiente,
+  useFacturas, useNcDisponibles, useRegistrarOrden, subirComprobantePendiente, borrarComprobantePendiente, leerCheque,
 } from '../hooks/usePagos'
 import { useDatosPagoProveedor, useProveedorPagos } from '../hooks/useProveedoresPagos'
 import {
   FORMAS_CON_COMPROBANTE_OBLIGATORIO, FORMAS_CON_CUENTA_DESTINO, FORMAS_CON_FECHA_COBRO,
-  FORMAS_PAGO_OP, PLAZOS_CHEQUE, comprobanteTxt, fechasEscalonadas, fmtFecha, fmtM, hoyAR,
+  FORMAS_PAGO_OP, MAX_ADJUNTO_BYTES, PLAZOS_CHEQUE, comprobanteTxt, fechasEscalonadas, fmtFecha, fmtM, hoyAR,
   partirEnPartes, plazoLabel, repartirPagoEntreFacturas, salidaLabel, sumarDiasISO, topePagable,
 } from '../utils/pagos.utils'
-import { mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
+import { mensajeAvisoLectura, mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
 import type { PagosAdjuntoPendiente, PagosFactura, PagosFormaPagoOP, PagosLineaOrdenInput } from '@/types/domain.types'
 
 /**
@@ -51,18 +51,37 @@ interface FilaFactura {
   monto: string
 }
 
+/** Campos del cheque que puede completar la foto. */
+type CampoCheque = 'numero' | 'banco' | 'fecha_cobro' | 'monto' | 'librador'
+
 /** Un cheque del formulario. `monto` es texto porque se tipea. */
 interface ChequeFila {
+  /** Identidad estable de la fila: la lectura de la foto es async y el índice puede correrse. */
+  uid:         number
   numero:      string
   banco:       string
   fecha_cobro: string
   monto:       string
   es_propio:   boolean
   librador:    string
+  // ── Foto del cheque (20260925) ──
+  /** Ya subida a `ordenes/pendientes/`: viaja como `foto_path` y queda adjunta a la OP. */
+  foto:        PagosAdjuntoPendiente | null
+  /** Miniatura local (object URL); null si es PDF. */
+  fotoUrl:     string | null
+  leyendo:     boolean
+  /** Lo que completó la foto y la persona todavía no tocó. */
+  leidos:      CampoCheque[]
+  avisosFoto:  string[]
+  /** El librador que se leyó, para sugerirlo aunque el cheque esté como propio. */
+  libradorLeido: string
 }
 
-const chequeVacio = (fecha_cobro: string, monto: string): ChequeFila =>
-  ({ numero: '', banco: '', fecha_cobro, monto, es_propio: true, librador: '' })
+let uidCheque = 0
+const chequeVacio = (fecha_cobro: string, monto: string): ChequeFila => ({
+  uid: ++uidCheque, numero: '', banco: '', fecha_cobro, monto, es_propio: true, librador: '',
+  foto: null, fotoUrl: null, leyendo: false, leidos: [], avisosFoto: [], libradorLeido: '',
+})
 
 /**
  * Con qué forma arranca el modal (2026-09-21).
@@ -188,6 +207,9 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
     !c.numero.trim() || !c.fecha_cobro || n(c.monto) <= 0 ||
     c.fecha_cobro < fecha || (!c.es_propio && !c.librador.trim()))
 
+  // Mientras se lee una foto no se registra: su `foto_path` todavía no está.
+  const leyendoFotos = cheques.some(c => c.leyendo)
+
   // Cada fila: la plata no puede pasarse de lo pagable (saldo − NC reservada).
   const filasConError = filas.filter(f => n(f.monto) - topePagable(f.factura) > 0.005)
 
@@ -197,7 +219,7 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
     filasConError.length === 0 &&
     !sinDatosPago &&
     (!pideComprobante || !!comprobante) &&
-    (!pideCheques || (cheques.length > 0 && chequesIncompletos.length === 0 && Math.abs(difCheques) < 0.005))
+    (!pideCheques || (cheques.length > 0 && chequesIncompletos.length === 0 && Math.abs(difCheques) < 0.005 && !leyendoFotos))
 
   // El plan anotado en la factura al cargarla (20260923n): con cheque o
   // e-cheq, las filas arrancan armadas con esas fechas. Una sola vez, y sólo
@@ -219,6 +241,89 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
   // ── Cheques ──
   function setCheque(i: number, cambio: Partial<ChequeFila>) {
     setCheques(cs => cs.map((c, j) => j === i ? { ...c, ...cambio } : c))
+  }
+
+  /** Lo tipea la persona: deja de decir «leído de la foto». */
+  function setChequeAMano(i: number, cambio: Partial<Pick<ChequeFila, CampoCheque>>) {
+    const tocados = Object.keys(cambio) as CampoCheque[]
+    setCheques(cs => cs.map((c, j) => j === i
+      ? { ...c, ...cambio, leidos: c.leidos.filter(k => !tocados.includes(k)) }
+      : c))
+  }
+
+  function setChequeUid(uid: number, cambio: Partial<ChequeFila> | ((c: ChequeFila) => Partial<ChequeFila>)) {
+    setCheques(cs => cs.map(c => c.uid === uid ? { ...c, ...(typeof cambio === 'function' ? cambio(c) : cambio) } : c))
+  }
+
+  // Las miniaturas son object URLs: se liberan al cerrar el modal.
+  const urlsFotos = useRef(new Set<string>())
+  useEffect(() => {
+    const urls = urlsFotos.current
+    return () => { for (const u of urls) URL.revokeObjectURL(u) }
+  }, [])
+
+  /**
+   * «📷 Leer foto» (20260925): sube la foto como adjunto pendiente de la OP,
+   * la lee con IA y completa la fila marcando lo leído. La persona revisa y
+   * corrige. Si no se puede leer, la foto queda igual (se adjunta a la OP) y
+   * los datos se cargan a mano. Si el importe no cierra, lo dice el aviso de
+   * siempre de la suma de cheques.
+   */
+  async function leerFotoCheque(uid: number, file: File) {
+    if (file.size > MAX_ADJUNTO_BYTES) { toast('El archivo supera los 10 MB', 'err'); return }
+    const previa = cheques.find(c => c.uid === uid)
+    const url = file.type.startsWith('image/') ? URL.createObjectURL(file) : null
+    if (url) urlsFotos.current.add(url)
+    setChequeUid(uid, { leyendo: true, avisosFoto: [] })
+    let adj: PagosAdjuntoPendiente
+    try {
+      adj = await subirComprobantePendiente(file, 'cheque')
+    } catch (e) {
+      setChequeUid(uid, { leyendo: false, avisosFoto: [mensajeErrorPagos(e)] })
+      return
+    }
+    // La foto anterior de esta fila ya no va: se borra del bucket.
+    if (previa?.foto) borrarComprobantePendiente(previa.foto.storage_path).catch(() => {})
+    setChequeUid(uid, { foto: adj, fotoUrl: url })
+    try {
+      const r = await leerCheque(adj)
+      const p = r.propuesta
+      setChequeUid(uid, c => {
+        const cambio: Partial<ChequeFila> = {}
+        const leidos: CampoCheque[] = []
+        if (p.numero?.trim())      { cambio.numero = p.numero.trim(); leidos.push('numero') }
+        if (p.banco?.trim())       { cambio.banco = p.banco.trim(); leidos.push('banco') }
+        if (p.fecha_cobro)         { cambio.fecha_cobro = p.fecha_cobro.slice(0, 10); leidos.push('fecha_cobro') }
+        if (p.importe != null && p.importe > 0) { cambio.monto = String(p.importe); leidos.push('monto') }
+        const librador = [p.librador?.trim(), p.librador_cuit ? `CUIT ${p.librador_cuit}` : null].filter(Boolean).join(' · ')
+        // El librador sólo se usa si el cheque es de un tercero: si está como
+        // propio se guarda para ofrecerlo al tildar «De tercero».
+        if (librador && !c.es_propio) { cambio.librador = librador; leidos.push('librador') }
+        const avisos = (r.avisos ?? []).map(a => mensajeAvisoLectura(a)).filter(Boolean)
+        if (p.es_echeq && forma === 'cheque') avisos.push('La foto parece de un e-cheq, y la forma de pago elegida es cheque.')
+        if (leidos.length === 0) avisos.push('No se pudo sacar ningún dato de la foto: cargalos a mano. La foto queda adjunta igual.')
+        return {
+          ...cambio, leyendo: false, libradorLeido: librador,
+          leidos: [...new Set([...c.leidos, ...leidos])], avisosFoto: avisos,
+          foto: r.storage_path ? { ...adj, storage_path: r.storage_path } : adj,
+        }
+      })
+    } catch (e) {
+      setChequeUid(uid, { leyendo: false, avisosFoto: [`${mensajeErrorPagos(e)} La foto queda adjunta igual.`] })
+    }
+  }
+
+  /** «📷 Agregar desde foto»: una fila nueva que arranca con la foto. */
+  function agregarDesdeFoto(file: File) {
+    const nuevo = chequeVacio('', '')
+    setCheques(cs => [...cs, nuevo])
+    void leerFotoCheque(nuevo.uid, file)
+  }
+
+  function quitarCheque(i: number) {
+    const c = cheques[i]
+    if (c?.foto) borrarComprobantePendiente(c.foto.storage_path).catch(() => {})
+    setCheques(cs => cs.filter((_, j) => j !== i))
   }
 
   /**
@@ -313,6 +418,7 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
   /** Cerrar sin guardar: limpiar lo que quedó colgado en el bucket. */
   async function cerrar() {
     if (comprobante) borrarComprobantePendiente(comprobante.storage_path).catch(() => {})
+    for (const c of cheques) if (c.foto) borrarComprobantePendiente(c.foto.storage_path).catch(() => {})
     onClose()
   }
 
@@ -349,6 +455,7 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
               numero: c.numero.trim(), banco: c.banco.trim(), fecha_cobro: c.fecha_cobro,
               monto: n(c.monto), es_propio: c.es_propio,
               librador: c.es_propio ? '' : c.librador.trim(), obs: '',
+              foto_path: c.foto?.storage_path ?? null,
             }))
           : undefined,
         forma_pago: forma,
@@ -360,6 +467,8 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
       const pagadas = r.facturas.filter(f => f.estado === 'pagada').length
       toast(`✓ ${r.orden.numero_fmt} registrada${pagadas > 0 ? ` · ${pagadas} factura${pagadas === 1 ? '' : 's'} saldada${pagadas === 1 ? '' : 's'}` : ''}`, 'ok')
       for (const a of r.avisos) toast(mensajeAvisoPagos(a), 'warn')
+      // Si al final no se pagó con cheque, las fotos no viajaron: se limpian.
+      if (!pideCheques) for (const c of cheques) if (c.foto) borrarComprobantePendiente(c.foto.storage_path).catch(() => {})
       onRegistrado?.(Number(r.orden.id), !!comprobante)
       onClose()   // sin limpiar: los archivos ya quedaron en la OP
     } catch (e) {
@@ -393,6 +502,7 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
               : pideCheques && cheques.length === 0 ? 'Cargá al menos un cheque'
               : pideCheques && chequesIncompletos.length > 0 ? 'Cada cheque necesita número, fecha de cobro e importe (y el librador si es de un tercero)'
               : pideCheques && Math.abs(difCheques) >= 0.005 ? 'Los cheques no suman lo que sale de plata'
+              : pideCheques && leyendoFotos ? 'Esperá a que termine de leer la foto del cheque'
               : undefined
             }>
             Registrar pago
@@ -544,35 +654,55 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
             )}
 
             {cheques.map((c, i) => (
-              <div key={i} className="border-b border-gris last:border-0 p-2.5 flex flex-wrap gap-2 items-end">
-                <Campo label="Número" ancho="w-28">
-                  <input value={c.numero} onChange={e => setCheque(i, { numero: e.target.value })}
-                    className={inputCls} placeholder="00012345" />
-                </Campo>
-                <Campo label="Banco" ancho="w-32">
-                  <input value={c.banco} onChange={e => setCheque(i, { banco: e.target.value })} className={inputCls} />
-                </Campo>
-                <Campo label="Se cobra el" hint={plazoDe(c.fecha_cobro)} ancho="w-36">
-                  <input type="date" value={c.fecha_cobro} min={fecha}
-                    onChange={e => setCheque(i, { fecha_cobro: e.target.value })} className={inputCls} />
-                </Campo>
-                <Campo label="Importe" ancho="w-32">
-                  <InputMonto value={c.monto} onChange={v => setCheque(i, { monto: v })}
-                    className="text-right font-mono tabular-nums py-2 rounded" />
-                </Campo>
-                <label className="flex items-center gap-1 text-xs pb-1.5 cursor-pointer select-none">
-                  <input type="checkbox" checked={!c.es_propio}
-                    onChange={e => setCheque(i, { es_propio: !e.target.checked, librador: e.target.checked ? c.librador : '' })} />
-                  De tercero
-                </label>
-                {!c.es_propio && (
-                  <Campo label="Librador" hint="De quién era" ancho="w-44">
-                    <input value={c.librador} onChange={e => setCheque(i, { librador: e.target.value })}
-                      className={inputCls} placeholder="Quién lo libró" />
+              <div key={c.uid} className="border-b border-gris last:border-0 p-2.5 flex flex-col gap-1.5">
+                <div className="flex flex-wrap gap-2 items-end">
+                  <FotoCheque c={c} onElegir={file => void leerFotoCheque(c.uid, file)} />
+                  <Campo label="Número" ancho="w-28" leido={c.leidos.includes('numero')}>
+                    <input value={c.numero} onChange={e => setChequeAMano(i, { numero: e.target.value })}
+                      className={inputCls} placeholder="00012345" />
                   </Campo>
+                  <Campo label="Banco" ancho="w-32" leido={c.leidos.includes('banco')}>
+                    <input value={c.banco} onChange={e => setChequeAMano(i, { banco: e.target.value })} className={inputCls} />
+                  </Campo>
+                  <Campo label="Se cobra el" hint={plazoDe(c.fecha_cobro)} ancho="w-36" leido={c.leidos.includes('fecha_cobro')}>
+                    <input type="date" value={c.fecha_cobro} min={fecha}
+                      onChange={e => setChequeAMano(i, { fecha_cobro: e.target.value })} className={inputCls} />
+                  </Campo>
+                  <Campo label="Importe" ancho="w-32" leido={c.leidos.includes('monto')}>
+                    <InputMonto value={c.monto} onChange={v => setChequeAMano(i, { monto: v })}
+                      className="text-right font-mono tabular-nums py-2 rounded" />
+                  </Campo>
+                  <label className="flex items-center gap-1 text-xs pb-1.5 cursor-pointer select-none">
+                    <input type="checkbox" checked={!c.es_propio}
+                      onChange={e => setCheque(i, {
+                        es_propio: !e.target.checked,
+                        // Al tildar «De tercero» se ofrece el librador leído de la foto.
+                        librador: e.target.checked ? (c.librador || c.libradorLeido) : '',
+                        leidos: e.target.checked && !c.librador && c.libradorLeido
+                          ? [...c.leidos, 'librador'] : c.leidos.filter(k => k !== 'librador'),
+                      })} />
+                    De tercero
+                  </label>
+                  {!c.es_propio && (
+                    <Campo label="Librador" hint="De quién era" ancho="w-44" leido={c.leidos.includes('librador')}>
+                      <input value={c.librador} onChange={e => setChequeAMano(i, { librador: e.target.value })}
+                        className={inputCls} placeholder="Quién lo libró" />
+                    </Campo>
+                  )}
+                  <button type="button" onClick={() => quitarCheque(i)} disabled={c.leyendo}
+                    title={c.leyendo ? 'Esperá a que termine de leer la foto' : undefined}
+                    className="ml-auto text-xs text-rojo hover:underline pb-1.5 disabled:opacity-50 disabled:no-underline">Quitar</button>
+                </div>
+                {c.leyendo && <div className="text-[11px] text-azul animate-pulse">Leyendo la foto del cheque…</div>}
+                {c.leidos.length > 0 && !c.leyendo && (
+                  <div className="text-[11px] text-gris-dark">📷 Los campos marcados se leyeron de la foto: revisalos antes de registrar.</div>
                 )}
-                <button type="button" onClick={() => setCheques(cs => cs.filter((_, j) => j !== i))}
-                  className="ml-auto text-xs text-rojo hover:underline pb-1.5">Quitar</button>
+                {c.es_propio && c.libradorLeido && !c.leyendo && (
+                  <div className="text-[11px] text-gris-dark">La foto dice que lo libró <b>{c.libradorLeido}</b>. Si no es de CADINC, tildá «De tercero».</div>
+                )}
+                {c.avisosFoto.map((a, k) => (
+                  <div key={k} className="text-[11px] text-[#7A5000]">⚠ {a}</div>
+                ))}
               </div>
             ))}
 
@@ -611,6 +741,12 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
 
             <div className="flex items-center gap-2 flex-wrap px-2.5 py-2 border-t border-gris-mid">
               <Button variant="ghost" size="sm" onClick={agregarCheque}>+ Agregar cheque</Button>
+              <label className="text-xs px-2.5 py-1.5 rounded hover:bg-gris cursor-pointer font-semibold text-gris-dark"
+                title="Sacale una foto al cheque: se completa solo y queda adjunto a la orden">
+                📷 Agregar desde foto
+                <input type="file" className="hidden" accept="image/*,application/pdf" capture="environment"
+                  onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; if (file) agregarDesdeFoto(file) }} />
+              </label>
               <div className="ml-auto text-xs text-right">
                 <span className="text-gris-dark">Suman </span>
                 <b className="font-mono tabular-nums">{fmtM(totalCheques)}</b>
@@ -685,13 +821,42 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
 
 const inputCls = 'w-full px-2.5 py-2 border-[1.5px] border-gris-mid rounded text-sm bg-white outline-none focus:border-naranja disabled:bg-gris disabled:text-gris-dark'
 
-function Campo({ label, hint, ancho, children }: { label: string; hint?: string; ancho?: string; children: React.ReactNode }) {
+function Campo({ label, hint, ancho, leido, children }: { label: string; hint?: string; ancho?: string; leido?: boolean; children: React.ReactNode }) {
   return (
     <div className={ancho}>
       <label className="block text-xs font-semibold text-gris-dark mb-1">
         {label}{hint && <span className="font-normal"> · {hint}</span>}
+        {leido && (
+          <span title="Leído de la foto: revisalo" className="ml-1 px-1 rounded border border-azul/30 bg-azul/5 text-azul text-[10px] font-semibold">📷 leído</span>
+        )}
       </label>
       {children}
+    </div>
+  )
+}
+
+/**
+ * Botón «📷 Leer foto» de la fila, con la miniatura de la foto ya subida. En
+ * el celular `capture` abre la cámara directo.
+ */
+function FotoCheque({ c, onElegir }: { c: ChequeFila; onElegir: (f: File) => void }) {
+  return (
+    <div className="flex items-end gap-1.5">
+      {c.foto && (
+        c.fotoUrl
+          ? <a href={c.fotoUrl} target="_blank" rel="noreferrer" title={c.foto.nombre_archivo}>
+              {/* eslint-disable-next-line @next/next/no-img-element -- object URL local, no pasa por next/image */}
+              <img src={c.fotoUrl} alt="Foto del cheque" className="w-14 h-9 object-cover rounded border border-gris-mid" />
+            </a>
+          : <span className="w-14 h-9 flex items-center justify-center rounded border border-gris-mid text-[10px] text-gris-dark" title={c.foto.nombre_archivo}>📄 PDF</span>
+      )}
+      <label className={`text-xs px-2 py-2 rounded border border-gris-mid bg-white font-semibold whitespace-nowrap
+        ${c.leyendo ? 'opacity-60 cursor-wait' : 'hover:bg-gris cursor-pointer'}`}
+        title={c.foto ? 'Cambiar la foto y volver a leerla' : 'Sacale una foto al cheque: completa número, banco, fecha e importe'}>
+        {c.leyendo ? 'Leyendo…' : c.foto ? '📷 Otra foto' : '📷 Leer foto'}
+        <input type="file" className="hidden" accept="image/*,application/pdf" capture="environment" disabled={c.leyendo}
+          onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; if (file) onElegir(file) }} />
+      </label>
     </div>
   )
 }

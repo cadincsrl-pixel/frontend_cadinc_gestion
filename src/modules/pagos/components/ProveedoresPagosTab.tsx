@@ -9,11 +9,14 @@ import { usePermisos } from '@/hooks/usePermisos'
 import {
   useProveedoresPagos, useProveedorPagos, useEditarProveedorPagos, useDatosPagoProveedor, useGuardarContactosProveedor,
   useBajaProveedorPagos, useReactivarProveedorPagos, fetchProveedoresExport,
+  useActualizarProveedorDesdeArca, useActualizarTodosDesdeArca,
   type PagosProveedoresFiltro,
 } from '../hooks/useProveedoresPagos'
 import { comprobanteTxt, fmtFecha, fmtM } from '../utils/pagos.utils'
 import { mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
-import { VENCIMIENTO_MODOS, type VencimientoModo } from '../utils/pagos.utils'
+import { VENCIMIENTO_MODOS, cantidadDe, condicionIvaTxt, tipoPersonaTxt, type VencimientoModo } from '../utils/pagos.utils'
+import { CamposArcaProveedor, datosArcaDesde, datosArcaParaGuardar, datosArcaVacios, type DatosArcaForm } from './CamposArcaProveedor'
+import type { PagosActualizarDesdeArcaRes, PagosActualizarTodosArcaRes, PagosProveedor } from '@/types/domain.types'
 import { exportarProveedoresPagos } from '../utils/pagosExport'
 import { AltaRapidaProveedor } from './AltaRapidaProveedor'
 import { ContactosEditor, contactosDesde, contactosParaGuardar, validarContactos } from '@/components/contactos/ContactosEditor'
@@ -39,6 +42,7 @@ export function ProveedoresPagosTab() {
   const [alta, setAlta] = useState(false)
   const [fichaId, setFichaId] = useState<number | null>(null)
   const [exportando, setExportando] = useState(false)
+  const [arcaTodos, setArcaTodos] = useState(false)
 
   const lista = useProveedoresPagos(filtro, page, PAGE_SIZE, puedeVer)
   const items = lista.data?.items ?? []
@@ -80,6 +84,12 @@ export function ProveedoresPagosTab() {
           + Nuevo proveedor
         </Button>
         <Button variant="secondary" size="sm" onClick={exportar} loading={exportando}>📊 Excel</Button>
+        <Button variant="secondary" size="sm" onClick={() => setArcaTodos(true)} disabled={!puedeEditar}
+                title={puedeEditar
+                  ? 'Trae de ARCA domicilio, provincia y condición IVA de todos los proveedores activos con CUIT (no toca la razón social)'
+                  : 'No tenés permiso para editar proveedores'}>
+          Actualizar todos desde ARCA
+        </Button>
       </div>
 
       <div className="bg-white rounded-card shadow-card overflow-hidden">
@@ -97,8 +107,8 @@ export function ProveedoresPagosTab() {
               <table className="w-full border-collapse min-w-[860px]">
                 <thead>
                   <tr>
-                    {['Código', 'Razón social', 'CUIT', 'Cuenta', 'Plazo', 'Facturas', 'Saldo', ''].map((h, i) => (
-                      <th key={h + i} className={`bg-gris text-gris-dark text-[10px] font-bold px-3 py-2 uppercase tracking-wide whitespace-nowrap ${i >= 4 && i <= 6 ? 'text-right' : 'text-left'}`}>{h}</th>
+                    {['Código', 'Razón social', 'CUIT', 'Condición', 'Cuenta', 'Plazo', 'Facturas', 'Saldo', ''].map((h, i) => (
+                      <th key={h + i} className={`bg-gris text-gris-dark text-[10px] font-bold px-3 py-2 uppercase tracking-wide whitespace-nowrap ${i >= 5 && i <= 7 ? 'text-right' : 'text-left'}`}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -114,6 +124,10 @@ export function ProveedoresPagosTab() {
                       </td>
                       <td className="px-3 py-2 text-xs font-mono">
                         {p.cuit ?? <span className="text-naranja-dark">sin CUIT</span>}
+                      </td>
+                      <td className="px-3 py-2 text-[11px] text-gris-dark max-w-[160px]"
+                          title={p.padron_consultado_at ? `Consultado en ARCA el ${fmtFecha(p.padron_consultado_at)}` : undefined}>
+                        {condicionIvaTxt(p.condicion_iva_id) ?? <span className="text-gris-mid">—</span>}
                       </td>
                       <td className="px-3 py-2 text-xs font-mono">
                         {/* Gris, no naranja: el CBU es opcional. Sólo hace falta
@@ -141,6 +155,7 @@ export function ProveedoresPagosTab() {
                     <div className="min-w-0">
                       <div className="font-semibold text-sm truncate">{p.razon_social}</div>
                       <div className="text-[11px] text-gris-dark font-mono">{p.codigo ? `${p.codigo} · ` : ''}{p.cuit ?? 'sin CUIT'}</div>
+                      {p.condicion_iva_id != null && <div className="text-[11px] text-gris-dark">{condicionIvaTxt(p.condicion_iva_id)}</div>}
                       <div className="text-[11px] text-gris-dark font-mono">{p.cbu ?? p.alias_cbu ?? '—'}</div>
                     </div>
                     <div className="text-right">
@@ -158,6 +173,8 @@ export function ProveedoresPagosTab() {
       {total > PAGE_SIZE && <Pagination page={page} total={total} pageSize={PAGE_SIZE} onChange={setPage} />}
 
       {alta && <AltaRapidaProveedor onClose={() => setAlta(false)} onCreado={() => setAlta(false)} />}
+
+      {arcaTodos && <ModalActualizarTodosArca onClose={() => setArcaTodos(false)} />}
 
       {fichaId !== null && (
         <FichaProveedor
@@ -182,6 +199,10 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
   const baja      = useBajaProveedorPagos()
   const reactivar = useReactivarProveedorPagos()
   const guardarContactos = useGuardarContactosProveedor()
+  const desdeArca = useActualizarProveedorDesdeArca()
+  const [arcaTodo, setArcaTodo] = useState(false)
+  const [arcaRes, setArcaRes] = useState<PagosActualizarDesdeArcaRes | null>(null)
+  const [datosArca, setDatosArca] = useState<DatosArcaForm>(datosArcaVacios)
   // Contactos (20260925e): varios por proveedor (vendedor, administración…).
   // Los edita quien edita la ficha; el contador (solo datos de pago) los ve.
   const [contactos, setContactos] = useState<ContactoInput[]>([])
@@ -201,6 +222,7 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
     })
     setContactos(contactosDesde(p.contactos, p.email))
     setErrorContactos(null)
+    setDatosArca(datosArcaDesde(p))
     setEditando(true)
   }
 
@@ -226,6 +248,7 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
             vencimiento_modo: form.vencimiento_modo,
             // Con cierre mensual, vacío = el último día del mes (el caso Silva).
             cierre_dia: form.vencimiento_modo === 'cierre_mensual' ? (Number(form.cierre_dia) || null) : null,
+            ...datosArcaParaGuardar(datosArca),
           })
       // Los avisos del PATCH primero (p. ej. «le quitó la aprobación» por cambio de CBU):
       // no se pueden perder aunque después fallen los contactos.
@@ -292,6 +315,13 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
               <>
                 <Campo label="Razón social"><input value={form.razon_social} onChange={e => setForm(f => ({ ...f, razon_social: e.target.value }))} className={inputCls} /></Campo>
                 <Campo label="CUIT"><input value={form.cuit} onChange={e => setForm(f => ({ ...f, cuit: e.target.value }))} className={inputCls} /></Campo>
+                <div className="sm:col-span-2">
+                  {/* Editando no se pisa una razón social que ya existe: para
+                      eso está «Actualizar desde ARCA» con el tilde. */}
+                  <CamposArcaProveedor cuit={form.cuit} razonSocial={form.razon_social}
+                    onRazonSocial={v => setForm(f => (f.razon_social.trim() ? f : { ...f, razon_social: v }))}
+                    value={datosArca} onChange={setDatosArca} inputCls={inputCls} />
+                </div>
               </>
             )}
             <Campo label="CBU"><input value={form.cbu} onChange={e => setForm(f => ({ ...f, cbu: e.target.value }))} className={`${inputCls} font-mono`} /></Campo>
@@ -351,6 +381,33 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
                 <Dato label="Neto (− a cuenta − NC)" valor={fmtM(p.saldo_neto)} fuerte />
               )}
             </div>
+            <DatosFiscales p={p} />
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button variant="secondary" size="sm" loading={desdeArca.isPending}
+                disabled={!puedeEditar || !p.cuit || !p.activo}
+                title={!puedeEditar ? 'No tenés permiso para editar proveedores'
+                  : !p.cuit ? 'El proveedor no tiene CUIT: cargáselo primero'
+                  : !p.activo ? 'Está dado de baja: reactivalo primero'
+                  : 'Trae domicilio, provincia, condición IVA y actividad del padrón de ARCA y los guarda en la ficha'}
+                onClick={async () => {
+                  setArcaRes(null)
+                  try {
+                    const r = await desdeArca.mutateAsync({ id: p.id, todo: arcaTodo })
+                    setArcaRes(r)
+                    const aplicados = r.diferencias.filter(d => d.aplicado).length
+                    toast(aplicados ? `✓ ${aplicados} dato${aplicados === 1 ? '' : 's'} actualizado${aplicados === 1 ? '' : 's'} desde ARCA` : '✓ Consultado: ARCA dice lo mismo que la ficha', 'ok')
+                  } catch (e) { toast(mensajeErrorPagos(e), 'err') }
+                }}>
+                Actualizar desde ARCA
+              </Button>
+              <label className="flex items-center gap-1.5 text-xs text-gris-dark cursor-pointer select-none"
+                title="Sin el tilde, la razón social de la ficha no se toca">
+                <input type="checkbox" className="accent-naranja" checked={arcaTodo} onChange={e => setArcaTodo(e.target.checked)}
+                  disabled={!puedeEditar} />
+                También la razón social
+              </label>
+            </div>
+            {arcaRes && <DiferenciasArca res={arcaRes} />}
             <ListaContactos contactos={p.contactos} />
             {p.datos_pago_actualizados_at && (
               <div className="text-[11px] text-gris-dark">
@@ -453,5 +510,115 @@ function ListaContactos({ contactos, nota }: { contactos?: import('@/types/conta
       ))}
       {nota && <div className="text-[11px] text-gris-dark">{nota}</div>}
     </div>
+  )
+}
+
+/** Domicilio, condición IVA y actividad: lo que vino de ARCA o se cargó a mano. */
+function DatosFiscales({ p }: { p: PagosProveedor }) {
+  const domicilio = [p.domicilio, p.provincia].filter(Boolean).join(', ')
+  return (
+    <div className="border-t border-gris pt-2 flex flex-col gap-1">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <Dato label="Condición frente al IVA" valor={condicionIvaTxt(p.condicion_iva_id) ?? 'Sin especificar'} />
+        <Dato label="Domicilio" valor={domicilio || '—'} />
+        {p.tipo_persona && <Dato label="Tipo" valor={tipoPersonaTxt(p.tipo_persona) ?? p.tipo_persona} />}
+        {p.actividad_principal && <Dato label="Actividad principal" valor={p.actividad_principal} />}
+      </div>
+      <div className="text-[11px] text-gris-dark">
+        {p.padron_consultado_at
+          ? <>Consultado en ARCA el {fmtFecha(p.padron_consultado_at)}.</>
+          : <>Nunca se consultó en ARCA.</>}
+      </div>
+    </div>
+  )
+}
+
+const CAMPO_ARCA: Record<string, string> = {
+  razon_social: 'Razón social', domicilio: 'Domicilio', provincia: 'Provincia',
+  condicion_iva_id: 'Condición IVA', tipo_persona: 'Tipo de persona', actividad_principal: 'Actividad',
+}
+
+function valorArca(campo: string, v: unknown): string {
+  if (v == null || v === '') return '—'
+  if (campo === 'condicion_iva_id') return condicionIvaTxt(Number(v)) ?? String(v)
+  return String(v)
+}
+
+/** Qué cambió la última consulta: lo aplicado y lo que ARCA dice distinto pero no se tocó. */
+function DiferenciasArca({ res }: { res: PagosActualizarDesdeArcaRes }) {
+  if (res.diferencias.length === 0) {
+    return <div className="text-[11px] text-verde">ARCA dice lo mismo que la ficha.</div>
+  }
+  return (
+    <ul className="text-[11px] text-gris-dark flex flex-col gap-0.5 rounded border border-gris-mid bg-gris/40 p-2">
+      {res.diferencias.map(d => (
+        <li key={d.campo}>
+          <b>{CAMPO_ARCA[d.campo] ?? d.campo}:</b> {valorArca(d.campo, d.actual)} → {valorArca(d.campo, d.arca)}
+          {d.aplicado ? <span className="text-verde font-semibold"> (actualizado)</span> : <span> (no se cambió: tildá «También la razón social» o editalo a mano)</span>}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/**
+ * «Actualizar todos desde ARCA»: la confirmación va en el propio modal (nunca
+ * confirm() del navegador) y después muestra el resumen. Va de a un proveedor
+ * por vez porque ARCA limita: puede tardar un rato.
+ */
+function ModalActualizarTodosArca({ onClose }: { onClose: () => void }) {
+  const todos = useActualizarTodosDesdeArca()
+  const [res, setRes] = useState<PagosActualizarTodosArcaRes | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  async function correr() {
+    setError(null)
+    try { setRes(await todos.mutateAsync()) }
+    catch (e) { setError(mensajeErrorPagos(e)) }
+  }
+
+  return (
+    <Modal
+      open onClose={todos.isPending ? () => {} : onClose} width="max-w-lg" title="Actualizar todos desde ARCA"
+      footer={
+        <div className="flex gap-2 justify-end">
+          <Button variant="ghost" size="sm" onClick={onClose} disabled={todos.isPending}>{res ? 'Cerrar' : 'Cancelar'}</Button>
+          {!res && <Button size="sm" onClick={correr} loading={todos.isPending}>Sí, actualizar</Button>}
+        </div>
+      }
+    >
+      <div className="flex flex-col gap-3 text-sm">
+        {!res && (
+          <div className="text-xs text-gris-dark">
+            Se consulta el padrón de ARCA para <b>cada proveedor activo con CUIT</b> y se guardan su domicilio,
+            provincia, condición frente al IVA y actividad. <b>La razón social no se toca.</b> Va de a uno
+            (ARCA no deja consultar muchos juntos), así que puede tardar unos minutos: no cierres esta ventana.
+          </div>
+        )}
+        {todos.isPending && <div className="text-xs text-azul animate-pulse">Consultando a ARCA…</div>}
+        {error && <div className="rounded border border-rojo/40 bg-rojo-light p-2 text-xs text-rojo">{error}</div>}
+        {res && (
+          <>
+            <div className="grid grid-cols-3 gap-2">
+              <Dato label="Actualizados" valor={String(cantidadDe(res.actualizados))} fuerte />
+              <Dato label="Sin CUIT" valor={String(cantidadDe(res.sin_cuit))} />
+              <Dato label="Con error" valor={String(res.errores.length)} />
+            </div>
+            {res.errores.length > 0 && (
+              <div>
+                <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wide mb-1">No se pudieron actualizar</div>
+                <ul className="text-xs flex flex-col gap-0.5 max-h-60 overflow-y-auto">
+                  {res.errores.map(e => (
+                    <li key={e.proveedor_id}>
+                      <b>{e.razon_social}</b>: <span className="text-gris-dark">{mensajeErrorPagos(new Error(e.error))}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </Modal>
   )
 }

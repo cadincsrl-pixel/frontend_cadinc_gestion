@@ -254,9 +254,9 @@ export async function exportarOrdenesPagos(filas: PagosOrdenExport[]): Promise<v
   const headers = [
     'OP', 'Fecha', 'Proveedor', 'Código proveedor', 'CUIT', 'Forma', 'Referencia',
     'Pagado', 'Qué cubre', 'Facturas', 'A cuenta',
-    'Cheques', '1er cobro', 'Comprobante', 'Estado', 'Registró', 'Anuló', 'Motivo',
+    'Cheques', '1er cobro', 'Comprobante', 'Recibo', 'Estado', 'Registró', 'Anuló', 'Motivo',
   ]
-  setColWidths(ws, [10, 12, 28, 12, 14, 16, 18, 15, 40, 10, 13, 9, 12, 13, 12, 18, 18, 28])
+  setColWidths(ws, [10, 12, 28, 12, 14, 16, 18, 15, 40, 10, 13, 9, 12, 13, 9, 12, 18, 18, 28])
   cabecera(ws, 'PAGOS — Órdenes de pago', [
     `Generado: ${generadoEn.toLocaleDateString('es-AR')}`,
     'Los totales cuentan solo las órdenes vigentes',
@@ -276,6 +276,8 @@ export async function exportarOrdenesPagos(filas: PagosOrdenExport[]): Promise<v
       o.facturas ?? '', o.cantidad_facturas || null, Number(o.a_cuenta) || null,
       o.cheques.length || null, o.cheques.length > 0 ? fecha(o.fecha_cobro) : null,
       o.comprobante_requerido ? (o.tiene_comprobante ? 'Sí' : 'FALTA') : '—',
+      // Recibo del proveedor (20260925q). Sin el campo (backend viejo), vacío.
+      o.tiene_recibo === undefined ? '' : (o.tiene_recibo ? 'Sí' : 'No'),
       anulada ? 'Anulada' : 'Emitida',
       o.created_by_nombre ?? '', o.anulado_por_nombre ?? '', o.motivo_anulacion ?? '',
     ]

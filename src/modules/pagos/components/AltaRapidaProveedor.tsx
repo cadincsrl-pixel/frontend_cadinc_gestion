@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
 import { useCrearProveedorPagos } from '../hooks/useProveedoresPagos'
 import { mensajeAvisoPagos, mensajeErrorPagos, codigoErrorPagos } from '../utils/pagos.errores'
+import { CamposArcaProveedor, datosArcaParaGuardar, datosArcaVacios, type DatosArcaForm } from './CamposArcaProveedor'
 
 /**
  * Alta de proveedor sin salir de donde estabas.
@@ -17,6 +18,9 @@ import { mensajeAvisoPagos, mensajeErrorPagos, codigoErrorPagos } from '../utils
  * El CUIT y el CBU son opcionales al alta —si no los tenés a mano, cargás la
  * factura igual y los completás después— pero si los ponés, el backend valida
  * los dígitos verificadores y rechaza duplicados diciendo de quién son.
+ *
+ * «Buscar en ARCA» (20260925o) precarga razón social, domicilio, provincia y
+ * condición frente al IVA desde el padrón; se pueden corregir antes de guardar.
  */
 
 interface Props {
@@ -36,6 +40,7 @@ export function AltaRapidaProveedor({ onClose, onCreado, inicial }: Props) {
   const [cbu, setCbu] = useState('')
   const [banco, setBanco] = useState('')
   const [plazo, setPlazo] = useState('30')
+  const [datosArca, setDatosArca] = useState<DatosArcaForm>(datosArcaVacios)
   const [errorCampo, setErrorCampo] = useState<{ campo: string; msg: string } | null>(null)
 
   const listo = razonSocial.trim().length >= 3
@@ -50,6 +55,7 @@ export function AltaRapidaProveedor({ onClose, onCreado, inicial }: Props) {
         cbu:       cbu.trim() || null,
         banco:     banco.trim() || undefined,
         plazo_pago_dias: Number(plazo) || 30,
+        ...datosArcaParaGuardar(datosArca),
       })
       toast(`✓ ${r.proveedor.razon_social} agregado al padrón`, 'ok')
       for (const a of r.avisos) toast(mensajeAvisoPagos(a), 'warn')
@@ -97,6 +103,9 @@ export function AltaRapidaProveedor({ onClose, onCreado, inicial }: Props) {
             <input inputMode="numeric" value={plazo} onChange={e => setPlazo(e.target.value)} className={inputCls} />
           </Campo>
         </div>
+
+        <CamposArcaProveedor cuit={cuit} razonSocial={razonSocial} onRazonSocial={setRazonSocial}
+          value={datosArca} onChange={setDatosArca} inputCls={inputCls} />
 
         <div className="grid grid-cols-2 gap-2">
           <Campo label="Alias" hint="Opcional" error={errorCampo?.campo === 'alias' ? errorCampo.msg : undefined}>

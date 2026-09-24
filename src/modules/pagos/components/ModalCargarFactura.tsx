@@ -23,10 +23,10 @@ import {
   FORMAS_CON_CUENTA_DESTINO,
   TIPOS_COMPROBANTE, MAX_ADJUNTO_BYTES, MIME_ADJUNTOS, componerNumero, fechasEscalonadas, fmtFecha, fmtM, hoyAR,
   partirEnPartes, partirNumero, sumarDiasISO,
-  vencimientoSugerido, CBTE_NC_POR_LETRA, esCodigoNC, repartoProrrateado,
+  vencimientoSugerido, CBTE_NC_POR_LETRA, esCodigoNC, repartoProrrateado, avisoLetraCondicion,
 } from '../utils/pagos.utils'
 import { AcreditaA, aplicaADe, nMonto, validarAcredita, type MontosAcredita } from './AcreditaA'
-import { codigoErrorPagos, mensajeAvisoLectura, mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
+import { codigoAviso, codigoErrorPagos, mensajeAvisoLectura, mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
 import { AltaRapidaProveedor } from './AltaRapidaProveedor'
 import type {
   PagosAdjuntoPendiente, PagosAlicuotaId, PagosAvisoLectura, PagosControlFactura, PagosFormaPagoOP, PagosFuenteCampo,
@@ -590,9 +590,16 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
   const lecturaId = !esEdicion && lectura?.fase === 'lista' ? lectura.res?.lectura_id ?? null : null
   // Los avisos de la lectura que siguen vigentes. «No cierra» se recalcula en
   // vivo en el desglose, así que el de la lectura no se repite.
+  // Letra vs condición IVA del proveedor (20260925o): se calcula en vivo con
+  // la ficha elegida, así se va solo cuando se corrige la letra. El aviso
+  // igual de la lectura se descarta cuando la ficha tiene condición cargada.
+  const avisoLetra = esNc ? null : avisoLetraCondicion(proveedor?.condicion_iva_id, tipo)
+  const letraEnVivo = proveedor?.condicion_iva_id != null
   const avisosLectura = (lectura?.res?.avisos ?? [])
-    .map((a, i) => ({ a, i }))
-    .filter(({ a, i }) => a.codigo !== 'NO_CIERRA' && !resueltos.has(i) && !(a.codigo === 'PROVEEDOR_NUEVO' && proveedorId))
+    // Un aviso seco (`{ code, … }`) también puede viajar acá: se normaliza.
+    .map((a, i) => ({ a: { ...a, codigo: codigoAviso(a), severidad: a.severidad ?? 'advertencia' }, i }))
+    .filter(({ a, i }) => a.codigo !== 'NO_CIERRA' && !resueltos.has(i) && !(a.codigo === 'PROVEEDOR_NUEVO' && proveedorId) &&
+      !(a.codigo === 'LETRA_NO_COINCIDE_CONDICION' && letraEnVivo))
 
   async function subirComprobante(file: File) {
     setSubiendo(true)
@@ -800,6 +807,12 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
         {proveedor?.sin_datos_pago && FORMAS_CON_CUENTA_DESTINO.includes(formaPrevista as PagosFormaPagoOP) && (
           <div className="text-[11px] text-naranja-dark">
             Para transferirle hace falta el CBU o el alias, y este proveedor no los tiene. La factura se carga igual.
+          </div>
+        )}
+
+        {avisoLetra && (
+          <div className="rounded border border-amarillo/50 bg-amarillo-light px-2 py-1.5 text-xs text-[#7A5000]">
+            ⚠ {avisoLetra} La factura se carga igual.
           </div>
         )}
 

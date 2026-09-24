@@ -2376,7 +2376,8 @@ export type PagosFormaPagoOPGuardada = PagosFormaPagoOP | 'nota_credito'
 export type PagosTipoLinea       = 'factura' | 'a_cuenta' | 'nota_credito'
 export type PagosEstadoOrden     = 'emitida' | 'anulada'
 export type PagosTipoAdjFactura  = 'factura' | 'remito' | 'orden_compra' | 'otro'
-export type PagosTipoAdjOrden    = 'comprobante_pago' | 'nota_credito' | 'otro'
+/** `recibo_proveedor` y `cheque` (foto del cheque físico) desde 20260925o–q. */
+export type PagosTipoAdjOrden    = 'comprobante_pago' | 'nota_credito' | 'otro' | 'recibo_proveedor' | 'cheque'
 export type PagosEntidadAdjunto  = 'facturas' | 'ordenes'
 
 /**
@@ -2458,6 +2459,15 @@ export interface PagosProveedor {
   updated_at:         string
   created_by:         string | null
   updated_by:         string | null
+  // ── Datos de ARCA (20260925o). Nada obligatorio: hay proveedores sin CUIT o del exterior. ──
+  domicilio?:            string | null
+  provincia?:            string | null
+  /** Mismos ids que Ventas (`CONDICIONES_IVA` de `@/lib/utils/arca`). */
+  condicion_iva_id?:     number | null
+  tipo_persona?:         string | null
+  actividad_principal?:  string | null
+  /** null = nunca se consultó el padrón. */
+  padron_consultado_at?: string | null
 }
 
 /** Fila de `v_pagos_proveedor_saldo`: el bloque «Deuda por proveedor». */
@@ -2973,6 +2983,8 @@ export interface PagosOrden {
   comprobante_requerido: boolean
   /** Cheque emitido cuya fecha de cobro todavía no llegó. */
   en_cartera:        boolean
+  /** Tiene un adjunto vigente tipo `recibo_proveedor` (20260925q). Opcional hasta el deploy. */
+  tiene_recibo?:     boolean
   mes_pago:          string
   busq:              string
 }
@@ -3039,7 +3051,33 @@ export interface PagosCheque {
 }
 
 /** Lo que se manda al registrar el pago (sin `id`, lo pone la base). */
-export type PagosChequeNuevo = Omit<PagosCheque, 'id'>
+export type PagosChequeNuevo = Omit<PagosCheque, 'id'> & {
+  /**
+   * La foto del cheque ya subida (el `storage_path` que devolvió
+   * `POST /cheques/leer`). El backend la adjunta a la OP como tipo `cheque`
+   * con obs «Cheque N° X». NO reemplaza el comprobante de pago.
+   */
+  foto_path?: string | null
+}
+
+/** Lo que la IA leyó de la foto de un cheque (`POST /api/pagos/cheques/leer`). No crea nada. */
+export interface PagosChequePropuesta {
+  numero:        string | null
+  banco:         string | null
+  /** YYYY-MM-DD. */
+  fecha_cobro:   string | null
+  importe:       number | null
+  librador:      string | null
+  librador_cuit: string | null
+  es_echeq:      boolean | null
+  es_diferido:   boolean | null
+}
+export interface PagosChequeLecturaRes {
+  propuesta:    PagosChequePropuesta
+  /** Forma abierta: puede venir como aviso de lectura (`codigo`/`mensaje`) o como aviso seco (`code`). */
+  avisos:       (Partial<PagosAvisoLectura> & { code?: string; [k: string]: unknown })[]
+  storage_path: string
+}
 
 /**
  * Una orden con sus cheques, como la devuelve `/ordenes/export`. El Excel
@@ -3391,9 +3429,52 @@ export interface CrearProveedorInput {
   telefono?:        string
   email?:           string
   obs?:             string
+  /** A mano o precargados desde «Buscar en ARCA» (20260925o). */
+  domicilio?:        string | null
+  provincia?:        string | null
+  condicion_iva_id?: number | null
 }
 
 export type EditarProveedorInput = Partial<CrearProveedorInput>
+
+/**
+ * `GET /api/pagos/proveedores/padron/:cuit`: lo que dice ARCA, listo para
+ * precargar. No guarda nada. Misma forma que Ventas (`VentasPadronResultado`),
+ * pero el `padron` se tipa tolerante: domicilio plano o `domicilio_fiscal`,
+ * actividades con `codigo` o `id`. Leerlo con los helpers de `pagos.utils`.
+ */
+export interface PagosPadronPersona {
+  cuit?:                 string
+  razon_social:          string
+  domicilio?:            string | null
+  provincia?:            string | null
+  domicilio_fiscal?:     { direccion: string; localidad: string; cod_postal: string; provincia: string } | null
+  condicion_iva_id:      number
+  condicion_iva_motivo?: string | null
+  condicion_iva_dudosa?: boolean
+  tipo_persona?:         string | null
+  actividades?:          { codigo?: number | string; id?: number; descripcion: string }[]
+  estado_clave?:         string | null
+}
+export interface PagosPadronResultado {
+  padron:         PagosPadronPersona
+  precarga:       { razon_social: string; domicilio: string; provincia: string; condicion_iva_id: number }
+  consultado_at?: string
+}
+
+/** `POST /api/pagos/proveedores/:id/actualizar-desde-arca[?todo=1]`. */
+export interface PagosActualizarDesdeArcaRes {
+  proveedor:   PagosProveedor
+  diferencias: { campo: string; actual: unknown; arca: unknown; aplicado: boolean }[]
+}
+
+/** `POST /api/pagos/proveedores/actualizar-desde-arca` (todos los activos con CUIT). No pisa razón social. */
+export interface PagosActualizarTodosArcaRes {
+  /** Cantidad (o lista de ids, según el backend: leer con `cantidadDe`). */
+  actualizados: number | unknown[]
+  sin_cuit:     number | unknown[]
+  errores:      { proveedor_id: number; razon_social: string; error: string }[]
+}
 /** La puerta del contador: solo datos de pago, ni razón social ni CUIT ni obs. */
 export type PagosDatosPagoInput = Pick<CrearProveedorInput,
   'alias_cbu' | 'cbu' | 'banco' | 'plazo_pago_dias' | 'contacto' | 'telefono' | 'email'>

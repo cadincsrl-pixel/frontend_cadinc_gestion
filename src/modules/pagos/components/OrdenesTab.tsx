@@ -19,7 +19,9 @@ import { PreguntarAvisoPago } from './PreguntarAvisoPago'
 import { useProveedoresPagos } from '../hooks/useProveedoresPagos'
 import {
   FORMAS_PAGO_OP, MAX_ADJUNTO_BYTES, salidaLabel, MIME_ADJUNTOS, TIPOS_ADJ_FACTURA, comprobanteTxt, fmtFecha, fmtM, formaPagoLabel, hoyAR,
+  TIPOS_ADJ_ORDEN_SUBIBLES, tipoAdjOrdenLabel,
 } from '../utils/pagos.utils'
+import type { PagosTipoAdjOrden } from '@/types/domain.types'
 import { mensajeErrorPagos } from '../utils/pagos.errores'
 
 const PAGE_SIZE = 50
@@ -119,6 +121,7 @@ export function OrdenesTab() {
         <div className="flex gap-3 flex-wrap text-xs pb-2">
           <Tilde label="Sin comprobante" on={!!filtro.sin_comprobante} set={v => patch({ sin_comprobante: v || undefined })} />
           <Tilde label="Cheques en cartera" on={!!filtro.en_cartera} set={v => patch({ en_cartera: v || undefined })} />
+          <Tilde label="Sin recibo" on={!!filtro.sin_recibo} set={v => patch({ sin_recibo: v || undefined })} />
         </div>
         <div className="ml-auto pb-2 flex gap-2 flex-wrap">
           <Button variant="secondary" size="sm" onClick={exportar} loading={exportando} disabled={total === 0}
@@ -169,6 +172,7 @@ export function OrdenesTab() {
                       {o.comprobante_requerido && !o.tiene_comprobante && (
                         <span className="block text-[10px] text-rojo font-bold">sin comprobante</span>
                       )}
+                      <ChipRecibo o={o} />
                     </td>
                     <td className="px-3 py-2 text-right font-mono text-xs tabular-nums font-bold">{o.monto_pagado > 0 ? fmtM(o.monto_pagado) : <span className="text-gris-mid">—</span>}</td>
                     <td className="px-3 py-2 text-[11px] text-gris-dark truncate max-w-[220px]" title={o.facturas ?? undefined}>{o.facturas ?? '—'}</td>
@@ -194,7 +198,7 @@ export function OrdenesTab() {
                       {o.proveedor_nom}
                       {o.proveedor_codigo && <span className="ml-1 font-mono text-[10px] text-gris-dark">{o.proveedor_codigo}</span>}
                     </div>
-                    <div className="text-[11px] text-gris-dark">{fmtFecha(o.fecha)} · {formaPagoLabel(o.forma_pago)}</div>
+                    <div className="text-[11px] text-gris-dark">{fmtFecha(o.fecha)} · {formaPagoLabel(o.forma_pago)} <ChipRecibo o={o} inline /></div>
                   </div>
                   <div className="text-right">
                     <div className="font-mono font-bold tabular-nums">{fmtM(o.monto_pagado)}</div>
@@ -237,6 +241,8 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, verPii, toast }: {
   const [avisando, setAvisando] = useState(false)
   const [generandoPdf, setGenerandoPdf] = useState(false)
   const [preguntarAviso, setPreguntarAviso] = useState(false)
+  // Qué papel se sube (20260925q): el comprobante del pago o el recibo que manda el proveedor.
+  const [tipoSubir, setTipoSubir] = useState<PagosTipoAdjOrden>('comprobante_pago')
 
   if (isLoading || !o) {
     return <Modal open onClose={onClose} title="Orden de pago" width="max-w-2xl">
@@ -397,7 +403,10 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, verPii, toast }: {
 
         {/* Adjuntos */}
         <div className="border-t border-gris pt-2">
-          <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wide mb-1">Comprobantes del pago</div>
+          <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wide mb-1 flex items-center gap-2">
+            Comprobantes del pago
+            {o.estado === 'emitida' && <ChipRecibo o={o} inline />}
+          </div>
           {o.adjuntos.length === 0 && <div className="text-xs text-gris-dark italic mb-1">Sin archivos.</div>}
           <ul className="flex flex-col gap-1 mb-2">
             {o.adjuntos.map(a => (
@@ -409,28 +418,40 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, verPii, toast }: {
                   )}>
                   📎 {a.nombre_archivo}
                 </button>
-                <span className="text-gris-dark ml-1">
-                  {a.tipo === 'nota_credito' ? '(nota de crédito)' : a.tipo === 'comprobante_pago' ? '(comprobante)' : ''}
+                <span className={`ml-1 ${a.tipo === 'recibo_proveedor' ? 'text-verde font-semibold' : 'text-gris-dark'}`}>
+                  ({a.tipo === 'comprobante_pago' ? 'comprobante' : tipoAdjOrdenLabel(a.tipo).toLowerCase()})
                 </span>
+                {a.obs && <span className="text-gris-dark ml-1">· {a.obs}</span>}
               </li>
             ))}
           </ul>
-          {o.estado === 'emitida' && puedeSubir && (
-            <label className="text-xs px-3 py-1.5 rounded border border-gris-mid bg-white hover:bg-gris cursor-pointer font-semibold inline-block">
-              {subir.isPending ? 'Subiendo…' : '📎 Subir comprobante'}
-              <input type="file" className="hidden" accept={MIME_ADJUNTOS} disabled={subir.isPending}
-                onChange={async e => {
-                  const file = e.target.files?.[0]; e.target.value = ''
-                  if (!file) return
-                  if (file.size > MAX_ADJUNTO_BYTES) { toast('El archivo supera los 10 MB', 'err'); return }
-                  try {
-                    await subir.mutateAsync({ entidad: 'ordenes', id: o.id, file, tipo: 'comprobante_pago' })
-                    toast('✓ Comprobante subido', 'ok')
-                    setPreguntarAviso(true)
-                  }
-                  catch (err) { toast(mensajeErrorPagos(err), 'err') }
-                }} />
-            </label>
+          {o.estado === 'emitida' && (
+            <span className="inline-flex items-center gap-1 flex-wrap"
+              title={puedeSubir ? undefined : 'Subir papeles a la orden pide poder registrar pagos'}>
+              <select value={tipoSubir} onChange={e => setTipoSubir(e.target.value as PagosTipoAdjOrden)}
+                disabled={!puedeSubir || subir.isPending} aria-label="Qué papel se sube"
+                className="text-xs px-2 py-1.5 rounded border border-gris-mid bg-white disabled:opacity-60">
+                {TIPOS_ADJ_ORDEN_SUBIBLES.map(t => <option key={t} value={t}>{tipoAdjOrdenLabel(t)}</option>)}
+              </select>
+              <label className={`text-xs px-3 py-1.5 rounded border border-gris-mid bg-white font-semibold inline-block
+                ${puedeSubir ? 'hover:bg-gris cursor-pointer' : 'opacity-60 cursor-not-allowed'}`}>
+                {subir.isPending ? 'Subiendo…' : '📎 Subir'}
+                <input type="file" className="hidden" accept={MIME_ADJUNTOS} disabled={!puedeSubir || subir.isPending}
+                  onChange={async e => {
+                    const file = e.target.files?.[0]; e.target.value = ''
+                    if (!file) return
+                    if (file.size > MAX_ADJUNTO_BYTES) { toast('El archivo supera los 10 MB', 'err'); return }
+                    const tipo = tipoSubir
+                    try {
+                      await subir.mutateAsync({ entidad: 'ordenes', id: o.id, file, tipo })
+                      toast(`✓ ${tipoAdjOrdenLabel(tipo)} subido`, 'ok')
+                      // El aviso por mail es del comprobante del pago; el recibo lo manda el proveedor.
+                      if (tipo === 'comprobante_pago') setPreguntarAviso(true)
+                    }
+                    catch (err) { toast(mensajeErrorPagos(err), 'err') }
+                  }} />
+              </label>
+            </span>
           )}
           {/* Avisar por mail. Con un clic, no automático al emitir: de 9
               proveedores 1 tiene mail cargado, y un mail con datos de pago no
@@ -480,6 +501,19 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, verPii, toast }: {
       </div>
     </Modal>
   )
+}
+
+/**
+ * «recibo ✓» / «sin recibo» (20260925q): si el proveedor ya mandó su recibo.
+ * Solo en órdenes vigentes, y nada si el backend todavía no manda el campo.
+ */
+function ChipRecibo({ o, inline }: { o: { estado: string; tiene_recibo?: boolean }; inline?: boolean }) {
+  if (o.estado !== 'emitida' || o.tiene_recibo === undefined) return null
+  return o.tiene_recibo
+    ? <span className={`${inline ? 'inline-block' : 'block w-fit mt-0.5'} text-[10px] px-1.5 rounded bg-verde-light text-verde font-bold`}
+        title="El proveedor ya mandó su recibo">recibo ✓</span>
+    : <span className={`${inline ? 'inline-block' : 'block w-fit mt-0.5'} text-[10px] px-1.5 rounded bg-gris text-gris-dark font-semibold`}
+        title="Falta el recibo del proveedor: subilo desde el detalle de la orden">sin recibo</span>
 }
 
 const inputCls = 'w-full px-2.5 py-2 border-[1.5px] border-gris-mid rounded text-xs bg-white outline-none focus:border-naranja'

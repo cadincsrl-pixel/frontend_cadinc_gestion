@@ -19,7 +19,7 @@ import type {
   PagosOrdenesResumen, PagosTipoAdjFactura, PagosTipoAdjOrden, PagosTipoComprobante, PagosUploadUrlRes,
   PagosAviso, PagosAvisoResultado, PagosMailEstado, PagosLecturaRes, PagosAplicaNcInput, PagosClaseComprobante,
   PagosDesgloseInput, PagosDesgloseLeidoRes, PagosCompletarDesgloseRes,
-  RegistrarOrdenRes,
+  RegistrarOrdenRes, PagosChequeLecturaRes,
 } from '@/types/domain.types'
 
 // ── Claves ────────────────────────────────────────────────────────────
@@ -107,6 +107,8 @@ export interface PagosOrdenesFiltro {
   hasta?:        string
   sin_comprobante?:  boolean
   en_cartera?:       boolean
+  /** Emitidas sin recibo del proveedor adjunto (20260925q). */
+  sin_recibo?:       boolean
 }
 
 type ExtraQuery = Record<string, string | number | undefined>
@@ -152,6 +154,7 @@ function qsOrdenes(f: PagosOrdenesFiltro, extra: ExtraQuery = {}): string {
   if (f.hasta)             p.set('hasta', f.hasta)
   if (f.sin_comprobante)   p.set('sin_comprobante', '1')
   if (f.en_cartera)        p.set('en_cartera', '1')
+  if (f.sin_recibo)        p.set('sin_recibo', '1')
   for (const [k, v] of Object.entries(extra)) if (v !== undefined) p.set(k, String(v))
   return p.toString()
 }
@@ -580,6 +583,20 @@ export function leerFactura(body: {
 /** Se cerró el modal (o se cambió el archivo) sin cargar: el archivo leído se borra. */
 export function descartarLecturaFactura(storage_path: string): Promise<{ success: boolean }> {
   return apiDelete<{ success: boolean }>('/api/pagos/facturas/lectura-pendiente', { storage_path })
+}
+
+/**
+ * Foto de un cheque físico (20260925). Dos pasos, separados a propósito:
+ * primero se sube como adjunto PENDIENTE de OP (`subirComprobantePendiente(file,
+ * 'cheque')`, el mismo camino que el comprobante) y después se le pide al
+ * backend que la lea con IA. Si la lectura falla (422 `CHEQUE_ILEGIBLE`) la
+ * foto ya subida sirve igual: viaja como `foto_path` del cheque y queda
+ * adjunta a la OP. No crea nada.
+ */
+export function leerCheque(adj: PagosAdjuntoPendiente): Promise<PagosChequeLecturaRes> {
+  return apiPost<PagosChequeLecturaRes>('/api/pagos/cheques/leer', {
+    storage_path: adj.storage_path, nombre_archivo: adj.nombre_archivo, mime_type: adj.mime_type,
+  })
 }
 
 /** El modal se cerró sin guardar: limpiar lo que quedó colgado en el bucket. */

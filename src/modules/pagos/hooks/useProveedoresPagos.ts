@@ -11,6 +11,7 @@ import { apiPut, apiGet, apiPatch, apiPost } from '@/lib/api/client'
 import type {
   CrearProveedorInput, EditarProveedorInput, PagosDatosPagoInput, PagosProveedor,
   PagosProveedorDetalle, PagosProveedorSaldo, PagosProveedoresPage, ProveedorRes,
+  PagosPadronResultado, PagosActualizarDesdeArcaRes, PagosActualizarTodosArcaRes,
 } from '@/types/domain.types'
 import { PAGOS_KEYS, invalidarPagos } from './usePagos'
 import type { contactosParaGuardar } from '@/components/contactos/ContactosEditor'
@@ -133,6 +134,39 @@ export function useReactivarProveedorPagos() {
   return useMutation({
     mutationFn: (id: number) =>
       apiPost<{ success: boolean; id: number; activo: boolean }>(`/api/pagos/proveedores/${id}/reactivar`, {}),
+    onSuccess:  () => invalidarPagos(qc),
+  })
+}
+
+// ── Padrón de ARCA (20260925o) ────────────────────────────────────────
+
+/**
+ * «Buscar en ARCA» del alta: trae razón social, domicilio, provincia y la
+ * condición IVA (deducida) del padrón. NO guarda nada: precarga el form.
+ * Es una mutation (no una query) porque la dispara un botón y no se cachea.
+ */
+export function useConsultarPadronPagos() {
+  return useMutation({
+    mutationFn: (cuit: string) =>
+      apiGet<PagosPadronResultado>(`/api/pagos/proveedores/padron/${cuit.replace(/\D/g, '')}`),
+  })
+}
+
+/** Guarda en la ficha lo que dice ARCA. Con `todo` pisa también la razón social. */
+export function useActualizarProveedorDesdeArca() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, todo }: { id: number; todo?: boolean }) =>
+      apiPost<PagosActualizarDesdeArcaRes>(`/api/pagos/proveedores/${id}/actualizar-desde-arca${todo ? '?todo=1' : ''}`, {}),
+    onSuccess:  () => invalidarPagos(qc),
+  })
+}
+
+/** Todos los activos con CUIT, de a uno (ARCA limita): puede tardar. No pisa razón social. */
+export function useActualizarTodosDesdeArca() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => apiPost<PagosActualizarTodosArcaRes>('/api/pagos/proveedores/actualizar-desde-arca', {}),
     onSuccess:  () => invalidarPagos(qc),
   })
 }

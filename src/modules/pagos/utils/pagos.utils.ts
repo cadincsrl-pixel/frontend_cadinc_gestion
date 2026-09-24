@@ -10,6 +10,7 @@ import type {
   PagosClaseComprobante, PagosAplicacionNc,
 } from '@/types/domain.types'
 import type { PagosFacturasFiltro } from '../hooks/usePagos'
+import { CONDICIONES_IVA } from '@/lib/utils/arca'
 
 // ── Estados de la factura ─────────────────────────────────────────────
 
@@ -160,8 +161,17 @@ export const TIPOS_ADJ_FACTURA: { key: PagosTipoAdjFactura; label: string }[] = 
 export const TIPOS_ADJ_ORDEN: { key: PagosTipoAdjOrden; label: string }[] = [
   { key: 'comprobante_pago', label: 'Comprobante de pago' },
   { key: 'nota_credito',     label: 'Nota de crédito' },
+  { key: 'recibo_proveedor', label: 'Recibo del proveedor' },
+  { key: 'cheque',           label: 'Foto del cheque' },
   { key: 'otro',             label: 'Otro' },
 ]
+
+/** Lo que se ofrece al subir un papel a una OP ya emitida (la foto del cheque entra al registrar el pago). */
+export const TIPOS_ADJ_ORDEN_SUBIBLES: PagosTipoAdjOrden[] = ['comprobante_pago', 'recibo_proveedor', 'otro']
+
+export function tipoAdjOrdenLabel(tipo: string): string {
+  return TIPOS_ADJ_ORDEN.find(t => t.key === tipo)?.label ?? tipo
+}
 
 export const MIME_ADJUNTOS = 'image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf'
 export const MAX_ADJUNTO_BYTES = 10 * 1024 * 1024
@@ -542,4 +552,63 @@ export function aplicacionFirme(a: PagosAplicacionNc): boolean {
   if (a.vigente === false || a.nc?.estado === 'anulada') return false
   if (a.aprobada != null) return !!a.aprobada
   return !!a.nc?.aprobada_at
+}
+
+// ── Condición frente al IVA del proveedor (20260925o) ─────────────────
+
+export function condicionIvaTxt(id: number | null | undefined): string | null {
+  if (id == null) return null
+  return CONDICIONES_IVA[id] ?? `Condición ${id}`
+}
+
+/** Monotributo (6), social (13) y trabajador independiente promovido (16). */
+const CONDICIONES_MONOTRIBUTO = new Set([6, 13, 16])
+
+/**
+ * ¿La letra de la factura choca con la condición del proveedor? Espejo del
+ * aviso `LETRA_NO_COINCIDE_CONDICION` del backend (NO bloquea):
+ *   - monotributista que factura A o B (factura C);
+ *   - responsable inscripto que factura C;
+ *   - exento que factura A.
+ * Devuelve el texto del aviso, o null si no hay nada que decir.
+ */
+export function avisoLetraCondicion(
+  condicionIvaId: number | null | undefined, letra: PagosTipoComprobante | string | null | undefined,
+): string | null {
+  if (condicionIvaId == null || !letra) return null
+  const cond = condicionIvaTxt(condicionIvaId)
+  if (CONDICIONES_MONOTRIBUTO.has(condicionIvaId) && (letra === 'A' || letra === 'B')) {
+    return `El proveedor figura como «${cond}» y un monotributista factura C, no ${letra}. Revisá la letra o la condición del proveedor.`
+  }
+  if (condicionIvaId === 1 && letra === 'C') {
+    return `El proveedor figura como «${cond}» y un responsable inscripto le factura A a CADINC, no C. Revisá la letra o la condición del proveedor.`
+  }
+  if (condicionIvaId === 4 && letra === 'A') {
+    return `El proveedor figura como «${cond}» y un exento no factura A. Revisá la letra o la condición del proveedor.`
+  }
+  return null
+}
+
+// ── Padrón de ARCA ────────────────────────────────────────────────────
+
+/** Persona física / jurídica, en castellano. */
+export function tipoPersonaTxt(t: string | null | undefined): string | null {
+  if (!t) return null
+  if (t === 'FISICA') return 'Persona física'
+  if (t === 'JURIDICA') return 'Persona jurídica'
+  return t
+}
+
+/** La actividad principal que trae el padrón (la primera), con su código si lo tiene. */
+export function actividadPrincipalDe(p: { actividades?: { codigo?: number | string; id?: number; descripcion: string }[] }): string | null {
+  const a = p.actividades?.[0]
+  if (!a) return null
+  const cod = a.codigo ?? a.id
+  return cod != null && cod !== '' ? `${cod} — ${a.descripcion}` : a.descripcion
+}
+
+/** `actualizados` / `sin_cuit` pueden venir como número o como lista. */
+export function cantidadDe(v: number | unknown[] | null | undefined): number {
+  if (Array.isArray(v)) return v.length
+  return Number(v ?? 0)
 }
