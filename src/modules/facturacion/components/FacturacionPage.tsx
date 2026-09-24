@@ -4,7 +4,7 @@ import { useEffect, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useTabsPermitidos } from '@/hooks/useTabsPermitidos'
 import { TABS_POR_MODULO } from '@/lib/config/modulo-tabs'
-import { useArcaEstado } from '../hooks/useFacturacion'
+import { useArcaAmbiente } from '../hooks/useFacturacion'
 import { BannerHomologacion } from './EstadoArca'
 import { FacturasTab } from './FacturasTab'
 import { ClientesTab } from './ClientesTab'
@@ -36,9 +36,10 @@ export function FacturacionPage() {
     }
   }, [allowedTabs, tab, router])
 
-  // /arca/estado lo habilita el tab `facturas` (contrato). Sin ese tab no se
-  // pide: el banner de homologación igual sale en cada factura (es_homologacion).
-  const arca = useArcaEstado(allowedTabs.includes('facturas'))
+  // El cartel sale de /arca/ambiente, que no consulta a ARCA y responde al
+  // instante. Antes salía de /arca/estado (segundos) y al aparecer tarde corría
+  // la página: el primer clic en «Nueva factura» caía en el vacío (2026-09-23).
+  const arca = useArcaAmbiente()
 
   if (!permitido) return null
 

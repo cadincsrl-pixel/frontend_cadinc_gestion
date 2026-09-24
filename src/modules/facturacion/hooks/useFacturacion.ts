@@ -25,6 +25,7 @@ export const FACTURACION_KEYS = {
   factura:        (id: number) => ['facturacion', 'facturas', 'detalle', id] as const,
   resumen:        ['facturacion', 'facturas', 'resumen'] as const,
   arcaEstado:     ['facturacion', 'arca', 'estado'] as const,
+  arcaAmbiente:   ['facturacion', 'arca', 'ambiente'] as const,
   condicionesIva: ['facturacion', 'catalogos', 'condiciones-iva'] as const,
   obras:          ['facturacion', 'catalogos', 'obras'] as const,
   clientes:       ['facturacion', 'clientes'] as const,
@@ -103,6 +104,20 @@ export function useFacturaVenta(id: number | null) {
 
 export function fetchFacturaVenta(id: number): Promise<VentasFacturaDetalle> {
   return apiGet<VentasFacturaDetalle>(`${BASE}/facturas/${id}`)
+}
+
+/**
+ * Ambiente y talonario del backend, SIN consultar a ARCA: responde al instante.
+ * De acá sale el cartel de homologación, para que aparezca de entrada y no corra
+ * la página cuando carga el estado completo (que tarda: son 7 llamadas a ARCA).
+ */
+export function useArcaAmbiente() {
+  return useQuery({
+    queryKey: FACTURACION_KEYS.arcaAmbiente,
+    queryFn:  () => apiGet<Pick<VentasArcaEstado, 'ambiente' | 'configurado' | 'falta' | 'pto_vta'>>(`${BASE}/arca/ambiente`),
+    staleTime: 10 * 60_000,
+    retry: false,
+  })
 }
 
 /**
