@@ -16,7 +16,7 @@ import { SaldosInicialesTab } from './cobranzas/SaldosInicialesTab'
 const TABS = [
   { key: 'facturas',  icon: '🧮', label: 'Facturas',  sub: 'Facturas y notas de crédito A y B contra ARCA' },
   { key: 'clientes',  icon: '🏢', label: 'Clientes',  sub: 'Padrón propio: CUIT, condición IVA y obras que se le facturan' },
-  { key: 'finnegans', icon: '📥', label: 'Finnegans', sub: 'Autorizadas que falta cargar a mano en Finnegans' },
+  { key: 'finnegans', icon: '📥', label: 'Finnegans', sub: 'Autorizadas que falta cargar a mano en Finnegans, y el Libro IVA Digital de ventas' },
   { key: 'cobranzas', icon: '💰', label: 'Cobranzas', sub: 'Recibos (RC): medios, retenciones y aplicación a facturas; compensación de notas de crédito' },
   { key: 'deudores',  icon: '📒', label: 'Deudores',  sub: 'Qué debe cada cliente, desde cuándo, y su estado de cuenta' },
   { key: 'saldos_iniciales', icon: '📂', label: 'Saldos iniciales', sub: 'Facturas emitidas en Finnegans o en ARCA antes del sistema que siguen abiertas' },

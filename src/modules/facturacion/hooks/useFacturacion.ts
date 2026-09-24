@@ -14,6 +14,7 @@ import type {
   VentasCbteTipo, VentasArcaEstado, VentasCondicionIva, VentasEmitirRes, VentasEstado, VentasFactura, VentasFacturaDetalle,
   VentasFacturaFJ, VentasFacturaInput, VentasFacturasPage, VentasObra, VentasProducto, VentasResumenFila,
 } from '@/types/domain.types'
+import type { LibroIvaVentas } from '../utils/lidVentas'
 
 const BASE = '/api/facturacion'
 
@@ -255,5 +256,17 @@ export function useDeshacerRegistroVenta() {
   return useMutation({
     mutationFn: (id: number) => apiPost<VentasFactura>(`${BASE}/facturas/${id}/deshacer-registro`, {}),
     onSuccess:  () => invalidarFacturacion(qc),
+  })
+}
+
+// ── Libro IVA Digital de Ventas (RG 4597) ─────────────────────────────
+
+/** El libro del mes: ERP (prod, autorizadas) + importados de ARCA. Lo arma el backend. */
+export function useLibroIvaVentas(periodo: string, incluirCvlp: boolean, enabled = true) {
+  return useQuery({
+    queryKey: ['facturacion', 'lid-ventas', periodo, incluirCvlp] as const,
+    queryFn:  () => apiGet<LibroIvaVentas>(`${BASE}/lid-ventas?periodo=${periodo}&incluir_cvlp=${incluirCvlp ? 1 : 0}`),
+    enabled:  enabled && /^\d{4}-\d{2}$/.test(periodo),
+    staleTime: 60_000,
   })
 }

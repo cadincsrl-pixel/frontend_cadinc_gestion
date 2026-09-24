@@ -16,6 +16,7 @@ import {
 } from '../utils/facturacion.utils'
 import { mensajeErrorFacturacion } from '../utils/facturacion.errores'
 import type { VentasFactura } from '@/types/domain.types'
+import { LibroIvaVentas } from './LibroIvaVentas'
 
 /**
  * La bandeja de Finnegans: autorizadas que alguien tiene que cargar A MANO en
@@ -26,6 +27,9 @@ import type { VentasFactura } from '@/types/domain.types'
  *
  * Los importes se copian como los tipea Finnegans: sin separador de miles y
  * con coma decimal ("4703,70"). El CUIT, solo dígitos.
+ *
+ * Tercera vista, «Libro IVA ventas»: los archivos del Libro IVA Digital (RG
+ * 4597) del mes, para el contador (misma tab: es su trabajo).
  */
 
 const PAGE_SIZE = 50
@@ -34,11 +38,12 @@ export function FinnegansTab() {
   const { puedeVer, registrarFinnegans } = usePermisos('facturacion')
   const tabs = useTabsPermitidos('facturacion')
   const puedeRegistrar = registrarFinnegans && (tabs.length === 0 || tabs.includes('finnegans'))
-  const [vista, setVista] = useState<'pendiente' | 'registrada'>('pendiente')
+  const [vista, setVista] = useState<'pendiente' | 'registrada' | 'libro'>('pendiente')
   const [page, setPage] = useState(1)
   const [registrando, setRegistrando] = useState<VentasFactura | null>(null)
 
-  const lista = useFacturasVenta({ finnegans: vista }, page, PAGE_SIZE, puedeVer)
+  const bandeja = vista === 'libro' ? 'pendiente' : vista
+  const lista = useFacturasVenta({ finnegans: bandeja }, page, PAGE_SIZE, puedeVer && vista !== 'libro')
   const items = lista.data?.rows ?? []
   const total = lista.data?.total ?? 0
 
@@ -49,19 +54,21 @@ export function FinnegansTab() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2 flex-wrap">
-        {(['pendiente', 'registrada'] as const).map(v => (
+        {(['pendiente', 'registrada', 'libro'] as const).map(v => (
           <button key={v} type="button" onClick={() => { setVista(v); setPage(1) }}
             className={`text-xs px-3 py-1.5 rounded border font-semibold transition ${vista === v
               ? 'border-naranja bg-naranja-light text-naranja-dark' : 'border-gris-mid bg-white text-gris-dark hover:bg-gris/40'}`}>
-            {v === 'pendiente' ? 'Pendientes de cargar' : 'Registradas'}
+            {v === 'pendiente' ? 'Pendientes de cargar' : v === 'registrada' ? 'Registradas' : 'Libro IVA ventas'}
           </button>
         ))}
-        {!puedeRegistrar && (
+        {!puedeRegistrar && vista !== 'libro' && (
           <span className="text-[11px] text-gris-dark">Para registrar hace falta el permiso «Registrar facturas en Finnegans».</span>
         )}
       </div>
 
-      {lista.isLoading && !lista.data ? (
+      {vista === 'libro' ? (
+        <LibroIvaVentas />
+      ) : lista.isLoading && !lista.data ? (
         <div className="bg-white rounded-card shadow-card p-8 text-center text-sm text-gris-dark">Cargando…</div>
       ) : lista.error ? (
         <div className="bg-rojo-light border border-rojo/30 rounded-card p-4 text-sm text-rojo flex items-center justify-between gap-2">
@@ -75,7 +82,7 @@ export function FinnegansTab() {
       ) : (
         <div className="flex flex-col gap-2">
           {items.map(f => (
-            <FilaFinnegans key={f.id} f={f} vista={vista} puedeRegistrar={puedeRegistrar} onRegistrar={() => setRegistrando(f)} />
+            <FilaFinnegans key={f.id} f={f} vista={bandeja} puedeRegistrar={puedeRegistrar} onRegistrar={() => setRegistrando(f)} />
           ))}
           {total > PAGE_SIZE && <Pagination page={page} total={total} pageSize={PAGE_SIZE} onChange={setPage} />}
           <p className="text-[11px] text-gris-dark px-1">{total} comprobante{total === 1 ? '' : 's'}</p>
