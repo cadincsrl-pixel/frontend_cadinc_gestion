@@ -22,14 +22,16 @@ import { mensajeAvisoPagos, mensajeErrorPagos, codigoErrorPagos } from '../utils
 interface Props {
   onClose:  () => void
   onCreado: (id: number) => void
+  /** Lo leído de la factura (20260924u): el alta arranca precargada. */
+  inicial?: { razon_social?: string | null; cuit?: string | null }
 }
 
-export function AltaRapidaProveedor({ onClose, onCreado }: Props) {
+export function AltaRapidaProveedor({ onClose, onCreado, inicial }: Props) {
   const toast = useToast()
   const crear = useCrearProveedorPagos()
 
-  const [razonSocial, setRazonSocial] = useState('')
-  const [cuit, setCuit] = useState('')
+  const [razonSocial, setRazonSocial] = useState(inicial?.razon_social ?? '')
+  const [cuit, setCuit] = useState(inicial?.cuit ?? '')
   const [alias, setAlias] = useState('')
   const [cbu, setCbu] = useState('')
   const [banco, setBanco] = useState('')

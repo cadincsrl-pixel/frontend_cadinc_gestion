@@ -16,7 +16,8 @@ import {
   comprobanteTxt, facturaAnulada, fmtFecha, fmtM, formaPagoLabel,
 } from '../utils/pagos.utils'
 import { mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
-import type { PagosControlFactura, PagosTipoAdjFactura } from '@/types/domain.types'
+import type { PagosControlFactura, PagosFacturaDetalle, PagosTipoAdjFactura } from '@/types/domain.types'
+import { ALICUOTAS, NOMBRE_CBTE_ARCA, labelTributo } from '../utils/desglose'
 
 /**
  * La ficha de una factura: todo lo que se sabe de ella y lo que se puede
@@ -219,17 +220,7 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
           <Dato label="Notas de crédito" valor={f.acreditado > 0 ? fmtM(f.acreditado) : '—'} />
           <Dato label="Saldo" valor={f.saldo > 0 ? fmtM(f.saldo) : '—'} fuerte />
         </div>
-        {(f.neto != null || f.iva != null || f.percepciones != null || f.otros != null) && (
-          <div className="text-[11px] text-gris-dark">
-            {f.neto != null && <>Neto {fmtM(f.neto)} · </>}
-            {f.iva != null && <>IVA {fmtM(f.iva)} · </>}
-            {f.percepciones != null && <>Percepciones {fmtM(f.percepciones)} · </>}
-            {f.otros != null && <>Otros {fmtM(f.otros)} · </>}
-            <span title="Total menos percepciones: es lo que se reparte entre las obras">
-              Imputable <b>{fmtM(f.imputable)}</b>
-            </span>
-          </div>
-        )}
+        <DesgloseFicha f={f} />
 
         {/* Datos */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -440,4 +431,55 @@ function Aviso({ tono, children }: { tono: 'rojo' | 'naranja' | 'amarillo' | 'gr
     gris:     'bg-gris border-gris-mid text-gris-dark',
   }[tono]
   return <div className={`border rounded p-2 text-xs ${clases}`}>{children}</div>
+}
+
+/**
+ * El desglose como lo pide ARCA (20260924u): IVA por alícuota, no gravado,
+ * exento y cada percepción con su jurisdicción, más CAE y de dónde salieron
+ * los datos. Sin detalle, los números sueltos de siempre.
+ */
+function DesgloseFicha({ f }: { f: PagosFacturaDetalle }) {
+  const iva = f.iva_detalle ?? []
+  const trib = f.tributos ?? []
+  const hayNumeros = [f.neto, f.iva, f.percepciones, f.otros, f.no_gravado, f.exento].some(v => v != null)
+  const origen = { qr: 'QR de ARCA', 'qr+ia': 'QR de ARCA + lectura', ia: 'lectura del comprobante', manual: '' }[f.lectura_estado ?? 'manual']
+  if (!hayNumeros && !iva.length && !trib.length && !f.cae) return null
+  return (
+    <div className="rounded border border-gris px-2.5 py-2 text-[11px] text-gris-dark flex flex-col gap-1">
+      <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+        {f.cbte_tipo_arca != null && <span>{NOMBRE_CBTE_ARCA[f.cbte_tipo_arca] ?? `Cód. ARCA ${f.cbte_tipo_arca}`}</span>}
+        {f.cae && <span>CAE <span className="font-mono">{f.cae}</span>{f.cae_vto && <> (vence {fmtFecha(f.cae_vto)})</>}</span>}
+        {origen && <span>Cargada desde {origen}</span>}
+        {f.desglose_a_revisar && <span className="text-naranja-dark font-semibold">Desglose a revisar</span>}
+      </div>
+      {iva.length > 0 ? (
+        <table className="w-full max-w-md">
+          <tbody>
+            {iva.map(x => (
+              <tr key={x.alicuota_id}>
+                <td>IVA {ALICUOTAS.find(a => a.id === x.alicuota_id)?.label ?? x.alicuota_id}</td>
+                <td className="text-right font-mono tabular-nums">neto {fmtM(x.base_imp)}</td>
+                <td className="text-right font-mono tabular-nums">IVA {fmtM(x.importe)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (f.neto != null || f.iva != null) && (
+        <div>{f.neto != null && <>Neto {fmtM(f.neto)} · </>}{f.iva != null && <>IVA {fmtM(f.iva)}</>}</div>
+      )}
+      {(f.no_gravado != null || f.exento != null) && (
+        <div>{f.no_gravado != null && <>No gravado {fmtM(f.no_gravado)} · </>}{f.exento != null && <>Exento {fmtM(f.exento)}</>}</div>
+      )}
+      {trib.length > 0 ? trib.map((t, i) => (
+        <div key={t.id ?? i}>
+          {labelTributo(t.tipo)}{t.jurisdiccion && <> — {t.jurisdiccion}</>}{t.descripcion && <span className="italic"> ({t.descripcion})</span>}: <b className="font-mono tabular-nums">{fmtM(t.importe)}</b>
+        </div>
+      )) : (f.percepciones != null || f.otros != null) && (
+        <div>{f.percepciones != null && <>Percepciones (sin discriminar) {fmtM(f.percepciones)} · </>}{f.otros != null && <>Otros {fmtM(f.otros)}</>}</div>
+      )}
+      <div>
+        <span title="Total menos percepciones: es lo que se reparte entre las obras">Imputable a obras <b>{fmtM(f.imputable)}</b></span>
+      </div>
+    </div>
+  )
 }

@@ -86,7 +86,13 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   },
   DESGLOSE_NO_CUADRA: d => {
     const total = dato(d, 'total')
-    return `El desglose no cuadra con el total${total !== undefined ? ` de ${money(total)}` : ''}. Revisá neto, IVA, percepciones y otros — o dejalos vacíos.`
+    return `El desglose no cuadra con el total${total !== undefined ? ` de ${money(total)}` : ''}. Revisá neto, IVA por alícuota, no gravado, exento y percepciones — o quitá el desglose.`
+  },
+  DESGLOSE_INCONSISTENTE: () => 'El detalle de IVA y percepciones no coincide con los totales guardados. Volvé a abrir la factura y guardala de nuevo.',
+  LECTURA_NO_EXISTE: () => 'La lectura de la factura ya no está. Volvé a soltar el archivo.',
+  LECTURA_YA_USADA: d => {
+    const id = dato(d, 'factura_id')
+    return `Esa factura ya se cargó${id !== undefined ? ` (#${String(id)})` : ''}: el archivo leído no se puede usar dos veces.`
   },
   MONTO_SUPERA_SALDO: d => {
     const saldo = dato(d, 'saldo')
@@ -192,7 +198,10 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
 
   // ── Varios ──
   MOTIVO_REQUERIDO:  () => 'Escribí el motivo.',
-  ADJ_DUPLICADO:     () => 'Ese archivo ya está adjunto acá.',
+  ADJ_DUPLICADO:     d => {
+    const id = dato(d, 'factura_id')
+    return id !== undefined ? `Ese mismo archivo ya está cargado en la factura #${String(id)}.` : 'Ese archivo ya está adjunto acá.'
+  },
   ADJ_NO_EXISTE:     () => 'El adjunto no existe o ya se borró.',
   ARCHIVO_MUY_GRANDE: () => 'El archivo supera los 10 MB.',
   MIME_NO_PERMITIDO: () => 'Solo se aceptan PDF e imágenes.',
@@ -227,6 +236,7 @@ const AVISOS: Record<string, (d: Record<string, unknown>) => string> = {
   COMPROBANTE_YA_USADO:      () => 'Ojo: ese mismo comprobante ya está adjunto en otra orden de pago.',
   NC_POSIBLE_DUPLICADA:      () => 'Ojo: ya se aplicó una nota de crédito con ese número a este proveedor.',
   CUENTA_CAMBIO_TRAS_APROBAR: () => 'Ojo: el CBU del proveedor cambió después de que se aprobó la factura.',
+  ADJUNTO_NO_GUARDADO:       () => 'La factura se cargó, pero el archivo no quedó adjunto: subilo desde la ficha.',
 }
 
 export function mensajeAvisoPagos(aviso: { code: string; [k: string]: unknown }): string {

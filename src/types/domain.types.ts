@@ -2553,6 +2553,82 @@ export interface PagosFactura {
   busq:                string
   /** El plan de e-cheqs anotado al cargarla (20260923n). */
   plan_cheques?:       PagosPlanCheques | null
+  // ── Como lo pide ARCA (20260924u) ──
+  no_gravado?:         number | null
+  exento?:             number | null
+  cae?:                string | null
+  cae_vto?:            string | null
+  /** Código ARCA del comprobante: 1 = Factura A, 6 = B, 11 = C… */
+  cbte_tipo_arca?:     number | null
+  /** De dónde salieron los datos al cargarla. */
+  lectura_estado?:     PagosLecturaEstado
+  desglose_a_revisar?: boolean
+}
+
+// ── Desglose de impuestos y lectura del comprobante (20260924u) ──
+
+export type PagosLecturaEstado = 'manual' | 'qr' | 'qr+ia' | 'ia'
+/** Código ARCA de alícuota: 3 = 0 %, 4 = 10,5 %, 5 = 21 %, 6 = 27 %, 8 = 5 %, 9 = 2,5 %. */
+export type PagosAlicuotaId = 3 | 4 | 5 | 6 | 8 | 9
+export interface PagosIvaDetalle {
+  alicuota_id: PagosAlicuotaId
+  base_imp:    number
+  importe:     number
+}
+export type PagosTributoTipo =
+  | 'percepcion_iva' | 'percepcion_iibb' | 'percepcion_ganancias'
+  | 'percepcion_municipal' | 'impuestos_internos' | 'otro'
+export interface PagosTributo {
+  id?:          number
+  tipo:         PagosTributoTipo
+  jurisdiccion: string | null
+  descripcion:  string
+  alicuota:     number | null
+  base_imp:     number | null
+  importe:      number
+}
+export type PagosFuenteCampo = 'qr' | 'ia' | 'qr+ia'
+export interface PagosAvisoLectura {
+  campo:     string
+  mensaje:   string
+  severidad: 'error' | 'advertencia' | 'info'
+  codigo:    string
+  /** QR y papel no coinciden: lo que dice el papel, para usarlo con un clic. */
+  alternativa?: string | number | null
+}
+export interface PagosPropuestaLectura {
+  emisor_cuit:         string | null
+  emisor_razon_social: string | null
+  receptor_cuit:       string | null
+  cbte_tipo_arca:      number | null
+  tipo_comprobante:    PagosTipoComprobante | null
+  punto_venta:         string | null
+  numero_comprobante:  string | null
+  fecha:               string | null
+  vence_el:            string | null
+  cae:                 string | null
+  cae_vto:             string | null
+  moneda:              string | null
+  cotizacion:          number | null
+  neto:                number | null
+  no_gravado:          number | null
+  exento:              number | null
+  iva:                 PagosIvaDetalle[]
+  tributos:            PagosTributo[]
+  total:               number | null
+  /** Qué se compró, en pocas palabras (leído): precarga la descripción. */
+  descripcion:         string | null
+  proveedor_id:        number | null
+  proveedor_nombre:    string | null
+  proveedor_nuevo:     { razon_social: string | null; cuit: string } | null
+}
+export interface PagosLecturaRes {
+  lectura_id:       number
+  estado:           PagosLecturaEstado
+  modelo:           string | null
+  propuesta:        PagosPropuestaLectura
+  fuente_por_campo: Record<string, PagosFuenteCampo>
+  avisos:           PagosAvisoLectura[]
 }
 
 /** Obra a la que se imputa parte de la factura (centro de costo). */
@@ -2644,6 +2720,9 @@ export interface PagosControlFactura {
 
 export interface PagosFacturaDetalle extends PagosFactura {
   imputaciones: PagosImputacion[]
+  /** IVA por alícuota y percepciones/tributos (20260924u). Vacíos = sin discriminar. */
+  iva_detalle?: PagosIvaDetalle[]
+  tributos?:    PagosTributo[]
   adjuntos:     PagosAdjunto[]
   pagos:        PagosPagoAplicado[]
   control:      PagosControlFactura | null
@@ -3006,6 +3085,16 @@ export interface CrearFacturaInput {
   imputaciones:         PagosImputacionInput[]
   orden?:               PagosOrdenAlCargarInput | null
   plan_cheques?:        PagosPlanCheques | null
+  no_gravado?:          number | null
+  exento?:              number | null
+  cae?:                 string | null
+  cae_vto?:             string | null
+  cbte_tipo_arca?:      number | null
+  /** Manda el detalle: reemplaza el guardado y la base deriva neto, IVA, percepciones y otros. */
+  iva_detalle?:         PagosIvaDetalle[] | null
+  tributos?:            Omit<PagosTributo, 'id'>[] | null
+  /** La lectura del comprobante (POST /facturas/leer): el archivo se adjunta solo. */
+  lectura_id?:          number | null
 }
 
 /**
@@ -3030,6 +3119,14 @@ export interface EditarFacturaInput {
   imputaciones?:        PagosImputacionInput[]
   motivo?:              string
   plan_cheques?:        PagosPlanCheques | null
+  no_gravado?:          number | null
+  exento?:              number | null
+  cae?:                 string | null
+  cae_vto?:             string | null
+  cbte_tipo_arca?:      number | null
+  /** Manda el detalle: reemplaza el guardado y la base deriva neto, IVA, percepciones y otros. */
+  iva_detalle?:         PagosIvaDetalle[] | null
+  tributos?:            Omit<PagosTributo, 'id'>[] | null
 }
 
 export interface PagosLineaOrdenInput {

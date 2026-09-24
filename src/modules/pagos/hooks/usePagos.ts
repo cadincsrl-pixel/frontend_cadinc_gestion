@@ -17,7 +17,7 @@ import type {
   PagosFacturasGrupo, PagosFacturasPage, PagosFacturasResumen, PagosFormaPagoOPGuardada,
   PagosFormaPrevista, PagosOrden, PagosOrdenDetalle, PagosOrdenesEje, PagosOrdenesGrupo, PagosOrdenesPage, PagosOrdenExport, PagosPaquete,
   PagosOrdenesResumen, PagosTipoAdjFactura, PagosTipoAdjOrden, PagosTipoComprobante, PagosUploadUrlRes,
-  PagosAviso, PagosAvisoResultado, PagosMailEstado,
+  PagosAviso, PagosAvisoResultado, PagosMailEstado, PagosLecturaRes,
   RegistrarOrdenRes,
 } from '@/types/domain.types'
 
@@ -508,6 +508,31 @@ export async function subirComprobantePendiente(
   const put = await fetch(up.signed_url, { method: 'PUT', body: file, headers: { 'content-type': file.type } })
   if (!put.ok) throw new Error(`No se pudo subir el comprobante (${put.status})`)
   return { tipo, storage_path: up.storage_path, nombre_archivo: file.name, mime_type: file.type }
+}
+
+/**
+ * «Archivo primero» (20260924u): sube la factura antes de que exista y le
+ * pide al backend que la lea. `qrTexto` es el QR de ARCA si el navegador lo
+ * encontró (`leerQrDelArchivo`). No crea nada: devuelve una propuesta.
+ */
+export async function subirFacturaParaLeer(file: File): Promise<{ storage_path: string }> {
+  const up = await apiPost<{ storage_path: string; signed_url: string }>('/api/pagos/facturas/upload-lectura', {
+    nombre_archivo: file.name, mime_type: file.type, size_bytes: file.size,
+  })
+  const put = await fetch(up.signed_url, { method: 'PUT', body: file, headers: { 'content-type': file.type } })
+  if (!put.ok) throw new Error(`No se pudo subir el archivo (${put.status})`)
+  return { storage_path: up.storage_path }
+}
+
+export function leerFactura(body: {
+  storage_path: string; nombre_archivo: string; mime_type: string; qr_texto: string | null
+}): Promise<PagosLecturaRes> {
+  return apiPost<PagosLecturaRes>('/api/pagos/facturas/leer', body)
+}
+
+/** Se cerró el modal (o se cambió el archivo) sin cargar: el archivo leído se borra. */
+export function descartarLecturaFactura(storage_path: string): Promise<{ success: boolean }> {
+  return apiDelete<{ success: boolean }>('/api/pagos/facturas/lectura-pendiente', { storage_path })
 }
 
 /** El modal se cerró sin guardar: limpiar lo que quedó colgado en el bucket. */

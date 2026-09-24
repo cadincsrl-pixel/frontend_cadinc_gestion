@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { InputMonto, aRaw } from '@/components/ui/InputMonto'
@@ -9,8 +9,12 @@ import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import {
   useCatalogoObrasPagos, useCrearFactura, useEditarFactura, useFactura, subirComprobantePendiente,
-  useSubirAdjuntoPagos,
+  useSubirAdjuntoPagos, subirFacturaParaLeer, leerFactura, descartarLecturaFactura,
 } from '../hooks/usePagos'
+import { leerQrDelArchivo } from '../utils/qrFactura'
+import {
+  ALICUOTAS, TIPOS_TRIBUTO, NOMBRE_CBTE_ARCA, ivaDe, ivaNoCuadra, pctDeAlicuota, resumirDesglose,
+} from '../utils/desglose'
 import { useProveedoresPagos } from '../hooks/useProveedoresPagos'
 import {
   FORMAS_PAGO_OP, FORMAS_PREVISTAS, FORMAS_CON_FECHA_COBRO,
@@ -22,7 +26,8 @@ import {
 import { mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
 import { AltaRapidaProveedor } from './AltaRapidaProveedor'
 import type {
-  PagosAdjuntoPendiente, PagosControlFactura, PagosFormaPagoOP, PagosPlanCheques, PagosFormaPrevista, PagosImputacionInput, PagosTipoComprobante,
+  PagosAdjuntoPendiente, PagosAlicuotaId, PagosAvisoLectura, PagosControlFactura, PagosFormaPagoOP, PagosFuenteCampo,
+  PagosLecturaRes, PagosPlanCheques, PagosFormaPrevista, PagosImputacionInput, PagosTipoComprobante, PagosTributoTipo,
 } from '@/types/domain.types'
 
 /**
@@ -40,6 +45,14 @@ import type {
  *
  * Al EDITAR: cambiar importes, proveedor, vencimiento, forma o el reparto le
  * saca la aprobación a la factura. Se avisa antes, no después.
+ *
+ * ARCHIVO PRIMERO (20260924u). Al cargar, lo primero es soltar la factura: se
+ * sube, el navegador busca el QR de ARCA y el backend la lee (QR + IA) y
+ * devuelve una propuesta que precarga TODO —proveedor, comprobante, fechas,
+ * CAE, IVA por alícuota, percepciones con su jurisdicción— y cada campo dice
+ * de dónde salió (QR / leído / a mano). Los avisos (no cierra, proveedor
+ * nuevo, receptor distinto, repetida) se muestran arriba. Nada se guarda sin
+ * que la persona lo mire, y sin archivo se sigue cargando a mano.
  */
 
 interface Props {
@@ -65,6 +78,27 @@ const n = (s: string) => {
   return Number.isFinite(v) ? v : 0
 }
 const r2 = (v: number) => Math.round(v * 100) / 100
+
+interface FilaIva {
+  alicuota_id: PagosAlicuotaId
+  base: string
+  importe: string
+  /** El importe todavía es el sugerido (base × %): cambia solo al tocar la base. */
+  auto: boolean
+}
+interface FilaTributo {
+  tipo: PagosTributoTipo
+  jurisdiccion: string
+  descripcion: string
+  importe: string
+}
+type Fuente = PagosFuenteCampo | 'manual'
+interface EstadoLectura {
+  fase: 'leyendo' | 'lista' | 'error'
+  storagePath?: string
+  res?: PagosLecturaRes
+  error?: string
+}
 
 export function ModalCargarFactura({ editarId, onClose }: Props) {
   const toast = useToast()
@@ -93,6 +127,99 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
     if (!file) return
     if (file.size > MAX_ADJUNTO_BYTES) { toast('El archivo supera los 10 MB', 'err'); return }
     setArchivo(file)
+    if (!esEdicion) void leerArchivo(file)
+  }
+
+  /** Se sacó o se cambió el archivo: la lectura anterior no vale más. */
+  function olvidarLectura() {
+    lecturaSeq.current++
+    if (lectura?.storagePath) void descartarLecturaFactura(lectura.storagePath).catch(() => undefined)
+    setLectura(null)
+    setFuentes({})
+    setResueltos(new Set())
+  }
+
+  /**
+   * Archivo primero: subir, buscar el QR acá, leer allá y precargar. Si algo
+   * falla, el archivo se adjunta igual al guardar (como antes) y se carga a mano.
+   */
+  async function leerArchivo(file: File) {
+    olvidarLectura()
+    const seq = ++lecturaSeq.current
+    setLectura({ fase: 'leyendo' })
+    let storagePath: string | undefined
+    try {
+      const [subido, qr] = await Promise.all([subirFacturaParaLeer(file), leerQrDelArchivo(file)])
+      storagePath = subido.storage_path
+      if (seq !== lecturaSeq.current) { void descartarLecturaFactura(storagePath).catch(() => undefined); return }
+      setLectura({ fase: 'leyendo', storagePath })
+      const res = await leerFactura({ storage_path: storagePath, nombre_archivo: file.name, mime_type: file.type, qr_texto: qr })
+      if (seq !== lecturaSeq.current) return
+      aplicarPropuesta(res)
+      setLectura({ fase: 'lista', storagePath, res })
+    } catch (e) {
+      if (seq !== lecturaSeq.current) return
+      // Sin lectura el archivo va por el camino de siempre (se sube al guardar):
+      // el que quedó en `lecturas/` se borra.
+      if (storagePath) void descartarLecturaFactura(storagePath).catch(() => undefined)
+      setLectura({ fase: 'error', error: mensajeErrorPagos(e) })
+    }
+  }
+
+  function aplicarPropuesta(res: PagosLecturaRes) {
+    const p = res.propuesta
+    const f = res.fuente_por_campo
+    const fu: Record<string, Fuente> = {}
+    const poner = (campo: string, fuente: PagosFuenteCampo | undefined) => { if (fuente) fu[campo] = fuente }
+    if (p.proveedor_id) { setProveedorId(String(p.proveedor_id)); poner('proveedor', f.emisor_cuit) }
+    if (p.proveedor_nuevo) setAltaInicial(p.proveedor_nuevo)
+    if (p.tipo_comprobante) { setTipo(p.tipo_comprobante); poner('tipo_comprobante', f.tipo_comprobante ?? f.cbte_tipo_arca) }
+    setCbteArca(p.cbte_tipo_arca)
+    if (p.punto_venta) { setPuntoVenta(p.punto_venta.replace(/\D/g, '').slice(-5)); poner('punto_venta', f.punto_venta) }
+    if (p.numero_comprobante) { setNroComprobante(p.numero_comprobante.replace(/\D/g, '').slice(-8)); poner('numero_comprobante', f.numero_comprobante) }
+    if (p.fecha) { setFecha(p.fecha); poner('fecha', f.fecha) }
+    if (p.vence_el) { setVenceEl(p.vence_el); poner('vence_el', f.vence_el) }
+    if (p.total != null) { setTotal(String(p.total)); poner('total', f.total) }
+    if (p.cae) { setCae(p.cae); poner('cae', f.cae) }
+    if (p.cae_vto) { setCaeVto(p.cae_vto); poner('cae_vto', f.cae_vto) }
+    if (p.descripcion && !descripcion.trim()) { setDescripcion(p.descripcion); poner('descripcion', f.descripcion) }
+    const hayDesglose = p.iva.length > 0 || p.tributos.length > 0 || p.neto != null
+    if (hayDesglose) {
+      setVerDesglose(true)
+      setFilasIva(p.iva.map(x => ({ alicuota_id: x.alicuota_id, base: String(x.base_imp), importe: String(x.importe), auto: false })))
+      setTributos(p.tributos.map(t => ({ tipo: t.tipo, jurisdiccion: t.jurisdiccion ?? '', descripcion: t.descripcion ?? '', importe: String(t.importe) })))
+      setNeto(p.iva.length === 0 && p.neto != null ? String(p.neto) : '')
+      setNoGravado(p.no_gravado ? String(p.no_gravado) : '')
+      setExento(p.exento ? String(p.exento) : '')
+      poner('iva', f.iva); poner('tributos', f.tributos); poner('neto', f.neto)
+      poner('no_gravado', f.no_gravado); poner('exento', f.exento)
+    }
+    setFuentes(fu)
+  }
+
+  /** La persona cambió un campo que venía leído: pasa a «a mano». */
+  function tocar(campo: string) {
+    setFuentes(f => (f[campo] && f[campo] !== 'manual' ? { ...f, [campo]: 'manual' } : f))
+  }
+
+  /** Usar lo que dice el papel cuando no coincide con el QR. */
+  function usarAlternativa(i: number, a: PagosAvisoLectura) {
+    const v = a.alternativa
+    if (v == null) return
+    const txt = String(v)
+    if (a.campo === 'numero_comprobante') setNroComprobante(txt.replace(/\D/g, '').slice(-8))
+    else if (a.campo === 'punto_venta') setPuntoVenta(txt.replace(/\D/g, '').slice(-5))
+    else if (a.campo === 'total') setTotal(txt)
+    else if (a.campo === 'fecha') setFecha(txt)
+    else if (a.campo === 'cae') setCae(txt)
+    tocar(a.campo)
+    setResueltos(r => new Set(r).add(i))
+  }
+
+  /** Cerrar sin guardar: el archivo leído no queda colgado en el bucket. */
+  function cerrar() {
+    if (!guardada.current && lectura?.storagePath) void descartarLecturaFactura(lectura.storagePath).catch(() => undefined)
+    onClose()
   }
 
   const [proveedorId, setProveedorId] = useState('')
@@ -104,10 +231,23 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
   const [fecha, setFecha] = useState(hoyAR())
   const [venceEl, setVenceEl] = useState('')
   const [total, setTotal] = useState('')
+  // El desglose como lo pide ARCA (20260924u). `neto` se usa sólo si no hay
+  // alícuotas (B, C o sin discriminar): con alícuotas es la suma de sus bases.
   const [neto, setNeto] = useState('')
-  const [iva, setIva] = useState('')
-  const [percepciones, setPercepciones] = useState('')
-  const [otros, setOtros] = useState('')
+  const [filasIva, setFilasIva] = useState<FilaIva[]>([])
+  const [tributos, setTributos] = useState<FilaTributo[]>([])
+  const [noGravado, setNoGravado] = useState('')
+  const [exento, setExento] = useState('')
+  const [cae, setCae] = useState('')
+  const [caeVto, setCaeVto] = useState('')
+  const [cbteArca, setCbteArca] = useState<number | null>(null)
+  // Lectura del comprobante y de dónde salió cada campo.
+  const [lectura, setLectura] = useState<EstadoLectura | null>(null)
+  const [fuentes, setFuentes] = useState<Record<string, Fuente>>({})
+  const [resueltos, setResueltos] = useState<Set<number>>(new Set())
+  const [altaInicial, setAltaInicial] = useState<{ razon_social: string | null; cuit: string } | null>(null)
+  const lecturaSeq = useRef(0)
+  const guardada = useRef(false)
   const [formaPrevista, setFormaPrevista] = useState<PagosFormaPrevista>('transferencia')
   const [descripcion, setDescripcion] = useState('')
   const [obs, setObs] = useState('')
@@ -145,12 +285,34 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
     setFecha(original.fecha.slice(0, 10))
     setVenceEl(original.vence_el?.slice(0, 10) ?? '')
     setTotal(String(original.total))
-    setNeto(original.neto != null ? String(original.neto) : '')
-    setIva(original.iva != null ? String(original.iva) : '')
-    setPercepciones(original.percepciones != null ? String(original.percepciones) : '')
-    setOtros(original.otros != null ? String(original.otros) : '')
-    if ([original.neto, original.iva, original.percepciones, original.otros].some(v => v != null)) {
-      setVerDesglose(true)
+    {
+      // El detalle guardado; si la factura es de antes del 24/09 y tiene los
+      // números sueltos, se arma una fila con lo que haya para no perderlos.
+      const det = original.iva_detalle ?? []
+      const trib = original.tributos ?? []
+      let filas: FilaIva[] = det.map(x => ({ alicuota_id: x.alicuota_id, base: String(x.base_imp), importe: String(x.importe), auto: false }))
+      if (!filas.length && original.neto != null && original.iva != null && Number(original.iva) > 0) {
+        const neto0 = Number(original.neto), iva0 = Number(original.iva)
+        const alic = ALICUOTAS.find(a => a.pct > 0 && Math.abs(neto0 * a.pct / 100 - iva0) <= 1)?.id ?? 5
+        filas = [{ alicuota_id: alic, base: String(neto0), importe: String(iva0), auto: false }]
+      }
+      setFilasIva(filas)
+      setNeto(!filas.length && original.neto != null ? String(original.neto) : '')
+      let tr: FilaTributo[] = trib.map(t => ({ tipo: t.tipo, jurisdiccion: t.jurisdiccion ?? '', descripcion: t.descripcion ?? '', importe: String(t.importe) }))
+      if (!tr.length) {
+        if (Number(original.percepciones ?? 0) > 0) tr.push({ tipo: 'percepcion_iibb', jurisdiccion: '', descripcion: 'Percepciones cargadas sin discriminar: revisá el tipo', importe: String(original.percepciones) })
+        if (Number(original.otros ?? 0) > 0) tr.push({ tipo: 'otro', jurisdiccion: '', descripcion: 'Otros (sin discriminar)', importe: String(original.otros) })
+      }
+      tr = tr.filter(t => Number(t.importe) > 0)
+      setTributos(tr)
+      setNoGravado(original.no_gravado != null ? String(original.no_gravado) : '')
+      setExento(original.exento != null ? String(original.exento) : '')
+      setCae(original.cae ?? '')
+      setCaeVto(original.cae_vto?.slice(0, 10) ?? '')
+      setCbteArca(original.cbte_tipo_arca ?? null)
+      if (filas.length || tr.length || [original.neto, original.iva, original.no_gravado, original.exento].some(v => v != null)) {
+        setVerDesglose(true)
+      }
     }
     setFormaPrevista(original.forma_pago_prevista)
     setPlan(original.plan_cheques ?? null)
@@ -182,8 +344,19 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
 
   const totalN = n(total)
   const conCheques = formaPrevista === 'echeq' || formaPrevista === 'cheque'
-  const percN  = n(percepciones)
+  const ivaValidas = filasIva.filter(f => n(f.base) || n(f.importe))
+  const tributosValidos = tributos.filter(t => n(t.importe) > 0)
+  const resumen = resumirDesglose({
+    iva: ivaValidas.map(f => ({ alicuota_id: f.alicuota_id, base: n(f.base), importe: n(f.importe) })),
+    tributos: tributosValidos.map(t => ({ tipo: t.tipo, importe: n(t.importe) })),
+    neto: n(neto), noGravado: n(noGravado), exento: n(exento), total: totalN,
+  })
+  // Las percepciones no se reparten entre obras (§5.18): lo imputable es el total menos ellas.
+  const percN  = verDesglose ? resumen.percepciones : 0
   const imputable = r2(totalN - percN)
+  // El desglose cierra si está vacío (sólo el total) o si suma el total.
+  const desgloseVacio = !ivaValidas.length && !tributosValidos.length && !n(neto) && !n(noGravado) && !n(exento)
+  const desgloseOk = !verDesglose || desgloseVacio || resumen.cierra
   const sumaReparto = r2(reparto.reduce((s, f) => s + n(f.monto), 0))
   const difReparto = r2(imputable - sumaReparto)
   const repartoOk = reparto.every(f => f.obra_cod) && Math.abs(difReparto) < 0.005 && imputable > 0
@@ -258,20 +431,28 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
       original.fecha.slice(0, 10) !== fecha ||
       Number(original.total) !== totalN ||
       Number(original.percepciones ?? 0) !== percN ||
+      (verDesglose && Number(original.iva ?? 0) !== resumen.iva) ||
       (original.vence_el?.slice(0, 10) ?? '') !== venceEl ||
       original.forma_pago_prevista !== formaPrevista ||
       original.paga_cliente !== pagaCliente ||
       JSON.stringify(original.imputaciones.map(i => [i.obra_cod, Number(i.monto)]).sort()) !==
       JSON.stringify(reparto.filter(f => f.obra_cod).map(f => [f.obra_cod, n(f.monto)]).sort())
     )
-  }, [original, proveedorId, fecha, totalN, percN, venceEl, formaPrevista, pagaCliente, reparto])
+  }, [original, proveedorId, fecha, totalN, percN, verDesglose, resumen.iva, venceEl, formaPrevista, pagaCliente, reparto])
 
   const tienePagos = !!original && (original.pagado > 0 || original.acreditado > 0)
   const congelado  = tienePagos   // proveedor, fecha e importes no se tocan con pagos
   const numeroCompleto = componerNumero(puntoVenta, nroComprobante)
   const listo = !!proveedorId && !!puntoVenta && !!nroComprobante &&
-                totalN > 0 && descripcion.trim().length >= 3 && repartoOk &&
+                totalN > 0 && descripcion.trim().length >= 3 && repartoOk && desgloseOk &&
                 (!tienePagos || motivo.trim().length >= 3)
+  const leyendo = lectura?.fase === 'leyendo'
+  const lecturaId = !esEdicion && lectura?.fase === 'lista' ? lectura.res?.lectura_id ?? null : null
+  // Los avisos de la lectura que siguen vigentes. «No cierra» se recalcula en
+  // vivo en el desglose, así que el de la lectura no se repite.
+  const avisosLectura = (lectura?.res?.avisos ?? [])
+    .map((a, i) => ({ a, i }))
+    .filter(({ a, i }) => a.codigo !== 'NO_CIERRA' && !resueltos.has(i) && !(a.codigo === 'PROVEEDOR_NUEVO' && proveedorId))
 
   async function subirComprobante(file: File) {
     setSubiendo(true)
@@ -290,16 +471,37 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
       .filter(f => f.obra_cod)
       .map(f => ({ obra_cod: f.obra_cod, monto: n(f.monto), obs: f.obs || undefined }))
 
+    // El desglose: con detalle, la base deriva neto (si hay alícuotas), IVA,
+    // percepciones y otros; acá se manda el detalle y lo que no se deriva.
+    const teniaDetalle = !!original && ((original.iva_detalle?.length ?? 0) > 0 || (original.tributos?.length ?? 0) > 0)
+    const desglose = verDesglose && !desgloseVacio
+      ? {
+          neto: ivaValidas.length ? null : (neto ? n(neto) : null),
+          no_gravado: noGravado ? n(noGravado) : null,
+          exento: exento ? n(exento) : null,
+          iva_detalle: ivaValidas.map(f => ({ alicuota_id: f.alicuota_id, base_imp: n(f.base), importe: n(f.importe) })),
+          tributos: tributosValidos.map(t => ({
+            tipo: t.tipo, jurisdiccion: t.jurisdiccion.trim() || null, descripcion: t.descripcion.trim(),
+            alicuota: null, base_imp: null, importe: n(t.importe),
+          })),
+        }
+      : {
+          neto: null, iva: null, percepciones: null, otros: null, no_gravado: null, exento: null,
+          // Quitar el desglose de una que lo tenía: se vacía el detalle.
+          ...(teniaDetalle ? { iva_detalle: [], tributos: [] } : {}),
+        }
+    const cbte = cbteArca ?? ({ A: 1, B: 6, C: 11 } as Partial<Record<PagosTipoComprobante, number>>)[tipo] ?? null
+
     const comunes = {
       proveedor_id: Number(proveedorId),
       tipo_comprobante: tipo,
       numero: numeroCompleto || null,
       fecha,
       vence_el: venceEl || null,
-      neto: neto ? n(neto) : null,
-      iva: iva ? n(iva) : null,
-      percepciones: percepciones ? n(percepciones) : null,
-      otros: otros ? n(otros) : null,
+      ...desglose,
+      cae: cae.trim() || null,
+      cae_vto: caeVto || null,
+      cbte_tipo_arca: cbte,
       total: totalN,
       forma_pago_prevista: formaPrevista,
       descripcion: descripcion.trim(),
@@ -318,6 +520,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
       } else {
         const r = await crear.mutateAsync({
           ...comunes,
+          lectura_id: lecturaId,
           orden: yaPagada ? {
             fecha: opFecha,
             forma_pago: opForma,
@@ -326,9 +529,11 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
             comprobante: opComprobante,
           } : null,
         })
+        guardada.current = true
         toast(r.orden ? `✓ Factura cargada y pagada (${r.orden.numero_fmt})` : '✓ Factura cargada', 'ok')
         for (const a of r.avisos) toast(mensajeAvisoPagos(a), 'warn')
-        if (archivo) {
+        // Con lectura, el archivo ya quedó adjunto del lado del servidor.
+        if (archivo && !lecturaId) {
           // La factura ya quedó guardada: si el archivo falla, no se deshace
           // nada, se avisa y se sube después desde la ficha.
           try {
@@ -347,20 +552,21 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
   }
 
   if (esEdicion && isLoading) {
-    return <Modal open onClose={onClose} title="Editar factura" width="max-w-3xl">
+    return <Modal open onClose={cerrar} title="Editar factura" width="max-w-3xl">
       <div className="p-8 text-center text-sm text-gris-dark">Cargando…</div>
     </Modal>
   }
 
   return (
     <Modal
-      open onClose={onClose} width={esEdicion ? 'max-w-3xl' : 'max-w-6xl'}
+      open onClose={cerrar} width={esEdicion ? 'max-w-3xl' : 'max-w-6xl'}
       title={esEdicion ? 'Editar factura' : 'Cargar factura de proveedor'}
       footer={
         <div className="flex gap-2 justify-end">
-          <Button variant="ghost" size="sm" onClick={onClose}>Cancelar</Button>
-          <Button size="sm" onClick={guardar} loading={crear.isPending || editar.isPending || subirAdj.isPending} disabled={!listo}
-            title={!listo ? 'Faltan datos: proveedor, número de factura, total, descripción y que el reparto cuadre' : undefined}>
+          <Button variant="ghost" size="sm" onClick={cerrar}>Cancelar</Button>
+          <Button size="sm" onClick={guardar} loading={crear.isPending || editar.isPending || subirAdj.isPending} disabled={!listo || leyendo}
+            title={leyendo ? 'Esperá a que termine de leer la factura'
+              : !listo ? 'Faltan datos: proveedor, número de factura, total, descripción, que el desglose cierre y que el reparto cuadre' : undefined}>
             {esEdicion ? 'Guardar cambios' : yaPagada ? 'Cargar y registrar el pago' : 'Cargar factura'}
           </Button>
         </div>
@@ -368,8 +574,8 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
     >
       <div className={esEdicion ? '' : 'grid gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]'}>
       {!esEdicion && (
-        <PanelComprobante archivo={archivo} previewUrl={previewUrl}
-          onElegir={elegirArchivo} onQuitar={() => setArchivo(null)} />
+        <PanelComprobante archivo={archivo} previewUrl={previewUrl} lectura={lectura}
+          onElegir={elegirArchivo} onQuitar={() => { olvidarLectura(); setArchivo(null) }} />
       )}
       <div className="flex flex-col gap-3 text-sm min-w-0">
 
@@ -384,17 +590,23 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
           </div>
         )}
 
+        {!esEdicion && lectura && (
+          <AvisosLectura lectura={lectura} avisos={avisosLectura}
+            onUsar={usarAlternativa} onAlta={() => setAltaProveedor(true)} />
+        )}
+
         <Seccion titulo="Proveedor y comprobante" />
         {/* Proveedor */}
         <div className="flex gap-2 items-end">
           <div className="flex-1 min-w-0">
             <Combobox
               label="Proveedor" placeholder="Buscar por razón social o CUIT…"
-              options={provOpts} value={proveedorId} onChange={setProveedorId} disabled={congelado}
+              options={provOpts} value={proveedorId} onChange={v => { setProveedorId(v); tocar('proveedor') }} disabled={congelado}
             />
           </div>
           <Button variant="secondary" size="sm" onClick={() => setAltaProveedor(true)} disabled={congelado}>+ Nuevo</Button>
         </div>
+        {fuentes.proveedor && <div className="-mt-2 text-[11px] text-gris-dark">Por el CUIT del comprobante <MarcaFuente f={fuentes.proveedor} /></div>}
         {/* El CBU sólo hace falta para TRANSFERIR. Un proveedor al que se le
             paga con cheque o en cuenta corriente no lo necesita nunca, y hasta
             el 2026-09-21 este aviso salía siempre: parecía que faltaba un dato
@@ -408,87 +620,93 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
         {/* Comprobante: tipo y número en una fila, las fechas en otra. En una
             sola fila de cuatro el número (dos campos) quedaba apretado. */}
         <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-2">
-          <Campo label="Tipo">
-            <select value={tipo} onChange={e => setTipo(e.target.value as PagosTipoComprobante)} disabled={congelado} className={inputCls}>
+          <Campo label="Tipo" fuente={fuentes.tipo_comprobante}>
+            <select value={tipo} onChange={e => { setTipo(e.target.value as PagosTipoComprobante); setCbteArca(null); tocar('tipo_comprobante') }} disabled={congelado} className={inputCls}>
               {TIPOS_COMPROBANTE.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
             </select>
           </Campo>
-          <Campo label="Número" hint="Punto de venta y comprobante">
+          <Campo label="Número" hint="Punto de venta y comprobante" fuente={fuentes.numero_comprobante ?? fuentes.punto_venta}>
             <div className="flex items-center gap-1">
               {/* El ancho va en el wrapper: `inputCls` trae `w-full`, que le gana
                   a un `w-16` en el mismo className (ver el reparto por obra). */}
               <div className="w-20 shrink-0">
                 <input inputMode="numeric" value={puntoVenta} placeholder="0001"
-                  onChange={e => setPuntoVenta(e.target.value.replace(/\D/g, '').slice(0, 5))}
+                  onChange={e => { setPuntoVenta(e.target.value.replace(/\D/g, '').slice(0, 5)); tocar('punto_venta') }}
                   className={`${inputCls} text-center font-mono`} />
               </div>
               <span className="text-gris-dark">-</span>
               <input inputMode="numeric" value={nroComprobante} placeholder="00012345"
-                onChange={e => setNroComprobante(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                onChange={e => { setNroComprobante(e.target.value.replace(/\D/g, '').slice(0, 8)); tocar('numero_comprobante') }}
                 className={`${inputCls} font-mono`} />
             </div>
           </Campo>
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <Campo label="Emitida">
-            <input type="date" value={fecha} max={hoyAR()} onChange={e => setFecha(e.target.value)} disabled={congelado} className={inputCls} />
+          <Campo label="Emitida" fuente={fuentes.fecha}>
+            <input type="date" value={fecha} max={hoyAR()} onChange={e => { setFecha(e.target.value); tocar('fecha') }} disabled={congelado} className={inputCls} />
             {/* El campo arranca en hoy, y hasta el 23/09 las 13 facturas
                 cargadas tenían la fecha del día de carga: nadie la cambiaba.
                 Una vez pagada queda congelada, así que conviene verlo acá. */}
-            {!esEdicion && fecha === hoyAR() && (
+            {!esEdicion && fecha === hoyAR() && !fuentes.fecha && (
               <div className="mt-1 text-[11px] text-[#7A5000]">Es la fecha de hoy: ¿es la que dice el papel?</div>
             )}
           </Campo>
-          <Campo label="Vence" hint="Opcional">
-            <input type="date" value={venceEl} min={fecha} onChange={e => setVenceEl(e.target.value)} className={inputCls} />
+          <Campo label="Vence" hint="Opcional" fuente={fuentes.vence_el}>
+            <input type="date" value={venceEl} min={fecha} onChange={e => { setVenceEl(e.target.value); tocar('vence_el') }} className={inputCls} />
           </Campo>
         </div>
+        {/* CAE: lo pide el Libro IVA. Viene del QR o del papel; a mano es opcional. */}
+        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2 items-end">
+          <Campo label="CAE" hint="Opcional" fuente={fuentes.cae}>
+            <input inputMode="numeric" value={cae} placeholder="14 dígitos"
+              onChange={e => { setCae(e.target.value.replace(/\D/g, '').slice(0, 14)); tocar('cae') }}
+              className={`${inputCls} font-mono`} />
+          </Campo>
+          <Campo label="Vence el CAE" hint="Opcional" fuente={fuentes.cae_vto}>
+            <input type="date" value={caeVto} onChange={e => { setCaeVto(e.target.value); tocar('cae_vto') }} className={inputCls} />
+          </Campo>
+          {cbteArca != null && (
+            <div className="pb-2 text-[11px] text-gris-dark whitespace-nowrap" title="Código de comprobante de ARCA">
+              ARCA: {NOMBRE_CBTE_ARCA[cbteArca] ?? `cód. ${cbteArca}`}
+            </div>
+          )}
+        </div>
+        {cae && cae.length !== 14 && <div className="-mt-2 text-[11px] text-rojo">El CAE tiene 14 dígitos.</div>}
 
         <Seccion titulo="Importes" />
         {/* Importes. Lo único obligatorio es el total; el desglose está
             plegado a propósito (ver el comentario de `verDesglose`). */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 items-end">
-          <Campo label="Total (con IVA)" hint="Lo que se le paga">
-            <InputMonto value={total} onChange={setTotal} disabled={congelado}
+          <Campo label="Total (con IVA)" hint="Lo que se le paga" fuente={fuentes.total}>
+            <InputMonto value={total} onChange={v => { setTotal(v); tocar('total') }} disabled={congelado}
               className="font-mono font-bold py-2 rounded" />
           </Campo>
           {!verDesglose && (
             <div className="col-span-2 sm:col-span-2 pb-2">
-              <button type="button" onClick={() => setVerDesglose(true)}
-                className="text-[11px] text-azul hover:underline">
-                + Desglosar neto, IVA y percepciones
+              <button type="button" onClick={() => setVerDesglose(true)} disabled={congelado}
+                className="text-[11px] text-azul hover:underline disabled:opacity-50">
+                + Discriminar IVA, percepciones e impuestos
               </button>
-              <div className="text-[11px] text-gris-dark">Opcional. Con el total alcanza para cargar y aprobar.</div>
+              <div className="text-[11px] text-gris-dark">Opcional, pero es lo que usa el contador para el Libro IVA.</div>
             </div>
           )}
         </div>
 
         {verDesglose && (
-          <div className="border border-gris rounded p-2 bg-gris/20">
-            <div className="flex items-center justify-between gap-2 mb-1.5">
-              <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wide">Desglose · opcional</div>
-              <button type="button" onClick={() => { setVerDesglose(false); setNeto(''); setIva(''); setPercepciones(''); setOtros('') }}
-                className="text-[11px] text-gris-dark hover:text-rojo hover:underline">
-                Quitar el desglose
-              </button>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <Campo label="Neto" hint="Opcional"><InputMonto value={neto} onChange={setNeto} disabled={congelado} className="py-2 rounded" /></Campo>
-              <Campo label="IVA" hint="Opcional"><InputMonto value={iva} onChange={setIva} disabled={congelado} className="py-2 rounded" /></Campo>
-              <Campo label="Percepciones" hint="No se reparten">
-                <InputMonto value={percepciones} onChange={setPercepciones} disabled={congelado} className="py-2 rounded" />
-              </Campo>
-              <Campo label="Otros" hint="Con signo"><InputMonto value={otros} onChange={setOtros} disabled={congelado} className="py-2 rounded" /></Campo>
-            </div>
-            <div className="text-[11px] text-gris-dark mt-1.5">
-              Si cargás neto e IVA, tienen que sumar el total. Las percepciones no se reparten entre obras.
-            </div>
-          </div>
+          <DesgloseArca
+            filasIva={filasIva} setFilasIva={v => { setFilasIva(v); tocar('iva') }}
+            tributos={tributos} setTributos={v => { setTributos(v); tocar('tributos') }}
+            neto={neto} setNeto={v => { setNeto(v); tocar('neto') }}
+            noGravado={noGravado} setNoGravado={v => { setNoGravado(v); tocar('no_gravado') }}
+            exento={exento} setExento={v => { setExento(v); tocar('exento') }}
+            resumen={resumen} total={totalN} tipo={tipo} fuentes={fuentes} disabled={congelado}
+            onQuitar={() => { setVerDesglose(false); setFilasIva([]); setTributos([]); setNeto(''); setNoGravado(''); setExento('') }}
+          />
         )}
 
         <Seccion titulo="Qué se compró y cómo se paga" />
-        <Campo label="Descripción" hint="Qué se compró: lo lee quien aprueba">
-          <input value={descripcion} onChange={e => setDescripcion(e.target.value)} placeholder="Ej.: hierro del 8 y mallas para el techo" className={inputCls} />
+        <Campo label="Descripción" hint="Qué se compró: lo lee quien aprueba" fuente={fuentes.descripcion}>
+          <input value={descripcion} onChange={e => { setDescripcion(e.target.value); tocar('descripcion') }} placeholder="Ej.: hierro del 8 y mallas para el techo" className={inputCls} />
         </Campo>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -638,6 +856,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
 
       {altaProveedor && (
         <AltaRapidaProveedor
+          inicial={altaInicial ?? undefined}
           onClose={() => setAltaProveedor(false)}
           onCreado={id => { setProveedorId(String(id)); setAltaProveedor(false) }}
         />
@@ -648,11 +867,11 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
 
 const inputCls = 'w-full px-2.5 py-2 border-[1.5px] border-gris-mid rounded text-sm bg-white outline-none focus:border-naranja disabled:bg-gris disabled:text-gris-dark'
 
-function Campo({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function Campo({ label, hint, fuente, children }: { label: string; hint?: string; fuente?: Fuente; children: React.ReactNode }) {
   return (
     <div>
       <label className="block text-xs font-semibold text-gris-dark mb-1">
-        {label}{hint && <span className="font-normal"> · {hint}</span>}
+        {label}{hint && <span className="font-normal"> · {hint}</span>} <MarcaFuente f={fuente} />
       </label>
       {children}
     </div>
@@ -672,8 +891,8 @@ function Seccion({ titulo }: { titulo: string }) {
  * Sin archivo es una zona para arrastrar o elegir; con archivo, la vista
  * previa (imagen o PDF) queda fija mientras se scrollea el formulario.
  */
-function PanelComprobante({ archivo, previewUrl, onElegir, onQuitar }: {
-  archivo: File | null; previewUrl: string | null
+function PanelComprobante({ archivo, previewUrl, lectura, onElegir, onQuitar }: {
+  archivo: File | null; previewUrl: string | null; lectura: EstadoLectura | null
   onElegir: (f: File | undefined) => void; onQuitar: () => void
 }) {
   const [arrastrando, setArrastrando] = useState(false)
@@ -689,11 +908,12 @@ function PanelComprobante({ archivo, previewUrl, onElegir, onQuitar }: {
         className={`flex flex-col items-center justify-center gap-2 text-center rounded-card border-2 border-dashed p-6 min-h-[220px] lg:min-h-[480px] cursor-pointer transition-colors ${
           arrastrando ? 'border-naranja bg-naranja/5' : 'border-gris-mid bg-gris/20 hover:border-naranja'}`}>
         <span className="text-3xl">📄</span>
-        <span className="text-sm font-semibold text-azul">Adjuntá la factura</span>
-        <span className="text-xs text-gris-dark max-w-[240px]">
-          Arrastrá la foto o el PDF, o hacé clic para elegirlo. La vas a ver acá mientras cargás los datos.
+        <span className="text-sm font-semibold text-azul">Empezá por la factura</span>
+        <span className="text-xs text-gris-dark max-w-[260px]">
+          Arrastrá la foto o el PDF, o hacé clic para elegirlo. El sistema la lee —QR de ARCA, IVA, percepciones— y
+          te deja los datos cargados para que los revises.
         </span>
-        <span className="text-[11px] text-gris-dark">Opcional · hasta 10 MB</span>
+        <span className="text-[11px] text-gris-dark">Hasta 10 MB · sin archivo se carga a mano</span>
         <input type="file" className="hidden" accept={MIME_ADJUNTOS} onChange={e => { onElegir(e.target.files?.[0]); e.target.value = '' }} />
       </label>
     )
@@ -723,7 +943,12 @@ function PanelComprobante({ archivo, previewUrl, onElegir, onQuitar }: {
           </div>
         )}
       </div>
-      <div className="text-[11px] text-gris-dark">Se adjunta al guardar, y el sistema controla número, total y fecha contra lo que cargues.</div>
+      <div className="text-[11px] text-gris-dark">
+        {lectura?.fase === 'leyendo' && <span className="text-azul font-semibold">Leyendo la factura… (unos segundos)</span>}
+        {lectura?.fase === 'lista' && <>Leída{lectura.res?.estado === 'qr+ia' ? ' (QR de ARCA + texto)' : lectura.res?.estado === 'qr' ? ' (sólo QR de ARCA)' : lectura.res?.estado === 'ia' ? ' (sin QR: todo del texto)' : ''}. Se adjunta al guardar.</>}
+        {lectura?.fase === 'error' && <span className="text-naranja-dark">No se pudo leer ({lectura.error}). Cargala a mano: el archivo se adjunta igual al guardar.</span>}
+        {!lectura && 'Se adjunta al guardar, y el sistema controla número, total y fecha contra lo que cargues.'}
+      </div>
     </div>
   )
 }
@@ -787,6 +1012,196 @@ function PlanCheques({ plan, total, onChange, etiqueta }: {
           </span>
         ))}
         <div className="mt-0.5">Se precargan en el Excel del Galicia y al registrar el pago; ahí se pueden ajustar.</div>
+      </div>
+    </div>
+  )
+}
+
+/** De dónde salió un campo: QR de ARCA, leído del papel, o corregido a mano. */
+function MarcaFuente({ f }: { f?: Fuente }) {
+  if (!f) return null
+  const cfg: Record<Fuente, { txt: string; cls: string; title: string }> = {
+    'qr':     { txt: 'QR',     cls: 'bg-verde-light text-verde border-verde/30', title: 'Del QR de ARCA' },
+    'qr+ia':  { txt: 'QR ✓',   cls: 'bg-verde-light text-verde border-verde/30', title: 'El QR de ARCA y el papel dicen lo mismo' },
+    'ia':     { txt: 'leído',  cls: 'bg-azul/10 text-azul border-azul/30', title: 'Leído del comprobante: revisalo contra el papel' },
+    'manual': { txt: 'a mano', cls: 'bg-gris text-gris-dark border-gris-mid', title: 'Venía leído y lo cambiaste' },
+  }
+  const c = cfg[f]
+  return <span title={c.title} className={`inline-block align-middle ml-1 px-1.5 py-px rounded border text-[10px] font-semibold leading-tight ${c.cls}`}>{c.txt}</span>
+}
+
+/** Lo que encontró la lectura y hay que mirar, de lo más grave a lo informativo. */
+function AvisosLectura({ lectura, avisos, onUsar, onAlta }: {
+  lectura: EstadoLectura
+  avisos: { a: PagosAvisoLectura; i: number }[]
+  onUsar: (i: number, a: PagosAvisoLectura) => void
+  onAlta: () => void
+}) {
+  if (lectura.fase === 'leyendo') {
+    return (
+      <div className="rounded border border-azul/30 bg-azul/5 p-2 text-xs text-azul animate-pulse">
+        Leyendo la factura: buscando el QR de ARCA y los importes…
+      </div>
+    )
+  }
+  if (lectura.fase === 'error' || !avisos.length) {
+    return lectura.fase === 'lista'
+      ? <div className="rounded border border-verde/30 bg-verde-light p-2 text-xs text-verde">✓ Factura leída sin observaciones. Revisá los datos y cargala.</div>
+      : null
+  }
+  const estilo = {
+    error:       'border-rojo/40 bg-rojo-light text-rojo',
+    advertencia: 'border-amarillo/50 bg-amarillo-light text-[#7A5000]',
+    info:        'border-gris-mid bg-gris/40 text-gris-dark',
+  } as const
+  return (
+    <div className="flex flex-col gap-1">
+      {avisos.map(({ a, i }) => (
+        <div key={i} className={`rounded border px-2 py-1.5 text-xs flex items-start gap-2 ${estilo[a.severidad]}`}>
+          <span className="shrink-0">{a.severidad === 'error' ? '⛔' : a.severidad === 'advertencia' ? '⚠' : 'ℹ'}</span>
+          <span className="flex-1 min-w-0">{a.mensaje}</span>
+          {a.alternativa != null && (
+            <button type="button" onClick={() => onUsar(i, a)} className="shrink-0 underline font-semibold">
+              Usar el del papel
+            </button>
+          )}
+          {a.codigo === 'PROVEEDOR_NUEVO' && (
+            <button type="button" onClick={onAlta} className="shrink-0 underline font-semibold">Darlo de alta</button>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+const chico = 'w-full px-2 py-1.5 border-[1.5px] border-gris-mid rounded text-xs bg-white outline-none focus:border-naranja disabled:bg-gris'
+
+/**
+ * El desglose como lo pide ARCA: IVA por alícuota, no gravado, exento y
+ * percepciones/tributos con su jurisdicción, con el cierre contra el total en
+ * vivo. Es lo que después arma el Libro IVA de compras.
+ */
+function DesgloseArca(p: {
+  filasIva: FilaIva[]; setFilasIva: (v: FilaIva[]) => void
+  tributos: FilaTributo[]; setTributos: (v: FilaTributo[]) => void
+  neto: string; setNeto: (v: string) => void
+  noGravado: string; setNoGravado: (v: string) => void
+  exento: string; setExento: (v: string) => void
+  resumen: ReturnType<typeof resumirDesglose>; total: number; tipo: PagosTipoComprobante
+  fuentes: Record<string, Fuente>; disabled: boolean; onQuitar: () => void
+}) {
+  const { filasIva, tributos, resumen } = p
+  const usadas = new Set(filasIva.map(f => f.alicuota_id))
+  const libre = ALICUOTAS.find(a => !usadas.has(a.id))
+  const setFila = (i: number, cambio: Partial<FilaIva>) => p.setFilasIva(filasIva.map((f, j) => {
+    if (j !== i) return f
+    const nueva = { ...f, ...cambio }
+    // Mientras el importe sea el sugerido, sigue a la base (y a la alícuota).
+    if (('base' in cambio || 'alicuota_id' in cambio) && nueva.auto) {
+      nueva.importe = nueva.base ? String(ivaDe(n(nueva.base), nueva.alicuota_id)) : ''
+    }
+    if ('importe' in cambio) nueva.auto = false
+    return nueva
+  }))
+  const setTrib = (i: number, cambio: Partial<FilaTributo>) => p.setTributos(tributos.map((t, j) => j === i ? { ...t, ...cambio } : t))
+  const sinAlicuotas = filasIva.length === 0
+
+  return (
+    <div className="border border-gris rounded p-2 bg-gris/20 flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wide">Desglose de impuestos</div>
+        <button type="button" onClick={p.onQuitar} disabled={p.disabled} className="text-[11px] text-gris-dark hover:text-rojo hover:underline disabled:opacity-50">
+          Quitar el desglose
+        </button>
+      </div>
+
+      {/* IVA por alícuota */}
+      <div>
+        <div className="text-[11px] font-semibold text-gris-dark mb-1">
+          IVA por alícuota <MarcaFuente f={p.fuentes.iva} />
+          {(p.tipo === 'B' || p.tipo === 'C') && <span className="font-normal"> · una factura {p.tipo} no discrimina IVA: dejalo vacío</span>}
+        </div>
+        {filasIva.map((f, i) => (
+          <div key={i} className="grid grid-cols-[90px_minmax(0,1fr)_minmax(0,1fr)_auto] gap-1.5 items-center mb-1">
+            <select value={f.alicuota_id} disabled={p.disabled} className={chico}
+              onChange={e => setFila(i, { alicuota_id: Number(e.target.value) as PagosAlicuotaId })}>
+              {ALICUOTAS.filter(a => a.id === f.alicuota_id || !usadas.has(a.id)).map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
+            </select>
+            <InputMonto value={f.base} onChange={v => setFila(i, { base: v })} placeholder="Neto gravado" disabled={p.disabled} className="py-1.5 text-xs rounded" />
+            <div>
+              <InputMonto value={f.importe} onChange={v => setFila(i, { importe: v })} placeholder="IVA" disabled={p.disabled} className="py-1.5 text-xs rounded" />
+              {f.base && f.importe && pctDeAlicuota(f.alicuota_id) > 0 && ivaNoCuadra(n(f.base), n(f.importe), f.alicuota_id) && (
+                <div className="text-[10px] text-naranja-dark">Al {pctDeAlicuota(f.alicuota_id)} % daría {fmtM(ivaDe(n(f.base), f.alicuota_id))}</div>
+              )}
+            </div>
+            <button type="button" disabled={p.disabled} onClick={() => p.setFilasIva(filasIva.filter((_, j) => j !== i))}
+              className="text-rojo hover:bg-rojo-light px-2 py-1 rounded text-xs">✕</button>
+          </div>
+        ))}
+        {libre && (
+          <button type="button" disabled={p.disabled} className="text-[11px] text-azul hover:underline disabled:opacity-50"
+            onClick={() => p.setFilasIva([...filasIva, { alicuota_id: libre.id, base: '', importe: '', auto: true }])}>
+            + Alícuota de IVA
+          </button>
+        )}
+      </div>
+
+      <div className="grid grid-cols-3 gap-2">
+        {sinAlicuotas && (
+          <Campo label="Neto" hint="Sin IVA discriminado" fuente={p.fuentes.neto}>
+            <InputMonto value={p.neto} onChange={p.setNeto} disabled={p.disabled} className="py-1.5 text-xs rounded" />
+          </Campo>
+        )}
+        <Campo label="No gravado" fuente={p.fuentes.no_gravado}>
+          <InputMonto value={p.noGravado} onChange={p.setNoGravado} disabled={p.disabled} className="py-1.5 text-xs rounded" />
+        </Campo>
+        <Campo label="Exento" fuente={p.fuentes.exento}>
+          <InputMonto value={p.exento} onChange={p.setExento} disabled={p.disabled} className="py-1.5 text-xs rounded" />
+        </Campo>
+      </div>
+
+      {/* Percepciones y tributos */}
+      <div>
+        <div className="text-[11px] font-semibold text-gris-dark mb-1">
+          Percepciones e impuestos <MarcaFuente f={p.fuentes.tributos} />
+          <span className="font-normal"> · las percepciones no se reparten entre obras</span>
+        </div>
+        {tributos.map((t, i) => {
+          const conJur = TIPOS_TRIBUTO.find(x => x.key === t.tipo)?.conJurisdiccion
+          return (
+            <div key={i} className="grid grid-cols-[150px_minmax(0,1fr)_110px_auto] gap-1.5 items-center mb-1">
+              <select value={t.tipo} disabled={p.disabled} className={chico}
+                onChange={e => setTrib(i, { tipo: e.target.value as PagosTributoTipo })}>
+                {TIPOS_TRIBUTO.map(x => <option key={x.key} value={x.key}>{x.label}</option>)}
+              </select>
+              <input value={conJur ? t.jurisdiccion : t.descripcion} disabled={p.disabled} className={chico}
+                placeholder={conJur ? (t.tipo === 'percepcion_municipal' ? 'Municipio' : 'Provincia (ej. Tucumán)') : 'Detalle (opcional)'}
+                title={conJur && t.descripcion ? t.descripcion : undefined}
+                onChange={e => setTrib(i, conJur ? { jurisdiccion: e.target.value } : { descripcion: e.target.value })} />
+              <InputMonto value={t.importe} onChange={v => setTrib(i, { importe: v })} disabled={p.disabled} className="py-1.5 text-xs rounded" />
+              <button type="button" disabled={p.disabled} onClick={() => p.setTributos(tributos.filter((_, j) => j !== i))}
+                className="text-rojo hover:bg-rojo-light px-2 py-1 rounded text-xs">✕</button>
+            </div>
+          )
+        })}
+        <button type="button" disabled={p.disabled} className="text-[11px] text-azul hover:underline disabled:opacity-50"
+          onClick={() => p.setTributos([...tributos, { tipo: 'percepcion_iibb', jurisdiccion: 'Tucumán', descripcion: '', importe: '' }])}>
+          + Percepción o impuesto
+        </button>
+      </div>
+
+      {/* Cierre en vivo */}
+      <div className="border-t border-gris pt-1.5 text-[11px] flex flex-wrap gap-x-3 gap-y-0.5 items-center">
+        <span>Neto <b className="font-mono tabular-nums">{fmtM(resumen.netoGravado)}</b></span>
+        <span>IVA <b className="font-mono tabular-nums">{fmtM(resumen.iva)}</b></span>
+        {resumen.percepciones > 0 && <span>Percepciones <b className="font-mono tabular-nums">{fmtM(resumen.percepciones)}</b></span>}
+        {resumen.otros > 0 && <span>Otros <b className="font-mono tabular-nums">{fmtM(resumen.otros)}</b></span>}
+        <span>= <b className="font-mono tabular-nums">{fmtM(resumen.suma)}</b></span>
+        {p.total > 0 && (resumen.cierra
+          ? <span className="text-verde font-semibold">✓ Cierra con el total</span>
+          : <span className="text-rojo font-semibold">
+              {resumen.diferencia > 0 ? `Faltan ${fmtM(resumen.diferencia)}` : `Sobran ${fmtM(-resumen.diferencia)}`} para llegar al total de {fmtM(p.total)}
+            </span>)}
       </div>
     </div>
   )
