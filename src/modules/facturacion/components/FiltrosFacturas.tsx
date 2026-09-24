@@ -6,7 +6,7 @@ import { Combobox } from '@/components/ui/Combobox'
 import { useCentrosCosto, type FacturasFiltro } from '../hooks/useFacturacion'
 import { useClientesVenta } from '../hooks/useClientesFacturacion'
 import { ESTADOS, PRODUCTOS, TIPOS_CBTE, fmtCuit } from '../utils/facturacion.utils'
-import type { VentasEstado, VentasProducto } from '@/types/domain.types'
+import type { VentasCbteTipo, VentasEstado, VentasProducto } from '@/types/domain.types'
 
 /**
  * La barra de filtros de la bandeja. Todo va al server: acá solo se arma el
@@ -92,7 +92,7 @@ export function FiltrosFacturas({ filtro, patch }: Props) {
             <div>
               <label className={lblCls}>Tipo</label>
               <select className={selCls} value={filtro.cbte_tipo ?? ''}
-                onChange={e => patch({ cbte_tipo: e.target.value ? (Number(e.target.value) as 1 | 3 | 6 | 8) : undefined })}>
+                onChange={e => patch({ cbte_tipo: e.target.value ? (Number(e.target.value) as VentasCbteTipo) : undefined })}>
                 <option value="">Todos</option>
                 {TIPOS_CBTE.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
               </select>

@@ -145,6 +145,7 @@ function FilaFinnegans({ f, vista, puedeRegistrar, onRegistrar }: {
         <Copiar label="Número" valor={f.numero_fmt ?? ''} />
         <Copiar label="Cliente" valor={f.rec_razon_social} />
         <Copiar label="Letra" valor={f.letra} />
+        {f.es_fce && <Copiar label="Tipo" valor={f.cod_cbte} muestra={`${f.cod_cbte} · ${cortoTipo(f.cbte_tipo)}`} titulo={f.tipo_nombre} />}
         <Copiar label={f.rec_doc_tipo === 80 || f.rec_doc_tipo === 86 ? 'CUIT' : 'Documento'}
           valor={f.rec_doc_tipo === 99 ? '0' : f.rec_doc_nro} muestra={fmtDoc(f.rec_doc_tipo, f.rec_doc_nro)} />
         <Copiar label="Producto" valor={f.producto} />
@@ -155,6 +156,9 @@ function FilaFinnegans({ f, vista, puedeRegistrar, onRegistrar }: {
         <Copiar label="IVA" valor={signo + numeroParaCopiar(f.imp_iva)} muestra={fmtM(f.imp_iva)} />
         <Copiar label="Total" valor={signo + numeroParaCopiar(f.imp_total)} muestra={fmtM(f.imp_total)} />
         <Copiar label="CAE" valor={f.cae ?? ''} />
+        {f.cbte_tipo === 201 && f.fch_vto_pago && <Copiar label="Vto. pago" valor={fmtFecha(f.fch_vto_pago)} />}
+        {f.cbte_tipo === 201 && f.fce_cbu && <Copiar label="CBU" valor={f.fce_cbu} titulo={[f.fce_banco, f.fce_alias].filter(Boolean).join(' · ')} />}
+        {f.cbte_tipo === 201 && f.fce_referencia && <Copiar label="Ref. comercial" valor={f.fce_referencia} />}
       </div>
       <div className="text-[11px] text-gris-dark">
         {f.tipo_nombre} · {f.provincia_origen} → {f.provincia_destino} · {f.condicion_pago}

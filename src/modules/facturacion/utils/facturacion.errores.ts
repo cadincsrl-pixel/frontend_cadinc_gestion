@@ -61,7 +61,7 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
     ? 'No tenés permiso para emitir notas de crédito.'
     : 'No tenés permiso para emitir facturas.',
   SIN_PERMISO_REGISTRAR: () => 'No tenés permiso para registrar facturas en Finnegans.',
-  FORZAR_SOLO_ADMIN:     () => 'Solo un administrador puede forzar una nota de crédito que supera el saldo.',
+  FORZAR_SOLO_ADMIN:     () => 'Solo un administrador puede forzar este comprobante.',
   USUARIO_REQUERIDO:     () => 'No se pudo identificar al usuario. Volvé a iniciar sesión.',
 
   // ── ARCA ──
@@ -98,7 +98,7 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   SOLO_AGREGAR:                 () => 'El historial no se puede modificar.',
 
   // ── Datos del comprobante ──
-  TIPO_NO_HABILITADO:     () => 'Ese tipo de comprobante todavía no está habilitado (se emiten Factura A/B y Nota de crédito A/B).',
+  TIPO_NO_HABILITADO:     () => 'Ese tipo de comprobante todavía no está habilitado (se emiten Factura A/B, Nota de crédito A/B y FCE MiPyME A).',
   TIPO_INVALIDO:          () => 'Tipo de comprobante inválido.',
   AMBIENTE_INVALIDO:      () => 'Ambiente de ARCA inválido.',
   AMBIENTE_NO_COINCIDE:   () => 'El comprobante es de otro ambiente de ARCA (homologación vs. producción).',
@@ -144,7 +144,7 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   NC_SIN_FACTURA:           () => 'La nota de crédito necesita la factura que corrige.',
   NC_FACTURA_NO_EXISTE:     () => 'La factura que corrige esta nota de crédito no existe.',
   NC_FACTURA_NO_AUTORIZADA: () => 'Solo se hace nota de crédito sobre una factura autorizada por ARCA.',
-  NC_TIPO_NO_COINCIDE:      () => 'La nota de crédito tiene que ser de la misma letra que la factura.',
+  NC_TIPO_NO_COINCIDE:      () => 'La nota de crédito tiene que ser del mismo tipo que la factura: una FCE MiPyME se corrige con NC FCE; una Factura A, con NC A.',
   NC_OTRO_CLIENTE:          () => 'La nota de crédito tiene que ser al mismo cliente que la factura.',
   NC_SUPERA_FACTURA:        d => {
     const saldo = dato(d, 'saldo'), total = dato(d, 'total')
@@ -152,6 +152,30 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
       ? `La nota de crédito (${money(total)}) supera lo que queda de la factura (${money(saldo)}).`
       : 'La nota de crédito supera lo que queda de la factura.'
   },
+
+  // ── FCE MiPyME (fase 6) ──
+  CORRESPONDE_FCE: d => {
+    const monto = dato(d, 'monto_desde') ?? dato(d, 'minimo')
+    return `A este cliente le corresponde Factura de Crédito MiPyME: ARCA dice que está obligado a recibirla desde ${money(monto)} y este comprobante lo supera. Elegí «Factura de Crédito MiPyME».`
+  },
+  NO_CORRESPONDE_FCE: d => {
+    const motivo = dato(d, 'motivo')
+    if (motivo === 'monto_minimo') return `La Factura de Crédito MiPyME es desde ${money(dato(d, 'minimo') ?? 5_549_862)}: por menos va Factura A común.`
+    if (motivo === 'no_obligado') return 'Según ARCA este cliente no está obligado a recibir Factura de Crédito MiPyME: va Factura A común.'
+    return `Por este importe no corresponde Factura de Crédito MiPyME a este cliente (su monto desde es ${money(dato(d, 'monto_desde'))}): va Factura A común.`
+  },
+  FCE_SIN_CUENTA:           () => 'Elegí la cuenta bancaria que va en la Factura de Crédito (CBU y alias). Si no hay ninguna, cargala en Clientes › Cuentas para FCE.',
+  FCE_TRANSMISION_INVALIDA: () => 'La opción de transferencia tiene que ser SCA o ADC.',
+  FCE_VTO_PAGO_INVALIDO:    () => 'El vencimiento del pago no puede ser anterior a la fecha de la factura.',
+  NC_ANULACION_INVALIDA:    () => 'Indicá si la nota de crédito anula la factura (S o N).',
+  CBU_INVALIDO:             () => 'El CBU no es válido: tiene que tener 22 dígitos y sus dígitos verificadores.',
+  ALIAS_INVALIDO:           () => 'El alias tiene que tener de 6 a 20 caracteres: letras, números, punto o guion.',
+  CUENTA_INVALIDA:          () => 'Revisá los datos de la cuenta.',
+  CUENTA_NO_EXISTE:         () => 'La cuenta bancaria no existe o está dada de baja.',
+  CUENTA_DUPLICADA:         () => 'Ya hay una cuenta activa con ese CBU.',
+  CUENTA_DEFAULT_DUPLICADA: () => 'Ya hay otra cuenta marcada por defecto. Probá de nuevo.',
+  CUENTA_DEFAULT_REQUERIDA: () => 'Esta es la cuenta por defecto: marcá otra como predeterminada antes de sacarle la marca o darla de baja.',
+  CUENTA_INACTIVA:          () => 'La cuenta está dada de baja: reactivala antes de marcarla por defecto.',
 
   // ── Numeración (errores internos de la emisión) ──
   NUMERO_INVALIDO:    () => 'Número de comprobante inválido.',

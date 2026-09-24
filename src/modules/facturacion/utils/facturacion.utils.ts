@@ -77,13 +77,61 @@ export function letraDeTipo(cbteTipo: number): LetraVenta | null {
   return null
 }
 
-/** Factura o NC de esa letra: A → 1 / 3, B → 6 / 8. */
-export function tipoPara(letra: LetraVenta, nc: boolean): 1 | 3 | 6 | 8 {
-  if (letra === 'A') return nc ? 3 : 1
+/** Factura o NC de esa letra: A → 1 / 3, B → 6 / 8; con `fce`, la FCE MiPyME A → 201 / 203. */
+export function tipoPara(letra: LetraVenta, nc: boolean, fce = false): 1 | 3 | 6 | 8 | 201 | 203 {
+  if (letra === 'A') return fce ? (nc ? 203 : 201) : (nc ? 3 : 1)
   return nc ? 8 : 6
 }
 
 export const esTipoNc = (cbteTipo: number | null | undefined) => cbteTipo === 3 || cbteTipo === 8 || cbteTipo === 203
+export const esTipoFce = (cbteTipo: number | null | undefined) => cbteTipo === 201 || cbteTipo === 203
+
+/**
+ * Monto mínimo de la Factura de Crédito Electrónica MiPyME: $ 5.549.862.
+ * Fuente: Registro de FCE MiPyMEs de ARCA, vigente desde el 14/04/2026
+ * (consultado el 23/09/2026). Espejo de `_ventas_monto_minimo_fce()`
+ * (20260924e) y de MONTO_MINIMO_FCE del backend (reglas.ts). El monto de
+ * cada receptor lo dice WSFECRED.
+ */
+export const MONTO_MINIMO_FCE = 5_549_862
+
+export const TRANSMISIONES_FCE: { id: 'SCA' | 'ADC'; label: string }[] = [
+  { id: 'SCA', label: 'Sistema de Circulación Abierta (SCA)' },
+  { id: 'ADC', label: 'Agente de Depósito Colectivo (ADC)' },
+]
+export const TRANSMISION_LABEL: Record<string, string> = {
+  SCA: 'Sistema de Circulacion Abierta',
+  ADC: 'Agente de Deposito Colectivo',
+}
+
+/**
+ * ¿Le corresponde FCE? Espejo de `correspondeFce` del backend: obligado y
+ * total ≥ su monto (o el mínimo general) → true; no obligado o por debajo →
+ * false; sin dato de WSFECRED → null (no se bloquea: el usuario elige).
+ */
+export function correspondeFce(
+  info: { obligado: boolean | null; monto_desde: number | null } | null | undefined,
+  total: number,
+): boolean | null {
+  if (!info || info.obligado === null) return null
+  if (!info.obligado) return false
+  const piso = info.monto_desde ?? MONTO_MINIMO_FCE
+  return Math.round(total * 100) >= Math.round(piso * 100)
+}
+
+/** CBU 22 dígitos con sus verificadores (mismo algoritmo que `cbuValido` del backend). */
+export function cbuValido(cbu: string): boolean {
+  const d = cbu.replace(/\D/g, '')
+  if (!/^\d{22}$/.test(d)) return false
+  const w1 = [7, 1, 3, 9, 7, 1, 3]
+  const w2 = [3, 9, 7, 1, 3, 9, 7, 1, 3, 9, 7, 1, 3]
+  let s = 0
+  for (let i = 0; i < 7; i++) s += Number(d[i]) * w1[i]!
+  if ((10 - (s % 10)) % 10 !== Number(d[7])) return false
+  s = 0
+  for (let i = 0; i < 13; i++) s += Number(d[8 + i]) * w2[i]!
+  return (10 - (s % 10)) % 10 === Number(d[21])
+}
 
 /**
  * Desde este total el consumidor final se identifica (RG ARCA 5700/2025,
@@ -134,11 +182,13 @@ export const ESTADOS: EstadoMeta[] = [
 ]
 export const ESTADO_META = Object.fromEntries(ESTADOS.map(e => [e.key, e])) as Record<VentasEstado, EstadoMeta>
 
-export const TIPOS_CBTE: { key: 1 | 3 | 6 | 8; label: string; corto: string }[] = [
-  { key: 1, label: 'Factura A',          corto: 'FA' },
-  { key: 3, label: 'Nota de crédito A',  corto: 'NCA' },
-  { key: 6, label: 'Factura B',          corto: 'FB' },
-  { key: 8, label: 'Nota de crédito B',  corto: 'NCB' },
+export const TIPOS_CBTE: { key: 1 | 3 | 6 | 8 | 201 | 203; label: string; corto: string }[] = [
+  { key: 1,   label: 'Factura A',                  corto: 'FA' },
+  { key: 3,   label: 'Nota de crédito A',          corto: 'NCA' },
+  { key: 6,   label: 'Factura B',                  corto: 'FB' },
+  { key: 8,   label: 'Nota de crédito B',          corto: 'NCB' },
+  { key: 201, label: 'Factura de Crédito MiPyME A', corto: 'FCE A' },
+  { key: 203, label: 'NC de Crédito MiPyME A',      corto: 'NC FCE A' },
 ]
 
 /**
@@ -288,4 +338,30 @@ export function resultadoReconciliacion(
     return { tono: 'warn', texto: 'ARCA no la tenía: volvió a borrador. Podés emitirla de nuevo.' }
   }
   return { tono: 'err', texto: 'ARCA todavía no confirma nada. Probá de nuevo en un rato: el sistema también la verifica solo.' }
+}
+
+/**
+ * La descripción de un renglón para imprimir. Respeta los enters que tipeó el
+ * usuario, pero junta los que dejan una palabra huérfana ("…correspondiente
+ * a\nla\nobra"): un salto SIMPLE se vuelve espacio si la línea siguiente
+ * arranca en minúscula. Se mantienen los saltos dobles (párrafos, colapsados
+ * a uno en blanco) y las líneas que empiezan con mayúscula, número o viñeta.
+ */
+export function normalizarDescripcion(texto: string): string {
+  const lineas = texto.replace(/\r\n?/g, '\n').split('\n').map(l => l.replace(/[ \t]+$/g, ''))
+  const out: string[] = []
+  for (const l of lineas) {
+    const t = l.trim()
+    const prev = out.length ? out[out.length - 1]! : null
+    if (!t) {
+      if (prev !== null && prev !== '') out.push('')
+      continue
+    }
+    const vineta = /^[-•*·–—>]/.test(t)
+    const minuscula = /^[a-zñáéíóúü(]/.test(t)
+    if (prev && !vineta && minuscula) out[out.length - 1] = `${prev} ${t}`
+    else out.push(t)
+  }
+  while (out.length && out[out.length - 1] === '') out.pop()
+  return out.join('\n')
 }

@@ -10,6 +10,7 @@ import { mensajeErrorFacturacion } from '../utils/facturacion.errores'
 import type { VentasCliente } from '@/types/domain.types'
 import { ModalCliente } from './ModalCliente'
 import { ModalObrasCliente } from './ModalObrasCliente'
+import { CuentasFce } from './CuentasFce'
 
 /**
  * El padrón de clientes de Facturación. Propio del módulo: no se sincroniza
@@ -101,6 +102,7 @@ export function ClientesTab() {
                       {letraDeCliente(c.doc_tipo, c.condicion_iva_id)
                         ? <span className="block text-[10px] text-gris-dark font-bold">Factura {letraDeCliente(c.doc_tipo, c.condicion_iva_id)}</span>
                         : <span className="block text-[10px] text-rojo font-bold" title="RI o monotributo sin CUIT: no admite ni A ni B">sin letra: falta CUIT</span>}
+                      {c.fce_obligado === true && <span className="block text-[10px] text-azul font-bold" title="Según ARCA (WSFECRED) recibe Factura de Crédito MiPyME">recibe FCE</span>}
                     </td>
                     <td className="px-3 py-2 text-xs">{c.provincia || '—'}</td>
                     <td className="px-3 py-2 text-xs" title={c.obras.map(o => o.nom).join(', ')}>
@@ -137,6 +139,8 @@ export function ClientesTab() {
           </div>
         </div>
       )}
+
+      <CuentasFce />
 
       {editando.open && <ModalCliente cliente={editando.cliente} onClose={() => setEditando({ open: false })} />}
       {obrasDe && <ModalObrasCliente cliente={obrasDe} onClose={() => setObrasDe(null)} />}

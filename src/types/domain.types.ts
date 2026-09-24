@@ -3127,8 +3127,10 @@ export interface PagosUploadUrlRes {
 export type VentasAmbiente = 'homo' | 'prod'
 export type VentasEstado =
   | 'borrador' | 'emitiendo' | 'autorizada' | 'rechazada' | 'error_reconciliar' | 'descartada'
-/** Fase 1: 1 = Factura A, 3 = Nota de Crédito A. El schema admite 6, 8, 201 y 203. */
+/** 1/3 Factura y NC A, 6/8 Factura y NC B (fase 5), 201/203 FCE MiPyME A y su NC (fase 6). */
 export type VentasCbteTipo = 1 | 3 | 6 | 8 | 201 | 203
+/** Opción de transferencia de la FCE: Sistema de Circulación Abierta / Agente de Depósito Colectivo. */
+export type VentasTransmisionFce = 'SCA' | 'ADC'
 export type VentasProducto = 'AVANCE DE OBRA' | 'TRANSPORTE'
 /** Ids de alícuota de ARCA: 3 = 0 %, 4 = 10,5 %, 5 = 21 %, 6 = 27 %, 8 = 5 %, 9 = 2,5 %. */
 export type VentasAlicuotaId = 3 | 4 | 5 | 6 | 8 | 9
@@ -3157,6 +3159,46 @@ export interface VentasCliente {
   created_at:        string
   updated_at:        string
   obras:             { cod: string; nom: string; cc: string | null }[]
+  /** Cuenta de CADINC que el cliente quiere en la FCE (null = la de por defecto). Fase 6. */
+  cuenta_fce_id?:     number | null
+  /** Cache de WSFECRED (30 días): obligado a recibir FCE y desde qué monto. */
+  fce_obligado?:      boolean | null
+  fce_monto_desde?:   number | null
+  fce_consultado_at?: string | null
+}
+
+/** GET /clientes/:id/fce — ¿el cliente está obligado a recibir FCE MiPyME? */
+export interface VentasInfoFce {
+  cliente_id:    number
+  cuit:          string
+  obligado:      boolean | null
+  monto_desde:   number | null
+  consultado_at: string | null
+  fuente:        'arca' | 'cache' | 'sin_datos' | 'no_aplica'
+  minimo:        number
+  error:         string | null
+}
+
+/** Cuenta bancaria de CADINC para la FCE (`ventas_cuentas_bancarias`). */
+export interface VentasCuentaBancaria {
+  id:         number
+  banco:      string
+  cbu:        string
+  alias:      string
+  es_default: boolean
+  activo:     boolean
+  obs:        string
+  created_at: string
+  updated_at: string
+  clientes:   { id: number; razon_social: string }[]
+}
+
+export interface VentasCuentaInput {
+  banco:       string
+  cbu:         string
+  alias?:      string
+  es_default?: boolean
+  obs?:        string
 }
 
 export interface VentasClienteInput {
@@ -3168,6 +3210,7 @@ export interface VentasClienteInput {
   provincia?:       string
   email?:           string
   obs?:             string
+  cuenta_fce_id?:   number | null
 }
 
 export interface VentasCondicionIva {
@@ -3272,6 +3315,18 @@ export interface VentasFactura {
   asociada_cbte_tipo:   VentasCbteTipo | null
   /** Solo en GET /facturas (fase 5): las descripciones de los renglones, en orden. */
   descripciones?:       string[]
+  // FCE MiPyME (fase 6, 20260924e/f). Foto de la cuenta al guardar.
+  fce_cuenta_id?:       number | null
+  fce_cbu?:             string | null
+  fce_alias?:           string | null
+  fce_banco?:           string | null
+  fce_transmision?:     VentasTransmisionFce | null
+  /** Referencia comercial (opcional 23), p. ej. la OC del cliente. */
+  fce_referencia?:      string | null
+  /** NC FCE: opcional 22 (S = anula por rechazo del comprador). */
+  nc_anulacion?:        'S' | 'N' | null
+  es_fce?:              boolean
+  asociada_fecha_cbte?: string | null
 }
 
 export interface VentasRenglon {
@@ -3352,7 +3407,7 @@ export interface VentasRenglonInput {
 export interface VentasFacturaInput {
   factura: {
     /** Lo calcula el sistema desde el cliente (y la asociada en una NC); el backend lo vuelve a derivar. */
-    cbte_tipo:          1 | 3 | 6 | 8
+    cbte_tipo:          VentasCbteTipo
     cliente_id:         number
     producto:           VentasProducto
     centro_costo?:      string | null
@@ -3365,6 +3420,12 @@ export interface VentasFacturaInput {
     observaciones?:     string
     obs_interna?:       string
     asociada_id?:       number | null
+    // FCE (fase 6): solo cuentan en la 201 / 203.
+    fce_cuenta_id?:     number | null
+    fch_vto_pago?:      string | null
+    fce_transmision?:   VentasTransmisionFce | null
+    fce_referencia?:    string | null
+    nc_anulacion?:      'S' | 'N' | null
   }
   renglones: VentasRenglonInput[]
   forzar?:   boolean

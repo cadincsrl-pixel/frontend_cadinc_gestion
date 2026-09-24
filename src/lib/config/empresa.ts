@@ -38,8 +38,8 @@ export const EMPRESA = {
   tel:               process.env.NEXT_PUBLIC_EMPRESA_TEL               ?? '3815 02-5772',
   condicionIva:      process.env.NEXT_PUBLIC_EMPRESA_CONDICION_IVA     ?? 'Responsable Inscripto',
   iibb:              process.env.NEXT_PUBLIC_EMPRESA_IIBB              ?? '33-71719194-9',
-  /** DD/MM/YYYY */
-  inicioActividades: process.env.NEXT_PUBLIC_EMPRESA_INICIO_ACTIVIDADES ?? '14/08/2020',
+  /** DD/MM/YYYY. La de ARCA (01/07/2021), confirmada por el dueño el 23/09/2026: Finnegans imprimía 14/08/2020. */
+  inicioActividades: process.env.NEXT_PUBLIC_EMPRESA_INICIO_ACTIVIDADES ?? '01/07/2021',
 } as const
 
 /** Helper para labels tipo "Flota CADINC". */

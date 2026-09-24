@@ -11,7 +11,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { apiDelete, apiGet, apiPost, apiPatch } from '@/lib/api/client'
 import type {
-  VentasArcaEstado, VentasCondicionIva, VentasEmitirRes, VentasEstado, VentasFactura, VentasFacturaDetalle,
+  VentasCbteTipo, VentasArcaEstado, VentasCondicionIva, VentasEmitirRes, VentasEstado, VentasFactura, VentasFacturaDetalle,
   VentasFacturaFJ, VentasFacturaInput, VentasFacturasPage, VentasObra, VentasProducto, VentasResumenFila,
 } from '@/types/domain.types'
 
@@ -30,6 +30,8 @@ export const FACTURACION_KEYS = {
   obras:          ['facturacion', 'catalogos', 'obras'] as const,
   clientes:       ['facturacion', 'clientes'] as const,
   cliente:        (id: number) => ['facturacion', 'clientes', 'detalle', id] as const,
+  clienteFce:     (id: number) => ['facturacion', 'clientes', 'fce', id] as const,
+  cuentas:        ['facturacion', 'cuentas'] as const,
 }
 
 export function invalidarFacturacion(qc: QueryClient) {
@@ -40,7 +42,7 @@ export function invalidarFacturacion(qc: QueryClient) {
 
 export interface FacturasFiltro {
   estado?:       VentasEstado
-  cbte_tipo?:    1 | 3 | 6 | 8
+  cbte_tipo?:    VentasCbteTipo
   cliente_id?:   number
   centro_costo?: string
   producto?:     VentasProducto

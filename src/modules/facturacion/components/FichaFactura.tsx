@@ -178,9 +178,12 @@ export function FichaFactura({ id, onClose, onEditar, onNotaCredito, onEmitir }:
           )}
 
           <Button variant="secondary" size="sm" onClick={pdf} loading={generandoPdf}
-            disabled={f.estado !== 'autorizada'}
-            title={f.estado === 'autorizada' ? 'Descargar el PDF con QR y CAE' : 'El PDF sale cuando ARCA la autoriza (lleva CAE y QR)'}>
-            🖨 PDF
+            disabled={!(f.estado === 'autorizada' || f.estado === 'borrador' || f.estado === 'rechazada')}
+            title={f.estado === 'autorizada' ? 'Descargar el PDF con QR y CAE'
+              : f.estado === 'borrador' || f.estado === 'rechazada'
+                ? 'Vista previa en PDF (BORRADOR, sin validez fiscal) para que el cliente o el contador la revisen antes de pedir el CAE'
+                : 'El PDF sale cuando ARCA confirma el comprobante'}>
+            🖨 {f.estado === 'autorizada' ? 'PDF' : 'PDF borrador'}
           </Button>
 
           {esBorrador && (
@@ -259,6 +262,15 @@ export function FichaFactura({ id, onClose, onEditar, onNotaCredito, onEmitir }:
           <Dato label="Provincias" valor={`${f.provincia_origen} → ${f.provincia_destino}`} />
           <Dato label="Condición de pago" valor={f.condicion_pago} />
           <Dato label="Remitos" valor={f.remitos || '—'} />
+          {f.cbte_tipo === 201 && <>
+            <Dato label="Vto. del pago" valor={fmtFecha(f.fch_vto_pago)} />
+            <Dato label="Cuenta (CBU)" valor={[f.fce_banco, f.fce_cbu, f.fce_alias].filter(Boolean).join(' · ') || '—'} />
+            <Dato label="Transferencia" valor={f.fce_transmision === 'ADC' ? 'Agente de Depósito Colectivo' : 'Sistema de Circulación Abierta'} />
+            {f.fce_referencia && <Dato label="Referencia comercial" valor={f.fce_referencia} />}
+          </>}
+          {f.cbte_tipo === 203 && (
+            <Dato label="Anulación (opc. 22)" valor={f.nc_anulacion === 'S' ? 'Sí: anula por rechazo del comprador' : 'No'} />
+          )}
         </div>
         {f.observaciones && <div><Etiqueta>Observaciones</Etiqueta><div>{f.observaciones}</div></div>}
         {f.obs_interna && <div><Etiqueta>Nota interna</Etiqueta><div className="text-gris-dark">{f.obs_interna}</div></div>}

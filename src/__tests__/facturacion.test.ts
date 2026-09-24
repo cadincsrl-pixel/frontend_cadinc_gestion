@@ -126,7 +126,8 @@ describe('receptor de factura A', () => {
 })
 
 describe('PDF de la factura (armado)', async () => {
-  const { armarFacturaDoc } = await import('@/modules/facturacion/utils/facturaPdf')
+  const { armarFacturaDoc, nombreArchivoFactura, LEYENDA_FCE, MARGEN_PIE } = await import('@/modules/facturacion/utils/facturaPdf')
+  const { normalizarDescripcion } = await import('@/modules/facturacion/utils/facturacion.utils')
   const base = {
     id: 4, ambiente: 'homo', pto_vta: 3, cbte_tipo: 1, numero: 2, numero_intentado: 2, estado: 'autorizada',
     concepto: 3, fecha_cbte: '2026-09-24', fch_vto_pago: '2026-09-24', cliente_id: 2,
@@ -150,13 +151,18 @@ describe('PDF de la factura (armado)', async () => {
     alicuotas: [{ alicuota_id: 5 as const, tasa: 0.21, base_imp: 3703.7, importe: 777.78 }],
     asociados: [],
   }
+  /** Todo lo que imprime: cuerpo + pie de la ÚLTIMA página (ahí va el cierre). */
+  const todo = (doc: ReturnType<typeof armarFacturaDoc>, pag = 1, total = 1) =>
+    JSON.stringify(doc.content) + JSON.stringify((doc.footer as (p: number, t: number) => unknown)(pag, total))
+
   it('lleva QR de ARCA, CAE y marca de agua en homologación', () => {
     const doc = armarFacturaDoc(fj as unknown as VentasFacturaFJ, { logo: null })
-    const json = JSON.stringify(doc.content)
+    const json = todo(doc)
     expect(json).toContain('https://www.afip.gob.ar/fe/qr/?p=')
     expect(json).toContain('86380923473688')
-    expect(json).toContain('Cod.:001')
-    expect(json).toContain('FACTURA ORIGINAL')
+    expect(json).toContain('Cód. 001')
+    expect(json).toContain('FACTURA')
+    expect(json).toContain('ORIGINAL')
     expect(json).toContain('Cinco Mil Quinientos Ochenta y Seis Con 48/100')
     expect(doc.watermark).toMatchObject({ text: 'HOMOLOGACIÓN — SIN VALIDEZ FISCAL' })
   })
@@ -170,15 +176,15 @@ describe('PDF de la factura (armado)', async () => {
       },
     }
     const doc = armarFacturaDoc(fb as unknown as VentasFacturaFJ, { logo: null })
-    const json = JSON.stringify(doc.content)
-    expect(json).toContain('Cod.:006')
+    const json = todo(doc)
+    expect(json).toContain('Cód. 006')
     expect(json).toContain('"text":"B"')
     expect(json).toContain('Sin identificar')
     // 1234,567 × 1,21 = 1493,82607 → 1.493,83; subtotal 3703,70 + 777,78 = 4.481,48
     expect(json).toContain('1.493,83')
     expect(json).toContain('4.481,48')
-    expect(json).not.toContain('Alíc. IVA')
-    expect(json).not.toContain('IVA 21 % s/')
+    expect(json).not.toContain('Subtotal c/IVA')
+    expect(json).not.toContain('IVA 21 %')
     expect(json).toContain('IVA Contenido: $ 882,78')
     expect(json).toContain('Otros Impuestos Nacionales Indirectos: $ 0,00')
     const qr = json.match(/p=([A-Za-z0-9+/=]+)/)?.[1]
@@ -187,9 +193,99 @@ describe('PDF de la factura (armado)', async () => {
   })
 
   it('factura A no lleva la leyenda de transparencia fiscal', () => {
-    const json = JSON.stringify(armarFacturaDoc(fj as unknown as VentasFacturaFJ, { logo: null }).content)
+    const json = todo(armarFacturaDoc(fj as unknown as VentasFacturaFJ, { logo: null }))
     expect(json).not.toContain('IVA Contenido')
-    expect(json).toContain('Alíc. IVA')
+    expect(json).toContain('Subtotal c/IVA')
+    expect(json).toContain('IVA 21 %')
+  })
+
+  it('el cierre va SOLO en el pie de la última página: con 2 páginas, la 1 no tiene totales', () => {
+    const doc = armarFacturaDoc(fj as unknown as VentasFacturaFJ, { logo: null })
+    const pie = doc.footer as (p: number, t: number) => unknown
+    const p1 = JSON.stringify(pie(1, 2))
+    const p2 = JSON.stringify(pie(2, 2))
+    expect(p1).not.toContain('TOTAL')
+    expect(p1).not.toContain('5.586,48')
+    expect(p1).toContain('Continúa en la página siguiente')
+    expect(p1).toContain('Pág. 1/2')
+    expect(p2).toContain('TOTAL')
+    expect(p2).toContain('$ 5.586,48')
+    expect(p2).toContain('Son: ')
+    expect(p2).toContain('86380923473688')
+    expect(p2).toContain('Pág. 2/2')
+    // El total NO está en el cuerpo: vive en el pie.
+    expect(JSON.stringify(doc.content)).not.toContain('$ 5.586,48')
+    expect(doc.pageMargins).toEqual([28, 28, 28, MARGEN_PIE])
+  })
+
+  it('sin domicilio no imprime la fila (ni "—")', () => {
+    const sinDom = { ...fj, factura: { ...base, rec_domicilio: '' } }
+    const json = JSON.stringify(armarFacturaDoc(sinDom as unknown as VentasFacturaFJ, { logo: null }).content)
+    expect(json).not.toContain('Domicilio:')
+    expect(JSON.stringify(armarFacturaDoc(fj as unknown as VentasFacturaFJ, { logo: null }).content)).toContain('Domicilio:')
+  })
+
+  it('borrador: marca de agua, "Borrador #id", sin QR ni CAE y archivo BORRADOR_', () => {
+    const borr = {
+      ...fj,
+      factura: { ...base, estado: 'borrador', numero: null, numero_fmt: null, numero_intentado: null, numero_intentado_fmt: null, cae: null, cae_vto: null, es_homologacion: false, ambiente: 'prod' },
+    } as unknown as VentasFacturaFJ
+    const doc = armarFacturaDoc(borr, { logo: null })
+    const json = todo(doc)
+    expect(doc.watermark).toMatchObject({ text: 'BORRADOR — SIN VALIDEZ FISCAL' })
+    expect(json).toContain('Borrador #4')
+    expect(json).toContain('Sin CAE — comprobante no emitido')
+    expect(json).not.toContain('"qr"')
+    expect(json).not.toContain('afip.gob.ar/fe/qr')
+    expect(json).not.toContain('CAE N°')
+    expect(nombreArchivoFactura(borr)).toMatch(/^BORRADOR_FA_4_CLIENTE_PRUEBA\.pdf$/)
+    // En homologación también se nota.
+    const bh = armarFacturaDoc({ ...borr, factura: { ...borr.factura, es_homologacion: true } } as VentasFacturaFJ, { logo: null })
+    expect(bh.watermark).toMatchObject({ text: 'BORRADOR — HOMOLOGACIÓN — SIN VALIDEZ FISCAL' })
+  })
+
+  it('FCE 201: título, recuadro con vto de pago, CBU/alias, referencia, transferencia y leyenda roja', () => {
+    const fce = {
+      ...fj,
+      factura: {
+        ...base, cbte_tipo: 201, cod_cbte: '201', es_fce: true, fch_vto_pago: '2026-10-24',
+        fce_cbu: '0070397820000000473657', fce_alias: 'CADINC.GALICIA', fce_transmision: 'SCA', fce_referencia: '4500278113',
+      },
+    }
+    const json = todo(armarFacturaDoc(fce as unknown as VentasFacturaFJ, { logo: null }))
+    expect(json).toContain('FACTURA DE CRÉDITO ELECTRÓNICA MiPyMEs (FCE)')
+    expect(json).toContain('Cód. 201')
+    expect(json).toContain('Fecha de Vto. para el pago:')
+    expect(json).toContain('24/10/2026')
+    expect(json).toContain('0070397820000000473657')
+    expect(json).toContain('CADINC.GALICIA')
+    expect(json).toContain('Referencia Comercial:')
+    expect(json).toContain('Sistema de Circulacion Abierta')
+    expect(json).toContain(LEYENDA_FCE.slice(0, 60))
+    const qr = json.match(/p=([A-Za-z0-9+/=]+)/)?.[1]
+    expect(JSON.parse(atob(qr!))).toMatchObject({ tipoCmp: 201 })
+  })
+
+  it('NC FCE 203: título y comprobante asociado, sin CBU', () => {
+    const nc = {
+      ...fj,
+      factura: { ...base, cbte_tipo: 203, cod_cbte: '203', es_nc: true, es_fce: true, nc_anulacion: 'N' },
+      asociados: [{ asociada_id: 9, cbte_tipo: 201, pto_vta: 3, numero: 1, cuit: '33717191949', fecha_cbte: '2026-09-11' }],
+    }
+    const json = todo(armarFacturaDoc(nc as unknown as VentasFacturaFJ, { logo: null }))
+    expect(json).toContain('NOTA DE CRÉDITO ELECTRÓNICA MiPyMEs (FCE)')
+    expect(json).toContain('FCE A 00003-00000001 del 11/09/2026')
+    expect(json).not.toContain('CBU del Emisor')
+  })
+
+  it('descripción: junta las palabras huérfanas, respeta párrafos, mayúsculas y viñetas', () => {
+    expect(normalizarDescripcion('Avance de obra correspondiente a\nla\nobra de\nARCOR Arroyito'))
+      .toBe('Avance de obra correspondiente a la obra de\nARCOR Arroyito')
+    expect(normalizarDescripcion('Certificado 5\n\n\n- Mano de obra\n- Materiales\n'))
+      .toBe('Certificado 5\n\n- Mano de obra\n- Materiales')
+    expect(normalizarDescripcion('Línea uno\r\nlínea dos\nTres')).toBe('Línea uno línea dos\nTres')
+    const doc = armarFacturaDoc({ ...fj, renglones: [{ ...fj.renglones[0], descripcion: 'Trabajos de\nla\nobra' }] } as unknown as VentasFacturaFJ, { logo: null })
+    expect(JSON.stringify(doc.content)).toContain('Trabajos de la obra')
   })
 })
 
@@ -242,5 +338,34 @@ describe('bandeja de Finnegans: chip de la descripción', () => {
     expect(muestraDescripcion(['Certificado N° 5  —\n avance de obra septiembre 2026 en la obra de calle Maipú'], 32))
       .toBe('Certificado N° 5 — avance de ob…')   // 31 caracteres + «…»
     expect(muestraDescripcion([])).toBe('')
+  })
+})
+
+describe('FCE MiPyME (fase 6): espejo del backend', async () => {
+  const u = await import('@/modules/facturacion/utils/facturacion.utils')
+  it('tipo 201/203 con letra A', () => {
+    expect(u.tipoPara('A', false, true)).toBe(201)
+    expect(u.tipoPara('A', true, true)).toBe(203)
+    expect(u.tipoPara('A', false)).toBe(1)
+    expect(u.esTipoFce(203)).toBe(true)
+    expect(u.esTipoNc(203)).toBe(true)
+  })
+  it('¿corresponde FCE? obligado y total ≥ monto; sin dato no bloquea', () => {
+    expect(u.correspondeFce({ obligado: true, monto_desde: 5_549_862 }, 5_549_862)).toBe(true)
+    expect(u.correspondeFce({ obligado: true, monto_desde: 5_549_862 }, 5_549_861.99)).toBe(false)
+    expect(u.correspondeFce({ obligado: false, monto_desde: null }, 1e9)).toBe(false)
+    expect(u.correspondeFce({ obligado: null, monto_desde: null }, 1e9)).toBeNull()
+    expect(u.correspondeFce(undefined, 1e9)).toBeNull()
+    expect(u.MONTO_MINIMO_FCE).toBe(5_549_862)
+  })
+  it('CBU con dígitos verificadores', () => {
+    expect(u.cbuValido('0070397820000000473657')).toBe(true)
+    expect(u.cbuValido('2850140230094250465501')).toBe(true)
+    expect(u.cbuValido('0070397820000000473658')).toBe(false)
+    expect(u.cbuValido('123')).toBe(false)
+  })
+  it('los tipos FCE tienen nombre corto para la bandeja', () => {
+    expect(u.cortoTipo(201)).toBe('FCE A')
+    expect(u.cortoTipo(203)).toBe('NC FCE A')
   })
 })

@@ -10,9 +10,9 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 import { useCondicionesIva } from '../hooks/useFacturacion'
-import { useCrearClienteVenta, useEditarClienteVenta } from '../hooks/useClientesFacturacion'
+import { useCrearClienteVenta, useCuentasFce, useEditarClienteVenta, useRefrescarFceCliente } from '../hooks/useClientesFacturacion'
 import {
-  CONDICIONES_IVA, DOC_TIPOS, PROVINCIAS, TOPE_CF_IDENTIFICACION, cuitValido, fmtM, letraDeCliente,
+  CONDICIONES_IVA, DOC_TIPOS, MONTO_MINIMO_FCE, PROVINCIAS, TOPE_CF_IDENTIFICACION, cuitValido, fmtFecha, fmtM, letraDeCliente,
 } from '../utils/facturacion.utils'
 import { errorDeCampoFacturacion, mensajeErrorFacturacion } from '../utils/facturacion.errores'
 import type { VentasCliente, VentasClienteInput, VentasDocTipo } from '@/types/domain.types'
@@ -38,6 +38,7 @@ const schema = z.object({
   provincia:        z.string(),
   email:            z.string().refine(v => v.trim() === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()), 'Email inválido'),
   obs:              z.string(),
+  cuenta_fce_id:    z.string(),
 }).superRefine((d, ctx) => {
   const nro = d.doc_nro.replace(/\D/g, '')
   if (d.doc_tipo === '80' || d.doc_tipo === '86') {
@@ -53,7 +54,7 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>
 
-const CAMPOS_CLIENTE = ['razon_social', 'doc_tipo', 'doc_nro', 'condicion_iva_id', 'domicilio', 'provincia', 'email', 'obs']
+const CAMPOS_CLIENTE = ['razon_social', 'doc_tipo', 'doc_nro', 'condicion_iva_id', 'domicilio', 'provincia', 'email', 'obs', 'cuenta_fce_id']
 
 interface Props {
   cliente?: VentasCliente
@@ -65,6 +66,8 @@ export function ModalCliente({ cliente, onClose }: Props) {
   const condiciones = useCondicionesIva()
   const crear = useCrearClienteVenta()
   const editar = useEditarClienteVenta()
+  const cuentas = useCuentasFce()
+  const refrescarFce = useRefrescarFceCliente()
   const [errorServer, setErrorServer] = useState<string | null>(null)
 
   const { register, control, handleSubmit, setError, setValue, formState: { errors } } = useForm<FormData>({
@@ -78,6 +81,7 @@ export function ModalCliente({ cliente, onClose }: Props) {
       provincia:        cliente?.provincia ?? '',
       email:            cliente?.email ?? '',
       obs:              cliente?.obs ?? '',
+      cuenta_fce_id:    cliente?.cuenta_fce_id ? String(cliente.cuenta_fce_id) : '',
     },
   })
 
@@ -113,6 +117,7 @@ export function ModalCliente({ cliente, onClose }: Props) {
       provincia:        d.provincia.trim(),
       email:            d.email.trim(),
       obs:              d.obs.trim(),
+      cuenta_fce_id:    d.cuenta_fce_id ? Number(d.cuenta_fce_id) : null,
     }
     try {
       if (cliente) await editar.mutateAsync({ id: cliente.id, ...body })
@@ -182,6 +187,37 @@ export function ModalCliente({ cliente, onClose }: Props) {
           <Select label="Provincia" {...register('provincia')} options={provincias} />
         </div>
         <Input label="Email" type="email" {...register('email')} error={errors.email?.message} />
+        {letra === 'A' && (
+          <div className="border border-gris-mid rounded-lg p-3 flex flex-col gap-2">
+            <span className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Factura de Crédito MiPyME (FCE)</span>
+            <Select label="Cuenta de CADINC que va en su FCE" {...register('cuenta_fce_id')}
+              options={[
+                { value: '', label: `La de por defecto${(cuentas.data ?? []).find(c => c.es_default) ? ` (${(cuentas.data ?? []).find(c => c.es_default)!.banco})` : ''}` },
+                ...(cuentas.data ?? []).map(c => ({ value: String(c.id), label: `${c.banco} · ${c.cbu}${c.alias ? ` · ${c.alias}` : ''}` })),
+              ]}
+              error={errors.cuenta_fce_id?.message} />
+            <span className="text-[11px] text-gris-dark -mt-1">Algunos clientes piden cobrar en su banco (Banco Macro pide la cuenta de Macro).</span>
+            {cliente && (
+              <div className="flex items-center gap-2 flex-wrap text-[11px] text-gris-dark">
+                <span>
+                  {cliente.fce_obligado === true && <>Según ARCA está <b>obligado</b> a recibir FCE desde {fmtM(cliente.fce_monto_desde ?? MONTO_MINIMO_FCE)}.</>}
+                  {cliente.fce_obligado === false && <>Según ARCA <b>no</b> está obligado a recibir FCE.</>}
+                  {cliente.fce_obligado == null && <>Todavía no se le preguntó a ARCA si recibe FCE.</>}
+                  {cliente.fce_consultado_at && <> Consultado el {fmtFecha(cliente.fce_consultado_at)}.</>}
+                </span>
+                <Button type="button" variant="ghost" size="sm" loading={refrescarFce.isPending}
+                  onClick={async () => {
+                    try {
+                      const r = await refrescarFce.mutateAsync(cliente.id)
+                      toast(r.error ? `ARCA no respondió: ${r.error.slice(0, 120)}` : r.obligado ? `✓ Obligado desde ${fmtM(r.monto_desde ?? MONTO_MINIMO_FCE)}` : '✓ No está obligado a recibir FCE', r.error ? 'err' : 'ok')
+                    } catch (e) { toast(mensajeErrorFacturacion(e), 'err') }
+                  }}>
+                  Consultar a ARCA
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
         <div className="flex flex-col gap-1">
           <label className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Observaciones</label>
           <textarea {...register('obs')} rows={2}

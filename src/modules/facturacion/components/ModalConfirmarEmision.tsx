@@ -168,9 +168,11 @@ export function ModalConfirmarEmision({ fj, arca, onClose }: Props) {
           {paso.tipo === 'error' && (
             <>
               <Button variant="ghost" size="sm" onClick={onClose}>Cerrar</Button>
-              {paso.codigo === 'NC_SUPERA_FACTURA' && esAdmin && (
+              {(paso.codigo === 'NC_SUPERA_FACTURA' || paso.codigo === 'CORRESPONDE_FCE' || paso.codigo === 'NO_CORRESPONDE_FCE') && esAdmin && (
                 <Button variant="danger" size="sm" onClick={() => mandar(true)} loading={enviando}
-                  title="Solo admin: emitir aunque la nota de crédito supere el saldo de la factura">
+                  title={paso.codigo === 'NC_SUPERA_FACTURA'
+                    ? 'Solo admin: emitir aunque la nota de crédito supere el saldo de la factura'
+                    : 'Solo admin: emitir con este tipo aunque ARCA diga otra cosa'}>
                   Emitir igual (forzar)
                 </Button>
               )}
@@ -196,6 +198,12 @@ export function ModalConfirmarEmision({ fj, arca, onClose }: Props) {
               <span className="text-gris-dark">Fecha</span><span>{fmtFecha(f.fecha_cbte)}</span>
               <span className="text-gris-dark">Producto</span><span>{f.producto === 'TRANSPORTE' ? 'Transporte' : `Avance de obra · ${f.centro_costo ?? ''}`}</span>
               {f.es_nc && f.asociada_numero_fmt && (<><span className="text-gris-dark">Corrige</span><span className="font-mono">{cortoTipo(f.asociada_cbte_tipo)} {f.asociada_numero_fmt}</span></>)}
+              {f.cbte_tipo === 201 && (<>
+                <span className="text-gris-dark">Vto. del pago</span><span>{fmtFecha(f.fch_vto_pago)}</span>
+                <span className="text-gris-dark">CBU</span><span className="font-mono">{f.fce_cbu}{f.fce_alias ? ` · ${f.fce_alias}` : ''}</span>
+                <span className="text-gris-dark">Transferencia</span><span>{f.fce_transmision}</span>
+              </>)}
+              {f.cbte_tipo === 203 && (<><span className="text-gris-dark">Anula (opc. 22)</span><span>{f.nc_anulacion === 'S' ? 'Sí (rechazo del comprador)' : 'No'}</span></>)}
               <span className="text-gris-dark">Neto</span><span className="font-mono tabular-nums">{fmtM(f.imp_neto)}</span>
               <span className="text-gris-dark">IVA</span><span className="font-mono tabular-nums">{fmtM(f.imp_iva)}</span>
               <span className="text-gris-dark font-bold">Total</span><span className="font-mono tabular-nums font-bold">{fmtM(f.imp_total)}</span>
