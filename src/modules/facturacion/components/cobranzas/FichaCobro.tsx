@@ -268,12 +268,11 @@ export function FichaCobro({ id, onClose }: { id: number; onClose: () => void })
 
         <Bloque titulo="Comprobantes aplicados">
           {imputacionesVig.length === 0 ? <Nada>No se aplicó a ningún comprobante{vigente ? ': todo queda a cuenta' : ''}.</Nada> : (
-            <Tabla cabeza={['Comprobante', 'Emisión', 'Vence', 'Aplicado', 'Saldo hoy', '']} derecha={[3, 4]}>
+            <Tabla cabeza={['Comprobante', 'Emisión', 'Aplicado', 'Saldo hoy', '']} derecha={[2, 3]}>
               {imputacionesVig.map(i => (
                 <tr key={i.id} className="border-t border-gris">
                   <td className="px-2 py-1.5 font-mono whitespace-nowrap">{i.destino_fmt}</td>
                   <td className="px-2 py-1.5 whitespace-nowrap">{fmtFecha(i.destino_fecha)}</td>
-                  <td className="px-2 py-1.5 whitespace-nowrap">{fmtFecha(i.destino_vence_el)}</td>
                   <td className="px-2 py-1.5 text-right font-mono tabular-nums font-bold">{fmtM(i.importe)}</td>
                   <td className="px-2 py-1.5 text-right font-mono tabular-nums text-gris-dark">{i.destino_saldo_actual == null ? '—' : fmtM(i.destino_saldo_actual)}</td>
                   <td className="px-2 py-1.5 text-right">

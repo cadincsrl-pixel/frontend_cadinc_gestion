@@ -11,7 +11,7 @@ import { apiDelete, apiGet, apiPatch, apiPost } from '@/lib/api/client'
 import type {
   VentasCobroDetalle, VentasCobroInput, VentasCobrosPage, VentasCompensacionInput, VentasDestinoImputacion,
   VentasDeudor, VentasEstadoCuenta, VentasEstadoCuentaMov, VentasExterno, VentasExternoAccion, VentasExternoInput,
-  VentasExternosPage, VentasFactura, VentasImportarFilaInput, VentasImportarRes, VentasSaldo, VentasCliente,
+  VentasExternosPage, VentasImportarFilaInput, VentasImportarRes, VentasSaldo, VentasCliente,
   VentasUploadUrlRes, VentasAmbiente, VentasPendientesCliente, VentasImputacion,
   VentasCobroAdjunto, VentasCobroAdjuntoInput, VentasCobroAdjuntoTipo,
 } from '@/types/domain.types'
@@ -347,18 +347,6 @@ export function useEstadoCuenta(clienteId: number | null, desde = '', hasta = ''
       await apiGet<EstadoCuentaRaw>(`${BASE}/clientes/${clienteId}/estado-cuenta?${qs}`), desde, hasta),
     enabled:  enabled && !!clienteId,
     staleTime: 30_000,
-  })
-}
-
-// ── Vencimiento de cobro de una factura ───────────────────────────────
-
-/** `vence_el: null` = volver al automático (fecha + plazo del cliente). */
-export function useCambiarVencimiento() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({ id, vence_el }: { id: number; vence_el: string | null }) =>
-      apiPatch<VentasFactura | { factura: VentasFactura }>(`${BASE}/facturas/${id}/vencimiento`, { vence_el }),
-    onSuccess:  () => invalidarFacturacion(qc),
   })
 }
 

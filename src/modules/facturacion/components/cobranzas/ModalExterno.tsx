@@ -13,7 +13,7 @@ import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useBorrarExterno, useCrearExterno, useEditarExterno } from '../../hooks/useCobranzas'
 import { fmtM, hoyAR } from '../../utils/facturacion.utils'
-import { ORIGENES_EXTERNO, TIPOS_EXTERNO, aCent, esTipoCredito, sumarDias } from '../../utils/cobranzas.utils'
+import { ORIGENES_EXTERNO, TIPOS_EXTERNO, aCent, esTipoCredito } from '../../utils/cobranzas.utils'
 import { errorDeCampoFacturacion, mensajeErrorFacturacion } from '../../utils/facturacion.errores'
 import type { VentasCbteTipoExterno, VentasExterno, VentasExternoInput } from '@/types/domain.types'
 import { Aviso } from '../FichaFactura'
@@ -34,18 +34,16 @@ const schema = z.object({
   pto_vta:       z.string().refine(enteroPos(99999), 'Punto de venta'),
   numero:        z.string().refine(v => enteroPos(99999999)(v) && Number(v) >= 1, 'Número'),
   fecha:         z.string().min(1, 'Fecha'),
-  vence_el:      z.string().min(1, 'Vencimiento'),
   total:         z.string().refine(v => v !== '' && Number(v) > 0, 'Poné el total'),
   saldo_inicial: z.string().refine(v => v !== '' && Number(v) >= 0, 'Poné el saldo'),
   origen:        z.enum(['finnegans', 'portal', 'otro']),
   obs:           z.string(),
 }).superRefine((d, ctx) => {
   if (d.fecha > hoyAR()) ctx.addIssue({ code: 'custom', path: ['fecha'], message: 'No puede ser futura' })
-  if (d.vence_el && d.fecha && d.vence_el < d.fecha) ctx.addIssue({ code: 'custom', path: ['vence_el'], message: 'Anterior a la fecha' })
   if (aCent(d.saldo_inicial) > aCent(d.total)) ctx.addIssue({ code: 'custom', path: ['saldo_inicial'], message: 'No puede superar el total' })
 })
 type FormData = z.infer<typeof schema>
-const CAMPOS = ['cliente_id', 'cbte_tipo', 'pto_vta', 'numero', 'fecha', 'vence_el', 'total', 'saldo_inicial', 'origen', 'obs']
+const CAMPOS = ['cliente_id', 'cbte_tipo', 'pto_vta', 'numero', 'fecha', 'total', 'saldo_inicial', 'origen', 'obs']
 
 export function ModalExterno({ externo, onClose }: { externo?: VentasExterno; onClose: () => void }) {
   const toast = useToast()
@@ -54,30 +52,24 @@ export function ModalExterno({ externo, onClose }: { externo?: VentasExterno; on
   const editar = useEditarExterno()
   const borrar = useBorrarExterno()
   const [errorServer, setErrorServer] = useState<string | null>(null)
-  const [plazo, setPlazo] = useState(30)
   const [confirmBorrar, setConfirmBorrar] = useState(false)
 
   const { register, control, handleSubmit, setValue, setError, formState: { errors, dirtyFields } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: externo ? {
       cliente_id: String(externo.cliente_id), cbte_tipo: String(externo.cbte_tipo), pto_vta: String(externo.pto_vta),
-      numero: String(externo.numero), fecha: externo.fecha, vence_el: externo.vence_el, total: String(externo.total),
+      numero: String(externo.numero), fecha: externo.fecha, total: String(externo.total),
       saldo_inicial: String(externo.saldo_inicial), origen: externo.origen, obs: externo.obs ?? '',
     } : {
-      cliente_id: '', cbte_tipo: '1', pto_vta: '2', numero: '', fecha: '', vence_el: '', total: '', saldo_inicial: '',
+      cliente_id: '', cbte_tipo: '1', pto_vta: '2', numero: '', fecha: '', total: '', saldo_inicial: '',
       origen: 'finnegans', obs: '',
     },
   })
-  const fecha = useWatch({ control, name: 'fecha' })
   const total = useWatch({ control, name: 'total' })
   const tipo = useWatch({ control, name: 'cbte_tipo' })
 
-  // Mientras no los toquen, el vencimiento sigue a fecha + plazo y el saldo al total.
-  const [venceTocado, setVenceTocado] = useState(!!externo)
+  // Mientras no lo toquen, el saldo sigue al total.
   const [saldoTocado, setSaldoTocado] = useState(!!externo)
-  useEffect(() => {
-    if (!venceTocado && fecha) setValue('vence_el', esTipoCredito(Number(tipo)) ? fecha : sumarDias(fecha, plazo))
-  }, [fecha, plazo, tipo, venceTocado, setValue])
   useEffect(() => {
     if (!saldoTocado) setValue('saldo_inicial', total)
   }, [total, saldoTocado, setValue])
@@ -89,7 +81,12 @@ export function ModalExterno({ externo, onClose }: { externo?: VentasExterno; on
     setErrorServer(null)
     const body: VentasExternoInput = {
       cliente_id: Number(d.cliente_id), cbte_tipo: Number(d.cbte_tipo) as VentasCbteTipoExterno,
-      pto_vta: Number(d.pto_vta), numero: Number(d.numero), fecha: d.fecha, vence_el: d.vence_el,
+      pto_vta: Number(d.pto_vta), numero: Number(d.numero), fecha: d.fecha,
+      // Sin vencimiento de cobro en pantalla (decisión del dueño, 2026-09-24): al
+      // crear lo pone el backend (una NC, la misma fecha, como antes); al editar
+      // solo se corre si la fecha nueva lo pasó.
+      ...(!externo && esTipoCredito(Number(d.cbte_tipo)) ? { vence_el: d.fecha } : {}),
+      ...(externo?.vence_el && externo.vence_el < d.fecha ? { vence_el: d.fecha } : {}),
       total: Number(d.total), saldo_inicial: Number(d.saldo_inicial), origen: d.origen, obs: d.obs.trim(),
     }
     try {
@@ -124,7 +121,7 @@ export function ModalExterno({ externo, onClose }: { externo?: VentasExterno; on
       <form className="flex flex-col gap-3" onSubmit={e => e.preventDefault()}>
         <Controller control={control} name="cliente_id" render={({ field }) => (
           <ClienteCombobox value={field.value} error={errors.cliente_id?.message} disabled={conImputaciones}
-            onChange={(v, c) => { field.onChange(v); if (c?.plazo_pago_dias != null) setPlazo(Number(c.plazo_pago_dias)) }} />
+            onChange={v => field.onChange(v)} />
         )} />
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="col-span-2">
@@ -134,8 +131,6 @@ export function ModalExterno({ externo, onClose }: { externo?: VentasExterno; on
           <Input label="Punto de venta" inputMode="numeric" {...register('pto_vta')} error={errors.pto_vta?.message} />
           <Input label="Número" inputMode="numeric" {...register('numero')} error={errors.numero?.message} />
           <Input label="Fecha" type="date" max={hoyAR()} {...register('fecha')} error={errors.fecha?.message} />
-          <Input label="Vence" type="date" {...register('vence_el', { onChange: () => setVenceTocado(true) })} error={errors.vence_el?.message}
-            hint={!externo && !venceTocado ? `fecha + ${plazo} días` : undefined} />
           <Controller control={control} name="total" render={({ field }) => (
             <InputMonto label="Total" value={field.value} onChange={field.onChange} error={errors.total?.message} />
           )} />

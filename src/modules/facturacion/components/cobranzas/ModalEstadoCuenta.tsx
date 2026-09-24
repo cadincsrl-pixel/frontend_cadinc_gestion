@@ -86,7 +86,7 @@ export function ModalEstadoCuenta({ clienteId, razonSocial, docNro, deudor, onCl
           <div className="flex gap-2 flex-wrap">
             <Cifra label="Saldo" valor={fmtM(deudor.saldo)} />
             <Cifra label="A cuenta y NC" valor={fmtM(Number(deudor.a_cuenta) + Number(deudor.nc_disponible))} />
-            <Cifra label="Vencido" valor={fmtM(deudor.vencido)} tono={Number(deudor.vencido) > 0 ? 'rojo' : 'normal'} />
+            <Cifra label="Neto" valor={fmtM(deudor.saldo_neto)} />
             {Number(deudor.saldo_a_revisar) > 0 && <Cifra label="A revisar" valor={fmtM(deudor.saldo_a_revisar)} tono="naranja" sub="saldos iniciales supuestos" />}
           </div>
         )}
@@ -102,8 +102,8 @@ export function ModalEstadoCuenta({ clienteId, razonSocial, docNro, deudor, onCl
             <table className="w-full border-collapse min-w-[820px]">
               <thead>
                 <tr>
-                  {['Fecha', 'Comprobante', 'Detalle', 'Vence', 'Debe', 'Haber', 'Saldo'].map((h, i) => (
-                    <th key={h} className={`bg-gris text-gris-dark text-[10px] font-bold px-2 py-1.5 uppercase tracking-wide ${i >= 4 ? 'text-right' : 'text-left'}`}>{h}</th>
+                  {['Fecha', 'Comprobante', 'Detalle', 'Debe', 'Haber', 'Saldo'].map((h, i) => (
+                    <th key={h} className={`bg-gris text-gris-dark text-[10px] font-bold px-2 py-1.5 uppercase tracking-wide ${i >= 3 ? 'text-right' : 'text-left'}`}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -120,7 +120,6 @@ export function ModalEstadoCuenta({ clienteId, razonSocial, docNro, deudor, onCl
                         <span className="font-semibold">{MOVIMIENTO_LABEL[m.movimiento] ?? m.movimiento}</span>
                         {!ant && m.detalle && <span className="text-gris-dark"> — {m.detalle}</span>}
                       </td>
-                      <td className="px-2 py-1.5 whitespace-nowrap text-xs">{fmtFecha(m.vence_el)}</td>
                       <td className="px-2 py-1.5 text-right font-mono tabular-nums">{Number(m.debe) ? fmtM(m.debe) : ''}</td>
                       <td className="px-2 py-1.5 text-right font-mono tabular-nums">{Number(m.haber) ? fmtM(m.haber) : ''}</td>
                       <td className="px-2 py-1.5 text-right font-mono tabular-nums font-bold">{fmtM(m.saldo)}</td>
@@ -130,7 +129,7 @@ export function ModalEstadoCuenta({ clienteId, razonSocial, docNro, deudor, onCl
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-naranja bg-naranja-light/40">
-                  <td colSpan={6} className="px-2 py-2 text-right font-bold">{final >= 0 ? 'Saldo a pagar' : 'Saldo a favor del cliente'}</td>
+                  <td colSpan={5} className="px-2 py-2 text-right font-bold">{final >= 0 ? 'Saldo a pagar' : 'Saldo a favor del cliente'}</td>
                   <td className="px-2 py-2 text-right font-mono tabular-nums font-bold">{fmtM(Math.abs(final))}</td>
                 </tr>
               </tfoot>

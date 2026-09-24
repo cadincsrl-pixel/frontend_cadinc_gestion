@@ -131,8 +131,7 @@ export function ModalMotivo({ titulo, texto, obligatorio = true, confirmar = 'An
 export type FilaPendiente = VentasSaldo & { clave: string }
 
 /**
- * La grilla de «Aplicación de comprobantes» (Bejerman): Emisión, Vencimiento,
- * Tipo, Letra, P.Venta, Número, Saldo y Aplicado editable. La validación la
+ * La grilla de «Aplicación de comprobantes» (Bejerman): Emisión, Tipo, Letra, P.Venta, Número, Saldo y Aplicado editable. La validación la
  * hace el padre (`validarAplicacion`) y llega en `errores`.
  */
 export function GrillaAplicacion({ filas, aplicado, errores, onCambiar, disabled, vacio }: {
@@ -153,20 +152,17 @@ export function GrillaAplicacion({ filas, aplicado, errores, onCambiar, disabled
         <table className="w-full border-collapse min-w-[760px] text-sm">
           <thead>
             <tr>
-              {['Emisión', 'Vencimiento', 'Tipo', 'Letra', 'P. Venta', 'Número', 'Saldo', 'Aplicado'].map((h, i) => (
-                <th key={h} className={`bg-gris text-gris-dark text-[10px] font-bold px-2 py-1.5 uppercase tracking-wide whitespace-nowrap ${i >= 6 ? 'text-right' : 'text-left'}`}>{h}</th>
+              {['Emisión', 'Tipo', 'Letra', 'P. Venta', 'Número', 'Saldo', 'Aplicado'].map((h, i) => (
+                <th key={h} className={`bg-gris text-gris-dark text-[10px] font-bold px-2 py-1.5 uppercase tracking-wide whitespace-nowrap ${i >= 5 ? 'text-right' : 'text-left'}`}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {filas.map(f => {
-              const vencida = Number(f.dias_vencido) > 0
               const err = errores[f.clave]
               return (
                 <tr key={f.clave} className={`border-t border-gris ${aCent(aplicado[f.clave]) > 0 ? 'bg-verde-light/40' : ''}`}>
                   <td className="px-2 py-1 whitespace-nowrap">{fmtFecha(f.fecha)}</td>
-                  <td className={`px-2 py-1 whitespace-nowrap ${vencida ? 'text-rojo font-semibold' : ''}`}
-                      title={vencida ? `Vencida hace ${f.dias_vencido} días` : undefined}>{fmtFecha(f.vence_el)}</td>
                   <td className="px-2 py-1 whitespace-nowrap">
                     {f.tipo_abrev}
                     {f.origen === 'externo' && <span className="ml-1 text-[10px] text-gris-dark" title="Saldo inicial (emitida fuera del sistema)">ext.</span>}
@@ -195,7 +191,7 @@ export function GrillaAplicacion({ filas, aplicado, errores, onCambiar, disabled
             <div className="flex-1 min-w-0">
               <div className="font-mono text-xs font-semibold">{f.comprobante}</div>
               <div className="text-[11px] text-gris-dark">
-                {fmtFecha(f.fecha)} · vence {fmtFecha(f.vence_el)} ·{' '}
+                {fmtFecha(f.fecha)} ·{' '}
                 <button type="button" className="underline" disabled={disabled} onClick={() => completar(f)}>saldo {fmtM(f.saldo)}</button>
               </div>
             </div>

@@ -127,11 +127,11 @@ export function armarReciboDoc(d: VentasCobroDetalle, opts: { logo: string | nul
     imputaciones.length ? {
       table: {
         headerRows: 1, dontBreakRows: true,
-        widths: ['*', 60, 60, 80, 80],
+        widths: ['*', 60, 80, 80],
         body: [
-          [th('Comprobante'), th('Emisión'), th('Vence'), th('Total', 'right'), th('Aplicado', 'right')],
+          [th('Comprobante'), th('Emisión'), th('Total', 'right'), th('Aplicado', 'right')],
           ...imputaciones.map(i => [
-            td(i.destino_fmt), td(fmtFecha(i.destino_fecha)), td(fmtFecha(i.destino_vence_el)),
+            td(i.destino_fmt), td(fmtFecha(i.destino_fecha)),
             td(fmtN(i.destino_total), 'right'), td(fmtN(i.importe), 'right'),
           ]),
         ],

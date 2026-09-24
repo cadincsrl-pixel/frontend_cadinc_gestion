@@ -169,7 +169,7 @@ export function ModalImportarArca({ onClose }: { onClose: () => void }) {
               <table className="w-full border-collapse min-w-[980px] text-xs">
                 <thead className="sticky top-0">
                   <tr>
-                    {['Archivo / fila', 'Tipo', 'Número', 'Fecha', 'Comprador', 'Total', 'Saldo inicial', 'Vence', 'Resultado'].map((h, i) => (
+                    {['Archivo / fila', 'Tipo', 'Número', 'Fecha', 'Comprador', 'Total', 'Saldo inicial', 'Resultado'].map((h, i) => (
                       <th key={h} className={`bg-gris text-gris-dark text-[10px] font-bold px-2 py-1.5 uppercase tracking-wide ${i === 5 || i === 6 ? 'text-right' : 'text-left'}`}>{h}</th>
                     ))}
                   </tr>
@@ -189,7 +189,6 @@ export function ModalImportarArca({ onClose }: { onClose: () => void }) {
                         </td>
                         <td className="px-2 py-1 text-right font-mono tabular-nums whitespace-nowrap">{fmtM(f.total ?? orig?.total)}</td>
                         <td className="px-2 py-1 text-right font-mono tabular-nums whitespace-nowrap">{f.saldo_inicial == null ? '' : fmtM(f.saldo_inicial)}</td>
-                        <td className="px-2 py-1 whitespace-nowrap">{fmtFecha(f.vence_el)}</td>
                         <td className="px-2 py-1">
                           {f.estado === 'nueva' && <span className="font-bold text-verde">Nueva</span>}
                           {f.estado === 'duplicada' && <span>{motivoDuplicada(f.detalle)}</span>}

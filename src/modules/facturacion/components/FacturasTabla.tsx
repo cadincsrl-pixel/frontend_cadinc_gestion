@@ -53,7 +53,7 @@ function Extras({ f }: { f: VentasFactura }) {
 }
 
 /**
- * Vence y saldo de cobro (v_ventas_facturas.cobro_*, 20260924m). Solo en
+ * Saldo de cobro (v_ventas_facturas.cobro_*, 20260924m). Solo en
  * autorizadas: un borrador no se debe todavía. En una NC, el saldo es el
  * crédito libre (lo que su factura no absorbió).
  */
@@ -102,9 +102,9 @@ export function FacturasTabla({ items, onAbrir, onVerificar, verificandoId, emit
         <table className="w-full border-collapse min-w-[1120px]">
           <thead>
             <tr>
-              {['Comprobante', 'Cliente', 'Fecha', 'Producto / obra', 'Neto', 'Total', 'Vence', 'Saldo', 'Estado', ''].map((h, i) => (
+              {['Comprobante', 'Cliente', 'Fecha', 'Producto / obra', 'Neto', 'Total', 'Saldo', 'Estado', ''].map((h, i) => (
                 <th key={h + i}
-                  className={`bg-gris text-gris-dark text-[10px] font-bold px-3 py-2 uppercase tracking-wide whitespace-nowrap ${i === 4 || i === 5 || i === 7 ? 'text-right' : 'text-left'}`}>
+                  className={`bg-gris text-gris-dark text-[10px] font-bold px-3 py-2 uppercase tracking-wide whitespace-nowrap ${i === 4 || i === 5 || i === 6 ? 'text-right' : 'text-left'}`}>
                   {h}
                 </th>
               ))}
@@ -131,11 +131,6 @@ export function FacturasTabla({ items, onAbrir, onVerificar, verificandoId, emit
                 </td>
                 <td className="px-3 py-2 text-right font-mono text-xs tabular-nums font-bold cursor-pointer" onClick={() => onAbrir(f.id)}>
                   {f.es_nc ? '−' : ''}{fmtM(f.imp_total)}
-                </td>
-                <td className={`px-3 py-2 text-xs whitespace-nowrap cursor-pointer ${f.cobro_estado === 'vencida' ? 'text-rojo font-semibold' : ''}`}
-                    onClick={() => onAbrir(f.id)}
-                    title={f.cobro_estado === 'vencida' ? `Vencida hace ${f.cobro_dias_vencido} días` : f.vence_el_manual ? 'Vencimiento fijado a mano' : undefined}>
-                  {f.estado === 'autorizada' && !f.es_nc ? fmtFecha(f.vence_el) : ''}
                 </td>
                 <td className="px-3 py-2 text-right text-xs cursor-pointer" onClick={() => onAbrir(f.id)}><CobroCelda f={f} /></td>
                 <td className="px-3 py-2 cursor-pointer" onClick={() => onAbrir(f.id)}>
@@ -175,8 +170,8 @@ export function FacturasTabla({ items, onAbrir, onVerificar, verificandoId, emit
                 </div>
               </div>
               {f.estado === 'autorizada' && !f.es_nc && f.cobro_saldo != null && Number(f.cobro_saldo) > 0 && (
-                <div className={`text-[11px] mt-1 ${f.cobro_estado === 'vencida' ? 'text-rojo font-semibold' : 'text-gris-dark'}`}>
-                  Debe {fmtM(f.cobro_saldo)} · vence {fmtFecha(f.vence_el)}
+                <div className="text-[11px] mt-1 text-gris-dark">
+                  Debe {fmtM(f.cobro_saldo)}
                 </div>
               )}
               <div className="flex items-baseline justify-between gap-2 mt-1.5">

@@ -48,7 +48,6 @@ const schema = z.object({
   email:            z.string().refine(v => v.trim() === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()), 'Email inválido'),
   obs:              z.string(),
   cuenta_fce_id:    z.string(),
-  plazo_pago_dias:  z.string().refine(v => /^\d{1,3}$/.test(v.trim()) && Number(v) <= 365, 'Días de 0 a 365'),
 }).superRefine((d, ctx) => {
   const nro = d.doc_nro.replace(/\D/g, '')
   if (d.doc_tipo === '80' || d.doc_tipo === '86') {
@@ -64,7 +63,7 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>
 
-const CAMPOS_CLIENTE = ['razon_social', 'doc_tipo', 'doc_nro', 'condicion_iva_id', 'domicilio', 'provincia', 'email', 'obs', 'cuenta_fce_id', 'plazo_pago_dias']
+const CAMPOS_CLIENTE = ['razon_social', 'doc_tipo', 'doc_nro', 'condicion_iva_id', 'domicilio', 'provincia', 'email', 'obs', 'cuenta_fce_id']
 
 interface Props {
   cliente?: VentasCliente
@@ -96,7 +95,6 @@ export function ModalCliente({ cliente, onClose }: Props) {
       email:            cliente?.email ?? '',
       obs:              cliente?.obs ?? '',
       cuenta_fce_id:    cliente?.cuenta_fce_id ? String(cliente.cuenta_fce_id) : '',
-      plazo_pago_dias:  String(cliente?.plazo_pago_dias ?? 30),
     },
   })
 
@@ -165,7 +163,6 @@ export function ModalCliente({ cliente, onClose }: Props) {
       email:            d.email.trim(),
       obs:              d.obs.trim(),
       cuenta_fce_id:    d.cuenta_fce_id ? Number(d.cuenta_fce_id) : null,
-      plazo_pago_dias:  Number(d.plazo_pago_dias),
     }
     try {
       if (cliente) await editar.mutateAsync({ id: cliente.id, ...body })
@@ -259,13 +256,7 @@ export function ModalCliente({ cliente, onClose }: Props) {
           </div>
           <Select label={deArca.provincia ? 'Provincia · de ARCA' : 'Provincia'} {...register('provincia')} options={provincias} />
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="sm:col-span-2">
-            <Input label="Email" type="email" {...register('email')} error={errors.email?.message} />
-          </div>
-          <Input label="Plazo de pago (días)" inputMode="numeric" {...register('plazo_pago_dias')} error={errors.plazo_pago_dias?.message}
-            hint="Vencimiento de cobro = fecha + plazo" />
-        </div>
+        <Input label="Email" type="email" {...register('email')} error={errors.email?.message} />
         {letra === 'A' && (
           <div className="border border-gris-mid rounded-lg p-3 flex flex-col gap-2">
             <span className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Factura de Crédito MiPyME (FCE)</span>

@@ -68,8 +68,7 @@ export function FacturacionPage() {
         {tab === 'clientes'  && <ClientesTab />}
         {tab === 'impuestos' && <ImpuestosTab />}
         {tab === 'cobranzas' && <CobranzasTab />}
-        {/* La key re-monta al llegar desde la campana (?aviso=vencidas) estando ya en la tab. */}
-        {tab === 'deudores'  && <DeudoresTab key={searchParams.get('aviso') ?? ''} />}
+        {tab === 'deudores'  && <DeudoresTab />}
         {tab === 'saldos_iniciales' && <SaldosInicialesTab />}
       </div>
     </div>

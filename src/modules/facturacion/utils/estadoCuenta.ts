@@ -90,9 +90,9 @@ export function armarEstadoCuentaDoc(d: DatosEstadoCuenta, opts: { logo: string 
     table: {
       headerRows: 1,
       dontBreakRows: true,
-      widths: [48, 92, '*', 48, 66, 66, 70],
+      widths: [48, 92, '*', 66, 66, 70],
       body: [
-        [th('Fecha'), th('Comprobante'), th('Detalle'), th('Vence'), th('Debe', 'right'), th('Haber', 'right'), th('Saldo', 'right')],
+        [th('Fecha'), th('Comprobante'), th('Detalle'), th('Debe', 'right'), th('Haber', 'right'), th('Saldo', 'right')],
         ...movs.map(m => {
           const ant = m.movimiento === 'saldo_anterior'
           const extra = ant ? { bold: true, fillColor: '#FAFAF7' } : {}
@@ -100,7 +100,6 @@ export function armarEstadoCuentaDoc(d: DatosEstadoCuenta, opts: { logo: string 
             td(fmtFecha(m.fecha), 'left', extra),
             td(ant ? '' : m.comprobante ?? '', 'left', extra),
             td(ant ? 'Saldo anterior' : [MOVIMIENTO_LABEL[m.movimiento], m.detalle].filter(Boolean).join(' — '), 'left', { ...extra, fontSize: 8 }),
-            td(fmtFecha(m.vence_el), 'left', extra),
             td(Number(m.debe) ? fmtN(m.debe) : '', 'right', extra),
             td(Number(m.haber) ? fmtN(m.haber) : '', 'right', extra),
             td(fmtN(m.saldo), 'right', { ...extra, bold: true }),
@@ -133,15 +132,15 @@ export function armarEstadoCuentaDoc(d: DatosEstadoCuenta, opts: { logo: string 
   const antiguedad: Content[] = dd ? [{
     margin: [0, 12, 0, 0] as Margen,
     table: {
-      widths: ['*', '*', '*', '*', '*'],
+      widths: ['*', '*', '*', '*'],
       body: [
-        [th('Al día', 'right'), th('1 a 30 días', 'right'), th('31 a 60 días', 'right'), th('61 a 90 días', 'right'), th('Más de 90', 'right')],
-        [td(fmtN(dd.al_dia), 'right'), td(fmtN(dd.d1_30), 'right'), td(fmtN(dd.d31_60), 'right'), td(fmtN(dd.d61_90), 'right'), td(fmtN(dd.d90_mas), 'right')],
+        [th('Hasta 30 días', 'right'), th('31 a 60 días', 'right'), th('61 a 90 días', 'right'), th('Más de 90 días', 'right')],
+        [td(fmtN(dd.d0_30), 'right'), td(fmtN(dd.d31_60), 'right'), td(fmtN(dd.d61_90), 'right'), td(fmtN(dd.d90_mas), 'right')],
       ],
     },
     layout: cajaFina,
   }, {
-    text: 'Antigüedad de la deuda según el vencimiento de cada comprobante. Si ya realizó el pago, desestime este aviso.',
+    text: 'Antigüedad de la deuda según la fecha de emisión de cada comprobante. Si ya realizó el pago, desestime este aviso.',
     fontSize: 7, color: TENUE, margin: [0, 3, 0, 0] as Margen,
   }] : []
 
@@ -161,25 +160,24 @@ export function filasExcelEstadoCuenta(d: DatosEstadoCuenta): (string | number |
   return [
     [`Estado de cuenta — ${d.razonSocial} (${fmtCuit(d.docNro)}) — ${periodoTexto(d.ec.desde, d.ec.hasta)}`],
     [],
-    ['Fecha', 'Movimiento', 'Comprobante', 'Detalle', 'Vence', 'Debe', 'Haber', 'Saldo'],
+    ['Fecha', 'Movimiento', 'Comprobante', 'Detalle', 'Debe', 'Haber', 'Saldo'],
     ...movs.map(m => [
       m.fecha ? fmtFecha(m.fecha) : '',
       MOVIMIENTO_LABEL[m.movimiento] ?? m.movimiento,
       m.comprobante ?? '',
       m.detalle ?? '',
-      m.vence_el ? fmtFecha(m.vence_el) : '',
       Number(m.debe) || null,
       Number(m.haber) || null,
       Number(m.saldo),
     ]),
     [],
-    ['', '', '', 'Saldo final', '', '', '', saldoFinal(movs, d.ec.saldo_final)],
+    ['', '', '', 'Saldo final', '', '', saldoFinal(movs, d.ec.saldo_final)],
   ]
 }
 
 export function exportarEstadoCuentaExcel(d: DatosEstadoCuenta): void {
   const ws = XLSX.utils.aoa_to_sheet(filasExcelEstadoCuenta(d))
-  ws['!cols'] = [{ wch: 11 }, { wch: 18 }, { wch: 22 }, { wch: 44 }, { wch: 11 }, { wch: 14 }, { wch: 14 }, { wch: 14 }]
+  ws['!cols'] = [{ wch: 11 }, { wch: 18 }, { wch: 22 }, { wch: 44 }, { wch: 14 }, { wch: 14 }, { wch: 14 }]
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Estado de cuenta')
   XLSX.writeFile(wb, nombreArchivoEstadoCuenta(d, 'xlsx'))
@@ -190,15 +188,15 @@ export function exportarDeudoresExcel(filas: VentasDeudor[], al: string): void {
   const aoa: (string | number | null)[][] = [
     [`Deudores al ${fmtFecha(al)}`],
     [],
-    ['Cliente', 'CUIT', 'Saldo', 'A cuenta', 'NC disponible', 'Neto', 'Al día', '1–30', '31–60', '61–90', '+90', 'A revisar', 'Última cobranza'],
+    ['Cliente', 'CUIT', 'Saldo', 'A cuenta', 'NC disponible', 'Neto', 'Hasta 30 días', '31–60', '61–90', 'Más de 90', 'A revisar', 'Última cobranza'],
     ...filas.map(d => [
       d.cliente_razon_social, fmtCuit(d.cliente_doc_nro), Number(d.saldo), Number(d.a_cuenta), Number(d.nc_disponible),
-      Number(d.saldo_neto), Number(d.al_dia), Number(d.d1_30), Number(d.d31_60), Number(d.d61_90), Number(d.d90_mas),
+      Number(d.saldo_neto), Number(d.d0_30), Number(d.d31_60), Number(d.d61_90), Number(d.d90_mas),
       Number(d.saldo_a_revisar), d.ultima_cobranza ? fmtFecha(d.ultima_cobranza) : '',
     ]),
   ]
   const ws = XLSX.utils.aoa_to_sheet(aoa)
-  ws['!cols'] = [{ wch: 40 }, { wch: 15 }, ...Array.from({ length: 10 }, () => ({ wch: 14 })), { wch: 14 }]
+  ws['!cols'] = [{ wch: 40 }, { wch: 15 }, ...Array.from({ length: 9 }, () => ({ wch: 14 })), { wch: 14 }]
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Deudores')
   XLSX.writeFile(wb, `Deudores_${al.replace(/-/g, '')}.xlsx`)

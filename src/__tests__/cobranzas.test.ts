@@ -7,7 +7,7 @@ import path from 'node:path'
 import * as XLSX from 'xlsx'
 import { describe, expect, it } from 'vitest'
 import {
-  aCent, aPagina, aplicarAutomatico, centATexto, conVencido, imputacionesDe, numeroRecibo, sumarDias, validarAplicacion,
+  aCent, aPagina, aplicarAutomatico, centATexto, imputacionesDe, numeroRecibo, sumarDias, validarAplicacion,
 } from '@/modules/facturacion/utils/cobranzas.utils'
 import {
   codigoDeTipo, docTipoDeCelda, fechaDeCelda, filaParaApi, leerFilasArca, monedaDeCelda, numeroDeCelda, parsearComprobantesArca,
@@ -16,9 +16,9 @@ import type { VentasCobroDetalle, VentasEstadoCuenta } from '@/types/domain.type
 
 describe('aplicación de comprobantes (centavos)', () => {
   const pend = [
-    { clave: 'f3', saldo: 1000,    vence_el: '2026-09-30', fecha: '2026-08-31', numero: 3 },
-    { clave: 'e1', saldo: '250.10', vence_el: '2026-07-15', fecha: '2026-06-15', numero: 1143 },
-    { clave: 'f2', saldo: 500,     vence_el: '2026-09-30', fecha: '2026-08-30', numero: 2 },
+    { clave: 'f3', saldo: 1000,    fecha: '2026-08-31', numero: 3 },
+    { clave: 'e1', saldo: '250.10', fecha: '2026-06-15', numero: 1143 },
+    { clave: 'f2', saldo: 500,     fecha: '2026-08-30', numero: 2 },
   ]
 
   it('«Aplicar automático» va del más viejo al más nuevo, cada uno hasta su saldo', () => {
@@ -36,8 +36,8 @@ describe('aplicación de comprobantes (centavos)', () => {
   })
 
   it('no se cae con los decimales de float (0,1 + 0,2)', () => {
-    const p = [{ clave: 'a', saldo: 0.1, vence_el: '2026-01-01', fecha: '2026-01-01', numero: 1 },
-               { clave: 'b', saldo: 0.2, vence_el: '2026-01-02', fecha: '2026-01-01', numero: 2 }]
+    const p = [{ clave: 'a', saldo: 0.1, fecha: '2026-01-01', numero: 1 },
+               { clave: 'b', saldo: 0.2, fecha: '2026-01-01', numero: 2 }]
     const a = aplicarAutomatico(p, aCent(0.3))
     const v = validarAplicacion(p, a, aCent(0.3))
     expect(v.aplicadoCent).toBe(30)
@@ -70,12 +70,6 @@ describe('aplicación de comprobantes (centavos)', () => {
     expect(sumarDias('2026-12-31', 1)).toBe('2027-01-01')
     expect(aPagina([1, 2])).toEqual({ rows: [1, 2], total: 2 })
     expect(aPagina({ rows: [1], total: 9 })).toEqual({ rows: [1], total: 9 })
-  })
-
-  it('el filtro del aviso de la campana es «tiene algo vencido»', () => {
-    expect(conVencido({ vencido: 0 })).toBe(false)
-    expect(conVencido({ vencido: 0.004 })).toBe(false)
-    expect(conVencido({ vencido: '10.5' as unknown as number })).toBe(true)
   })
 })
 
@@ -261,8 +255,8 @@ describe('estado de cuenta (PDF y Excel)', async () => {
 
   it('el Excel tiene una fila por movimiento y el saldo final', () => {
     const f = filasExcelEstadoCuenta(datos)
-    expect(f[2]).toEqual(['Fecha', 'Movimiento', 'Comprobante', 'Detalle', 'Vence', 'Debe', 'Haber', 'Saldo'])
+    expect(f[2]).toEqual(['Fecha', 'Movimiento', 'Comprobante', 'Detalle', 'Debe', 'Haber', 'Saldo'])
     expect(f).toHaveLength(3 + 4 + 2)
-    expect(f[f.length - 1]![7]).toBe(1265)
+    expect(f[f.length - 1]![6]).toBe(1265)
   })
 })

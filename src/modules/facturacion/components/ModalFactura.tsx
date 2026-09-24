@@ -17,8 +17,6 @@ import {
   useCrearFacturaVenta, useEditarFacturaVenta, useFacturaVenta, useObrasFacturacion,
 } from '../hooks/useFacturacion'
 import { useClientesVenta, useCuentasFce, useFceCliente } from '../hooks/useClientesFacturacion'
-import { useCambiarVencimiento } from '../hooks/useCobranzas'
-import { sumarDias } from '../utils/cobranzas.utils'
 import { calcularTotales } from '../utils/facturacion.calculos'
 import {
   ALICUOTAS_UI, ALICUOTA_LABEL, CONDICIONES_IVA, CONDICION_PAGO_DEFAULT, MONTO_MINIMO_FCE, PRODUCTOS, PROVINCIAS,
@@ -91,15 +89,10 @@ const schema = z.object({
   fce_transmision:   z.enum(['SCA', 'ADC']),
   fce_referencia:    z.string().max(50, 'Hasta 50 caracteres'),
   nc_anulacion:      z.enum(['S', 'N']),
-  /** Vencimiento de COBRO (no va a ARCA). Vacío = automático: fecha + plazo del cliente. */
-  vence_el:          z.string(),
   renglones:         z.array(renglonSchema).min(1, 'Agregá al menos un renglón'),
 }).superRefine((d, ctx) => {
   if (d.producto === 'AVANCE DE OBRA' && !d.obra_cod) {
     ctx.addIssue({ code: 'custom', path: ['obra_cod'], message: 'Avance de obra lleva la obra (es el centro de costo)' })
-  }
-  if (d.vence_el && d.fecha_cbte && d.vence_el < d.fecha_cbte) {
-    ctx.addIssue({ code: 'custom', path: ['vence_el'], message: 'No puede ser antes de la fecha de la factura' })
   }
   if (d.fce && d.fch_vto_pago && d.fecha_cbte && d.fch_vto_pago < d.fecha_cbte) {
     ctx.addIssue({ code: 'custom', path: ['fch_vto_pago'], message: 'No puede ser antes de la fecha de la factura' })
@@ -109,7 +102,7 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>
 
 /** Rutas del form a las que el backend puede apuntar un error (el resto va arriba del botón). */
-const CAMPOS_FORM = /^(cliente_id|obra_cod|producto|fecha_cbte|vence_el|provincia_origen|provincia_destino|condicion_pago|remitos|observaciones|obs_interna|fce_cuenta_id|fch_vto_pago|fce_transmision|fce_referencia|nc_anulacion|renglones\.\d+\.(descripcion|cantidad|unidad|precio_unit|alicuota_id))$/
+const CAMPOS_FORM = /^(cliente_id|obra_cod|producto|fecha_cbte|provincia_origen|provincia_destino|condicion_pago|remitos|observaciones|obs_interna|fce_cuenta_id|fch_vto_pago|fce_transmision|fce_referencia|nc_anulacion|renglones\.\d+\.(descripcion|cantidad|unidad|precio_unit|alicuota_id))$/
 type RenglonForm = FormData['renglones'][number]
 
 const RENGLON_VACIO: RenglonForm = { descripcion: '', cantidad: '1', unidad: UNIDAD_DEFAULT, precio_unit: '', alicuota_id: '5' }
@@ -120,7 +113,6 @@ function defaultsNuevo(): FormData {
     provincia_origen: PROVINCIA_DEFAULT, provincia_destino: PROVINCIA_DEFAULT,
     condicion_pago: CONDICION_PAGO_DEFAULT, remitos: '', observaciones: '', obs_interna: '',
     fce: false, fce_cuenta_id: '', fch_vto_pago: '', fce_transmision: 'SCA', fce_referencia: '', nc_anulacion: 'N',
-    vence_el: '',
     renglones: [RENGLON_VACIO],
   }
 }
@@ -155,8 +147,6 @@ function defaultsDe(fj: VentasFacturaFJ, opts: { copiarRenglones: boolean; nc: b
     fce_transmision:   !opts.nc && f.fce_transmision ? f.fce_transmision : 'SCA',
     fce_referencia:    !opts.nc ? f.fce_referencia ?? '' : '',
     nc_anulacion:      !opts.nc && f.nc_anulacion ? f.nc_anulacion : 'N',
-    // Solo si alguien lo fijó a mano: si no, que lo siga calculando la base.
-    vence_el:          !opts.nc && f.vence_el_manual && f.vence_el ? f.vence_el : '',
     renglones:         opts.copiarRenglones ? renglonesDe(fj) : [RENGLON_VACIO],
   }
 }
@@ -193,7 +183,6 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
   const obras      = useObrasFacturacion()
   const crear      = useCrearFacturaVenta()
   const editar     = useEditarFacturaVenta()
-  const cambiarVence = useCambiarVencimiento()
 
   const [errorServer, setErrorServer] = useState<{ msg: string; code: string | null } | null>(null)
 
@@ -236,10 +225,6 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
 
   const listaClientes = useMemo(() => clientes.data ?? [], [clientes.data])
   const cliente = listaClientes.find(c => String(c.id) === clienteId)
-  const venceEl  = useWatch({ control, name: 'vence_el' })
-  const plazoCli = cliente?.plazo_pago_dias ?? 30
-  /** Lo que pondría la base sola (fn_ventas_factura_vence): fecha + plazo del cliente. */
-  const venceAuto = fechaCbte ? sumarDias(fechaCbte, plazoCli) : ''
   const letraCliente = cliente ? letraDeCliente(cliente.doc_tipo, cliente.condicion_iva_id) : null
   // En una NC manda la factura que corrige; si no, el cliente.
   const letraAsociada = esNc
@@ -341,7 +326,7 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
   }
 
   // ── Guardar ──
-  const guardando = crear.isPending || editar.isPending || cambiarVence.isPending
+  const guardando = crear.isPending || editar.isPending
 
   async function guardar(d: FormData, forzar = false) {
     setErrorServer(null)
@@ -385,18 +370,6 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
         ? await editar.mutateAsync({ id: editarId, ...body })
         : await crear.mutateAsync(body)
       toast(editarId ? '✓ Borrador guardado' : '✓ Borrador creado: revisalo y emitilo desde la ficha', 'ok')
-      // El vencimiento de cobro no viaja en el borrador: va por su RPC
-      // (ventas_cambiar_vencimiento) DESPUÉS de guardar. Si falla, la factura
-      // ya quedó guardada: se avisa y se sigue.
-      if (!esNc && tipo !== 201) {
-        const quiere = d.vence_el || null
-        const f = fj.factura
-        const hace = quiere ? f.vence_el !== quiere : !!f.vence_el_manual
-        if (hace) {
-          try { await cambiarVence.mutateAsync({ id: f.id, vence_el: quiere }) }
-          catch (e) { toast(`La factura se guardó, pero no el vencimiento: ${mensajeErrorFacturacion(e)}`, 'warn') }
-        }
-      }
       onGuardada(fj)
     } catch (e) {
       const ce = errorDeCampoFacturacion(e)
@@ -547,16 +520,6 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
           />
           <Input label="Fecha" type="date" {...register('fecha_cbte')} error={errors.fecha_cbte?.message}
             hint="ARCA acepta hasta 10 días para atrás o adelante" />
-          {!esNc && tipo !== 201 && (
-            <div className="flex flex-col gap-0.5">
-              <Input label="Vence el (cobro)" type="date" min={fechaCbte} {...register('vence_el')} error={errors.vence_el?.message}
-                hint={venceEl ? 'Fijado a mano' : venceAuto ? `Automático: ${fmtFecha(venceAuto)} (${plazoCli} días)` : `Automático: fecha + ${plazoCli} días`} />
-              {venceEl && (
-                <button type="button" className="self-start text-[11px] text-azul hover:underline"
-                  onClick={() => setValue('vence_el', '', { shouldValidate: true })}>Volver al automático</button>
-              )}
-            </div>
-          )}
           <Input label="Condición de pago" {...register('condicion_pago')} error={errors.condicion_pago?.message} />
           <Select label="Provincia de origen" options={provinciasCon(origen)} {...register('provincia_origen')}
             error={errors.provincia_origen?.message} />

@@ -122,8 +122,8 @@ export function SaldosInicialesTab() {
                     <input type="checkbox" checked={todasSel} aria-label="Seleccionar todos"
                       onChange={() => setSel(todasSel ? new Set() : new Set(filas.map(f => f.id)))} />
                   </th>
-                  {['Tipo', 'Número', 'Cliente', 'Fecha', 'Vence', 'Total', 'Saldo inicial', 'Saldo hoy', 'Estado', 'Origen'].map((h, i) => (
-                    <th key={h} className={`bg-gris text-gris-dark text-[10px] font-bold px-2 py-2 uppercase tracking-wide whitespace-nowrap ${i >= 5 && i <= 7 ? 'text-right' : 'text-left'}`}>{h}</th>
+                  {['Tipo', 'Número', 'Cliente', 'Fecha', 'Total', 'Saldo inicial', 'Saldo hoy', 'Estado', 'Origen'].map((h, i) => (
+                    <th key={h} className={`bg-gris text-gris-dark text-[10px] font-bold px-2 py-2 uppercase tracking-wide whitespace-nowrap ${i >= 4 && i <= 6 ? 'text-right' : 'text-left'}`}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -144,12 +144,11 @@ export function SaldosInicialesTab() {
                         <div className="text-[11px] text-gris-dark font-mono">{fmtCuit(f.cliente_doc_nro)}</div>
                       </td>
                       <td className="px-2 py-1.5 text-xs whitespace-nowrap">{fmtFecha(f.fecha)}</td>
-                      <td className="px-2 py-1.5 text-xs whitespace-nowrap">{nc ? '—' : fmtFecha(f.vence_el)}</td>
                       <td className="px-2 py-1.5 text-right font-mono text-xs tabular-nums whitespace-nowrap">{nc ? '−' : ''}{fmtM(f.total)}</td>
                       <td className="px-2 py-1.5 text-right font-mono text-xs tabular-nums whitespace-nowrap">{nc ? '−' : ''}{fmtM(f.saldo_inicial)}</td>
                       <td className="px-2 py-1.5 text-right font-mono text-sm tabular-nums whitespace-nowrap font-bold">{nc ? '−' : ''}{fmtM(f.saldo)}</td>
                       <td className="px-2 py-1.5">
-                        <EstadoCobroBadge estado={!nc && Number(f.dias_vencido) > 0 && Number(f.saldo) > 0 ? 'vencida' : f.estado} revisar={f.saldo_a_revisar} />
+                        <EstadoCobroBadge estado={f.estado} revisar={f.saldo_a_revisar} />
                         {f.saldo_cobrado_el && <div className="text-[10px] text-gris-dark">cobrada {fmtFecha(f.saldo_cobrado_el)}</div>}
                         {f.saldo_motivo && !f.saldo_a_revisar && <div className="text-[10px] text-gris-dark truncate max-w-[180px]" title={f.saldo_motivo}>{f.saldo_motivo}</div>}
                       </td>

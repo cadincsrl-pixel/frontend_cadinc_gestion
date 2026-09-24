@@ -11,7 +11,7 @@
 
 import type {
   VentasCbteTipoExterno, VentasCobroEstadoDeuda, VentasCobroForma, VentasCreditoEstado, VentasDestinoImputacion,
-  VentasDeudor, VentasRetencionTipo, VentasSaldo,
+  VentasRetencionTipo, VentasSaldo,
 } from '@/types/domain.types'
 
 // ── Centavos ──────────────────────────────────────────────────────────
@@ -77,20 +77,15 @@ export const ORIGENES_EXTERNO: { key: 'finnegans' | 'portal' | 'otro'; label: st
 
 // ── Estado de cobro ───────────────────────────────────────────────────
 
+// Sin vencimiento de cobro (decisión del dueño, 2026-09-24): la base todavía
+// devuelve 'vencida' cuando pasó `vence_el`, y acá se muestra como Pendiente.
 export const ESTADO_COBRO_META: Record<VentasCobroEstadoDeuda | VentasCreditoEstado, { label: string; badge: string; hint: string }> = {
   pagada:     { label: 'Cobrada',    badge: 'bg-verde-light text-verde',            hint: 'No debe nada.' },
   parcial:    { label: 'Parcial',    badge: 'bg-azul-light text-azul',              hint: 'Tiene cobros o NC aplicados, pero todavía debe una parte.' },
-  pendiente:  { label: 'Pendiente',  badge: 'bg-gris text-gris-dark',               hint: 'No se le aplicó nada todavía y no está vencida.' },
-  vencida:    { label: 'Vencida',    badge: 'bg-rojo text-white',                   hint: 'Pasó el vencimiento de cobro y todavía debe.' },
+  pendiente:  { label: 'Pendiente',  badge: 'bg-gris text-gris-dark',               hint: 'No se le aplicó nada todavía.' },
+  vencida:    { label: 'Pendiente',  badge: 'bg-gris text-gris-dark',               hint: 'No se le aplicó nada todavía.' },
   usado:      { label: 'Usado',      badge: 'bg-gris text-gris-dark',               hint: 'El crédito ya se aplicó entero.' },
   disponible: { label: 'Disponible', badge: 'bg-naranja-light text-naranja-dark',   hint: 'Crédito libre: se puede compensar contra otra factura.' },
-}
-
-/** "vence en 3 días" / "vencida hace 12 días" / "vence hoy". */
-export function textoVencimiento(dias: number | null | undefined, saldo: number): string | null {
-  if (saldo <= 0 || dias == null) return null
-  if (dias > 0) return `vencida hace ${dias} día${dias === 1 ? '' : 's'}`
-  return null
 }
 
 // ── Aplicación de comprobantes ────────────────────────────────────────
@@ -111,15 +106,14 @@ export function destinoDe(s: Pick<VentasSaldo, 'factura_id' | 'externo_id'>, imp
 export interface PendienteGrilla {
   clave:    string
   saldo:    number | string
-  vence_el: string
   fecha:    string
   numero:   number
 }
 
-/** Orden de "más viejo a más nuevo": vencimiento, después fecha, después número. */
-export function ordenarPorAntiguedad<T extends Pick<PendienteGrilla, 'vence_el' | 'fecha' | 'numero'>>(filas: T[]): T[] {
+/** Orden de "más viejo a más nuevo": fecha, después número. */
+export function ordenarPorAntiguedad<T extends Pick<PendienteGrilla, 'fecha' | 'numero'>>(filas: T[]): T[] {
   return [...filas].sort((a, b) =>
-    a.vence_el.localeCompare(b.vence_el) || a.fecha.localeCompare(b.fecha) || Number(a.numero) - Number(b.numero))
+    a.fecha.localeCompare(b.fecha) || Number(a.numero) - Number(b.numero))
 }
 
 /**
@@ -179,17 +173,6 @@ export function imputacionesDe<T extends Pick<VentasSaldo, 'factura_id' | 'exter
     .map(p => ({ p, c: aCent(aplicado[p.clave]) }))
     .filter(x => x.c > 0)
     .map(x => destinoDe(x.p, x.c))
-}
-
-// ── Deudores ──────────────────────────────────────────────────────────
-
-/**
- * ¿El cliente tiene algo vencido sin cobrar? ES el filtro del aviso de la
- * campana y del deep-link `/facturacion?tab=deudores&aviso=vencidas`: si se
- * cambia uno, se cambia el otro (§5.9 del CLAUDE.md).
- */
-export function conVencido(d: Pick<VentasDeudor, 'vencido'>): boolean {
-  return aCent(d.vencido) > 0
 }
 
 // ── Formatos ──────────────────────────────────────────────────────────

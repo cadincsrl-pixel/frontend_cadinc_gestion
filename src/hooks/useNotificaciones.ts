@@ -9,9 +9,6 @@ import { useSessionStore } from '@/store/session.store'
 import { usePermisos } from '@/hooks/usePermisos'
 import { usePendientesDePrecio } from '@/modules/certificaciones/hooks/useCuentaCliente'
 import { PAGOS_KEYS } from '@/modules/pagos/hooks/usePagos'
-import { useAmbienteCobranzas, useDeudores } from '@/modules/facturacion/hooks/useCobranzas'
-import { conVencido } from '@/modules/facturacion/utils/cobranzas.utils'
-import { useTabsPermitidos } from '@/hooks/useTabsPermitidos'
 import type { PagosFacturasPage, Personal } from '@/types/domain.types'
 
 // Cumpleañero precalculado, listo para renderizar.
@@ -123,21 +120,6 @@ export interface FacturaPagosItem {
   dias_vencida:  number | null
 }
 
-/**
- * Un cliente de Ventas con facturas vencidas sin cobrar. Sale de
- * GET /api/facturacion/deudores (la MISMA query que la tab Deudores) filtrada
- * con `conVencido`, que es también el filtro del deep-link
- * `/facturacion?tab=deudores&aviso=vencidas`.
- */
-export interface VentaVencidaItem {
-  cliente_id:      number
-  razon_social:    string
-  vencido:         number
-  /** Parte del saldo que viene de saldos iniciales sin confirmar. */
-  saldo_a_revisar: number
-  d90_mas:         number
-}
-
 interface NotificacionesResult {
   // Cumpleañeros del día (count → badge rojo).
   hoy:                 CumpleanieroItem[]
@@ -174,9 +156,6 @@ interface NotificacionesResult {
   facturasSinRevisar:  FacturaPagosItem[]
   // Rechazadas: compras las tiene que corregir.
   facturasObservadas:  FacturaPagosItem[]
-  // ── Ventas ──
-  // Clientes con facturas vencidas sin cobrar (mayor vencido primero).
-  ventasVencidas:      VentaVencidaItem[]
   // La lista de obras ya cargó: recién ahí el aviso puede mostrar el nombre.
   pedidosNombresListos: boolean
   // total de notificaciones "urgentes" (badge rojo).
@@ -272,11 +251,6 @@ export function useNotificaciones(): NotificacionesResult {
   const { resolverItems, cargarPrecios } = usePermisos('certificaciones')
   const tienePagos = hasModulo('pagos')
   const { aprobarFacturas, registrarPagos, puedeCrear: cargaFacturas, esAdmin } = usePermisos('pagos')
-  // Ventas: solo quien ve la tab Deudores (misma guardia que el endpoint).
-  const tieneVentas = hasModulo('facturacion')
-  const tabsVentas = useTabsPermitidos('facturacion')
-  const verDeudores = tieneVentas && tabsVentas.includes('deudores')
-  const ambienteVentas = useAmbienteCobranzas()
 
   const { data: personal = [] } = usePersonal()
   const { data: docsVenc = [] } = useQuery({
@@ -374,11 +348,6 @@ export function useNotificaciones(): NotificacionesResult {
   // Lo observado vuelve a compras: lo ve quien carga.
   const { data: observadas } = useQuery(
     qPagos(PAGOS_KEYS.notifObs, 'estado=observada', tienePagos && !!(cargaFacturas || esAdmin)))
-
-  // ── Ventas ──
-  // Misma clave que la tab Deudores a la fecha de hoy: la dedupe React Query
-  // y cualquier cobro la invalida (todo cuelga de ['facturacion', …]).
-  const { data: deudoresVentas } = useDeudores('', ambienteVentas, verDeudores)
 
   // El nombre de la obra viene embebido desde el backend: alcanza con que la
   // query haya cargado para que el warmup del aviso pueda activarse.
@@ -537,14 +506,6 @@ export function useNotificaciones(): NotificacionesResult {
         dias_vencida: f.dias_vencida,
       }))
 
-    const ventasVencidas: VentaVencidaItem[] = (deudoresVentas ?? [])
-      .filter(conVencido)
-      .map(d => ({
-        cliente_id: d.cliente_id, razon_social: d.cliente_razon_social, vencido: Number(d.vencido),
-        saldo_a_revisar: Number(d.saldo_a_revisar), d90_mas: Number(d.d90_mas),
-      }))
-      .sort((a, b) => b.vencido - a.vencido)
-
     const facturasParaAprobar = aItemPagos(paraAprobar)
     const facturasVencidas    = aItemPagos(vencidas)
     const facturasSinRevisar  = aItemPagos(sinRevisar)
@@ -568,7 +529,6 @@ export function useNotificaciones(): NotificacionesResult {
       facturasVencidas,
       facturasSinRevisar,
       facturasObservadas,
-      ventasVencidas,
       pedidosNombresListos,
       // El badge rojo cuenta lo que FRENA algo o ya se pasó de fecha. Las
       // facturas vencidas y las que esperan aprobación entran (sin aprobar no
@@ -584,10 +544,9 @@ export function useNotificaciones(): NotificacionesResult {
         segurosVencidos.length +
         solicitudesPorComprar.length +
         (vencidas?.total ?? 0) +
-        (paraAprobar?.total ?? 0) +
-        ventasVencidas.length,
+        (paraAprobar?.total ?? 0),
     }
-  }, [personal, docsVenc, docsChofer, servicesNotif, gastosPend, segurosNotif, pendientes, pendPrecio, tieneTarja, pedidosNombresListos, paraAprobar, vencidas, sinRevisar, observadas, deudoresVentas])
+  }, [personal, docsVenc, docsChofer, servicesNotif, gastosPend, segurosNotif, pendientes, pendPrecio, tieneTarja, pedidosNombresListos, paraAprobar, vencidas, sinRevisar, observadas])
 }
 
 // Helper para mostrar "hoy", "mañana", "en 3 días" en la lista de próximos.

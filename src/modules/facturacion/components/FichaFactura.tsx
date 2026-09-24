@@ -16,7 +16,7 @@ import { codigoErrorFacturacion, mensajeErrorFacturacion } from '../utils/factur
 import { descargarFacturaPdf } from '../utils/facturaPdf'
 import type { VentasEvento, VentasFacturaFJ, VentasImputacion } from '@/types/domain.types'
 import { EstadoBadge } from './FacturasTabla'
-import { useCambiarVencimiento, useImputacionesDe } from '../hooks/useCobranzas'
+import { useImputacionesDe } from '../hooks/useCobranzas'
 import { EstadoCobroBadge } from './cobranzas/Comun'
 
 /**
@@ -58,8 +58,6 @@ export function FichaFactura({ id, onClose, onEditar, onNotaCredito, onEmitir, o
   const [motivo, setMotivo] = useState('')
   const [confirmBorrar, setConfirmBorrar] = useState(false)
   const [generandoPdf, setGenerandoPdf] = useState(false)
-  const [editVence, setEditVence] = useState<string | null>(null)
-  const cambiarVence = useCambiarVencimiento()
   const autorizada = data?.factura.estado === 'autorizada'
   const imputaciones = useImputacionesDe(
     data && autorizada ? (data.factura.es_nc ? { nc_factura_id: data.factura.id } : { factura_id: data.factura.id }) : null,
@@ -254,20 +252,9 @@ export function FichaFactura({ id, onClose, onEditar, onNotaCredito, onEmitir, o
         {f.estado === 'autorizada' && f.cobro_saldo != null && (
           <BloqueCobranza
             fj={fj}
-            editVence={editVence}
-            setEditVence={setEditVence}
-            guardandoVence={cambiarVence.isPending}
-            puedeEditar={puedeEditar}
             registrarCobros={registrarCobros}
             onCompensar={onCompensar}
             imputaciones={(imputaciones.data ?? []).filter(i => !i.anulada)}
-            onGuardarVence={async (v) => {
-              try {
-                await cambiarVence.mutateAsync({ id: f.id, vence_el: v })
-                toast(v ? `✓ Vence el ${fmtFecha(v)}` : '✓ Vencimiento automático', 'ok')
-                setEditVence(null)
-              } catch (e) { toast(mensajeErrorFacturacion(e), 'err') }
-            }}
           />
         )}
 
@@ -467,25 +454,18 @@ export function Aviso({ tono, children }: { tono: 'rojo' | 'naranja' | 'amarillo
 }
 
 /**
- * Cobranza de una factura autorizada: vence, saldo, estado y lo que la
- * canceló. El vencimiento se cambia por `ventas_cambiar_vencimiento` (no es
- * dato fiscal); en la FCE es el vencimiento del pago informado a ARCA y no se
- * toca. En una NC: el crédito libre y el botón de compensar.
+ * Cobranza de una factura autorizada: saldo, estado y lo que la canceló.
+ * Sin vencimiento de cobro (decisión del dueño, 2026-09-24). En una NC: el
+ * crédito libre y el botón de compensar.
  */
-function BloqueCobranza({ fj, editVence, setEditVence, guardandoVence, onGuardarVence, puedeEditar, registrarCobros, onCompensar, imputaciones }: {
+function BloqueCobranza({ fj, registrarCobros, onCompensar, imputaciones }: {
   fj:              VentasFacturaFJ
-  editVence:       string | null
-  setEditVence:    (v: string | null) => void
-  guardandoVence:  boolean
-  onGuardarVence:  (v: string | null) => void
-  puedeEditar:     boolean
   registrarCobros: boolean
   onCompensar?:    (fj: VentasFacturaFJ) => void
   imputaciones:    VentasImputacion[]
 }) {
   const f = fj.factura
   const saldo = Number(f.cobro_saldo ?? 0)
-  const fce = f.cbte_tipo === 201
   if (f.es_nc) {
     return (
       <div className="border border-gris-mid rounded p-2 text-xs flex items-center gap-2 flex-wrap">
@@ -506,8 +486,6 @@ function BloqueCobranza({ fj, editVence, setEditVence, guardandoVence, onGuardar
       </div>
     )
   }
-  const bloqueo = !puedeEditar ? 'No tenés permiso para editar comprobantes'
-    : fce ? 'En la FCE el vencimiento es el del pago informado a ARCA' : null
   return (
     <div className="border border-gris-mid rounded p-2 text-xs flex flex-col gap-1.5">
       <div className="flex items-center gap-3 flex-wrap">
@@ -515,24 +493,6 @@ function BloqueCobranza({ fj, editVence, setEditVence, guardandoVence, onGuardar
         <EstadoCobroBadge estado={f.cobro_estado} />
         <span>Saldo <b className="font-mono">{fmtM(saldo)}</b></span>
         {Number(f.cobro_aplicado) > 0 && <span className="text-gris-dark">cobrado/NC {fmtM(f.cobro_aplicado)}</span>}
-        {editVence === null ? (
-          <span className="flex items-center gap-1">
-            Vence <b className={f.cobro_estado === 'vencida' ? 'text-rojo' : ''}>{fmtFecha(f.vence_el)}</b>
-            {f.vence_el_manual && <span className="text-gris-dark">(a mano)</span>}
-            {f.cobro_estado === 'vencida' && <span className="text-rojo">· hace {f.cobro_dias_vencido} días</span>}
-            <button type="button" onClick={() => setEditVence(f.vence_el ?? f.fecha_cbte)} disabled={!!bloqueo}
-              className="text-azul hover:underline disabled:text-gris-mid disabled:no-underline disabled:cursor-not-allowed ml-1"
-              title={bloqueo ?? 'Cambiar el vencimiento de cobro (no es dato fiscal)'}>cambiar</button>
-          </span>
-        ) : (
-          <span className="flex items-center gap-1.5">
-            <input type="date" value={editVence} min={f.fecha_cbte} onChange={e => setEditVence(e.target.value)}
-              className="px-2 py-1 border border-gris-mid rounded text-xs" />
-            <Button size="sm" loading={guardandoVence} disabled={!editVence || editVence < f.fecha_cbte} onClick={() => onGuardarVence(editVence)}>Guardar</Button>
-            {f.vence_el_manual && <Button size="sm" variant="ghost" disabled={guardandoVence} onClick={() => onGuardarVence(null)} title="Fecha + plazo del cliente">Automático</Button>}
-            <Button size="sm" variant="ghost" onClick={() => setEditVence(null)} disabled={guardandoVence}>Cancelar</Button>
-          </span>
-        )}
       </div>
       {imputaciones.length > 0 && (
         <div className="text-gris-dark">

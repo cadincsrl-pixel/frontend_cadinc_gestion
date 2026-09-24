@@ -3937,12 +3937,11 @@ export interface VentasDeudor {
   a_cuenta:              number
   nc_disponible:         number
   saldo_neto:            number
-  al_dia:                number
-  d1_30:                 number
+  /** Antigüedad en días desde la FECHA de la factura (no el vencimiento). */
+  d0_30:                 number
   d31_60:                number
   d61_90:                number
   d90_mas:               number
-  vencido:               number
   saldo_a_revisar:       number
   comprobantes:          number
   ultima_cobranza:       string | null
@@ -3990,7 +3989,7 @@ export interface VentasPendientesCliente {
   debitos:   VentasSaldo[]
   /** NC libres (ERP y externas) y cobros con saldo a cuenta. */
   creditos:  VentasSaldo[]
-  totales?:  { debitos: number; vencido: number; creditos: number; a_cuenta: number; nc_disponible: number }
+  totales?:  { debitos: number; creditos: number; a_cuenta: number; nc_disponible: number }
 }
 
 /** Fila de `v_ventas_externos` (saldos iniciales + libro de ventas jul–sep 2026). */
@@ -4050,7 +4049,8 @@ export interface VentasExternoInput {
   pto_vta:        number
   numero:         number
   fecha:          string
-  vence_el:       string
+  /** Opcional: sin él, el backend pone fecha + plazo del cliente. */
+  vence_el?:      string
   total:          number
   saldo_inicial:  number
   neto?:          number
