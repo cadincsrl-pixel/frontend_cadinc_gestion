@@ -1,9 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiDelete } from '@/lib/api/client'
 import { LOG_KEYS } from './useLogistica'
-import type { CobroAdjunto, CobroAdjuntoTipo } from '@/types/domain.types'
+import type { CargarChequesRes, ChequeAManoInput, ChequeRecibido, CobroAdjunto, CobroAdjuntoTipo } from '@/types/domain.types'
 
 export const COBRO_ADJ_KEY = ['cobros', 'adjuntos'] as const
+
+/** Un 'leyendo' de más de 5 minutos se da por caído (igual que el backend). */
+export function leyendoCheques(a: Pick<CobroAdjunto, 'cheques_lectura' | 'cheques_lectura_at'>): boolean {
+  return a.cheques_lectura === 'leyendo' && !!a.cheques_lectura_at
+    && Date.now() - new Date(a.cheques_lectura_at).getTime() < 5 * 60_000
+}
 
 export function useCobroAdjuntos(cobroId: number | null) {
   return useQuery({
@@ -11,6 +17,45 @@ export function useCobroAdjuntos(cobroId: number | null) {
     queryFn:  () => apiGet<CobroAdjunto[]>(`/api/logistica/cobros/${cobroId}/adjuntos`),
     enabled:  !!cobroId,
     staleTime: 30_000,
+    // Mientras se leen los cheques de un adjunto (20260930j), se refresca
+    // cada 4 s para mostrar cuándo termina.
+    refetchInterval: q => (q.state.data ?? []).some(leyendoCheques) ? 4000 : false,
+    // También con la pestaña en segundo plano: dura lo que dura la lectura
+    // (menos de un minuto) y es lo que avisa que terminó.
+    refetchIntervalInBackground: true,
+  })
+}
+
+// ── Cheques recibidos del cobro (cartera, 20260930h/j) ──
+
+export const COBRO_CHEQUES_KEY = ['cobros', 'cheques'] as const
+
+export function useChequesDelCobro(cobroId: number | null, leyendo: boolean) {
+  return useQuery({
+    queryKey: [...COBRO_CHEQUES_KEY, cobroId],
+    queryFn:  () => apiGet<ChequeRecibido[]>(`/api/logistica/cobros/${cobroId}/cheques`),
+    enabled:  !!cobroId,
+    staleTime: 30_000,
+    refetchInterval: leyendo ? 4000 : false,
+    refetchIntervalInBackground: true,
+  })
+}
+
+export function useReleerCheques() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ cobroId, id }: { cobroId: number; id: number }) =>
+      apiPost<{ success: boolean }>(`/api/logistica/cobros/${cobroId}/adjuntos/${id}/leer-cheques`, {}),
+    onSuccess: (_d, v) => qc.invalidateQueries({ queryKey: [...COBRO_ADJ_KEY, v.cobroId] }),
+  })
+}
+
+export function useCargarChequesAMano() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ cobroId, cheques }: { cobroId: number; cheques: ChequeAManoInput[] }) =>
+      apiPost<CargarChequesRes>(`/api/logistica/cobros/${cobroId}/cheques`, { cheques }),
+    onSuccess: (_d, v) => qc.invalidateQueries({ queryKey: [...COBRO_CHEQUES_KEY, v.cobroId] }),
   })
 }
 

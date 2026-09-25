@@ -207,6 +207,42 @@ export interface CobroAdjunto {
   created_by:     string | null
   updated_at:     string
   updated_by:     string | null
+  /** Lectura de cheques para la cartera (20260930h/j). null = este tipo no se lee. */
+  cheques_lectura?:    'leyendo' | 'ok' | 'sin_cheques' | 'error' | null
+  cheques_resultado?:  { nuevos?: number; ya_estaban?: number; endosados?: number; motivo?: string; modelo?: string } | null
+  cheques_lectura_at?: string | null
+}
+
+/** Un cheque de la cartera de cheques recibidos (`cheques_recibidos`, 20260930f). */
+export interface ChequeRecibido {
+  id:               number
+  numero:           string
+  banco:            string | null
+  librador:         string | null
+  librador_cuit:    string | null
+  fecha_cobro:      string | null
+  importe:          number
+  es_echeq:         boolean | null
+  estado:           'en_cartera' | 'endosado' | 'depositado' | 'rechazado' | 'recuperado'
+  obs:              string | null
+  cobro_adjunto_id: number | null
+  created_at:       string
+}
+
+export interface ChequeAManoInput {
+  numero:       string
+  banco?:       string | null
+  librador?:    string | null
+  fecha_cobro?: string | null
+  importe:      number
+  es_echeq?:    boolean | null
+}
+
+export interface CargarChequesRes {
+  nuevos: number
+  ya_estaban: number
+  endosados: number
+  ya_estaban_numeros?: string[]
 }
 
 // ── Relevo de chofer en un tramo (típicamente en Chivilcoy) ──

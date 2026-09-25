@@ -3,8 +3,9 @@
 import { useRef, useState } from 'react'
 import {
   useCobroAdjuntos, useUploadCobroAdjunto, useDeleteCobroAdjunto,
-  fetchCobroAdjSignedUrl,
+  fetchCobroAdjSignedUrl, leyendoCheques, useReleerCheques,
 } from '../hooks/useCobroAdjuntos'
+import { CobroChequesSection } from './CobroChequesSection'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
@@ -53,6 +54,16 @@ export function CobroAdjuntosSection({ cobroId, modalidad = 'liquido_producto', 
   const { data: adjuntos = [], isLoading } = useCobroAdjuntos(cobroId)
   const { mutateAsync: uploadAdj } = useUploadCobroAdjunto()
   const { mutate: deleteAdj } = useDeleteCobroAdjunto()
+  const releer = useReleerCheques()
+  const hayLectura = adjuntos.some(leyendoCheques)
+
+  function volverALeer(adj: CobroAdjunto) {
+    releer.mutate({ cobroId, id: adj.id }, {
+      onSuccess: () => toast('Leyendo los cheques de nuevo…', 'ok'),
+      onError: (e) => toast(String(e instanceof Error ? e.message : e).includes('LECTURA_EN_CURSO')
+        ? 'Ya se está leyendo: esperá a que termine.' : 'No se pudo volver a leer', 'err'),
+    })
+  }
 
   const fileInputs = useRef<Record<CobroAdjuntoTipo, HTMLInputElement | null>>({
     liquidacion: null, comprobante: null, factura: null, contra_factura: null, retencion: null,
@@ -196,6 +207,7 @@ export function CobroAdjuntosSection({ cobroId, modalidad = 'liquido_producto', 
                         <div className="text-[10px] text-gris-dark">
                           {fmtSize(adj.size_bytes)} · {fmtFecha(adj.created_at)}
                         </div>
+                        <EstadoLecturaCheques adj={adj} puedeReleer={puedeCrear} onReleer={() => volverALeer(adj)} />
                       </div>
                       <button
                         onClick={() => handleVer(adj)}
@@ -220,6 +232,49 @@ export function CobroAdjuntosSection({ cobroId, modalidad = 'liquido_producto', 
           ))}
         </div>
       )}
+
+      <CobroChequesSection cobroId={cobroId} leyendo={hayLectura} />
     </div>
   )
+}
+
+/**
+ * Cómo va la lectura de cheques de este adjunto (cartera, 20260930j): la
+ * liquidación o el comprobante se leen solos en segundo plano. Se ve
+ * «Leyendo…» mientras tanto (la lista se refresca sola) y el resultado
+ * después; si falló, «Volver a leer» o cargarlos a mano abajo.
+ */
+function EstadoLecturaCheques({ adj, puedeReleer, onReleer }: { adj: CobroAdjunto; puedeReleer: boolean; onReleer: () => void }) {
+  const est = adj.cheques_lectura
+  // Adjuntos de antes de la lectura automática: se pueden leer a pedido.
+  if (!est) {
+    if (!puedeReleer || (adj.tipo !== 'comprobante' && adj.tipo !== 'liquidacion')) return null
+    return <button type="button" onClick={onReleer} className="text-[10px] text-azul underline hover:no-underline">Leer cheques</button>
+  }
+  const r = adj.cheques_resultado ?? {}
+  if (leyendoCheques(adj)) {
+    return <div className="text-[10px] font-semibold text-azul animate-pulse">⏳ Leyendo los cheques… (tarda unos segundos)</div>
+  }
+  const releer = puedeReleer && (
+    <button type="button" onClick={onReleer} className="ml-1 underline hover:no-underline">Volver a leer</button>
+  )
+  if (est === 'leyendo') {
+    return <div className="text-[10px] text-[#7A5000]">⚠ La lectura se cortó. {releer}</div>
+  }
+  if (est === 'ok') {
+    const partes = [
+      r.nuevos ? `${r.nuevos} cheque${r.nuevos === 1 ? '' : 's'} a la cartera` : null,
+      r.ya_estaban ? `${r.ya_estaban} ya estaba${r.ya_estaban === 1 ? '' : 'n'}` : null,
+      r.endosados ? `${r.endosados} ya endosado${r.endosados === 1 ? '' : 's'}` : null,
+    ].filter(Boolean)
+    return <div className="text-[10px] text-verde">✓ {partes.join(' · ') || 'Cheques leídos'}</div>
+  }
+  if (est === 'sin_cheques') {
+    return <div className="text-[10px] text-gris-dark">No trae cheques (si los tiene, cargalos a mano abajo). {releer}</div>
+  }
+  const motivo = r.motivo === 'SIN_API_KEY' ? 'no hay clave de IA configurada'
+    : r.motivo === 'LIMITE_DE_USO' ? 'se llegó al límite de uso de la IA'
+    : r.motivo === 'FORMATO_NO_SOPORTADO' ? 'formato de archivo no soportado'
+    : 'no se pudo leer'
+  return <div className="text-[10px] text-rojo">⚠ Cheques: {motivo}. Cargalos a mano abajo. {releer}</div>
 }
