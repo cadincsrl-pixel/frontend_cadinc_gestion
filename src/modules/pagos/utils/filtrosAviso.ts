@@ -24,8 +24,8 @@ export const FILTRO_POR_AVISO: Record<string, PagosFacturasFiltro> = {
   observadas:   { estados: ['observada'], pago_a_reconstruir: false, orden: 'vencimiento' },
   // Importadas de ARCA que faltan imputar (20260927b). Lo usan el chip
   // «Sin imputar (N)», el link del importador y `?aviso=sin-imputar`.
-  // Incluye las de meses ya pagados: también se imputan (contabilidad).
-  'sin-imputar':{ sin_imputar: true, estados: ['pendiente', 'observada'], orden: 'fecha' },
+  // Incluye las de meses ya pagados, también las ya «pagadas» por reconstrucción (20260929z): se imputan igual (contabilidad).
+  'sin-imputar':{ sin_imputar: true, estados: ['pendiente', 'observada', 'pagada'], orden: 'fecha' },
   // Compras de meses ya pagados (20260928): el chip «Pagos a reconstruir (N)».
   'a-reconstruir':{ pago_a_reconstruir: true, orden: 'fecha' },
 }
