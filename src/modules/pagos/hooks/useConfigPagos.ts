@@ -1,16 +1,26 @@
-// Compras › Configuración (tanda 6; base 20260929f, `pagos_config`). Por
-// ahora: la jurisdicción que propone un tributo nuevo de la factura. El ítem 8
-// suma avisos de pago y plazos de cheque. Contra un backend sin el endpoint
-// (404) o que no responde, `respaldo` = true y el default es «Tucumán» por
-// nombre, como antes.
+// Compras › Configuración (tanda 6; base 20260929f + 20260929i, `pagos_config`):
+// la jurisdicción que propone un tributo nuevo, los avisos de pago por mail y
+// los plazos de cheque. Contra un backend sin el endpoint (404) o que no
+// responde, `respaldo` = true y todo cae a lo de antes: «Tucumán» por nombre y
+// los plazos de `PLAZOS_CHEQUE`. Un backend con el endpoint pero sin el ítem 8
+// no manda `aviso` ni `cheques`: `plazosCheque` cae igual a la constante.
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { apiGet, apiPatch, HttpError } from '@/lib/api/client'
-import type { PagosConfig } from '@/types/config.types'
+import { apiGet, apiPatch, apiPost, HttpError } from '@/lib/api/client'
+import type { PagosConfig, PagosConfigPatch } from '@/types/config.types'
+import { PLAZOS_CHEQUE } from '../utils/pagos.utils'
 
 export const CONFIG_PAGOS_KEY = ['pagos', 'config'] as const
 
 const VACIA: PagosConfig = { tributos: { jurisdiccion_default_id: null } }
+/** Referencia estable: el fallback no cambia de identidad entre renders. */
+const PLAZOS_DEFAULT: number[] = [...PLAZOS_CHEQUE]
+
+/** Los plazos que ofrece el alta de cheques: los configurados o los de siempre. */
+export function plazosDeConfig(config: PagosConfig | undefined): number[] {
+  const p = config?.cheques?.plazos
+  return Array.isArray(p) && p.length > 0 ? p : PLAZOS_DEFAULT
+}
 
 export function useConfigPagos() {
   const q = useQuery({
@@ -25,17 +35,26 @@ export function useConfigPagos() {
     },
     staleTime: 5 * 60 * 1000,
   })
-  return { ...q, config: q.data?.config ?? VACIA, respaldo: q.data?.respaldo ?? q.isError }
+  const config = q.data?.config ?? VACIA
+  return { ...q, config, plazosCheque: plazosDeConfig(config), respaldo: q.data?.respaldo ?? q.isError }
 }
 
 /** PATCH /config (tab configuracion + flag configurar). */
 export function useGuardarConfigPagos() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (body: { tributo_jurisdiccion_default_id?: number | null }) => apiPatch<PagosConfig>('/api/pagos/config', body),
+    mutationFn: (body: PagosConfigPatch) => apiPatch<PagosConfig>('/api/pagos/config', body),
     onSuccess: (data) => {
       qc.setQueryData(CONFIG_PAGOS_KEY, { config: data, respaldo: false })
       void qc.invalidateQueries({ queryKey: ['audit'] })
     },
+  })
+}
+
+/** POST /config/probar-mail: un mail de prueba con el remitente y el pie configurados. */
+export function useProbarMailPagos() {
+  return useMutation({
+    mutationFn: (para: string) =>
+      apiPost<{ ok: true; para: string; remitente: string; message_id: string }>('/api/pagos/config/probar-mail', { para }),
   })
 }

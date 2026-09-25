@@ -212,8 +212,34 @@ export interface JurisdiccionElegida {
 }
 
 /** GET /api/pagos/config (20260929f; el ítem 8 le suma avisos y cheques). */
+/** De dónde salió la casilla del contador: pantalla, env del servidor o usuario con rol contador. */
+export type FuenteContador = 'config' | 'env' | 'perfil' | null
+
+/** GET /api/pagos/config (20260929f + 20260929i). `aviso` y `cheques` faltan en un backend viejo. */
 export interface PagosConfig {
+  aviso?: {
+    contador_email: string | null
+    contador_email_efectivo: string | null
+    contador_fuente: FuenteContador
+    responder_a: string | null
+    responder_a_efectivo?: string | null
+    nombre_remitente: string | null
+    remitente_efectivo: string
+    pie_texto: string | null
+    smtp: { configurado: boolean; falta: string[] }
+  }
+  cheques?: { plazos: number[] }
   tributos: { jurisdiccion_default_id: number | null }
+}
+
+/** PATCH /api/pagos/config. '' o null borra el valor. */
+export interface PagosConfigPatch {
+  tributo_jurisdiccion_default_id?: number | null
+  contador_email?: string | null
+  responder_a?: string | null
+  nombre_remitente?: string | null
+  pie_texto?: string | null
+  plazos_cheque?: number[]
 }
 
 // ── Tipos de retención sufrida (20260929g) ──────────────────────────────────

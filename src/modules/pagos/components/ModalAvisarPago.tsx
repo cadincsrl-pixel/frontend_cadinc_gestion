@@ -27,7 +27,8 @@ import { useToast } from '@/components/ui/Toast'
 import { useAvisarPago, useAvisosDeOrden, useMailEstado } from '../hooks/usePagos'
 import { useProveedorPagos } from '../hooks/useProveedoresPagos'
 import { ETIQUETA_ROL } from '@/types/contactos'
-import { fmtFecha, fmtM } from '../utils/pagos.utils'
+import { FUENTE_CONTADOR, fmtFecha, fmtM } from '../utils/pagos.utils'
+import { useConfigPagos } from '../hooks/useConfigPagos'
 import { mensajeErrorPagos } from '../utils/pagos.errores'
 import type { PagosOrdenDetalle } from '@/types/domain.types'
 
@@ -47,6 +48,9 @@ const ETIQUETA_ESTADO: Record<string, { txt: string; cls: string }> = {
 export function ModalAvisarPago({ orden, onClose }: Props) {
   const toast = useToast()
   const mail = useMailEstado()
+  // A quién le llega el del contador y de dónde salió (20260929i). Un backend
+  // viejo no manda `aviso`: queda el texto de antes.
+  const avisoCfg = useConfigPagos().config.aviso
   const avisos = useAvisosDeOrden(orden.id)
   const avisar = useAvisarPago()
 
@@ -194,7 +198,12 @@ export function ModalAvisarPago({ orden, onClose }: Props) {
           </label>
           {aContador && (
             <div className="text-[11px] text-gris-dark">
-              Va a la casilla del estudio que está configurada en el servidor. Recibe el
+              {avisoCfg
+                ? avisoCfg.contador_email_efectivo
+                  ? <>Va a <b>{avisoCfg.contador_email_efectivo}</b>{avisoCfg.contador_fuente ? ` (${FUENTE_CONTADOR[avisoCfg.contador_fuente]})` : ''}. </>
+                  : <span className="text-naranja-dark">No hay casilla del contador cargada: se registra como «sin dirección». Se carga en Compras › Configuración. </span>
+                : 'Va a la casilla del estudio que está configurada en el servidor. '}
+              Recibe el
               <b> comprobante y las facturas</b> que cubre
               {facturasAdj.length > 0 ? ` (${facturasAdj.length} archivo${facturasAdj.length === 1 ? '' : 's'})` : ''}
               : sin el comprobante ve la deuda pero no puede cerrar el asiento.

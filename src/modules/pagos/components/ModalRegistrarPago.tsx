@@ -11,9 +11,10 @@ import {
 } from '../hooks/usePagos'
 import { useDatosPagoProveedor, useProveedorPagos } from '../hooks/useProveedoresPagos'
 import { SelectCuentaOrigen, cuentaOrigenId } from './SelectCuentaOrigen'
+import { useConfigPagos } from '../hooks/useConfigPagos'
 import {
   FORMAS_CON_COMPROBANTE_OBLIGATORIO, FORMAS_CON_CUENTA_DESTINO, FORMAS_CON_FECHA_COBRO,
-  FORMAS_PAGO_OP, MAX_ADJUNTO_BYTES, PLAZOS_CHEQUE, comprobanteTxt, fechasEscalonadas, fmtFecha, fmtM, hoyAR,
+  FORMAS_PAGO_OP, MAX_ADJUNTO_BYTES, comprobanteTxt, fechasEscalonadas, fmtFecha, fmtM, hoyAR,
   partirEnPartes, plazoLabel, repartirPagoEntreFacturas, salidaLabel, sumarDiasISO, topePagable,
 } from '../utils/pagos.utils'
 import { mensajeAvisoLectura, mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
@@ -156,6 +157,13 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
   // cada cuánto los demás. Antes estaba fijo en 30/60/90.
   const [cantCheques, setCantCheques] = useState('3')
   const [primerPlazo, setPrimerPlazo] = useState(30)
+  // Plazos de Compras › Configuración (20260929i); sin el endpoint, los de
+  // siempre (PLAZOS_CHEQUE). El elegido se suma a la lista si no está, para
+  // que el select nunca muestre un valor que no ofrece.
+  const { plazosCheque } = useConfigPagos()
+  const opcionesPlazo = useMemo(
+    () => [...new Set([...plazosCheque, primerPlazo])].sort((a, b) => a - b),
+    [plazosCheque, primerPlazo])
   const [cadaDias, setCadaDias]       = useState('30')
   const [referencia, setReferencia] = useState('')
   // «Sale de la cuenta» (20260926g): opcional, '' = sin indicar.
@@ -630,7 +638,7 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
                 <select value={primerPlazo} onChange={e => setPrimerPlazo(Number(e.target.value))}
                   aria-label="Plazo del primer cheque"
                   className="px-1.5 py-0.5 text-[11px] border border-gris-mid rounded bg-white">
-                  {PLAZOS_CHEQUE.map(d => <option key={d} value={d}>{plazoLabel(d)}</option>)}
+                  {opcionesPlazo.map(d => <option key={d} value={d}>{plazoLabel(d)}</option>)}
                 </select>
                 <span className="text-[11px] text-gris-dark">· después cada</span>
                 <input inputMode="numeric" value={cadaDias} aria-label="Días entre cheques"

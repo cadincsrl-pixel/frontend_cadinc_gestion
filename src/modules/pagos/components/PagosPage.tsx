@@ -13,7 +13,7 @@ const TABS = [
   { key: 'facturas',    icon: '🧾', label: 'Facturas',    sub: 'Facturas de proveedor, aprobación y vencimientos' },
   { key: 'pagos',       icon: '💸', label: 'Pagos',       sub: 'Órdenes de pago, notas de crédito y cheques' },
   { key: 'proveedores', icon: '🏢', label: 'Proveedores', sub: 'Padrón propio: CUIT, alias y CBU' },
-  { key: 'configuracion', icon: '⚙️', label: 'Configuración', sub: 'Jurisdicciones y percepción por defecto' },
+  { key: 'configuracion', icon: '⚙️', label: 'Configuración', sub: 'Avisos de pago, plazos de cheque y jurisdicciones' },
 ]
 
 /** «123» → 123; cualquier otra cosa → null. */

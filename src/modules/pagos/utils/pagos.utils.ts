@@ -271,6 +271,36 @@ export function sumarDiasISO(iso: string, dias: number): string {
  */
 export const PLAZOS_CHEQUE = [0, 7, 15, 30, 45, 60, 90] as const
 
+/**
+ * ¿El texto trae algo con forma de CBU/CVU o de alias? Espejo de
+ * `_pagos_pie_con_cbu` (20260929i) y de `pieConCbu` del backend: el pie del
+ * aviso de pago no puede llevar la cuenta («cambió nuestro CBU, pagá acá»).
+ * 22 dígitos (seguidos o de a uno con espacio/guion) o una palabra de 6–20
+ * [a-z0-9.-] con una letra y un punto en el medio; los dominios web pasan.
+ */
+export function pieConCbu(texto: string | null | undefined): boolean {
+  const t = String(texto ?? '')
+  if (/(\d[ -]?){21}\d/.test(t)) return true
+  return t.toLowerCase().split(/[^a-z0-9.-]+/).some(tok => {
+    const w = tok.replace(/^[.-]+|[.-]+$/g, '')
+    return /^[a-z0-9.-]{6,20}$/.test(w) && /[a-z]/.test(w) && /[a-z0-9]\.[a-z0-9]/.test(w)
+      && !/^www\./.test(w) && !/\.(com|ar|net|org|gob|gov|edu|io|info)$/.test(w)
+  })
+}
+
+/** De dónde salió la casilla del contador (GET /api/pagos/config → aviso.contador_fuente). */
+export const FUENTE_CONTADOR: Record<'config' | 'env' | 'perfil', string> = {
+  config: 'la cargada en Compras › Configuración',
+  env: 'la del servidor (variable CONTADOR_EMAIL)',
+  perfil: 'la del usuario con rol Contador',
+}
+
+/** Espejo de `esEmailValido` del backend. */
+export function esEmailValido(s: string | null | undefined): boolean {
+  const t = (s ?? '').trim()
+  return t.length > 4 && t.length <= 254 && /^[^\s@,;]+@[^\s@,;.]+(\.[^\s@,;.]+)+$/.test(t)
+}
+
 export function plazoLabel(dias: number): string {
   return dias === 0 ? 'Al día' : `${dias} días`
 }

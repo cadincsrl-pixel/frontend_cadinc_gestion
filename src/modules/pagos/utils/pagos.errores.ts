@@ -371,9 +371,19 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   PROVEEDOR_SIN_CUIT:      () => 'El proveedor no tiene CUIT: cargáselo para poder traer sus datos de ARCA.',
 
   // ── Configuración y jurisdicciones (20260929f) ──
-  CONFIG_INVALIDA:        d => dato(d, 'motivo') === 'jurisdiccion_inexistente_o_inactiva'
-    ? 'Esa jurisdicción no existe o está dada de baja: elegí otra.'
-    : 'Ese valor de configuración no es válido.',
+  CONFIG_INVALIDA:        d => {
+    const m = dato(d, 'motivo')
+    if (m === 'jurisdiccion_inexistente_o_inactiva') return 'Esa jurisdicción no existe o está dada de baja: elegí otra.'
+    if (m === 'plazos_invalidos' || dato(d, 'clave') === 'plazos_cheque')
+      return 'Los plazos de cheque tienen que ser de 1 a 12 números distintos, entre 0 y 365 días.'
+    if (m === 'texto_largo') return `Ese texto es demasiado largo${dato(d, 'max') ? ` (máximo ${String(dato(d, 'max'))} caracteres)` : ''}.`
+    if (m === 'caracteres_invalidos') return 'El nombre del remitente no puede tener comillas ni los signos < >.'
+    return 'Ese valor de configuración no es válido.'
+  },
+  EMAIL_INVALIDO:         () => 'Esa dirección de correo no tiene forma de dirección (algo@dominio.com).',
+  PIE_CON_CBU:            () => 'El texto al pie no puede llevar un CBU, un CVU ni un alias: es el dato que se usa para estafar («cambió nuestra cuenta»). Sacalo y volvé a guardar.',
+  MAIL_NO_CONFIGURADO:    d => `El servidor no tiene el correo configurado${Array.isArray(dato(d, 'falta')) ? ` (falta ${(dato(d, 'falta') as string[]).join(', ')})` : ''}.`,
+  MAIL_NO_ENVIADO:        d => `El servidor de correo rechazó el envío${dato(d, 'mensaje') ? `: ${String(dato(d, 'mensaje'))}` : '.'}`,
   JURISDICCION_NO_EXISTE: () => 'La jurisdicción elegida ya no existe: refrescá la pantalla y elegila de nuevo.',
 
   // ── Cheques (20260925) ──

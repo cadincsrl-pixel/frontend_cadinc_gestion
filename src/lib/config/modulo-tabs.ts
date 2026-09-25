@@ -93,7 +93,7 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
     { key: 'pagos',       label: 'Pagos',       icon: '💸', meta: 'Órdenes de pago y cheques' },
     { key: 'proveedores', label: 'Proveedores', icon: '🏢', meta: 'CUIT, alias y CBU' },
     // Tanda 6 (20260929f…): editar pide además el flag `configurar`.
-    { key: 'configuracion', label: 'Configuración', icon: '⚙️', meta: 'Jurisdicciones y percepciones (avisos de pago y cheques, próximamente)' },
+    { key: 'configuracion', label: 'Configuración', icon: '⚙️', meta: 'Avisos de pago, cheques y jurisdicciones' },
   ],
   // Facturación electrónica de venta (fase 1, 20260924). El orden importa:
   // `FacturacionPage` redirige al primer tab permitido.
