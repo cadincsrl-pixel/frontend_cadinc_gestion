@@ -231,6 +231,8 @@ export interface PagosConfig {
     smtp: { configurado: boolean; falta: string[] }
   }
   cheques?: { plazos: number[] }
+  /** «Deuda por proveedor» (20260930e): montos menores no cuentan. Falta en un backend viejo. */
+  saldos?: { tolerancia: number }
   tributos: { jurisdiccion_default_id: number | null }
 }
 
@@ -243,6 +245,8 @@ export interface PagosConfigPatch {
   nombre_remitente?: string | null
   pie_texto?: string | null
   plazos_cheque?: number[]
+  /** 0 a 100, dos decimales (20260930e). */
+  tolerancia_saldo?: number
 }
 
 // ── Tipos de retención sufrida (20260929g) ──────────────────────────────────

@@ -421,6 +421,8 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
       return 'Los plazos de cheque tienen que ser de 1 a 12 números distintos, entre 0 y 365 días.'
     if (m === 'texto_largo') return `Ese texto es demasiado largo${dato(d, 'max') ? ` (máximo ${String(dato(d, 'max'))} caracteres)` : ''}.`
     if (m === 'caracteres_invalidos') return 'El nombre del remitente no puede tener comillas ni los signos < >.'
+    if (m === 'tolerancia_invalida' || dato(d, 'clave') === 'tolerancia_saldo')
+      return 'La tolerancia de saldo tiene que ser un monto entre $0 y $100, con hasta 2 decimales.'
     return 'Ese valor de configuración no es válido.'
   },
   EMAIL_INVALIDO:         () => 'Esa dirección de correo no tiene forma de dirección (algo@dominio.com).',

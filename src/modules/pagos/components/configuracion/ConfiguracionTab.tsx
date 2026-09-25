@@ -11,7 +11,7 @@ import { useJurisdicciones } from '@/hooks/useJurisdicciones'
 import { nombreJurisdiccion } from '@/lib/utils/jurisdicciones'
 import { useConfigPagos, useGuardarConfigPagos, useProbarMailPagos } from '../../hooks/useConfigPagos'
 import { mensajeErrorPagos } from '../../utils/pagos.errores'
-import { FUENTE_CONTADOR, esEmailValido, pieConCbu, plazoLabel } from '../../utils/pagos.utils'
+import { FUENTE_CONTADOR, esEmailValido, fmtM, pieConCbu, plazoLabel } from '../../utils/pagos.utils'
 import type { PagosConfig, PagosConfigPatch } from '@/types/config.types'
 
 /**
@@ -32,6 +32,7 @@ export function ConfiguracionTab() {
       )}
       <AvisosCard puede={configurar} />
       <ChequesCard puede={configurar} />
+      <SaldosCard puede={configurar} />
       <TributosCard puede={configurar} />
       <JurisdiccionesEditor />
       <div className="text-[11px] text-gris-dark">Los cambios pueden tardar hasta un minuto en verse en todas las pantallas.</div>
@@ -330,6 +331,78 @@ function ChequesForm({ guardados, sinEndpoint, puede }: { guardados: number[]; s
           </Button>
         </span>
       </div>
+    </div>
+  )
+}
+
+/** Tolerancia de saldo si el servidor no la manda (misma que la base). */
+const TOLERANCIA_DEFAULT = 1
+
+/** «1,50» o «1.50» → 1.5; vacío o basura → NaN. */
+function parsearMonto(txt: string): number {
+  const t = txt.trim().replace(/\s/g, '').replace(',', '.')
+  return /^\d{1,3}(\.\d{0,2})?$/.test(t) ? Number(t) : NaN
+}
+
+/**
+ * Tolerancia de saldo (20260930e): montos menores no cuentan como deuda ni
+ * como saldo a favor en «Deuda por proveedor» ni como facturas vencidas. Lo
+ * aplican las vistas de la base; no cambia estados ni saldos de ninguna factura.
+ */
+function SaldosCard({ puede }: { puede: boolean }) {
+  const cfg = useConfigPagos()
+  const sinEndpoint = cfg.respaldo || (!cfg.isLoading && !cfg.config.saldos)
+  const guardada = cfg.config.saldos?.tolerancia ?? TOLERANCIA_DEFAULT
+  return <SaldosForm key={guardada} guardada={guardada} sinEndpoint={sinEndpoint} puede={puede} />
+}
+
+function SaldosForm({ guardada, sinEndpoint, puede }: { guardada: number; sinEndpoint: boolean; puede: boolean }) {
+  const toast = useToast()
+  const guardar = useGuardarConfigPagos()
+  const [txt, setTxt] = useState(guardada.toFixed(2).replace('.', ','))
+
+  const valor = parsearMonto(txt)
+  const err = txt.trim() === '' ? 'Poné un monto (0 = sin tolerancia)'
+    : Number.isNaN(valor) || valor > 100 ? 'Entre $0 y $100, con hasta 2 decimales' : undefined
+  const hayCambios = !err && Math.round(valor * 100) !== Math.round(guardada * 100)
+
+  async function onGuardar() {
+    try {
+      await guardar.mutateAsync({ tolerancia_saldo: valor })
+      toast(valor === 0 ? '✓ Sin tolerancia: cualquier centavo cuenta como deuda' : `✓ Montos menores a ${fmtM(valor)} ya no cuentan como deuda`, 'ok')
+    } catch (e) {
+      toast(mensajeErrorPagos(e), 'err')
+    }
+  }
+
+  const tipGuardar = !puede ? TIP_SIN_PERMISO : sinEndpoint ? 'El servidor todavía no tiene esta configuración'
+    : err ? err : !hayCambios ? 'No hay cambios' : undefined
+
+  return (
+    <div className="bg-white rounded-card shadow-card p-3 flex flex-col gap-2">
+      <div>
+        <div className="text-sm font-bold">Tolerancia de saldo</div>
+        <div className="text-[11px] text-gris-dark">
+          Montos menores no cuentan como deuda ni saldo a favor: redondeos de centavos que quedan en una factura o en un
+          pago a cuenta no aparecen en «Deuda por proveedor» ni como facturas vencidas. No cambia el saldo de ninguna factura.
+        </div>
+      </div>
+      {sinEndpoint && (
+        <div className="text-xs text-naranja-dark">El servidor todavía no tiene esta configuración.</div>
+      )}
+      <div className="flex items-end gap-2 flex-wrap" title={puede ? undefined : TIP_SIN_PERMISO}>
+        <div className="w-40">
+          <Input label="Tolerancia ($)" inputMode="decimal" value={txt} disabled={!puede || sinEndpoint} error={err}
+            placeholder="1,00" onChange={e => setTxt(e.target.value)} />
+        </div>
+        <span title={tipGuardar}>
+          <Button size="sm" onClick={() => void onGuardar()} loading={guardar.isPending}
+            disabled={!!tipGuardar || guardar.isPending}>
+            Guardar tolerancia
+          </Button>
+        </span>
+      </div>
+      <div className="text-[11px] text-gris-dark">Por defecto $1,00. 0 = cualquier centavo cuenta.</div>
     </div>
   )
 }

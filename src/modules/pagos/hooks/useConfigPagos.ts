@@ -9,6 +9,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPatch, apiPost, HttpError } from '@/lib/api/client'
 import type { PagosConfig, PagosConfigPatch } from '@/types/config.types'
 import { PLAZOS_CHEQUE } from '../utils/pagos.utils'
+import { PAGOS_KEYS } from './usePagos'
 
 export const CONFIG_PAGOS_KEY = ['pagos', 'config'] as const
 
@@ -44,8 +45,13 @@ export function useGuardarConfigPagos() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (body: PagosConfigPatch) => apiPatch<PagosConfig>('/api/pagos/config', body),
-    onSuccess: (data) => {
+    onSuccess: (data, body) => {
       qc.setQueryData(CONFIG_PAGOS_KEY, { config: data, respaldo: false })
+      // La tolerancia de saldo la aplican las vistas: cambia la deuda por
+      // proveedor, las vencidas de la bandeja y la campana.
+      if (body.tolerancia_saldo !== undefined) {
+        for (const k of [PAGOS_KEYS.saldos, PAGOS_KEYS.facturas, PAGOS_KEYS.notifVenc]) void qc.invalidateQueries({ queryKey: k })
+      }
       void qc.invalidateQueries({ queryKey: ['audit'] })
     },
   })
