@@ -181,7 +181,7 @@ export function NotificationsBell() {
     facturasSinRevisar.length + facturasObservadas.length + certInformado
   const sinNotifs = totalUrgente === 0 && totalNoUrgentes === 0
 
-  /** Abre la bandeja de Pagos con el filtro del aviso ya puesto (`FILTRO_POR_AVISO`). */
+  /** Abre la bandeja de Pagos con el filtro del aviso ya puesto (`FILTRO_POR_AVISO`, pagos/utils/filtrosAviso). */
   function abrirPagos(aviso: string) {
     setAbierto(false)
     router.push(`/pagos?tab=facturas&aviso=${aviso}`)

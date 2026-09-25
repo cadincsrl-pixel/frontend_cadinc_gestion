@@ -34,6 +34,13 @@ const VENCIMIENTOS: { key: PagosVencimiento; label: string; hint: string }[] = [
 export function FiltrosFacturas({ filtro, patch, grupos }: Props) {
   const [abierto, setAbierto] = useState(false)
   const [texto, setTexto] = useState(filtro.q ?? '')
+  // Si el filtro cambia desde afuera (chip «Sin imputar», volver a la bandeja),
+  // la caja muestra la búsqueda que de verdad está aplicada.
+  const [qAplicada, setQAplicada] = useState(filtro.q)
+  if (qAplicada !== filtro.q) {
+    setQAplicada(filtro.q)
+    setTexto(filtro.q ?? '')
+  }
 
   const proveedores = useProveedoresPagos({}, 1, 300)
   const obras = useCatalogoObrasPagos()

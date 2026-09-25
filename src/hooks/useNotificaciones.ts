@@ -362,7 +362,7 @@ export function useNotificaciones(): NotificacionesResult {
   // «Sin revisar» le sirve al mismo que aprueba: es su cola de control.
   const { data: paraAprobar } = useQuery(
     // Sin las importadas sin imputar (20260927b): no se pueden aprobar hasta
-    // imputarlas. Mismo filtro que `FILTRO_POR_AVISO.aprobar` de FacturasTab.
+    // imputarlas. Mismo filtro que `FILTRO_POR_AVISO.aprobar` (pagos/utils/filtrosAviso).
     // Tampoco las de meses ya pagados (20260928): no se aprueban.
     qPagos(PAGOS_KEYS.notifAprobar, 'estado=pendiente&paga_cliente=0&sin_imputar=0&pago_a_reconstruir=0&orden=vencimiento', puedeAprobarFacturas))
   // Los cuatro avisos van con `pago_a_reconstruir=0`: las compras de meses ya

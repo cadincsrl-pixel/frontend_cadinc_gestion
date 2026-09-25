@@ -2505,7 +2505,10 @@ export interface PagosProveedorSaldo {
   cbu:                string | null
   cbu_ultimos4:       string | null
   facturas_abiertas:  number
+  /** Pendientes que ya se pueden aprobar: sin las importadas sin imputar (20260929o). */
   para_aprobar:       number
+  /** Pendientes importadas de ARCA sin concepto ni reparto: hay que imputarlas antes de aprobar (20260929o). */
+  para_imputar?:      number
   saldo:              number
   saldo_aprobado:     number
   vencido:            number

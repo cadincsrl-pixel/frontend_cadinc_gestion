@@ -23,6 +23,10 @@ import type { PagosProveedorSaldo } from '@/types/domain.types'
  * Las compras de meses ya pagados (20260928, `pago_a_reconstruir`) NO son
  * deuda: la vista no las suma en saldo, listo para pagar ni vencido. Si trae
  * `a_reconstruir`, se muestra aparte y discreto, solo como total.
+ *
+ * «p/ aprobar» no cuenta las importadas sin imputar (20260929o): no se pueden
+ * aprobar hasta imputarlas y la bandeja por defecto las esconde; van en su
+ * propio badge «N sin imputar». Las dos siguen sumando en el saldo.
  */
 
 interface Props {
@@ -98,8 +102,16 @@ export function DeudaPorProveedor({ filas, cargando, proveedorSel, onElegir }: P
                     <span className="font-semibold">{f.razon_social}</span>
                     {!f.activo && <span className="ml-1 text-[10px] text-gris-dark uppercase">dado de baja</span>}
                     {f.para_aprobar > 0 && (
-                      <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-azul-light text-azul font-bold" title="Facturas y notas de crédito esperando aprobación">
+                      <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-azul-light text-azul font-bold" title="Facturas y notas de crédito esperando aprobación (sin contar las que falta imputar)">
                         {f.para_aprobar} p/ aprobar
+                      </span>
+                    )}
+                    {Number(f.para_imputar ?? 0) > 0 && (
+                      <span
+                        className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-gris text-gris-dark font-bold"
+                        title="Importadas de ARCA sin concepto ni reparto: hay que imputarlas antes de aprobarlas. Están en el saldo: se deben igual"
+                      >
+                        {f.para_imputar} sin imputar
                       </span>
                     )}
                   </td>

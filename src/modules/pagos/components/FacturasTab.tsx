@@ -27,48 +27,12 @@ import { ModalConceptosCompra } from './ModalConceptosCompra'
 import { ModalImportarRecibidos } from './ModalImportarRecibidos'
 import { ModalImputarLote } from './ModalImputarLote'
 import { ModalMarcarPagadas, marcablesComoPagadas } from './ModalMarcarPagadas'
+import { FILTRO_POR_AVISO, FILTRO_INICIAL, filtroDeAviso } from '../utils/filtrosAviso'
 
 const PAGE_SIZE = 50
 
-/**
- * Los filtros con los que entra la bandeja cuando se llega desde la campana.
- * Cada uno replica EXACTAMENTE la query de su aviso en `useNotificaciones`:
- * si no coincidieran, el aviso diría "3" y la pantalla mostraría otra cosa.
- */
-export const FILTRO_POR_AVISO: Record<string, PagosFacturasFiltro> = {
-  // Sin las importadas sin imputar (20260927b): no se pueden aprobar hasta
-  // imputarlas, y con mil importadas el aviso diría «1000 para aprobar».
-  // Ninguno de los cuatro avisos cuenta las compras de meses ya pagados
-  // (20260928, `pago_a_reconstruir`): no son deuda ni se aprueban.
-  aprobar:      { estados: ['pendiente'], paga_cliente: false, sin_imputar: false, pago_a_reconstruir: false, orden: 'vencimiento' },
-  vencidas:     { vencimiento: 'vencidas', paga_cliente: false, pago_a_reconstruir: false, orden: 'vencimiento' },
-  'sin-revisar':{ sin_revisar: true, pago_a_reconstruir: false, orden: 'vencimiento' },
-  observadas:   { estados: ['observada'], pago_a_reconstruir: false, orden: 'vencimiento' },
-  // Importadas de ARCA que faltan imputar (20260927b). Lo usan el chip
-  // «Sin imputar (N)» y el link del importador: el mismo filtro para los dos.
-  // Incluye las de meses ya pagados: también se imputan (contabilidad).
-  'sin-imputar':{ sin_imputar: true, pago_a_reconstruir: undefined, estados: ['pendiente', 'observada'], orden: 'fecha' },
-  // Compras de meses ya pagados (20260928): el chip «Pagos a reconstruir (N)».
-  'a-reconstruir':{ pago_a_reconstruir: true, sin_imputar: undefined, estados: undefined, vencimiento: undefined, orden: 'fecha' },
-}
-
-/**
- * «Abiertas, por vencimiento», SIN las importadas sin imputar: la bandeja «a
- * pagar» no se llena con mil comprobantes de ARCA. Esas se ven con el chip
- * «Sin imputar» o con el filtro.
- */
-const FILTRO_INICIAL: PagosFacturasFiltro = {
-  estados: ['pendiente', 'observada', 'aprobada', 'pagada_parcial'],
-  sin_imputar: false,
-  // Las de meses ya pagados (20260928) no son deuda: chip «Pagos a reconstruir».
-  pago_a_reconstruir: false,
-  orden:   'vencimiento',
-}
-
-function filtroDeUrl(aviso: string | null | undefined, importacion: number | null | undefined): PagosFacturasFiltro {
-  const base = (aviso ? FILTRO_POR_AVISO[aviso] : undefined) ?? FILTRO_INICIAL
-  return aviso === 'sin-imputar' && importacion ? { ...base, importacion_id: importacion } : base
-}
+// Los filtros de los avisos y chips viven en utils/filtrosAviso (se testean
+// sin montar el componente).
 
 /**
  * La bandeja del módulo: qué se debe, a quién y para cuándo.
@@ -97,7 +61,7 @@ export function FacturasTab({ aviso, importacion, ficha }: {
 
   // `aviso` sólo decide el estado INICIAL: una vez adentro el usuario manda,
   // y no se reescribe la URL para no pelearse con el historial del navegador.
-  const [filtro, setFiltro] = useState<PagosFacturasFiltro>(() => filtroDeUrl(aviso, importacion))
+  const [filtro, setFiltro] = useState<PagosFacturasFiltro>(() => filtroDeAviso(aviso, importacion))
   const [page, setPage] = useState(1)
   const [seleccion, setSeleccion] = useState<Set<number>>(new Set())
   const [fichaId, setFichaId] = useState<number | null>(ficha ?? null)
@@ -132,6 +96,15 @@ export function FacturasTab({ aviso, importacion, ficha }: {
 
   function patch(p: Partial<PagosFacturasFiltro>) {
     setFiltro(f => ({ ...f, ...p }))
+    setPage(1)
+    setSeleccion(new Set())
+  }
+  /**
+   * Entrar a un aviso REEMPLAZA el filtro: la lista tiene que mostrar lo que
+   * dice el número del chip, que se cuenta con el filtro del aviso solo.
+   */
+  function entrarAlAviso(a: string, importacionId?: number | null) {
+    setFiltro(filtroDeAviso(a, importacionId))
     setPage(1)
     setSeleccion(new Set())
   }
@@ -260,7 +233,7 @@ export function FacturasTab({ aviso, importacion, ficha }: {
           </Button>
           {(sinImputar.data ?? 0) > 0 && (
             <button type="button"
-              onClick={() => patch(verSinImputar ? FILTRO_INICIAL_PATCH : { ...FILTRO_POR_AVISO['sin-imputar'], importacion_id: undefined })}
+              onClick={() => verSinImputar ? patch(FILTRO_INICIAL_PATCH) : entrarAlAviso('sin-imputar')}
               title={verSinImputar ? 'Volver a la bandeja' : 'Importadas de ARCA que faltan imputar (concepto y obra): no se aprueban ni se pagan hasta imputarlas'}
               className={`text-xs px-2.5 py-1.5 rounded border font-semibold transition ${verSinImputar
                 ? 'border-naranja bg-naranja-light text-naranja-dark' : 'border-amarillo/60 bg-amarillo-light text-[#7A5000] hover:brightness-95'}`}>
@@ -269,7 +242,7 @@ export function FacturasTab({ aviso, importacion, ficha }: {
           )}
           {(aReconstruir.data ?? 0) > 0 && (
             <button type="button"
-              onClick={() => patch(verAReconstruir ? FILTRO_INICIAL_PATCH : { ...FILTRO_POR_AVISO['a-reconstruir'], importacion_id: undefined })}
+              onClick={() => verAReconstruir ? patch(FILTRO_INICIAL_PATCH) : entrarAlAviso('a-reconstruir')}
               title={verAReconstruir ? 'Volver a la bandeja'
                 : 'Importadas de meses ya pagados: no son deuda ni se aprueban. El pago se reconstruye con los extractos bancarios'}
               className={`text-xs px-2.5 py-1.5 rounded border font-semibold transition ${verAReconstruir
@@ -434,7 +407,7 @@ export function FacturasTab({ aviso, importacion, ficha }: {
           onClose={() => setModalImportar(false)}
           onVerImportadas={id => {
             setModalImportar(false)
-            patch({ ...FILTRO_POR_AVISO['sin-imputar'], importacion_id: id ?? undefined })
+            entrarAlAviso('sin-imputar', id)
           }}
         />
       )}
@@ -467,7 +440,7 @@ export function FacturasTab({ aviso, importacion, ficha }: {
   )
 }
 
-/** Volver de «Sin imputar» a la bandeja: pisa todas las claves que puso el aviso. */
+/** Volver de «Sin imputar» / «Pagos a reconstruir» a la bandeja: pisa todas las claves que puso el aviso. */
 const FILTRO_INICIAL_PATCH: Partial<PagosFacturasFiltro> = {
   ...FILTRO_INICIAL, importacion_id: undefined,
 }
