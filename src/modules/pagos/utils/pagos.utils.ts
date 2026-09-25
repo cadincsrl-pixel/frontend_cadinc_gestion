@@ -142,8 +142,32 @@ export function salidaLabel(forma: PagosFormaPagoOPGuardada | null | undefined, 
   return p ? 'Se pagó' : 'Se paga'
 }
 
-/** Si hay plata, sin comprobante el backend rebota con `COMPROBANTE_REQUERIDO`. */
+/**
+ * Si hay plata, sin comprobante el backend rebota con `COMPROBANTE_REQUERIDO`.
+ * Ojo con el e-cheq (20260929u): ahí alcanza con el archivo de cada echeq;
+ * usar `comprobanteObligatorio`, no esta lista sola.
+ */
 export const FORMAS_CON_COMPROBANTE_OBLIGATORIO: PagosFormaPagoOP[] = ['transferencia', 'echeq']
+
+/**
+ * ¿Hace falta el comprobante de pago APARTE? Transferencia: sí, siempre.
+ * E-cheq (20260929u, pedido del dueño): el PDF/foto de cada echeq ES el
+ * comprobante, así que si TODOS los cheques tienen su archivo (📷), no; si a
+ * alguno le falta, sí. Cheque físico y el resto: no. Espejo de
+ * `comprobanteFaltante` del backend y de `_pagos_emitir_orden`.
+ */
+export function comprobanteObligatorio(forma: PagosFormaPagoOP, cheques: readonly { foto: unknown }[] = []): boolean {
+  if (!FORMAS_CON_COMPROBANTE_OBLIGATORIO.includes(forma)) return false
+  if (forma !== 'echeq') return true
+  return cheques.length === 0 || cheques.some(c => !c.foto)
+}
+
+/** Por qué falta el comprobante, para el tooltip y el aviso rojo. */
+export function motivoComprobante(forma: PagosFormaPagoOP): string {
+  return forma === 'echeq'
+    ? 'Cada e-cheq necesita su archivo (📷), o subí el comprobante del pago'
+    : 'Una transferencia necesita el comprobante'
+}
 /** Piden fecha de cobro (el cheque queda «en cartera» hasta ese día). */
 export const FORMAS_CON_FECHA_COBRO: PagosFormaPagoOP[] = ['cheque', 'echeq']
 /** La RPC copia el CBU/alias del padrón a la OP para estas formas. */

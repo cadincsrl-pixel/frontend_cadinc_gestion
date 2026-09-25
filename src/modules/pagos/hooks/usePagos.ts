@@ -19,7 +19,7 @@ import type {
   PagosOrdenesResumen, PagosTipoAdjFactura, PagosTipoAdjOrden, PagosTipoComprobante, PagosUploadUrlRes,
   PagosAviso, PagosAvisoResultado, PagosMailEstado, PagosLecturaRes, PagosAplicaNcInput, PagosClaseComprobante,
   PagosDesgloseInput, PagosDesgloseLeidoRes, PagosCompletarDesgloseRes,
-  RegistrarOrdenRes, PagosChequeLecturaRes,
+  RegistrarOrdenRes, PagosChequeLecturaRes, CrearOrdenesLoteInput, RegistrarOrdenesLoteRes,
   PagosDeshacerImportacionRes, PagosImportacion, PagosImportarRecibidosInput, PagosImportarRecibidosRes, PagosImputarFacturaInput,
   PagosImputarLoteInput, PagosOrigenCarga, PagosPeriodoIvaSugerido, PagosMarcarPagadasInput, PagosMarcarPagadasRes,
 } from '@/types/domain.types'
@@ -649,6 +649,15 @@ export function useRegistrarOrden() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (input: CrearOrdenInput) => apiPost<RegistrarOrdenRes>('/api/pagos/ordenes', input),
+    onSuccess:  () => invalidarPagos(qc),
+  })
+}
+
+/** «Pagar en lote» (20260929t): una OP por proveedor, todo o nada. Invalida lo mismo que la OP suelta. */
+export function useRegistrarOrdenesLote() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: CrearOrdenesLoteInput) => apiPost<RegistrarOrdenesLoteRes>('/api/pagos/ordenes/lote', input),
     onSuccess:  () => invalidarPagos(qc),
   })
 }

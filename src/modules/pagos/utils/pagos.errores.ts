@@ -103,6 +103,11 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   NO_PUEDE_PAGAR_PROPIA:        () => 'No podés pagar una factura que cargaste vos. La tiene que pagar otra persona.',
   NO_PUEDE_PAGAR_LO_QUE_APROBO: () => 'No podés pagar una factura que aprobaste vos. La tiene que pagar otra persona.',
 
+  // ── Pagar en lote (20260929t) ──
+  PROVEEDOR_REPETIDO_EN_LOTE: () => 'Un proveedor aparece dos veces en el lote: cada proveedor lleva una sola orden de pago.',
+  FACTURA_REPETIDA_EN_LOTE:   () => 'Una factura aparece en dos órdenes del lote.',
+  FECHA_DISTINTA_DEL_LOTE:    () => 'Todas las órdenes del lote llevan la misma fecha de pago.',
+
   // ── Estado de la factura ──
   FACTURA_NO_APROBADA: () => 'La factura todavía no está aprobada: solo se pagan las aprobadas.',
   FACTURA_NO_APROBABLE: d => `No se puede aprobar en estado «${String(dato(d, 'estado') ?? '')}».`,
@@ -205,7 +210,12 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   FORMA_PAGO_REQUERIDA:  () => 'Elegí la forma de pago.',
   COMPROBANTE_REQUERIDO: d => {
     const forma = dato(d, 'forma_pago')
-    return `Una ${forma === 'echeq' ? 'e-cheq' : 'transferencia'} necesita el comprobante de pago adjunto.`
+    if (forma === 'echeq') {
+      // 20260929u: el archivo de cada echeq es el comprobante; falta en alguno.
+      const sin = lista(dato(d, 'cheques_sin_archivo'))
+      return `Cada e-cheq necesita su archivo (PDF o foto)${sin ? `: falta el del N° ${sin}` : ''}. O subí el comprobante del pago.`
+    }
+    return 'Una transferencia necesita el comprobante de pago adjunto.'
   },
 
   // ── Nota de crédito como comprobante (20260925) ──

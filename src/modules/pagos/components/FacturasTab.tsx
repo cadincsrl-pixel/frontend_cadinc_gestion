@@ -20,6 +20,7 @@ import { FacturasTabla } from './FacturasTabla'
 import { FichaFactura } from './FichaFactura'
 import { ModalCargarFactura } from './ModalCargarFactura'
 import { ModalRegistrarPago } from './ModalRegistrarPago'
+import { ModalPagarLote, MAX_ORDENES_LOTE } from './ModalPagarLote'
 import { ModalExcelGalicia } from './ModalExcelGalicia'
 import { PreguntarAvisoPago } from './PreguntarAvisoPago'
 import { DeudaPorProveedor } from './DeudaPorProveedor'
@@ -70,6 +71,7 @@ export function FacturasTab({ aviso, importacion, ficha }: {
   const [modalMarcarPagadas, setModalMarcarPagadas] = useState(false)
   const [modalCargar, setModalCargar] = useState<{ open: boolean; editarId?: number }>({ open: false })
   const [modalPago, setModalPago] = useState<{ open: boolean; facturaIds: number[] }>({ open: false, facturaIds: [] })
+  const [modalLote, setModalLote] = useState<{ open: boolean; facturaIds: number[] }>({ open: false, facturaIds: [] })
   const [modalGalicia, setModalGalicia] = useState(false)
   // Después de pagar con comprobante: «¿le avisás al proveedor ahora?»
   const [avisoOrdenId, setAvisoOrdenId] = useState<number | null>(null)
@@ -152,7 +154,7 @@ export function FacturasTab({ aviso, importacion, ficha }: {
     }
   }
 
-  // Pagar: todas del mismo proveedor y aprobadas (o con saldo). El modal
+  // Pagar: aprobadas (o con saldo), de uno o de varios proveedores. El modal
   // vuelve a validar; acá solo se evita ofrecer el botón cuando no tiene
   // sentido. Una NC NUNCA se paga (se aprueba, sí), y el tope es
   // `saldo_pagable`: lo reservado por una NC sin aprobar no se paga con plata.
@@ -160,7 +162,10 @@ export function FacturasTab({ aviso, importacion, ficha }: {
     () => seleccionadas.filter(f => !esNC(f) && ['aprobada', 'pagada_parcial'].includes(f.estado) && !f.paga_cliente && topePagable(f) > 0),
     [seleccionadas],
   )
-  const unSoloProveedor = pagables.length > 0 && new Set(pagables.map(f => f.proveedor_id)).size === 1
+  // Un proveedor → «Registrar pago» de siempre. Dos o más → «Pagar en lote»
+  // (20260929t): una OP por proveedor, todo o nada.
+  const cantProveedores = new Set(pagables.map(f => f.proveedor_id)).size
+  const esLote = cantProveedores > 1
 
   // Imputar en lote: importadas sin imputar. Marcar pagadas: cualquier
   // proveedor, sin aprobar (hecho consumado con tarjeta o billetera).
@@ -267,16 +272,19 @@ export function FacturasTab({ aviso, importacion, ficha }: {
               </Button>
               <Button
                 variant="secondary" size="sm"
-                onClick={() => setModalPago({ open: true, facturaIds: pagables.map(f => f.id) })}
-                disabled={!puedePagar || pagables.length === 0 || !unSoloProveedor}
+                onClick={() => esLote
+                  ? setModalLote({ open: true, facturaIds: pagables.map(f => f.id) })
+                  : setModalPago({ open: true, facturaIds: pagables.map(f => f.id) })}
+                disabled={!puedePagar || pagables.length === 0 || cantProveedores > MAX_ORDENES_LOTE}
                 title={
                   !puedePagar ? 'No tenés permiso para registrar pagos'
                   : pagables.length === 0 ? 'De lo seleccionado, no hay facturas aprobadas con saldo (las notas de crédito no se pagan)'
-                  : !unSoloProveedor ? 'Una orden de pago es de un solo proveedor: elegí facturas de uno solo'
+                  : cantProveedores > MAX_ORDENES_LOTE ? `Como máximo ${MAX_ORDENES_LOTE} proveedores por lote: elegí menos`
+                  : esLote ? `Una orden de pago por proveedor (${cantProveedores}), todas juntas: si una no se puede, no se registra ninguna`
                   : `Pagar ${pagables.length} factura(s)`
                 }
               >
-                💸 Pagar {pagables.length > 0 ? pagables.length : ''}
+                {esLote ? `💸 Pagar en lote (${cantProveedores} proveedores)` : `💸 Pagar ${pagables.length > 0 ? pagables.length : ''}`}
               </Button>
               <Button
                 variant="secondary" size="sm"
@@ -430,6 +438,14 @@ export function FacturasTab({ aviso, importacion, ficha }: {
           facturaIds={modalPago.facturaIds}
           onClose={() => { setModalPago({ open: false, facturaIds: [] }); setSeleccion(new Set()) }}
           onRegistrado={(id, conComprobante) => { if (conComprobante) setAvisoOrdenId(id) }}
+        />
+      )}
+
+      {/* Pagar en lote: varios proveedores, una OP por cada uno */}
+      {modalLote.open && (
+        <ModalPagarLote
+          facturaIds={modalLote.facturaIds}
+          onClose={() => { setModalLote({ open: false, facturaIds: [] }); setSeleccion(new Set()) }}
         />
       )}
 

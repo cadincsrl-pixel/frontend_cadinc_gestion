@@ -3801,6 +3801,23 @@ export interface RegistrarOrdenRes {
   avisos:   PagosAviso[]
 }
 
+/**
+ * «Pagar en lote» (20260929t, `POST /api/pagos/ordenes/lote`): N órdenes, una
+ * por proveedor, todo o nada. Cada orden tiene la forma de `CrearOrdenInput`;
+ * la fecha es la del lote y la cuenta de origen, si la orden no trae la suya.
+ */
+export interface CrearOrdenesLoteInput {
+  fecha:             string
+  cuenta_origen_id?: number | null
+  ordenes:           Omit<CrearOrdenInput, 'fecha'>[]
+}
+
+export interface RegistrarOrdenesLoteRes {
+  ordenes: { indice: number; proveedor_id: number; orden: PagosOrden; facturas: PagosFactura[] }[]
+  /** Como en la OP suelta (COMPROBANTE_YA_USADO), con el bloque al que corresponde. */
+  avisos:  (PagosAviso & { indice?: number; proveedor_id?: number })[]
+}
+
 export interface AnularOrdenRes {
   orden:    PagosOrden
   /** Vuelven a `aprobada`, o a `pendiente` si nadie las había aprobado. */
