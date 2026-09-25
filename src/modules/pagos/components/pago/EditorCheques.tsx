@@ -275,9 +275,13 @@ export function filaDesdeLectura(c: ChequeFila, l: Pick<LecturaCheque, 'propuest
   if (p.fecha_cobro)         { cambio.fecha_cobro = p.fecha_cobro.slice(0, 10); leidos.push('fecha_cobro') }
   if (p.importe != null && p.importe > 0) { cambio.monto = String(p.importe); leidos.push('monto') }
   const librador = [p.librador?.trim(), p.librador_cuit ? `CUIT ${p.librador_cuit}` : null].filter(Boolean).join(' · ')
+  // Un endoso (o un cheque que la foto dice que libró otro) queda «De
+  // tercero» solo; el backend ya le puso el librador, o «No informado…».
+  const esPropio = p.es_propio === false ? false : c.es_propio
+  if (!esPropio && c.es_propio) cambio.es_propio = false
   // El librador sólo se usa si el cheque es de un tercero: si está como
   // propio se guarda para ofrecerlo al tildar «De tercero».
-  if (librador && !c.es_propio) { cambio.librador = librador; leidos.push('librador') }
+  if (librador && !esPropio) { cambio.librador = librador; leidos.push('librador') }
   const avisos = (l.avisos ?? []).map(a => mensajeAvisoLectura(a)).filter(Boolean)
   if (p.es_echeq && forma === 'cheque') avisos.push('La foto parece de un e-cheq, y la forma de pago elegida es cheque.')
   if (leidos.length === 0) avisos.push('No se pudo sacar ningún dato de la foto: cargalos a mano. La foto queda adjunta igual.')
