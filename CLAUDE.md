@@ -370,6 +370,19 @@ El ejercicio de CADINC va de **julio a junio**; la contabilidad se lleva en el E
 - **Tesorería** incluye tipos `tarjeta` (vinculada a una cuenta del PASIVO) y `billetera` (Mercado Pago).
 - Criterios del contador (24/09) y lo que falta (apertura con el balance al 30/06, reconstrucción jul–sep, conciliación bancaria, cierre de ejercicio): nota de diseño en Obsidian.
 
+### 5.21 Configuración desde el ERP (2026-09-25, migraciones `20260929a`–`k`)
+
+Regla del dueño: **lo operativo se edita desde la pantalla**; terminal/SQL solo para cambiar el sistema. Lo que es del sistema (CUIT del emisor, certificado ARCA, cuenta SMTP, secretos) sigue en env/migraciones. Spec en Obsidian `Proyectos/Parametrización desde el ERP — spec (2026-09-25).md`.
+
+- **Flag `configurar`** (default false) en `facturacion`, `pagos` y `admin` (espejo SQL: `_perm_flag(user, modulo, flag, default)`). Tabs nuevas: `facturacion.configuracion`, `pagos.configuracion`, `admin.empresa`. Leer no pide tab; escribir pide tab + `configurar`. Usuarios con lista explícita de tabs NO ven una tab nueva hasta agregársela.
+- **Datos de la empresa** (`empresa_config`, Admin › Datos de la empresa): PDFs y Excel leen de ahí. El CUIT no se edita (va atado al certificado de ARCA). No confundir con `public.empresas` (transportistas, legacy).
+- **Ventas › Configuración**: productos (`ventas_productos`, la factura elige del catálogo y pide período si corresponde), puntos de venta (`ventas_puntos_venta`) + vencimiento del certificado ARCA, **montos de ARCA con vigencia** (`ventas_parametros`: mínimo FCE y tope CF; cada factura usa el vigente a SU fecha, nunca se borra una vigencia pasada), tipos de retención sufrida (`ventas_retencion_tipos`; `iva` reservado y único porque lo leen el LID y el asiento de IVA) y valores por defecto de la factura (`ventas_config`: condición de pago, provincia de la lista ARCA, unidad, leyenda FCE; vacía = la de ARCA).
+- **Jurisdicciones** (`jurisdicciones`, compartido Compras/Ventas, `/api/catalogos/jurisdicciones`): 24 provincias con código COMARB y ARCA + municipios. `pagos_factura_tributos` y `ventas_cobro_retenciones` llevan `jurisdiccion_id`; un trigger resuelve el texto (IA, backend viejo) por nombre/alias y pisa el texto con el nombre canónico. Texto que no resuelve queda con id null: no bloquea. Mapeos contables `tipo|<id>`.
+- **Compras › Configuración** (`pagos_config`): jurisdicción por defecto de las percepciones, mail del contador (orden: pantalla › env `CONTADOR_EMAIL` › usuario con rol Contador), responder a, nombre del remitente (la DIRECCIÓN sigue siendo la del SMTP del env), texto al pie (bloquea CBU de 22 dígitos y alias con punto, mismo guard en SQL/backend/frontend) y plazos de cheque.
+- **Cuenta título de bienes de uso** (`cont_config.bu_titulo_rubros`, `_cont_bu_prefijo()`): sus hijas directas son los rubros. Reemplaza al `'1.2.2.'` escrito a mano.
+- **Deshacer una importación de «Mis Comprobantes»** (`pagos_deshacer_importacion`, flag `importar_comprobantes` + `pagos.eliminacion`): vista previa y después todo o nada; bloquea si alguna factura tiene pago, NC, está imputada, aprobada o con asiento en período cerrado. Anula las facturas y sus asientos de períodos abiertos en la misma transacción. No hay «rehacer»: se reimporta el archivo.
+- **Caché**: backend 60 s en memoria (con varias instancias en Render un cambio tarda hasta un minuto); frontend React Query 5 min, invalidado al guardar. Los hooks nuevos caen a las constantes viejas ante un 404.
+
 ## 6. Convenciones de código (frontend)
 
 - **Feature-based folders**: `src/modules/<feature>/{components,hooks,store}`. Sin `services/` (los hooks de React Query encapsulan API).
@@ -512,4 +525,4 @@ El frontend espera al backend en `http://localhost:3001` (configurable vía env)
 
 ---
 
-_Última actualización: 2026-09-24 (contabilidad fase 1)._
+_Última actualización: 2026-09-25 (configuración desde el ERP, §5.21)._
