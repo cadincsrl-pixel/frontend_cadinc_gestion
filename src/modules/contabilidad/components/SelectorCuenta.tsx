@@ -20,7 +20,7 @@ import { rubroLabel } from '../utils/contabilidad.utils'
  *     sus descendientes, y las dadas de baja (su historia sigue ahí).
  */
 export function SelectorCuenta({
-  value, onChange, modo = 'imputables', rubros, auxiliares, label, placeholder, disabled, className,
+  value, onChange, modo = 'imputables', rubros, auxiliares, filtrar, label, placeholder, disabled, className,
 }: {
   /** id como string; '' = ninguna. */
   value:        string
@@ -30,6 +30,8 @@ export function SelectorCuenta({
   rubros?:      CtbRubro[]
   /** Restringe al tipo de auxiliar de la cuenta (mapeos: lo que acepta cada clave). */
   auxiliares?:  CtbAuxiliarTipo[]
+  /** Filtro extra (bienes de uso: solo las «Valores originales» 1.2.2.XX.01). */
+  filtrar?:     (c: CtbCuenta) => boolean
   label?:       string
   placeholder?: string
   disabled?:    boolean
@@ -45,6 +47,7 @@ export function SelectorCuenta({
       (modo === 'todas' || (c.activo && c.imputable))
       && (!rubros || rubros.includes(c.rubro))
       && (!auxiliares || auxiliares.includes(c.auxiliar))
+      && (!filtrar || filtrar(c))
     ))
     .map(c => ({
       value:  String(c.id),
@@ -55,7 +58,7 @@ export function SelectorCuenta({
         !c.activo ? 'dada de baja' : null,
       ].filter(Boolean).join(' · ') || undefined,
       search: [c.codigo, c.nombre],
-    })), [cuentas, value, modo, rubros, auxiliares])
+    })), [cuentas, value, modo, rubros, auxiliares, filtrar])
 
   const ph = isLoading ? 'Cargando cuentas…'
     : isError ? 'No se pudo traer el plan'

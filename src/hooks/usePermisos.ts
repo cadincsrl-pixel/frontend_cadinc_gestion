@@ -83,6 +83,9 @@ export function usePermisos(modulo: string) {
     // Contabilidad fase 3 (20260927): motor de asientos automáticos y mapeos.
     contabilizar:         flagCapacidad('contabilizar', false),
     editarMapeos:         flagCapacidad('editar_mapeos', false),
+    // Contabilidad tanda 5 (20260928): tesorería y bienes de uso.
+    movimientosFondos:    flagCapacidad('movimientos_fondos', false),
+    bienesUso:            flagCapacidad('bienes_uso', false),
     // Pagos: importar «Mis Comprobantes Recibidos» de ARCA (20260927c).
     importarComprobantes: flagCapacidad('importar_comprobantes', false),
     asistenteIa:          flagCapacidad('asistente_ia', false),

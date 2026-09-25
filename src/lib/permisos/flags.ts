@@ -31,6 +31,7 @@ export type FlagBoolean =
   | 'emitir_facturas' | 'emitir_notas_credito' | 'registrar_cobros'
   | 'asientos_manuales' | 'cerrar_periodos' | 'editar_plan'
   | 'contabilizar' | 'editar_mapeos' | 'importar_comprobantes'
+  | 'movimientos_fondos' | 'bienes_uso'
 
 export interface FlagDef {
   key:   FlagBoolean
@@ -211,6 +212,19 @@ export const FLAGS_BOOLEAN: FlagDef[] = [
     key: 'editar_mapeos',
     label: '🔗 Editar mapeos contables',
     help: 'Elegir qué cuenta usa cada concepto de compra, alícuota, tributo, medio de cobro y producto, y la configuración de los asientos automáticos. Solo tiene efecto en contabilidad.',
+    modulos: ['contabilidad'],
+  },
+  // Contabilidad tanda 5 (20260928l–q): nacen apagados, igual que `_cont_flag`.
+  {
+    key: 'movimientos_fondos',
+    label: '🏦 Movimientos de fondos',
+    help: 'Cargar, editar y anular movimientos de fondos sin factura (comisiones bancarias, impuesto al cheque, VEP, sueldos, retiros, transferencias entre cuentas) con sus adjuntos, y el ABM de sus conceptos. Necesita además el tab "Tesorería". Solo tiene efecto en contabilidad.',
+    modulos: ['contabilidad'],
+  },
+  {
+    key: 'bienes_uso',
+    label: '🏗 Bienes de uso',
+    help: 'Alta, edición y baja de bienes de uso, importar el inventario desde Excel y generar o anular las amortizaciones. Necesita además el tab "Bienes de uso". Solo tiene efecto en contabilidad.',
     modulos: ['contabilidad'],
   },
   {

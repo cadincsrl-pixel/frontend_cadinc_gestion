@@ -18,7 +18,7 @@ import { Aviso, Cargando, ErrorCarga, Th } from './Comun'
  * en una sola de las dos, o con otro importe, se resaltan.
  */
 
-type LineaComun = Pick<CtbPropuestaLinea, 'cuenta_id' | 'cuenta_codigo' | 'cuenta_nombre' | 'debe' | 'haber' | 'aux_id' | 'aux_nombre' | 'obra_cod' | 'obra_nom' | 'glosa'>
+export type LineaComun = Pick<CtbPropuestaLinea, 'cuenta_id' | 'cuenta_codigo' | 'cuenta_nombre' | 'debe' | 'haber' | 'aux_id' | 'aux_nombre' | 'obra_cod' | 'obra_nom' | 'glosa'>
 
 const clave = (l: LineaComun) => `${l.cuenta_id}|${l.aux_id ?? ''}|${l.obra_cod ?? ''}|${Number(l.debe) > 0 ? 'D' : 'H'}`
 const importe = (l: LineaComun) => Math.round((Number(l.debe) || Number(l.haber)) * 100)
@@ -99,7 +99,8 @@ export function ModalPropuesta({ tabla, id, onClose, onVerAsiento }: {
   )
 }
 
-function TablaLineas({ titulo, lineas, resaltar, vacio }: {
+/** La tabla de líneas de una propuesta (también la usa el asiento de IVA mensual). */
+export function TablaLineas({ titulo, lineas, resaltar, vacio }: {
   titulo: string
   lineas: LineaComun[]
   resaltar?: (l: LineaComun) => boolean

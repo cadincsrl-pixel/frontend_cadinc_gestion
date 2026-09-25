@@ -5,17 +5,23 @@ import { filasDiario, numeroResumen } from '@/modules/contabilidad/utils/exporta
 import { filasBalance, filasResultados, grupoDeFila } from '@/modules/contabilidad/utils/exportarEstados'
 
 describe('circuitos', () => {
-  it('con los cuatro no filtra; si no, junta las fuentes', () => {
-    expect(fuentesDeCircuitos(['ventas', 'cobros', 'compras', 'pagos'])).toBeUndefined()
+  it('con todos no filtra; si no, junta las fuentes', () => {
+    expect(fuentesDeCircuitos(['ventas', 'cobros', 'compras', 'pagos', 'fondos'])).toBeUndefined()
+    // Tanda 5: los cuatro viejos ya no son «todos» (falta Fondos).
+    expect(fuentesDeCircuitos(['ventas', 'cobros', 'compras', 'pagos'])).toEqual([
+      'ventas_facturas', 'ventas_comprobantes_externos', 'ventas_cobros', 'pagos_facturas', 'pagos_ordenes',
+    ])
+    expect(fuentesDeCircuitos(['fondos'])).toEqual(['tesoreria_movimientos'])
     expect(fuentesDeCircuitos(['ventas'])).toEqual(['ventas_facturas', 'ventas_comprobantes_externos'])
     expect(fuentesDeCircuitos(['compras', 'pagos'])).toEqual(['pagos_facturas', 'pagos_ordenes'])
     expect(fuentesDeCircuitos([])).toEqual([])
   })
-  it('lee lo guardado y vuelve a los cuatro si está roto o vacío', () => {
-    expect(leerCircuitosGuardados(null)).toEqual(['ventas', 'cobros', 'compras', 'pagos'])
-    expect(leerCircuitosGuardados('no json')).toEqual(['ventas', 'cobros', 'compras', 'pagos'])
-    expect(leerCircuitosGuardados('[]')).toEqual(['ventas', 'cobros', 'compras', 'pagos'])
-    expect(leerCircuitosGuardados('{"a":1}')).toEqual(['ventas', 'cobros', 'compras', 'pagos'])
+  it('lee lo guardado y vuelve a todos si está roto o vacío', () => {
+    const todos = ['ventas', 'cobros', 'compras', 'pagos', 'fondos']
+    expect(leerCircuitosGuardados(null)).toEqual(todos)
+    expect(leerCircuitosGuardados('no json')).toEqual(todos)
+    expect(leerCircuitosGuardados('[]')).toEqual(todos)
+    expect(leerCircuitosGuardados('{"a":1}')).toEqual(todos)
     expect(leerCircuitosGuardados('["compras","x","ventas"]')).toEqual(['ventas', 'compras'])
   })
   it('nombra los circuitos', () => {

@@ -6,12 +6,14 @@ import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
-import type { CtbPeriodo } from '@/types/contabilidad.types'
-import { useAbrirEjercicioSiguiente, useCerrarPeriodo, useEjercicios, usePeriodos } from '../hooks/useContabilidad'
-import { bloqueoCerrarTxt, bloqueoReabrirTxt, estadoPendiente, fmtFecha, fmtFechaHora, fmtM, hoyAR, nombreMes } from '../utils/contabilidad.utils'
+import type { CtbIvaEstadoMes, CtbPeriodo } from '@/types/contabilidad.types'
+import { useAbrirEjercicioSiguiente, useCerrarPeriodo, useEjercicios, useIvaEstados, usePeriodos } from '../hooks/useContabilidad'
+import { bloqueoCerrarTxt, bloqueoReabrirTxt, estadoIva, estadoPendiente, fmtFecha, fmtFechaHora, fmtM, hoyAR, nombreMes } from '../utils/contabilidad.utils'
 import { codigoErrorCtb, leerCuerpoError, mensajeErrorCtb } from '../utils/contabilidad.errores'
 import { Aviso, Campo, Cargando, ErrorCarga, Tarjeta, Th, Vacio, inputCls } from './Comun'
 import { ModalReabrirPeriodo } from './ModalReabrirPeriodo'
+import { ModalIvaMensual } from './ModalIvaMensual'
+import { useVisorAsiento } from './VisorAsiento'
 
 /**
  * Los 12 períodos (meses) del ejercicio. Cerrar un período NUMERA sus
@@ -22,6 +24,11 @@ import { ModalReabrirPeriodo } from './ModalReabrirPeriodo'
  * «Abrir ejercicio siguiente» (20260928e) crea el ejercicio de julio a junio
  * que sigue al último, con sus 12 meses abiertos. Solo se puede cuando el
  * último ya empezó (espejo de EJERCICIO_SIGUIENTE_YA_EXISTE de la RPC).
+ *
+ * Columna «IVA» (tanda 5, 20260928o): el asiento mensual de IVA es un paso
+ * del cierre, por eso vive al lado de «Cerrar». Cerrar un mes con el asiento
+ * de IVA desactualizado rebota con 409 IVA_DDJJ_DESACTUALIZADA (se puede
+ * cerrar igual); sin generar solo avisa.
  */
 export function PeriodosTab() {
   const toast = useToast()
@@ -43,6 +50,13 @@ export function PeriodosTab() {
   // 409 HAY_PENDIENTES_AUTOMATICOS (fase 3): cuántos quedan y por estado.
   const [pendientesAuto, setPendientesAuto] = useState<{ cantidad: number; por_estado: Record<string, number> } | null>(null)
   const [aReabrir, setAReabrir] = useState<CtbPeriodo | null>(null)
+  // 409 IVA_DDJJ_DESACTUALIZADA al cerrar.
+  const [ivaDesact, setIvaDesact] = useState(false)
+  const [ivaDe, setIvaDe] = useState<CtbPeriodo | null>(null)
+  const visor = useVisorAsiento()
+  // Un backend sin la tanda 5 responde error: la columna muestra «—».
+  const ivaQ = useIvaEstados(ejercicioId)
+  const ivaPorPeriodo = useMemo(() => new Map<number, CtbIvaEstadoMes>((ivaQ.data ?? []).map(e => [e.periodo_id, e])), [ivaQ.data])
   const abrirSiguiente = useAbrirEjercicioSiguiente()
   const [confirmarSiguiente, setConfirmarSiguiente] = useState(false)
 
@@ -58,7 +72,12 @@ export function PeriodosTab() {
         : `✓ ${nombreMes(aCerrar.desde)} cerrado (no tenía asientos)`, 'ok')
       setACerrar(null)
       setPendientesAuto(null)
+      setIvaDesact(false)
     } catch (e) {
+      if (codigoErrorCtb(e) === 'IVA_DDJJ_DESACTUALIZADA') {
+        setIvaDesact(true)
+        return
+      }
       if (codigoErrorCtb(e) === 'HAY_PENDIENTES_AUTOMATICOS') {
         const d = leerCuerpoError(e).detail
         const obj = d && typeof d === 'object' ? d as Record<string, unknown> : {}
@@ -102,7 +121,11 @@ export function PeriodosTab() {
   function cerrarModal() {
     setACerrar(null)
     setPendientesAuto(null)
+    setIvaDesact(false)
   }
+
+  const ivaACerrar = aCerrar ? ivaPorPeriodo.get(aCerrar.id) ?? null : null
+  const forzable = !!pendientesAuto || ivaDesact
 
   const periodos = data ?? []
 
@@ -133,11 +156,11 @@ export function PeriodosTab() {
         : (
           <Tarjeta className="overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse min-w-[980px]">
+              <table className="w-full border-collapse min-w-[1080px]">
                 <thead>
                   <tr>
                     <Th>Período</Th><Th>Estado</Th><Th derecha>Borradores</Th><Th derecha>Confirmados</Th><Th derecha>Anulados</Th>
-                    <Th>Números</Th><Th derecha>Total Debe</Th><Th>Cierre</Th><Th />
+                    <Th>Números</Th><Th derecha>Total Debe</Th><Th>IVA</Th><Th>Cierre</Th><Th />
                   </tr>
                 </thead>
                 <tbody>
@@ -167,6 +190,10 @@ export function PeriodosTab() {
                           {p.numero_desde ? `${p.numero_desde} – ${p.numero_hasta}` : <span className="text-gris-mid font-sans">—</span>}
                         </td>
                         <td className="px-3 py-2 text-xs text-right font-mono tabular-nums whitespace-nowrap">{fmtM(p.total_debe)}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          <CeldaIva e={ivaPorPeriodo.get(p.id) ?? null} cargando={ivaQ.isLoading} sinDatos={ivaQ.isError}
+                            onAbrir={() => setIvaDe(p)} />
+                        </td>
                         <td className="px-3 py-2 text-[11px] text-gris-dark">
                           {cerrado && <span className="block">{p.cerrado_por_nombre ?? '—'}, {fmtFechaHora(p.cerrado_at)}</span>}
                           {p.reabierto_at && <span className="block" title={p.motivo_reapertura ?? undefined}>Reabierto {fmtFechaHora(p.reabierto_at)}{p.motivo_reapertura ? `: ${p.motivo_reapertura}` : ''}</span>}
@@ -195,11 +222,16 @@ export function PeriodosTab() {
 
       {aCerrar && (
         <Modal open onClose={cerrar.isPending ? () => {} : cerrarModal} width="max-w-md" title={`Cerrar ${nombreMes(aCerrar.desde)}`}
-          footer={pendientesAuto ? <>
+          footer={forzable ? <>
             <Button variant="ghost" size="sm" onClick={cerrarModal} disabled={cerrar.isPending}>Cancelar</Button>
-            <Link href="/contabilidad?tab=automaticos" className="text-xs px-3 py-1.5 rounded border border-gris-mid bg-white text-azul font-semibold hover:bg-gris">
-              Ver pendientes
-            </Link>
+            {pendientesAuto && (
+              <Link href="/contabilidad?tab=automaticos" className="text-xs px-3 py-1.5 rounded border border-gris-mid bg-white text-azul font-semibold hover:bg-gris">
+                Ver pendientes
+              </Link>
+            )}
+            {ivaDesact && (
+              <Button size="sm" variant="secondary" onClick={() => { const p = aCerrar; cerrarModal(); setIvaDe(p) }}>Ver IVA</Button>
+            )}
             <Button size="sm" variant="danger" loading={cerrar.isPending} onClick={() => void hacerCierre(true)}>Cerrar igual</Button>
           </> : <>
             <Button variant="ghost" size="sm" onClick={cerrarModal} disabled={cerrar.isPending}>Cancelar</Button>
@@ -215,6 +247,18 @@ export function PeriodosTab() {
               Para corregir algo después: anular el asiento (se genera un contraasiento en un mes abierto) o reabrir el período,
               que borra los números y se vuelven a asignar al cerrarlo de nuevo.
             </Aviso>
+            {ivaDesact && (
+              <Aviso tono="naranja">
+                <b>El asiento de IVA del mes quedó desactualizado</b> (se contabilizó algo después de generarlo). Lo correcto es regenerarlo
+                antes de cerrar; si lo cerrás igual, las cuentas de IVA del mes no quedan en cero.
+              </Aviso>
+            )}
+            {!ivaDesact && ivaACerrar?.estado === 'sin_generar' && (
+              <Aviso tono="amarillo">
+                Todavía no se generó el <b>asiento de IVA</b> de este mes. No bloquea el cierre, pero después solo se genera reabriendo el período.{' '}
+                <button type="button" className="underline font-semibold" onClick={() => { const p = aCerrar; cerrarModal(); setIvaDe(p) }}>Generarlo ahora</button>
+              </Aviso>
+            )}
             {pendientesAuto && (
               <Aviso tono="naranja">
                 <b>Quedan {pendientesAuto.cantidad} comprobante{pendientesAuto.cantidad === 1 ? '' : 's'} de Ventas o Compras sin contabilizar o desactualizado{pendientesAuto.cantidad === 1 ? '' : 's'} en el mes</b>
@@ -244,6 +288,32 @@ export function PeriodosTab() {
         </Modal>
       )}
       {aReabrir && <ModalReabrirPeriodo periodo={aReabrir} onClose={() => setAReabrir(null)} />}
+      {ivaDe && (
+        <ModalIvaMensual periodo={ivaDe} onClose={() => setIvaDe(null)}
+          onVerAsiento={id => { setIvaDe(null); visor.abrir(id) }} />
+      )}
+      {visor.modales}
     </div>
+  )
+}
+
+/** La celda «IVA» de un mes: chip de estado + a pagar / saldo a favor, y el botón para abrir el modal. */
+function CeldaIva({ e, cargando, sinDatos, onAbrir }: {
+  e:        CtbIvaEstadoMes | null
+  cargando: boolean
+  sinDatos: boolean
+  onAbrir:  () => void
+}) {
+  if (cargando) return <span className="text-[11px] text-gris-mid">…</span>
+  if (sinDatos || !e) return <Button size="sm" variant="ghost" onClick={onAbrir} title="Ver la posición de IVA del mes">IVA</Button>
+  const est = estadoIva(e.estado)
+  const monto = e.a_pagar > 0 ? `a pagar ${fmtM(e.a_pagar)}`
+    : e.saldo_tecnico > 0 || e.libre_disponibilidad > 0 ? `a favor ${fmtM(e.saldo_tecnico + e.libre_disponibilidad)}` : null
+  return (
+    <button type="button" onClick={onAbrir} className="flex flex-col items-start gap-0.5 text-left hover:underline"
+      title={`${est.hint}. Click para ver la posición y ${e.estado === 'sin_generar' ? 'generar' : e.estado === 'desactualizado' ? 'regenerar' : 'ver'} el asiento de IVA`}>
+      <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase ${est.clase}`}>{est.corto}</span>
+      {monto && e.estado !== 'sin_generar' && <span className="text-[10px] text-gris-dark font-mono tabular-nums">{monto}</span>}
+    </button>
   )
 }

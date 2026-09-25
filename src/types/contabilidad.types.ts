@@ -361,6 +361,8 @@ export interface CtbObra {
 // ── Fase 3 (20260927d–f): motor de asientos automáticos y mapeos ────────
 
 export type CtbFuente = 'ventas_facturas' | 'ventas_comprobantes_externos' | 'ventas_cobros' | 'pagos_facturas' | 'pagos_ordenes'
+  // Tanda 5 (20260928m): movimientos de fondos sin factura.
+  | 'tesoreria_movimientos'
 export type CtbPendienteEstado = 'sin_contabilizar' | 'pendiente' | 'desactualizado' | 'a_revertir'
 
 export interface CtbMotivo {
@@ -471,12 +473,24 @@ export interface CtbConfig {
   cvlp_modo:              'neto_liquidado' | 'bruto'
   compras_fecha_contable: 'fecha' | 'mes_iva'
   paga_cliente_modo:      string | null
+  // Tanda 5 (20260928n). Un backend viejo no las manda: leer con `?? default`.
+  /** Asiento de IVA: compensar los saldos a favor del mes anterior. Default false. */
+  iva_ddjj_arrastre:      boolean
+  /** Bienes de uso: amortizar por mes o por ejercicio. */
+  bu_frecuencia:          'mensual' | 'anual'
+  /** Año de alta: completo (desde el inicio del ejercicio) o proporcional (desde el mes de alta). */
+  bu_criterio_alta:       'completo' | 'proporcional'
+  /** Fecha de corte de la amortización acumulada inicial (30/06/2026). */
+  bu_corte_inicial:       string
 }
+
+export type CtbConfigEditable = Pick<CtbConfig,
+  'automaticos_desde' | 'cvlp_modo' | 'compras_fecha_contable' | 'iva_ddjj_arrastre' | 'bu_frecuencia' | 'bu_criterio_alta' | 'bu_corte_inicial'>
 
 // ── Tanda 4 (20260928h–k): circuitos, diario resumido y estados contables ──
 
 /** Circuito de Automáticos: agrupa las fuentes (ventas = facturas del ERP + externos). */
-export type CtbCircuito = 'ventas' | 'cobros' | 'compras' | 'pagos'
+export type CtbCircuito = 'ventas' | 'cobros' | 'compras' | 'pagos' | 'fondos'
 
 export type CtbDiarioModo = 'detallado' | 'dia' | 'mes'
 
@@ -591,4 +605,365 @@ export interface CtbResultadosRes {
   ingresos:    CtbSeccionResultados
   gastos:      CtbSeccionResultados
   resultado:   { total: number; totales_col: number[] }
+}
+
+// ── Tanda 5 (20260928l–q): movimientos de fondos, asiento de IVA y bienes de uso ──
+
+export type TesMovTipo = 'ingreso' | 'egreso' | 'transferencia'
+export type TesConceptoSentido = 'ingreso' | 'egreso' | 'ambos'
+export type TesMoneda = 'ARS' | 'USD'
+
+export interface TesConcepto {
+  id:            number
+  nombre:        string
+  sentido:       TesConceptoSentido
+  orden:         number
+  activo:        boolean
+  obs:           string
+  /** Movimientos vigentes que lo usan. */
+  en_uso:        number
+  /** Cuenta del mapeo `fondos.concepto` (null = sin mapear). */
+  cuenta_id:     number | null
+  cuenta_codigo: string | null
+  cuenta_nombre: string | null
+}
+
+export interface TesConceptoInput {
+  nombre:  string
+  sentido: TesConceptoSentido
+  orden?:  number
+  activo?: boolean
+  obs?:    string
+}
+
+export type TesAdjuntoTipo = 'comprobante' | 'vep' | 'extracto' | 'otro'
+
+export interface TesAdjunto {
+  id:             number
+  tipo:           TesAdjuntoTipo
+  nombre_archivo: string
+  mime_type:      string
+  size_bytes:     number
+  created_at:     string
+  obs?:           string
+}
+
+/**
+ * Respuesta de `upload-url`. La spec dice `{path, token, signedUrl}`; el
+ * servicio de Pagos (del que es clon) devuelve `{storage_path, signed_url}`.
+ * Se aceptan los dos para no repetir el bug de shapes del 2026-05-19.
+ */
+export interface TesUploadUrlRes {
+  path?:         string
+  storage_path?: string
+  token?:        string
+  signedUrl?:    string
+  signed_url?:   string
+}
+
+export interface TesMovimiento {
+  id:                   number
+  /** Se muestra «MF-000123». */
+  numero:               number
+  fecha:                string
+  tipo:                 TesMovTipo
+  tesoreria_id:         number
+  tesoreria_nombre:     string
+  tesoreria_tipo:       TesoreriaTipo
+  tesoreria_moneda:     TesMoneda
+  tesoreria_destino_id: number | null
+  destino_nombre:       string | null
+  destino_moneda:       TesMoneda | null
+  concepto_id:          number | null
+  concepto_nombre:      string | null
+  /** En la moneda de la cuenta de origen. */
+  importe:              number
+  importe_destino:      number | null
+  cotizacion:           number | null
+  /** Lo calcula la base; es lo que va al asiento. */
+  importe_ars:          number
+  obra_cod:             string | null
+  obra_nom:             string | null
+  referencia:           string
+  obs:                  string
+  origen:               'manual' | 'conciliacion'
+  extracto_linea_id:    number | null
+  estado:               'vigente' | 'anulado'
+  motivo_anulacion:     string | null
+  anulado_por_nombre:   string | null
+  anulado_at:           string | null
+  cant_adjuntos:        number
+  asiento_id:           number | null
+  asiento_numero:       number | null
+  created_by_nombre:    string | null
+  created_at:           string
+  adjuntos?:            TesAdjunto[]
+}
+
+export interface TesMovimientoInput {
+  fecha:                 string
+  tipo:                  TesMovTipo
+  tesoreria_id:          number
+  tesoreria_destino_id?: number | null
+  concepto_id?:          number | null
+  importe:               number
+  importe_destino?:      number | null
+  cotizacion?:           number | null
+  obra_cod?:             string | null
+  referencia?:           string
+  obs?:                  string
+}
+
+export type TesMovimientosRes = CtbPage<TesMovimiento> & {
+  totales: { ingresos: number; egresos: number; transferencias: number }
+}
+
+// ── Asiento mensual de IVA (DDJJ) ──
+
+export type CtbIvaEstado = 'sin_generar' | 'al_dia' | 'desactualizado' | 'sin_movimientos'
+
+export interface CtbIvaCuenta {
+  cuenta_id: number
+  codigo:    string
+  nombre:    string
+  rol:       'debito' | 'credito' | 'pagos_a_cuenta'
+  debe:      number
+  haber:     number
+  saldo:     number
+}
+
+export interface CtbIvaContable {
+  periodo_id:           number
+  desde:                string
+  hasta:                string
+  fecha:                string
+  cuentas:              CtbIvaCuenta[]
+  debito_fiscal:        number
+  credito_fiscal:       number
+  pagos_a_cuenta:       number
+  determinado:          number
+  arrastre_tecnico:     number
+  arrastre_libre:       number
+  a_pagar:              number
+  saldo_tecnico:        number
+  libre_disponibilidad: number
+  lineas:               CtbPropuestaLinea[]
+  motivos:              CtbMotivo[]
+  avisos:               string[]
+  hash:                 string
+  estado:               CtbIvaEstado
+  periodo_estado:       CtbPeriodoEstado
+  registro:             { id: number; forzado: boolean; created_at: string; created_by_nombre: string | null } | null
+  asiento:              CtbAsiento | null
+}
+
+export interface CtbPosicionIvaFiscal {
+  periodo:                string
+  debito_fiscal:          number
+  credito_fiscal:         number
+  impuesto_determinado:   number
+  saldo_tecnico_a_favor:  number
+  percepciones_iva:       number
+  retenciones_iva:        number
+  a_pagar:                number
+  libre_disponibilidad:   number
+  excluidos_ventas:       number
+  excluidos_compras:      number
+  avisos:                 string[]
+}
+
+export interface CtbIvaDiferencia {
+  componente: 'debito' | 'credito' | 'pagos_a_cuenta' | 'excluidos'
+  contable:   number
+  fiscal:     number
+  diferencia: number
+}
+
+export interface CtbIvaPosicion {
+  contable:    CtbIvaContable
+  fiscal:      CtbPosicionIvaFiscal
+  diferencias: CtbIvaDiferencia[]
+}
+
+export interface CtbIvaEstadoMes {
+  periodo_id:           number
+  desde:                string
+  estado:               CtbIvaEstado
+  a_pagar:              number
+  saldo_tecnico:        number
+  libre_disponibilidad: number
+  asiento_id:           number | null
+  asiento_numero:       number | null
+}
+
+export interface CtbIvaGenerarRes {
+  accion:   'creado' | 'regenerado' | 'sin_cambios'
+  posicion: CtbIvaPosicion
+}
+
+// ── Bienes de uso ──
+
+export type CtbCriterioAlta = 'completo' | 'proporcional'
+
+export interface CtbBienUso {
+  id:                           number
+  /** «BU-0001», no editable. */
+  codigo:                       string
+  descripcion:                  string
+  identificador:                string
+  cuenta_origen_id:             number
+  cuenta_origen_codigo:         string
+  cuenta_origen_nombre:         string
+  rubro_codigo:                 string
+  rubro_nombre:                 string
+  cuenta_amort_id:              number | null
+  cuenta_amort_codigo:          string | null
+  cuenta_gasto_id:              number | null
+  cuenta_gasto_codigo:          string | null
+  fecha_alta:                   string
+  valor_origen:                 number
+  /** null = no se amortiza (terrenos). */
+  vida_util_anios:              number | null
+  valor_residual:               number
+  amort_acum_inicial:           number
+  metodo:                       'lineal'
+  /** null = el de la configuración. */
+  criterio_alta:                CtbCriterioAlta | null
+  obra_cod:                     string | null
+  obra_nom:                     string | null
+  pagos_factura_id:             number | null
+  fecha_baja:                   string | null
+  motivo_baja:                  string | null
+  obs:                          string
+  amort_acum_hoy:               number
+  valor_neto_hoy:               number
+  tiene_amortizaciones_cerradas: boolean
+}
+
+export interface CtbBienInput {
+  descripcion:         string
+  identificador?:      string
+  cuenta_origen_id:    number
+  cuenta_amort_id?:    number | null
+  cuenta_gasto_id?:    number | null
+  fecha_alta:          string
+  valor_origen:        number
+  vida_util_anios?:    number | null
+  valor_residual?:     number
+  amort_acum_inicial?: number
+  criterio_alta?:      CtbCriterioAlta | null
+  obra_cod?:           string | null
+  pagos_factura_id?:   number | null
+  obs?:                string
+}
+
+/** Una línea de amortización de un bien (ficha del bien). */
+export interface CtbAmortizacionFila {
+  id:                  number
+  corrida_id:          number
+  hasta:               string
+  meses:               number
+  importe:             number
+  acumulada_al_cierre: number
+  corrida_estado?:     'vigente' | 'anulada'
+  asiento_id?:         number | null
+  asiento_numero?:     number | null
+}
+
+export type CtbBienDetalle = CtbBienUso & { amortizaciones: CtbAmortizacionFila[] }
+
+/** Una corrida de amortización (una por período o por ejercicio). */
+export interface CtbAmortizacionCorrida {
+  id:                 number
+  desde:              string
+  hasta:              string
+  frecuencia:         'mensual' | 'anual'
+  estado:             'vigente' | 'anulada'
+  asiento_id:         number | null
+  asiento_numero?:    number | null
+  total:              number
+  bienes?:            number
+  periodo_estado?:    CtbPeriodoEstado | null
+  motivo_anulacion:   string | null
+  anulado_at:         string | null
+  anulado_por_nombre?: string | null
+  created_at:         string
+  created_by_nombre?: string | null
+}
+
+export interface CtbCuadroFila {
+  bien_id:                 number
+  codigo:                  string
+  descripcion:             string
+  identificador:           string
+  rubro_codigo:            string
+  rubro_nombre:            string
+  fecha_alta:              string
+  fecha_baja:              string | null
+  valor_origen:            number
+  valor_residual:          number
+  vida_util_anios:         number | null
+  amort_acum_inicio:       number
+  amort_ejercicio:         number
+  amort_acum_cierre:       number
+  valor_neto:              number
+  falta_amortizar_teorico: number
+  obra_cod:                string | null
+}
+
+export type CtbCuadroRubro = Omit<CtbCuadroFila,
+  'bien_id' | 'codigo' | 'descripcion' | 'identificador' | 'fecha_alta' | 'fecha_baja' | 'vida_util_anios' | 'obra_cod'> & { cantidad: number }
+
+export interface CtbControlMayorBienes {
+  cuenta_id:  number
+  codigo:     string
+  nombre:     string
+  inventario: number
+  mayor:      number
+  diferencia: number
+}
+
+export interface CtbCuadroBienes {
+  ejercicio:     CtbEjercicioRef
+  hasta:         string
+  filas:         CtbCuadroFila[]
+  rubros:        CtbCuadroRubro[]
+  control_mayor: CtbControlMayorBienes[]
+}
+
+export interface CtbAmortizarTramo {
+  desde:      string
+  hasta:      string
+  accion:     'creado' | 'regenerado' | 'sin_cambios' | 'periodo_cerrado' | 'desactualizado' | 'sin_bienes'
+  corrida_id: number | null
+  asiento_id: number | null
+  total:      number
+  bienes:     number
+}
+
+export interface CtbAmortizarRes {
+  frecuencia: 'mensual' | 'anual'
+  tramos:     CtbAmortizarTramo[]
+  total:      number
+}
+
+export interface CtbImportarBienesFila {
+  indice:   number
+  estado:   'ok' | 'error' | 'aviso'
+  errores:  { codigo: string; campo?: string }[]
+  avisos:   { codigo: string; detalle?: unknown }[]
+  resuelto: Partial<CtbBienInput> & { cuenta_origen_codigo?: string; cuenta_amort_codigo?: string; cuenta_gasto_codigo?: string }
+}
+
+export interface CtbImportarBienesRes {
+  confirmado: boolean
+  resumen: {
+    total:              number
+    ok:                 number
+    con_error:          number
+    con_aviso:          number
+    valor_origen:       number
+    amort_acum_inicial: number
+  }
+  filas: CtbImportarBienesFila[]
 }

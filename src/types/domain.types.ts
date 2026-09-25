@@ -1204,6 +1204,10 @@ export type ModuloPermisos = { [K in Accion]?: boolean } & {
   // los mapeos (qué cuenta usa cada concepto). Default false.
   contabilizar?:           boolean
   editar_mapeos?:          boolean
+  // Contabilidad tanda 5 (20260928): movimientos de fondos sin factura y
+  // bienes de uso (ABM, importar y amortizar). Default false.
+  movimientos_fondos?:     boolean
+  bienes_uso?:             boolean
   // - pagos.importar_comprobantes: alta masiva de facturas recibidas desde
   //   «Mis Comprobantes» de ARCA (quedan sin imputar). Default false.
   importar_comprobantes?:  boolean

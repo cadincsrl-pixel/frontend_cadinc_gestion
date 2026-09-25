@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
@@ -128,6 +129,7 @@ export function FichaAsiento({ id, onClose, onEditar, onAbrir }: {
               {a.anulado_por_nombre && <> — {a.anulado_por_nombre}, {fmtFechaHora(a.anulado_at)}</>}
             </Aviso>
           )}
+          <OrigenAsiento a={a} />
           {a.revierte_id && (
             <Aviso tono="amarillo">
               Contraasiento de{' '}
@@ -203,4 +205,29 @@ export function FichaAsiento({ id, onClose, onEditar, onAbrir }: {
       )}
     </>
   )
+}
+
+/**
+ * De dónde salió un asiento del sistema (tanda 5): el movimiento de fondos
+ * tiene su pantalla; el de IVA y el de amortizaciones se regeneran o anulan
+ * desde la suya, no a mano.
+ */
+function OrigenAsiento({ a }: { a: CtbAsiento }) {
+  if (!a.origen_tabla || !a.origen_id) return null
+  switch (a.origen_tabla) {
+    case 'tesoreria_movimientos':
+      return (
+        <Aviso tono="gris">
+          Movimiento de fondos:{' '}
+          <Link href={`/contabilidad?tab=tesoreria&mov=${a.origen_id}`} className="underline font-bold">ver el movimiento</Link>.
+          {' '}Se corrige editando o anulando el movimiento y volviendo a contabilizar.
+        </Aviso>
+      )
+    case 'cont_iva_mensual':
+      return <Aviso tono="gris">Asiento de IVA: se regenera o anula desde <Link href="/contabilidad?tab=periodos" className="underline font-bold">Períodos</Link>.</Aviso>
+    case 'cont_amortizacion_corridas':
+      return <Aviso tono="gris">Asiento de amortizaciones: se regenera o anula desde <Link href="/contabilidad?tab=bienes&vista=corridas" className="underline font-bold">Bienes de uso › Corridas</Link>.</Aviso>
+    default:
+      return null
+  }
 }

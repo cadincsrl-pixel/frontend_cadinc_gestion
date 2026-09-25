@@ -19,6 +19,9 @@ import type {
   CtbObra, CtbPage, CtbPeriodo, CtbReabrirPeriodoRes, CtbSumasSaldosRes, TesoreriaCuenta, TesoreriaInput,
   CtbConfig, CtbContabilizarInput, CtbContabilizarRes, CtbFuente, CtbMapeoInput, CtbMapeosCatalogo, CtbPendienteEstado,
   CtbPendientesRes, CtbPropuesta, CtbDiarioModo, CtbDiarioCualquiera, CtbDiarioItem, CtbDiarioResumidoRes, CtbBalanceRes, CtbResultadosRes,
+  CtbConfigEditable, TesAdjunto, TesAdjuntoTipo, TesConcepto, TesConceptoInput, TesMovimiento, TesMovimientoInput, TesMovimientosRes,
+  TesMovTipo, TesUploadUrlRes, CtbIvaEstadoMes, CtbIvaGenerarRes, CtbIvaPosicion, CtbAmortizacionCorrida, CtbAmortizarRes,
+  CtbBienDetalle, CtbBienInput, CtbBienUso, CtbCuadroBienes, CtbImportarBienesRes,
 } from '@/types/contabilidad.types'
 
 const BASE = '/api/contabilidad'
@@ -45,6 +48,13 @@ export const CTB_KEYS = {
   config:      ['contabilidad', 'config'] as const,
   // Tanda 4: balance y estado de resultados (dentro del prefijo: se invalidan con el resto).
   estados:     ['contabilidad', 'estados'] as const,
+  // Tanda 5 (20260928l–q): fondos, IVA mensual y bienes de uso.
+  fondos:      ['contabilidad', 'fondos'] as const,
+  movimiento:  (id: number) => ['contabilidad', 'fondos', 'movimiento', id] as const,
+  adjuntosMov: (id: number) => ['contabilidad', 'fondos', 'movimiento', id, 'adjuntos'] as const,
+  conceptos:   ['contabilidad', 'fondos', 'conceptos'] as const,
+  iva:         ['contabilidad', 'iva'] as const,
+  bienes:      ['contabilidad', 'bienes'] as const,
 }
 
 /** Una sola puerta: el prefijo entero. Las cuentas de origen de Pagos también (salen de tesorería). */
@@ -568,8 +578,348 @@ export function useConfigCtb(enabled = true) {
 export function useGuardarConfig() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (cambios: Partial<Pick<CtbConfig, 'automaticos_desde' | 'cvlp_modo' | 'compras_fecha_contable'>>) =>
+    mutationFn: (cambios: Partial<CtbConfigEditable>) =>
       apiPatch<CtbConfig>(`${BASE}/config`, cambios),
+    onSuccess: () => invalidarContabilidad(qc),
+  })
+}
+
+// ── Movimientos de fondos (tanda 5, 20260928l) ────────────────────────
+// Los filtros, la página y los totales (en pesos, solo vigentes) salen del
+// server (`tesoreria_movimientos_listar`). Guardar o anular mueve también
+// Automáticos y el diario: se invalida el prefijo entero.
+
+export interface MovimientosFiltro {
+  desde?:        string
+  hasta?:        string
+  tipo?:         TesMovTipo | ''
+  tesoreria_id?: number | null
+  concepto_id?:  number | null
+  obra_cod?:     string | null
+  /** Sin `estado` el backend trae todos (vigentes y anulados). */
+  estado?:       'vigente' | 'anulado' | 'todos'
+  origen?:       'manual' | 'conciliacion' | ''
+  q?:            string
+}
+
+function qsMovimientos(f: MovimientosFiltro, limit: number, offset: number): string {
+  const p = new URLSearchParams()
+  if (f.desde)        p.set('desde', f.desde)
+  if (f.hasta)        p.set('hasta', f.hasta)
+  if (f.tipo)         p.set('tipo', f.tipo)
+  if (f.tesoreria_id) p.set('tesoreria_id', String(f.tesoreria_id))
+  if (f.concepto_id)  p.set('concepto_id', String(f.concepto_id))
+  if (f.obra_cod)     p.set('obra_cod', f.obra_cod)
+  if (f.estado)       p.set('estado', f.estado)
+  if (f.origen)       p.set('origen', f.origen)
+  if (f.q?.trim())    p.set('q', f.q.trim())
+  p.set('limit', String(limit))
+  p.set('offset', String(offset))
+  return p.toString()
+}
+
+export function useMovimientosFondos(f: MovimientosFiltro, page = 1, pageSize = 50) {
+  const qs = qsMovimientos(f, pageSize, (page - 1) * pageSize)
+  return useQuery({
+    queryKey: [...CTB_KEYS.fondos, 'lista', qs],
+    queryFn:  () => apiGet<TesMovimientosRes>(`${BASE}/fondos/movimientos?${qs}`),
+    placeholderData: keepPreviousData,
+    staleTime: STALE,
+  })
+}
+
+/** El detalle trae `adjuntos[]`. */
+export function useMovimientoFondos(id: number | null) {
+  return useQuery({
+    queryKey: CTB_KEYS.movimiento(id ?? 0),
+    queryFn:  () => apiGet<TesMovimiento>(`${BASE}/fondos/movimientos/${id}`),
+    enabled:  !!id,
+    staleTime: STALE,
+  })
+}
+
+/** Todos los movimientos del filtro (para el Excel): de a 200, el máximo del server. */
+export async function fetchMovimientosCompletos(f: MovimientosFiltro): Promise<TesMovimiento[]> {
+  const out: TesMovimiento[] = []
+  for (let vuelta = 0; vuelta < 100; vuelta++) {
+    const r = await apiGet<TesMovimientosRes>(`${BASE}/fondos/movimientos?${qsMovimientos(f, 200, out.length)}`)
+    out.push(...r.items)
+    if (!r.hasMore || r.items.length === 0 || out.length >= r.total) return out
+  }
+  throw new Error('Son demasiados movimientos para exportarlos de una vez: achicá el rango.')
+}
+
+export function useGuardarMovimiento() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...body }: TesMovimientoInput & { id?: number | null }) =>
+      id
+        ? apiPatch<TesMovimiento>(`${BASE}/fondos/movimientos/${id}`, body)
+        : apiPost<TesMovimiento>(`${BASE}/fondos/movimientos`, body),
+    onSuccess: () => invalidarContabilidad(qc),
+  })
+}
+
+export function useAnularMovimiento() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, motivo }: { id: number; motivo: string }) =>
+      apiPost<TesMovimiento>(`${BASE}/fondos/movimientos/${id}/anular`, { motivo }),
+    onSuccess: () => invalidarContabilidad(qc),
+  })
+}
+
+export function useConceptosFondos(incluirInactivos = false) {
+  const qs = incluirInactivos ? '?incluir_inactivos=1' : ''
+  return useQuery({
+    queryKey: [...CTB_KEYS.conceptos, incluirInactivos],
+    queryFn:  () => apiGet<TesConcepto[]>(`${BASE}/fondos/conceptos${qs}`),
+    staleTime: STALE,
+  })
+}
+
+export function useGuardarConceptoFondos() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...body }: TesConceptoInput & { id?: number | null }) =>
+      id
+        ? apiPatch<TesConcepto>(`${BASE}/fondos/conceptos/${id}`, body)
+        : apiPost<TesConcepto>(`${BASE}/fondos/conceptos`, body),
+    // El concepto nuevo aparece como subclave de `fondos.concepto` en Mapeos.
+    onSuccess: () => invalidarContabilidad(qc),
+  })
+}
+
+// Adjuntos (bucket privado `tesoreria-docs`): upload-url → PUT a la URL
+// firmada → registrar la fila. El sha256 lo calcula el backend sobre lo que
+// quedó en el bucket.
+
+export function useAdjuntosMovimiento(id: number | null) {
+  return useQuery({
+    queryKey: CTB_KEYS.adjuntosMov(id ?? 0),
+    queryFn:  () => apiGet<TesAdjunto[]>(`${BASE}/fondos/movimientos/${id}/adjuntos`),
+    enabled:  !!id,
+    staleTime: 30_000,
+  })
+}
+
+export const MIME_ADJUNTO_FONDOS = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf'] as const
+export const MAX_ADJUNTO_FONDOS = 10 * 1024 * 1024
+
+/** Error en castellano si el archivo no sirve; null si está bien. */
+export function validarArchivoFondos(file: File): string | null {
+  if (!(MIME_ADJUNTO_FONDOS as readonly string[]).includes(file.type)) return 'Tipo de archivo no permitido: JPG, PNG, WEBP, HEIC o PDF.'
+  if (file.size <= 0 || file.size > MAX_ADJUNTO_FONDOS) return 'El archivo es demasiado grande (máximo 10 MB).'
+  return null
+}
+
+export async function subirAdjuntoMovimiento(id: number, file: File, tipo: TesAdjuntoTipo, obs = ''): Promise<TesAdjunto> {
+  const up = await apiPost<TesUploadUrlRes>(`${BASE}/fondos/movimientos/${id}/adjuntos/upload-url`, {
+    nombre_archivo: file.name, mime_type: file.type, size_bytes: file.size,
+  })
+  const path = up.storage_path ?? up.path
+  const url = up.signed_url ?? up.signedUrl
+  if (!path || !url) throw new Error('El servidor no devolvió la URL para subir el archivo.')
+  const put = await fetch(url, { method: 'PUT', body: file, headers: { 'content-type': file.type } })
+  if (!put.ok) throw new Error(`No se pudo subir el archivo (${put.status})`)
+  return apiPost<TesAdjunto>(`${BASE}/fondos/movimientos/${id}/adjuntos`, {
+    tipo, storage_path: path, nombre_archivo: file.name, mime_type: file.type, ...(obs ? { obs } : {}),
+  })
+}
+
+export function useSubirAdjuntoMovimiento() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, file, tipo, obs }: { id: number; file: File; tipo: TesAdjuntoTipo; obs?: string }) =>
+      subirAdjuntoMovimiento(id, file, tipo, obs),
+    // El 📎 de la lista sale de `cant_adjuntos`: se invalida todo fondos.
+    onSuccess: () => qc.invalidateQueries({ queryKey: CTB_KEYS.fondos }),
+  })
+}
+
+export function useBorrarAdjuntoMovimiento() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, adjId }: { id: number; adjId: number }) =>
+      apiDelete<{ success?: boolean; id?: number }>(`${BASE}/fondos/movimientos/${id}/adjuntos/${adjId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: CTB_KEYS.fondos }),
+  })
+}
+
+/** Para `abrirAdjuntoFirmado`: la URL vive 15 minutos. */
+export async function fetchAdjuntoMovimientoUrl(id: number, adjId: number): Promise<string> {
+  const r = await apiGet<{ url: string }>(`${BASE}/fondos/movimientos/${id}/adjuntos/${adjId}/signed-url`)
+  return r.url
+}
+
+/**
+ * R1 de la spec: ¿hay una orden de pago de Compras del mismo día y por el
+ * mismo importe? Es un AVISO, no un bloqueo (la plata saldría dos veces). Solo
+ * lectura y best-effort: sin permiso de Compras (403) o con error, no avisa.
+ */
+export interface OpParecida { id: number; numero_fmt: string; proveedor_nom: string; monto_pagado: number }
+
+export function useOpsMismoDia(fecha: string, importe: number, enabled: boolean) {
+  const p = new URLSearchParams({ desde: fecha, hasta: fecha, estado: 'emitida', limit: '200' })
+  return useQuery({
+    queryKey: [...CTB_KEYS.fondos, 'ops-mismo-dia', fecha],
+    queryFn:  async () => {
+      const r = await apiGet<{ items: OpParecida[] }>(`/api/pagos/ordenes?${p.toString()}`)
+      return r.items ?? []
+    },
+    enabled:  enabled && !!fecha && importe > 0,
+    retry:    false,
+    staleTime: STALE,
+    select:   ops => ops.filter(o => Math.abs(Number(o.monto_pagado) - importe) < 0.01),
+  })
+}
+
+// ── Asiento mensual de IVA (tanda 5, 20260928o) ───────────────────────
+
+/** Estado del IVA de los 12 meses del ejercicio (columna de Períodos). */
+export function useIvaEstados(ejercicioId: number | null) {
+  return useQuery({
+    queryKey: [...CTB_KEYS.iva, 'estados', ejercicioId ?? 0],
+    queryFn:  () => apiGet<CtbIvaEstadoMes[]>(`${BASE}/iva?ejercicio_id=${ejercicioId}`),
+    enabled:  !!ejercicioId,
+    staleTime: STALE,
+    retry:    false,
+  })
+}
+
+/** Posición del mes: lo contable (mayor), lo fiscal (libros) y sus diferencias. */
+export function useIvaPosicion(periodoId: number | null) {
+  return useQuery({
+    queryKey: [...CTB_KEYS.iva, 'posicion', periodoId ?? 0],
+    queryFn:  () => apiGet<CtbIvaPosicion>(`${BASE}/iva/${periodoId}`),
+    enabled:  !!periodoId,
+    staleTime: STALE,
+  })
+}
+
+/** 409 IVA_DIFIERE_DE_LIBROS → se vuelve a llamar con `forzar`. */
+export function useGenerarIva() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ periodoId, forzar }: { periodoId: number; forzar?: boolean }) =>
+      apiPost<CtbIvaGenerarRes>(`${BASE}/iva/${periodoId}/generar`, forzar ? { forzar: true } : {}),
+    onSuccess: () => invalidarContabilidad(qc),
+  })
+}
+
+export function useAnularIva() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ periodoId, motivo }: { periodoId: number; motivo: string }) =>
+      apiPost<CtbIvaPosicion>(`${BASE}/iva/${periodoId}/anular`, { motivo }),
+    onSuccess: () => invalidarContabilidad(qc),
+  })
+}
+
+// ── Bienes de uso (tanda 5, 20260928p/q) ──────────────────────────────
+
+export interface BienesFiltro {
+  incluirBajas?:     boolean
+  q?:                string
+  cuenta_origen_id?: number | null
+  obra_cod?:         string | null
+}
+
+export function useBienes(f: BienesFiltro = {}) {
+  const p = new URLSearchParams()
+  if (f.incluirBajas)     p.set('incluir_bajas', '1')
+  if (f.q?.trim())        p.set('q', f.q.trim())
+  if (f.cuenta_origen_id) p.set('cuenta_origen_id', String(f.cuenta_origen_id))
+  if (f.obra_cod)         p.set('obra_cod', f.obra_cod)
+  const qs = p.toString()
+  return useQuery({
+    queryKey: [...CTB_KEYS.bienes, 'lista', qs],
+    queryFn:  () => apiGet<CtbBienUso[]>(`${BASE}/bienes${qs ? `?${qs}` : ''}`),
+    placeholderData: keepPreviousData,
+    staleTime: STALE,
+  })
+}
+
+export function useBien(id: number | null) {
+  return useQuery({
+    queryKey: [...CTB_KEYS.bienes, 'detalle', id ?? 0],
+    queryFn:  () => apiGet<CtbBienDetalle>(`${BASE}/bienes/${id}`),
+    enabled:  !!id,
+    staleTime: STALE,
+  })
+}
+
+export function useGuardarBien() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...body }: CtbBienInput & { id?: number | null }) =>
+      id
+        ? apiPatch<CtbBienUso>(`${BASE}/bienes/${id}`, body)
+        : apiPost<CtbBienUso>(`${BASE}/bienes`, body),
+    onSuccess: () => invalidarContabilidad(qc),
+  })
+}
+
+export function useBajaBien() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, fecha, motivo }: { id: number; fecha: string; motivo: string }) =>
+      apiPost<CtbBienUso>(`${BASE}/bienes/${id}/baja`, { fecha, motivo }),
+    onSuccess: () => invalidarContabilidad(qc),
+  })
+}
+
+export function useRevertirBajaBien() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiPost<CtbBienUso>(`${BASE}/bienes/${id}/revertir-baja`, {}),
+    onSuccess: () => invalidarContabilidad(qc),
+  })
+}
+
+export type CeldaBienEnvio = string | number | null
+
+export function useImportarBienes() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { filas: Record<string, CeldaBienEnvio>[]; confirmar: boolean }) =>
+      apiPost<CtbImportarBienesRes>(`${BASE}/bienes/importar`, body),
+    onSuccess: (r) => { if (r.confirmado) void invalidarContabilidad(qc) },
+  })
+}
+
+export function useCuadroBienes(hasta: string) {
+  return useQuery({
+    queryKey: [...CTB_KEYS.bienes, 'cuadro', hasta],
+    queryFn:  () => apiGet<CtbCuadroBienes>(`${BASE}/bienes/cuadro?hasta=${hasta}`),
+    enabled:  !!hasta,
+    placeholderData: keepPreviousData,
+    staleTime: STALE,
+  })
+}
+
+export function useCorridasAmortizacion(ejercicioId: number | null) {
+  return useQuery({
+    queryKey: [...CTB_KEYS.bienes, 'corridas', ejercicioId ?? 0],
+    queryFn:  () => apiGet<CtbAmortizacionCorrida[]>(`${BASE}/bienes/amortizaciones?ejercicio_id=${ejercicioId}`),
+    enabled:  !!ejercicioId,
+    staleTime: STALE,
+  })
+}
+
+export function useAmortizar() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (hasta: string) => apiPost<CtbAmortizarRes>(`${BASE}/bienes/amortizar`, { hasta }),
+    onSuccess: () => invalidarContabilidad(qc),
+  })
+}
+
+export function useAnularCorrida() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, motivo }: { id: number; motivo: string }) =>
+      apiPost<CtbAmortizacionCorrida>(`${BASE}/bienes/amortizaciones/${id}/anular`, { motivo }),
     onSuccess: () => invalidarContabilidad(qc),
   })
 }

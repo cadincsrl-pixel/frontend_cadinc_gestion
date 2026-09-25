@@ -165,7 +165,9 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
     const lista = perm && typeof perm === 'object' ? Object.values(perm as Record<string, unknown>).flat().map(String).join(', ') : ''
     return `Esa cuenta no sirve para este mapeo${dato(d, 'rubro') ? ` (es del rubro ${String(dato(d, 'rubro'))})` : ''}${lista ? `: se acepta ${lista}` : ''}.`
   },
-  CONFIG_INVALIDA:          d => `Valor inválido en la configuración${dato(d, 'clave') ? ` («${String(dato(d, 'clave'))}»)` : ''}.`,
+  CONFIG_INVALIDA:          d => dato(d, 'motivo') === 'hay_amortizaciones'
+    ? 'Ya hay amortizaciones generadas en el ejercicio: la frecuencia y la fecha de corte no se cambian. Anulá las corridas primero (Bienes de uso › Corridas).'
+    : `Valor inválido en la configuración${dato(d, 'clave') ? ` («${String(dato(d, 'clave'))}»)` : ''}.`,
   ORIGEN_INVALIDO:          () => 'Origen inválido.',
   ORIGEN_NO_EXISTE:         () => 'El comprobante de origen no existe o ya no está.',
   FECHA_FUTURA:             () => 'La fecha no puede ser posterior a hoy.',
@@ -174,6 +176,68 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
     const n = Number(dato(d, 'cantidad'))
     return `El mes tiene ${Number.isFinite(n) && n > 0 ? n : 'algunos'} comprobante${n === 1 ? '' : 's'} de Ventas o Compras sin contabilizar o desactualizado${n === 1 ? '' : 's'}.`
   },
+
+  // ── Movimientos de fondos (tanda 5, 20260928l) ──
+  SIN_PERMISO_FONDOS:          () => 'No tenés permiso para cargar movimientos de fondos (hace falta «Movimientos de fondos»).',
+  MOVIMIENTO_NO_EXISTE:        () => 'El movimiento de fondos no existe.',
+  CONCEPTO_NO_EXISTE:          () => 'El concepto no existe.',
+  TIPO_INVALIDO:               () => 'Tipo de movimiento inválido (ingreso, egreso o transferencia).',
+  IMPORTE_INVALIDO:            () => 'El importe tiene que ser mayor a cero.',
+  TESORERIA_INVALIDA:          d => `La cuenta${dato(d, 'campo') === 'tesoreria_destino_id' ? ' de destino' : ''} no existe o está dada de baja.`,
+  TESORERIA_IGUALES:           () => 'La cuenta de origen y la de destino tienen que ser distintas.',
+  TESORERIA_DESTINO_REQUERIDA: () => 'Una transferencia necesita la cuenta de destino.',
+  CONCEPTO_REQUERIDO:          () => 'Elegí el concepto del movimiento.',
+  CONCEPTO_NO_CORRESPONDE:     () => 'Una transferencia entre cuentas no lleva concepto ni obra.',
+  CONCEPTO_INVALIDO:           () => 'El concepto no existe o está dado de baja.',
+  CONCEPTO_SENTIDO_INVALIDO:   () => 'Ese concepto no corresponde a este tipo de movimiento (es solo de ingreso o solo de egreso).',
+  COTIZACION_REQUERIDA:        () => 'La cuenta es en dólares: poné la cotización.',
+  IMPORTE_DESTINO_REQUERIDO:   () => 'Las cuentas son de monedas distintas: poné el importe que entra en la cuenta de destino.',
+  MOVIMIENTO_ANULADO:          () => 'El movimiento está anulado: no se modifica ni se le suman comprobantes.',
+  MOVIMIENTO_YA_ANULADO:       () => 'El movimiento ya estaba anulado.',
+  MOVIMIENTO_DE_CONCILIACION:  () => 'El movimiento viene de la conciliación bancaria: la fecha, las cuentas y los importes no se editan acá.',
+  CONCEPTO_DUPLICADO:          () => 'Ya existe un concepto con ese nombre.',
+  CONCEPTO_SENTIDO_EN_USO:     d => {
+    const n = Number(dato(d, 'cantidad'))
+    return `El concepto ya se usa en ${Number.isFinite(n) && n > 0 ? n : 'algunos'} movimiento${n === 1 ? '' : 's'} del otro sentido: no se le puede cambiar el sentido.`
+  },
+  ADJUNTO_DUPLICADO:           () => 'Ese archivo ya está adjunto a este movimiento.',
+  MIME_NO_PERMITIDO:           () => 'Tipo de archivo no permitido: JPG, PNG, WEBP, HEIC o PDF.',
+  TAMANO_INVALIDO:             () => 'El archivo es demasiado grande (máximo 10 MB).',
+
+  // ── Asiento mensual de IVA (tanda 5, 20260928o) ──
+  IVA_SIN_MAPEO:           d => {
+    const m = dato(d, 'motivos')
+    const n = Array.isArray(m) ? m.length : 0
+    return `Faltan cuentas para armar el asiento de IVA${n ? ` (${n} mapeo${n === 1 ? '' : 's'})` : ''}: completalas en Mapeos.`
+  },
+  IVA_SIN_MOVIMIENTOS:     () => 'El mes no tiene IVA en el mayor (débito, crédito y pagos a cuenta en cero): no hay asiento para generar.',
+  IVA_DIFIERE_DE_LIBROS:   () => 'Lo contabilizado no coincide con los Libros IVA del mes. Revisá las diferencias; si están explicadas, se puede generar igual.',
+  IVA_DDJJ_DESACTUALIZADA: () => 'El asiento de IVA del mes quedó desactualizado (se contabilizó algo después de generarlo): regeneralo antes de cerrar, o cerrá igual.',
+  IVA_NO_GENERADO:         () => 'El mes no tiene asiento de IVA generado.',
+
+  // ── Bienes de uso (tanda 5, 20260928p/q) ──
+  SIN_PERMISO_BIENES:               () => 'No tenés permiso para bienes de uso (hace falta «Bienes de uso»).',
+  BIEN_NO_EXISTE:                   () => 'El bien de uso no existe.',
+  CORRIDA_NO_EXISTE:                () => 'La corrida de amortización no existe.',
+  DESCRIPCION_REQUERIDA:            () => 'Escribí la descripción del bien (al menos 3 caracteres).',
+  VIDA_UTIL_INVALIDA:               () => 'La vida útil tiene que ser mayor a cero (o marcá «No se amortiza»).',
+  BU_CUENTA_INVALIDA:               d => {
+    const c = String(dato(d, 'campo') ?? '')
+    const cual = c === 'cuenta_amort_id' ? 'de amortización acumulada (imputable del Activo)'
+      : c === 'cuenta_gasto_id' ? 'de gasto (imputable de Egresos)'
+      : 'de origen (imputable del Activo, un «Valores originales»)'
+    return `La cuenta ${cual} no es válida.`
+  },
+  BU_RESIDUAL_INVALIDO:             () => 'El valor residual tiene que ser menor al valor de origen.',
+  BU_INICIAL_INVALIDA:              () => 'La amortización acumulada inicial no puede superar el valor de origen menos el residual, y solo la llevan los bienes dados de alta hasta la fecha de corte.',
+  BU_SIN_CUENTA_AMORT:              () => 'Falta la cuenta de amortización acumulada (el «.03» del rubro).',
+  BU_SIN_CUENTA_GASTO:              () => 'Falta la cuenta de gasto: elegila o mapeala en Mapeos › «Bienes de uso: gasto de amortización».',
+  HASTA_INVALIDO:                   () => 'Con frecuencia anual, «hasta» tiene que ser el cierre de un ejercicio.',
+  BIEN_DADO_DE_BAJA:                () => 'El bien está dado de baja: revertí la baja para editarlo.',
+  BIEN_CON_AMORTIZACIONES_CERRADAS: () => 'El bien ya tiene amortizaciones en períodos cerrados: no se le cambian las cuentas ni la fecha de alta.',
+  BAJA_ANTERIOR_A_AMORTIZADO:       () => 'Ya hay amortizaciones de ese bien en períodos cerrados posteriores a la fecha de baja.',
+  AMORTIZADOR_OCUPADO:              () => 'Otra persona está generando amortizaciones en este momento. Probá de nuevo en un minuto.',
+  BIEN_DUPLICADO:                   () => 'Parece repetido: ya hay un bien con el mismo identificador, o con la misma descripción, fecha y valor.',
 
   // ── Guardas internas (no deberían llegar) ──
   ASIENTO_SOLO_RPC:            () => 'Error interno: el asiento solo se modifica por el circuito de contabilidad. Avisá al administrador.',
@@ -251,6 +315,8 @@ const MOTIVOS: Record<string, (d: Record<string, unknown>, etq: (clave: string) 
   CVLP_LIQUIDO_INVALIDO:       () => 'El líquido de la CVLP no alcanza a cubrir el IVA: revisalo.',
   TESORERIA_SIN_VINCULO:       () => 'La cuenta bancaria del cobro no está vinculada a una cuenta de tesorería.',
   TESORERIA_SIN_CUENTA:        () => 'La cuenta de tesorería no tiene cuenta contable vinculada (Plan › Cuentas de tesorería).',
+  // La base lo manda como texto suelto (sin la cuenta): el mensaje no puede depender del código.
+  CUENTA_EN_DOS_ROLES:         d => `${d.codigo ? `La cuenta ${String(d.codigo)} está mapeada` : 'Hay una misma cuenta mapeada'} en dos roles del IVA (débito, crédito o pagos a cuenta): el asiento la toma una sola vez y el desglose puede no coincidir. Revisá los mapeos.`,
   PERIODO_CERRADO:             d => `El período${d.fecha ? ` del ${fmtFecha(String(d.fecha))}` : ''} está cerrado.`,
   FECHA_SIN_PERIODO:           d => `No hay período contable para el ${fmtFecha(String(d.fecha ?? '')) || 'día del comprobante'}.`,
   DESCUADRE_ORIGEN:            d => `El asiento no cuadra${d.diferencia !== undefined ? ` por ${fmtM(Math.abs(Number(d.diferencia)))}` : ''} (y no hay cuenta de redondeo, o la diferencia es grande).`,
@@ -283,4 +349,37 @@ export function mensajeErrorFilaPlan(code: string | null, detalle?: unknown): st
   }
   const fn = MENSAJES_FILA_PLAN[code]
   return fn ? fn(detalle) : mensajeCodigoCtb(code, detalle)
+}
+
+/** Aviso del asiento de IVA (vienen como texto: un código o una frase). */
+export function mensajeAvisoIva(a: string): string {
+  const fn = MOTIVOS[a]
+  if (fn) return fn({}, c => ETIQUETA_CLAVE_MAPEO[c] ?? c)
+  return MENSAJES[a]?.(undefined) ?? a
+}
+
+/** Error o aviso de UNA fila del importador de bienes de uso. */
+const CAMPO_BIEN: Record<string, string> = {
+  descripcion: 'descripción', cuenta: 'cuenta', cuenta_origen_id: 'cuenta', fecha_alta: 'fecha de alta',
+  valor_origen: 'valor de origen', vida_util_anios: 'vida útil', vida_util: 'vida útil', valor_residual: 'valor residual',
+  amort_acum_inicial: 'amortización acumulada', cuenta_amort: 'cuenta de amortización acumulada', cuenta_amort_id: 'cuenta de amortización acumulada',
+  cuenta_gasto: 'cuenta de gasto', cuenta_gasto_id: 'cuenta de gasto', obra: 'obra', obra_cod: 'obra',
+}
+
+const MENSAJES_FILA_BIEN: Record<string, (campo: string | undefined, d: unknown) => string> = {
+  FECHA_REQUERIDA:       () => 'Falta la fecha de alta.',
+  FECHA_INVALIDA:        () => 'La fecha de alta no se entiende (dd/mm/aaaa).',
+  IMPORTE_INVALIDO:      c => `El ${CAMPO_BIEN[c ?? ''] ?? 'importe'} no es un número válido mayor a cero.`,
+  CUENTA_REQUERIDA:      () => 'Falta la cuenta o el rubro.',
+  CUENTA_NO_EXISTE:      (_c, d) => `No se encontró la cuenta${dato(d, 'valor') ? ` «${String(dato(d, 'valor'))}»` : ''} en el plan.`,
+  CUENTA_NO_ENCONTRADA:  (_c, d) => `No se encontró la cuenta${dato(d, 'valor') ? ` «${String(dato(d, 'valor'))}»` : ''} en el plan.`,
+  OBRA_NO_EXISTE:        () => 'La obra no existe (código o nombre exacto).',
+  NETO_NO_COINCIDE:      () => 'El neto del archivo no coincide con valor de origen − amortización acumulada.',
+}
+
+export function mensajeFilaBien(codigo: string, campo?: string, detalle?: unknown): string {
+  const f = MENSAJES_FILA_BIEN[codigo]
+  if (f) return f(campo, detalle)
+  const base = mensajeCodigoCtb(codigo, detalle ?? (campo ? { campo } : undefined))
+  return campo && base === codigo ? `${codigo} (${CAMPO_BIEN[campo] ?? campo})` : base
 }

@@ -13,6 +13,8 @@ import { PlanTab } from './PlanTab'
 import { PeriodosTab } from './PeriodosTab'
 import { AutomaticosTab } from './AutomaticosTab'
 import { MapeosTab } from './MapeosTab'
+import { TesoreriaTab } from './TesoreriaTab'
+import { BienesTab } from './BienesTab'
 
 const TABS = [
   { key: 'asientos',     icon: '📝', label: 'Asientos',        sub: 'Carga manual, borradores, confirmación y anulación de asientos' },
@@ -20,9 +22,11 @@ const TABS = [
   { key: 'mayor',        icon: '📒', label: 'Mayor',           sub: 'Movimientos y saldo de una cuenta, con el saldo anterior del ejercicio' },
   { key: 'sumas-saldos', icon: '⚖️', label: 'Sumas y saldos',  sub: 'Balance de sumas y saldos por cuenta, con control de que cuadre' },
   { key: 'estados',      icon: '📊', label: 'Estados contables', sub: 'Estado de situación patrimonial a una fecha y estado de resultados de un rango' },
+  { key: 'tesoreria',    icon: '🏦', label: 'Tesorería',       sub: 'Movimientos de fondos sin factura (comisiones, impuesto al cheque, VEP, sueldos, transferencias) y sus conceptos' },
+  { key: 'bienes',       icon: '🏗', label: 'Bienes de uso',   sub: 'Inventario de bienes de uso, cuadro de amortizaciones y generación de los asientos de amortización' },
   { key: 'plan',         icon: '🗂', label: 'Plan de cuentas', sub: 'Cuentas contables y cuentas de tesorería (bancos, caja y valores)' },
   { key: 'periodos',     icon: '🔒', label: 'Períodos',        sub: 'Cierre mensual: numera el libro diario y congela el mes' },
-  { key: 'automaticos',  icon: '⚙️', label: 'Automáticos',     sub: 'Asientos de Ventas y Compras: qué falta contabilizar, por qué, y contabilizar hasta una fecha' },
+  { key: 'automaticos',  icon: '⚙️', label: 'Automáticos',     sub: 'Asientos de Ventas, Compras y movimientos de fondos: qué falta contabilizar, por qué, y contabilizar hasta una fecha' },
   { key: 'mapeos',       icon: '🔗', label: 'Mapeos',          sub: 'Qué cuenta usa cada concepto, alícuota, tributo y medio de cobro' },
 ]
 
@@ -67,6 +71,8 @@ export function ContabilidadPage() {
         {tab === 'periodos'     && <PeriodosTab />}
         {tab === 'automaticos'  && <AutomaticosTab />}
         {tab === 'mapeos'       && <MapeosTab />}
+        {tab === 'tesoreria'    && <TesoreriaTab />}
+        {tab === 'bienes'       && <BienesTab />}
       </div>
     </div>
   )

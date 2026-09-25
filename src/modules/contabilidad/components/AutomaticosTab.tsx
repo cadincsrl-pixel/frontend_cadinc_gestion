@@ -28,6 +28,7 @@ function urlOrigen(tabla: CtbFuente, id: number): string {
     case 'ventas_facturas':              return `/facturacion?tab=facturas&ficha=${id}`
     case 'ventas_cobros':                return `/facturacion?tab=cobranzas&ficha=${id}`
     case 'ventas_comprobantes_externos': return '/facturacion?tab=saldos_iniciales'
+    case 'tesoreria_movimientos':        return `/contabilidad?tab=tesoreria&mov=${id}`
   }
 }
 
@@ -50,8 +51,8 @@ function guardarCircuitos(c: CtbCircuito[]): void {
 }
 
 /**
- * El motor de asientos automáticos (fase 3): qué comprobantes de Ventas y
- * Compras no están contabilizados (o quedaron desactualizados), POR QUÉ, y el
+ * El motor de asientos automáticos (fase 3): qué comprobantes de Ventas,
+ * Compras y movimientos de fondos no están contabilizados (o quedaron desactualizados), POR QUÉ, y el
  * botón para contabilizar hasta una fecha.
  *
  * Nunca inventa una cuenta: si falta un mapeo, el origen queda «pendiente»
@@ -142,6 +143,7 @@ export function AutomaticosTab() {
         </div>
         <p className="text-[11px] text-gris-dark">
           Filtran lo que se ve abajo y lo que corre «Contabilizar». Cerrar un período mira todos los circuitos, no solo los tildados.
+          {' '}Fondos son los movimientos sin factura de Tesorería (comisiones, impuesto al cheque, VEP, transferencias): cada concepto necesita su cuenta en Mapeos.
         </p>
       </Tarjeta>
 

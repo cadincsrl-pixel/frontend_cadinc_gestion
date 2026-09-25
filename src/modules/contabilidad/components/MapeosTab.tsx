@@ -187,7 +187,13 @@ const configSchema = z.object({
   automaticos_desde:      z.string().min(1, 'Elegí la fecha').refine(v => v >= '2026-07-01', 'No puede ser anterior al 01/07/2026'),
   cvlp_modo:              z.enum(['neto_liquidado', 'bruto']),
   compras_fecha_contable: z.enum(['fecha', 'mes_iva']),
+  // Tanda 5 (20260928n).
+  iva_ddjj_arrastre:      z.boolean(),
+  bu_frecuencia:          z.enum(['mensual', 'anual']),
+  bu_criterio_alta:       z.enum(['completo', 'proporcional']),
+  bu_corte_inicial:       z.string().min(1, 'Elegí la fecha'),
 })
+const CAMPOS_CONFIG = ['automaticos_desde', 'cvlp_modo', 'compras_fecha_contable', 'iva_ddjj_arrastre', 'bu_frecuencia', 'bu_criterio_alta', 'bu_corte_inicial'] as const
 type ConfigForm = z.infer<typeof configSchema>
 
 function PanelConfig({ bloqueo }: { bloqueo: string | null }) {
@@ -204,6 +210,11 @@ function FormConfig({ config, bloqueo }: { config: CtbConfig; bloqueo: string | 
     resolver: zodResolver(configSchema),
     defaultValues: {
       automaticos_desde: config.automaticos_desde, cvlp_modo: config.cvlp_modo, compras_fecha_contable: config.compras_fecha_contable,
+      // Un backend sin la tanda 5 no las manda: los defaults de la semilla.
+      iva_ddjj_arrastre: config.iva_ddjj_arrastre ?? false,
+      bu_frecuencia:     config.bu_frecuencia ?? 'mensual',
+      bu_criterio_alta:  config.bu_criterio_alta ?? 'proporcional',
+      bu_corte_inicial:  config.bu_corte_inicial ?? '2026-06-30',
     },
   })
 
@@ -212,15 +223,18 @@ function FormConfig({ config, bloqueo }: { config: CtbConfig; bloqueo: string | 
     if (dirtyFields.automaticos_desde) cambios.automaticos_desde = d.automaticos_desde
     if (dirtyFields.cvlp_modo) cambios.cvlp_modo = d.cvlp_modo
     if (dirtyFields.compras_fecha_contable) cambios.compras_fecha_contable = d.compras_fecha_contable
+    if (dirtyFields.iva_ddjj_arrastre) cambios.iva_ddjj_arrastre = d.iva_ddjj_arrastre
+    if (dirtyFields.bu_frecuencia) cambios.bu_frecuencia = d.bu_frecuencia
+    if (dirtyFields.bu_criterio_alta) cambios.bu_criterio_alta = d.bu_criterio_alta
+    if (dirtyFields.bu_corte_inicial) cambios.bu_corte_inicial = d.bu_corte_inicial
     if (Object.keys(cambios).length === 0) return
     try {
       await guardar.mutateAsync(cambios)
       toast('✓ Configuración guardada. Los comprobantes afectados quedan desactualizados hasta volver a contabilizar.', 'ok')
     } catch (e) {
       const ce = errorDeCampoCtb(e)
-      if (ce && (ce.campo === 'automaticos_desde' || ce.campo === 'cvlp_modo' || ce.campo === 'compras_fecha_contable')) {
-        setError(ce.campo, { message: ce.mensaje })
-      }
+      const campo = CAMPOS_CONFIG.find(c => c === ce?.campo)
+      if (ce && campo) setError(campo, { message: ce.mensaje })
       toast(mensajeErrorCtb(e), 'err')
     }
   }
@@ -246,6 +260,33 @@ function FormConfig({ config, bloqueo }: { config: CtbConfig; bloqueo: string | 
             <option value="fecha">Fecha del comprobante</option>
           </select>
           <span className="text-[11px] text-gris-dark">Con el período IVA corrido, el asiento va el día 1 de ese mes: el IVA del mayor coincide con el Libro IVA.</span>
+        </Campo>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 border-t border-gris pt-2">
+        <Campo label="Asiento de IVA del mes" error={errors.iva_ddjj_arrastre?.message}>
+          <label className={`flex items-center gap-1.5 text-sm select-none py-2 ${bloqueo ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}>
+            <input type="checkbox" className="accent-naranja" {...register('iva_ddjj_arrastre')} disabled={!!bloqueo} />
+            Compensar saldos a favor del mes anterior
+          </label>
+          <span className="text-[11px] text-gris-dark">Apagado: cada mes se liquida solo, como la posición de Impuestos. Prendido: el saldo técnico y el de libre disponibilidad del mes anterior bajan el IVA a pagar.</span>
+        </Campo>
+        <Campo label="Bienes de uso: amortizar" error={errors.bu_frecuencia?.message}>
+          <select {...register('bu_frecuencia')} disabled={!!bloqueo} className={inputCls}>
+            <option value="mensual">Por mes</option>
+            <option value="anual">Por ejercicio</option>
+          </select>
+          <span className="text-[11px] text-gris-dark">No se cambia si ya hay amortizaciones en el ejercicio.</span>
+        </Campo>
+        <Campo label="Bienes de uso: año de alta" error={errors.bu_criterio_alta?.message}>
+          <select {...register('bu_criterio_alta')} disabled={!!bloqueo} className={inputCls}>
+            <option value="proporcional">Proporcional (desde el mes de alta)</option>
+            <option value="completo">Completo (todo el ejercicio)</option>
+          </select>
+          <span className="text-[11px] text-gris-dark">Default de los bienes; cada bien puede tener el suyo.</span>
+        </Campo>
+        <Campo label="Bienes de uso: corte inicial" error={errors.bu_corte_inicial?.message}>
+          <input type="date" {...register('bu_corte_inicial')} disabled={!!bloqueo} className={inputCls} />
+          <span className="text-[11px] text-gris-dark">Fecha de la amortización acumulada que trae el inventario (hoy: {fmtFecha(config.bu_corte_inicial ?? '2026-06-30')}).</span>
         </Campo>
       </div>
       <div className="flex justify-end">

@@ -112,9 +112,12 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
     { key: 'mayor',        label: 'Mayor',           icon: '📒' },
     { key: 'sumas-saldos', label: 'Sumas y saldos',  icon: '⚖️' },
     { key: 'estados',      label: 'Estados contables', icon: '📊', meta: 'Situación patrimonial y resultados, comparativo por mes' },
+    // Tanda 5 (20260928): operación diaria de fondos y bienes de uso.
+    { key: 'tesoreria',    label: 'Tesorería',       icon: '🏦', meta: 'Movimientos de fondos sin factura y sus conceptos' },
+    { key: 'bienes',       label: 'Bienes de uso',   icon: '🏗', meta: 'Inventario, cuadro de amortizaciones y corridas' },
     { key: 'plan',         label: 'Plan de cuentas', icon: '🗂', meta: 'Cuentas y cuentas de tesorería' },
     { key: 'periodos',     label: 'Períodos',        icon: '🔒' },
-    { key: 'automaticos',  label: 'Automáticos',     icon: '⚙️', meta: 'Asientos de Ventas y Compras, pendientes y contabilizar' },
+    { key: 'automaticos',  label: 'Automáticos',     icon: '⚙️', meta: 'Asientos de Ventas, Compras y fondos, pendientes y contabilizar' },
     { key: 'mapeos',       label: 'Mapeos',          icon: '🔗', meta: 'Qué cuenta usa cada concepto, alícuota, tributo y medio' },
   ],
   aridos: [
