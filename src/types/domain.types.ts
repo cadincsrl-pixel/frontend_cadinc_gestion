@@ -4680,6 +4680,22 @@ export interface VentasLiquidacionPropuesta {
   adjunto: { storage_path: string; nombre_archivo: string; mime: string; size: number; hash: string }
 }
 
+// ── «Soltá acá los cheques» (POST /cobros/cheques/leer, 2026-09-25) ──
+
+/** Los cheques que la IA leyó de un archivo y el cliente que los dio. No crea nada. */
+export interface VentasChequesCobroLectura {
+  cheques: Array<{
+    propuesta: PagosChequePropuesta
+    avisos:    PagosChequeLecturaRes['avisos']
+    /** Reconocido por el CUIT o el nombre del librador; null = elegirlo a mano (cheque endosado de un tercero). */
+    cliente:   { id: number; razon_social: string; por: 'cuit' | 'nombre' } | null
+    /** Ya es un medio de un cobro vigente. */
+    cobro_existente_id: number | null
+  }>
+  modelo:  string | null
+  adjunto: { storage_path: string; nombre_archivo: string; mime: string; size: number; hash: string }
+}
+
 /** POST /compensaciones: una NC (del ERP o externa) contra débitos del mismo cliente. */
 export interface VentasCompensacionInput {
   nc:     { factura_id: number } | { externo_id: number }

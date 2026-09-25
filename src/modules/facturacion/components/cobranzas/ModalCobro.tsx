@@ -150,14 +150,31 @@ interface DocCliente {
 
 const CAMPOS_FORM = /^(fecha|cliente_id|obs|gastos\.\d+\.(concepto_id|importe|obs)|medios\.\d+\.(forma|importe|cuenta_bancaria_id|cheque_numero|cheque_banco|cheque_librador|cheque_fecha_cobro|obs)|retenciones\.\d+\.(tipo|jurisdiccion|jurisdiccion_id|certificado_numero|fecha|importe|obs))$/
 
+/** Un medio que viene armado de afuera («Soltá acá los cheques»): lo que no se pasa queda vacío. */
+export type MedioPrecarga = Partial<MedioForm> & Pick<MedioForm, 'forma' | 'importe'>
+
+/**
+ * El cobro armado por «Soltá acá los cheques» (2026-09-25): el cliente
+ * reconocido, un medio por cheque y los archivos ya subidos a
+ * `cobros/pendientes/`. Los archivos son de quien abre el modal: si se cierra
+ * sin guardar, NO se descartan acá (vuelven a la lista de cheques).
+ */
+export interface PrecargaCobro {
+  clienteId: number | null
+  medios:    MedioPrecarga[]
+  adjuntos:  VentasCobroAdjuntoInput[]
+  obs?:      string
+}
+
 interface Props {
   /** Precarga el cliente (desde Deudores / estado de cuenta). */
   clienteInicial?: number
+  precarga?:       PrecargaCobro
   onClose:         () => void
   onGuardado:      (d: VentasCobroDetalle) => void
 }
 
-export function ModalCobro({ clienteInicial, onClose, onGuardado }: Props) {
+export function ModalCobro({ clienteInicial, precarga, onClose, onGuardado }: Props) {
   const toast = useToast()
   const { registrarCobros, puedeVer } = usePermisos('facturacion')
   const ambiente = useAmbienteCobranzas()
@@ -168,11 +185,13 @@ export function ModalCobro({ clienteInicial, onClose, onGuardado }: Props) {
   const { valores } = useConfigVentasValores()
   const tipoRetDefault = tiposRet.tipos.find(t => t.clave === valores.retencion_tipo_default) ?? tiposRet.tipos[0]
 
-  const [abierta, setAbierta] = useState({ medios: true, retenciones: false, gastos: false, documentacion: false, aplicacion: true })
+  const [abierta, setAbierta] = useState({ medios: true, retenciones: false, gastos: false, documentacion: !!precarga?.adjuntos.length, aplicacion: true })
   // La aplicación es DEL cliente elegido: si cambia el cliente, la anterior no sirve (se descarta sola).
   const [aplic, setAplic] = useState<{ cliente: string; map: Record<string, string> }>({ cliente: '', map: {} })
   const [adjuntos, setAdjuntos] = useState<Record<string, EstadoAdjunto>>({})
-  const [docs, setDocs] = useState<DocCliente[]>([])
+  const [docs, setDocs] = useState<DocCliente[]>(() => (precarga?.adjuntos ?? []).map((adj, i) => ({
+    key: `precarga-${i}`, tipo: adj.tipo, nombre: adj.nombre_archivo, estado: 'ok', adj,
+  })))
   const [tipoDoc, setTipoDoc] = useState<VentasCobroAdjuntoTipo>('comprobante_pago')
   // Lo subido que sigue en cobros/pendientes/ (para descartar al cerrar sin guardar, aunque el estado no se haya refrescado).
   const docsSubidos = useRef<Set<string>>(new Set())
@@ -184,8 +203,11 @@ export function ModalCobro({ clienteInicial, onClose, onGuardado }: Props) {
   const { register, control, handleSubmit, setValue, setError, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      fecha: hoyAR(), cliente_id: clienteInicial ? String(clienteInicial) : '', obs: '',
-      medios: [MEDIO_VACIO], retenciones: [], gastos: [],
+      fecha: hoyAR(),
+      cliente_id: clienteInicial ? String(clienteInicial) : precarga?.clienteId ? String(precarga.clienteId) : '',
+      obs: precarga?.obs ?? '',
+      medios: precarga?.medios.length ? precarga.medios.map(m => ({ ...MEDIO_VACIO, ...m })) : [MEDIO_VACIO],
+      retenciones: [], gastos: [],
     },
   })
   const medios = useFieldArray({ control, name: 'medios' })
@@ -279,7 +301,8 @@ export function ModalCobro({ clienteInicial, onClose, onGuardado }: Props) {
   function quitarDoc(key: string) {
     const d = docs.find(x => x.key === key)
     docsQuitados.current.add(key)
-    if (d?.adj) {
+    // Los precargados son de quien abrió el modal: se sacan del cobro, pero el archivo no se borra.
+    if (d?.adj && !key.startsWith('precarga-')) {
       docsSubidos.current.delete(d.adj.storage_path)
       void descartarAdjuntoCobroPendiente(d.adj.storage_path)
     }
@@ -295,6 +318,17 @@ export function ModalCobro({ clienteInicial, onClose, onGuardado }: Props) {
     }
     onClose()
   }
+
+  // Con cheques precargados, la aplicación se reparte sola la primera vez que
+  // llegan los comprobantes del cliente (del más viejo al más nuevo); se puede
+  // corregir o limpiar. Si se cambia de cliente, se vuelve a repartir.
+  const autoAplicadoPara = useRef<string | null>(null)
+  useEffect(() => {
+    if (!precarga || !clienteId || pendientes.isLoading || !pendientes.data) return
+    if (autoAplicadoPara.current === clienteId) return
+    autoAplicadoPara.current = clienteId
+    if (filas.length > 0 && totalCent > 0) setAplic({ cliente: clienteId, map: aplicarAutomatico(filas, totalCent) })
+  }, [precarga, clienteId, pendientes.isLoading, pendientes.data, filas, totalCent])
 
   function aplicarAuto() {
     setAplicado(aplicarAutomatico(filas, totalCent))

@@ -20,6 +20,7 @@ import { FichaCobro } from './FichaCobro'
 import { ModalCobro } from './ModalCobro'
 import { ModalCompensacion } from './ModalCompensacion'
 import { ModalCargarLiquidacion } from './ModalCargarLiquidacion'
+import { ModalChequesCobro } from './ModalChequesCobro'
 
 const PAGE_SIZE = 50
 
@@ -38,6 +39,7 @@ export function CobranzasTab() {
   const [nuevo, setNuevo] = useState(false)
   const [compensar, setCompensar] = useState(false)
   const [liquidacion, setLiquidacion] = useState(false)
+  const [chequesSueltos, setChequesSueltos] = useState<File[] | null>(null)
   // `&ficha=<id>` (Contabilidad › Automáticos › «Ir al origen») abre ese cobro.
   const sp = useSearchParams()
   const [fichaId, setFichaId] = useState<number | null>(() => {
@@ -85,6 +87,8 @@ export function CobranzasTab() {
         </Button>
         {ambiente === 'homo' && <span className="text-[11px] font-bold text-[#7A5000] bg-amarillo-light px-2 py-1 rounded">Homologación: cobros de prueba</span>}
       </div>
+
+      <ZonaChequesCobro habilitada={registrarCobros} onArchivos={setChequesSueltos} />
 
       {/* Filtros */}
       <div className="bg-white rounded-card shadow-card p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
@@ -190,6 +194,10 @@ export function CobranzasTab() {
       )}
 
       {nuevo && <ModalCobro onClose={() => setNuevo(false)} onGuardado={d => { setNuevo(false); setFichaId(d.cobro.id) }} />}
+      {chequesSueltos && (
+        <ModalChequesCobro archivos={chequesSueltos} onClose={() => setChequesSueltos(null)}
+          onGuardado={d => { setChequesSueltos(null); setFichaId(d.cobro.id) }} />
+      )}
       {liquidacion && <ModalCargarLiquidacion onClose={() => setLiquidacion(false)} onGuardado={d => { setLiquidacion(false); setFichaId(d.cobro.id) }} />}
       {compensar && <ModalCompensacion clienteId={filtro.cliente_id} onClose={() => setCompensar(false)} />}
       {fichaId !== null && <FichaCobro id={fichaId} onClose={() => setFichaId(null)} />}
@@ -235,5 +243,42 @@ function Acciones({ c, onVer, onPdf, onAnular, generando, anularCobros }: {
         </button>
       )}
     </div>
+  )
+}
+
+/**
+ * «Soltá acá los cheques» (2026-09-25): las fotos o PDFs de los cheques que dio
+ * un cliente. Se leen, se reconoce el cliente y se arma el cobro (ver
+ * ModalChequesCobro). Mismo control que el de Compras › Pagos.
+ */
+function ZonaChequesCobro({ habilitada, onArchivos }: { habilitada: boolean; onArchivos: (f: File[]) => void }) {
+  const [encima, setEncima] = useState(0)
+  const conArchivos = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes('Files')
+  return (
+    <label title={habilitada ? undefined : 'Hace falta el permiso «Registrar cobros»'}
+      className={`rounded-card border-2 border-dashed px-4 py-3 flex items-center gap-3 flex-wrap transition-colors
+        ${!habilitada ? 'border-gris-mid bg-gris/30 opacity-60 cursor-not-allowed'
+          : encima > 0 ? 'border-naranja bg-naranja-light cursor-copy' : 'border-gris-mid bg-white hover:border-naranja/60 cursor-pointer'}`}
+      onDragEnter={e => { if (!habilitada || !conArchivos(e)) return; e.preventDefault(); setEncima(v => v + 1) }}
+      onDragOver={e => { if (!habilitada || !conArchivos(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy' }}
+      onDragLeave={e => { if (!habilitada || !conArchivos(e)) return; setEncima(v => Math.max(0, v - 1)) }}
+      onDrop={e => {
+        if (!habilitada || !conArchivos(e)) return
+        e.preventDefault(); setEncima(0)
+        const files = Array.from(e.dataTransfer.files)
+        if (files.length) onArchivos(files)
+      }}>
+      <span className="text-2xl" aria-hidden>📥</span>
+      <span className="flex-1 min-w-[220px]">
+        <b className="text-sm block">{encima > 0 ? 'Soltalos y se arma el cobro' : 'Soltá acá los cheques que te dio un cliente'}</b>
+        <span className="text-[11px] text-gris-dark">
+          Fotos o PDF, uno o muchos (un PDF con varios cheques se separa solo). Se reconoce el cliente por el
+          librador y se arma el cobro con sus comprobantes; lo revisás antes de registrar.
+        </span>
+      </span>
+      <span className="text-xs font-semibold px-3 py-1.5 rounded border border-gris-mid bg-white">Elegir archivos</span>
+      <input type="file" className="hidden" multiple accept="image/jpeg,image/png,image/webp,application/pdf" disabled={!habilitada}
+        onChange={e => { const files = Array.from(e.target.files ?? []); e.target.value = ''; if (files.length) onArchivos(files) }} />
+    </label>
   )
 }

@@ -13,7 +13,7 @@ import type {
   VentasDeudor, VentasEstadoCuenta, VentasEstadoCuentaMov, VentasExterno, VentasExternoAccion, VentasExternoInput,
   VentasExternosPage, VentasImportarFilaInput, VentasImportarRes, VentasSaldo, VentasCliente,
   VentasUploadUrlRes, VentasAmbiente, VentasPendientesCliente, VentasImputacion,
-  VentasCobroAdjunto, VentasCobroAdjuntoInput, VentasCobroAdjuntoTipo, VentasLiquidacionPropuesta,
+  VentasCobroAdjunto, VentasCobroAdjuntoInput, VentasChequesCobroLectura, VentasCobroAdjuntoTipo, VentasLiquidacionPropuesta,
 } from '@/types/domain.types'
 import { aPagina } from '../utils/cobranzas.utils'
 import { invalidarFacturacion, useArcaAmbiente } from './useFacturacion'
@@ -313,6 +313,11 @@ export function leerLiquidacion(body: {
   storage_path: string; nombre_archivo: string; mime: string; texto?: string | null; cliente_id?: number | null
 }): Promise<VentasLiquidacionPropuesta> {
   return apiPost<VentasLiquidacionPropuesta>(`${BASE}/cobros/liquidacion/leer`, body)
+}
+
+/** «Soltá acá los cheques»: lee los cheques de un archivo ya subido a `cobros/pendientes/`. No crea nada. */
+export function leerChequesCobro(body: { storage_path: string; nombre_archivo: string; mime: string }): Promise<VentasChequesCobroLectura> {
+  return apiPost<VentasChequesCobroLectura>(`${BASE}/cobros/cheques/leer`, body)
 }
 
 // ── Deudores y estado de cuenta ───────────────────────────────────────
