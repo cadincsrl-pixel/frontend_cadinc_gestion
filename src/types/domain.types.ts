@@ -2523,6 +2523,12 @@ export interface PagosProveedor {
   cierre_dia:         number | null
   /** Cómo se le paga normalmente: la forma con que nacen sus facturas (20260930a). null = transferencia. */
   forma_pago_habitual?: PagosFormaPrevista | null
+  /** Concepto con que se imputa normalmente lo suyo (20260930p). null = sin preferencia.
+   *  La carga a mano lo precarga; el importador de ARCA se lo pone a lo importado. */
+  concepto_habitual_id?: number | null
+  /** Obra (centro de costo) a la que se imputa lo suyo al 100 % (20260930p). Con concepto
+   *  habitual, lo importado de ARCA nace imputado. null = sin preferencia. */
+  obra_habitual_cod?:    string | null
   contacto:           string
   telefono:           string
   email:              string
@@ -3787,6 +3793,8 @@ export interface CrearProveedorInput {
   vencimiento_modo?: 'dias' | 'cierre_mensual'
   cierre_dia?:      number | null
   forma_pago_habitual?: PagosFormaPrevista | null
+  concepto_habitual_id?: number | null
+  obra_habitual_cod?:    string | null
   contacto?:        string
   telefono?:        string
   email?:           string

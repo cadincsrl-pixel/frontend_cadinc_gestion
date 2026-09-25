@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/Button'
+import { Combobox } from '@/components/ui/Combobox'
 import { Modal } from '@/components/ui/Modal'
 import { Pagination } from '@/components/ui/Pagination'
 import { useToast } from '@/components/ui/Toast'
@@ -19,6 +20,8 @@ import { CamposArcaProveedor, datosArcaDesde, datosArcaParaGuardar, datosArcaVac
 import type { PagosActualizarDesdeArcaRes, PagosActualizarTodosArcaRes, PagosFormaPrevista, PagosProveedor } from '@/types/domain.types'
 import { exportarProveedoresPagos } from '../utils/pagosExport'
 import { AltaRapidaProveedor } from './AltaRapidaProveedor'
+import { useConceptosPagos } from '../hooks/useConceptosPagos'
+import { useCatalogoObrasPagos } from '../hooks/usePagos'
 import { ContactosEditor, contactosDesde, contactosParaGuardar, validarContactos } from '@/components/contactos/ContactosEditor'
 import { ETIQUETA_ROL, type ContactoInput } from '@/types/contactos'
 
@@ -209,9 +212,35 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
   const [errorContactos, setErrorContactos] = useState<{ i: number; mensaje: string } | null>(null)
 
   const [editando, setEditando] = useState(false)
-  const [form, setForm] = useState({ razon_social: '', cuit: '', alias_cbu: '', cbu: '', banco: '', plazo_pago_dias: '30', vencimiento_modo: 'dias' as VencimientoModo, cierre_dia: '', forma_pago_habitual: '' as PagosFormaPrevista | '' })
+  const [form, setForm] = useState({ razon_social: '', cuit: '', alias_cbu: '', cbu: '', banco: '', plazo_pago_dias: '30', vencimiento_modo: 'dias' as VencimientoModo, cierre_dia: '', forma_pago_habitual: '' as PagosFormaPrevista | '', concepto_habitual_id: '', obra_habitual_cod: '' })
   const [pidiendoBaja, setPidiendoBaja] = useState(false)
   const [motivo, setMotivo] = useState('')
+
+  // Concepto y centro de costo habituales (20260930p). Se ofrecen los activos
+  // más el que ya tenga (aunque se haya dado de baja o archivado), para no
+  // mostrar el select vacío.
+  const conceptos = useConceptosPagos(true)
+  const obras = useCatalogoObrasPagos()
+  const conceptoOpts = useMemo(
+    () => (conceptos.data ?? []).filter(c => c.activo || String(c.id) === form.concepto_habitual_id),
+    [conceptos.data, form.concepto_habitual_id],
+  )
+  const obraOpts = useMemo(
+    () => (obras.data ?? [])
+      .filter(o => !o.archivada || o.cod === form.obra_habitual_cod)
+      .map(o => ({
+        value: o.cod, label: o.nom, sub: o.cod + (o.archivada ? ' · archivada' : ''),
+        group: o.es_interna || o.es_deposito ? 'Estructura CADINC' : 'Obras',
+        search: [o.nom, o.cod, o.cc ?? ''],
+      })),
+    [obras.data, form.obra_habitual_cod],
+  )
+  const conceptoHabitualTxt = p?.concepto_habitual_id != null
+    ? (conceptos.data ?? []).find(c => c.id === p.concepto_habitual_id)?.nombre ?? `Concepto #${p.concepto_habitual_id}`
+    : null
+  const obraHabitualTxt = p?.obra_habitual_cod
+    ? (obras.data ?? []).find(o => o.cod === p.obra_habitual_cod)?.nom ?? p.obra_habitual_cod
+    : null
 
   function abrirEdicion() {
     if (!p) return
@@ -220,6 +249,8 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
       banco: p.banco ?? '', plazo_pago_dias: String(p.plazo_pago_dias ?? 30),
       vencimiento_modo: p.vencimiento_modo ?? 'dias', cierre_dia: p.cierre_dia != null ? String(p.cierre_dia) : '',
       forma_pago_habitual: p.forma_pago_habitual ?? '',
+      concepto_habitual_id: p.concepto_habitual_id != null ? String(p.concepto_habitual_id) : '',
+      obra_habitual_cod: p.obra_habitual_cod ?? '',
     })
     setContactos(contactosDesde(p.contactos, p.email))
     setErrorContactos(null)
@@ -249,6 +280,8 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
             banco: form.banco.trim(), plazo_pago_dias: Number(form.plazo_pago_dias) || 30,
             vencimiento_modo: form.vencimiento_modo,
             forma_pago_habitual: form.forma_pago_habitual || null,
+            concepto_habitual_id: form.concepto_habitual_id ? Number(form.concepto_habitual_id) : null,
+            obra_habitual_cod: form.obra_habitual_cod || null,
             // Con cierre mensual, vacío = el último día del mes (el caso Silva).
             cierre_dia: form.vencimiento_modo === 'cierre_mensual' ? (Number(form.cierre_dia) || null) : null,
             ...datosArcaParaGuardar(datosArca),
@@ -361,6 +394,39 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
                 ({form.vencimiento_modo === 'cierre_mensual' ? 'cierre' : 'fecha de la factura'} + {Number(form.plazo_pago_dias) || 30} días). Se puede cambiar en cada una.
               </div>
             )}
+            {!soloDatosPago && (
+              <>
+                <Campo label="Concepto habitual">
+                  <select value={form.concepto_habitual_id} className={inputCls}
+                    disabled={conceptos.isLoading}
+                    onChange={e => setForm(f => ({ ...f, concepto_habitual_id: e.target.value }))}>
+                    <option value="">{conceptos.isLoading ? 'Cargando conceptos…' : 'Sin concepto habitual'}</option>
+                    {conceptoOpts.map(c => <option key={c.id} value={c.id}>{c.nombre}{c.activo ? '' : ' (dado de baja)'}</option>)}
+                  </select>
+                </Campo>
+                <Campo label="Centro de costo habitual">
+                  <div className="flex gap-1 items-center">
+                    <div className="flex-1 min-w-0">
+                      <Combobox placeholder={obras.isLoading ? 'Cargando obras…' : 'Sin obra habitual'} options={obraOpts}
+                        value={form.obra_habitual_cod}
+                        onChange={v => setForm(f => ({ ...f, obra_habitual_cod: v }))} />
+                    </div>
+                    {form.obra_habitual_cod && (
+                      <button type="button" className="text-rojo hover:bg-rojo-light px-2 py-1.5 rounded text-xs"
+                        aria-label="Quitar la obra habitual" title="Quitar la obra habitual"
+                        onClick={() => setForm(f => ({ ...f, obra_habitual_cod: '' }))}>✕</button>
+                    )}
+                  </div>
+                </Campo>
+                <div className="sm:col-span-2 text-[11px] text-gris-dark">
+                  {form.concepto_habitual_id && form.obra_habitual_cod
+                    ? 'Sus facturas nuevas se precargan con este concepto y el 100 % a esta obra, y las que se importan de ARCA entran ya imputadas (salvo que tengan tributos a revisar). Se puede cambiar en cada una.'
+                    : form.concepto_habitual_id || form.obra_habitual_cod
+                      ? 'Se precarga al cargar sus facturas a mano. Para que las importadas de ARCA entren ya imputadas hacen falta los dos.'
+                      : 'Con concepto y centro de costo habituales, sus facturas nacen imputadas.'}
+                </div>
+              </>
+            )}
             {!soloDatosPago && form.vencimiento_modo === 'cierre_mensual' && (
               <div className="sm:col-span-2 text-[11px] text-gris-dark">
                 Todo lo comprado en el mes vence junto: cierra {form.cierre_dia ? `el ${form.cierre_dia}` : 'el último día del mes'}, se corre al último día hábil y vence {Number(form.plazo_pago_dias) || 30} días después.
@@ -390,6 +456,8 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
                   ? `Cierre ${p.cierre_dia ? 'el ' + p.cierre_dia : 'fin de mes'} + ${p.plazo_pago_dias} días`
                   : `${p.plazo_pago_dias} días de cada factura`} />
               <Dato label="Cómo se le paga" valor={FORMAS_PREVISTAS.find(x => x.key === p.forma_pago_habitual)?.label ?? 'Transferencia'} />
+              <Dato label="Concepto habitual" valor={conceptoHabitualTxt ?? '—'} />
+              <Dato label="Centro de costo habitual" valor={obraHabitualTxt ?? '—'} />
               <Dato label="Saldo" valor={fmtM(p.saldo)} fuerte />
               <Dato label="Listo para pagar" valor={fmtM(p.saldo_aprobado)} />
               <Dato label="Último pago" valor={fmtFecha(p.ultimo_pago)} />

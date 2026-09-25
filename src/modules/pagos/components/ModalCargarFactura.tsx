@@ -309,6 +309,8 @@ export function ModalCargarFactura({ editarId, onClose, onAbrirFicha }: Props) {
   const [conceptoId, setConceptoId] = useState('')
   const [conceptoSugeridoId, setConceptoSugeridoId] = useState<string | null>(null)
   const [errorConcepto, setErrorConcepto] = useState<string | null>(null)
+  // La persona eligió el concepto a mano: ni el habitual ni la lectura lo pisan.
+  const [conceptoTocado, setConceptoTocado] = useState(false)
   const [obs, setObs] = useState('')
   const [pagaCliente, setPagaCliente] = useState(false)
   // El plan de e-cheqs (20260923n): se anota al cargar para que el Excel del
@@ -458,6 +460,25 @@ export function ModalCargarFactura({ editarId, onClose, onAbrirFicha }: Props) {
       : null)
   }, [proveedor, venceEl, esEdicion, esNc, previsionTocada])
 
+  // Concepto y centro de costo habituales del proveedor (20260930p): Truck NOA
+  // es «Mantenimiento y repuestos» a Áridos, siempre. Sólo al cargar, y cada
+  // uno mientras la persona no lo toque. El habitual le gana a la sugerencia
+  // de la lectura: es lo que se decidió para ese proveedor.
+  const conceptoHabitual = useMemo(() => {
+    const id = proveedor?.concepto_habitual_id
+    if (id == null || esEdicion) return null
+    // Uno dado de baja no se precarga (la base lo rebotaría con CONCEPTO_INVALIDO).
+    return (conceptos.data ?? []).some(c => c.id === id && c.activo) ? String(id) : null
+  }, [proveedor, conceptos.data, esEdicion])
+  const obraHabitual = !esEdicion ? proveedor?.obra_habitual_cod ?? null : null
+
+  useEffect(() => {
+    if (esEdicion || conceptoTocado) return
+    // Sin habitual vuelve a lo que haya propuesto la lectura (o a nada): el
+    // concepto que quedó de otro proveedor no se arrastra.
+    setConceptoId(conceptoHabitual ?? conceptoSugeridoId ?? '')
+  }, [esEdicion, conceptoTocado, conceptoHabitual, conceptoSugeridoId])
+
   const totalN = n(total)
   const conCheques = formaPrevista === 'echeq' || formaPrevista === 'cheque'
   const ivaValidas = filasIva.filter(f => n(f.base) || n(f.importe))
@@ -481,6 +502,7 @@ export function ModalCargarFactura({ editarId, onClose, onAbrirFicha }: Props) {
     if (manual) setRepartoTocado(true)
     setReparto(filas)
   }, [])
+
 
   // ── Acredita a… (solo NC) ──
   // Lo que declara aplicar solo se cambia mientras la NC está pendiente u
@@ -526,6 +548,25 @@ export function ModalCargarFactura({ editarId, onClose, onAbrirFicha }: Props) {
       return { obra_cod: par.slice(0, i), monto: par.slice(i + 1), obs: '' }
     }))
   }, [esNc, repartoTocado, claveSugerido])
+
+  // El 100 % a la obra habitual, siguiendo al importe mientras nadie toque el
+  // reparto. En una NC manda el reparto de las facturas que acredita (abajo).
+  const repartoNcActivo = esNc && idsAcreditadas.length > 0
+  useEffect(() => {
+    if (esEdicion || repartoTocado || repartoNcActivo) return
+    setReparto(prev => {
+      if (!obraHabitual) {
+        // Lo que había puesto el habitual de otro proveedor no se arrastra.
+        return prev.some(f => f.obra_cod) ? [{ ...FILA_REPARTO_VACIA }] : prev
+      }
+      const monto = imputable > 0 ? String(imputable) : ''
+      const f = prev[0]
+      if (prev.length === 1 && f && f.obra_cod === obraHabitual && f.monto === monto) return prev
+      return [{ obra_cod: obraHabitual, monto, obs: '' }]
+    })
+  }, [esEdicion, repartoTocado, repartoNcActivo, obraHabitual, imputable])
+  const repartoHabitual = !esEdicion && !repartoTocado && !!obraHabitual &&
+    reparto.length === 1 && reparto[0]?.obra_cod === obraHabitual
 
   /**
    * Cambiar de proveedor: en una NC, lo que acreditaba (y el reparto que salió
@@ -983,7 +1024,13 @@ export function ModalCargarFactura({ editarId, onClose, onAbrirFicha }: Props) {
         <div>
           <label htmlFor="pagos-concepto" className="block text-xs font-semibold text-gris-dark mb-1">
             Concepto <span className="font-normal">· Obligatorio: qué tipo de compra es</span>
-            {conceptoSugeridoId && conceptoId === conceptoSugeridoId && (
+            {conceptoHabitual && conceptoId === conceptoHabitual && (
+              <span title="Es el concepto habitual de este proveedor (se cambia en su ficha, en Proveedores)"
+                className="inline-block align-middle ml-1 px-1.5 py-px rounded border text-[10px] font-semibold leading-tight bg-naranja/10 text-naranja-dark border-naranja/30">
+                habitual del proveedor
+              </span>
+            )}
+            {conceptoSugeridoId && conceptoId === conceptoSugeridoId && conceptoId !== conceptoHabitual && (
               <span title="Lo propuso la lectura del comprobante: revisalo"
                 className="inline-block align-middle ml-1 px-1.5 py-px rounded border text-[10px] font-semibold leading-tight bg-azul/10 text-azul border-azul/30">
                 sugerido por la lectura
@@ -991,7 +1038,7 @@ export function ModalCargarFactura({ editarId, onClose, onAbrirFicha }: Props) {
             )}
           </label>
           <select id="pagos-concepto" value={conceptoId}
-            onChange={e => { setConceptoId(e.target.value); setErrorConcepto(null) }}
+            onChange={e => { setConceptoId(e.target.value); setConceptoTocado(true); setErrorConcepto(null) }}
             disabled={conceptos.isLoading || conceptos.isError}
             aria-invalid={!!errorConcepto}
             className={`${inputCls} ${errorConcepto ? 'border-rojo' : ''}`}>
@@ -1057,7 +1104,15 @@ export function ModalCargarFactura({ editarId, onClose, onAbrirFicha }: Props) {
             filas={reparto}
             onChange={cambiarReparto}
             imputable={imputable}
-            detalleImputable={percN > 0 && <span className="text-gris-dark"> (total {fmtM(totalN)} − percepciones {fmtM(percN)})</span>}
+            detalleImputable={<>
+              {percN > 0 && <span className="text-gris-dark"> (total {fmtM(totalN)} − percepciones {fmtM(percN)})</span>}
+              {repartoHabitual && (
+                <span title="Es el centro de costo habitual de este proveedor (se cambia en su ficha, en Proveedores)"
+                  className="inline-block align-middle ml-1 px-1.5 py-px rounded border text-[10px] font-semibold leading-tight bg-naranja/10 text-naranja-dark border-naranja/30">
+                  obra habitual del proveedor
+                </span>
+              )}
+            </>}
             extraAcciones={esNc && sugeridoNc.length > 0 && (
               <Button variant="ghost" size="sm" onClick={() => {
                 setRepartoTocado(false)
