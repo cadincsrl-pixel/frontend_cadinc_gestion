@@ -27,7 +27,7 @@ import { useToast } from '@/components/ui/Toast'
 import { useAvisarPago, useAvisosDeOrden, useMailEstado } from '../hooks/usePagos'
 import { useProveedorPagos } from '../hooks/useProveedoresPagos'
 import { ETIQUETA_ROL } from '@/types/contactos'
-import { FUENTE_CONTADOR, fmtFecha, fmtM } from '../utils/pagos.utils'
+import { FUENTE_CONTADOR, comprobantesDelPago, fmtFecha, fmtM } from '../utils/pagos.utils'
 import { useConfigPagos } from '../hooks/useConfigPagos'
 import { mensajeErrorPagos } from '../utils/pagos.errores'
 import type { PagosOrdenDetalle } from '@/types/domain.types'
@@ -79,7 +79,10 @@ export function ModalAvisarPago({ orden, onClose }: Props) {
 
   // Los comprobantes del pago que se van a adjuntar. Si no hay ninguno, el
   // aviso pierde el sentido: se está avisando de un pago sin mostrarlo.
-  const comprobantes = orden.adjuntos.filter(a => a.tipo === 'comprobante_pago' && !a.borrado)
+  // Con cheque/e-cheq el comprobante es el archivo de cada cheque (20260929w):
+  // el backend lo adjunta igual (comprobantesDelAviso). OP-0250 avisaba «no
+  // tiene comprobante» teniendo el PDF de su e-cheq.
+  const comprobantes = comprobantesDelPago(orden.forma_pago, orden.adjuntos)
   const facturasAdj = orden.lineas.flatMap(l => l.factura?.adjuntos ?? []).filter(a => a.tipo === 'factura')
 
   const EMAIL_RE = /^[^\s@,;]+@[^\s@,;.]+(\.[^\s@,;.]+)+$/

@@ -11,14 +11,19 @@ import {
 } from '../../utils/pagos.utils'
 import { mensajeAvisoLectura, mensajeErrorPagos } from '../../utils/pagos.errores'
 import {
-  chequeVacio, chequesParaEnviar, estadoCheques, n, nEntero, r2, type CampoCheque, type ChequeFila,
+  chequeVacio, chequesParaEnviar, estadoCheques, n, nEntero, nombreCheque, r2, type CampoCheque, type ChequeFila,
 } from '../../utils/pagoForm'
 import { Campo, inputCls } from './Campo'
 import type { PagosAdjuntoPendiente, PagosFormaPagoOP, PagosPlanCheques } from '@/types/domain.types'
 
 /**
  * El editor de cheques de una orden de pago: partir en N a tal plazo, filas
- * a mano, «📷 Leer foto» con IA y el cuadre contra lo que sale de plata.
+ * a mano, el «📎 Comprobante» de cada cheque (se lee con IA) y el cuadre
+ * contra lo que sale de plata.
+ *
+ * Con cheque o e-cheq el comprobante del pago ES el archivo de cada cheque
+ * (20260929w): no hay un comprobante aparte de toda la orden. En e-cheq es
+ * obligatorio en cada fila; en cheque físico, opcional.
  *
  * Lo usan «Registrar pago» (un proveedor) y cada bloque de «Pagar en lote»
  * (20260929t). El estado vive en `useEditorCheques` (uno por OP) y la vista en
@@ -97,8 +102,9 @@ export function useEditorCheques({ fecha, totalPlata, forma, pideCheques, planFa
   }, [])
 
   /**
-   * «📷 Leer foto» (20260925): sube la foto como adjunto pendiente de la OP,
-   * la lee con IA y completa la fila marcando lo leído. La persona revisa y
+   * «📎 Comprobante» de la fila (20260925; 20260929w): sube la foto o el PDF
+   * como adjunto pendiente de la OP, lo lee con IA y completa la fila
+   * marcando lo leído. La persona revisa y
    * corrige. Si no se puede leer, la foto queda igual (se adjunta a la OP) y
    * los datos se cargan a mano. Si el importe no cierra, lo dice el aviso de
    * siempre de la suma de cheques.
@@ -237,6 +243,11 @@ export function EditorCheques({ ed, forma, fecha, totalPlata, cantFacturas, onUs
       <div className="flex items-center gap-2 flex-wrap px-2.5 py-2 bg-gris/40 border-b border-gris-mid">
         <span className="text-xs font-bold uppercase tracking-wide text-gris-dark">
           {forma === 'echeq' ? 'E-cheqs' : 'Cheques'}
+          <span className="block normal-case tracking-normal font-normal text-[11px]">
+            {forma === 'echeq'
+              ? 'El comprobante del pago es el PDF de cada e-cheq: subilo en su fila.'
+              : 'El comprobante de cada cheque (foto o PDF) es opcional.'}
+          </span>
         </span>
         {/* En cuántos se parte y a qué plazo. Un click en vez de tipear
             fila por fila, y sin el 30/60/90 fijo de antes. */}
@@ -282,7 +293,7 @@ export function EditorCheques({ ed, forma, fecha, totalPlata, cantFacturas, onUs
       {cheques.map((c, i) => (
         <div key={c.uid} className="border-b border-gris last:border-0 p-2.5 flex flex-col gap-1.5">
           <div className="flex flex-wrap gap-2 items-end">
-            <FotoCheque c={c} onElegir={file => void ed.leerFotoCheque(c.uid, file)} />
+            <ComprobanteCheque c={c} obligatorio={forma === 'echeq'} onElegir={file => void ed.leerFotoCheque(c.uid, file)} />
             <Campo label="Número" ancho="w-28" leido={c.leidos.includes('numero')}>
               <input value={c.numero} onChange={e => ed.setChequeAMano(i, { numero: e.target.value })}
                 className={inputCls} placeholder="00012345" />
@@ -319,9 +330,12 @@ export function EditorCheques({ ed, forma, fecha, totalPlata, cantFacturas, onUs
               title={c.leyendo ? 'Esperá a que termine de leer la foto' : undefined}
               className="ml-auto text-xs text-rojo hover:underline pb-1.5 disabled:opacity-50 disabled:no-underline">Quitar</button>
           </div>
-          {c.leyendo && <div className="text-[11px] text-azul animate-pulse">Leyendo la foto del cheque…</div>}
+          {c.leyendo && <div className="text-[11px] text-azul animate-pulse">Leyendo el comprobante del cheque…</div>}
+          {forma === 'echeq' && !c.foto && !c.leyendo && (
+            <div className="text-[11px] text-rojo font-semibold">Falta el comprobante del {nombreCheque(forma, c, i)}.</div>
+          )}
           {c.leidos.length > 0 && !c.leyendo && (
-            <div className="text-[11px] text-gris-dark">📷 Los campos marcados se leyeron de la foto: revisalos antes de registrar.</div>
+            <div className="text-[11px] text-gris-dark">Los campos marcados se leyeron del comprobante: revisalos antes de registrar.</div>
           )}
           {c.es_propio && c.libradorLeido && !c.leyendo && (
             <div className="text-[11px] text-gris-dark">La foto dice que lo libró <b>{c.libradorLeido}</b>. Si no es de CADINC, tildá «De tercero».</div>
@@ -368,7 +382,7 @@ export function EditorCheques({ ed, forma, fecha, totalPlata, cantFacturas, onUs
       <div className="flex items-center gap-2 flex-wrap px-2.5 py-2 border-t border-gris-mid">
         <Button variant="ghost" size="sm" onClick={ed.agregarCheque}>+ Agregar cheque</Button>
         <label className="text-xs px-2.5 py-1.5 rounded hover:bg-gris cursor-pointer font-semibold text-gris-dark"
-          title="Sacale una foto al cheque: se completa solo y queda adjunto a la orden">
+          title="Una fila nueva a partir de la foto o el PDF del cheque: se completa sola y ése queda como su comprobante">
           📷 Agregar desde foto
           <input type="file" className="hidden" accept="image/*,application/pdf" capture="environment"
             onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; if (file) ed.agregarDesdeFoto(file) }} />
@@ -389,27 +403,38 @@ export function EditorCheques({ ed, forma, fecha, totalPlata, cantFacturas, onUs
 }
 
 /**
- * Botón «📷 Leer foto» de la fila, con la miniatura de la foto ya subida. En
- * el celular `capture` abre la cámara directo.
+ * El «📎 Comprobante» de la fila: la foto o el PDF del cheque. Al elegirlo se
+ * sube y se lee con IA (número, banco, fecha e importe). Ya subido muestra la
+ * miniatura (o 📄 si es PDF) y el nombre del archivo, y se puede cambiar.
  */
-function FotoCheque({ c, onElegir }: { c: ChequeFila; onElegir: (f: File) => void }) {
+function ComprobanteCheque({ c, obligatorio, onElegir }: { c: ChequeFila; obligatorio: boolean; onElegir: (f: File) => void }) {
+  const falta = obligatorio && !c.foto && !c.leyendo
   return (
     <div className="flex items-end gap-1.5">
       {c.foto && (
         c.fotoUrl
           ? <a href={c.fotoUrl} target="_blank" rel="noreferrer" title={c.foto.nombre_archivo}>
               {/* eslint-disable-next-line @next/next/no-img-element -- object URL local, no pasa por next/image */}
-              <img src={c.fotoUrl} alt="Foto del cheque" className="w-14 h-9 object-cover rounded border border-gris-mid" />
+              <img src={c.fotoUrl} alt="Comprobante del cheque" className="w-14 h-9 object-cover rounded border border-gris-mid" />
             </a>
           : <span className="w-14 h-9 flex items-center justify-center rounded border border-gris-mid text-[10px] text-gris-dark" title={c.foto.nombre_archivo}>📄 PDF</span>
       )}
-      <label className={`text-xs px-2 py-2 rounded border border-gris-mid bg-white font-semibold whitespace-nowrap
-        ${c.leyendo ? 'opacity-60 cursor-wait' : 'hover:bg-gris cursor-pointer'}`}
-        title={c.foto ? 'Cambiar la foto y volver a leerla' : 'Sacale una foto al cheque: completa número, banco, fecha e importe'}>
-        {c.leyendo ? 'Leyendo…' : c.foto ? '📷 Otra foto' : '📷 Leer foto'}
-        <input type="file" className="hidden" accept="image/*,application/pdf" capture="environment" disabled={c.leyendo}
-          onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; if (file) onElegir(file) }} />
-      </label>
+      <div className="flex flex-col">
+        <label className={`text-xs px-2 py-2 rounded border font-semibold whitespace-nowrap
+          ${falta ? 'border-rojo text-rojo bg-rojo-light' : c.foto ? 'border-verde/50 bg-white text-verde' : 'border-gris-mid bg-white'}
+          ${c.leyendo ? 'opacity-60 cursor-wait' : 'hover:bg-gris cursor-pointer'}`}
+          title={c.foto
+            ? `${c.foto.nombre_archivo} · tocá para cambiarlo (se vuelve a leer)`
+            : `PDF o foto del cheque${obligatorio ? '' : ' (opcional)'}: completa número, banco, fecha e importe`}>
+          {c.leyendo ? 'Subiendo…' : c.foto ? '✓ Comprobante' : '📎 Comprobante'}
+          {/* Sin `capture`: forzaría la cámara y el PDF del e-cheq no se podría elegir. */}
+          <input type="file" className="hidden" accept="image/*,application/pdf" disabled={c.leyendo}
+            onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; if (file) onElegir(file) }} />
+        </label>
+        {c.foto && (
+          <span className="text-[10px] text-gris-dark truncate max-w-[110px]" title={c.foto.nombre_archivo}>{c.foto.nombre_archivo}</span>
+        )}
+      </div>
     </div>
   )
 }

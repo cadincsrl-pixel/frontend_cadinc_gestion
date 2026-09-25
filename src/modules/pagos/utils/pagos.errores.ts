@@ -208,14 +208,21 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
 
   // ── Forma de pago y comprobantes ──
   FORMA_PAGO_REQUERIDA:  () => 'Elegí la forma de pago.',
-  COMPROBANTE_REQUERIDO: d => {
-    const forma = dato(d, 'forma_pago')
-    if (forma === 'echeq') {
-      // 20260929u: el archivo de cada echeq es el comprobante; falta en alguno.
-      const sin = lista(dato(d, 'cheques_sin_archivo'))
-      return `Cada e-cheq necesita su archivo (PDF o foto)${sin ? `: falta el del N° ${sin}` : ''}. O subí el comprobante del pago.`
-    }
-    return 'Una transferencia necesita el comprobante de pago adjunto.'
+  ADJUNTO_REQUERIDO: d => dato(d, 'forma_pago') === 'echeq'
+    ? 'No se puede borrar: sin ese archivo el pago en e-cheq queda sin comprobante. Subí el reemplazo primero.'
+    : 'No se puede borrar: es el único comprobante del pago. Subí el reemplazo primero.',
+  // Desde 20260929w sólo la transferencia pide el comprobante aparte. El
+  // detalle `forma_pago: 'echeq'` es de un backend anterior (20260929u).
+  COMPROBANTE_REQUERIDO: d => dato(d, 'forma_pago') === 'echeq'
+    ? `Cada e-cheq necesita su comprobante (PDF o foto)${lista(dato(d, 'cheques_sin_archivo')) ? `: falta el del N° ${lista(dato(d, 'cheques_sin_archivo'))}` : ''}.`
+    : 'Una transferencia necesita el comprobante de pago adjunto.',
+  // 20260929w: con e-cheq el comprobante del pago es el archivo de CADA echeq.
+  ECHEQ_SIN_ARCHIVO: d => {
+    const sin = lista(dato(d, 'cheques_sin_archivo'))
+    const varios = Array.isArray(dato(d, 'cheques_sin_archivo')) && (dato(d, 'cheques_sin_archivo') as unknown[]).length > 1
+    return sin
+      ? `Falta el comprobante ${varios ? 'de los e-cheqs' : 'del e-cheq'} N° ${sin}: con e-cheq, el PDF de cada uno es el comprobante del pago.`
+      : 'Cada e-cheq necesita su comprobante (PDF o foto): es el comprobante del pago.'
   },
 
   // ── Nota de crédito como comprobante (20260925) ──

@@ -138,8 +138,8 @@ export interface ChequeFila {
   monto:       string
   es_propio:   boolean
   librador:    string
-  // ── Foto del cheque (20260925) ──
-  /** Ya subida a `ordenes/pendientes/`: viaja como `foto_path` y queda adjunta a la OP. */
+  // ── Comprobante del cheque (foto o PDF, 20260925; es EL comprobante del pago, 20260929w) ──
+  /** Ya subido a `ordenes/pendientes/`: viaja como `foto_path` y queda adjunto a la OP (tipo `cheque`). */
   foto:        PagosAdjuntoPendiente | null
   /** Miniatura local (object URL); null si es PDF. */
   fotoUrl:     string | null
@@ -175,11 +175,37 @@ export function estadoCheques(cheques: ChequeFila[], totalPlata: number, fecha: 
   return { totalCheques, difCheques, incompletos, leyendo }
 }
 
+/** Cómo se nombra un cheque en un aviso: por su número, o por su fila si todavía no lo tiene. */
+export function nombreCheque(forma: PagosFormaPagoOP, c: Pick<ChequeFila, 'numero'>, i: number): string {
+  const que = forma === 'echeq' ? 'e-cheq' : 'cheque'
+  return c.numero.trim() ? `${que} N° ${c.numero.trim()}` : `${que} de la fila ${i + 1}`
+}
+
 /**
- * Por qué no se pueden registrar los cheques, o null si están bien. El texto
- * es el mismo que el tooltip del botón del modal suelto.
+ * Los e-cheqs que todavía no tienen su comprobante (20260929w): con e-cheq el
+ * archivo de CADA uno es el comprobante del pago y no hay uno aparte. Con
+ * cheque físico es opcional: siempre vacío. Mientras se sube, la fila todavía
+ * no tiene `foto` pero tampoco falta nada: no cuenta. Espejo de
+ * `comprobanteFaltante` del backend (`ECHEQ_SIN_ARCHIVO`).
  */
-export function problemaCheques(cheques: ChequeFila[], totalPlata: number, fecha: string): string | null {
+export function chequesSinComprobante(forma: PagosFormaPagoOP, cheques: ChequeFila[]): { cheque: ChequeFila; i: number }[] {
+  if (forma !== 'echeq') return []
+  return cheques.map((cheque, i) => ({ cheque, i })).filter(x => !x.cheque.foto && !x.cheque.leyendo)
+}
+
+/** «Falta el comprobante del e-cheq N° 123» (o de varios, con sus números). */
+export function motivoChequesSinComprobante(forma: PagosFormaPagoOP, faltan: { cheque: ChequeFila; i: number }[]): string | null {
+  if (faltan.length === 0) return null
+  if (faltan.length === 1) return `Falta el comprobante del ${nombreCheque(forma, faltan[0]!.cheque, faltan[0]!.i)}`
+  const nombres = faltan.map(x => x.cheque.numero.trim() ? `N° ${x.cheque.numero.trim()}` : `fila ${x.i + 1}`)
+  return `Falta el comprobante de los e-cheqs ${nombres.join(', ')}`
+}
+
+/**
+ * Por qué no se pueden registrar los cheques, o null si están bien. El mismo
+ * texto en el tooltip del modal suelto y en cada bloque del lote.
+ */
+export function problemaCheques(cheques: ChequeFila[], totalPlata: number, fecha: string, forma: PagosFormaPagoOP): string | null {
   const e = estadoCheques(cheques, totalPlata, fecha)
   if (cheques.length === 0) return 'Cargá al menos un cheque'
   if (e.incompletos.length > 0) {
@@ -188,8 +214,8 @@ export function problemaCheques(cheques: ChequeFila[], totalPlata: number, fecha
     return 'Cada cheque necesita número, fecha de cobro e importe (y el librador si es de un tercero)'
   }
   if (Math.abs(e.difCheques) >= 0.005) return 'Los cheques no suman lo que sale de plata'
-  if (e.leyendo) return 'Esperá a que termine de leer la foto del cheque'
-  return null
+  if (e.leyendo) return 'Esperá a que termine de leer el comprobante del cheque'
+  return motivoChequesSinComprobante(forma, chequesSinComprobante(forma, cheques))
 }
 
 /** Los cheques como los recibe el backend; `fecha_cobro` de la orden la deriva él. */

@@ -143,30 +143,39 @@ export function salidaLabel(forma: PagosFormaPagoOPGuardada | null | undefined, 
 }
 
 /**
- * Si hay plata, sin comprobante el backend rebota con `COMPROBANTE_REQUERIDO`.
- * Ojo con el e-cheq (20260929u): ahí alcanza con el archivo de cada echeq;
- * usar `comprobanteObligatorio`, no esta lista sola.
+ * Con cheque o e-cheq el comprobante del pago es el archivo de CADA cheque
+ * (20260929w, dueño: «el comprobante del echeq y del pago cuando es echeq o
+ * cheque físico es el mismo»): no hay un comprobante aparte de toda la orden.
  */
-export const FORMAS_CON_COMPROBANTE_OBLIGATORIO: PagosFormaPagoOP[] = ['transferencia', 'echeq']
-
-/**
- * ¿Hace falta el comprobante de pago APARTE? Transferencia: sí, siempre.
- * E-cheq (20260929u, pedido del dueño): el PDF/foto de cada echeq ES el
- * comprobante, así que si TODOS los cheques tienen su archivo (📷), no; si a
- * alguno le falta, sí. Cheque físico y el resto: no. Espejo de
- * `comprobanteFaltante` del backend y de `_pagos_emitir_orden`.
- */
-export function comprobanteObligatorio(forma: PagosFormaPagoOP, cheques: readonly { foto: unknown }[] = []): boolean {
-  if (!FORMAS_CON_COMPROBANTE_OBLIGATORIO.includes(forma)) return false
-  if (forma !== 'echeq') return true
-  return cheques.length === 0 || cheques.some(c => !c.foto)
+export function comprobantePorCheque(forma: PagosFormaPagoOP): boolean {
+  return forma === 'cheque' || forma === 'echeq'
 }
 
-/** Por qué falta el comprobante, para el tooltip y el aviso rojo. */
-export function motivoComprobante(forma: PagosFormaPagoOP): string {
-  return forma === 'echeq'
-    ? 'Cada e-cheq necesita su archivo (📷), o subí el comprobante del pago'
-    : 'Una transferencia necesita el comprobante'
+/**
+ * ¿Hace falta el comprobante APARTE de toda la orden? Sólo en transferencia.
+ * En e-cheq lo que se pide es el comprobante de cada echeq (ver
+ * `chequesSinComprobante` en utils/pagoForm); en cheque físico, el de cada
+ * cheque es opcional. Espejo de `comprobanteFaltante` del backend.
+ */
+export function comprobanteObligatorio(forma: PagosFormaPagoOP): boolean {
+  return forma === 'transferencia'
+}
+
+/** Por qué falta el comprobante aparte, para el tooltip y el aviso rojo. */
+export function motivoComprobante(): string {
+  return 'Una transferencia necesita el comprobante'
+}
+
+/**
+ * Los archivos que prueban un pago ya registrado: el comprobante y, con
+ * cheque/e-cheq, el de cada cheque. Espejo de `comprobantesDelAviso` del
+ * backend (lo que viaja en el aviso por mail).
+ */
+export function comprobantesDelPago<T extends { tipo: string; borrado?: boolean }>(
+  forma: PagosFormaPagoOPGuardada | null | undefined, adjuntos: readonly T[],
+): T[] {
+  const conCheques = forma === 'cheque' || forma === 'echeq'
+  return adjuntos.filter(a => !a.borrado && (a.tipo === 'comprobante_pago' || (conCheques && a.tipo === 'cheque')))
 }
 /** Piden fecha de cobro (el cheque queda «en cartera» hasta ese día). */
 export const FORMAS_CON_FECHA_COBRO: PagosFormaPagoOP[] = ['cheque', 'echeq']
@@ -186,7 +195,7 @@ export const TIPOS_ADJ_ORDEN: { key: PagosTipoAdjOrden; label: string }[] = [
   { key: 'comprobante_pago', label: 'Comprobante de pago' },
   { key: 'nota_credito',     label: 'Nota de crédito' },
   { key: 'recibo_proveedor', label: 'Recibo del proveedor' },
-  { key: 'cheque',           label: 'Foto del cheque' },
+  { key: 'cheque',           label: 'Comprobante del cheque' },
   { key: 'otro',             label: 'Otro' },
 ]
 

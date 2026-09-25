@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
   bloqueoPorFirma, chequeVacio, chequesParaEnviar, estadoCheques, filasIniciales, filasQueSePasan, formaSegunLoPrevisto,
-  lineasDeOrden, problemaCheques, repartirTotalEnFilas, totalDeFilas,
+  chequesSinComprobante, lineasDeOrden, motivoChequesSinComprobante, problemaCheques, repartirTotalEnFilas, totalDeFilas,
 } from '@/modules/pagos/utils/pagoForm'
-import { comprobanteObligatorio } from '@/modules/pagos/utils/pagos.utils'
+import { comprobanteObligatorio, comprobantePorCheque, comprobantesDelPago } from '@/modules/pagos/utils/pagos.utils'
 import { mensajeErrorPagos } from '@/modules/pagos/utils/pagos.errores'
 import type { PagosFactura } from '@/types/domain.types'
 
@@ -59,23 +59,23 @@ describe('facturas del pago', () => {
 
 describe('cheques', () => {
   it('Σ cheques tiene que dar exacto', () => {
-    expect(problemaCheques([cheque({ monto: '400' })], 500, HOY)).toBe('Los cheques no suman lo que sale de plata')
-    expect(problemaCheques([cheque({ monto: '500' })], 500, HOY)).toBeNull()
+    expect(problemaCheques([cheque({ monto: '400' })], 500, HOY, 'cheque')).toBe('Los cheques no suman lo que sale de plata')
+    expect(problemaCheques([cheque({ monto: '500' })], 500, HOY, 'cheque')).toBeNull()
     expect(estadoCheques([cheque({ monto: '250.5' }), cheque({ monto: '249,5' })], 500, HOY).difCheques).toBe(0)
   })
   it('ninguno se cobra antes del pago', () => {
-    expect(problemaCheques([cheque({ monto: '500', fecha_cobro: '2026-09-24' })], 500, HOY)).toMatch(/antes de la fecha del pago/)
+    expect(problemaCheques([cheque({ monto: '500', fecha_cobro: '2026-09-24' })], 500, HOY, 'cheque')).toMatch(/antes de la fecha del pago/)
   })
   it('un cheque de tercero pide librador', () => {
-    expect(problemaCheques([cheque({ monto: '500', es_propio: false })], 500, HOY)).toMatch(/librador/)
-    expect(problemaCheques([cheque({ monto: '500', es_propio: false, librador: 'Juan' })], 500, HOY)).toBeNull()
+    expect(problemaCheques([cheque({ monto: '500', es_propio: false })], 500, HOY, 'cheque')).toMatch(/librador/)
+    expect(problemaCheques([cheque({ monto: '500', es_propio: false, librador: 'Juan' })], 500, HOY, 'cheque')).toBeNull()
   })
   it('sin cheques o sin número no se registra', () => {
-    expect(problemaCheques([], 500, HOY)).toBe('Cargá al menos un cheque')
-    expect(problemaCheques([cheque({ monto: '500', numero: ' ' })], 500, HOY)).toMatch(/número/)
+    expect(problemaCheques([], 500, HOY, 'cheque')).toBe('Cargá al menos un cheque')
+    expect(problemaCheques([cheque({ monto: '500', numero: ' ' })], 500, HOY, 'cheque')).toMatch(/número/)
   })
-  it('mientras se lee una foto, no', () => {
-    expect(problemaCheques([cheque({ monto: '500', leyendo: true })], 500, HOY)).toMatch(/foto/)
+  it('mientras se lee el comprobante, no', () => {
+    expect(problemaCheques([cheque({ monto: '500', leyendo: true })], 500, HOY, 'cheque')).toMatch(/termine de leer/)
   })
   it('lo que viaja: sin librador si es propio, con la foto como foto_path', () => {
     const c = cheque({ monto: '500', librador: 'x', foto: { tipo: 'cheque', storage_path: 'ordenes/pendientes/a.jpg', nombre_archivo: 'a.jpg', mime_type: 'image/jpeg' } })
@@ -92,22 +92,44 @@ describe('doble firma en el lote', () => {
   })
 })
 
-describe('comprobante aparte (20260929u): en un e-cheq, el archivo de cada echeq ES el comprobante', () => {
-  const conArchivo = { foto: { storage_path: 'ordenes/pendientes/a.pdf' } }
-  const sinArchivo = { foto: null }
-  it('e-cheq: todos con archivo → no hace falta; a uno le falta → sí; sin cheques → sí', () => {
-    expect(comprobanteObligatorio('echeq', [conArchivo, conArchivo])).toBe(false)
-    expect(comprobanteObligatorio('echeq', [conArchivo, sinArchivo])).toBe(true)
-    expect(comprobanteObligatorio('echeq', [])).toBe(true)
-  })
-  it('transferencia sigue pidiéndolo; cheque físico y efectivo no', () => {
-    expect(comprobanteObligatorio('transferencia', [conArchivo])).toBe(true)
-    expect(comprobanteObligatorio('cheque', [sinArchivo])).toBe(false)
+describe('comprobante con cheques (20260929w): el de CADA cheque es el comprobante del pago, no hay uno aparte', () => {
+  const archivo = { tipo: 'cheque' as const, storage_path: 'ordenes/pendientes/a.pdf', nombre_archivo: 'a.pdf', mime_type: 'application/pdf' }
+  it('el comprobante aparte sólo existe (y es obligatorio) en transferencia', () => {
+    expect(comprobanteObligatorio('transferencia')).toBe(true)
+    expect(comprobanteObligatorio('echeq')).toBe(false)
+    expect(comprobanteObligatorio('cheque')).toBe(false)
     expect(comprobanteObligatorio('efectivo')).toBe(false)
+    expect(comprobantePorCheque('echeq')).toBe(true)
+    expect(comprobantePorCheque('cheque')).toBe(true)
+    expect(comprobantePorCheque('transferencia')).toBe(false)
   })
-  it('el mensaje del backend dice qué echeq no tiene archivo', () => {
-    const e = Object.assign(new Error('COMPROBANTE_REQUERIDO'), { body: { error: 'COMPROBANTE_REQUERIDO', detail: { forma_pago: 'echeq', cheques_sin_archivo: ['3080'] } } })
-    expect(mensajeErrorPagos(e)).toMatch(/N° 3080/)
+  it('e-cheq: cada fila necesita su comprobante y el aviso nombra el que falta', () => {
+    const cs = [cheque({ numero: '123', monto: '300', foto: archivo }), cheque({ numero: '124', monto: '200' })]
+    expect(chequesSinComprobante('echeq', cs).map(x => x.cheque.numero)).toEqual(['124'])
+    expect(problemaCheques(cs, 500, HOY, 'echeq')).toBe('Falta el comprobante del e-cheq N° 124')
+    const dos = [cheque({ numero: '123', monto: '300' }), cheque({ numero: ' ', monto: '200' })]
+    expect(motivoChequesSinComprobante('echeq', chequesSinComprobante('echeq', dos))).toBe('Falta el comprobante de los e-cheqs N° 123, fila 2')
+    expect(problemaCheques([cheque({ numero: '123', monto: '500', foto: archivo })], 500, HOY, 'echeq')).toBeNull()
+  })
+  it('mientras se sube el comprobante de una fila no se lo marca como faltante', () => {
+    expect(chequesSinComprobante('echeq', [cheque({ monto: '500', leyendo: true })])).toEqual([])
+  })
+  it('cheque físico: el comprobante por fila es opcional', () => {
+    expect(chequesSinComprobante('cheque', [cheque({ monto: '500' })])).toEqual([])
+    expect(problemaCheques([cheque({ monto: '500' })], 500, HOY, 'cheque')).toBeNull()
+  })
+  it('lo que prueba un pago ya registrado: con cheques, el archivo de cada cheque (caso OP-0250)', () => {
+    const adj = [
+      { tipo: 'cheque', nombre_archivo: 'cheque-3079.pdf' },
+      { tipo: 'recibo_proveedor', nombre_archivo: 'r.pdf' },
+      { tipo: 'comprobante_pago', nombre_archivo: 'viejo.pdf', borrado: true },
+    ]
+    expect(comprobantesDelPago('echeq', adj).map(a => a.nombre_archivo)).toEqual(['cheque-3079.pdf'])
+    expect(comprobantesDelPago('transferencia', adj)).toEqual([])
+  })
+  it('el backend: ECHEQ_SIN_ARCHIVO nombra el e-cheq; COMPROBANTE_REQUERIDO es de la transferencia', () => {
+    const e = Object.assign(new Error('ECHEQ_SIN_ARCHIVO'), { body: { error: 'ECHEQ_SIN_ARCHIVO', detail: { forma_pago: 'echeq', cheques_sin_archivo: ['3080'] } } })
+    expect(mensajeErrorPagos(e)).toMatch(/Falta el comprobante del e-cheq N° 3080/)
     const t = Object.assign(new Error('COMPROBANTE_REQUERIDO'), { body: { error: 'COMPROBANTE_REQUERIDO', detail: { forma_pago: 'transferencia' } } })
     expect(mensajeErrorPagos(t)).toBe('Una transferencia necesita el comprobante de pago adjunto.')
   })

@@ -15,7 +15,7 @@ import { ModalAvisarPago } from './ModalAvisarPago'
 import { ModalExcelGalicia } from './ModalExcelGalicia'
 import {
   FORMAS_CON_CUENTA_DESTINO, FORMAS_CON_FECHA_COBRO,
-  FORMAS_PAGO_OP, comprobanteObligatorio, fmtM, formaPagoLabel, hoyAR, motivoComprobante,
+  FORMAS_PAGO_OP, comprobanteObligatorio, comprobantePorCheque, fmtM, formaPagoLabel, hoyAR, motivoComprobante,
 } from '../utils/pagos.utils'
 import { detalleErrorPagos, mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
 import {
@@ -25,6 +25,7 @@ import {
 import { EditorCheques, useEditorCheques } from './pago/EditorCheques'
 import { AvisoNcSinAplicar, CampoACuenta, CuentaDestinoProveedor, FilasFacturasPago, cuentaDelPadron } from './pago/FacturasDelPago'
 import { Campo, inputCls } from './pago/Campo'
+import { ComprobanteQueNoViaja } from './pago/ComprobanteQueNoViaja'
 import type {
   CrearOrdenInput, PagosAdjuntoPendiente, PagosFactura, PagosFormaPagoOP, PagosOrden,
 } from '@/types/domain.types'
@@ -314,8 +315,12 @@ const BloqueProveedor = memo(function BloqueProveedor({
     planFactura: facturas.find(f => f.plan_cheques)?.plan_cheques ?? null,
   })
   const cheques = ed.cheques
-  // Transferencia: siempre. E-cheq: sólo si a algún echeq le falta su archivo (20260929u).
-  const pideComprobante = comprobanteObligatorio(forma, pideCheques ? cheques : [])
+  // Con cheque/e-cheq el comprobante es el de CADA cheque (20260929w): no hay
+  // uno aparte. Uno subido antes de pasar a cheque/e-cheq queda guardado pero
+  // NO viaja (mismo criterio que «Registrar pago»).
+  const comprobanteAparte = !comprobantePorCheque(forma)
+  const pideComprobante = comprobanteObligatorio(forma)
+  const comprobanteQueViaja = comprobanteAparte ? comprobante : null
 
   // Si el backend rebotó este bloque, se muestra abierto para verlo.
   const visible = abierto || !!errorServidor
@@ -328,11 +333,11 @@ const BloqueProveedor = memo(function BloqueProveedor({
       : totalPlata <= 0 ? 'No hay nada para pagar'
       : !proveedor && necesitaCuenta ? 'Cargando los datos de pago…'
       : sinDatosPago ? 'No tiene CBU ni alias: cargalos para transferirle'
-      : pideComprobante && !comprobante ? motivoComprobante(forma)
-      : pideCheques ? problemaCheques(cheques, totalPlata, fecha)
+      : pideComprobante && !comprobante ? motivoComprobante()
+      : pideCheques ? problemaCheques(cheques, totalPlata, fecha, forma)
       : null
     const fotos = cheques.flatMap(c => c.foto ? [c.foto.storage_path] : [])
-    const adjuntos = comprobante ? [comprobante] : []
+    const adjuntos = comprobanteQueViaja ? [comprobanteQueViaja] : []
     return {
       proveedorId,
       nombre: f0.proveedor_nom,
@@ -347,12 +352,12 @@ const BloqueProveedor = memo(function BloqueProveedor({
         lineas: lineasDeOrden(filas, aCuenta),
         adjuntos,
       },
-      subidos: [...adjuntos.map(a => a.storage_path), ...fotos],
+      subidos: [...(comprobante ? [comprobante.storage_path] : []), ...fotos],
       viajan: [...adjuntos.map(a => a.storage_path), ...(pideCheques ? fotos : [])],
       pagadas: filas.filter(f => n(f.monto) > 0).map(f => ({ factura: f.factura, monto: n(f.monto) })),
     }
   }, [bloqueo, filas, aCuenta, totalPlata, proveedor, necesitaCuenta, sinDatosPago, pideComprobante, comprobante,
-      pideCheques, cheques, fecha, proveedorId, f0.proveedor_nom, forma, referencia])
+      comprobanteQueViaja, pideCheques, cheques, fecha, proveedorId, f0.proveedor_nom, forma, referencia])
 
   useEffect(() => { onEstado(estado) }, [estado, onEstado])
 
@@ -449,19 +454,25 @@ const BloqueProveedor = memo(function BloqueProveedor({
             <CuentaDestinoProveedor proveedorId={proveedorId} proveedor={proveedor} verPii={verPii} sinDatosPago={sinDatosPago} />
           )}
 
-          <div className="flex items-center gap-2 flex-wrap">
-            <label className={`text-xs px-3 py-1.5 rounded border cursor-pointer font-semibold
-              ${pideComprobante && !comprobante ? 'border-rojo text-rojo bg-rojo-light' : 'border-gris-mid bg-white hover:bg-gris'}`}>
-              {subiendo ? 'Subiendo…' : comprobante ? '✓ Comprobante listo' : `📎 Comprobante${pideComprobante ? ' (obligatorio)' : ' (opcional)'}`}
-              <input type="file" className="hidden" accept="image/*,application/pdf"
-                onChange={e => { const file = e.target.files?.[0]; if (file) void subir(file); e.target.value = '' }} />
-            </label>
-            {comprobante && <span className="text-xs text-gris-dark truncate max-w-[240px]">{comprobante.nombre_archivo}</span>}
-            {pideComprobante && !comprobante && <span className="text-[11px] text-rojo">{motivoComprobante(forma)}.</span>}
-            {forma === 'echeq' && !pideComprobante && !comprobante && (
-              <span className="text-[11px] text-gris-dark">Cada e-cheq tiene su archivo: ése es el comprobante.</span>
-            )}
-          </div>
+          {/* Comprobante aparte: sólo sin cheques. Con cheque/e-cheq va el de
+              cada cheque, en su fila (20260929w). */}
+          {comprobanteAparte ? (
+            <div className="flex items-center gap-2 flex-wrap">
+              <label className={`text-xs px-3 py-1.5 rounded border cursor-pointer font-semibold
+                ${pideComprobante && !comprobante ? 'border-rojo text-rojo bg-rojo-light' : 'border-gris-mid bg-white hover:bg-gris'}`}>
+                {subiendo ? 'Subiendo…' : comprobante ? '✓ Comprobante listo' : `📎 Comprobante${pideComprobante ? ' (obligatorio)' : ' (opcional)'}`}
+                <input type="file" className="hidden" accept="image/*,application/pdf"
+                  onChange={e => { const file = e.target.files?.[0]; if (file) void subir(file); e.target.value = '' }} />
+              </label>
+              {comprobante && <span className="text-xs text-gris-dark truncate max-w-[240px]">{comprobante.nombre_archivo}</span>}
+              {pideComprobante && !comprobante && <span className="text-[11px] text-rojo">{motivoComprobante()}.</span>}
+            </div>
+          ) : comprobante && (
+            <ComprobanteQueNoViaja comprobante={comprobante} onQuitar={() => {
+              borrarComprobantePendiente(comprobante.storage_path).catch(() => {})
+              setComprobante(null)
+            }} />
+          )}
         </div>
       )}
     </div>

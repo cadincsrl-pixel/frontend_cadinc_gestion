@@ -12,16 +12,17 @@ import { useProveedorPagos } from '../hooks/useProveedoresPagos'
 import { SelectCuentaOrigen, cuentaOrigenId } from './SelectCuentaOrigen'
 import {
   FORMAS_CON_CUENTA_DESTINO, FORMAS_CON_FECHA_COBRO,
-  FORMAS_PAGO_OP, comprobanteObligatorio, fmtM, hoyAR, motivoComprobante, salidaLabel,
+  FORMAS_PAGO_OP, comprobanteObligatorio, comprobantePorCheque, fmtM, hoyAR, motivoComprobante, salidaLabel,
 } from '../utils/pagos.utils'
 import { mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
 import {
-  FORMA_POR_DEFECTO, filasIniciales, filasQueSePasan, formaSegunLoPrevisto, lineasDeOrden, repartirTotalEnFilas,
+  FORMA_POR_DEFECTO, filasIniciales, filasQueSePasan, formaSegunLoPrevisto, lineasDeOrden, problemaCheques, repartirTotalEnFilas,
   totalDeFilas, type FilaFactura,
 } from '../utils/pagoForm'
 import { EditorCheques, useEditorCheques } from './pago/EditorCheques'
 import { AvisoNcSinAplicar, CampoACuenta, CuentaDestinoProveedor, FilasFacturasPago } from './pago/FacturasDelPago'
 import { Campo, inputCls } from './pago/Campo'
+import { ComprobanteQueNoViaja } from './pago/ComprobanteQueNoViaja'
 import type { PagosAdjuntoPendiente, PagosFormaPagoOP } from '@/types/domain.types'
 
 /**
@@ -114,9 +115,17 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
     fecha, totalPlata, forma, pideCheques,
     planFactura: elegidas.find(f => f.plan_cheques)?.plan_cheques ?? null,
   })
-  const { cheques, difCheques, incompletos: chequesIncompletos, leyendo: leyendoFotos } = ed
-  // Transferencia: siempre. E-cheq: sólo si a algún echeq le falta su archivo (20260929u).
-  const pideComprobante = comprobanteObligatorio(forma, pideCheques ? cheques : [])
+  const { cheques } = ed
+  // Con cheque/e-cheq el comprobante es el de CADA cheque (20260929w): no se
+  // ofrece uno aparte. Transferencia: el de siempre, obligatorio.
+  const comprobanteAparte = !comprobantePorCheque(forma)
+  const pideComprobante = comprobanteObligatorio(forma)
+  // Un comprobante aparte subido ANTES de pasar a cheque/e-cheq no se pierde
+  // en silencio: queda guardado (vuelve si se vuelve a transferencia), NO
+  // viaja con cheques, se avisa abajo y se borra del bucket al registrar o
+  // cerrar. Se eligió no mandarlo: sería un papel invisible en la pantalla.
+  const comprobanteQueViaja = comprobanteAparte ? comprobante : null
+  const problemaDeCheques = pideCheques ? problemaCheques(cheques, totalPlata, fecha, forma) : null
 
   // Cada fila: la plata no puede pasarse de lo pagable (saldo − NC reservada).
   const filasConError = filasQueSePasan(filas)
@@ -127,7 +136,7 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
     filasConError.length === 0 &&
     !sinDatosPago &&
     (!pideComprobante || !!comprobante) &&
-    (!pideCheques || (cheques.length > 0 && chequesIncompletos.length === 0 && Math.abs(difCheques) < 0.005 && !leyendoFotos))
+    !problemaDeCheques
 
   /**
    * Al revés: los CHEQUES mandan y el total los sigue (2026-09-21).
@@ -167,7 +176,7 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
   }
 
   async function guardar() {
-    const adjuntos: PagosAdjuntoPendiente[] = comprobante ? [comprobante] : []
+    const adjuntos: PagosAdjuntoPendiente[] = comprobanteQueViaja ? [comprobanteQueViaja] : []
 
     try {
       const r = await registrar.mutateAsync({
@@ -187,7 +196,14 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
       for (const a of r.avisos) toast(mensajeAvisoPagos(a), 'warn')
       // Si al final no se pagó con cheque, las fotos no viajaron: se limpian.
       if (!pideCheques) for (const path of ed.fotosSubidas()) borrarComprobantePendiente(path).catch(() => {})
-      onRegistrado?.(Number(r.orden.id), !!comprobante)
+      // Y el comprobante aparte que quedó de antes de pasar a cheque/e-cheq, tampoco.
+      if (comprobante && !comprobanteQueViaja) borrarComprobantePendiente(comprobante.storage_path).catch(() => {})
+      // ¿Salió con la prueba del pago? La que el aviso por mail adjunta:
+      // el comprobante, o el de cada cheque.
+      const conComprobante = pideCheques
+        ? cheques.length > 0 && cheques.every(c => !!c.foto)
+        : !!comprobanteQueViaja
+      onRegistrado?.(Number(r.orden.id), conComprobante)
       onClose()   // sin limpiar: los archivos ya quedaron en la OP
     } catch (e) {
       // NO se borran los adjuntos: el reintento los reusa.
@@ -216,12 +232,8 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
               sinDatosPago ? 'El proveedor no tiene CBU ni alias: cargalos primero'
               : filasConError.length > 0 ? 'Hay montos que superan el saldo de su factura'
               : totalPlata <= 0 ? 'No hay nada para pagar'
-              : pideComprobante && !comprobante ? motivoComprobante(forma)
-              : pideCheques && cheques.length === 0 ? 'Cargá al menos un cheque'
-              : pideCheques && chequesIncompletos.length > 0 ? 'Cada cheque necesita número, fecha de cobro e importe (y el librador si es de un tercero)'
-              : pideCheques && Math.abs(difCheques) >= 0.005 ? 'Los cheques no suman lo que sale de plata'
-              : pideCheques && leyendoFotos ? 'Esperá a que termine de leer la foto del cheque'
-              : undefined
+              : pideComprobante && !comprobante ? motivoComprobante()
+              : problemaDeCheques ?? undefined
             }>
             Registrar pago
           </Button>
@@ -282,22 +294,27 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
           <CuentaDestinoProveedor proveedorId={proveedorId} proveedor={proveedor} verPii={!!verPii} sinDatosPago={sinDatosPago} />
         )}
 
-        {/* Comprobante */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <label className={`text-xs px-3 py-1.5 rounded border cursor-pointer font-semibold
-            ${pideComprobante && !comprobante ? 'border-rojo text-rojo bg-rojo-light' : 'border-gris-mid bg-white hover:bg-gris'}`}>
-            {subiendo === 'comprobante' ? 'Subiendo…' : comprobante ? '✓ Comprobante listo' : `📎 Comprobante${pideComprobante ? ' (obligatorio)' : ' (opcional)'}`}
-            <input type="file" className="hidden" accept="image/*,application/pdf"
-              onChange={e => { const file = e.target.files?.[0]; if (file) subir(file); e.target.value = '' }} />
-          </label>
-          {comprobante && <span className="text-xs text-gris-dark truncate max-w-[240px]">{comprobante.nombre_archivo}</span>}
-          {pideComprobante && !comprobante && (
-            <span className="text-[11px] text-rojo">{motivoComprobante(forma)}.</span>
-          )}
-          {forma === 'echeq' && !pideComprobante && !comprobante && (
-            <span className="text-[11px] text-gris-dark">Cada e-cheq tiene su archivo: ése es el comprobante.</span>
-          )}
-        </div>
+        {/* Comprobante aparte: sólo transferencia y demás. Con cheque/e-cheq
+            va el de cada cheque, en su fila (20260929w). */}
+        {comprobanteAparte ? (
+          <div className="flex items-center gap-2 flex-wrap">
+            <label className={`text-xs px-3 py-1.5 rounded border cursor-pointer font-semibold
+              ${pideComprobante && !comprobante ? 'border-rojo text-rojo bg-rojo-light' : 'border-gris-mid bg-white hover:bg-gris'}`}>
+              {subiendo === 'comprobante' ? 'Subiendo…' : comprobante ? '✓ Comprobante listo' : `📎 Comprobante${pideComprobante ? ' (obligatorio)' : ' (opcional)'}`}
+              <input type="file" className="hidden" accept="image/*,application/pdf"
+                onChange={e => { const file = e.target.files?.[0]; if (file) subir(file); e.target.value = '' }} />
+            </label>
+            {comprobante && <span className="text-xs text-gris-dark truncate max-w-[240px]">{comprobante.nombre_archivo}</span>}
+            {pideComprobante && !comprobante && (
+              <span className="text-[11px] text-rojo">{motivoComprobante()}.</span>
+            )}
+          </div>
+        ) : comprobante && (
+          <ComprobanteQueNoViaja comprobante={comprobante} onQuitar={() => {
+            borrarComprobantePendiente(comprobante.storage_path).catch(() => {})
+            setComprobante(null)
+          }} />
+        )}
 
         <Campo label="Observaciones" hint="Opcional">
           <input value={obs} onChange={e => setObs(e.target.value)} className={inputCls} />

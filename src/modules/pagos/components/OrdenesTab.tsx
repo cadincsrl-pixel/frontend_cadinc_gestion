@@ -423,7 +423,10 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, verPii, toast }: {
                   📎 {a.nombre_archivo}
                 </button>
                 <span className={`ml-1 ${a.tipo === 'recibo_proveedor' ? 'text-verde font-semibold' : 'text-gris-dark'}`}>
-                  ({a.tipo === 'comprobante_pago' ? 'comprobante' : tipoAdjOrdenLabel(a.tipo).toLowerCase()})
+                  ({a.tipo === 'comprobante_pago' ? 'comprobante'
+                    // Con cheque/e-cheq el archivo de cada cheque ES el comprobante del pago (20260929w).
+                    : a.tipo === 'cheque' ? (o.forma_pago === 'echeq' ? 'comprobante del e-cheq' : 'comprobante del cheque')
+                    : tipoAdjOrdenLabel(a.tipo).toLowerCase()})
                 </span>
                 {a.obs && <span className="text-gris-dark ml-1">· {a.obs}</span>}
               </li>
