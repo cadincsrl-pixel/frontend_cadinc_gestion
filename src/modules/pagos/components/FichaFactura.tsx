@@ -101,8 +101,10 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
   const ncDisponible   = Number(f.nc_disponible ?? 0)
   const aplicable      = nc && !!f.aprobada_at && f.estado !== 'anulada' && ncDisponible > 0
   const aplicaciones: PagosAplicacionNc[] = f.aplicaciones ?? []
-  // Pasar a deuda solo si todavía no se registró nada (la RPC rebota con FACTURA_CON_PAGOS).
+  // Pasar a deuda (20260929y): sin pagos pasa toda la factura; con pagos o NC
+  // ya reconstruidos pasa el SALDO que queda. Sin saldo no hay nada que pasar.
   const sinPagosReconstruir = Number(f.pagado ?? 0) === 0 && Number(f.acreditado ?? 0) === 0 && Number(f.nc_aplicado ?? 0) === 0
+  const saldoADeuda = Number(f.saldo ?? 0)
 
   async function accion(fn: () => Promise<unknown>, ok: string) {
     try {
@@ -259,20 +261,24 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
               </span>
               {!confirmandoDeuda && (
                 <Button variant="secondary" size="sm" onClick={() => setConfirmandoDeuda(true)}
-                  disabled={!puedeAprobar || sinPagosReconstruir === false}
+                  disabled={!puedeAprobar || saldoADeuda <= 0}
                   title={
                     !puedeAprobar ? 'Pasar a deuda lo hace quien aprueba facturas'
-                    : sinPagosReconstruir === false ? 'Ya tiene un pago o una NC registrados: el resto se sigue reconstruyendo'
-                    : `No se pagó: la ${nombre} pasa a ser deuda y sigue el circuito normal (aprobar y pagar)`
+                    : saldoADeuda <= 0 ? 'No le queda saldo: no hay nada que pasar a deuda'
+                    : sinPagosReconstruir ? `No se pagó: la ${nombre} pasa a ser deuda y sigue el circuito normal (aprobar y pagar)`
+                    : `Ya tiene pagos reconstruidos: los ${fmtM(saldoADeuda)} que quedan pasan a ser deuda`
                   }>
-                  Es deuda: no se pagó
+                  {sinPagosReconstruir ? 'Es deuda: no se pagó' : 'El saldo es deuda'}
                 </Button>
               )}
             </div>
             {confirmandoDeuda && (
               <div className="flex items-center gap-2 flex-wrap border-t border-gris-mid pt-2">
                 <span className="flex-1 min-w-[200px]">
-                  ¿Confirmás que esta {nombre} <b>no se pagó</b>? Pasa a contar como deuda{nc ? '' : ', hay que aprobarla y pagarla'}. No se puede volver atrás.
+                  {sinPagosReconstruir
+                    ? <>¿Confirmás que esta {nombre} <b>no se pagó</b>? Pasa a contar como deuda{nc ? '' : ', hay que aprobarla y pagarla'}.</>
+                    : <>¿Confirmás que los <b>{fmtM(saldoADeuda)}</b> que le quedan <b>no se pagaron</b>? Ese saldo pasa a contar como deuda{nc ? '' : ', hay que aprobarla y pagarlo'}.</>}
+                  {' '}No se puede volver atrás.
                 </span>
                 <Button variant="secondary" size="sm" onClick={() => setConfirmandoDeuda(false)}>Cancelar</Button>
                 <Button size="sm" loading={aDeuda.isPending}

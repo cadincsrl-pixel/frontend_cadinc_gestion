@@ -126,6 +126,7 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
       ? `La factura ya tiene pagos: no se puede cambiar ${campos}. Anulá la orden de pago primero.`
       : 'La factura ya tiene pagos registrados. Anulá la orden de pago primero.'
   },
+  FACTURA_SIN_SALDO:    () => 'La factura no tiene saldo: no hay nada que pasar a deuda.',
   FACTURA_CERRADA:      () => 'La factura está anulada: no admite cambios.',
   FACTURA_PAGA_CLIENTE: () => 'Esta factura la paga el cliente: no entra en el circuito de pagos de CADINC.',
   FACTURA_NO_EXISTE:    () => 'La factura no existe o ya no está disponible.',
