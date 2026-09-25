@@ -9,7 +9,9 @@ import { Pagination } from '@/components/ui/Pagination'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import type { ChequeRecibidoFila } from '@/types/domain.types'
-import { useAltaChequesRecibidos, useChequesRecibidos, type ChequesRecibidosFiltro } from '../hooks/useContabilidad'
+import {
+  useAltaChequesRecibidos, useCambiarEstadoCheques, useChequesRecibidos, useTesoreria, type AccionCheque, type ChequesRecibidosFiltro,
+} from '../hooks/useContabilidad'
 import { fmtFecha, fmtM } from '../utils/contabilidad.utils'
 import { mensajeErrorCtb } from '../utils/contabilidad.errores'
 import { Campo, Cargando, Cifra, ErrorCarga, RangoFechas, Tarjeta, Th, Vacio, inputCls } from './Comun'
@@ -31,7 +33,9 @@ const ESTADOS: { key: NonNullable<ChequesRecibidosFiltro['estado']>; label: stri
   { key: 'por_vencer', label: 'En cartera, por cobrar' },
   { key: 'vencidos',   label: 'En cartera, vencidos' },
   { key: 'endosado',   label: 'Endosados' },
-  { key: 'rechazado',  label: 'Rechazados' },
+  { key: 'depositado', label: 'Depositados' },
+  { key: 'rechazado',  label: 'Rechazados (a cobrar)' },
+  { key: 'recuperado', label: 'Recuperados' },
   { key: 'todos',      label: 'Todos' },
 ]
 
@@ -50,6 +54,8 @@ export function ChequesRecibidosView() {
   const [q, setQ] = useState('')
   const [page, setPage] = useState(1)
   const [alta, setAlta] = useState(false)
+  const [sel, setSel] = useState<Set<number>>(new Set())
+  const [accion, setAccion] = useState<AccionCheque | null>(null)
 
   const lista = useChequesRecibidos({ ...filtro, q }, page, PAGE_SIZE)
   const items = lista.data?.items ?? []
@@ -57,7 +63,21 @@ export function ChequesRecibidosView() {
   const tot = lista.data?.totales ?? {}
   const t = (k: string) => tot[k] ?? { cantidad: 0, importe: 0 }
 
-  const patch = (p: Partial<ChequesRecibidosFiltro>) => { setFiltro(f => ({ ...f, ...p })); setPage(1) }
+  const patch = (p: Partial<ChequesRecibidosFiltro>) => { setFiltro(f => ({ ...f, ...p })); setPage(1); setSel(new Set()) }
+  const elegidos = items.filter(c => sel.has(c.id))
+  const alternar = (id: number) => setSel(s => { const x = new Set(s); if (x.has(id)) x.delete(id); else x.add(id); return x })
+  const todosPagina = items.length > 0 && items.every(c => sel.has(c.id))
+  // Qué acción admite la selección entera (la RPC lo vuelve a validar).
+  const puede = (a: AccionCheque) => elegidos.length > 0 && elegidos.every(c =>
+    a === 'depositar' ? c.estado === 'en_cartera'
+    : a === 'rechazar' ? c.estado === 'depositado' || c.estado === 'endosado'
+    : a === 'recuperar' ? c.estado === 'rechazado'
+    : c.estado === 'depositado' || c.estado === 'rechazado' || c.estado === 'recuperado')
+  const motivoAccion = (a: AccionCheque) => bloqueoAlta ?? (puede(a) ? undefined
+    : a === 'depositar' ? 'Solo cheques en cartera'
+    : a === 'rechazar' ? 'Solo cheques depositados o endosados'
+    : a === 'recuperar' ? 'Solo cheques rechazados'
+    : 'Solo cheques depositados, rechazados o recuperados')
   const bloqueoAlta = !movimientosFondos ? 'No tenés permiso (hace falta «Movimientos de fondos»)'
     : !puedeCrear ? 'No tenés permiso de Crear en Contabilidad' : null
 
@@ -98,6 +118,19 @@ export function ChequesRecibidosView() {
         </div>
       </Tarjeta>
 
+      {elegidos.length > 0 && (
+        <Tarjeta className="px-3 py-2 flex items-center gap-2 flex-wrap border-l-4 border-naranja">
+          <span className="text-sm"><b>{elegidos.length}</b> elegido{elegidos.length === 1 ? '' : 's'} ·{' '}
+            <b className="font-mono tabular-nums">{fmtM(elegidos.reduce((t, c) => t + Number(c.importe), 0))}</b></span>
+          <span className="ml-auto" />
+          <Button size="sm" variant="secondary" onClick={() => setAccion('depositar')} disabled={!!motivoAccion('depositar')} title={motivoAccion('depositar')}>🏦 Depositar…</Button>
+          <Button size="sm" variant="secondary" onClick={() => setAccion('rechazar')} disabled={!!motivoAccion('rechazar')} title={motivoAccion('rechazar')}>✕ Rechazado…</Button>
+          <Button size="sm" variant="secondary" onClick={() => setAccion('recuperar')} disabled={!!motivoAccion('recuperar')} title={motivoAccion('recuperar')}>✓ Recuperado…</Button>
+          <Button size="sm" variant="ghost" onClick={() => setAccion('volver_a_cartera')} disabled={!!motivoAccion('volver_a_cartera')} title={motivoAccion('volver_a_cartera') ?? 'Deshace el depósito, el rechazo o el recupero'}>↩ Deshacer</Button>
+          <Button size="sm" variant="ghost" onClick={() => setSel(new Set())}>Limpiar</Button>
+        </Tarjeta>
+      )}
+
       {lista.isLoading ? <Cargando />
         : lista.isError ? <ErrorCarga mensaje={mensajeErrorCtb(lista.error)} onReintentar={() => void lista.refetch()} />
         : items.length === 0 ? <Vacio>No hay cheques con estos filtros.</Vacio>
@@ -107,6 +140,10 @@ export function ChequesRecibidosView() {
               <table className="w-full border-collapse min-w-[980px]">
                 <thead>
                   <tr>
+                    <Th>
+                      <input type="checkbox" aria-label="Elegir todos los de esta página" checked={todosPagina}
+                        onChange={e => setSel(e.target.checked ? new Set(items.map(c => c.id)) : new Set())} />
+                    </Th>
                     <Th>Se cobra</Th><Th>Número</Th><Th>Librador</Th><Th>Banco</Th><Th derecha>Importe</Th>
                     <Th>Recibido de</Th><Th>Destino</Th><Th>Estado</Th>
                   </tr>
@@ -115,7 +152,10 @@ export function ChequesRecibidosView() {
                   {items.map(c => {
                     const o = origen(c)
                     return (
-                      <tr key={c.id} className="border-t border-gris align-top" title={c.obs ?? undefined}>
+                      <tr key={c.id} className={`border-t border-gris align-top ${sel.has(c.id) ? 'bg-naranja-light/40' : ''}`} title={c.obs ?? undefined}>
+                        <td className="px-3 py-2">
+                          <input type="checkbox" aria-label={`Elegir el cheque ${c.numero}`} checked={sel.has(c.id)} onChange={() => alternar(c.id)} />
+                        </td>
                         <td className={`px-3 py-2 text-xs whitespace-nowrap ${c.vencido ? 'text-naranja-dark font-semibold' : ''}`}>
                           {fmtFecha(c.fecha_cobro)}{c.es_echeq ? <span className="block text-[10px] text-gris-dark">e-cheq</span> : null}
                         </td>
@@ -141,7 +181,16 @@ export function ChequesRecibidosView() {
                                 OP-{String(c.op_numero ?? '').padStart(4, '0')}{c.op_fecha ? ` · ${fmtFecha(c.op_fecha)}` : ''}
                               </button>
                             </>
-                          ) : <span className="text-gris-dark">—</span>}
+                          ) : c.deposito_cuenta ? null : <span className="text-gris-dark">—</span>}
+                          {c.deposito_cuenta && (
+                            <span className="block text-[11px]">Depositado en <b>{c.deposito_cuenta}</b>{c.fecha_deposito ? ` · ${fmtFecha(c.fecha_deposito)}` : ''}</span>
+                          )}
+                          {c.rechazo_fecha && (
+                            <span className="block text-[11px] text-rojo" title={c.rechazo_motivo ?? undefined}>Rechazado el {fmtFecha(c.rechazo_fecha)}: {c.rechazo_motivo}</span>
+                          )}
+                          {c.recupero_fecha && (
+                            <span className="block text-[11px] text-verde" title={c.recupero_obs ?? undefined}>Recuperado el {fmtFecha(c.recupero_fecha)}: {c.recupero_obs}</span>
+                          )}
                         </td>
                         <td className="px-3 py-2">
                           <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase whitespace-nowrap ${CHIP[c.estado].cls}`}>{CHIP[c.estado].txt}</span>
@@ -159,6 +208,7 @@ export function ChequesRecibidosView() {
       {total > PAGE_SIZE && <Pagination page={page} total={total} pageSize={PAGE_SIZE} onChange={setPage} />}
 
       {alta && <ModalAltaCheques onClose={() => setAlta(false)} />}
+      {accion && <ModalAccionCheques accion={accion} cheques={elegidos} onClose={() => setAccion(null)} onHecho={() => { setAccion(null); setSel(new Set()) }} />}
     </div>
   )
 }
@@ -228,6 +278,107 @@ function ModalAltaCheques({ onClose }: { onClose: () => void }) {
         {/* El siguiente copia banco y librador: suelen venir de la misma chequera. */}
         <button type="button" onClick={() => setFilas(fs => [...fs, filaVacia(fs[fs.length - 1])])}
           className="self-start text-xs font-semibold text-azul hover:underline">＋ Otro cheque</button>
+      </div>
+    </Modal>
+  )
+}
+
+const TITULO_ACCION: Record<AccionCheque, string> = {
+  depositar:        'Depositar cheques',
+  rechazar:         'Marcar cheques rechazados',
+  recuperar:        'Marcar cheques recuperados',
+  volver_a_cartera: 'Deshacer: volver a la cartera',
+}
+
+/**
+ * Depositar (en lote, con la fecha de cobro de cada uno o una fija),
+ * rechazado (fecha + motivo), recuperado (fecha + con qué lo pagaron) o
+ * deshacer. Todavía sin asiento: eso llega con el contador (fase 4b).
+ */
+function ModalAccionCheques({ accion, cheques, onClose, onHecho }: {
+  accion: AccionCheque; cheques: ChequeRecibidoFila[]; onClose: () => void; onHecho: () => void
+}) {
+  const toast = useToast()
+  const cambiar = useCambiarEstadoCheques()
+  const tesorerias = useTesoreria(false)
+  const cuentas = (tesorerias.data ?? []).filter(t => t.tipo === 'banco' || t.tipo === 'billetera')
+  const [cuenta, setCuenta] = useState<number | ''>('')
+  const [usarFechaCobro, setUsarFechaCobro] = useState(true)
+  const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10))
+  const [motivo, setMotivo] = useState('')
+  const total = cheques.reduce((t, c) => t + Number(c.importe), 0)
+  const falta = accion === 'depositar' && !cuenta ? 'Elegí la cuenta'
+    : (accion === 'rechazar' || accion === 'recuperar') && !motivo.trim() ? (accion === 'rechazar' ? 'Poné el motivo' : 'Poné con qué lo pagaron')
+    : undefined
+
+  async function confirmar() {
+    if (falta) return
+    try {
+      const r = await cambiar.mutateAsync({
+        ids: cheques.map(c => c.id), accion,
+        fecha: accion === 'depositar' && usarFechaCobro ? null : accion === 'volver_a_cartera' ? null : fecha,
+        tesoreria_id: accion === 'depositar' ? Number(cuenta) : null,
+        motivo: accion === 'rechazar' || accion === 'recuperar' ? motivo.trim() : null,
+      })
+      toast(`✓ ${r.cheques} cheque${r.cheques === 1 ? '' : 's'}: ${TITULO_ACCION[accion].toLowerCase()}`, 'ok')
+      onHecho()
+    } catch (e) {
+      toast(mensajeErrorCtb(e), 'err')
+    }
+  }
+
+  return (
+    <Modal open onClose={onClose} title={TITULO_ACCION[accion]} width="max-w-lg"
+      footer={
+        <div className="flex gap-2 justify-end">
+          <Button variant="ghost" size="sm" onClick={onClose}>Cancelar</Button>
+          <Button size="sm" onClick={confirmar} loading={cambiar.isPending} disabled={!!falta} title={falta}>Confirmar</Button>
+        </div>
+      }>
+      <div className="flex flex-col gap-3 text-sm">
+        <div className="text-xs text-gris-dark">
+          {cheques.length} cheque{cheques.length === 1 ? '' : 's'} por <b className="font-mono tabular-nums text-carbon">{fmtM(total)}</b>
+          {cheques.length <= 6 && <>: {cheques.map(c => c.numero).join(', ')}</>}
+        </div>
+        {accion === 'depositar' && (
+          <>
+            <Campo label="Se depositaron en">
+              <select value={cuenta} onChange={e => setCuenta(Number(e.target.value) || '')} className={inputCls}>
+                <option value="">Elegí la cuenta…</option>
+                {cuentas.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+              </select>
+            </Campo>
+            <label className="flex items-center gap-2 text-xs cursor-pointer">
+              <input type="radio" checked={usarFechaCobro} onChange={() => setUsarFechaCobro(true)} />
+              El día de cobro de cada cheque <span className="text-gris-dark">(lo más común con los vencidos)</span>
+            </label>
+            <label className="flex items-center gap-2 text-xs cursor-pointer">
+              <input type="radio" checked={!usarFechaCobro} onChange={() => setUsarFechaCobro(false)} />
+              Todos el día
+              <input type="date" value={fecha} onChange={e => { setFecha(e.target.value); setUsarFechaCobro(false) }} className={`${inputCls} w-40`} />
+            </label>
+          </>
+        )}
+        {(accion === 'rechazar' || accion === 'recuperar') && (
+          <>
+            <Campo label={accion === 'rechazar' ? 'Fecha del rechazo' : 'Fecha en que lo pagaron'}>
+              <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className={inputCls} />
+            </Campo>
+            <Campo label={accion === 'rechazar' ? 'Motivo' : 'Con qué lo pagaron'}>
+              <input value={motivo} onChange={e => setMotivo(e.target.value)} className={inputCls}
+                placeholder={accion === 'rechazar' ? 'Sin fondos, firma no conforme…' : 'Otro cheque N° …, transferencia del …'} />
+            </Campo>
+            {accion === 'rechazar' && cheques.some(c => c.estado === 'endosado') && (
+              <p className="text-[11px] text-[#7A5000]">
+                Un cheque endosado que rebota: al proveedor hay que darle otro. Este vuelve a figurar como deuda de quien te lo dio, hasta que lo paguen de nuevo.
+              </p>
+            )}
+          </>
+        )}
+        {accion === 'volver_a_cartera' && (
+          <p className="text-xs text-gris-dark">Se borra el depósito, el rechazo o el recupero y el cheque vuelve a estar en cartera (o endosado, si se había endosado).</p>
+        )}
+        <p className="text-[11px] text-gris-dark">Todavía no genera asiento: la contabilidad de los cheques se arma con el contador.</p>
       </div>
     </Modal>
   )

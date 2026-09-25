@@ -959,3 +959,15 @@ export function useAltaChequesRecibidos() {
     onSuccess: () => qc.invalidateQueries({ queryKey: CHEQUES_RECIBIDOS_KEY }),
   })
 }
+
+export type AccionCheque = 'depositar' | 'rechazar' | 'recuperar' | 'volver_a_cartera'
+
+/** Depositar / rechazar / recuperar / volver a cartera (20260930o). */
+export function useCambiarEstadoCheques() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { ids: number[]; accion: AccionCheque; fecha?: string | null; tesoreria_id?: number | null; motivo?: string | null }) =>
+      apiPost<{ accion: string; cheques: number }>(`${BASE}/cheques-recibidos/estado`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: CHEQUES_RECIBIDOS_KEY }),
+  })
+}

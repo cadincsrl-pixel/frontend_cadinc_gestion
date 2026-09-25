@@ -241,6 +241,13 @@ export interface ChequeRecibidoFila extends ChequeRecibido {
   op_fecha:          string | null
   proveedor_nombre:  string | null
   vencido:           boolean
+  /** Depósito / rechazo / recupero (20260930o). */
+  deposito_cuenta:   string | null
+  fecha_deposito:    string | null
+  rechazo_fecha:     string | null
+  rechazo_motivo:    string | null
+  recupero_fecha:    string | null
+  recupero_obs:      string | null
 }
 
 export interface ChequesRecibidosRes {
