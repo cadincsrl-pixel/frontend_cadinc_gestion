@@ -14,7 +14,7 @@ import {
   chequeVacio, chequesParaEnviar, estadoCheques, n, nEntero, nombreCheque, r2, type CampoCheque, type ChequeFila,
 } from '../../utils/pagoForm'
 import { Campo, inputCls } from './Campo'
-import type { PagosAdjuntoPendiente, PagosFormaPagoOP, PagosPlanCheques } from '@/types/domain.types'
+import type { PagosAdjuntoPendiente, PagosChequeLecturaRes, PagosFormaPagoOP, PagosPlanCheques } from '@/types/domain.types'
 
 /**
  * El editor de cheques de una orden de pago: partir en N a tal plazo, filas
@@ -122,47 +122,102 @@ export function useEditorCheques({ fecha, totalPlata, forma, pideCheques, planFa
       setChequeUid(uid, { leyendo: false, avisosFoto: [mensajeErrorPagos(e)] })
       return
     }
-    // La foto anterior de esta fila ya no va: se borra del bucket.
-    if (previa?.foto) borrarComprobantePendiente(previa.foto.storage_path).catch(() => {})
+    // La foto anterior de esta fila ya no va: se borra del bucket, salvo que
+    // otra fila la comparta (un archivo con varios cheques).
+    if (previa?.foto && !fotoCompartida(previa.foto.storage_path, uid)) borrarComprobantePendiente(previa.foto.storage_path).catch(() => {})
     setChequeUid(uid, { foto: adj, fotoUrl: url })
     try {
       const r = await leerCheque(adj)
-      const p = r.propuesta
-      setChequeUid(uid, c => {
-        const cambio: Partial<ChequeFila> = {}
-        const leidos: CampoCheque[] = []
-        if (p.numero?.trim())      { cambio.numero = p.numero.trim(); leidos.push('numero') }
-        if (p.banco?.trim())       { cambio.banco = p.banco.trim(); leidos.push('banco') }
-        if (p.fecha_cobro)         { cambio.fecha_cobro = p.fecha_cobro.slice(0, 10); leidos.push('fecha_cobro') }
-        if (p.importe != null && p.importe > 0) { cambio.monto = String(p.importe); leidos.push('monto') }
-        const librador = [p.librador?.trim(), p.librador_cuit ? `CUIT ${p.librador_cuit}` : null].filter(Boolean).join(' · ')
-        // El librador sólo se usa si el cheque es de un tercero: si está como
-        // propio se guarda para ofrecerlo al tildar «De tercero».
-        if (librador && !c.es_propio) { cambio.librador = librador; leidos.push('librador') }
-        const avisos = (r.avisos ?? []).map(a => mensajeAvisoLectura(a)).filter(Boolean)
-        if (p.es_echeq && forma === 'cheque') avisos.push('La foto parece de un e-cheq, y la forma de pago elegida es cheque.')
-        if (leidos.length === 0) avisos.push('No se pudo sacar ningún dato de la foto: cargalos a mano. La foto queda adjunta igual.')
-        return {
-          ...cambio, leyendo: false, libradorLeido: librador,
-          leidos: [...new Set([...c.leidos, ...leidos])], avisosFoto: avisos,
-          foto: r.storage_path ? { ...adj, storage_path: r.storage_path } : adj,
-        }
-      })
+      const foto = r.storage_path ? { ...adj, storage_path: r.storage_path } : adj
+      const lecturas = r.cheques?.length ? r.cheques : [{ propuesta: r.propuesta, avisos: r.avisos }]
+      // Un archivo con varios cheques (el PDF del banco con la emisión y los
+      // endosos): la primera lectura completa esta fila y cada una de las
+      // demás es una fila nueva justo debajo, con el MISMO archivo como
+      // comprobante (el backend lo adjunta una vez con todos los números).
+      const extra = lecturas.slice(1).map(() => chequeVacio('', ''))
+      setCheques(cs => cs.flatMap(c => {
+        if (c.uid !== uid) return [c]
+        const [primera, ...resto] = lecturas
+        const avisoVarios = lecturas.length > 1
+          ? [`Este archivo trae ${lecturas.length} cheques: se agregaron en ${lecturas.length} filas con el mismo comprobante.`] : []
+        const esta = filaDesdeLectura(c, primera!)
+        return [
+          { ...esta, foto, fotoUrl: url, avisosFoto: [...avisoVarios, ...esta.avisosFoto] },
+          ...resto.map((l, k) => ({ ...filaDesdeLectura({ ...extra[k]!, es_propio: c.es_propio }, l), foto, fotoUrl: url })),
+        ]
+      }))
     } catch (e) {
       setChequeUid(uid, { leyendo: false, avisosFoto: [`${mensajeErrorPagos(e)} La foto queda adjunta igual.`] })
     }
   }
 
+  /** Una lectura del backend sobre una fila: completa lo leído y lo marca. */
+  function filaDesdeLectura(c: ChequeFila, l: { propuesta: PagosChequeLecturaRes['propuesta']; avisos: PagosChequeLecturaRes['avisos'] }): ChequeFila {
+    const p = l.propuesta
+    const cambio: Partial<ChequeFila> = {}
+    const leidos: CampoCheque[] = []
+    if (p.numero?.trim())      { cambio.numero = p.numero.trim(); leidos.push('numero') }
+    if (p.banco?.trim())       { cambio.banco = p.banco.trim(); leidos.push('banco') }
+    if (p.fecha_cobro)         { cambio.fecha_cobro = p.fecha_cobro.slice(0, 10); leidos.push('fecha_cobro') }
+    if (p.importe != null && p.importe > 0) { cambio.monto = String(p.importe); leidos.push('monto') }
+    const librador = [p.librador?.trim(), p.librador_cuit ? `CUIT ${p.librador_cuit}` : null].filter(Boolean).join(' · ')
+    // El librador sólo se usa si el cheque es de un tercero: si está como
+    // propio se guarda para ofrecerlo al tildar «De tercero».
+    if (librador && !c.es_propio) { cambio.librador = librador; leidos.push('librador') }
+    const avisos = (l.avisos ?? []).map(a => mensajeAvisoLectura(a)).filter(Boolean)
+    if (p.es_echeq && forma === 'cheque') avisos.push('La foto parece de un e-cheq, y la forma de pago elegida es cheque.')
+    if (leidos.length === 0) avisos.push('No se pudo sacar ningún dato de la foto: cargalos a mano. La foto queda adjunta igual.')
+    return {
+      ...c, ...cambio, leyendo: false, libradorLeido: librador,
+      leidos: [...new Set([...c.leidos, ...leidos])], avisosFoto: avisos,
+    }
+  }
+
   /** «📷 Agregar desde foto»: una fila nueva que arranca con la foto. */
   function agregarDesdeFoto(file: File) {
-    const nuevo = chequeVacio('', '')
-    setCheques(cs => [...cs, nuevo])
-    void leerFotoCheque(nuevo.uid, file)
+    agregarDesdeArchivos([file])
+  }
+
+  /**
+   * Varios comprobantes de una vez (arrastrados o elegidos juntos, 2026-09-25):
+   * una fila por archivo, cada una se lee sola. Nació con cinco cheques
+   * endosados al mismo proveedor que había que subir de a uno.
+   *
+   * Las filas que están en blanco (sin comprobante ni número, típicamente las
+   * de «Generar») se reemplazan: los archivos SON los cheques. Las que ya
+   * tienen algo se respetan y las nuevas van al final.
+   * Se leen de a 3 a la vez para no disparar diez lecturas juntas.
+   */
+  function agregarDesdeArchivos(files: File[]) {
+    const validos = files.filter(f => f.type.startsWith('image/') || f.type === 'application/pdf')
+    const descartados = files.length - validos.length
+    if (descartados > 0) toast(`${descartados} archivo${descartados === 1 ? '' : 's'} no ${descartados === 1 ? 'es' : 'son'} foto ni PDF: no se ${descartados === 1 ? 'agregó' : 'agregaron'}.`, 'err')
+    if (validos.length === 0) return
+    // Arrancan «leyendo»: las que esperan turno no piden el comprobante que ya tienen.
+    const nuevos = validos.map(() => ({ ...chequeVacio('', ''), leyendo: true }))
+    const enBlanco = (c: ChequeFila) => !c.foto && !c.leyendo && !c.numero.trim()
+    const reemplazadas = cheques.filter(enBlanco).length
+    setCheques(cs => [...cs.filter(c => !enBlanco(c)), ...nuevos])
+    if (validos.length > 1 || reemplazadas > 0) {
+      toast(`Leyendo ${validos.length} comprobante${validos.length === 1 ? '' : 's'}${reemplazadas > 0 ? ` (reemplazan ${reemplazadas} fila${reemplazadas === 1 ? '' : 's'} en blanco)` : ''}…`, 'ok')
+    }
+    const cola = nuevos.map((c, i) => ({ uid: c.uid, file: validos[i]! }))
+    const trabajar = async () => {
+      for (let t = cola.shift(); t; t = cola.shift()) await leerFotoCheque(t.uid, t.file)
+    }
+    // La cantidad se fija ANTES: cada trabajador saca de la cola al arrancar.
+    const trabajadores = Math.min(3, cola.length)
+    for (let k = 0; k < trabajadores; k++) void trabajar()
+  }
+
+  /** ¿Otra fila usa el mismo archivo? (un PDF con varios cheques) */
+  function fotoCompartida(path: string, uidPropio: number): boolean {
+    return cheques.some(o => o.uid !== uidPropio && o.foto?.storage_path === path)
   }
 
   function quitarCheque(i: number) {
     const c = cheques[i]
-    if (c?.foto) borrarComprobantePendiente(c.foto.storage_path).catch(() => {})
+    if (c?.foto && !fotoCompartida(c.foto.storage_path, c.uid)) borrarComprobantePendiente(c.foto.storage_path).catch(() => {})
     setCheques(cs => cs.filter((_, j) => j !== i))
   }
 
@@ -213,13 +268,13 @@ export function useEditorCheques({ fecha, totalPlata, forma, pideCheques, planFa
 
   /** Las fotos ya subidas al bucket (para limpiarlas si no se registra). */
   function fotosSubidas(): string[] {
-    return cheques.flatMap(c => c.foto ? [c.foto.storage_path] : [])
+    return [...new Set(cheques.flatMap(c => c.foto ? [c.foto.storage_path] : []))]
   }
 
   return {
     cheques, cantCheques, setCantCheques, primerPlazo, setPrimerPlazo, opcionesPlazo, cadaDias, setCadaDias,
     totalCheques, difCheques, incompletos, leyendo,
-    setCheque, setChequeAMano, leerFotoCheque, agregarDesdeFoto, quitarCheque, generarCheques, plazoDe,
+    setCheque, setChequeAMano, leerFotoCheque, agregarDesdeFoto, agregarDesdeArchivos, quitarCheque, generarCheques, plazoDe,
     agregarCheque, ajustarUltimoCheque, fotosSubidas,
     paraEnviar: () => chequesParaEnviar(cheques),
   }
@@ -238,8 +293,33 @@ export function EditorCheques({ ed, forma, fecha, totalPlata, cantFacturas, onUs
   onUsarTotalDeLosCheques: (totalCheques: number) => void
 }) {
   const { cheques, cantCheques, primerPlazo, cadaDias, totalCheques, difCheques } = ed
+  // Arrastrar varios comprobantes encima del recuadro: una fila por archivo.
+  // El contador evita el parpadeo al pasar por encima de los hijos.
+  const [arrastrando, setArrastrando] = useState(0)
+  const conArchivos = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes('Files')
+  // El mismo número en dos filas: casi siempre es el mismo archivo subido dos veces.
+  const repetidos = useMemo(() => {
+    const cuenta = new Map<string, number>()
+    for (const c of cheques) { const k = c.numero.replace(/\D/g, '').replace(/^0+/, ''); if (k) cuenta.set(k, (cuenta.get(k) ?? 0) + 1) }
+    return new Set([...cuenta].filter(([, v]) => v > 1).map(([k]) => k))
+  }, [cheques])
   return (
-    <div className="border border-gris-mid rounded">
+    <div className={`border rounded relative ${arrastrando > 0 ? 'border-naranja ring-2 ring-naranja/40' : 'border-gris-mid'}`}
+      onDragEnter={e => { if (!conArchivos(e)) return; e.preventDefault(); e.stopPropagation(); setArrastrando(v => v + 1) }}
+      onDragOver={e => { if (!conArchivos(e)) return; e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy' }}
+      onDragLeave={e => { if (!conArchivos(e)) return; e.stopPropagation(); setArrastrando(v => Math.max(0, v - 1)) }}
+      onDrop={e => {
+        if (!conArchivos(e)) return
+        e.preventDefault(); e.stopPropagation(); setArrastrando(0)
+        ed.agregarDesdeArchivos(Array.from(e.dataTransfer.files))
+      }}>
+      {arrastrando > 0 && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center rounded bg-naranja-light/90 pointer-events-none">
+          <span className="text-sm font-bold text-naranja text-center px-4">
+            Soltá los comprobantes: una fila por cada {forma === 'echeq' ? 'e-cheq' : 'cheque'}, se completan solas
+          </span>
+        </div>
+      )}
       <div className="flex items-center gap-2 flex-wrap px-2.5 py-2 bg-gris/40 border-b border-gris-mid">
         <span className="text-xs font-bold uppercase tracking-wide text-gris-dark">
           {forma === 'echeq' ? 'E-cheqs' : 'Cheques'}
@@ -331,6 +411,9 @@ export function EditorCheques({ ed, forma, fecha, totalPlata, cantFacturas, onUs
               className="ml-auto text-xs text-rojo hover:underline pb-1.5 disabled:opacity-50 disabled:no-underline">Quitar</button>
           </div>
           {c.leyendo && <div className="text-[11px] text-azul animate-pulse">Leyendo el comprobante del cheque…</div>}
+          {!c.leyendo && repetidos.has(c.numero.replace(/\D/g, '').replace(/^0+/, '')) && (
+            <div className="text-[11px] text-rojo font-semibold">⚠ Hay otra fila con el número {c.numero}: ¿el mismo comprobante dos veces?</div>
+          )}
           {forma === 'echeq' && !c.foto && !c.leyendo && (
             <div className="text-[11px] text-rojo font-semibold">Falta el comprobante del {nombreCheque(forma, c, i)}.</div>
           )}
@@ -382,11 +465,13 @@ export function EditorCheques({ ed, forma, fecha, totalPlata, cantFacturas, onUs
       <div className="flex items-center gap-2 flex-wrap px-2.5 py-2 border-t border-gris-mid">
         <Button variant="ghost" size="sm" onClick={ed.agregarCheque}>+ Agregar cheque</Button>
         <label className="text-xs px-2.5 py-1.5 rounded hover:bg-gris cursor-pointer font-semibold text-gris-dark"
-          title="Una fila nueva a partir de la foto o el PDF del cheque: se completa sola y ése queda como su comprobante">
-          📷 Agregar desde foto
-          <input type="file" className="hidden" accept="image/*,application/pdf" capture="environment"
-            onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; if (file) ed.agregarDesdeFoto(file) }} />
+          title="Una fila nueva por cada foto o PDF de cheque: se completan solas y cada archivo queda como su comprobante. Podés elegir varios juntos o arrastrarlos al recuadro">
+          📷 Agregar desde fotos o PDF
+          {/* Sin `capture`: forzaría la cámara y no dejaría elegir varios PDF. */}
+          <input type="file" className="hidden" accept="image/*,application/pdf" multiple
+            onChange={e => { const files = Array.from(e.target.files ?? []); e.target.value = ''; if (files.length) ed.agregarDesdeArchivos(files) }} />
         </label>
+        <span className="text-[11px] text-gris-dark hidden sm:inline">o arrastrá varios acá</span>
         <div className="ml-auto text-xs text-right">
           <span className="text-gris-dark">Suman </span>
           <b className="font-mono tabular-nums">{fmtM(totalCheques)}</b>

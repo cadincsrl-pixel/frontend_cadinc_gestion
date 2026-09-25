@@ -3344,6 +3344,9 @@ export interface PagosChequeLecturaRes {
   propuesta:    PagosChequePropuesta
   /** Forma abierta: puede venir como aviso de lectura (`codigo`/`mensaje`) o como aviso seco (`code`). */
   avisos:       (Partial<PagosAvisoLectura> & { code?: string; [k: string]: unknown })[]
+  /** Todos los cheques del archivo (un PDF del banco puede traer la emisión y
+   *  varios endosos, 2026-09-25); `propuesta`/`avisos` sueltos son el primero. */
+  cheques?:     { propuesta: PagosChequePropuesta; avisos: PagosChequeLecturaRes['avisos'] }[]
   storage_path: string
 }
 
