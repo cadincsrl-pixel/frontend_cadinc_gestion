@@ -10,7 +10,7 @@ import { usePermisos } from '@/hooks/usePermisos'
 import {
   useCrearFactura, useEditarFactura, useFactura, subirComprobantePendiente,
   useSubirAdjuntoPagos, subirFacturaParaLeer, leerFactura, descartarLecturaFactura,
-  useFacturasAcreditables, useFacturasDetalle, usePeriodoIvaSugerido,
+  useFacturasAcreditables, useFacturasDetalle, usePeriodoIvaSugerido, useCompletarConLectura,
 } from '../hooks/usePagos'
 import { FILA_REPARTO_VACIA, RepartoPorObra, repartoCuadra, type FilaReparto } from './RepartoPorObra'
 import { leerQrDelArchivo } from '../utils/qrFactura'
@@ -77,6 +77,8 @@ import type {
 interface Props {
   editarId?: number
   onClose:   () => void
+  /** Después de «Completar la ya cargada»: abrir la ficha de esa factura. */
+  onAbrirFicha?: (id: number) => void
 }
 
 /**
@@ -107,7 +109,7 @@ interface EstadoLectura {
   error?: string
 }
 
-export function ModalCargarFactura({ editarId, onClose }: Props) {
+export function ModalCargarFactura({ editarId, onClose, onAbrirFicha }: Props) {
   const toast = useToast()
   const { esAdmin, registrarPagos } = usePermisos('pagos')
   // «Ya está pagada» registra un pago: sólo quien puede registrar pagos
@@ -239,6 +241,26 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
     else if (a.campo === 'cae') setCae(txt)
     tocar(a.campo)
     setResueltos(r => new Set(r).add(i))
+  }
+
+  /**
+   * «Completar la ya cargada»: la factura ya existía (típico, importada de ARCA
+   * sin archivo). El archivo leído se le adjunta a ESA y se abre su ficha para
+   * imputarla o pasarla a deuda, en vez de cargarla de nuevo.
+   */
+  const completar = useCompletarConLectura()
+  async function completarYaCargada(facturaId: number) {
+    const lecturaIdAhora = lectura?.fase === 'lista' ? lectura.res?.lectura_id ?? null : null
+    if (!lecturaIdAhora) return
+    try {
+      await completar.mutateAsync({ id: facturaId, lectura_id: lecturaIdAhora })
+      guardada.current = true
+      toast('✓ Archivo adjuntado a la factura que ya estaba cargada', 'ok')
+      onClose()
+      onAbrirFicha?.(facturaId)
+    } catch (e) {
+      toast(mensajeErrorPagos(e), 'err')
+    }
   }
 
   /** Cerrar sin guardar: el archivo leído no queda colgado en el bucket. */
@@ -754,7 +776,8 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
 
         {!esEdicion && lectura && (
           <AvisosLectura lectura={lectura} avisos={avisosLectura}
-            onUsar={usarAlternativa} onAlta={() => setAltaProveedor(true)} />
+            onUsar={usarAlternativa} onAlta={() => setAltaProveedor(true)}
+            onCompletar={completarYaCargada} completando={completar.isPending} />
         )}
 
         {/* Factura o nota de crédito (20260925). La lectura lo fija sola; al
@@ -1272,11 +1295,13 @@ function MarcaFuente({ f }: { f?: Fuente }) {
 }
 
 /** Lo que encontró la lectura y hay que mirar, de lo más grave a lo informativo. */
-function AvisosLectura({ lectura, avisos, onUsar, onAlta }: {
+function AvisosLectura({ lectura, avisos, onUsar, onAlta, onCompletar, completando }: {
   lectura: EstadoLectura
   avisos: { a: PagosAvisoLectura; i: number }[]
   onUsar: (i: number, a: PagosAvisoLectura) => void
   onAlta: () => void
+  onCompletar: (facturaId: number) => void
+  completando: boolean
 }) {
   if (lectura.fase === 'leyendo') {
     return (
@@ -1308,6 +1333,13 @@ function AvisosLectura({ lectura, avisos, onUsar, onAlta }: {
           )}
           {a.codigo === 'PROVEEDOR_NUEVO' && (
             <button type="button" onClick={onAlta} className="shrink-0 underline font-semibold">Darlo de alta</button>
+          )}
+          {a.codigo === 'FACTURA_YA_CARGADA' && a.factura_id != null && (
+            <button type="button" disabled={completando} onClick={() => onCompletar(a.factura_id!)}
+              title="No la carga de nuevo: le adjunta este archivo a la que ya está y abre su ficha para terminarla"
+              className="shrink-0 underline font-semibold disabled:opacity-50">
+              {completando ? 'Adjuntando…' : 'Completar la ya cargada'}
+            </button>
           )}
         </div>
       ))}

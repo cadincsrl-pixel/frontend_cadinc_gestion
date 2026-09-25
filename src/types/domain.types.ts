@@ -2886,6 +2886,8 @@ export interface PagosAvisoLectura {
   codigo:    string
   /** QR y papel no coinciden: lo que dice el papel, para usarlo con un clic. */
   alternativa?: string | number | null
+  /** FACTURA_YA_CARGADA / ARCHIVO_YA_CARGADO: cuál es, para «Completar la ya cargada». */
+  factura_id?: number
 }
 export interface PagosPropuestaLectura {
   emisor_cuit:         string | null

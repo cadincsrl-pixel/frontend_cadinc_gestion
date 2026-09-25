@@ -431,6 +431,19 @@ export function useAplicarNc() {
 }
 
 /**
+ * «Completar la ya cargada»: la lectura dijo FACTURA_YA_CARGADA y el archivo
+ * leído pasa a ser el adjunto de esa factura (con su control contra el papel).
+ */
+export function useCompletarConLectura() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, lectura_id }: { id: number; lectura_id: number }) =>
+      apiPost<PagosFactura>(`/api/pagos/facturas/${id}/completar-con-lectura`, { lectura_id }),
+    onSuccess:  () => invalidarPagos(qc),
+  })
+}
+
+/**
  * «Es deuda: no se pagó» (20260929n): la importó el ARCA como «de meses ya
  * pagados» pero se debe. Saca la marca y vuelve al circuito normal (aprobar y
  * pagar). Solo sin pagos ni NC aplicadas. Permiso: `aprobar_facturas`.

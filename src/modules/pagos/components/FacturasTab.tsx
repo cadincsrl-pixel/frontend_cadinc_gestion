@@ -423,6 +423,7 @@ export function FacturasTab({ aviso, importacion, ficha }: {
         <ModalCargarFactura
           editarId={modalCargar.editarId}
           onClose={() => setModalCargar({ open: false })}
+          onAbrirFicha={id => setFichaId(id)}
         />
       )}
 
