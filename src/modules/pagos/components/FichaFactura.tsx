@@ -9,7 +9,7 @@ import { useSessionStore } from '@/store/session.store'
 import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
 import {
   useFactura, useAprobarFactura, useObservarFactura, useMarcarCorregida, useAnularFactura,
-  useSubirAdjuntoPagos, useBorrarAdjuntoPagos, fetchPagosAdjuntoSignedUrl, useEditarFactura,
+  useSubirAdjuntoPagos, useBorrarAdjuntoPagos, fetchPagosAdjuntoSignedUrl, useEditarFactura, usePasarADeuda,
 } from '../hooks/usePagos'
 import { useConceptosPagos } from '../hooks/useConceptosPagos'
 import {
@@ -56,6 +56,7 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
   const anular    = useAnularFactura()
   const subir     = useSubirAdjuntoPagos()
   const borrar    = useBorrarAdjuntoPagos()
+  const aDeuda    = usePasarADeuda()
 
   const [pidiendo, setPidiendo] = useState<null | 'observar' | 'anular'>(null)
   const [motivo, setMotivo] = useState('')
@@ -63,6 +64,7 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
   const [completando, setCompletando] = useState(false)
   const [aplicando, setAplicando] = useState(false)
   const [imputando, setImputando] = useState(false)
+  const [confirmandoDeuda, setConfirmandoDeuda] = useState(false)
 
   if (isLoading || !f) {
     return (
@@ -99,6 +101,8 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
   const ncDisponible   = Number(f.nc_disponible ?? 0)
   const aplicable      = nc && !!f.aprobada_at && f.estado !== 'anulada' && ncDisponible > 0
   const aplicaciones: PagosAplicacionNc[] = f.aplicaciones ?? []
+  // Pasar a deuda solo si todavía no se registró nada (la RPC rebota con FACTURA_CON_PAGOS).
+  const sinPagosReconstruir = Number(f.pagado ?? 0) === 0 && Number(f.acreditado ?? 0) === 0 && Number(f.nc_aplicado ?? 0) === 0
 
   async function accion(fn: () => Promise<unknown>, ok: string) {
     try {
@@ -244,10 +248,39 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
         </div>
 
         {/* Compra de un mes ya pagado (20260928): no es deuda ni se aprueba. */}
+        {/* «Es deuda: no se pagó» (20260929n): el importador marca TODO el archivo
+            como pagado; lo que en realidad se debe vuelve al circuito normal. */}
         {f.pago_a_reconstruir && f.estado !== 'anulada' && (
-          <div className="border rounded p-2 text-xs bg-gris border-gris-mid text-carbon">
-            <b>Importada de un mes ya pagado:</b> el pago se reconstruye con los extractos bancarios.
-            {' '}No cuenta como deuda ni se aprueba; sí va al Libro IVA y a la contabilidad.
+          <div className="flex flex-col gap-2 border rounded p-2 text-xs bg-gris border-gris-mid text-carbon">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="flex-1 min-w-[200px]">
+                <b>Importada de un mes ya pagado:</b> el pago se reconstruye con los extractos bancarios.
+                {' '}No cuenta como deuda ni se aprueba; sí va al Libro IVA y a la contabilidad.
+              </span>
+              {!confirmandoDeuda && (
+                <Button variant="secondary" size="sm" onClick={() => setConfirmandoDeuda(true)}
+                  disabled={!puedeAprobar || sinPagosReconstruir === false}
+                  title={
+                    !puedeAprobar ? 'Pasar a deuda lo hace quien aprueba facturas'
+                    : sinPagosReconstruir === false ? 'Ya tiene un pago o una NC registrados: el resto se sigue reconstruyendo'
+                    : `No se pagó: la ${nombre} pasa a ser deuda y sigue el circuito normal (aprobar y pagar)`
+                  }>
+                  Es deuda: no se pagó
+                </Button>
+              )}
+            </div>
+            {confirmandoDeuda && (
+              <div className="flex items-center gap-2 flex-wrap border-t border-gris-mid pt-2">
+                <span className="flex-1 min-w-[200px]">
+                  ¿Confirmás que esta {nombre} <b>no se pagó</b>? Pasa a contar como deuda{nc ? '' : ', hay que aprobarla y pagarla'}. No se puede volver atrás.
+                </span>
+                <Button variant="secondary" size="sm" onClick={() => setConfirmandoDeuda(false)}>Cancelar</Button>
+                <Button size="sm" loading={aDeuda.isPending}
+                  onClick={() => accion(() => aDeuda.mutateAsync(f.id), '✓ Pasó a deuda').then(() => setConfirmandoDeuda(false))}>
+                  Sí, es deuda
+                </Button>
+              </div>
+            )}
           </div>
         )}
 

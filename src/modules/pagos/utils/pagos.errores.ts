@@ -290,6 +290,7 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
     : 'Primero hay que imputarla (concepto y obras).',
   // ── Compras de meses ya pagados (20260928) ──
   FACTURA_A_RECONSTRUIR: () => 'Es de un mes ya pagado: no se aprueba. El pago se reconstruye con los extractos bancarios.',
+  FACTURA_NO_A_RECONSTRUIR: () => 'Ya no está como «de meses ya pagados»: tiene un pago registrado o ya se pasó a deuda.',
   FACTURA_YA_IMPUTADA: () => 'La factura ya está imputada: el reparto se corrige editándola.',
   TRIBUTOS_A_REVISAR:  () => 'Clasificá los otros tributos antes de repartir (con «Completar desglose»).',
   IMPUTACION_REQUERIDA: () => 'Falta el reparto por obra.',

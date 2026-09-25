@@ -430,6 +430,19 @@ export function useAplicarNc() {
   })
 }
 
+/**
+ * «Es deuda: no se pagó» (20260929n): la importó el ARCA como «de meses ya
+ * pagados» pero se debe. Saca la marca y vuelve al circuito normal (aprobar y
+ * pagar). Solo sin pagos ni NC aplicadas. Permiso: `aprobar_facturas`.
+ */
+export function usePasarADeuda() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => apiPost<PagosFactura>(`/api/pagos/facturas/${id}/pasar-a-deuda`, {}),
+    onSuccess:  () => invalidarPagos(qc),
+  })
+}
+
 /** Aprobar una, o sellar una «pagada al cargar» que estaba sin revisar. */
 export function useAprobarFactura() {
   const qc = useQueryClient()
