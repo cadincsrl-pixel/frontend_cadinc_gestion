@@ -11,7 +11,7 @@ import { apiPut, apiGet, apiPatch, apiPost } from '@/lib/api/client'
 import type {
   CrearProveedorInput, EditarProveedorInput, PagosDatosPagoInput, PagosProveedor,
   PagosProveedorDetalle, PagosProveedorSaldo, PagosProveedoresPage, ProveedorRes,
-  PagosPadronResultado, PagosActualizarDesdeArcaRes, PagosActualizarTodosArcaRes,
+  PagosPadronResultado, PagosActualizarDesdeArcaRes, PagosActualizarTodosArcaRes, PagosCuentaCorriente,
 } from '@/types/domain.types'
 import { PAGOS_KEYS, invalidarPagos } from './usePagos'
 import type { contactosParaGuardar } from '@/components/contactos/ContactosEditor'
@@ -53,6 +53,16 @@ export function useProveedorPagos(id: number | null) {
     queryFn:  () => apiGet<PagosProveedorDetalle>(`/api/pagos/proveedores/${id}`),
     enabled:  !!id,
     staleTime: 60_000,
+  })
+}
+
+/** Compras › Cuentas (20260929s): la cuenta corriente con el proveedor entre dos fechas. */
+export function useCuentaCorrienteProveedor(id: number | null, desde: string, hasta: string) {
+  return useQuery({
+    queryKey: [...PAGOS_KEYS.proveedores, 'cuenta', id ?? 0, desde, hasta],
+    queryFn:  () => apiGet<PagosCuentaCorriente>(`/api/pagos/proveedores/${id}/cuenta-corriente?desde=${desde}&hasta=${hasta}`),
+    enabled:  !!id && !!desde && !!hasta && desde <= hasta,
+    staleTime: 30_000,
   })
 }
 

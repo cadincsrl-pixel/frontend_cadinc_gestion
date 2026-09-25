@@ -91,6 +91,8 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
   pagos: [
     { key: 'facturas',    label: 'Facturas',    icon: '🧾', meta: 'Facturas de proveedor y vencimientos' },
     { key: 'pagos',       label: 'Pagos',       icon: '💸', meta: 'Órdenes de pago y cheques' },
+    // 20260929s: la cuenta corriente con cada proveedor (debe, haber, saldo).
+    { key: 'cuentas',     label: 'Cuentas',     icon: '📒', meta: 'Cuenta corriente con cada proveedor' },
     { key: 'proveedores', label: 'Proveedores', icon: '🏢', meta: 'CUIT, alias y CBU' },
     // Tanda 6 (20260929f…): editar pide además el flag `configurar`.
     { key: 'configuracion', label: 'Configuración', icon: '⚙️', meta: 'Avisos de pago, cheques y jurisdicciones' },

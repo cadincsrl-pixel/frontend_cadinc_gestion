@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { fmtM, fmtFecha } from '../utils/pagos.utils'
 import type { PagosProveedorSaldo } from '@/types/domain.types'
 
@@ -100,6 +101,10 @@ export function DeudaPorProveedor({ filas, cargando, proveedorSel, onElegir }: P
                 >
                   <td className="px-3 py-2 text-sm">
                     <span className="font-semibold">{f.razon_social}</span>
+                    <Link href={`/pagos?tab=cuentas&proveedor=${f.proveedor_id}`} onClick={e => e.stopPropagation()}
+                      className="ml-1.5 text-[10px] text-azul hover:underline" title="Ver la cuenta corriente con este proveedor">
+                      cuenta ›
+                    </Link>
                     {!f.activo && <span className="ml-1 text-[10px] text-gris-dark uppercase">dado de baja</span>}
                     {f.para_aprobar > 0 && (
                       <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-azul-light text-azul font-bold" title="Facturas y notas de crédito esperando aprobación (sin contar las que falta imputar)">

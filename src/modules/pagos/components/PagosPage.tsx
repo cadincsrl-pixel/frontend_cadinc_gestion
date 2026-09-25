@@ -7,11 +7,13 @@ import { TABS_POR_MODULO } from '@/lib/config/modulo-tabs'
 import { FacturasTab } from './FacturasTab'
 import { OrdenesTab } from './OrdenesTab'
 import { ProveedoresPagosTab } from './ProveedoresPagosTab'
+import { CuentasTab } from './CuentasTab'
 import { ConfiguracionTab } from './configuracion/ConfiguracionTab'
 
 const TABS = [
   { key: 'facturas',    icon: '🧾', label: 'Facturas',    sub: 'Facturas de proveedor, aprobación y vencimientos' },
   { key: 'pagos',       icon: '💸', label: 'Pagos',       sub: 'Órdenes de pago, notas de crédito y cheques' },
+  { key: 'cuentas',     icon: '📒', label: 'Cuentas',     sub: 'Cuenta corriente con cada proveedor: debe, haber y saldo' },
   { key: 'proveedores', icon: '🏢', label: 'Proveedores', sub: 'Padrón propio: CUIT, alias y CBU' },
   { key: 'configuracion', icon: '⚙️', label: 'Configuración', sub: 'Avisos de pago, plazos de cheque y jurisdicciones' },
 ]
@@ -39,6 +41,7 @@ export function PagosPage() {
   const aviso = searchParams.get('aviso')
   const importacion = idDeUrl(searchParams.get('importacion'))
   const ficha = idDeUrl(searchParams.get('ficha'))
+  const proveedor = idDeUrl(searchParams.get('proveedor'))
   const info = TABS.find(t => t.key === tab) ?? TABS[0]!
   const permitido = allowedTabs.length === 0 || allowedTabs.includes(tab)
 
@@ -71,6 +74,7 @@ export function PagosPage() {
             aviso={aviso} importacion={importacion} ficha={ficha} />
         )}
         {tab === 'pagos'       && <OrdenesTab key={ficha ?? ''} ficha={ficha} />}
+        {tab === 'cuentas'     && <CuentasTab key={proveedor ?? ''} proveedorInicial={proveedor} />}
         {tab === 'proveedores' && <ProveedoresPagosTab />}
         {tab === 'configuracion' && <ConfiguracionTab />}
       </div>

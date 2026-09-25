@@ -112,6 +112,7 @@ Los **certificados al cliente** (`certificados_cliente`) se emiten desde la cuen
 ### 4.2.1 Sub-tabs de Pagos (`/pagos?tab=...`)
 - `facturas` — la bandeja: qué se debe, a quién y para cuándo. Cargar, aprobar/rechazar (de a una o en lote), ficha completa, registrar pago de varias juntas. Acepta `&aviso=aprobar|vencidas|sin-revisar|observadas` (deep-link de la campana, §5.9).
 - `pagos` — órdenes de pago, con las notas de crédito como línea adentro de la OP.
+- `cuentas` — **cuenta corriente con un proveedor** (20260929s): elegís proveedor y rango y ves saldo inicial, facturas/ND al debe, NC y OPs al haber, saldo corrido, marcas «pago a reconstruir» / «pago reconstruido», Excel y PDF. RPC `pagos_cuenta_corriente` (solo lectura) → `GET /api/pagos/proveedores/:id/cuenta-corriente?desde&hasta` (tab `cuentas`). Deep-link `?tab=cuentas&proveedor=ID` (también desde «Deuda por proveedor» › «cuenta ›»). Es la vista para comparar con el estado de cuenta que manda el proveedor.
 - `proveedores` — padrón propio (`pagos_proveedores`), **sin FK a `public.proveedores`**: se cargan de nuevo, con CUIT, alias y CBU.
 
 ### 4.3 Sub-tabs de Herramientas (`/herramientas/<tab>`)

@@ -2495,6 +2495,38 @@ export interface PagosProveedor {
 }
 
 /** Fila de `v_pagos_proveedor_saldo`: el bloque «Deuda por proveedor». */
+/** Compras › Cuentas (20260929s): un renglón de la cuenta corriente con el proveedor. */
+export interface PagosCuentaMovimiento {
+  fecha:         string
+  tipo:          'factura' | 'nota_debito' | 'nota_credito' | 'pago'
+  /** id de la factura / NC, o de la orden de pago si `tipo` es 'pago'. */
+  ref_id:        number
+  comprobante:   string
+  detalle:       string
+  debe:          number
+  haber:         number
+  /** Saldo corrido después de este renglón. Positivo = CADINC le debe. */
+  saldo:         number
+  estado:        string | null
+  /** Factura importada «de meses ya pagados» cuyo pago todavía no se cargó. */
+  a_reconstruir: boolean
+  /** Orden de pago cargada después, desde el extracto (pago reconstruido). */
+  reconstruida:  boolean
+}
+
+export interface PagosCuentaCorriente {
+  proveedor:     { id: number; razon_social: string; cuit: string | null; codigo: string | null }
+  desde:         string
+  hasta:         string
+  saldo_inicial: number
+  movimientos:   PagosCuentaMovimiento[]
+  total_debe:    number
+  total_haber:   number
+  saldo_final:   number
+  /** Lo que el proveedor tiene «a reconstruir», a hoy (no depende del rango). */
+  a_reconstruir: number
+}
+
 export interface PagosProveedorSaldo {
   proveedor_id:       number
   razon_social:       string
