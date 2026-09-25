@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  bloqueoPorFirma, chequeVacio, chequesParaEnviar, estadoCheques, filasIniciales, filasQueSePasan, formaSegunLoPrevisto,
+  bloqueoPorFirma, bloquesDelError, chequeVacio, chequesParaEnviar, estadoCheques, filasIniciales, filasQueSePasan, formaSegunLoPrevisto,
   chequesSinComprobante, lineasDeOrden, motivoChequesSinComprobante, problemaCheques, repartirTotalEnFilas, totalDeFilas,
 } from '@/modules/pagos/utils/pagoForm'
 import { comprobanteObligatorio, comprobantePorCheque, comprobantesDelPago } from '@/modules/pagos/utils/pagos.utils'
@@ -132,5 +132,23 @@ describe('comprobante con cheques (20260929w): el de CADA cheque es el comproban
     expect(mensajeErrorPagos(e)).toMatch(/Falta el comprobante del e-cheq N° 3080/)
     const t = Object.assign(new Error('COMPROBANTE_REQUERIDO'), { body: { error: 'COMPROBANTE_REQUERIDO', detail: { forma_pago: 'transferencia' } } })
     expect(mensajeErrorPagos(t)).toBe('Una transferencia necesita el comprobante de pago adjunto.')
+  })
+})
+
+// 25/09 (OP-0247/0248): el PDF del e-cheq de Cencosud se eligió también en el
+// bloque de Gimenez. El backend lo frena con ARCHIVO_EN_VARIOS_BLOQUES y el
+// modal pinta los dos bloques.
+describe('el mismo archivo en dos bloques', () => {
+  it('el error pinta todos los bloques que nombra', () => {
+    expect(bloquesDelError({ indices: [0, 1], indice: 1 })).toEqual([0, 1])
+    expect(bloquesDelError({ indice: 2 })).toEqual([2])
+    expect(bloquesDelError({ campo: 'ordenes.3.cheques' })).toEqual([3])
+    expect(bloquesDelError(null)).toEqual([])
+  })
+  it('el mensaje nombra el archivo', () => {
+    const e = Object.assign(new Error('ARCHIVO_EN_VARIOS_BLOQUES'), { body: { error: 'ARCHIVO_EN_VARIOS_BLOQUES', detail: {
+      indices: [0, 1], proveedor_ids: [1, 2], nombre_archivo: 'Cheque3076_CENCOSUD SA_30590360763.pdf', indice: 1,
+    } } })
+    expect(mensajeErrorPagos(e)).toMatch(/«Cheque3076_CENCOSUD SA_30590360763\.pdf» está en más de un proveedor/)
   })
 })

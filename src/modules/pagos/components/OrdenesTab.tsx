@@ -8,7 +8,7 @@ import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
 import {
-  useOrdenes, useOrden, useAnularOrden, useEditarOrden, useSubirAdjuntoPagos, fetchPagosAdjuntoSignedUrl,
+  useOrdenes, useOrden, useAnularOrden, useEditarOrden, useSubirAdjuntoPagos, useBorrarAdjuntoPagos, fetchPagosAdjuntoSignedUrl,
   fetchOrdenesExport, type PagosOrdenesFiltro,
 } from '../hooks/usePagos'
 import { exportarOrdenesPagos } from '../utils/pagosExport'
@@ -239,7 +239,12 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, verPii, toast }: {
   const { data: o, isLoading } = useOrden(id)
   const anular = useAnularOrden()
   const subir  = useSubirAdjuntoPagos()
+  const quitar = useBorrarAdjuntoPagos()
   const [motivo, setMotivo] = useState('')
+  // Quitar un archivo equivocado (20260929x): confirmación en la página, con motivo.
+  const [quitando, setQuitando] = useState<number | null>(null)
+  const [motivoQuitar, setMotivoQuitar] = useState('')
+  const [verQuitados, setVerQuitados] = useState(false)
   const [pidiendo, setPidiendo] = useState(false)
   const [avisando, setAvisando] = useState(false)
   const [generandoPdf, setGenerandoPdf] = useState(false)
@@ -252,6 +257,10 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, verPii, toast }: {
       <div className="p-8 text-center text-sm text-gris-dark">Cargando…</div>
     </Modal>
   }
+
+  // El detalle trae también los quitados (borrado = true): se muestran aparte.
+  const vigentes = o.adjuntos.filter(a => !a.borrado)
+  const quitados = o.adjuntos.filter(a => a.borrado)
 
   return (
     <Modal
@@ -411,10 +420,11 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, verPii, toast }: {
             Comprobantes del pago
             {o.estado === 'emitida' && <ChipRecibo o={o} inline />}
           </div>
-          {o.adjuntos.length === 0 && <div className="text-xs text-gris-dark italic mb-1">Sin archivos.</div>}
+          {vigentes.length === 0 && <div className="text-xs text-gris-dark italic mb-1">Sin archivos.</div>}
           <ul className="flex flex-col gap-1 mb-2">
-            {o.adjuntos.map(a => (
-              <li key={a.id} className={`text-xs ${a.borrado ? 'opacity-50 line-through' : ''}`}>
+            {[...vigentes, ...(verQuitados ? quitados : [])].map(a => (
+              <li key={a.id} className={`text-xs ${a.borrado ? 'opacity-50' : ''}`}>
+                <span className={a.borrado ? 'line-through' : ''}>
                 <button type="button" className="text-azul hover:underline"
                   onClick={() => abrirAdjuntoFirmado(
                     () => fetchPagosAdjuntoSignedUrl('ordenes', o.id, a.id),
@@ -429,9 +439,58 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, verPii, toast }: {
                     : tipoAdjOrdenLabel(a.tipo).toLowerCase()})
                 </span>
                 {a.obs && <span className="text-gris-dark ml-1">· {a.obs}</span>}
+                </span>
+                {a.borrado && <span className="ml-1 text-[10px] font-semibold text-gris-dark">(quitado)</span>}
+                {!a.borrado && quitando !== a.id && (
+                  <button type="button"
+                    className="ml-2 text-[11px] text-rojo hover:underline disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed"
+                    disabled={!puedeSubir || quitar.isPending}
+                    title={puedeSubir
+                      ? 'Quitar este archivo de la orden (queda en «ver quitados»)'
+                      : 'Quitar papeles de la orden pide poder registrar pagos'}
+                    onClick={() => { setQuitando(a.id); setMotivoQuitar('') }}>
+                    Quitar
+                  </button>
+                )}
+                {!a.borrado && quitando === a.id && (
+                  <div className="mt-1 ml-4 p-2 rounded border border-rojo/40 bg-rojo-light flex flex-col gap-1.5">
+                    <label className="text-[11px] font-semibold text-gris-dark" htmlFor={`motivo-quitar-${a.id}`}>
+                      ¿Por qué se quita «{a.nombre_archivo}»?
+                    </label>
+                    <input id={`motivo-quitar-${a.id}`} value={motivoQuitar} maxLength={200} autoFocus
+                      onChange={e => setMotivoQuitar(e.target.value)}
+                      placeholder="Ej.: era el comprobante de otra OP"
+                      className="w-full px-2 py-1.5 border-[1.5px] border-gris-mid rounded text-xs bg-white outline-none focus:border-naranja" />
+                    <div className="text-[10px] text-gris-dark">
+                      El archivo no se borra: queda en «ver quitados» con el motivo.
+                      {(a.tipo === 'comprobante_pago' || a.tipo === 'cheque') && ' Si es la única prueba del pago, subí el reemplazo primero.'}
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <Button variant="ghost" size="sm" onClick={() => { setQuitando(null); setMotivoQuitar('') }}>Cancelar</Button>
+                      <Button variant="danger" size="sm" loading={quitar.isPending}
+                        disabled={!puedeSubir || motivoQuitar.trim().length < 3}
+                        title={motivoQuitar.trim().length < 3 ? 'Escribí el motivo (al menos 3 letras)' : undefined}
+                        onClick={async () => {
+                          try {
+                            await quitar.mutateAsync({ entidad: 'ordenes', id: o.id, adjId: a.id, motivo: motivoQuitar.trim() })
+                            toast(`✓ «${a.nombre_archivo}» quitado de la orden`, 'ok')
+                            setQuitando(null); setMotivoQuitar('')
+                          } catch (e) { toast(mensajeErrorPagos(e), 'err') }
+                        }}>
+                        Quitar archivo
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
+          {quitados.length > 0 && (
+            <button type="button" className="text-[11px] text-gris-dark hover:underline mb-2 block"
+              onClick={() => setVerQuitados(v => !v)}>
+              {verQuitados ? 'ocultar quitados' : `ver quitados (${quitados.length})`}
+            </button>
+          )}
           {o.estado === 'emitida' && (
             <span className="inline-flex items-center gap-1 flex-wrap"
               title={puedeSubir ? undefined : 'Subir papeles a la orden pide poder registrar pagos'}>
@@ -465,7 +524,7 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, verPii, toast }: {
               se desmanda. El modal muestra a qué dirección va. (20260921m) */}
           {o.estado === 'emitida' && puedeSubir && (
             <Button variant="secondary" size="sm" className="ml-2" onClick={() => setAvisando(true)}
-              title="Manda el comprobante al proveedor y el par completo al contador. Muestra antes a qué dirección.">
+              title="Manda el comprobante al proveedor y el par completo al contador (y la copia a Compras). Muestra antes a qué dirección.">
               ✉ Avisar del pago
               {(o.aviso_proveedor || o.aviso_contador) && (
                 <span className="ml-1 text-[10px] opacity-75">

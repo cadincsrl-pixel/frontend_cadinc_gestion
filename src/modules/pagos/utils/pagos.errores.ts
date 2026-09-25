@@ -107,6 +107,15 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   PROVEEDOR_REPETIDO_EN_LOTE: () => 'Un proveedor aparece dos veces en el lote: cada proveedor lleva una sola orden de pago.',
   FACTURA_REPETIDA_EN_LOTE:   () => 'Una factura aparece en dos órdenes del lote.',
   FECHA_DISTINTA_DEL_LOTE:    () => 'Todas las órdenes del lote llevan la misma fecha de pago.',
+  // El mismo archivo en bloques de proveedores distintos (25/09: el e-cheq de
+  // Cencosud quedó también en la OP de Gimenez). La transferencia masiva
+  // (mismo comprobante, todos transferencia) sí pasa.
+  ARCHIVO_EN_VARIOS_BLOQUES: d => {
+    const nombre = dato(d, 'nombre_archivo')
+    return `El archivo${typeof nombre === 'string' && nombre ? ` «${nombre}»` : ''} está en más de un proveedor: `
+      + 'el archivo de un cheque es de un solo pago, y un comprobante sólo se comparte entre bloques que son todos '
+      + 'transferencia (la transferencia masiva). Sacalo del bloque donde no va.'
+  },
 
   // ── Estado de la factura ──
   FACTURA_NO_APROBADA: () => 'La factura todavía no está aprobada: solo se pagan las aprobadas.',
@@ -209,8 +218,8 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   // ── Forma de pago y comprobantes ──
   FORMA_PAGO_REQUERIDA:  () => 'Elegí la forma de pago.',
   ADJUNTO_REQUERIDO: d => dato(d, 'forma_pago') === 'echeq'
-    ? 'No se puede borrar: sin ese archivo el pago en e-cheq queda sin comprobante. Subí el reemplazo primero.'
-    : 'No se puede borrar: es el único comprobante del pago. Subí el reemplazo primero.',
+    ? 'No se puede quitar: sin ese archivo el pago en e-cheq queda sin comprobante. Subí el reemplazo primero.'
+    : 'No se puede quitar: es el único comprobante del pago. Subí el reemplazo primero.',
   // Desde 20260929w sólo la transferencia pide el comprobante aparte. El
   // detalle `forma_pago: 'echeq'` es de un backend anterior (20260929u).
   COMPROBANTE_REQUERIDO: d => dato(d, 'forma_pago') === 'echeq'

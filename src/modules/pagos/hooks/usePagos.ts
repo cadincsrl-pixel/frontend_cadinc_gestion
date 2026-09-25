@@ -373,7 +373,7 @@ export function useAvisarPago() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, ...body }: {
-      id: number; a_proveedor?: boolean; a_contador?: boolean
+      id: number; a_proveedor?: boolean; a_contador?: boolean; a_compras?: boolean
       email_proveedor?: string; emails_proveedor?: string[]; guardar_email?: boolean
     }) => apiPost<{ resultados: PagosAvisoResultado[] }>(`/api/pagos/ordenes/${id}/avisar`, body),
     onSuccess: () => invalidarPagos(qc),
@@ -732,8 +732,10 @@ export function useSubirAdjuntoPagos() {
 export function useBorrarAdjuntoPagos() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ entidad, id, adjId }: { entidad: PagosEntidadAdjunto; id: number; adjId: number }) =>
-      apiDelete<{ success: boolean; id: number }>(`/api/pagos/${entidad}/${id}/adjuntos/${adjId}`),
+    // `motivo` (opcional, 20260929x; hoy solo en órdenes): queda en el obs del adjunto quitado.
+    mutationFn: ({ entidad, id, adjId, motivo }: { entidad: PagosEntidadAdjunto; id: number; adjId: number; motivo?: string }) =>
+      apiDelete<{ success: boolean; id: number }>(
+        `/api/pagos/${entidad}/${id}/adjuntos/${adjId}${motivo?.trim() ? `?motivo=${encodeURIComponent(motivo.trim())}` : ''}`),
     onSuccess: (_d, v) => {
       qc.invalidateQueries({ queryKey: PAGOS_KEYS.adjuntos(v.entidad, v.id) })
       qc.invalidateQueries({ queryKey: v.entidad === 'facturas' ? PAGOS_KEYS.facturas : PAGOS_KEYS.ordenes })

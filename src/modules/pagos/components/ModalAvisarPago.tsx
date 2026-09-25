@@ -17,7 +17,8 @@
  *
  * Cada uno recibe lo suyo, que no es lo mismo: al proveedor el comprobante con
  * el que salió la plata (la factura ya es suya), al contador el par completo,
- * que es lo que necesita para cerrar el asiento.
+ * que es lo que necesita para cerrar el asiento. Compras (20260929x) recibe
+ * una copia del paquete del contador, en un mail propio.
  */
 
 import { useState } from 'react'
@@ -61,6 +62,10 @@ export function ModalAvisarPago({ orden, onClose }: Props) {
   const emailPadron = (orden.proveedor_email ?? '').trim().toLowerCase()
   const [aProveedor, setAProveedor] = useState(true)
   const [aContador, setAContador] = useState(true)
+  // Copia a Compras (20260929x): tildada por defecto cuando hay casilla configurada.
+  const comprasEmail = avisoCfg?.compras_email ?? null
+  const [aComprasElegido, setACompras] = useState<boolean | null>(null)
+  const aCompras = !!comprasEmail && (aComprasElegido ?? true)
   /** null = todavía no tocó nada: los de «recibe avisos» (o el email viejo del padrón). */
   const [elegidos, setElegidos] = useState<Set<string> | null>(null)
   const [otro, setOtro] = useState('')
@@ -91,7 +96,7 @@ export function ModalAvisarPago({ orden, onClose }: Props) {
   const demasiados = aProveedor && emails.length > 10 // el backend acepta hasta 10 por envío
   const emailMal = otroMal || sinDestino || demasiados
   const noConfigurado = mail.data && !mail.data.configurado
-  const listo = (aProveedor || aContador) && !emailMal && !noConfigurado
+  const listo = (aProveedor || aContador || aCompras) && !emailMal && !noConfigurado
 
   async function mandar() {
     try {
@@ -99,6 +104,8 @@ export function ModalAvisarPago({ orden, onClose }: Props) {
         id: orden.id,
         a_proveedor: aProveedor,
         a_contador: aContador,
+        // Solo si está tildado: un backend anterior no conoce la clave.
+        ...(aCompras ? { a_compras: true } : {}),
         emails_proveedor: aProveedor && emails.length ? emails : undefined,
         guardar_email: guardar,
       })
@@ -212,6 +219,26 @@ export function ModalAvisarPago({ orden, onClose }: Props) {
               : sin el comprobante ve la deuda pero no puede cerrar el asiento.
             </div>
           )}
+        </div>
+
+        {/* ── Compras (copia, 20260929x) ── */}
+        <div className="border border-gris-mid rounded p-2.5 flex flex-col gap-2">
+          <label className={`flex items-center gap-2 font-semibold ${comprasEmail ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}
+            title={comprasEmail ? undefined : 'No hay mail de compras cargado: se carga en Compras › Configuración'}>
+            <input type="checkbox" checked={aCompras} disabled={!comprasEmail}
+              onChange={e => setACompras(e.target.checked)} />
+            <span>A compras (copia)</span>
+            {avisos.data?.some(a => a.destinatario === 'compras' && a.estado === 'enviado') && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-verde-light text-verde font-bold">ya se le avisó</span>
+            )}
+          </label>
+          <div className="text-[11px] text-gris-dark">
+            {comprasEmail
+              ? <>Va a <b>{comprasEmail}</b> en un mail aparte. Recibe <b>lo mismo que el contador</b>: el comprobante
+                  {comprobantes.length > 0 ? ` (${comprobantes.map(a => a.nombre_archivo).join(', ')})` : ' (no hay ninguno adjunto)'}
+                  {' '}y las facturas que cubre{facturasAdj.length > 0 ? ` (${facturasAdj.length} archivo${facturasAdj.length === 1 ? '' : 's'})` : ''}.</>
+              : <span className="text-naranja-dark">No hay mail de compras cargado: se carga en Compras › Configuración › Avisos de pago.</span>}
+          </div>
         </div>
 
         {/* ── Lo que ya se mandó ── */}

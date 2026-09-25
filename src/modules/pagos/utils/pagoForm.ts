@@ -227,3 +227,16 @@ export function chequesParaEnviar(cheques: ChequeFila[]): PagosChequeNuevo[] {
     foto_path: c.foto?.storage_path ?? null,
   }))
 }
+
+/**
+ * Los bloques del lote que rebotaron, según el detalle del error: `indices`
+ * (ARCHIVO_EN_VARIOS_BLOQUES: el mismo archivo en dos proveedores, se pintan
+ * todos), `indice` (RPC / service) o `campo = 'ordenes.N…'` (schema).
+ */
+export function bloquesDelError(d: Record<string, unknown> | null): number[] {
+  if (!d) return []
+  if (Array.isArray(d.indices)) return d.indices.filter((i): i is number => typeof i === 'number')
+  if (typeof d.indice === 'number') return [d.indice]
+  const m = typeof d.campo === 'string' ? /^ordenes\.(\d+)/.exec(d.campo) : null
+  return m ? [Number(m[1])] : []
+}

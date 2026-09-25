@@ -3424,7 +3424,8 @@ export interface PagosPaquete {
 
 /** Aviso de pago por mail: el resultado de un intento (20260921m). */
 export interface PagosAvisoResultado {
-  destinatario: 'proveedor' | 'contador'
+  /** `compras` (20260929x): copia del paquete del contador a Compras. */
+  destinatario: 'proveedor' | 'contador' | 'compras'
   /** `omitido` = no había dirección. No es un fallo, pero tampoco es avisado. */
   estado:       'enviado' | 'fallado' | 'omitido'
   email:        string | null

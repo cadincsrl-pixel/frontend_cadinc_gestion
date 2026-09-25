@@ -221,6 +221,8 @@ export interface PagosConfig {
     contador_email: string | null
     contador_email_efectivo: string | null
     contador_fuente: FuenteContador
+    /** Copia a Compras (20260929x): mismo paquete que el contador. Falta en un backend viejo. */
+    compras_email?: string | null
     responder_a: string | null
     responder_a_efectivo?: string | null
     nombre_remitente: string | null
@@ -236,6 +238,7 @@ export interface PagosConfig {
 export interface PagosConfigPatch {
   tributo_jurisdiccion_default_id?: number | null
   contador_email?: string | null
+  compras_email?: string | null
   responder_a?: string | null
   nombre_remitente?: string | null
   pie_texto?: string | null

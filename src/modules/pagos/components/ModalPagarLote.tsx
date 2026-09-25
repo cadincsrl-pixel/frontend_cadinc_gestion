@@ -20,7 +20,7 @@ import {
 import { detalleErrorPagos, mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
 import {
   FORMA_POR_DEFECTO, bloqueoPorFirma, chequesParaEnviar, filasIniciales, filasQueSePasan, formaSegunLoPrevisto, lineasDeOrden,
-  n, problemaCheques, repartirTotalEnFilas, totalDeFilas, type FilaFactura,
+  bloquesDelError, n, problemaCheques, repartirTotalEnFilas, totalDeFilas, type FilaFactura,
 } from '../utils/pagoForm'
 import { EditorCheques, useEditorCheques } from './pago/EditorCheques'
 import { AvisoNcSinAplicar, CampoACuenta, CuentaDestinoProveedor, FilasFacturasPago, cuentaDelPadron } from './pago/FacturasDelPago'
@@ -166,13 +166,13 @@ export function ModalPagarLote({ facturaIds, onClose }: Props) {
           .flatMap(e => e.pagadas.map(p => ({ ...p.factura, saldo: p.monto, saldo_pagable: p.monto }))),
       })
     } catch (e) {
-      // Nada se creó. El error dice qué bloque: se pinta ahí.
+      // Nada se creó. El error dice qué bloque (o bloques): se pinta ahí.
       const msg = mensajeErrorPagos(e)
-      const idx = indiceDelError(e)
-      const bloque = idx != null ? enviados[idx] : undefined
-      if (bloque) {
-        setErrores({ [bloque.proveedorId]: msg })
-        toast(`${bloque.nombre}: ${msg} No se registró ninguna orden.`, 'err')
+      const bloques = bloquesDelError(detalleErrorPagos(e))
+        .map(i => enviados[i]).filter((b): b is EstadoBloque => !!b)
+      if (bloques.length > 0) {
+        setErrores(Object.fromEntries(bloques.map(b => [b.proveedorId, msg])))
+        toast(`${bloques.map(b => b.nombre).join(' y ')}: ${msg} No se registró ninguna orden.`, 'err')
       } else {
         toast(`${msg} No se registró ninguna orden.`, 'err')
       }
@@ -259,15 +259,6 @@ export function ModalPagarLote({ facturaIds, onClose }: Props) {
       </div>
     </Modal>
   )
-}
-
-/** El bloque que falló: `detail.indice` (RPC / service) o `detail.campo = 'ordenes.N…'` (schema). */
-function indiceDelError(e: unknown): number | null {
-  const d = detalleErrorPagos(e)
-  if (!d) return null
-  if (typeof d.indice === 'number') return d.indice
-  const m = typeof d.campo === 'string' ? /^ordenes\.(\d+)/.exec(d.campo) : null
-  return m ? Number(m[1]) : null
 }
 
 // ── Un bloque por proveedor ───────────────────────────────────────────

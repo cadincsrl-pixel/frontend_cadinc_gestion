@@ -100,7 +100,7 @@ function AvisosCard({ puede }: { puede: boolean }) {
   }
   if (!aviso) return null
   // La key remonta el formulario cuando cambia lo guardado: toma los valores nuevos.
-  const key = [aviso.contador_email, aviso.responder_a, aviso.nombre_remitente, aviso.pie_texto].join('\u0001')
+  const key = [aviso.contador_email, aviso.compras_email, aviso.responder_a, aviso.nombre_remitente, aviso.pie_texto].join('\u0001')
   return <AvisosForm key={key} aviso={aviso} puede={puede} />
 }
 
@@ -113,23 +113,28 @@ function AvisosForm({ aviso, puede }: { aviso: AvisoCfg; puede: boolean }) {
   const tip = puede ? undefined : TIP_SIN_PERMISO
 
   const [contador, setContador] = useState(aviso.contador_email ?? '')
+  // Copia a Compras (20260929x). Un backend anterior no manda la clave: el campo no se muestra.
+  const soportaCompras = aviso.compras_email !== undefined
+  const [compras, setCompras] = useState(aviso.compras_email ?? '')
   const [responder, setResponder] = useState(aviso.responder_a ?? '')
   const [nombre, setNombre] = useState(aviso.nombre_remitente ?? '')
   const [pie, setPie] = useState(aviso.pie_texto ?? '')
   const [para, setPara] = useState('')
 
   const errContador = contador.trim() && !esEmailValido(contador) ? 'No tiene forma de dirección' : undefined
+  const errCompras = compras.trim() && !esEmailValido(compras) ? 'No tiene forma de dirección' : undefined
   const errResponder = responder.trim() && !esEmailValido(responder) ? 'No tiene forma de dirección' : undefined
   const errNombre = nombre.length > 60 ? 'Máximo 60 caracteres'
     : /[<>"]/.test(nombre) ? 'Sin comillas ni < >' : undefined
   const errPie = pie.length > 500 ? 'Máximo 500 caracteres'
     : pieConCbu(pie) ? 'No puede llevar un CBU, un CVU ni un alias' : undefined
-  const invalido = !!(errContador || errResponder || errNombre || errPie)
+  const invalido = !!(errContador || errCompras || errResponder || errNombre || errPie)
 
   const n = (s: string) => s.trim() || null
   const mail = (s: string) => s.trim().toLowerCase() || null  // la base los guarda en minúscula
   const cambios: PagosConfigPatch = {}
   if (mail(contador) !== (aviso.contador_email ?? null)) cambios.contador_email = mail(contador)
+  if (soportaCompras && mail(compras) !== (aviso.compras_email ?? null)) cambios.compras_email = mail(compras)
   if (mail(responder) !== (aviso.responder_a ?? null)) cambios.responder_a = mail(responder)
   if (n(nombre) !== (aviso.nombre_remitente ?? null)) cambios.nombre_remitente = n(nombre)
   if (n(pie) !== (aviso.pie_texto ?? null)) cambios.pie_texto = n(pie)
@@ -165,7 +170,7 @@ function AvisosForm({ aviso, puede }: { aviso: AvisoCfg; puede: boolean }) {
       <div>
         <div className="text-sm font-bold">Avisos de pago por mail</div>
         <div className="text-[11px] text-gris-dark">
-          El aviso que se manda desde una orden de pago al proveedor y al contador.
+          El aviso que se manda desde una orden de pago al proveedor, al contador y, en copia, a Compras.
         </div>
       </div>
 
@@ -186,6 +191,16 @@ function AvisosForm({ aviso, puede }: { aviso: AvisoCfg; puede: boolean }) {
             {' '}Vacío = la del servidor o la del usuario con rol Contador.
           </div>
         </div>
+        {soportaCompras && (
+          <div className="flex flex-col gap-1">
+            <Input label="Mail de compras (copia)" type="email" value={compras} disabled={!puede} error={errCompras}
+              placeholder="compras@ejemplo.com" onChange={e => setCompras(e.target.value)} />
+            <div className="text-[11px] text-gris-dark">
+              Recibe lo mismo que el contador: el comprobante del pago (y el archivo de cada cheque o e-cheq) más las facturas.
+              En cada aviso viene tildado y se puede destildar. Vacío = no se manda copia.
+            </div>
+          </div>
+        )}
         <div className="flex flex-col gap-1">
           <Input label="Responder a" type="email" value={responder} disabled={!puede} error={errResponder}
             placeholder="administracion@ejemplo.com.ar" onChange={e => setResponder(e.target.value)} />
