@@ -8,7 +8,6 @@ import {
   useComprarItem, useDespacharItem, useEnviarItem, useRechazarItem, useRevertirItem, useRevertirEnvio, useComprarFaltante,
   useRecibirDevolucion,
   useResolverStockCliente,
-  useEditarItem,
 } from '../hooks/useSolicitudes'
 import type { DestinoCompras } from '../hooks/useSolicitudes'
 import { useProveedores, useCreateProveedor } from '../hooks/useProveedores'
@@ -25,7 +24,7 @@ import { imprimirRemito, armarEstadoPedido, armarEnvios, useSoloEnvio, SoloEnvio
 import { useRemitosEnvio } from '../hooks/useRemitosEnvio'
 import { EMPRESA } from '@/lib/config/empresa'
 import { netaAFinal, finalANeta } from '@/lib/utils/iva'
-import { ItemHistorialModal } from './ItemHistorialModal'
+import { FichaItemModal, type TabFicha } from './FichaItemModal'
 import { useObrasTodas } from '@/modules/tarja/hooks/useObras'
 import { usePerfilesMap } from '@/lib/hooks/usePerfilesMap'
 import { usePermisos } from '@/hooks/usePermisos'
@@ -612,20 +611,7 @@ export function SolicitudesTab() {
   const { mutate: revertirItem } = useRevertirItem()
   const { mutate: revertirEnvio } = useRevertirEnvio()
   const { mutate: comprarFaltante } = useComprarFaltante()
-  const { mutate: editarPrecioItem, isPending: guardandoPrecio } = useEditarItem()
   const { mutate: createRemito, isPending: enviandoRemito } = useCreateRemitoEnvio()
-  // Carga y CORRECCIÓN de precio inline. El input es string local; el handler
-  // valida y castea a number.
-  const [precioItemId, setPrecioItemId] = useState<number | null>(null)
-  const [precioDraft, setPrecioDraft] = useState('')
-  function guardarPrecioItem(itemId: number) {
-    const p = Number(precioDraft)
-    if (!Number.isFinite(p) || p <= 0) { toast('Ingresá un precio válido', 'err'); return }
-    editarPrecioItem({ itemId, dto: { precio_unit: p } }, {
-      onSuccess: () => { toast('✓ Precio cargado', 'ok'); setPrecioItemId(null); setPrecioDraft('') },
-      onError: () => toast('Error al cargar el precio', 'err'),
-    })
-  }
   const [selected, setSelected] = useState<Set<number>>(new Set())
   // Último remito generado: se ofrece imprimir desde un modal con su propio
   // botón, para que el window.open corra DENTRO del gesto del usuario. En
@@ -740,7 +726,19 @@ export function SolicitudesTab() {
   const [soloEnvio, setSoloEnvio] = useSoloEnvio()
   const [modalNuevaFactura, setModalNuevaFactura] = useState(false)
   // Historial de transiciones de un ítem (timeline read-only).
-  const [modalHistorial, setModalHistorial] = useState<SolicitudCompraItem | null>(null)
+  // Ficha del renglón (24/09): precio con comparación, compras por proveedor
+  // e historial, en un solo modal. Reemplaza al «Editar precio» inline de la
+  // fila y al modal suelto del historial.
+  const [fichaItem, setFichaItem] = useState<{ item: SolicitudCompraItem; tab: TabFicha; puede: boolean; motivo?: string } | null>(null)
+  function abrirFicha(item: SolicitudCompraItem, esDeposito: boolean, tab: TabFicha = 'precio') {
+    const estadoOk = ESTADOS_CON_PRECIO_EDITABLE.includes(item.estado as string)
+    const puede = !!resolverItems && estadoOk && !esDeposito
+    const motivo = !resolverItems ? 'No tenés permiso para resolver ítems: podés ver el precio y el historial, pero no cambiarlo.'
+      : esDeposito ? 'En la obra depósito los renglones no llevan precio.'
+      : !estadoOk ? 'El precio se carga cuando el renglón está comprado, despachado del depósito o enviado.'
+      : undefined
+    setFichaItem({ item, tab, puede, motivo })
+  }
 
   // Forms
   // `prioridad` sigue en el form pero YA NO tiene input: se sacó de los dos
@@ -1799,7 +1797,13 @@ export function SolicitudesTab() {
                               <td className="px-2 py-2.5 text-xs text-gris-mid text-center">{i + 1}</td>
                               <td className="px-4 py-1.5">
                                 <div className="text-sm font-medium text-carbon">
-                                {item.descripcion}
+                                {item.id != null ? (
+                                  <button type="button" onClick={() => abrirFicha(item, !!obra?.es_deposito)}
+                                    title="Abrir la ficha: precio, compras por proveedor e historial"
+                                    className="text-left hover:text-azul hover:underline decoration-dotted underline-offset-2">
+                                    {item.descripcion}
+                                  </button>
+                                ) : item.descripcion}
                                 {/* Código y foto de la ficha. El código es la forma corta de nombrar
                                     un material por teléfono o en un remito; la miniatura saca la
                                     duda entre dos fichas que se llaman casi igual. Los dos salen
@@ -1873,7 +1877,11 @@ export function SolicitudesTab() {
                                       ) : (
                                         <>{item.cantidad} {unidLabel}</>
                                       )}
-                                      {item.precio_unit != null && <span className="ml-2">× {fmtM(item.precio_unit)} = <strong>{fmtM(cantEfectiva * item.precio_unit)}</strong></span>}
+                                      {item.precio_unit != null && (
+                                        <button type="button" disabled={item.id == null} onClick={() => abrirFicha(item, !!obra?.es_deposito)}
+                                          title="Ver y corregir el precio comparando con el catálogo y los proveedores"
+                                          className="ml-2 hover:text-azul hover:underline decoration-dotted underline-offset-2">× {fmtM(item.precio_unit)} = <strong>{fmtM(cantEfectiva * item.precio_unit)}</strong></button>
+                                      )}
                                       {item.esperando_precio && (
                                         <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-amarillo-light text-[#7A5500] font-sans inline-block whitespace-nowrap" title="Compra sin precio: el proveedor lo pasa después. Se carga desde Cargar precios en la cuenta corriente.">
                                           ⏳ esperando precio
@@ -1934,7 +1942,7 @@ export function SolicitudesTab() {
                               <td className="px-4 py-1.5">
                                 <div className="flex gap-1 justify-end flex-wrap items-center">
                                   {item.id != null && (
-                                    <button onClick={() => setModalHistorial(item)} title="Ver historial del ítem" className="text-xs px-2 py-1 rounded whitespace-nowrap text-gris-dark hover:text-azul hover:bg-azul-light">🕑</button>
+                                    <button onClick={() => abrirFicha(item, !!obra?.es_deposito, 'historial')} title="Ver historial del ítem" className="text-xs px-2 py-1 rounded whitespace-nowrap text-gris-dark hover:text-azul hover:bg-azul-light">🕑</button>
                                   )}
                                   {s.estado === 'aprobada' && (
                                     <>
@@ -2003,25 +2011,13 @@ export function SolicitudesTab() {
                                       {item.estado === 'rechazado' && (
                                         <button disabled={!resolverItems} onClick={() => handleRevertir(item.id!)} className="text-xs font-bold px-3 py-1 rounded whitespace-nowrap bg-amarillo-light text-[#7A5500] hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed">Reactivar</button>
                                       )}
-                                      {ESTADOS_CON_PRECIO_EDITABLE.includes(item.estado as string) && !obra?.es_deposito && (
-                                        precioItemId === item.id ? (
-                                          <>
-                                            <div className="w-24">
-                                              <InputMonto
-                                                autoFocus
-                                                value={precioDraft}
-                                                onChange={setPrecioDraft}
-                                                onKeyDown={e => { if (e.key === 'Enter') guardarPrecioItem(item.id!) }}
-                                                placeholder="$/unid"
-                                                className="px-2 py-1 rounded text-xs font-semibold"
-                                              />
-                                            </div>
-                                            <button disabled={guardandoPrecio} onClick={() => guardarPrecioItem(item.id!)} className="text-xs font-bold px-3 py-1 rounded whitespace-nowrap bg-verde-light text-verde hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed">✓</button>
-                                            <button onClick={() => { setPrecioItemId(null); setPrecioDraft('') }} className="text-xs font-bold px-3 py-1 rounded whitespace-nowrap text-gris-dark hover:text-rojo hover:bg-rojo-light">✕</button>
-                                          </>
-                                        ) : (
-                                          <button disabled={!resolverItems} onClick={() => { setPrecioItemId(item.id!); setPrecioDraft(!item.precio_unit || Number(item.precio_unit) === 0 ? '' : String(item.precio_unit)) }} className={`text-xs font-bold px-3 py-1 rounded whitespace-nowrap hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed ${!item.precio_unit || Number(item.precio_unit) === 0 ? 'bg-amarillo-light text-[#7A5500]' : 'bg-azul-light text-azul'}`}>{!item.precio_unit || Number(item.precio_unit) === 0 ? '💲 Cargar precio' : '✏️ Editar precio'}</button>
-                                        )
+                                      {/* Sin precio: un aviso chico que abre la ficha. Corregir un precio
+                                          cargado se hace tocando el precio o el material (24/09). */}
+                                      {ESTADOS_CON_PRECIO_EDITABLE.includes(item.estado as string) && !obra?.es_deposito
+                                        && (!item.precio_unit || Number(item.precio_unit) === 0) && (
+                                        <button disabled={!resolverItems} onClick={() => abrirFicha(item, !!obra?.es_deposito)}
+                                          title={resolverItems ? 'Cargar el precio mirando el catálogo y las compras anteriores' : 'Sin permiso para resolver ítems'}
+                                          className="text-xs font-bold px-2 py-1 rounded whitespace-nowrap bg-amarillo-light text-[#7A5500] hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed">💲 Cargar precio</button>
                                       )}
                                       {item.estado === 'enviado' && (
                                         <button disabled={!resolverItems} onClick={() => handleRevertirEnvio(item.id!)} title={item.devuelve ? 'Deshacer la recepción (el renglón vuelve a quedar pendiente de recibir)' : 'Deshacer el envío (vuelve a comprado/depósito, borra el remito)'} className="text-xs font-bold px-3 py-1 rounded whitespace-nowrap text-gris-dark hover:text-rojo hover:bg-rojo-light disabled:opacity-40 disabled:cursor-not-allowed">↩ Deshacer</button>
@@ -2271,7 +2267,12 @@ export function SolicitudesTab() {
                             <div className="flex-1 min-w-0">
                               <div className="text-xs text-gris-mid">#{i + 1}</div>
                               <div className="text-sm font-medium text-carbon">
-                                {item.descripcion}
+                                {item.id != null ? (
+                                  <button type="button" onClick={() => abrirFicha(item, !!obra?.es_deposito)}
+                                    className="text-left hover:text-azul underline decoration-dotted decoration-gris-mid underline-offset-2">
+                                    {item.descripcion}
+                                  </button>
+                                ) : item.descripcion}
                                 {/* Código y foto de la ficha. El código es la forma corta de nombrar
                                     un material por teléfono o en un remito; la miniatura saca la
                                     duda entre dos fichas que se llaman casi igual. Los dos salen
@@ -2340,7 +2341,8 @@ export function SolicitudesTab() {
                                       <>{item.cantidad} {unidLabel}</>
                                     )}
                                     {item.precio_unit != null && (
-                                      <span className="ml-2">× {fmtM(item.precio_unit)} = <strong>{fmtM(cantEfectiva * item.precio_unit)}</strong></span>
+                                      <button type="button" disabled={item.id == null} onClick={() => abrirFicha(item, !!obra?.es_deposito)}
+                                        className="ml-2 underline decoration-dotted decoration-gris-mid underline-offset-2">× {fmtM(item.precio_unit)} = <strong>{fmtM(cantEfectiva * item.precio_unit)}</strong></button>
                                     )}
                                     {item.esperando_precio && (
                                       <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-amarillo-light text-[#7A5500] font-sans inline-block whitespace-nowrap" title="Compra sin precio: el proveedor lo pasa después.">
@@ -2391,7 +2393,7 @@ export function SolicitudesTab() {
 
                           {/* Historial (siempre disponible, read-only) */}
                           {item.id != null && (
-                            <button onClick={() => setModalHistorial(item)} className="mt-1 min-h-[36px] px-2 py-1.5 -ml-2 inline-flex items-center rounded text-[11px] font-bold text-gris-dark hover:text-azul">
+                            <button onClick={() => abrirFicha(item, !!obra?.es_deposito, 'historial')} className="mt-1 min-h-[36px] px-2 py-1.5 -ml-2 inline-flex items-center rounded text-[11px] font-bold text-gris-dark hover:text-azul">
                               🕑 Ver historial
                             </button>
                           )}
@@ -2453,27 +2455,10 @@ export function SolicitudesTab() {
                               {item.estado === 'rechazado' && (
                                 <button disabled={!resolverItems} onClick={() => handleRevertir(item.id!)} className="w-full text-xs font-bold px-3 py-1.5 rounded bg-amarillo-light text-[#7A5500] hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">Reactivar</button>
                               )}
-                              {ESTADOS_CON_PRECIO_EDITABLE.includes(item.estado as string) && !obra?.es_deposito && (
-                                <div className="mb-2">
-                                  {precioItemId === item.id ? (
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-24">
-                                        <InputMonto
-                                          autoFocus
-                                          value={precioDraft}
-                                          onChange={setPrecioDraft}
-                                          onKeyDown={e => { if (e.key === 'Enter') guardarPrecioItem(item.id!) }}
-                                          placeholder="$/unid"
-                                          className="px-2 py-1.5 min-h-[36px] rounded text-xs font-semibold"
-                                        />
-                                      </div>
-                                      <button disabled={guardandoPrecio} onClick={() => guardarPrecioItem(item.id!)} className="text-xs font-bold px-3 py-1.5 rounded bg-verde-light text-verde hover:opacity-80 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">✓</button>
-                                      <button onClick={() => { setPrecioItemId(null); setPrecioDraft('') }} className="text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo min-h-[36px]">✕</button>
-                                    </div>
-                                  ) : (
-                                    <button disabled={!resolverItems} onClick={() => { setPrecioItemId(item.id!); setPrecioDraft(!item.precio_unit || Number(item.precio_unit) === 0 ? '' : String(item.precio_unit)) }} className={`w-full text-xs font-bold px-3 py-1.5 rounded min-h-[36px] hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed ${!item.precio_unit || Number(item.precio_unit) === 0 ? 'bg-amarillo-light text-[#7A5500]' : 'bg-azul-light text-azul'}`}>{!item.precio_unit || Number(item.precio_unit) === 0 ? '💲 Cargar precio' : '✏️ Editar precio'}</button>
-                                  )}
-                                </div>
+                              {ESTADOS_CON_PRECIO_EDITABLE.includes(item.estado as string) && !obra?.es_deposito
+                                && (!item.precio_unit || Number(item.precio_unit) === 0) && (
+                                <button disabled={!resolverItems} onClick={() => abrirFicha(item, !!obra?.es_deposito)}
+                                  className="w-full text-xs font-bold px-3 py-1.5 rounded min-h-[36px] mb-2 bg-amarillo-light text-[#7A5500] hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed">💲 Cargar precio</button>
                               )}
                               {item.estado === 'enviado' && (
                                 <button disabled={!resolverItems} onClick={() => handleRevertirEnvio(item.id!)} className="w-full text-xs font-bold px-3 py-1.5 rounded bg-gris text-gris-dark hover:bg-rojo-light hover:text-rojo min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed">↩ Deshacer {item.devuelve ? 'recepción' : 'envío'}</button>
@@ -2510,7 +2495,17 @@ export function SolicitudesTab() {
       {pager}
 
       {/* ── Modal historial del ítem (timeline) ── */}
-      <ItemHistorialModal item={modalHistorial} onClose={() => setModalHistorial(null)} />
+      {fichaItem && (
+        <FichaItemModal
+          key={`${fichaItem.item.id}-${fichaItem.tab}`}
+          item={fichaItem.item}
+          ficha={fichaItem.item.material_id ? stockMap.get(fichaItem.item.material_id) as StockMaterial | undefined : undefined}
+          tabInicial={fichaItem.tab}
+          puedeEditarPrecio={fichaItem.puede}
+          motivoSinEdicion={fichaItem.motivo}
+          onClose={() => setFichaItem(null)}
+        />
+      )}
 
       {/* Visor de la foto del renglón. Sólo mirar: subir y borrar fotos vive en
           Catálogo, que es donde está el permiso y el control de duplicados. */}

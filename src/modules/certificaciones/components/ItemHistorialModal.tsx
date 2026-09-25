@@ -29,6 +29,20 @@ const ACCION_CFG: Record<string, { label: string; icono: string; dot: string }> 
   // el evento decía "devuelto" a secas, sin ícono.
   devuelto:        { label: 'Devuelto al depósito',   icono: '📦', dot: 'bg-amarillo-light text-[#7A5500]' },
   cancelado:       { label: 'Cancelado antes de salir', icono: '↩', dot: 'bg-rojo-light text-rojo'        },
+  // Los que existen en la base y caían al fallback con el nombre técnico
+  // («vinculacion_manual»…) hasta el 25/09.
+  envio_parcial:        { label: 'Envío parcial',                 icono: '📤', dot: 'bg-verde-light text-verde' },
+  esperando_precio:     { label: 'Comprado, esperando precio',    icono: '⏳', dot: 'bg-amarillo-light text-[#7A5500]' },
+  precio_cambiado:      { label: 'Precio cambiado',               icono: '💲', dot: 'bg-azul-light text-azul' },
+  correccion:           { label: 'Corrección',                    icono: '✏️', dot: 'bg-gris text-gris-dark' },
+  descripcion_unificada:{ label: 'Descripción unificada',         icono: '✏️', dot: 'bg-gris text-gris-dark' },
+  vinculacion_manual:   { label: 'Vinculado a una ficha del catálogo', icono: '🔗', dot: 'bg-azul-light text-azul' },
+  movido_de_pedido:     { label: 'Movido de pedido',              icono: '↔', dot: 'bg-gris text-gris-dark' },
+  pagado_por_cadinc:    { label: 'Lo paga CADINC',                icono: '🏢', dot: 'bg-azul-light text-azul-mid' },
+  pagado_por_cliente:   { label: 'Lo pagó el cliente directo',    icono: '💵', dot: 'bg-naranja-light text-naranja-dark' },
+  consumible_marcado:   { label: 'Marcado como consumible propio', icono: '🧰', dot: 'bg-azul-light text-azul-mid' },
+  consumible_desmarcado:{ label: 'Devuelto a la cuenta del cliente', icono: '🧰', dot: 'bg-gris text-gris-dark' },
+  sacado_de_cuenta_cliente: { label: 'Sacado de la cuenta del cliente', icono: '↩', dot: 'bg-gris text-gris-dark' },
 }
 const ACCION_FALLBACK = { label: '', icono: '•', dot: 'bg-gris text-gris-dark' }
 
@@ -57,10 +71,6 @@ export function ItemHistorialModal({
   item: SolicitudCompraItem | null
   onClose: () => void
 }) {
-  const perfiles = usePerfilesMap()
-  // Solo fetch cuando el modal está abierto (item != null).
-  const { data: eventos = [], isLoading, isError } = useItemEventos(item?.id, !!item)
-
   return (
     <Modal
       open={!!item}
@@ -77,102 +87,115 @@ export function ItemHistorialModal({
               {fmtNum(item.cantidad)} {item.unidad}
             </div>
           </div>
-
-          {isLoading && (
-            <div className="flex items-center justify-center gap-3 text-gris-dark py-8">
-              <span className="w-5 h-5 border-2 border-naranja border-t-transparent rounded-full animate-spin" />
-              Cargando historial...
-            </div>
-          )}
-
-          {isError && (
-            <div className="text-center text-rojo text-sm py-6">
-              No se pudo cargar el historial.
-            </div>
-          )}
-
-          {!isLoading && !isError && eventos.length === 0 && (
-            <div className="text-center text-gris-dark text-sm py-8">
-              <div className="text-3xl mb-2">📋</div>
-              <p>Sin eventos registrados todavía.</p>
-              <p className="text-xs mt-1">Los movimientos viejos pueden no tener historial.</p>
-            </div>
-          )}
-
-          {/* Timeline: cronológico (más viejo arriba, más reciente abajo = actual) */}
-          {!isLoading && !isError && eventos.length > 0 && (
-            <div className="relative">
-              <div className="absolute left-4 top-4 bottom-4 w-0.5 bg-gris-mid" />
-              <div className="flex flex-col gap-0">
-                {eventos.map((e, idx) => {
-                  const cfg      = ACCION_CFG[e.accion] ?? { ...ACCION_FALLBACK, label: e.accion }
-                  const esActual = idx === eventos.length - 1
-                  const quien    = e.user_id ? (perfiles.get(e.user_id) ?? 'Usuario') : 'Sistema'
-                  const estAnt   = estadoLabel(e.estado_anterior)
-                  const estNue   = estadoLabel(e.estado_nuevo)
-                  const precio   = e.meta && typeof e.meta.precio_unit === 'number' ? e.meta.precio_unit : null
-
-                  return (
-                    <div key={e.id} className="flex items-start gap-4 pb-6 last:pb-0 relative">
-                      {/* Dot */}
-                      <div className={`
-                        w-8 h-8 rounded-full flex items-center justify-center
-                        font-bold text-sm flex-shrink-0 z-10 border-2 border-white
-                        ${cfg.dot}
-                        ${esActual ? 'ring-2 ring-naranja ring-offset-1' : ''}
-                      `}>
-                        {cfg.icono}
-                      </div>
-
-                      {/* Card */}
-                      <div className={`flex-1 bg-gris rounded-xl p-3 ${esActual ? 'border border-naranja/30' : ''}`}>
-                        <div className="flex items-start justify-between flex-wrap gap-2">
-                          <div className="min-w-0">
-                            <div className="font-bold text-sm text-carbon">
-                              {cfg.label}
-                              {esActual && (
-                                <span className="ml-2 text-[10px] font-bold bg-naranja text-white px-1.5 py-0.5 rounded-full">
-                                  Actual
-                                </span>
-                              )}
-                            </div>
-
-                            {/* Transición de estado */}
-                            {estNue && (
-                              <div className="flex items-center gap-1 mt-1 text-xs text-gris-dark">
-                                {estAnt && (
-                                  <>
-                                    <span className="font-mono">{estAnt}</span>
-                                    <span className="text-naranja">→</span>
-                                  </>
-                                )}
-                                <span className="font-mono font-bold text-carbon">{estNue}</span>
-                              </div>
-                            )}
-
-                            {/* Detalle: cantidad / precio / comentario */}
-                            <div className="mt-1 text-xs text-gris-dark space-y-0.5">
-                              {e.cantidad != null && <div>Cantidad: <strong>{fmtNum(e.cantidad)}</strong></div>}
-                              {precio != null && <div>Precio unit.: <strong>{fmtNum(precio)}</strong></div>}
-                              {e.comentario && <div className="italic">&ldquo;{e.comentario}&rdquo;</div>}
-                            </div>
-
-                            <div className="text-[11px] text-gris-dark mt-1">por {quien}</div>
-                          </div>
-
-                          <div className="text-[10px] font-mono text-gris-dark text-right flex-shrink-0">
-                            {fmtFecha(e.created_at)}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
+          <ItemHistorialCuerpo item={item} />
         </div>
       )}
     </Modal>
+  )
+}
+
+/**
+ * La línea de tiempo del renglón, sin la ventana: la usa también la ficha del
+ * renglón en Solicitudes (24/09).
+ */
+export function ItemHistorialCuerpo({ item }: { item: SolicitudCompraItem }) {
+  const perfiles = usePerfilesMap()
+  const { data: eventos = [], isLoading, isError } = useItemEventos(item.id, true)
+  return (
+    <>
+          {isLoading && (
+        <div className="flex items-center justify-center gap-3 text-gris-dark py-8">
+          <span className="w-5 h-5 border-2 border-naranja border-t-transparent rounded-full animate-spin" />
+          Cargando historial...
+        </div>
+      )}
+
+      {isError && (
+        <div className="text-center text-rojo text-sm py-6">
+          No se pudo cargar el historial.
+        </div>
+      )}
+
+      {!isLoading && !isError && eventos.length === 0 && (
+        <div className="text-center text-gris-dark text-sm py-8">
+          <div className="text-3xl mb-2">📋</div>
+          <p>Sin eventos registrados todavía.</p>
+          <p className="text-xs mt-1">Los movimientos viejos pueden no tener historial.</p>
+        </div>
+      )}
+
+      {/* Timeline: cronológico (más viejo arriba, más reciente abajo = actual) */}
+      {!isLoading && !isError && eventos.length > 0 && (
+        <div className="relative">
+          <div className="absolute left-4 top-4 bottom-4 w-0.5 bg-gris-mid" />
+          <div className="flex flex-col gap-0">
+            {eventos.map((e, idx) => {
+              const cfg      = ACCION_CFG[e.accion] ?? { ...ACCION_FALLBACK, label: e.accion }
+              const esActual = idx === eventos.length - 1
+              const quien    = e.user_id ? (perfiles.get(e.user_id) ?? 'Usuario') : 'Sistema'
+              const estAnt   = estadoLabel(e.estado_anterior)
+              const estNue   = estadoLabel(e.estado_nuevo)
+              const precio   = e.meta && typeof e.meta.precio_unit === 'number' ? e.meta.precio_unit : null
+
+              return (
+                <div key={e.id} className="flex items-start gap-4 pb-6 last:pb-0 relative">
+                  {/* Dot */}
+                  <div className={`
+                    w-8 h-8 rounded-full flex items-center justify-center
+                    font-bold text-sm flex-shrink-0 z-10 border-2 border-white
+                    ${cfg.dot}
+                    ${esActual ? 'ring-2 ring-naranja ring-offset-1' : ''}
+                  `}>
+                    {cfg.icono}
+                  </div>
+
+                  {/* Card */}
+                  <div className={`flex-1 bg-gris rounded-xl p-3 ${esActual ? 'border border-naranja/30' : ''}`}>
+                    <div className="flex items-start justify-between flex-wrap gap-2">
+                      <div className="min-w-0">
+                        <div className="font-bold text-sm text-carbon">
+                          {cfg.label}
+                          {esActual && (
+                            <span className="ml-2 text-[10px] font-bold bg-naranja text-white px-1.5 py-0.5 rounded-full">
+                              Actual
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Transición de estado */}
+                        {estNue && (
+                          <div className="flex items-center gap-1 mt-1 text-xs text-gris-dark">
+                            {estAnt && (
+                              <>
+                                <span className="font-mono">{estAnt}</span>
+                                <span className="text-naranja">→</span>
+                              </>
+                            )}
+                            <span className="font-mono font-bold text-carbon">{estNue}</span>
+                          </div>
+                        )}
+
+                        {/* Detalle: cantidad / precio / comentario */}
+                        <div className="mt-1 text-xs text-gris-dark space-y-0.5">
+                          {e.cantidad != null && <div>Cantidad: <strong>{fmtNum(e.cantidad)}</strong></div>}
+                          {precio != null && <div>Precio unit.: <strong>{fmtNum(precio)}</strong></div>}
+                          {e.comentario && <div className="italic">&ldquo;{e.comentario}&rdquo;</div>}
+                        </div>
+
+                        <div className="text-[11px] text-gris-dark mt-1">por {quien}</div>
+                      </div>
+
+                      <div className="text-[10px] font-mono text-gris-dark text-right flex-shrink-0">
+                        {fmtFecha(e.created_at)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </>
   )
 }

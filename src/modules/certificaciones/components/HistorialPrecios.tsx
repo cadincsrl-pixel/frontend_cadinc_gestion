@@ -40,9 +40,36 @@ interface Props {
    */
   onDescartar?: (compra: MaterialCompra, descartar: boolean) => void
   ocupado?:     boolean
+  /** Texto del tooltip de «usar»: en el catálogo va al precio de referencia; en la ficha de un renglón, al renglón. */
+  usarTitulo?:  string
 }
 
+type Material = Pick<CatalogoMaterial, 'id' | 'nombre' | 'unidad' | 'precio_ref'> & { precio_actualizado_en?: string | null }
+
 export function HistorialPrecios({ material, onClose, onUsarPrecio, onDescartar, ocupado }: Props) {
+  const { data } = useMaterialCompras(material.id)
+  const compras = data?.compras ?? []
+  const porProveedor = data?.por_proveedor ?? []
+  const primera = compras.length ? compras[compras.length - 1]! : null
+  return (
+    <Modal open onClose={onClose} title={material.nombre} width="max-w-3xl"
+      footer={<div className="flex justify-between items-center gap-2">
+        <span className="text-xs text-gris-dark">
+          {compras.length === 0 ? 'Sin compras registradas por el sistema.' : `${compras.length} compra${compras.length === 1 ? '' : 's'} · ${porProveedor.length} proveedor${porProveedor.length === 1 ? '' : 'es'}${primera?.fecha ? ` · desde ${fmtFecha(primera.fecha)}` : ''}`}
+        </span>
+        <Button onClick={onClose}>Cerrar</Button>
+      </div>}
+    >
+      <HistorialPreciosCuerpo material={material} onUsarPrecio={onUsarPrecio} onDescartar={onDescartar} ocupado={ocupado} />
+    </Modal>
+  )
+}
+
+/**
+ * El contenido del historial, sin la ventana: lo usa también la ficha del
+ * renglón en Solicitudes (24/09), donde «usar» copia el precio al renglón.
+ */
+export function HistorialPreciosCuerpo({ material, onUsarPrecio, onDescartar, ocupado, usarTitulo = 'Copiar este precio al precio de referencia' }: Omit<Props, 'onClose' | 'material'> & { material: Material }) {
   const { data, isLoading, isError, error } = useMaterialCompras(material.id)
   const compras = useMemo(() => data?.compras ?? [], [data])
   const porProveedor = data?.por_proveedor ?? []
@@ -61,18 +88,9 @@ export function HistorialPrecios({ material, onClose, onUsarPrecio, onDescartar,
 
   const ref = Number(material.precio_ref)
   const difRef = (p: number) => ref > 0 ? (p - ref) / ref * 100 : null
-  const primera = compras.length ? compras[compras.length - 1]! : null
   const ultima = compras[0] ?? null
 
   return (
-    <Modal open onClose={onClose} title={material.nombre} width="max-w-3xl"
-      footer={<div className="flex justify-between items-center gap-2">
-        <span className="text-xs text-gris-dark">
-          {compras.length === 0 ? 'Sin compras registradas por el sistema.' : `${compras.length} compra${compras.length === 1 ? '' : 's'} · ${porProveedor.length} proveedor${porProveedor.length === 1 ? '' : 'es'}${primera?.fecha ? ` · desde ${fmtFecha(primera.fecha)}` : ''}`}
-        </span>
-        <Button onClick={onClose}>Cerrar</Button>
-      </div>}
-    >
       <div className="flex flex-col gap-4">
         {/* Resumen */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
@@ -120,7 +138,7 @@ export function HistorialPrecios({ material, onClose, onUsarPrecio, onDescartar,
                         <td className="px-3 py-1.5 hidden md:table-cell text-right text-xs text-gris-dark font-mono tabular-nums">{p.minimo === p.maximo ? fmtM(p.minimo) : `${fmtM(p.minimo)} – ${fmtM(p.maximo)}`}</td>
                         {onUsarPrecio && (
                           <td className="px-3 py-1.5 text-right">
-                            {p.ultimo_precio !== ref && <button type="button" disabled={ocupado} onClick={() => onUsarPrecio(p.ultimo_precio)} className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-azul-light text-azul hover:opacity-80" title="Copiar este precio al precio de referencia">usar</button>}
+                            {p.ultimo_precio !== ref && <button type="button" disabled={ocupado} onClick={() => onUsarPrecio(p.ultimo_precio)} className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-azul-light text-azul hover:opacity-80" title={usarTitulo}>usar</button>}
                           </td>
                         )}
                       </tr>
@@ -173,7 +191,7 @@ export function HistorialPrecios({ material, onClose, onUsarPrecio, onDescartar,
                         <td className={`px-3 py-1.5 hidden sm:table-cell text-right text-xs font-bold tabular-nums ${v === null ? 'text-gris-dark' : v > 0.5 ? 'text-rojo' : v < -0.5 ? 'text-verde' : 'text-gris-dark'}`}>{v === null ? '—' : fmtVar(v)}</td>
                         {onUsarPrecio && (
                           <td className="px-3 py-1.5 text-right whitespace-nowrap">
-                            {!fuera && precio !== ref && <button type="button" disabled={ocupado} onClick={() => onUsarPrecio(precio)} className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-azul-light text-azul hover:opacity-80" title="Copiar este precio al precio de referencia">usar</button>}
+                            {!fuera && precio !== ref && <button type="button" disabled={ocupado} onClick={() => onUsarPrecio(precio)} className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-azul-light text-azul hover:opacity-80" title={usarTitulo}>usar</button>}
                             {onDescartar && (
                               <button type="button" disabled={ocupado}
                                 onClick={() => onDescartar(c, !fuera)}
@@ -201,7 +219,6 @@ export function HistorialPrecios({ material, onClose, onUsarPrecio, onDescartar,
           </div>
         )}
       </div>
-    </Modal>
   )
 }
 
