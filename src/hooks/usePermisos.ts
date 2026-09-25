@@ -88,6 +88,8 @@ export function usePermisos(modulo: string) {
     bienesUso:            flagCapacidad('bienes_uso', false),
     // Pagos: importar «Mis Comprobantes Recibidos» de ARCA (20260927c).
     importarComprobantes: flagCapacidad('importar_comprobantes', false),
+    // Tanda 6 (20260929a): configuración de Ventas / Compras y Datos de la empresa (admin).
+    configurar:           flagCapacidad('configurar', false),
     asistenteIa:          flagCapacidad('asistente_ia', false),
     esCapataz,
     esJefeObra,

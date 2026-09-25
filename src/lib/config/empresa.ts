@@ -13,7 +13,25 @@
 // silo (un build por empresa) alcanza. Para el modelo pool habría que mover la
 // fuente a runtime (server component / endpoint), pero la interfaz no cambia.
 
-export const EMPRESA = {
+import type { EmpresaApi } from '@/types/config.types'
+
+/** Forma de `EMPRESA`. Mutable desde la tanda 6: `hidratarEmpresa` le pisa los datos de la base. */
+export interface EmpresaConfig {
+  nombre: string
+  cuit: string
+  domicilio: string
+  logoUrl: string
+  logoPapelUrl: string
+  razonSocialFactura: string
+  domicilioFactura1: string
+  domicilioFactura2: string
+  tel: string
+  condicionIva: string
+  iibb: string
+  inicioActividades: string
+}
+
+export const EMPRESA: EmpresaConfig = {
   /** Nombre comercial / razón social que se muestra y se imprime en documentos. */
   nombre:  process.env.NEXT_PUBLIC_EMPRESA_NOMBRE  ?? 'CADINC SRL',
   /** CUIT para solicitudes (turno/transferencia) y documentos formales. */
@@ -40,7 +58,52 @@ export const EMPRESA = {
   iibb:              process.env.NEXT_PUBLIC_EMPRESA_IIBB              ?? '33-71719194-9',
   /** DD/MM/YYYY. La de ARCA (01/07/2021), confirmada por el dueño el 23/09/2026: Finnegans imprimía 14/08/2020. */
   inicioActividades: process.env.NEXT_PUBLIC_EMPRESA_INICIO_ACTIVIDADES ?? '01/07/2021',
-} as const
+}
+
+// ── Datos de la empresa desde la base (tanda 6, 20260929a) ──────────────────
+// Los defaults de arriba son idénticos a la semilla de `empresa_config`, así
+// que un PDF generado antes de que llegue GET /api/empresa sale igual.
+
+/** YYYY-MM-DD → DD/MM/YYYY ('' si no hay fecha). */
+export function fechaDdMmYyyy(iso: string | null | undefined): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso ?? '')
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : ''
+}
+
+/** Mismo formato que `empresa_config_json()` en la base (para la vista previa). */
+export function derivarDomicilios(e: {
+  domicilio_calle: string; calle_factura: string; localidad: string; provincia: string; codigo_postal: string
+}): { domicilio: string; domicilioFactura1: string; domicilioFactura2: string } {
+  const t = (s: string) => (s ?? '').trim()
+  const locProv = [t(e.localidad), t(e.provincia)].filter(Boolean).join(', ')
+  return {
+    domicilio: [t(e.domicilio_calle), locProv].filter(Boolean).join(' — '),
+    domicilioFactura1: [t(e.calle_factura) || t(e.domicilio_calle), t(e.localidad)].filter(Boolean).join(' – '),
+    domicilioFactura2: [t(e.codigo_postal) ? `(${t(e.codigo_postal)})` : '', t(e.provincia), 'Argentina'].filter(Boolean).join(' '),
+  }
+}
+
+/** Lo que imprime un documento con estos datos (sin logos). */
+export function empresaImpresa(d: EmpresaApi): Omit<EmpresaConfig, 'logoUrl' | 'logoPapelUrl'> {
+  return {
+    nombre:             d.nombre_fantasia,
+    razonSocialFactura: d.razon_social,
+    cuit:               d.cuit_fmt,
+    domicilio:          d.domicilio,
+    domicilioFactura1:  d.domicilio_factura_1,
+    domicilioFactura2:  d.domicilio_factura_2,
+    tel:                d.telefono,
+    condicionIva:       d.condicion_iva,
+    iibb:               d.iibb,
+    inicioActividades:  fechaDdMmYyyy(d.inicio_actividades),
+  }
+}
+
+/** Pisa `EMPRESA` con los datos de la base. `logoUrl`/`logoPapelUrl` no se tocan. */
+export function hidratarEmpresa(d: EmpresaApi): void {
+  if (!d || typeof d !== 'object' || !d.razon_social) return
+  Object.assign(EMPRESA, empresaImpresa(d))
+}
 
 /** Helper para labels tipo "Flota CADINC". */
 export function conEmpresa(prefijo: string): string {

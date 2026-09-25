@@ -5,8 +5,8 @@
 import * as XLSX from 'xlsx'
 import type { CtbEjercicio } from '@/types/contabilidad.types'
 import { fmtFecha, fmtFechaHora } from './contabilidad.utils'
-
-export const EMPRESA = { razon_social: 'CADINC S.R.L.', cuit: '33-71719194-9' } as const
+// Razón social y CUIT salen de los Datos de la empresa (tanda 6), ya no de una copia local.
+import { EMPRESA } from '@/lib/config/empresa'
 
 export type Celda = string | number | null
 
@@ -26,7 +26,7 @@ export function ejerciciosDelRango<T extends Pick<CtbEjercicio, 'desde' | 'hasta
 
 export function encabezadoRubrica(o: { titulo: string; ejercicio: string; rango: string; emitido?: string }): Celda[][] {
   return [
-    [EMPRESA.razon_social],
+    [EMPRESA.razonSocialFactura],
     [`CUIT ${EMPRESA.cuit}`],
     [o.titulo],
     [o.ejercicio],

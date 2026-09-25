@@ -1211,6 +1211,9 @@ export type ModuloPermisos = { [K in Accion]?: boolean } & {
   // - pagos.importar_comprobantes: alta masiva de facturas recibidas desde
   //   «Mis Comprobantes» de ARCA (quedan sin imputar). Default false.
   importar_comprobantes?:  boolean
+  // Tanda 6 (20260929a): configurar Ventas / Compras y, en admin, los Datos
+  // de la empresa. Default false; admin bypass.
+  configurar?:             boolean
 }
 export type Permisos = Record<string, ModuloPermisos>
 

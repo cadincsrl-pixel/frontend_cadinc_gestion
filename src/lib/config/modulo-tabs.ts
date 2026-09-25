@@ -68,6 +68,7 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
     { key: 'plantillas', label: 'Plantillas de roles', icon: '🎭', meta: 'Alcance de cada preset' },
     { key: 'auditoria',  label: 'Auditoría',           icon: '📋', meta: 'Registro de actividad' },
     { key: 'precios',    label: 'Movimientos de precios', icon: '💲', meta: 'Quién tocó qué precio' },
+    { key: 'empresa',    label: 'Datos de la empresa', icon: '🏢', meta: 'Razón social, domicilio, IIBB' },
   ],
   flota: [
     { key: 'vehiculos',  label: 'Vehículos',  icon: '🚙', meta: 'Flota interna de CADINC' },

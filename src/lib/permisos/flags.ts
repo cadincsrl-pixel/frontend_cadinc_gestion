@@ -32,6 +32,7 @@ export type FlagBoolean =
   | 'asientos_manuales' | 'cerrar_periodos' | 'editar_plan'
   | 'contabilizar' | 'editar_mapeos' | 'importar_comprobantes'
   | 'movimientos_fondos' | 'bienes_uso'
+  | 'configurar'
 
 export interface FlagDef {
   key:   FlagBoolean
@@ -226,6 +227,13 @@ export const FLAGS_BOOLEAN: FlagDef[] = [
     label: '🏗 Bienes de uso',
     help: 'Alta, edición y baja de bienes de uso, importar el inventario desde Excel y generar o anular las amortizaciones. Necesita además el tab "Bienes de uso". Solo tiene efecto en contabilidad.',
     modulos: ['contabilidad'],
+  },
+  {
+    // Tanda 6 (20260929a). Default false; el admin lo tiene por bypass.
+    key: 'configurar',
+    label: '⚙️ Configurar el módulo',
+    help: 'Editar la configuración del módulo (productos, puntos de venta, montos ARCA, catálogos, avisos). En Admin: Datos de la empresa.',
+    modulos: ['facturacion', 'pagos', 'admin'],
   },
   {
     key: 'asistente_ia',

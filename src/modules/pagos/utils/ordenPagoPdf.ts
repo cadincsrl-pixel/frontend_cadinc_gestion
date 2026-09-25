@@ -216,7 +216,7 @@ export function armarOrdenPagoDoc(
           stack: [
             { text: EMPRESA.nombre, fontSize: 15, bold: true, color: AZUL },
             ...(EMPRESA.domicilio ? [{ text: EMPRESA.domicilio, fontSize: 8.5 }] : []),
-            { text: `Responsable Inscripto   CUIT ${EMPRESA.cuit}`, fontSize: 8.5 },
+            { text: `${EMPRESA.condicionIva}   CUIT ${EMPRESA.cuit}`, fontSize: 8.5 },
           ],
         },
         {
