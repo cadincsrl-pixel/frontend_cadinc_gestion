@@ -9,9 +9,10 @@ import { AvisoParcial, Tarjeta, hoyCorto, mesEnCurso } from './LidComun'
 
 /**
  * Posición de IVA del mes: débito fiscal (libro de ventas) − crédito fiscal
- * (libro de compras) − percepciones de IVA sufridas − retenciones de IVA que
- * hicieron los clientes. Es una ayuda para el contador, no la declaración
- * jurada: no arrastra saldos a favor de meses anteriores.
+ * (libro de compras) − pago a cuenta ITC (45 % del ICL del gasoil, 20261001b)
+ * − percepciones de IVA sufridas − retenciones de IVA que hicieron los
+ * clientes. Es una ayuda para el contador, no la declaración jurada: no
+ * arrastra saldos a favor de meses anteriores (tampoco el remanente de ITC).
  */
 export function PosicionIva({ periodo, incluirCvlp, onVer }: {
   periodo: string; incluirCvlp: boolean; onVer: (vista: 'ventas' | 'compras') => void
@@ -31,6 +32,9 @@ export function PosicionIva({ periodo, incluirCvlp, onVer }: {
   if (!p) return null
 
   const incompleta = p.excluidos_ventas > 0 || p.excluidos_compras > 0
+  const itc = Number(p.pago_a_cuenta_itc ?? 0)
+  const itcUsado = Number(p.itc_computado ?? 0)
+  const itcResto = Number(p.itc_remanente ?? 0)
   const parcial = mesEnCurso(p.periodo)
   return (
     <div className="flex flex-col gap-4">
@@ -53,6 +57,12 @@ export function PosicionIva({ periodo, incluirCvlp, onVer }: {
             <Fila signo="−" label="Crédito fiscal (IVA de las compras)" valor={p.credito_fiscal} onClick={() => onVer('compras')}
               nota={p.excluidos_compras ? `${p.excluidos_compras} comprobante(s) quedaron fuera del libro de compras` : undefined} />
             <Fila signo="=" label={p.impuesto_determinado >= 0 ? 'Impuesto determinado' : 'Saldo técnico a favor'} valor={Math.abs(p.impuesto_determinado)} fuerte />
+            {itc > 0 && (
+              <Fila signo="−" label="Pago a cuenta ITC (45 % gasoil)" valor={itcUsado}
+                nota={itcResto > 0
+                  ? `el 45 % del ICL de las compras de gasoil del mes es ${fmtM(itc)}: se usan ${fmtM(itcUsado)} y ${fmtM(itcResto)} se trasladan a los meses siguientes`
+                  : 'el 45 % del ICL de las compras de gasoil del mes (proveedores marcados en Compras); lo que no se usa se traslada a los meses siguientes'} />
+            )}
             <Fila signo="−" label="Percepciones de IVA sufridas" valor={p.percepciones_iva} nota="las de las facturas de proveedor del mes" />
             <Fila signo="−" label="Retenciones de IVA sufridas" valor={p.retenciones_iva} nota="las que hicieron los clientes en las cobranzas del mes" />
             <Fila signo="=" label="A pagar" valor={p.a_pagar} fuerte />

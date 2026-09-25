@@ -212,7 +212,7 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
   const [errorContactos, setErrorContactos] = useState<{ i: number; mensaje: string } | null>(null)
 
   const [editando, setEditando] = useState(false)
-  const [form, setForm] = useState({ razon_social: '', cuit: '', alias_cbu: '', cbu: '', banco: '', plazo_pago_dias: '30', vencimiento_modo: 'dias' as VencimientoModo, cierre_dia: '', forma_pago_habitual: '' as PagosFormaPrevista | '', concepto_habitual_id: '', obra_habitual_cod: '' })
+  const [form, setForm] = useState({ razon_social: '', cuit: '', alias_cbu: '', cbu: '', banco: '', plazo_pago_dias: '30', vencimiento_modo: 'dias' as VencimientoModo, cierre_dia: '', forma_pago_habitual: '' as PagosFormaPrevista | '', concepto_habitual_id: '', obra_habitual_cod: '', icl_computa_pago_a_cuenta: false })
   const [pidiendoBaja, setPidiendoBaja] = useState(false)
   const [motivo, setMotivo] = useState('')
 
@@ -251,6 +251,7 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
       forma_pago_habitual: p.forma_pago_habitual ?? '',
       concepto_habitual_id: p.concepto_habitual_id != null ? String(p.concepto_habitual_id) : '',
       obra_habitual_cod: p.obra_habitual_cod ?? '',
+      icl_computa_pago_a_cuenta: !!p.icl_computa_pago_a_cuenta,
     })
     setContactos(contactosDesde(p.contactos, p.email))
     setErrorContactos(null)
@@ -282,6 +283,7 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
             forma_pago_habitual: form.forma_pago_habitual || null,
             concepto_habitual_id: form.concepto_habitual_id ? Number(form.concepto_habitual_id) : null,
             obra_habitual_cod: form.obra_habitual_cod || null,
+            icl_computa_pago_a_cuenta: form.icl_computa_pago_a_cuenta,
             // Con cierre mensual, vacío = el último día del mes (el caso Silva).
             cierre_dia: form.vencimiento_modo === 'cierre_mensual' ? (Number(form.cierre_dia) || null) : null,
             ...datosArcaParaGuardar(datosArca),
@@ -425,6 +427,17 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
                       ? 'Se precarga al cargar sus facturas a mano. Para que las importadas de ARCA entren ya imputadas hacen falta los dos.'
                       : 'Con concepto y centro de costo habituales, sus facturas nacen imputadas.'}
                 </div>
+                <label className="sm:col-span-2 flex items-start gap-2 text-xs cursor-pointer">
+                  <input type="checkbox" className="mt-0.5" checked={form.icl_computa_pago_a_cuenta}
+                    onChange={e => setForm(f => ({ ...f, icl_computa_pago_a_cuenta: e.target.checked }))} />
+                  <span>
+                    <b>Gasoil para camiones: el 45 % del ICL es pago a cuenta de IVA</b>
+                    <span className="block text-[11px] text-gris-dark">
+                      Ley 23.966 (transporte de carga). En sus facturas, el 45 % de cada «ICL/ITC» va a «ITC computable» y descuenta del IVA a pagar;
+                      el 55 % restante y el IDC siguen siendo costo. No cambia la imputación a las obras.
+                    </span>
+                  </span>
+                </label>
               </>
             )}
             {!soloDatosPago && form.vencimiento_modo === 'cierre_mensual' && (
@@ -458,6 +471,7 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
               <Dato label="Cómo se le paga" valor={FORMAS_PREVISTAS.find(x => x.key === p.forma_pago_habitual)?.label ?? 'Transferencia'} />
               <Dato label="Concepto habitual" valor={conceptoHabitualTxt ?? '—'} />
               <Dato label="Centro de costo habitual" valor={obraHabitualTxt ?? '—'} />
+              {p.icl_computa_pago_a_cuenta && <Dato label="ICL de gasoil" valor="45 % pago a cuenta de IVA" />}
               <Dato label="Saldo" valor={fmtM(p.saldo)} fuerte />
               <Dato label="Listo para pagar" valor={fmtM(p.saldo_aprobado)} />
               <Dato label="Último pago" valor={fmtFecha(p.ultimo_pago)} />

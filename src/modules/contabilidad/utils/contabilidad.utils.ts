@@ -297,6 +297,7 @@ export const ETIQUETA_CLAVE_MAPEO: Record<string, string> = {
   'compras.sin_imputar':  'Compras a clasificar (sin imputar)',
   'compras.iva_cf':       'IVA crédito fiscal',
   'compras.tributo':      'Percepciones y tributos de compras',
+  'compras.itc_computable': 'ITC computable (pago a cuenta de IVA)',
   'compras.proveedores':  'Proveedores',
   'ventas.producto':      'Ventas por producto',
   'ventas.externo':       'Ventas de comprobantes externos',
@@ -347,10 +348,11 @@ export function estadoIva(e: string | null | undefined) {
   return ESTADOS_IVA[e as CtbIvaEstado] ?? { label: String(e ?? ''), corto: String(e ?? ''), hint: '', clase: 'bg-gris text-gris-dark' }
 }
 
-export const ROL_IVA: Record<'debito' | 'credito' | 'pagos_a_cuenta', string> = {
+export const ROL_IVA: Record<'debito' | 'credito' | 'pagos_a_cuenta' | 'itc', string> = {
   debito:         'Débito fiscal',
   credito:        'Crédito fiscal',
   pagos_a_cuenta: 'Percepciones y retenciones',
+  itc:            'Pago a cuenta ITC (saldo disponible)',
 }
 
 /** Último día del mes anterior al de `iso` (default del «Amortizar hasta»). */

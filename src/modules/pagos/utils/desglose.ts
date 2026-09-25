@@ -60,6 +60,8 @@ export const TIPOS_TRIBUTO: { key: PagosTributoTipo; label: string; conJurisdicc
   { key: 'percepcion_ganancias', label: 'Percepción Ganancias',  conJurisdiccion: false },
   { key: 'percepcion_municipal', label: 'Percepción municipal',  conJurisdiccion: true },
   { key: 'impuestos_internos',   label: 'Impuestos internos',    conJurisdiccion: false },
+  { key: 'icl',                  label: 'ICL/ITC (combustibles líquidos)', conJurisdiccion: false },
+  { key: 'idc',                  label: 'IDC (dióxido de carbono)',        conJurisdiccion: false },
   { key: 'otro',                 label: 'Otro tributo',          conJurisdiccion: false },
 ]
 export const labelTributo = (t: string) => TIPOS_TRIBUTO.find(x => x.key === t)?.label ?? t

@@ -2523,6 +2523,8 @@ export interface PagosProveedor {
   cierre_dia:         number | null
   /** Cómo se le paga normalmente: la forma con que nacen sus facturas (20260930a). null = transferencia. */
   forma_pago_habitual?: PagosFormaPrevista | null
+  /** El 45 % del ICL de sus facturas es pago a cuenta de IVA (gasoil de camiones, Ley 23.966; 20261001a). */
+  icl_computa_pago_a_cuenta?: boolean
   /** Concepto con que se imputa normalmente lo suyo (20260930p). null = sin preferencia.
    *  La carga a mano lo precarga; el importador de ARCA se lo pone a lo importado. */
   concepto_habitual_id?: number | null
@@ -2974,7 +2976,10 @@ export interface PagosIvaDetalle {
 }
 export type PagosTributoTipo =
   | 'percepcion_iva' | 'percepcion_iibb' | 'percepcion_ganancias'
-  | 'percepcion_municipal' | 'impuestos_internos' | 'otro'
+  | 'percepcion_municipal' | 'impuestos_internos'
+  /** Impuesto sobre los Combustibles Líquidos (ICL/ITC) e Impuesto al Dióxido de Carbono (20261001a). No son percepciones. */
+  | 'icl' | 'idc'
+  | 'otro'
 export interface PagosTributo {
   id?:          number
   tipo:         PagosTributoTipo
@@ -3793,6 +3798,7 @@ export interface CrearProveedorInput {
   vencimiento_modo?: 'dias' | 'cierre_mensual'
   cierre_dia?:      number | null
   forma_pago_habitual?: PagosFormaPrevista | null
+  icl_computa_pago_a_cuenta?: boolean
   concepto_habitual_id?: number | null
   obra_habitual_cod?:    string | null
   contacto?:        string

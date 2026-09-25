@@ -734,7 +734,8 @@ export interface CtbIvaCuenta {
   cuenta_id: number
   codigo:    string
   nombre:    string
-  rol:       'debito' | 'credito' | 'pagos_a_cuenta'
+  /** 'itc' (20261001b): debe/haber del mes y, en saldo, lo disponible (se arrastra). */
+  rol:       'debito' | 'credito' | 'pagos_a_cuenta' | 'itc'
   debe:      number
   haber:     number
   saldo:     number
@@ -752,6 +753,11 @@ export interface CtbIvaContable {
   determinado:          number
   arrastre_tecnico:     number
   arrastre_libre:       number
+  /** ITC computable (20261001b): lo que entró en el mes, lo disponible (con remanentes), lo usado y lo que queda. */
+  itc_mes?:             number
+  itc_disponible?:      number
+  itc_computado?:       number
+  itc_remanente?:       number
   a_pagar:              number
   saldo_tecnico:        number
   libre_disponibilidad: number
@@ -771,6 +777,9 @@ export interface CtbPosicionIvaFiscal {
   credito_fiscal:         number
   impuesto_determinado:   number
   saldo_tecnico_a_favor:  number
+  pago_a_cuenta_itc?:     number
+  itc_computado?:         number
+  itc_remanente?:         number
   percepciones_iva:       number
   retenciones_iva:        number
   a_pagar:                number
@@ -781,7 +790,7 @@ export interface CtbPosicionIvaFiscal {
 }
 
 export interface CtbIvaDiferencia {
-  componente: 'debito' | 'credito' | 'pagos_a_cuenta' | 'excluidos'
+  componente: 'debito' | 'credito' | 'pagos_a_cuenta' | 'itc' | 'excluidos'
   contable:   number
   fiscal:     number
   diferencia: number

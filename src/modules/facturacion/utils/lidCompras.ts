@@ -28,6 +28,8 @@ export interface LibroIvaCompras {
     no_gravado: number; exento: number
     perc_iva: number; perc_iibb: number; perc_nacionales: number; perc_municipales: number
     impuestos_internos: number; otros_tributos: number
+    /** Pago a cuenta ITC: 45 % del ICL de los proveedores que lo computan (20261001a/b). No va a los archivos. */
+    itc_computable?: number
     por_alicuota: Array<{ codigo: number; alicuota: string; neto: number; iva: number; registros: number }>
     por_tipo: Array<{ cbte_tipo: number; tipo: string; cantidad: number; neto: number; iva: number; total: number }>
     excluidos: number
@@ -44,6 +46,10 @@ export interface PosicionIva {
   credito_fiscal: number
   impuesto_determinado: number
   saldo_tecnico_a_favor: number
+  /** Pago a cuenta ITC del mes (45 % del ICL de gasoil), lo usado contra el impuesto y lo que se traslada. */
+  pago_a_cuenta_itc?: number
+  itc_computado?: number
+  itc_remanente?: number
   percepciones_iva: number
   retenciones_iva: number
   a_pagar: number
@@ -138,6 +144,7 @@ export async function exportarExcelLidCompras(libro: LibroIvaCompras) {
   res.addRow({ c: 'Percepciones de IIBB', total: r.perc_iibb })
   if (r.perc_municipales) res.addRow({ c: 'Percepciones municipales', total: r.perc_municipales })
   if (r.perc_nacionales) res.addRow({ c: 'Percepciones de otros impuestos nacionales', total: r.perc_nacionales })
+  if (r.itc_computable) res.addRow({ c: 'Pago a cuenta ITC (45 % del ICL de gasoil)', iva: r.itc_computable })
   res.addRow({})
   res.addRow({ c: 'Por alícuota' }).font = { bold: true }
   for (const a of r.por_alicuota) res.addRow({ c: a.alicuota, n: a.registros, neto: a.neto, iva: a.iva })

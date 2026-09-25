@@ -41,6 +41,7 @@ const COMPONENTE: Record<CtbIvaDiferencia['componente'], string> = {
   debito:         'Débito fiscal',
   credito:        'Crédito fiscal',
   pagos_a_cuenta: 'Percepciones y retenciones',
+  itc:            'Pago a cuenta ITC del mes',
   excluidos:      'Comprobantes excluidos de los libros',
 }
 
@@ -186,6 +187,9 @@ function Contenido({ p, arrastre, etiquetaClave, difiere, onVerAsiento, children
     { label: 'Débito fiscal', cont: c.debito_fiscal, fisc: f.debito_fiscal, dif: 'debito' },
     { label: 'Crédito fiscal', cont: c.credito_fiscal, fisc: f.credito_fiscal, dif: 'credito' },
     { label: 'Impuesto determinado', cont: c.determinado, fisc: f.impuesto_determinado },
+    ...(Number(c.itc_mes ?? 0) !== 0 || Number(f.pago_a_cuenta_itc ?? 0) !== 0
+      ? [{ label: 'Pago a cuenta ITC del mes (45 % gasoil)', cont: Number(c.itc_mes ?? 0), fisc: Number(f.pago_a_cuenta_itc ?? 0), dif: 'itc' as const }]
+      : []),
     { label: 'Percepciones y retenciones', cont: c.pagos_a_cuenta, fisc: pcFiscal, dif: 'pagos_a_cuenta' },
     { label: 'A pagar', cont: c.a_pagar, fisc: f.a_pagar, fuerte: true },
     { label: 'Saldo técnico a favor', cont: c.saldo_tecnico, fisc: f.saldo_tecnico_a_favor },
@@ -284,6 +288,15 @@ function Contenido({ p, arrastre, etiquetaClave, difiere, onVerAsiento, children
             {c.avisos.map((a, i) => <li key={`c${i}`}>{mensajeAvisoIva(a)}</li>)}
             {f.avisos.map((a, i) => <li key={`f${i}`}>Libros: {a}</li>)}
           </ul>
+        </Aviso>
+      )}
+
+      {Number(c.itc_disponible ?? 0) > 0 && (
+        <Aviso tono="gris">
+          ITC computable: hay {fmtM(Number(c.itc_disponible))} disponibles (lo del mes más lo que quedó de meses anteriores).
+          Este asiento usa {fmtM(Number(c.itc_computado ?? 0))} contra el impuesto
+          {Number(c.itc_remanente ?? 0) > 0 && <> y quedan {fmtM(Number(c.itc_remanente))} en la cuenta para los meses siguientes</>}.
+          El ITC nunca genera saldo a favor de libre disponibilidad.
         </Aviso>
       )}
 
