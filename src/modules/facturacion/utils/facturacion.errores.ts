@@ -71,6 +71,23 @@ const CAMPO_RENGLON: Record<string, string> = {
 const CAMPO_MEDIO: Record<string, string> = {
   forma: 'la forma', importe: 'el importe', cuenta_bancaria_id: 'la cuenta de CADINC', cheque_numero: 'el número del cheque',
   cheque_banco: 'el banco del cheque', cheque_librador: 'el librador del cheque', cheque_fecha_cobro: 'la fecha de cobro del cheque',
+  cheque_librador_cuit: 'el CUIT del librador (11 dígitos)',
+}
+
+const CAMPO_GASTO: Record<string, string> = {
+  concepto_id: 'el concepto (tiene que estar activo)', importe: 'el importe', obs: 'el detalle (hasta 300 caracteres)',
+}
+
+/** Qué dice un aviso de «Cargar liquidación» sobre un comprobante o un cheque (20260930k). */
+export const AVISO_LIQUIDACION: Record<string, string> = {
+  NO_ENCONTRADO:        'No está cargado en Ventas: importalo de ARCA (Saldos iniciales) o dejá ese importe a cuenta.',
+  YA_COBRADO:           'Ya figura cobrado (saldo 0): no se le imputa nada y ese importe queda a cuenta.',
+  SALDO_MENOR:          'Tiene menos saldo que lo que liquida: se imputa el saldo y la diferencia queda a cuenta.',
+  IMPORTE_DISTINTO:     'El total cargado en Ventas no coincide con el de la liquidación.',
+  YA_EN_OTRO_COBRO:     'Ese cheque ya está en otro cobro vigente: el cobro va a rebotar (CHEQUE_DUPLICADO).',
+  EN_CARTERA:           'Ya está en la cartera de cheques (lo cargó Logística): no se duplica, se vincula a este cobro.',
+  SIN_FECHA:            'No se leyó la fecha de cobro del cheque.',
+  LIBRADOR_DESCONOCIDO: 'No se sabe quién libró el cheque: completalo.',
 }
 
 const CAMPO_RETENCION: Record<string, string> = {
@@ -315,6 +332,27 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
     const campo = CAMPO_RETENCION[String(dato(d, 'campo') ?? '')] ?? 'un dato'
     return `Revisá ${campo} de la retención${Number.isFinite(i) ? ` ${i}` : ''}.`
   },
+  // ── Gastos descontados y Cargar liquidación (20260930k) ──
+  GASTO_INVALIDO:           d => {
+    const i = Number(dato(d, 'indice'))
+    const campo = CAMPO_GASTO[String(dato(d, 'campo') ?? '')] ?? 'un dato'
+    return `Revisá ${campo} del gasto descontado${Number.isFinite(i) && i > 0 ? ` ${i}` : ''}.`
+  },
+  LIQUIDACION_INVALIDA:     () => 'El número de liquidación solo puede tener letras, números, punto, barra, guion y espacios (hasta 30).',
+  LIQUIDACION_DUPLICADA:    d => `La liquidación N° ${String(dato(d, 'liquidacion_numero') ?? '')} de este cliente ya está cargada${dato(d, 'numero_fmt') ? ` en el ${String(dato(d, 'numero_fmt'))}` : dato(d, 'cobro_id') ? ` (cobro #${String(dato(d, 'cobro_id'))})` : ''}. Para cargarla de nuevo, anulá ese cobro.`,
+  LIQUIDACION_ILEGIBLE:     d => dato(d, 'motivo') === 'SIN_API_KEY'
+    ? 'No se reconoció el formato de la liquidación y la lectura con IA no está configurada en el servidor. Cargá el cobro a mano.'
+    : `No se pudo leer la liquidación${dato(d, 'motivo') ? ` (${String(dato(d, 'motivo'))})` : ''}. Probá con el PDF original o cargá el cobro a mano.`,
+  LIQUIDACION_SIN_CLIENTE:  d => `El CUIT de la liquidación${dato(d, 'cuit') ? ` (${String(dato(d, 'cuit'))})` : ''} no es de ningún cliente de Ventas${dato(d, 'nombre') ? ` (${String(dato(d, 'nombre'))})` : ''}. Elegí el cliente.`,
+  GASTO_CONCEPTO_INVALIDO:  d => {
+    const c = dato(d, 'campo'), m = dato(d, 'mensaje')
+    const que = c === 'nombre' ? 'el nombre' : c === 'alias' ? 'los sinónimos (3 a 60 caracteres cada uno)' : c === 'orden' ? 'el orden' : 'los datos'
+    return `Concepto de gasto: revisá ${que}${typeof m === 'string' ? ` (${m})` : ''}.`
+  },
+  GASTO_CONCEPTO_DUPLICADO: d => dato(d, 'campo') === 'alias'
+    ? `Ese sinónimo ya es de otro concepto activo${Array.isArray(dato(d, 'alias')) ? ` («${(dato(d, 'alias') as unknown[]).join('», «')}»)` : ''}: la liquidación no sabría cuál elegir.`
+    : 'Ya hay un concepto con ese nombre.',
+  GASTO_CONCEPTO_NO_EXISTE: () => 'Ese concepto no existe. Refrescá la pantalla.',
   RETENCION_DUPLICADA:      d => `El certificado ${String(dato(d, 'certificado_numero') ?? '')} ya está cargado en otro cobro${dato(d, 'cobro_id') ? ` (#${String(dato(d, 'cobro_id'))})` : ''}.`,
   RETENCION_ADJUNTO_DUPLICADO: () => 'Ese archivo ya está adjunto a una retención de otro cobro vigente. ¿Es el certificado correcto?',
   SIN_IMPUTACIONES:         () => 'Aplicá algún importe a al menos un comprobante.',

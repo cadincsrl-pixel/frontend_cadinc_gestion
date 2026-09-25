@@ -167,7 +167,8 @@ export function FichaCobro({ id, onClose }: { id: number; onClose: () => void })
         )}
 
         <div className="flex gap-2 flex-wrap">
-          <Cifra label="Total cobrado" valor={fmtM(c.total)} sub={`medios ${fmtM(c.total_medios)} · retenciones ${fmtM(c.total_retenciones)}`} />
+          <Cifra label="Total cobrado" valor={fmtM(c.total)}
+            sub={`medios ${fmtM(c.total_medios)} · retenciones ${fmtM(c.total_retenciones)}${Number(c.total_gastos ?? 0) > 0 ? ` · gastos descontados ${fmtM(c.total_gastos ?? 0)}` : ''}`} />
           <Cifra label="Aplicado" valor={fmtM(c.aplicado)} tono="verde" />
           <Cifra label="A cuenta" valor={fmtM(c.a_cuenta)} tono={aCuenta > 0 ? 'naranja' : 'normal'} />
         </div>
@@ -178,6 +179,7 @@ export function FichaCobro({ id, onClose }: { id: number; onClose: () => void })
           <Dato label="CUIT" valor={fmtCuit(c.cliente_doc_nro)} />
           <Dato label="Cargó" valor={`${c.created_by_nombre ?? '—'} · ${fmtFechaHora(c.created_at)}`} />
         </div>
+        {c.liquidacion_numero && <Dato label="Liquidación del cliente" valor={`N° ${c.liquidacion_numero}`} />}
         {c.obs && <div><Etiqueta>Observaciones</Etiqueta><div>{c.obs}</div></div>}
 
         <Bloque titulo="Medios de cobro">
@@ -224,6 +226,20 @@ export function FichaCobro({ id, onClose }: { id: number; onClose: () => void })
             </Tabla>
           )}
         </Bloque>
+
+        {(d.gastos ?? []).length > 0 && (
+          <Bloque titulo="Gastos descontados por el cliente">
+            <Tabla cabeza={['Concepto', 'Detalle', 'Importe']} derecha={[2]}>
+              {(d.gastos ?? []).map(g => (
+                <tr key={g.id} className="border-t border-gris">
+                  <td className="px-2 py-1.5">{g.concepto_nombre}</td>
+                  <td className="px-2 py-1.5 text-gris-dark">{g.obs || '—'}</td>
+                  <td className="px-2 py-1.5 text-right font-mono tabular-nums">{fmtM(g.importe)}</td>
+                </tr>
+              ))}
+            </Tabla>
+          </Bloque>
+        )}
 
         <Bloque titulo="Documentación" acciones={
           <div className="flex gap-1.5 items-center">

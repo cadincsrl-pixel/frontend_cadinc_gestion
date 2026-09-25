@@ -25,7 +25,7 @@ import type {
   VentasCobroAdjuntoInput, VentasCobroAdjuntoTipo, VentasCobroDetalle, VentasCobroForma, VentasCobroInput, VentasRetencionTipo,
 } from '@/types/domain.types'
 import { Aviso } from '../FichaFactura'
-import { useConfigVentasValores, useRetencionTipos } from '../../hooks/useConfigVentas'
+import { useConfigVentasValores, useGastoConceptos, useRetencionTipos } from '../../hooks/useConfigVentas'
 import { JurisdiccionSelect } from '@/components/JurisdiccionSelect'
 import type { RetencionTipoVenta } from '@/types/config.types'
 import { ClienteCombobox, GrillaAplicacion, Seccion, TotalesAplicacion, type FilaPendiente } from './Comun'
@@ -42,7 +42,9 @@ import { ClienteCombobox, GrillaAplicacion, Seccion, TotalesAplicacion, type Fil
  *     cliente u otro. Se suben apenas se eligen y se registran con el cobro.
  *   · Aplicación de comprobantes: las facturas con saldo del cliente, más
  *     vieja primero, con el importe «Aplicado» editable y «Aplicar automático».
- * Total cobro = medios + retenciones; A cuenta = total − aplicado.
+ *   · Gastos descontados (20260930k): lo que el cliente descontó al pagar
+ *     (Recupero Ley 25413, seguro de carga…), con su concepto del catálogo.
+ * Total cobro = medios + retenciones + gastos; A cuenta = total − aplicado.
  *
  * Todo se valida en vivo acá (aplicado ≤ saldo, Σ ≤ total) y la base lo
  * vuelve a validar con los comprobantes bloqueados (IMPUTACION_SUPERA_SALDO si
@@ -86,6 +88,12 @@ const retencionSchema = z.object({
   obs:                z.string(),
 })
 
+const gastoSchema = z.object({
+  concepto_id: z.string().min(1, 'Elegí el concepto'),
+  importe:     z.string().refine(importeValido, 'Poné el importe'),
+  obs:         z.string().max(300, 'Hasta 300 caracteres'),
+})
+
 function hoy() { return hoyAR() }
 
 const schema = z.object({
@@ -94,13 +102,14 @@ const schema = z.object({
   obs:         z.string(),
   medios:      z.array(medioSchema),
   retenciones: z.array(retencionSchema),
+  gastos:      z.array(gastoSchema),
 }).superRefine((d, ctx) => {
   if (d.fecha > hoy()) ctx.addIssue({ code: 'custom', path: ['fecha'], message: 'No puede ser posterior a hoy' })
   d.retenciones.forEach((r, i) => {
     if (r.fecha > hoy()) ctx.addIssue({ code: 'custom', path: ['retenciones', i, 'fecha'], message: 'No puede ser futura' })
   })
-  if (d.medios.length === 0 && d.retenciones.length === 0) {
-    ctx.addIssue({ code: 'custom', path: ['medios'], message: 'Cargá al menos un medio de cobro o una retención' })
+  if (d.medios.length === 0 && d.retenciones.length === 0 && d.gastos.length === 0) {
+    ctx.addIssue({ code: 'custom', path: ['medios'], message: 'Cargá al menos un medio de cobro, una retención o un gasto' })
   }
 })
 
@@ -139,7 +148,7 @@ interface DocCliente {
   error?:  string
 }
 
-const CAMPOS_FORM = /^(fecha|cliente_id|obs|medios\.\d+\.(forma|importe|cuenta_bancaria_id|cheque_numero|cheque_banco|cheque_librador|cheque_fecha_cobro|obs)|retenciones\.\d+\.(tipo|jurisdiccion|jurisdiccion_id|certificado_numero|fecha|importe|obs))$/
+const CAMPOS_FORM = /^(fecha|cliente_id|obs|gastos\.\d+\.(concepto_id|importe|obs)|medios\.\d+\.(forma|importe|cuenta_bancaria_id|cheque_numero|cheque_banco|cheque_librador|cheque_fecha_cobro|obs)|retenciones\.\d+\.(tipo|jurisdiccion|jurisdiccion_id|certificado_numero|fecha|importe|obs))$/
 
 interface Props {
   /** Precarga el cliente (desde Deudores / estado de cuenta). */
@@ -155,10 +164,11 @@ export function ModalCobro({ clienteInicial, onClose, onGuardado }: Props) {
   const registrar = useRegistrarCobro()
   const cuentas = useCuentasFce()
   const tiposRet = useRetencionTipos()
+  const { conceptos: conceptosGasto } = useGastoConceptos()
   const { valores } = useConfigVentasValores()
   const tipoRetDefault = tiposRet.tipos.find(t => t.clave === valores.retencion_tipo_default) ?? tiposRet.tipos[0]
 
-  const [abierta, setAbierta] = useState({ medios: true, retenciones: false, documentacion: false, aplicacion: true })
+  const [abierta, setAbierta] = useState({ medios: true, retenciones: false, gastos: false, documentacion: false, aplicacion: true })
   // La aplicación es DEL cliente elegido: si cambia el cliente, la anterior no sirve (se descarta sola).
   const [aplic, setAplic] = useState<{ cliente: string; map: Record<string, string> }>({ cliente: '', map: {} })
   const [adjuntos, setAdjuntos] = useState<Record<string, EstadoAdjunto>>({})
@@ -175,15 +185,17 @@ export function ModalCobro({ clienteInicial, onClose, onGuardado }: Props) {
     resolver: zodResolver(schema),
     defaultValues: {
       fecha: hoyAR(), cliente_id: clienteInicial ? String(clienteInicial) : '', obs: '',
-      medios: [MEDIO_VACIO], retenciones: [],
+      medios: [MEDIO_VACIO], retenciones: [], gastos: [],
     },
   })
   const medios = useFieldArray({ control, name: 'medios' })
   const retenciones = useFieldArray({ control, name: 'retenciones' })
+  const gastos = useFieldArray({ control, name: 'gastos' })
 
   const clienteId = useWatch({ control, name: 'cliente_id' })
   const mediosW = useWatch({ control, name: 'medios' })
   const retencionesW = useWatch({ control, name: 'retenciones' })
+  const gastosW = useWatch({ control, name: 'gastos' })
 
   const pendientes = usePendientesCliente(clienteId ? Number(clienteId) : null, ambiente, puedeVer)
   const filas: FilaPendiente[] = useMemo(
@@ -197,7 +209,8 @@ export function ModalCobro({ clienteInicial, onClose, onGuardado }: Props) {
 
   const mediosCent = (mediosW ?? []).reduce((s, m) => s + Math.max(0, aCent(m.importe)), 0)
   const retCent = (retencionesW ?? []).reduce((s, r) => s + Math.max(0, aCent(r.importe)), 0)
-  const totalCent = mediosCent + retCent
+  const gasCent = (gastosW ?? []).reduce((s, g) => s + Math.max(0, aCent(g.importe)), 0)
+  const totalCent = mediosCent + retCent + gasCent
   const val = validarAplicacion(filas, aplicado, totalCent)
   const hayErrorGrilla = Object.keys(val.errores).length > 0 || val.superaTotal
   const subiendo = Object.values(adjuntos).some(a => a.estado === 'subiendo') || docs.some(x => x.estado === 'subiendo')
@@ -316,6 +329,7 @@ export function ModalCobro({ clienteInicial, onClose, onGuardado }: Props) {
           ...(a?.estado === 'ok' ? a.adj : {}),
         }
       }),
+      gastos: d.gastos.map(g => ({ concepto_id: Number(g.concepto_id), importe: Number(g.importe), obs: g.obs.trim() })),
       imputaciones: imputacionesDe(filas, aplicado),
       adjuntos: docs.filter(x => x.estado === 'ok' && x.adj).map(x => ({ ...x.adj!, tipo: x.tipo })),
     }
@@ -332,8 +346,8 @@ export function ModalCobro({ clienteInicial, onClose, onGuardado }: Props) {
       // MEDIO_INVALIDO / RETENCION_INVALIDA traen índice 1-based y el campo.
       const ind = detail && typeof detail === 'object' ? Number((detail as Record<string, unknown>).indice) : NaN
       const campo = detail && typeof detail === 'object' ? (detail as Record<string, unknown>).campo : undefined
-      if ((error === 'MEDIO_INVALIDO' || error === 'RETENCION_INVALIDA') && Number.isInteger(ind) && typeof campo === 'string') {
-        const ruta = `${error === 'MEDIO_INVALIDO' ? 'medios' : 'retenciones'}.${ind - 1}.${campo}`
+      if ((error === 'MEDIO_INVALIDO' || error === 'RETENCION_INVALIDA' || error === 'GASTO_INVALIDO') && Number.isInteger(ind) && typeof campo === 'string') {
+        const ruta = `${error === 'MEDIO_INVALIDO' ? 'medios' : error === 'GASTO_INVALIDO' ? 'gastos' : 'retenciones'}.${ind - 1}.${campo}`
         if (CAMPOS_FORM.test(ruta)) setError(ruta as FieldPath<FormData>, { message: mensajeErrorFacturacion(e) })
       } else {
         const ce = errorDeCampoFacturacion(e)
@@ -364,7 +378,7 @@ export function ModalCobro({ clienteInicial, onClose, onGuardado }: Props) {
           <Button variant="ghost" size="sm" onClick={cerrar} disabled={registrar.isPending}>Cancelar</Button>
           <Button size="sm" loading={registrar.isPending} onClick={handleSubmit(guardar)} disabled={!puedeGuardar}
             title={!registrarCobros ? 'Hace falta el permiso «Registrar cobros»'
-              : totalCent <= 0 ? 'Cargá al menos un medio de cobro o una retención'
+              : totalCent <= 0 ? 'Cargá al menos un medio de cobro, una retención o un gasto'
               : hayErrorGrilla ? 'Corregí los importes aplicados'
               : subiendo ? 'Subiendo archivos…' : 'Registrar el cobro'}>
             Registrar cobro {totalCent > 0 ? fmtM(totalCent / 100) : ''}
@@ -481,6 +495,38 @@ export function ModalCobro({ clienteInicial, onClose, onGuardado }: Props) {
                   {a?.estado === 'error' && <span className="text-[11px] text-rojo">{a.error}</span>}
                   <button type="button" onClick={() => { quitarAdjunto(f.id); retenciones.remove(i) }}
                     className="text-xs text-rojo hover:underline self-start">Quitar</button>
+                </div>
+              </div>
+            )
+          })}
+        </Seccion>
+
+        {/* ── Gastos descontados (20260930k) ── */}
+        <Seccion titulo="Gastos descontados" abierta={abierta.gastos}
+          onToggle={() => setAbierta(a => ({ ...a, gastos: !a.gastos }))}
+          resumen={gastos.fields.length ? `${gastos.fields.length} · ${fmtM(gasCent / 100)}` : 'ninguno'}
+          acciones={<Button type="button" size="sm" variant="secondary" disabled={conceptosGasto.length === 0}
+            title={conceptosGasto.length ? 'Algo que el cliente descontó al pagar' : 'No hay conceptos: se cargan en Ventas › Configuración'}
+            onClick={() => { gastos.append({ concepto_id: '', importe: '', obs: '' }); setAbierta(a => ({ ...a, gastos: true })) }}>+ Gasto</Button>}>
+          {gastos.fields.length === 0 && (
+            <span className="text-xs text-gris-dark italic">Si el cliente descontó algo al pagar (impuesto al cheque, seguro de carga…), cargalo acá: suma al total del cobro y va a su cuenta contable.</span>
+          )}
+          {gastos.fields.map((f, i) => {
+            const e = errors.gastos?.[i]
+            return (
+              <div key={f.id} className="grid grid-cols-2 sm:grid-cols-6 gap-2 items-start border-b border-gris pb-3 last:border-0 last:pb-0">
+                <div className="col-span-2">
+                  <Select label="Concepto" {...register(`gastos.${i}.concepto_id`)} error={e?.concepto_id?.message}
+                    options={[{ value: '', label: 'Elegí el concepto' }, ...conceptosGasto.map(c => ({ value: String(c.id), label: c.nombre }))]} />
+                </div>
+                <Controller control={control} name={`gastos.${i}.importe`} render={({ field }) => (
+                  <InputMonto label="Importe" value={field.value} onChange={field.onChange} error={e?.importe?.message} />
+                )} />
+                <div className="col-span-2">
+                  <Input label="Detalle" {...register(`gastos.${i}.obs`)} error={e?.obs?.message} placeholder="Opcional (lo que dice el papel)" />
+                </div>
+                <div className="flex items-end h-full justify-end">
+                  <button type="button" onClick={() => gastos.remove(i)} className="text-xs text-rojo hover:underline pb-2">Quitar</button>
                 </div>
               </div>
             )

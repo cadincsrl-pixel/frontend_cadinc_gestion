@@ -25,6 +25,7 @@ export const MOVIMIENTO_LABEL: Record<VentasEstadoCuentaMov['movimiento'], strin
   externo_nc:     'NC (saldo inicial)',
   cobro:          'Cobro',
   retencion:      'Retención',
+  gasto:          'Gasto descontado',
 }
 
 export interface DatosEstadoCuenta {

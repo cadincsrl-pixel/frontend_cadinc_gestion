@@ -306,6 +306,7 @@ export const ETIQUETA_CLAVE_MAPEO: Record<string, string> = {
   'ventas.deudores':      'Deudores por ventas',
   'cobros.medio':         'Medios de cobro',
   'cobros.retencion':     'Retenciones sufridas',
+  'cobros.gasto':         'Gastos descontados en cobros',
   'pagos.puente':         'Pagos sin cuenta de origen (puente)',
   'pagos.cheque_propio':  'Cheques propios emitidos',
   'pagos.cheque_tercero': 'Cheques de terceros entregados',

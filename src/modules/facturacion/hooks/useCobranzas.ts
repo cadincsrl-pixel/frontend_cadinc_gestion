@@ -13,7 +13,7 @@ import type {
   VentasDeudor, VentasEstadoCuenta, VentasEstadoCuentaMov, VentasExterno, VentasExternoAccion, VentasExternoInput,
   VentasExternosPage, VentasImportarFilaInput, VentasImportarRes, VentasSaldo, VentasCliente,
   VentasUploadUrlRes, VentasAmbiente, VentasPendientesCliente, VentasImputacion,
-  VentasCobroAdjunto, VentasCobroAdjuntoInput, VentasCobroAdjuntoTipo,
+  VentasCobroAdjunto, VentasCobroAdjuntoInput, VentasCobroAdjuntoTipo, VentasLiquidacionPropuesta,
 } from '@/types/domain.types'
 import { aPagina } from '../utils/cobranzas.utils'
 import { invalidarFacturacion, useArcaAmbiente } from './useFacturacion'
@@ -243,10 +243,11 @@ export async function urlAdjuntoRetencion(retencionId: number, descargar = false
 export const ADJUNTO_COBRO_TIPOS: { key: VentasCobroAdjuntoTipo; label: string }[] = [
   { key: 'comprobante_pago', label: 'Comprobante de pago' },
   { key: 'orden_pago',       label: 'Orden de pago del cliente' },
+  { key: 'liquidacion',      label: 'Liquidación del cliente' },
   { key: 'otro',             label: 'Otro' },
 ]
 export const ADJUNTO_COBRO_LABEL: Record<VentasCobroAdjuntoTipo, string> = {
-  comprobante_pago: 'Comprobante de pago', orden_pago: 'Orden de pago del cliente', otro: 'Otro',
+  comprobante_pago: 'Comprobante de pago', orden_pago: 'Orden de pago del cliente', liquidacion: 'Liquidación del cliente', otro: 'Otro',
 }
 
 /** Sube el archivo a `cobros/pendientes/` y devuelve lo que viaja en `adjuntos`. */
@@ -298,6 +299,20 @@ export async function urlAdjuntoCobro(id: number, descargar = false): Promise<st
   const r = await apiGet<{ url?: string }>(`${BASE}/cobros/adjuntos/${id}/url${descargar ? '?descargar=1' : ''}`)
   if (!r.url) throw new Error('El servidor no devolvió la URL del archivo')
   return r.url
+}
+
+// ── Cargar liquidación (20260930k) ────────────────────────────────────
+
+/**
+ * Lee la liquidación del cliente ya subida a `cobros/pendientes/` (con el
+ * texto que sacó el navegador; si no alcanza, el backend usa la IA). NO crea
+ * nada: devuelve la propuesta, que se confirma con el POST /cobros de siempre.
+ * 422 LIQUIDACION_ILEGIBLE / LIQUIDACION_SIN_CLIENTE.
+ */
+export function leerLiquidacion(body: {
+  storage_path: string; nombre_archivo: string; mime: string; texto?: string | null; cliente_id?: number | null
+}): Promise<VentasLiquidacionPropuesta> {
+  return apiPost<VentasLiquidacionPropuesta>(`${BASE}/cobros/liquidacion/leer`, body)
 }
 
 // ── Deudores y estado de cuenta ───────────────────────────────────────

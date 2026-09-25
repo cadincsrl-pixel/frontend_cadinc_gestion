@@ -4414,6 +4414,11 @@ export interface VentasCobro {
   medios_formas:         VentasCobroForma[]
   cantidad_retenciones:  number
   retenciones_resumen:   VentasRetencionResumen[]
+  /** 20260930k: gastos que el cliente descontó al pagar (total = medios + retenciones + gastos). */
+  total_gastos?:         number
+  /** 20260930k: número de la liquidación del cliente con que se cargó (único por cliente entre vigentes). */
+  liquidacion_numero?:   string | null
+  cantidad_gastos?:      number
 }
 
 export interface VentasCobrosPage {
@@ -4433,6 +4438,8 @@ export interface VentasCobroMedio {
   cheque_banco:       string | null
   cheque_librador:    string | null
   cheque_fecha_cobro: string | null
+  /** 20260930k: 11 dígitos. */
+  cheque_librador_cuit?: string | null
   obs:                string
   cuenta_banco?:      string | null
   cuenta_alias?:      string | null
@@ -4457,6 +4464,38 @@ export interface VentasCobroRetencion {
   adjunto_mime:       string | null
   adjunto_size:       number | null
   obs:                string
+}
+
+/** Fila de `ventas_cobro_gastos` (20260930k) + el nombre del concepto. */
+export interface VentasCobroGasto {
+  id:              number
+  cobro_id:        number
+  orden:           number
+  concepto_id:     number
+  concepto_nombre: string
+  importe:         number
+  obs:             string
+}
+
+/** Concepto de gasto descontado (Ventas › Configuración, `ventas_cobro_gasto_conceptos`). */
+export interface VentasGastoConcepto {
+  id:      number
+  nombre:  string
+  /** Sinónimos en minúsculas sin acentos (con ellos se reconocen los renglones de una liquidación). */
+  alias:   string[]
+  activo:  boolean
+  orden:   number
+  /** Renglones cargados con este concepto. */
+  gastos:  number
+  /** ¿Tiene cuenta en Contabilidad › Mapeos (cobros.gasto)? */
+  mapeado: boolean
+}
+
+export interface VentasGastoConceptoInput {
+  nombre?: string
+  alias?:  string[]
+  activo?: boolean
+  orden?:  number
 }
 
 /** Fila de `v_ventas_imputaciones`. */
@@ -4494,6 +4533,8 @@ export interface VentasCobroDetalle {
   cobro:        VentasCobro
   medios:       VentasCobroMedio[]
   retenciones:  VentasCobroRetencion[]
+  /** 20260930k (puede faltar en respuestas viejas). */
+  gastos?:      VentasCobroGasto[]
   imputaciones: VentasImputacion[]
   /** Documentación del cliente (20260924q). */
   adjuntos?:    VentasCobroAdjunto[]
@@ -4502,7 +4543,7 @@ export interface VentasCobroDetalle {
 }
 
 /** Qué papel del cliente es: comprobante de la transferencia/depósito, su orden de pago u otro. */
-export type VentasCobroAdjuntoTipo = 'comprobante_pago' | 'orden_pago' | 'otro'
+export type VentasCobroAdjuntoTipo = 'comprobante_pago' | 'orden_pago' | 'liquidacion' | 'otro'
 
 /** Fila de `ventas_cobro_adjuntos` (bucket privado ventas-docs, cobros/<id>/). */
 export interface VentasCobroAdjunto {
@@ -4548,7 +4589,14 @@ export interface VentasCobroMedioInput {
   cheque_banco?:       string
   cheque_librador?:    string
   cheque_fecha_cobro?: string | null
+  cheque_librador_cuit?: string | null
   obs?:                string
+}
+
+export interface VentasCobroGastoInput {
+  concepto_id: number
+  importe:     number
+  obs?:        string
 }
 
 export interface VentasCobroRetencionInput {
@@ -4569,11 +4617,52 @@ export interface VentasCobroRetencionInput {
 
 /** POST /cobros */
 export interface VentasCobroInput {
-  cobro:        { fecha: string; cliente_id: number; obs?: string; ambiente?: VentasAmbiente }
+  cobro:        { fecha: string; cliente_id: number; obs?: string; ambiente?: VentasAmbiente; liquidacion_numero?: string | null }
   medios:       VentasCobroMedioInput[]
   retenciones:  VentasCobroRetencionInput[]
+  /** 20260930k: gastos que el cliente descontó. */
+  gastos?:      VentasCobroGastoInput[]
   imputaciones: VentasDestinoImputacion[]
   adjuntos?:    VentasCobroAdjuntoInput[]
+}
+
+// ── Cargar liquidación (POST /cobros/liquidacion/leer, 20260930k) ──
+
+export type VentasLiqAvisoComprobante = 'NO_ENCONTRADO' | 'YA_COBRADO' | 'SALDO_MENOR' | 'IMPORTE_DISTINTO'
+export type VentasLiqAvisoCheque = 'YA_EN_OTRO_COBRO' | 'EN_CARTERA' | 'SIN_FECHA' | 'LIBRADOR_DESCONOCIDO'
+
+export interface VentasLiquidacionPropuesta {
+  fuente: 'texto' | 'ia'
+  modelo: string | null
+  liquidacion: {
+    numero: string; fecha: string | null; emisor_nombre: string | null; emisor_cuit: string | null
+    subtotal: number | null; neto: number | null; avisos: string[]
+  }
+  cliente:    { id: number; razon_social: string; doc_nro: string | null }
+  ya_cargada: { cobro_id: number; numero_fmt: string | null } | null
+  comprobantes: Array<{
+    pto_vta: number; numero: number; numero_fmt: string; fecha: string | null
+    bruto: number; comision: number; subtotal: number
+    destino: { tipo: 'externo' | 'factura'; id: number; comprobante: string; fecha: string | null; total: number; saldo: number } | null
+    imputar: number
+    avisos: VentasLiqAvisoComprobante[]
+  }>
+  gastos: Array<{
+    texto: string; codigo: string | null; comprobante: string | null; fecha: string | null; importe: number
+    concepto_id: number | null; reconocido_por: string | null
+  }>
+  cheques: Array<{
+    tipo: string; numero: string; banco: string; fecha_cobro: string | null; importe: number; propio: boolean
+    librador: string | null; librador_cuit: string | null; avisos: VentasLiqAvisoCheque[]; cobro_existente_id: number | null
+  }>
+  controles: {
+    suma_comprobantes: number; suma_deducciones: number; suma_cheques: number
+    cierra_subtotal: boolean; cierra_neto: boolean; cierra_cheques: boolean; ok: boolean
+  }
+  total_cobro:   number
+  total_imputar: number
+  obs_sugerida:  string
+  adjunto: { storage_path: string; nombre_archivo: string; mime: string; size: number; hash: string }
 }
 
 /** POST /compensaciones: una NC (del ERP o externa) contra débitos del mismo cliente. */
@@ -4613,7 +4702,7 @@ export interface VentasDeudor {
 }
 
 export type VentasMovimientoTipo =
-  | 'saldo_anterior' | 'factura' | 'nota_debito' | 'nota_credito' | 'externo' | 'externo_nc' | 'cobro' | 'retencion'
+  | 'saldo_anterior' | 'factura' | 'nota_debito' | 'nota_credito' | 'externo' | 'externo_nc' | 'cobro' | 'retencion' | 'gasto'
 
 /** Fila de `ventas_estado_cuenta`: debe − haber con saldo corrido. */
 export interface VentasEstadoCuentaMov {

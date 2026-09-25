@@ -7,7 +7,8 @@
  *   1. De quién se recibió y cuánto, en números y en letras.
  *   2. Medios de cobro (transferencia a qué cuenta, cheques con número,
  *      banco, librador y fecha de cobro).
- *   3. Retenciones sufridas, con su certificado.
+ *   3. Retenciones sufridas, con su certificado, y los gastos que el cliente
+ *      descontó al pagar (Recupero Ley 25413, seguro de carga…, 20260930k).
  *   4. Comprobantes que cancela (las imputaciones vigentes) y lo que queda a
  *      cuenta.
  * Un recibo anulado sale con marca de agua ANULADO y el motivo; uno de
@@ -46,7 +47,7 @@ export function detalleMedio(m: VentasCobroDetalle['medios'][number]): string {
     return [
       m.cheque_numero ? `N° ${m.cheque_numero}` : null,
       m.cheque_banco,
-      m.cheque_librador ? `Librador: ${m.cheque_librador}` : null,
+      m.cheque_librador ? `Librador: ${m.cheque_librador}${m.cheque_librador_cuit ? ` (${fmtCuit(m.cheque_librador_cuit)})` : ''}` : null,
       m.cheque_fecha_cobro ? `Cobro: ${fmtFecha(m.cheque_fecha_cobro)}` : null,
     ].filter(Boolean).join(' · ')
   }
@@ -125,6 +126,22 @@ export function armarReciboDoc(
     },
   ] : []
 
+  const listaGastos = d.gastos ?? []
+  const gastos: Content[] = listaGastos.length ? [
+    titulo('Gastos descontados por el cliente'),
+    {
+      table: {
+        headerRows: 1, dontBreakRows: true,
+        widths: [150, '*', 80],
+        body: [
+          [th('Concepto'), th('Detalle'), th('Importe', 'right')],
+          ...listaGastos.map(g => [td(g.concepto_nombre), td(g.obs || '—'), td(fmtN(g.importe), 'right')]),
+        ],
+      },
+      layout: layoutLista,
+    },
+  ] : []
+
   const aplicados: Content[] = [
     titulo('Comprobantes que cancela'),
     imputaciones.length ? {
@@ -147,6 +164,11 @@ export function armarReciboDoc(
     { text: label, fontSize: fuerte ? 10 : 8.5, bold: fuerte, color: fuerte ? CARBON : TENUE, margin: [6, fuerte ? 4 : 2, 4, fuerte ? 4 : 2], ...(fuerte ? { fillColor: NARANJA_SUAVE } : {}) },
     { text: `$ ${fmtN(valor)}`, fontSize: fuerte ? 11 : 8.5, bold: fuerte, alignment: 'right', margin: [4, fuerte ? 4 : 2, 6, fuerte ? 4 : 2], ...(fuerte ? { fillColor: NARANJA_SUAVE } : {}) },
   ]
+  const filasAntes: TableCell[][] = [
+    fila('Medios de cobro', Number(c.total_medios)),
+    fila('Retenciones', Number(c.total_retenciones)),
+    ...(Number(c.total_gastos ?? 0) > 0 ? [fila('Gastos descontados', Number(c.total_gastos))] : []),
+  ]
   const totales: Content = {
     columns: [
       {
@@ -162,15 +184,14 @@ export function armarReciboDoc(
         table: {
           widths: ['*', 100],
           body: [
-            fila('Medios de cobro', Number(c.total_medios)),
-            fila('Retenciones', Number(c.total_retenciones)),
+            ...filasAntes,
             fila('TOTAL COBRADO', Number(c.total), true),
             fila('Aplicado a comprobantes', Number(c.aplicado)),
             fila('A cuenta', Number(c.a_cuenta)),
           ],
         },
         layout: {
-          hLineWidth: (i: number) => (i === 2 || i === 3 ? 1 : 0),
+          hLineWidth: (i: number) => (i === filasAntes.length || i === filasAntes.length + 1 ? 1 : 0),
           vLineWidth: () => 0,
           hLineColor: () => NARANJA,
         },
@@ -219,7 +240,7 @@ export function armarReciboDoc(
     defaultStyle: { font: 'Roboto', fontSize: 8.5, color: CARBON },
     ...marca,
     footer: pie(homo ? 'PRUEBA — recibo de homologación, sin valor' : undefined),
-    content: [cabecera, ...anuladoAviso, cliente, ...medios, ...retenciones, ...aplicados, totales, firma],
+    content: [cabecera, ...anuladoAviso, cliente, ...medios, ...retenciones, ...gastos, ...aplicados, totales, firma],
     info: { title: `Recibo ${c.numero_fmt} ${c.cliente_razon_social}` },
   }
 }

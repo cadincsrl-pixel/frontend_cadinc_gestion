@@ -10,6 +10,7 @@ import type {
   ProductoVenta, ProductoVentaInput, PuntoVentaVenta, PuntoVentaVentaInput, VerificacionPuntoVenta,
   RetencionTipoVenta, RetencionTipoVentaInput, VentasConfigValores,
 } from '@/types/config.types'
+import type { VentasGastoConcepto, VentasGastoConceptoInput } from '@/types/domain.types'
 import { retencionTiposRespaldo } from '../utils/cobranzas.utils'
 import {
   CONDICION_PAGO_DEFAULT, LEYENDA_FCE, PRODUCTOS, PROVINCIA_DEFAULT, UNIDAD_DEFAULT, hoyAR, parametrosRespaldo,
@@ -28,6 +29,7 @@ export const CONFIG_VENTAS_KEYS = {
   parametrosVigentes: (fecha: string) => ['facturacion', 'config', 'parametros', 'vigentes', fecha] as const,
   retencionTipos: (incluirInactivos: boolean) => ['facturacion', 'config', 'retencion-tipos', incluirInactivos] as const,
   valores: ['facturacion', 'config', 'valores'] as const,
+  gastoConceptos: (incluirInactivos: boolean) => ['facturacion', 'config', 'gasto-conceptos', incluirInactivos] as const,
 }
 
 export interface ProductosVentaRes {
@@ -355,5 +357,58 @@ export function useGuardarConfigVentas() {
       void qc.invalidateQueries({ queryKey: CONFIG_VENTAS_KEYS.valores })
       void qc.invalidateQueries({ queryKey: ['audit'] })
     },
+  })
+}
+
+
+// ── Gastos descontados en cobros (20260930k) ────────────────────────────────
+
+/**
+ * Conceptos de lo que el cliente descuenta al pagar (Recupero Ley 25413,
+ * seguro de carga…). Sin `incluirInactivos`, solo los activos (lo que ofrecen
+ * el cobro y «Cargar liquidación»). Un backend viejo (404) devuelve lista vacía.
+ */
+export function useGastoConceptos(incluirInactivos = false) {
+  const q = useQuery({
+    queryKey: CONFIG_VENTAS_KEYS.gastoConceptos(incluirInactivos),
+    queryFn: async (): Promise<VentasGastoConcepto[]> => {
+      try {
+        return await apiGet<VentasGastoConcepto[]>(`${BASE}/cobro-gasto-conceptos${incluirInactivos ? '?incluir_inactivos=1' : ''}`)
+      } catch (e) {
+        if (e instanceof HttpError && e.status === 404) return []
+        throw e
+      }
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+  return { ...q, conceptos: q.data ?? [] }
+}
+
+function useInvalidarGastoConceptos() {
+  const qc = useQueryClient()
+  return () => {
+    void qc.invalidateQueries({ queryKey: ['facturacion', 'config', 'gasto-conceptos'] })
+    // Los mapeos de Contabilidad listan los conceptos (Gastos descontados en cobros).
+    void qc.invalidateQueries({ queryKey: ['contabilidad', 'mapeos'] })
+    void qc.invalidateQueries({ queryKey: ['audit'] })
+  }
+}
+
+/** POST /cobro-gasto-conceptos. 409 GASTO_CONCEPTO_DUPLICADO (nombre o sinónimo de otro). */
+export function useCrearGastoConcepto() {
+  const invalidar = useInvalidarGastoConceptos()
+  return useMutation({
+    mutationFn: (body: VentasGastoConceptoInput) => apiPost<VentasGastoConcepto>(`${BASE}/cobro-gasto-conceptos`, body),
+    onSuccess: invalidar,
+  })
+}
+
+/** PATCH /cobro-gasto-conceptos/:id (sin DELETE: `activo: false`). */
+export function useEditarGastoConcepto() {
+  const invalidar = useInvalidarGastoConceptos()
+  return useMutation({
+    mutationFn: ({ id, ...body }: VentasGastoConceptoInput & { id: number }) =>
+      apiPatch<VentasGastoConcepto>(`${BASE}/cobro-gasto-conceptos/${id}`, body),
+    onSuccess: invalidar,
   })
 }

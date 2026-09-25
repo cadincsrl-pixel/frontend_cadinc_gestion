@@ -19,6 +19,7 @@ import { ClienteCombobox, ErrorCarga, ModalMotivo, Vacio } from './Comun'
 import { FichaCobro } from './FichaCobro'
 import { ModalCobro } from './ModalCobro'
 import { ModalCompensacion } from './ModalCompensacion'
+import { ModalCargarLiquidacion } from './ModalCargarLiquidacion'
 
 const PAGE_SIZE = 50
 
@@ -36,6 +37,7 @@ export function CobranzasTab() {
   const [page, setPage] = useState(1)
   const [nuevo, setNuevo] = useState(false)
   const [compensar, setCompensar] = useState(false)
+  const [liquidacion, setLiquidacion] = useState(false)
   // `&ficha=<id>` (Contabilidad › Automáticos › «Ir al origen») abre ese cobro.
   const sp = useSearchParams()
   const [fichaId, setFichaId] = useState<number | null>(() => {
@@ -76,6 +78,10 @@ export function CobranzasTab() {
         <Button size="sm" variant="secondary" onClick={() => setCompensar(true)} disabled={!registrarCobros}
           title={registrarCobros ? 'Aplicar una NC libre o un cobro a cuenta contra facturas del cliente' : 'Hace falta el permiso «Registrar cobros»'}>
           Compensación de comprobantes
+        </Button>
+        <Button size="sm" variant="secondary" onClick={() => setLiquidacion(true)} disabled={!registrarCobros}
+          title={registrarCobros ? 'Subir la liquidación del cliente (Casilda: cuenta de venta y líquido producto) y registrarla como UN cobro' : 'Hace falta el permiso «Registrar cobros»'}>
+          📄 Cargar liquidación
         </Button>
         {ambiente === 'homo' && <span className="text-[11px] font-bold text-[#7A5000] bg-amarillo-light px-2 py-1 rounded">Homologación: cobros de prueba</span>}
       </div>
@@ -179,11 +185,12 @@ export function CobranzasTab() {
       {total > PAGE_SIZE && <Pagination page={page} total={total} pageSize={PAGE_SIZE} onChange={setPage} />}
       {filas.length > 0 && (
         <p className="text-[11px] text-gris-dark px-1">
-          {total.toLocaleString('es-AR')} recibo{total === 1 ? '' : 's'} · vigentes de esta página: {fmtM(sumaPagina)} (medios + retenciones)
+          {total.toLocaleString('es-AR')} recibo{total === 1 ? '' : 's'} · vigentes de esta página: {fmtM(sumaPagina)} (medios + retenciones + gastos descontados)
         </p>
       )}
 
       {nuevo && <ModalCobro onClose={() => setNuevo(false)} onGuardado={d => { setNuevo(false); setFichaId(d.cobro.id) }} />}
+      {liquidacion && <ModalCargarLiquidacion onClose={() => setLiquidacion(false)} onGuardado={d => { setLiquidacion(false); setFichaId(d.cobro.id) }} />}
       {compensar && <ModalCompensacion clienteId={filtro.cliente_id} onClose={() => setCompensar(false)} />}
       {fichaId !== null && <FichaCobro id={fichaId} onClose={() => setFichaId(null)} />}
       {anulando && (
