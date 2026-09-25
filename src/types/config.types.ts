@@ -128,3 +128,39 @@ export interface ArcaAmbienteInfo {
   certificado?:       CertificadoArca | null
   certificado_error?: string | null
 }
+
+// ── Montos de ARCA con vigencia (20260929e) ─────────────────────────────────
+
+export type ClaveParametroVenta = 'monto_minimo_fce' | 'tope_cf_identificacion'
+
+/** Una fila de `ventas_parametros` (GET /api/facturacion/parametros). No se edita: un valor nuevo es una fila nueva. */
+export interface ParametroVenta {
+  id:            number
+  clave:         ClaveParametroVenta
+  valor:         number
+  /** YYYY-MM-DD. */
+  vigente_desde: string
+  fuente:        string
+  obs:           string
+  created_at:    string
+  created_by:    string | null
+  /** Respecto de hoy: la que rige, una que ya no, o una que todavía no (solo esas se borran). */
+  estado:        'vigente' | 'historico' | 'futuro'
+}
+
+/** POST /api/facturacion/parametros. `forzar` = guardar aunque haya facturas autorizadas desde esa fecha. */
+export interface ParametroVentaInput {
+  clave:         ClaveParametroVenta
+  valor:         number
+  vigente_desde: string
+  fuente?:       string
+  obs?:          string
+  forzar?:       boolean
+}
+
+/** GET /api/facturacion/parametros/vigentes?fecha= */
+export interface ParametrosVigentes {
+  fecha:                  string
+  monto_minimo_fce:       number
+  tope_cf_identificacion: number
+}

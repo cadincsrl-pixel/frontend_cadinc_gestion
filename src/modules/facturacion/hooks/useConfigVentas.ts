@@ -4,11 +4,12 @@
 // así el formulario de la factura se ve igual que antes.
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { apiGet, apiPatch, apiPost, HttpError } from '@/lib/api/client'
+import { apiDelete, apiGet, apiPatch, apiPost, HttpError } from '@/lib/api/client'
 import type {
+  ParametroVenta, ParametroVentaInput, ParametrosVigentes,
   ProductoVenta, ProductoVentaInput, PuntoVentaVenta, PuntoVentaVentaInput, VerificacionPuntoVenta,
 } from '@/types/config.types'
-import { PRODUCTOS } from '../utils/facturacion.utils'
+import { PRODUCTOS, hoyAR, parametrosRespaldo } from '../utils/facturacion.utils'
 import { FACTURACION_KEYS, invalidarFacturacion } from './useFacturacion'
 
 const BASE = '/api/facturacion'
@@ -17,6 +18,10 @@ export const CONFIG_VENTAS_KEYS = {
   todo:      ['facturacion', 'config'] as const,
   productos: (incluirInactivos: boolean) => ['facturacion', 'config', 'productos', incluirInactivos] as const,
   puntosVenta: ['facturacion', 'config', 'puntos-venta'] as const,
+  /** Prefijo: cubre la lista y los vigentes de cualquier fecha. */
+  parametros: ['facturacion', 'config', 'parametros'] as const,
+  parametrosLista: ['facturacion', 'config', 'parametros', 'lista'] as const,
+  parametrosVigentes: (fecha: string) => ['facturacion', 'config', 'parametros', 'vigentes', fecha] as const,
 }
 
 export interface ProductosVentaRes {
@@ -145,3 +150,88 @@ export function useVerificarPuntoVenta() {
     onSuccess: invalidar,
   })
 }
+
+// ── Montos de ARCA con vigencia (20260929e) ─────────────────────────────────
+
+export interface ParametrosVigentesRes extends ParametrosVigentes {
+  /** true = el backend no los tiene (404) o no respondió: se usan las constantes de antes. */
+  respaldo: boolean
+}
+
+/**
+ * Monto mínimo de la FCE y tope de consumidor final vigentes a una fecha
+ * (default hoy). Mientras carga, o si el backend no los tiene, las constantes
+ * de `facturacion.utils.ts` (los valores de antes): nunca deja al formulario
+ * sin número. La base vuelve a validar igual al guardar.
+ */
+export function useParametrosVigentes(fecha?: string | null): ParametrosVigentesRes {
+  const f = fecha && /^\d{4}-\d{2}-\d{2}$/.test(fecha) ? fecha : hoyAR()
+  const q = useQuery({
+    queryKey: CONFIG_VENTAS_KEYS.parametrosVigentes(f),
+    queryFn: async (): Promise<ParametrosVigentesRes> => {
+      try {
+        const r = await apiGet<ParametrosVigentes>(`${BASE}/parametros/vigentes?fecha=${f}`)
+        const m = Number(r.monto_minimo_fce), t = Number(r.tope_cf_identificacion)
+        if (!(m > 0) || !(t > 0)) return { ...parametrosRespaldo(f), respaldo: true }
+        return { fecha: r.fecha ?? f, monto_minimo_fce: m, tope_cf_identificacion: t, respaldo: false }
+      } catch (e) {
+        if (e instanceof HttpError && e.status === 404) return { ...parametrosRespaldo(f), respaldo: true }
+        throw e
+      }
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+  return q.data ?? { ...parametrosRespaldo(f), respaldo: q.isError }
+}
+
+export interface ParametrosVentaRes {
+  parametros: ParametroVenta[]
+  /** true = el backend todavía no tiene el endpoint (404). */
+  respaldo:   boolean
+}
+
+/** Todas las vigencias (pasadas, la actual y las futuras) de los montos de ARCA. */
+export function useParametrosVenta() {
+  const q = useQuery({
+    queryKey: CONFIG_VENTAS_KEYS.parametrosLista,
+    queryFn: async (): Promise<ParametrosVentaRes> => {
+      try {
+        return { parametros: await apiGet<ParametroVenta[]>(`${BASE}/parametros`), respaldo: false }
+      } catch (e) {
+        if (e instanceof HttpError && e.status === 404) return { parametros: [], respaldo: true }
+        throw e
+      }
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+  return { ...q, parametros: q.data?.parametros ?? [], respaldo: q.data?.respaldo ?? false }
+}
+
+function useInvalidarParametros() {
+  const qc = useQueryClient()
+  return () => {
+    void qc.invalidateQueries({ queryKey: CONFIG_VENTAS_KEYS.parametros })
+    // El dato de FCE del cliente trae el mínimo vigente.
+    void qc.invalidateQueries({ queryKey: ['facturacion', 'clientes', 'fce'] })
+    void qc.invalidateQueries({ queryKey: ['audit'] })
+  }
+}
+
+/** POST /parametros: una vigencia nueva. 409 PARAMETRO_RETROACTIVO si hay facturas autorizadas desde esa fecha (se reintenta con `forzar`). */
+export function useCrearParametroVenta() {
+  const invalidar = useInvalidarParametros()
+  return useMutation({
+    mutationFn: (body: ParametroVentaInput) => apiPost<ParametroVenta>(`${BASE}/parametros`, body),
+    onSuccess: invalidar,
+  })
+}
+
+/** DELETE /parametros/:id: solo una vigencia futura (409 PARAMETRO_YA_VIGENTE). */
+export function useBorrarParametroVenta() {
+  const invalidar = useInvalidarParametros()
+  return useMutation({
+    mutationFn: (id: number) => apiDelete<ParametroVenta>(`${BASE}/parametros/${id}`),
+    onSuccess: invalidar,
+  })
+}
+

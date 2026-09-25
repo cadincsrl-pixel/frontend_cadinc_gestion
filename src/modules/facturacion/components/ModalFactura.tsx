@@ -17,13 +17,13 @@ import {
   useCrearFacturaVenta, useEditarFacturaVenta, useFacturaVenta, useObrasFacturacion, useArcaAmbiente,
 } from '../hooks/useFacturacion'
 import { useClientesVenta, useCuentasFce, useFceCliente } from '../hooks/useClientesFacturacion'
-import { useProductosVenta } from '../hooks/useConfigVentas'
+import { useParametrosVigentes, useProductosVenta } from '../hooks/useConfigVentas'
 import { calcularTotales } from '../utils/facturacion.calculos'
 import {
-  ALICUOTAS_UI, ALICUOTA_LABEL, CONDICIONES_IVA, CONDICION_PAGO_DEFAULT, MONTO_MINIMO_FCE, PRODUCTOS, PROVINCIAS,
+  ALICUOTAS_UI, ALICUOTA_LABEL, CONDICIONES_IVA, CONDICION_PAGO_DEFAULT, PRODUCTOS, PROVINCIAS,
   PROVINCIA_DEFAULT, TIPOS_CBTE, TRANSMISIONES_FCE, UNIDAD_DEFAULT, correspondeFce, esTipoFce, esTipoNc, etiquetaProducto,
   fmtDoc, fmtFecha, fmtM, hintProducto, hoyAR, letraDeCliente, letraDeTipo, mesDeFecha, requiereIdentificacion, tipoPara,
-  TOPE_CF_IDENTIFICACION, sugerirPuntoVenta,
+  sugerirPuntoVenta,
 } from '../utils/facturacion.utils'
 import { codigoErrorFacturacion, errorDeCampoFacturacion, mensajeErrorFacturacion } from '../utils/facturacion.errores'
 import type {
@@ -246,6 +246,8 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
   const anulacion   = useWatch({ control, name: 'nc_anulacion' })
 
   const totales = useMemo(() => calcularTotales(renglones ?? []), [renglones])
+  // Montos de ARCA vigentes a la fecha del comprobante (20260929e); sin backend, las constantes.
+  const { monto_minimo_fce: minimoFce, tope_cf_identificacion: topeCf } = useParametrosVigentes(fechaCbte)
 
   // ── Producto (catálogo, 20260929b) ──
   const listaProductos = productos.productos
@@ -304,8 +306,8 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
   // ¿Le corresponde FCE? (WSFECRED; solo facturas A, no NC)
   const consultaFce = !esNc && letraCliente === 'A'
   const fceInfo = useFceCliente(consultaFce && cliente ? cliente.id : null)
-  const corresponde = consultaFce ? correspondeFce(fceInfo.data, totales.total) : null
-  const bajoMinimo = totales.total > 0 && Math.round(totales.total * 100) < MONTO_MINIMO_FCE * 100
+  const corresponde = consultaFce ? correspondeFce(fceInfo.data, totales.total, minimoFce) : null
+  const bajoMinimo = totales.total > 0 && Math.round(totales.total * 100) < Math.round(minimoFce * 100)
   /** Lo que el backend va a frenar (salvo admin con forzar). */
   const bloqueoFce: 'CORRESPONDE_FCE' | 'NO_CORRESPONDE_FCE' | null = !consultaFce || totales.total <= 0 ? null
     : !fce && corresponde === true ? 'CORRESPONDE_FCE'
@@ -330,7 +332,7 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
   const cuentaSel = listaCuentas.find(c => String(c.id) === cuentaId)
   const tipoLabel = (t: number | null | undefined) => TIPOS_CBTE.find(x => x.key === t)?.label
   const cortoDe = (t: number | null | undefined) => TIPOS_CBTE.find(x => x.key === t)?.corto ?? 'F'
-  const faltaIdentificar = !!cliente && requiereIdentificacion(letra, cliente.doc_tipo, totales.total)
+  const faltaIdentificar = !!cliente && requiereIdentificacion(letra, cliente.doc_tipo, totales.total, topeCf)
 
   const saldoNc = asociada ? Number(asociada.factura.saldo_nc ?? 0) : null
   const superaSaldo = esNc && saldoNc !== null && totales.total > saldoNc + 0.004
@@ -583,7 +585,7 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
         )}
         {faltaIdentificar && (
           <Aviso tono="rojo">
-            Desde {fmtM(TOPE_CF_IDENTIFICACION)} el consumidor final tiene que estar identificado (RG 5700):
+            Desde {fmtM(topeCf)} el consumidor final tiene que estar identificado (RG 5700):
             cargale DNI o CUIT a <b>{cliente?.razon_social}</b> en Clientes, o elegí el cliente identificado.
           </Aviso>
         )}
@@ -662,10 +664,10 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
               {fceInfo.isFetching && <span className="text-[11px] text-gris-dark">Consultando a ARCA si el cliente recibe FCE…</span>}
             </div>
             <div className="text-[11px] text-gris-dark">
-              {fceInfo.data?.obligado === true && <>Según ARCA, <b>{cliente?.razon_social}</b> está obligado a recibir FCE desde <b>{fmtM(fceInfo.data.monto_desde ?? MONTO_MINIMO_FCE)}</b>.</>}
+              {fceInfo.data?.obligado === true && <>Según ARCA, <b>{cliente?.razon_social}</b> está obligado a recibir FCE desde <b>{fmtM(fceInfo.data.monto_desde ?? minimoFce)}</b>.</>}
               {fceInfo.data?.obligado === false && <>Según ARCA, <b>{cliente?.razon_social}</b> no está obligado a recibir FCE.</>}
               {fceInfo.data?.consultado_at && <> (consultado el {fmtFecha(fceInfo.data.consultado_at)})</>}
-              {' '}La FCE es desde {fmtM(MONTO_MINIMO_FCE)}.
+              {' '}La FCE es desde {fmtM(minimoFce)}.
             </div>
             {fceInfo.data?.error && (
               <Aviso tono="naranja">
@@ -681,7 +683,7 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
             {bloqueoFce === 'NO_CORRESPONDE_FCE' && (
               <Aviso tono="rojo">
                 {bajoMinimo
-                  ? <>La FCE es desde {fmtM(MONTO_MINIMO_FCE)}: por {fmtM(totales.total)} va Factura A común</>
+                  ? <>La FCE es desde {fmtM(minimoFce)}: por {fmtM(totales.total)} va Factura A común</>
                   : <>Según ARCA este cliente no recibe FCE por este importe: va Factura A común</>}
                 {esAdmin ? ' (como admin podés forzarla).' : '.'}
               </Aviso>

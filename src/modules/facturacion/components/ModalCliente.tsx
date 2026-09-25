@@ -11,11 +11,12 @@ import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useCondicionesIva } from '../hooks/useFacturacion'
+import { useParametrosVigentes } from '../hooks/useConfigVentas'
 import {
   useConsultarPadron, useCrearClienteVenta, useCuentasFce, useEditarClienteVenta, useGuardarContactosCliente, useRefrescarFceCliente,
 } from '../hooks/useClientesFacturacion'
 import {
-  CONDICIONES_IVA, DOC_TIPOS, MONTO_MINIMO_FCE, PROVINCIAS, TOPE_CF_IDENTIFICACION, cuitValido, fmtFecha, fmtM, letraDeCliente,
+  CONDICIONES_IVA, DOC_TIPOS, PROVINCIAS, cuitValido, fmtFecha, fmtM, letraDeCliente,
 } from '../utils/facturacion.utils'
 import { errorDeCampoFacturacion, mensajeErrorFacturacion } from '../utils/facturacion.errores'
 import type { VentasCliente, VentasClienteInput, VentasDocTipo, VentasPadronResultado } from '@/types/domain.types'
@@ -73,6 +74,8 @@ interface Props {
 
 export function ModalCliente({ cliente, onClose }: Props) {
   const toast = useToast()
+  // Montos de ARCA vigentes hoy (20260929e); sin backend, las constantes.
+  const { monto_minimo_fce: minimoFce, tope_cf_identificacion: topeCf } = useParametrosVigentes()
   const condiciones = useCondicionesIva()
   const crear = useCrearClienteVenta()
   const editar = useEditarClienteVenta()
@@ -267,7 +270,7 @@ export function ModalCliente({ cliente, onClose }: Props) {
         {letra && (
           <Aviso tono="gris">
             A este cliente le corresponde <b>factura {letra}</b>
-            {letra === 'B' && docTipo === '99' && <> — sin identificar sirve hasta {fmtM(TOPE_CF_IDENTIFICACION - 0.01)}: desde {fmtM(TOPE_CF_IDENTIFICACION)} ARCA exige DNI o CUIT (RG 5700)</>}.
+            {letra === 'B' && docTipo === '99' && <> — sin identificar sirve hasta {fmtM(topeCf - 0.01)}: desde {fmtM(topeCf)} ARCA exige DNI o CUIT (RG 5700)</>}.
           </Aviso>
         )}
         {condId && !letra && (
@@ -296,7 +299,7 @@ export function ModalCliente({ cliente, onClose }: Props) {
             {cliente && (
               <div className="flex items-center gap-2 flex-wrap text-[11px] text-gris-dark">
                 <span>
-                  {cliente.fce_obligado === true && <>Según ARCA está <b>obligado</b> a recibir FCE desde {fmtM(cliente.fce_monto_desde ?? MONTO_MINIMO_FCE)}.</>}
+                  {cliente.fce_obligado === true && <>Según ARCA está <b>obligado</b> a recibir FCE desde {fmtM(cliente.fce_monto_desde ?? minimoFce)}.</>}
                   {cliente.fce_obligado === false && <>Según ARCA <b>no</b> está obligado a recibir FCE.</>}
                   {cliente.fce_obligado == null && <>Todavía no se le preguntó a ARCA si recibe FCE.</>}
                   {cliente.fce_consultado_at && <> Consultado el {fmtFecha(cliente.fce_consultado_at)}.</>}
@@ -305,7 +308,7 @@ export function ModalCliente({ cliente, onClose }: Props) {
                   onClick={async () => {
                     try {
                       const r = await refrescarFce.mutateAsync(cliente.id)
-                      toast(r.error ? `ARCA no respondió: ${r.error.slice(0, 120)}` : r.obligado ? `✓ Obligado desde ${fmtM(r.monto_desde ?? MONTO_MINIMO_FCE)}` : '✓ No está obligado a recibir FCE', r.error ? 'err' : 'ok')
+                      toast(r.error ? `ARCA no respondió: ${r.error.slice(0, 120)}` : r.obligado ? `✓ Obligado desde ${fmtM(r.monto_desde ?? minimoFce)}` : '✓ No está obligado a recibir FCE', r.error ? 'err' : 'ok')
                     } catch (e) { toast(mensajeErrorFacturacion(e), 'err') }
                   }}>
                   Consultar a ARCA

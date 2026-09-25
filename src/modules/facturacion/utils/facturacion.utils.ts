@@ -135,9 +135,11 @@ export const esTipoFce = (cbteTipo: number | null | undefined) => cbteTipo === 2
 /**
  * Monto mínimo de la Factura de Crédito Electrónica MiPyME: $ 5.549.862.
  * Fuente: Registro de FCE MiPyMEs de ARCA, vigente desde el 14/04/2026
- * (consultado el 23/09/2026). Espejo de `_ventas_monto_minimo_fce()`
- * (20260924e) y de MONTO_MINIMO_FCE del backend (reglas.ts). El monto de
- * cada receptor lo dice WSFECRED.
+ * (consultado el 23/09/2026). El monto de cada receptor lo dice WSFECRED.
+ *
+ * Desde 20260929e vive en la base con vigencia (Ventas › Configuración ›
+ * Montos de ARCA) y la pantalla lo lee con `useParametrosVigentes(fecha)`.
+ * Esta constante queda como respaldo (backend viejo o caído) y es la semilla.
  */
 export const MONTO_MINIMO_FCE = 5_549_862
 
@@ -158,10 +160,12 @@ export const TRANSMISION_LABEL: Record<string, string> = {
 export function correspondeFce(
   info: { obligado: boolean | null; monto_desde: number | null } | null | undefined,
   total: number,
+  /** Mínimo general vigente a la fecha del comprobante (`useParametrosVigentes`). */
+  minimo: number = MONTO_MINIMO_FCE,
 ): boolean | null {
   if (!info || info.obligado === null) return null
   if (!info.obligado) return false
-  const piso = info.monto_desde ?? MONTO_MINIMO_FCE
+  const piso = info.monto_desde ?? minimo
   return Math.round(total * 100) >= Math.round(piso * 100)
 }
 
@@ -182,14 +186,37 @@ export function cbuValido(cbu: string): boolean {
 /**
  * Desde este total el consumidor final se identifica (RG ARCA 5700/2025,
  * "igual o superior a $ 10.000.000"; en homologación ARCA rechaza con la
- * observación 10015 justo en ese número). Espejo de `_ventas_tope_cf()` y
- * de TOPE_CF_IDENTIFICACION del backend.
+ * observación 10015 justo en ese número).
+ *
+ * Desde 20260929e vive en la base con vigencia (Ventas › Configuración ›
+ * Montos de ARCA) y la pantalla lo lee con `useParametrosVigentes(fecha)`.
+ * Esta constante queda como respaldo (backend viejo o caído) y es la semilla.
  */
 export const TOPE_CF_IDENTIFICACION = 10_000_000
 
-/** Comprobante B, receptor sin identificar (99) y total ≥ tope. */
-export function requiereIdentificacion(letra: LetraVenta | null, docTipo: number, total: number): boolean {
-  return letra === 'B' && docTipo === 99 && Math.round(total * 100) >= TOPE_CF_IDENTIFICACION * 100
+/** Comprobante B, receptor sin identificar (99) y total ≥ tope (el vigente a la fecha del comprobante). */
+export function requiereIdentificacion(
+  letra: LetraVenta | null, docTipo: number, total: number,
+  tope: number = TOPE_CF_IDENTIFICACION,
+): boolean {
+  return letra === 'B' && docTipo === 99 && Math.round(total * 100) >= Math.round(tope * 100)
+}
+
+/** Los montos de ARCA de antes de 20260929e: respaldo si el backend no los tiene. */
+export function parametrosRespaldo(fecha: string): { fecha: string; monto_minimo_fce: number; tope_cf_identificacion: number } {
+  return { fecha, monto_minimo_fce: MONTO_MINIMO_FCE, tope_cf_identificacion: TOPE_CF_IDENTIFICACION }
+}
+
+/** Nombre y ayuda de cada monto de ARCA con vigencia. */
+export const PARAMETROS_VENTA: Record<'monto_minimo_fce' | 'tope_cf_identificacion', { label: string; ayuda: string }> = {
+  monto_minimo_fce: {
+    label: 'Monto mínimo de la FCE MiPyME',
+    ayuda: 'Desde este total (a la fecha de la factura) la Factura A a un obligado va como FCE. Lo publica ARCA en el Registro de FCE MiPyMEs.',
+  },
+  tope_cf_identificacion: {
+    label: 'Tope para identificar al consumidor final',
+    ayuda: 'Desde este total, una factura B a consumidor final necesita DNI o CUIT (RG ARCA 5700/2025).',
+  },
 }
 
 export const PROVINCIA_DEFAULT = 'Tucuman'
