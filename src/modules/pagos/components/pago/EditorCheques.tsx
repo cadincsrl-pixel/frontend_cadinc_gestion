@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { InputMonto } from '@/components/ui/InputMonto'
 import { useToast } from '@/components/ui/Toast'
-import { subirComprobantePendiente, borrarComprobantePendiente, leerCheque } from '../../hooks/usePagos'
+import { subirComprobantePendiente, borrarComprobantePendiente, leerCheque, useCarteraCheques, type ChequeDeCartera } from '../../hooks/usePagos'
+import { Modal } from '@/components/ui/Modal'
 import { useConfigPagos } from '../../hooks/useConfigPagos'
 import {
   MAX_ADJUNTO_BYTES, fechasEscalonadas, fmtFecha, fmtM, partirEnPartes, plazoLabel, sumarDiasISO,
@@ -153,6 +154,27 @@ export function useEditorCheques({ fecha, totalPlata, forma, pideCheques, planFa
     }
   }
 
+  /**
+   * «🏦 Elegir de la cartera» (20260930n): cheques de terceros que ya están
+   * en la cartera de cheques recibidos. Entran como «De tercero» con el
+   * librador, el banco, la fecha y el importe de la cartera; las filas en
+   * blanco se reemplazan y uno que ya está cargado no se repite.
+   */
+  function agregarDeCartera(lista: ChequeDeCartera[]) {
+    const yaCargados = new Set(cheques.map(c => `${c.numero.replace(/\D/g, '').replace(/^0+/, '')}|${r2(n(c.monto))}`))
+    const nuevos = lista
+      .filter(x => !yaCargados.has(`${x.numero.replace(/^0+/, '')}|${r2(Number(x.importe))}`))
+      .map(x => ({
+        ...chequeVacio(x.fecha_cobro ?? '', String(x.importe)),
+        numero: x.numero, banco: x.banco ?? '', es_propio: false,
+        librador: [x.librador, x.librador_cuit ? `CUIT ${x.librador_cuit}` : null].filter(Boolean).join(' · '),
+        avisosFoto: [`De la cartera: lo dio ${x.recibido_de ?? '—'}${x.recibido_el ? ` el ${fmtFecha(x.recibido_el)}` : ''}.`],
+      }))
+    if (nuevos.length === 0) { toast('Esos cheques ya están cargados en este pago', 'warn'); return }
+    const enBlanco = (c: ChequeFila) => !c.foto && !c.leyendo && !c.numero.trim()
+    setCheques(cs => [...cs.filter(c => !enBlanco(c)), ...nuevos])
+  }
+
   /** «📷 Agregar desde foto»: una fila nueva que arranca con la foto. */
   function agregarDesdeFoto(file: File) {
     agregarDesdeArchivos([file])
@@ -254,7 +276,7 @@ export function useEditorCheques({ fecha, totalPlata, forma, pideCheques, planFa
   return {
     cheques, cantCheques, setCantCheques, primerPlazo, setPrimerPlazo, opcionesPlazo, cadaDias, setCadaDias,
     totalCheques, difCheques, incompletos, leyendo,
-    setCheque, setChequeAMano, leerFotoCheque, agregarDesdeFoto, agregarDesdeArchivos, quitarCheque, generarCheques, plazoDe,
+    setCheque, setChequeAMano, leerFotoCheque, agregarDesdeFoto, agregarDesdeArchivos, agregarDeCartera, quitarCheque, generarCheques, plazoDe,
     agregarCheque, ajustarUltimoCheque, fotosSubidas,
     paraEnviar: () => chequesParaEnviar(cheques),
   }
@@ -302,6 +324,7 @@ export function EditorCheques({ ed, forma, fecha, totalPlata, cantFacturas, onUs
   onUsarTotalDeLosCheques: (totalCheques: number) => void
 }) {
   const { cheques, cantCheques, primerPlazo, cadaDias, totalCheques, difCheques } = ed
+  const [eligiendo, setEligiendo] = useState(false)
   // Arrastrar varios comprobantes encima del recuadro: una fila por archivo.
   // El contador evita el parpadeo al pasar por encima de los hijos.
   const [arrastrando, setArrastrando] = useState(0)
@@ -481,6 +504,10 @@ export function EditorCheques({ ed, forma, fecha, totalPlata, cantFacturas, onUs
             onChange={e => { const files = Array.from(e.target.files ?? []); e.target.value = ''; if (files.length) ed.agregarDesdeArchivos(files) }} />
         </label>
         <span className="text-[11px] text-gris-dark hidden sm:inline">o arrastrá varios acá</span>
+        <Button variant="ghost" size="sm" onClick={() => setEligiendo(true)}
+          title="Cheques de terceros que ya están en la cartera (recibidos en cobros): se cargan con su librador, banco, fecha e importe">
+          🏦 Elegir de la cartera
+        </Button>
         <div className="ml-auto text-xs text-right">
           <span className="text-gris-dark">Suman </span>
           <b className="font-mono tabular-nums">{fmtM(totalCheques)}</b>
@@ -492,7 +519,66 @@ export function EditorCheques({ ed, forma, fecha, totalPlata, cantFacturas, onUs
           )}
         </div>
       </div>
+      {eligiendo && <ModalCartera onClose={() => setEligiendo(false)} onElegir={l => { ed.agregarDeCartera(l); setEligiendo(false) }} />}
     </div>
+  )
+}
+
+/**
+ * La cartera de cheques recibidos para tildar los que se endosan en este
+ * pago (20260930n). Muestra de quién vino cada uno; los vencidos (fecha de
+ * cobro pasada) quedan marcados: casi seguro ya se depositaron.
+ */
+function ModalCartera({ onClose, onElegir }: { onClose: () => void; onElegir: (l: ChequeDeCartera[]) => void }) {
+  const { data = [], isLoading, isError } = useCarteraCheques(true)
+  const [q, setQ] = useState('')
+  const [sel, setSel] = useState<Set<number>>(new Set())
+  const [verVencidos, setVerVencidos] = useState(false)
+  const qn = q.trim().toLowerCase()
+  const lista = data.filter(c => (verVencidos || !c.vencido)
+    && (!qn || [c.numero, c.librador, c.banco, c.recibido_de].some(x => (x ?? '').toLowerCase().includes(qn))))
+  const elegidos = data.filter(c => sel.has(c.id))
+  const suma = elegidos.reduce((t, c) => t + Number(c.importe), 0)
+  const alternar = (id: number) => setSel(s => { const x = new Set(s); if (x.has(id)) x.delete(id); else x.add(id); return x })
+  return (
+    <Modal open onClose={onClose} title="Elegir cheques de la cartera" width="max-w-3xl"
+      footer={
+        <div className="flex gap-2 items-center justify-end">
+          <span className="text-xs text-gris-dark mr-auto">{elegidos.length} elegido{elegidos.length === 1 ? '' : 's'} · <b className="font-mono tabular-nums">{fmtM(suma)}</b></span>
+          <Button variant="ghost" size="sm" onClick={onClose}>Cancelar</Button>
+          <Button size="sm" onClick={() => onElegir(elegidos)} disabled={elegidos.length === 0}>Agregar al pago</Button>
+        </div>
+      }>
+      <div className="flex flex-col gap-2 text-sm">
+        <div className="flex gap-2 items-center flex-wrap">
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Número, librador, banco, quién lo dio…" className={`${inputCls} flex-1 min-w-[220px]`} />
+          <label className="flex items-center gap-1 text-xs cursor-pointer select-none">
+            <input type="checkbox" checked={verVencidos} onChange={e => setVerVencidos(e.target.checked)} /> Ver también los vencidos
+          </label>
+        </div>
+        {isLoading ? <div className="text-xs text-gris-dark p-4 text-center">Cargando la cartera…</div>
+          : isError ? <div className="text-xs text-rojo p-4 text-center">No se pudo leer la cartera.</div>
+          : lista.length === 0 ? <div className="text-xs text-gris-dark p-4 text-center">No hay cheques en cartera{qn ? ' con esa búsqueda' : ''}.</div>
+          : (
+            <div className="border border-gris-mid rounded max-h-[50vh] overflow-y-auto">
+              {lista.map(c => (
+                <label key={c.id} className="flex items-center gap-2 px-2.5 py-1.5 border-b border-gris last:border-0 cursor-pointer hover:bg-gris/30 text-xs">
+                  <input type="checkbox" checked={sel.has(c.id)} onChange={() => alternar(c.id)} />
+                  <span className="font-mono w-24">{c.numero}</span>
+                  <span className={`w-20 ${c.vencido ? 'text-naranja-dark font-semibold' : ''}`}>{c.fecha_cobro ? fmtFecha(c.fecha_cobro) : '—'}</span>
+                  <span className="flex-1 min-w-0 truncate" title={c.librador ?? undefined}>{c.librador ?? '—'}{c.banco ? <span className="text-gris-dark"> · {c.banco}</span> : null}</span>
+                  <span className="text-gris-dark truncate max-w-[140px]" title={c.recibido_de ?? undefined}>{c.recibido_de ?? ''}</span>
+                  <span className="font-mono tabular-nums w-28 text-right font-bold">{fmtM(Number(c.importe))}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        <p className="text-[11px] text-gris-dark">
+          Entran como «De tercero» con el librador de la cartera. Si es un e-cheq, igual hay que subir el comprobante del endoso en su fila.
+          Al registrar el pago, la cartera los marca endosados.
+        </p>
+      </div>
+    </Modal>
   )
 }
 

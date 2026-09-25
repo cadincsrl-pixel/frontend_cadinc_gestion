@@ -229,6 +229,28 @@ export interface ChequeRecibido {
   created_at:       string
 }
 
+/** Una fila de `v_cheques_recibidos` (20260930n): el cheque con su origen y su destino. */
+export interface ChequeRecibidoFila extends ChequeRecibido {
+  origen:            'logistica_cobro' | 'ventas_cobro' | 'manual'
+  cobro_id:          number | null
+  ventas_cobro_id:   number | null
+  recibido_de:       string | null
+  recibido_el:       string | null
+  orden_id:          number | null
+  op_numero:         number | null
+  op_fecha:          string | null
+  proveedor_nombre:  string | null
+  vencido:           boolean
+}
+
+export interface ChequesRecibidosRes {
+  items:  ChequeRecibidoFila[]
+  total:  number
+  limit:  number
+  offset: number
+  totales: Record<string, { cantidad: number; importe: number }>
+}
+
 export interface ChequeAManoInput {
   numero:       string
   banco?:       string | null

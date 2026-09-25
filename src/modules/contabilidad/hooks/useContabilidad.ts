@@ -13,6 +13,7 @@
 import { useState } from 'react'
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '@/lib/api/client'
+import type { CargarChequesRes, ChequeAManoInput, ChequesRecibidosRes } from '@/types/domain.types'
 import type {
   CtbAnularRes, CtbAsiento, CtbAsientoEstado, CtbAsientoFila, CtbAsientoInput, CtbAsientoTipo, CtbAuxiliar,
   CtbCerrarPeriodoRes, CtbCuenta, CtbCuentaInput, CtbEjercicio, CtbImportarPlanRes, CtbMayorRes,
@@ -921,5 +922,40 @@ export function useAnularCorrida() {
     mutationFn: ({ id, motivo }: { id: number; motivo: string }) =>
       apiPost<CtbAmortizacionCorrida>(`${BASE}/bienes/amortizaciones/${id}/anular`, { motivo }),
     onSuccess: () => invalidarContabilidad(qc),
+  })
+}
+
+// ── Cartera de cheques recibidos (20260930n) ─────────────────────────────
+
+export interface ChequesRecibidosFiltro {
+  estado?: 'en_cartera' | 'endosado' | 'depositado' | 'rechazado' | 'recuperado' | 'vencidos' | 'por_vencer' | 'todos'
+  q?:      string
+  desde?:  string
+  hasta?:  string
+}
+
+export const CHEQUES_RECIBIDOS_KEY = ['contabilidad', 'cheques-recibidos'] as const
+
+export function useChequesRecibidos(f: ChequesRecibidosFiltro, page = 1, pageSize = 50) {
+  const p = new URLSearchParams({ limit: String(pageSize), offset: String((page - 1) * pageSize) })
+  if (f.estado && f.estado !== 'todos') p.set('estado', f.estado)
+  if (f.q?.trim()) p.set('q', f.q.trim())
+  if (f.desde) p.set('desde', f.desde)
+  if (f.hasta) p.set('hasta', f.hasta)
+  const qs = p.toString()
+  return useQuery({
+    queryKey: [...CHEQUES_RECIBIDOS_KEY, qs],
+    queryFn:  () => apiGet<ChequesRecibidosRes>(`${BASE}/cheques-recibidos?${qs}`),
+    placeholderData: keepPreviousData,
+    staleTime: STALE,
+  })
+}
+
+export function useAltaChequesRecibidos() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (cheques: (ChequeAManoInput & { librador: string })[]) =>
+      apiPost<CargarChequesRes>(`${BASE}/cheques-recibidos`, { cheques }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: CHEQUES_RECIBIDOS_KEY }),
   })
 }

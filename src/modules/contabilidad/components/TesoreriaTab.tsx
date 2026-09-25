@@ -3,11 +3,13 @@
 import { useRouter, useSearchParams } from 'next/navigation'
 import { MovimientosFondosView } from './MovimientosFondosView'
 import { ConceptosFondosView } from './ConceptosFondosView'
+import { ChequesRecibidosView } from './ChequesRecibidosView'
 
-type Vista = 'movimientos' | 'conceptos'
+type Vista = 'movimientos' | 'cheques' | 'conceptos'
 
 const VISTAS: { key: Vista; label: string }[] = [
   { key: 'movimientos', label: 'Movimientos de fondos' },
+  { key: 'cheques',     label: 'Cheques recibidos' },
   { key: 'conceptos',   label: 'Conceptos' },
 ]
 
@@ -20,12 +22,14 @@ const VISTAS: { key: Vista; label: string }[] = [
  * La sub-vista vive en la URL (`?vista=`); `?mov=<id>` abre un movimiento
  * (link desde la ficha del asiento y desde Automáticos). El ABM de las
  * cuentas de tesorería sigue en Plan de cuentas. Acá va a vivir también la
- * conciliación bancaria.
+ * conciliación bancaria. `?vista=cheques`: la cartera de cheques recibidos
+ * (20260930n).
  */
 export function TesoreriaTab() {
   const router = useRouter()
   const sp = useSearchParams()
-  const vista: Vista = sp.get('vista') === 'conceptos' ? 'conceptos' : 'movimientos'
+  const v = sp.get('vista')
+  const vista: Vista = v === 'conceptos' || v === 'cheques' ? v : 'movimientos'
   const movId = Number(sp.get('mov')) || null
 
   function setVista(v: Vista) {
@@ -51,8 +55,8 @@ export function TesoreriaTab() {
           </button>
         ))}
       </div>
-      {vista === 'movimientos'
-        ? <MovimientosFondosView movIdUrl={movId} onCerrarMovUrl={cerrarMov} />
+      {vista === 'movimientos' ? <MovimientosFondosView movIdUrl={movId} onCerrarMovUrl={cerrarMov} />
+        : vista === 'cheques' ? <ChequesRecibidosView />
         : <ConceptosFondosView />}
     </div>
   )

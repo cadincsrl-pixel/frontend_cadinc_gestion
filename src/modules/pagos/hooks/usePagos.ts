@@ -845,3 +845,19 @@ export function useCuentasOrigen(enabled = true) {
     enabled,
   })
 }
+
+/** Cheques de terceros en cartera (20260930n), para «Elegir de la cartera» al pagar. */
+export interface ChequeDeCartera {
+  id: number; numero: string; banco: string | null; librador: string | null; librador_cuit: string | null
+  fecha_cobro: string | null; importe: number; es_echeq: boolean | null
+  recibido_de: string | null; recibido_el: string | null; vencido: boolean
+}
+
+export function useCarteraCheques(enabled: boolean) {
+  return useQuery({
+    queryKey: [...PAGOS_KEYS.todo, 'cartera-cheques'],
+    queryFn:  () => apiGet<ChequeDeCartera[]>('/api/pagos/cheques/cartera'),
+    enabled,
+    staleTime: 15_000,
+  })
+}
