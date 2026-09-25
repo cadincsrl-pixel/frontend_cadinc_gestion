@@ -8,6 +8,7 @@ import { AsientosTab } from './AsientosTab'
 import { DiarioTab } from './DiarioTab'
 import { MayorTab } from './MayorTab'
 import { SumasSaldosTab } from './SumasSaldosTab'
+import { EstadosTab } from './EstadosTab'
 import { PlanTab } from './PlanTab'
 import { PeriodosTab } from './PeriodosTab'
 import { AutomaticosTab } from './AutomaticosTab'
@@ -18,6 +19,7 @@ const TABS = [
   { key: 'diario',       icon: '📖', label: 'Libro diario',    sub: 'Los asientos confirmados del período, en orden y con sus líneas' },
   { key: 'mayor',        icon: '📒', label: 'Mayor',           sub: 'Movimientos y saldo de una cuenta, con el saldo anterior del ejercicio' },
   { key: 'sumas-saldos', icon: '⚖️', label: 'Sumas y saldos',  sub: 'Balance de sumas y saldos por cuenta, con control de que cuadre' },
+  { key: 'estados',      icon: '📊', label: 'Estados contables', sub: 'Estado de situación patrimonial a una fecha y estado de resultados de un rango' },
   { key: 'plan',         icon: '🗂', label: 'Plan de cuentas', sub: 'Cuentas contables y cuentas de tesorería (bancos, caja y valores)' },
   { key: 'periodos',     icon: '🔒', label: 'Períodos',        sub: 'Cierre mensual: numera el libro diario y congela el mes' },
   { key: 'automaticos',  icon: '⚙️', label: 'Automáticos',     sub: 'Asientos de Ventas y Compras: qué falta contabilizar, por qué, y contabilizar hasta una fecha' },
@@ -60,6 +62,7 @@ export function ContabilidadPage() {
         {tab === 'diario'       && <DiarioTab />}
         {tab === 'mayor'        && <MayorTab />}
         {tab === 'sumas-saldos' && <SumasSaldosTab />}
+        {tab === 'estados'      && <EstadosTab />}
         {tab === 'plan'         && <PlanTab />}
         {tab === 'periodos'     && <PeriodosTab />}
         {tab === 'automaticos'  && <AutomaticosTab />}

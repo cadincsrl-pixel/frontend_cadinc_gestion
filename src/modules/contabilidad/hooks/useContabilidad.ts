@@ -15,10 +15,10 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClie
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '@/lib/api/client'
 import type {
   CtbAnularRes, CtbAsiento, CtbAsientoEstado, CtbAsientoFila, CtbAsientoInput, CtbAsientoTipo, CtbAuxiliar,
-  CtbCerrarPeriodoRes, CtbCuenta, CtbCuentaInput, CtbDiarioRes, CtbEjercicio, CtbImportarPlanRes, CtbMayorRes,
+  CtbCerrarPeriodoRes, CtbCuenta, CtbCuentaInput, CtbEjercicio, CtbImportarPlanRes, CtbMayorRes,
   CtbObra, CtbPage, CtbPeriodo, CtbReabrirPeriodoRes, CtbSumasSaldosRes, TesoreriaCuenta, TesoreriaInput,
   CtbConfig, CtbContabilizarInput, CtbContabilizarRes, CtbFuente, CtbMapeoInput, CtbMapeosCatalogo, CtbPendienteEstado,
-  CtbPendientesRes, CtbPropuesta,
+  CtbPendientesRes, CtbPropuesta, CtbDiarioModo, CtbDiarioCualquiera, CtbDiarioItem, CtbDiarioResumidoRes, CtbBalanceRes, CtbResultadosRes,
 } from '@/types/contabilidad.types'
 
 const BASE = '/api/contabilidad'
@@ -43,6 +43,8 @@ export const CTB_KEYS = {
   propuesta:   (tabla: CtbFuente, id: number) => ['contabilidad', 'propuesta', tabla, id] as const,
   mapeos:      ['contabilidad', 'mapeos'] as const,
   config:      ['contabilidad', 'config'] as const,
+  // Tanda 4: balance y estado de resultados (dentro del prefijo: se invalidan con el resto).
+  estados:     ['contabilidad', 'estados'] as const,
 }
 
 /** Una sola puerta: el prefijo entero. Las cuentas de origen de Pagos también (salen de tesorería). */
@@ -122,13 +124,81 @@ export function useAsiento(id: number | null) {
   })
 }
 
-export function useDiario(desde: string, hasta: string, page = 1, pageSize = 50) {
-  const p = new URLSearchParams({ desde, hasta, limit: String(pageSize), offset: String((page - 1) * pageSize) })
+/**
+ * Libro diario. `modo` = detallado (un asiento por comprobante) o resumido por
+ * día / mes (los automáticos se agrupan por circuito; los manuales siguen uno
+ * por uno). Un backend viejo ignora `modo` y devuelve el detallado.
+ */
+export function useDiario(desde: string, hasta: string, modo: CtbDiarioModo = 'detallado', page = 1, pageSize = 50) {
+  const p = new URLSearchParams({ desde, hasta, modo, limit: String(pageSize), offset: String((page - 1) * pageSize) })
   const qs = p.toString()
   return useQuery({
     queryKey: [...CTB_KEYS.diario, qs],
-    queryFn:  () => apiGet<CtbDiarioRes>(`${BASE}/diario?${qs}`),
+    queryFn:  () => apiGet<CtbDiarioCualquiera>(`${BASE}/diario?${qs}`),
     enabled:  !!desde && !!hasta,
+    placeholderData: keepPreviousData,
+    staleTime: STALE,
+  })
+}
+
+/** Ítems del diario normalizados: el detallado viene sin `clase`. */
+export function itemsDiario(r: CtbDiarioCualquiera): CtbDiarioItem[] {
+  if (esDiarioResumido(r)) return r.items
+  return r.items.map((a, i) => ({ ...a, clase: 'asiento' as const, orden: (r.offset ?? 0) + i + 1 }))
+}
+
+export function esDiarioResumido(r: CtbDiarioCualquiera): r is CtbDiarioResumidoRes {
+  return 'total_items' in r
+}
+
+export interface DiarioCompleto {
+  items:          CtbDiarioItem[]
+  total_asientos: number
+  total_debe:     number
+  total_haber:    number
+}
+
+/** Todo el diario del rango (para el Excel): pide de a 200 hasta el final. */
+export async function fetchDiarioCompleto(desde: string, hasta: string, modo: CtbDiarioModo): Promise<DiarioCompleto> {
+  const out: CtbDiarioItem[] = []
+  let tot = { total_asientos: 0, total_debe: 0, total_haber: 0 }
+  for (let vuelta = 0; vuelta < 100; vuelta++) {
+    const p = new URLSearchParams({ desde, hasta, modo, limit: '200', offset: String(out.length) })
+    const r = await apiGet<CtbDiarioCualquiera>(`${BASE}/diario?${p.toString()}`)
+    const its = itemsDiario(r)
+    // El detallado numera `orden` desde el offset de la página: se corrige acá.
+    const resumido = esDiarioResumido(r)
+    out.push(...its.map((it, i) => (resumido ? it : { ...it, orden: out.length + i + 1 })))
+    tot = { total_asientos: r.total_asientos, total_debe: r.total_debe, total_haber: r.total_haber }
+    if (!r.hasMore || its.length === 0) return { items: out, ...tot }
+  }
+  throw new Error('El rango es demasiado grande para exportarlo de una vez: achicalo.')
+}
+
+// ── Estados contables (tanda 4) ──
+
+export function useBalance(b: { fecha: string; nivel: number; incluirCero: boolean }) {
+  const p = new URLSearchParams({ fecha: b.fecha, nivel: String(b.nivel) })
+  if (b.incluirCero) p.set('incluir_cero', '1')
+  const qs = p.toString()
+  return useQuery({
+    queryKey: [...CTB_KEYS.estados, 'balance', qs],
+    queryFn:  () => apiGet<CtbBalanceRes>(`${BASE}/estados/balance?${qs}`),
+    enabled:  !!b.fecha,
+    placeholderData: keepPreviousData,
+    staleTime: STALE,
+  })
+}
+
+export function useEstadoResultados(r: { desde: string; hasta: string; nivel: number; comparativo: boolean; incluirCero: boolean }) {
+  const p = new URLSearchParams({ desde: r.desde, hasta: r.hasta, nivel: String(r.nivel) })
+  if (r.comparativo) p.set('comparativo', '1')
+  if (r.incluirCero) p.set('incluir_cero', '1')
+  const qs = p.toString()
+  return useQuery({
+    queryKey: [...CTB_KEYS.estados, 'resultados', qs],
+    queryFn:  () => apiGet<CtbResultadosRes>(`${BASE}/estados/resultados?${qs}`),
+    enabled:  !!r.desde && !!r.hasta,
     placeholderData: keepPreviousData,
     staleTime: STALE,
   })
@@ -372,7 +442,8 @@ export function useAltaTesoreria() {
 export interface PendientesFiltro {
   desde?:  string
   hasta?:  string
-  fuente?: CtbFuente | ''
+  /** Circuitos tildados (tanda 4). undefined = todas las fuentes. */
+  fuentes?: CtbFuente[]
   estado?: CtbPendienteEstado | ''
   motivo?: string
 }
@@ -381,7 +452,7 @@ export function usePendientes(f: PendientesFiltro, page = 1, pageSize = 50, enab
   const p = new URLSearchParams()
   if (f.desde)  p.set('desde', f.desde)
   if (f.hasta)  p.set('hasta', f.hasta)
-  if (f.fuente) p.set('fuente', f.fuente)
+  if (f.fuentes && f.fuentes.length > 0) p.set('fuentes', f.fuentes.join(','))
   if (f.estado) p.set('estado', f.estado)
   if (f.motivo) p.set('motivo', f.motivo)
   p.set('limit', String(pageSize))

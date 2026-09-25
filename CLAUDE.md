@@ -361,6 +361,9 @@ El ejercicio de CADINC va de **julio a junio**; la contabilidad se lleva en el E
 - **Compras de meses ya pagados** (20260928b): el importador con «historica» las marca `pago_a_reconstruir`: no cuentan como deuda (Deuda por proveedor las muestra aparte en `a_reconstruir`), no se aprueban (`FACTURA_A_RECONSTRUIR`) ni salen en la campana; la marca deja de valer sola cuando una OP las deja en saldo 0. Jul–ago 2026 importadas así (importaciones 12 y 13).
 - **Ventas por cliente** (20260928c): el mapeo `ventas.cliente` manda sobre `ventas.producto`/`ventas.externo`. Los clientes de transporte van a 4110103, el resto a 4110101.
 - **Compra con `desglose_a_revisar`** (20260928d): queda pendiente con `DESGLOSE_A_REVISAR` (criterio del contador); si ya tenía asiento en período abierto se anula, en cerrado queda desactualizado.
+- **Automáticos por circuito** (20260928h): tildes Ventas/Cobros/Compras/Pagos que filtran pendientes y lo que se contabiliza (`p_fuentes`). Cerrar un período mira todos los circuitos.
+- **Libro Diario resumido** (20260928i, `cont_libro_diario_resumido`): detallado, por día o por mes; los automáticos se agrupan por circuito y período, los manuales van uno por uno. Es presentación: no crea asientos. Export a Excel con encabezado para rubricar.
+- **Estados contables** (tab `estados`, 20260928j/k): balance a una fecha (el resultado no cerrado va como fila virtual del PN) y estado de resultados de un rango, comparativo por mes. Sin asiento de apertura el balance cuadra pero no refleja el patrimonio real (aviso `sin_apertura`).
 - **Tesorería** incluye tipos `tarjeta` (vinculada a una cuenta del PASIVO) y `billetera` (Mercado Pago).
 - Criterios del contador (24/09) y lo que falta (apertura con el balance al 30/06, reconstrucción jul–sep, conciliación bancaria, cierre de ejercicio): nota de diseño en Obsidian.
 

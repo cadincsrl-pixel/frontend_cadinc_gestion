@@ -7,7 +7,7 @@
 
 import type {
   CtbAsientoEstado, CtbAsientoTipo, CtbAuxiliarTipo, CtbBloqueoCerrar, CtbBloqueoReabrir, CtbNaturaleza, CtbRubro,
-  TesoreriaTipo, CtbFuente, CtbPendienteEstado,
+  TesoreriaTipo, CtbFuente, CtbPendienteEstado, CtbCircuito,
 } from '@/types/contabilidad.types'
 
 const TZ = 'America/Argentina/Buenos_Aires'
@@ -214,6 +214,50 @@ export const FUENTES_CTB: { key: CtbFuente; label: string; corto: string }[] = [
   { key: 'pagos_facturas',               label: 'Facturas de compra',         corto: 'Compra' },
   { key: 'pagos_ordenes',                label: 'Órdenes de pago',            corto: 'Pago' },
 ]
+
+// ── Circuitos (tanda 4): como en Bejerman, Ventas / Cobros / Compras / Pagos ──
+
+export const CIRCUITOS_CTB: { key: CtbCircuito; label: string; fuentes: CtbFuente[] }[] = [
+  { key: 'ventas',  label: 'Ventas',  fuentes: ['ventas_facturas', 'ventas_comprobantes_externos'] },
+  { key: 'cobros',  label: 'Cobros',  fuentes: ['ventas_cobros'] },
+  { key: 'compras', label: 'Compras', fuentes: ['pagos_facturas'] },
+  { key: 'pagos',   label: 'Pagos',   fuentes: ['pagos_ordenes'] },
+]
+
+const TODOS_CIRCUITOS: CtbCircuito[] = CIRCUITOS_CTB.map(c => c.key)
+
+/** Las fuentes de los circuitos tildados. Con los cuatro → undefined (= todo, sin filtro). */
+export function fuentesDeCircuitos(c: CtbCircuito[]): CtbFuente[] | undefined {
+  const set = new Set(c)
+  if (TODOS_CIRCUITOS.every(k => set.has(k))) return undefined
+  return CIRCUITOS_CTB.filter(x => set.has(x.key)).flatMap(x => x.fuentes)
+}
+
+export function circuitoLabel(c: string): string {
+  return CIRCUITOS_CTB.find(x => x.key === c)?.label ?? (c === 'otros' ? 'Otros automáticos' : c)
+}
+
+/** «Ventas y Compras», «Ventas, Cobros y Pagos». */
+export function nombrarCircuitos(c: CtbCircuito[]): string {
+  const n = CIRCUITOS_CTB.filter(x => c.includes(x.key)).map(x => x.label)
+  if (n.length <= 1) return n[0] ?? ''
+  return `${n.slice(0, -1).join(', ')} y ${n[n.length - 1]}`
+}
+
+export const MEMORIA_CIRCUITOS = 'cadinc.contabilidad.automaticos.circuitos'
+
+/** Lo guardado en localStorage. Inválido o vacío → los cuatro. Pura: el acceso a localStorage va en el componente. */
+export function leerCircuitosGuardados(raw: string | null): CtbCircuito[] {
+  if (!raw) return [...TODOS_CIRCUITOS]
+  try {
+    const v: unknown = JSON.parse(raw)
+    if (!Array.isArray(v)) return [...TODOS_CIRCUITOS]
+    const ok = TODOS_CIRCUITOS.filter(k => v.includes(k))
+    return ok.length > 0 ? ok : [...TODOS_CIRCUITOS]
+  } catch {
+    return [...TODOS_CIRCUITOS]
+  }
+}
 
 export function fuenteLabel(f: string): string {
   return FUENTES_CTB.find(x => x.key === f)?.label ?? f

@@ -111,6 +111,7 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
     { key: 'diario',       label: 'Libro diario',    icon: '📖' },
     { key: 'mayor',        label: 'Mayor',           icon: '📒' },
     { key: 'sumas-saldos', label: 'Sumas y saldos',  icon: '⚖️' },
+    { key: 'estados',      label: 'Estados contables', icon: '📊', meta: 'Situación patrimonial y resultados, comparativo por mes' },
     { key: 'plan',         label: 'Plan de cuentas', icon: '🗂', meta: 'Cuentas y cuentas de tesorería' },
     { key: 'periodos',     label: 'Períodos',        icon: '🔒' },
     { key: 'automaticos',  label: 'Automáticos',     icon: '⚙️', meta: 'Asientos de Ventas y Compras, pendientes y contabilizar' },

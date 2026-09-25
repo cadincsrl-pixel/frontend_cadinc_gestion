@@ -81,6 +81,8 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   MOTIVO_REQUERIDO:       () => 'Escribí el motivo (al menos 3 caracteres).',
   FECHA_ANTERIOR_AL_ORIGINAL: () => 'La fecha del contraasiento no puede ser anterior a la del asiento original.',
   RANGO_INVALIDO:         () => 'La fecha «desde» es posterior a la fecha «hasta».',
+  MODO_INVALIDO:          () => 'Modo de libro diario inválido.',
+  NIVEL_INVALIDO:         () => 'Nivel inválido (1 a 5).',
   RANGO_EXCEDE_EJERCICIO: () => 'El rango tiene que estar dentro de un mismo ejercicio.',
   ASIENTO_DESBALANCEADO:  d => {
     const dif = dato(d, 'diferencia')

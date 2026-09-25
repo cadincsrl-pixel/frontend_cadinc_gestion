@@ -1,16 +1,17 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState, useSyncExternalStore } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
 import { Pagination } from '@/components/ui/Pagination'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
-import type { CtbFuente, CtbPendienteEstado } from '@/types/contabilidad.types'
+import type { CtbCircuito, CtbFuente, CtbPendienteEstado } from '@/types/contabilidad.types'
 import { useConfigCtb, useContabilizar, useMapeos, usePendientes, type PendientesFiltro } from '../hooks/useContabilidad'
 import {
-  ESTADOS_PENDIENTE, FUENTES_CTB, estadoPendiente, fmtFecha, fmtM, fuenteLabel, hoyAR,
+  CIRCUITOS_CTB, ESTADOS_PENDIENTE, MEMORIA_CIRCUITOS, estadoPendiente, fmtFecha, fmtM, fuenteLabel, fuentesDeCircuitos,
+  hoyAR, leerCircuitosGuardados, nombrarCircuitos,
 } from '../utils/contabilidad.utils'
 import { mensajeErrorCtb, mensajeMotivo } from '../utils/contabilidad.errores'
 import { Aviso, Campo, Cargando, Cifra, ErrorCarga, Tarjeta, Th, Vacio, inputCls } from './Comun'
@@ -27,6 +28,24 @@ function urlOrigen(tabla: CtbFuente, id: number): string {
     case 'ventas_facturas':              return `/facturacion?tab=facturas&ficha=${id}`
     case 'ventas_cobros':                return `/facturacion?tab=cobranzas&ficha=${id}`
     case 'ventas_comprobantes_externos': return '/facturacion?tab=saldos_iniciales'
+  }
+}
+
+// ── Memoria de los circuitos tildados (localStorage) ──
+function suscribirCircuitos(cb: () => void): () => void {
+  window.addEventListener('storage', cb)
+  return () => window.removeEventListener('storage', cb)
+}
+
+function leerRawCircuitos(): string | null {
+  try { return window.localStorage.getItem(MEMORIA_CIRCUITOS) } catch { return null }
+}
+
+function guardarCircuitos(c: CtbCircuito[]): void {
+  try {
+    window.localStorage.setItem(MEMORIA_CIRCUITOS, JSON.stringify(c))
+  } catch {
+    // Navegador privado o storage bloqueado: no se recuerda.
   }
 }
 
@@ -53,8 +72,25 @@ export function AutomaticosTab() {
   const [propuesta, setPropuesta] = useState<{ tabla: CtbFuente; id: number } | null>(null)
   const [hasta, setHasta] = useState(hoyAR())
   const [revertir, setRevertir] = useState(false)
+  // Circuitos tildados, como en Bejerman. Se recuerdan en localStorage
+  // (comodidad de quien mira). useSyncExternalStore: en el server y en la
+  // hidratación da los cuatro; después, lo guardado.
+  const circuitosRaw = useSyncExternalStore(suscribirCircuitos, leerRawCircuitos, () => null)
+  const guardados = useMemo(() => leerCircuitosGuardados(circuitosRaw), [circuitosRaw])
+  // Lo que se tildó en esta visita manda (también si el storage está bloqueado
+  // o si se destildaron todos: guardado, eso vuelve a los cuatro).
+  const [elegidos, setElegidos] = useState<CtbCircuito[] | null>(null)
+  const circuitos = elegidos ?? guardados
+  function alternarCircuito(c: CtbCircuito) {
+    const nuevo = circuitos.includes(c) ? circuitos.filter(x => x !== c) : [...circuitos, c]
+    setElegidos(nuevo)
+    guardarCircuitos(nuevo)
+    setPage(1)
+  }
+  const fuentes = fuentesDeCircuitos(circuitos)
+  const sinCircuitos = circuitos.length === 0
 
-  const q = usePendientes(filtro, page, PAGE_SIZE)
+  const q = usePendientes({ ...filtro, fuentes }, page, PAGE_SIZE, !sinCircuitos)
   const conta = useContabilizar()
 
   const patch = (p: Partial<PendientesFiltro>) => { setFiltro(f => ({ ...f, ...p })); setPage(1) }
@@ -62,18 +98,21 @@ export function AutomaticosTab() {
 
   const bloqueoConta = !(puedeContabilizar || esAdmin) ? 'No tenés permiso (hace falta «Contabilizar automáticos»)'
     : !puedeEditar ? 'No tenés permiso de Editar en Contabilidad'
+    : sinCircuitos ? 'Elegí al menos un circuito'
     : !hasta ? 'Elegí hasta qué fecha'
     : hasta > hoyAR() ? 'La fecha no puede ser futura' : null
   const bloqueoRevertir = !(cerrarPeriodos || esAdmin) ? 'Hace falta además «Cerrar y reabrir períodos»' : null
 
   async function correr() {
     try {
-      const r = await conta.mutateAsync({ hasta, revertir_cerrados: revertir && !bloqueoRevertir })
+      const r = await conta.mutateAsync({
+        hasta, revertir_cerrados: revertir && !bloqueoRevertir, ...(fuentes ? { fuentes } : {}),
+      })
       const partes = [
         r.creados && `${r.creados} creados`, r.regenerados && `${r.regenerados} regenerados`,
         r.anulados && `${r.anulados} anulados`, r.revertidos && `${r.revertidos} revertidos`,
       ].filter(Boolean).join(' · ')
-      toast(`✓ Contabilizado hasta el ${fmtFecha(hasta)}${partes ? `: ${partes}` : ': nada nuevo'}`, r.errores > 0 ? 'warn' : 'ok')
+      toast(`✓ Contabilizado${fuentes ? ` ${nombrarCircuitos(circuitos)}` : ''} hasta el ${fmtFecha(hasta)}${partes ? `: ${partes}` : ': nada nuevo'}`, r.errores > 0 ? 'warn' : 'ok')
     } catch (e) {
       toast(mensajeErrorCtb(e), 'err')
     }
@@ -86,6 +125,26 @@ export function AutomaticosTab() {
 
   return (
     <div className="flex flex-col gap-3">
+      {/* Circuitos */}
+      <Tarjeta className="p-3 flex flex-col gap-1.5">
+        <div className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Circuitos</div>
+        <div className="flex flex-wrap gap-x-5 gap-y-1.5">
+          {CIRCUITOS_CTB.map(c => {
+            const tildado = circuitos.includes(c.key)
+            const n = tildado && res ? c.fuentes.reduce((acc, f) => acc + (res.por_fuente[f] ?? 0), 0) : null
+            return (
+              <label key={c.key} className="flex items-center gap-1.5 text-sm cursor-pointer select-none">
+                <input type="checkbox" className="accent-naranja" checked={tildado} onChange={() => alternarCircuito(c.key)} />
+                {c.label} <span className="text-xs text-gris-dark tabular-nums">({n ?? '—'})</span>
+              </label>
+            )
+          })}
+        </div>
+        <p className="text-[11px] text-gris-dark">
+          Filtran lo que se ve abajo y lo que corre «Contabilizar». Cerrar un período mira todos los circuitos, no solo los tildados.
+        </p>
+      </Tarjeta>
+
       {/* Contabilizar */}
       <Tarjeta className="p-3 flex flex-col gap-2">
         <div className="flex flex-wrap gap-2 items-end">
@@ -99,7 +158,7 @@ export function AutomaticosTab() {
             Corregir también en períodos cerrados (genera contraasientos)
           </label>
           <Button onClick={correr} loading={conta.isPending} disabled={!!bloqueoConta || conta.isPending}
-            title={bloqueoConta ?? 'Generar o regenerar los asientos de Ventas y Compras hasta esa fecha'} className="ml-auto">
+            title={bloqueoConta ?? `Generar o regenerar los asientos de ${fuentes ? nombrarCircuitos(circuitos) : 'todos los circuitos'} hasta esa fecha`} className="ml-auto">
             ⚙️ Contabilizar
           </Button>
         </div>
@@ -147,18 +206,6 @@ export function AutomaticosTab() {
               </button>
             ))}
           </div>
-          <div className="flex gap-1 flex-wrap">
-            {FUENTES_CTB.map(fu => {
-              const n = res.por_fuente[fu.key] ?? 0
-              const activo = filtro.fuente === fu.key
-              return (
-                <button key={fu.key} type="button" onClick={() => patch({ fuente: activo ? '' : fu.key })}
-                  className={`text-xs px-2.5 py-1 rounded-full border ${activo ? 'bg-azul text-white border-azul' : 'bg-white border-gris-mid text-azul'}`}>
-                  {fu.label} ({n})
-                </button>
-              )
-            })}
-          </div>
         </div>
       )}
 
@@ -198,18 +245,12 @@ export function AutomaticosTab() {
       )}
 
       {/* Filtros */}
-      <Tarjeta className="p-3 grid grid-cols-2 md:grid-cols-[150px_150px_1fr_1fr_auto] gap-2 items-end">
+      <Tarjeta className="p-3 grid grid-cols-2 md:grid-cols-[150px_150px_1fr_auto] gap-2 items-end">
         <Campo label="Desde">
           <input type="date" value={filtro.desde ?? ''} onChange={e => patch({ desde: e.target.value || undefined })} className={inputCls} />
         </Campo>
         <Campo label="Hasta">
           <input type="date" value={filtro.hasta ?? ''} min={filtro.desde || undefined} onChange={e => patch({ hasta: e.target.value || undefined })} className={inputCls} />
-        </Campo>
-        <Campo label="Fuente">
-          <select value={filtro.fuente ?? ''} onChange={e => patch({ fuente: e.target.value as CtbFuente | '' })} className={inputCls}>
-            <option value="">Todas</option>
-            {FUENTES_CTB.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
-          </select>
         </Campo>
         <Campo label="Estado">
           <select value={filtro.estado ?? ''} onChange={e => patch({ estado: e.target.value as CtbPendienteEstado | '' })} className={inputCls}>
@@ -218,7 +259,7 @@ export function AutomaticosTab() {
           </select>
         </Campo>
         <Button variant="ghost" size="sm" onClick={() => { setFiltro({}); setPage(1) }}
-          disabled={!filtro.desde && !filtro.hasta && !filtro.fuente && !filtro.estado && !filtro.motivo}>
+          disabled={!filtro.desde && !filtro.hasta && !filtro.estado && !filtro.motivo}>
           ✕ Limpiar
         </Button>
         {filtro.motivo && (
@@ -230,7 +271,8 @@ export function AutomaticosTab() {
       </Tarjeta>
 
       {/* Lista */}
-      {q.isLoading ? <Cargando texto="Calculando qué falta contabilizar…" />
+      {sinCircuitos ? <Vacio>Tildá al menos un circuito para ver qué falta contabilizar.</Vacio>
+        : q.isLoading ? <Cargando texto="Calculando qué falta contabilizar…" />
         : q.isError ? <ErrorCarga mensaje={mensajeErrorCtb(q.error)} onReintentar={() => void q.refetch()} />
         : items.length === 0 ? (
           <Vacio>{Object.values(filtro).some(Boolean) ? 'No hay comprobantes con estos filtros.' : 'Todo al día: no hay comprobantes sin contabilizar ni desactualizados.'}</Vacio>

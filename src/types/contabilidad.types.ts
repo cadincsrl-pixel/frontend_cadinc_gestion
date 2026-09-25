@@ -223,6 +223,8 @@ export interface CtbAnularRes {
 }
 
 export interface CtbDiarioRes {
+  /** El backend lo agrega desde la tanda 4 (20260928i); ausente en el viejo. */
+  modo?:          'detallado'
   desde:          string
   hasta:          string
   total_asientos: number
@@ -469,4 +471,124 @@ export interface CtbConfig {
   cvlp_modo:              'neto_liquidado' | 'bruto'
   compras_fecha_contable: 'fecha' | 'mes_iva'
   paga_cliente_modo:      string | null
+}
+
+// ── Tanda 4 (20260928h–k): circuitos, diario resumido y estados contables ──
+
+/** Circuito de Automáticos: agrupa las fuentes (ventas = facturas del ERP + externos). */
+export type CtbCircuito = 'ventas' | 'cobros' | 'compras' | 'pagos'
+
+export type CtbDiarioModo = 'detallado' | 'dia' | 'mes'
+
+export interface CtbDiarioResumenLinea {
+  cuenta_id:     number
+  cuenta_codigo: string
+  cuenta_nombre: string
+  debe:          number
+  haber:         number
+}
+
+/** Un asiento sintético del diario resumido: presentación, no existe en la base. */
+export interface CtbDiarioResumen {
+  clase:                 'resumen'
+  orden:                 number
+  clave:                 string
+  circuito:              CtbCircuito | 'otros'
+  periodo_desde:         string
+  periodo_hasta:         string
+  fecha:                 string
+  glosa:                 string
+  cantidad_comprobantes: number
+  cantidad_asientos:     number
+  cantidad_reversiones:  number
+  numero_desde:          number | null
+  numero_hasta:          number | null
+  sin_numero:            number
+  total:                 number
+  cuadra:                boolean
+  lineas:                CtbDiarioResumenLinea[]
+}
+
+export type CtbDiarioItem = (CtbAsiento & { clase: 'asiento'; orden: number }) | CtbDiarioResumen
+
+export interface CtbDiarioResumidoRes {
+  desde:          string
+  hasta:          string
+  modo:           'dia' | 'mes'
+  total_items:    number
+  total_asientos: number
+  total_debe:     number
+  total_haber:    number
+  cuadra:         boolean
+  items:          CtbDiarioItem[]
+  limit:          number
+  offset:         number
+  hasMore:        boolean
+}
+
+export type CtbDiarioCualquiera = CtbDiarioRes | CtbDiarioResumidoRes
+
+export interface CtbEstadoFila {
+  cuenta_id: number | null
+  codigo:    string | null
+  nombre:    string
+  nivel:     number
+  rubro:     CtbRubro
+  imputable: boolean
+  padre_id:  number | null
+  virtual:   boolean
+  saldo:     number
+  importes?: number[]
+}
+
+export interface CtbGrupoBalance {
+  cuenta_id: number | null
+  codigo:    string | null
+  nombre:    string
+  total:     number
+}
+
+export interface CtbEjercicioRef {
+  id:     number
+  nombre: string
+  desde:  string
+  hasta:  string
+}
+
+export interface CtbBalanceRes {
+  fecha:         string
+  ejercicio:     CtbEjercicioRef
+  nivel:         number
+  sin_apertura:  boolean
+  activo:        { total: number; grupos: CtbGrupoBalance[]; filas: CtbEstadoFila[] }
+  pasivo:        { total: number; grupos: CtbGrupoBalance[]; filas: CtbEstadoFila[] }
+  pn:            { total: number; resultado_ejercicio: number; filas: CtbEstadoFila[] }
+  pasivo_mas_pn: number
+  diferencia:    number
+  cuadra:        boolean
+}
+
+export interface CtbColumnaMes {
+  clave:    string
+  desde:    string
+  hasta:    string
+  etiqueta: string
+}
+
+export interface CtbSeccionResultados {
+  total:       number
+  totales_col: number[]
+  filas:       CtbEstadoFila[]
+}
+
+export interface CtbResultadosRes {
+  desde:       string
+  hasta:       string
+  ejercicio:   CtbEjercicioRef
+  nivel:       number
+  comparativo: boolean
+  columnas:    CtbColumnaMes[]
+  ingresos:    CtbSeccionResultados
+  gastos:      CtbSeccionResultados
+  resultado:   { total: number; totales_col: number[] }
 }
