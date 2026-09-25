@@ -14,6 +14,7 @@ import {
 } from '../utils/facturacion.utils'
 import { codigoErrorFacturacion, mensajeErrorFacturacion } from '../utils/facturacion.errores'
 import { descargarFacturaPdf } from '../utils/facturaPdf'
+import { useConfigVentasValores } from '../hooks/useConfigVentas'
 import type { VentasEvento, VentasFacturaFJ, VentasImputacion } from '@/types/domain.types'
 import { EstadoBadge } from './FacturasTabla'
 import { useImputacionesDe } from '../hooks/useCobranzas'
@@ -43,6 +44,8 @@ const EVENTO_LABEL: Record<string, string> = {
 }
 
 export function FichaFactura({ id, onClose, onEditar, onNotaCredito, onEmitir, onCompensar }: Props) {
+  // La leyenda de la FCE de Ventas › Configuración (20260929j); null = la de ARCA.
+  const leyendaFce = useConfigVentasValores().valores.leyenda_fce
   const toast = useToast()
   const {
     puedeCrear, puedeEditar, puedeEliminar, emitirFacturas, emitirNotasCredito, registrarCobros,
@@ -104,7 +107,7 @@ export function FichaFactura({ id, onClose, onEditar, onNotaCredito, onEmitir, o
 
   async function pdf() {
     setGenerandoPdf(true)
-    try { await descargarFacturaPdf(fj) }
+    try { await descargarFacturaPdf(fj, { leyenda: leyendaFce }) }
     catch { toast('No se pudo generar el PDF', 'err') }
     finally { setGenerandoPdf(false) }
   }

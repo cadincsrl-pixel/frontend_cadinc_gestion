@@ -2786,6 +2786,36 @@ export interface PagosImportacion {
   proveedores_nuevos: number
   created_at:         string
   created_by_nombre:  string | null
+  /** De meses ya pagados (20260928). Backend viejo: ausente. */
+  historica?:           boolean
+  /** Deshecha (20260929k): sus facturas quedaron anuladas. */
+  deshecha_at?:         string | null
+  deshecha_por_nombre?: string | null
+  motivo_deshacer?:     string | null
+  /** Facturas de la importación que no están anuladas (null si no se pudo contar). */
+  facturas_vigentes?:   number | null
+}
+
+export type PagosBloqueoDeshacerMotivo = 'con_pago' | 'con_nc' | 'imputada' | 'aprobada' | 'asiento_periodo_cerrado'
+
+export interface PagosBloqueoDeshacer {
+  factura_id:       number
+  numero:           string | null
+  tipo_comprobante: string | null
+  proveedor:        string | null
+  motivo:           PagosBloqueoDeshacerMotivo
+}
+
+/** GET/POST /api/pagos/importaciones/:id/deshacer (20260929k). */
+export interface PagosDeshacerImportacionRes {
+  importacion:       { id: number; archivo: string | null; created_at: string; historica: boolean; filas: number }
+  total:             number
+  a_anular:          number
+  ya_anuladas:       number
+  asientos_a_anular: number
+  bloqueos:          PagosBloqueoDeshacer[]
+  puede:             boolean
+  aplicado:          boolean
 }
 
 export interface PagosImputarFacturaInput {

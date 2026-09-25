@@ -282,4 +282,12 @@ export interface RetencionTipoVentaInput {
 /** GET/PATCH /api/facturacion/config (20260929g; el ítem 9 suma los valores por defecto de la factura). */
 export interface VentasConfigValores {
   retencion_tipo_default: string
+  /** Valores por defecto de la factura de venta (20260929j). */
+  condicion_pago_default: string
+  provincia_default:      string
+  unidad_default:         string
+  /** Leyenda de la FCE MiPyME. null = la de ARCA (`leyenda_fce_default`). */
+  leyenda_fce:            string | null
+  /** La de ARCA: la manda el backend (solo lectura). */
+  leyenda_fce_default:    string
 }

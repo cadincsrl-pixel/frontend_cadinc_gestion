@@ -21,7 +21,7 @@ const TABS = [
   { key: 'cobranzas', icon: '💰', label: 'Cobranzas', sub: 'Recibos (RC): medios, retenciones y aplicación a facturas; compensación de notas de crédito' },
   { key: 'deudores',  icon: '📒', label: 'Deudores',  sub: 'Qué debe cada cliente, desde cuándo, y su estado de cuenta' },
   { key: 'saldos_iniciales', icon: '📂', label: 'Saldos iniciales', sub: 'Facturas emitidas en Finnegans o en ARCA antes del sistema que siguen abiertas' },
-  { key: 'configuracion', icon: '⚙️', label: 'Configuración', sub: 'Productos de venta (y, de a poco, el resto de lo que hoy está fijo en el sistema)' },
+  { key: 'configuracion', icon: '⚙️', label: 'Configuración', sub: 'Productos, puntos de venta, montos de ARCA, retenciones y valores por defecto de la factura' },
 ]
 
 export function FacturacionPage() {

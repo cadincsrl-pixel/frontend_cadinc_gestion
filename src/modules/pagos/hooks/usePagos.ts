@@ -20,7 +20,7 @@ import type {
   PagosAviso, PagosAvisoResultado, PagosMailEstado, PagosLecturaRes, PagosAplicaNcInput, PagosClaseComprobante,
   PagosDesgloseInput, PagosDesgloseLeidoRes, PagosCompletarDesgloseRes,
   RegistrarOrdenRes, PagosChequeLecturaRes,
-  PagosImportacion, PagosImportarRecibidosInput, PagosImportarRecibidosRes, PagosImputarFacturaInput,
+  PagosDeshacerImportacionRes, PagosImportacion, PagosImportarRecibidosInput, PagosImportarRecibidosRes, PagosImputarFacturaInput,
   PagosImputarLoteInput, PagosOrigenCarga, PagosPeriodoIvaSugerido, PagosMarcarPagadasInput, PagosMarcarPagadasRes,
 } from '@/types/domain.types'
 
@@ -499,6 +499,40 @@ export function useImportaciones(enabled = true) {
     queryFn:  () => apiGet<PagosImportacion[]>('/api/pagos/importaciones'),
     staleTime: 60_000,
     enabled,
+  })
+}
+
+// ── Deshacer una importación (20260929k) ──────────────────────────────
+
+/** Vista previa: cuántas se anulan, asientos y bloqueos. No escribe. */
+export function useDeshacerImportacionVista(id: number | null) {
+  return useQuery({
+    queryKey: [...PAGOS_KEYS.importaciones, id ?? 0, 'deshacer'],
+    queryFn:  () => apiGet<PagosDeshacerImportacionRes>(`/api/pagos/importaciones/${id}/deshacer`),
+    enabled:  id != null,
+    staleTime: 0,
+    retry: false,
+  })
+}
+
+/**
+ * Deshacer: TODO O NADA (409 IMPORTACION_CON_MOVIMIENTOS con los bloqueos).
+ * Anula las facturas y sus asientos en períodos abiertos: invalida Compras
+ * entero (bandeja, resumen, importaciones, campana, pendientes del motor) y
+ * todo Contabilidad (asientos, diario, mayor, estados).
+ */
+export function useDeshacerImportacion() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, motivo }: { id: number; motivo: string }) =>
+      apiPost<PagosDeshacerImportacionRes>(`/api/pagos/importaciones/${id}/deshacer`, { motivo }),
+    onSuccess: () => {
+      invalidarPagos(qc)
+      qc.invalidateQueries({ queryKey: PAGOS_KEYS.facturasResumen })
+      qc.invalidateQueries({ queryKey: PAGOS_KEYS.importaciones })
+      qc.invalidateQueries({ queryKey: ['contabilidad'] })
+      qc.invalidateQueries({ queryKey: ['audit'] })
+    },
   })
 }
 

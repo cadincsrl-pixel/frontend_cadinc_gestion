@@ -17,7 +17,7 @@ import {
   useCrearFacturaVenta, useEditarFacturaVenta, useFacturaVenta, useObrasFacturacion, useArcaAmbiente,
 } from '../hooks/useFacturacion'
 import { useClientesVenta, useCuentasFce, useFceCliente } from '../hooks/useClientesFacturacion'
-import { useParametrosVigentes, useProductosVenta } from '../hooks/useConfigVentas'
+import { useConfigVentasValores, useParametrosVigentes, useProductosVenta } from '../hooks/useConfigVentas'
 import { calcularTotales } from '../utils/facturacion.calculos'
 import {
   ALICUOTAS_UI, ALICUOTA_LABEL, CONDICIONES_IVA, CONDICION_PAGO_DEFAULT, PRODUCTOS, PROVINCIAS,
@@ -118,30 +118,39 @@ type FormData = z.infer<typeof schema>
 const CAMPOS_FORM = /^(cliente_id|obra_cod|producto_id|fch_serv_desde|fch_serv_hasta|fecha_cbte|provincia_origen|provincia_destino|condicion_pago|remitos|observaciones|obs_interna|fce_cuenta_id|fch_vto_pago|fce_transmision|fce_referencia|nc_anulacion|renglones\.\d+\.(descripcion|cantidad|unidad|precio_unit|alicuota_id))$/
 type RenglonForm = FormData['renglones'][number]
 
-const RENGLON_VACIO: RenglonForm = { descripcion: '', cantidad: '1', unidad: UNIDAD_DEFAULT, precio_unit: '', alicuota_id: '5' }
+/**
+ * Valores por defecto de la factura: Ventas › Configuración (20260929j). Las
+ * constantes de `facturacion.utils.ts` son el respaldo (backend viejo o
+ * mientras carga).
+ */
+interface DefaultsFactura { provincia: string; condicion: string; unidad: string }
+const DEFAULTS_RESPALDO: DefaultsFactura = { provincia: PROVINCIA_DEFAULT, condicion: CONDICION_PAGO_DEFAULT, unidad: UNIDAD_DEFAULT }
 
-function defaultsNuevo(): FormData {
+const renglonVacio = (d: DefaultsFactura): RenglonForm =>
+  ({ descripcion: '', cantidad: '1', unidad: d.unidad, precio_unit: '', alicuota_id: '5' })
+
+function defaultsNuevo(d: DefaultsFactura): FormData {
   return {
     cliente_id: '', obra_cod: '', producto: PRODUCTOS[0]!.nombre, producto_id: String(PRODUCTOS[0]!.id),
     fch_serv_desde: '', fch_serv_hasta: '', fecha_cbte: hoyAR(),
-    provincia_origen: PROVINCIA_DEFAULT, provincia_destino: PROVINCIA_DEFAULT,
-    condicion_pago: CONDICION_PAGO_DEFAULT, remitos: '', observaciones: '', obs_interna: '',
+    provincia_origen: d.provincia, provincia_destino: d.provincia,
+    condicion_pago: d.condicion, remitos: '', observaciones: '', obs_interna: '',
     fce: false, fce_cuenta_id: '', fch_vto_pago: '', fce_transmision: 'SCA', fce_referencia: '', nc_anulacion: 'N',
-    renglones: [RENGLON_VACIO],
+    renglones: [renglonVacio(d)],
   }
 }
 
-function renglonesDe(fj: VentasFacturaFJ): RenglonForm[] {
+function renglonesDe(fj: VentasFacturaFJ, d: DefaultsFactura): RenglonForm[] {
   return fj.renglones.map(r => ({
     descripcion: r.descripcion,
     cantidad:    String(r.cantidad),
-    unidad:      r.unidad || UNIDAD_DEFAULT,
+    unidad:      r.unidad || d.unidad,
     precio_unit: String(r.precio_unit),
     alicuota_id: String(r.alicuota_id),
   }))
 }
 
-function defaultsDe(fj: VentasFacturaFJ, opts: { copiarRenglones: boolean; nc: boolean }): FormData {
+function defaultsDe(fj: VentasFacturaFJ, opts: { copiarRenglones: boolean; nc: boolean }, d: DefaultsFactura): FormData {
   const f = fj.factura
   return {
     cliente_id:        String(f.cliente_id),
@@ -152,9 +161,9 @@ function defaultsDe(fj: VentasFacturaFJ, opts: { copiarRenglones: boolean; nc: b
     fch_serv_desde:    f.fch_serv_desde ?? '',
     fch_serv_hasta:    f.fch_serv_hasta ?? '',
     fecha_cbte:        opts.nc ? hoyAR() : f.fecha_cbte,
-    provincia_origen:  f.provincia_origen || PROVINCIA_DEFAULT,
-    provincia_destino: f.provincia_destino || PROVINCIA_DEFAULT,
-    condicion_pago:    f.condicion_pago || CONDICION_PAGO_DEFAULT,
+    provincia_origen:  f.provincia_origen || d.provincia,
+    provincia_destino: f.provincia_destino || d.provincia,
+    condicion_pago:    f.condicion_pago || d.condicion,
     remitos:           opts.nc ? '' : f.remitos,
     observaciones:     opts.nc ? '' : f.observaciones,
     obs_interna:       opts.nc ? '' : f.obs_interna,
@@ -165,7 +174,7 @@ function defaultsDe(fj: VentasFacturaFJ, opts: { copiarRenglones: boolean; nc: b
     fce_transmision:   !opts.nc && f.fce_transmision ? f.fce_transmision : 'SCA',
     fce_referencia:    !opts.nc ? f.fce_referencia ?? '' : '',
     nc_anulacion:      !opts.nc && f.nc_anulacion ? f.nc_anulacion : 'N',
-    renglones:         opts.copiarRenglones ? renglonesDe(fj) : [RENGLON_VACIO],
+    renglones:         opts.copiarRenglones ? renglonesDe(fj, d) : [renglonVacio(d)],
   }
 }
 
@@ -205,6 +214,11 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
   const arcaAmb    = useArcaAmbiente()
   const crear      = useCrearFacturaVenta()
   const editar     = useEditarFacturaVenta()
+  const configVentas = useConfigVentasValores()
+  const cv = configVentas.valores
+  const dflt: DefaultsFactura = useMemo(
+    () => ({ provincia: cv.provincia_default, condicion: cv.condicion_pago_default, unidad: cv.unidad_default }),
+    [cv.provincia_default, cv.condicion_pago_default, cv.unidad_default])
 
   const [errorServer, setErrorServer] = useState<{ msg: string; code: string | null } | null>(null)
 
@@ -219,8 +233,8 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
           // Copia los renglones solo si la factura está entera: si ya tiene NC,
           // copiarla entera superaría el saldo.
           copiarRenglones: Number(ncDe.factura.nc_autorizadas) === 0,
-        })
-      : defaultsNuevo(),
+        }, dflt)
+      : defaultsNuevo(dflt),
   })
   const { fields, append, remove } = useFieldArray({ control, name: 'renglones' })
 
@@ -229,8 +243,23 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
   useEffect(() => {
     if (!editarId || cargado.current || !edicion.data) return
     cargado.current = true
-    reset(defaultsDe(edicion.data, { copiarRenglones: true, nc: false }))
-  }, [editarId, edicion.data, reset])
+    reset(defaultsDe(edicion.data, { copiarRenglones: true, nc: false }, dflt))
+  }, [editarId, edicion.data, reset, dflt])
+
+  // Factura nueva abierta antes de que llegue la configuración: cuando llega,
+  // pisa solo lo que sigue en el valor de respaldo (lo tocado a mano, no).
+  const configAplicada = useRef(false)
+  useEffect(() => {
+    if (editarId || ncDe || configAplicada.current || !configVentas.data || configVentas.data.respaldo) return
+    configAplicada.current = true
+    const R = DEFAULTS_RESPALDO
+    if (getValues('provincia_origen') === R.provincia) setValue('provincia_origen', dflt.provincia)
+    if (getValues('provincia_destino') === R.provincia) setValue('provincia_destino', dflt.provincia)
+    if (getValues('condicion_pago') === R.condicion) setValue('condicion_pago', dflt.condicion)
+    getValues('renglones').forEach((r, i) => {
+      if (r.unidad === R.unidad && !r.descripcion) setValue(`renglones.${i}.unidad`, dflt.unidad)
+    })
+  }, [editarId, ncDe, configVentas.data, dflt, getValues, setValue])
 
   const renglones   = useWatch({ control, name: 'renglones' })
   const productoId  = useWatch({ control, name: 'producto_id' })
@@ -376,7 +405,7 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
     // Otro cliente, otra cuenta preferida y otro dato de WSFECRED.
     setValue('fce_cuenta_id', '')
     if (!editarId) eligioTipo.current = false
-    if (actual === PROVINCIA_DEFAULT || actual === anterior) {
+    if (actual === dflt.provincia || actual === PROVINCIA_DEFAULT || actual === anterior) {
       const prov = provinciaDeCliente(listaClientes.find(c => String(c.id) === v))
       if (prov) setValue('provincia_destino', prov)
     }
@@ -448,7 +477,7 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
       renglones: d.renglones.map(r => ({
         descripcion: r.descripcion.trim(),
         cantidad:    Number(r.cantidad),
-        unidad:      r.unidad.trim() || UNIDAD_DEFAULT,
+        unidad:      r.unidad.trim() || dflt.unidad,
         precio_unit: Number(r.precio_unit),
         alicuota_id: Number(r.alicuota_id) as VentasAlicuotaId,
       })),
@@ -734,7 +763,7 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
         <div className="border-t border-gris pt-3 flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-gris-dark uppercase tracking-wider">Renglones · precios NETOS (sin IVA)</span>
-            <Button type="button" variant="secondary" size="sm" onClick={() => append({ ...RENGLON_VACIO })}>+ Renglón</Button>
+            <Button type="button" variant="secondary" size="sm" onClick={() => append(renglonVacio(dflt))}>+ Renglón</Button>
           </div>
           {errorRenglones && <span className="text-xs text-rojo font-semibold">{errorRenglones}</span>}
 

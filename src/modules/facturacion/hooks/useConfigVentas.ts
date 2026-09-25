@@ -11,7 +11,9 @@ import type {
   RetencionTipoVenta, RetencionTipoVentaInput, VentasConfigValores,
 } from '@/types/config.types'
 import { retencionTiposRespaldo } from '../utils/cobranzas.utils'
-import { PRODUCTOS, hoyAR, parametrosRespaldo } from '../utils/facturacion.utils'
+import {
+  CONDICION_PAGO_DEFAULT, LEYENDA_FCE, PRODUCTOS, PROVINCIA_DEFAULT, UNIDAD_DEFAULT, hoyAR, parametrosRespaldo,
+} from '../utils/facturacion.utils'
 import { FACTURACION_KEYS, invalidarFacturacion } from './useFacturacion'
 
 const BASE = '/api/facturacion'
@@ -307,9 +309,17 @@ export function useEditarRetencionTipo() {
   })
 }
 
-// ── Valores por defecto de Ventas (ventas_config, 20260929g) ────────────────
+// ── Valores por defecto de Ventas (ventas_config, 20260929g/j) ──────────────
 
-const VALORES_RESPALDO: VentasConfigValores = { retencion_tipo_default: 'iibb' }
+/** Lo de siempre: backend viejo (404), caído, o mientras carga. */
+const VALORES_RESPALDO: VentasConfigValores = {
+  retencion_tipo_default: 'iibb',
+  condicion_pago_default: CONDICION_PAGO_DEFAULT,
+  provincia_default:      PROVINCIA_DEFAULT,
+  unidad_default:         UNIDAD_DEFAULT,
+  leyenda_fce:            null,
+  leyenda_fce_default:    LEYENDA_FCE,
+}
 
 /** GET /config. Si el backend no lo tiene (404) o falla, los de siempre. */
 export function useConfigVentasValores() {
@@ -317,7 +327,15 @@ export function useConfigVentasValores() {
     queryKey: CONFIG_VENTAS_KEYS.valores,
     queryFn: async (): Promise<{ valores: VentasConfigValores; respaldo: boolean }> => {
       try {
-        return { valores: { ...VALORES_RESPALDO, ...(await apiGet<Partial<VentasConfigValores>>(`${BASE}/config`)) }, respaldo: false }
+        // Backend de 20260929g: solo trae retencion_tipo_default; el resto, lo de siempre.
+        const r = await apiGet<Partial<VentasConfigValores>>(`${BASE}/config`)
+        const valores: VentasConfigValores = { ...VALORES_RESPALDO }
+        for (const k of ['retencion_tipo_default', 'condicion_pago_default', 'provincia_default', 'unidad_default', 'leyenda_fce_default'] as const) {
+          const v = r[k]
+          if (typeof v === 'string' && v.trim()) valores[k] = v
+        }
+        valores.leyenda_fce = typeof r.leyenda_fce === 'string' && r.leyenda_fce.trim() ? r.leyenda_fce : null
+        return { valores, respaldo: false }
       } catch (e) {
         if (e instanceof HttpError && e.status === 404) return { valores: VALORES_RESPALDO, respaldo: true }
         throw e
@@ -332,7 +350,7 @@ export function useConfigVentasValores() {
 export function useGuardarConfigVentas() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (body: Partial<VentasConfigValores>) => apiPatch<VentasConfigValores>(`${BASE}/config`, body),
+    mutationFn: (body: Partial<Omit<VentasConfigValores, 'leyenda_fce_default'>>) => apiPatch<VentasConfigValores>(`${BASE}/config`, body),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: CONFIG_VENTAS_KEYS.valores })
       void qc.invalidateQueries({ queryKey: ['audit'] })

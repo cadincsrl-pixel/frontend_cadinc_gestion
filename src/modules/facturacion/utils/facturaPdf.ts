@@ -39,7 +39,7 @@ import { conIvaRenglon, precioConIva } from './facturacion.calculos'
 import { importeALetras } from './numeroALetras'
 import { urlQrArca } from './qrArca'
 import {
-  ALICUOTA_LABEL, CONDICIONES_IVA, DOC_TIPOS, TIPOS_CBTE, TRANSMISION_LABEL, cortoTipo, fmtCant, fmtCuit, fmtFecha,
+  ALICUOTA_LABEL, CONDICIONES_IVA, DOC_TIPOS, LEYENDA_FCE, TIPOS_CBTE, TRANSMISION_LABEL, cortoTipo, fmtCant, fmtCuit, fmtFecha,
   fmtN, fmtPrecio, normalizarDescripcion,
 } from './facturacion.utils'
 
@@ -59,8 +59,13 @@ const MARGEN_X = 28
 const ANCHO = 595.28 - 2 * MARGEN_X   // A4 menos márgenes
 /** Alto reservado abajo para el cierre (totales, Son, QR, CAE). */
 export const MARGEN_PIE = 230
-/** Lo que suma al pie la leyenda roja de la FCE (va abajo, como en el modelo de ARCA). */
+/** Lo que suma al pie la leyenda roja de la FCE (va abajo, como en el modelo de ARCA): 34 para la de ARCA. */
 const EXTRA_PIE_FCE = 34
+/** Una leyenda propia más larga (hasta 1000 caracteres) suma ≈ 8,5 pt por renglón de ~150 caracteres. */
+export function extraPieFce(leyenda: string): number {
+  const renglones = Math.ceil(leyenda.length / 150)
+  return Math.max(EXTRA_PIE_FCE, 8 + renglones * 8.5)
+}
 /** Observaciones más largas que esto van en el cuerpo, no en el cierre (no entrarían). */
 const OBS_MAX_EN_PIE = 280
 
@@ -97,8 +102,12 @@ export function nombreArchivoFactura(fj: VentasFacturaFJ): string {
   return `${tipo}_${f.numero_fmt}_${cli}.pdf`
 }
 
-export async function descargarFacturaPdf(fj: VentasFacturaFJ): Promise<void> {
-  const doc = armarFacturaDoc(fj, { logo: await logoDataUrl() })
+/**
+ * `leyenda`: la de la FCE de Ventas › Configuración (20260929j); null o
+ * ausente = la de ARCA.
+ */
+export async function descargarFacturaPdf(fj: VentasFacturaFJ, opts: { leyenda?: string | null } = {}): Promise<void> {
+  const doc = armarFacturaDoc(fj, { logo: await logoDataUrl(), leyenda: opts.leyenda })
   pdfMake.createPdf(doc).download(nombreArchivoFactura(fj))
 }
 
@@ -112,12 +121,8 @@ export function tituloComprobante(cbteTipo: number): string {
   }
 }
 
-/** La leyenda en rojo de la FCE, calcada del modelo de ARCA. */
-export const LEYENDA_FCE =
-  'Luego de su aceptación tácita o expresa, esta Factura de Crédito Electrónica MiPyMEs será transmitida a ' +
-  'El Sistema de Circulación Abierta para Facturas de Crédito Electrónicas MiPyMEs, para su circulación y ' +
-  'negociación, incluso en los Mercados de Valores, en este caso, a través de un Agente de Depósito Colectivo ' +
-  'o agentes que cumplan similares funciones.'
+/** La leyenda de ARCA (respaldo): vive en facturacion.utils para que la lea la configuración sin cargar pdfmake. */
+export { LEYENDA_FCE }
 
 const th = (t: string, alin: 'left' | 'right' | 'center' = 'left'): TableCell =>
   ({ text: t, bold: true, fontSize: 7.5, color: TENUE, fillColor: FONDO, alignment: alin, margin: [3, 4, 3, 4] })
@@ -151,8 +156,9 @@ const cajaFina = {
 }
 
 /** El documento, sin descargar: separado para poder testearlo o generarlo fuera del navegador. */
-export function armarFacturaDoc(fj: VentasFacturaFJ, opts: { logo: string | null }): TDocumentDefinitions {
+export function armarFacturaDoc(fj: VentasFacturaFJ, opts: { logo: string | null; leyenda?: string | null }): TDocumentDefinitions {
   const f = fj.factura
+  const leyendaFce = opts.leyenda?.trim() || LEYENDA_FCE
   const esNc = f.es_nc
   const esB = f.letra === 'B'
   const homo = f.es_homologacion
@@ -371,7 +377,7 @@ export function armarFacturaDoc(fj: VentasFacturaFJ, opts: { logo: string | null
     margin: [0, 4, 0, 0],
   })
 
-  const margenPie = MARGEN_PIE + (f.cbte_tipo === 201 ? EXTRA_PIE_FCE : 0)
+  const margenPie = MARGEN_PIE + (f.cbte_tipo === 201 ? extraPieFce(leyendaFce) : 0)
 
   return {
     pageSize: 'A4',
@@ -393,7 +399,7 @@ export function armarFacturaDoc(fj: VentasFacturaFJ, opts: { logo: string | null
       }
       return {
         margin: [MARGEN_X, 6, MARGEN_X, 0],
-        stack: cierre(fj, { definitiva, esB, obs: obsEnPie ? obs : null, pag, total, pieDeAbajo }),
+        stack: cierre(fj, { definitiva, esB, obs: obsEnPie ? obs : null, pag, total, pieDeAbajo, leyendaFce }),
       }
     },
     content,
@@ -407,7 +413,11 @@ export function armarFacturaDoc(fj: VentasFacturaFJ, opts: { logo: string | null
  */
 function cierre(
   fj: VentasFacturaFJ,
-  o: { definitiva: boolean; esB: boolean; obs: string | null; pag: number; total: number; pieDeAbajo: (p: number, t: number, conPagina?: boolean) => Content },
+  o: {
+    definitiva: boolean; esB: boolean; obs: string | null; pag: number; total: number
+    pieDeAbajo: (p: number, t: number, conPagina?: boolean) => Content
+    leyendaFce: string
+  },
 ): Content[] {
   const f = fj.factura
   const filaTot = (label: string, valor: number): TableCell[] => [
@@ -509,7 +519,7 @@ function cierre(
     { text: [{ text: 'Son: ', bold: true }, importeALetras(Number(f.imp_total))], fontSize: 8.5, margin: [0, 6, 0, 0] as Margen },
     // FCE: la leyenda roja va abajo, antes del QR y el CAE, como en el modelo de ARCA.
     ...(f.cbte_tipo === 201 ? [{
-      table: { widths: ['*'], body: [[{ text: LEYENDA_FCE, color: ROJO, fontSize: 7, alignment: 'center' as const, margin: [6, 3, 6, 3] as Margen }]] },
+      table: { widths: ['*'], body: [[{ text: o.leyendaFce, color: ROJO, fontSize: 7, alignment: 'center' as const, margin: [6, 3, 6, 3] as Margen }]] },
       layout: { hLineColor: () => ROJO, vLineColor: () => ROJO, hLineWidth: () => 0.6, vLineWidth: () => 0.6 },
       margin: [0, 6, 0, 0] as Margen,
     }] : []),

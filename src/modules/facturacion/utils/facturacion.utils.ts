@@ -10,6 +10,7 @@ import type {
   VentasAlicuotaId, VentasDocTipo, VentasEstado, VentasFactura,
 } from '@/types/domain.types'
 import type { ProductoVenta } from '@/types/config.types'
+import { PROVINCIAS as PROVINCIAS_ARCA } from '@/lib/utils/arca'
 
 /**
  * Productos de venta de RESPALDO: la semilla de `ventas_productos`
@@ -219,9 +220,47 @@ export const PARAMETROS_VENTA: Record<'monto_minimo_fce' | 'tope_cf_identificaci
   },
 }
 
+// Valores por defecto de la factura. Desde 20260929j se editan en Ventas ›
+// Configuración (`useConfigVentasValores`); estas constantes quedan como
+// respaldo (backend viejo o mientras carga) y son la semilla.
 export const PROVINCIA_DEFAULT = 'Tucuman'
 export const CONDICION_PAGO_DEFAULT = 'Cc Clientes'
 export const UNIDAD_DEFAULT = 'Unidades'
+
+/**
+ * La leyenda en rojo de la FCE, calcada del modelo de ARCA. Es la que se
+ * imprime si Ventas › Configuración no tiene una propia (20260929j). Espejo
+ * de `LEYENDA_FCE_ARCA` del backend.
+ */
+export const LEYENDA_FCE =
+  'Luego de su aceptación tácita o expresa, esta Factura de Crédito Electrónica MiPyMEs será transmitida a ' +
+  'El Sistema de Circulación Abierta para Facturas de Crédito Electrónicas MiPyMEs, para su circulación y ' +
+  'negociación, incluso en los Mercados de Valores, en este caso, a través de un Agente de Depósito Colectivo ' +
+  'o agentes que cumplan similares funciones.'
+
+/** Lo que edita Ventas › Configuración › Valores por defecto (la leyenda como texto: vacía = la de ARCA). */
+export interface CamposDefaultsFactura {
+  condicion_pago_default: string
+  provincia_default:      string
+  unidad_default:         string
+  leyenda_fce:            string
+}
+
+/** Las mismas reglas que la base (20260929j). Devuelve el mensaje por campo; vacío = todo bien. */
+export function validarDefaultsFactura(c: CamposDefaultsFactura): Partial<Record<keyof CamposDefaultsFactura, string>> {
+  const unaLinea = (s: string) => s.replace(/\s+/g, ' ').trim()
+  const e: Partial<Record<keyof CamposDefaultsFactura, string>> = {}
+  const cond = unaLinea(c.condicion_pago_default)
+  if (!cond) e.condicion_pago_default = 'No puede quedar vacía'
+  else if (cond.length > 100) e.condicion_pago_default = 'Hasta 100 caracteres'
+  const uni = unaLinea(c.unidad_default)
+  if (!uni) e.unidad_default = 'No puede quedar vacía'
+  else if (uni.length > 50) e.unidad_default = 'Hasta 50 caracteres'
+  if (!PROVINCIAS_ARCA.includes(c.provincia_default)) e.provincia_default = 'Elegí una provincia de la lista'
+  const ley = unaLinea(c.leyenda_fce)
+  if (ley && (ley.length < 50 || ley.length > 1000)) e.leyenda_fce = 'De 50 a 1000 caracteres (vacía = la de ARCA)'
+  return e
+}
 
 export interface EstadoMeta {
   key:   VentasEstado

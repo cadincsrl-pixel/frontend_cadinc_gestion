@@ -15,7 +15,8 @@ import {
   filaRecibidaParaApi, hashArchivo, parsearRecibidos, periodoIvaDelArchivo,
   type ErrorParseoRecibidos, type FilaRecibidaArchivo,
 } from '../utils/arcaRecibidos'
-import type { PagosImportarRecibidosFila, PagosImportarRecibidosRes } from '@/types/domain.types'
+import type { PagosImportacion, PagosImportarRecibidosFila, PagosImportarRecibidosRes } from '@/types/domain.types'
+import { ListaImportaciones, ModalDeshacerImportacion } from './ModalDeshacerImportacion'
 
 /**
  * Importar desde ARCA «Mis Comprobantes — Recibidos» (20260927c).
@@ -43,6 +44,9 @@ import type { PagosImportarRecibidosFila, PagosImportarRecibidosRes } from '@/ty
  * todos los comprobantes: <mes predominante>» (tildado por defecto, por
  * archivo) y viaja como `periodo_iva`: vale para las filas de ese mes o
  * anteriores; las posteriores conservan su mes.
+ *
+ * «Importaciones anteriores» (20260929k): el historial, con «Deshacer» (anula
+ * todas las facturas de una importación y sus asientos; todo o nada).
  */
 
 type Filtro = 'todas' | 'nueva' | 'duplicada' | 'error' | 'revisar'
@@ -85,6 +89,7 @@ export function ModalImportarRecibidos({ onClose, onVerImportadas }: {
   const [filtro, setFiltro] = useState<Filtro>('todas')
   /** null = todavía no lo tocó: vale el default por las fechas. */
   const [historicaElegida, setHistoricaElegida] = useState<boolean | null>(null)
+  const [deshaciendo, setDeshaciendo] = useState<PagosImportacion | null>(null)
 
   const sinPermiso = !puedeCrear && !esAdmin ? 'No tenés permiso para cargar facturas'
     : !puede ? 'No tenés permiso para importar comprobantes de ARCA (hace falta «Importar comprobantes de ARCA»)' : null
@@ -210,7 +215,8 @@ export function ModalImportarRecibidos({ onClose, onVerImportadas }: {
   const origDe = (indice: number) => a?.filas[indice - 1]
 
   return (
-    <Modal open onClose={trabajando ? () => {} : onClose} width="max-w-6xl" title="Importar desde ARCA — Mis Comprobantes Recibidos"
+    <>
+    <Modal open onClose={trabajando || deshaciendo ? () => {} : onClose} width="max-w-6xl" title="Importar desde ARCA — Mis Comprobantes Recibidos"
       footer={<>
         <Button variant="ghost" size="sm" onClick={onClose} disabled={!!trabajando}>Cerrar</Button>
         {!todasHechas && (conPrevia.length === 0 ? (
@@ -232,6 +238,7 @@ export function ModalImportarRecibidos({ onClose, onVerImportadas }: {
           Todo entra <b>impago y sin imputar</b>: después se le pone concepto y obra desde la bandeja («Sin imputar»).
         </Aviso>
         {sinPermiso && <Aviso tono="naranja">{sinPermiso}.</Aviso>}
+        {archivos.length === 0 && <ListaImportaciones onDeshacer={setDeshaciendo} />}
 
         <label className={`border-2 border-dashed rounded-lg p-4 text-center ${sinPermiso || trabajando ? 'border-gris opacity-60 cursor-not-allowed' : 'border-gris-mid hover:border-naranja cursor-pointer'}`}>
           <input type="file" multiple accept=".xlsx,.xls,.csv" className="hidden" disabled={!!sinPermiso || !!trabajando}
@@ -446,6 +453,8 @@ export function ModalImportarRecibidos({ onClose, onVerImportadas }: {
         )}
       </div>
     </Modal>
+    {deshaciendo && <ModalDeshacerImportacion importacion={deshaciendo} onClose={() => setDeshaciendo(null)} />}
+    </>
   )
 }
 

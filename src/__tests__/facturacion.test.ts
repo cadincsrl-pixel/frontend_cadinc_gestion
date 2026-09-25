@@ -266,6 +266,20 @@ describe('PDF de la factura (armado)', async () => {
     expect(JSON.parse(atob(qr!))).toMatchObject({ tipoCmp: 201 })
   })
 
+  it('FCE con leyenda propia de la configuración (20260929j): la imprime y agranda el pie; null = la de ARCA', () => {
+    const fce = { ...fj, factura: { ...base, cbte_tipo: 201, cod_cbte: '201', es_fce: true, fch_vto_pago: '2026-10-24' } }
+    const propia = 'Leyenda propia que pidió el contador para las FCE. '.repeat(12).trim()
+    const doc = armarFacturaDoc(fce as unknown as VentasFacturaFJ, { logo: null, leyenda: propia })
+    const json = todo(doc)
+    expect(json).toContain(propia.slice(0, 60))
+    expect(json).not.toContain(LEYENDA_FCE.slice(0, 60))
+    const docArca = armarFacturaDoc(fce as unknown as VentasFacturaFJ, { logo: null, leyenda: null })
+    expect(todo(docArca)).toContain(LEYENDA_FCE.slice(0, 60))
+    const margen = (d: typeof doc) => (d.pageMargins as number[])[3]!
+    expect(margen(doc)).toBeGreaterThan(margen(docArca))
+    expect(margen(docArca)).toBe(MARGEN_PIE + 34)
+  })
+
   it('NC FCE 203: título y comprobante asociado, sin CBU', () => {
     const nc = {
       ...fj,
@@ -357,5 +371,22 @@ describe('FCE MiPyME (fase 6): espejo del backend', async () => {
   it('los tipos FCE tienen nombre corto para la bandeja', () => {
     expect(u.cortoTipo(201)).toBe('FCE A')
     expect(u.cortoTipo(203)).toBe('NC FCE A')
+  })
+})
+
+describe('valores por defecto de la factura (20260929j)', async () => {
+  const { validarDefaultsFactura, LEYENDA_FCE } = await import('@/modules/facturacion/utils/facturacion.utils')
+  const ok = { condicion_pago_default: 'Cc Clientes', provincia_default: 'Tucuman', unidad_default: 'Unidades', leyenda_fce: '' }
+  it('los de siempre y la leyenda de ARCA pasan', () => {
+    expect(validarDefaultsFactura(ok)).toEqual({})
+    expect(validarDefaultsFactura({ ...ok, leyenda_fce: LEYENDA_FCE })).toEqual({})
+  })
+  it('las mismas reglas que la base', () => {
+    expect(validarDefaultsFactura({ ...ok, condicion_pago_default: '   ' })).toHaveProperty('condicion_pago_default')
+    expect(validarDefaultsFactura({ ...ok, condicion_pago_default: 'x'.repeat(101) })).toHaveProperty('condicion_pago_default')
+    expect(validarDefaultsFactura({ ...ok, unidad_default: 'x'.repeat(51) })).toHaveProperty('unidad_default')
+    expect(validarDefaultsFactura({ ...ok, provincia_default: 'Tucumán' })).toHaveProperty('provincia_default')
+    expect(validarDefaultsFactura({ ...ok, leyenda_fce: 'corta' })).toHaveProperty('leyenda_fce')
+    expect(validarDefaultsFactura({ ...ok, leyenda_fce: 'x'.repeat(1001) })).toHaveProperty('leyenda_fce')
   })
 })

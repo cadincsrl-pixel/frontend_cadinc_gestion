@@ -310,6 +310,15 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
     const n = Array.isArray(errs) ? errs.length : 0
     return `No se importó nada: ${n || 'hay'} comprobante${n === 1 ? '' : 's'} con error. Es todo o nada: corregí esas filas (o sacalas del archivo) y volvé a probar.`
   },
+  // Deshacer una importación (20260929k)
+  IMPORTACION_NO_EXISTE:   () => 'Esa importación ya no existe: refrescá la pantalla.',
+  IMPORTACION_YA_DESHECHA: () => 'Esa importación ya se deshizo.',
+  IMPORTACION_CON_MOVIMIENTOS: d => {
+    const b = dato(d, 'bloqueos')
+    const n = Array.isArray(b) ? new Set(b.map(x => (x as { factura_id?: number }).factura_id)).size : 0
+    return `No se deshizo nada: ${n || 'hay'} comprobante${n === 1 ? '' : 's'} ya tiene${n === 1 ? '' : 'n'} movimientos (pago, NC, imputación, aprobación o asiento en un mes cerrado). Es todo o nada.`
+  },
+  ASIENTOS_NO_ANULADOS: () => 'No se deshizo nada: algún asiento no se pudo anular. Avisá al administrador.',
   SIN_IMPUTAR_SOLO_IMPORTADOR: () => 'Error interno: solo el importador marca facturas sin imputar. Avisá al administrador.',
   IMPUTAR_SOLO_RPC:            () => 'Error interno: una importada se imputa solo con «Imputar». Avisá al administrador.',
   // Errores por fila del importador (vienen en `filas[].error`)

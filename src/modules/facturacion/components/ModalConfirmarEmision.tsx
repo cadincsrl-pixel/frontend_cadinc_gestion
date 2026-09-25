@@ -11,6 +11,7 @@ import {
 import { codigoErrorFacturacion, leerCuerpoError, mensajeErrorFacturacion } from '../utils/facturacion.errores'
 import { cortoTipo, etiquetaProducto, fmtDoc, fmtFecha, fmtM, mensajesArca, nombreTipo, obraDeFactura } from '../utils/facturacion.utils'
 import { descargarFacturaPdf } from '../utils/facturaPdf'
+import { useConfigVentasValores } from '../hooks/useConfigVentas'
 import type { VentasArcaEstado, VentasFacturaFJ } from '@/types/domain.types'
 import { Aviso, MensajesArca } from './FichaFactura'
 
@@ -51,6 +52,7 @@ export function ModalConfirmarEmision({ fj, arca, onClose }: Props) {
   const emitir = useEmitirFacturaVenta()
   const [paso, setPaso] = useState<Paso>({ tipo: 'confirmar' })
   const [generandoPdf, setGenerandoPdf] = useState(false)
+  const leyendaFce = useConfigVentasValores().valores.leyenda_fce
   const vivo = useRef(true)
 
   useEffect(() => {
@@ -132,7 +134,7 @@ export function ModalConfirmarEmision({ fj, arca, onClose }: Props) {
 
   async function pdf(x: VentasFacturaFJ) {
     setGenerandoPdf(true)
-    try { await descargarFacturaPdf(x) } finally { setGenerandoPdf(false) }
+    try { await descargarFacturaPdf(x, { leyenda: leyendaFce }) } finally { setGenerandoPdf(false) }
   }
 
   const verificando = paso.tipo === 'verificando'

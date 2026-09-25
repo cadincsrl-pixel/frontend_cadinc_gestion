@@ -185,9 +185,17 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   IMPUESTO_IVA_RESERVADO:     () => 'La retención de IVA es una sola (la leen el Libro IVA y el asiento mensual): un tipo nuevo no puede ser de IVA.',
   RETENCION_TIPO_POR_DEFECTO: () => 'Es el tipo que propone el cobro: elegí otro como «por defecto» antes de darlo de baja.',
   RETENCION_TIPO_NO_EXISTE:   () => 'Ese tipo de retención no existe. Refrescá la pantalla.',
-  CONFIG_INVALIDA:            d => dato(d, 'clave') === 'retencion_tipo_default'
-    ? 'Ese tipo de retención no existe o está dado de baja.'
-    : 'Ese valor de configuración no es válido.',
+  CONFIG_INVALIDA:            d => {
+    const clave = dato(d, 'clave')
+    const motivo = dato(d, 'motivo')
+    if (clave === 'retencion_tipo_default') return 'Ese tipo de retención no existe o está dado de baja.'
+    if (clave === 'provincia_default') return 'Elegí una provincia de la lista.'
+    if (clave === 'leyenda_fce') return 'La leyenda de la FCE va de 50 a 1000 caracteres (o vacía para usar la de ARCA).'
+    if (clave === 'condicion_pago_default') return motivo === 'texto_vacio' || !motivo
+      ? 'La condición de pago no puede quedar vacía (hasta 100 caracteres).' : 'La condición de pago va hasta 100 caracteres.'
+    if (clave === 'unidad_default') return 'La unidad no puede quedar vacía y va hasta 50 caracteres.'
+    return 'Ese valor de configuración no es válido.'
+  },
   JURISDICCION_NO_EXISTE:     () => 'La jurisdicción elegida ya no existe: refrescá la pantalla y elegila de nuevo.',
   PERIODO_REQUERIDO:      () => 'Este producto pide el período facturado: completá desde y hasta.',
   PERIODO_INVALIDO:       () => 'El período facturado termina antes de empezar.',
