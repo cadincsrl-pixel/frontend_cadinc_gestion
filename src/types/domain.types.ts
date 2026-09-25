@@ -2456,6 +2456,8 @@ export interface PagosProveedor {
   vencimiento_modo:   'dias' | 'cierre_mensual'
   /** Día del mes en que cierra la cuenta. null = el último día. Sólo con `cierre_mensual`. */
   cierre_dia:         number | null
+  /** Cómo se le paga normalmente: la forma con que nacen sus facturas (20260930a). null = transferencia. */
+  forma_pago_habitual?: PagosFormaPrevista | null
   contacto:           string
   telefono:           string
   email:              string
@@ -3719,6 +3721,7 @@ export interface CrearProveedorInput {
   plazo_pago_dias?: number
   vencimiento_modo?: 'dias' | 'cierre_mensual'
   cierre_dia?:      number | null
+  forma_pago_habitual?: PagosFormaPrevista | null
   contacto?:        string
   telefono?:        string
   email?:           string
@@ -3771,7 +3774,7 @@ export interface PagosActualizarTodosArcaRes {
 }
 /** La puerta del contador: solo datos de pago, ni razón social ni CUIT ni obs. */
 export type PagosDatosPagoInput = Pick<CrearProveedorInput,
-  'alias_cbu' | 'cbu' | 'banco' | 'plazo_pago_dias' | 'contacto' | 'telefono' | 'email'>
+  'alias_cbu' | 'cbu' | 'banco' | 'plazo_pago_dias' | 'forma_pago_habitual' | 'contacto' | 'telefono' | 'email'>
 
 // ── Respuestas de las mutaciones ──────────────────────────────────────
 

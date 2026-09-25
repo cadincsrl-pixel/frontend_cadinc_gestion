@@ -12,11 +12,11 @@ import {
   useActualizarProveedorDesdeArca, useActualizarTodosDesdeArca,
   type PagosProveedoresFiltro,
 } from '../hooks/useProveedoresPagos'
-import { comprobanteTxt, fmtFecha, fmtM } from '../utils/pagos.utils'
+import { FORMAS_PREVISTAS, comprobanteTxt, fmtFecha, fmtM } from '../utils/pagos.utils'
 import { mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
 import { VENCIMIENTO_MODOS, cantidadDe, condicionIvaTxt, tipoPersonaTxt, type VencimientoModo } from '../utils/pagos.utils'
 import { CamposArcaProveedor, datosArcaDesde, datosArcaParaGuardar, datosArcaVacios, type DatosArcaForm } from './CamposArcaProveedor'
-import type { PagosActualizarDesdeArcaRes, PagosActualizarTodosArcaRes, PagosProveedor } from '@/types/domain.types'
+import type { PagosActualizarDesdeArcaRes, PagosActualizarTodosArcaRes, PagosFormaPrevista, PagosProveedor } from '@/types/domain.types'
 import { exportarProveedoresPagos } from '../utils/pagosExport'
 import { AltaRapidaProveedor } from './AltaRapidaProveedor'
 import { ContactosEditor, contactosDesde, contactosParaGuardar, validarContactos } from '@/components/contactos/ContactosEditor'
@@ -209,7 +209,7 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
   const [errorContactos, setErrorContactos] = useState<{ i: number; mensaje: string } | null>(null)
 
   const [editando, setEditando] = useState(false)
-  const [form, setForm] = useState({ razon_social: '', cuit: '', alias_cbu: '', cbu: '', banco: '', plazo_pago_dias: '30', vencimiento_modo: 'dias' as VencimientoModo, cierre_dia: '' })
+  const [form, setForm] = useState({ razon_social: '', cuit: '', alias_cbu: '', cbu: '', banco: '', plazo_pago_dias: '30', vencimiento_modo: 'dias' as VencimientoModo, cierre_dia: '', forma_pago_habitual: '' as PagosFormaPrevista | '' })
   const [pidiendoBaja, setPidiendoBaja] = useState(false)
   const [motivo, setMotivo] = useState('')
 
@@ -219,6 +219,7 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
       razon_social: p.razon_social, cuit: p.cuit ?? '', alias_cbu: p.alias_cbu ?? '', cbu: p.cbu ?? '',
       banco: p.banco ?? '', plazo_pago_dias: String(p.plazo_pago_dias ?? 30),
       vencimiento_modo: p.vencimiento_modo ?? 'dias', cierre_dia: p.cierre_dia != null ? String(p.cierre_dia) : '',
+      forma_pago_habitual: p.forma_pago_habitual ?? '',
     })
     setContactos(contactosDesde(p.contactos, p.email))
     setErrorContactos(null)
@@ -240,12 +241,14 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
         ? await datosPago.mutateAsync({
             id: p.id, cbu: form.cbu.trim() || null, alias_cbu: form.alias_cbu.trim() || null,
             banco: form.banco.trim(), plazo_pago_dias: Number(form.plazo_pago_dias) || 30,
+            forma_pago_habitual: form.forma_pago_habitual || null,
           })
         : await editar.mutateAsync({
             id: p.id, razon_social: form.razon_social.trim(), cuit: form.cuit.trim() || null,
             cbu: form.cbu.trim() || null, alias_cbu: form.alias_cbu.trim() || null,
             banco: form.banco.trim(), plazo_pago_dias: Number(form.plazo_pago_dias) || 30,
             vencimiento_modo: form.vencimiento_modo,
+            forma_pago_habitual: form.forma_pago_habitual || null,
             // Con cierre mensual, vacío = el último día del mes (el caso Silva).
             cierre_dia: form.vencimiento_modo === 'cierre_mensual' ? (Number(form.cierre_dia) || null) : null,
             ...datosArcaParaGuardar(datosArca),
@@ -345,6 +348,19 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
                   className={inputCls} />
               </Campo>
             )}
+            <Campo label="Cómo se le paga (sus facturas nacen así)">
+              <select value={form.forma_pago_habitual} className={inputCls}
+                onChange={e => setForm(f => ({ ...f, forma_pago_habitual: e.target.value as PagosFormaPrevista | '' }))}>
+                <option value="">Transferencia (sin preferencia)</option>
+                {FORMAS_PREVISTAS.map(x => <option key={x.key} value={x.key}>{x.label}</option>)}
+              </select>
+            </Campo>
+            {(form.forma_pago_habitual === 'echeq' || form.forma_pago_habitual === 'cheque') && (
+              <div className="sm:col-span-2 text-[11px] text-gris-dark">
+                Cada factura nueva sale con un {form.forma_pago_habitual === 'echeq' ? 'e-cheq' : 'cheque'} al vencimiento
+                ({form.vencimiento_modo === 'cierre_mensual' ? 'cierre' : 'fecha de la factura'} + {Number(form.plazo_pago_dias) || 30} días). Se puede cambiar en cada una.
+              </div>
+            )}
             {!soloDatosPago && form.vencimiento_modo === 'cierre_mensual' && (
               <div className="sm:col-span-2 text-[11px] text-gris-dark">
                 Todo lo comprado en el mes vence junto: cierra {form.cierre_dia ? `el ${form.cierre_dia}` : 'el último día del mes'}, se corre al último día hábil y vence {Number(form.plazo_pago_dias) || 30} días después.
@@ -373,6 +389,7 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
                 p.vencimiento_modo === 'cierre_mensual'
                   ? `Cierre ${p.cierre_dia ? 'el ' + p.cierre_dia : 'fin de mes'} + ${p.plazo_pago_dias} días`
                   : `${p.plazo_pago_dias} días de cada factura`} />
+              <Dato label="Cómo se le paga" valor={FORMAS_PREVISTAS.find(x => x.key === p.forma_pago_habitual)?.label ?? 'Transferencia'} />
               <Dato label="Saldo" valor={fmtM(p.saldo)} fuerte />
               <Dato label="Listo para pagar" valor={fmtM(p.saldo_aprobado)} />
               <Dato label="Último pago" valor={fmtFecha(p.ultimo_pago)} />

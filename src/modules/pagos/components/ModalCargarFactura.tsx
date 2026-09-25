@@ -314,6 +314,9 @@ export function ModalCargarFactura({ editarId, onClose, onAbrirFicha }: Props) {
   // El plan de e-cheqs (20260923n): se anota al cargar para que el Excel del
   // Galicia y el modal de pago salgan precargados. Sólo con cheque / e-cheq.
   const [plan, setPlan] = useState<PagosPlanCheques | null>(null)
+  // La forma y el plan siguen a la forma habitual del proveedor (20260930a)
+  // hasta que la persona los toca.
+  const [previsionTocada, setPrevisionTocada] = useState(false)
   const [reparto, setReparto] = useState<FilaReparto[]>([{ ...FILA_REPARTO_VACIA }])
   // Período IVA (20260927a): `YYYY-MM`. Mientras no se toque sigue a la fecha
   // (al cargar, con el sugerido del backend: el mes de la fecha, o el primero
@@ -442,6 +445,18 @@ export function ModalCargarFactura({ editarId, onClose, onAbrirFicha }: Props) {
     const sug = vencimientoSugerido(fecha, proveedor)
     if (sug) setVenceEl(sug)
   }, [proveedor, fecha, tipo, esEdicion, esNc, venceEl])
+
+  // Cómo se le paga a ESTE proveedor (20260930a): ABC con un e-cheq a 30
+  // días de la factura, por ejemplo. Con cheque/e-cheq el plan es uno solo,
+  // al vencimiento. Sólo al cargar, y mientras nadie cambie forma ni plan.
+  useEffect(() => {
+    if (esEdicion || esNc || previsionTocada || !proveedor) return
+    const f = proveedor.forma_pago_habitual ?? 'transferencia'
+    setFormaPrevista(f)
+    setPlan((f === 'echeq' || f === 'cheque')
+      ? (venceEl ? { cantidad: 1, primer_cobro: venceEl, cada_dias: 30 } : planAlDia())
+      : null)
+  }, [proveedor, venceEl, esEdicion, esNc, previsionTocada])
 
   const totalN = n(total)
   const conCheques = formaPrevista === 'echeq' || formaPrevista === 'cheque'
@@ -1004,6 +1019,7 @@ export function ModalCargarFactura({ editarId, onClose, onAbrirFicha }: Props) {
             <select value={formaPrevista} onChange={e => {
               const f = e.target.value as PagosFormaPrevista
               setFormaPrevista(f)
+              setPrevisionTocada(true)
               // Al elegir cheque o e-cheq arranca «al día»: el total, al día
               // siguiente de la carga (el caso más común, dijo el dueño).
               if ((f === 'echeq' || f === 'cheque') && !plan) setPlan(planAlDia())
@@ -1017,7 +1033,7 @@ export function ModalCargarFactura({ editarId, onClose, onAbrirFicha }: Props) {
         </div>
 
         {!esNc && conCheques && (plan
-          ? <PlanCheques plan={plan} total={totalN} onChange={setPlan}
+          ? <PlanCheques plan={plan} total={totalN} onChange={p => { setPlan(p); setPrevisionTocada(true) }}
               etiqueta={formaPrevista === 'echeq' ? 'e-cheqs' : 'cheques'} />
           : <button type="button" onClick={() => setPlan(planAlDia())}
               className="self-start text-[11px] text-[#5A2D82] hover:underline">
