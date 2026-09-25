@@ -2,13 +2,13 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
-import type { CtbConfig, CtbMapeoClave, CtbMapeoInput } from '@/types/contabilidad.types'
+import type { CtbConfig, CtbConfigEditable, CtbCuenta, CtbMapeoClave, CtbMapeoInput } from '@/types/contabilidad.types'
 import { useConfigCtb, useCuentas, useGuardarConfig, useGuardarMapeos, useMapeos } from '../hooks/useContabilidad'
 import { auxiliarLabel, etiquetaSubclave, fmtFecha, rubroLabel } from '../utils/contabilidad.utils'
 import { errorDeCampoCtb, mensajeErrorCtb } from '../utils/contabilidad.errores'
@@ -192,9 +192,14 @@ const configSchema = z.object({
   bu_frecuencia:          z.enum(['mensual', 'anual']),
   bu_criterio_alta:       z.enum(['completo', 'proporcional']),
   bu_corte_inicial:       z.string().min(1, 'Elegí la fecha'),
+  // 20260929h: id de la cuenta título de los rubros de bienes de uso ('' = sin tocar).
+  bu_titulo_rubros:       z.string(),
 })
-const CAMPOS_CONFIG = ['automaticos_desde', 'cvlp_modo', 'compras_fecha_contable', 'iva_ddjj_arrastre', 'bu_frecuencia', 'bu_criterio_alta', 'bu_corte_inicial'] as const
+const CAMPOS_CONFIG = ['automaticos_desde', 'cvlp_modo', 'compras_fecha_contable', 'iva_ddjj_arrastre', 'bu_frecuencia', 'bu_criterio_alta', 'bu_corte_inicial', 'bu_titulo_rubros'] as const
 type ConfigForm = z.infer<typeof configSchema>
+
+/** Candidatas a título de bienes de uso: títulos (no imputables) activos del activo. La base valida lo mismo. */
+const esTituloDelActivo = (c: CtbCuenta) => c.rubro === 'activo' && !c.imputable && c.activo
 
 function PanelConfig({ bloqueo }: { bloqueo: string | null }) {
   const q = useConfigCtb()
@@ -206,7 +211,7 @@ function PanelConfig({ bloqueo }: { bloqueo: string | null }) {
 function FormConfig({ config, bloqueo }: { config: CtbConfig; bloqueo: string | null }) {
   const toast = useToast()
   const guardar = useGuardarConfig()
-  const { register, handleSubmit, setError, formState: { errors, dirtyFields, isDirty } } = useForm<ConfigForm>({
+  const { register, control, handleSubmit, setError, formState: { errors, dirtyFields, isDirty } } = useForm<ConfigForm>({
     resolver: zodResolver(configSchema),
     defaultValues: {
       automaticos_desde: config.automaticos_desde, cvlp_modo: config.cvlp_modo, compras_fecha_contable: config.compras_fecha_contable,
@@ -215,11 +220,13 @@ function FormConfig({ config, bloqueo }: { config: CtbConfig; bloqueo: string | 
       bu_frecuencia:     config.bu_frecuencia ?? 'mensual',
       bu_criterio_alta:  config.bu_criterio_alta ?? 'proporcional',
       bu_corte_inicial:  config.bu_corte_inicial ?? '2026-06-30',
+      // Un backend sin 20260929h no la manda: vacío, y el selector muestra el default.
+      bu_titulo_rubros:  config.bu_titulo_rubros ? String(config.bu_titulo_rubros.cuenta_id) : '',
     },
   })
 
   async function enviar(d: ConfigForm) {
-    const cambios: Partial<ConfigForm> = {}
+    const cambios: Partial<CtbConfigEditable> = {}
     if (dirtyFields.automaticos_desde) cambios.automaticos_desde = d.automaticos_desde
     if (dirtyFields.cvlp_modo) cambios.cvlp_modo = d.cvlp_modo
     if (dirtyFields.compras_fecha_contable) cambios.compras_fecha_contable = d.compras_fecha_contable
@@ -227,6 +234,7 @@ function FormConfig({ config, bloqueo }: { config: CtbConfig; bloqueo: string | 
     if (dirtyFields.bu_frecuencia) cambios.bu_frecuencia = d.bu_frecuencia
     if (dirtyFields.bu_criterio_alta) cambios.bu_criterio_alta = d.bu_criterio_alta
     if (dirtyFields.bu_corte_inicial) cambios.bu_corte_inicial = d.bu_corte_inicial
+    if (dirtyFields.bu_titulo_rubros && d.bu_titulo_rubros) cambios.bu_titulo_rubros = Number(d.bu_titulo_rubros)
     if (Object.keys(cambios).length === 0) return
     try {
       await guardar.mutateAsync(cambios)
@@ -287,6 +295,18 @@ function FormConfig({ config, bloqueo }: { config: CtbConfig; bloqueo: string | 
         <Campo label="Bienes de uso: corte inicial" error={errors.bu_corte_inicial?.message}>
           <input type="date" {...register('bu_corte_inicial')} disabled={!!bloqueo} className={inputCls} />
           <span className="text-[11px] text-gris-dark">Fecha de la amortización acumulada que trae el inventario (hoy: {fmtFecha(config.bu_corte_inicial ?? '2026-06-30')}).</span>
+        </Campo>
+        <Campo label="Bienes de uso: cuenta título" error={errors.bu_titulo_rubros?.message} className="md:col-span-2">
+          <Controller control={control} name="bu_titulo_rubros" render={({ field }) => (
+            <SelectorCuenta value={field.value} modo="todas" rubros={['activo']} filtrar={esTituloDelActivo} disabled={!!bloqueo}
+              placeholder="1.2.2 — BIENES DE USO" onChange={id => field.onChange(id)} />
+          )} />
+          <span className="text-[11px] text-gris-dark">
+            Sus hijas directas son los rubros (Rodados, Muebles…) del gasto de amortización y del alta de bienes
+            (hoy: {config.bu_titulo_rubros?.codigo
+              ? `${config.bu_titulo_rubros.codigo} ${config.bu_titulo_rubros.nombre ?? ''}`.trim()
+              : '1.2.2, por defecto'}). No se cambia si deja bienes cargados afuera.
+          </span>
         </Campo>
       </div>
       <div className="flex justify-end">

@@ -30,7 +30,7 @@ export function SelectorCuenta({
   rubros?:      CtbRubro[]
   /** Restringe al tipo de auxiliar de la cuenta (mapeos: lo que acepta cada clave). */
   auxiliares?:  CtbAuxiliarTipo[]
-  /** Filtro extra (bienes de uso: solo las «Valores originales» 1.2.2.XX.01). */
+  /** Filtro extra (bienes de uso: solo las cuentas que cuelgan del título configurado, `prefijoBienes`). */
   filtrar?:     (c: CtbCuenta) => boolean
   label?:       string
   placeholder?: string

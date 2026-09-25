@@ -1,14 +1,22 @@
 // Bienes de uso (tanda 5, 20260928p): cuentas sugeridas y la cuota estimada.
 //
-// Plan de Finnegans: el título del rubro es 1.2.2.XX, «Valores originales» es
+// Plan de Finnegans: el título del rubro es <título>.XX (hoy 1.2.2.XX, se
+// elige en Mapeos › Configuración, 20260929h), «Valores originales» es
 // .01, «Actualizaciones» .02 y «Amortizaciones acumuladas» .03 (H6 de la
 // spec). La cuenta de gasto por rubro sale del mapeo `bienes.gasto` (subclave
 // = código del título; '' = general). Solo son SUGERENCIAS del alta: cada bien
 // guarda sus tres cuentas.
 
-import type { CtbCuenta, CtbMapeosCatalogo } from '@/types/contabilidad.types'
+import type { CtbConfig, CtbCuenta, CtbMapeosCatalogo } from '@/types/contabilidad.types'
 
-export const PREFIJO_BIENES = '1.2.2.'
+/** El de la base cuando no hay config (`_cont_bu_prefijo()`). */
+export const PREFIJO_BIENES_DEFAULT = '1.2.2.'
+
+/** Prefijo de los rubros de bienes de uso: código de la cuenta título + '.'; sin config → 1.2.2. */
+export function prefijoBienes(config: Pick<CtbConfig, 'bu_titulo_rubros'> | null | undefined): string {
+  const cod = config?.bu_titulo_rubros?.codigo
+  return cod ? `${cod}.` : PREFIJO_BIENES_DEFAULT
+}
 
 /** «1.2.2.04.01» → «1.2.2.04». Sin madre → null. */
 export function tituloDeCuenta(codigo: string | null | undefined): string | null {
@@ -16,10 +24,10 @@ export function tituloDeCuenta(codigo: string | null | undefined): string | null
   return codigo.replace(/\.[0-9]+$/, '')
 }
 
-/** Cuentas que sirven de origen: imputables del activo; si el plan tiene 1.2.2.*, solo esas. */
-export function filtroCuentaOrigen(cuentas: CtbCuenta[]): (c: CtbCuenta) => boolean {
-  const hayBienes = cuentas.some(c => c.codigo.startsWith(PREFIJO_BIENES) && c.imputable && c.rubro === 'activo')
-  return c => c.rubro === 'activo' && (!hayBienes || c.codigo.startsWith(PREFIJO_BIENES))
+/** Cuentas que sirven de origen: imputables del activo; si el plan tiene <prefijo>*, solo esas. */
+export function filtroCuentaOrigen(cuentas: CtbCuenta[], prefijo: string = PREFIJO_BIENES_DEFAULT): (c: CtbCuenta) => boolean {
+  const hayBienes = cuentas.some(c => c.codigo.startsWith(prefijo) && c.imputable && c.rubro === 'activo')
+  return c => c.rubro === 'activo' && (!hayBienes || c.codigo.startsWith(prefijo))
 }
 
 /** La hermana «.03» (amortizaciones acumuladas) del mismo título, activa e imputable. */

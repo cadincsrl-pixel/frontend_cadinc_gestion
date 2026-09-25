@@ -15,7 +15,7 @@ import type { CtbBienDetalle, CtbBienInput, CtbCuenta } from '@/types/contabilid
 import { useBien, useConfigCtb, useCuentas, useGuardarBien, useMapeos, useObrasCtb, useRevertirBajaBien } from '../hooks/useContabilidad'
 import { fmtFecha, fmtM, hoyAR, numeroAsiento } from '../utils/contabilidad.utils'
 import { errorDeCampoCtb, mensajeErrorCtb } from '../utils/contabilidad.errores'
-import { cuotaMensual, filtroCuentaOrigen, sugerirCuentaAmort, sugerirCuentaGasto } from '../utils/bienes'
+import { cuotaMensual, filtroCuentaOrigen, prefijoBienes, sugerirCuentaAmort, sugerirCuentaGasto } from '../utils/bienes'
 import { Aviso, Campo, ErrorCarga, Th, inputCls } from './Comun'
 import { SelectorCuenta } from './SelectorCuenta'
 import { ModalBajaBien } from './ModalBajaBien'
@@ -24,7 +24,8 @@ import { ModalBajaBien } from './ModalBajaBien'
  * Alta, detalle y edición de un bien de uso (tanda 5, 20260928p).
  *
  * Uno existente arranca en DETALLE (solo lectura) con sus amortizaciones;
- * «Editar» habilita los campos. Al elegir la cuenta de origen (1.2.2.XX.01)
+ * «Editar» habilita los campos. Al elegir la cuenta de origen (<título>.XX.01;
+ * el título se elige en Mapeos › Configuración, hoy 1.2.2)
  * se sugieren la de amortización acumulada (la hermana .03) y la de gasto
  * (mapeo `bienes.gasto` del rubro o el general). «No se amortiza» (terrenos)
  * apaga la vida útil y esas dos cuentas.
@@ -119,13 +120,16 @@ export function ModalBienUso({ id, onClose, onCreado, onVerAsiento }: {
   }
   return <Contenido bien={q.data ?? null} corte={config.data?.bu_corte_inicial ?? '2026-06-30'}
     criterioDefault={config.data?.bu_criterio_alta ?? 'proporcional'}
+    prefijo={prefijoBienes(config.data)}
     onClose={onClose} onCreado={onCreado} onVerAsiento={onVerAsiento} />
 }
 
-function Contenido({ bien, corte, criterioDefault, onClose, onCreado, onVerAsiento }: {
+function Contenido({ bien, corte, criterioDefault, prefijo, onClose, onCreado, onVerAsiento }: {
   bien:            CtbBienDetalle | null
   corte:           string
   criterioDefault: 'completo' | 'proporcional'
+  /** Prefijo de los rubros de bienes de uso («1.2.2.»). */
+  prefijo:         string
   onClose:         () => void
   onCreado:        (id: number) => void
   onVerAsiento:    (asientoId: number) => void
@@ -142,7 +146,7 @@ function Contenido({ bien, corte, criterioDefault, onClose, onCreado, onVerAsien
   const [errorServer, setErrorServer] = useState<string | null>(null)
   const schema = useMemo(() => crearSchema(corte), [corte])
   const cuentas = useMemo(() => cuentasQ.data ?? [], [cuentasQ.data])
-  const filtroOrigen = useMemo(() => filtroCuentaOrigen(cuentas), [cuentas])
+  const filtroOrigen = useMemo(() => filtroCuentaOrigen(cuentas, prefijo), [cuentas, prefijo])
 
   const { register, control, handleSubmit, setValue, getValues, setError, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -306,7 +310,7 @@ function Contenido({ bien, corte, criterioDefault, onClose, onCreado, onVerAsien
               </Campo>
             </div>
 
-            <Campo label="Cuenta de origen" hint="«Valores originales» del rubro (1.2.2.XX.01)" error={errors.cuenta_origen_id?.message}>
+            <Campo label="Cuenta de origen" hint={`«Valores originales» del rubro (${prefijo}XX.01)`} error={errors.cuenta_origen_id?.message}>
               <SelectorCuenta value={origenId} rubros={['activo']} filtrar={filtroOrigen} disabled={soloLectura || lockCerradas}
                 placeholder="Rodados, maquinarias, muebles…" onChange={elegirOrigen} />
             </Campo>
@@ -320,7 +324,7 @@ function Contenido({ bien, corte, criterioDefault, onClose, onCreado, onVerAsien
             {!noAmortiza && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <Campo label="Amortización acumulada" hint="el «.03» del rubro" error={errors.cuenta_amort_id?.message}>
-                  <SelectorCuenta value={amortId} rubros={['activo']} disabled={soloLectura || lockCerradas} placeholder="1.2.2.XX.03"
+                  <SelectorCuenta value={amortId} rubros={['activo']} disabled={soloLectura || lockCerradas} placeholder={`${prefijo}XX.03`}
                     onChange={v => setValue('cuenta_amort_id', v, { shouldDirty: true })} />
                 </Campo>
                 <Campo label="Gasto de amortización" error={errors.cuenta_gasto_id?.message}>

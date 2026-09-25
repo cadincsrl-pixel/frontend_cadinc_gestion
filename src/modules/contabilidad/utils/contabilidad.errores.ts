@@ -167,6 +167,10 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   },
   CONFIG_INVALIDA:          d => dato(d, 'motivo') === 'hay_amortizaciones'
     ? 'Ya hay amortizaciones generadas en el ejercicio: la frecuencia y la fecha de corte no se cambian. Anulá las corridas primero (Bienes de uso › Corridas).'
+    : dato(d, 'motivo') === 'no_es_titulo'
+    ? 'La cuenta de bienes de uso tiene que ser un título del activo (no imputable) y estar activa.'
+    : dato(d, 'motivo') === 'bienes_fuera'
+    ? `Hay ${String(dato(d, 'n') ?? 'algunos')} bien(es) de uso cuya cuenta de origen no cuelga de ese título. Cambiales la cuenta o elegí un título que los incluya.`
     : `Valor inválido en la configuración${dato(d, 'clave') ? ` («${String(dato(d, 'clave'))}»)` : ''}.`,
   ORIGEN_INVALIDO:          () => 'Origen inválido.',
   ORIGEN_NO_EXISTE:         () => 'El comprobante de origen no existe o ya no está.',
@@ -287,6 +291,9 @@ export function errorDeCampoCtb(e: unknown): { campo: string; mensaje: string } 
     if (Number.isInteger(i) && i >= 0 && typeof c === 'string') {
       return { campo: `lineas.${i}.${c}`, mensaje: mensajeErrorCtb(e) }
     }
+    // cont_guardar_config: el detail nombra la clave de la configuración.
+    const clave = dato(detail, 'clave')
+    if (error === 'CONFIG_INVALIDA' && typeof clave === 'string') return { campo: clave, mensaje: mensajeErrorCtb(e) }
     return null
   }
   const msgDetail = dato(detail, 'mensaje')

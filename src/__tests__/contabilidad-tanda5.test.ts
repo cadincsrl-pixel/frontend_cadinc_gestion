@@ -7,7 +7,7 @@ import {
 import { equivalenteArs, numeroMovimiento, requisitosMoneda, conceptoCompatible, esDepositoDeValores } from '@/modules/contabilidad/utils/fondos'
 import { filasMovimientos } from '@/modules/contabilidad/utils/exportarFondos'
 import { filasCuadro, filasPorRubro } from '@/modules/contabilidad/utils/exportarBienes'
-import { cuotaMensual, sugerirCuentaAmort, sugerirCuentaGasto, tituloDeCuenta } from '@/modules/contabilidad/utils/bienes'
+import { cuotaMensual, filtroCuentaOrigen, prefijoBienes, sugerirCuentaAmort, sugerirCuentaGasto, tituloDeCuenta } from '@/modules/contabilidad/utils/bienes'
 import { mensajeCodigoCtb } from '@/modules/contabilidad/utils/contabilidad.errores'
 
 // Contabilidad tanda 5 (20260928l–q): circuito Fondos, monedas de los
@@ -189,6 +189,19 @@ describe('bienes de uso: sugerencias y cuota', () => {
     expect(sugerirCuentaAmort(cuentas, { codigo: '1.2.2.07.01' })).toBeNull()
     expect(sugerirCuentaAmort(cuentas, { codigo: '1.2.2.05.01' })).toBeNull()
   })
+  it('prefijo configurable (20260929h): con fallback a 1.2.2.', () => {
+    expect(prefijoBienes(undefined)).toBe('1.2.2.')
+    expect(prefijoBienes({ bu_titulo_rubros: null })).toBe('1.2.2.')
+    expect(prefijoBienes({ bu_titulo_rubros: { cuenta_id: 9, codigo: null, nombre: null } })).toBe('1.2.2.')
+    expect(prefijoBienes({ bu_titulo_rubros: { cuenta_id: 9, codigo: '1.3.1', nombre: 'BU' } })).toBe('1.3.1.')
+    const plan = [...cuentas, cta(5, '1.3.1.01.01'), cta(6, '1.1.1.01')]
+    const def = filtroCuentaOrigen(plan)
+    expect(plan.filter(def).map(c => c.id)).toEqual([1, 2, 3, 4])
+    const otro = filtroCuentaOrigen(plan, '1.3.1.')
+    expect(plan.filter(otro).map(c => c.id)).toEqual([5])
+    // Plan sin cuentas bajo el prefijo: todo el activo.
+    expect(plan.filter(filtroCuentaOrigen(plan, '9.9.')).length).toBe(plan.length)
+  })
   it('el gasto del mapeo: por título o general', () => {
     const cat = { claves: [{ clave: 'bienes.gasto', etiqueta: '', descripcion: '', rubros: ['egreso'], auxiliares: ['none'], subclaves: [
       { subclave: '', etiqueta: 'General', mapeo_id: 1, cuenta_id: 90, cuenta_codigo: null, cuenta_nombre: null, en_uso: 0 },
@@ -263,5 +276,7 @@ describe('errores nuevos', () => {
     expect(mensajeCodigoCtb('IVA_DIFIERE_DE_LIBROS')).toMatch(/Libros IVA/)
     expect(mensajeCodigoCtb('BU_CUENTA_INVALIDA', { campo: 'cuenta_gasto_id' })).toMatch(/gasto/)
     expect(mensajeCodigoCtb('CONFIG_INVALIDA', { motivo: 'hay_amortizaciones' })).toMatch(/amortizaciones/)
+    expect(mensajeCodigoCtb('CONFIG_INVALIDA', { motivo: 'no_es_titulo' })).toMatch(/título del activo/)
+    expect(mensajeCodigoCtb('CONFIG_INVALIDA', { motivo: 'bienes_fuera', n: 3 })).toMatch(/Hay 3 bien/)
   })
 })

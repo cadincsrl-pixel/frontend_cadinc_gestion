@@ -482,10 +482,18 @@ export interface CtbConfig {
   bu_criterio_alta:       'completo' | 'proporcional'
   /** Fecha de corte de la amortización acumulada inicial (30/06/2026). */
   bu_corte_inicial:       string
+  /**
+   * Cuenta título de los rubros de bienes de uso (20260929h). Un backend viejo
+   * no la manda y la base cae a 1.2.2: leer con `prefijoBienes(config)`.
+   */
+  bu_titulo_rubros?:      CtbCuentaTitulo | null
 }
+
+export interface CtbCuentaTitulo { cuenta_id: number; codigo: string | null; nombre: string | null }
 
 export type CtbConfigEditable = Pick<CtbConfig,
   'automaticos_desde' | 'cvlp_modo' | 'compras_fecha_contable' | 'iva_ddjj_arrastre' | 'bu_frecuencia' | 'bu_criterio_alta' | 'bu_corte_inicial'>
+  & { /** id de la cuenta título (el backend la manda a cont_guardar_config). */ bu_titulo_rubros: number }
 
 // ── Tanda 4 (20260928h–k): circuitos, diario resumido y estados contables ──
 
