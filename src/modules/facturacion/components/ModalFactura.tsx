@@ -14,7 +14,7 @@ import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { normalizeText } from '@/lib/utils/text'
 import {
-  useCrearFacturaVenta, useEditarFacturaVenta, useFacturaVenta, useObrasFacturacion,
+  useCrearFacturaVenta, useEditarFacturaVenta, useFacturaVenta, useObrasFacturacion, useArcaAmbiente,
 } from '../hooks/useFacturacion'
 import { useClientesVenta, useCuentasFce, useFceCliente } from '../hooks/useClientesFacturacion'
 import { useProductosVenta } from '../hooks/useConfigVentas'
@@ -23,7 +23,7 @@ import {
   ALICUOTAS_UI, ALICUOTA_LABEL, CONDICIONES_IVA, CONDICION_PAGO_DEFAULT, MONTO_MINIMO_FCE, PRODUCTOS, PROVINCIAS,
   PROVINCIA_DEFAULT, TIPOS_CBTE, TRANSMISIONES_FCE, UNIDAD_DEFAULT, correspondeFce, esTipoFce, esTipoNc, etiquetaProducto,
   fmtDoc, fmtFecha, fmtM, hintProducto, hoyAR, letraDeCliente, letraDeTipo, mesDeFecha, requiereIdentificacion, tipoPara,
-  TOPE_CF_IDENTIFICACION,
+  TOPE_CF_IDENTIFICACION, sugerirPuntoVenta,
 } from '../utils/facturacion.utils'
 import { codigoErrorFacturacion, errorDeCampoFacturacion, mensajeErrorFacturacion } from '../utils/facturacion.errores'
 import type {
@@ -201,6 +201,8 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
   const obras      = useObrasFacturacion()
   // Todos (también los de baja): un borrador puede seguir con el suyo aunque lo hayan desactivado.
   const productos  = useProductosVenta(true)
+  // PV activos del ambiente (20260929d): con uno solo no se muestra nada.
+  const arcaAmb    = useArcaAmbiente()
   const crear      = useCrearFacturaVenta()
   const editar     = useEditarFacturaVenta()
 
@@ -257,6 +259,22 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
     [listaProductos, productoOriginal, productoId],
   )
   const pideObra = prodSel?.pide_obra ?? false
+
+  // ── Punto de venta (20260929d) ──
+  // Solo se elige si hay más de uno activo; si no, el backend usa el que ya
+  // tenía el borrador o el por defecto, y la pantalla queda como siempre.
+  const pvsActivos = useMemo(() => arcaAmb.data?.puntos_venta ?? [], [arcaAmb.data])
+  const multiPv = pvsActivos.length > 1
+  const [pvElegido, setPvElegido] = useState<number | null>(null)
+  const pvOriginal = edicion.data?.factura.pto_vta ?? null
+  const pvAsociada = ncDe?.factura.pto_vta ?? asociadaQ.data?.factura.pto_vta ?? null
+  // La NC, por defecto en el mismo PV que la factura que corrige.
+  const pvSugerido = useMemo(() => sugerirPuntoVenta(pvsActivos, {
+    original:   editarId ? pvOriginal : null,
+    asociada:   esNc ? pvAsociada : null,
+    productoId: productoId ? Number(productoId) : null,
+  }), [pvsActivos, editarId, pvOriginal, esNc, pvAsociada, productoId])
+  const ptoVta = pvElegido != null && pvsActivos.some(p => p.numero === pvElegido) ? pvElegido : pvSugerido
   const conPeriodo = !!prodSel && prodSel.concepto_arca !== 1 && (prodSel.pide_periodo || !!servDesde || !!servHasta)
   // Nueva factura: si el producto por defecto no está activo en el catálogo, el primero activo.
   useEffect(() => {
@@ -405,6 +423,7 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
         // El id manda; el nombre va como foto y para el backend viejo.
         producto:          prodSel?.nombre ?? d.producto,
         producto_id:       d.producto_id ? Number(d.producto_id) : null,
+        ...(multiPv && ptoVta != null ? { pto_vta: ptoVta } : {}),
         fch_serv_desde:    conPeriodo && d.fch_serv_desde ? d.fch_serv_desde : null,
         fch_serv_hasta:    conPeriodo && d.fch_serv_hasta ? d.fch_serv_hasta : null,
         obra_cod:          d.obra_cod || null,
@@ -592,6 +611,20 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
               <span className="text-[11px] text-gris-dark">{hintProducto(prodSel)}</span>
             )}
           </div>
+          {multiPv && ptoVta != null && (
+            <div>
+              <Select
+                label="Punto de venta"
+                options={pvsActivos.map(p => ({
+                  value: String(p.numero),
+                  label: `${String(p.numero).padStart(5, '0')}${p.nombre ? ` · ${p.nombre}` : ''}${p.por_defecto ? ' (por defecto)' : ''}`,
+                }))}
+                value={String(ptoVta)}
+                onChange={e => setPvElegido(Number(e.target.value))}
+              />
+              {esNc && <span className="text-[11px] text-gris-dark">Propone el de la factura que corrige.</span>}
+            </div>
+          )}
           <Input label="Fecha" type="date" {...register('fecha_cbte')} error={errors.fecha_cbte?.message}
             hint="ARCA acepta hasta 10 días para atrás o adelante" />
           {conPeriodo && (

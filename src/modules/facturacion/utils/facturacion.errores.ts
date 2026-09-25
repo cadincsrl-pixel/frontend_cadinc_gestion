@@ -149,6 +149,22 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   PRODUCTO_DUPLICADO:     () => 'Ya hay un producto con ese nombre (sin contar mayúsculas ni tildes).',
   PRODUCTO_NO_EXISTE:     () => 'Ese producto no existe (¿lo borraron?). Refrescá la pantalla.',
   ULTIMO_PRODUCTO_ACTIVO: () => 'Es el único producto activo: sin ninguno no se puede facturar. Activá otro primero.',
+  // ── Puntos de venta (20260929d) ──
+  PTO_VTA_NO_HABILITADO:  d => `El punto de venta ${dato(d, 'pto_vta') != null ? String(dato(d, 'pto_vta')).padStart(5, '0') + ' ' : ''}no está habilitado: elegí otro o activalo en Ventas › Configuración.`,
+  PV_INVALIDO:            () => 'Revisá los datos del punto de venta.',
+  PV_NO_EXISTE:           () => 'Ese punto de venta no existe. Refrescá la pantalla.',
+  PV_DUPLICADO:           () => 'Ese punto de venta ya está cargado (si está dado de baja, reactivalo).',
+  PV_NUMERO_NO_EDITABLE:  () => 'El número de un punto de venta no se cambia: cargá uno nuevo y dale de baja a este.',
+  PV_POR_DEFECTO:         () => 'Es el punto de venta por defecto: marcá otro como por defecto antes de darlo de baja.',
+  PV_INACTIVO:            () => 'Un punto de venta dado de baja no puede ser el por defecto: reactivalo primero.',
+  PV_NO_VERIFICADO:       d => `No se pudo confirmar con ARCA que exista${dato(d, 'motivo') ? ` (${String(dato(d, 'motivo'))})` : ''}.`,
+  PV_NO_EXISTE_EN_ARCA:   d => {
+    const disp = dato(d, 'disponibles')
+    return `ARCA no tiene ese punto de venta habilitado para webservice.${Array.isArray(disp) && disp.length ? ` Los que tiene: ${disp.join(', ')}.` : ''}`
+  },
+  PV_NO_ES_WEBSERVICE:    () => 'En ARCA ese punto de venta no es de «Factura electrónica - webservice» (CAE): no sirve para emitir desde el ERP.',
+  PV_BLOQUEADO:           () => 'ARCA tiene ese punto de venta bloqueado.',
+  PV_DADO_DE_BAJA:        () => 'ARCA tiene ese punto de venta dado de baja.',
   PERIODO_REQUERIDO:      () => 'Este producto pide el período facturado: completá desde y hasta.',
   PERIODO_INVALIDO:       () => 'El período facturado termina antes de empezar.',
   OBRA_REQUERIDA:         () => 'Este producto necesita la obra: es su centro de costo.',

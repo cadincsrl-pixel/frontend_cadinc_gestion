@@ -17,7 +17,7 @@ import { FacturasTabla } from './FacturasTabla'
 import { FichaFactura } from './FichaFactura'
 import { ModalFactura } from './ModalFactura'
 import { ModalConfirmarEmision } from './ModalConfirmarEmision'
-import { IndicadorArca } from './EstadoArca'
+import { IndicadorArca, VencimientoCertificado } from './EstadoArca'
 import { ModalCompensacion } from './cobranzas/ModalCompensacion'
 
 const PAGE_SIZE = 50
@@ -112,7 +112,10 @@ export function FacturasTab() {
             + Nueva factura
           </Button>
         </div>
-        <IndicadorArca estado={arca.data} cargando={arca.isLoading} />
+        <div className="flex gap-2 flex-wrap items-center">
+          <VencimientoCertificado estado={arca.data} soloSiCerca />
+          <IndicadorArca estado={arca.data} cargando={arca.isLoading} />
+        </div>
       </div>
 
       {trabadas > 0 && (

@@ -1,3 +1,5 @@
+import type { ArcaAmbienteInfo, CertificadoArca } from './config.types'
+
 // ── Auditoría ──
 export interface AuditFields {
   created_at?: string | null
@@ -3924,6 +3926,11 @@ export interface VentasArcaEstado {
   dummy:      { appServer: string; dbServer: string; authServer: string } | null
   ultimo:     Record<string, number> | null
   error:      string | null
+  /** 20260929d (ausentes contra un backend viejo). Último autorizado por PV activo. */
+  ultimo_por_pv?: Record<string, Record<string, number>> | null
+  puntos_venta?:  ArcaAmbienteInfo['puntos_venta']
+  certificado?:   CertificadoArca | null
+  certificado_error?: string | null
 }
 
 /** Fila de `v_ventas_facturas`. Los numeric llegan como number (a veces string: usar Number()). */
@@ -4119,6 +4126,8 @@ export interface VentasFacturaInput {
     /** Foto del nombre; manda `producto_id` (el backend viejo solo lee el nombre). */
     producto:           VentasProducto
     producto_id?:       number | null
+    /** 20260929d: sin él, el backend usa el que ya tenía el borrador o el por defecto. */
+    pto_vta?:           number | null
     /** Período de servicio (20260929b): los dos o ninguno. */
     fch_serv_desde?:    string | null
     fch_serv_hasta?:    string | null

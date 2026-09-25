@@ -370,3 +370,25 @@ export function normalizarDescripcion(texto: string): string {
   while (out.length && out[out.length - 1] === '') out.pop()
   return out.join('\n')
 }
+
+// ── Punto de venta (20260929d) ──────────────────────────────────────────────
+
+export interface PvActivo { numero: number; por_defecto: boolean; producto_ids: number[] }
+
+/**
+ * El PV que propone la factura cuando hay más de uno activo (con uno solo o
+ * ninguno → null: no se muestra el selector y decide el backend). Orden: el
+ * que ya tenía el borrador; en una NC, el de la factura que corrige; el que
+ * sugiere el producto elegido; el por defecto.
+ */
+export function sugerirPuntoVenta(
+  activos: PvActivo[],
+  opts: { original?: number | null; asociada?: number | null; productoId?: number | null },
+): number | null {
+  if (activos.length <= 1) return null
+  const esActivo = (n: number | null | undefined): n is number => n != null && activos.some(p => p.numero === Number(n))
+  if (esActivo(opts.original)) return Number(opts.original)
+  if (esActivo(opts.asociada)) return Number(opts.asociada)
+  const porProducto = opts.productoId != null ? activos.find(p => p.producto_ids.includes(opts.productoId!)) : undefined
+  return (porProducto ?? activos.find(p => p.por_defecto) ?? activos[0]!).numero
+}

@@ -68,3 +68,63 @@ export interface ProductoVentaInput {
   orden?:         number
   activo?:        boolean
 }
+
+/** GET /api/facturacion/puntos-venta (20260929d). Ventas › Configuración › Puntos de venta. */
+export interface PuntoVentaVenta {
+  id:                 number
+  ambiente:           'homo' | 'prod'
+  numero:             number
+  nombre:             string
+  activo:             boolean
+  /** Uno por ambiente: el que usa la factura si no se elige otro. */
+  por_defecto:        boolean
+  /** Productos que lo sugieren al cargar la factura. */
+  producto_ids:       number[]
+  /** Foto de FEParamGetPtosVenta (null = nunca se pudo verificar con ARCA). */
+  arca_emision_tipo:  string | null
+  arca_bloqueado:     boolean | null
+  arca_fch_baja:      string | null
+  verificado_arca_at: string | null
+  /** Facturas (no descartadas) de ese ambiente con ese PV. */
+  facturas:           number
+}
+
+/** POST (alta: `numero` obligatorio, `forzar` = guardar aunque ARCA no lo confirme) / PATCH (parcial). */
+export interface PuntoVentaVentaInput {
+  numero?:       number
+  nombre?:       string
+  activo?:       boolean
+  por_defecto?:  boolean
+  producto_ids?: number[]
+  forzar?:       boolean
+}
+
+/** POST /puntos-venta/:id/verificar → `verificacion`. */
+export type VerificacionPuntoVenta =
+  | { estado: 'ok' }
+  | { estado: 'rechazado'; codigo: string; disponibles: number[] }
+  | { estado: 'no_verificado'; motivo: string }
+
+/** Vencimiento del certificado de ARCA del servidor (nunca el certificado). */
+export interface CertificadoArca {
+  /** ISO 8601. */
+  vence_el:         string
+  dias_restantes:   number
+  vencido:          boolean
+  sujeto_cn:        string | null
+  /** En homologación es el del representante, no el de CADINC: es normal. */
+  cuit_certificado: string | null
+}
+
+/** GET /api/facturacion/arca/ambiente (instantáneo). Los campos de 20260929d faltan contra un backend viejo. */
+export interface ArcaAmbienteInfo {
+  ambiente:           'homo' | 'prod' | null
+  configurado:        boolean
+  falta:              string[]
+  /** El PV por defecto (de la tabla, o el del env si está vacía). */
+  pto_vta:            number
+  /** PV activos del ambiente. */
+  puntos_venta?:      Array<{ numero: number; nombre: string; por_defecto: boolean; producto_ids: number[] }>
+  certificado?:       CertificadoArca | null
+  certificado_error?: string | null
+}

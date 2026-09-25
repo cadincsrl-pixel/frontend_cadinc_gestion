@@ -127,6 +127,9 @@ export function NotificationsBell() {
   const showCompras   =  modulo === null || modulo === 'certificaciones'
   const showAlquiler  =  modulo === null || modulo === 'alquiler'
   const showPagos     =  modulo === null || modulo === 'pagos'
+  // Ventas no tiene módulo propio en moduloFromPath: /facturacion cae en null
+  // y ve todo. El hook ya gatea por permiso (emitir_facturas o admin).
+  const showVentas    =  modulo === null
   // Pedidos por comprar visibles en la campana (scopeados al módulo de compras).
   const solicitudesPorComprar = showCompras ? solicitudesAll : []
   // Renglones sin precio en la cuenta corriente (solo quien carga precios los recibe).
@@ -149,6 +152,10 @@ export function NotificationsBell() {
   const facturasVencidas       = showPagos     ? notifs.facturasVencidas       : []
   const facturasSinRevisar     = showPagos     ? notifs.facturasSinRevisar     : []
   const facturasObservadas     = showPagos     ? notifs.facturasObservadas     : []
+  const certificadoArca        = showVentas    ? notifs.certificadoArca        : null
+  // Vencido (o vence hoy) frena la facturación: suma al badge rojo.
+  const certUrgente   = certificadoArca && (certificadoArca.vencido || certificadoArca.dias_restantes <= 0) ? 1 : 0
+  const certInformado = certificadoArca && !certUrgente ? 1 : 0
 
   const [abierto, setAbierto] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -166,17 +173,24 @@ export function NotificationsBell() {
   const totalUrgente =
     hoy.length + papelesVencidos.length + papelesChoferVencidos.length +
     serviciosVencidos.length + gastosPendientes.length + segurosVencidos.length +
-    solicitudesPorComprar.length + facturasVencidas.length + facturasParaAprobar.length
+    solicitudesPorComprar.length + facturasVencidas.length + facturasParaAprobar.length +
+    certUrgente
   const totalNoUrgentes =
     proximos.length + papelesPorVencer.length + papelesChoferPorVencer.length +
     serviciosProximos.length + segurosPorVencer.length + sinPrecio.length +
-    facturasSinRevisar.length + facturasObservadas.length
+    facturasSinRevisar.length + facturasObservadas.length + certInformado
   const sinNotifs = totalUrgente === 0 && totalNoUrgentes === 0
 
   /** Abre la bandeja de Pagos con el filtro del aviso ya puesto (`FILTRO_POR_AVISO`). */
   function abrirPagos(aviso: string) {
     setAbierto(false)
     router.push(`/pagos?tab=facturas&aviso=${aviso}`)
+  }
+
+  /** Ventas › Configuración: ahí se ve el vencimiento y los puntos de venta. */
+  function abrirConfigVentas() {
+    setAbierto(false)
+    router.push('/facturacion?tab=configuracion')
   }
 
   function abrirPersonal(leg: string) {
@@ -347,6 +361,26 @@ export function NotificationsBell() {
                   <FacturaPagosRow key={f.id} item={f} onClick={() => abrirPagos('observadas')} />
                 ))}
                 <VerTodas onClick={() => abrirPagos('observadas')} />
+              </Section>
+            )}
+
+            {/* Certificado de ARCA (Ventas) */}
+            {certificadoArca && (
+              <Section
+                titulo={certificadoArca.vencido || certificadoArca.dias_restantes <= 0
+                  ? '🔐 Certificado de ARCA vencido'
+                  : `🔐 Certificado de ARCA vence en ${certificadoArca.dias_restantes} ${certificadoArca.dias_restantes === 1 ? 'día' : 'días'}`}
+                tono={certUrgente ? 'rojo' : 'amarillo'}>
+                <button onClick={abrirConfigVentas} className="w-full text-left px-3 py-2 hover:bg-gris/40 transition-colors">
+                  <div className="font-bold text-sm text-azul">
+                    Vence el {new Date(certificadoArca.vence_el).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}
+                  </div>
+                  <div className={`text-xs mt-0.5 ${certUrgente ? 'text-rojo font-bold' : 'text-gris-dark'}`}>
+                    {certUrgente
+                      ? 'No se pueden emitir facturas hasta renovarlo en ARCA y cargarlo en el servidor.'
+                      : 'Renovarlo en ARCA y cargarlo en el servidor antes de que venza, o no se va a poder facturar.'}
+                  </div>
+                </button>
               </Section>
             )}
 

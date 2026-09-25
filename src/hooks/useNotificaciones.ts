@@ -9,6 +9,7 @@ import { useSessionStore } from '@/store/session.store'
 import { usePermisos } from '@/hooks/usePermisos'
 import { usePendientesDePrecio } from '@/modules/certificaciones/hooks/useCuentaCliente'
 import { PAGOS_KEYS } from '@/modules/pagos/hooks/usePagos'
+import { useArcaAmbiente } from '@/modules/facturacion/hooks/useFacturacion'
 import type { PagosFacturasPage, Personal } from '@/types/domain.types'
 
 // Cumpleañero precalculado, listo para renderizar.
@@ -120,6 +121,20 @@ export interface FacturaPagosItem {
   dias_vencida:  number | null
 }
 
+/**
+ * El certificado de ARCA del servidor vence pronto (20260929d). Sale de
+ * `GET /api/facturacion/arca/ambiente` (misma query que Ventas): el backend
+ * lee el X.509 y manda solo las fechas.
+ */
+export interface CertificadoArcaAviso {
+  vence_el:       string
+  dias_restantes: number
+  vencido:        boolean
+}
+
+/** Días antes del vencimiento del certificado en que aparece el aviso. */
+export const VENTANA_DIAS_CERTIFICADO = 30
+
 interface NotificacionesResult {
   // Cumpleañeros del día (count → badge rojo).
   hoy:                 CumpleanieroItem[]
@@ -156,6 +171,9 @@ interface NotificacionesResult {
   facturasSinRevisar:  FacturaPagosItem[]
   // Rechazadas: compras las tiene que corregir.
   facturasObservadas:  FacturaPagosItem[]
+  // ── Ventas ──
+  // Certificado de ARCA que vence en ≤ 30 días (o ya vencido: eso suma al badge).
+  certificadoArca:     CertificadoArcaAviso | null
   // La lista de obras ya cargó: recién ahí el aviso puede mostrar el nombre.
   pedidosNombresListos: boolean
   // total de notificaciones "urgentes" (badge rojo).
@@ -251,6 +269,11 @@ export function useNotificaciones(): NotificacionesResult {
   const { resolverItems, cargarPrecios } = usePermisos('certificaciones')
   const tienePagos = hasModulo('pagos')
   const { aprobarFacturas, registrarPagos, puedeCrear: cargaFacturas, esAdmin } = usePermisos('pagos')
+  // Certificado de ARCA: solo a quien emite (o admin), que es quien se entera
+  // de que no se puede facturar.
+  const { emitirFacturas } = usePermisos('facturacion')
+  const avisaCertificado = hasModulo('facturacion') && (emitirFacturas || esAdmin)
+  const { data: arcaAmb } = useArcaAmbiente(avisaCertificado)
 
   const { data: personal = [] } = usePersonal()
   const { data: docsVenc = [] } = useQuery({
@@ -517,6 +540,14 @@ export function useNotificaciones(): NotificacionesResult {
     const facturasSinRevisar  = aItemPagos(sinRevisar)
     const facturasObservadas  = aItemPagos(observadas)
 
+    // ── Certificado de ARCA (20260929d) ──
+    const cert = avisaCertificado ? arcaAmb?.certificado ?? null : null
+    const certificadoArca: CertificadoArcaAviso | null =
+      cert && (cert.vencido || cert.dias_restantes <= VENTANA_DIAS_CERTIFICADO)
+        ? { vence_el: cert.vence_el, dias_restantes: cert.dias_restantes, vencido: cert.vencido }
+        : null
+    const certificadoUrgente = certificadoArca && (certificadoArca.vencido || certificadoArca.dias_restantes <= 0) ? 1 : 0
+
     return {
       hoy,
       proximos,
@@ -535,6 +566,7 @@ export function useNotificaciones(): NotificacionesResult {
       facturasVencidas,
       facturasSinRevisar,
       facturasObservadas,
+      certificadoArca,
       pedidosNombresListos,
       // El badge rojo cuenta lo que FRENA algo o ya se pasó de fecha. Las
       // facturas vencidas y las que esperan aprobación entran (sin aprobar no
@@ -550,9 +582,10 @@ export function useNotificaciones(): NotificacionesResult {
         segurosVencidos.length +
         solicitudesPorComprar.length +
         (vencidas?.total ?? 0) +
-        (paraAprobar?.total ?? 0),
+        (paraAprobar?.total ?? 0) +
+        certificadoUrgente,
     }
-  }, [personal, docsVenc, docsChofer, servicesNotif, gastosPend, segurosNotif, pendientes, pendPrecio, tieneTarja, pedidosNombresListos, paraAprobar, vencidas, sinRevisar, observadas])
+  }, [personal, docsVenc, docsChofer, servicesNotif, gastosPend, segurosNotif, pendientes, pendPrecio, tieneTarja, pedidosNombresListos, paraAprobar, vencidas, sinRevisar, observadas, avisaCertificado, arcaAmb])
 }
 
 // Helper para mostrar "hoy", "mañana", "en 3 días" en la lista de próximos.

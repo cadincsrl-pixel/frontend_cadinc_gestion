@@ -14,6 +14,7 @@ import type {
   VentasCbteTipo, VentasArcaEstado, VentasCondicionIva, VentasEmitirRes, VentasEstado, VentasFacturaDetalle,
   VentasFacturaFJ, VentasFacturaInput, VentasFacturasPage, VentasObra, VentasProducto, VentasResumenFila,
 } from '@/types/domain.types'
+import type { ArcaAmbienteInfo } from '@/types/config.types'
 import type { LibroIvaVentas } from '../utils/lidVentas'
 import type { LibroIvaCompras, PosicionIva } from '../utils/lidCompras'
 
@@ -111,12 +112,15 @@ export function fetchFacturaVenta(id: number): Promise<VentasFacturaDetalle> {
  * De acá sale el cartel de homologación, para que aparezca de entrada y no corra
  * la página cuando carga el estado completo (que tarda: son 7 llamadas a ARCA).
  */
-export function useArcaAmbiente() {
+export function useArcaAmbiente(enabled = true) {
+  // Desde 20260929d trae también los PV activos y el vencimiento del
+  // certificado; la campana usa esta misma query (misma queryKey).
   return useQuery({
     queryKey: FACTURACION_KEYS.arcaAmbiente,
-    queryFn:  () => apiGet<Pick<VentasArcaEstado, 'ambiente' | 'configurado' | 'falta' | 'pto_vta'>>(`${BASE}/arca/ambiente`),
+    queryFn:  () => apiGet<ArcaAmbienteInfo>(`${BASE}/arca/ambiente`),
     staleTime: 10 * 60_000,
     retry: false,
+    enabled,
   })
 }
 
