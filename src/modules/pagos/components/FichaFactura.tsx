@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useSessionStore } from '@/store/session.store'
-import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
+import { abrirAdjuntoFirmado, bajarAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
 import {
   useFactura, useAprobarFactura, useObservarFactura, useMarcarCorregida, useAnularFactura,
   useSubirAdjuntoPagos, useBorrarAdjuntoPagos, fetchPagosAdjuntoSignedUrl, useEditarFactura, usePasarADeuda,
@@ -513,6 +513,11 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
                   )}>
                   📎 {a.nombre_archivo}
                 </button>
+                <button type="button" className="text-gris-dark hover:text-azul px-1 rounded" title="Descargar"
+                  onClick={() => bajarAdjuntoFirmado(
+                    () => fetchPagosAdjuntoSignedUrl('facturas', f.id, a.id, true),
+                    () => toast('No se pudo bajar el archivo', 'err'),
+                  )}>⬇</button>
                 <span className="text-gris-dark">{TIPOS_ADJ_FACTURA.find(t => t.key === a.tipo)?.label ?? a.tipo}</span>
                 {!a.borrado && puedeEditar && (
                   <button type="button" className="text-rojo hover:bg-rojo-light px-1.5 rounded"

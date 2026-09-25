@@ -743,12 +743,16 @@ export function useBorrarAdjuntoPagos() {
   })
 }
 
-/** Para `abrirAdjuntoFirmado`: la URL vive 15 minutos y fuerza descarga con el nombre original. */
+/**
+ * Para `abrirAdjuntoFirmado` / `bajarAdjuntoFirmado`: la URL vive 15 minutos.
+ * PDF e imágenes se abren en el navegador; `descargar` pide la versión que se
+ * baja con el nombre original (`?descargar=1`).
+ */
 export async function fetchPagosAdjuntoSignedUrl(
-  entidad: PagosEntidadAdjunto, id: number, adjId: number,
+  entidad: PagosEntidadAdjunto, id: number, adjId: number, descargar = false,
 ): Promise<string> {
   const data = await apiGet<{ url: string; nombre_archivo: string }>(
-    `/api/pagos/${entidad}/${id}/adjuntos/${adjId}/signed-url`)
+    `/api/pagos/${entidad}/${id}/adjuntos/${adjId}/signed-url${descargar ? '?descargar=1' : ''}`)
   return data.url
 }
 

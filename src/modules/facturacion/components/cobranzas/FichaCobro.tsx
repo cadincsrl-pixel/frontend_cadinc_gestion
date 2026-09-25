@@ -4,6 +4,7 @@ import { useState, type ReactNode } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
+import { bajarAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
 import { usePermisos } from '@/hooks/usePermisos'
 import {
   ADJUNTO_COBRO_LABEL, ADJUNTO_COBRO_TIPOS, urlAdjuntoCobro, urlAdjuntoRetencion, useAdjuntarCobro, useAdjuntarRetencion,
@@ -70,6 +71,10 @@ export function FichaCobro({ id, onClose }: { id: number; onClose: () => void })
 
   function verCertificado(retId: number) {
     return abrirUrl(() => urlAdjuntoRetencion(retId))
+  }
+
+  function bajar(obtener: () => Promise<string>) {
+    return bajarAdjuntoFirmado(obtener, e => toast(e instanceof Error && !('body' in e) ? e.message : mensajeErrorFacturacion(e), 'err'))
   }
 
   async function subirCertificado(retId: number, file: File | undefined) {
@@ -200,10 +205,12 @@ export function FichaCobro({ id, onClose }: { id: number; onClose: () => void })
                   <td className="px-2 py-1.5 whitespace-nowrap">{fmtFecha(r.fecha)}</td>
                   <td className="px-2 py-1.5 text-right font-mono tabular-nums">{fmtM(r.importe)}</td>
                   <td className="px-2 py-1.5 whitespace-nowrap">
-                    {r.adjunto_path ? (
+                    {r.adjunto_path ? (<>
                       <button type="button" className="text-azul hover:underline text-xs" onClick={() => verCertificado(r.id)}
                         title={r.adjunto_nombre ?? undefined}>📎 Ver</button>
-                    ) : (
+                      <button type="button" className="text-gris-dark hover:text-azul text-xs px-1" title="Descargar"
+                        onClick={() => bajar(() => urlAdjuntoRetencion(r.id, true))}>⬇</button>
+                    </>) : (
                       <label className={`text-xs ${registrarCobros && vigente ? 'text-azul hover:underline cursor-pointer' : 'text-gris-mid cursor-not-allowed'}`}
                         title={!registrarCobros ? 'Hace falta el permiso «Registrar cobros»' : !vigente ? 'El cobro está anulado' : 'Adjuntar el certificado (PDF o foto)'}>
                         {adjuntar.isPending ? 'Subiendo…' : '+ Adjuntar'}
@@ -242,6 +249,8 @@ export function FichaCobro({ id, onClose }: { id: number; onClose: () => void })
                   <td className="px-2 py-1.5 max-w-[260px]">
                     <button type="button" className="text-azul hover:underline text-xs truncate max-w-full text-left" title={a.nombre_archivo}
                       onClick={() => abrirUrl(() => urlAdjuntoCobro(a.id))}>📎 {a.nombre_archivo}</button>
+                    <button type="button" className="text-gris-dark hover:text-azul text-xs px-1" title="Descargar"
+                      onClick={() => bajar(() => urlAdjuntoCobro(a.id, true))}>⬇</button>
                     {a.obs && <div className="text-[11px] text-gris-dark">{a.obs}</div>}
                   </td>
                   <td className="px-2 py-1.5 whitespace-nowrap text-xs">{fmtFechaHora(a.created_at)}</td>

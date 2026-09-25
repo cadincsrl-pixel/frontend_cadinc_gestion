@@ -6,7 +6,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Pagination } from '@/components/ui/Pagination'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
-import { abrirAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
+import { abrirAdjuntoFirmado, bajarAdjuntoFirmado } from '@/lib/utils/abrir-adjunto'
 import {
   useOrdenes, useOrden, useAnularOrden, useEditarOrden, useSubirAdjuntoPagos, useBorrarAdjuntoPagos, fetchPagosAdjuntoSignedUrl,
   fetchOrdenesExport, type PagosOrdenesFiltro,
@@ -432,6 +432,11 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, verPii, toast }: {
                   )}>
                   📎 {a.nombre_archivo}
                 </button>
+                <button type="button" className="ml-1 text-gris-dark hover:text-azul px-1 rounded" title="Descargar"
+                  onClick={() => bajarAdjuntoFirmado(
+                    () => fetchPagosAdjuntoSignedUrl('ordenes', o.id, a.id, true),
+                    () => toast('No se pudo bajar el archivo', 'err'),
+                  )}>⬇</button>
                 <span className={`ml-1 ${a.tipo === 'recibo_proveedor' ? 'text-verde font-semibold' : 'text-gris-dark'}`}>
                   ({a.tipo === 'comprobante_pago' ? 'comprobante'
                     // Con cheque/e-cheq el archivo de cada cheque ES el comprobante del pago (20260929w).

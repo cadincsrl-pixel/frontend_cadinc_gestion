@@ -227,8 +227,8 @@ export function useAdjuntarRetencion() {
 }
 
 /** URL firmada (de vida corta) para ver el certificado de una retención. */
-export async function urlAdjuntoRetencion(retencionId: number): Promise<string> {
-  const r = await apiGet<{ url?: string; signed_url?: string }>(`${BASE}/retenciones/${retencionId}/url`)
+export async function urlAdjuntoRetencion(retencionId: number, descargar = false): Promise<string> {
+  const r = await apiGet<{ url?: string; signed_url?: string }>(`${BASE}/retenciones/${retencionId}/url${descargar ? '?descargar=1' : ''}`)
   const url = r.url ?? r.signed_url
   if (!url) throw new Error('El servidor no devolvió la URL del certificado')
   return url
@@ -293,9 +293,9 @@ export function useBorrarAdjuntoCobro() {
   })
 }
 
-/** URL firmada (15 min) para ver/bajar un adjunto del cobro. */
-export async function urlAdjuntoCobro(id: number): Promise<string> {
-  const r = await apiGet<{ url?: string }>(`${BASE}/cobros/adjuntos/${id}/url`)
+/** URL firmada (15 min) para ver un adjunto del cobro; `descargar` la pide para bajar (`?descargar=1`). */
+export async function urlAdjuntoCobro(id: number, descargar = false): Promise<string> {
+  const r = await apiGet<{ url?: string }>(`${BASE}/cobros/adjuntos/${id}/url${descargar ? '?descargar=1' : ''}`)
   if (!r.url) throw new Error('El servidor no devolvió la URL del archivo')
   return r.url
 }

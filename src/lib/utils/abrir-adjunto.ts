@@ -37,3 +37,26 @@ export async function abrirAdjuntoFirmado(
     onError?.(e)
   }
 }
+
+// Baja un adjunto en vez de abrirlo. El backend firma la URL con
+// `Content-Disposition: attachment` cuando se le pide `?descargar=1`, así que
+// navegar a ella en la MISMA pestaña no cambia de página: el navegador solo
+// guarda el archivo con su nombre original. No usa `<a download>` (se ignora
+// entre orígenes distintos) ni abre una pestaña que quedaría en blanco.
+//
+// Uso:
+//   await bajarAdjuntoFirmado(
+//     () => fetchSignedUrl(..., /* descargar */ true),
+//     () => toast('No se pudo bajar', 'err'),
+//   )
+export async function bajarAdjuntoFirmado(
+  obtenerUrl: () => Promise<string>,
+  onError?: (e: unknown) => void,
+): Promise<void> {
+  try {
+    const url = await obtenerUrl()
+    window.location.assign(url)
+  } catch (e) {
+    onError?.(e)
+  }
+}
