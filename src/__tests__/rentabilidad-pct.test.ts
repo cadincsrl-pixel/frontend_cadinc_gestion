@@ -128,3 +128,26 @@ describe('calcularRentabilidad — comisión del dador', () => {
     expect(r.ingreso).toBeCloseTo(netoReal, 2)
   })
 })
+
+describe('calcularRentabilidad — vuelve cargado (20260929v)', () => {
+  const vuelta = { vuelve_cargado: true, toneladas_vuelta: 25, tarifa_vuelta_por_ton: 12000, comision_vuelta_pct: 10 }
+
+  it('suma el ingreso de la vuelta, neto de su propia comisión', () => {
+    const r = calcularRentabilidad({ ...VIAJE_BASE, ...vuelta }, PARAMS)
+    expect(r.ingreso_ida).toBeCloseTo(28 * 18000, 2)
+    expect(r.ingreso_vuelta).toBeCloseTo(25 * 12000 * 0.9, 2)
+    expect(r.ingreso).toBeCloseTo(28 * 18000 + 25 * 12000 * 0.9, 2)
+    expect(r.comision_dador).toBeCloseTo(25 * 12000 * 0.1, 2)
+  })
+
+  it('el chofer al % cobra sobre las dos cargas', () => {
+    const r = calcularRentabilidad({ ...VIAJE_BASE, ...vuelta }, PARAMS)
+    expect(r.pago_chofer).toBeCloseTo((28 * 18000 + 25 * 12000 * 0.9) * 0.15, 2)
+  })
+
+  it('sin tildar «vuelve cargado» la vuelta no cuenta aunque tenga datos', () => {
+    const r = calcularRentabilidad({ ...VIAJE_BASE, ...vuelta, vuelve_cargado: false }, PARAMS)
+    expect(r.ingreso_vuelta).toBe(0)
+    expect(r.ingreso).toBeCloseTo(28 * 18000, 2)
+  })
+})

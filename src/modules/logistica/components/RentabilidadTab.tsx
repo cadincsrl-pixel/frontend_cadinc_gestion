@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Controller, useForm } from 'react-hook-form'
+import { Controller, useForm, type UseFormReturn } from 'react-hook-form'
 import {
   useRentabilidadParametros,
   useRentabilidadViajes,
@@ -369,6 +369,10 @@ function viajeToInput(v: ViajeRow): RentabilidadViajeInput {
     modalidad_pago:      v.modalidad_pago,
     pct_sobre_tarifa:    Number(v.pct_sobre_tarifa),
     comision_pct:        Number(v.comision_pct ?? 0),
+    vuelve_cargado:        !!v.vuelve_cargado,
+    toneladas_vuelta:      Number(v.toneladas_vuelta ?? 0),
+    tarifa_vuelta_por_ton: Number(v.tarifa_vuelta_por_ton ?? 0),
+    comision_vuelta_pct:   Number(v.comision_vuelta_pct ?? 0),
   }
 }
 
@@ -426,6 +430,12 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
           modalidad_pago: viaje.modalidad_pago,
           pct_sobre_tarifa: Number(viaje.pct_sobre_tarifa),
           comision_pct: Number(viaje.comision_pct ?? 0),
+          carga_ida: viaje.carga_ida ?? '',
+          vuelve_cargado: !!viaje.vuelve_cargado,
+          carga_vuelta: viaje.carga_vuelta ?? '',
+          toneladas_vuelta: Number(viaje.toneladas_vuelta ?? 0),
+          tarifa_vuelta_por_ton: Number(viaje.tarifa_vuelta_por_ton ?? 0),
+          comision_vuelta_pct: Number(viaje.comision_vuelta_pct ?? 0),
           obs: viaje.obs ?? '',
         }
       : {
@@ -434,6 +444,8 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
           tarifa_neta_por_ton: 0, precio_gasoil: 2200, consumo_camion: 3, peajes_total: 0,
           chofer_por_km: 140, chofer_por_dia: 30000, modalidad_pago: 'km_jornal', pct_sobre_tarifa: 0,
           comision_pct: 0,
+          carga_ida: '', vuelve_cargado: false, carga_vuelta: '',
+          toneladas_vuelta: 0, tarifa_vuelta_por_ton: 0, comision_vuelta_pct: 0,
           obs: '',
         },
   })
@@ -443,7 +455,6 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
   // La tarifa base sí lleva la sensibilidad; la comisión es un % y no depende
   // de ella. Las dos se muestran en el bloque del dador.
   const comisionPct = Number(watched.comision_pct) || 0
-  const tarifaBase  = (Number(watched.tarifa_neta_por_ton) || 0) * (1 + sensibilidad)
 
   // Resultado en vivo (con sensibilidad aplicada a la tarifa).
   const resultado = useMemo(() => {
@@ -460,6 +471,10 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
       modalidad_pago:      watched.modalidad_pago || 'km_jornal',
       pct_sobre_tarifa:    Number(watched.pct_sobre_tarifa) || 0,
       comision_pct:        comisionPct,
+      vuelve_cargado:        !!watched.vuelve_cargado,
+      toneladas_vuelta:      Number(watched.toneladas_vuelta) || 0,
+      tarifa_vuelta_por_ton: (Number(watched.tarifa_vuelta_por_ton) || 0) * (1 + sensibilidad),
+      comision_vuelta_pct:   Number(watched.comision_vuelta_pct) || 0,
     }
     return calcularRentabilidad(input, params)
   }, [watched, params, sensibilidad])
@@ -485,6 +500,12 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
       chofer_por_dia:      Number(data.chofer_por_dia) || 0,
       pct_sobre_tarifa:    Number(data.pct_sobre_tarifa) || 0,
       comision_pct:        Number(data.comision_pct) || 0,
+      carga_ida:             data.carga_ida?.trim() || null,
+      vuelve_cargado:        !!data.vuelve_cargado,
+      carga_vuelta:          data.vuelve_cargado ? (data.carga_vuelta?.trim() || null) : null,
+      toneladas_vuelta:      data.vuelve_cargado ? (Number(data.toneladas_vuelta) || 0) : 0,
+      tarifa_vuelta_por_ton: data.vuelve_cargado ? (Number(data.tarifa_vuelta_por_ton) || 0) : 0,
+      comision_vuelta_pct:   data.vuelve_cargado ? (Number(data.comision_vuelta_pct) || 0) : 0,
     }
     if (mode === 'create') {
       create(dto, {
@@ -534,8 +555,7 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
             disabled={readOnly}
             {...form.register('km_total', { valueAsNumber: true })}
           />
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <Input label="Toneladas"        type="number" step="0.1" disabled={readOnly} {...form.register('toneladas',       { valueAsNumber: true })} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input label="Viajes / mes"     type="number" disabled={readOnly} {...form.register('viajes_por_mes',  { valueAsNumber: true })} />
             {/* Días por viaje: derivado (días del mes ÷ viajes/mes), no se carga a mano. */}
             <Input
@@ -547,40 +567,37 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
               hint={`${DIAS_MES} días ÷ viajes/mes`}
             />
           </div>
-          {/* Los campos de $ usan InputMonto (miles es-AR). Emite string máquina;
-              se convierte a number acá para conservar el shape que tenía
-              valueAsNumber ('' si se vacía — el submit ya lo normaliza a 0). */}
-          <Controller name="tarifa_neta_por_ton" control={form.control} render={({ field }) => (
-            <InputMonto label="Tarifa por tonelada (NETA, sin IVA) ARS/t" disabled={readOnly}
-              value={field.value} onBlur={field.onBlur}
-              onChange={raw => field.onChange(raw === '' ? '' : Number(raw))} />
-          )} />
 
-          {/* Comisión del dador: la tarifa de arriba YA la incluye. Se descuenta
-              del ingreso y, si el chofer va al %, también de su base — que es lo
-              que hace la liquidación real con la contra factura. */}
-          <div className="bg-gris/30 rounded-lg p-3">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-gris-dark mb-2">
-              🤝 Comisión del dador de carga
-            </div>
-            <Input
-              label="% que se queda el dador"
-              type="number" step="0.1" min={0} max={99.9}
-              disabled={readOnly}
-              {...form.register('comision_pct', { valueAsNumber: true })}
-              hint="Dejalo en 0 si la tarifa es limpia. Si el dador se queda un %, ponelo acá y cargá la tarifa tal cual te la pasan."
+          {/* Las cargas (20260929v): la ida y, si vuelve cargado, la vuelta.
+              Pensado para la oficina: se cargan los números como vienen y el
+              «Se cobra» sale solo, sin multiplicar nada. */}
+          <CargaBloque
+            titulo="🚛 Ida" form={form} readOnly={readOnly}
+            campos={{ carga: 'carga_ida', toneladas: 'toneladas', tarifa: 'tarifa_neta_por_ton', comision: 'comision_pct' }}
+            sensibilidad={sensibilidad} seCobra={resultado.ingreso_ida}
+          />
+
+          <label className={`flex items-center gap-2 rounded-lg border-2 border-dashed px-3 py-2 text-sm font-semibold cursor-pointer ${watched.vuelve_cargado ? 'border-naranja bg-naranja-light/30 text-carbon' : 'border-gris-mid text-gris-dark'}`}>
+            <input type="checkbox" disabled={readOnly} {...form.register('vuelve_cargado')} className="w-4 h-4 accent-naranja" />
+            ↩ ¿Vuelve cargado? <span className="font-normal text-xs">Tildalo si a la vuelta trae otra carga, con sus toneladas y su tarifa.</span>
+          </label>
+
+          {watched.vuelve_cargado && (
+            <CargaBloque
+              titulo="↩ Vuelta" form={form} readOnly={readOnly}
+              campos={{ carga: 'carga_vuelta', toneladas: 'toneladas_vuelta', tarifa: 'tarifa_vuelta_por_ton', comision: 'comision_vuelta_pct' }}
+              sensibilidad={sensibilidad} seCobra={resultado.ingreso_vuelta}
             />
-            {comisionPct > 0 && tarifaBase > 0 && (
-              <div className="mt-2 text-xs text-gris-dark space-y-0.5">
-                <div>
-                  Te queda <span className="font-mono font-bold text-negro">{fmtARS(tarifaBase * (1 - comisionPct / 100))}</span> por tonelada
-                  <span className="text-gris-dark"> (de {fmtARS(tarifaBase)})</span>
-                </div>
-                <div>
-                  El dador se lleva <span className="font-mono font-bold">{fmtARS(resultado.comision_dador)}</span> en este viaje
-                </div>
-              </div>
-            )}
+          )}
+
+          <div className="rounded-lg bg-azul text-white px-3 py-2 flex flex-wrap items-baseline justify-between gap-2">
+            <span className="text-xs uppercase tracking-wider font-bold opacity-80">Ingreso del viaje</span>
+            <span className="text-xs opacity-90">
+              {watched.vuelve_cargado
+                ? <>ida <b className="font-mono">{fmtARS(resultado.ingreso_ida)}</b> + vuelta <b className="font-mono">{fmtARS(resultado.ingreso_vuelta)}</b> =</>
+                : 'solo ida (vuelve vacío)'}
+            </span>
+            <span className="font-mono text-lg font-bold">{fmtARS(resultado.ingreso)}</span>
           </div>
 
           <div className="bg-gris/30 rounded-lg p-3">
@@ -641,10 +658,10 @@ function ModalViaje({ mode, viaje, params, readOnly, onClose }: ModalViajeProps)
             {resultado.comision_dador > 0 && (
               <div className="flex items-center justify-between mb-1 pb-1 border-b border-gris/60">
                 <span className="text-[11px] text-gris-dark">
-                  Tarifa bruta <span className="opacity-70">· comisión {fmtPct(comisionPct / 100)}</span>
+                  Cargas brutas <span className="opacity-70">· comisión del dador</span>
                 </span>
                 <span className="font-mono text-[11px] text-gris-dark">
-                  {fmtARS(tarifaBase * (Number(watched.toneladas) || 0))} − {fmtARS(resultado.comision_dador)}
+                  {fmtARS(resultado.ingreso + resultado.comision_dador)} − {fmtARS(resultado.comision_dador)}
                 </span>
               </div>
             )}
@@ -919,6 +936,58 @@ function ParametrosCard({ paramsRow, open, onToggle, readOnly }: ParametrosCardP
           <div className="flex justify-end">
             <Button variant="primary" loading={isPending} disabled={readOnly} title={readOnly ? 'Sin permiso para editar parámetros' : undefined} onClick={form.handleSubmit(onSave)}>✓ Guardar parámetros</Button>
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Una carga del viaje (la ida o la vuelta), 20260929v. Pensado para que lo
+// cargue la oficina sin hacer cuentas: qué lleva, toneladas, tarifa por
+// tonelada y la comisión del dador si hay; «Se cobra» sale solo.
+// ────────────────────────────────────────────────────────────────────────
+type CampoTexto  = 'carga_ida' | 'carga_vuelta'
+type CampoNumero = 'toneladas' | 'toneladas_vuelta' | 'tarifa_neta_por_ton' | 'tarifa_vuelta_por_ton' | 'comision_pct' | 'comision_vuelta_pct'
+
+function CargaBloque({ titulo, form, campos, readOnly, sensibilidad, seCobra }: {
+  titulo: string
+  form: UseFormReturn<ViajeUpsertDto>
+  campos: { carga: CampoTexto; toneladas: CampoNumero; tarifa: CampoNumero; comision: CampoNumero }
+  readOnly?: boolean
+  sensibilidad: number
+  /** Lo que deja esta carga, ya neto de la comisión (sale del cálculo). */
+  seCobra: number
+}) {
+  const ton      = Number(form.watch(campos.toneladas)) || 0
+  const tarifa   = (Number(form.watch(campos.tarifa)) || 0) * (1 + sensibilidad)
+  const comision = Number(form.watch(campos.comision)) || 0
+  const bruto    = ton * tarifa
+  return (
+    <div className="rounded-lg border border-gris-mid bg-white p-3 flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <div className="text-[12px] font-bold uppercase tracking-wider text-carbon">{titulo}</div>
+        <div className="text-right">
+          <div className="text-[10px] uppercase tracking-wide text-gris-dark">Se cobra</div>
+          <div className="font-mono font-bold text-verde text-base">{fmtARS(seCobra)}</div>
+        </div>
+      </div>
+      <Input label="Qué lleva" placeholder="Ej: harina de soja, piedra 6-20" disabled={readOnly} {...form.register(campos.carga)} />
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <Input label="Toneladas" type="number" step="0.1" disabled={readOnly} {...form.register(campos.toneladas, { valueAsNumber: true })} />
+        <Controller name={campos.tarifa} control={form.control} render={({ field }) => (
+          <InputMonto label="$ por tonelada (sin IVA)" disabled={readOnly}
+            value={field.value as number | string} onBlur={field.onBlur}
+            onChange={raw => field.onChange(raw === '' ? '' : Number(raw))} />
+        )} />
+        <Input label="% que se queda el dador" type="number" step="0.1" min={0} max={99.9}
+          disabled={readOnly} {...form.register(campos.comision, { valueAsNumber: true })}
+          hint="0 si la tarifa es limpia" />
+      </div>
+      {bruto > 0 && (
+        <div className="text-[11px] text-gris-dark">
+          {fmtNum(ton)} t × {fmtARS(tarifa)} = {fmtARS(bruto)}
+          {comision > 0 && <> · el dador se lleva {fmtARS(bruto - seCobra)} ({fmtNum(comision)} %)</>}
         </div>
       )}
     </div>

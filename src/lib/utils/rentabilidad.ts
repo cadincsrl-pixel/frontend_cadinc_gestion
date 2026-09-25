@@ -59,6 +59,13 @@ export interface RentabilidadViajeInput {
    *  YA la incluye, así que se descuenta para saber qué entra de verdad.
    *  Opcional: los viajes cargados antes de 20260914y no la tienen. */
   comision_pct?:        number   // ej 8
+  /** Vuelve con otra carga (20260929v): se suma al ingreso con sus propias
+   *  toneladas, tarifa y comisión. Los km, el gasoil y los peajes no cambian
+   *  (ya son de ida + vuelta). Sin esto, la vuelta se supone vacía. */
+  vuelve_cargado?:        boolean
+  toneladas_vuelta?:      number
+  tarifa_vuelta_por_ton?: number
+  comision_vuelta_pct?:   number
 }
 
 export type Diagnostico =
@@ -95,8 +102,11 @@ export interface RentabilidadResultado {
   /** Lo que se queda el dador de carga por viaje. No es un costo: ya está
    *  descontado del ingreso. Se expone sólo para poder mostrarlo. */
   comision_dador:            number
-  /** Ingreso YA neto de la comisión del dador = tarifa efectiva × toneladas. */
+  /** Ingreso YA neto de la comisión del dador: ida + vuelta (si vuelve cargado). */
   ingreso:                   number
+  /** Lo que deja cada carga, neto de su comisión (20260929v). */
+  ingreso_ida:               number
+  ingreso_vuelta:            number
   margen:                    number
   margen_pct:                number
   // Margen SIN descontar los costos fijos (amortizaciones, service, seguros,
@@ -116,7 +126,7 @@ const RESULTADO_VACIO: Omit<RentabilidadResultado, 'diagnostico'> = {
   gomeria_prorr: 0, lavadero_prorr: 0, costos_directos: 0,
   amortizacion_tractor: 0, amortizacion_batea: 0, service: 0,
   seguros_prorr: 0, patente_prorr: 0, costos_fijos: 0,
-  overhead: 0, costo_total: 0, comision_dador: 0, ingreso: 0, margen: 0,
+  overhead: 0, costo_total: 0, comision_dador: 0, ingreso: 0, ingreso_ida: 0, ingreso_vuelta: 0, margen: 0,
   margen_pct: 0, margen_sin_fijos: 0, margen_sin_fijos_pct: 0,
   margen_mensual: 0, margen_anual_usd: 0,
 }
@@ -146,7 +156,15 @@ export function calcularRentabilidad(
   // comisión: cobraba de más y le pagaba de más al chofer.
   const comision_pct   = Math.min(Math.max(v.comision_pct ?? 0, 0), 100)
   const tarifa_efectiva = v.tarifa_neta_por_ton * (1 - comision_pct / 100)
-  const comision_dador  = (v.tarifa_neta_por_ton - tarifa_efectiva) * v.toneladas
+  // La vuelta cargada (20260929v) es otra carga, con su propio dador.
+  const vuelta          = !!v.vuelve_cargado
+  const comision_v_pct  = Math.min(Math.max(v.comision_vuelta_pct ?? 0, 0), 100)
+  const tarifa_v        = vuelta ? (v.tarifa_vuelta_por_ton ?? 0) : 0
+  const ton_v           = vuelta ? (v.toneladas_vuelta ?? 0) : 0
+  const tarifa_v_efectiva = tarifa_v * (1 - comision_v_pct / 100)
+  const ingreso_ida     = tarifa_efectiva * v.toneladas
+  const ingreso_vuelta  = tarifa_v_efectiva * ton_v
+  const comision_dador  = (v.tarifa_neta_por_ton - tarifa_efectiva) * v.toneladas + (tarifa_v - tarifa_v_efectiva) * ton_v
 
   // ── Costos DIRECTOS por viaje ───────────────────────────────────────
   const combustible_neto      = v.consumo_camion > 0
@@ -155,7 +173,7 @@ export function calcularRentabilidad(
   // Sueldo / jornal / cargas del chofer: NO se netean de IVA (costo laboral, no
   // lleva IVA — ya son netos). Las cargas sociales son un fijo mensual prorrateado.
   const pago_chofer           = v.modalidad_pago === 'pct_jornal'
-    ? tarifa_efectiva * v.toneladas * v.pct_sobre_tarifa / 100
+    ? (ingreso_ida + ingreso_vuelta) * v.pct_sobre_tarifa / 100
     : km_total * v.chofer_por_km
   // Días por viaje = días del mes / viajes por mes (v.viajes_por_mes > 0 acá,
   // garantizado por el early-return de arriba). El jornal por viaje es el
@@ -201,7 +219,7 @@ export function calcularRentabilidad(
   // ── Overhead + total ────────────────────────────────────────────────
   const overhead     = (costos_directos + costos_fijos) * p.overhead_pct
   const costo_total  = costos_directos + costos_fijos + overhead
-  const ingreso      = tarifa_efectiva * v.toneladas
+  const ingreso      = ingreso_ida + ingreso_vuelta
   const margen       = ingreso - costo_total
   const margen_pct   = ingreso > 0 ? margen / ingreso : 0
 
@@ -229,7 +247,7 @@ export function calcularRentabilidad(
     gomeria_prorr, lavadero_prorr, costos_directos,
     amortizacion_tractor, amortizacion_batea, service,
     seguros_prorr, patente_prorr, costos_fijos,
-    overhead, costo_total, comision_dador, ingreso, margen, margen_pct,
+    overhead, costo_total, comision_dador, ingreso, ingreso_ida, ingreso_vuelta, margen, margen_pct,
     margen_sin_fijos, margen_sin_fijos_pct,
     margen_mensual, margen_anual_usd, diagnostico,
   }

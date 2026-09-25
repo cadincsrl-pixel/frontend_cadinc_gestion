@@ -23,6 +23,8 @@ export interface ParametrosRow extends RentabilidadParametros {
 export interface ViajeRow extends RentabilidadViajeInput {
   id: number
   nombre: string
+  carga_ida?: string | null
+  carga_vuelta?: string | null
   obs: string | null
   created_at: string
   updated_at: string
@@ -72,6 +74,13 @@ export interface ViajeUpsertDto {
   pct_sobre_tarifa:     number
   /** Comisión del dador de carga, entero (8 = 8%). */
   comision_pct:         number
+  /** Qué lleva a la ida / a la vuelta, y la carga de vuelta (20260929v). */
+  carga_ida?:             string | null
+  vuelve_cargado?:        boolean
+  carga_vuelta?:          string | null
+  toneladas_vuelta?:      number
+  tarifa_vuelta_por_ton?: number
+  comision_vuelta_pct?:   number
   obs?:                 string | null
 }
 
