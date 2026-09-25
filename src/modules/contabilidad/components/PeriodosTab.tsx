@@ -28,7 +28,9 @@ import { useVisorAsiento } from './VisorAsiento'
  * Columna «IVA» (tanda 5, 20260928o): el asiento mensual de IVA es un paso
  * del cierre, por eso vive al lado de «Cerrar». Cerrar un mes con el asiento
  * de IVA desactualizado rebota con 409 IVA_DDJJ_DESACTUALIZADA (se puede
- * cerrar igual); sin generar solo avisa.
+ * cerrar igual); sin generar solo avisa. Si además hay pendientes, el 409 de
+ * pendientes trae `iva_ddjj_desactualizada` y el confirm lista las dos
+ * advertencias: el contador cierra con advertencias (25/09).
  */
 export function PeriodosTab() {
   const toast = useToast()
@@ -83,6 +85,9 @@ export function PeriodosTab() {
         const obj = d && typeof d === 'object' ? d as Record<string, unknown> : {}
         const porEstado = obj.por_estado && typeof obj.por_estado === 'object' ? obj.por_estado as Record<string, number> : {}
         setPendientesAuto({ cantidad: Number(obj.cantidad) || 0, por_estado: porEstado })
+        // El mismo 409 avisa si además el asiento de IVA quedó desactualizado
+        // (20260929q): «Cerrar igual» saltea las dos advertencias.
+        setIvaDesact(obj.iva_ddjj_desactualizada === true)
         return
       }
       toast(mensajeErrorCtb(e), 'err')
