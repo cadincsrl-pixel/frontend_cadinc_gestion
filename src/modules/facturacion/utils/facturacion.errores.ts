@@ -171,6 +171,24 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   PARAMETRO_YA_VIGENTE:   () => 'Esa vigencia ya empezó: no se borra. Para cambiar el valor, cargá uno nuevo desde otra fecha.',
   PARAMETRO_ULTIMO:       () => 'Es el único valor de ese monto: no se puede borrar.',
   PARAMETRO_NO_EXISTE:    () => 'Esa vigencia no existe (¿la borraron?). Refrescá la pantalla.',
+  // ── Tipos de retención y configuración (20260929f/g) ──
+  RETENCION_TIPO_INVALIDA:    d => {
+    const c = dato(d, 'campo'), m = dato(d, 'mensaje')
+    const que = c === 'clave' ? 'la clave' : c === 'corto' ? 'el nombre corto' : c === 'nombre' ? 'el nombre'
+      : c === 'impuesto' ? 'el impuesto' : c === 'jurisdiccion_default_id' ? 'la jurisdicción' : 'los datos'
+    return `Tipo de retención: revisá ${que}${typeof m === 'string' ? ` (${m})` : ''}.`
+  },
+  RETENCION_TIPO_DUPLICADO:   d => dato(d, 'campo') === 'corto'
+    ? 'Ya hay un tipo de retención con ese nombre corto.'
+    : 'Ya hay un tipo de retención con esa clave.',
+  RETENCION_TIPO_SISTEMA:     () => 'Es uno de los tipos de siempre: su clave y su impuesto no cambian (sí el nombre, la jurisdicción y si está activo).',
+  IMPUESTO_IVA_RESERVADO:     () => 'La retención de IVA es una sola (la leen el Libro IVA y el asiento mensual): un tipo nuevo no puede ser de IVA.',
+  RETENCION_TIPO_POR_DEFECTO: () => 'Es el tipo que propone el cobro: elegí otro como «por defecto» antes de darlo de baja.',
+  RETENCION_TIPO_NO_EXISTE:   () => 'Ese tipo de retención no existe. Refrescá la pantalla.',
+  CONFIG_INVALIDA:            d => dato(d, 'clave') === 'retencion_tipo_default'
+    ? 'Ese tipo de retención no existe o está dado de baja.'
+    : 'Ese valor de configuración no es válido.',
+  JURISDICCION_NO_EXISTE:     () => 'La jurisdicción elegida ya no existe: refrescá la pantalla y elegila de nuevo.',
   PERIODO_REQUERIDO:      () => 'Este producto pide el período facturado: completá desde y hasta.',
   PERIODO_INVALIDO:       () => 'El período facturado termina antes de empezar.',
   OBRA_REQUERIDA:         () => 'Este producto necesita la obra: es su centro de costo.',

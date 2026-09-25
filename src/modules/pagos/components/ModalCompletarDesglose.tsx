@@ -8,7 +8,7 @@ import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useCompletarDesglose, leerAdjuntoFactura, fetchPagosAdjuntoSignedUrl } from '../hooks/usePagos'
 import { leerQrDelArchivo } from '../utils/qrFactura'
-import { resumirDesglose } from '../utils/desglose'
+import { filaDeTributo, resumirDesglose, tributoDeFila } from '../utils/desglose'
 import { fmtM } from '../utils/pagos.utils'
 import { mensajeErrorPagos } from '../utils/pagos.errores'
 import { DesgloseArca, type FilaIva, type FilaTributo, type Fuente } from './ModalCargarFactura'
@@ -53,7 +53,7 @@ export function ModalCompletarDesglose({ factura: f, onClose }: Props) {
       ? (f.iva_detalle ?? []).map(x => ({ alicuota_id: x.alicuota_id, base: String(x.base_imp), importe: String(x.importe), auto: false }))
       : f.tipo_comprobante === 'A' ? [{ alicuota_id: 5, base: '', importe: '', auto: true }] : [])
   const [tributos, setTributos] = useState<FilaTributo[]>(() =>
-    (f.tributos ?? []).map(t => ({ tipo: t.tipo, jurisdiccion: t.jurisdiccion ?? '', descripcion: t.descripcion ?? '', importe: String(t.importe) })))
+    (f.tributos ?? []).map(filaDeTributo))
   const [neto, setNeto] = useState('')
   const [noGravado, setNoGravado] = useState(f.no_gravado ? String(f.no_gravado) : '')
   const [exento, setExento] = useState(f.exento ? String(f.exento) : '')
@@ -118,7 +118,7 @@ export function ModalCompletarDesglose({ factura: f, onClose }: Props) {
     const d = res.desglose
     const fu = res.fuente_por_campo
     setFilasIva(d.iva_detalle.map(x => ({ alicuota_id: x.alicuota_id, base: String(x.base_imp), importe: String(x.importe), auto: false })))
-    setTributos(d.tributos.map(t => ({ tipo: t.tipo, jurisdiccion: t.jurisdiccion ?? '', descripcion: t.descripcion ?? '', importe: String(t.importe) })))
+    setTributos(d.tributos.map(filaDeTributo))
     setNeto(d.iva_detalle.length === 0 && d.neto != null ? String(d.neto) : '')
     setNoGravado(d.no_gravado ? String(d.no_gravado) : '')
     setExento(d.exento ? String(d.exento) : '')
@@ -134,10 +134,7 @@ export function ModalCompletarDesglose({ factura: f, onClose }: Props) {
     const body: PagosDesgloseInput & { id: number; forzar?: boolean } = {
       id: f.id,
       iva_detalle: ivaValidas.map(x => ({ alicuota_id: x.alicuota_id, base_imp: n(x.base), importe: n(x.importe) })),
-      tributos: tribValidos.map(t => ({
-        tipo: t.tipo, jurisdiccion: t.jurisdiccion.trim() || null, descripcion: t.descripcion.trim(),
-        alicuota: null, base_imp: null, importe: n(t.importe),
-      })),
+      tributos: tribValidos.map(t => tributoDeFila(t, n(t.importe))),
       no_gravado: noGravado ? n(noGravado) : null,
       exento: exento ? n(exento) : null,
       neto: ivaValidas.length ? null : (neto ? n(neto) : null),

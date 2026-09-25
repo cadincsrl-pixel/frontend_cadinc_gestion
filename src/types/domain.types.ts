@@ -2841,6 +2841,8 @@ export interface PagosTributo {
   id?:          number
   tipo:         PagosTributoTipo
   jurisdiccion: string | null
+  /** 20260929f: jurisdicción del catálogo (null = texto sin resolver o sin jurisdicción). */
+  jurisdiccion_id?: number | null
   descripcion:  string
   alicuota:     number | null
   base_imp:     number | null
@@ -2910,7 +2912,7 @@ export interface PagosLecturaRes {
 /** POST /facturas/:id/leer-adjunto (20260924v): la propuesta de desglose del adjunto ya guardado. No guarda nada. */
 export interface PagosDesgloseInput {
   iva_detalle:     { alicuota_id: PagosAlicuotaId; base_imp: number; importe: number }[]
-  tributos:        { tipo: PagosTributoTipo; jurisdiccion: string | null; descripcion: string; alicuota: number | null; base_imp: number | null; importe: number }[]
+  tributos:        { tipo: PagosTributoTipo; jurisdiccion: string | null; jurisdiccion_id?: number | null; descripcion: string; alicuota: number | null; base_imp: number | null; importe: number }[]
   no_gravado:      number | null
   exento:          number | null
   /** Sólo sin alícuotas (B/C). */
@@ -4170,7 +4172,12 @@ export type VentasCobroEstadoDeuda = 'pagada' | 'parcial' | 'pendiente' | 'venci
 export type VentasCreditoEstado = 'usado' | 'parcial' | 'disponible'
 
 export type VentasCobroForma = 'transferencia' | 'cheque' | 'echeq' | 'efectivo' | 'otro'
-export type VentasRetencionTipo = 'iibb' | 'tem' | 'suss' | 'ganancias' | 'iva' | 'otra'
+/**
+ * Clave de `ventas_retencion_tipos` (20260929g): catálogo editable desde
+ * Ventas › Configuración. Los de la semilla son 'iibb' | 'tem' | 'suss' |
+ * 'ganancias' | 'iva' | 'otra'.
+ */
+export type VentasRetencionTipo = string
 /** Códigos de ARCA que admite un comprobante externo. */
 export type VentasCbteTipoExterno = 1 | 2 | 3 | 6 | 7 | 8 | 60 | 61 | 201 | 202 | 203
 
@@ -4280,6 +4287,8 @@ export interface VentasCobroRetencion {
   orden:              number
   tipo:               VentasRetencionTipo
   jurisdiccion:       string
+  /** 20260929f: jurisdicción del catálogo (null = sin jurisdicción o texto viejo sin resolver). */
+  jurisdiccion_id?:   number | null
   certificado_numero: string
   fecha:              string
   importe:            number
@@ -4386,6 +4395,8 @@ export interface VentasCobroMedioInput {
 export interface VentasCobroRetencionInput {
   tipo:                VentasRetencionTipo
   jurisdiccion?:       string
+  /** 20260929f: con id, la base pisa el texto con el nombre del catálogo. */
+  jurisdiccion_id?:    number | null
   certificado_numero?: string
   fecha?:              string
   importe:             number

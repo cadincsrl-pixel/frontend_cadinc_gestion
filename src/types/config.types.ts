@@ -164,3 +164,96 @@ export interface ParametrosVigentes {
   monto_minimo_fce:       number
   tope_cf_identificacion: number
 }
+
+// ── Jurisdicciones (20260929f): catálogo compartido de Compras y Ventas ─────
+
+export type TipoJurisdiccion = 'nacional' | 'provincial' | 'municipal'
+
+/** GET /api/catalogos/jurisdicciones. */
+export interface Jurisdiccion {
+  id:               number
+  nombre:           string
+  tipo:             TipoJurisdiccion
+  /** Solo los municipios: la provincia de la que cuelgan. */
+  provincia_id:     number | null
+  provincia_nombre: string | null
+  /** Código de jurisdicción del Convenio Multilateral (901 CABA … 924 Tucumán). */
+  codigo_comarb:    string | null
+  /** Código de provincia de ARCA (0 CABA … 24 Tierra del Fuego). */
+  codigo_arca:      number | null
+  /** Otras formas de escribirla (normalizadas: sin tildes ni mayúsculas). */
+  alias:            string[]
+  activo:           boolean
+  usos:             { tributos: number; retenciones: number }
+}
+
+/** POST (alta) / PATCH (parcial, + `activo`). */
+export interface JurisdiccionInput {
+  nombre?:        string
+  tipo?:          TipoJurisdiccion
+  provincia_id?:  number | null
+  codigo_comarb?: string | null
+  codigo_arca?:   number | null
+  alias?:         string[]
+  activo?:        boolean
+}
+
+/** GET /api/catalogos/jurisdicciones/sin-normalizar: textos viejos que no resolvieron a ninguna. */
+export interface JurisdiccionSinNormalizar {
+  texto: string
+  tabla: 'pagos_factura_tributos' | 'ventas_cobro_retenciones'
+  filas: number
+}
+
+/** Lo que elige un `JurisdiccionSelect`: el id del catálogo y el nombre (foto). */
+export interface JurisdiccionElegida {
+  id:     number | null
+  nombre: string
+}
+
+/** GET /api/pagos/config (20260929f; el ítem 8 le suma avisos y cheques). */
+export interface PagosConfig {
+  tributos: { jurisdiccion_default_id: number | null }
+}
+
+// ── Tipos de retención sufrida (20260929g) ──────────────────────────────────
+
+export type ImpuestoRetencion = 'iva' | 'ganancias' | 'iibb' | 'suss' | 'municipal' | 'otro'
+
+/** GET /api/facturacion/retencion-tipos. */
+export interface RetencionTipoVenta {
+  /** La que guarda cada retención. No se edita. */
+  clave:                       string
+  nombre:                      string
+  corto:                       string
+  /** `iva` es reservado y único (Libro IVA, asiento mensual). */
+  impuesto:                    ImpuestoRetencion
+  pide_jurisdiccion:           boolean
+  jurisdiccion_default_id:     number | null
+  jurisdiccion_default_nombre: string | null
+  /** Los 6 de siempre: no cambian clave ni impuesto. */
+  sistema:                     boolean
+  activo:                      boolean
+  orden:                       number
+  /** Retenciones cargadas con este tipo. */
+  retenciones:                 number
+  /** ¿Tiene cuenta en Contabilidad › Mapeos (Retenciones sufridas)? */
+  mapeado:                     boolean
+}
+
+/** POST (alta; la clave sale del corto si no viene) / PATCH (parcial). */
+export interface RetencionTipoVentaInput {
+  clave?:                   string
+  nombre?:                  string
+  corto?:                   string
+  impuesto?:                ImpuestoRetencion
+  pide_jurisdiccion?:       boolean
+  jurisdiccion_default_id?: number | null
+  activo?:                  boolean
+  orden?:                   number
+}
+
+/** GET/PATCH /api/facturacion/config (20260929g; el ítem 9 suma los valores por defecto de la factura). */
+export interface VentasConfigValores {
+  retencion_tipo_default: string
+}

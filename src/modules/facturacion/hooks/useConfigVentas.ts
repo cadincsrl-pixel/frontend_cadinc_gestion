@@ -8,7 +8,9 @@ import { apiDelete, apiGet, apiPatch, apiPost, HttpError } from '@/lib/api/clien
 import type {
   ParametroVenta, ParametroVentaInput, ParametrosVigentes,
   ProductoVenta, ProductoVentaInput, PuntoVentaVenta, PuntoVentaVentaInput, VerificacionPuntoVenta,
+  RetencionTipoVenta, RetencionTipoVentaInput, VentasConfigValores,
 } from '@/types/config.types'
+import { retencionTiposRespaldo } from '../utils/cobranzas.utils'
 import { PRODUCTOS, hoyAR, parametrosRespaldo } from '../utils/facturacion.utils'
 import { FACTURACION_KEYS, invalidarFacturacion } from './useFacturacion'
 
@@ -22,6 +24,8 @@ export const CONFIG_VENTAS_KEYS = {
   parametros: ['facturacion', 'config', 'parametros'] as const,
   parametrosLista: ['facturacion', 'config', 'parametros', 'lista'] as const,
   parametrosVigentes: (fecha: string) => ['facturacion', 'config', 'parametros', 'vigentes', fecha] as const,
+  retencionTipos: (incluirInactivos: boolean) => ['facturacion', 'config', 'retencion-tipos', incluirInactivos] as const,
+  valores: ['facturacion', 'config', 'valores'] as const,
 }
 
 export interface ProductosVentaRes {
@@ -235,3 +239,103 @@ export function useBorrarParametroVenta() {
   })
 }
 
+
+// ── Tipos de retención sufrida (20260929g) ──────────────────────────────────
+
+export interface RetencionTiposRes {
+  tipos:    RetencionTipoVenta[]
+  /** true = el backend no tiene el catálogo (404): los 6 de siempre, sin editar. */
+  respaldo: boolean
+}
+
+/**
+ * Tipos de retención. Sin `incluirInactivos`, solo los activos (lo que ofrece
+ * el modal de cobro). Si el backend no los tiene o no responde, los 6 de
+ * siempre (`RETENCION_TIPOS`), así el cobro se carga igual que antes.
+ */
+export function useRetencionTipos(incluirInactivos = false) {
+  const q = useQuery({
+    queryKey: CONFIG_VENTAS_KEYS.retencionTipos(incluirInactivos),
+    queryFn: async (): Promise<RetencionTiposRes> => {
+      try {
+        const qs = incluirInactivos ? '?incluir_inactivos=1' : ''
+        return { tipos: await apiGet<RetencionTipoVenta[]>(`${BASE}/retencion-tipos${qs}`), respaldo: false }
+      } catch (e) {
+        if (e instanceof HttpError && e.status === 404) return { tipos: retencionTiposRespaldo(), respaldo: true }
+        throw e
+      }
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+  const tipos = q.data?.tipos ?? (q.isError ? retencionTiposRespaldo() : [])
+  return { ...q, tipos, respaldo: q.data?.respaldo ?? q.isError }
+}
+
+/** Nombre corto por clave (incluye los dados de baja: las retenciones viejas los siguen mostrando). */
+export function useRetencionCortos(): Record<string, string> {
+  const { tipos } = useRetencionTipos(true)
+  return Object.fromEntries(tipos.map(t => [t.clave, t.corto]))
+}
+
+function useInvalidarRetencionTipos() {
+  const qc = useQueryClient()
+  return () => {
+    void qc.invalidateQueries({ queryKey: ['facturacion', 'config', 'retencion-tipos'] })
+    void qc.invalidateQueries({ queryKey: CONFIG_VENTAS_KEYS.valores })
+    // Los mapeos de Contabilidad listan los tipos (Retenciones sufridas).
+    void qc.invalidateQueries({ queryKey: ['contabilidad', 'mapeos'] })
+    void qc.invalidateQueries({ queryKey: ['audit'] })
+  }
+}
+
+/** POST /retencion-tipos. 409 IMPUESTO_IVA_RESERVADO / RETENCION_TIPO_DUPLICADO. */
+export function useCrearRetencionTipo() {
+  const invalidar = useInvalidarRetencionTipos()
+  return useMutation({
+    mutationFn: (body: RetencionTipoVentaInput) => apiPost<RetencionTipoVenta>(`${BASE}/retencion-tipos`, body),
+    onSuccess: invalidar,
+  })
+}
+
+/** PATCH /retencion-tipos/:clave (la clave no se edita). 409 RETENCION_TIPO_SISTEMA / _POR_DEFECTO. */
+export function useEditarRetencionTipo() {
+  const invalidar = useInvalidarRetencionTipos()
+  return useMutation({
+    mutationFn: ({ clave, ...body }: RetencionTipoVentaInput & { clave: string }) =>
+      apiPatch<RetencionTipoVenta>(`${BASE}/retencion-tipos/${encodeURIComponent(clave)}`, body),
+    onSuccess: invalidar,
+  })
+}
+
+// ── Valores por defecto de Ventas (ventas_config, 20260929g) ────────────────
+
+const VALORES_RESPALDO: VentasConfigValores = { retencion_tipo_default: 'iibb' }
+
+/** GET /config. Si el backend no lo tiene (404) o falla, los de siempre. */
+export function useConfigVentasValores() {
+  const q = useQuery({
+    queryKey: CONFIG_VENTAS_KEYS.valores,
+    queryFn: async (): Promise<{ valores: VentasConfigValores; respaldo: boolean }> => {
+      try {
+        return { valores: { ...VALORES_RESPALDO, ...(await apiGet<Partial<VentasConfigValores>>(`${BASE}/config`)) }, respaldo: false }
+      } catch (e) {
+        if (e instanceof HttpError && e.status === 404) return { valores: VALORES_RESPALDO, respaldo: true }
+        throw e
+      }
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+  return { ...q, valores: q.data?.valores ?? VALORES_RESPALDO, respaldo: q.data?.respaldo ?? q.isError }
+}
+
+/** PATCH /config (tab configuracion + flag configurar). */
+export function useGuardarConfigVentas() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: Partial<VentasConfigValores>) => apiPatch<VentasConfigValores>(`${BASE}/config`, body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: CONFIG_VENTAS_KEYS.valores })
+      void qc.invalidateQueries({ queryKey: ['audit'] })
+    },
+  })
+}

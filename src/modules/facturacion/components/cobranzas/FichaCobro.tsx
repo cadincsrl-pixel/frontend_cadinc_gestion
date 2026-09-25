@@ -10,7 +10,8 @@ import {
   useAnularCobro, useAnularImputacion, useBorrarAdjuntoCobro, useCobro,
 } from '../../hooks/useCobranzas'
 import { fmtCuit, fmtFecha, fmtFechaHora, fmtM } from '../../utils/facturacion.utils'
-import { FORMA_LABEL, RETENCION_CORTO } from '../../utils/cobranzas.utils'
+import { FORMA_LABEL, cortoRetencion } from '../../utils/cobranzas.utils'
+import { useRetencionCortos } from '../../hooks/useConfigVentas'
 import { mensajeErrorFacturacion } from '../../utils/facturacion.errores'
 import { descargarReciboPdf, detalleMedio } from '../../utils/reciboPdf'
 import type { VentasCobroAdjuntoTipo, VentasImputacion } from '@/types/domain.types'
@@ -28,6 +29,7 @@ import { ModalCompensacion } from './ModalCompensacion'
 export function FichaCobro({ id, onClose }: { id: number; onClose: () => void }) {
   const toast = useToast()
   const { registrarCobros, anularCobros } = usePermisos('facturacion')
+  const cortos = useRetencionCortos()
   const { data, isLoading, error, refetch } = useCobro(id)
   const anular = useAnularCobro()
   const anularImp = useAnularImputacion()
@@ -63,7 +65,7 @@ export function FichaCobro({ id, onClose }: { id: number; onClose: () => void })
 
   async function pdf() {
     setGenerando(true)
-    try { await descargarReciboPdf(d) } catch { toast('No se pudo generar el PDF', 'err') } finally { setGenerando(false) }
+    try { await descargarReciboPdf(d, cortos) } catch { toast('No se pudo generar el PDF', 'err') } finally { setGenerando(false) }
   }
 
   function verCertificado(retId: number) {
@@ -192,7 +194,7 @@ export function FichaCobro({ id, onClose }: { id: number; onClose: () => void })
             <Tabla cabeza={['Tipo', 'Jurisdicción', 'Certificado', 'Fecha', 'Importe', 'Archivo']} derecha={[4]}>
               {d.retenciones.map(r => (
                 <tr key={r.id} className="border-t border-gris">
-                  <td className="px-2 py-1.5">{RETENCION_CORTO[r.tipo] ?? r.tipo}</td>
+                  <td className="px-2 py-1.5">{cortoRetencion(r.tipo, cortos)}</td>
                   <td className="px-2 py-1.5">{r.jurisdiccion || '—'}</td>
                   <td className="px-2 py-1.5 font-mono">{r.certificado_numero || '—'}</td>
                   <td className="px-2 py-1.5 whitespace-nowrap">{fmtFecha(r.fecha)}</td>

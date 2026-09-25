@@ -370,6 +370,12 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   ARCA_NO_DISPONIBLE:      () => 'ARCA no está respondiendo. Probá de nuevo en unos minutos o cargá los datos a mano.',
   PROVEEDOR_SIN_CUIT:      () => 'El proveedor no tiene CUIT: cargáselo para poder traer sus datos de ARCA.',
 
+  // ── Configuración y jurisdicciones (20260929f) ──
+  CONFIG_INVALIDA:        d => dato(d, 'motivo') === 'jurisdiccion_inexistente_o_inactiva'
+    ? 'Esa jurisdicción no existe o está dada de baja: elegí otra.'
+    : 'Ese valor de configuración no es válido.',
+  JURISDICCION_NO_EXISTE: () => 'La jurisdicción elegida ya no existe: refrescá la pantalla y elegila de nuevo.',
+
   // ── Cheques (20260925) ──
   CHEQUE_ILEGIBLE: () => 'No se pudo leer el cheque en la foto. Sacala de nuevo con más luz y de frente, o cargá los datos a mano.',
 

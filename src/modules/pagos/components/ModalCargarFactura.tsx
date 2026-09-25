@@ -15,8 +15,13 @@ import {
 import { FILA_REPARTO_VACIA, RepartoPorObra, repartoCuadra, type FilaReparto } from './RepartoPorObra'
 import { leerQrDelArchivo } from '../utils/qrFactura'
 import {
-  ALICUOTAS, TIPOS_TRIBUTO, NOMBRE_CBTE_ARCA, ivaDe, ivaNoCuadra, pctDeAlicuota, resumirDesglose,
+  ALICUOTAS, TIPOS_TRIBUTO, NOMBRE_CBTE_ARCA, filaDeTributo, ivaDe, ivaNoCuadra, pctDeAlicuota, resumirDesglose,
+  tributoDeFila, type FilaTributo,
 } from '../utils/desglose'
+import { useConfigPagos } from '../hooks/useConfigPagos'
+import { JurisdiccionSelect } from '@/components/JurisdiccionSelect'
+import { useJurisdicciones } from '@/hooks/useJurisdicciones'
+import { nombreJurisdiccion } from '@/lib/utils/jurisdicciones'
 import { useProveedoresPagos } from '../hooks/useProveedoresPagos'
 import { useConceptosPagos } from '../hooks/useConceptosPagos'
 import {
@@ -93,12 +98,7 @@ export interface FilaIva {
   /** El importe todavía es el sugerido (base × %): cambia solo al tocar la base. */
   auto: boolean
 }
-export interface FilaTributo {
-  tipo: PagosTributoTipo
-  jurisdiccion: string
-  descripcion: string
-  importe: string
-}
+export type { FilaTributo }
 export type Fuente = PagosFuenteCampo | 'manual'
 interface EstadoLectura {
   fase: 'leyendo' | 'lista' | 'error'
@@ -212,7 +212,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
     if (hayDesglose) {
       setVerDesglose(true)
       setFilasIva(p.iva.map(x => ({ alicuota_id: x.alicuota_id, base: String(x.base_imp), importe: String(x.importe), auto: false })))
-      setTributos(p.tributos.map(t => ({ tipo: t.tipo, jurisdiccion: t.jurisdiccion ?? '', descripcion: t.descripcion ?? '', importe: String(t.importe) })))
+      setTributos(p.tributos.map(filaDeTributo))
       setNeto(p.iva.length === 0 && p.neto != null ? String(p.neto) : '')
       setNoGravado(p.no_gravado ? String(p.no_gravado) : '')
       setExento(p.exento ? String(p.exento) : '')
@@ -352,10 +352,10 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
       }
       setFilasIva(filas)
       setNeto(!filas.length && original.neto != null ? String(original.neto) : '')
-      let tr: FilaTributo[] = trib.map(t => ({ tipo: t.tipo, jurisdiccion: t.jurisdiccion ?? '', descripcion: t.descripcion ?? '', importe: String(t.importe) }))
+      let tr: FilaTributo[] = trib.map(filaDeTributo)
       if (!tr.length) {
-        if (Number(original.percepciones ?? 0) > 0) tr.push({ tipo: 'percepcion_iibb', jurisdiccion: '', descripcion: 'Percepciones cargadas sin discriminar: revisá el tipo', importe: String(original.percepciones) })
-        if (Number(original.otros ?? 0) > 0) tr.push({ tipo: 'otro', jurisdiccion: '', descripcion: 'Otros (sin discriminar)', importe: String(original.otros) })
+        if (Number(original.percepciones ?? 0) > 0) tr.push({ tipo: 'percepcion_iibb', jurisdiccion: '', jurisdiccion_id: null, descripcion: 'Percepciones cargadas sin discriminar: revisá el tipo', importe: String(original.percepciones) })
+        if (Number(original.otros ?? 0) > 0) tr.push({ tipo: 'otro', jurisdiccion: '', jurisdiccion_id: null, descripcion: 'Otros (sin discriminar)', importe: String(original.otros) })
       }
       tr = tr.filter(t => Number(t.importe) > 0)
       setTributos(tr)
@@ -610,10 +610,7 @@ export function ModalCargarFactura({ editarId, onClose }: Props) {
           no_gravado: noGravado ? n(noGravado) : null,
           exento: exento ? n(exento) : null,
           iva_detalle: ivaValidas.map(f => ({ alicuota_id: f.alicuota_id, base_imp: n(f.base), importe: n(f.importe) })),
-          tributos: tributosValidos.map(t => ({
-            tipo: t.tipo, jurisdiccion: t.jurisdiccion.trim() || null, descripcion: t.descripcion.trim(),
-            alicuota: null, base_imp: null, importe: n(t.importe),
-          })),
+          tributos: tributosValidos.map(t => tributoDeFila(t, n(t.importe))),
         }
       : {
           neto: null, iva: null, percepciones: null, otros: null, no_gravado: null, exento: null,
@@ -1349,6 +1346,14 @@ export function DesgloseArca(p: {
   }))
   const setTrib = (i: number, cambio: Partial<FilaTributo>) => p.setTributos(tributos.map((t, j) => j === i ? { ...t, ...cambio } : t))
   const sinAlicuotas = filasIva.length === 0
+  // La jurisdicción que propone un tributo nuevo (Compras › Configuración,
+  // 20260929f). Sin catálogo en el backend: «Tucumán» por nombre, como antes.
+  const cfgPagos = useConfigPagos()
+  const { jurisdicciones } = useJurisdicciones()
+  const jurDefaultId = cfgPagos.config.tributos.jurisdiccion_default_id
+  const jurDefault: Pick<FilaTributo, 'jurisdiccion' | 'jurisdiccion_id'> = cfgPagos.respaldo
+    ? { jurisdiccion: 'Tucumán', jurisdiccion_id: null }
+    : { jurisdiccion: nombreJurisdiccion(jurisdicciones, jurDefaultId), jurisdiccion_id: jurDefaultId }
 
   return (
     <div className="border border-gris rounded p-2 bg-gris/20 flex flex-col gap-2">
@@ -1418,10 +1423,17 @@ export function DesgloseArca(p: {
                 onChange={e => setTrib(i, { tipo: e.target.value as PagosTributoTipo })}>
                 {TIPOS_TRIBUTO.map(x => <option key={x.key} value={x.key}>{x.label}</option>)}
               </select>
-              <input value={conJur ? t.jurisdiccion : t.descripcion} disabled={p.disabled} className={chico}
-                placeholder={conJur ? (t.tipo === 'percepcion_municipal' ? 'Municipio' : 'Provincia (ej. Tucumán)') : 'Detalle (opcional)'}
-                title={conJur && t.descripcion ? t.descripcion : undefined}
-                onChange={e => setTrib(i, conJur ? { jurisdiccion: e.target.value } : { descripcion: e.target.value })} />
+              {conJur ? (
+                <div title={t.descripcion || undefined}>
+                  <JurisdiccionSelect disabled={p.disabled} inputClassName={chico}
+                    placeholder={t.tipo === 'percepcion_municipal' ? 'Municipio' : 'Provincia (ej. Tucumán)'}
+                    value={{ id: t.jurisdiccion_id, nombre: t.jurisdiccion }}
+                    onChange={v => setTrib(i, { jurisdiccion_id: v.id, jurisdiccion: v.nombre })} />
+                </div>
+              ) : (
+                <input value={t.descripcion} disabled={p.disabled} className={chico} placeholder="Detalle (opcional)"
+                  onChange={e => setTrib(i, { descripcion: e.target.value })} />
+              )}
               <InputMonto value={t.importe} onChange={v => setTrib(i, { importe: v })} disabled={p.disabled} className="py-1.5 text-xs rounded" />
               <button type="button" disabled={p.disabled} onClick={() => p.setTributos(tributos.filter((_, j) => j !== i))}
                 className="text-rojo hover:bg-rojo-light px-2 py-1 rounded text-xs">✕</button>
@@ -1429,7 +1441,7 @@ export function DesgloseArca(p: {
           )
         })}
         <button type="button" disabled={p.disabled} className="text-[11px] text-azul hover:underline disabled:opacity-50"
-          onClick={() => p.setTributos([...tributos, { tipo: 'percepcion_iibb', jurisdiccion: 'Tucumán', descripcion: '', importe: '' }])}>
+          onClick={() => p.setTributos([...tributos, { tipo: 'percepcion_iibb', ...jurDefault, descripcion: '', importe: '' }])}>
           + Percepción o impuesto
         </button>
       </div>

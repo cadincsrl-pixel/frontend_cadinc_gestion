@@ -7,11 +7,13 @@ import { TABS_POR_MODULO } from '@/lib/config/modulo-tabs'
 import { FacturasTab } from './FacturasTab'
 import { OrdenesTab } from './OrdenesTab'
 import { ProveedoresPagosTab } from './ProveedoresPagosTab'
+import { ConfiguracionTab } from './configuracion/ConfiguracionTab'
 
 const TABS = [
   { key: 'facturas',    icon: '🧾', label: 'Facturas',    sub: 'Facturas de proveedor, aprobación y vencimientos' },
   { key: 'pagos',       icon: '💸', label: 'Pagos',       sub: 'Órdenes de pago, notas de crédito y cheques' },
   { key: 'proveedores', icon: '🏢', label: 'Proveedores', sub: 'Padrón propio: CUIT, alias y CBU' },
+  { key: 'configuracion', icon: '⚙️', label: 'Configuración', sub: 'Jurisdicciones y percepción por defecto' },
 ]
 
 /** «123» → 123; cualquier otra cosa → null. */
@@ -70,6 +72,7 @@ export function PagosPage() {
         )}
         {tab === 'pagos'       && <OrdenesTab key={ficha ?? ''} ficha={ficha} />}
         {tab === 'proveedores' && <ProveedoresPagosTab />}
+        {tab === 'configuracion' && <ConfiguracionTab />}
       </div>
     </div>
   )

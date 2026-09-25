@@ -13,6 +13,7 @@ import type {
   VentasCbteTipoExterno, VentasCobroEstadoDeuda, VentasCobroForma, VentasCreditoEstado, VentasDestinoImputacion,
   VentasRetencionTipo, VentasSaldo,
 } from '@/types/domain.types'
+import type { RetencionTipoVenta } from '@/types/config.types'
 
 // ── Centavos ──────────────────────────────────────────────────────────
 
@@ -40,7 +41,11 @@ export const FORMAS_COBRO: { key: VentasCobroForma; label: string; hint: string 
 ]
 export const FORMA_LABEL = Object.fromEntries(FORMAS_COBRO.map(f => [f.key, f.label])) as Record<VentasCobroForma, string>
 
-/** Los cinco que confirmó el dueño (IIBB, TEM, SUSS, Ganancias, IVA) + otra. */
+/**
+ * Los cinco que confirmó el dueño (IIBB, TEM, SUSS, Ganancias, IVA) + otra.
+ * Desde 20260929g el catálogo vive en la base (Ventas › Configuración ›
+ * Retenciones): esto queda como RESPALDO contra un backend que no lo tiene.
+ */
 export const RETENCION_TIPOS: { key: VentasRetencionTipo; label: string; corto: string; jurisdiccion: string }[] = [
   { key: 'iibb',      label: 'Ingresos Brutos',                    corto: 'IIBB',      jurisdiccion: 'Tucumán' },
   { key: 'tem',       label: 'TEM (Tributo Económico Municipal)',  corto: 'TEM',       jurisdiccion: 'San Miguel de Tucumán' },
@@ -50,6 +55,24 @@ export const RETENCION_TIPOS: { key: VentasRetencionTipo; label: string; corto: 
   { key: 'otra',      label: 'Otra',                               corto: 'Otra',      jurisdiccion: '' },
 ]
 export const RETENCION_CORTO = Object.fromEntries(RETENCION_TIPOS.map(r => [r.key, r.corto])) as Record<VentasRetencionTipo, string>
+
+/** Nombre corto de una retención: el del catálogo si vino, si no el de respaldo, si no la clave. */
+export function cortoRetencion(tipo: string, cortos?: Readonly<Record<string, string>>): string {
+  return cortos?.[tipo] ?? RETENCION_CORTO[tipo] ?? tipo
+}
+
+/** El catálogo de respaldo con la forma de la API (sin ids de jurisdicción: van por nombre). */
+export function retencionTiposRespaldo(): RetencionTipoVenta[] {
+  const impuesto: Record<string, RetencionTipoVenta['impuesto']> = {
+    iibb: 'iibb', tem: 'municipal', suss: 'suss', ganancias: 'ganancias', iva: 'iva', otra: 'otro',
+  }
+  return RETENCION_TIPOS.map((r, i) => ({
+    clave: r.key, nombre: r.label, corto: r.corto, impuesto: impuesto[r.key] ?? 'otro',
+    pide_jurisdiccion: r.jurisdiccion !== '', jurisdiccion_default_id: null,
+    jurisdiccion_default_nombre: r.jurisdiccion || null,
+    sistema: true, activo: true, orden: (i + 1) * 10, retenciones: 0, mapeado: false,
+  }))
+}
 
 export const esFormaCheque = (f: VentasCobroForma | string) => f === 'cheque' || f === 'echeq'
 

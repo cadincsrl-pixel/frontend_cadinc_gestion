@@ -5,13 +5,16 @@ import { Aviso } from '../FichaFactura'
 import { ProductosCard } from './ProductosCard'
 import { PuntosVentaCard } from './PuntosVentaCard'
 import { ParametrosCard } from './ParametrosCard'
+import { RetencionTiposCard } from './RetencionTiposCard'
+import { JurisdiccionesEditor } from '@/components/catalogos/JurisdiccionesEditor'
 
 /**
  * Ventas › Configuración (tanda 6). Ver lo puede cualquiera con la tab;
  * editar pide además el flag `configurar` (los botones quedan deshabilitados
  * con el motivo). Secciones: Productos (20260929b), Puntos de venta
- * (20260929d) y Montos de ARCA (20260929e); las demás (retenciones, valores
- * por defecto) se suman acá.
+ * (20260929d), Montos de ARCA (20260929e), Retenciones sufridas (20260929g)
+ * y Jurisdicciones (20260929f, compartido con Compras); los valores por
+ * defecto de la factura se suman acá.
  */
 export function ConfiguracionTab() {
   const { configurar } = usePermisos('facturacion')
@@ -25,6 +28,8 @@ export function ConfiguracionTab() {
       <ProductosCard />
       <PuntosVentaCard />
       <ParametrosCard />
+      <RetencionTiposCard />
+      <JurisdiccionesEditor />
       <div className="text-[11px] text-gris-dark">Los cambios pueden tardar hasta un minuto en verse en todas las pantallas.</div>
     </div>
   )

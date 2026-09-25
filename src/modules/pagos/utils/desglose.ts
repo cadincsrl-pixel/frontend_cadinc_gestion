@@ -22,6 +22,38 @@ export const ALICUOTAS: { id: PagosAlicuotaId; pct: number; label: string }[] = 
 ]
 export const pctDeAlicuota = (id: number) => ALICUOTAS.find(a => a.id === id)?.pct ?? 0
 
+/**
+ * Un renglón de percepción/tributo en el formulario. `jurisdiccion` es el
+ * nombre (o el texto viejo si no resolvió); `jurisdiccion_id` el del catálogo
+ * (20260929f): con id, la base pisa el texto con el nombre.
+ */
+export interface FilaTributo {
+  tipo:            PagosTributoTipo
+  jurisdiccion:    string
+  jurisdiccion_id: number | null
+  descripcion:     string
+  importe:         string
+}
+
+/** Lo que viene del backend (ficha, lectura IA) → fila del formulario. */
+export function filaDeTributo(t: {
+  tipo: PagosTributoTipo; jurisdiccion?: string | null; jurisdiccion_id?: number | null
+  descripcion?: string | null; importe: number | string
+}): FilaTributo {
+  return {
+    tipo: t.tipo, jurisdiccion: t.jurisdiccion ?? '', jurisdiccion_id: t.jurisdiccion_id ?? null,
+    descripcion: t.descripcion ?? '', importe: String(t.importe),
+  }
+}
+
+/** Fila → cuerpo de la API. Manda el id y el nombre (un backend viejo ignora el id y usa el texto). */
+export function tributoDeFila(t: FilaTributo, importe: number) {
+  return {
+    tipo: t.tipo, jurisdiccion: t.jurisdiccion.trim() || null, jurisdiccion_id: t.jurisdiccion_id,
+    descripcion: t.descripcion.trim(), alicuota: null, base_imp: null, importe,
+  }
+}
+
 export const TIPOS_TRIBUTO: { key: PagosTributoTipo; label: string; conJurisdiccion: boolean }[] = [
   { key: 'percepcion_iibb',      label: 'Percepción IIBB',       conJurisdiccion: true },
   { key: 'percepcion_iva',       label: 'Percepción IVA',        conJurisdiccion: false },

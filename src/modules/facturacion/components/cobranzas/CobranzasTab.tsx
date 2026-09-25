@@ -10,7 +10,8 @@ import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
 import { fetchCobro, useAmbienteCobranzas, useAnularCobro, useCobros, type CobrosFiltro } from '../../hooks/useCobranzas'
 import { fmtCuit, fmtFecha, fmtM } from '../../utils/facturacion.utils'
-import { FORMA_LABEL, RETENCION_CORTO } from '../../utils/cobranzas.utils'
+import { FORMA_LABEL, cortoRetencion } from '../../utils/cobranzas.utils'
+import { useRetencionCortos } from '../../hooks/useConfigVentas'
 import { mensajeErrorFacturacion } from '../../utils/facturacion.errores'
 import { descargarReciboPdf } from '../../utils/reciboPdf'
 import type { VentasCobro } from '@/types/domain.types'
@@ -28,6 +29,7 @@ const PAGE_SIZE = 50
 export function CobranzasTab() {
   const toast = useToast()
   const { puedeVer, registrarCobros, anularCobros } = usePermisos('facturacion')
+  const cortos = useRetencionCortos()
   const ambiente = useAmbienteCobranzas()
 
   const [filtro, setFiltro] = useState<CobrosFiltro>({})
@@ -55,7 +57,7 @@ export function CobranzasTab() {
 
   async function pdf(id: number) {
     setPdfId(id)
-    try { await descargarReciboPdf(await fetchCobro(id)) }
+    try { await descargarReciboPdf(await fetchCobro(id), cortos) }
     catch (e) { toast(mensajeErrorFacturacion(e), 'err') }
     finally { setPdfId(null) }
   }
@@ -131,7 +133,7 @@ export function CobranzasTab() {
                         {(c.medios_formas ?? []).map(f => FORMA_LABEL[f] ?? f).join(', ') || '—'}
                         {(c.retenciones_resumen ?? []).length > 0 && (
                           <div className="text-[11px] text-gris-dark">
-                            Ret.: {c.retenciones_resumen.map(r => `${RETENCION_CORTO[r.tipo] ?? r.tipo} ${fmtM(r.importe)}`).join(' · ')}
+                            Ret.: {c.retenciones_resumen.map(r => `${cortoRetencion(r.tipo, cortos)} ${fmtM(r.importe)}`).join(' · ')}
                           </div>
                         )}
                       </td>

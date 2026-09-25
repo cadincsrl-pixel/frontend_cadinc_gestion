@@ -20,7 +20,7 @@ import { EMPRESA } from '@/lib/config/empresa'
 import type { VentasCobroDetalle } from '@/types/domain.types'
 import { importeALetras } from './numeroALetras'
 import { fmtCuit, fmtFecha, fmtFechaHora, fmtN } from './facturacion.utils'
-import { FORMA_LABEL, RETENCION_CORTO, esFormaCheque } from './cobranzas.utils'
+import { FORMA_LABEL, cortoRetencion, esFormaCheque } from './cobranzas.utils'
 import { logoDataUrl } from './facturaPdf'
 import {
   CARBON, MARGEN_X, NARANJA, NARANJA_SUAVE, ROJO, TENUE, cajaFina, datosFiscales, descargarPdf, encabezado,
@@ -32,8 +32,8 @@ export function nombreArchivoRecibo(d: VentasCobroDetalle): string {
   return `${d.cobro.estado === 'anulado' ? 'ANULADO_' : ''}RC_${n}_${slugArchivo(d.cobro.cliente_razon_social)}.pdf`
 }
 
-export async function descargarReciboPdf(d: VentasCobroDetalle): Promise<void> {
-  descargarPdf(armarReciboDoc(d, { logo: await logoDataUrl() }), nombreArchivoRecibo(d))
+export async function descargarReciboPdf(d: VentasCobroDetalle, cortos?: Readonly<Record<string, string>>): Promise<void> {
+  descargarPdf(armarReciboDoc(d, { logo: await logoDataUrl(), cortos }), nombreArchivoRecibo(d))
 }
 
 /** El detalle de un medio de cobro en una línea. */
@@ -54,7 +54,10 @@ export function detalleMedio(m: VentasCobroDetalle['medios'][number]): string {
 }
 
 /** El documento, sin descargar (testeable fuera del navegador). */
-export function armarReciboDoc(d: VentasCobroDetalle, opts: { logo: string | null }): TDocumentDefinitions {
+export function armarReciboDoc(
+  d: VentasCobroDetalle,
+  opts: { logo: string | null; /** Nombre corto por clave, del catálogo (20260929g). */ cortos?: Readonly<Record<string, string>> },
+): TDocumentDefinitions {
   const c = d.cobro
   const anulado = c.estado === 'anulado'
   const homo = c.es_homologacion
@@ -113,7 +116,7 @@ export function armarReciboDoc(d: VentasCobroDetalle, opts: { logo: string | nul
         body: [
           [th('Tipo'), th('Jurisdicción'), th('Certificado'), th('Fecha'), th('Importe', 'right')],
           ...d.retenciones.map(r => [
-            td(RETENCION_CORTO[r.tipo] ?? r.tipo), td(r.jurisdiccion || '—'), td(r.certificado_numero || '—'),
+            td(cortoRetencion(r.tipo, opts.cortos)), td(r.jurisdiccion || '—'), td(r.certificado_numero || '—'),
             td(fmtFecha(r.fecha)), td(fmtN(r.importe), 'right'),
           ]),
         ],

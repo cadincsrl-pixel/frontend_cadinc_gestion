@@ -18,13 +18,16 @@ import {
 import { useCuentasFce } from '../../hooks/useClientesFacturacion'
 import { fmtM, hoyAR } from '../../utils/facturacion.utils'
 import {
-  FORMAS_COBRO, RETENCION_TIPOS, aCent, aplicarAutomatico, claveSaldo, esFormaCheque, imputacionesDe, validarAplicacion,
+  FORMAS_COBRO, aCent, aplicarAutomatico, claveSaldo, esFormaCheque, imputacionesDe, validarAplicacion,
 } from '../../utils/cobranzas.utils'
 import { errorDeCampoFacturacion, leerCuerpoError, mensajeErrorFacturacion } from '../../utils/facturacion.errores'
 import type {
   VentasCobroAdjuntoInput, VentasCobroAdjuntoTipo, VentasCobroDetalle, VentasCobroForma, VentasCobroInput, VentasRetencionTipo,
 } from '@/types/domain.types'
 import { Aviso } from '../FichaFactura'
+import { useConfigVentasValores, useRetencionTipos } from '../../hooks/useConfigVentas'
+import { JurisdiccionSelect } from '@/components/JurisdiccionSelect'
+import type { RetencionTipoVenta } from '@/types/config.types'
 import { ClienteCombobox, GrillaAplicacion, Seccion, TotalesAplicacion, type FilaPendiente } from './Comun'
 
 /**
@@ -47,7 +50,6 @@ import { ClienteCombobox, GrillaAplicacion, Seccion, TotalesAplicacion, type Fil
  */
 
 const FORMAS = ['transferencia', 'cheque', 'echeq', 'efectivo', 'otro'] as const
-const TIPOS_RET = ['iibb', 'tem', 'suss', 'ganancias', 'iva', 'otra'] as const
 
 const importeValido = (v: string) => v !== '' && Number.isFinite(Number(v)) && Number(v) > 0
 
@@ -73,8 +75,11 @@ const medioSchema = z.object({
 })
 
 const retencionSchema = z.object({
-  tipo:               z.enum(TIPOS_RET),
+  // Clave del catálogo de tipos (Ventas › Configuración, 20260929g).
+  tipo:               z.string().min(1, 'Elegí el tipo'),
   jurisdiccion:       z.string(),
+  /** Del catálogo de jurisdicciones (20260929f); null = texto libre o sin jurisdicción. */
+  jurisdiccion_id:    z.number().nullable(),
   certificado_numero: z.string(),
   fecha:              z.string().min(1, 'Fecha'),
   importe:            z.string().refine(importeValido, 'Poné el importe'),
@@ -107,9 +112,16 @@ const MEDIO_VACIO: MedioForm = {
   forma: 'transferencia', importe: '', cuenta_bancaria_id: '', cheque_numero: '', cheque_banco: '',
   cheque_librador: '', cheque_fecha_cobro: '', obs: '',
 }
-const retencionVacia = (): RetencionForm => ({
-  tipo: 'iibb', jurisdiccion: 'Tucumán', certificado_numero: '', fecha: hoyAR(), importe: '', obs: '',
+/** Retención nueva con el tipo por defecto (Configuración) y su jurisdicción por defecto. */
+const retencionVacia = (t: RetencionTipoVenta | undefined): RetencionForm => ({
+  tipo: t?.clave ?? 'iibb', ...jurisdiccionDelTipo(t), certificado_numero: '', fecha: hoyAR(), importe: '', obs: '',
 })
+
+/** La jurisdicción que propone un tipo: la suya por defecto si la pide; si no, ninguna. */
+function jurisdiccionDelTipo(t: RetencionTipoVenta | undefined): Pick<RetencionForm, 'jurisdiccion' | 'jurisdiccion_id'> {
+  if (!t?.pide_jurisdiccion) return { jurisdiccion: '', jurisdiccion_id: null }
+  return { jurisdiccion: t.jurisdiccion_default_nombre ?? '', jurisdiccion_id: t.jurisdiccion_default_id }
+}
 
 /** El certificado de una retención: se sube apenas se elige (queda pendiente hasta guardar el cobro). */
 type EstadoAdjunto =
@@ -127,7 +139,7 @@ interface DocCliente {
   error?:  string
 }
 
-const CAMPOS_FORM = /^(fecha|cliente_id|obs|medios\.\d+\.(forma|importe|cuenta_bancaria_id|cheque_numero|cheque_banco|cheque_librador|cheque_fecha_cobro|obs)|retenciones\.\d+\.(tipo|jurisdiccion|certificado_numero|fecha|importe|obs))$/
+const CAMPOS_FORM = /^(fecha|cliente_id|obs|medios\.\d+\.(forma|importe|cuenta_bancaria_id|cheque_numero|cheque_banco|cheque_librador|cheque_fecha_cobro|obs)|retenciones\.\d+\.(tipo|jurisdiccion|jurisdiccion_id|certificado_numero|fecha|importe|obs))$/
 
 interface Props {
   /** Precarga el cliente (desde Deudores / estado de cuenta). */
@@ -142,6 +154,9 @@ export function ModalCobro({ clienteInicial, onClose, onGuardado }: Props) {
   const ambiente = useAmbienteCobranzas()
   const registrar = useRegistrarCobro()
   const cuentas = useCuentasFce()
+  const tiposRet = useRetencionTipos()
+  const { valores } = useConfigVentasValores()
+  const tipoRetDefault = tiposRet.tipos.find(t => t.clave === valores.retencion_tipo_default) ?? tiposRet.tipos[0]
 
   const [abierta, setAbierta] = useState({ medios: true, retenciones: false, documentacion: false, aplicacion: true })
   // La aplicación es DEL cliente elegido: si cambia el cliente, la anterior no sirve (se descarta sola).
@@ -295,7 +310,8 @@ export function ModalCobro({ clienteInicial, onClose, onGuardado }: Props) {
       retenciones: d.retenciones.map((r, i) => {
         const a = adjuntos[retenciones.fields[i]?.id ?? '']
         return {
-          tipo: r.tipo as VentasRetencionTipo, jurisdiccion: r.jurisdiccion.trim(), certificado_numero: r.certificado_numero.trim(),
+          tipo: r.tipo as VentasRetencionTipo, jurisdiccion: r.jurisdiccion.trim(), jurisdiccion_id: r.jurisdiccion_id,
+          certificado_numero: r.certificado_numero.trim(),
           fecha: r.fecha, importe: Number(r.importe), obs: r.obs.trim(),
           ...(a?.estado === 'ok' ? a.adj : {}),
         }
@@ -420,7 +436,7 @@ export function ModalCobro({ clienteInicial, onClose, onGuardado }: Props) {
         <Seccion titulo="Retenciones" abierta={abierta.retenciones}
           onToggle={() => setAbierta(a => ({ ...a, retenciones: !a.retenciones }))}
           resumen={retenciones.fields.length ? `${retenciones.fields.length} · ${fmtM(retCent / 100)}` : 'ninguna'}
-          acciones={<Button type="button" size="sm" variant="secondary" onClick={() => retenciones.append(retencionVacia())}>+ Retención</Button>}>
+          acciones={<Button type="button" size="sm" variant="secondary" onClick={() => retenciones.append(retencionVacia(tipoRetDefault))}>+ Retención</Button>}>
           {retenciones.fields.length === 0 && (
             <span className="text-xs text-gris-dark italic">Si el cliente retuvo IIBB, TEM, SUSS, Ganancias o IVA, cargá el certificado: suma al total del cobro.</span>
           )}
@@ -431,11 +447,16 @@ export function ModalCobro({ clienteInicial, onClose, onGuardado }: Props) {
               <div key={f.id} className="grid grid-cols-2 sm:grid-cols-6 gap-2 items-start border-b border-gris pb-3 last:border-0 last:pb-0">
                 <Select label="Tipo" {...register(`retenciones.${i}.tipo`, {
                   onChange: ev => {
-                    const t = RETENCION_TIPOS.find(x => x.key === ev.target.value)
-                    setValue(`retenciones.${i}.jurisdiccion`, t?.jurisdiccion ?? '')
+                    const j = jurisdiccionDelTipo(tiposRet.tipos.find(x => x.clave === ev.target.value))
+                    setValue(`retenciones.${i}.jurisdiccion`, j.jurisdiccion)
+                    setValue(`retenciones.${i}.jurisdiccion_id`, j.jurisdiccion_id)
                   },
-                })} options={RETENCION_TIPOS.map(x => ({ value: x.key, label: x.corto }))} />
-                <Input label="Jurisdicción" {...register(`retenciones.${i}.jurisdiccion`)} />
+                })} error={e?.tipo?.message} options={tiposRet.tipos.map(x => ({ value: x.clave, label: x.corto }))} />
+                <Controller control={control} name={`retenciones.${i}.jurisdiccion_id`} render={({ field }) => (
+                  <JurisdiccionSelect label="Jurisdicción" placeholder="Opcional"
+                    value={{ id: field.value, nombre: retencionesW?.[i]?.jurisdiccion ?? '' }}
+                    onChange={v => { field.onChange(v.id); setValue(`retenciones.${i}.jurisdiccion`, v.nombre) }} />
+                )} />
                 <Input label="N° de certificado" {...register(`retenciones.${i}.certificado_numero`)} />
                 <Input label="Fecha" type="date" max={hoyAR()} {...register(`retenciones.${i}.fecha`)} error={e?.fecha?.message} />
                 <Controller control={control} name={`retenciones.${i}.importe`} render={({ field }) => (
