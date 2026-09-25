@@ -9,7 +9,7 @@ import {
   esEmisionIncierta, invalidarFacturacion, reconciliarFacturaVenta, useEmitirFacturaVenta,
 } from '../hooks/useFacturacion'
 import { codigoErrorFacturacion, leerCuerpoError, mensajeErrorFacturacion } from '../utils/facturacion.errores'
-import { cortoTipo, fmtDoc, fmtFecha, fmtM, mensajesArca, nombreTipo, obraDeFactura } from '../utils/facturacion.utils'
+import { cortoTipo, etiquetaProducto, fmtDoc, fmtFecha, fmtM, mensajesArca, nombreTipo, obraDeFactura } from '../utils/facturacion.utils'
 import { descargarFacturaPdf } from '../utils/facturaPdf'
 import type { VentasArcaEstado, VentasFacturaFJ } from '@/types/domain.types'
 import { Aviso, MensajesArca } from './FichaFactura'
@@ -196,7 +196,7 @@ export function ModalConfirmarEmision({ fj, arca, onClose }: Props) {
               <span className="text-gris-dark">Cliente</span><span className="font-semibold">{f.rec_razon_social}</span>
               <span className="text-gris-dark">Documento</span><span className="font-mono">{fmtDoc(f.rec_doc_tipo, f.rec_doc_nro)}</span>
               <span className="text-gris-dark">Fecha</span><span>{fmtFecha(f.fecha_cbte)}</span>
-              <span className="text-gris-dark">Producto</span><span>{f.producto === 'TRANSPORTE' ? 'Transporte' : `Avance de obra · ${obraDeFactura(f) ?? 'sin obra'}`}</span>
+              <span className="text-gris-dark">Producto</span><span>{etiquetaProducto(f.producto)} · {obraDeFactura(f) ?? 'sin obra'}</span>
               {f.es_nc && f.asociada_numero_fmt && (<><span className="text-gris-dark">Corrige</span><span className="font-mono">{cortoTipo(f.asociada_cbte_tipo)} {f.asociada_numero_fmt}</span></>)}
               {f.cbte_tipo === 201 && (<>
                 <span className="text-gris-dark">Vto. del pago</span><span>{fmtFecha(f.fch_vto_pago)}</span>

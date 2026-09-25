@@ -1,7 +1,7 @@
 'use client'
 
 import { Button } from '@/components/ui/Button'
-import { ESTADO_META, cortoTipo, fmtDoc, fmtFecha, fmtM, numeroTxt, obraDeFactura } from '../utils/facturacion.utils'
+import { ESTADO_META, cortoTipo, etiquetaProducto, fmtDoc, fmtFecha, fmtM, numeroTxt, obraDeFactura } from '../utils/facturacion.utils'
 import type { VentasFactura } from '@/types/domain.types'
 import { EstadoCobroBadge } from './cobranzas/Comun'
 
@@ -123,7 +123,7 @@ export function FacturasTabla({ items, onAbrir, onVerificar, verificandoId, emit
                 </td>
                 <td className="px-3 py-2 text-xs whitespace-nowrap cursor-pointer" onClick={() => onAbrir(f.id)}>{fmtFecha(f.fecha_cbte)}</td>
                 <td className="px-3 py-2 text-xs cursor-pointer" onClick={() => onAbrir(f.id)}>
-                  <div className="font-semibold">{f.producto === 'TRANSPORTE' ? 'Transporte' : 'Avance de obra'}</div>
+                  <div className="font-semibold">{etiquetaProducto(f.producto)}</div>
                   <div className="text-gris-dark truncate max-w-[260px]" title={obraDeFactura(f) ?? undefined}>{obraDeFactura(f) ?? '—'}</div>
                 </td>
                 <td className="px-3 py-2 text-right font-mono text-xs tabular-nums cursor-pointer" onClick={() => onAbrir(f.id)}>
@@ -176,7 +176,7 @@ export function FacturasTabla({ items, onAbrir, onVerificar, verificandoId, emit
               )}
               <div className="flex items-baseline justify-between gap-2 mt-1.5">
                 <div className="text-[11px] text-gris-dark">
-                  {fmtFecha(f.fecha_cbte)} · {f.producto === 'TRANSPORTE' ? 'Transporte' : (obraDeFactura(f) ?? 'Avance de obra')}
+                  {fmtFecha(f.fecha_cbte)} · {obraDeFactura(f) ?? etiquetaProducto(f.producto)}
                 </div>
                 <div className="font-mono text-sm font-bold tabular-nums">{f.es_nc ? '−' : ''}{fmtM(f.imp_total)}</div>
               </div>

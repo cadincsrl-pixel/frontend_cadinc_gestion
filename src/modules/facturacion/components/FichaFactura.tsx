@@ -9,7 +9,7 @@ import {
   useBorrarFacturaVenta, useDescartarFacturaVenta, useFacturaVenta, useReconciliarFacturaVenta, useVolverABorrador,
 } from '../hooks/useFacturacion'
 import {
-  ALICUOTA_LABEL, CONDICIONES_IVA, ESTADO_META, cortoTipo, fmtCant, fmtDoc, fmtFecha, fmtFechaHora, fmtM, fmtPrecio,
+  ALICUOTA_LABEL, CONDICIONES_IVA, ESTADO_META, cortoTipo, etiquetaProducto, fmtCant, fmtDoc, fmtFecha, fmtFechaHora, fmtM, fmtPrecio,
   mensajesArca, numeroTxt, resultadoReconciliacion, obraDeFactura,
 } from '../utils/facturacion.utils'
 import { codigoErrorFacturacion, mensajeErrorFacturacion } from '../utils/facturacion.errores'
@@ -273,7 +273,10 @@ export function FichaFactura({ id, onClose, onEditar, onNotaCredito, onEmitir, o
           <Dato label="Documento" valor={fmtDoc(f.rec_doc_tipo, f.rec_doc_nro)} />
           <Dato label="Condición IVA" valor={CONDICIONES_IVA[f.rec_condicion_iva_id] ?? String(f.rec_condicion_iva_id)} />
           <Dato label="Domicilio" valor={f.rec_domicilio || '—'} />
-          <Dato label="Producto" valor={f.producto === 'TRANSPORTE' ? 'Transporte' : 'Avance de obra'} />
+          <Dato label="Producto" valor={etiquetaProducto(f.producto)} />
+          {f.fch_serv_desde && f.fch_serv_hasta && (
+            <Dato label="Período facturado" valor={`${fmtFecha(f.fch_serv_desde)} al ${fmtFecha(f.fch_serv_hasta)}`} />
+          )}
           <Dato label="Obra / centro de costo" valor={obraDeFactura(f) ?? '—'} />
           <Dato label="Provincias" valor={`${f.provincia_origen} → ${f.provincia_destino}`} />
           <Dato label="Condición de pago" valor={f.condicion_pago} />

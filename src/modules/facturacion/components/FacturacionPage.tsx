@@ -12,6 +12,7 @@ import { ImpuestosTab } from './impuestos/ImpuestosTab'
 import { CobranzasTab } from './cobranzas/CobranzasTab'
 import { DeudoresTab } from './cobranzas/DeudoresTab'
 import { SaldosInicialesTab } from './cobranzas/SaldosInicialesTab'
+import { ConfiguracionTab } from './configuracion/ConfiguracionTab'
 
 const TABS = [
   { key: 'facturas',  icon: '🧮', label: 'Facturas',  sub: 'Facturas y notas de crédito A y B contra ARCA' },
@@ -20,6 +21,7 @@ const TABS = [
   { key: 'cobranzas', icon: '💰', label: 'Cobranzas', sub: 'Recibos (RC): medios, retenciones y aplicación a facturas; compensación de notas de crédito' },
   { key: 'deudores',  icon: '📒', label: 'Deudores',  sub: 'Qué debe cada cliente, desde cuándo, y su estado de cuenta' },
   { key: 'saldos_iniciales', icon: '📂', label: 'Saldos iniciales', sub: 'Facturas emitidas en Finnegans o en ARCA antes del sistema que siguen abiertas' },
+  { key: 'configuracion', icon: '⚙️', label: 'Configuración', sub: 'Productos de venta (y, de a poco, el resto de lo que hoy está fijo en el sistema)' },
 ]
 
 export function FacturacionPage() {
@@ -70,6 +72,7 @@ export function FacturacionPage() {
         {tab === 'cobranzas' && <CobranzasTab />}
         {tab === 'deudores'  && <DeudoresTab />}
         {tab === 'saldos_iniciales' && <SaldosInicialesTab />}
+        {tab === 'configuracion' && <ConfiguracionTab />}
       </div>
     </div>
   )

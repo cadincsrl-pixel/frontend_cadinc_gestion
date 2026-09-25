@@ -38,3 +38,33 @@ export type EmpresaEditable = Pick<EmpresaApi,
   'razon_social' | 'nombre_fantasia' | 'condicion_iva' | 'iibb' | 'inicio_actividades'
   | 'domicilio_calle' | 'calle_factura' | 'localidad' | 'provincia' | 'codigo_postal'
   | 'telefono' | 'email'>
+
+/** GET /api/facturacion/productos (20260929b). Ventas › Configuración › Productos. */
+export interface ProductoVenta {
+  id:            number
+  nombre:        string
+  descripcion:   string
+  /** 1 productos · 2 servicios · 3 productos y servicios (FEParamGetTiposConcepto). */
+  concepto_arca: 1 | 2 | 3
+  /** La factura exige obra (el centro de costo). */
+  pide_obra:     boolean
+  /** La factura exige período de servicio (FchServDesde/Hasta). Solo concepto 2/3. */
+  pide_periodo:  boolean
+  activo:        boolean
+  orden:         number
+  /** Facturas (no descartadas) que lo usan. */
+  facturas:      number
+  /** ¿Tiene cuenta en Contabilidad › Mapeos (Ventas por producto)? */
+  mapeado:       boolean
+}
+
+/** POST (alta) / PATCH (parcial, + `activo`) de un producto de venta. */
+export interface ProductoVentaInput {
+  nombre?:        string
+  descripcion?:   string
+  concepto_arca?: 1 | 2 | 3
+  pide_obra?:     boolean
+  pide_periodo?:  boolean
+  orden?:         number
+  activo?:        boolean
+}

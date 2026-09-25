@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/Button'
 import { Combobox } from '@/components/ui/Combobox'
 import { useObrasFacturacion, type FacturasFiltro } from '../hooks/useFacturacion'
 import { useClientesVenta } from '../hooks/useClientesFacturacion'
-import { ESTADOS, PRODUCTOS, TIPOS_CBTE, fmtCuit } from '../utils/facturacion.utils'
+import { useProductosVenta } from '../hooks/useConfigVentas'
+import { ESTADOS, TIPOS_CBTE, etiquetaProducto, fmtCuit } from '../utils/facturacion.utils'
 import type { VentasCbteTipo, VentasEstado, VentasProducto } from '@/types/domain.types'
 
 /**
@@ -27,6 +28,9 @@ export function FiltrosFacturas({ filtro, patch }: Props) {
 
   const clientes = useClientesVenta('', true)
   const obras = useObrasFacturacion()
+  // Todos, también los dados de baja: se filtran facturas viejas. Por nombre
+  // (la foto que guarda la factura), que el backend viejo también entiende.
+  const productos = useProductosVenta(true)
 
   const opcionesCliente = useMemo(
     () => (clientes.data ?? []).map(c => ({
@@ -108,7 +112,9 @@ export function FiltrosFacturas({ filtro, patch }: Props) {
               <select className={selCls} value={filtro.producto ?? ''}
                 onChange={e => patch({ producto: (e.target.value || undefined) as VentasProducto | undefined })}>
                 <option value="">Todos</option>
-                {PRODUCTOS.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
+                {productos.productos.map(p => (
+                  <option key={p.id} value={p.nombre}>{etiquetaProducto(p.nombre)}{p.activo ? '' : ' (baja)'}</option>
+                ))}
               </select>
             </div>
             <div>

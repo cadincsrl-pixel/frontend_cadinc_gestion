@@ -3763,7 +3763,12 @@ export type VentasEstado =
 export type VentasCbteTipo = 1 | 3 | 6 | 8 | 201 | 203
 /** Opción de transferencia de la FCE: Sistema de Circulación Abierta / Agente de Depósito Colectivo. */
 export type VentasTransmisionFce = 'SCA' | 'ADC'
-export type VentasProducto = 'AVANCE DE OBRA' | 'TRANSPORTE'
+/**
+ * Nombre de un producto de venta. Desde 20260929b es un catálogo editable
+ * (Ventas › Configuración › Productos, `ProductoVenta` en config.types): la
+ * factura guarda `producto_id` y este nombre como foto.
+ */
+export type VentasProducto = string
 /** Ids de alícuota de ARCA: 3 = 0 %, 4 = 10,5 %, 5 = 21 %, 6 = 27 %, 8 = 5 %, 9 = 2,5 %. */
 export type VentasAlicuotaId = 3 | 4 | 5 | 6 | 8 | 9
 /** 80 CUIT, 86 CUIL, 96 DNI, 99 sin identificar. */
@@ -3941,6 +3946,11 @@ export interface VentasFactura {
   rec_domicilio:        string
   obra_cod:             string | null
   producto:             VentasProducto
+  /** Catálogo de productos (20260929b). Ausente contra un backend viejo. */
+  producto_id?:         number | null
+  /** Período de servicio (concepto 2/3, 20260929b). null = el día de la factura. */
+  fch_serv_desde?:      string | null
+  fch_serv_hasta?:      string | null
   /**
    * Foto «COD — Nombre» de la obra que guarda la base al guardar (20260924h).
    * No se manda: la deriva la RPC. En las viejas de homologación es el `cc`.
@@ -4106,8 +4116,13 @@ export interface VentasFacturaInput {
     /** Lo calcula el sistema desde el cliente (y la asociada en una NC); el backend lo vuelve a derivar. */
     cbte_tipo:          VentasCbteTipo
     cliente_id:         number
+    /** Foto del nombre; manda `producto_id` (el backend viejo solo lee el nombre). */
     producto:           VentasProducto
-    /** La obra es el centro de costo: obligatoria con AVANCE DE OBRA. */
+    producto_id?:       number | null
+    /** Período de servicio (20260929b): los dos o ninguno. */
+    fch_serv_desde?:    string | null
+    fch_serv_hasta?:    string | null
+    /** La obra es el centro de costo: obligatoria si el producto la pide. */
     obra_cod?:          string | null
     fecha_cbte?:        string
     provincia_origen?:  string

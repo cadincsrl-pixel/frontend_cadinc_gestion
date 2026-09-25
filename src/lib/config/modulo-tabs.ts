@@ -104,6 +104,8 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
     { key: 'cobranzas',        label: 'Cobranzas',        icon: '💰', meta: 'Recibos, retenciones y aplicación a facturas' },
     { key: 'deudores',         label: 'Deudores',         icon: '📒', meta: 'Saldo por cliente, antigüedad y estado de cuenta' },
     { key: 'saldos_iniciales', label: 'Saldos iniciales', icon: '📂', meta: 'Facturas de Finnegans / ARCA que siguen abiertas' },
+    // Tanda 6 (20260929b…): editar pide además el flag `configurar`.
+    { key: 'configuracion', label: 'Configuración', icon: '⚙️', meta: 'Productos, puntos de venta, montos ARCA, retenciones y valores por defecto' },
   ],
   // Contabilidad fase 1 (20260926). El orden importa: `ContabilidadPage`
   // redirige al primer tab permitido.

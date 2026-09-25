@@ -17,11 +17,13 @@ import {
   useCrearFacturaVenta, useEditarFacturaVenta, useFacturaVenta, useObrasFacturacion,
 } from '../hooks/useFacturacion'
 import { useClientesVenta, useCuentasFce, useFceCliente } from '../hooks/useClientesFacturacion'
+import { useProductosVenta } from '../hooks/useConfigVentas'
 import { calcularTotales } from '../utils/facturacion.calculos'
 import {
   ALICUOTAS_UI, ALICUOTA_LABEL, CONDICIONES_IVA, CONDICION_PAGO_DEFAULT, MONTO_MINIMO_FCE, PRODUCTOS, PROVINCIAS,
-  PROVINCIA_DEFAULT, TIPOS_CBTE, TRANSMISIONES_FCE, UNIDAD_DEFAULT, correspondeFce, esTipoFce, esTipoNc, fmtDoc, fmtFecha,
-  fmtM, hoyAR, letraDeCliente, letraDeTipo, requiereIdentificacion, tipoPara, TOPE_CF_IDENTIFICACION,
+  PROVINCIA_DEFAULT, TIPOS_CBTE, TRANSMISIONES_FCE, UNIDAD_DEFAULT, correspondeFce, esTipoFce, esTipoNc, etiquetaProducto,
+  fmtDoc, fmtFecha, fmtM, hintProducto, hoyAR, letraDeCliente, letraDeTipo, mesDeFecha, requiereIdentificacion, tipoPara,
+  TOPE_CF_IDENTIFICACION,
 } from '../utils/facturacion.utils'
 import { codigoErrorFacturacion, errorDeCampoFacturacion, mensajeErrorFacturacion } from '../utils/facturacion.errores'
 import type {
@@ -42,7 +44,10 @@ import { Aviso } from './FichaFactura'
  *     (`facturacion.calculos.ts`, espejo de `ventas_guardar_borrador`): neto
  *     por renglón redondeado a centavos e IVA por alícuota agrupada.
  *  2. La OBRA es el centro de costo (decisión del 23/09; `obras.cc` en
- *     desuso): obligatoria con AVANCE DE OBRA, opcional con TRANSPORTE. El
+ *     desuso): obligatoria si el producto la pide (AVANCE DE OBRA), opcional
+ *     si no (TRANSPORTE). Los productos salen del catálogo de Ventas ›
+ *     Configuración (20260929b); con `pide_periodo` aparecen las fechas del
+ *     período facturado (default: el mes de la factura). El
  *     selector solo trae obras facturables (ni internas ni depósito). La base
  *     guarda en `centro_costo` la foto «COD — Nombre».
  *  3. Elegir la obra precarga su cliente (`obras.cliente_id`). Si después se
@@ -74,7 +79,11 @@ const renglonSchema = z.object({
 const schema = z.object({
   cliente_id:        z.string().min(1, 'Elegí el cliente'),
   obra_cod:          z.string(),
-  producto:          z.enum(['AVANCE DE OBRA', 'TRANSPORTE']),
+  /** Foto del nombre (la manda también, para el backend viejo). */
+  producto:          z.string(),
+  producto_id:       z.string().min(1, 'Elegí el producto'),
+  fch_serv_desde:    z.string(),
+  fch_serv_hasta:    z.string(),
   fecha_cbte:        z.string().min(1, 'Poné la fecha'),
   provincia_origen:  z.string().min(1, 'Elegí la provincia'),
   provincia_destino: z.string().min(1, 'Elegí la provincia'),
@@ -91,8 +100,12 @@ const schema = z.object({
   nc_anulacion:      z.enum(['S', 'N']),
   renglones:         z.array(renglonSchema).min(1, 'Agregá al menos un renglón'),
 }).superRefine((d, ctx) => {
-  if (d.producto === 'AVANCE DE OBRA' && !d.obra_cod) {
-    ctx.addIssue({ code: 'custom', path: ['obra_cod'], message: 'Avance de obra lleva la obra (es el centro de costo)' })
+  // Lo que depende del producto (obra, período obligatorio) se valida al guardar.
+  if (!!d.fch_serv_desde !== !!d.fch_serv_hasta) {
+    ctx.addIssue({ code: 'custom', path: [d.fch_serv_desde ? 'fch_serv_hasta' : 'fch_serv_desde'], message: 'Completá las dos fechas del período' })
+  }
+  if (d.fch_serv_desde && d.fch_serv_hasta && d.fch_serv_hasta < d.fch_serv_desde) {
+    ctx.addIssue({ code: 'custom', path: ['fch_serv_hasta'], message: 'Termina antes de empezar' })
   }
   if (d.fce && d.fch_vto_pago && d.fecha_cbte && d.fch_vto_pago < d.fecha_cbte) {
     ctx.addIssue({ code: 'custom', path: ['fch_vto_pago'], message: 'No puede ser antes de la fecha de la factura' })
@@ -102,14 +115,15 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>
 
 /** Rutas del form a las que el backend puede apuntar un error (el resto va arriba del botón). */
-const CAMPOS_FORM = /^(cliente_id|obra_cod|producto|fecha_cbte|provincia_origen|provincia_destino|condicion_pago|remitos|observaciones|obs_interna|fce_cuenta_id|fch_vto_pago|fce_transmision|fce_referencia|nc_anulacion|renglones\.\d+\.(descripcion|cantidad|unidad|precio_unit|alicuota_id))$/
+const CAMPOS_FORM = /^(cliente_id|obra_cod|producto_id|fch_serv_desde|fch_serv_hasta|fecha_cbte|provincia_origen|provincia_destino|condicion_pago|remitos|observaciones|obs_interna|fce_cuenta_id|fch_vto_pago|fce_transmision|fce_referencia|nc_anulacion|renglones\.\d+\.(descripcion|cantidad|unidad|precio_unit|alicuota_id))$/
 type RenglonForm = FormData['renglones'][number]
 
 const RENGLON_VACIO: RenglonForm = { descripcion: '', cantidad: '1', unidad: UNIDAD_DEFAULT, precio_unit: '', alicuota_id: '5' }
 
 function defaultsNuevo(): FormData {
   return {
-    cliente_id: '', obra_cod: '', producto: 'AVANCE DE OBRA', fecha_cbte: hoyAR(),
+    cliente_id: '', obra_cod: '', producto: PRODUCTOS[0]!.nombre, producto_id: String(PRODUCTOS[0]!.id),
+    fch_serv_desde: '', fch_serv_hasta: '', fecha_cbte: hoyAR(),
     provincia_origen: PROVINCIA_DEFAULT, provincia_destino: PROVINCIA_DEFAULT,
     condicion_pago: CONDICION_PAGO_DEFAULT, remitos: '', observaciones: '', obs_interna: '',
     fce: false, fce_cuenta_id: '', fch_vto_pago: '', fce_transmision: 'SCA', fce_referencia: '', nc_anulacion: 'N',
@@ -133,6 +147,10 @@ function defaultsDe(fj: VentasFacturaFJ, opts: { copiarRenglones: boolean; nc: b
     cliente_id:        String(f.cliente_id),
     obra_cod:          f.obra_cod ?? '',
     producto:          f.producto,
+    // Sin id (backend viejo): el de la semilla con ese nombre.
+    producto_id:       String(f.producto_id ?? PRODUCTOS.find(p => p.nombre === f.producto)?.id ?? ''),
+    fch_serv_desde:    f.fch_serv_desde ?? '',
+    fch_serv_hasta:    f.fch_serv_hasta ?? '',
     fecha_cbte:        opts.nc ? hoyAR() : f.fecha_cbte,
     provincia_origen:  f.provincia_origen || PROVINCIA_DEFAULT,
     provincia_destino: f.provincia_destino || PROVINCIA_DEFAULT,
@@ -181,6 +199,8 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
   const clientes   = useClientesVenta('', true)
   const cuentas    = useCuentasFce()
   const obras      = useObrasFacturacion()
+  // Todos (también los de baja): un borrador puede seguir con el suyo aunque lo hayan desactivado.
+  const productos  = useProductosVenta(true)
   const crear      = useCrearFacturaVenta()
   const editar     = useEditarFacturaVenta()
 
@@ -211,7 +231,9 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
   }, [editarId, edicion.data, reset])
 
   const renglones   = useWatch({ control, name: 'renglones' })
-  const producto    = useWatch({ control, name: 'producto' })
+  const productoId  = useWatch({ control, name: 'producto_id' })
+  const servDesde   = useWatch({ control, name: 'fch_serv_desde' })
+  const servHasta   = useWatch({ control, name: 'fch_serv_hasta' })
   const clienteId   = useWatch({ control, name: 'cliente_id' })
   const obraCod     = useWatch({ control, name: 'obra_cod' })
   const origen      = useWatch({ control, name: 'provincia_origen' })
@@ -222,6 +244,31 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
   const anulacion   = useWatch({ control, name: 'nc_anulacion' })
 
   const totales = useMemo(() => calcularTotales(renglones ?? []), [renglones])
+
+  // ── Producto (catálogo, 20260929b) ──
+  const listaProductos = productos.productos
+  const prodSel = listaProductos.find(p => String(p.id) === productoId)
+  const productoOriginal = edicion.data?.factura.producto_id ?? null
+  // Se ofrecen los activos, más el que ya tenía el borrador aunque esté de baja.
+  const opcionesProducto = useMemo(
+    () => listaProductos
+      .filter(p => p.activo || p.id === productoOriginal || String(p.id) === productoId)
+      .map(p => ({ value: String(p.id), label: `${etiquetaProducto(p.nombre)}${p.activo ? '' : ' (dado de baja)'}` })),
+    [listaProductos, productoOriginal, productoId],
+  )
+  const pideObra = prodSel?.pide_obra ?? false
+  const conPeriodo = !!prodSel && prodSel.concepto_arca !== 1 && (prodSel.pide_periodo || !!servDesde || !!servHasta)
+  // Nueva factura: si el producto por defecto no está activo en el catálogo, el primero activo.
+  useEffect(() => {
+    if (editarId || ncDe || !productos.data || listaProductos.length === 0) return
+    const actual = listaProductos.find(p => String(p.id) === getValues('producto_id'))
+    if (actual?.activo) return
+    const primero = listaProductos.find(p => p.activo)
+    if (primero) {
+      setValue('producto_id', String(primero.id))
+      setValue('producto', primero.nombre)
+    }
+  }, [editarId, ncDe, productos.data, listaProductos, getValues, setValue])
 
   const listaClientes = useMemo(() => clientes.data ?? [], [clientes.data])
   const cliente = listaClientes.find(c => String(c.id) === clienteId)
@@ -321,8 +368,16 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
     if (o?.cliente_id && !esNc) elegirCliente(String(o.cliente_id))
   }
 
-  function elegirProducto(p: FormData['producto']) {
-    setValue('producto', p, { shouldValidate: true })
+  function elegirProducto(id: string) {
+    const p = listaProductos.find(x => String(x.id) === id)
+    setValue('producto_id', id, { shouldValidate: true })
+    if (p) setValue('producto', p.nombre)
+    // Pide período y no hay uno: el mes de la factura.
+    if (p?.pide_periodo && p.concepto_arca !== 1 && !getValues('fch_serv_desde') && !getValues('fch_serv_hasta')) {
+      const mes = mesDeFecha(getValues('fecha_cbte') || hoyAR())
+      setValue('fch_serv_desde', mes.desde)
+      setValue('fch_serv_hasta', mes.hasta)
+    }
   }
 
   // ── Guardar ──
@@ -334,11 +389,24 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
       setErrorServer({ msg: 'A este cliente no se le puede hacer ni factura A ni B: corregí su documento o su condición IVA en Clientes.', code: 'LETRA_INCOMPATIBLE' })
       return
     }
+    // Lo que pide el producto (la RPC lo vuelve a validar: OBRA_REQUERIDA / PERIODO_REQUERIDO).
+    if (prodSel?.pide_obra && !d.obra_cod) {
+      setError('obra_cod', { message: `${etiquetaProducto(prodSel.nombre)} lleva la obra (es el centro de costo)` })
+      return
+    }
+    if (conPeriodo && prodSel?.pide_periodo && (!d.fch_serv_desde || !d.fch_serv_hasta)) {
+      setError(d.fch_serv_desde ? 'fch_serv_hasta' : 'fch_serv_desde', { message: 'Este producto pide el período facturado' })
+      return
+    }
     const body: VentasFacturaInput = {
       factura: {
         cbte_tipo:         tipo,
         cliente_id:        Number(d.cliente_id),
-        producto:          d.producto,
+        // El id manda; el nombre va como foto y para el backend viejo.
+        producto:          prodSel?.nombre ?? d.producto,
+        producto_id:       d.producto_id ? Number(d.producto_id) : null,
+        fch_serv_desde:    conPeriodo && d.fch_serv_desde ? d.fch_serv_desde : null,
+        fch_serv_hasta:    conPeriodo && d.fch_serv_hasta ? d.fch_serv_hasta : null,
         obra_cod:          d.obra_cod || null,
         fecha_cbte:        d.fecha_cbte,
         provincia_origen:  d.provincia_origen,
@@ -458,7 +526,7 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
           </div>
           <div>
             <Combobox
-              label={producto === 'TRANSPORTE' ? 'Obra / centro de costo (opcional)' : 'Obra / centro de costo'}
+              label={pideObra ? 'Obra / centro de costo' : 'Obra / centro de costo (opcional)'}
               placeholder={obras.isLoading ? 'Cargando obras…' : 'Buscar obra por nombre o código'}
               options={opcionesObra}
               value={obraCod}
@@ -511,15 +579,30 @@ export function ModalFactura({ editarId, ncDe, onClose, onGuardada }: Props) {
         )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <Select
-            label="Producto"
-            options={PRODUCTOS.map(p => ({ value: p.key, label: p.label }))}
-            value={producto}
-            onChange={e => elegirProducto(e.target.value as FormData['producto'])}
-            title={PRODUCTOS.find(p => p.key === producto)?.hint}
-          />
+          <div>
+            <Select
+              label="Producto"
+              options={opcionesProducto}
+              value={productoId}
+              onChange={e => elegirProducto(e.target.value)}
+              title={prodSel ? hintProducto(prodSel) : undefined}
+              error={errors.producto_id?.message}
+            />
+            {prodSel && !errors.producto_id && (
+              <span className="text-[11px] text-gris-dark">{hintProducto(prodSel)}</span>
+            )}
+          </div>
           <Input label="Fecha" type="date" {...register('fecha_cbte')} error={errors.fecha_cbte?.message}
             hint="ARCA acepta hasta 10 días para atrás o adelante" />
+          {conPeriodo && (
+            <>
+              <Input label="Período facturado desde" type="date" {...register('fch_serv_desde')}
+                error={errors.fch_serv_desde?.message} />
+              <Input label="Período facturado hasta" type="date" {...register('fch_serv_hasta')}
+                error={errors.fch_serv_hasta?.message}
+                hint={prodSel?.pide_periodo ? undefined : 'Opcional: vacío = el día de la factura'} />
+            </>
+          )}
           <Input label="Condición de pago" {...register('condicion_pago')} error={errors.condicion_pago?.message} />
           <Select label="Provincia de origen" options={provinciasCon(origen)} {...register('provincia_origen')}
             error={errors.provincia_origen?.message} />

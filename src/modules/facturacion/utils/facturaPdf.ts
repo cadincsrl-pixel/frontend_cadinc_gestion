@@ -159,6 +159,11 @@ export function armarFacturaDoc(fj: VentasFacturaFJ, opts: { logo: string | null
   const definitiva = esDefinitiva(fj)
   const fce = f.cbte_tipo === 201
   const ncFce = f.cbte_tipo === 203
+  // Período de servicio (20260929b): el de la factura, o el día del comprobante como siempre.
+  const tienePeriodo = !!(f.fch_serv_desde && f.fch_serv_hasta)
+  const servDesde = f.fch_serv_desde ?? f.fecha_cbte
+  const servHasta = f.fch_serv_hasta ?? f.fecha_cbte
+  const fceBloque = fce || ncFce
   const titulo = tituloComprobante(f.cbte_tipo)
   const docRec = DOC_TIPOS.find(d => d.id === f.rec_doc_tipo)
   const docRecTxt = f.rec_doc_tipo === 80 || f.rec_doc_tipo === 86 ? fmtCuit(f.rec_doc_nro)
@@ -244,7 +249,7 @@ export function armarFacturaDoc(fj: VentasFacturaFJ, opts: { logo: string | null
           margin: [6, 4, 6, 4],
           stack: [
             fila([['Fecha de Vto. para el pago:', fmtFecha(f.fch_vto_pago ?? f.fecha_cbte)]]),
-            fila([['Período Facturado Desde:', fmtFecha(f.fecha_cbte)], ['Hasta:', fmtFecha(f.fecha_cbte)]]),
+            fila([['Período Facturado Desde:', fmtFecha(servDesde)], ['Hasta:', fmtFecha(servHasta)]]),
             fila([['CBU del Emisor:', f.fce_cbu ?? ''], ...(f.fce_alias ? [['Alias CBU:', f.fce_alias] as [string, string]] : [])]),
             ...(f.fce_referencia ? [fila([['Referencia Comercial:', f.fce_referencia]])] : []),
             fila([['Opción de Transferencia:', TRANSMISION_LABEL[f.fce_transmision ?? 'SCA'] ?? String(f.fce_transmision)]]),
@@ -262,7 +267,7 @@ export function armarFacturaDoc(fj: VentasFacturaFJ, opts: { logo: string | null
           margin: [6, 4, 6, 4],
           stack: [
             { text: [{ text: 'Comprobante asociado: ', bold: true }, asocTxt ?? '—', { text: `     CUIT emisor: ${EMPRESA.cuit}` }], fontSize: 8.5 },
-            { text: [{ text: 'Período Facturado Desde: ', bold: true }, fmtFecha(f.fecha_cbte), { text: '     Hasta: ', bold: true }, fmtFecha(f.fecha_cbte)], fontSize: 8.5, margin: [0, 2, 0, 0] as Margen },
+            { text: [{ text: 'Período Facturado Desde: ', bold: true }, fmtFecha(servDesde), { text: '     Hasta: ', bold: true }, fmtFecha(servHasta)], fontSize: 8.5, margin: [0, 2, 0, 0] as Margen },
             ...(f.nc_anulacion === 'S' ? [{ text: 'Anula la Factura de Crédito por rechazo del comprador.', bold: true, fontSize: 8.5, margin: [0, 2, 0, 0] as Margen }] : []),
           ],
         }]],
@@ -283,6 +288,8 @@ export function armarFacturaDoc(fj: VentasFacturaFJ, opts: { logo: string | null
     par('Cond. de pago:', f.condicion_pago, 68),
     par('Moneda:', 'Pesos', 68),
     ...(f.remitos?.trim() ? [par('Remitos:', f.remitos, 68)] : []),
+    // Período de servicio (20260929b). En la FCE ya sale en su recuadro.
+    ...(tienePeriodo && !fceBloque ? [par('Período:', `${fmtFecha(servDesde)} al ${fmtFecha(servHasta)}`, 68)] : []),
   ]
   const receptor: Content = {
     table: { widths: ['*', 190], body: [[{ margin: [6, 5, 6, 5], stack: izq }, { margin: [6, 5, 6, 5], stack: der }]] },

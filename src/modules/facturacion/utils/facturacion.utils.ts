@@ -7,13 +7,60 @@
 // admite factura A.
 
 import type {
-  VentasAlicuotaId, VentasDocTipo, VentasEstado, VentasFactura, VentasProducto,
+  VentasAlicuotaId, VentasDocTipo, VentasEstado, VentasFactura,
 } from '@/types/domain.types'
+import type { ProductoVenta } from '@/types/config.types'
 
-export const PRODUCTOS: { key: VentasProducto; label: string; hint: string }[] = [
-  { key: 'AVANCE DE OBRA', label: 'Avance de obra', hint: 'Obra: la obra es obligatoria (es el centro de costo). Concepto ARCA 3 (productos y servicios).' },
-  { key: 'TRANSPORTE',     label: 'Transporte',     hint: 'Logística: la obra es opcional. Concepto ARCA 2 (servicios).' },
+/**
+ * Productos de venta de RESPALDO: la semilla de `ventas_productos`
+ * (20260929b), con los mismos ids. El catálogo real sale de
+ * GET /api/facturacion/productos (`useProductosVenta`); esto se usa solo si
+ * el backend todavía no tiene el endpoint (404) o no responde.
+ */
+export const PRODUCTOS: ProductoVenta[] = [
+  { id: 1, nombre: 'AVANCE DE OBRA', descripcion: 'Certificados de avance de obra. La obra es obligatoria (es el centro de costo).',
+    concepto_arca: 3, pide_obra: true, pide_periodo: false, activo: true, orden: 10, facturas: 0, mapeado: true },
+  { id: 2, nombre: 'TRANSPORTE', descripcion: 'Fletes de logística. La obra es opcional.',
+    concepto_arca: 2, pide_obra: false, pide_periodo: false, activo: true, orden: 20, facturas: 0, mapeado: true },
 ]
+
+/** Conceptos de ARCA (FEParamGetTiposConcepto). */
+export const CONCEPTO_ARCA_LABEL: Record<1 | 2 | 3, string> = {
+  1: 'Productos',
+  2: 'Servicios',
+  3: 'Productos y servicios',
+}
+
+/**
+ * El nombre del producto para mostrar: los que están todo en mayúsculas (la
+ * semilla: «AVANCE DE OBRA») salen en oración («Avance de obra»); lo demás,
+ * tal cual lo escribieron.
+ */
+export function etiquetaProducto(nombre: string | null | undefined): string {
+  const n = (nombre ?? '').trim()
+  if (!n) return '—'
+  if (n !== n.toUpperCase() || n === n.toLowerCase()) return n
+  const bajo = n.toLocaleLowerCase('es-AR')
+  return bajo.charAt(0).toLocaleUpperCase('es-AR') + bajo.slice(1)
+}
+
+/** Ayuda del selector: descripción + concepto ARCA + qué pide. */
+export function hintProducto(p: Pick<ProductoVenta, 'descripcion' | 'concepto_arca' | 'pide_obra' | 'pide_periodo'>): string {
+  return [
+    p.descripcion.trim(),
+    `Concepto ARCA ${p.concepto_arca} (${CONCEPTO_ARCA_LABEL[p.concepto_arca].toLowerCase()}).`,
+    p.pide_obra ? 'Pide obra.' : 'Obra opcional.',
+    p.pide_periodo ? 'Pide el período facturado.' : '',
+  ].filter(Boolean).join(' ')
+}
+
+/** Primer y último día del mes de una fecha YYYY-MM-DD (default del período facturado). */
+export function mesDeFecha(iso: string): { desde: string; hasta: string } {
+  const [y, m] = iso.split('-').map(Number) as [number, number]
+  const ultimo = new Date(Date.UTC(y, m, 0)).getUTCDate()
+  const mm = String(m).padStart(2, '0')
+  return { desde: `${y}-${mm}-01`, hasta: `${y}-${mm}-${String(ultimo).padStart(2, '0')}` }
+}
 
 /**
  * La obra de la factura, «COD — Nombre»: es su centro de costo (23/09). Con el
