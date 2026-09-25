@@ -3339,6 +3339,11 @@ export interface PagosChequePropuesta {
   librador_cuit: string | null
   es_echeq:      boolean | null
   es_diferido:   boolean | null
+  /** true si lo libró CADINC, false si es de un tercero, null si no se sabe. */
+  es_propio?:        boolean | null
+  /** A quién se le entrega: el beneficiario, o el endosatario en un endoso (2026-09-25). */
+  entregado_a?:      string | null
+  entregado_a_cuit?: string | null
 }
 export interface PagosChequeLecturaRes {
   propuesta:    PagosChequePropuesta
@@ -3346,7 +3351,12 @@ export interface PagosChequeLecturaRes {
   avisos:       (Partial<PagosAvisoLectura> & { code?: string; [k: string]: unknown })[]
   /** Todos los cheques del archivo (un PDF del banco puede traer la emisión y
    *  varios endosos, 2026-09-25); `propuesta`/`avisos` sueltos son el primero. */
-  cheques?:     { propuesta: PagosChequePropuesta; avisos: PagosChequeLecturaRes['avisos'] }[]
+  cheques?:     {
+    propuesta: PagosChequePropuesta
+    avisos:    PagosChequeLecturaRes['avisos']
+    /** El proveedor de Compras al que va, si se reconoció (por CUIT o nombre). */
+    proveedor?: { id: number; razon_social: string; por: 'cuit' | 'nombre' } | null
+  }[]
   storage_path: string
 }
 

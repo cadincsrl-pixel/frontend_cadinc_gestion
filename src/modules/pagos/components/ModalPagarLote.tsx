@@ -20,7 +20,7 @@ import {
 import { detalleErrorPagos, mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
 import {
   FORMA_POR_DEFECTO, bloqueoPorFirma, chequesParaEnviar, filasIniciales, filasQueSePasan, formaSegunLoPrevisto, lineasDeOrden,
-  bloquesDelError, n, problemaCheques, repartirTotalEnFilas, totalDeFilas, type FilaFactura,
+  bloquesDelError, n, problemaCheques, repartirTotalEnFilas, totalDeFilas, type ChequeFila, type FilaFactura,
 } from '../utils/pagoForm'
 import { EditorCheques, useEditorCheques } from './pago/EditorCheques'
 import { AvisoNcSinAplicar, CampoACuenta, CuentaDestinoProveedor, FilasFacturasPago, cuentaDelPadron } from './pago/FacturasDelPago'
@@ -52,9 +52,21 @@ import type {
 
 export const MAX_ORDENES_LOTE = 30
 
+/**
+ * Cheques ya leídos para un proveedor (los que se soltaron en Compras › Pagos,
+ * 2026-09-25): el bloque arranca con ellos cargados, con esa forma y con lo
+ * que suman repartido entre sus facturas (lo que sobra, a cuenta).
+ */
+export interface ChequesDelProveedor {
+  cheques: ChequeFila[]
+  forma:   PagosFormaPagoOP
+}
+
 interface Props {
   facturaIds: number[]
   onClose:    () => void
+  /** Por proveedor_id. */
+  desdeCheques?: Record<number, ChequesDelProveedor>
 }
 
 /** Lo que cada bloque le cuenta al modal. */
@@ -81,7 +93,7 @@ interface Resultado {
   galicia: PagosFactura[]
 }
 
-export function ModalPagarLote({ facturaIds, onClose }: Props) {
+export function ModalPagarLote({ facturaIds, onClose, desdeCheques }: Props) {
   const toast = useToast()
   const { verPii, esAdmin } = usePermisos('pagos')
   const userId = useSessionStore(s => s.profile?.id ?? null)
@@ -251,7 +263,8 @@ export function ModalPagarLote({ facturaIds, onClose }: Props) {
               incluido={!excluidos.has(id)}
               onIncluir={alternarIncluido}
               errorServidor={errores[id] ?? null}
-              abiertoInicial={grupos.length <= 3}
+              abiertoInicial={grupos.length <= 3 || !!desdeCheques?.[id]}
+              inicial={desdeCheques?.[id]}
               onEstado={onEstado}
             />
           )
@@ -273,11 +286,12 @@ interface BloqueProps {
   onIncluir:      (proveedorId: number, incluir: boolean) => void
   errorServidor:  string | null
   abiertoInicial: boolean
+  inicial?:       ChequesDelProveedor
   onEstado:       (e: EstadoBloque) => void
 }
 
 const BloqueProveedor = memo(function BloqueProveedor({
-  facturas, fecha, formaComun, verPii, bloqueo, incluido, onIncluir, errorServidor, abiertoInicial, onEstado,
+  facturas, fecha, formaComun, verPii, bloqueo, incluido, onIncluir, errorServidor, abiertoInicial, inicial, onEstado,
 }: BloqueProps) {
   const toast = useToast()
   const f0 = facturas[0]!
@@ -285,10 +299,16 @@ const BloqueProveedor = memo(function BloqueProveedor({
   const { data: proveedor } = useProveedorPagos(proveedorId)
 
   const [abierto, setAbierto] = useState(abiertoInicial)
-  const [filas, setFilas] = useState<FilaFactura[]>(() => filasIniciales(facturas))
-  const [aCuenta, setACuenta] = useState('')
-  // La forma propia: la prevista en sus facturas si coinciden; si no, la común.
-  const [formaElegida, setFormaElegida] = useState<PagosFormaPagoOP | null>(null)
+  // Con cheques ya leídos, lo que suman se reparte de entrada entre las
+  // facturas (la que vence primero, primero) y el sobrante va a cuenta.
+  const [repartoInicial] = useState(() => inicial
+    ? repartirTotalEnFilas(inicial.cheques.reduce((t, c) => t + n(c.monto), 0), filasIniciales(facturas))
+    : { filas: filasIniciales(facturas), aCuenta: '' })
+  const [filas, setFilas] = useState<FilaFactura[]>(repartoInicial.filas)
+  const [aCuenta, setACuenta] = useState(repartoInicial.aCuenta)
+  // La forma propia: la de los cheques leídos; si no, la prevista en sus
+  // facturas si coinciden; si no, la común.
+  const [formaElegida, setFormaElegida] = useState<PagosFormaPagoOP | null>(inicial?.forma ?? null)
   const forma = formaElegida ?? formaSegunLoPrevisto(facturas, formaComun)
   const vieneDeLoPrevisto = !formaElegida && forma !== formaComun
   const [referencia, setReferencia] = useState('')
@@ -304,6 +324,7 @@ const BloqueProveedor = memo(function BloqueProveedor({
   const ed = useEditorCheques({
     fecha, totalPlata, forma, pideCheques,
     planFactura: facturas.find(f => f.plan_cheques)?.plan_cheques ?? null,
+    chequesIniciales: inicial?.cheques,
   })
   const cheques = ed.cheques
   // Con cheque/e-cheq el comprobante es el de CADA cheque (20260929w): no hay

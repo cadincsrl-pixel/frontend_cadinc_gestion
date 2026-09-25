@@ -38,11 +38,13 @@ interface Opciones {
   pideCheques: boolean
   /** El plan anotado en la factura al cargarla (20260923n), si hay. */
   planFactura: PagosPlanCheques | null
+  /** Cheques ya leídos antes de abrir (los que se soltaron en Compras › Pagos). */
+  chequesIniciales?: ChequeFila[]
 }
 
-export function useEditorCheques({ fecha, totalPlata, forma, pideCheques, planFactura }: Opciones) {
+export function useEditorCheques({ fecha, totalPlata, forma, pideCheques, planFactura, chequesIniciales }: Opciones) {
   const toast = useToast()
-  const [cheques, setCheques] = useState<ChequeFila[]>([])
+  const [cheques, setCheques] = useState<ChequeFila[]>(() => chequesIniciales ?? [])
   // Cómo se reparte el pago en cheques (2026-09-21). Son tres preguntas que el
   // dueño hace en voz alta al entregar: en cuántos, a qué plazo el primero, y
   // cada cuánto los demás. Antes estaba fijo en 30/60/90.
@@ -140,36 +142,14 @@ export function useEditorCheques({ fecha, totalPlata, forma, pideCheques, planFa
         const [primera, ...resto] = lecturas
         const avisoVarios = lecturas.length > 1
           ? [`Este archivo trae ${lecturas.length} cheques: se agregaron en ${lecturas.length} filas con el mismo comprobante.`] : []
-        const esta = filaDesdeLectura(c, primera!)
+        const esta = filaDesdeLectura(c, primera!, forma)
         return [
           { ...esta, foto, fotoUrl: url, avisosFoto: [...avisoVarios, ...esta.avisosFoto] },
-          ...resto.map((l, k) => ({ ...filaDesdeLectura({ ...extra[k]!, es_propio: c.es_propio }, l), foto, fotoUrl: url })),
+          ...resto.map((l, k) => ({ ...filaDesdeLectura({ ...extra[k]!, es_propio: c.es_propio }, l, forma), foto, fotoUrl: url })),
         ]
       }))
     } catch (e) {
       setChequeUid(uid, { leyendo: false, avisosFoto: [`${mensajeErrorPagos(e)} La foto queda adjunta igual.`] })
-    }
-  }
-
-  /** Una lectura del backend sobre una fila: completa lo leído y lo marca. */
-  function filaDesdeLectura(c: ChequeFila, l: { propuesta: PagosChequeLecturaRes['propuesta']; avisos: PagosChequeLecturaRes['avisos'] }): ChequeFila {
-    const p = l.propuesta
-    const cambio: Partial<ChequeFila> = {}
-    const leidos: CampoCheque[] = []
-    if (p.numero?.trim())      { cambio.numero = p.numero.trim(); leidos.push('numero') }
-    if (p.banco?.trim())       { cambio.banco = p.banco.trim(); leidos.push('banco') }
-    if (p.fecha_cobro)         { cambio.fecha_cobro = p.fecha_cobro.slice(0, 10); leidos.push('fecha_cobro') }
-    if (p.importe != null && p.importe > 0) { cambio.monto = String(p.importe); leidos.push('monto') }
-    const librador = [p.librador?.trim(), p.librador_cuit ? `CUIT ${p.librador_cuit}` : null].filter(Boolean).join(' · ')
-    // El librador sólo se usa si el cheque es de un tercero: si está como
-    // propio se guarda para ofrecerlo al tildar «De tercero».
-    if (librador && !c.es_propio) { cambio.librador = librador; leidos.push('librador') }
-    const avisos = (l.avisos ?? []).map(a => mensajeAvisoLectura(a)).filter(Boolean)
-    if (p.es_echeq && forma === 'cheque') avisos.push('La foto parece de un e-cheq, y la forma de pago elegida es cheque.')
-    if (leidos.length === 0) avisos.push('No se pudo sacar ningún dato de la foto: cargalos a mano. La foto queda adjunta igual.')
-    return {
-      ...c, ...cambio, leyendo: false, libradorLeido: librador,
-      leidos: [...new Set([...c.leidos, ...leidos])], avisosFoto: avisos,
     }
   }
 
@@ -281,6 +261,31 @@ export function useEditorCheques({ fecha, totalPlata, forma, pideCheques, planFa
 }
 
 export type EditorChequesEstado = ReturnType<typeof useEditorCheques>
+
+/** Lo que devuelve la lectura por cada cheque del archivo. */
+export type LecturaCheque = NonNullable<PagosChequeLecturaRes['cheques']>[number]
+
+/** Una lectura del backend sobre una fila: completa lo leído y lo marca. */
+export function filaDesdeLectura(c: ChequeFila, l: Pick<LecturaCheque, 'propuesta' | 'avisos'>, forma: PagosFormaPagoOP): ChequeFila {
+  const p = l.propuesta
+  const cambio: Partial<ChequeFila> = {}
+  const leidos: CampoCheque[] = []
+  if (p.numero?.trim())      { cambio.numero = p.numero.trim(); leidos.push('numero') }
+  if (p.banco?.trim())       { cambio.banco = p.banco.trim(); leidos.push('banco') }
+  if (p.fecha_cobro)         { cambio.fecha_cobro = p.fecha_cobro.slice(0, 10); leidos.push('fecha_cobro') }
+  if (p.importe != null && p.importe > 0) { cambio.monto = String(p.importe); leidos.push('monto') }
+  const librador = [p.librador?.trim(), p.librador_cuit ? `CUIT ${p.librador_cuit}` : null].filter(Boolean).join(' · ')
+  // El librador sólo se usa si el cheque es de un tercero: si está como
+  // propio se guarda para ofrecerlo al tildar «De tercero».
+  if (librador && !c.es_propio) { cambio.librador = librador; leidos.push('librador') }
+  const avisos = (l.avisos ?? []).map(a => mensajeAvisoLectura(a)).filter(Boolean)
+  if (p.es_echeq && forma === 'cheque') avisos.push('La foto parece de un e-cheq, y la forma de pago elegida es cheque.')
+  if (leidos.length === 0) avisos.push('No se pudo sacar ningún dato de la foto: cargalos a mano. La foto queda adjunta igual.')
+  return {
+    ...c, ...cambio, leyendo: false, libradorLeido: librador,
+    leidos: [...new Set([...c.leidos, ...leidos])], avisosFoto: avisos,
+  }
+}
 
 export function EditorCheques({ ed, forma, fecha, totalPlata, cantFacturas, onUsarTotalDeLosCheques }: {
   ed:          EditorChequesEstado
