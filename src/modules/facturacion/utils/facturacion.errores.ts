@@ -343,10 +343,10 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   LIQUIDACION_ILEGIBLE:     d => dato(d, 'motivo') === 'SIN_API_KEY'
     ? 'No se reconoció el formato de la liquidación y la lectura con IA no está configurada en el servidor. Cargá el cobro a mano.'
     : `No se pudo leer la liquidación${dato(d, 'motivo') ? ` (${String(dato(d, 'motivo'))})` : ''}. Probá con el PDF original o cargá el cobro a mano.`,
-  // «Soltá acá los cheques» (2026-09-25)
-  CHEQUE_ILEGIBLE:          d => dato(d, 'motivo') === 'SIN_API_KEY'
-    ? 'La lectura de cheques con IA no está configurada en el servidor: cargá el cobro a mano.'
-    : `No se pudo leer ningún cheque de este archivo${dato(d, 'motivo') ? ` (${String(dato(d, 'motivo'))})` : ''}. Probá con una foto más nítida o el PDF del banco.`,
+  // «Soltá acá los comprobantes del cobro» (2026-09-25)
+  COMPROBANTE_ILEGIBLE:     d => dato(d, 'motivo') === 'SIN_API_KEY'
+    ? 'La lectura de comprobantes con IA no está configurada en el servidor: cargá el cobro a mano.'
+    : `No se pudo leer este archivo como comprobante de pago${dato(d, 'motivo') ? ` (${String(dato(d, 'motivo'))})` : ''}. Probá con una foto más nítida o el PDF original.`,
   LIQUIDACION_SIN_CLIENTE:  d => `El CUIT de la liquidación${dato(d, 'cuit') ? ` (${String(dato(d, 'cuit'))})` : ''} no es de ningún cliente de Ventas${dato(d, 'nombre') ? ` (${String(dato(d, 'nombre'))})` : ''}. Elegí el cliente.`,
   GASTO_CONCEPTO_INVALIDO:  d => {
     const c = dato(d, 'campo'), m = dato(d, 'mensaje')

@@ -150,20 +150,29 @@ interface DocCliente {
 
 const CAMPOS_FORM = /^(fecha|cliente_id|obs|gastos\.\d+\.(concepto_id|importe|obs)|medios\.\d+\.(forma|importe|cuenta_bancaria_id|cheque_numero|cheque_banco|cheque_librador|cheque_fecha_cobro|obs)|retenciones\.\d+\.(tipo|jurisdiccion|jurisdiccion_id|certificado_numero|fecha|importe|obs))$/
 
-/** Un medio que viene armado de afuera («Soltá acá los cheques»): lo que no se pasa queda vacío. */
+/** Un medio que viene armado de afuera («Soltá acá los comprobantes»): lo que no se pasa queda vacío. */
 export type MedioPrecarga = Partial<MedioForm> & Pick<MedioForm, 'forma' | 'importe'>
+/** Una retención leída de la orden de pago del cliente. */
+export type RetencionPrecarga = Partial<RetencionForm> & Pick<RetencionForm, 'tipo' | 'importe'>
+/** Una factura que la orden de pago dice que paga (importe null = su saldo). */
+export interface AplicarPrecarga { pto_vta: number; numero: number; importe: number | null }
 
 /**
- * El cobro armado por «Soltá acá los cheques» (2026-09-25): el cliente
- * reconocido, un medio por cheque y los archivos ya subidos a
- * `cobros/pendientes/`. Los archivos son de quien abre el modal: si se cierra
- * sin guardar, NO se descartan acá (vuelven a la lista de cheques).
+ * El cobro armado por «Soltá acá los comprobantes» (2026-09-25): el cliente
+ * reconocido, los medios y retenciones leídos, las facturas que nombra la
+ * orden de pago y los archivos ya subidos a `cobros/pendientes/`. Los
+ * archivos son de quien abre el modal: si se cierra sin guardar, NO se
+ * descartan acá (vuelven a la lista).
  */
 export interface PrecargaCobro {
-  clienteId: number | null
-  medios:    MedioPrecarga[]
-  adjuntos:  VentasCobroAdjuntoInput[]
-  obs?:      string
+  clienteId:    number | null
+  fecha?:       string | null
+  medios:       MedioPrecarga[]
+  retenciones?: RetencionPrecarga[]
+  /** Si viene, la aplicación va a estas facturas; si no, a las más viejas. */
+  aplicar?:     AplicarPrecarga[]
+  adjuntos:     VentasCobroAdjuntoInput[]
+  obs?:         string
 }
 
 interface Props {
@@ -185,7 +194,7 @@ export function ModalCobro({ clienteInicial, precarga, onClose, onGuardado }: Pr
   const { valores } = useConfigVentasValores()
   const tipoRetDefault = tiposRet.tipos.find(t => t.clave === valores.retencion_tipo_default) ?? tiposRet.tipos[0]
 
-  const [abierta, setAbierta] = useState({ medios: true, retenciones: false, gastos: false, documentacion: !!precarga?.adjuntos.length, aplicacion: true })
+  const [abierta, setAbierta] = useState({ medios: true, retenciones: !!precarga?.retenciones?.length, gastos: false, documentacion: !!precarga?.adjuntos.length, aplicacion: true })
   // La aplicación es DEL cliente elegido: si cambia el cliente, la anterior no sirve (se descarta sola).
   const [aplic, setAplic] = useState<{ cliente: string; map: Record<string, string> }>({ cliente: '', map: {} })
   const [adjuntos, setAdjuntos] = useState<Record<string, EstadoAdjunto>>({})
@@ -203,11 +212,16 @@ export function ModalCobro({ clienteInicial, precarga, onClose, onGuardado }: Pr
   const { register, control, handleSubmit, setValue, setError, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      fecha: hoyAR(),
+      fecha: precarga?.fecha && precarga.fecha <= hoyAR() ? precarga.fecha : hoyAR(),
       cliente_id: clienteInicial ? String(clienteInicial) : precarga?.clienteId ? String(precarga.clienteId) : '',
       obs: precarga?.obs ?? '',
       medios: precarga?.medios.length ? precarga.medios.map(m => ({ ...MEDIO_VACIO, ...m })) : [MEDIO_VACIO],
-      retenciones: [], gastos: [],
+      retenciones: (precarga?.retenciones ?? []).map(r => ({
+        tipo: r.tipo, jurisdiccion: r.jurisdiccion ?? '', jurisdiccion_id: r.jurisdiccion_id ?? null,
+        certificado_numero: r.certificado_numero ?? '', obs: r.obs ?? '', importe: r.importe,
+        fecha: r.fecha && r.fecha <= hoyAR() ? r.fecha : hoyAR(),
+      })),
+      gastos: [],
     },
   })
   const medios = useFieldArray({ control, name: 'medios' })
@@ -322,12 +336,33 @@ export function ModalCobro({ clienteInicial, precarga, onClose, onGuardado }: Pr
   // Con cheques precargados, la aplicación se reparte sola la primera vez que
   // llegan los comprobantes del cliente (del más viejo al más nuevo); se puede
   // corregir o limpiar. Si se cambia de cliente, se vuelve a repartir.
+  // Si la orden de pago nombra las facturas, se aplica a ésas (hasta su saldo
+  // y hasta el total del cobro); las que no están entre las pendientes del
+  // cliente se avisan.
   const autoAplicadoPara = useRef<string | null>(null)
+  const [noEncontradas, setNoEncontradas] = useState<string[]>([])
   useEffect(() => {
     if (!precarga || !clienteId || pendientes.isLoading || !pendientes.data) return
     if (autoAplicadoPara.current === clienteId) return
     autoAplicadoPara.current = clienteId
-    if (filas.length > 0 && totalCent > 0) setAplic({ cliente: clienteId, map: aplicarAutomatico(filas, totalCent) })
+    if (filas.length === 0 || totalCent <= 0) return
+    if (!precarga.aplicar?.length) {
+      setAplic({ cliente: clienteId, map: aplicarAutomatico(filas, totalCent) })
+      return
+    }
+    const map: Record<string, string> = {}
+    const faltan: string[] = []
+    let resto = totalCent
+    for (const a of precarga.aplicar) {
+      const f = filas.find(x => x.pto_vta === a.pto_vta && x.numero === a.numero && x.tipo !== 'NC' && x.tipo !== 'RC')
+      if (!f) { faltan.push(`${String(a.pto_vta).padStart(5, '0')}-${String(a.numero).padStart(8, '0')}`); continue }
+      const va = Math.min(aCent(f.saldo), a.importe != null ? aCent(a.importe) : aCent(f.saldo), resto)
+      if (va <= 0) continue
+      map[f.clave] = String(va / 100)
+      resto -= va
+    }
+    setNoEncontradas(faltan)
+    setAplic({ cliente: clienteId, map })
   }, [precarga, clienteId, pendientes.isLoading, pendientes.data, filas, totalCent])
 
   function aplicarAuto() {
@@ -636,6 +671,11 @@ export function ModalCobro({ clienteInicial, precarga, onClose, onGuardado }: Pr
           )}
           <TotalesAplicacion totalLabel="Total cobro" totalCent={totalCent} aplicadoCent={val.aplicadoCent} superaTotal={val.superaTotal} />
           {val.superaTotal && <Aviso tono="rojo">Lo aplicado supera el total del cobro ({fmtM(totalCent / 100)}).</Aviso>}
+          {noEncontradas.length > 0 && (
+            <Aviso tono="naranja">
+              La orden de pago nombra {noEncontradas.length === 1 ? 'un comprobante que no está' : 'comprobantes que no están'} entre los pendientes del cliente: {noEncontradas.join(', ')}. Lo que no se aplicó queda a cuenta; revisalo.
+            </Aviso>
+          )}
           {aCent(pendientes.data?.totales?.a_cuenta) > 0 && (
             <span className="text-[11px] text-gris-dark">
               El cliente ya tiene {fmtM(pendientes.data?.totales?.a_cuenta)} a cuenta de cobros anteriores: se aplica desde la ficha de ese cobro o con «Compensación».

@@ -4686,18 +4686,44 @@ export interface VentasLiquidacionPropuesta {
   adjunto: { storage_path: string; nombre_archivo: string; mime: string; size: number; hash: string }
 }
 
-// ── «Soltá acá los cheques» (POST /cobros/cheques/leer, 2026-09-25) ──
+// ── «Soltá acá los comprobantes del cobro» (POST /cobros/comprobantes/leer, 2026-09-25) ──
 
-/** Los cheques que la IA leyó de un archivo y el cliente que los dio. No crea nada. */
-export interface VentasChequesCobroLectura {
-  cheques: Array<{
-    propuesta: PagosChequePropuesta
-    avisos:    PagosChequeLecturaRes['avisos']
-    /** Reconocido por el CUIT o el nombre del librador; null = elegirlo a mano (cheque endosado de un tercero). */
-    cliente:   { id: number; razon_social: string; por: 'cuit' | 'nombre' } | null
-    /** Ya es un medio de un cobro vigente. */
+export interface VentasAvisoLectura { severidad: 'error' | 'advertencia' | 'info'; codigo: string; mensaje: string }
+
+/**
+ * Lo que la IA leyó de UN comprobante del cobro (foto de cheque, e-cheq,
+ * transferencia, depósito u orden de pago del cliente). No crea nada.
+ */
+export interface VentasComprobanteCobroLectura {
+  tipo_documento: 'cheque' | 'echeq' | 'transferencia' | 'deposito' | 'orden_pago' | 'otro'
+  fecha:          string | null
+  pagador_nombre: string | null
+  pagador_cuit:   string | null
+  /** Reconocido por el CUIT o el nombre del pagador (o del librador); null = elegirlo a mano. */
+  cliente:        { id: number; razon_social: string; por: 'cuit' | 'nombre' } | null
+  medios: Array<{
+    forma:       'cheque' | 'echeq' | 'transferencia' | 'efectivo'
+    importe:     number | null
+    numero:      string | null
+    banco:       string | null
+    fecha_cobro: string | null
+    librador:    string | null
+    librador_cuit: string | null
+    /** Transferencia: la cuenta de CADINC reconocida (ventas_cuentas_bancarias). */
+    cuenta_bancaria_id: number | null
+    cuenta_texto: string | null
+    avisos:      VentasAvisoLectura[]
+    /** Cheque que ya es medio de un cobro vigente: no entra. */
     cobro_existente_id: number | null
   }>
+  retenciones: Array<{
+    tipo: 'iibb' | 'ganancias' | 'suss' | 'iva' | 'tem' | 'otra'
+    jurisdiccion: string | null; certificado_numero: string | null; fecha: string | null; importe: number
+  }>
+  /** Las facturas/ND que la orden de pago dice que paga. */
+  comprobantes: Array<{ tipo: string | null; pto_vta: number; numero: number; importe: number | null }>
+  total:   number | null
+  avisos:  VentasAvisoLectura[]
   modelo:  string | null
   adjunto: { storage_path: string; nombre_archivo: string; mime: string; size: number; hash: string }
 }

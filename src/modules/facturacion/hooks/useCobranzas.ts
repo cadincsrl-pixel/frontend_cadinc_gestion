@@ -13,7 +13,7 @@ import type {
   VentasDeudor, VentasEstadoCuenta, VentasEstadoCuentaMov, VentasExterno, VentasExternoAccion, VentasExternoInput,
   VentasExternosPage, VentasImportarFilaInput, VentasImportarRes, VentasSaldo, VentasCliente,
   VentasUploadUrlRes, VentasAmbiente, VentasPendientesCliente, VentasImputacion,
-  VentasCobroAdjunto, VentasCobroAdjuntoInput, VentasChequesCobroLectura, VentasCobroAdjuntoTipo, VentasLiquidacionPropuesta,
+  VentasCobroAdjunto, VentasCobroAdjuntoInput, VentasComprobanteCobroLectura, VentasCobroAdjuntoTipo, VentasLiquidacionPropuesta,
 } from '@/types/domain.types'
 import { aPagina } from '../utils/cobranzas.utils'
 import { invalidarFacturacion, useArcaAmbiente } from './useFacturacion'
@@ -315,9 +315,9 @@ export function leerLiquidacion(body: {
   return apiPost<VentasLiquidacionPropuesta>(`${BASE}/cobros/liquidacion/leer`, body)
 }
 
-/** «Soltá acá los cheques»: lee los cheques de un archivo ya subido a `cobros/pendientes/`. No crea nada. */
-export function leerChequesCobro(body: { storage_path: string; nombre_archivo: string; mime: string }): Promise<VentasChequesCobroLectura> {
-  return apiPost<VentasChequesCobroLectura>(`${BASE}/cobros/cheques/leer`, body)
+/** «Soltá acá los comprobantes del cobro»: lee un archivo ya subido a `cobros/pendientes/`. No crea nada. */
+export function leerComprobanteCobro(body: { storage_path: string; nombre_archivo: string; mime: string }): Promise<VentasComprobanteCobroLectura> {
+  return apiPost<VentasComprobanteCobroLectura>(`${BASE}/cobros/comprobantes/leer`, body)
 }
 
 // ── Deudores y estado de cuenta ───────────────────────────────────────

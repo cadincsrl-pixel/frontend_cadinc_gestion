@@ -20,7 +20,7 @@ import { FichaCobro } from './FichaCobro'
 import { ModalCobro } from './ModalCobro'
 import { ModalCompensacion } from './ModalCompensacion'
 import { ModalCargarLiquidacion } from './ModalCargarLiquidacion'
-import { ModalChequesCobro } from './ModalChequesCobro'
+import { ModalComprobantesCobro } from './ModalComprobantesCobro'
 
 const PAGE_SIZE = 50
 
@@ -195,7 +195,7 @@ export function CobranzasTab() {
 
       {nuevo && <ModalCobro onClose={() => setNuevo(false)} onGuardado={d => { setNuevo(false); setFichaId(d.cobro.id) }} />}
       {chequesSueltos && (
-        <ModalChequesCobro archivos={chequesSueltos} onClose={() => setChequesSueltos(null)}
+        <ModalComprobantesCobro archivos={chequesSueltos} onClose={() => setChequesSueltos(null)}
           onGuardado={d => { setChequesSueltos(null); setFichaId(d.cobro.id) }} />
       )}
       {liquidacion && <ModalCargarLiquidacion onClose={() => setLiquidacion(false)} onGuardado={d => { setLiquidacion(false); setFichaId(d.cobro.id) }} />}
@@ -247,9 +247,9 @@ function Acciones({ c, onVer, onPdf, onAnular, generando, anularCobros }: {
 }
 
 /**
- * «Soltá acá los cheques» (2026-09-25): las fotos o PDFs de los cheques que dio
- * un cliente. Se leen, se reconoce el cliente y se arma el cobro (ver
- * ModalChequesCobro). Mismo control que el de Compras › Pagos.
+ * «Soltá acá los comprobantes del cobro» (2026-09-25): fotos de cheques,
+ * comprobantes de e-cheq o de transferencia y órdenes de pago del cliente. Se
+ * leen, se reconoce el cliente y se arma el cobro (ver ModalComprobantesCobro).
  */
 function ZonaChequesCobro({ habilitada, onArchivos }: { habilitada: boolean; onArchivos: (f: File[]) => void }) {
   const [encima, setEncima] = useState(0)
@@ -270,10 +270,11 @@ function ZonaChequesCobro({ habilitada, onArchivos }: { habilitada: boolean; onA
       }}>
       <span className="text-2xl" aria-hidden>📥</span>
       <span className="flex-1 min-w-[220px]">
-        <b className="text-sm block">{encima > 0 ? 'Soltalos y se arma el cobro' : 'Soltá acá los cheques que te dio un cliente'}</b>
+        <b className="text-sm block">{encima > 0 ? 'Soltalos y se arma el cobro' : 'Soltá acá los comprobantes de un cobro'}</b>
         <span className="text-[11px] text-gris-dark">
-          Fotos o PDF, uno o muchos (un PDF con varios cheques se separa solo). Se reconoce el cliente por el
-          librador y se arma el cobro con sus comprobantes; lo revisás antes de registrar.
+          Fotos de cheques, comprobantes de e-cheq, de transferencia o de depósito, y la orden de pago del cliente;
+          uno o muchos. Se reconoce el cliente, los medios, las retenciones y las facturas que paga, y se arma el
+          cobro; lo revisás antes de registrar.
         </span>
       </span>
       <span className="text-xs font-semibold px-3 py-1.5 rounded border border-gris-mid bg-white">Elegir archivos</span>
