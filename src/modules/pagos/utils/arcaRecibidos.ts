@@ -69,7 +69,7 @@ const ENCABEZADOS: Record<Campo, string[]> = {
   emisor_razon_social: ['denominacion emisor', 'denominacion vendedor'],
   tipo_cambio:         ['tipo cambio', 'tipo de cambio'],
   moneda:              ['moneda'],
-  neto_gravado:        ['imp. neto gravado', 'imp. neto gravado total', 'total neto gravado', 'neto gravado'],
+  neto_gravado:        ['imp. neto gravado', 'imp. neto gravado total', 'total neto gravado', 'neto gravado', 'neto gravado total'],
   no_gravado:          ['imp. neto no gravado', 'neto no gravado', 'no gravado'],
   exento:              ['imp. op. exentas', 'op. exentas', 'exento'],
   otros_tributos:      ['otros tributos', 'o otros tributos', 'imp. otros tributos'],
