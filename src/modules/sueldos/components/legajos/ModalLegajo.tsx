@@ -62,6 +62,12 @@ function Par({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
+/** «5 (del convenio)» o «2 (propio)». */
+function codigoF931(propio: string | null, efectivo: string | null): string {
+  if (!efectivo) return '—'
+  return propio ? `${efectivo} (propio del legajo)` : `${efectivo} (del convenio)`
+}
+
 function Seccion({ titulo, children }: { titulo: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-2">
@@ -113,6 +119,15 @@ function DetalleLegajo({ l }: { l: LegajoFicha }) {
           {l.convenio_codigo === 'uocra' && <Par label="Cuenta fondo de cese">{l.fondo_cese_cuenta}</Par>}
           {l.carnet_profesional && <Par label="Carnet profesional">{l.carnet_profesional}</Par>}
           <Par label="RIFL">{l.rifl ? 'Sí' : 'No'}</Par>
+          <Par label="Jubilado">{l.jubilado ? 'Sí (sin obra social ni INSSJP)' : 'No'}</Par>
+        </div>
+      </Seccion>
+
+      <Seccion titulo="Códigos del F.931 (ARCA)">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Par label="Condición">{codigoF931(l.f931_condicion, l.f931_condicion_efectiva)}</Par>
+          <Par label="Actividad">{codigoF931(l.f931_actividad, l.f931_actividad_efectiva)}</Par>
+          <Par label="Modalidad">{codigoF931(l.f931_modalidad, l.f931_modalidad_efectiva)}</Par>
         </div>
       </Seccion>
 
@@ -222,6 +237,10 @@ const schema = z.object({
   titulo_nivel:           z.enum(['', 'A', 'B', 'C']),
   carnet_profesional:     z.string().trim().max(60, 'Hasta 60 caracteres'),
   rifl:                   z.boolean(),
+  jubilado:               z.boolean(),
+  f931_condicion:         z.string().trim().regex(/^\d{0,3}$/, 'Hasta 3 dígitos'),
+  f931_actividad:         z.string().trim().regex(/^\d{0,3}$/, 'Hasta 3 dígitos'),
+  f931_modalidad:         z.string().trim().regex(/^\d{0,3}$/, 'Hasta 3 dígitos'),
   obra_cod_habitual:      z.string(),
   activo:                 z.boolean(),
   obs:                    z.string().max(1000, 'Hasta 1000 caracteres'),
@@ -258,6 +277,10 @@ function defaults(l: LegajoFicha): FormData {
     titulo_nivel: l.titulo_nivel ?? '',
     carnet_profesional: l.carnet_profesional ?? '',
     rifl: !!l.rifl,
+    jubilado: !!l.jubilado,
+    f931_condicion: l.f931_condicion ?? '',
+    f931_actividad: l.f931_actividad ?? '',
+    f931_modalidad: l.f931_modalidad ?? '',
     obra_cod_habitual: l.obra_cod_habitual ?? '',
     activo: !!l.activo,
     obs: l.obs ?? '',
@@ -319,6 +342,10 @@ function FormLegajo({ legajo, onCancel, onGuardado, onClose }: {
     if (sucio('titulo_nivel')) body.titulo_nivel = d.titulo_nivel || null
     if (sucio('carnet_profesional')) body.carnet_profesional = d.carnet_profesional
     if (sucio('rifl')) body.rifl = d.rifl
+    if (sucio('jubilado')) body.jubilado = d.jubilado
+    if (sucio('f931_condicion')) body.f931_condicion = d.f931_condicion || null
+    if (sucio('f931_actividad')) body.f931_actividad = d.f931_actividad || null
+    if (sucio('f931_modalidad')) body.f931_modalidad = d.f931_modalidad || null
     if (sucio('obra_cod_habitual')) body.obra_cod_habitual = d.obra_cod_habitual || null
     if (sucio('activo')) body.activo = d.activo
     if (sucio('obs')) body.obs = d.obs
@@ -441,6 +468,30 @@ function FormLegajo({ legajo, onCancel, onGuardado, onClose }: {
                   title="Régimen de Incentivo a la Formalización Laboral: contribuciones reducidas" />
               )} />
             </div>
+            <div className="flex items-end pb-2">
+              <Controller control={control} name="jubilado" render={({ field }) => (
+                <Check label="Jubilado" checked={field.value} onChange={field.onChange}
+                  title="Jubilado que sigue trabajando: no se le descuenta INSSJP ni obra social y la contribución previsional es reducida. En el F.931 va con condición 2." />
+              )} />
+            </div>
+          </div>
+        </Seccion>
+
+        <Seccion titulo="Códigos del F.931 (ARCA)">
+          <p className="text-xs text-gris-dark mb-2">
+            Vacío = el del convenio{convenio ? ` (${convenio.nombre}: ${[convenio.f931_condicion, convenio.f931_actividad, convenio.f931_modalidad].map(x => x ?? '—').join(' / ')})` : ''}.
+            Se completa solo cuando esta persona se declara distinto, por ejemplo un jubilado (condición 2).
+          </p>
+          <div className="grid grid-cols-3 gap-3">
+            <Campo label="Condición" error={errors.f931_condicion?.message}>
+              <input className={inputCls} inputMode="numeric" {...register('f931_condicion')} placeholder={convenio?.f931_condicion ?? ''} />
+            </Campo>
+            <Campo label="Actividad" error={errors.f931_actividad?.message}>
+              <input className={inputCls} inputMode="numeric" {...register('f931_actividad')} placeholder={convenio?.f931_actividad ?? ''} />
+            </Campo>
+            <Campo label="Modalidad de contratación" error={errors.f931_modalidad?.message}>
+              <input className={inputCls} inputMode="numeric" {...register('f931_modalidad')} placeholder={convenio?.f931_modalidad ?? ''} />
+            </Campo>
           </div>
         </Seccion>
 

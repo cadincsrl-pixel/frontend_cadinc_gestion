@@ -34,10 +34,15 @@ export interface Convenio extends SueAuditoria {
   unidad_basico: UnidadBasico
   obs: string
   activo: boolean
+  /** Códigos del F.931 por defecto de los legajos del convenio. */
+  f931_condicion: string | null
+  f931_actividad: string | null
+  f931_modalidad: string | null
 }
 
 export interface ConvenioCreate {
   codigo: string; nombre: string; cct?: string; periodicidad: Periodicidad; unidad_basico: UnidadBasico; obs?: string; activo?: boolean
+  f931_condicion?: string | null; f931_actividad?: string | null; f931_modalidad?: string | null
 }
 export type ConvenioUpdate = Partial<Omit<ConvenioCreate, 'codigo'>>
 
@@ -101,6 +106,10 @@ export interface Concepto extends SueAuditoria {
   orden: number
   automatico: boolean
   activo: boolean
+  /** No se aplica a jubilados (INSSJP, obra social, contribución general). */
+  excluye_jubilados: boolean
+  /** Solo a jubilados (contribución reducida). */
+  solo_jubilados: boolean
   obs: string
 }
 
@@ -135,6 +144,7 @@ export interface ConceptoCreate {
   base?: BaseConcepto | null; condicion?: Condicion; codigo_arca?: string | null; grupo_contribucion?: GrupoContribucion | null
   destino?: Destino | null; parametro_clave?: string | null; unidad?: Unidad | null
   en_recibo?: boolean; orden?: number; automatico?: boolean; activo?: boolean; obs?: string
+  excluye_jubilados?: boolean; solo_jubilados?: boolean
 }
 export type ConceptoUpdate = Partial<Omit<ConceptoCreate, 'convenio_id' | 'codigo'>>
 export interface ConceptoValorCreate { concepto_id: number; vigente_desde: ISODate; porcentaje?: number | null; monto?: number | null; a_confirmar?: boolean; fuente?: string }
@@ -194,6 +204,16 @@ export interface Legajo extends SueAuditoria {
   titulo_nivel: 'A' | 'B' | 'C' | null
   carnet_profesional: string
   rifl: boolean
+  /** Jubilado que sigue trabajando (condición 2 del F.931). */
+  jubilado: boolean
+  /** Override del F.931; null = el del convenio. */
+  f931_condicion: string | null
+  f931_actividad: string | null
+  f931_modalidad: string | null
+  /** Lo que va al F.931/LSD: el del legajo o el del convenio. */
+  f931_condicion_efectiva: string | null
+  f931_actividad_efectiva: string | null
+  f931_modalidad_efectiva: string | null
   obra_cod_habitual: string | null
   activo: boolean
   obs: string
@@ -237,6 +257,7 @@ export interface LegajoCampos {
   cbu?: string | null; banco?: string; estado_civil?: string; conyuge_a_cargo?: boolean
   hijos_a_cargo?: number; ieric_numero?: string; fondo_cese_cuenta?: string; titulo_nivel?: 'A' | 'B' | 'C' | null
   carnet_profesional?: string; rifl?: boolean; obra_cod_habitual?: string | null; activo?: boolean; obs?: string
+  jubilado?: boolean; f931_condicion?: string | null; f931_actividad?: string | null; f931_modalidad?: string | null
 }
 export interface LegajoCreate extends LegajoCampos {
   leg?: string | null

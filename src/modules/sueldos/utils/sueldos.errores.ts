@@ -79,6 +79,8 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   CATEGORIA_NO_EXISTE: () => 'La categoría no existe.',
   FECHAS_INVALIDAS:   () => 'La fecha de egreso no puede ser anterior al ingreso.',
   TITULO_INVALIDO:    () => 'El nivel de título es A, B o C.',
+  F931_CODIGO_INVALIDO: () => 'El código del F.931 es un número de hasta 3 dígitos.',
+  CONCEPTO_JUBILADOS_INVALIDO: () => 'Un concepto no puede ser «solo jubilados» y «no a jubilados» a la vez.',
   JORNADA_INVALIDA:   () => 'La jornada es completa o parcial.',
   ZONA_INVALIDA:      () => 'Zona inválida (letras o números, hasta 5).',
   MODALIDAD_INVALIDA: () => 'Modalidad de contratación inválida.',

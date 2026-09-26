@@ -42,6 +42,7 @@ const schema = z.object({
   en_recibo:          z.boolean(),
   automatico:         z.boolean(),
   activo:             z.boolean(),
+  jubilados:          z.enum(['todos', 'excluye', 'solo']),
   obs:                z.string().max(1000),
 }).superRefine((d, ctx) => {
   if (d.calculo === 'porcentaje' && !d.base) ctx.addIssue({ code: 'custom', path: ['base'], message: 'Elegí sobre qué base se aplica' })
@@ -69,9 +70,10 @@ export function ModalConcepto({ convenio, concepto, noConfig, onClose }: {
       condicion: c.condicion, codigo_arca: c.codigo_arca ?? '', grupo_contribucion: c.grupo_contribucion ?? '', destino: c.destino ?? '',
       parametro_clave: c.parametro_clave ?? '', unidad: c.unidad ?? '', orden: String(c.orden ?? ''), en_recibo: c.en_recibo,
       automatico: c.automatico, activo: c.activo, obs: c.obs ?? '',
+      jubilados: c.solo_jubilados ? 'solo' : c.excluye_jubilados ? 'excluye' : 'todos',
     } : {
       comun: false, codigo: '', nombre: '', tipo: 'remunerativo', calculo: 'manual', base: '', condicion: 'siempre', codigo_arca: '',
-      grupo_contribucion: '', destino: '', parametro_clave: '', unidad: '', orden: '', en_recibo: true, automatico: false, activo: true, obs: '',
+      grupo_contribucion: '', destino: '', parametro_clave: '', unidad: '', orden: '', en_recibo: true, automatico: false, activo: true, obs: '', jubilados: 'todos',
     },
   })
   const tipo = useWatch({ control, name: 'tipo' })
@@ -86,6 +88,7 @@ export function ModalConcepto({ convenio, concepto, noConfig, onClose }: {
       parametro_clave: d.parametro_clave || null, unidad: d.unidad || null,
       ...(d.orden ? { orden: Number(d.orden) } : {}),
       en_recibo: d.en_recibo, automatico: d.automatico, activo: d.activo, obs: d.obs,
+      excluye_jubilados: d.jubilados === 'excluye', solo_jubilados: d.jubilados === 'solo',
     }
     try {
       const r = c
@@ -165,6 +168,13 @@ export function ModalConcepto({ convenio, concepto, noConfig, onClose }: {
           </Campo>
           <Campo label="Orden" error={errors.orden?.message}>
             <input className={inputCls} inputMode="numeric" {...register('orden')} />
+          </Campo>
+          <Campo label="Jubilados" hint="quien tiene «Jubilado» en la ficha" className="col-span-2">
+            <select className={inputCls} {...register('jubilados')}>
+              <option value="todos">Se aplica igual a todos</option>
+              <option value="excluye">No se aplica a jubilados (INSSJP, obra social…)</option>
+              <option value="solo">Solo a jubilados</option>
+            </select>
           </Campo>
           <div className="col-span-2 md:col-span-4 flex flex-wrap gap-4">
             <Controller control={control} name="automatico" render={({ field }) => (

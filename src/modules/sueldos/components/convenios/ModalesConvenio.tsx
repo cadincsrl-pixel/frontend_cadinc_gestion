@@ -40,6 +40,9 @@ const convenioSchema = z.object({
   unidad_basico: z.enum(['hora', 'mes']),
   obs:           z.string().max(1000),
   activo:        z.boolean(),
+  f931_condicion: z.string().trim().regex(/^\d{0,3}$/, 'Hasta 3 dígitos'),
+  f931_actividad: z.string().trim().regex(/^\d{0,3}$/, 'Hasta 3 dígitos'),
+  f931_modalidad: z.string().trim().regex(/^\d{0,3}$/, 'Hasta 3 dígitos'),
 })
 type ConvenioForm = z.infer<typeof convenioSchema>
 
@@ -50,8 +53,9 @@ export function ModalConvenio({ convenio, onClose }: { convenio: Convenio | null
   const { register, control, handleSubmit, setError, formState: { errors } } = useForm<ConvenioForm>({
     resolver: zodResolver(convenioSchema),
     defaultValues: convenio
-      ? { codigo: convenio.codigo, nombre: convenio.nombre, cct: convenio.cct ?? '', periodicidad: convenio.periodicidad, unidad_basico: convenio.unidad_basico, obs: convenio.obs ?? '', activo: convenio.activo }
-      : { codigo: '', nombre: '', cct: '', periodicidad: 'mensual', unidad_basico: 'mes', obs: '', activo: true },
+      ? { codigo: convenio.codigo, nombre: convenio.nombre, cct: convenio.cct ?? '', periodicidad: convenio.periodicidad, unidad_basico: convenio.unidad_basico, obs: convenio.obs ?? '', activo: convenio.activo,
+          f931_condicion: convenio.f931_condicion ?? '', f931_actividad: convenio.f931_actividad ?? '', f931_modalidad: convenio.f931_modalidad ?? '' }
+      : { codigo: '', nombre: '', cct: '', periodicidad: 'mensual', unidad_basico: 'mes', obs: '', activo: true, f931_condicion: '', f931_actividad: '', f931_modalidad: '' },
   })
 
   async function enviar(d: ConvenioForm) {
@@ -95,6 +99,21 @@ export function ModalConvenio({ convenio, onClose }: { convenio: Convenio | null
               <option value="mes">Mensual</option>
             </select>
           </Campo>
+        </div>
+        <div>
+          <div className="text-[10px] font-bold text-gris-dark uppercase tracking-wide mb-1">Códigos del F.931 de sus empleados</div>
+          <div className="grid grid-cols-3 gap-3">
+            <Campo label="Condición" error={errors.f931_condicion?.message}>
+              <input className={inputCls} inputMode="numeric" {...register('f931_condicion')} placeholder="p. ej. 5" />
+            </Campo>
+            <Campo label="Actividad" error={errors.f931_actividad?.message}>
+              <input className={inputCls} inputMode="numeric" {...register('f931_actividad')} placeholder="p. ej. 003" />
+            </Campo>
+            <Campo label="Modalidad" error={errors.f931_modalidad?.message}>
+              <input className={inputCls} inputMode="numeric" {...register('f931_modalidad')} placeholder="p. ej. 24" />
+            </Campo>
+          </div>
+          <p className="text-xs text-gris-dark mt-1">Van al archivo del Libro de Sueldos de ARCA. Un legajo puede tener los suyos (p. ej. un jubilado).</p>
         </div>
         <Campo label="Observaciones" error={errors.obs?.message}>
           <textarea rows={2} className={inputCls} {...register('obs')} />
