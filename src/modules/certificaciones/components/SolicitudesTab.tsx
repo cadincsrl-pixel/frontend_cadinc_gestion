@@ -389,6 +389,13 @@ type DespacharLoteForm = {
  */
 const ESTADOS_CON_PRECIO_EDITABLE = ['comprado', 'de_deposito', 'enviado']
 
+/** El despacho sin stock suficiente se hace igual y el backend avisa (20261007a). */
+function avisoStockDe(r: unknown): { material_id: number | null; stock_actual: number } | null {
+  const a = (r as { aviso_stock?: { material_id: number | null; stock_actual: number } } | null)?.aviso_stock
+  return a ?? null
+}
+const fmtStock = (n: number) => Number(n).toLocaleString('es-AR')
+
 export function SolicitudesTab() {
   const toast = useToast()
   const queryClient = useQueryClient()
@@ -1234,6 +1241,8 @@ export function SolicitudesTab() {
     setDespLoteSubmitting(true)
     const esperando = sinPrecio || !!data.esperando_precio
     const fallidos: Array<{ desc: string; error: string }> = []
+    // Sin stock se despacha igual (26/09) y se avisa cómo quedó cada ficha.
+    const sinStock: string[] = []
     let ok = 0
 
     const itemsActuales = fallidosDespLote.length > 0
@@ -1245,7 +1254,11 @@ export function SolicitudesTab() {
       try {
         await new Promise<void>((resolve, reject) => {
           despacharItem({ itemId: it.id!, dto: { precio_unit: precio } },
-            { onSuccess: () => resolve(), onError: (e: unknown) => reject(e) })
+            { onSuccess: (r: unknown) => {
+                const aviso = avisoStockDe(r)
+                if (aviso) sinStock.push(`${it.descripcion} (${fmtStock(aviso.stock_actual)})`)
+                resolve()
+              }, onError: (e: unknown) => reject(e) })
         })
         ok++
       } catch (e: unknown) {
@@ -1261,20 +1274,29 @@ export function SolicitudesTab() {
     setDespLoteSubmitting(false)
 
     if (fallidos.length === 0) {
-      toast(`✓ ${ok} ítem${ok !== 1 ? 's' : ''} despachado${ok !== 1 ? 's' : ''} de depósito${esperando ? ', esperando precio' : ''}`, 'ok')
+      toast(`✓ ${ok} ítem${ok !== 1 ? 's' : ''} despachado${ok !== 1 ? 's' : ''} de depósito${esperando ? ', esperando precio' : ''}`
+        + (sinStock.length > 0 ? `. ⚠ Sin stock suficiente, quedaron en negativo: ${sinStock.join(', ')}` : ''),
+        sinStock.length > 0 ? 'warn' : 'ok')
       clearSelCompra(modalDespacharLote.solId)
       setModalDespacharLote(null)
       setFallidosDespLote([])
     } else {
       setFallidosDespLote(fallidos)
-      toast(`${ok} despachado${ok !== 1 ? 's' : ''}, ${fallidos.length} con problema`, 'warn')
+      toast(`${ok} despachado${ok !== 1 ? 's' : ''}, ${fallidos.length} con problema`
+        + (sinStock.length > 0 ? `. ⚠ Quedaron en negativo: ${sinStock.join(', ')}` : ''), 'warn')
     }
   }
 
   function handleDespachar(data: any) {
     if (!modalDespachar?.id) return
     despacharItem({ itemId: modalDespachar.id, dto: { precio_unit: sinPrecio ? 0 : Number(data.precio_unit) } }, {
-      onSuccess: () => { toast('Despacho registrado', 'ok'); setModalDespachar(null) },
+      onSuccess: (r: unknown) => {
+        const aviso = avisoStockDe(r)
+        toast(aviso
+          ? `Despacho registrado. ⚠ No alcanzaba el stock: «${modalDespachar.descripcion}» quedó en ${fmtStock(aviso.stock_actual)} en el depósito.`
+          : 'Despacho registrado', aviso ? 'warn' : 'ok')
+        setModalDespachar(null)
+      },
       // El botón ya no se muestra en pedidos con destino depósito, pero una
       // pestaña vieja todavía puede mandarlo: el backend corta con este code
       // y sin traducción el toast escupiría la constante cruda.
@@ -3210,6 +3232,11 @@ export function SolicitudesTab() {
                       {mat.stock_actual} {UNIDADES.find(u => u.value === mat.unidad)?.label ?? mat.unidad}
                     </span>
                   </div>
+                  {mat.clase !== 'herramienta' && mat.stock_actual < modalDespachar.cantidad && (
+                    <div className="text-xs text-[#7A5500]">
+                      ⚠ No alcanza: el stock va a quedar en <b className="font-mono">{fmtStock(mat.stock_actual - modalDespachar.cantidad)}</b>. Se despacha igual; conviene revisar la ficha o hacer un recuento.
+                    </div>
+                  )}
                   {mat.precio_ref > 0 && (
                     <div className="text-xs text-gris-dark">Precio de referencia del catálogo: <strong className="font-mono">{fmtM(mat.precio_ref)}</strong></div>
                   )}

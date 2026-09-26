@@ -8,6 +8,7 @@ import { GASTOS_NOTIF_KEY } from '@/modules/logistica/hooks/useLogistica'
 import { useSessionStore } from '@/store/session.store'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useTabsPermitidos } from '@/hooks/useTabsPermitidos'
+import { HERR_NOTIF_KEY } from '@/modules/herramientas/hooks/useHerrEntregas'
 import { usePendientesDePrecio } from '@/modules/certificaciones/hooks/useCuentaCliente'
 import { PAGOS_KEYS } from '@/modules/pagos/hooks/usePagos'
 import { useArcaAmbiente } from '@/modules/facturacion/hooks/useFacturacion'
@@ -321,7 +322,7 @@ export function useNotificaciones(): NotificacionesResult {
     staleTime: 5 * 60 * 1000,
   })
   const { data: herrAlertas = [] } = useQuery({
-    queryKey: ['herramientas', 'notificaciones', 'en-obra'],
+    queryKey: HERR_NOTIF_KEY,
     queryFn:  () => apiGet<Array<{ obra_cod: string; obra_nom: string; archivada: boolean; unidades: number | string; desde: string }>>('/api/herramientas/entregas/alertas'),
     enabled:  avisaPanol,
     retry: false,

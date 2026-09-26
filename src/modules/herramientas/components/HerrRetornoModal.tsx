@@ -140,7 +140,7 @@ export function HerrRetornoModal({ open, onClose, salidas, obraNom, onListo }: P
         </div>
         <p className="text-xs text-gris-dark">
           {noVuelve
-            ? 'Sale de «en obra» sin volver al pañol. Queda registrado con el motivo; no se puede deshacer desde la app.'
+            ? 'Sale de «en obra» sin volver al pañol. Queda registrado con el motivo; si se carga mal, se anula desde Salidas a obra.'
             : 'Se registra una devolución por cada salida. Por defecto vuelve todo lo que sigue en obra; bajá la cantidad si volvió una parte.'}
         </p>
         {vivas.length > 0 && (

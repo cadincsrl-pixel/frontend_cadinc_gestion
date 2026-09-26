@@ -1,7 +1,10 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useHerrEntregas, useHerrEntregasStats, useMarcarEntrega, useMarcarEntregasBulk, type EstadoHumano } from '../hooks/useHerrEntregas'
+import { useHerrEntregas, useHerrEntregasStats, useMarcarEntrega, useMarcarEntregasBulk, useAnularRetorno, type EstadoHumano } from '../hooks/useHerrEntregas'
+import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
 import { useObrasTodas } from '@/modules/tarja/hooks/useObras'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useToast } from '@/components/ui/Toast'
@@ -88,6 +91,10 @@ export function HerrSalidas() {
   const [page, setPage]         = useState(1)
   const [sel, setSel]           = useState<Set<number>>(new Set())
   const [retorno, setRetorno]   = useState<HerrEntrega[] | null>(null)
+  // Deshacer un retorno o cierre cargado en el pañol (20261007b).
+  const [anular, setAnular]     = useState<HerrEntrega | null>(null)
+  const [motivoAnular, setMotivoAnular] = useState('')
+  const { mutate: anularRetorno, isPending: anulando } = useAnularRetorno()
   const [verAyuda, setVerAyuda] = useState(false)
 
   // Debounce: `busqueda` es parte de la queryKey; sin esto cada tecla dispara
@@ -368,6 +375,11 @@ export function HerrSalidas() {
                             {!esDev && (
                               <button disabled={!puedeEditar || ocupado} onClick={() => marcarUna(e, 'pendiente', 'Vuelta a la bandeja')} title="Volverla a Sin revisar" className={`${btnMini} text-gris-dark hover:text-azul hover:bg-azul-light`}>↺</button>
                             )}
+                            {esDev && e.item_id == null && (
+                              <button disabled={!puedeEditar || ocupado} onClick={() => { setAnular(e); setMotivoAnular('') }}
+                                title="Se cargó mal: deshacer este retorno. La herramienta vuelve a figurar en obra."
+                                className={`${btnMini} text-gris-dark hover:text-rojo hover:bg-rojo-light`}>✕ Anular</button>
+                            )}
                           </>
                         ) : (
                           <>
@@ -403,6 +415,36 @@ export function HerrSalidas() {
           <button onClick={() => setSel(new Set())} className="ml-auto text-xs text-white/70 hover:text-white px-1">Quitar</button>
         </div>
       )}
+
+      <Modal open={anular !== null} onClose={() => setAnular(null)} title="✕ ANULAR RETORNO" width="max-w-md"
+        footer={<>
+          <Button variant="secondary" onClick={() => setAnular(null)}>Cancelar</Button>
+          <Button variant="primary" loading={anulando} disabled={!motivoAnular.trim()} onClick={() => {
+            if (!anular) return
+            anularRetorno({ id: anular.id, motivo: motivoAnular.trim() }, {
+              onSuccess: () => { toast('✓ Retorno anulado: la herramienta vuelve a figurar en obra', 'ok'); setAnular(null) },
+              onError: (err: unknown) => {
+                const code = (err as { body?: { error?: string } })?.body?.error
+                toast(code === 'RETORNO_DEL_PEDIDO' ? 'Este retorno viene de un renglón «Devuelve» del pedido: se corrige desde el pedido.'
+                    : code === 'NO_ES_RETORNO_VIVO' ? 'Ese retorno ya estaba anulado.'
+                    : code === 'MOTIVO_REQUERIDO' ? 'Escribí el motivo.'
+                    : 'No se pudo anular el retorno', 'err')
+              },
+            })
+          }}>Anular retorno</Button>
+        </>}>
+        {anular && (
+          <div className="flex flex-col gap-3">
+            <p className="text-sm">
+              <b>{anular.descripcion}</b>{Number(anular.cantidad) > 1 ? ` ×${Number(anular.cantidad)}` : ''} · {nombreObra(anular.obra_cod)} · {fmtFecha(anular.fecha)}
+            </p>
+            <p className="text-xs text-gris-dark">
+              Se deshace {anular.cierre && anular.cierre !== 'volvio' ? `el cierre como «${CIERRES.find(c => c.value === anular.cierre)?.corto}»` : 'el retorno al pañol'} y la herramienta vuelve a figurar en obra. Queda registrado con el motivo.
+            </p>
+            <Input label="Motivo (obligatorio)" placeholder="Por qué se anula: se cargó en la obra equivocada, no volvió, etc." value={motivoAnular} onChange={ev => setMotivoAnular(ev.target.value)} />
+          </div>
+        )}
+      </Modal>
 
       <HerrRetornoModal
         open={retorno !== null}

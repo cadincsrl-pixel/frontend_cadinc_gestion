@@ -103,6 +103,29 @@ export function useRegistrarRetorno() {
   return useMutation({
     mutationFn: (dto: { items: RetornoItem[]; fecha: string; nota?: string | null; cierre?: HerrCierre }) =>
       apiPost<{ devoluciones: HerrEntrega[] }>('/api/herramientas/entregas/retornos', dto),
-    onSuccess: () => { void qc.invalidateQueries({ queryKey: ENTREGAS_KEY }) },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ENTREGAS_KEY })
+      // La campana tiene su propia clave (herramientas afuera hace +60 días).
+      void qc.invalidateQueries({ queryKey: HERR_NOTIF_KEY })
+    },
+  })
+}
+
+/** Clave de la sección del pañol en la campana (useNotificaciones). */
+export const HERR_NOTIF_KEY = ['herramientas', 'notificaciones', 'en-obra']
+
+/**
+ * Deshacer un retorno o cierre cargado en el pañol (20261007b). Los de
+ * «↩ Devuelve» del pedido se corrigen desde el pedido (RETORNO_DEL_PEDIDO).
+ */
+export function useAnularRetorno() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, motivo }: { id: number; motivo: string }) =>
+      apiPost<HerrEntrega>(`/api/herramientas/entregas/${id}/anular-retorno`, { motivo }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ENTREGAS_KEY })
+      void qc.invalidateQueries({ queryKey: HERR_NOTIF_KEY })
+    },
   })
 }

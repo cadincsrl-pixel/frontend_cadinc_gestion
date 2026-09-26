@@ -143,8 +143,11 @@ El campo `materiales_a_cuenta_cliente.origen` persiste uno de dos valores (restr
 - `'proveedor'` → resolución vía compra externa o retiro de stock en proveedor.
 - `'deposito'` → resolución vía despacho de depósito.
 
-### 5.2 Resolución transaccional vía RPCs (Abril 2026)
-Las operaciones de resolución de items usan RPCs de PostgreSQL (`resolver_item_compra`, `resolver_item_despacho`) que son transaccionales con locks `FOR UPDATE`. Activación del backend detrás del feature flag `USE_RPC_RESOLVER` (env var). Default off = camino legacy; on = RPCs atómicas. Ver migraciones `20260422_rpc_resolver_items.sql` y `20260423_profiles_forzar_despacho.sql`.
+### 5.2 Resolución transaccional vía RPCs
+Comprar y despachar un renglón pasa **siempre** por las RPC `resolver_item_compra` y `resolver_item_despacho`. Son transaccionales, con locks `FOR UPDATE`, y escriben el renglón, la cuenta del cliente, el stock y el evento en una sola transacción.
+- **Historia:** hasta el 26/09 estaban detrás de `USE_RPC_RESOLVER`, y producción usaba un camino legacy de escrituras sueltas: si fallaba la cuenta del cliente, el renglón quedaba resuelto sin fila. Ese camino y el flag se borraron (backend, tanda 3 de la revisión).
+- **Herramientas:** si el renglón o su ficha es herramienta, no va a la cuenta del cliente (`20261007a`).
+- **Stock negativo:** decisión del dueño 26/09, «dejar stock negativo hasta que estemos bien pulidos pero avisar». El despacho **no frena** por saldo: descuenta igual y marca el movimiento `forzado_sin_stock`. La RPC devuelve `stock_actual_post` y `stock_forzado`, el backend responde `aviso_stock` y la pantalla avisa. El modal de despacho ya muestra en cuánto va a quedar la ficha. `STOCK_INSUFICIENTE` ya no se usa.
 
 ### 5.3 Semana viernes → jueves (y cuándo se cierra)
 CADINC cierra semanas los jueves. Todo `sem_key` es el ISO del **viernes** de esa semana. Helpers en `src/lib/utils/dates.ts`: `getViernes`, `getSemDays`, `toISO`. **Nunca calcular semanas con lunes-domingo.**
@@ -239,6 +242,8 @@ Una herramienta es una fila de `stock_materiales` con `clase='herramienta'` (rub
   - Lo que no vuelve se cierra con la misma RPC de retorno: `registrar_retorno_herramientas(..., p_cierre)` con `perdida`, `rota` o `baja_en_obra`, y la nota es obligatoria (`MOTIVO_REQUERIDO`). Queda en `herr_entregas.cierre` (`20261005d`). No usar más `ignorada` para esto.
   - Archivar una obra con herramientas afuera avisa (409 `OBRA_CON_SEMANA_ABIERTA`, que ofrece «archivar igual»).
   - La campana muestra las obras con herramientas afuera hace más de 60 días, o archivadas con algo afuera (`v_herr_alertas_en_obra`, `GET /api/herramientas/entregas/alertas`, `20261005e`).
+  - **Anular un retorno** o un cierre cargado en el pañol: botón «✕ Anular» en Salidas a obra, con motivo obligatorio (`anular_retorno_herramienta`, `20261007b`). Los de «↩ Devuelve» se corrigen desde el pedido (`RETORNO_DEL_PEDIDO`). La sección de la campana tiene su clave (`HERR_NOTIF_KEY`) y se invalida al registrar o anular.
+  - Las fichas HER-NNN (inventario, movimientos, trazabilidad) no se usan: la decisión del dueño del 26/09 es quedarse con el pañol por tipo.
 - **Pedidos: dos candados de datos** (26/09).
   - Un pedido con algún renglón que ya no está `pendiente` ni `rechazado` no cambia de obra (`OBRA_CON_RENGLONES_RESUELTOS`, `20261005a`).
   - Ponerle ficha a un renglón de texto libre ya despachado del depósito registra la salida de stock que faltó (`trg_item_vinculado_descuenta_stock`, `20261005b`). Sin backfill, por los recuentos de §5.15.
