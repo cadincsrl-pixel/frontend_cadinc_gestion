@@ -20,6 +20,7 @@ const ROUTE_MODULOS: Record<string, string[]> = {
   '/pagos':            ['pagos'],
   '/facturacion':      ['facturacion'],
   '/contabilidad':     ['contabilidad'],
+  '/sueldos':          ['sueldos'],
   '/admin':            ['admin'],
 }
 

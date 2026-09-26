@@ -20,6 +20,7 @@ const MODULO_BRANDING: Record<string, { label: string; accent: string; icono: st
   pagos:          { label: MARCA.label, accent: MARCA.accent, icono: '🧾' },
   facturacion:    { label: MARCA.label, accent: MARCA.accent, icono: '🧮' },
   contabilidad:   { label: MARCA.label, accent: MARCA.accent, icono: '📚' },
+  sueldos:        { label: MARCA.label, accent: MARCA.accent, icono: '💼' },
   admin:          { label: MARCA.label, accent: MARCA.accent, icono: '⚙️' },
 }
 
@@ -33,6 +34,7 @@ function getModuloActual(pathname: string): string {
   if (pathname.startsWith('/pagos'))          return 'pagos'
   if (pathname.startsWith('/facturacion'))    return 'facturacion'
   if (pathname.startsWith('/contabilidad'))   return 'contabilidad'
+  if (pathname.startsWith('/sueldos'))        return 'sueldos'
   if (pathname.startsWith('/admin'))          return 'admin'
   return 'tarja'
 }

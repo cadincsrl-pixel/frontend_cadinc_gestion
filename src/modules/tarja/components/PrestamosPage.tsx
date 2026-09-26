@@ -398,7 +398,12 @@ export function PrestamosPage() {
     if (!confirm('¿Eliminar este movimiento?')) return
     remove(id, {
       onSuccess: () => toast('✓ Eliminado', 'ok'),
-      onError:   () => toast('Error al eliminar', 'err'),
+      onError:   (e) => {
+        const body = (e as { body?: { error?: string; detail?: { liquidacion?: string } } }).body
+        toast(body?.error === 'PRESTAMO_DE_SUELDOS'
+          ? `Lo descontó la liquidación de sueldos ${body.detail?.liquidacion ?? ''}: para deshacerlo, reabrila o anulala en Sueldos.`
+          : 'Error al eliminar', 'err')
+      },
     })
   }
 

@@ -91,6 +91,9 @@ export function usePermisos(modulo: string) {
     // Tanda 6 (20260929a): configuración de Ventas / Compras y Datos de la empresa (admin).
     configurar:           flagCapacidad('configurar', false),
     asistenteIa:          flagCapacidad('asistente_ia', false),
+    // Sueldos (20261004): nacen apagados, igual que en el backend.
+    liquidar:             flagCapacidad('liquidar', false),
+    cerrarLiquidaciones:  flagCapacidad('cerrar_liquidaciones', false),
     esCapataz,
     esJefeObra,
     esAdmin:         profile?.rol === 'admin',
