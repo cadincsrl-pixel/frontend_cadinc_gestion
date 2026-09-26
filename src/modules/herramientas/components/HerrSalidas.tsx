@@ -10,6 +10,7 @@ import { Combobox } from '@/components/ui/Combobox'
 import { HerrRetornoModal } from './HerrRetornoModal'
 import { Buscador, FiltroChip, FechaFiltro, selectCls, btnMini } from './HerrFiltros'
 import type { HerrEntrega, HerrEntregaEstado } from '@/types/domain.types'
+import { CIERRES } from './HerrRetornoModal'
 
 /**
  * Salidas a obra — la bandeja del pañol.
@@ -312,9 +313,15 @@ export function HerrSalidas() {
                         <span className="font-medium text-carbon">{e.descripcion}</span>
                         {Number(e.cantidad) > 1 && <span className="text-[11px] font-mono font-bold text-azul">×{Number(e.cantidad)}</span>}
                         {esDev ? (
+                          e.cierre && e.cierre !== 'volvio' ? (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rojo-light text-rojo" title={`${e.nota ?? 'Sin motivo'}${e.salida_id ? ` · salida #${e.salida_id}` : ''}`}>
+                              ✕ {CIERRES.find(c => c.value === e.cierre)?.corto ?? e.cierre}{e.salida_id ? ` · salida #${e.salida_id}` : ''}
+                            </span>
+                          ) : (
                           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-verde-light text-verde" title={e.salida_id ? `Devuelve la salida #${e.salida_id}` : 'Devolución cargada en el pedido'}>
                             ↩ volvió{e.salida_id ? ` · salida #${e.salida_id}` : ''}
                           </span>
+                          )
                         ) : e.estado === 'confirmada' ? (
                           devuelto > 0
                             ? <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${enObraN > 0 ? 'bg-amarillo-light text-[#7A5500]' : 'bg-gris text-gris-dark'}`}>

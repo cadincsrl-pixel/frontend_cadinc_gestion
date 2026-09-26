@@ -7,7 +7,15 @@ import { Input } from '@/components/ui/Input'
 import { useToast } from '@/components/ui/Toast'
 import { toISO } from '@/lib/utils/dates'
 import { useRegistrarRetorno } from '../hooks/useHerrEntregas'
-import type { HerrEntrega } from '@/types/domain.types'
+import type { HerrEntrega, HerrCierre } from '@/types/domain.types'
+
+/** Qué pasó (20261005d). Fuera de «volvió», la nota es el motivo y es obligatoria. */
+export const CIERRES: { value: HerrCierre; label: string; corto: string }[] = [
+  { value: 'volvio',       label: '↩ Volvió al pañol',           corto: 'volvió' },
+  { value: 'perdida',      label: '❓ Se perdió',                 corto: 'perdida' },
+  { value: 'rota',         label: '💥 Se rompió (no vuelve)',     corto: 'rota' },
+  { value: 'baja_en_obra', label: '🏗 Baja en obra (queda allá)', corto: 'baja en obra' },
+]
 
 /**
  * "Volvió al pañol": registra una devolución por cada salida elegida. Por
@@ -34,6 +42,10 @@ export function HerrRetornoModal({ open, onClose, salidas, obraNom, onListo }: P
   const { mutate: registrar, isPending } = useRegistrarRetorno()
   const [fecha, setFecha] = useState(toISO(new Date()))
   const [nota, setNota]   = useState('')
+  // Lo perdido o roto se cerraba marcándolo «No es herramienta» (falso) o por
+  // SQL: ahora es un cierre más, con motivo.
+  const [cierre, setCierre] = useState<HerrCierre>('volvio')
+  const noVuelve = cierre !== 'volvio'
   // Cantidad tipeada por salida; sin override = todo lo que está en obra.
   const [cant, setCant]   = useState<Record<number, string>>({})
 
@@ -70,11 +82,12 @@ export function HerrRetornoModal({ open, onClose, salidas, obraNom, onListo }: P
   // desvío. Que el total esté a la vista ANTES de confirmar es la red que faltaba.
   const totalUnidades = vivas.reduce((n, s) => n + (malaCantidad(s) ? 0 : cantidadDe(s)), 0)
 
-  function cerrar() { setCant({}); setNota(''); setFecha(toISO(new Date())); onClose() }
+  function cerrar() { setCant({}); setNota(''); setCierre('volvio'); setFecha(toISO(new Date())); onClose() }
 
   function guardar() {
     if (!fecha) { toast('Elegí la fecha del retorno', 'err'); return }
     if (vivas.length === 0) { toast('Ninguna de las elegidas sigue en obra', 'err'); return }
+    if (noVuelve && !nota.trim()) { toast('Escribí el motivo: qué pasó con la herramienta', 'err'); return }
     if (invalidas.length > 0) {
       const vacias = invalidas.filter(s => (cant[s.id] ?? '').trim() === '' && cant[s.id] !== undefined).length
       toast(vacias > 0
@@ -84,38 +97,57 @@ export function HerrRetornoModal({ open, onClose, salidas, obraNom, onListo }: P
     }
     registrar({
       items: vivas.map(s => ({ salida_id: s.id, ...(cantidadDe(s) !== Number(s.en_obra) ? { cantidad: cantidadDe(s) } : {}) })),
-      fecha, nota: nota.trim() || null,
+      fecha, nota: nota.trim() || null, cierre,
     }, {
-      onSuccess: (r) => { toast(`✓ ${r.devoluciones.length} retorno${r.devoluciones.length !== 1 ? 's' : ''} registrado${r.devoluciones.length !== 1 ? 's' : ''}`, 'ok'); cerrar(); onListo?.() },
+      onSuccess: (r) => {
+        const n = r.devoluciones.length
+        toast(noVuelve
+          ? `✓ ${n} salida${n !== 1 ? 's' : ''} cerrada${n !== 1 ? 's' : ''} como ${CIERRES.find(c => c.value === cierre)?.corto}`
+          : `✓ ${n} retorno${n !== 1 ? 's' : ''} registrado${n !== 1 ? 's' : ''}`, 'ok')
+        cerrar(); onListo?.()
+      },
       onError: (err: unknown) => {
         const code = (err as { body?: { error?: string } })?.body?.error
         toast(code === 'CANTIDAD_INVALIDA' ? 'Alguna cantidad supera lo que está en obra. Recargá y probá de nuevo.'
             : code === 'SALIDA_NO_DEVOLVIBLE' ? 'Alguna salida no está confirmada (o fue archivada o anulada): confirmala primero en Salidas a obra.'
+            : code === 'MOTIVO_REQUERIDO' ? 'Escribí el motivo: qué pasó con la herramienta.'
             : (err as Error).message || 'No se pudo registrar el retorno', 'err')
       },
     })
   }
 
   return (
-    <Modal open={open} onClose={cerrar} title="↩ RETORNO AL PAÑOL" width="max-w-2xl"
+    <Modal open={open} onClose={cerrar} title={noVuelve ? '✕ CERRAR SIN RETORNO' : '↩ RETORNO AL PAÑOL'} width="max-w-2xl"
       footer={
         <>
           <Button variant="secondary" onClick={cerrar}>Cancelar</Button>
           <Button variant="primary" loading={isPending} disabled={vivas.length === 0 || invalidas.length > 0} onClick={guardar}>
-            ✓ Registrar retorno ({vivas.length})
+            {noVuelve ? `✓ Cerrar como ${CIERRES.find(c => c.value === cierre)?.corto} (${vivas.length})` : `✓ Registrar retorno (${vivas.length})`}
           </Button>
         </>
       }
     >
       <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Qué pasó con la herramienta">
+          {CIERRES.map(c => (
+            <button key={c.value} type="button" role="radio" aria-checked={cierre === c.value} onClick={() => setCierre(c.value)}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold border-[1.5px] transition-colors ${cierre === c.value
+                ? (c.value === 'volvio' ? 'bg-verde-light text-verde border-verde' : 'bg-rojo-light text-rojo border-rojo')
+                : 'bg-white text-gris-dark border-gris-mid hover:border-gris-dark'}`}>
+              {c.label}
+            </button>
+          ))}
+        </div>
         <p className="text-xs text-gris-dark">
-          Se registra una devolución por cada salida. Por defecto vuelve todo lo que sigue en obra; bajá la cantidad si volvió una parte.
+          {noVuelve
+            ? 'Sale de «en obra» sin volver al pañol. Queda registrado con el motivo; no se puede deshacer desde la app.'
+            : 'Se registra una devolución por cada salida. Por defecto vuelve todo lo que sigue en obra; bajá la cantidad si volvió una parte.'}
         </p>
         {vivas.length > 0 && (
           <div className={`text-xs rounded px-2 py-1.5 ${invalidas.length > 0 ? 'bg-rojo-light text-rojo' : 'bg-verde-light text-verde'}`}>
             {invalidas.length > 0
               ? <>Hay <b>{invalidas.length}</b> fila{invalidas.length !== 1 ? 's' : ''} sin una cantidad válida.</>
-              : <>Vuelven <b className="font-mono">{totalUnidades}</b> unidad{totalUnidades !== 1 ? 'es' : ''} de <b>{vivas.length}</b> salida{vivas.length !== 1 ? 's' : ''}.</>}
+              : <>{noVuelve ? 'Se cierran' : 'Vuelven'} <b className="font-mono">{totalUnidades}</b> unidad{totalUnidades !== 1 ? 'es' : ''} de <b>{vivas.length}</b> salida{vivas.length !== 1 ? 's' : ''}.</>}
           </div>
         )}
         {salidas.length > vivas.length && (
@@ -130,7 +162,7 @@ export function HerrRetornoModal({ open, onClose, salidas, obraNom, onListo }: P
                 <th className="text-left px-3 py-2 text-[11px] font-bold text-gris-dark uppercase tracking-wider">Herramienta</th>
                 <th className="text-left px-3 py-2 text-[11px] font-bold text-gris-dark uppercase tracking-wider">Obra · salida</th>
                 <th className="text-right px-3 py-2 text-[11px] font-bold text-gris-dark uppercase tracking-wider">En obra</th>
-                <th className="text-right px-3 py-2 text-[11px] font-bold text-gris-dark uppercase tracking-wider">Vuelve</th>
+                <th className="text-right px-3 py-2 text-[11px] font-bold text-gris-dark uppercase tracking-wider">{noVuelve ? 'Cierra' : 'Vuelve'}</th>
               </tr>
             </thead>
             <tbody>
@@ -161,8 +193,10 @@ export function HerrRetornoModal({ open, onClose, salidas, obraNom, onListo }: P
           </table>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Input label="Fecha del retorno" type="date" value={fecha} onChange={e => setFecha(e.target.value)} />
-          <Input label="Nota (opcional)" placeholder="Quién la trajo, estado, etc." value={nota} onChange={e => setNota(e.target.value)} />
+          <Input label={noVuelve ? 'Fecha' : 'Fecha del retorno'} type="date" value={fecha} onChange={e => setFecha(e.target.value)} />
+          <Input label={noVuelve ? 'Motivo (obligatorio)' : 'Nota (opcional)'}
+            placeholder={noVuelve ? 'Qué pasó: dónde se perdió, cómo se rompió, a quién quedó' : 'Quién la trajo, estado, etc.'}
+            value={nota} onChange={e => setNota(e.target.value)} />
         </div>
       </div>
     </Modal>

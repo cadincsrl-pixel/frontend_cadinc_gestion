@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useSearchParams } from 'next/navigation'
 import { useHerrEntregas, useHerrEntregasStats, fetchHerrEntregasTodas, ENTREGAS_KEY } from '../hooks/useHerrEntregas'
 import { useObrasTodas } from '@/modules/tarja/hooks/useObras'
 import { usePermisos } from '@/hooks/usePermisos'
@@ -59,7 +60,9 @@ export function HerrRetornos() {
   const { puedeEditar } = usePermisos('herramientas')
 
   const [busqueda, setBusqueda]     = useState('')
-  const [obraCod, setObraCod]       = useState('')
+  // `?obra=COD` viene de la campana (herramientas afuera hace +60 días).
+  const sp = useSearchParams()
+  const [obraCod, setObraCod]       = useState(() => sp.get('obra') ?? '')
   const [antiguedad, setAntiguedad] = useState('')
   const [abiertas, setAbiertas]     = useState<Set<string>>(new Set())
   const [sel, setSel]               = useState<Set<number>>(new Set())

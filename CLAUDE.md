@@ -233,6 +233,15 @@ Una herramienta es una fila de `stock_materiales` con `clase='herramienta'` (rub
 - **El pedido no deja crear herramientas en texto libre ni desde el Combobox**: se crean en `/herramientas/catalogo` (backend `tipos.routes.ts`: `GET/POST /api/herramientas/tipos`, `PATCH /tipos/:id`, `POST /tipos/:id/fusionar`). Ver = tab `catalogo`; crear/editar/baja = `herramientas.actualizacion`; fusionar = `herramientas.eliminacion`.
 - **Duplicados**: el backend compara `normTxt(nombre)` y alias contra los tipos activos y responde `409 TIPO_DUPLICADO { candidatos }`; el frontend muestra "ya existe X, sumale un sinónimo". Además existe el índice único parcial `stock_materiales_nombre_norm_uidx`.
 - **Renombrar propaga** el nombre nuevo a `solicitud_compra_item.descripcion` y `herr_entregas.descripcion` de los renglones que llevaban el viejo. **Fusionar** (RPC `fusionar_tipo_herramienta`, SECURITY DEFINER, solo service_role) mueve renglones, pañol, movimientos y sinónimos al destino y da de baja el origen; es transaccional y no se deshace desde la UI.
+- **Pañol: retornos y cierres** (`herr_entregas`, 26/09).
+  - Lo que queda en obra se cuenta por salida (`cantidad − devuelto`). Toda devolución cuelga de una salida.
+  - El renglón «↩ Devuelve» del pedido reparte su cantidad entre las salidas vivas más viejas de la misma obra y la misma herramienta (`trg_herr_devolucion_fifo`, `20261005c`). Lo que no encuentra salida queda en `revisar`.
+  - Lo que no vuelve se cierra con la misma RPC de retorno: `registrar_retorno_herramientas(..., p_cierre)` con `perdida`, `rota` o `baja_en_obra`, y la nota es obligatoria (`MOTIVO_REQUERIDO`). Queda en `herr_entregas.cierre` (`20261005d`). No usar más `ignorada` para esto.
+  - Archivar una obra con herramientas afuera avisa (409 `OBRA_CON_SEMANA_ABIERTA`, que ofrece «archivar igual»).
+  - La campana muestra las obras con herramientas afuera hace más de 60 días, o archivadas con algo afuera (`v_herr_alertas_en_obra`, `GET /api/herramientas/entregas/alertas`, `20261005e`).
+- **Pedidos: dos candados de datos** (26/09).
+  - Un pedido con algún renglón que ya no está `pendiente` ni `rechazado` no cambia de obra (`OBRA_CON_RENGLONES_RESUELTOS`, `20261005a`).
+  - Ponerle ficha a un renglón de texto libre ya despachado del depósito registra la salida de stock que faltó (`trg_item_vinculado_descuenta_stock`, `20261005b`). Sin backfill, por los recuentos de §5.15.
 - **Un renglón con dos herramientas** ("masa y cortafierro") se desdobla en un renglón hermano (obs `Desdoblado del renglón #N`), nunca se elige una sola.
 - Precios del catálogo: `precio_ref` es **precio final con IVA** (§ memoria). Regla al vincular renglones a $0/$1: toman el precio de referencia solo en obras llave en mano (`obras.materiales_a_cargo_de='cadinc'`); en obras de cliente quedan en $0 salvo pedido explícito del user.
 

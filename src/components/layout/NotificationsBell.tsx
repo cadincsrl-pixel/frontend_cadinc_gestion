@@ -15,7 +15,7 @@ import {
   type GastoPendienteItem,
   type SeguroMaquinaItem,
   type SolicitudPorComprarItem,
-  type SinPrecioItem,
+  type SinPrecioItem, type HerrAfueraItem,
   type FacturaPagosItem,
 } from '@/hooks/useNotificaciones'
 import { usePermisos } from '@/hooks/usePermisos'
@@ -134,6 +134,9 @@ export function NotificationsBell() {
   const solicitudesPorComprar = showCompras ? solicitudesAll : []
   // Renglones sin precio en la cuenta corriente (solo quien carga precios los recibe).
   const sinPrecio = showCompras ? notifs.sinPrecio : []
+  // Pañol: herramientas afuera hace más de 60 días (o en obras archivadas).
+  const showHerramientas = modulo === null || modulo === 'herramientas'
+  const herrAfuera = showHerramientas ? notifs.herrAfuera : []
 
   const hoy                    = showCumple    ? notifs.hoy                    : []
   const proximos               = showCumple    ? notifs.proximos               : []
@@ -177,7 +180,7 @@ export function NotificationsBell() {
     certUrgente
   const totalNoUrgentes =
     proximos.length + papelesPorVencer.length + papelesChoferPorVencer.length +
-    serviciosProximos.length + segurosPorVencer.length + sinPrecio.length +
+    serviciosProximos.length + segurosPorVencer.length + sinPrecio.length + herrAfuera.length +
     facturasSinRevisar.length + facturasObservadas.length + certInformado
   const sinNotifs = totalUrgente === 0 && totalNoUrgentes === 0
 
@@ -321,6 +324,23 @@ export function NotificationsBell() {
                     className="w-full text-center px-3 py-2 text-[11px] text-azul hover:underline"
                   >
                     Ver las {sinPrecio.length - 10} obras restantes →
+                  </button>
+                )}
+              </Section>
+            )}
+
+            {/* Pañol: herramientas afuera hace más de 60 días (20261005e) */}
+            {herrAfuera.length > 0 && (
+              <Section titulo={`🔧 Herramientas afuera hace +60 días (${herrAfuera.reduce((s, h) => s + h.unidades, 0)})`} tono="amarillo">
+                {herrAfuera.slice(0, 10).map(h => (
+                  <HerrAfueraRow key={h.obra_cod} item={h} onClick={() => { setAbierto(false); router.push(`/herramientas/retornos?obra=${encodeURIComponent(h.obra_cod)}`) }} />
+                ))}
+                {herrAfuera.length > 10 && (
+                  <button
+                    onClick={() => { setAbierto(false); router.push('/herramientas/retornos') }}
+                    className="w-full text-center px-3 py-2 text-[11px] text-azul hover:underline"
+                  >
+                    Ver las {herrAfuera.length - 10} obras restantes →
                   </button>
                 )}
               </Section>
@@ -631,6 +651,27 @@ function GastoPendienteRow({ item, onClick }: { item: GastoPendienteItem; onClic
         {item.descripcion && (
           <span className="text-gris-mid italic truncate">· {item.descripcion}</span>
         )}
+      </div>
+    </button>
+  )
+}
+
+function HerrAfueraRow({ item, onClick }: { item: HerrAfueraItem; onClick: () => void }) {
+  const [a, m, d] = item.desde.slice(0, 10).split('-')
+  return (
+    <button
+      onClick={onClick}
+      className="w-full text-left px-3 py-2 hover:bg-gris/40 transition-colors"
+    >
+      <div className="font-bold text-sm text-azul">
+        🔧 {item.obra_nom}
+        <span className="ml-2 text-xs font-semibold text-[#7A5500]">
+          {item.unidades} herramienta{item.unidades !== 1 ? 's' : ''} afuera
+        </span>
+      </div>
+      <div className="text-xs text-gris-dark mt-0.5">
+        <span className="font-mono">{item.obra_cod}</span> · desde el {d}/{m}/{a}
+        {item.archivada && <> · <b className="text-rojo">obra archivada</b></>}
       </div>
     </button>
   )

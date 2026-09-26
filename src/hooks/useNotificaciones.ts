@@ -7,6 +7,7 @@ import { usePersonal } from '@/modules/tarja/hooks/usePersonal'
 import { GASTOS_NOTIF_KEY } from '@/modules/logistica/hooks/useLogistica'
 import { useSessionStore } from '@/store/session.store'
 import { usePermisos } from '@/hooks/usePermisos'
+import { useTabsPermitidos } from '@/hooks/useTabsPermitidos'
 import { usePendientesDePrecio } from '@/modules/certificaciones/hooks/useCuentaCliente'
 import { PAGOS_KEYS } from '@/modules/pagos/hooks/usePagos'
 import { useArcaAmbiente } from '@/modules/facturacion/hooks/useFacturacion'
@@ -97,6 +98,19 @@ export interface GastoPendienteItem {
 // Renglones de la cuenta corriente sin precio, agrupados por obra (fase 3 de
 // precios, 2026-09-09). Solo para quien tiene el permiso de cargar precios:
 // es su lista de trabajo, no un aviso para todos.
+/**
+ * Obra con herramientas afuera hace más de 60 días, o archivada con algo
+ * afuera (pañol, 20261005e). Informativo: se resuelve en Herramientas ›
+ * Retornos (volvió, perdida, rota o baja en obra).
+ */
+export interface HerrAfueraItem {
+  obra_cod:  string
+  obra_nom:  string
+  archivada: boolean
+  unidades:  number
+  desde:     string
+}
+
 export interface SinPrecioItem {
   obra_cod:       string
   obra_nom:       string
@@ -162,6 +176,8 @@ interface NotificacionesResult {
   solicitudesPorComprar: SolicitudPorComprarItem[]
   // Renglones sin precio en la cuenta corriente, por obra (para quien carga precios).
   sinPrecio:           SinPrecioItem[]
+  // Pañol: obras con herramientas afuera hace más de 60 días (o archivadas).
+  herrAfuera:          HerrAfueraItem[]
   // ── Módulo Pagos ──
   // Facturas esperando aprobación (solo para quien puede aprobar).
   facturasParaAprobar: FacturaPagosItem[]
@@ -273,6 +289,9 @@ export function useNotificaciones(): NotificacionesResult {
   // de que no se puede facturar.
   const { emitirFacturas } = usePermisos('facturacion')
   const avisaCertificado = hasModulo('facturacion') && (emitirFacturas || esAdmin)
+  // Pañol: la ruta pide la tab salidas o retornos; sin ella ni se pregunta.
+  const tabsHerr = useTabsPermitidos('herramientas')
+  const avisaPanol = hasModulo('herramientas') && (tabsHerr.includes('retornos') || tabsHerr.includes('salidas'))
   const { data: arcaAmb } = useArcaAmbiente(avisaCertificado)
 
   const { data: personal = [] } = usePersonal()
@@ -298,6 +317,13 @@ export function useNotificaciones(): NotificacionesResult {
     queryKey: ['logistica', 'notificaciones', 'camion-services'],
     queryFn:  () => apiGet<ServiceCamionItem[]>('/api/logistica/notificaciones/camion-services'),
     enabled:  tieneLogistica,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  })
+  const { data: herrAlertas = [] } = useQuery({
+    queryKey: ['herramientas', 'notificaciones', 'en-obra'],
+    queryFn:  () => apiGet<Array<{ obra_cod: string; obra_nom: string; archivada: boolean; unidades: number | string; desde: string }>>('/api/herramientas/entregas/alertas'),
+    enabled:  avisaPanol,
     retry: false,
     staleTime: 5 * 60 * 1000,
   })
@@ -521,6 +547,11 @@ export function useNotificaciones(): NotificacionesResult {
       .filter(p => !p.obra_archivada)
       .map(p => ({ obra_cod: p.obra_cod, obra_nom: p.obra_nom ?? p.obra_cod, sin_precio: p.sin_precio, esperando: p.esperando ?? 0, obra_archivada: p.obra_archivada }))
 
+    // ── Pañol: herramientas afuera hace mucho ──
+    const herrAfuera: HerrAfueraItem[] = herrAlertas.map(h => ({
+      obra_cod: h.obra_cod, obra_nom: h.obra_nom, archivada: h.archivada, unidades: Number(h.unidades), desde: h.desde,
+    }))
+
     // Las cuatro secciones de Pagos comparten el mapeo: el backend ya filtró y
     // ordenó, acá solo se recorta a lo que el popover muestra.
     const aItemPagos = (p?: PagosFacturasPage): FacturaPagosItem[] =>
@@ -562,6 +593,7 @@ export function useNotificaciones(): NotificacionesResult {
       segurosPorVencer,
       solicitudesPorComprar,
       sinPrecio,
+      herrAfuera,
       facturasParaAprobar,
       facturasVencidas,
       facturasSinRevisar,
@@ -585,7 +617,7 @@ export function useNotificaciones(): NotificacionesResult {
         (paraAprobar?.total ?? 0) +
         certificadoUrgente,
     }
-  }, [personal, docsVenc, docsChofer, servicesNotif, gastosPend, segurosNotif, pendientes, pendPrecio, tieneTarja, pedidosNombresListos, paraAprobar, vencidas, sinRevisar, observadas, avisaCertificado, arcaAmb])
+  }, [personal, docsVenc, docsChofer, servicesNotif, gastosPend, segurosNotif, pendientes, pendPrecio, herrAlertas, tieneTarja, pedidosNombresListos, paraAprobar, vencidas, sinRevisar, observadas, avisaCertificado, arcaAmb])
 }
 
 // Helper para mostrar "hoy", "mañana", "en 3 días" en la lista de próximos.

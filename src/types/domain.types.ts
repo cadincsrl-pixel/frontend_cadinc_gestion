@@ -1458,6 +1458,9 @@ export interface HerrStats {
 export type HerrEntregaEstado =
   | 'pendiente' | 'confirmada' | 'vinculada' | 'catalogada' | 'ignorada' | 'anulada' | 'revisar'
 
+/** Qué pasó con una herramienta que sale de «en obra» (20261005d). */
+export type HerrCierre = 'volvio' | 'perdida' | 'rota' | 'baja_en_obra'
+
 export interface HerrEntrega {
   id:               number
   item_id:          number | null
@@ -1484,6 +1487,8 @@ export interface HerrEntrega {
   resuelto_el:      string | null
   /** Devolución manual (20260904ay): la salida que devuelve. */
   salida_id:        number | null
+  /** Solo en devoluciones (20261005d): null o 'volvio' = volvió al pañol; el resto no vuelve. */
+  cierre?:          HerrCierre | null
   /** En una salida: Σ de sus devoluciones vivas; `en_obra` = cantidad − devuelto. */
   devuelto:         number
   en_obra:          number

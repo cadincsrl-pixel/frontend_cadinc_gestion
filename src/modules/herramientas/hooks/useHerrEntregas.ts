@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { apiGet, apiPatch, apiPost } from '@/lib/api/client'
-import type { HerrEntrega, HerrEntregasPage, HerrEntregasStats, HerrEntregaEstado } from '@/types/domain.types'
+import type { HerrEntrega, HerrEntregasPage, HerrEntregasStats, HerrEntregaEstado, HerrCierre } from '@/types/domain.types'
 
 export const ENTREGAS_KEY = ['herr-entregas']
 
@@ -101,7 +101,7 @@ export interface RetornoItem { salida_id: number; cantidad?: number }
 export function useRegistrarRetorno() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (dto: { items: RetornoItem[]; fecha: string; nota?: string | null }) =>
+    mutationFn: (dto: { items: RetornoItem[]; fecha: string; nota?: string | null; cierre?: HerrCierre }) =>
       apiPost<{ devoluciones: HerrEntrega[] }>('/api/herramientas/entregas/retornos', dto),
     onSuccess: () => { void qc.invalidateQueries({ queryKey: ENTREGAS_KEY }) },
   })
