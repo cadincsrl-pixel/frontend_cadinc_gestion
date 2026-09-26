@@ -1,5 +1,6 @@
 'use client'
 
+import { CuitProveedor } from './pago/CuitProveedor'
 import { useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -374,6 +375,8 @@ export function FichaFactura({ id, onClose, onEditar, onPagar }: Props) {
             </Button>
           </div>
         )}
+
+        <CuitProveedor cuit={f.proveedor_cuit} nombre={f.proveedor_nom} />
 
         {/* Datos */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">

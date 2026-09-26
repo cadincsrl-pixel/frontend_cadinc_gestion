@@ -190,12 +190,30 @@ export const chequeVacio = (fecha_cobro: string, monto: string): ChequeFila => (
  * flotante). Mientras se lee una foto no se registra: su `foto_path` todavía
  * no está.
  */
+/** Un cheque de tercero se puede endosar hasta 30 días después de su fecha (20261008d). */
+export const DIAS_CHEQUE_ENDOSABLE = 30
+function restarDiasISO(iso: string, dias: number): string {
+  const d = new Date(`${iso}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() - dias)
+  return d.toISOString().slice(0, 10)
+}
+
+/**
+ * ¿Esta fecha de cobro es inválida para un pago con esa fecha? Uno propio no
+ * puede cobrarse antes del pago; uno de tercero endosado puede estar vencido
+ * hasta 30 días (sigue valiendo). Espejo de `validarCheques` y la RPC.
+ */
+export function fechaCobroInvalida(c: Pick<ChequeFila, 'fecha_cobro' | 'es_propio'>, fecha: string): boolean {
+  if (!c.fecha_cobro || c.fecha_cobro >= fecha) return false
+  return c.es_propio || c.fecha_cobro < restarDiasISO(fecha, DIAS_CHEQUE_ENDOSABLE)
+}
+
 export function estadoCheques(cheques: ChequeFila[], totalPlata: number, fecha: string) {
   const totalCheques = r2(cheques.reduce((s, c) => s + n(c.monto), 0))
   const difCheques = r2(totalPlata - totalCheques)
   const incompletos = cheques.filter(c =>
     !c.numero.trim() || !c.fecha_cobro || n(c.monto) <= 0 ||
-    c.fecha_cobro < fecha || (!c.es_propio && !c.librador.trim()))
+    fechaCobroInvalida(c, fecha) || (!c.es_propio && !c.librador.trim()))
   const leyendo = cheques.some(c => c.leyendo)
   return { totalCheques, difCheques, incompletos, leyendo }
 }
@@ -234,7 +252,8 @@ export function problemaCheques(cheques: ChequeFila[], totalPlata: number, fecha
   const e = estadoCheques(cheques, totalPlata, fecha)
   if (cheques.length === 0) return 'Cargá al menos un cheque'
   if (e.incompletos.length > 0) {
-    if (e.incompletos.some(c => c.fecha_cobro && c.fecha_cobro < fecha)) return 'Hay un cheque que se cobra antes de la fecha del pago'
+    if (e.incompletos.some(c => fechaCobroInvalida(c, fecha) && c.es_propio)) return 'Hay un cheque propio que se cobra antes de la fecha del pago'
+    if (e.incompletos.some(c => fechaCobroInvalida(c, fecha))) return `Hay un cheque de tercero vencido hace más de ${DIAS_CHEQUE_ENDOSABLE} días: ya no se puede endosar`
     if (e.incompletos.some(c => !c.es_propio && !c.librador.trim())) return 'Un cheque de tercero necesita el librador'
     return 'Cada cheque necesita número, fecha de cobro e importe (y el librador si es de un tercero)'
   }

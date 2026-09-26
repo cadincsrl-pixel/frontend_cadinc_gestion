@@ -1,5 +1,6 @@
 'use client'
 
+import { CuitProveedor } from './pago/CuitProveedor'
 import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
@@ -302,6 +303,8 @@ function DetalleOrden({ id, onClose, puedeAnular, puedeSubir, verPii, toast }: {
             {o.anulado_por_nombre && <> — {o.anulado_por_nombre}, {fmtFecha(o.anulado_at)}</>}
           </div>
         )}
+
+        <CuitProveedor cuit={o.proveedor_cuit} nombre={o.proveedor_nom} />
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <Dato label="Proveedor" valor={[o.proveedor_codigo, o.proveedor_cuit ? `CUIT ${o.proveedor_cuit}` : null].filter(Boolean).join(' · ') || '—'} />

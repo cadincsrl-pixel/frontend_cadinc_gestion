@@ -1,5 +1,6 @@
 'use client'
 
+import { CuitProveedor } from './pago/CuitProveedor'
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -24,7 +25,7 @@ import {
 } from '../utils/pagoForm'
 import { EditorCheques, useEditorCheques, useTotalSigueALosCheques } from './pago/EditorCheques'
 import {
-  AvisoNcSinAplicar, AvisoResultadoPago, CampoACuenta, CampoImportePago, CuentaDestinoProveedor, FilasFacturasPago, cuentaDelPadron,
+  AvisoNcSinAplicar, AvisoResultadoPago, BalanceDelPago, ChipBalance, CampoACuenta, CampoImportePago, CuentaDestinoProveedor, FilasFacturasPago, cuentaDelPadron,
 } from './pago/FacturasDelPago'
 import { Campo, inputCls } from './pago/Campo'
 import { ComprobanteQueNoViaja } from './pago/ComprobanteQueNoViaja'
@@ -414,7 +415,6 @@ const BloqueProveedor = memo(function BloqueProveedor({
           <div className="font-semibold text-sm">
             {visible ? '▾' : '▸'} {f0.proveedor_nom}
             <span className="font-normal text-[11px] text-gris-dark">
-              {f0.proveedor_cuit ? ` · CUIT ${f0.proveedor_cuit}` : ''}
               {cuenta ? ` · ${cuenta}` : ''}
             </span>
           </div>
@@ -423,8 +423,10 @@ const BloqueProveedor = memo(function BloqueProveedor({
             {!incluido && <b> · excluido</b>}
           </div>
         </button>
+        <CuitProveedor cuit={f0.proveedor_cuit} compacto />
         <div className="text-right">
           <div className="font-mono font-bold tabular-nums">{fmtM(totalPlata)}</div>
+          <ChipBalance filas={filas} totalPlata={totalPlata} />
           {incluido && (
             <div className={`text-[11px] ${errorServidor ? 'text-rojo font-semibold' : listo ? 'text-verde' : 'text-[#7A5000]'}`}>
               {errorServidor ? '✕ rebotó' : listo ? '✓ listo' : '⚠ falta algo'}
@@ -468,6 +470,7 @@ const BloqueProveedor = memo(function BloqueProveedor({
             <EditorCheques ed={ed} forma={forma} fecha={fecha} totalPlata={totalPlata}
               cantFacturas={filas.length} onUsarTotalDeLosCheques={usarTotalDeLosCheques} />
           )}
+          <BalanceDelPago filas={filas} totalPlata={totalPlata} etiqueta={pideCheques ? 'Cheques / e-cheqs' : 'Se paga'} />
 
           {necesitaCuenta && (
             <CuentaDestinoProveedor proveedorId={proveedorId} proveedor={proveedor} verPii={verPii} sinDatosPago={sinDatosPago} />

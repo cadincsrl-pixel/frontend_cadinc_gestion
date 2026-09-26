@@ -133,6 +133,49 @@ export function AvisoResultadoPago({ aFavor, quedaDebiendo }: { aFavor: number; 
   )
 }
 
+/** Lo que se debe de las facturas elegidas (el tope pagable de cada una). */
+export function deudaDeFilas(filas: FilaFactura[]): number {
+  return Math.round(filas.reduce((acc, f) => acc + topePagable(f.factura), 0) * 100) / 100
+}
+
+/**
+ * Facturas elegidas contra lo que se paga, pegado a los cheques (dueño,
+ * 27/09/2026: «endoso un cheque que no cubre o supera el total y en ningún
+ * lado me dice el saldo negativo o a favor»). Falta = pago parcial;
+ * sobra = queda a favor del proveedor (a cuenta).
+ */
+export function BalanceDelPago({ filas, totalPlata, etiqueta = 'Se paga' }: { filas: FilaFactura[]; totalPlata: number; etiqueta?: string }) {
+  const deuda = deudaDeFilas(filas)
+  const dif = Math.round((totalPlata - deuda) * 100) / 100
+  const tono = Math.abs(dif) <= 0.005 ? 'border-verde/40 bg-verde-light' : dif < 0 ? 'border-rojo/40 bg-rojo-light' : 'border-amarillo/60 bg-amarillo-light'
+  return (
+    <div className={`rounded border px-3 py-2 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs ${tono}`}>
+      <div><div className="text-gris-dark">Facturas elegidas ({filas.length})</div><div className="font-mono font-bold tabular-nums text-sm">{fmtM(deuda)}</div></div>
+      <div><div className="text-gris-dark">{etiqueta}</div><div className="font-mono font-bold tabular-nums text-sm">{fmtM(totalPlata)}</div></div>
+      <div>
+        {Math.abs(dif) <= 0.005 ? (
+          <><div className="text-gris-dark">Diferencia</div><div className="font-bold text-verde text-sm">✓ Cubre justo</div></>
+        ) : dif < 0 ? (
+          <><div className="text-rojo font-semibold">Falta</div><div className="font-mono font-bold tabular-nums text-sm text-rojo">{fmtM(-dif)}</div>
+            <div className="text-[11px] text-gris-dark">Las facturas quedan con pago parcial.</div></>
+        ) : (
+          <><div className="text-[#7A5000] font-semibold">Sobra · a favor del proveedor</div><div className="font-mono font-bold tabular-nums text-sm text-[#7A5000]">{fmtM(dif)}</div>
+            <div className="text-[11px] text-gris-dark">Queda a cuenta, como saldo a favor.</div></>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** La diferencia en una línea, para cabeceras y pies (vacío si cubre justo). */
+export function ChipBalance({ filas, totalPlata }: { filas: FilaFactura[]; totalPlata: number }) {
+  const dif = Math.round((totalPlata - deudaDeFilas(filas)) * 100) / 100
+  if (Math.abs(dif) <= 0.005 || totalPlata <= 0) return null
+  return dif < 0
+    ? <span className="text-[11px] font-semibold text-rojo">falta {fmtM(-dif)}</span>
+    : <span className="text-[11px] font-semibold text-[#7A5000]">a favor {fmtM(dif)}</span>
+}
+
 /** Plata que se le adelanta al proveedor sin factura. */
 export function CampoACuenta({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (

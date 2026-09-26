@@ -1,5 +1,6 @@
 'use client'
 
+import { CuitProveedor } from './pago/CuitProveedor'
 import { useEffect, useMemo, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -21,7 +22,7 @@ import {
 } from '../utils/pagoForm'
 import { EditorCheques, useEditorCheques, useTotalSigueALosCheques } from './pago/EditorCheques'
 import {
-  AvisoNcSinAplicar, AvisoResultadoPago, CampoACuenta, CampoImportePago, CuentaDestinoProveedor, FilasFacturasPago,
+  AvisoNcSinAplicar, AvisoResultadoPago, BalanceDelPago, ChipBalance, CampoACuenta, CampoImportePago, CuentaDestinoProveedor, FilasFacturasPago,
 } from './pago/FacturasDelPago'
 import { Campo, inputCls } from './pago/Campo'
 import { ComprobanteQueNoViaja } from './pago/ComprobanteQueNoViaja'
@@ -227,7 +228,7 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
       footer={
         <div className="flex gap-2 justify-end items-center flex-wrap">
           <div className="text-xs text-gris-dark mr-auto">
-            {totalPlata > 0 && <>{salidaLabel(forma, 'presente')}: <b className="font-mono tabular-nums text-carbon">{fmtM(totalPlata)}</b></>}
+            {totalPlata > 0 && <>{salidaLabel(forma, 'presente')}: <b className="font-mono tabular-nums text-carbon">{fmtM(totalPlata)}</b>{' '}<ChipBalance filas={filas} totalPlata={totalPlata} /></>}
           </div>
           <Button variant="ghost" size="sm" onClick={cerrar}>Cancelar</Button>
           <Button size="sm" onClick={guardar} loading={registrar.isPending} disabled={!listo}
@@ -243,6 +244,8 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
       }
     >
       <div className="flex flex-col gap-3 text-sm">
+
+        <CuitProveedor cuit={proveedor?.cuit ?? elegidas[0]?.proveedor_cuit} nombre={proveedor?.razon_social ?? elegidas[0]?.proveedor_nom} />
 
         {/*
           El pago parcial ya se podía hacer —«Se paga» es editable y la factura
@@ -296,6 +299,7 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
           <EditorCheques ed={ed} forma={forma} fecha={fecha} totalPlata={totalPlata}
             cantFacturas={filas.length} onUsarTotalDeLosCheques={usarTotalDeLosCheques} />
         )}
+        <BalanceDelPago filas={filas} totalPlata={totalPlata} etiqueta={pideCheques ? 'Cheques / e-cheqs' : 'Se paga'} />
 
         {/* Cuenta destino */}
         {necesitaCuenta && (

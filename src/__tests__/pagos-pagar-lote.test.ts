@@ -66,6 +66,12 @@ describe('cheques', () => {
   it('ninguno se cobra antes del pago', () => {
     expect(problemaCheques([cheque({ monto: '500', fecha_cobro: '2026-09-24' })], 500, HOY, 'cheque')).toMatch(/antes de la fecha del pago/)
   })
+  it('un cheque de tercero endosado puede estar vencido hasta 30 días (20261008d)', () => {
+    const tercero = (fecha_cobro: string) => cheque({ monto: '500', fecha_cobro, es_propio: false, librador: 'Bradel del Pueblo SRL' })
+    expect(problemaCheques([tercero('2026-09-24')], 500, HOY, 'cheque')).toBeNull()
+    expect(problemaCheques([tercero('2026-08-26')], 500, HOY, 'cheque')).toBeNull()
+    expect(problemaCheques([tercero('2026-08-25')], 500, HOY, 'cheque')).toMatch(/más de 30 días/)
+  })
   it('un cheque de tercero pide librador', () => {
     expect(problemaCheques([cheque({ monto: '500', es_propio: false })], 500, HOY, 'cheque')).toMatch(/librador/)
     expect(problemaCheques([cheque({ monto: '500', es_propio: false, librador: 'Juan' })], 500, HOY, 'cheque')).toBeNull()

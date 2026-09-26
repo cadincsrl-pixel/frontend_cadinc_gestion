@@ -193,9 +193,10 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
   FECHA_COBRO_REQUERIDA: () => 'Un cheque o e-cheq necesita la fecha en que se cobra.',
   FECHA_COBRO_INVALIDA:  d => {
     const num = dato(d, 'numero')
-    return num !== undefined
-      ? `El cheque ${num} se cobraría antes de la fecha del pago.`
-      : 'La fecha de cobro no puede ser anterior a la del pago.'
+    if (num === undefined) return 'La fecha de cobro no puede ser anterior a la del pago.'
+    return dato(d, 'es_propio') === false
+      ? `El cheque ${num} es de un tercero y venció hace más de 30 días: ya no se puede endosar.`
+      : `El cheque ${num} es propio y se cobraría antes de la fecha del pago.`
   },
 
   // ── Cheques ──
