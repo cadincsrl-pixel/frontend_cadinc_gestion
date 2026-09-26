@@ -368,6 +368,7 @@ export function fechasEscalonadas(
 export const VENCIMIENTO_MODOS = [
   { key: 'dias',           label: 'A x días de cada factura' },
   { key: 'cierre_mensual', label: 'Cierre mensual (cuenta corriente)' },
+  { key: 'fin_mes_siguiente', label: 'Fin del mes siguiente (p. ej. grupo Silva)' },
 ] as const
 export type VencimientoModo = (typeof VENCIMIENTO_MODOS)[number]['key']
 
@@ -427,6 +428,11 @@ export function fechaDeCierre(fecha: string, cierreDia?: number | null): string 
  */
 export function vencimientoSugerido(fecha: string, prov: PlazoProveedor | null | undefined): string | null {
   if (!fecha || !prov) return null
+  // Grupo Silva (27/09/2026): las facturas de un mes se pagan hasta el último día del mes siguiente.
+  if (prov.vencimiento_modo === 'fin_mes_siguiente') {
+    const [a, m] = fecha.split('-').map(Number)
+    return new Date(Date.UTC(a!, m! + 1, 0)).toISOString().slice(0, 10)
+  }
   const dias = prov.plazo_pago_dias ?? 30
   if (prov.vencimiento_modo === 'cierre_mensual') {
     return sumarDiasISO(ultimoDiaHabil(fechaDeCierre(fecha, prov.cierre_dia)), dias)

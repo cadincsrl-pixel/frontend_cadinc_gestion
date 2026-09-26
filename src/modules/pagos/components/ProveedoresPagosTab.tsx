@@ -10,8 +10,8 @@ import { usePermisos } from '@/hooks/usePermisos'
 import {
   useProveedoresPagos, useProveedorPagos, useEditarProveedorPagos, useDatosPagoProveedor, useGuardarContactosProveedor,
   useBajaProveedorPagos, useReactivarProveedorPagos, fetchProveedoresExport,
-  useActualizarProveedorDesdeArca, useActualizarTodosDesdeArca,
-  type PagosProveedoresFiltro,
+  useActualizarProveedorDesdeArca, useActualizarTodosDesdeArca, useRecalcularVencimientos,
+  type PagosProveedoresFiltro, type RecalcVencimientosRes,
 } from '../hooks/useProveedoresPagos'
 import { FORMAS_PREVISTAS, comprobanteTxt, fmtFecha, fmtM } from '../utils/pagos.utils'
 import { mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
@@ -203,6 +203,8 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
   const reactivar = useReactivarProveedorPagos()
   const guardarContactos = useGuardarContactosProveedor()
   const desdeArca = useActualizarProveedorDesdeArca()
+  const recalc = useRecalcularVencimientos()
+  const [recalcRes, setRecalcRes] = useState<RecalcVencimientosRes | null>(null)
   const [arcaTodo, setArcaTodo] = useState(false)
   const [arcaRes, setArcaRes] = useState<PagosActualizarDesdeArcaRes | null>(null)
   const [datosArca, setDatosArca] = useState<DatosArcaForm>(datosArcaVacios)
@@ -302,6 +304,26 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
       }
       toast('✓ Proveedor actualizado', 'ok')
       setEditando(false)
+      // Cambió cómo vence: las facturas ya cargadas no se tocan solas; se
+      // muestra qué cambiaría para que lo apliquen si corresponde.
+      const cambioVence = !soloDatosPago && (form.vencimiento_modo !== (p.vencimiento_modo ?? 'dias')
+        || (Number(form.plazo_pago_dias) || 30) !== (p.plazo_pago_dias ?? 30)
+        || (form.vencimiento_modo === 'cierre_mensual' ? (Number(form.cierre_dia) || null) : null) !== (p.cierre_dia ?? null))
+      if (cambioVence) void verRecalculo()
+    } catch (e) { toast(mensajeErrorPagos(e), 'err') }
+  }
+
+  async function verRecalculo() {
+    if (!p) return
+    try { setRecalcRes(await recalc.mutateAsync({ id: p.id, aplicar: false })) }
+    catch (e) { toast(mensajeErrorPagos(e), 'err') }
+  }
+  async function aplicarRecalculo() {
+    if (!p) return
+    try {
+      const r = await recalc.mutateAsync({ id: p.id, aplicar: true })
+      toast(`✓ ${r.cambian} vencimiento${r.cambian === 1 ? '' : 's'} recalculado${r.cambian === 1 ? '' : 's'}`, 'ok')
+      setRecalcRes(null)
     } catch (e) { toast(mensajeErrorPagos(e), 'err') }
   }
 
@@ -373,9 +395,11 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
                 </select>
               </Campo>
             )}
-            <Campo label={form.vencimiento_modo === 'cierre_mensual' ? 'Días desde el cierre' : 'Plazo de pago (días)'}>
-              <input inputMode="numeric" value={form.plazo_pago_dias} onChange={e => setForm(f => ({ ...f, plazo_pago_dias: e.target.value }))} className={inputCls} />
-            </Campo>
+            {form.vencimiento_modo !== 'fin_mes_siguiente' && (
+              <Campo label={form.vencimiento_modo === 'cierre_mensual' ? 'Días desde el cierre' : 'Plazo de pago (días)'}>
+                <input inputMode="numeric" value={form.plazo_pago_dias} onChange={e => setForm(f => ({ ...f, plazo_pago_dias: e.target.value }))} className={inputCls} />
+              </Campo>
+            )}
             {!soloDatosPago && form.vencimiento_modo === 'cierre_mensual' && (
               <Campo label="Cierra el día (vacío = el último)">
                 <input inputMode="numeric" placeholder="último" value={form.cierre_dia}
@@ -393,7 +417,7 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
             {(form.forma_pago_habitual === 'echeq' || form.forma_pago_habitual === 'cheque') && (
               <div className="sm:col-span-2 text-[11px] text-gris-dark">
                 Cada factura nueva sale con un {form.forma_pago_habitual === 'echeq' ? 'e-cheq' : 'cheque'} al vencimiento
-                ({form.vencimiento_modo === 'cierre_mensual' ? 'cierre' : 'fecha de la factura'} + {Number(form.plazo_pago_dias) || 30} días). Se puede cambiar en cada una.
+                ({form.vencimiento_modo === 'fin_mes_siguiente' ? 'último día del mes siguiente' : `${form.vencimiento_modo === 'cierre_mensual' ? 'cierre' : 'fecha de la factura'} + ${Number(form.plazo_pago_dias) || 30} días`}). Se puede cambiar en cada una.
               </div>
             )}
             {!soloDatosPago && (
@@ -465,9 +489,11 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
               <Dato label="Alias" valor={p.alias_cbu ?? '—'} />
               <Dato label="Banco" valor={p.banco || '—'} />
               <Dato label="Cómo vence" valor={
-                p.vencimiento_modo === 'cierre_mensual'
-                  ? `Cierre ${p.cierre_dia ? 'el ' + p.cierre_dia : 'fin de mes'} + ${p.plazo_pago_dias} días`
-                  : `${p.plazo_pago_dias} días de cada factura`} />
+                p.vencimiento_modo === 'fin_mes_siguiente'
+                  ? 'Fin del mes siguiente'
+                  : p.vencimiento_modo === 'cierre_mensual'
+                    ? `Cierre ${p.cierre_dia ? 'el ' + p.cierre_dia : 'fin de mes'} + ${p.plazo_pago_dias} días`
+                    : `${p.plazo_pago_dias} días de cada factura`} />
               <Dato label="Cómo se le paga" valor={FORMAS_PREVISTAS.find(x => x.key === p.forma_pago_habitual)?.label ?? 'Transferencia'} />
               <Dato label="Concepto habitual" valor={conceptoHabitualTxt ?? '—'} />
               <Dato label="Centro de costo habitual" valor={obraHabitualTxt ?? '—'} />
@@ -505,8 +531,41 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
                   disabled={!puedeEditar} />
                 También la razón social
               </label>
+              <Button variant="secondary" size="sm" loading={recalc.isPending && !recalcRes}
+                disabled={!puedeEditar}
+                title={puedeEditar ? 'Muestra qué vencimiento tendrían sus facturas impagas con «Cómo vence» y deja aplicarlo' : 'No tenés permiso para editar proveedores'}
+                onClick={verRecalculo}>
+                Recalcular vencimientos
+              </Button>
             </div>
             {arcaRes && <DiferenciasArca res={arcaRes} />}
+            {recalcRes && (
+              <div className="border border-gris-mid rounded p-2 text-xs flex flex-col gap-2">
+                {recalcRes.cambian === 0 ? (
+                  <div className="text-gris-dark">Todas sus facturas impagas ya vencen según «Cómo vence». No hay nada que cambiar.</div>
+                ) : (
+                  <>
+                    <div><b>{recalcRes.cambian}</b> factura{recalcRes.cambian === 1 ? '' : 's'} impaga{recalcRes.cambian === 1 ? '' : 's'} cambia{recalcRes.cambian === 1 ? '' : 'n'} de vencimiento con la regla actual:</div>
+                    <div className="max-h-48 overflow-y-auto">
+                      <table className="w-full">
+                        <thead><tr className="text-gris-dark text-left"><th className="font-semibold">Factura</th><th className="font-semibold">Fecha</th><th className="font-semibold">Vence hoy</th><th className="font-semibold">Pasa a vencer</th></tr></thead>
+                        <tbody>
+                          {recalcRes.facturas.map(f => (
+                            <tr key={f.id}><td className="font-mono">{f.numero}</td><td>{fmtFecha(f.fecha)}</td><td>{f.antes ? fmtFecha(f.antes) : 'sin vencimiento'}</td><td className="font-semibold">{fmtFecha(f.despues)}</td></tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+                <div className="flex gap-2 justify-end">
+                  <Button variant="ghost" size="sm" onClick={() => setRecalcRes(null)}>{recalcRes.cambian === 0 ? 'Cerrar' : 'No cambiar'}</Button>
+                  {recalcRes.cambian > 0 && (
+                    <Button size="sm" loading={recalc.isPending} disabled={!puedeEditar} onClick={aplicarRecalculo}>Aplicar a {recalcRes.cambian}</Button>
+                  )}
+                </div>
+              </div>
+            )}
             <ListaContactos contactos={p.contactos} />
             {p.datos_pago_actualizados_at && (
               <div className="text-[11px] text-gris-dark">

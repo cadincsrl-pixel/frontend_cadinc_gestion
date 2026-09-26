@@ -172,6 +172,26 @@ export function useActualizarProveedorDesdeArca() {
   })
 }
 
+/** Resultado de recalcular vencimientos (20261008c). */
+export interface RecalcVencimientosRes {
+  aplicado: boolean
+  cambian: number
+  facturas: { id: number; numero: string; fecha: string; antes: string | null; despues: string }[]
+}
+
+/**
+ * Vencimiento de las facturas impagas del proveedor con su regla actual.
+ * `aplicar: false` = vista previa (no cambia nada).
+ */
+export function useRecalcularVencimientos() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, aplicar }: { id: number; aplicar: boolean }) =>
+      apiPost<RecalcVencimientosRes>(`/api/pagos/proveedores/${id}/recalcular-vencimientos${aplicar ? '?aplicar=1' : ''}`, {}),
+    onSuccess: (r) => { if (r.aplicado) invalidarPagos(qc) },
+  })
+}
+
 /** Todos los activos con CUIT, de a uno (ARCA limita): puede tardar. No pisa razón social. */
 export function useActualizarTodosDesdeArca() {
   const qc = useQueryClient()

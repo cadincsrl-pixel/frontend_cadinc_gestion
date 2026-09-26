@@ -176,3 +176,16 @@ describe('punto de venta y número, como en el papel (2026-09-21)', () => {
     }
   })
 })
+
+describe('fin del mes siguiente (grupo Silva, 27/09/2026)', () => {
+  const GRUPO_SILVA = { vencimiento_modo: 'fin_mes_siguiente' as const, cierre_dia: null, plazo_pago_dias: 30 }
+  it('agosto hasta el 30/09 y septiembre hasta el 31/10', () => {
+    expect(vencimientoSugerido('2026-08-01', GRUPO_SILVA)).toBe('2026-09-30')
+    expect(vencimientoSugerido('2026-08-31', GRUPO_SILVA)).toBe('2026-09-30')
+    expect(vencimientoSugerido('2026-09-15', GRUPO_SILVA)).toBe('2026-10-31')
+  })
+  it('diciembre pasa de año y enero vence a fin de febrero', () => {
+    expect(vencimientoSugerido('2026-12-10', GRUPO_SILVA)).toBe('2027-01-31')
+    expect(vencimientoSugerido('2027-01-31', GRUPO_SILVA)).toBe('2027-02-28')
+  })
+})

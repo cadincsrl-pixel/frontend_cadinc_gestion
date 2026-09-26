@@ -2527,7 +2527,7 @@ export interface PagosProveedor {
    *  `dias` son los días desde la factura; en `cierre_mensual`, los días desde
    *  el cierre (20260921g). */
   plazo_pago_dias:    number
-  vencimiento_modo:   'dias' | 'cierre_mensual'
+  vencimiento_modo:   'dias' | 'cierre_mensual' | 'fin_mes_siguiente'
   /** Día del mes en que cierra la cuenta. null = el último día. Sólo con `cierre_mensual`. */
   cierre_dia:         number | null
   /** Cómo se le paga normalmente: la forma con que nacen sus facturas (20260930a). null = transferencia. */
@@ -3862,7 +3862,7 @@ export interface CrearProveedorInput {
   cbu?:             string | null
   banco?:           string
   plazo_pago_dias?: number
-  vencimiento_modo?: 'dias' | 'cierre_mensual'
+  vencimiento_modo?: 'dias' | 'cierre_mensual' | 'fin_mes_siguiente'
   cierre_dia?:      number | null
   forma_pago_habitual?: PagosFormaPrevista | null
   icl_computa_pago_a_cuenta?: boolean
