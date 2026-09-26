@@ -21,7 +21,7 @@ import type { PagosActualizarDesdeArcaRes, PagosActualizarTodosArcaRes, PagosFor
 import { exportarProveedoresPagos } from '../utils/pagosExport'
 import { AltaRapidaProveedor } from './AltaRapidaProveedor'
 import { useConceptosPagos } from '../hooks/useConceptosPagos'
-import { useCatalogoObrasPagos } from '../hooks/usePagos'
+import { useCatalogoObrasPagos, useCuentasOrigen } from '../hooks/usePagos'
 import { ContactosEditor, contactosDesde, contactosParaGuardar, validarContactos } from '@/components/contactos/ContactosEditor'
 import { ETIQUETA_ROL, type ContactoInput } from '@/types/contactos'
 
@@ -214,7 +214,9 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
   const [errorContactos, setErrorContactos] = useState<{ i: number; mensaje: string } | null>(null)
 
   const [editando, setEditando] = useState(false)
-  const [form, setForm] = useState({ razon_social: '', cuit: '', alias_cbu: '', cbu: '', banco: '', plazo_pago_dias: '30', vencimiento_modo: 'dias' as VencimientoModo, cierre_dia: '', forma_pago_habitual: '' as PagosFormaPrevista | '', concepto_habitual_id: '', obra_habitual_cod: '', icl_computa_pago_a_cuenta: false })
+  // Cuentas propias para «Cuenta que le debita el banco» (débito automático, 20261009a).
+  const cuentasOrigen = useCuentasOrigen()
+  const [form, setForm] = useState({ razon_social: '', cuit: '', alias_cbu: '', cbu: '', banco: '', plazo_pago_dias: '30', vencimiento_modo: 'dias' as VencimientoModo, cierre_dia: '', forma_pago_habitual: '' as PagosFormaPrevista | '', debito_cuenta_id: '', concepto_habitual_id: '', obra_habitual_cod: '', icl_computa_pago_a_cuenta: false })
   const [pidiendoBaja, setPidiendoBaja] = useState(false)
   const [motivo, setMotivo] = useState('')
 
@@ -251,6 +253,7 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
       banco: p.banco ?? '', plazo_pago_dias: String(p.plazo_pago_dias ?? 30),
       vencimiento_modo: p.vencimiento_modo ?? 'dias', cierre_dia: p.cierre_dia != null ? String(p.cierre_dia) : '',
       forma_pago_habitual: p.forma_pago_habitual ?? '',
+      debito_cuenta_id: p.debito_cuenta_id != null ? String(p.debito_cuenta_id) : '',
       concepto_habitual_id: p.concepto_habitual_id != null ? String(p.concepto_habitual_id) : '',
       obra_habitual_cod: p.obra_habitual_cod ?? '',
       icl_computa_pago_a_cuenta: !!p.icl_computa_pago_a_cuenta,
@@ -276,6 +279,7 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
             id: p.id, cbu: form.cbu.trim() || null, alias_cbu: form.alias_cbu.trim() || null,
             banco: form.banco.trim(), plazo_pago_dias: Number(form.plazo_pago_dias) || 30,
             forma_pago_habitual: form.forma_pago_habitual || null,
+            debito_cuenta_id: form.forma_pago_habitual === 'debito_automatico' && form.debito_cuenta_id ? Number(form.debito_cuenta_id) : null,
           })
         : await editar.mutateAsync({
             id: p.id, razon_social: form.razon_social.trim(), cuit: form.cuit.trim() || null,
@@ -283,6 +287,7 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
             banco: form.banco.trim(), plazo_pago_dias: Number(form.plazo_pago_dias) || 30,
             vencimiento_modo: form.vencimiento_modo,
             forma_pago_habitual: form.forma_pago_habitual || null,
+            debito_cuenta_id: form.forma_pago_habitual === 'debito_automatico' && form.debito_cuenta_id ? Number(form.debito_cuenta_id) : null,
             concepto_habitual_id: form.concepto_habitual_id ? Number(form.concepto_habitual_id) : null,
             obra_habitual_cod: form.obra_habitual_cod || null,
             icl_computa_pago_a_cuenta: form.icl_computa_pago_a_cuenta,
@@ -414,6 +419,24 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
                 {FORMAS_PREVISTAS.map(x => <option key={x.key} value={x.key}>{x.label}</option>)}
               </select>
             </Campo>
+            {form.forma_pago_habitual === 'debito_automatico' && (
+              <Campo label="Cuenta que le debita el banco">
+                <select value={form.debito_cuenta_id} className={inputCls}
+                  onChange={e => setForm(f => ({ ...f, debito_cuenta_id: e.target.value }))}>
+                  <option value="">Ninguna: se paga a mano</option>
+                  {(cuentasOrigen.data ?? []).filter(c => c.tipo === 'banco' || c.tipo === 'billetera' || c.tipo === 'tarjeta').map(c => (
+                    <option key={c.id} value={c.id}>{c.nombre}</option>
+                  ))}
+                </select>
+              </Campo>
+            )}
+            {form.forma_pago_habitual === 'debito_automatico' && (
+              <div className="sm:col-span-2 text-[11px] text-gris-dark">
+                {form.debito_cuenta_id
+                  ? 'Sus facturas se pagan solas al imputarlas: se aprueban y sale una orden de débito automático desde esa cuenta, con la fecha de la factura. Sus notas de crédito se descuentan de la factura siguiente.'
+                  : 'Sin cuenta, sus facturas se pagan a mano como cualquier otra.'}
+              </div>
+            )}
             {(form.forma_pago_habitual === 'echeq' || form.forma_pago_habitual === 'cheque') && (
               <div className="sm:col-span-2 text-[11px] text-gris-dark">
                 Cada factura nueva sale con un {form.forma_pago_habitual === 'echeq' ? 'e-cheq' : 'cheque'} al vencimiento
@@ -495,6 +518,11 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
                     ? `Cierre ${p.cierre_dia ? 'el ' + p.cierre_dia : 'fin de mes'} + ${p.plazo_pago_dias} días`
                     : `${p.plazo_pago_dias} días de cada factura`} />
               <Dato label="Cómo se le paga" valor={FORMAS_PREVISTAS.find(x => x.key === p.forma_pago_habitual)?.label ?? 'Transferencia'} />
+              {p.forma_pago_habitual === 'debito_automatico' && (
+                <Dato label="Débito desde" valor={p.debito_cuenta_id
+                  ? `${(cuentasOrigen.data ?? []).find(c => c.id === p.debito_cuenta_id)?.nombre ?? 'cuenta #' + p.debito_cuenta_id} · se paga solo al imputar`
+                  : 'sin cuenta: se paga a mano'} />
+              )}
               <Dato label="Concepto habitual" valor={conceptoHabitualTxt ?? '—'} />
               <Dato label="Centro de costo habitual" valor={obraHabitualTxt ?? '—'} />
               {p.icl_computa_pago_a_cuenta && <Dato label="ICL de gasoil" valor="45 % pago a cuenta de IVA" />}

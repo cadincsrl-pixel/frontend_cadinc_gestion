@@ -2532,6 +2532,8 @@ export interface PagosProveedor {
   cierre_dia:         number | null
   /** Cómo se le paga normalmente: la forma con que nacen sus facturas (20260930a). null = transferencia. */
   forma_pago_habitual?: PagosFormaPrevista | null
+  /** Cuenta de tesorería que le debita el banco (20261009a). Con débito automático, sus facturas se pagan solas al imputarse. */
+  debito_cuenta_id?: number | null
   /** El 45 % del ICL de sus facturas es pago a cuenta de IVA (gasoil de camiones, Ley 23.966; 20261001a). */
   icl_computa_pago_a_cuenta?: boolean
   /** Concepto con que se imputa normalmente lo suyo (20260930p). null = sin preferencia.
@@ -3865,6 +3867,7 @@ export interface CrearProveedorInput {
   vencimiento_modo?: 'dias' | 'cierre_mensual' | 'fin_mes_siguiente'
   cierre_dia?:      number | null
   forma_pago_habitual?: PagosFormaPrevista | null
+  debito_cuenta_id?: number | null
   icl_computa_pago_a_cuenta?: boolean
   concepto_habitual_id?: number | null
   obra_habitual_cod?:    string | null
@@ -3920,7 +3923,7 @@ export interface PagosActualizarTodosArcaRes {
 }
 /** La puerta del contador: solo datos de pago, ni razón social ni CUIT ni obs. */
 export type PagosDatosPagoInput = Pick<CrearProveedorInput,
-  'alias_cbu' | 'cbu' | 'banco' | 'plazo_pago_dias' | 'forma_pago_habitual' | 'contacto' | 'telefono' | 'email'>
+  'alias_cbu' | 'cbu' | 'banco' | 'plazo_pago_dias' | 'forma_pago_habitual' | 'debito_cuenta_id' | 'contacto' | 'telefono' | 'email'>
 
 // ── Respuestas de las mutaciones ──────────────────────────────────────
 
