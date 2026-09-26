@@ -46,7 +46,8 @@ export function FiltrosFacturas({ filtro, patch }: Props) {
     () => (obras.data ?? []).map(o => ({
       value: o.cod,
       label: `${o.cod} — ${o.nom}`,
-      sub: o.cliente_nom ?? undefined,
+      sub: [o.cliente_nom, o.archivada ? 'archivada' : null].filter(Boolean).join(' · ') || undefined,
+      group: o.archivada ? 'Archivadas' : undefined,
       search: [o.nom, o.cod, o.cliente_nom ?? ''],
     })),
     [obras.data],

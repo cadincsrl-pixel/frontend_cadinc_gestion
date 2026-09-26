@@ -175,9 +175,10 @@ function Contenido({ bien, corte, criterioDefault, prefijo, onClose, onCreado, o
 
   const opcionesObra = useMemo<ComboboxOption[]>(() => [
     { value: '', label: 'Sin obra' },
-    ...(obras.data ?? []).filter(o => !o.archivada || o.cod === bien?.obra_cod)
-      .map(o => ({ value: o.cod, label: `${o.cod} — ${o.nom}`, search: [o.cod, o.nom] })),
-  ], [obras.data, bien])
+    // Las archivadas también: siguen siendo centro de costo (dueño, 27/09/2026).
+    ...(obras.data ?? [])
+      .map(o => ({ value: o.cod, label: `${o.cod} — ${o.nom}`, sub: o.archivada ? 'archivada' : undefined, group: o.archivada ? 'Archivadas' : undefined, search: [o.cod, o.nom] })),
+  ], [obras.data])
 
   function elegirOrigen(idStr: string, c: CtbCuenta | null) {
     setValue('cuenta_origen_id', idStr, { shouldDirty: true, shouldValidate: !!errors.cuenta_origen_id })

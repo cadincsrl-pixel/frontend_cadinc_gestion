@@ -231,13 +231,12 @@ function FichaProveedor({ id, onClose, puedeEditar, soloDatosPago, toast }: {
   )
   const obraOpts = useMemo(
     () => (obras.data ?? [])
-      .filter(o => !o.archivada || o.cod === form.obra_habitual_cod)
       .map(o => ({
         value: o.cod, label: o.nom, sub: o.cod + (o.archivada ? ' · archivada' : ''),
-        group: o.es_interna || o.es_deposito ? 'Estructura CADINC' : 'Obras',
+        group: o.archivada ? 'Archivadas' : o.es_interna || o.es_deposito ? 'Estructura CADINC' : 'Obras',
         search: [o.nom, o.cod, o.cc ?? ''],
       })),
-    [obras.data, form.obra_habitual_cod],
+    [obras.data],
   )
   const conceptoHabitualTxt = p?.concepto_habitual_id != null
     ? (conceptos.data ?? []).find(c => c.id === p.concepto_habitual_id)?.nombre ?? `Concepto #${p.concepto_habitual_id}`

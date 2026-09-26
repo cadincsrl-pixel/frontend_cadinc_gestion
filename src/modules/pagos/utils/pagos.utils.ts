@@ -545,7 +545,6 @@ export function describirFiltroFacturas(
   if (f.origen_carga === 'arca_recibidos') p.push('importadas de ARCA')
   if (f.importacion_id) p.push(`de la importación #${f.importacion_id}`)
   if (f.anuladas) p.push('incluye anuladas')
-  if (f.archivadas) p.push('incluye archivadas')
   return p.length === 0 ? 'todas las facturas' : p.join(' · ')
 }
 

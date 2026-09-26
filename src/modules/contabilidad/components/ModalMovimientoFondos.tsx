@@ -200,9 +200,10 @@ function Contenido({ mov, onClose, onCreado, onVerAsiento }: {
 
   const opcionesObra = useMemo<ComboboxOption[]>(() => [
     { value: '', label: 'Sin obra (gasto general)' },
-    ...(obras.data ?? []).filter(o => !o.archivada || o.cod === mov?.obra_cod)
-      .map(o => ({ value: o.cod, label: `${o.cod} — ${o.nom}`, search: [o.cod, o.nom] })),
-  ], [obras.data, mov])
+    // Las archivadas también: siguen siendo centro de costo (dueño, 27/09/2026).
+    ...(obras.data ?? [])
+      .map(o => ({ value: o.cod, label: `${o.cod} — ${o.nom}`, sub: o.archivada ? 'archivada' : undefined, group: o.archivada ? 'Archivadas' : undefined, search: [o.cod, o.nom] })),
+  ], [obras.data])
 
   // R1: una OP de Compras del mismo día y por el mismo importe (aviso).
   const importeArs = equiv.ars ?? monto(importe)

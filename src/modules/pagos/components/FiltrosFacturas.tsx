@@ -323,8 +323,6 @@ export function FiltrosFacturas({ filtro, patch, grupos }: Props) {
             )}
             <Tilde label="Incluir anuladas"      hint="Por default no se muestran"
                    on={!!filtro.anuladas}        set={v => patch({ anuladas: v || undefined })} />
-            <Tilde label="Incluir obras archivadas" hint="Facturas de obras ya cerradas"
-                   on={!!filtro.archivadas}      set={v => patch({ archivadas: v || undefined })} />
           </div>
 
           {hayFiltrosExtra && (
