@@ -29,7 +29,8 @@ function mensajeAvisoExport(a: AvisoExport): string {
     case 'SIN_CODIGO_ARCA':            return `Conceptos sin código ARCA: ${lista('conceptos') || '—'}. Cargalos en Convenios.`
     case 'SIN_OBRA_SOCIAL':            return `${quien}sin código de obra social en la ficha.`
     case 'LIQUIDACION_NO_CERRADA':     return 'La liquidación no está cerrada: el archivo puede cambiar.'
-    case 'CODIGOS_F931_A_CONFIRMAR':   return 'Los códigos del F.931 (situación, condición, actividad, modalidad, siniestrado, localidad, tipo de empresa, obra social) van con valores por defecto: revisalos con el contador.'
+    case 'CODIGOS_F931_POR_DEFECTO':   return `Sin códigos del F.931 en su convenio ni en su ficha (van los por defecto): ${lista('empleados') || '—'}. Cargalos en Convenios o en la ficha.`
+    case 'SIN_LOCALIDAD_F931':         return 'Falta el parámetro f931_localidad (Configuración): la localidad va en 00.'
     case 'BASES_SIN_TOPE':             return msj || 'Las bases imponibles van sin tope: revisalas con el contador.'
     case 'SIN_FECHA_PAGO':             return 'La liquidación no tiene fecha de pago.'
     case 'CANTIDAD_REQUERIDA':         return msj || `Conceptos que en el LSD necesitan cantidad: ${lista('conceptos')}.`

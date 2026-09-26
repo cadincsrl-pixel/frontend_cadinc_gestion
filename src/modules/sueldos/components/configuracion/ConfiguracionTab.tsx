@@ -21,6 +21,8 @@ const AYUDA_CLAVE: Record<string, string> = {
   detraccion_por_empleado: 'Detracción mensual por empleado que baja la base de la contribución patronal ($).',
   contrib_patronal_pct:    'Contribución patronal de seguridad social (%).',
   rifl_pct:                'Contribución reducida para legajos RIFL (%).',
+  contrib_patronal_jubilado_pct: 'Contribución previsional de los legajos jubilados, en vez de la general (%). En el F.931 de CADINC: 10,77.',
+  f931_localidad:          'Código de localidad/zona del F.931 que va en el archivo del Libro de Sueldos (84 en el F.931 de CADINC).',
   art_pct:                 'ART: porcentaje sobre el remunerativo (%).',
   art_fijo:                'ART: suma fija mensual por empleado ($).',
   scvo_monto:              'Seguro colectivo de vida obligatorio, mensual por empleado ($).',
