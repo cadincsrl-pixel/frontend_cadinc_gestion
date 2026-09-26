@@ -13,7 +13,7 @@ import { apiDelete, apiGet, apiPatch, apiPost } from '@/lib/api/client'
 import type {
   AnularFacturaRes, AnularOrdenRes, AplicarNcRes, AprobarLoteRes, CrearFacturaInput, CrearFacturaRes, CrearOrdenInput,
   EditarFacturaInput, EditarFacturaRes, EditarOrdenInput, PagosAdjunto, PagosAdjuntoPendiente,
-  PagosCatalogoObra, PagosCuentaOrigen, PagosEntidadAdjunto, PagosEstadoFactura, PagosEstadoOrden, PagosFactura, PagosFacturaDetalle,
+  PagosCatalogoObra, PagosComprobanteLectura, PagosCuentaOrigen, PagosEntidadAdjunto, PagosReconstruirInput, PagosEstadoFactura, PagosEstadoOrden, PagosFactura, PagosFacturaDetalle,
   PagosFacturasGrupo, PagosFacturasPage, PagosFacturasResumen, PagosFormaPagoOPGuardada,
   PagosFormaPrevista, PagosOrdenDetalle, PagosOrdenesEje, PagosOrdenesGrupo, PagosOrdenesPage, PagosOrdenExport, PagosPaquete,
   PagosOrdenesResumen, PagosTipoAdjFactura, PagosTipoAdjOrden, PagosTipoComprobante, PagosUploadUrlRes,
@@ -650,6 +650,23 @@ export function useRegistrarOrden() {
   return useMutation({
     mutationFn: (input: CrearOrdenInput) => apiPost<RegistrarOrdenRes>('/api/pagos/ordenes', input),
     onSuccess:  () => invalidarPagos(qc),
+  })
+}
+
+/** Registrar un pago que YA SE HIZO (conciliación, 2026-09-25): OP reconstruida con sus papeles. */
+export function useReconstruirPago() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: PagosReconstruirInput) =>
+      apiPost<{ orden_id: number; numero: number | null; adjuntos_error: string | null }>('/api/pagos/ordenes/reconstruir', input),
+    onSuccess:  () => invalidarPagos(qc),
+  })
+}
+
+/** «Soltá acá los comprobantes de pagos»: lee un archivo ya subido a `ordenes/pendientes/`. No crea nada. */
+export function leerComprobantePago(adj: PagosAdjuntoPendiente): Promise<PagosComprobanteLectura> {
+  return apiPost<PagosComprobanteLectura>('/api/pagos/comprobantes/leer', {
+    storage_path: adj.storage_path, nombre_archivo: adj.nombre_archivo, mime_type: adj.mime_type,
   })
 }
 

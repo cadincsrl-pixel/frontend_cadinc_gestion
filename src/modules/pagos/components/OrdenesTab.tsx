@@ -18,7 +18,7 @@ import { ModalAvisarPago } from './ModalAvisarPago'
 import { PreguntarAvisoPago } from './PreguntarAvisoPago'
 import { useProveedoresPagos } from '../hooks/useProveedoresPagos'
 import { SelectCuentaOrigen, cuentaOrigenId } from './SelectCuentaOrigen'
-import { ModalChequesSueltos } from './ModalChequesSueltos'
+import { ModalComprobantesPago } from './ModalComprobantesPago'
 import {
   FORMAS_PAGO_OP, MAX_ADJUNTO_BYTES, salidaLabel, MIME_ADJUNTOS, TIPOS_ADJ_FACTURA, comprobanteTxt, fmtFecha, fmtM, formaPagoLabel, hoyAR,
   TIPOS_ADJ_ORDEN_SUBIBLES, tipoAdjOrdenLabel,
@@ -83,7 +83,7 @@ export function OrdenesTab({ ficha }: { ficha?: number | null } = {}) {
 
       {/* Soltar los cheques y que se arme el pago (2026-09-25) */}
       <ZonaCheques habilitada={!!(registrarPagos || esAdmin)} onArchivos={setChequesSueltos} />
-      {chequesSueltos && <ModalChequesSueltos archivos={chequesSueltos} onClose={() => setChequesSueltos(null)} />}
+      {chequesSueltos && <ModalComprobantesPago archivos={chequesSueltos} onClose={() => setChequesSueltos(null)} />}
 
       {/* Totales del filtro */}
       {totales && (
@@ -678,9 +678,10 @@ function Tilde({ label, on, set }: { label: string; on: boolean; set: (v: boolea
 }
 
 /**
- * «Soltá acá los cheques»: uno o muchos archivos (foto o PDF, y un PDF puede
- * traer varios). Se leen, se reconoce a qué proveedor va cada uno y se arma
- * «Pagar en lote» (ver ModalChequesSueltos).
+ * «Soltá acá los comprobantes de pagos» (2026-09-25): transferencias, e-cheqs,
+ * cheques, recibos del proveedor, resúmenes de cuenta. Se leen, se reconoce el
+ * proveedor y sus facturas, y se registra el pago ya hecho o se arma «Pagar en
+ * lote» (ver ModalComprobantesPago).
  */
 function ZonaCheques({ habilitada, onArchivos }: { habilitada: boolean; onArchivos: (f: File[]) => void }) {
   const [encima, setEncima] = useState(0)
@@ -702,7 +703,7 @@ function ZonaCheques({ habilitada, onArchivos }: { habilitada: boolean; onArchiv
       }}>
       <span className="text-2xl" aria-hidden>📥</span>
       <span className="flex-1 min-w-[220px]">
-        <b className="text-sm block">{encima > 0 ? 'Soltalos y se arma el pago' : 'Soltá acá los cheques que entregaste'}</b>
+        <b className="text-sm block">{encima > 0 ? 'Soltalos y se arma el pago' : 'Soltá acá los comprobantes de pagos'}</b>
         <span className="text-[11px] text-gris-dark">
           Fotos o PDF, uno o muchos (un PDF del banco con varios endosos se separa solo). Se reconoce a qué
           proveedor va cada cheque y se arma el pago con sus facturas aprobadas; lo revisás antes de registrar.

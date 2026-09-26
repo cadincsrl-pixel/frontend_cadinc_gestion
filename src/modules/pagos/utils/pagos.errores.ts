@@ -317,6 +317,11 @@ const MENSAJES: Record<string, (d: unknown) => string> = {
     : 'Primero hay que imputarla (concepto y obras).',
   // ── Compras de meses ya pagados (20260928) ──
   FACTURA_A_RECONSTRUIR: () => 'Es de un mes ya pagado: no se aprueba. El pago se reconstruye con los extractos bancarios.',
+  // «Soltá acá los comprobantes de pagos» (2026-09-25)
+  COMPROBANTE_ILEGIBLE: d => dato(d, 'motivo') === 'SIN_API_KEY'
+    ? 'La lectura con IA no está configurada en el servidor: cargá el pago a mano.'
+    : `No se pudo leer este archivo como comprobante de pago${dato(d, 'motivo') ? ` (${String(dato(d, 'motivo'))})` : ''}. Probá con una foto más nítida o el PDF original.`,
+  RECONSTRUIR_SOLO_FACTURAS: () => 'Un pago reconstruido tiene que cancelar al menos una factura.',
   LECTURA_NO_COINCIDE: d => {
     const c = dato(d, 'campos')
     const campos = Array.isArray(c) ? c.join(', ') : 'los datos'

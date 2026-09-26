@@ -3639,6 +3639,64 @@ export interface PagosAdjuntoPendiente {
   mime_type:      string
 }
 
+// ── «Soltá acá los comprobantes de pagos» (POST /api/pagos/comprobantes/leer, 2026-09-25) ──
+
+export interface PagosAvisoComprobante { severidad: 'error' | 'advertencia' | 'info'; codigo: string; mensaje: string }
+
+/** Lo que la IA leyó de un comprobante de pago a un proveedor. No crea nada. */
+export interface PagosComprobanteLectura {
+  tipo_documento:   'transferencia' | 'echeq' | 'cheque' | 'recibo' | 'resumen_cuenta' | 'otro'
+  fecha:            string | null
+  proveedor_nombre: string | null
+  proveedor_cuit:   string | null
+  proveedor:        { id: number; razon_social: string; por: 'cuit' | 'nombre' } | null
+  medios: Array<{
+    forma:        'transferencia' | 'echeq' | 'cheque' | 'efectivo' | 'otro'
+    importe:      number | null
+    numero:       string | null
+    banco:        string | null
+    fecha_cobro:  string | null
+    librador:     string | null
+    librador_cuit: string | null
+    /** false = cheque de un tercero endosado. */
+    es_propio:    boolean | null
+    cuenta_origen_texto: string | null
+    /** A quién se entregó ESTE medio (un PDF de endosos puede ir a varios proveedores). */
+    entregado_a:  string | null
+    entregado_a_cuit: string | null
+    /** El proveedor de este medio si se reconoce; si no, el del documento. */
+    proveedor_id: number | null
+    avisos:       PagosAvisoComprobante[]
+  }>
+  comprobantes: Array<{ tipo: string | null; pto_vta: number; numero: number; numero_fmt: string; importe: number | null }>
+  /** Del proveedor: primero las que nombra el papel, después las que tienen saldo. */
+  facturas: Array<{
+    id: number; proveedor_id: number; numero: string | null; fecha: string; total: number; saldo: number; estado: string
+    pago_a_reconstruir: boolean; nombrada: boolean; importe_papel: number | null
+  }>
+  cuenta_origen_id: number | null
+  recibo_numero:    string | null
+  total:            number | null
+  avisos:           PagosAvisoComprobante[]
+  modelo:           string | null
+  storage_path:     string
+}
+
+/** POST /api/pagos/ordenes/reconstruir: un pago que ya se hizo. */
+export interface PagosReconstruirInput {
+  proveedor_id:      number
+  fecha:             string
+  forma_pago:        'transferencia' | 'echeq' | 'cheque' | 'efectivo' | 'otro'
+  monto_pagado:      number
+  cuenta_origen_id?: number | null
+  referencia:        string
+  obs?:              string
+  cheques?:          { numero: string; banco: string; fecha_cobro: string; monto: number; es_propio: boolean; librador: string }[]
+  lineas:            { factura_id: number; monto: number }[]
+  a_cuenta?:         number
+  adjuntos:          PagosAdjuntoPendiente[]
+}
+
 /** La OP que nace junto con la factura cuando compras tilda «Ya está pagada». */
 export interface PagosOrdenAlCargarInput {
   fecha:        string
