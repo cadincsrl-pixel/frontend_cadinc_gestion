@@ -407,6 +407,24 @@ export function useAnularCertificado() {
  * Es todo o nada: si un renglón del lote no se puede marcar, no se marca
  * ninguno y la respuesta dice cuál falló.
  */
+/**
+ * EPP que se le cobra al cliente (20261002a). Por defecto un EPP es gasto de
+ * CADINC; esto lo pasa a la deuda del cliente renglón por renglón (o lo vuelve
+ * atrás). Todo o nada por lote, como el consumible.
+ */
+export function useMarcarEppACargo() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dto: { obra_cod: string; item_ids: number[]; marcar: boolean }) =>
+      apiPost<{ obra_cod: string; marcados: number; marcar: boolean; plata: number }>(
+        '/api/cuenta-cliente/epp-a-cargo', dto),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cuenta-corriente'] })
+      qc.invalidateQueries({ queryKey: ['cuenta-cliente-pendientes'] })
+    },
+  })
+}
+
 export function useMarcarConsumible() {
   const qc = useQueryClient()
   return useMutation({

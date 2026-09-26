@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { InputMonto } from '@/components/ui/InputMonto'
 import { useToast } from '@/components/ui/Toast'
 import { usePermisos } from '@/hooks/usePermisos'
-import { useGuardarPreciosMCC, useProponerPrecios } from '../../hooks/useCuentaCliente'
+import { useGuardarPreciosMCC, useProponerPrecios, useMarcarEppACargo } from '../../hooks/useCuentaCliente'
 import { useEditarItem } from '../../hooks/useSolicitudes'
 import { fetchCuentaRenglonesTodos, CUENTA_CORRIENTE_KEY } from '../../hooks/useCuentaCorriente'
 import { UNIDADES } from '../../constants'
@@ -27,6 +27,18 @@ const unidadLabel = (u: string | null | undefined) => UNIDADES.find(x => x.value
  * override o el precio actual. Así no hace falta inicializar estado cuando
  * llegan los datos.
  */
+
+/** Los códigos de marcar_epp_a_cargo_cliente, en castellano. */
+function mensajeEpp(e: unknown): string {
+  const body = (e as { body?: { error?: string } })?.body
+  const code = body?.error ?? (e instanceof Error ? e.message : '')
+  if (code.includes('OBRA_LLAVE_EN_MANO'))      return 'En una obra llave en mano todo es gasto de CADINC: el EPP no se le puede cobrar al cliente.'
+  if (code.includes('MCC_COBRADO'))             return 'Uno de los EPP ya está cobrado. Soltalo del pago primero. No se guardó nada.'
+  if (code.includes('MCC_CERTIFICADO'))         return 'Uno de los EPP ya entró en un certificado. No se guardó nada.'
+  if (code.includes('ITEM_NO_ES_EPP'))          return 'Uno de los renglones no es EPP. No se guardó nada.'
+  if (code.includes('SIN_PERMISO_CARGAR_PRECIOS')) return 'Te falta el permiso de cargar precios.'
+  return code || 'No se pudo cambiar a cargo de quién es el EPP'
+}
 
 interface Props {
   open:    boolean
@@ -78,6 +90,11 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom, inicialSol
   // real aparece tarde: se descubre que el cliente pagó algo cuando ya está
   // cargado como "CADINC adelantó".
   const [pagadores, setPagadores] = useState<Record<number, 'cadinc' | 'cliente'>>({})
+  // EPP que se le cobra al cliente (20261002a). Un EPP es gasto de CADINC por
+  // defecto; acá se elige, renglón por renglón, que lo pague el cliente. No
+  // aplica en llave en mano (ahí todo es de CADINC).
+  const [eppCargo, setEppCargo] = useState<Record<number, 'cadinc' | 'cliente'>>({})
+  const { mutateAsync: marcarEpp, isPending: marcandoEpp } = useMarcarEppACargo()
   const [soloSinPrecio, setSoloSinPrecio] = useState(inicialSoloSinPrecio)
   // "Usar sugeridos" llenaba N casillas repartidas en una lista larga y no
   // había forma de ver cuáles ni con qué (user, 10/09: "no sé qué precios se
@@ -104,8 +121,15 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom, inicialSol
   function pagadorDe(r: CuentaRenglon): 'cadinc' | 'cliente' {
     return pagadores[r.item_id] ?? ((r.pagado_por === 'cliente' ? 'cliente' : 'cadinc'))
   }
-  const cambios       = editables.filter(r =>
-    precioVal(r) !== Number(r.precio_unit) || pagadorDe(r) !== (r.pagado_por === 'cliente' ? 'cliente' : 'cadinc'))
+  const eppElegible = (r: CuentaRenglon) => r.clase === 'epp' && r.obra_modalidad !== 'cadinc'
+  const eppCargoOriginal = (r: CuentaRenglon): 'cadinc' | 'cliente' => (r.a_cargo_de === 'cliente' ? 'cliente' : 'cadinc')
+  function eppCargoDe(r: CuentaRenglon): 'cadinc' | 'cliente' {
+    return eppCargo[r.item_id] ?? eppCargoOriginal(r)
+  }
+  const cambiaEpp = (r: CuentaRenglon) => eppElegible(r) && eppCargoDe(r) !== eppCargoOriginal(r)
+  const cambiaPrecioOPagador = (r: CuentaRenglon) =>
+    precioVal(r) !== Number(r.precio_unit) || pagadorDe(r) !== (r.pagado_por === 'cliente' ? 'cliente' : 'cadinc')
+  const cambios       = editables.filter(r => cambiaPrecioOPagador(r) || cambiaEpp(r))
   const sinPrecio     = editables.filter(r => Number(r.precio_unit) === 0).length
   // Renglones en $0 cuya ficha tiene precio de referencia en una unidad
   // compatible: se tasan con un click ("Usar sugeridos"). Es la tasación "al
@@ -127,7 +151,7 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom, inicialSol
   const deltaTotal    = cambios.reduce((s, r) => s + Number(r.cantidad) * (precioVal(r) - Number(r.precio_unit)), 0)
 
   function cerrar() {
-    setOverrides({}); setPagadores({}); setSoloSinPrecio(false); setSoloCambios(false); setFallas({})
+    setOverrides({}); setPagadores({}); setEppCargo({}); setSoloSinPrecio(false); setSoloCambios(false); setFallas({})
     setDesdeSugerido({}); setBusqueda(''); setConvertir(null); onClose()
   }
 
@@ -184,13 +208,34 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom, inicialSol
     })
   }
 
-  function guardar() {
+  async function guardar() {
     if (modoPropuesta) { proponer(); return }
     if (cambios.length === 0) { toast('No cambiaste nada', 'err'); return }
     const aCero = cambios.filter(r => Number(r.precio_unit) > 0 && precioVal(r) === 0).length
     if (aCero > 0 && !confirm(`Vas a dejar en $0 ${aCero} material(es) que tenían precio cargado.\n¿Continuar?`)) return
     setFallas({})
-    guardarPrecios(cambios.map(r => {
+    // Primero el «a cargo» de los EPP: es todo o nada por lote (la RPC valida
+    // el lote entero), así que si falla no se guarda nada y se avisa por qué.
+    const eppCambios = cambios.filter(cambiaEpp)
+    let eppHechos = 0
+    for (const marcar of [true, false]) {
+      const ids = eppCambios.filter(r => (eppCargoDe(r) === 'cliente') === marcar).map(r => r.item_id)
+      if (ids.length === 0) continue
+      try {
+        await marcarEpp({ obra_cod: obraCod, item_ids: ids, marcar })
+        eppHechos += ids.length
+      } catch (e) {
+        toast(mensajeEpp(e), 'err')
+        return
+      }
+    }
+    const preciosCambios = cambios.filter(cambiaPrecioOPagador)
+    if (preciosCambios.length === 0) {
+      toast(`✓ ${eppHechos} EPP ${eppHechos !== 1 ? 'cambiados' : 'cambiado'} de a cargo`, 'ok')
+      cerrar()
+      return
+    }
+    guardarPrecios(preciosCambios.map(r => {
       const cambiaPrecio = precioVal(r) !== Number(r.precio_unit)
       return {
         itemId: r.item_id,
@@ -210,7 +255,7 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom, inicialSol
           toast(`Guardados ${total - f.length} de ${total}. ${f.length} no se pudo: están marcados en rojo con el motivo`, 'err')
           return
         }
-        toast(`✓ ${total} precio${total !== 1 ? 's' : ''} guardado${total !== 1 ? 's' : ''}${alCatalogo ? ` · ${alCatalogo} ficha${alCatalogo !== 1 ? 's' : ''} del catálogo actualizada${alCatalogo !== 1 ? 's' : ''}` : ''}`, 'ok')
+        toast(`✓ ${total} precio${total !== 1 ? 's' : ''} guardado${total !== 1 ? 's' : ''}${eppHechos ? ` · ${eppHechos} EPP cambiado${eppHechos !== 1 ? 's' : ''} de a cargo` : ''}${alCatalogo ? ` · ${alCatalogo} ficha${alCatalogo !== 1 ? 's' : ''} del catálogo actualizada${alCatalogo !== 1 ? 's' : ''}` : ''}`, 'ok')
         cerrar()
       },
       onError: () => toast('Error al guardar precios', 'err'),
@@ -228,7 +273,7 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom, inicialSol
           <Button variant="secondary" onClick={cerrar}>Cancelar</Button>
           <Button
             variant="primary"
-            loading={isPending || proponiendo}
+            loading={isPending || proponiendo || marcandoEpp}
             disabled={(!puedeCargarPrecios && !modoPropuesta) || cambios.length === 0}
             title={puedeCargarPrecios ? undefined
               : modoPropuesta ? 'Los precios quedan esperando la aprobación del dueño'
@@ -413,6 +458,28 @@ export function ModalCargarPrecios({ open, onClose, obraCod, obraNom, inicialSol
                             <span className="text-[9px] font-bold text-naranja" title="Cambio sin guardar">*</span>
                           )}
                         </div>
+                        {eppElegible(r) && (
+                          <div className="flex items-center justify-center gap-0.5 mt-1"
+                            title={modoPropuesta
+                              ? 'A cargo de quién es el EPP lo cambia quien carga los precios, no se propone.'
+                              : "EPP: por defecto es gasto de CADINC. 'Cliente' lo pasa a la deuda del cliente."}>
+                            <span className="text-[9px] text-gris-dark mr-0.5">EPP a cargo</span>
+                            {(['cadinc', 'cliente'] as const).map(op => (
+                              <button key={op} type="button"
+                                onClick={() => setEppCargo(p => ({ ...p, [r.item_id]: op }))}
+                                disabled={modoPropuesta || !puedeCargarPrecios}
+                                className={`disabled:opacity-50 disabled:cursor-not-allowed px-1.5 py-0.5 rounded text-[9px] font-bold whitespace-nowrap border transition-colors ${
+                                  eppCargoDe(r) === op
+                                    ? (op === 'cliente' ? 'bg-verde-light text-verde border-verde' : 'bg-azul-light text-azul border-azul')
+                                    : 'bg-white text-gris-mid border-gris-mid hover:text-gris-dark'}`}>
+                                {op === 'cliente' ? 'Cliente' : 'CADINC'}
+                              </button>
+                            ))}
+                            {cambiaEpp(r) && (
+                              <span className="text-[9px] font-bold text-naranja" title="Cambio sin guardar">*</span>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td className="px-3 py-2 text-right font-mono text-xs whitespace-nowrap">
                         {Number(r.cantidad).toLocaleString('es-AR')} <span className="text-gris-dark">{r.unidad}</span>

@@ -34,7 +34,7 @@ export function bloqueoConsumible(r: CuentaRenglon): string | null {
   if (r.cobro_id != null)        return 'Ya está cobrado. Soltalo del pago primero.'
   if (r.certificado_id != null)  return 'Ya entró en un certificado que tiene el cliente.'
   if (r.pagado_por === 'cliente') return 'Lo pagó el cliente directo al proveedor: no salió de la caja de CADINC.'
-  if (r.clase === 'epp')         return 'El EPP ya es gasto propio por su clase, en todas las obras.'
+  if (r.clase === 'epp')         return 'El EPP no es consumible: por defecto ya es gasto de CADINC, y se le cobra al cliente solo si se elige en Cargar precios.'
   return null
 }
 
@@ -45,6 +45,9 @@ function EstadoBadge({ r }: { r: CuentaRenglon }) {
       <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap ${m.badge}`} title={m.hint}>{m.label}</span>
       {r.estado === 'gasto_cadinc' && r.motivo_cadinc && (
         <span className="text-[9px] text-gris-dark uppercase tracking-wide">{MOTIVO_LABEL[r.motivo_cadinc]}</span>
+      )}
+      {r.clase === 'epp' && r.a_cargo_de === 'cliente' && (
+        <span className="text-[9px] text-gris-dark uppercase tracking-wide" title="EPP que se le cobra al cliente (elegido en Cargar precios)">EPP · cliente</span>
       )}
       {r.estado === 'cobrado' && r.cobro_id != null && (
         <span className="text-[9px] text-gris-dark">pago N° {r.cobro_id}</span>
