@@ -15,7 +15,7 @@ const MODULOS_CONOCIDOS = [
   'admin', 'alquiler', 'aridos', 'asignaciones', 'asistente', 'caja', 'cat-obra', 'categorias',
   'certificaciones', 'cierres', 'contabilidad', 'contratistas', 'cuenta-cliente', 'facturacion', 'facturas-compra', 'flota',
   'herramientas', 'horas', 'hs-extras', 'logistica', 'obras', 'oficina', 'pagos', 'personal', 'prestamos',
-  'proveedores', 'remitos-envio', 'ropa', 'solicitudes', 'stock', 'stock-cliente', 'stock-proveedor',
+  'proveedores', 'remitos-envio', 'ropa', 'solicitudes', 'stock', 'sueldos', 'stock-cliente', 'stock-proveedor',
   'tarifas', 'usuarios',
 ]
 

@@ -127,6 +127,16 @@ export const TABS_POR_MODULO: Record<string, TabDef[]> = {
     { key: 'automaticos',  label: 'Automáticos',     icon: '⚙️', meta: 'Asientos de Ventas, Compras y fondos, pendientes y contabilizar' },
     { key: 'mapeos',       label: 'Mapeos',          icon: '🔗', meta: 'Qué cuenta usa cada concepto, alícuota, tributo y medio' },
   ],
+  // Sueldos (20261004). El orden importa: `SueldosPage` redirige al primer
+  // tab permitido. Las claves son las mismas que valida `requireTab` en el backend.
+  sueldos: [
+    { key: 'legajos',       label: 'Legajos',       icon: '🪪', meta: 'Ficha laboral: convenio, categoría, CUIL, CBU' },
+    { key: 'liquidaciones', label: 'Liquidaciones', icon: '🧮', meta: 'Quincenas, meses, SAC, vacaciones y finales' },
+    { key: 'recibos',       label: 'Recibos',       icon: '🧾', meta: 'PDF de los recibos (Dto. 407/2026), uno o en lote' },
+    { key: 'convenios',     label: 'Convenios',     icon: '📑', meta: 'Categorías, escalas, paritarias y conceptos' },
+    { key: 'configuracion', label: 'Configuración', icon: '⚙️', meta: 'Parámetros generales y mapeo contable' },
+    { key: 'exportar',      label: 'Exportar',      icon: '📤', meta: 'Banco, resumen para el contador y LSD' },
+  ],
   aridos: [
     { key: 'ventas',     label: 'Ventas',     icon: '🛒', meta: 'Ventas por m³ y retiros de escombro' },
     { key: 'cuenta-corriente', label: 'Cuenta corriente', icon: '💰', meta: 'Vendido, cobrado y saldo por cliente' },

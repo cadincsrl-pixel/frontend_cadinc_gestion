@@ -85,6 +85,7 @@ Cliente (Next.js)
 | **Pagos** (se muestra «Compras») | Facturas de proveedor, aprobación, órdenes de pago y padrón propio de proveedores (§5.18) | `/pagos` |
 | **Facturación** (se muestra «Ventas») | Facturas de venta contra ARCA (A, B, FCE MiPyME y sus NC), clientes con padrón ARCA, cobranzas y la tab **Impuestos** (§5.19) | `/facturacion` |
 | **Contabilidad** | Plan de cuentas, asientos (partida doble), diario, mayor, sumas y saldos, períodos y cuentas de tesorería (§5.20) | `/contabilidad` |
+| **Sueldos** | Liquidación de sueldos UOCRA, UECARA y Camioneros: legajos, convenios con escalas versionadas, recibos, asiento contable, banco y Libro de Sueldos Digital (§5.22) | `/sueldos` |
 | **Admin** | Usuarios, permisos, auditoría | `/admin` |
 
 ### 4.1 Sub-tabs de Logística (`/logistica?tab=...`)
@@ -170,7 +171,7 @@ Esquema: `permisos: { modulo: { lectura, creacion, actualizacion, eliminacion, t
 - **Flags**: `ver_pii` default **false** en backend y frontend; `ver_costos` default true. Los condicionales al body se chequean inline en el handler (`forzar_despacho`).
 - **Alcance por obra**: `profiles.obras_scope` ('todas' | 'asignadas') con override por módulo en `permisos.<modulo>.obras_scope`; la lista de obras es UNA por usuario (`usuario_obras`). Helpers en `lib/obras-usuario.ts`: `getObrasDelUsuarioCached`, `validarObraDelUsuario`, `validarObraDeRegistro` (para PATCH/DELETE por id). Lo aplican tarja, solicitudes, cuenta corriente, materiales certificables, stock del cliente, stock en proveedor y remitos de envío.
 - **Flags de Pagos** (en `permisos.pagos`, todos default **false**): `aprobar_facturas`, `registrar_pagos`, `anular_pagos`. Cargar facturas es `pagos.creacion`; ver la cuenta destino del proveedor pide además `ver_pii`. Ver §5.18.
-- **Catálogo de módulos**: `tarja, logistica, certificaciones, herramientas, caja, flota, alquiler, aridos, pagos, admin`, espejado en `lib/modulos.ts` de ambos repos. `personal`, `ropa`, `prestamos` y `configuracion` son **tabs de tarja**, no módulos: sus endpoints exigen `tarja.*`.
+- **Catálogo de módulos**: `tarja, logistica, certificaciones, herramientas, caja, flota, alquiler, aridos, pagos, sueldos, admin`, espejado en `lib/modulos.ts` de ambos repos. `personal`, `ropa`, `prestamos` y `configuracion` son **tabs de tarja**, no módulos: sus endpoints exigen `tarja.*`.
 
 ### 5.6 Auditoría automática
 `auditMiddleware` del backend corre **después** de la respuesta. Solo loguea POST/PATCH/PUT/DELETE con status 2xx. Extrae entidad/acción de la ruta. **No escribir auditoría manual en handlers**, ya está cubierta.
@@ -390,6 +391,24 @@ Regla del dueño: **lo operativo se edita desde la pantalla**; terminal/SQL solo
 - **Deshacer una importación de «Mis Comprobantes»** (`pagos_deshacer_importacion`, flag `importar_comprobantes` + `pagos.eliminacion`): vista previa y después todo o nada; bloquea si alguna factura tiene pago, NC, está imputada, aprobada o con asiento en período cerrado. Anula las facturas y sus asientos de períodos abiertos en la misma transacción. No hay «rehacer»: se reimporta el archivo.
 - **Caché**: backend 60 s en memoria (con varias instancias en Render un cambio tarda hasta un minuto); frontend React Query 5 min, invalidado al guardar. Los hooks nuevos caen a las constantes viejas ante un 404.
 
+### 5.22 Sueldos (2026-09-26, migraciones `20261004a`–`h`)
+
+Módulo propio (`sueldos`), NO una tab de tarja. **El recibo se carga a criterio, no sale de la tarja**: las horas del recibo las decide el liquidador (el dueño maneja los recibos aparte de lo que se trabajó). La tarja sigue siendo la fuente del costo real de obra (§5.11); Sueldos es lo que se declara y se paga por recibo. Relevamiento de convenios y decisiones en Obsidian `Proyectos/Liquidación de sueldos en el ERP — relevamiento y convenios (2026-09-26).md`.
+
+- **Personal sigue siendo la ficha única**; `sueldos_legajos` cuelga de `personal.leg` o de `choferes.id` (un chofer que además está en Personal tiene UN legajo con los dos). Los datos laborales (CUIL, CBU, obra social, ingreso, cónyuge/hijos, convenio y categoría) viven en el legajo y se ven solo desde Sueldos. CUIL y CBU con dígito verificador, en la base también; CUIL único. Sin `ver_pii` salen enmascarados y no se pueden cambiar (`SIN_PERMISO_PII`).
+- **Convenios versionados por fecha**: `sueldos_escalas` (categoría × zona × `vigente_desde`), `sueldos_concepto_valores` y `sueldos_parametros` (18 %, RIFL, ART, SCVO, detracción, FAL…). Cada liquidación usa lo vigente a su fecha (`sueldos_valores_a_fecha`); una paritaria nueva es una fila nueva («Nueva paritaria», flag `configurar`), nunca un UPDATE. Un valor 0 vigente = el concepto no se aplica; `a_confirmar` marca lo que falta validar con el contador.
+- **Motor en el backend** (`cadincsrl/src/modules/sueldos/calculo.ts`, puro y testeado): «Generar recibos» arma un borrador por legajo con entradas SUGERIDAS; el liquidador cambia horas, días, adicionales y conceptos manuales y guarda. La base recalcula los totales desde las líneas y rebota si no cuadran (`TOTALES_NO_CUADRAN`). `total_contribuciones` NO incluye el fondo de cese (va en `fondo_cese`).
+- **Estados**: borrador → cerrada (recibos cerrados + asiento) → reabrir (solo si el asiento está en período contable abierto; lo anula) o anular (asiento abierto se anula, cerrado → contraasiento). Una sola liquidación vigente por convenio/tipo/período(/quincena) para `quincena` y `mensual`; SAC, vacaciones, final y ajuste se repiten.
+- **Asiento**: `tipo='ajuste'`, `origen_evento='liquidacion'` (el lote de automáticos no lo toma), fecha = fin del período devengado. Debe: remunerativo, no remunerativo, contribuciones y fondo de cese por convenio (con la obra habitual del legajo); haber: sueldos a pagar, F.931, sindicato, fondo de cese, préstamos y otros según el `destino` de cada concepto. **Siempre cierra**: sin mapeo deja el aviso `SIN_MAPEO` y se contabiliza después con «Contabilizar». Al 26/09 faltan `sueldos.sindicato_a_pagar`, `fondo_cese_a_pagar` y `otros_a_pagar`.
+- **Libro de Sueldos Digital**: el TXT sigue el diseño de la planilla oficial de ARCA (`LSD-ARMADO-TXT-Liquidaciones.xlsx`, copia en `~/Desktop/CADINC-documentos/ARCA/LSD/`): reg. 01 = 35, 02 = 115, 03 = 51, 04 = 370 posiciones, ANSI y CRLF. En el 03 va el código **del empleador** (`C` + id del concepto), no el de ARCA: antes del primer archivo se sube UNA vez el TXT de conceptos (`GET /api/sueldos/exportar/lsd-conceptos`, 195 posiciones) que los asocia a su concepto ARCA. Los códigos F.931 del 04 (actividad, condición, localidad…) y las bases sin tope de ANSES quedan A CONFIRMAR y el archivo lo avisa.
+- **Códigos ARCA de los conceptos** (`20261004g`): los descuentos son 810000 jubilación, 810001 INSSJyP, 810002 obra social, 810004 cuota sindical, 810005 seguro de vida, 810007 préstamos, 820000 otros. El SAC es 120000 (el 120001/120002 fija el semestre) y solo va en junio y diciembre, salvo el proporcional 120003, que pide días. Vacaciones no gozadas queda sin código hasta que el contador defina si es remunerativa.
+- **Flags** (`permisos.sueldos`, todos default false y en `ModuloPermisosSchema`): `ver_pii`, `liquidar`, `cerrar_liquidaciones`, `configurar`. Tabs: legajos, liquidaciones, recibos, exportar, configuracion.
+- **Préstamos de Tarja**: «Generar» sugiere el saldo de Tarja › Préstamos menos lo ya puesto en recibos de OTRAS liquidaciones en borrador. Al CERRAR, la base escribe en `prestamos` una fila `descontado` por legajo (`sueldos_liquidacion_id`, `sem_key` = viernes de la semana de la fecha de pago); reabrir o anular las borra. Tarja no deja borrarlas (`409 PRESTAMO_DE_SUELDOS`). Un legajo sin `leg` (chofer solo) deja el aviso `PRESTAMO_SIN_LEGAJO_TARJA`.
+- **Cerrar exige**: fecha de pago (`FECHA_PAGO_REQUERIDA`), fecha de ingreso en todos los legajos (`LEGAJOS_SIN_FECHA_INGRESO`: sin ella la antigüedad da 0 y el fondo de cese sale al 12 %) y ningún neto negativo (`NETO_NEGATIVO`, que también frena al guardar). La fecha de pago se puede corregir con la liquidación cerrada. «Generar» omite al que va por hora y no tiene horas en la tarja del período (`SIN_HORAS_EN_TARJA`): se lo agrega a mano si corresponde.
+- **Datos personales**: sin `ver_pii`, CUIL/CBU/DNI salen `***1234` y la ficha no trae teléfono, dirección, nacimiento, licencia ni alias bancario. El `audit_log` guarda CUIL y CBU enmascarados (trigger con 4º argumento de columnas a enmascarar, y `cuil`/`cbu` en `CLAVES_OMITIDAS` del middleware, que vale para todo el sistema). El CSV del banco solo sale de una liquidación cerrada.
+- **Asiento en período cerrado**: cerrar deja `PERIODO_CERRADO` sin asiento; «Contabilizar» lo lleva al primer día abierto con aviso `ASIENTO_EN_OTRO_PERIODO`. La obra del gasto sale del snapshot del recibo.
+- **A confirmar con el contador** (al 26/09): tope de la base de aportes (hoy sin tope), SAC proporcional y SAC sobre vacaciones no gozadas en la liquidación final, criterio de días de mensualizados en meses de 28/31, valores marcados `a_confirmar` y los mapeos que faltan.
+
 ## 6. Convenciones de código (frontend)
 
 - **Feature-based folders**: `src/modules/<feature>/{components,hooks,store}`. Sin `services/` (los hooks de React Query encapsulan API).
@@ -532,4 +551,4 @@ El frontend espera al backend en `http://localhost:3001` (configurable vía env)
 
 ---
 
-_Última actualización: 2026-09-25 (configuración desde el ERP, §5.21)._
+_Última actualización: 2026-09-26 (módulo Sueldos, §5.22)._

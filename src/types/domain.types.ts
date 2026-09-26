@@ -1281,6 +1281,10 @@ export type ModuloPermisos = { [K in Accion]?: boolean } & {
   // Tanda 6 (20260929a): configurar Ventas / Compras y, en admin, los Datos
   // de la empresa. Default false; admin bypass.
   configurar?:             boolean
+  // Sueldos (20261004), default false: liquidar (crear liquidaciones y
+  // recibos) y cerrar/reabrir/anular/contabilizar liquidaciones.
+  liquidar?:               boolean
+  cerrar_liquidaciones?:   boolean
 }
 export type Permisos = Record<string, ModuloPermisos>
 

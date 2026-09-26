@@ -33,6 +33,7 @@ export type FlagBoolean =
   | 'contabilizar' | 'editar_mapeos' | 'importar_comprobantes'
   | 'movimientos_fondos' | 'bienes_uso'
   | 'configurar'
+  | 'liquidar' | 'cerrar_liquidaciones'
 
 export interface FlagDef {
   key:   FlagBoolean
@@ -51,7 +52,7 @@ export const FLAGS_BOOLEAN: FlagDef[] = [
     label: 'Ver datos personales (PII)',
     // El admin que arma la cuenta del contador tiene que ver acá que sin este
     // flag el CBU llega enmascarado desde el backend y no va a poder pagar.
-    help: 'Permite ver DNI, dirección, teléfono y fecha de nacimiento. En Pagos es además el CBU y el alias completos del proveedor: sin el flag se ven como ***1234 y no se pueden cargar datos de pago.',
+    help: 'Permite ver DNI, dirección, teléfono y fecha de nacimiento. En Pagos es además el CBU y el alias completos del proveedor: sin el flag se ven como ***1234 y no se pueden cargar datos de pago. En Sueldos: CUIL y CBU de los legajos, y exportar el archivo del banco y el LSD.',
   },
   {
     key: 'ver_costos',
@@ -232,8 +233,21 @@ export const FLAGS_BOOLEAN: FlagDef[] = [
     // Tanda 6 (20260929a). Default false; el admin lo tiene por bypass.
     key: 'configurar',
     label: '⚙️ Configurar el módulo',
-    help: 'Editar la configuración del módulo (productos, puntos de venta, montos ARCA, catálogos, avisos). En Admin: Datos de la empresa.',
-    modulos: ['facturacion', 'pagos', 'admin'],
+    help: 'Editar la configuración del módulo (productos, puntos de venta, montos ARCA, catálogos, avisos). En Admin: Datos de la empresa. En Sueldos: convenios, categorías, escalas, paritarias, conceptos y parámetros.',
+    modulos: ['facturacion', 'pagos', 'admin', 'sueldos'],
+  },
+  // Sueldos (20261004): nacen apagados, igual que en el backend.
+  {
+    key: 'liquidar',
+    label: '🧮 Liquidar sueldos',
+    help: 'Crear liquidaciones, generar los recibos y cargarlos o corregirlos mientras la liquidación esté en borrador. No habilita cerrarlas. Ver CUIL y CBU y exportar banco/LSD pide además "Ver datos personales". Solo tiene efecto en sueldos.',
+    modulos: ['sueldos'],
+  },
+  {
+    key: 'cerrar_liquidaciones',
+    label: '🔒 Cerrar liquidaciones',
+    help: 'Cerrar una liquidación (genera el asiento contable si están los mapeos), reintentar el asiento, reabrirla y anularla con motivo. Solo tiene efecto en sueldos.',
+    modulos: ['sueldos'],
   },
   {
     key: 'asistente_ia',

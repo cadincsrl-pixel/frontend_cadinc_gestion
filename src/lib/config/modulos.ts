@@ -26,6 +26,7 @@ export const MODULOS = [
   'pagos',
   'facturacion',
   'contabilidad',
+  'sueldos',
   'admin',
 ] as const
 
@@ -64,6 +65,7 @@ export const MODULO_INFO: Record<Modulo, ModuloInfo> = {
   pagos:           { key: 'pagos',           label: 'Compras',          descripcion: 'Facturas de proveedor, órdenes de pago y cheques', icono: '🧾', orden: 9 },
   facturacion:     { key: 'facturacion',     label: 'Ventas',           descripcion: 'Facturas de venta contra ARCA, clientes, cobranzas e impuestos', icono: '🧮', orden: 10 },
   contabilidad:    { key: 'contabilidad',    label: 'Contabilidad',     descripcion: 'Plan de cuentas, asientos, diario, mayor y sumas y saldos', icono: '📚', orden: 11 },
+  sueldos:         { key: 'sueldos',         label: 'Sueldos',          descripcion: 'Legajos, liquidaciones por convenio, recibos y exportaciones', icono: '💼', orden: 11.5 },
   admin:           { key: 'admin',           label: 'Administración',   descripcion: 'Usuarios, permisos y auditoría',        icono: '⚙', orden: 0, noAsignable: true },
 }
 
