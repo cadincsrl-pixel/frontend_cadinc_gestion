@@ -290,8 +290,9 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
           <Campo label="Referencia" hint="Nº de operación">
             <input value={referencia} onChange={e => setReferencia(e.target.value)} className={inputCls} />
           </Campo>
-          <Campo label="Sale de la cuenta" hint="opcional">
-            <SelectCuentaOrigen value={cuentaOrigen} onChange={setCuentaOrigen} forma={forma} className={inputCls} />
+          <Campo label="Sale de la cuenta" hint="si no elegís, la automática">
+            <SelectCuentaOrigen value={cuentaOrigen} onChange={setCuentaOrigen} forma={forma} className={inputCls}
+              auto={{ proveedorId, cheques: pideCheques ? cheques : undefined }} />
           </Campo>
         </div>
 

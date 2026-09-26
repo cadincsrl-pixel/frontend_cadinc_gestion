@@ -244,8 +244,8 @@ export function ModalPagarLote({ facturaIds, onClose, desdeCheques }: Props) {
           <Campo label="Fecha del pago" hint="la misma para todas">
             <input type="date" value={fecha} max={hoyAR()} onChange={e => setFecha(e.target.value)} className={inputCls} />
           </Campo>
-          <Campo label="Sale de la cuenta" hint="opcional">
-            <SelectCuentaOrigen value={cuentaOrigen} onChange={setCuentaOrigen} forma={formaComun} className={inputCls} />
+          <Campo label="Sale de la cuenta" hint="si no elegís, la automática de cada proveedor">
+            <SelectCuentaOrigen value={cuentaOrigen} onChange={setCuentaOrigen} forma={formaComun} className={inputCls} auto={{}} />
           </Campo>
           <Campo label="Forma por defecto" hint="la de cada bloque se cambia abajo">
             <select value={formaComun} onChange={e => setFormaComun(e.target.value as PagosFormaPagoOP)} className={inputCls}>

@@ -409,7 +409,7 @@ function FormReconstruir({ grupo, onListo, usados }: {
         </label>
         <div className="flex flex-col gap-0.5">
           <span className="font-bold text-gris-dark">Salió de</span>
-          <SelectCuentaOrigen value={cuenta} onChange={setCuenta} forma={forma === 'otro' ? null : forma} />
+          <SelectCuentaOrigen value={cuenta} onChange={setCuenta} forma={forma === 'otro' ? null : forma} auto={{}} />
         </div>
         <div className="flex flex-col gap-0.5">
           <span className="font-bold text-gris-dark">Forma</span>

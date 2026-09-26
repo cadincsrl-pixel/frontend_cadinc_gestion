@@ -14,7 +14,7 @@ import type {
   AnularFacturaRes, AnularOrdenRes, AplicarNcRes, AprobarLoteRes, CrearFacturaInput, CrearFacturaRes, CrearOrdenInput,
   EditarFacturaInput, EditarFacturaRes, EditarOrdenInput, PagosAdjunto, PagosAdjuntoPendiente,
   PagosCatalogoObra, PagosComprobanteLectura, PagosCuentaOrigen, PagosEntidadAdjunto, PagosReconstruirInput, PagosEstadoFactura, PagosEstadoOrden, PagosFactura, PagosFacturaDetalle,
-  PagosFacturasGrupo, PagosFacturasPage, PagosFacturasResumen, PagosFormaPagoOPGuardada,
+  PagosFacturasGrupo, PagosFacturasPage, PagosFacturasResumen, PagosFormaPagoOP, PagosFormaPagoOPGuardada,
   PagosFormaPrevista, PagosOrdenDetalle, PagosOrdenesEje, PagosOrdenesGrupo, PagosOrdenesPage, PagosOrdenExport, PagosPaquete,
   PagosOrdenesResumen, PagosTipoAdjFactura, PagosTipoAdjOrden, PagosTipoComprobante, PagosUploadUrlRes,
   PagosAviso, PagosAvisoResultado, PagosMailEstado, PagosLecturaRes, PagosAplicaNcInput, PagosClaseComprobante,
@@ -854,6 +854,30 @@ export function useCatalogoObrasPagos(enabled = true) {
  * Cuentas propias de CADINC (tesorería) para «Sale de la cuenta» (20260926g).
  * Solo las activas. Se cargan en Contabilidad › Plan › Cuentas de tesorería.
  */
+/** Lo que manda la pantalla para saber qué cuenta tomaría la OP sola (20261009e). */
+export interface CuentaOrigenSugeridaInput {
+  proveedor_id?: number | null
+  forma_pago:    PagosFormaPagoOP
+  cheques?:      Array<{ banco?: string | null; es_propio?: boolean }>
+}
+
+/**
+ * «Sale de la cuenta» automática: la que la base le pone a la OP si nadie
+ * elige (`_pagos_cuenta_origen_sugerida`). Solo para mostrarla; la regla vive
+ * en la base.
+ */
+export function useCuentaOrigenSugerida(input: CuentaOrigenSugeridaInput | null) {
+  const cheques = (input?.cheques ?? []).map(c => ({ banco: c.banco?.trim() || null, es_propio: c.es_propio ?? true }))
+  return useQuery({
+    queryKey: [...PAGOS_KEYS.cuentasOrigen, 'sugerida', input?.proveedor_id ?? null, input?.forma_pago ?? null, cheques],
+    queryFn:  () => apiPost<{ cuenta_origen_id: number | null; nombre: string | null }>(
+      '/api/pagos/cuentas-origen/sugerida', { proveedor_id: input!.proveedor_id ?? null, forma_pago: input!.forma_pago, cheques }),
+    enabled:  input != null,
+    staleTime: 60_000,
+    placeholderData: keepPreviousData,
+  })
+}
+
 export function useCuentasOrigen(enabled = true) {
   return useQuery({
     queryKey: PAGOS_KEYS.cuentasOrigen,

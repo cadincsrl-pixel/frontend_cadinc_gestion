@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import { useCuentasOrigen } from '../hooks/usePagos'
+import { useCuentaOrigenSugerida, useCuentasOrigen } from '../hooks/usePagos'
 import type { PagosCuentaOrigen, PagosFormaPagoOP } from '@/types/domain.types'
 
 /**
@@ -12,6 +12,10 @@ import type { PagosCuentaOrigen, PagosFormaPagoOP } from '@/types/domain.types'
  * No filtra por la forma de pago, solo ORDENA: las del tipo que sugiere la
  * forma van primero (efectivo → caja; tarjeta → tarjetas; transferencia,
  * cheque, e-cheq y débito → banco). Las cuentas se cargan en Contabilidad › Plan de cuentas.
+ *
+ * Con `auto`, lo vacío no es «sin indicar» sino «automática: X» (20261009e):
+ * la base le pone a la OP la cuenta que diga `_pagos_cuenta_origen_sugerida`
+ * y acá solo se muestra cuál va a ser.
  */
 
 export const TIPO_CUENTA_ORIGEN_LABEL: Record<PagosCuentaOrigen['tipo'], string> = {
@@ -25,7 +29,7 @@ export function tipoSugerido(forma: PagosFormaPagoOP | null | undefined): PagosC
   return null
 }
 
-export function SelectCuentaOrigen({ value, onChange, forma, className, disabled, actualNombre }: {
+export function SelectCuentaOrigen({ value, onChange, forma, className, disabled, actualNombre, auto }: {
   /** '' = sin indicar. */
   value:      string
   /** Nombre de la cuenta guardada, por si ya no está activa y no viene en la lista. */
@@ -34,8 +38,16 @@ export function SelectCuentaOrigen({ value, onChange, forma, className, disabled
   forma?:     PagosFormaPagoOP | null
   className?: string
   disabled?:  boolean
+  /** OP nueva: vacío = la cuenta automática, que se muestra en la opción vacía. */
+  auto?: { proveedorId?: number | null; cheques?: Array<{ banco?: string | null; es_propio?: boolean }> }
 }) {
   const { data, isLoading, isError } = useCuentasOrigen()
+  const sug = useCuentaOrigenSugerida(auto && forma && value === '' ? { proveedor_id: auto.proveedorId, forma_pago: forma, cheques: auto.cheques } : null)
+  const vacioLabel = isLoading ? 'Cargando…'
+    : !auto ? '— sin indicar —'
+    : sug.data?.nombre ? `Automática: ${sug.data.nombre}`
+    : sug.isFetching ? 'Automática…'
+    : '— sin cuenta —'
 
   const grupos = useMemo(() => {
     const lista = data ?? []
@@ -52,6 +64,7 @@ export function SelectCuentaOrigen({ value, onChange, forma, className, disabled
   const vacia = !isLoading && (data ?? []).length === 0 && !huerfana
   const titulo = isError ? 'No se pudieron traer las cuentas de tesorería'
     : vacia ? 'No hay cuentas de tesorería: se cargan en Contabilidad › Plan'
+    : auto ? 'De qué cuenta propia salió la plata. Si no elegís, se toma la automática'
     : 'De qué cuenta propia salió la plata (opcional)'
 
   return (
@@ -62,7 +75,7 @@ export function SelectCuentaOrigen({ value, onChange, forma, className, disabled
       title={titulo}
       className={className}
     >
-      <option value="">{isLoading ? 'Cargando…' : '— sin indicar —'}</option>
+      <option value="">{vacioLabel}</option>
       {huerfana && <option value={value}>{actualNombre ?? `Cuenta #${value}`} (dada de baja)</option>}
       {grupos.map(g => (
         <optgroup key={g.tipo} label={TIPO_CUENTA_ORIGEN_LABEL[g.tipo]}>

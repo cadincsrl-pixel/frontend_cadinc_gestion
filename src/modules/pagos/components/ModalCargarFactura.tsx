@@ -1156,8 +1156,9 @@ export function ModalCargarFactura({ editarId, onClose, onAbrirFicha }: Props) {
                   <Campo label="Referencia" hint="Opcional">
                     <input value={opRef} onChange={e => setOpRef(e.target.value)} className={inputCls} />
                   </Campo>
-                  <Campo label="Sale de la cuenta" hint="Opcional">
-                    <SelectCuentaOrigen value={opCuentaOrigen} onChange={setOpCuentaOrigen} forma={opForma} className={inputCls} />
+                  <Campo label="Sale de la cuenta" hint="si no elegís, la automática">
+                    <SelectCuentaOrigen value={opCuentaOrigen} onChange={setOpCuentaOrigen} forma={opForma} className={inputCls}
+                      auto={{ proveedorId: proveedorId ? Number(proveedorId) : null }} />
                   </Campo>
                   {FORMAS_CON_FECHA_COBRO.includes(opForma) && (
                     <Campo label="Se cobra el">
