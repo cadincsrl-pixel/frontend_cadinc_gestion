@@ -165,6 +165,21 @@ export function FacturasTab({ aviso, importacion, ficha }: {
   // Un proveedor → «Registrar pago» de siempre. Dos o más → «Pagar en lote»
   // (20260929t): una OP por proveedor, todo o nada.
   const cantProveedores = new Set(pagables.map(f => f.proveedor_id)).size
+
+  // Totales de lo seleccionado (barra de abajo). Las NC van aparte: restan.
+  const totSel = useMemo(() => {
+    const fact = seleccionadas.filter(f => !esNC(f))
+    const ncs  = seleccionadas.filter(f => esNC(f))
+    return {
+      facturas: fact.length,
+      total:    fact.reduce((s, f) => s + Number(f.total ?? 0), 0),
+      saldo:    fact.filter(f => f.estado !== 'anulada').reduce((s, f) => s + topePagable(f), 0),
+      ncs:      ncs.length,
+      totalNc:  ncs.reduce((s, f) => s + Number(f.total ?? 0), 0),
+      pagable:  pagables.reduce((s, f) => s + topePagable(f), 0),
+      proveedores: new Set(seleccionadas.map(f => f.proveedor_id)).size,
+    }
+  }, [seleccionadas, pagables])
   const esLote = cantProveedores > 1
 
   // Imputar en lote: importadas sin imputar. Marcar pagadas: cualquier
@@ -381,6 +396,33 @@ export function FacturasTab({ aviso, importacion, ficha }: {
           />
           {total > PAGE_SIZE && (
             <Pagination page={page} total={total} pageSize={PAGE_SIZE} onChange={setPage} />
+          )}
+          {/* Lo seleccionado, siempre a la vista mientras se recorre la lista
+              (pedido del dueño 26/09: «no me dice el total ni la cantidad»). */}
+          {seleccionadas.length > 0 && (
+            <div className="sticky bottom-2 z-10 bg-carbon text-white rounded-card shadow-card-lg px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+              <span className="font-bold">
+                {seleccionadas.length} seleccionada{seleccionadas.length === 1 ? '' : 's'}
+                {totSel.proveedores > 1 && <span className="font-normal text-white/70"> · {totSel.proveedores} proveedores</span>}
+              </span>
+              {totSel.facturas > 0 && (
+                <span>Saldo a pagar <b className="font-mono tabular-nums">{fmtM(totSel.saldo)}</b></span>
+              )}
+              {totSel.facturas > 0 && (
+                <span className="text-white/70">Total facturas <span className="font-mono tabular-nums">{fmtM(totSel.total)}</span></span>
+              )}
+              {totSel.ncs > 0 && (
+                <span className="text-white/70">{totSel.ncs} NC <span className="font-mono tabular-nums">−{fmtM(totSel.totalNc)}</span></span>
+              )}
+              {pagables.length > 0 && pagables.length !== totSel.facturas && (
+                <span className="text-white/70" title="Solo lo aprobado con saldo se puede pagar">
+                  Aprobado para pagar: {pagables.length} · <span className="font-mono tabular-nums">{fmtM(totSel.pagable)}</span>
+                </span>
+              )}
+              <button type="button" onClick={() => setSeleccion(new Set())} className="ml-auto text-xs text-white/70 hover:text-white px-1">
+                Quitar selección
+              </button>
+            </div>
           )}
           <p className="text-[11px] text-gris-dark px-1">
             {total.toLocaleString('es-AR')} comprobante{total === 1 ? '' : 's'} · importes finales con IVA · las NC restan ·
