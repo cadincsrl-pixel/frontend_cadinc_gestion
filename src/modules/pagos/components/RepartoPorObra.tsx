@@ -80,22 +80,19 @@ export function RepartoPorObra({ filas, onChange, imputable, detalleImputable, e
 }) {
   const obras = useCatalogoObrasPagos()
 
-  // El catálogo trae TODAS las obras, también las archivadas, porque la ficha
-  // de una factura vieja tiene que poder mostrar su obra. Pero imputar a una
-  // archivada NO se puede (`OBRA_ARCHIVADA`): se listan solo las activas, más
-  // la que ya esté elegida (el caso de editar una factura vieja).
-  const codsElegidos = useMemo(() => new Set(filas.map(f => f.obra_cod).filter(Boolean)), [filas])
+  // El catálogo trae TODAS las obras, también las archivadas: una obra
+  // archivada sigue siendo centro de costo para la contabilidad y se le puede
+  // imputar (20261001s). Van en su propio grupo, al final, para no mezclarse
+  // con las activas.
   const obrasOpts = useMemo(
-    () => (obras.data ?? [])
-      .filter(o => !o.archivada || codsElegidos.has(o.cod))
-      .map(o => ({
-        value: o.cod,
-        label: o.nom,
-        sub:   o.cod + (o.archivada ? ' · archivada' : ''),
-        group: o.es_interna || o.es_deposito ? 'Estructura CADINC' : 'Obras',
-        search: [o.nom, o.cod, o.cc ?? ''],
-      })),
-    [obras.data, codsElegidos],
+    () => (obras.data ?? []).map(o => ({
+      value: o.cod,
+      label: o.nom,
+      sub:   o.cod + (o.archivada ? ' · archivada' : ''),
+      group: o.archivada ? 'Archivadas' : o.es_interna || o.es_deposito ? 'Estructura CADINC' : 'Obras',
+      search: [o.nom, o.cod, o.cc ?? ''],
+    })),
+    [obras.data],
   )
 
   // Con UNA sola obra el reparto es todo el importe: no tiene sentido hacerlo

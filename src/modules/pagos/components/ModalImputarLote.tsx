@@ -54,9 +54,10 @@ export function ModalImputarLote({ facturas, onClose, onHecho }: {
     defaultValues: { concepto_id: '', obra_cod: '' },
   })
 
-  const obrasOpts = useMemo(() => (obras.data ?? []).filter(o => !o.archivada).map(o => ({
-    value: o.cod, label: o.nom, sub: o.cod,
-    group: o.es_interna || o.es_deposito ? 'Estructura CADINC' : 'Obras',
+  // Las archivadas también: siguen siendo centro de costo (20261001s).
+  const obrasOpts = useMemo(() => (obras.data ?? []).map(o => ({
+    value: o.cod, label: o.nom, sub: o.cod + (o.archivada ? ' · archivada' : ''),
+    group: o.archivada ? 'Archivadas' : o.es_interna || o.es_deposito ? 'Estructura CADINC' : 'Obras',
     search: [o.nom, o.cod, o.cc ?? ''],
   })), [obras.data])
 
