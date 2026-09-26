@@ -53,18 +53,82 @@ export function FilasFacturasPago({ filas, onMonto }: {
                 <label className="block text-[10px] font-semibold text-gris-dark mb-0.5">Se paga</label>
                 <InputMonto value={f.monto}
                   onChange={v => onMonto(f.factura.id, v)}
-                  className={`font-mono text-right py-2 rounded ${excede ? '!border-rojo' : ''}`} />
+                  className={`font-mono text-right py-2 rounded ${excede ? '!border-amarillo' : ''}`} />
               </div>
               <div className="w-28 text-right">
                 <div className="text-[10px] font-semibold text-gris-dark mb-0.5">Quedaría</div>
-                <div className={`font-mono text-sm tabular-nums ${excede ? 'text-rojo font-bold' : quedaria === 0 ? 'text-verde font-bold' : ''}`}>
-                  {excede ? 'se pasa' : fmtM(quedaria)}
+                <div className={`font-mono text-sm tabular-nums ${excede ? 'text-[#7A5000] font-bold' : quedaria === 0 ? 'text-verde font-bold' : ''}`}
+                  title={excede ? 'Lo que pasa del saldo va a «A cuenta»: queda a favor con el proveedor' : undefined}>
+                  {excede ? `+${fmtM(r2(n(f.monto) - tope))} a cuenta` : fmtM(quedaria)}
                 </div>
               </div>
             </div>
           </div>
         )
       })}
+    </div>
+  )
+}
+
+/**
+ * «Importe del pago» (2026-09-26): lo que se paga es un DATO, no la suma de
+ * las filas. Pedido del dueño: «el importe de arriba tiene que seguir a
+ * cualquier forma de pago». Se tipea lo que sale (la transferencia, el
+ * efectivo) y se reparte entre las facturas, la que vence primero primero;
+ * lo que sobra va a «A cuenta». Con cheques no se tipea: es lo que suman.
+ *
+ * Mientras se escribe se guarda el texto; al salir del campo (o con Enter)
+ * se reparte. Repartir en cada tecla movería las filas debajo del cursor.
+ */
+export function CampoImportePago({ total, conCheques, onRepartir }: {
+  total:      number
+  conCheques: boolean
+  onRepartir: (total: number) => void
+}) {
+  const [editando, setEditando] = useState<string | null>(null)
+  const confirmar = () => {
+    if (editando === null) return
+    const v = r2(n(editando))
+    setEditando(null)
+    if (Math.abs(v - total) >= 0.005) onRepartir(v)
+  }
+  return (
+    <div className="flex gap-2 items-end flex-wrap">
+      <div className="w-44">
+        <label className="block text-xs font-semibold text-gris-dark mb-1">Importe del pago</label>
+        <InputMonto value={editando ?? String(total)} disabled={conCheques}
+          onChange={setEditando} onBlur={confirmar}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); confirmar() } }}
+          className="font-mono text-right py-2 rounded font-bold" />
+      </div>
+      <div className="text-[11px] text-gris-dark flex-1 min-w-[200px] pb-2">
+        {conCheques
+          ? 'Lo que suman los cheques. Se reparte solo entre las facturas; si sobra, va a «A cuenta».'
+          : 'Lo que sale de plata. Se reparte entre las facturas (la que vence primero, primero); si sobra, va a «A cuenta». Podés pagar menos: la factura queda con saldo.'}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Qué deja el pago, dicho en voz alta. Pagar de más es un AVISO, nunca un
+ * freno (2026-09-26): la plata queda a favor con el proveedor.
+ */
+export function AvisoResultadoPago({ aFavor, quedaDebiendo }: { aFavor: number; quedaDebiendo: number }) {
+  if (aFavor <= 0.005 && quedaDebiendo <= 0.005) return null
+  return (
+    <div className="flex flex-col gap-1">
+      {aFavor > 0.005 && (
+        <div className="bg-amarillo-light border border-amarillo/60 rounded px-2.5 py-1.5 text-xs text-[#7A5000]">
+          ⚠ Pagás <b className="font-mono">{fmtM(aFavor)}</b> más de lo que se debe en estas facturas: va a
+          «A cuenta» y queda como <b>saldo a favor</b> con el proveedor. Si no era la idea, revisá el importe.
+        </div>
+      )}
+      {quedaDebiendo > 0.005 && (
+        <div className="text-[11px] text-gris-dark px-0.5">
+          Pago parcial: de estas facturas se sigue debiendo <b className="font-mono">{fmtM(quedaDebiendo)}</b>.
+        </div>
+      )}
     </div>
   )
 }

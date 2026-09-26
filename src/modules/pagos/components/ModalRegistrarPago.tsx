@@ -16,11 +16,13 @@ import {
 } from '../utils/pagos.utils'
 import { mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
 import {
-  FORMA_POR_DEFECTO, filasIniciales, filasQueSePasan, formaSegunLoPrevisto, lineasDeOrden, problemaCheques, repartirTotalEnFilas,
-  totalDeFilas, type FilaFactura,
+  FORMA_POR_DEFECTO, filasIniciales, formaSegunLoPrevisto, lineasDeOrden, problemaCheques, repartirTotalEnFilas,
+  resultadoDelPago, totalDeFilas, type FilaFactura,
 } from '../utils/pagoForm'
-import { EditorCheques, useEditorCheques } from './pago/EditorCheques'
-import { AvisoNcSinAplicar, CampoACuenta, CuentaDestinoProveedor, FilasFacturasPago } from './pago/FacturasDelPago'
+import { EditorCheques, useEditorCheques, useTotalSigueALosCheques } from './pago/EditorCheques'
+import {
+  AvisoNcSinAplicar, AvisoResultadoPago, CampoACuenta, CampoImportePago, CuentaDestinoProveedor, FilasFacturasPago,
+} from './pago/FacturasDelPago'
 import { Campo, inputCls } from './pago/Campo'
 import { ComprobanteQueNoViaja } from './pago/ComprobanteQueNoViaja'
 import type { PagosAdjuntoPendiente, PagosFormaPagoOP } from '@/types/domain.types'
@@ -127,13 +129,13 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
   const comprobanteQueViaja = comprobanteAparte ? comprobante : null
   const problemaDeCheques = pideCheques ? problemaCheques(cheques, totalPlata, fecha, forma) : null
 
-  // Cada fila: la plata no puede pasarse de lo pagable (saldo − NC reservada).
-  const filasConError = filasQueSePasan(filas)
+  // Pagar de más ya no frena (2026-09-26): lo que pasa del saldo va a cuenta
+  // y se avisa. Lo que queda debiendo, también se dice.
+  const resultado = resultadoDelPago(filas, aCuenta)
 
   const listo =
     filas.length > 0 &&
     totalPlata > 0 &&
-    filasConError.length === 0 &&
     !sinDatosPago &&
     (!pideComprobante || !!comprobante) &&
     !problemaDeCheques
@@ -154,6 +156,7 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
     setFilas(r.filas)
     setACuenta(r.aCuenta)
   }
+  useTotalSigueALosCheques({ pideCheques, cheques, totalPlata, onRepartir: usarTotalDeLosCheques })
 
   async function subir(file: File) {
     setSubiendo('comprobante')
@@ -230,7 +233,6 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
           <Button size="sm" onClick={guardar} loading={registrar.isPending} disabled={!listo}
             title={
               sinDatosPago ? 'El proveedor no tiene CBU ni alias: cargalos primero'
-              : filasConError.length > 0 ? 'Hay montos que superan el saldo de su factura'
               : totalPlata <= 0 ? 'No hay nada para pagar'
               : pideComprobante && !comprobante ? motivoComprobante()
               : problemaDeCheques ?? undefined
@@ -249,9 +251,10 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
           se mira. (2026-09-21)
         */}
         <div className="text-[11px] text-gris-dark bg-gris/40 border border-gris-mid rounded px-2.5 py-1.5">
-          Podés pagar <b>una parte</b>: cambiá «Se paga» y la factura queda en <b>Pago parcial</b> con el
-          saldo que muestra «Quedaría». El resto se paga después, y <b>puede ser con otra forma</b> — cada
-          orden de pago lleva una sola forma, así que dos formas son dos órdenes.
+          Poné en <b>Importe del pago</b> lo que sale de verdad: se reparte solo entre las facturas. Si es
+          menos, la factura queda en <b>Pago parcial</b>; si es más, lo que sobra queda <b>a cuenta</b>. El
+          resto se paga después, y <b>puede ser con otra forma</b> — cada orden de pago lleva una sola forma,
+          así que dos formas son dos órdenes.
         </div>
 
         <AvisoNcSinAplicar proveedorId={proveedorId} />
@@ -262,6 +265,11 @@ export function ModalRegistrarPago({ facturaIds, onClose, onRegistrado }: Props)
 
         {/* A cuenta */}
         <CampoACuenta value={aCuenta} onChange={setACuenta} />
+
+        {/* Lo que se paga: un dato (o lo que suman los cheques), no una suma a mano */}
+        <CampoImportePago total={totalPlata} conCheques={pideCheques && cheques.length > 0}
+          onRepartir={usarTotalDeLosCheques} />
+        <AvisoResultadoPago aFavor={resultado.aFavor} quedaDebiendo={resultado.quedaDebiendo} />
 
         {/* Datos del pago */}
         <div className="border-t border-gris pt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">

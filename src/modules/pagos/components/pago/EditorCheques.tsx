@@ -32,6 +32,33 @@ import type { PagosAdjuntoPendiente, PagosChequeLecturaRes, PagosFormaPagoOP, Pa
  * sobre el total (`onUsarTotalDeLosCheques`), porque eso toca SUS facturas.
  */
 
+/**
+ * Con cheque o e-cheq el importe SIGUE a los cheques, solo (2026-09-26).
+ * Antes había que tocar «Usar lo que suman los cheques»; si no, el pago no
+ * se podía registrar («tienen que dar igual»). Cada vez que la suma de los
+ * cheques cambia (y no se está leyendo una foto) se reparte entre las
+ * facturas con `onRepartir`; lo que sobra va a cuenta.
+ *
+ * Se sigue la SUMA, no el total: si alguien después toca a mano una fila, no
+ * se lo pisa (y el aviso de abajo ofrece volver a los cheques). Se ajusta
+ * durante el render, el patrón de React para «estado que sigue a otro», así
+ * no hay un render con los números viejos.
+ */
+export function useTotalSigueALosCheques({ pideCheques, cheques, totalPlata, onRepartir }: {
+  pideCheques: boolean
+  cheques:     ChequeFila[]
+  totalPlata:  number
+  onRepartir:  (total: number) => void
+}) {
+  const suma = r2(cheques.reduce((s, c) => s + n(c.monto), 0))
+  const leyendo = cheques.some(c => c.leyendo)
+  const [seguida, setSeguida] = useState<number | null>(null)
+  if (pideCheques && !leyendo && cheques.length > 0 && suma > 0 && suma !== seguida) {
+    setSeguida(suma)
+    if (Math.abs(suma - totalPlata) >= 0.005) onRepartir(suma)
+  }
+}
+
 interface Opciones {
   fecha:       string
   totalPlata:  number
@@ -470,8 +497,8 @@ export function EditorCheques({ ed, forma, fecha, totalPlata, cantFacturas, onUs
       {Math.abs(difCheques) >= 0.005 && cheques.length > 0 && (
         <div className="px-2.5 py-2 border-t border-gris-mid bg-rojo-light/40 flex flex-col gap-1.5">
           <div className="text-xs text-carbon">
-            Los cheques suman <b className="font-mono">{fmtM(totalCheques)}</b> y arriba se está
-            pagando <b className="font-mono">{fmtM(totalPlata)}</b>. Tienen que dar igual.
+            Los cheques suman <b className="font-mono">{fmtM(totalCheques)}</b> y en las facturas se está
+            pagando <b className="font-mono">{fmtM(totalPlata)}</b> (tocaste una fila a mano). Tienen que dar igual.
           </div>
           <div className="flex gap-2 flex-wrap items-center">
             <Button variant="secondary" size="sm" onClick={() => onUsarTotalDeLosCheques(totalCheques)}>

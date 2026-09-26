@@ -67,7 +67,7 @@ export function filasIniciales(facturas: PagosFactura[]): FilaFactura[] {
   return facturas.map(f => ({ factura: f, monto: String(topePagable(f)) }))
 }
 
-/** Las filas donde la plata se pasa de lo pagable (saldo − NC reservada). */
+/** Las filas donde la plata se pasa de lo pagable (saldo − NC reservada). Ya no frena: el exceso va a cuenta (`normalizarPago`). */
 export function filasQueSePasan(filas: FilaFactura[]): FilaFactura[] {
   return filas.filter(f => n(f.monto) - topePagable(f.factura) > 0.005)
 }
@@ -94,13 +94,38 @@ export function repartirTotalEnFilas(total: number, filas: FilaFactura[]): { fil
   }
 }
 
-/** Las líneas de la OP: las facturas con plata y, si hay, lo que va a cuenta. */
+/**
+ * Pagar de más no se prohíbe, se avisa (2026-09-26, dueño: «puedo transferir
+ * de más si quiero»). Lo que una fila pone por encima de lo pagable de su
+ * factura no se rechaza: pasa a «A cuenta», que es lo que es — plata que
+ * queda a favor con el proveedor. El total no cambia.
+ */
+export function normalizarPago(filas: FilaFactura[], aCuenta: string): { filas: FilaFactura[]; aCuenta: number } {
+  let deMas = 0
+  const normalizadas = filas.map(f => {
+    const exceso = r2(n(f.monto) - topePagable(f.factura))
+    if (exceso <= 0.005) return f
+    deMas = r2(deMas + exceso)
+    return { ...f, monto: String(topePagable(f.factura)) }
+  })
+  return { filas: normalizadas, aCuenta: r2(n(aCuenta) + deMas) }
+}
+
+/** Qué pasa con el pago: cuánto queda a favor del proveedor y cuánto se sigue debiendo de estas facturas. */
+export function resultadoDelPago(filas: FilaFactura[], aCuenta: string): { aFavor: number; quedaDebiendo: number } {
+  const norm = normalizarPago(filas, aCuenta)
+  const quedaDebiendo = r2(norm.filas.reduce((s, f) => s + Math.max(0, topePagable(f.factura) - n(f.monto)), 0))
+  return { aFavor: norm.aCuenta, quedaDebiendo }
+}
+
+/** Las líneas de la OP: las facturas con plata y, si hay, lo que va a cuenta (incluido lo pagado de más en una fila). */
 export function lineasDeOrden(filas: FilaFactura[], aCuenta: string): PagosLineaOrdenInput[] {
+  const norm = normalizarPago(filas, aCuenta)
   const lineas: PagosLineaOrdenInput[] = []
-  for (const f of filas) {
+  for (const f of norm.filas) {
     if (n(f.monto) > 0) lineas.push({ tipo: 'factura', factura_id: f.factura.id, monto: n(f.monto) })
   }
-  if (n(aCuenta) > 0) lineas.push({ tipo: 'a_cuenta', factura_id: null, monto: n(aCuenta) })
+  if (norm.aCuenta > 0.005) lineas.push({ tipo: 'a_cuenta', factura_id: null, monto: norm.aCuenta })
   return lineas
 }
 

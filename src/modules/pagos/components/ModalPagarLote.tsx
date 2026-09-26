@@ -19,11 +19,13 @@ import {
 } from '../utils/pagos.utils'
 import { detalleErrorPagos, mensajeAvisoPagos, mensajeErrorPagos } from '../utils/pagos.errores'
 import {
-  FORMA_POR_DEFECTO, bloqueoPorFirma, chequesParaEnviar, filasIniciales, filasQueSePasan, formaSegunLoPrevisto, lineasDeOrden,
-  bloquesDelError, n, problemaCheques, repartirTotalEnFilas, totalDeFilas, type ChequeFila, type FilaFactura,
+  FORMA_POR_DEFECTO, bloqueoPorFirma, chequesParaEnviar, filasIniciales, formaSegunLoPrevisto, lineasDeOrden,
+  bloquesDelError, n, problemaCheques, repartirTotalEnFilas, resultadoDelPago, totalDeFilas, type ChequeFila, type FilaFactura,
 } from '../utils/pagoForm'
-import { EditorCheques, useEditorCheques } from './pago/EditorCheques'
-import { AvisoNcSinAplicar, CampoACuenta, CuentaDestinoProveedor, FilasFacturasPago, cuentaDelPadron } from './pago/FacturasDelPago'
+import { EditorCheques, useEditorCheques, useTotalSigueALosCheques } from './pago/EditorCheques'
+import {
+  AvisoNcSinAplicar, AvisoResultadoPago, CampoACuenta, CampoImportePago, CuentaDestinoProveedor, FilasFacturasPago, cuentaDelPadron,
+} from './pago/FacturasDelPago'
 import { Campo, inputCls } from './pago/Campo'
 import { ComprobanteQueNoViaja } from './pago/ComprobanteQueNoViaja'
 import type {
@@ -338,10 +340,9 @@ const BloqueProveedor = memo(function BloqueProveedor({
   const visible = abierto || !!errorServidor
 
   const estado = useMemo<EstadoBloque>(() => {
-    const sePasan = filasQueSePasan(filas)
+    // Pagar de más ya no frena (2026-09-26): el exceso va a cuenta y se avisa.
     const problema =
       bloqueo ? bloqueo
-      : sePasan.length > 0 ? 'Hay montos que superan el saldo de su factura'
       : totalPlata <= 0 ? 'No hay nada para pagar'
       : !proveedor && necesitaCuenta ? 'Cargando los datos de pago…'
       : sinDatosPago ? 'No tiene CBU ni alias: cargalos para transferirle'
@@ -391,6 +392,8 @@ const BloqueProveedor = memo(function BloqueProveedor({
     setFilas(r.filas)
     setACuenta(r.aCuenta)
   }
+  useTotalSigueALosCheques({ pideCheques, cheques, totalPlata, onRepartir: usarTotalDeLosCheques })
+  const resultado = resultadoDelPago(filas, aCuenta)
 
   const cuenta = cuentaDelPadron(proveedor, verPii)
   const listo = !estado.problema
@@ -445,6 +448,10 @@ const BloqueProveedor = memo(function BloqueProveedor({
             onMonto={(fid, v) => setFilas(fs => fs.map(x => x.factura.id === fid ? { ...x, monto: v } : x))} />
 
           <CampoACuenta value={aCuenta} onChange={setACuenta} />
+
+          <CampoImportePago total={totalPlata} conCheques={pideCheques && cheques.length > 0}
+            onRepartir={usarTotalDeLosCheques} />
+          <AvisoResultadoPago aFavor={resultado.aFavor} quedaDebiendo={resultado.quedaDebiendo} />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <Campo label="Forma" hint={vieneDeLoPrevisto ? 'Lo previsto en la factura' : undefined}>
