@@ -242,6 +242,7 @@ Una herramienta es una fila de `stock_materiales` con `clase='herramienta'` (rub
 - **Pedidos: dos candados de datos** (26/09).
   - Un pedido con algún renglón que ya no está `pendiente` ni `rechazado` no cambia de obra (`OBRA_CON_RENGLONES_RESUELTOS`, `20261005a`).
   - Ponerle ficha a un renglón de texto libre ya despachado del depósito registra la salida de stock que faltó (`trg_item_vinculado_descuenta_stock`, `20261005b`). Sin backfill, por los recuentos de §5.15.
+  - **La ficha manda sobre la clase del renglón** (`trg_item_alinea_clase_con_ficha`, `20261005f`). Si la ficha es herramienta, el renglón también. Si el renglón dice herramienta y la ficha es material, EPP o servicio, pasa a material. Los consumibles (balde, tanza, punta de demoledor, fratacho) son material: se cobran, y cuando en una obra no corresponde se marcan «consumible propio».
 - **Un renglón con dos herramientas** ("masa y cortafierro") se desdobla en un renglón hermano (obs `Desdoblado del renglón #N`), nunca se elige una sola.
 - Precios del catálogo: `precio_ref` es **precio final con IVA** (§ memoria). Regla al vincular renglones a $0/$1: toman el precio de referencia solo en obras llave en mano (`obras.materiales_a_cargo_de='cadinc'`); en obras de cliente quedan en $0 salvo pedido explícito del user.
 
