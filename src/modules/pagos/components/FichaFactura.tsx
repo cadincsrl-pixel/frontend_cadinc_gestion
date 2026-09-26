@@ -684,7 +684,7 @@ function PeriodoIvaEnLugar({ f, puedeEditar }: { f: PagosFacturaDetalle; puedeEd
 
   return (
     <div>
-      <span className="text-[11px] font-bold text-gris-dark uppercase">Período IVA</span>
+      <span className="text-[11px] font-bold text-gris-dark uppercase">Período IVA / contabilización</span>
       {!editando ? (
         <div className="flex items-center gap-2 flex-wrap">
           <span className={`text-xs font-semibold px-2 py-0.5 rounded ${f.periodo_iva_distinto ? 'bg-amarillo-light text-[#7A5000]' : 'bg-gris text-gris-dark'}`}>
@@ -701,7 +701,7 @@ function PeriodoIvaEnLugar({ f, puedeEditar }: { f: PagosFacturaDetalle; puedeEd
         </div>
       ) : (
         <div className="flex items-center gap-2 flex-wrap mt-0.5">
-          <select value={valor} onChange={e => setValor(e.target.value)} aria-label="Período IVA"
+          <select value={valor} onChange={e => setValor(e.target.value)} aria-label="Período IVA / contabilización"
             className="px-2 py-1.5 border-[1.5px] border-gris-mid rounded text-sm bg-white outline-none focus:border-naranja">
             {!meses.includes(actual) && <option value={actual}>{fmtMesLargo(actual)}</option>}
             {meses.map(m => <option key={m} value={m}>{fmtMesLargo(m)}</option>)}

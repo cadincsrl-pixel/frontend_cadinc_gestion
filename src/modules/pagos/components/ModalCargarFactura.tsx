@@ -931,10 +931,10 @@ export function ModalCargarFactura({ editarId, onClose, onAbrirFicha }: Props) {
           {/* Período IVA (20260927a): en qué mes se informa en el Libro IVA
               compras. Es clasificación fiscal: se puede correr a un mes
               posterior, nunca a uno anterior al de la fecha. */}
-          <Campo label="Período IVA" hint="Libro IVA compras">
+          <Campo label="Período IVA / contabilización" hint="Libro IVA compras y asiento">
             <input type="month" value={periodoIva} min={mesFecha || undefined}
               onChange={e => { setPeriodoIva(e.target.value); setPeriodoTocado(true); setErrorPeriodo(null) }}
-              title="Mes en que el comprobante se informa en el Libro IVA compras. Por defecto, el de la fecha."
+              title="Mes en que el comprobante se informa en el Libro IVA compras y se contabiliza (el asiento va al día 1). Por defecto, el de la fecha; una factura de un mes ya liquidado se pasa al mes en curso."
               className={inputCls} />
             {periodoCorrido && (
               <div className="mt-1 text-[11px] text-[#7A5000]">

@@ -249,7 +249,7 @@ export function FiltrosFacturas({ filtro, patch, grupos }: Props) {
                 className="w-full px-2.5 py-2 border-[1.5px] border-gris-mid rounded text-xs bg-white outline-none focus:border-naranja" />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-gris-dark mb-1">Período IVA</label>
+              <label className="block text-xs font-semibold text-gris-dark mb-1">Período IVA / contabilización</label>
               <input type="month" value={filtro.periodo_iva?.slice(0, 7) ?? ''} onChange={e => patch({ periodo_iva: e.target.value || undefined })}
                 title="Mes en que se informan en el Libro IVA compras (puede no ser el de la fecha)"
                 className="w-full px-2.5 py-2 border-[1.5px] border-gris-mid rounded text-xs bg-white outline-none focus:border-naranja" />
