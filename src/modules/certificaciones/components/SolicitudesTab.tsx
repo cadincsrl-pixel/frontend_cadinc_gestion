@@ -961,7 +961,14 @@ export function SolicitudesTab() {
       },
     }, {
       onSuccess: () => { toast('Solicitud actualizada', 'ok'); setModalEditar(null) },
-      onError: () => toast('Error al actualizar', 'err'),
+      onError: (e: unknown) => {
+        const code = (e as { body?: { error?: string } })?.body?.error ?? ''
+        toast(code === 'OBRA_CON_RENGLONES_RESUELTOS'
+          ? 'El pedido ya tiene renglones resueltos: la obra no se puede cambiar. Revertilos o levantá el pedido de nuevo en la obra correcta.'
+          : code === 'OBRA_SIN_ACCESO' ? 'No tenés acceso a esa obra.'
+          : code === 'PEDIDO_AJENO' ? 'Solo quien levantó el pedido puede editarlo.'
+          : 'Error al actualizar', 'err')
+      },
     })
   }
 
@@ -3358,7 +3365,20 @@ export function SolicitudesTab() {
         {modalEditar && (
           <div className="flex flex-col gap-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Combobox label="Obra destino" placeholder="Buscar obra..." options={obraOptions} value={obraEdit} onChange={setObraEdit} />
+              {(() => {
+                // Con renglones resueltos la obra no se cambia (20261005a): la
+                // cuenta del cliente, el stock, los remitos y el pañol quedarían
+                // en la obra vieja y la plata se partiría en dos obras.
+                const resueltos = (modalEditar.items ?? []).filter(it => it.estado !== 'pendiente' && it.estado !== 'rechazado').length
+                return (
+                  <div title={resueltos > 0 ? `Tiene ${resueltos} renglón${resueltos !== 1 ? 'es' : ''} ya resuelto${resueltos !== 1 ? 's' : ''}: para cambiar la obra hay que revertirlos o levantar el pedido de nuevo en la obra correcta.` : undefined}>
+                    <Combobox label="Obra destino" placeholder="Buscar obra..." options={obraOptions} value={obraEdit} onChange={setObraEdit} disabled={resueltos > 0} />
+                    {resueltos > 0 && (
+                      <p className="text-[10px] text-gris-mid mt-1">🔒 Tiene renglones resueltos: la obra no se puede cambiar.</p>
+                    )}
+                  </div>
+                )
+              })()}
               {/* Mismo cambio que en el modal de alta: la fecha reemplaza a
                   la prioridad. Editar tiene que quedar igual que crear, o el
                   campo desaparecido reaparecería al modificar un pedido. */}
